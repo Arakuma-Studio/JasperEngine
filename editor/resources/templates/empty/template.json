@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "empty",
+  "name": "Empty",
+  "description": "One 3D scene with only a camera.",
+  "category": "Core",
+  "order": 0,
+  "accentColor": "#5A67A7",
+  "thumbnail": "thumbnail.png",
+  "startScene": "Main"
+}

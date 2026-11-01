@@ -202,7 +202,8 @@ namespace jasperengine::editor{
         Entity,
         EntityReference,
         Asset,      // AssetRef: an asset reference (path hint + GUID)
-        Shader      // ShaderRef: a custom shader reference (path + the .vert/.frag GUIDs)
+        Shader,     // ShaderRef: a custom shader reference (path + the .vert/.frag GUIDs)
+        Curve       // Curve: an animation curve (math/Curve.h, docs/specs/S27-editor-tools.md R45)
     };
 
     struct PropertyData{

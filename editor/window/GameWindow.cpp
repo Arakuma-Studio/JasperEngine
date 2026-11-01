@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "recorder/RecorderSession.h"
+#include "widget/ColorField.h"
+#include "Theme.h"
 #include "texture/TextureCookQueue.h"
 #include "profiler/FrameTimes.h"
 
@@ -149,7 +152,16 @@ int editor::GameWindow::getHeight() const {
     return height;
 }
 
+void editor::GameWindow::setRenderSizeOverride(int w, int h) {
+    overrideWidth = w > 0 && h > 0 ? w : 0;
+    overrideHeight = w > 0 && h > 0 ? h : 0;
+    editPassDirty = true;
+}
+
 int editor::GameWindow::getRenderWidth() const {
+    if (overrideWidth > 0) {
+        return overrideWidth;
+    }
     if (width > 0 && height > 0) {
         return width;
     }
@@ -157,6 +169,9 @@ int editor::GameWindow::getRenderWidth() const {
 }
 
 int editor::GameWindow::getRenderHeight() const {
+    if (overrideHeight > 0) {
+        return overrideHeight;
+    }
     if (width > 0 && height > 0) {
         return height;
     }
@@ -486,7 +501,9 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         // Game area: the whole view, or the largest rect of the chosen aspect
         ImVec2 areaSize = avail;
         float aspect = 0.0f;
-        if (computeAspect(aspect) && avail.x > 0.0f && avail.y > 0.0f) {
+        const bool overridden = overrideWidth > 0 && overrideHeight > 0;
+        if (overridden) aspect = (float)overrideWidth / (float)overrideHeight;
+        if ((overridden || computeAspect(aspect)) && avail.x > 0.0f && avail.y > 0.0f) {
             if (avail.x / avail.y > aspect) {
                 areaSize = ImVec2(std::floor(avail.y * aspect), avail.y);
             } else {
@@ -505,8 +522,12 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         if (dpiScale < 0.5f || dpiScale > 8.0f) dpiScale = 1.0f;
         engineScale = Backend::sceneRenderScale(fbScale, dpiScale);
 
-        const int newWidth = areaSize.x > 0.0f ? std::max(1, (int)std::lround(areaSize.x * engineScale.x)) : 0;
-        const int newHeight = areaSize.y > 0.0f ? std::max(1, (int)std::lround(areaSize.y * engineScale.y)) : 0;
+        // the Recorder's size: the image is that many engine pixels over the area
+        if (overridden && areaSize.x > 0.0f && areaSize.y > 0.0f) {
+            engineScale = ImVec2((float)overrideWidth / areaSize.x, (float)overrideHeight / areaSize.y);
+        }
+        const int newWidth = overridden ? overrideWidth : (areaSize.x > 0.0f ? std::max(1, (int)std::lround(areaSize.x * engineScale.x)) : 0);
+        const int newHeight = overridden ? overrideHeight : (areaSize.y > 0.0f ? std::max(1, (int)std::lround(areaSize.y * engineScale.y)) : 0);
         bool resized = false;
         if (newWidth != width || newHeight != height) {
             width = newWidth;
@@ -561,6 +582,17 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             drawList->PushClipRect(canvasMin, canvasMax, true);
             drawList->AddImage(texture, imageMin, imageMax);
             drawList->PopClipRect();
+            // the eyedropper reads this image's texels (S27 R4)
+            ui::registerViewImage(ImGui::GetWindowViewport()->ID, imageMin, imageMax, &framebuffer);
+        }
+        // the Recorder's overlay: drawn over the view, never into the recorded image (S27 R26)
+        const std::string recording = recorder::RecorderSession::get().overlayText();
+        if (!recording.empty()) {
+            const ImVec2 at(areaMin.x + Theme::dpi(8.0f), areaMin.y + Theme::dpi(8.0f));
+            const ImVec2 size = ImGui::CalcTextSize(recording.c_str());
+            drawList->AddRectFilled(ImVec2(at.x - 4.0f, at.y - 2.0f), ImVec2(at.x + size.x + 4.0f, at.y + size.y + 2.0f), IM_COL32(0, 0, 0, 170), 3.0f);
+            drawList->AddCircleFilled(ImVec2(at.x + 5.0f, at.y + size.y * 0.5f), 4.0f, IM_COL32(230, 40, 40, 255));
+            drawList->AddText(at, IM_COL32(255, 70, 70, 255), recording.c_str());
         }
 
         if (message) {

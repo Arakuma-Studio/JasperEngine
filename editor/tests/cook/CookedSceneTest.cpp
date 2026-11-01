@@ -18,10 +18,12 @@
 #include "component/RigidbodyComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/SplineComponent.h"
+#include "component/TweenComponent.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "cook/SceneCooker.h"
 #include "reflect/Reflect.h"
 #include "serialization/CookedScene.h"
+#include "serialization/codecs/CustomCodecs.h"
 #include "util/ProjectUtils.h"
 
 #include <gtest/gtest.h>
@@ -311,6 +313,44 @@ entities:
     const Collider2D& polygon = loaded.scene->scene->getComponent<Rigidbody2DComponent>(source.scene->entities[0]).colliders[0];
     EXPECT_EQ(polygon.numVertices, 4u);
     EXPECT_EQ(polygon.groupIndex, -2);
+}
+
+// S27: a Tween eased along its curve keeps the curve whole in a cooked scene (keys, tangent
+// modes, wraps), and a curve cooked before the modes (keys only) reads as clamp, free tangents
+TEST(CookedScene, TweenCurveKeepsModesAndWraps) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    const Entity entity = scene->createEntity();
+    ProjectUtils::addEntityComponent(scene, entity, ComponentType::TweenComponent, source.scene->entities, YAML::Node());
+    TweenComponent& tween = scene->getComponent<TweenComponent>(entity);
+    tween.function = EaseType::CURVE;
+    tween.curve = Curve({CurveKey{0.0f, 0.0f, 0.0f, 0.0f}, CurveKey{0.5f, 1.0f, 0.0f, INFINITY}, CurveKey{1.0f, 0.25f, 2.0f, 2.0f}});
+    tween.curve.keys[0].setBothModes(CurveTangentMode::ClampedAuto);
+    tween.curve.keys[1].setInMode(CurveTangentMode::Linear);
+    tween.curve.keys[1].setOutMode(CurveTangentMode::Constant);
+    tween.curve.keys[1].setBroken(true);
+    tween.curve.preWrapMode = CurveWrapMode::PingPong;
+    tween.curve.postWrapMode = CurveWrapMode::LoopWithOffset;
+
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {entity}, loaded, error)) << error;
+    const TweenComponent& after = loaded.scene->scene->getComponent<TweenComponent>(entity);
+    EXPECT_EQ(after.function.getType(), EaseType::CURVE);
+    EXPECT_EQ(after.curve, tween.curve);
+
+    // the keys alone, as a cook before S27 wrote them
+    jasperengine::cook::StringTable strings;
+    jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
+    jasperengine::cook::Codec<std::vector<CurveKey>>::write(w, tween.curve.keys);
+    const std::vector<std::string> names;
+    jasperengine::cook::Reader r(std::span<const uint8_t>(w.data().data(), w.data().size()), names, [](uint32_t id) { return static_cast<Entity>(id); });
+    Curve old;
+    jasperengine::cook::Codec<Curve>::read(r, old);
+    ASSERT_EQ(old.keys.size(), 3u);
+    EXPECT_EQ(old.keys[1].value, 1.0f);
+    EXPECT_EQ(old.keys[1].mode, 0u);
+    EXPECT_EQ(old.postWrapMode, CurveWrapMode::Clamp);
 }
 
 TEST(RuntimeFields, Generated) {

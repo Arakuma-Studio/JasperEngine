@@ -391,6 +391,9 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
             case PropertyType::Shader:
                 changed = *static_cast<ShaderRef*>(oldProp.ref) != *static_cast<ShaderRef*>(newProp.ref);
                 break;
+            case PropertyType::Curve:
+                changed = *static_cast<Curve*>(oldProp.ref) != *static_cast<Curve*>(newProp.ref);
+                break;
             case PropertyType::Font:
                 changed = *static_cast<FontArray*>(oldProp.ref) != *static_cast<FontArray*>(newProp.ref);
                 break;
@@ -1265,6 +1268,12 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         case PropertyType::Shader: {
             ShaderRef* source = Catalog::getPropertyRef<ShaderRef>(sourceRegistry, sourceEntity, compType, property);
             ShaderRef* target = Catalog::getPropertyRef<ShaderRef>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::Curve: {
+            Curve* source = Catalog::getPropertyRef<Curve>(sourceRegistry, sourceEntity, compType, property);
+            Curve* target = Catalog::getPropertyRef<Curve>(targetRegistry, targetEntity, compType, property);
             if (source && target) *target = *source;
             break;
         }

@@ -1,0 +1,22 @@
+formatVersion: 1
+name: 2D
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 2577792747
+scenes:
+  - filepath: Main.scene
+    filepathGuid: 6fb91de16ffdce0c18aeb12de3bc79bd

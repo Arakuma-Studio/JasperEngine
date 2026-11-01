@@ -1,0 +1,22 @@
+formatVersion: 1
+name: UI
+canvasWidth: 1920
+canvasHeight: 1080
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 574877787
+scenes:
+  - filepath: Main.scene
+    filepathGuid: 02963967bed17b9ec95b0e9135e9c654

@@ -7,6 +7,7 @@
 #include "Factory.h"
 #include "Stream.h"
 #include "StreamPreserved.h"
+#include "stream/CurveCodec.h"
 #include "util/YamlNumbers.h"
 
 #include <algorithm>
@@ -332,6 +333,14 @@ bool reflect::detail::easeFromYaml(const FieldDesc&, const YAML::Node& node, voi
     return true;
 }
 
+YAML::Node reflect::detail::curveToYaml(const FieldDesc&, const void* value, const EncodeContext&) {
+    return curvecodec::curveToYaml(*static_cast<const jasperengine::Curve*>(value));
+}
+
+bool reflect::detail::curveFromYaml(const FieldDesc&, const YAML::Node& node, void* value, const DecodeContext&, std::string& reason) {
+    return curvecodec::curveFromYaml(node, *static_cast<jasperengine::Curve*>(value), reason);
+}
+
 YAML::Node reflect::detail::textureToYaml(const FieldDesc&, const void* value, const EncodeContext& ctx) {
     return Stream::encodeTexture(*static_cast<const jasperengine::Texture*>(value), ctx.embedTextureData);
 }
@@ -489,6 +498,10 @@ std::string reflect::detail::layerMaskLiteral(const FieldDesc&, const void* valu
 
 std::string reflect::detail::easeLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
     return Factory::formatEase(*static_cast<const jasperengine::Ease*>(value));
+}
+
+std::string reflect::detail::curveLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
+    return curvecodec::curveCppLiteral(*static_cast<const jasperengine::Curve*>(value));
 }
 
 std::string reflect::detail::entityLiteral(const FieldDesc&, const void* value, const CodegenContext& ctx) {

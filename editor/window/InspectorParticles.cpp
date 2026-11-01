@@ -4,13 +4,16 @@
 // The Particle System and Force Field inspectors (docs/specs/S20-particles.md R27). The module
 // list is Unity's: Main always open, every other module a foldout with its enable checkbox,
 // "Add Module" for the hidden ones. The rows come from the module registry's field tables
-// (ParticleModules), so a field added there shows here. Curves and gradients show a preview;
-// a click opens their keys and driver below it (S27's shared curve editor replaces the key
-// tables when it lands). Every edit is one undo step (a drag merges into one) through
+// (ParticleModules), so a field added there shows here. Curves and gradients are S27's fields
+// (widget/CurveField.h, GradientField.h): a click opens the Curve window or the Gradient Editor,
+// their driver rows below them. Every edit is one undo step (a drag merges into one) through
 // ParticleEffectEdit: an asset's edit writes the asset (all its users update), an inline
 // effect's edit changes that GameObject only; a multi-selection takes the same change.
 
 #include "InspectorWindow.h"
+#include "widget/ColorField.h"
+#include "widget/CurveField.h"
+#include "widget/GradientField.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -56,9 +59,25 @@ namespace {
     // (the step stops merging: a drag released, a checkbox clicked)
     struct FieldUi {
         editor::Project* project = nullptr;
+        // where the steps go (the scene's history, the project's for an asset preview)
+        editor::CommandHistory* history = nullptr;
         std::set<std::string>* expanded = nullptr;
         bool changed = false;
         bool commit = false;
+
+        // a field window's phase (S27 FieldEdit.h): its session in this history, its values
+        // merged into the step, a one-go change its own step
+        void phase(editor::ui::EditPhase phase, const char* label) {
+            using editor::ui::EditPhase;
+            switch (phase) {
+                case EditPhase::Begin: editor::ui::beginFieldEdit(history, label); break;
+                case EditPhase::Changing: changed = true; break;
+                case EditPhase::Applied: changed = commit = true; break;
+                case EditPhase::Committed: commit = true; break;
+                case EditPhase::Cancelled:
+                case EditPhase::None: break;
+            }
+        }
 
         void track(bool edited, bool discrete = false) {
             if (edited) {
@@ -111,28 +130,6 @@ namespace {
         return edited;
     }
 
-    // A popup of options from a small button; true when one was picked
-    bool optionButton(const char* id, const std::vector<EnumOption>& options, uint8_t& value) {
-        bool picked = false;
-        const std::string popup = std::string("##options_") + id;
-        if (ImGui::Button((std::string(ICON_FA_CARET_DOWN "##") + id).c_str())) ImGui::OpenPopup(popup.c_str());
-        if (ImGui::IsItemHovered()) {
-            for (const EnumOption& o : options) {
-                if (o.value == value) ImGui::SetTooltip("%s", o.label);
-            }
-        }
-        if (ImGui::BeginPopup(popup.c_str())) {
-            for (const EnumOption& o : options) {
-                if (ImGui::MenuItem(o.label, nullptr, o.value == value)) {
-                    picked = o.value != value;
-                    value = o.value;
-                }
-            }
-            ImGui::EndPopup();
-        }
-        return picked;
-    }
-
     bool enumCombo(const char* id, const EnumOption* options, uint8_t count, uint8_t& value) {
         const char* preview = "";
         for (uint8_t i = 0; i < count; i++) {
@@ -151,87 +148,7 @@ namespace {
         return picked;
     }
 
-    // ---------------------------------------------------------------- previews
-
-    // A curve (two: the band between them) over [0, 1], scaled to its value range; true on a click
-    bool curvePreview(const char* id, const Curve& curve, const Curve* curveMax, float multiplier, float width) {
-        const float height = ImGui::GetFrameHeight();
-        const ImVec2 pos = ImGui::GetCursorScreenPos();
-        const ImVec2 size(std::max(width, 8.0f), height);
-        ImGui::InvisibleButton(id, size);
-        const bool clicked = ImGui::IsItemClicked();
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        const ImU32 bg = ImGui::GetColorU32(ImGui::IsItemHovered() ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg);
-        dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), bg, ImGui::GetStyle().FrameRounding);
-
-        float lo = 0.0f, hi = 0.0f;
-        float a = 0.0f, b = 0.0f;
-        curve.valueRange(a, b);
-        lo = std::min(lo, a * multiplier);
-        hi = std::max(hi, b * multiplier);
-        lo = std::min(lo, b * multiplier);
-        hi = std::max(hi, a * multiplier);
-        if (curveMax) {
-            curveMax->valueRange(a, b);
-            lo = std::min({lo, a * multiplier, b * multiplier});
-            hi = std::max({hi, a * multiplier, b * multiplier});
-        }
-        if (hi - lo < 1e-6f) hi = lo + 1.0f;
-        const float pad = 2.0f;
-        auto toScreen = [&](float t, float v) {
-            const float y = (v * multiplier - lo) / (hi - lo);
-            return ImVec2(pos.x + pad + t * (size.x - 2 * pad), pos.y + size.y - pad - y * (size.y - 2 * pad));
-        };
-        const int samples = 48;
-        const ImU32 line = ImGui::GetColorU32(ImGuiCol_PlotLines);
-        if (curveMax && !curveMax->empty()) {
-            const ImU32 band = ImGui::GetColorU32(ImGuiCol_PlotLines, 0.25f);
-            for (int i = 0; i < samples; i++) {
-                const float t0 = (float)i / samples, t1 = (float)(i + 1) / samples;
-                dl->AddQuadFilled(toScreen(t0, curve.evaluate(t0)), toScreen(t1, curve.evaluate(t1)),
-                                  toScreen(t1, curveMax->evaluate(t1)), toScreen(t0, curveMax->evaluate(t0)), band);
-            }
-        }
-        for (const Curve* c : {&curve, curveMax}) {
-            if (!c || c->empty()) continue;
-            ImVec2 previous = toScreen(0.0f, c->evaluate(0.0f));
-            for (int i = 1; i <= samples; i++) {
-                const float t = (float)i / samples;
-                const ImVec2 point = toScreen(t, c->evaluate(t));
-                dl->AddLine(previous, point, line, 1.5f);
-                previous = point;
-            }
-        }
-        return clicked;
-    }
-
-    ImU32 colorU32(const Vector3& srgb, float alpha) {
-        return ImGui::ColorConvertFloat4ToU32(ImVec4(srgb.x, srgb.y, srgb.z, alpha));
-    }
-
-    // The gradient's colours (top) and colours over their alpha (bottom); true on a click
-    bool gradientPreview(const char* id, const Gradient& gradient, float width, float height) {
-        const ImVec2 pos = ImGui::GetCursorScreenPos();
-        const ImVec2 size(std::max(width, 8.0f), height);
-        ImGui::InvisibleButton(id, size);
-        const bool clicked = ImGui::IsItemClicked();
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), IM_COL32(40, 40, 40, 255));
-        const int samples = 32;
-        const float mid = pos.y + size.y * 0.6f;
-        for (int i = 0; i < samples; i++) {
-            const float t0 = (float)i / samples, t1 = (float)(i + 1) / samples;
-            const float x0 = pos.x + t0 * size.x, x1 = pos.x + t1 * size.x;
-            const Vector3 c0 = gradient.evaluateEncoded(t0), c1 = gradient.evaluateEncoded(t1);
-            dl->AddRectFilledMultiColor(ImVec2(x0, pos.y), ImVec2(x1, mid), colorU32(c0, 1.0f), colorU32(c1, 1.0f), colorU32(c1, 1.0f), colorU32(c0, 1.0f));
-            const float a0 = gradient.evaluateAlpha(t0), a1 = gradient.evaluateAlpha(t1);
-            dl->AddRectFilledMultiColor(ImVec2(x0, mid), ImVec2(x1, pos.y + size.y), colorU32(c0, a0), colorU32(c1, a1), colorU32(c1, a1), colorU32(c0, a0));
-        }
-        dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(ImGuiCol_Border));
-        return clicked;
-    }
-
-    // ---------------------------------------------------------------- key tables
+    // ---------------------------------------------------------------- list rows
 
     void trashButton(const char* id, bool& clicked) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
@@ -242,168 +159,6 @@ namespace {
 
     float trashWidth() {
         return ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x;
-    }
-
-    // Keys of a curve over [0, 1]: time, value and tangents, a key's time kept between its
-    // neighbours' (the order never changes under a drag), presets for the usual shapes
-    void drawCurveKeys(FieldUi& ui, Curve& curve, const std::string& id, const std::string& label, int indent) {
-        ImGui::PushID(id.c_str());
-        labelCell(label, "time, value, in tangent, out tangent of each key (time 0 to 1)", indent);
-        ImGui::Text("%zu", curve.keys.size());
-        ImGui::SameLine();
-        if (ImGui::Button(ICON_FA_PLUS " Key")) {
-            CurveKey key;
-            key.time = curve.keys.empty() ? 0.0f : std::min(1.0f, curve.keys.back().time + 0.25f);
-            key.value = curve.keys.empty() ? 1.0f : curve.evaluate(key.time);
-            curve.keys.push_back(key);
-            curve.sortKeys();
-            ui.track(true, true);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Presets " ICON_FA_CARET_DOWN)) ImGui::OpenPopup("##curve_presets");
-        if (ImGui::BeginPopup("##curve_presets")) {
-            struct Preset { const char* name; Curve curve; };
-            const Preset presets[] = {
-                {"Constant", Curve::constant(1.0f)},
-                {"Linear 0 to 1", Curve::linear(0.0f, 1.0f)},
-                {"Linear 1 to 0", Curve::linear(1.0f, 0.0f)},
-                {"Ease In Out 0 to 1", Curve::easeInOut(0.0f, 0.0f, 1.0f, 1.0f)},
-                {"Ease In Out 1 to 0", Curve::easeInOut(0.0f, 1.0f, 1.0f, 0.0f)},
-            };
-            for (const Preset& preset : presets) {
-                if (ImGui::MenuItem(preset.name)) {
-                    curve = preset.curve;
-                    ui.track(true, true);
-                }
-            }
-            ImGui::EndPopup();
-        }
-
-        for (size_t i = 0; i < curve.keys.size(); i++) {
-            ImGui::PushID((int)i);
-            labelCell("Key " + std::to_string(i), nullptr, indent + 1);
-            ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - trashWidth()));
-            CurveKey& key = curve.keys[i];
-            float values[4] = {key.time, key.value, key.inTangent, key.outTangent};
-            const bool edited = ImGui::DragFloat4("##key", values, 0.005f, 0.0f, 0.0f, "%.3f");
-            ui.track(edited);
-            if (edited) {
-                const float lo = i > 0 ? curve.keys[i - 1].time : 0.0f;
-                const float hi = i + 1 < curve.keys.size() ? curve.keys[i + 1].time : 1.0f;
-                key.time = std::clamp(values[0], lo, hi);
-                key.value = values[1];
-                key.inTangent = values[2];
-                key.outTangent = values[3];
-            }
-            ImGui::SameLine();
-            bool removed = false;
-            trashButton("key_delete", removed);
-            ImGui::PopID();
-            if (removed) {
-                curve.keys.erase(curve.keys.begin() + (std::ptrdiff_t)i);
-                ui.track(true, true);
-                break;
-            }
-        }
-        ImGui::PopID();
-    }
-
-    void drawGradientKeys(FieldUi& ui, Gradient& gradient, const std::string& id, const std::string& label, int indent) {
-        ImGui::PushID(id.c_str());
-        labelCell(label, "colour keys (sRGB) and alpha keys over time 0 to 1, at most 8 of each", indent);
-        uint8_t mode = (uint8_t)gradient.mode;
-        ImGui::SetNextItemWidth(editor::Theme::dpi(80.0f));
-        const std::vector<EnumOption>& modes = ParticleModules::gradientBlendModes();
-        if (enumCombo("##blend", modes.data(), (uint8_t)modes.size(), mode)) {
-            gradient.mode = (GradientMode)mode;
-            ui.track(true, true);
-        }
-        ImGui::SameLine();
-        bool linear = gradient.linear;
-        if (ImGui::Checkbox("Linear Blend", &linear)) {
-            gradient.linear = linear;
-            ui.track(true, true);
-        }
-
-        labelCell("Colors", nullptr, indent + 1);
-        ImGui::Text("%zu", gradient.colorKeys.size());
-        ImGui::SameLine();
-        ImGui::BeginDisabled(gradient.colorKeys.size() >= Gradient::kMaxKeys);
-        if (ImGui::Button(ICON_FA_PLUS "##add_color")) {
-            GradientColorKey key;
-            key.time = gradient.colorKeys.empty() ? 0.0f : 1.0f;
-            key.color = gradient.colorKeys.empty() ? Vector3(1, 1, 1) : gradient.evaluateEncoded(key.time);
-            gradient.colorKeys.push_back(key);
-            gradient.sortKeys();
-            ui.track(true, true);
-        }
-        ImGui::EndDisabled();
-        for (size_t i = 0; i < gradient.colorKeys.size(); i++) {
-            ImGui::PushID((int)i);
-            labelCell("Color " + std::to_string(i), nullptr, indent + 2);
-            GradientColorKey& key = gradient.colorKeys[i];
-            float color[3] = {key.color.x, key.color.y, key.color.z};
-            if (ImGui::ColorEdit3("##color", color, ImGuiColorEditFlags_NoInputs)) {
-                key.color = Vector3(color[0], color[1], color[2]);
-                ui.track(true);
-            } else {
-                ui.track(false);
-            }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - trashWidth()));
-            const float lo = i > 0 ? gradient.colorKeys[i - 1].time : 0.0f;
-            const float hi = i + 1 < gradient.colorKeys.size() ? gradient.colorKeys[i + 1].time : 1.0f;
-            const bool timeEdited = ImGui::SliderFloat("##time", &key.time, lo, hi, "%.3f");
-            ui.track(timeEdited);
-            ImGui::SameLine();
-            bool removed = false;
-            trashButton("color_delete", removed);
-            ImGui::PopID();
-            if (removed) {
-                gradient.colorKeys.erase(gradient.colorKeys.begin() + (std::ptrdiff_t)i);
-                ui.track(true, true);
-                break;
-            }
-        }
-
-        labelCell("Alphas", nullptr, indent + 1);
-        ImGui::Text("%zu", gradient.alphaKeys.size());
-        ImGui::SameLine();
-        ImGui::BeginDisabled(gradient.alphaKeys.size() >= Gradient::kMaxKeys);
-        if (ImGui::Button(ICON_FA_PLUS "##add_alpha")) {
-            GradientAlphaKey key;
-            key.time = gradient.alphaKeys.empty() ? 0.0f : 1.0f;
-            key.alpha = gradient.alphaKeys.empty() ? 1.0f : gradient.evaluateAlpha(key.time);
-            gradient.alphaKeys.push_back(key);
-            gradient.sortKeys();
-            ui.track(true, true);
-        }
-        ImGui::EndDisabled();
-        for (size_t i = 0; i < gradient.alphaKeys.size(); i++) {
-            ImGui::PushID((int)i);
-            labelCell("Alpha " + std::to_string(i), nullptr, indent + 2);
-            GradientAlphaKey& key = gradient.alphaKeys[i];
-            const float w = std::max(1.0f, (ImGui::GetContentRegionAvail().x - trashWidth()) * 0.5f - ImGui::GetStyle().ItemSpacing.x);
-            ImGui::SetNextItemWidth(w);
-            const bool alphaEdited = ImGui::SliderFloat("##alpha", &key.alpha, 0.0f, 1.0f, "a %.2f");
-            ui.track(alphaEdited);
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(w);
-            const float lo = i > 0 ? gradient.alphaKeys[i - 1].time : 0.0f;
-            const float hi = i + 1 < gradient.alphaKeys.size() ? gradient.alphaKeys[i + 1].time : 1.0f;
-            const bool timeEdited = ImGui::SliderFloat("##time", &key.time, lo, hi, "t %.3f");
-            ui.track(timeEdited);
-            ImGui::SameLine();
-            bool removed = false;
-            trashButton("alpha_delete", removed);
-            ImGui::PopID();
-            if (removed) {
-                gradient.alphaKeys.erase(gradient.alphaKeys.begin() + (std::ptrdiff_t)i);
-                ui.track(true, true);
-                break;
-            }
-        }
-        ImGui::PopID();
     }
 
     // What a curve or gradient is evaluated at, and how values outside its range wrap
@@ -436,129 +191,47 @@ namespace {
 
     // ---------------------------------------------------------------- values
 
-    void drawMinMaxCurve(FieldUi& ui, const FieldDesc& f, MinMaxCurve& value, const std::string& id, int indent) {
-        labelCell(f.label, f.tooltip, indent);
-        uint8_t mode = (uint8_t)value.mode;
-        const float button = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
-        const float avail = std::max(1.0f, ImGui::GetContentRegionAvail().x - button);
-        bool modeChanged = false;
-        switch (value.mode) {
-            case CurveMode::Constant: {
-                ImGui::SetNextItemWidth(avail);
-                const bool edited = dragFloat("##constant", &value.constant, f);
-                ui.track(edited);
-                if (edited) value.constantMax = value.constant;
-                break;
-            }
-            case CurveMode::TwoConstants: {
-                const float half = std::max(1.0f, avail * 0.5f - ImGui::GetStyle().ItemSpacing.x * 0.5f);
-                ImGui::SetNextItemWidth(half);
-                ui.track(dragFloat("##min", &value.constant, f));
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(half);
-                ui.track(dragFloat("##max", &value.constantMax, f));
-                break;
-            }
-            case CurveMode::Curve:
-            case CurveMode::TwoCurves: {
-                const float multiplierWidth = editor::Theme::dpi(56.0f);
-                const float previewWidth = std::max(8.0f, avail - multiplierWidth - ImGui::GetStyle().ItemSpacing.x);
-                if (curvePreview("##preview", value.curve, value.mode == CurveMode::TwoCurves ? &value.curveMax : nullptr, value.multiplier, previewWidth)) {
-                    ui.toggle(id);
-                }
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to edit the keys");
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(multiplierWidth);
-                const bool edited = ImGui::DragFloat("##multiplier", &value.multiplier, 0.01f, 0.0f, 0.0f, "x%.2f");
-                ui.track(edited);
-                break;
-            }
+    // a particle curve's frame: time 0 to 1, values from 0 (or below) to 1 (or above)
+    editor::curveops::CurveRange particleRange(const Curve& curve, const Curve* second) {
+        float lo = 0.0f, hi = 1.0f, a, b;
+        if (!curve.empty()) {
+            curve.valueRange(a, b);
+            lo = std::min(lo, a);
+            hi = std::max(hi, b);
         }
-        ImGui::SameLine();
-        if (optionButton("mode", ParticleModules::curveModes(), mode)) {
-            const CurveMode next = (CurveMode)mode;
-            // a curve starts from the constant it replaces
-            if ((next == CurveMode::Curve || next == CurveMode::TwoCurves) && value.curve.empty()) {
-                const float scale = value.constant != 0.0f ? value.constant : 1.0f;
-                value.curve = Curve::constant(1.0f);
-                value.multiplier = scale;
-            }
-            if (next == CurveMode::TwoCurves && value.curveMax.empty()) value.curveMax = value.curve;
-            value.mode = next;
-            modeChanged = true;
-            ui.track(true, true);
-            if (value.usesCurve()) ui.expanded->insert(id);
+        if (second && !second->empty()) {
+            second->valueRange(a, b);
+            lo = std::min(lo, a);
+            hi = std::max(hi, b);
         }
-        (void)modeChanged;
-
-        if (value.usesCurve() && ui.isExpanded(id)) {
-            drawCurveKeys(ui, value.curve, id + ".curve", value.mode == CurveMode::TwoCurves ? "Min Keys" : "Keys", indent + 1);
-            if (value.mode == CurveMode::TwoCurves) drawCurveKeys(ui, value.curveMax, id + ".curveMax", "Max Keys", indent + 1);
-            drawDriver(ui, value, indent + 1);
-        }
+        return editor::curveops::CurveRange{0.0f, lo, 1.0f, hi, false};
     }
 
-    bool colorEdit(const char* id, Vector4& color, bool compact) {
-        float c[4] = {color.x, color.y, color.z, color.w};
-        ImGuiColorEditFlags flags = ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf;
-        if (compact) flags |= ImGuiColorEditFlags_NoInputs;
-        const bool edited = ImGui::ColorEdit4(id, c, flags);
-        if (edited) color = Vector4(c[0], c[1], c[2], c[3]);
-        return edited;
+    void drawMinMaxCurve(FieldUi& ui, const FieldDesc& f, MinMaxCurve& value, const std::string& id, int indent) {
+        labelCell(f.label, f.tooltip, indent);
+        editor::ui::CurveFieldOptions options;
+        options.range = particleRange(value.curve, value.mode == CurveMode::TwoCurves ? &value.curveMax : nullptr);
+        options.label = f.label;
+        const editor::ui::EditPhase phase = editor::ui::minMaxCurveField(id.c_str(), value, options);
+        ui.phase(phase, f.label);
+        // the curve's driver below it
+        if (value.usesCurve()) drawDriver(ui, value, indent + 1);
+    }
+
+    // a colour of the effect (sRGB as picked, alpha) through the Color window
+    void colorRow(FieldUi& ui, const char* id, Vector4& color, const char* label) {
+        editor::ui::ColorFieldOptions options;
+        options.linearStorage = false;
+        options.label = label;
+        ui.phase(editor::ui::colorField(id, color, options), label);
     }
 
     void drawMinMaxGradient(FieldUi& ui, const FieldDesc& f, MinMaxGradient& value, const std::string& id, int indent) {
         labelCell(f.label, f.tooltip, indent);
-        uint8_t mode = (uint8_t)value.mode;
-        const float button = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
-        const float avail = std::max(1.0f, ImGui::GetContentRegionAvail().x - button);
-        switch (value.mode) {
-            case GradientValueMode::Color: {
-                ImGui::SetNextItemWidth(avail);
-                const bool edited = colorEdit("##color", value.color, false);
-                ui.track(edited);
-                if (edited) value.colorMax = value.color;
-                break;
-            }
-            case GradientValueMode::TwoColors: {
-                ui.track(colorEdit("##min", value.color, true));
-                ImGui::SameLine();
-                ui.track(colorEdit("##max", value.colorMax, true));
-                ImGui::SameLine();
-                ImGui::Dummy(ImVec2(std::max(0.0f, ImGui::GetContentRegionAvail().x - button), 1.0f));
-                break;
-            }
-            case GradientValueMode::Gradient:
-            case GradientValueMode::TwoGradients: {
-                const bool two = value.mode == GradientValueMode::TwoGradients;
-                const float h = ImGui::GetFrameHeight();
-                ImGui::BeginGroup();
-                bool clicked = gradientPreview("##preview", value.gradient, avail, two ? h * 0.5f : h);
-                if (two) clicked = gradientPreview("##previewMax", value.gradientMax, avail, h * 0.5f) || clicked;
-                ImGui::EndGroup();
-                if (clicked) ui.toggle(id);
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to edit the keys");
-                break;
-            }
-        }
-        ImGui::SameLine();
-        if (optionButton("mode", ParticleModules::gradientModes(), mode)) {
-            const GradientValueMode next = (GradientValueMode)mode;
-            const Vector3 rgb(value.color.x, value.color.y, value.color.z);
-            if ((next == GradientValueMode::Gradient || next == GradientValueMode::TwoGradients) && value.gradient.colorKeys.empty()) {
-                value.gradient = Gradient::constant(rgb, value.color.w);
-            }
-            if (next == GradientValueMode::TwoGradients && value.gradientMax.colorKeys.empty()) value.gradientMax = value.gradient;
-            value.mode = next;
-            ui.track(true, true);
-            if (value.usesGradient()) ui.expanded->insert(id);
-        }
-
-        if (value.usesGradient() && ui.isExpanded(id)) {
-            drawGradientKeys(ui, value.gradient, id + ".gradient", value.mode == GradientValueMode::TwoGradients ? "Min Gradient" : "Gradient", indent + 1);
-            if (value.mode == GradientValueMode::TwoGradients) drawGradientKeys(ui, value.gradientMax, id + ".gradientMax", "Max Gradient", indent + 1);
-            drawDriver(ui, value, indent + 1);
-        }
+        editor::ui::GradientFieldOptions options;
+        options.label = f.label;
+        ui.phase(editor::ui::minMaxGradientField(id.c_str(), value, options), f.label);
+        if (value.usesGradient()) drawDriver(ui, value, indent + 1);
     }
 
     // Unity's layer mask dropdown: Nothing, Everything, then a checkbox per layer
@@ -692,7 +365,7 @@ namespace {
             }
             case FieldType::Color: {
                 labelCell(f.label, f.tooltip, indent);
-                ui.track(colorEdit("##v", *static_cast<Vector4*>(p), false));
+                colorRow(ui, "##v", *static_cast<Vector4*>(p), f.label);
                 break;
             }
             case FieldType::String: {
@@ -718,15 +391,18 @@ namespace {
             case FieldType::Curve: {
                 labelCell(f.label, f.tooltip, indent);
                 Curve& curve = *static_cast<Curve*>(p);
-                if (curvePreview("##preview", curve, nullptr, 1.0f, ImGui::GetContentRegionAvail().x)) ui.toggle(id);
-                if (ui.isExpanded(id)) drawCurveKeys(ui, curve, id + ".keys", "Keys", indent + 1);
+                editor::ui::CurveFieldOptions options;
+                options.range = particleRange(curve, nullptr);
+                options.label = f.label;
+                ui.phase(editor::ui::curveField(id.c_str(), curve, options), f.label);
                 break;
             }
             case FieldType::Gradient: {
                 labelCell(f.label, f.tooltip, indent);
                 Gradient& gradient = *static_cast<Gradient*>(p);
-                if (gradientPreview("##preview", gradient, ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight())) ui.toggle(id);
-                if (ui.isExpanded(id)) drawGradientKeys(ui, gradient, id + ".keys", "Keys", indent + 1);
+                editor::ui::GradientFieldOptions options;
+                options.label = f.label;
+                ui.phase(editor::ui::gradientField(id.c_str(), gradient, options), f.label);
                 break;
             }
             case FieldType::Struct: {
@@ -1102,6 +778,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
     ParticleEffectDocument edited = document;
     FieldUi ui;
     ui.project = project;
+    ui.history = CommandHandle::get(sceneProject->id);
     ui.expanded = &particleExpanded;
     drawEffectDocument(ui, edited, "particle");
 
@@ -1164,7 +841,16 @@ void editor::InspectorWindow::drawParticleExposedValues(ComponentType cpType, Sc
         switch (parameter.type) {
             case ExposedType::Float: edited = ImGui::DragFloat("##value", &value.x, 0.01f); break;
             case ExposedType::Vector3: edited = ImGui::DragFloat3("##value", &value.x, 0.01f); break;
-            case ExposedType::Color: edited = colorEdit("##value", value, false); break;
+            case ExposedType::Color: {
+                editor::ui::ColorFieldOptions options;
+                options.linearStorage = false;
+                options.label = parameter.name.c_str();
+                const editor::ui::EditPhase phase = editor::ui::colorField("##value", value, options);
+                if (phase == editor::ui::EditPhase::Begin) editor::ui::beginFieldEdit(CommandHandle::get(sceneProject->id), parameter.name.c_str());
+                edited = phase == editor::ui::EditPhase::Changing;
+                if (phase == editor::ui::EditPhase::Committed) commit = true;
+                break;
+            }
         }
         if (ImGui::IsItemDeactivatedAfterEdit()) commit = true;
         ImGui::EndDisabled();
@@ -1289,12 +975,15 @@ void editor::InspectorWindow::drawForceFieldComponent(ComponentType cpType, Scen
     // strength over the distance from the centre (0) to the shape's edge (1)
     FieldUi ui;
     ui.project = project;
+    ui.history = CommandHandle::get(sceneProject->id);
     ui.expanded = &particleExpanded;
     Curve falloff = field.falloff;
     ImGui::PushID("falloff");
     labelCell("Falloff", "strength over the distance from the centre (0) to the edge (1)", 0);
-    if (curvePreview("##preview", falloff, nullptr, 1.0f, ImGui::GetContentRegionAvail().x)) ui.toggle("forcefield.falloff");
-    if (ui.isExpanded("forcefield.falloff")) drawCurveKeys(ui, falloff, "forcefield.falloff.keys", "Keys", 1);
+    editor::ui::CurveFieldOptions falloffOptions;
+    falloffOptions.range = particleRange(falloff, nullptr);
+    falloffOptions.label = "Falloff";
+    ui.phase(editor::ui::curveField("##falloff", falloff, falloffOptions), "Falloff");
     ImGui::PopID();
     endTable();
 
@@ -1362,6 +1051,7 @@ void editor::InspectorWindow::drawParticleAssetInspector() {
     ParticleEffectDocument edited = document;
     FieldUi ui;
     ui.project = project;
+    ui.history = project->getProjectCommandHistory();
     ui.expanded = &particleExpanded;
     drawEffectDocument(ui, edited, "particle_asset");
 

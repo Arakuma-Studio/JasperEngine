@@ -604,7 +604,7 @@ namespace{
                     key.outTangent.clear();
                 }
             }
-            if (key.ease == EaseType::CUSTOM){
+            if (key.ease == EaseType::CUSTOM || key.ease == EaseType::CURVE){
                 key.ease = EaseType::LINEAR;
             }
             // a Constant key's step stays: its segment holds the key's value (S21 R27)

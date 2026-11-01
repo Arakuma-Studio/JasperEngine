@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainEditWindow.h"
+#include "widget/ColorPickerWindow.h"
 #include "DocumentFile.h"
 
 #include "Backend.h"
@@ -2785,11 +2786,14 @@ void editor::TerrainEditWindow::drawLayerSurface(TerrainComponent& terrain, int 
     // Tiling rides on every layer, so only the maps below wait for the PBR surface
     if (layer.pbr){
         terrainPropertyRow("Tint", "Multiplies the layer color", true);
-        Vector4 tint = Color::linearTosRGB(layer.colorFactor);
-        if (ImGui::ColorEdit4("##tint", &tint.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel |
-                              ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)){
-            const Vector4 linear = Color::sRGBToLinear(tint);
-            edit([&](TerrainSurfaceLayer& target){ target.colorFactor = linear; }, true);
+        Vector4 tint = layer.colorFactor;
+        ui::ColorFieldOptions tintOptions;
+        tintOptions.label = "Tint";
+        const ui::EditPhase tintPhase = ui::colorField("##tint", tint, tintOptions);
+        if (tintPhase == ui::EditPhase::Begin){
+            if (SceneProject* target = getTargetSceneProject()) ui::ColorPickerWindow::beginEdit(CommandHandle::get(target->id), "Tint");
+        }else if (tintPhase == ui::EditPhase::Changing){
+            edit([&](TerrainSurfaceLayer& target){ target.colorFactor = tint; }, true);
         }
 
         mapRow("Normal", "Tangent-space normal map, projected with the layer", &TerrainSurfaceLayer::normalTexture);

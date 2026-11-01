@@ -1203,6 +1203,8 @@ endif()
 
 # navigation (S19): its own list, so the streams adding editor files do not meet here
 include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
+# the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
+include(${EDITOR_DIR}/EditorToolsSources.cmake)
 
 # The engine build C++ script libraries must be made for (S23 toolchain fingerprint): the
 # editor version, on this one file (as on the engine's ToolchainFingerprint.cpp)

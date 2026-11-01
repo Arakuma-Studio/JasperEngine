@@ -1,0 +1,22 @@
+formatVersion: 1
+name: Empty
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 4152549459
+scenes:
+  - filepath: Main.scene
+    filepathGuid: e867718d6315e8ef737003da477de7bf

@@ -1,0 +1,4 @@
+# tools/smoke-test.sh: lines the exported game logs (tools/fixtures/make_tween_curve_fixture.py)
+[gate] tween_curve sample 1 ok
+[gate] tween_curve sample 5 ok
+[gate] tween_curve 5 samples: value = curve(time), x = 10 value

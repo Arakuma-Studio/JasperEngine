@@ -1,0 +1,19 @@
+{
+  "description": "tools/test-projects/tween-curve (WEB_PROJECT=tween-curve tools/build.sh web): a Position Tween with the ease Curve (S27 AC7). Every frame the tween's value is the curve at its time and the box at 10 x it; five sampled times log ok, a mismatch is an error. No pixel check: the box has moved back to the left by the end.",
+  "isolated": true,
+  "console": [
+    {
+      "text": "[gate] tween_curve sample 1 ok",
+      "level": "log"
+    },
+    {
+      "text": "[gate] tween_curve sample 5 ok",
+      "level": "log"
+    },
+    {
+      "text": "[gate] tween_curve 5 samples: value = curve(time), x = 10 value",
+      "level": "log"
+    }
+  ],
+  "ordered": true
+}

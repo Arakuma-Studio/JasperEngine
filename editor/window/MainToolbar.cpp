@@ -390,6 +390,16 @@ void editor::MainToolbar::drawPlayControls(float rowHeight) {
     ImGui::EndDisabled();
     ImGui::SetItemTooltip("%s", catalog.tooltip("edit.step", "Step one frame").c_str());
 
+    // the Recorder's record button (S27 R26): starts Play when needed, F10 too
+    ImGui::SameLine();
+    const bool recording = Backend::getApp().isRecording();
+    static const ImVec4 RECORD_ACTIVE(0.75f, 0.12f, 0.12f, 1.0f);
+    static const ImVec4 RECORD_ACTIVE_HOVERED(0.85f, 0.2f, 0.2f, 1.0f);
+    if (toolbarButton(ICON_FA_CIRCLE "##MainRecord", recording, buttonSize, &RECORD_ACTIVE, &RECORD_ACTIVE_HOVERED)) {
+        Backend::getApp().toggleRecording();
+    }
+    ImGui::SetItemTooltip("%s", catalog.tooltip("recorder.toggle", recording ? "Stop Recording" : "Start Recording").c_str());
+
     ImGui::PopStyleVar();
 }
 

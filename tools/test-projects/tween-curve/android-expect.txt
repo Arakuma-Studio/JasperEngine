@@ -1,0 +1,5 @@
+# tools/android-emulator-test.sh --ordered --expect-file: the Position Tween eased along its curve
+# matches the curve at each sampled time (main.cpp)
+I/JasperEngine: [gate] tween_curve sample 1 ok
+I/JasperEngine: [gate] tween_curve sample 5 ok
+I/JasperEngine: [gate] tween_curve 5 samples: value = curve(time), x = 10 value

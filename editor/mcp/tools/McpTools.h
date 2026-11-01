@@ -77,6 +77,9 @@ namespace jasperengine::editor::mcp {
     void registerSplineTools(McpRegistry& registry);
     void registerParticleTools(McpRegistry& registry);
     void registerAnimatorTools(McpRegistry& registry);
+    // S27: the editor tools (group editor_tools) and the Project Hub's core tools
+    void registerEditorToolsTools(McpRegistry& registry);
+    void registerHubTools(McpRegistry& registry);
 
     void registerPoseTools(McpRegistry& registry);
 
