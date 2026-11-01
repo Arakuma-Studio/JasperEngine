@@ -240,7 +240,7 @@ bool PlayerRuntimes::install(const fs::path& archive, const fs::path& override, 
     for (const auto& [relative, sha] : info.executables) {
         std::string hex;
         std::string why;
-        if (!sha256File(temp / fs::u8path(relative), hex, &why)) {
+        if (!sha256File(temp / editor::FileUtils::pathFromUtf8(relative), hex, &why)) {
             cleanup();
             error = "player " + info.id + ": " + why;
             return false;
@@ -250,7 +250,7 @@ bool PlayerRuntimes::install(const fs::path& archive, const fs::path& override, 
             error = "player " + info.id + ": " + relative + " does not match its player-info.json SHA-256 (a damaged archive)";
             return false;
         }
-        fs::permissions(temp / fs::u8path(relative), fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
+        fs::permissions(temp / editor::FileUtils::pathFromUtf8(relative), fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
                         fs::perm_options::add, ec);
     }
     // the old one aside first, so the swap never leaves no runtime

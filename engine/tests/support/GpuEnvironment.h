@@ -18,7 +18,8 @@ namespace jasperengine { namespace test {
     // The first test that calls ensure() creates the headless device and loads the view, once
     // per process: frames render into target(), an engine Framebuffer set with
     // Engine::setFramebuffer. GPU suites run in the standalone engine tree on Linux (Xvfb,
-    // Mesa llvmpipe or lavapipe); elsewhere ensure() fails with unavailableReason().
+    // Mesa llvmpipe or lavapipe) and macOS (Metal); elsewhere ensure() fails with
+    // unavailableReason().
     class GpuEnvironment {
     public:
         static void initEngine(int argc, char** argv);

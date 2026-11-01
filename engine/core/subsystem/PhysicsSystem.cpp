@@ -1581,7 +1581,7 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
             return;
         }
 
-        b2Circle circle = {0};
+        b2Circle circle{};
         circle.center = toBox2DPoint(scaledPoint(shapeData.pointA));
         circle.radius = radius;
         addShape(b2CreateCircleShape(body.body, &shapeDef, &circle));
@@ -1599,7 +1599,7 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
             return;
         }
 
-        b2Capsule capsule = {0};
+        b2Capsule capsule{};
         capsule.center1 = toBox2DPoint(center1);
         capsule.center2 = toBox2DPoint(center2);
         capsule.radius = radius;
@@ -1612,7 +1612,7 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
             return;
         }
 
-        b2Segment segment = {0};
+        b2Segment segment{};
         segment.point1 = toBox2DPoint(point1);
         segment.point2 = toBox2DPoint(point2);
         addShape(b2CreateSegmentShape(body.body, &shapeDef, &segment));
@@ -1637,7 +1637,7 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
             // segments, closed back to the first point for a loop of 3
             const size_t segments = (shapeData.loop && count == 3) ? 3 : count - 1;
             for (size_t j = 0; j < segments; j++){
-                b2Segment segment = {0};
+                b2Segment segment{};
                 segment.point1 = b2vertices[j];
                 segment.point2 = b2vertices[(j + 1) % count];
                 if (b2DistanceSquared(segment.point1, segment.point2) <= linearSlop2D * linearSlop2D){

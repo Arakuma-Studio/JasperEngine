@@ -23,7 +23,9 @@ namespace jasperengine::editor::platform {
         std::string bundleIdentifier;
         std::string version;
         std::string build;
-        std::string minimumSystemVersion = "11.0";
+        // the players' and the engine's deployment target (engine/CMakeLists.txt): 11.0 here let
+        // macOS 11 open a bundle whose binary needs 12
+        std::string minimumSystemVersion = "12.0";
         bool highDpi = true;
         std::filesystem::path iconPng;
         // codesign's identity ("-": ad hoc); JASPER_MACOS_SIGN_IDENTITY overrides

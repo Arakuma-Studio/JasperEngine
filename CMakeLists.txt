@@ -1,4 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
+
+# The oldest macOS the editor runs on: the engine's (engine/CMakeLists.txt), the Xcode
+# project's and the bundle's LSMinimumSystemVersion. project() reads it, so it comes first;
+# without it the editor is built for the build machine's macOS only.
+if(CMAKE_HOST_APPLE AND NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version of the editor")
+endif()
+
 project(jasperengine-editor)
 
 # Build options of our own targets (docs/testing.md), shared with the standalone engine tree:
@@ -1509,7 +1517,7 @@ if(APPLE)
     string(REPLACE "," "." JASPERENGINE_BUNDLE_VERSION "${JASPERENGINE_VERSION_NUMERIC}")
     string(REGEX REPLACE "^([0-9]+\\.[0-9]+\\.[0-9]+).*$" "\\1" JASPERENGINE_BUNDLE_VERSION "${JASPERENGINE_BUNDLE_VERSION}")
 
-    # engine/CMakeLists.txt sets this in its own scope, which does not reach here.
+    # the deployment target set before project() (or given to the configure)
     set(JASPERENGINE_BUNDLE_MIN_OS "${CMAKE_OSX_DEPLOYMENT_TARGET}")
     if(NOT JASPERENGINE_BUNDLE_MIN_OS)
         set(JASPERENGINE_BUNDLE_MIN_OS "12.0")

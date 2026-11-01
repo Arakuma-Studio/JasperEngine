@@ -657,7 +657,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     ShaderPool::setShaderBuilder([projectPtr = &project](ShaderKey shaderKey) -> ShaderBuildResult {
         static ShaderBuilder builder;
         return builder.buildShader(shaderKey, projectPtr);
-    });
+    }, &ShaderBuilder::getRunningBuildCount);
 
     // exports and benchmarks run next to an open editor (CI, a terminal): they take no lock
     project.setSkipProjectLock(true);
@@ -2750,7 +2750,7 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
             if (clip.empty() || !reported.insert({clip, guid}).second) continue;
             anim::SubClipReference reference;
             const bool subClip = anim::parseSubClipReference(clip, reference);
-            const fs::path target = (assets / fs::u8path(subClip ? reference.model : clip)).lexically_normal();
+            const fs::path target = (assets / editor::FileUtils::pathFromUtf8(subClip ? reference.model : clip)).lexically_normal();
             std::error_code ec;
             if (fs::is_regular_file(target, ec)) {
                 // the editor resolves the GUID first: an entry whose GUID names another clip plays that one

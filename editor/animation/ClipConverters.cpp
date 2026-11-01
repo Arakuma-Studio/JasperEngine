@@ -402,7 +402,7 @@ namespace {
     // the absolute file of a clip or model path as callers give it (absolute, project-relative
     // or asset-relative)
     fs::path absoluteFile(Project* project, const std::string& path){
-        const fs::path given = fs::u8path(path);
+        const fs::path given = editor::FileUtils::pathFromUtf8(path);
         if (given.is_absolute() || !project) return given.lexically_normal();
         std::error_code ec;
         const fs::path inProject = (project->getProjectPath() / given).lexically_normal();
@@ -876,7 +876,7 @@ std::string ClipConverters::uniqueClipPath(Project* project, const std::string& 
     for (int k = 1; k < 10000; k++){
         const std::string candidate = prefix + name + (k == 1 ? "" : " " + std::to_string(k)) + ".anim";
         std::error_code ec;
-        if (!fs::exists(base / fs::u8path(candidate), ec)) return candidate;
+        if (!fs::exists(base / editor::FileUtils::pathFromUtf8(candidate), ec)) return candidate;
     }
     return prefix + name + ".anim";
 }
@@ -896,7 +896,7 @@ std::string ClipConverters::defaultClipDirectory(Project* project, uint32_t scen
         std::string dir = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(absolute.parent_path()));
         if (dir == ".") dir.clear();
         // only inside the project
-        return dir.compare(0, 2, "..") == 0 || fs::u8path(dir).is_absolute() ? assetsDir : dir;
+        return dir.compare(0, 2, "..") == 0 || editor::FileUtils::pathFromUtf8(dir).is_absolute() ? assetsDir : dir;
     };
     // the model on the root, else the first one under it
     Entity modelEntity = scene->findComponent<ModelComponent>(root) ? root : NULL_ENTITY;
@@ -916,7 +916,7 @@ std::string ClipConverters::defaultClipDirectory(Project* project, uint32_t scen
     }
     if (const PrefabComponent* prefab = scene->findComponent<PrefabComponent>(root)){
         if (!prefab->path.empty()){
-            return directoryOf(project->getProjectPath() / fs::u8path(prefab->path));
+            return directoryOf(project->getProjectPath() / editor::FileUtils::pathFromUtf8(prefab->path));
         }
     }
     return assetsDir;

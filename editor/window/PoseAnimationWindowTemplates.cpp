@@ -152,7 +152,7 @@ std::string editor::PoseAnimationWindow::templateAnimationPath(const std::string
     std::string directory = ProjectChecks::projectRelative(root, folder);
     return poseui::templateAnimationPath(directory, entry ? entry->tmpl.info.name : trimmed(name), [&root](const std::string& path){
         std::error_code ec;
-        return fs::exists(root / fs::u8path(path), ec);
+        return fs::exists(root / editor::FileUtils::pathFromUtf8(path), ec);
     });
 }
 
@@ -527,7 +527,7 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
         std::string target = trimmed(templateCreatePath);
         if (!target.empty() && !Util::isPoseAnimationFile(target)) target += ".poseanim";
         std::error_code ec;
-        const fs::path absolute = fs::u8path(target).is_absolute() ? fs::u8path(target) : project->getProjectPath() / fs::u8path(target);
+        const fs::path absolute = editor::FileUtils::pathFromUtf8(target).is_absolute() ? editor::FileUtils::pathFromUtf8(target) : project->getProjectPath() / editor::FileUtils::pathFromUtf8(target);
         const bool taken = !target.empty() && fs::exists(absolute, ec);
         if (taken){
             ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s exists: pick another name", target.c_str());

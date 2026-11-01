@@ -56,6 +56,7 @@
 using namespace jasperengine;
 
 ShaderBuilderFn ShaderPool::shaderBuilderFn = nullptr;
+ShaderBuildsPendingFn ShaderPool::shaderBuildsPendingFn = nullptr;
 
 bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& shaderType) {
     if (typeToken == "mesh") {
@@ -307,8 +308,9 @@ std::string ShaderPool::getCustomShaderBasename(uint16_t customId){
     return base;
 }
 
-void ShaderPool::setShaderBuilder(ShaderBuilderFn fn) {
+void ShaderPool::setShaderBuilder(ShaderBuilderFn fn, ShaderBuildsPendingFn pending) {
     shaderBuilderFn = fn;
+    shaderBuildsPendingFn = fn ? pending : nullptr;
 }
 
 std::string ShaderPool::getShaderLangStr(ShaderLang lang, int version, bool es, Platform platform) {
@@ -1216,6 +1218,10 @@ size_t ShaderPool::getPendingPipelineCount(){
 
 bool ShaderPool::isGpuCreationIdle(){
     return SystemRender::isGpuCreationIdle();
+}
+
+bool ShaderPool::isCreationIdle(){
+    return getPendingShaderCount() == 0 && (!shaderBuildsPendingFn || shaderBuildsPendingFn() == 0) && SystemRender::isGpuCreationIdle();
 }
 
 bool ShaderPool::isRuntimeCompilationSupported(){

@@ -336,7 +336,6 @@ AnimAnimation::AnimAnimation(const AnimTargetList& parsedTargets, const AnimPara
 
     double iterationDurationValue = std::nan("");
     double iterationDelay = std::nan("");
-    int animationAnimationLength = 0;
     bool shouldTriggerRender = false;
     std::unordered_map<std::string, AnimRawValue> inlineStylesStore;
 
@@ -634,7 +633,6 @@ AnimAnimation::AnimAnimation(const AnimTargetList& parsedTargets, const AnimPara
                     firstTweenChangeStartTime = tween.startTime;
 
                 prevTween = &tween;
-                animationAnimationLength++;
 
                 appendTween(*this, &tween);
                 ownedTweens.push_back(std::move(owned));

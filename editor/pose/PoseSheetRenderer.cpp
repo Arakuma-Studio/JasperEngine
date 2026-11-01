@@ -4,6 +4,7 @@
 #include "PoseSheetRenderer.h"
 
 #include "pose/ModelRig.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -33,7 +34,7 @@ namespace {
     std::string fileStamp(const std::string& file){
         namespace fs = std::filesystem;
         std::error_code ec;
-        const fs::path path = fs::u8path(file);
+        const fs::path path = editor::FileUtils::pathFromUtf8(file);
         const auto size = fs::file_size(path, ec);
         if (ec) return "";
         const auto time = fs::last_write_time(path, ec);

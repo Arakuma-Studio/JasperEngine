@@ -167,14 +167,20 @@ async def test_desktop_build_plays_the_video(ed: Editor):
     job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=5.0)
     ed.check_eq(job["status"], "succeeded", f"{job}")
     ed.check_eq((job["result"]["method_used"], job["result"]["player_id"]), ("prebuilt", runtime.name), f"{job}")
+    # the player's own frames, 4 and 5 s of its clock (1/60 s frames) after the one that logs
+    # "Engine ready:": the video's media clock runs on the UI clock, so the two are a second of
+    # playback apart however slowly a loaded machine draws (not window grabs 4 and 5 s after the
+    # launch, which saw however far the player had got by then)
     shots = []
     for after in (4, 5):
-        raw = await ed.call_raw("run_build", {"seconds": after + 2, "screenshot_after_seconds": after})
+        raw = await ed.call_raw("run_build", {"after_ready": True, "fixed_fps": 60, "quit_after": after * 60})
         ed.check(not raw.is_error, raw.text)
         ed.check(not raw.value["crashed"], f"the player crashed: {raw.value}")
+        ed.check_eq(raw.value.get("exit_code"), 0, f"the player got ready and quit after its frames: {raw.value}")
+        ed.check(raw.images, f"the player's own screenshot: {raw.text[:2000]}")
         png = raw.images[0][0]
         (ed.scratch.root / f"html-ui-video-player-{after}.png").write_bytes(png)
         shots.append(png)
         for colour in BARS:
-            ed.check(count_near(png, colour, tol=24) > 500, f"the player shows the test card's bar {colour} (screenshot {after} s)")
-    ed.check(shots[0] != shots[1], "the video plays in the player (two screenshots a second apart differ)")
+            ed.check(count_near(png, colour, tol=24) > 500, f"the player shows the test card's bar {colour} ({after} s after ready)")
+    ed.check(shots[0] != shots[1], "the video plays in the player (two frames a second of playback apart differ)")

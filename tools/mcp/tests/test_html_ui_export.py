@@ -198,9 +198,14 @@ async def test_desktop_build_runs_the_document(ed: Editor):
     job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=5.0)
     ed.check_eq(job["status"], "succeeded", f"{job}")
     ed.check_eq((job["result"]["method_used"], job["result"]["player_id"]), ("prebuilt", runtime.name), f"{job}")
-    raw = await ed.call_raw("run_build", {"seconds": 8, "screenshot_after_seconds": 6})
+    # the player's own frame, 120 frames of 1/60 s after the one that logs "Engine ready:" (the capture
+    # also waits for shaders still being made), not a window grab 6 s after the launch: how far a
+    # loaded machine's player has got by then is anyone's guess
+    raw = await ed.call_raw("run_build", {"after_ready": True, "fixed_fps": 60, "quit_after": 120})
     ed.check(not raw.is_error, raw.text)
     ed.check(not raw.value["crashed"], f"the player crashed: {raw.value}")
+    ed.check_eq(raw.value.get("exit_code"), 0, f"the player got ready and quit after its frames: {raw.value}")
+    ed.check(raw.images, f"the player's own screenshot: {raw.text[:2000]}")
     png = raw.images[0][0]
     (ed.scratch.root / "html-ui-player.png").write_bytes(png)
     ed.check(count_near(png, (255, 0, 0)) > 500, "the player shows the document")

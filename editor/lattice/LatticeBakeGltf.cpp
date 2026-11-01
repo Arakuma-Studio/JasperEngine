@@ -4,7 +4,6 @@
 #include "LatticeBakeGltf.h"
 #include "io/AtomicFile.h"
 #include "util/FileUtils.h"
-#include "util/SafeWrite.h"
 
 #include <algorithm>
 #include <cmath>
@@ -321,7 +320,7 @@ bool LatticeBakeGltf::load(const fs::path& file, std::string& error){
                         return false;
                     }
                 }else{
-                    const fs::path path = file.parent_path() / fs::u8path(decodeUri(value));
+                    const fs::path path = file.parent_path() / editor::FileUtils::pathFromUtf8(decodeUri(value));
                     if (!readFile(path, data)){
                         error = "cannot read '" + path.generic_string() + "', buffer " + std::to_string(b) + " of '" + file.generic_string() + "'";
                         return false;

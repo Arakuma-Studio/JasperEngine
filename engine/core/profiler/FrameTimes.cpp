@@ -24,6 +24,7 @@ namespace {
         uint64_t pendingGpuFrame = 0;
         float pendingGpuMs = -1.0f;
         uint32_t pendingGpuFlags = 0;
+        bool hostWork = false;      // markHostWork in the current frame
     };
 
     State& state() {
@@ -51,11 +52,14 @@ void FrameTimes::beginFrame() {
             sample.gpuMs = s.pendingGpuMs;
             sample.flags |= s.pendingGpuFlags;
         }
+        if (s.hostWork)
+            sample.flags |= FLAG_HOST_WORK;
         s.ring[s.head] = sample;
         s.head = (s.head + 1) % CAPACITY;
         s.count = std::min(s.count + 1, CAPACITY);
     }
     s.started = true;
+    s.hostWork = false;
     s.frame++;
     s.frameStart = now;
     s.cpuMs = -1.0;
@@ -78,6 +82,10 @@ bool FrameTimes::hasExternalFrames() {
 
 uint64_t FrameTimes::currentFrame() {
     return state().frame;
+}
+
+void FrameTimes::markHostWork() {
+    state().hostWork = true;
 }
 
 void FrameTimes::setDrawCalls(uint32_t drawCalls) {

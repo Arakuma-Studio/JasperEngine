@@ -12,10 +12,12 @@
 #include "object/Light.h"
 #include "object/Primitive.h"
 #include "object/environment/Fog.h"
+#include "player/RunControl.h"
 #include "pool/ShaderPool.h"
 #include "render/ObjectRender.h"
 #include "render/ShaderRender.h"
 #include "render/SystemRender.h"
+#include "shader/RuntimeShaderCompiler.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "shader/ShaderWarmup.h"
 #include "sokol/SokolAsyncCreate.h"
@@ -27,6 +29,7 @@
 #include "ImageCompare.h"
 #include "LogCapture.h"
 #include "Readback.h"
+#include "TempDir.h"
 
 #include <gtest/gtest.h>
 
@@ -40,6 +43,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -727,3 +731,81 @@ TEST_F(AsyncCreateGpu, ThePipelineCacheIsSavedAndValidated){
     EXPECT_GT(readAll().size(), 64u) << "a cut-short file is replaced by the next save";
 }
 #endif
+
+// A variant compiling at runtime is being made too: a screenshot waits for it as it waits for the
+// GPU creation (spec S32, S30's --screenshot), or the captured frame has a stand-in where the
+// variant goes. Before ShaderPool::isCreationIdle the player's wait read only the GPU creation,
+// which is idle while the compile runs, and captured at once.
+TEST_F(AsyncCreateGpu, AScreenshotWaitsForAVariantCompilingAtRuntime){
+    JASPER_REQUIRE_GPU();
+    if (!ShaderVariantCompiler::isAvailable() || !ShaderPool::isRuntimeCompilationEnabled())
+        GTEST_SKIP() << "this build compiles no shader at runtime";
+    // what the test changes is put back however it ends
+    struct Restore {
+        bool async = ShaderPool::isAsyncCompilation();
+        ~Restore(){
+            player::RunControl::reset();
+            ShaderPool::setAsyncCompilation(async);
+        }
+    } restore;
+    // on the main thread, one compile a frame: of two variants asked for in one frame, the second
+    // compiles at the next frame start (RuntimeShaderCompiler::beginFrame), not before
+    ShaderPool::setAsyncCompilation(false);
+    // their filter form (Flt): pixelate has no other
+    const uint64_t filter = 1;
+    const uint16_t first = ShaderPool::registerCustomShader("@effects/pixelate");
+    const uint16_t second = ShaderPool::registerCustomShader("@effects/cursor-trail");
+    ShaderPool::remove(ShaderType::UI_EFFECT, filter, first);
+    ShaderPool::remove(ShaderType::UI_EFFECT, filter, second);
+    RuntimeShaderCompiler::shutdown();
+    // not from an earlier run's cache either
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(RuntimeShaderCompiler::getCacheDirectory(), ec)){
+        const std::string name = entry.path().filename().string();
+        if (name.rfind("uieffect_fx_pixelate_", 0) == 0 || name.rfind("uieffect_fx_cursor_trail_", 0) == 0)
+            std::filesystem::remove(entry.path(), ec);
+    }
+    std::shared_ptr<ShaderRender> compiled = ShaderPool::get(ShaderType::UI_EFFECT, filter, first);
+    std::shared_ptr<ShaderRender> waiting = ShaderPool::get(ShaderType::UI_EFFECT, filter, second);
+    if (waiting->isCreated())
+        GTEST_SKIP() << "this build ships the effect precompiled";
+    ASSERT_GT(RuntimeShaderCompiler::getPendingCount(), 0u);
+    ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
+    EXPECT_TRUE(SystemRender::isGpuCreationIdle()) << "nothing is being created on the GPU meanwhile";
+    EXPECT_FALSE(ShaderPool::isCreationIdle()) << "the compile is counted";
+
+    test::TempDir dir;
+    player::LaunchOptions options;
+    options.screenshotFrame = 1;
+    options.screenshot = dir.path() / "compiled.png";
+    // the player's own check (no probe): ShaderPool::isCreationIdle
+    player::RunControl::configure(options);
+    int reads = 0;
+    const player::FrameReader reader = [&reads](std::vector<uint8_t>& rgba, int& width, int& height, std::string&){
+        reads++;
+        width = 1;
+        height = 1;
+        rgba = {0, 0, 0, 255};
+        return true;
+    };
+    player::RunControl::frameDrawn(true, reader);
+    EXPECT_EQ(reads, 0) << "the frame without the variant is not captured";
+
+    // the next frames compile it, create it and then capture
+    for (int frame = 0; frame < 600 && reads == 0; frame++){
+        RuntimeShaderCompiler::beginFrame();
+        waiting = ShaderPool::get(ShaderType::UI_EFFECT, filter, second);
+        SystemRender::updateGpuCreation();
+        if (!waiting->isCreated()){
+            EXPECT_FALSE(ShaderPool::isCreationIdle()) << "frame " << frame << ": not created yet, and not counted";
+        }
+        player::RunControl::frameDrawn(false, reader);
+        if (reads == 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(reads, 1);
+    EXPECT_TRUE(waiting->isCreated()) << "captured once the variant is made";
+    EXPECT_TRUE(compiled->isCreated());
+    EXPECT_EQ(player::RunControl::finish(), player::EXIT_OK);
+    EXPECT_NO_ENGINE_ERRORS();
+}

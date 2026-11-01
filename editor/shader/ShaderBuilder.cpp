@@ -270,6 +270,16 @@ void editor::ShaderBuilder::buildMissingShaders(const std::set<ShaderKey>& shade
     }
 }
 
+size_t editor::ShaderBuilder::getRunningBuildCount() {
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    size_t running = 0;
+    for (const auto& [key, task] : pendingBuilds) {
+        if (!task.isReady())
+            running++;
+    }
+    return running;
+}
+
 void editor::ShaderBuilder::requestShutdown() {
     std::lock_guard<std::mutex> lock(cacheMutex);
     shutdownRequested = true;

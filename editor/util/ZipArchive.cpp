@@ -4,6 +4,7 @@
 #include "ZipArchive.h"
 
 #include "miniz.h"
+#include "util/FileUtils.h"
 
 #include <fstream>
 
@@ -105,7 +106,7 @@ bool ZipReader::extractAll(const fs::path& destination, std::string& error) {
     fs::create_directories(destination, ec);
     for (size_t i = 0; i < list.size(); i++) {
         const ZipEntryInfo& entry = list[i];
-        const fs::path target = destination / fs::u8path(entry.name);
+        const fs::path target = destination / editor::FileUtils::pathFromUtf8(entry.name);
         if (entry.directory) {
             fs::create_directories(target, ec);
             continue;

@@ -9,7 +9,10 @@
 # path is relative to the sibling's group), as tools/htmlui/xcode_sync_widgets.py does for its
 # single files. Object ids are derived from the file path ("COMP" + sha1 of "s22/<file>"), so
 # they never collide with other branches' ids. --check exits 1 when files are missing (nothing
-# is written).
+# is written). A file counts as listed when a reference resolves to it through its groups (under
+# any id: xcode_sync_engine.py adds engine sources too), and the sibling is the reference that
+# resolves to the sibling file: matched by name alone, subsystem/PhysicsSystem.cpp was Jolt's
+# Physics/PhysicsSystem.cpp, which put the S22 systems in Jolt's group and targets.
 
 import os
 import re
@@ -58,6 +61,63 @@ FILES = [
 ]
 
 
+XCODE_DIR = os.path.dirname(os.path.dirname(base.PROJECT))
+CORE = os.path.join(base.ROOT, "engine", "core")
+
+
+def resolved_paths(lines):
+    """{reference id: [absolute paths]} of the <group>-relative file references, through the
+    groups that list them (a reference may sit in several)"""
+    start = re.compile(r"^\t\t([0-9A-F]{24}) /\* .*? \*/ = \{(.*)$")
+    objects = {}
+    i = 0
+    while i < len(lines):
+        m = start.match(lines[i])
+        if m:
+            if m.group(2).rstrip().endswith("};"):
+                objects[m.group(1)] = m.group(2)
+            else:
+                body = []
+                i += 1
+                while i < len(lines) and lines[i] != "\t\t};":
+                    body.append(lines[i])
+                    i += 1
+                objects[m.group(1)] = "\n".join(body)
+        i += 1
+    parents = {}
+    for oid, body in objects.items():
+        if "isa = PBXGroup" in body:
+            children = re.search(r"children = \((.*?)\);", body, re.S)
+            for child in re.findall(r"([0-9A-F]{24})", children.group(1) if children else ""):
+                parents.setdefault(child, []).append(oid)
+
+    def attribute(body, key):
+        m = re.search(r"\b" + key + r" = (\"[^\"]*\"|[^;]*);", body)
+        return m.group(1).strip('"') if m else None
+
+    def resolve(oid, seen):
+        body = objects[oid]
+        path = attribute(body, "path") or ""
+        tree = attribute(body, "sourceTree")
+        if tree == "SOURCE_ROOT" or (tree == "<group>" and not parents.get(oid)):
+            return [os.path.join(XCODE_DIR, path)]
+        if tree != "<group>":
+            return []
+        out = []
+        for parent in parents.get(oid, []):
+            if parent not in seen:
+                out += [os.path.normpath(os.path.join(base_dir, path)) for base_dir in resolve(parent, seen | {parent})]
+        return out
+
+    return {oid: resolve(oid, set()) for oid, body in objects.items()
+            if "isa = PBXFileReference" in body and attribute(body, "sourceTree") == "<group>"}
+
+
+def listed(paths, relative):
+    target = os.path.normpath(os.path.join(CORE, relative))
+    return any(target in resolved for resolved in paths.values())
+
+
 def file_type(name):
     return "sourcecode.c.h" if name.endswith(".h") else "sourcecode.cpp.cpp"
 
@@ -70,7 +130,9 @@ def add_file(lines, relative, sibling_relative):
     ref = base.object_id("ref", path)
     reference = re.compile(r"^\t\t([0-9A-F]{24}) /\* " + re.escape(sibling) + r" \*/ = \{isa = PBXFileReference;.*path = "
                            + re.escape(sibling) + ";")
-    sibling_ref = next((m.group(1) for m in map(reference.match, lines) if m), None)
+    paths = resolved_paths(lines)
+    sibling_path = os.path.normpath(os.path.join(CORE, sibling_relative))
+    sibling_ref = next((m.group(1) for m in map(reference.match, lines) if m and sibling_path in paths.get(m.group(1), [])), None)
     if sibling_ref is None:
         raise SystemExit("the sibling %s is not in the Xcode project" % sibling_relative)
     base.insert_after_line(lines, "%s /* %s */ = {isa = PBXFileReference;" % (sibling_ref, sibling), [
@@ -82,7 +144,8 @@ def add_file(lines, relative, sibling_relative):
         lines.insert(i + 1, "\t\t\t\t%s /* %s */," % (ref, name))
     # the sibling's build files and the phases listing them
     phase = "Headers" if name.endswith(".h") else "Sources"
-    build_file = re.compile(r"^\t\t([0-9A-F]{24}) /\* " + re.escape(sibling) + " in " + phase + r" \*/ = \{isa = PBXBuildFile;")
+    build_file = re.compile(r"^\t\t([0-9A-F]{24}) /\* " + re.escape(sibling) + " in " + phase + r" \*/ = \{isa = PBXBuildFile; fileRef = "
+                            + sibling_ref + " ")
     builds = [m.group(1) for m in map(build_file.match, lines) if m]
     for index, sibling_build in enumerate(builds):
         build = base.object_id("%s%d" % (phase, index + 1), path)
@@ -99,7 +162,8 @@ def main():
         text = f.read()
     lines = text.split("\n")
 
-    missing = [(relative, sibling) for relative, sibling in FILES if base.object_id("ref", "s22/" + relative) not in text]
+    paths = resolved_paths(lines)
+    missing = [(relative, sibling) for relative, sibling in FILES if not listed(paths, relative)]
     if not missing:
         print("Xcode project lists every S22 file")
         return 0

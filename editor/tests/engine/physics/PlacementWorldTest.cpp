@@ -15,6 +15,7 @@
 #include "physics/JoltShapeBuilder.h"
 #include "physics/PlacementWorld.h"
 #include "subsystem/MeshSystem.h"
+#include "util/FileUtils.h"
 
 #include <sys/wait.h>
 #include <unistd.h>
@@ -1804,7 +1805,9 @@ TEST(PlacementWorldReview, ThinPlatesPileWithoutSinking) {
     EXPECT_LT(world.getMaxPenetration(), 1e-3f);
     for (const PlacementBodyState& state : world.getStates()) {
         EXPECT_LT(state.maxPenetration, 1e-3f) << state.entity;
-        EXPECT_GT(state.pose.position.y, 0.0055f) << state.entity;   // none sunk into the slab
+        // none sunk into the slab past the penetration bound: 6 mm half thickness less 1 mm
+        // (Jolt's NEON solver on arm64 settles one 0.63 mm deep, x86-64's under 0.5 mm)
+        EXPECT_GT(state.pose.position.y, 0.006f - 1e-3f) << state.entity;
     }
     (void)slab;
 }
@@ -1846,11 +1849,10 @@ TEST(PlacementWorldReview, BallsStopOnGentleSlopesAndRollDownSteepOnes) {
 // (jasperengine-placement-fresh-process, built next to this binary): this one can't, as the
 // editor's static App builds a Scene before main
 TEST(PlacementWorldReview, WorldBeforeAnySceneInAFreshProcess) {
-    char self[4096] = {};
-    const ssize_t length = ::readlink("/proc/self/exe", self, sizeof(self) - 1);
-    ASSERT_GT(length, 0);
-    std::string program(self, (size_t)length);
-    program = program.substr(0, program.rfind('/') + 1) + "jasperengine-placement-fresh-process";
+    // (FileUtils: /proc/self/exe on Linux, _NSGetExecutablePath on macOS)
+    const std::filesystem::path self = editor::FileUtils::getExecutablePath();
+    ASSERT_FALSE(self.empty());
+    const std::string program = (self.parent_path() / "jasperengine-placement-fresh-process").string();
     const int status = std::system((program + " > /dev/null 2>&1").c_str());
     ASSERT_TRUE(WIFEXITED(status)) << "it crashed";
     EXPECT_EQ(WEXITSTATUS(status), 0) << "2: Jolt was set up before main there too, nothing was checked";

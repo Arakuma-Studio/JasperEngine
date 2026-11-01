@@ -853,7 +853,7 @@ inline bool AnimationWindowTestAccess::drive(AnimationWindow& self, const nlohma
                 error = "drop: a path or a list of paths of the files dropped";
                 return false;
             }
-            const std::filesystem::path given = std::filesystem::u8path(path.get<std::string>());
+            const std::filesystem::path given = editor::FileUtils::pathFromUtf8(path.get<std::string>());
             paths.push_back(FileUtils::pathToGenericUtf8((given.is_absolute() ? given : self.project->getProjectPath() / given).lexically_normal()));
         }
         if (!self.dropClipFiles(sceneProject, paths, &error)){

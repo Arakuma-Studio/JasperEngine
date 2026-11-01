@@ -384,7 +384,7 @@ bool TextureSynthesisWindow::save(bool overwrite, std::vector<std::string>& writ
     if (!overwrite) {
         std::error_code ec;
         for (const ts::PlannedOutput& out : ts::plannedOutputs(saving)) {
-            if (fs::exists(root / fs::u8path(out.path), ec)) {
+            if (fs::exists(root / editor::FileUtils::pathFromUtf8(out.path), ec)) {
                 error = out.path + " exists (overwrite to replace it)";
                 return false;
             }
@@ -409,7 +409,7 @@ void TextureSynthesisWindow::requestSaveWithConfirm() {
     std::vector<std::string> existing;
     std::error_code ec;
     for (const ts::PlannedOutput& out : ts::plannedOutputs(spec)) {
-        if (fs::exists(root / fs::u8path(out.path), ec)) existing.push_back(out.path);
+        if (fs::exists(root / editor::FileUtils::pathFromUtf8(out.path), ec)) existing.push_back(out.path);
     }
     auto doSave = [this](bool overwrite) {
         std::vector<std::string> written;
@@ -577,7 +577,7 @@ bool TextureSynthesisWindow::imageSlot(const char* id, std::string& path, const 
             const char* data = static_cast<const char*>(payload->Data);
             const std::string first(data, strnlen(data, static_cast<size_t>(payload->DataSize)));
             if (Util::isImageFile(first)) {
-                path = ts::projectRelative(project->getProjectPath(), fs::u8path(first));
+                path = ts::projectRelative(project->getProjectPath(), editor::FileUtils::pathFromUtf8(first));
                 changed = true;
             }
         }
@@ -700,7 +700,7 @@ void TextureSynthesisWindow::drawCompanionsSection() {
         ImGui::Text("%s", companion.name.c_str());
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
-        ImGui::TextUnformatted(companion.paths.empty() ? "" : FileUtils::pathToUtf8(fs::u8path(companion.paths[0]).filename()).c_str());
+        ImGui::TextUnformatted(companion.paths.empty() ? "" : FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(companion.paths[0]).filename()).c_str());
         ImGui::PopStyleColor();
         if (!companion.paths.empty()) tooltip(companion.paths[0].c_str());
         ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() + ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x);
@@ -735,7 +735,7 @@ void TextureSynthesisWindow::drawCompanionsSection() {
             const char* data = static_cast<const char*>(payload->Data);
             const std::string first(data, strnlen(data, static_cast<size_t>(payload->DataSize)));
             if (Util::isImageFile(first)) {
-                adding = ts::projectRelative(root, fs::u8path(first));
+                adding = ts::projectRelative(root, editor::FileUtils::pathFromUtf8(first));
                 added = true;
             }
         }
@@ -744,7 +744,7 @@ void TextureSynthesisWindow::drawCompanionsSection() {
     if (added && !adding.empty() && !spec.examples.empty()) {
         ts::CompanionSpec companion;
         char separator = '_';
-        companion.name = ts::companionSuffix(FileUtils::pathToUtf8(fs::u8path(spec.examples[0].path).stem()), FileUtils::pathToUtf8(fs::u8path(adding).stem()), separator);
+        companion.name = ts::companionSuffix(FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(spec.examples[0].path).stem()), FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(adding).stem()), separator);
         if (companion.name.empty()) companion.name = "map" + std::to_string(spec.companions.size() + 1);
         companion.paths.push_back(adding);
         for (size_t e = 1; e < spec.examples.size(); e++) {
@@ -943,11 +943,11 @@ void TextureSynthesisWindow::drawOutputSection() {
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
             const char* data = static_cast<const char*>(payload->Data);
-            const fs::path dropped = fs::u8path(std::string(data, strnlen(data, static_cast<size_t>(payload->DataSize))));
+            const fs::path dropped = editor::FileUtils::pathFromUtf8(std::string(data, strnlen(data, static_cast<size_t>(payload->DataSize))));
             std::error_code ec;
             const fs::path dir = fs::is_directory(dropped, ec) ? dropped : dropped.parent_path();
-            const std::string name = spec.output.empty() ? "synthesized.png" : FileUtils::pathToUtf8(fs::u8path(spec.output).filename());
-            spec.output = ts::projectRelative(project->getProjectPath(), dir / fs::u8path(name));
+            const std::string name = spec.output.empty() ? "synthesized.png" : FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(spec.output).filename());
+            spec.output = ts::projectRelative(project->getProjectPath(), dir / editor::FileUtils::pathFromUtf8(name));
         }
         ImGui::EndDragDropTarget();
     }

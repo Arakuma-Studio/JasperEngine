@@ -409,8 +409,10 @@ namespace {
         bool inScope(Entity entity) const;
         const Policy& policyOf(Entity entity);
         bool collectable(Entity entity, Policy& policy);
+#ifdef JASPERENGINE_EDITOR
         // the editor's overlay flags (editor builds only: a game has no overlays)
         RenderSystem* renderSystem = nullptr;
+#endif
         void grow(const Vector3& nav);
         void addTriangles(const Mesh& mesh, const Matrix4& toNav, uint8_t area);
         void addMeshComponent(Entity entity, const Matrix4& worldOf, uint8_t area);

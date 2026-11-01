@@ -11,6 +11,7 @@
 #include "player/ContentManifest.h"
 #include "publish/BinaryInfo.h"
 #include "util/ZipArchive.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <fstream>
@@ -246,7 +247,7 @@ bool publish::validatePayload(const fs::path& root, const ValidationTarget& targ
     findings.insert(findings.end(), tree.problems.begin(), tree.problems.end());
 
     for (const auto& [relative, entry] : tree.entries) {
-        const fs::path path = root / fs::u8path(relative);
+        const fs::path path = root / editor::FileUtils::pathFromUtf8(relative);
         if (fs::path(relative).filename() == "steam_appid.txt")
             findings.push_back(relative + ": steam_appid.txt makes Steam treat the build as a development one: remove it");
         if (target.platform == BuildPlatform::Windows) {
@@ -280,9 +281,9 @@ bool publish::validatePayload(const fs::path& root, const ValidationTarget& targ
         if (executable.empty() || !tree.entries.count(executable)) {
             findings.push_back("no executable in the build" + (executable.empty() ? std::string() : " (" + executable + ")"));
         } else {
-            checkBinary(root / fs::u8path(executable), executable, target.arch, target.platform, findings);
+            checkBinary(root / editor::FileUtils::pathFromUtf8(executable), executable, target.arch, target.platform, findings);
             if (target.platform != BuildPlatform::Windows &&
-                (fs::status(root / fs::u8path(executable), ec).permissions() & fs::perms::owner_exec) == fs::perms::none)
+                (fs::status(root / editor::FileUtils::pathFromUtf8(executable), ec).permissions() & fs::perms::owner_exec) == fs::perms::none)
                 findings.push_back(executable + " has no exec bit");
         }
     }
@@ -304,12 +305,12 @@ bool publish::validatePayload(const fs::path& root, const ValidationTarget& targ
         if (packed && !pack.openFile(packPath, &error)) findings.push_back("content.jpak: " + error);
         Content content{
             [&](const std::string& path) {
-                return fs::is_regular_file(contentRoot / fs::u8path(path), ec) || (target.platform == BuildPlatform::Web && fs::is_regular_file(root / fs::u8path(path), ec)) ||
+                return fs::is_regular_file(contentRoot / editor::FileUtils::pathFromUtf8(path), ec) || (target.platform == BuildPlatform::Web && fs::is_regular_file(root / editor::FileUtils::pathFromUtf8(path), ec)) ||
                        (pack.isOpen() && pack.find(path));
             },
             [&](const std::string& path, std::string& out) {
-                if (readText(contentRoot / fs::u8path(path), out)) return true;
-                if (target.platform == BuildPlatform::Web && readText(root / fs::u8path(path), out)) return true;
+                if (readText(contentRoot / editor::FileUtils::pathFromUtf8(path), out)) return true;
+                if (target.platform == BuildPlatform::Web && readText(root / editor::FileUtils::pathFromUtf8(path), out)) return true;
                 std::vector<uint8_t> bytes;
                 if (pack.isOpen() && pack.read(path, bytes)) {
                     out.assign(bytes.begin(), bytes.end());

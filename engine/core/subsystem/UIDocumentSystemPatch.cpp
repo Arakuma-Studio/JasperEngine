@@ -55,7 +55,7 @@ namespace {
 
     class Patcher {
     public:
-        Patcher(Rml::ElementDocument* document, const ReconcilePlan& plan): document(document), plan(plan) {}
+        explicit Patcher(const ReconcilePlan& plan): plan(plan) {}
 
         // the authored element of every old loc (the first, for a duplicated one)
         void index(Rml::Element* element){
@@ -293,7 +293,6 @@ namespace {
                 WidgetsRuntime::markAuthored(element->GetChild(i));
         }
 
-        Rml::ElementDocument* document;
         const ReconcilePlan& plan;
         std::unordered_map<int, Rml::Element*> live;
     };
@@ -389,7 +388,7 @@ bool UIDocumentSystem::patchDocument(Entity entity, UIReloadReport& report){
     report.mode = "patch";
     report.file = compiled->sourcePath;
     const bool patched = reloadInPlace(entity, [&](){
-        Patcher patcher(document, plan);
+        Patcher patcher(plan);
         patcher.index(document);
         patcher.renumber(document);
         profile.step("index");

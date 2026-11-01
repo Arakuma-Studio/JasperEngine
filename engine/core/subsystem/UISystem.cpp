@@ -2155,8 +2155,6 @@ void UISystem::update(double dt){
                 container.numBoxExpand = 0;
                 container.maxWidth = 0;
                 container.maxHeight = 0;
-                int totalWidth = 0;
-                int totalHeight = 0;
                 // Content-min totals exclude children whose size is derived from parent via anchors
                 // to avoid a circular dependency that prevents the container from shrinking
                 int contentMinTotalWidth = 0;
@@ -2171,8 +2169,6 @@ void UISystem::update(double dt){
                         if (!container.boxes[b].expand){
                             container.fixedHeight += container.boxes[b].rect.getHeight();
                         }
-                        totalWidth += container.boxes[b].rect.getWidth();
-                        totalHeight += container.boxes[b].rect.getHeight();
                         container.maxHeight = std::max(container.maxHeight, (unsigned int)container.boxes[b].rect.getHeight());
                         container.maxWidth = std::max(container.maxWidth, (unsigned int)container.boxes[b].rect.getWidth());
 

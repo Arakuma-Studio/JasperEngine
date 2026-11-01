@@ -545,7 +545,7 @@ void AnimationWindowClip::drawBanners(SceneProject* sceneProject){
             const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery);
             if (payload){
                 const std::vector<std::string> paths = Util::getStringsFromPayload(payload);
-                const bool accepted = !paths.empty() && (anim::isModelFilePath(paths.front()) || fs::u8path(paths.front()).extension() == ".prefab");
+                const bool accepted = !paths.empty() && (anim::isModelFilePath(paths.front()) || editor::FileUtils::pathFromUtf8(paths.front()).extension() == ".prefab");
                 if (accepted && payload->IsDelivery()){
                     std::string error;
                     if (!setPreviewModel(paths.front(), &error)) setNotice(error, true);

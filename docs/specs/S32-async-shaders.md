@@ -259,7 +259,21 @@ shader cache.
   1.2 s link (GL). E is about 10% slower than the old E, and the budget includes that.
 - **R22. Frame-time spike.** In the same scenario, the worst frame is **≤ 2× the idle median
   frame** on GL `worker` (with Mesa's disk cache, its default) and on Vulkan. Before S32 the
-  worst GL frame is about 3.9 s on A against a 190 ms idle frame.
+  worst GL frame is about 3.9 s on A against a 190 ms idle frame. Measured over every frame of the
+  toggles (§7 AC13), the frames that ran an MCP tool apart (the agent's edit and the bench's own
+  calls: the editor's cost of the edit, not the creation's).
+  - **Proposed revision (GPU campaign perf2, pending approval; the budget above is unchanged until
+    then):** worst frame ≤ max(2× the idle median, the idle median + 4 ms), and on NVIDIA GL with the
+    driver's shader disk cache warm. Evidence on the RTX 3080 Ti (Progress, perf2): with no edit at
+    all, the same recording's worst frame is already 2.0× (GL) and 2.2× (Vulkan) the idle median, so
+    at a GPU's ~1 ms idle frame the 2× bound is the machine's own frame-time noise (it was set on E,
+    a 190 ms frame); R21 allows 4 ms of creation work in a frame, which a 2 ms bound forbids. And
+    NVIDIA recompiles every program on the context that first draws it (driver debug output:
+    "Program/shader state performance warning: ... being recompiled based on GL state", ~0.75 s per
+    stage, fragment then vertex), whichever context linked it and whatever the warm draw did;
+    no creation mode avoids it (worker, parallel, warm draws on and off, matched draw state,
+    program binaries: measured). A variant the driver cache already has does not recompile; the
+    first run's variants are R24's warm-up list's to build during loading.
 - **R23. Idle cost.** `SokolAsyncCreate::update()` with nothing pending: **≤ 2 µs** (micro-bench
   `AsyncCreateBench.IdleUpdate`). With async off nothing runs. The pipeline intern lookup in
   `endLoad`: ≤ 1 µs per pipeline (`AsyncCreateBench.InternLookup`).
@@ -564,7 +578,7 @@ public:
 | AC10 (R12) | `ShaderWarmup.ReplayHoldsPipelines` (GPU test): replay a list → the pipelines exist in the intern table; an object created after with that state is ready at its first `endLoad`. Smoke variant `SMOKE_GAME_RUNS=warmup` on the exported Warmup scene: the game log has `[gpu] warm-up done N/N`, and the first frame after READY has no pending creation. |
 | AC11 (R13) | `VkPipelineCache.SaveLoadValidates` (Vulkan GPU test): a saved cache reloads; a header with another UUID, a truncated file and a bad checksum are each ignored and replaced; the save is atomic (S03 `AtomicFile`). |
 | AC12 (R19) | `SokolPatchMarkers.AsyncCreationHooks`: exactly the documented number of `JasperEngine: async creation` markers; `PATCHES.md` lists each. The Metal and D3D11 paths compile in `tools/build.sh` cross targets where present and in the Xcode project check (`xcode_sync_*.py --check`); **Metal and D3D11 are runtime-unverified** until the GPU campaign. |
-| AC13 (R21, R22) | E bench `tools/perf/async_shaders_bench.py` (fixture Variants scene, editor headless with MCP, 5 runs, GL worker and Vulkan): per frame the sum of the R31 main-thread scopes from `capture_profile` + `get_cpu_profile` over 600 frames (10 toggles); the median-of-runs of the per-run max ≤ 4 ms; worst frame ≤ 2× idle median. The same script with `--sync` records the pre-S32 numbers (red control). Thresholds in `tools/perf/bench-thresholds.json`. |
+| AC13 (R21, R22) | E bench `tools/perf/async_shaders_bench.py` (fixture Variants scene, editor headless with MCP, 5 runs, GL worker and Vulkan): per frame the sum of the R31 main-thread scopes from `capture_profile` + `get_cpu_profile` over 600 frames (10 toggles); the median-of-runs of the per-run max ≤ 4 ms; worst frame ≤ 2× idle median. The same script with `--sync` records the pre-S32 numbers (red control). Thresholds in `tools/perf/bench-thresholds.json`. **R22's method (perf2):** the captures record windows with gaps, so the worst frame is taken over every frame from the first toggle to the last (`get_frame_times` read every 0.25 s, its 600-frame ring), leaving out the frames flagged `tool` (`FrameTimes::FLAG_HOST_WORK`: an MCP tool ran in them, the edit or the bench's own calls); `r22_worst_frame_ratio` is that over the idle median, `edit_worst_frame_ms` / `tool_worst_frame_ms` the edit's frames apart, `worker_worst_frame_ms` the frames the worker created in. Controls: `--control` (the same edits between variants built before), `--idle` (the same recording with no edit: the editor's own noise, R22's floor), `--driver-cache <dir>` (the drivers' disk caches on, runs after the first warm). |
 | AC14 (R23) | `AsyncCreateBench.IdleUpdate` ≤ 2 µs, `AsyncCreateBench.InternLookup` ≤ 1 µs (E, median of 5). |
 | AC15 (R24) | The bench's `--warmup` run: replaying the Warmup list holds no frame above the R22 bound and ends within 1.5× the synchronous creation time of the same list. |
 | AC16 (R25-R27) | Editor checklist `docs/specs/checklists/S32.md`, run on an isolated editor with screenshots: status bar shows "Compiling shaders N" during a toggle and hides after; Project Settings rows present, searchable ("warm-up"), undoable; Clear empties the list; Inspector "Compiling..." until GPU-ready. `test_async_shaders.py::test_settings_rows` sets each row over `set_project_settings` and reads it back. |
@@ -717,6 +731,46 @@ public:
 
 ## Progress (implementation notes, keep updated)
 
+- **GPU campaign perf2 (2026-11-01; RTX 3080 Ti, driver 595.99.02; branch
+  `feat/perf2-gpu-budgets`).** R22 re-measured over every frame (§7 AC13's perf2 method), medians of 5:
+
+  | RTX 3080 Ti | R21 max_main_ms | R22 worst / idle (tool frames apart) | worst frames |
+  |---|---|---|---|
+  | GL `worker`, drivers' caches off (every run cold) | 0.016 | 676x | 755-828 ms (NVIDIA's recompile) |
+  | GL `worker`, driver cache on (run 1 cold, 2-5 warm) | 0.016 | **1.69x** (second batch 2.06x) | runs 2-5: 1.9-2.8 ms |
+  | the same with the compile-start delay off (before) | 0.014 | 9.06x | 9.3-10.8 ms every toggle |
+  | GL, no edit at all (`--idle`, the noise floor) | 0 | 2.02x | 1.4-2.8 ms |
+  | Vulkan `thread` | 0.24 | 3.7x | 2.8-4.4 ms |
+  | Vulkan with the compile-start delay (not kept) | 0.22 | 3.0x, a second batch 3.7x | 2.5-3.8 ms |
+  | Vulkan `--control` / `--idle` | 0 | 1.5x / 2.2x | |
+
+  - **The campaign's GL R22 (16.4x, worst 18.7 ms) was wrong**: its capture windows missed NVIDIA's
+    draw-time recompiles, 2 of ~0.75 s per new variant (fragment, then vertex; the driver's debug
+    output names them). They happen on whichever context first draws a program; warm draws (on or
+    off: the same), a warm draw state matched cap for cap (sRGB, multisample, seamless cubemaps,
+    texture attachments), program binaries, `parallel` (one ~0.75 s stall at the first draw) and
+    `__GL_THREADED_OPTIMIZATIONS` do not avoid them; `sync` pays them inside its 2.1 s link. With
+    the driver's disk cache (on by default) a variant compiled once does not recompile.
+  - **Fixed: the ~10 ms worker stall.** A compile or warm draw the GL worker starts within ~50 ms
+    of its request held the render thread's next GL calls for 8-10 ms; started 60 ms after the
+    request it holds nothing (5 and 20 ms only moved it). `SokolAsyncCreate` waits until 60 ms
+    after the request (`waitCompileStart`; GL `worker` on a hardware GL; on Vulkan the same wait
+    changed nothing measurable, so it is off there; `JASPER_GPU_COMPILE_DELAY_MS` overrides):
+    9.06x -> 1.69x on GL.
+  - **The edit's own cost is apart:** frames that ran an MCP tool carry `FLAG_HOST_WORK`
+    (`get_frame_times` `tool`), 2.0-2.8 ms on GL and 3.7 ms on Vulkan; the old control's 8.7x
+    was the edit (no creation).
+  - **Vulkan's 3.7x:** not creation work on the render thread (R21 0.22 ms; no pipeline
+    creation and no creation scope in the worst frames). The mean frame is the same with the worker
+    creating (idle 0.28 / 0.47 / 0.05 ms for Scene Views / Editor UI / the editor's render, the same
+    within 0.01 ms in the 2,600 frames the worker created in); a few frames of each run take 2.5-3.8
+    ms of main-thread work in the editor's own Vulkan render and the scene views while a pipeline
+    compiles on the worker (the driver; a niced worker thread changes nothing), against a 2.2x noise
+    floor with no edit. Under the proposed R22 revision (idle + 4 ms) it is met.
+  - Remaining: on GL with the cache warm, the control's first toggle still holds one ~9 ms frame in
+    the editor's own GL render while the worker loads a program from the driver cache (the delay
+    and warm draws off do not change it).
+
 - **State at e0746f700+ (merged oe-port a57c7844d):** everything in §5 is implemented; the
   deviations above record what changed. Evidence so far:
   - builds: linux GL WERROR (D, B), Vulkan WERROR (B), web (B), android (A);
@@ -846,3 +900,33 @@ public:
 - **Next:** build GL + Vulkan WERROR, unit tests (write the golden `async_standin_fogged`), MCP
   suite, web, android, ASan+UBSan, smoke, xcode checks, E benches (worker, Vulkan, the sync red
   control), merge oe-port, TOOLS.md, re-gate.
+### Metal on macOS (BF4, 2026-10-31)
+
+The Metal path built and ran natively (macOS 26.2, Apple silicon, CommandLineTools clang 17):
+the core GPU suites run on the default Metal device, `[gpu] shader creation: metal`, and
+`AsyncCreateGpu` passes 7 of 7. One defect was found and fixed: `SokolObject::prewarmWith` made
+the right variant's pipelines on the layout of the stand-in the object had loaded on (another set
+of vertex inputs), and Metal failed them (`METAL_CREATE_RPS_FAILED`, "Vertex attribute a_color(3)
+is missing from the vertex descriptor", `SplineGpu.RoadOnTerrain` after `RenderGpu`); a variant
+with other vertex inputs is now left to its own load. R21/R22 timing on Apple GPUs is still
+unmeasured.
+In the macOS editor the creations were never published: BackendMac's own loop did not call
+`SystemRender::updateGpuCreation()` (EditorFrame::run does, on the other backends), so a shader
+created off the render thread stayed pending and the Scene view's Lines never loaded. The Mac loop
+now does EditorFrame::run's per-frame work (BF4, 0413db955).
+
+Screenshots wait for every creation, not only the GPU's (BF4, 2026-10-31). The editor's
+`captureView` and the player's `--screenshot` (`RunControl`) waited on
+`SystemRender::isGpuCreationIdle`, which a variant still compiling is not part of: a variant on
+the runtime compiler's worker (or queued for a later frame on the main thread), and one the
+editor's ShaderBuilder is building, left the wait idle and the captured frame showed its stand-in.
+They now wait on `ShaderPool::isCreationIdle`: no runtime compile pending
+(`RuntimeShaderCompiler::getPendingCount`, which also counts a variant a compile settled this
+frame that no draw has taken yet), no ShaderBuilder build running (the builder's count, given
+with `ShaderPool::setShaderBuilder`), and the GPU creation idle. Test:
+`AsyncCreateGpu.AScreenshotWaitsForAVariantCompilingAtRuntime` (red with the GPU-only wait: the
+frame without the variant was captured). `run_build`'s timed window grab
+(`screenshot_after_seconds`, `screenshots_at`) cannot see the player's creations and does not
+wait; `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` caught the effects'
+stand-ins that way with H at load 60 and now uses the player's own capture, which waits (BF12's
+`after_ready` + `fixed_fps` + `quit_after`, merged from oe-port in place of BF4's `screenshot_frame` one).

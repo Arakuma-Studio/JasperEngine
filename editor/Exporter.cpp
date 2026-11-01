@@ -1066,8 +1066,14 @@ void editor::Exporter::resolveShaderKeys() {
             keys.insert(ShaderPool::normalizeKey(key));
         }
     } else {
+        // each scene's saved keys and, where it is loaded, what its objects were loaded with
+        // and what its content needs now (a save writes no loaded state: Project::
+        // collectSavedShaderKeys), as the Export window and MCP's build list them
         for (const auto& sceneProject : project->getScenes()) {
-            for (ShaderKey key : sceneProject.shaderKeys) {
+            std::set<ShaderKey> sceneKeys = sceneProject.shaderKeys;
+            project->collectSceneShaderKeys(&sceneProject, sceneKeys);
+            project->collectRequiredShaderKeys(&sceneProject, sceneKeys);
+            for (ShaderKey key : sceneKeys) {
                 keys.insert(ShaderPool::normalizeKey(key));
             }
         }
@@ -4906,8 +4912,8 @@ bool editor::Exporter::writeEffectLicense() {
     // The uber pass's VHS tape and film simulation adapt MIT code (punikonta's VHS shader,
     // OpenEngine's film-simulation package with AMD's FidelityFX Lens grain): a build with such
     // a variant ships their notices (engine/shaderlib/includes/LICENSE.post-fx.txt)
-    const uint64_t postFxBits = UBER_VHS | UBER_FILM_DAMAGE | UBER_GRAIN_LENS | UBER_GRAIN_FILMIC;
-    const bool postFx = std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [postFxBits](ShaderKey key) {
+    constexpr uint64_t postFxBits = UBER_VHS | UBER_FILM_DAMAGE | UBER_GRAIN_LENS | UBER_GRAIN_FILMIC;
+    const bool postFx = std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [](ShaderKey key) {
         return ShaderPool::getShaderTypeFromKey(key) == ShaderType::BLIT && (ShaderPool::getPropertiesFromKey(key) & postFxBits) != 0;
     });
     if (!writeNotice(postFx, config.targetDir, postFxLicensePath(), shaderlib / "includes" / "LICENSE.post-fx.txt", error)) {

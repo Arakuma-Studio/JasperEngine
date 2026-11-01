@@ -681,7 +681,7 @@ std::string AnimationClipController::stateOfDocument() const{
         if (anim::parseSubClipReference(clip, reference)){
             // a sub-clip document's path is "<absolute model>#<clip name>"; an entry naming the
             // animation by its index only matches through the (cached) document
-            const fs::path model = project->resolveAssetPath(fs::u8path(reference.model)).lexically_normal();
+            const fs::path model = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(reference.model)).lexically_normal();
             if (fs::path(model.generic_string() + "#" + reference.clip) == documentFile) return names[i];
             const std::string documentText = documentFile.generic_string();
             if (documentText.rfind(model.generic_string() + "#", 0) == 0 && !reference.clip.empty() &&
@@ -691,7 +691,7 @@ std::string AnimationClipController::stateOfDocument() const{
             }
             continue;
         }
-        if (project->resolveAssetPath(fs::u8path(clip)).lexically_normal() == documentFile) return names[i];
+        if (project->resolveAssetPath(editor::FileUtils::pathFromUtf8(clip)).lexically_normal() == documentFile) return names[i];
     }
     return "";
 }
@@ -874,7 +874,7 @@ Entity AnimationClipController::findPreviewInstance(SceneProject* sceneProject) 
     const std::string& model = document->data().previewModel;
     if (model.empty()) return NULL_ENTITY;
     Scene* scene = sceneProject->scene;
-    const fs::path target = project->resolveAssetPath(fs::u8path(model)).lexically_normal();
+    const fs::path target = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(model)).lexically_normal();
     auto matches = [&](Entity entity){
         if (!scene->isEntityCreated(entity)) return false;
         if (const ModelComponent* component = scene->findComponent<ModelComponent>(entity)){

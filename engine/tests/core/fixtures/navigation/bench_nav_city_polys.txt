@@ -1,1 +1,2 @@
+apple-clang-arm64 2670
 linux-gcc-x86_64 2643

@@ -721,3 +721,12 @@ with other streams:
   leaves out. A hex layer skipping the near/far path it overwrites made no measurable difference
   (the compiler drops it) and was not kept; the cost is the hex taps (three explicit-gradient taps
   per map and layer). Open for a follow-up; 1080p was not usable (a 0.24 ms frame clocks the GPU down).
+- **AC11 in perf2 (the same machine; docs/perf/gpu-campaign.md S11):** the hex terrain 5.2x -> 3.2x
+  on GL and 7.1x -> 3.0x on Vulkan, output unchanged: a hex layer's taps are made where each map
+  samples them instead of kept live through the layer (register pressure over the layer loop),
+  unweighted side planes are not fetched, and the flat projection a hex layer overwrites is not
+  sampled. Sheen is within R13 on Vulkan (+7.9 %), +16.0 % on GL; Specular +8.3 % GL, +3.8 %
+  Vulkan. On GL the lobes' cost does not grow with the pixels (Specular +0.07 ms at 1080p, +0.054
+  ms at 4K) and half of it stays with the lobe shading removed; the hex variant with every hex call
+  removed still takes 2.3x the terrain: a Lit variant with extra defines costs more than the
+  default variant with the same code, which is where the rest of R13 is (open).

@@ -146,7 +146,7 @@ bool resolveClipArg(Project* project, const Json& value, const std::string& what
         return false;
     }
     const std::string file = subClip ? reference.model : given;
-    if (!subClip && lower(fs::u8path(file).extension().string()) != ".anim") {
+    if (!subClip && lower(editor::FileUtils::pathFromUtf8(file).extension().string()) != ".anim") {
         error = what + ": \"" + given + "\" must end in .anim" +
                 std::string(allowSubClip ? " (or name a model clip: \"assets/models/hero.gltf#Walk\")" : "") + ".";
         return false;
@@ -1388,7 +1388,7 @@ void editClip(const CallPtr& call) {
             if (from.is_string()) {
                 const std::string given = from.get<std::string>();
                 anim::SubClipReference reference;
-                const std::string extension = lower(fs::u8path(given).extension().string());
+                const std::string extension = lower(editor::FileUtils::pathFromUtf8(given).extension().string());
                 if (!anim::parseSubClipReference(given, reference) && (extension == ".anim" || anim::isModelFilePath(given))) {
                     call->fail("create.from takes an entity Animation GameObject or a model clip \"<model>#<animation>\" (e.g. \"" +
                                (anim::isModelFilePath(given) ? given : std::string("assets/models/hero.gltf")) + "#Walk\"); copy a clip with "

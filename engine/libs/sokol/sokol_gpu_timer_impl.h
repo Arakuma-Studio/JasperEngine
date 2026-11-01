@@ -51,9 +51,7 @@
     #endif
 #endif
 
-#if defined(SOKOL_METAL)
-    #include <mach/mach_time.h>
-#elif defined(SOKOL_D3D11)
+#if defined(SOKOL_D3D11)
     #include <dxgi1_4.h>
 #endif
 
@@ -146,10 +144,11 @@ struct sgj_state_t {
     #elif defined(SOKOL_METAL)
     id counter_set = nil;        // id<MTLCounterSet>: the timestamp set
     bool mtl_counters = false;
-    // GPU ticks to ns: calibrated against the CPU clock (sampleTimestamps:gpuTimestamp:)
+    // GPU ticks to ns: calibrated against the CPU clock (sampleTimestamps:gpuTimestamp:, whose
+    // CPU time is in nanoseconds already, not in mach_absolute_time ticks: scaling it by the
+    // mach timebase made every pass 41.67x too long on Apple silicon, GpuTimerGpu)
     uint64_t mtl_cpu0 = 0, mtl_gpu0 = 0;
     double mtl_ns_per_gpu_tick = 1.0;
-    double mtl_ns_per_mach_tick = 1.0;
     #endif
 };
 
@@ -235,9 +234,6 @@ void sgj_backend_detect(void) {
         sgj.reason = SGJ_REASON_NONE;
     #elif defined(SOKOL_METAL)
         sgj.semantics = SGJ_SEM_ENCODER_SPAN;
-        mach_timebase_info_data_t timebase = {};
-        mach_timebase_info(&timebase);
-        sgj.mtl_ns_per_mach_tick = timebase.denom ? (double)timebase.numer / (double)timebase.denom : 1.0;
         // the command buffer's GPU time is always there: passes need counter sampling
         sgj.state = SGJ_TIMER_AVAILABLE;
         sgj.reason = SGJ_REASON_NONE;
@@ -423,7 +419,9 @@ sgj_read_result sgj_backend_read(sgj_slot& slot, sgj_resolved& out) {
     out.info.frame_valid = false;
     out.info.frame_gpu_ms = 0.0;
     #if defined(_SOKOL_ANY_GL)
-        // queries complete in order: the last issued one first, then each
+        // queries complete in order, so the last issued one being available says the others are
+        // (one availability query a commit, not one a pass: each is a driver round trip, GPU
+        // campaign perf2)
         for (int i = (int)n - 1; i >= 0; i--) {
             if (!slot.pass_issued[i])
                 continue;
@@ -431,6 +429,7 @@ sgj_read_result sgj_backend_read(sgj_slot& slot, sgj_resolved& out) {
             glGetQueryObjectuiv(slot.queries[i], GL_QUERY_RESULT_AVAILABLE, &available);
             if (!available)
                 return SGJ_READ_PENDING;
+            break;
         }
         double sum = 0.0;
         bool any = false;
@@ -555,7 +554,7 @@ sgj_read_result sgj_backend_read(sgj_slot& slot, sgj_resolved& out) {
                 MTLTimestamp cpu = 0, gpu = 0;
                 [_sg.mtl.device sampleTimestamps:&cpu gpuTimestamp:&gpu];
                 if (gpu > sgj.mtl_gpu0 && cpu > sgj.mtl_cpu0) {
-                    sgj.mtl_ns_per_gpu_tick = ((double)(cpu - sgj.mtl_cpu0) * sgj.mtl_ns_per_mach_tick) / (double)(gpu - sgj.mtl_gpu0);
+                    sgj.mtl_ns_per_gpu_tick = (double)(cpu - sgj.mtl_cpu0) / (double)(gpu - sgj.mtl_gpu0);
                 }
                 if (data && data.length >= sizeof(MTLCounterResultTimestamp) * SGJ_MTL_SAMPLES_PER_PASS * n) {
                     const MTLCounterResultTimestamp* samples = (const MTLCounterResultTimestamp*)data.bytes;

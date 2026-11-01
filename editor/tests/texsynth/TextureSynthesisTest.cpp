@@ -133,13 +133,18 @@ TEST(TextureSynthesisSession, CheckSpecRefusesNonUtf8Paths) {
     for (const ts::Problem& p : ts::checkSpec(root, spec)) found = found || (p.field == "output" && p.message.find("not valid UTF-8") != std::string::npos);
     EXPECT_TRUE(found);
 
-    // a companion found next to the example whose name is not UTF-8: left out with a warning
+    // a companion found next to the example whose name is not UTF-8: left out with a warning.
+    // APFS (macOS) refuses such a name (EILSEQ): there the file cannot exist to be found
     writeBytes(root / "assets" / "rock_normal_\xE9.png", png);
     std::vector<std::string> warnings;
     ts::autoCompanions(root, spec, warnings);
     EXPECT_TRUE(spec.companions.empty());
-    ASSERT_EQ(warnings.size(), 1u);
-    EXPECT_NE(warnings[0].find("not valid UTF-8"), std::string::npos) << warnings[0];
+    if (fs::exists(root / "assets" / "rock_normal_\xE9.png")) {
+        ASSERT_EQ(warnings.size(), 1u);
+        EXPECT_NE(warnings[0].find("not valid UTF-8"), std::string::npos) << warnings[0];
+    } else {
+        EXPECT_TRUE(warnings.empty());
+    }
     fs::remove_all(root);
 }
 

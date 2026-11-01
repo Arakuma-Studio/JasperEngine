@@ -27,6 +27,7 @@
 #include "mcp/McpActivityWindow.h"
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
+#include "pool/ShaderPool.h"
 #include "render/SystemRender.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -691,13 +692,13 @@ void captureView(const CallPtr& call, const CaptureRequest& request, std::functi
         else if (job->req.view == "scene") captureScene(job);
         else captureEditor(job);
     };
-    // shaders and pipelines still being created off the render thread (spec S32) are not drawn
-    // yet: the image waits for them (up to 30 s), then shows what is there
-    if (SystemRender::isGpuCreationIdle()) {
+    // shaders still building, and shaders and pipelines still being created off the render thread
+    // (spec S32), are not drawn yet: the image waits for them (up to 30 s), then shows what is there
+    if (ShaderPool::isCreationIdle()) {
         capture();
         return;
     }
-    call->waitUntil([]() { return SystemRender::isGpuCreationIdle(); },
+    call->waitUntil([]() { return ShaderPool::isCreationIdle(); },
                     std::min(job->remainingMs(), 30000), [capture](bool) { capture(); });
 }
 

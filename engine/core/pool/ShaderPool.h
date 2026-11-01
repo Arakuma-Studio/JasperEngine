@@ -18,6 +18,8 @@ namespace jasperengine{
     typedef std::map<ShaderKey, std::shared_ptr<ShaderRender>> shaders_t;
 
     using ShaderBuilderFn = std::function<ShaderBuildResult(ShaderKey)>;
+    // how many variants the builder is still building (off the main thread)
+    using ShaderBuildsPendingFn = std::function<size_t()>;
 
     // the exclusive variants of ShaderType::HTMLUI_POST, in property-bit order
     // YUV: <video> frames (phase 6), appended
@@ -43,6 +45,7 @@ namespace jasperengine{
         static shaders_t& getMap();
 
         static ShaderBuilderFn shaderBuilderFn;
+        static ShaderBuildsPendingFn shaderBuildsPendingFn;
 
         static std::string getShaderName(const std::string& shaderStr);
 
@@ -114,6 +117,10 @@ namespace jasperengine{
         static size_t getPendingPipelineCount();
         // no shader, pipeline or GL warm draw is being created
         static bool isGpuCreationIdle();
+        // nothing a draw waits for is being made: no variant compiling at runtime or building in
+        // the shader builder, and the GPU creation idle. What a screenshot waits for (spec S32: a
+        // captured frame never shows a stand-in)
+        static bool isCreationIdle();
 
         // ---- Runtime compilation of variants the build lacks (RuntimeShaderCompiler) ----
         // The build carries the compiler (export setting "Runtime shader compilation")
@@ -236,7 +243,8 @@ namespace jasperengine{
         static std::string getMissingShadersDisplayList();
         static std::vector<std::string>& getMissingShaders();
 
-        static void setShaderBuilder(ShaderBuilderFn fn);
+        // the builder of the variants (the editor's), and how many it is still building
+        static void setShaderBuilder(ShaderBuilderFn fn, ShaderBuildsPendingFn pending = nullptr);
 
         static uint64_t getMeshProperties(bool unlit, bool uv1, bool uv2,
 						bool punctual, bool shadows, bool normals, bool normalMap,

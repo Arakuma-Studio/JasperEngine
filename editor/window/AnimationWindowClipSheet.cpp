@@ -221,9 +221,9 @@ Entity AnimationWindowClip::findModelInstance(SceneProject* sceneProject, const 
     if (!sceneProject || !sceneProject->scene || model.empty()) return NULL_ENTITY;
     Scene* scene = sceneProject->scene;
     // asset-relative (ModelComponent::filename) or project-relative ("assets/...")
-    fs::path target = project->resolveAssetPath(fs::u8path(model)).lexically_normal();
+    fs::path target = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(model)).lexically_normal();
     std::error_code ec;
-    const fs::path projectRelative = (project->getProjectPath() / fs::u8path(model)).lexically_normal();
+    const fs::path projectRelative = (project->getProjectPath() / editor::FileUtils::pathFromUtf8(model)).lexically_normal();
     if (!fs::exists(target, ec) && fs::exists(projectRelative, ec)) target = projectRelative;
     auto matches = [&](Entity entity){
         if (!scene->isEntityCreated(entity)) return false;
@@ -1137,12 +1137,12 @@ bool AnimationWindowClip::setPreviewModel(const std::string& model, std::string*
     }
     std::string value = model;
     if (!value.empty()){
-        if (!anim::isModelFilePath(value) && fs::u8path(value).extension() != ".prefab"){
+        if (!anim::isModelFilePath(value) && editor::FileUtils::pathFromUtf8(value).extension() != ".prefab"){
             if (error) *error = "Preview Model takes a model (.gltf, .glb, .fbx, .obj) or a prefab";
             return false;
         }
         // asset-relative like ModelComponent::filename
-        const fs::path resolved = project->resolveAssetPath(fs::u8path(value));
+        const fs::path resolved = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(value));
         const fs::path relative = project->normalizeToAssetsRelative(resolved);
         if (!relative.empty() && relative.generic_string().compare(0, 2, "..") != 0) value = FileUtils::pathToGenericUtf8(relative);
     }

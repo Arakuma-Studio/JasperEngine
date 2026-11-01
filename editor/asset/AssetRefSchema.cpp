@@ -521,16 +521,20 @@ namespace {
                 if (change.texture) mesh.submeshes[s].needUpdateTexture = true;
                 if (change.shader) mesh.needReload = true;
             }
-            if (visit.shader(mesh.customShader, componentRow(C::MeshComponent, "customShader"), "customShader") |
-                visit.shader(mesh.customDepthShader, componentRow(C::MeshComponent, "customDepthShader"), "customDepthShader")) {
+            // both visits run, whatever the first returns
+            const bool shaderChanged = visit.shader(mesh.customShader, componentRow(C::MeshComponent, "customShader"), "customShader");
+            const bool depthShaderChanged = visit.shader(mesh.customDepthShader, componentRow(C::MeshComponent, "customDepthShader"), "customDepthShader");
+            if (shaderChanged || depthShaderChanged) {
                 mesh.needReload = true;
             }
         });
 
         eachComponent<UIComponent>(registry, only, visit, C::UIComponent, [&](UIComponent& ui) {
             if (visit.texture(ui.texture, componentRow(C::UIComponent, "texture"), "texture")) ui.needUpdateTexture = true;
-            if (visit.shader(ui.customShader, componentRow(C::UIComponent, "customShader"), "customShader") |
-                visit.textureMap(ui.shaderTextures, componentRow(C::UIComponent, "shaderTextures{}"), "shaderTextures.")) {
+            // both visits run, whatever the first returns
+            const bool shaderChanged = visit.shader(ui.customShader, componentRow(C::UIComponent, "customShader"), "customShader");
+            const bool texturesChanged = visit.textureMap(ui.shaderTextures, componentRow(C::UIComponent, "shaderTextures{}"), "shaderTextures.");
+            if (shaderChanged || texturesChanged) {
                 ui.needReload = true;
             }
         });
@@ -571,8 +575,10 @@ namespace {
             for (size_t i = 0; i < terrain.foliageLayers.size(); i++) {
                 TerrainFoliageLayer& layer = terrain.foliageLayers[i];
                 const std::string prefix = "foliageLayers[" + std::to_string(i) + "].";
-                if (visit.texture(layer.densityMap, componentRow(C::TerrainComponent, "foliageLayers[].densityMap"), prefix + "densityMap") |
-                    visit.asset(layer.meshPath, componentRow(C::TerrainComponent, "foliageLayers[].meshPath"), prefix + "meshPath")) {
+                // both visits run, whatever the first returns
+                const bool densityChanged = visit.texture(layer.densityMap, componentRow(C::TerrainComponent, "foliageLayers[].densityMap"), prefix + "densityMap");
+                const bool meshChanged = visit.asset(layer.meshPath, componentRow(C::TerrainComponent, "foliageLayers[].meshPath"), prefix + "meshPath");
+                if (densityChanged || meshChanged) {
                     terrain.needUpdateFoliage = true;
                 }
             }
@@ -594,23 +600,29 @@ namespace {
 
         eachComponent<SkyboxComponent>(registry, only, visit, C::SkyboxComponent, [&](SkyboxComponent& sky) {
             if (visit.texture(sky.texture, componentRow(C::SkyboxComponent, "texture"), "texture")) sky.needUpdateTexture = true;
-            if (visit.shader(sky.customShader, componentRow(C::SkyboxComponent, "customShader"), "customShader") |
-                visit.textureMap(sky.shaderTextures, componentRow(C::SkyboxComponent, "shaderTextures{}"), "shaderTextures.")) {
+            // both visits run, whatever the first returns
+            const bool shaderChanged = visit.shader(sky.customShader, componentRow(C::SkyboxComponent, "customShader"), "customShader");
+            const bool texturesChanged = visit.textureMap(sky.shaderTextures, componentRow(C::SkyboxComponent, "shaderTextures{}"), "shaderTextures.");
+            if (shaderChanged || texturesChanged) {
                 sky.needReload = true;
             }
         });
 
         eachComponent<PointsComponent>(registry, only, visit, C::PointsComponent, [&](PointsComponent& points) {
             if (visit.texture(points.texture, componentRow(C::PointsComponent, "texture"), "texture")) points.needUpdateTexture = true;
-            if (visit.shader(points.customShader, componentRow(C::PointsComponent, "customShader"), "customShader") |
-                visit.textureMap(points.shaderTextures, componentRow(C::PointsComponent, "shaderTextures{}"), "shaderTextures.")) {
+            // both visits run, whatever the first returns
+            const bool shaderChanged = visit.shader(points.customShader, componentRow(C::PointsComponent, "customShader"), "customShader");
+            const bool texturesChanged = visit.textureMap(points.shaderTextures, componentRow(C::PointsComponent, "shaderTextures{}"), "shaderTextures.");
+            if (shaderChanged || texturesChanged) {
                 points.needReload = true;
             }
         });
 
         eachComponent<LineRendererComponent>(registry, only, visit, C::LineRendererComponent, [&](LineRendererComponent& lines) {
-            if (visit.shader(lines.customShader, componentRow(C::LineRendererComponent, "customShader"), "customShader") |
-                visit.textureMap(lines.shaderTextures, componentRow(C::LineRendererComponent, "shaderTextures{}"), "shaderTextures.")) {
+            // both visits run, whatever the first returns
+            const bool shaderChanged = visit.shader(lines.customShader, componentRow(C::LineRendererComponent, "customShader"), "customShader");
+            const bool texturesChanged = visit.textureMap(lines.shaderTextures, componentRow(C::LineRendererComponent, "shaderTextures{}"), "shaderTextures.");
+            if (shaderChanged || texturesChanged) {
                 lines.needReload = true;
             }
         });
