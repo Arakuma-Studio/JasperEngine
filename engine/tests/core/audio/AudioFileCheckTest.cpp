@@ -139,6 +139,9 @@ namespace {
             soloud.play(*sound);
             std::vector<float> out(1024 * 2);
             for (unsigned int i = 0; i < kRate / 1024; i++) soloud.mix(out.data(), 1024);
+            // the sound outlives this SoLoud: it forgets it first
+            sound->stop();
+            sound->mSoloud = nullptr;
             soloud.deinit();
         }
         return 2;

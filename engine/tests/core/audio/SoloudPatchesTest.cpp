@@ -87,13 +87,28 @@ namespace {
         return path;
     }
 
-    // a SoLoud of its own on the null driver: mono, no clipping, mixed by the test
+    // a SoLoud of its own on the null driver: mono, no clipping, mixed by the test. A source keeps
+    // the SoLoud it last played on and stops itself there when it goes: the ones played here forget
+    // it before it goes.
     struct NullSoloud {
         SoLoud::Soloud soloud;
+        std::vector<SoLoud::AudioSource*> played;
         NullSoloud() {
             EXPECT_EQ(soloud.init(0, SoLoud::Soloud::NULLDRIVER, kRate, 512, 1), SoLoud::SO_NO_ERROR);
         }
-        ~NullSoloud() { soloud.deinit(); }
+        ~NullSoloud() {
+            for (SoLoud::AudioSource* source : played) {
+                source->stop();
+                source->mSoloud = nullptr;
+            }
+            soloud.deinit();
+        }
+        SoLoud::handle play(SoLoud::AudioSource& source) {
+            track(source);
+            return soloud.play(source);
+        }
+        // a source played through a bus of this SoLoud
+        void track(SoLoud::AudioSource& source) { played.push_back(&source); }
 
         // `frames` of the mix, in calls of `call` frames
         std::vector<float> mix(unsigned int frames, unsigned int call = 735) {
@@ -127,12 +142,12 @@ namespace {
     // latency of it is the same in both)
     void expectLoopWrapsToItsPoint(SoLoud::WavStream& stream, SoLoud::Wav& whole, double loopPoint, float tolerance) {
         NullSoloud reference;
-        reference.soloud.play(whole);
+        reference.play(whole);
         const unsigned int length = whole.mSampleCount;
         const std::vector<float> ref = reference.mix(length + 4096);
 
         NullSoloud looping;
-        const SoLoud::handle voice = looping.soloud.play(stream);
+        const SoLoud::handle voice = looping.play(stream);
         looping.soloud.setLooping(voice, true);
         looping.soloud.setLoopPoint(voice, loopPoint);
         const std::vector<float> out = looping.mix(length + 8192);
@@ -184,11 +199,11 @@ TEST(SoloudOggStream, StreamsFromAFileAndFromMemory) {
     SoLoud::Wav whole;
     ASSERT_EQ(whole.load(path.c_str()), SoLoud::SO_NO_ERROR);
     NullSoloud reference;
-    reference.soloud.play(whole);
+    reference.play(whole);
     const std::vector<float> ref = reference.mix(kRate);
     for (SoLoud::WavStream* stream : std::vector<SoLoud::WavStream*>{&fromFile, &fromMemory}) {
         NullSoloud streamed;
-        streamed.soloud.play(*stream);
+        streamed.play(*stream);
         const std::vector<float> out = streamed.mix(kRate);
         EXPECT_LT(worstDifference(out, 0, ref, 0, kRate), 1e-6f);
         EXPECT_GT(*std::max_element(out.begin(), out.end()), 0.05f) << "not silence";
@@ -209,7 +224,7 @@ TEST(SoloudStreamSeek, WavFlacAndMp3LoopsWrapToTheirLoopPoint) {
             jasperengine::EngineWavStream stream;
             if (!stream.open(file)) std::exit(1);
             NullSoloud looping;
-            const SoLoud::handle voice = looping.soloud.play(stream);
+            const SoLoud::handle voice = looping.play(stream);
             looping.soloud.setLooping(voice, true);
             looping.soloud.setLoopPoint(voice, 0.25);
             looping.mix(3 * kRate);
@@ -286,7 +301,7 @@ TEST(SoloudMix, AVoicePlaysItsLastBlockToTheEnd) {
     for (unsigned int call : {300u, 441u, 480u, 735u, 1024u}) {
         SCOPED_TRACE(call);
         NullSoloud mixer;
-        const SoLoud::handle voice = mixer.soloud.play(clip);
+        const SoLoud::handle voice = mixer.play(clip);
         const std::vector<float> out = mixer.mix(4096, call);
         int heard = 0;
         for (float v : out) heard += std::fabs(v) > 0.1f;
@@ -310,9 +325,11 @@ TEST(SoloudBus, AVoiceQueuedIntoABusIsMixedInTheNextCall) {
         SoLoud::Bus bus;
         // the engine's buses (AudioMixer): never stopped by their end
         bus.setAutoStop(false);
+        // (the bus goes first: its own destructor stops its voices)
         const SoLoud::handle busVoice = mixer.soloud.play(bus);
         mixer.soloud.setPanAbsolute(busVoice, 1.0f, 1.0f);
         mixer.mix(first, first);
+        mixer.track(clip);
         bus.play(clip);
         return onset(mixer.mix(2048, 735));
     };
