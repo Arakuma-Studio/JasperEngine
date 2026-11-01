@@ -326,6 +326,8 @@ JASPERENGINE_INIT void init() {
         if (game.collision3D[layer] != LAYER_MASK_EVERYTHING) Physics::setLayerCollisionMask(layer, game.collision3D[layer]);
         if (game.collision2D[layer] != LAYER_MASK_EVERYTHING) Physics2D::setLayerCollisionMask(layer, game.collision2D[layer]);
     }
+    // the voices and the project's mixer, before the first scene (as a Compile build's init)
+    player::applyAudio(game);
 
     for (const GameScene& scene : game.scenes) {
         const GameScene stack = scene;

@@ -151,8 +151,9 @@ Steam Deck.
   from the existing platform layers (`engine/platform/*`) plus a new `engine/player/`.
   - At startup it reads `game.json` (D4) and registers every scene and prefab listed there with a
     factory that loads the cooked file.
-  - It applies the window, canvas, scaling, vsync, loading, tags/layers and collision-matrix
-    settings from `game.json`, replacing the generated `init()`.
+  - It applies the window, canvas, scaling, vsync, loading, tags/layers, collision-matrix and audio
+    (Project Settings > Audio and the project's mixer) settings from `game.json`, replacing the
+    generated `init()`.
   - It then loads the start scene (or the one given by `--scene`).
   - In player builds every compile-time macro of §3 becomes a runtime value. The macro defaults
     stay for CMake builds.
@@ -577,7 +578,8 @@ Steam Deck.
    "window":{"mode":"windowed","width":1280,"height":720,"resizable":true,"title":"My Game","vsync":true},
    "canvas":{"width":1280,"height":720,"scaling":"fitwidth","textureStrategy":"none"},
    "loading":{"scene":0,"delay":0,"timeout":5,"async":false},"htmlUiMsaa":4,
-   "tags":[],"layers":[],"collision3D":[…],"collision2D":[…]}
+   "tags":[],"layers":[],"collision3D":[…],"collision2D":[…],
+   "audio":{"mixer":"audio/Main.mixer","maxRealVoices":32,"maxVoices":256,"sampleRate":0}}
   // content-manifest.json
   {"schemaVersion":1,"engineVersion":"v1.4.0","contentFormatVersion":"1.0","playerId":"linux-x64-glcore-release",
    "playerSha256":"…","method":"prebuilt","backend":"glcore","shaders":["MESH_…_glsl410.sdat"],
