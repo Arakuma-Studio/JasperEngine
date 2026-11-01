@@ -392,20 +392,20 @@ void LuaBinding::configureProjectLuaLoader() {
 
 // ui-multitouch D4: a method named like an EventSystem callback (onPointerDown, onDrag...)
 // subscribed to a UIComponent pointer event (x, y) is the old pattern: the engine does not
-// also call it with a PointerEventData
-static void noteUIPointerSubscription(lua_State* L, int eventIndex, int selfIndex, const char* methodName, bool subscribed) {
+// also call it with a PointerEventData while that subscription lives
+static void noteUIPointerSubscription(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag) {
     ScriptMessage message;
-    if (!ScriptMessages::fromMethodName(methodName, message) || message < ScriptMessage::PointerDown) {
+    if (!methodName || !tag || !ScriptMessages::fromMethodName(methodName, message) || message < ScriptMessage::PointerDown) {
         return;
     }
     if (!luabridge::isInstance<FunctionSubscribe<void(float,float)>>(L, eventIndex)) {
         return;
     }
-    if (subscribed) {
-        ScriptMessages::noteLegacySubscription(lua_topointer(L, selfIndex), methodName);
-    } else {
-        ScriptMessages::forgetLegacySubscription(lua_topointer(L, selfIndex), methodName);
+    auto event = luabridge::get<FunctionSubscribe<void(float,float)>*>(L, eventIndex);
+    if (!event || !event.value()) {
+        return;
     }
+    ScriptMessages::noteLegacySubscription(lua_topointer(L, selfIndex), methodName, event.value()->subscriptionProbe(tag));
 }
 
 // Common implementation for event registration
@@ -487,8 +487,6 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
         3);
     int closureIndex = lua_gettop(L);
 
-    noteUIPointerSubscription(L, eventIndex, selfIndex, methodName, true);
-
     // a Lua Event: the listener is the script's own, dropped once it is released
     if (luabridge::isInstance<ScriptEvent>(L, eventIndex)) {
         auto event = luabridge::get<ScriptEvent*>(L, eventIndex);
@@ -512,6 +510,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
         return lua_error(L);
     }
 
+    noteUIPointerSubscription(L, eventIndex, selfIndex, methodName, lua_tostring(L, tagIndex));
     return 0;
 }
 
@@ -584,7 +583,6 @@ int LuaBinding::luaUnregisterEvent(lua_State* L) {
     if (lua_isnil(L, 2))
         return luaL_error(L, "UnregisterEvent: event is nil");
     const char* tag = (top >= 4 && !lua_isnil(L, 4)) ? lua_tostring(L, 4) : nullptr;
-    noteUIPointerSubscription(L, 2, 1, lua_tostring(L, 3), false);
     pushSubscriptionTag(L, 1, lua_tostring(L, 3), tag);
     return removeSubscription(L, 2, -1, "UnregisterEvent");
 }

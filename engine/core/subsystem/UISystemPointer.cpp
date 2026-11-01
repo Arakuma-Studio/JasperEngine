@@ -163,6 +163,7 @@ PointerEventData UISystem::makeEventData(const UIPointerState& state, Entity tar
     e.pointerDrag = state.drag;
     e.target = target;
     e.scene = scene;
+    e.sceneLifetime = scene->getLifetime();
     return e;
 }
 
@@ -371,12 +372,22 @@ bool UISystem::isWidgetGestureOwned(Entity entity, int exceptPointer) const{
 // disabled): the press is cancelled while the element still exists (D6)
 void UISystem::validatePointers(){
     std::vector<int> cancelled;
+    std::vector<std::pair<Entity, int>> releasedEntered;
     for (auto& pair : pointers){
         UIPointerState& state = pair.second;
         if (!state.down)
             continue;
+        // an entered On-Screen Button that cannot take pointers any more lets go of this one only
+        if (state.enteredButton != NULL_ENTITY){
+            const Entity entered = state.enteredButton;
+            if (!scene->isEntityCreated(entered) || !controlTakesPointers(entered, scene->getSignature(entered))){
+                state.enteredButton = NULL_ENTITY;
+                if (scene->isEntityCreated(entered))
+                    releasedEntered.push_back({entered, pair.first});
+            }
+        }
         bool lost = false;
-        for (Entity entity : {state.widget, state.press, state.drag, state.control}){
+        for (Entity entity : {state.widget, state.press, state.drag, state.control, state.buttonPressed}){
             if (entity == NULL_ENTITY)
                 continue;
             if (!scene->isEntityCreated(entity)){
@@ -390,10 +401,14 @@ void UISystem::validatePointers(){
                 lost = true;
             else if (entity == state.control && !controlTakesPointers(entity, signature))
                 lost = true;
+            else if (entity == state.buttonPressed && !isInteractable(entity))
+                lost = true;   // Button.disabled (or its Canvas Group) set mid-press
         }
         if (lost)
             cancelled.push_back(pair.first);
     }
+    for (const auto& entered : releasedEntered)
+        buttonControlRelease(entered.first, entered.second);
     for (int pointerId : cancelled)
         endPress(pointerId, false);
 }
@@ -1030,15 +1045,33 @@ bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
         if (!state->down)
             continue;
 
-        // an On-Screen Button a finger slides onto or off
-        if (state->control == NULL_ENTITY && state->touch){
+        // an On-Screen Button a finger slides onto or off (spec 12): a finger without a control
+        // takes it as its control; one holding a control (a stick, an area, another button)
+        // presses it besides (enteredButton)
+        if (state->touch){
             const Entity entered = findControl(hit);
-            if (entered != NULL_ENTITY && scene->findComponent<OnScreenButtonComponent>(entered)){
-                const OnScreenButtonComponent& control = scene->getComponent<OnScreenButtonComponent>(entered);
-                if (control.pressWhenPointerEnters){
+            const OnScreenButtonComponent* enteredControl = entered != NULL_ENTITY
+                ? scene->findComponent<OnScreenButtonComponent>(entered) : nullptr;
+            const bool pressesOnEnter = enteredControl && enteredControl->pressWhenPointerEnters;
+            // the entered button left
+            if (state->enteredButton != NULL_ENTITY && entered != state->enteredButton){
+                const Entity left = state->enteredButton;
+                const OnScreenButtonComponent* leftControl = scene->findComponent<OnScreenButtonComponent>(left);
+                if (!leftControl || leftControl->releaseWhenPointerLeaves || pressesOnEnter){
+                    state->enteredButton = NULL_ENTITY;
+                    buttonControlRelease(left, id);
+                    state = findPointer(id);
+                    if (!state) continue;
+                }
+            }
+            if (pressesOnEnter && entered != state->control && entered != state->enteredButton){
+                if (state->control == NULL_ENTITY){
                     controlDown(*state, entered);
                     if (UIPointerState* again = findPointer(id))
                         again->captured = true;
+                }else{
+                    state->enteredButton = entered;
+                    buttonControlPress(entered, id);
                 }
                 state = findPointer(id);
                 if (!state) continue;
@@ -1149,9 +1182,16 @@ void UISystem::endPress(int pointerId, bool released){
 
     const Entity hit = released ? state->hit : NULL_ENTITY;
 
-    // the on-screen control lets go
+    // the on-screen control lets go, and a button the finger slid onto besides
     if (state->control != NULL_ENTITY){
         controlUp(*state);
+        state = findPointer(pointerId);
+        if (!state) return;
+    }
+    if (state->enteredButton != NULL_ENTITY){
+        const Entity entered = state->enteredButton;
+        state->enteredButton = NULL_ENTITY;
+        buttonControlRelease(entered, pointerId);
         state = findPointer(pointerId);
         if (!state) return;
     }
@@ -1320,7 +1360,7 @@ void UISystem::resetButtonStates() {
     for (int i = 0; i < sticks->size(); i++){
         const Entity entity = sticks->getEntity(i);
         if (sticks->getComponentFromIndex(i).pressed)
-            stickRelease(entity);
+            stickRelease(entity, false);   // no callbacks into a scene being removed
         clearControlSources(entity);
     }
     auto osButtons = scene->getComponentArray<OnScreenButtonComponent>();
@@ -1614,7 +1654,7 @@ void UISystem::stickUpdate(Entity entity, OnScreenStickComponent& stick, const V
     }
 }
 
-void UISystem::stickRelease(Entity entity){
+void UISystem::stickRelease(Entity entity, bool callbacks){
     OnScreenStickComponent* stick = scene->findComponent<OnScreenStickComponent>(entity);
     if (!stick)
         return;
@@ -1629,6 +1669,8 @@ void UISystem::stickRelease(Entity entity){
         if (stick->mode != OnScreenStickMode::FIXED && stick->background != NULL_ENTITY)
             setElementOffset(stick->background, stick->backgroundRest, Vector2(0, 0));
     }
+    if (!callbacks)
+        return;
     if (changed){
         stick->onValueChanged.call(0.0f, 0.0f);
         stick = scene->findComponent<OnScreenStickComponent>(entity);

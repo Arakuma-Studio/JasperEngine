@@ -338,6 +338,8 @@ bool HtmlUIContext::processMouseButtonDown(int button, int modifiers){
         return false;
 
     context->ProcessMouseButtonDown(button, modifiers);
+    if (button >= 0 && button < 31)
+        mouseButtons |= 1 << button;
     if (button == 0)
         htmlui::EffectRuntime::get().onPointerButton(context, true);
 
@@ -362,6 +364,8 @@ bool HtmlUIContext::processMouseButtonUp(int button, int modifiers){
     const bool overContent = isPointerOverContent();
 
     context->ProcessMouseButtonUp(button, modifiers);
+    if (button >= 0 && button < 31)
+        mouseButtons &= ~(1 << button);
 
     if (button == 0){
         activeElement.reset();

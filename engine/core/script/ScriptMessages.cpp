@@ -23,8 +23,9 @@ namespace {
     // receivers() per scene and GameObject, dropped by notifyReceiversChanged
     std::unordered_map<Scene*, std::unordered_map<Entity, ScriptMessageMask>> receiverCache;
     std::vector<ScriptMessages::ReceiversChanged> receiverListeners;
-    // D4's collision rule: Lua instance tables and the methods they subscribed to UIComponent events
-    std::unordered_map<const void*, std::set<std::string>> legacySubscriptions;
+    // D4's collision rule: Lua instance tables, the methods they subscribed to UIComponent
+    // events and a probe of each subscription (true while it lives)
+    std::unordered_map<const void*, std::unordered_map<std::string, std::vector<std::function<bool()>>>> legacySubscriptions;
 
     int luaRefOf(const ScriptEntry& entry) {
         return static_cast<int>(reinterpret_cast<intptr_t>(entry.instance));
@@ -138,25 +139,34 @@ bool ScriptMessages::defines(Scene* scene, Entity entity, ScriptMessage m) {
     return false;
 }
 
-void ScriptMessages::noteLegacySubscription(const void* instanceTable, const std::string& method) {
-    if (instanceTable) {
-        legacySubscriptions[instanceTable].insert(method);
-    }
-}
-
-void ScriptMessages::forgetLegacySubscription(const void* instanceTable, const std::string& method) {
-    auto it = legacySubscriptions.find(instanceTable);
-    if (it != legacySubscriptions.end()) {
-        it->second.erase(method);
-        if (it->second.empty()) {
-            legacySubscriptions.erase(it);
-        }
+void ScriptMessages::noteLegacySubscription(const void* instanceTable, const std::string& method,
+                                            std::function<bool()> subscriptionAlive) {
+    if (instanceTable && subscriptionAlive) {
+        legacySubscriptions[instanceTable][method].push_back(std::move(subscriptionAlive));
     }
 }
 
 bool ScriptMessages::isLegacySubscription(const void* instanceTable, const char* method) {
     auto it = legacySubscriptions.find(instanceTable);
-    return it != legacySubscriptions.end() && method && it->second.count(method) > 0;
+    if (it == legacySubscriptions.end() || !method) {
+        return false;
+    }
+    auto methodIt = it->second.find(method);
+    if (methodIt == it->second.end()) {
+        return false;
+    }
+    // the subscriptions that went (UnregisterEvent, the event cleared, its component destroyed)
+    std::vector<std::function<bool()>>& probes = methodIt->second;
+    probes.erase(std::remove_if(probes.begin(), probes.end(),
+        [](const std::function<bool()>& alive) { return !alive(); }), probes.end());
+    if (!probes.empty()) {
+        return true;
+    }
+    it->second.erase(methodIt);
+    if (it->second.empty()) {
+        legacySubscriptions.erase(it);
+    }
+    return false;
 }
 
 void ScriptMessages::forgetLegacySubscriptions(const void* instanceTable) {

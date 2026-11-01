@@ -48,7 +48,8 @@
 
 using namespace jasperengine;
 
-// a PointerEventData GameObject field: the GameObject, or nil for none
+// a PointerEventData GameObject field: the GameObject, or nil for none (and once its scene
+// was deleted: an event a script kept, review LOW-MEDIUM 5)
 static luabridge::LuaRef pointerEventEntity(lua_State* L, Scene* scene, Entity entity){
     if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity))
         return luabridge::LuaRef(L);
@@ -526,11 +527,11 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("canceled", &PointerEventData::canceled)
         .addProperty("used", &PointerEventData::used)
         .addProperty("useDragThreshold", &PointerEventData::useDragThreshold, &PointerEventData::useDragThreshold)
-        .addProperty("pointerEnter", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->scene, self->pointerEnter); })
-        .addProperty("pointerPress", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->scene, self->pointerPress); })
-        .addProperty("rawPointerPress", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->scene, self->rawPointerPress); })
-        .addProperty("pointerDrag", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->scene, self->pointerDrag); })
-        .addProperty("target", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->scene, self->target); })
+        .addProperty("pointerEnter", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->pointerEnter); })
+        .addProperty("pointerPress", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->pointerPress); })
+        .addProperty("rawPointerPress", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->rawPointerPress); })
+        .addProperty("pointerDrag", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->pointerDrag); })
+        .addProperty("target", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->target); })
         .addFunction("use", &PointerEventData::use)
         .endClass();
 

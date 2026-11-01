@@ -442,11 +442,12 @@ return Slot
 - The right and middle mouse buttons reach these callbacks (`e.button`); Button, Panel, Scrollbar
   and InputField react to the left button and fingers only.
 - A press ends cancelled (`onPointerUp` with `e.canceled`, `onEndDrag`, no click, no drop) when the
-  touch is cancelled, the app pauses, or the pressed element is deactivated or disabled.
+  touch is cancelled, released outside the canvas, the app pauses or loses focus, or the pressed
+  element is deactivated or disabled (`Button.disabled` too).
 - The legacy component events (`ui.onPointerDown(x, y)`, `onClick`, `onDrag`...) still fire per
   pointer, on the element the pointer pressed only; `ui:getPointerEventData()` gives the event of
   the one running. A method subscribed with `RegisterEvent` to such an event (the old pattern) is
-  not also called with `e` under the same name.
+  not also called with `e` under the same name while subscribed.
 - `Input.isPointerOverUI([pointerId])`: the pointer (none: the mouse or any finger) is over UI that
   takes it, or a press there holds it; check it before world clicks (Unity's
   `EventSystem.IsPointerOverGameObject`).

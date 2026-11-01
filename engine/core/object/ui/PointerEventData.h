@@ -8,6 +8,8 @@
 #include "Entity.h"
 #include "math/Vector2.h"
 
+#include <memory>
+
 namespace jasperengine {
 
     class Scene;
@@ -50,8 +52,12 @@ namespace jasperengine {
         Entity target = NULL_ENTITY;          // the GameObject receiving this call
 
         Scene* scene = nullptr;
+        // alive while the scene is (Scene::getLifetime): an event a script keeps past the
+        // scene's deletion gives no GameObjects (liveScene() is null)
+        std::weak_ptr<char> sceneLifetime;
 
         void use() { used = true; }
+        Scene* liveScene() const { return sceneLifetime.expired() ? nullptr : scene; }
     };
 
 }

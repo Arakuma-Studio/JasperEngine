@@ -46,7 +46,7 @@ namespace jasperengine{
         std::vector<int> pointers;           // pointer ids holding it (the stick and area: one)
         bool pointerIsMouse = false;
         float centerX = 0, centerY = 0;      // the stick's base centre while held
-        float baseOffsetX = 0, baseOffsetY = 0;
+        float restCenterX = 0, restCenterY = 0;   // the base's centre at rest, measured at the press
         float lastX = 0, lastY = 0;          // the area's last pointer position
         float valueX = 0, valueY = 0;
         bool hiddenForDevice = false;

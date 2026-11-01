@@ -182,8 +182,8 @@ touch area on another, a button on a third); the rest of the screen is unaffecte
   pointers) where `System.isTouchDevice()` is false; the Game view's Simulate Touch counts as touch.
 - A Touch Area pressed with the mouse adds nothing to an action bound to mouse movement (the mouse
   already moves it).
-- Disabling, deactivating or destroying a control, unloading its scene, a touch cancel and app
-  pause release it: no axis stays held.
+- Disabling, deactivating or destroying a control, unloading its scene, a touch cancel, a finger
+  or button released outside the canvas, app pause and focus loss release it: no axis stays held.
 - An On-Screen Button with a Button on the same GameObject (the menu's) shows the pressed visuals.
 
 ```lua

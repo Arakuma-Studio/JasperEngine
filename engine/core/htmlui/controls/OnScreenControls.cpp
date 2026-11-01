@@ -196,8 +196,15 @@ void UIOnScreenControl::ProcessEvent(Rml::Event& event){
                 press(event, pointerId);
             break;
         case Rml::EventId::Pointerout:
-            if (kind == Kind::BUTTON && attributeFlag("release-on-leave") &&
-                std::find(pointers.begin(), pointers.end(), pointerId) != pointers.end()){
+            if (std::find(pointers.begin(), pointers.end(), pointerId) == pointers.end())
+                break;
+            if (event.GetParameter<int>("buttons", 0) == 0){
+                // the pointer ended (up or cancel) away from its capture target: a finger that
+                // pressed this button by sliding onto it (press-on-enter) is captured by the
+                // element it went down on, which gets its up; the leave of the lifted finger
+                // (no sticky hover) is the button's last event of it
+                release(pointerId, true);
+            }else if (kind == Kind::BUTTON && attributeFlag("release-on-leave")){
                 // still over the button or a child: not a leave
                 Rml::Context* context = GetContext();
                 Rml::Element* hover = context ? context->GetHoverElement(pointerId) : nullptr;
@@ -322,13 +329,17 @@ void UIOnScreenControl::updateStick(float px, float py, bool first){
     const std::string axes = attributeString("axes", "both");
 
     float radius = 0.0f;
-    float restX = 0, restY = 0;   // the base's centre without the offset it was moved by
+    // the base's centre at rest: its layout box (the transform placePart moves it by is not part
+    // of the layout offset), measured at the press and kept for the drag
+    float restX = restCenterX, restY = restCenterY;
     if (base){
         const Rml::Vector2f size = base->GetBox().GetSize(Rml::BoxArea::Border);
-        const Rml::Vector2f at = base->GetAbsoluteOffset(Rml::BoxArea::Border);
         radius = size.x / 2.0f;
-        restX = at.x + size.x / 2.0f - baseOffsetX;
-        restY = at.y + size.y / 2.0f - baseOffsetY;
+        if (first){
+            const Rml::Vector2f at = base->GetAbsoluteOffset(Rml::BoxArea::Border);
+            restX = restCenterX = at.x + size.x / 2.0f;
+            restY = restCenterY = at.y + size.y / 2.0f;
+        }
     }else{
         const Rml::Vector2f size = GetBox().GetSize(Rml::BoxArea::Border);
         const Rml::Vector2f at = GetAbsoluteOffset(Rml::BoxArea::Border);
@@ -406,10 +417,6 @@ void UIOnScreenControl::updateStick(float px, float py, bool first){
 void UIOnScreenControl::placePart(Rml::Element* element, float x, float y){
     if (!element)
         return;
-    if (element->GetClassNames().find("stick-base") != Rml::String::npos){
-        baseOffsetX = x;
-        baseOffsetY = y;
-    }
     if (x == 0.0f && y == 0.0f){
         element->RemoveProperty(Rml::PropertyId::Transform);
         return;

@@ -346,6 +346,38 @@ bool UIDocumentSystem::eventOnTouchCancel(int pointer){
     return dispatchWorldPointer(pointer, -1, 0.0f, 0.0f, 0, PointerPhase::CANCEL, true) || captured;
 }
 
+bool UIDocumentSystem::eventOnMouseCancel(int button){
+    HtmlUIInputState& state = getInputState();
+    // one DOM pointer: its cancel lets go of every button
+    const bool captured = !state.capturedButtons.empty();
+    state.capturedButtons.clear();
+
+    if (getContext())
+        getContext()->processMouseCancel();
+
+    bool consumed = captured;
+    if (isWorldPointerCaptured(0, button, false))
+        consumed = dispatchWorldPointer(0, button, 0.0f, 0.0f, 0, PointerPhase::CANCEL, false) || consumed;
+    return consumed;
+}
+
+void UIDocumentSystem::cancelAllPointers(){
+    HtmlUIInputState& state = getInputState();
+
+    std::set<int> fingers = state.capturedTouches;
+    if (getContext()){
+        for (int pointer : getContext()->getTouches())
+            fingers.insert(pointer);
+    }
+    for (int pointer : fingers)
+        eventOnTouchCancel(pointer);
+
+    state.capturedButtons.clear();
+    if (getContext())
+        getContext()->processMouseCancel();
+    textureCancelAll();
+}
+
 bool UIDocumentSystem::eventOnWheel(float dx, float dy, int mods){
     if (!hasVisibleDocument())
         return dispatchWorldWheel(dx, dy, mods);

@@ -2776,6 +2776,8 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
         for (auto& pair : pointers) {
             if (pair.second.control == entity)
                 pair.second.control = NULL_ENTITY;
+            if (pair.second.enteredButton == entity)
+                pair.second.enteredButton = NULL_ENTITY;
         }
         clearControlSources(entity);
         controlOwners.erase(entity);

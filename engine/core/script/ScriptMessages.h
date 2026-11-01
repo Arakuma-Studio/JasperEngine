@@ -70,9 +70,12 @@ namespace jasperengine {
 
         // ui-multitouch D4's collision rule: a Lua instance that subscribed its method `name` to a
         // UIComponent pointer event with RegisterEvent (the old `onPointerDown(x, y)` pattern) is
-        // not also called with a PointerEventData under that name. Keyed by the instance table.
-        static void noteLegacySubscription(const void* instanceTable, const std::string& method);
-        static void forgetLegacySubscription(const void* instanceTable, const std::string& method);
+        // not also called with a PointerEventData under that name while one such subscription
+        // lives. Keyed by the instance table; each note keeps a probe of its subscription
+        // (FunctionSubscribe::subscriptionProbe), so an unregistered, cleared or destroyed
+        // event's note no longer counts.
+        static void noteLegacySubscription(const void* instanceTable, const std::string& method,
+                                           std::function<bool()> subscriptionAlive);
         static bool isLegacySubscription(const void* instanceTable, const char* method);
         // the instance is released: its notes go (the address can be reused)
         static void forgetLegacySubscriptions(const void* instanceTable);

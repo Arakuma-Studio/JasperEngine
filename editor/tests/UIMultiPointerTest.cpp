@@ -207,6 +207,78 @@ TEST_F(UIMultiPointerTest, RegisterEventMethodIsNotCalledTwice) {
     up(0, 50, 50);
 }
 
+// review LOW 6: the collision rule follows the live subscriptions: two of them count as two,
+// an unregistered or cleared one no longer hides the method from the PointerEventData call
+TEST_F(UIMultiPointerTest, RegisterEventCollisionFollowsLiveSubscriptions) {
+    writeScript("Legacy",
+        "local M = {}\n"
+        "function M:init()\n"
+        "  self.ui = Image(self.scene, self.entity):getUIComponent()\n"
+        "  RegisterEvent(self, self.ui.onPointerDown, 'onPointerDown', 'a')\n"
+        "  RegisterEvent(self, self.ui.onPointerDown, 'onPointerDown', 'b')\n"
+        "end\n"
+        "function M:onPointerDown(a, b) log[#log + 1] = type(a) end\n"
+        "function M:drop(tag) UnregisterEvent(self, self.ui.onPointerDown, 'onPointerDown', tag) end\n"
+        "function M:again() RegisterEvent(self, self.ui.onPointerDown, 'onPointerDown', 'c') end\n"
+        "return M\n");
+    const Entity e = element("E", 0, 0, 100, 100);
+    addScript(scene, e, "Legacy");
+    start();
+
+    down(0, 50, 50);
+    up(0, 50, 50);
+    EXPECT_EQ(takeLog(), "number number") << "two subscriptions, no PointerEventData call";
+
+    lua("for _, s in ipairs(GameObject.findObjectsOfType('Legacy')) do s:drop('a') end");
+    down(0, 50, 50);
+    up(0, 50, 50);
+    EXPECT_EQ(takeLog(), "number") << "one subscription left: still the old pattern";
+
+    lua("for _, s in ipairs(GameObject.findObjectsOfType('Legacy')) do s:drop('b') end");
+    down(0, 50, 50);
+    up(0, 50, 50);
+    EXPECT_EQ(takeLog(), "userdata") << "no subscription left: the EventSystem call";
+
+    // subscribed again, then the event cleared from C++: the EventSystem call again
+    lua("for _, s in ipairs(GameObject.findObjectsOfType('Legacy')) do s:again() end");
+    down(0, 50, 50);
+    up(0, 50, 50);
+    EXPECT_EQ(takeLog(), "number");
+    scene->getComponent<UIComponent>(e).onPointerDown.clear();
+    down(0, 50, 50);
+    up(0, 50, 50);
+    EXPECT_EQ(takeLog(), "userdata") << "a cleared event's subscription is gone";
+}
+
+// review LOW-MEDIUM 5: a PointerEventData a script keeps gives no GameObjects once its scene was deleted
+TEST_F(UIMultiPointerTest, KeptPointerEventDataOutlivesItsScene) {
+    writeScript("Keeper",
+        "local M = {}\n"
+        "function M:onPointerDown(e) kept = e end\n"
+        "return M\n");
+    const Entity e = element("E", 0, 0, 100, 100);
+    addScript(scene, e, "Keeper");
+    start();
+    down(0, 50, 50);
+    up(0, 50, 50);
+    EXPECT_EQ(lua("return kept.target.name .. ' ' .. kept.pointerEnter.name"), "E E");
+
+    camera.reset();
+    Engine::removeAllScenes();
+    LuaBinding::cleanupLuaScripts(scene);
+    ObjectManager::forgetScene(scene);
+    for (auto it = scenes.begin(); it != scenes.end(); ++it) {
+        if (it->get() == scene) {
+            scenes.erase(it);
+            break;
+        }
+    }
+    scene = nullptr;
+    EXPECT_EQ(lua("return tostring(kept.target) .. ' ' .. tostring(kept.pointerEnter) .. ' ' .. tostring(kept.pointerPress) .. ' ' .. kept.pointerId"),
+              "nil nil nil 0");
+    lua("kept = nil");
+}
+
 // the drag sequence: potential drag, begin past the threshold, drag, drop on the slot under the
 // finger, end; no click after a drag; useDragThreshold = false begins at once
 TEST_F(UIMultiPointerTest, DragSequenceDropsOnTheSlotUnderThePointer) {
@@ -290,6 +362,42 @@ TEST_F(UIMultiPointerTest, CancelPaths) {
     EXPECT_EQ(takeLog(), "down") << "a scene leaving: no callbacks into it";
     EXPECT_TRUE(ui().getPointers().empty());
     EXPECT_FALSE(scene->getComponent<ButtonComponent>(e).pressed);
+
+    // D6: Button.disabled set mid-press cancels the press at the next update
+    down(0, 50, 50);
+    scene->getComponent<ButtonComponent>(e).disabled = true;
+    frame();
+    EXPECT_EQ(takeLog(), "down uptrue") << "disabled while pressed: cancelled, no click";
+    EXPECT_FALSE(scene->getComponent<ButtonComponent>(e).pressed);
+    EXPECT_FALSE(ui().isPointerCaptured(0));
+    up(0, 50, 50);
+    EXPECT_EQ(takeLog(), "");
+}
+
+// review LOW 7: a scene leaving the layers lets go of a held stick without callbacks into it
+TEST_F(UIMultiPointerTest, ResetButtonStatesReleasesControlsWithoutCallbacks) {
+    Entity background, handle;
+    const Entity root = stick(OnScreenStickMode::DYNAMIC, background, handle);
+    const Entity fire = element("Fire", 400, 0, 100, 100);
+    scene->addComponent<OnScreenButtonComponent>(fire, {});
+    count(stickOf(root).onRelease, "stickRelease");
+    stickOf(root).onValueChanged.add("t", std::function<void(float, float)>([this](float, float) { counts["stickValue"]++; }));
+    count(scene->getComponent<OnScreenButtonComponent>(fire).onRelease, "fireRelease");
+    start();
+
+    down(0, 150, 450);
+    move(0, 175, 450);
+    down(1, 450, 50);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.5f, 1e-4f);
+    const int values = counts["stickValue"];
+    ui().resetButtonStates();
+    EXPECT_EQ(counts["stickValue"], values);
+    EXPECT_EQ(counts["stickRelease"], 0);
+    EXPECT_EQ(counts["fireRelease"], 0);
+    EXPECT_FALSE(stickOf(root).pressed);
+    EXPECT_FALSE(scene->getComponent<OnScreenButtonComponent>(fire).pressed);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.0f, 1e-4f) << "no input left behind";
+    EXPECT_NEAR(stickOf(root).value.x, 0.0f, 1e-4f);
 }
 
 // the right mouse button reaches the script callbacks (button right), not the built-in widgets
@@ -446,6 +554,54 @@ TEST_F(UIMultiPointerTest, OnScreenButtonPressesItsAction) {
     EXPECT_TRUE(scene->getComponent<OnScreenButtonComponent>(fire).pressed) << "a finger sliding on presses it";
     up(2, 50, 50);
     EXPECT_FALSE(scene->getComponent<OnScreenButtonComponent>(fire).pressed);
+}
+
+// review MEDIUM-LOW 4 (spec 12): a finger holding a stick slides onto a pressWhenPointerEnters
+// On-Screen Button: it presses it besides the stick; leaving (releaseWhenPointerLeaves), the up
+// and a cancel release it
+TEST_F(UIMultiPointerTest, StickFingerSlidingOntoAButtonPressesIt) {
+    Entity background, handle;
+    const Entity root = stick(OnScreenStickMode::FIXED, background, handle);   // centre (150, 450)
+    const Entity fire = element("Fire", 400, 400, 100, 100);
+    OnScreenButtonComponent control;
+    control.pressWhenPointerEnters = true;
+    control.releaseWhenPointerLeaves = true;
+    scene->addComponent<OnScreenButtonComponent>(fire, control);
+    auto firePressed = [&]() { return scene->getComponent<OnScreenButtonComponent>(fire).pressed; };
+    start();
+
+    down(0, 150, 450);
+    move(0, 450, 450);
+    EXPECT_TRUE(firePressed()) << "the stick's finger slid onto the button";
+    EXPECT_TRUE(stickOf(root).pressed) << "the stick keeps its finger";
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 1.0f, 1e-4f);
+    EXPECT_NEAR(InputActions::getAxis("Fire1"), 1.0f, 1e-4f);
+    move(0, 200, 450);
+    EXPECT_FALSE(firePressed()) << "slid off: released (releaseWhenPointerLeaves)";
+    EXPECT_TRUE(stickOf(root).pressed);
+    move(0, 450, 450);
+    EXPECT_TRUE(firePressed());
+    up(0, 450, 450);
+    EXPECT_FALSE(firePressed()) << "the up releases both";
+    EXPECT_FALSE(stickOf(root).pressed);
+    EXPECT_NEAR(InputActions::getAxis("Fire1"), 0.0f, 1e-4f);
+
+    // without releaseWhenPointerLeaves it stays pressed until the up
+    scene->getComponent<OnScreenButtonComponent>(fire).releaseWhenPointerLeaves = false;
+    down(1, 150, 450);
+    move(1, 450, 450);
+    move(1, 200, 450);
+    EXPECT_TRUE(firePressed());
+    up(1, 200, 450);
+    EXPECT_FALSE(firePressed());
+
+    // a cancel releases it too
+    down(2, 150, 450);
+    move(2, 450, 450);
+    EXPECT_TRUE(firePressed());
+    ui().eventOnPointerCancel(2);
+    EXPECT_FALSE(firePressed());
+    EXPECT_FALSE(stickOf(root).pressed);
 }
 
 // D15 per pointer: the mouse hovering, a finger pressing, a finger elsewhere

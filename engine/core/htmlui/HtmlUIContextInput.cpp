@@ -8,6 +8,7 @@
 #include "HtmlUIContext.h"
 
 #include "RmlTextInputHandler.h"
+#include "effects/EffectRuntime.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -107,6 +108,18 @@ bool HtmlUIContext::processTouchCancel(int pointer){
     touchPresses.erase(pointer);
 
     return false;
+}
+
+void HtmlUIContext::processMouseCancel(){
+    // nothing held: no pointercancel
+    if (!context || mouseButtons == 0)
+        return;
+    const bool primary = (mouseButtons & 1) != 0;
+    mouseButtons = 0;
+    context->ProcessPointerCancel(Rml::MousePointerId);
+    activeElement.reset();
+    if (primary)
+        htmlui::EffectRuntime::get().onPointerButton(context, false);
 }
 
 bool HtmlUIContext::processMouseWheel(Rml::Vector2f offset, int modifiers){

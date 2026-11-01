@@ -56,6 +56,8 @@ namespace jasperengine {
         bool processMouseButtonDown(int button, int modifiers);
         bool processMouseButtonUp(int button, int modifiers);
         bool processMouseLeave();
+        // ui-multitouch D6: the mouse's held buttons let go without a click or drop (pointercancel)
+        void processMouseCancel();
         // true when the hovered/active element blocks the pointer: an element inside a
         // document, or a document with a background colour or a decorator (phase 1)
         bool isPointerOverContent() const;
@@ -94,6 +96,7 @@ namespace jasperengine {
         bool processTouchEnd(int pointer, Rml::Vector2f position, int modifiers);
         bool processTouchCancel(int pointer);
         bool hasTouch(int pointer) const;
+        const std::vector<int>& getTouches() const { return touches; }
         bool isTouchOverContent(int pointer) const;
         // D1: the DOM pointerId of an Input finger id (the mouse is pointer 1)
         static int touchPointerId(int fingerId) { return fingerId + 2; }
@@ -151,6 +154,7 @@ namespace jasperengine {
         bool renderedOnce = false;
         // the element a primary button press started on, until the release (RmlUi keeps it private)
         Rml::ObserverPtr<Rml::Element> activeElement;
+        int mouseButtons = 0;   // the RmlUi mouse buttons held (bit per button), for processMouseCancel
 
         // --- p1-input ---
         // outlives the RmlUi context (its text fields call OnDestroy when they go)

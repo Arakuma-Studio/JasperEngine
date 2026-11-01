@@ -135,6 +135,11 @@ namespace jasperengine{
         bool eventOnPointerUp(int pointer, int button, float x, float y, int mods, bool touch, bool world = true);
         bool eventOnPointerMove(int pointer, float x, float y, int mods, bool touch, bool world = true);
         bool eventOnTouchCancel(int pointer);
+        // ui-multitouch D6: a mouse button released outside the canvas. The mouse pointer ends
+        // without a click or drop (pointercancel; every held button: one DOM pointer)
+        bool eventOnMouseCancel(int button);
+        // D6: every finger and the mouse end without a click (pause, focus loss)
+        void cancelAllPointers();
         bool eventOnWheel(float dx, float dy, int mods);
         void eventOnMouseLeave();
         bool eventOnKeyDown(int key, bool repeat, int mods);
@@ -329,6 +334,7 @@ namespace jasperengine{
         bool isWorldPointerCaptured(int pointer, int button, bool touch) const;   // button < 0: any mouse button
         bool dispatchWorldWheel(float dx, float dy, int mods);   // the hovered texture document
         void textureMouseLeave();
+        void textureCancelAll();   // ui-multitouch D6: pause, focus loss
 
         // --- p2-html ---
         std::shared_ptr<HtmlUICompatState> compatState;

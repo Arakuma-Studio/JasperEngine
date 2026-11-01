@@ -377,6 +377,11 @@ namespace jasperengine {
         static Framebuffer compositeFramebuffer;
 
         static bool transformCoordPos(float& x, float& y);
+        // ui-multitouch D6: a pointer ends without a click in the documents and the component
+        // UI of every scene (a finger or mouse button released outside the canvas; touch false:
+        // pointerOrButton is the mouse button), or every pointer (pause, focus loss)
+        static void cancelUIPointer(int pointerOrButton, bool touch);
+        static void cancelAllUIPointers();
         // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
         static void flushCharInput();
         // systemDraw: the held gamepad directions a document took repeat (UI clock)

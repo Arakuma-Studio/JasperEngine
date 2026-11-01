@@ -1700,9 +1700,9 @@ void Engine::systemPause(){
     paused = true;
     // the key and button ups of a paused app never come: the first frame after resume sees them
     Input::releaseAll();
-    // so the component UI's presses end now (cancelled: no click), its controls let go (D6)
-    for (Scene* scene : getScenesSnapshot())
-        scene->getSystem<UISystem>()->cancelAllPointers();
+    // so the presses of the documents and the component UI end now (cancelled: no click), the
+    // controls let go (D6)
+    cancelAllUIPointers();
 
     // a paused app may be killed without another call
     UserSettings::save();
@@ -1721,6 +1721,9 @@ void Engine::systemFocus(bool hasFocus){
         return;
     }
     focused = hasFocus;
+    // a window that lost the focus gets no more ups: the UI presses end now (D6, cancelled)
+    if (!hasFocus)
+        cancelAllUIPointers();
     Engine::onFocus.call(hasFocus);
     ScriptRuntime::broadcast(ScriptMessage::ApplicationFocus, [hasFocus](lua_State* L) { lua_pushboolean(L, hasFocus ? 1 : 0); return 1; },
         [hasFocus](ScriptBase& script) { script.onApplicationFocus(hasFocus); });
@@ -2075,10 +2078,12 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 void Engine::systemTouchEnd(int pointer, float x, float y){
     const bool visible = Input::isTouchVisible(pointer);
     if (!transformCoordPos(x, y)){
-        // lifted outside the canvas: no event, but the finger is not down any more
+        // lifted outside the canvas: no event, but the finger is not down any more, and the
+        // documents and the component UI that tracked it let go of it without a click (D6)
         Input::removeTouch(pointer);
         if (Engine::isCallMouseInTouchEvent() && visible)
             Input::releaseMousePressed(D_MOUSE_BUTTON_1);
+        cancelUIPointer(pointer, true);
         return;
     }
     {
@@ -2158,6 +2163,25 @@ void Engine::systemTouchMove(int pointer, float x, float y){
     }
 }
 
+void Engine::cancelUIPointer(int pointerOrButton, bool touch){
+    for (Scene* scene : getScenesSnapshot()){
+        if (touch){
+            scene->getSystem<UIDocumentSystem>()->eventOnTouchCancel(pointerOrButton);
+            scene->getSystem<UISystem>()->eventOnPointerCancel(pointerOrButton);
+        }else{
+            scene->getSystem<UIDocumentSystem>()->eventOnMouseCancel(pointerOrButton);
+            scene->getSystem<UISystem>()->eventOnPointerCancel(-1 - pointerOrButton);
+        }
+    }
+}
+
+void Engine::cancelAllUIPointers(){
+    for (Scene* scene : getScenesSnapshot()){
+        scene->getSystem<UIDocumentSystem>()->cancelAllPointers();
+        scene->getSystem<UISystem>()->cancelAllPointers();
+    }
+}
+
 void Engine::systemTouchCancel(){
     std::vector<Touch> cancelled = Input::getTouches();
     for (const Touch& touch : cancelled)
@@ -2233,10 +2257,12 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
 }
 void Engine::systemMouseUp(int button, float x, float y, int mods){
     if (!transformCoordPos(x, y)){
-        // released outside the canvas: no event, but the button is not held any more
+        // released outside the canvas: no event, but the button is not held any more, and the
+        // documents and the component UI that tracked it let go of it without a click (D6)
         Input::releaseMousePressed(button);
         if (Engine::isCallTouchInMouseEvent())
             Input::removeTouch(0);
+        cancelUIPointer(button, false);
         return;
     }
     {

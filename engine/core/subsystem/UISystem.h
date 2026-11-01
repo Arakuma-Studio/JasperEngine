@@ -92,6 +92,10 @@ namespace jasperengine{
         bool internalGesture = false;         // panel move / resize, scrollbar: no legacy drag, no click
         Vector2 panelSizeAcc = Vector2(0, 0); // float to int accumulation of a resize
         Entity control = NULL_ENTITY;         // the on-screen control this pointer holds
+        // an On-Screen Button (pressWhenPointerEnters) a finger that holds another control (or
+        // went down elsewhere on the UI) slid onto: pressed by this pointer besides its control,
+        // released when it leaves (releaseWhenPointerLeaves), on the up or the cancel
+        Entity enteredButton = NULL_ENTITY;
     };
 
     class JASPERENGINE_API UISystem : public SubSystem {
@@ -258,7 +262,8 @@ namespace jasperengine{
         void controlMove(UIPointerState& state);
         void controlUp(UIPointerState& state);
         void stickUpdate(Entity entity, OnScreenStickComponent& stick, const Vector2& pointer, bool first);
-        void stickRelease(Entity entity);
+        // callbacks false: the state, sources and visuals only (a scene being removed)
+        void stickRelease(Entity entity, bool callbacks = true);
         void buttonControlPress(Entity entity, int pointerId);
         void buttonControlRelease(Entity entity, int pointerId);
         void touchAreaRelease(Entity entity);
