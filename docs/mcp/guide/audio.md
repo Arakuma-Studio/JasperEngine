@@ -190,6 +190,12 @@ new Audio Sources get).
 - `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` plays a clip at a world
   position (3D against the scene's camera, logarithmic rolloff) without a GameObject; it belongs to
   `scene` and stops with it.
+- **3D**: a source with a Transform plays 3D under a camera. One listener hears every scene: the
+  main scene's camera (a perspective camera at its position; an orthographic or UI camera at the
+  centre of its view, so a sound at the centre of the screen is centred). A layer scene's sources
+  are heard where they are in its own camera's view. Doppler follows speeds in units a second,
+  under perspective cameras only (2D and UI scenes move in pixels); a teleport or a camera cut has
+  none. A clocked source (`enableClocked`) starts at the game time it was played.
 
 ## 8. Scene loads, persistence, devices
 
@@ -198,7 +204,9 @@ new Audio Sources get).
   (DontDestroyOnLoad) keep their sources, voices, one-shots and fades across loads.
 - No audio device (CI, a server, xvfb): the engine mixes without output (log: "No audio output
   available ... mixing without output"); `AudioSystem.isOutputAvailable()` is false and everything
-  else behaves as on a device. `JASPERENGINE_AUDIO_BACKEND=nosound|null` forces it.
+  else behaves as on a device. `JASPERENGINE_AUDIO_BACKEND=nosound|null` forces it. A player run
+  with `--headless` or `--silent-audio` mixes on the null backend, by the frames' game time: its
+  sounds play, end and fire their events as in a normal run.
 - The Web needs a user gesture before sound starts (browsers); mixing and meters run before it.
 
 ## 9. Recipes
