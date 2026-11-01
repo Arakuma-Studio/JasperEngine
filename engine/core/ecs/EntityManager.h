@@ -10,6 +10,7 @@
 #include <vector>
 #include <string>
 #include <limits>
+#include <type_traits>
 #include "Entity.h"
 #include "Signature.h"
 #include "Log.h"
@@ -37,25 +38,32 @@ namespace jasperengine{
         Entity lastUserEntity = LAST_SYSTEM_ENTITY; // next user entity starts at 1001
         std::map<Entity, EntityMetadata> metadata;
 
-        // Which ids are created and their signatures, by id in pages of 256: isCreated and
+        // Which ids are created and their signatures, by id in pages of 64: isCreated and
         // getSignature run per entity in the systems' loops (the Canvas Group pass, rendering,
         // physics), where a search of `metadata` cost a dozen dependent cache misses an entity;
-        // here they are one array read, and entities created together share a page. A mirror
-        // of `metadata` (every change of it goes through track/untrack/setSignature); ids from
-        // SIGNATURE_PAGED_LIMIT up (never made by createUserEntity in practice) use `metadata`
-        // only, so a stray huge id cannot grow the page table. A page goes with its last entity.
-        static constexpr unsigned SIGNATURE_PAGE_BITS = 8;
+        // here they are one array read, and entities created together share a page (about
+        // 1 KB). A mirror of `metadata`: every insertion goes through insertMetadata, every
+        // erase through untrack, every signature through setSignature. Ids from
+        // SIGNATURE_PAGED_LIMIT up (createUserEntity reaches them only after 16 million ids;
+        // a scene file or recreateEntity can name one) use `metadata` only, so a stray huge id
+        // cannot grow the page table past 2 MB. A page goes with its last entity.
+        static constexpr unsigned SIGNATURE_PAGE_BITS = 6;
         static constexpr Entity SIGNATURE_PAGE_SIZE = Entity(1) << SIGNATURE_PAGE_BITS;
-        static constexpr Entity SIGNATURE_PAGED_LIMIT = Entity(1) << 28;
+        static constexpr Entity SIGNATURE_PAGED_LIMIT = Entity(1) << 24;
         struct SignaturePage{
             Signature signatures[SIGNATURE_PAGE_SIZE];
             std::bitset<SIGNATURE_PAGE_SIZE> created;
             size_t count = 0;
         };
         std::vector<std::unique_ptr<SignaturePage>> signaturePages;
+        bool loggedUnpaged = false;
 
         static bool isPaged(Entity entity){
             return entity < SIGNATURE_PAGED_LIMIT;
+        }
+
+        static Entity pageSlot(Entity entity){
+            return entity & (SIGNATURE_PAGE_SIZE - 1);
         }
 
         const SignaturePage* findPage(Entity entity) const{
@@ -63,10 +71,14 @@ namespace jasperengine{
             return page < signaturePages.size() ? signaturePages[page].get() : nullptr;
         }
 
-        // `entity` was added to `metadata` (with an empty signature)
-        void track(Entity entity){
+        // the page of a paged id, made if needed (may throw: before `metadata` changes)
+        SignaturePage* preparePage(Entity entity){
             if (!isPaged(entity)){
-                return;
+                if (!loggedUnpaged){
+                    loggedUnpaged = true;
+                    Log::warn("Entity id %u is past %u: its signature lookups are slower (a tree search)", entity, SIGNATURE_PAGED_LIMIT);
+                }
+                return nullptr;
             }
             const size_t index = entity >> SIGNATURE_PAGE_BITS;
             if (index >= signaturePages.size()){
@@ -75,17 +87,42 @@ namespace jasperengine{
             if (!signaturePages[index]){
                 signaturePages[index] = std::make_unique<SignaturePage>();
             }
-            SignaturePage& page = *signaturePages[index];
-            const Entity slot = entity & (SIGNATURE_PAGE_SIZE - 1);
-            if (!page.created.test(slot)){
-                page.created.set(slot);
-                page.signatures[slot] = Signature();
-                page.count++;
+            return signaturePages[index].get();
+        }
+
+        // a page of no entity goes, and the empty end of the table with it
+        void releaseIfEmpty(Entity entity) noexcept{
+            const size_t index = entity >> SIGNATURE_PAGE_BITS;
+            if (!isPaged(entity) || index >= signaturePages.size() || !signaturePages[index] || signaturePages[index]->count != 0){
+                return;
+            }
+            signaturePages[index].reset();
+            while (!signaturePages.empty() && !signaturePages.back()){
+                signaturePages.pop_back();
             }
         }
 
+        // `entity` (not created) added to `metadata` with its page: both or neither
+        std::map<Entity, EntityMetadata>::iterator insertMetadata(Entity entity){
+            SignaturePage* page = preparePage(entity);
+            std::map<Entity, EntityMetadata>::iterator it;
+            try{
+                it = metadata.try_emplace(entity).first;
+            }catch (...){
+                releaseIfEmpty(entity);
+                throw;
+            }
+            if (page){
+                const Entity slot = pageSlot(entity);
+                page->created.set(slot);
+                page->signatures[slot] = Signature();
+                page->count++;
+            }
+            return it;
+        }
+
         // `entity` was erased from `metadata`
-        void untrack(Entity entity){
+        void untrack(Entity entity) noexcept{
             if (!isPaged(entity)){
                 return;
             }
@@ -94,23 +131,30 @@ namespace jasperengine{
                 return;
             }
             SignaturePage& page = *signaturePages[index];
-            const Entity slot = entity & (SIGNATURE_PAGE_SIZE - 1);
+            const Entity slot = pageSlot(entity);
             if (!page.created.test(slot)){
                 return;
             }
             page.created.reset(slot);
             page.signatures[slot] = Signature();
-            if (--page.count == 0){
-                signaturePages[index].reset();
-                while (!signaturePages.empty() && !signaturePages.back()){
-                    signaturePages.pop_back();
-                }
-            }
+            page.count--;
+            releaseIfEmpty(entity);
         }
         // entities whose own active flag is off; zero lets hierarchy queries return early
         size_t inactiveCount = 0;
 
     public:
+
+        EntityManager() = default;
+        // not copyable (the pages are owned; an exported class's implicit copy would be
+        // instantiated by MSVC and fail), movable
+        EntityManager(const EntityManager&) = delete;
+        EntityManager& operator=(const EntityManager&) = delete;
+        EntityManager(EntityManager&&) noexcept = default;
+        EntityManager& operator=(EntityManager&&) noexcept = default;
+
+        // ids below it have their signatures in pages (tests)
+        static constexpr Entity signaturePagedLimit() { return SIGNATURE_PAGED_LIMIT; }
 
         static constexpr Entity firstSystemEntity() { return FIRST_SYSTEM_ENTITY; }
         static constexpr Entity lastSystemEntity()  { return LAST_SYSTEM_ENTITY; }
@@ -118,8 +162,7 @@ namespace jasperengine{
 
         bool recreateEntity(Entity entity) { // for internal editor use only
             if (!isCreated(entity)){
-                metadata[entity];
-                track(entity);
+                insertMetadata(entity);
                 return true;
             }
             return false;
@@ -141,8 +184,7 @@ namespace jasperengine{
         Entity createSystemEntity() {
             for (Entity e = FIRST_SYSTEM_ENTITY; e <= LAST_SYSTEM_ENTITY; ++e){
                 if (!isCreated(e)){
-                    metadata[e];
-                    track(e);
+                    insertMetadata(e);
                     return e;
                 }
             }
@@ -165,16 +207,15 @@ namespace jasperengine{
                 }
             }
 
+            insertMetadata(candidate);
             lastUserEntity = candidate;
-            metadata[candidate];
-            track(candidate);
             return candidate;
         }
 
         bool isCreated(Entity entity) const {
             if (isPaged(entity)){
                 const SignaturePage* page = findPage(entity);
-                return page && page->created.test(entity & (SIGNATURE_PAGE_SIZE - 1));
+                return page && page->created.test(pageSlot(entity));
             }
             return metadata.count(entity) > 0;
         }
@@ -210,19 +251,18 @@ namespace jasperengine{
             auto it = metadata.find(entity);
             if (it == metadata.end()){
                 Log::error("Entity does not exist to set signature");
-                it = metadata.try_emplace(entity).first;
-                track(entity);
+                it = insertMetadata(entity);
             }
             it->second.signature = signature;
             if (isPaged(entity)){
-                signaturePages[entity >> SIGNATURE_PAGE_BITS]->signatures[entity & (SIGNATURE_PAGE_SIZE - 1)] = signature;
+                signaturePages[entity >> SIGNATURE_PAGE_BITS]->signatures[pageSlot(entity)] = signature;
             }
         }
 
         Signature getSignature(Entity entity) const{
             if (isPaged(entity)){
                 const SignaturePage* page = findPage(entity);
-                const Entity slot = entity & (SIGNATURE_PAGE_SIZE - 1);
+                const Entity slot = pageSlot(entity);
                 if (page && page->created.test(slot)){
                     return page->signatures[slot];
                 }
@@ -241,8 +281,7 @@ namespace jasperengine{
             auto it = metadata.find(entity);
             if (it == metadata.end()){
                 Log::error("Entity does not exist to set name");
-                it = metadata.try_emplace(entity).first;
-                track(entity);
+                it = insertMetadata(entity);
             }
             it->second.name = name;
         }
@@ -368,6 +407,10 @@ namespace jasperengine{
             return it->second.layer;
         }
     };
+
+    // MSVC instantiates every member of an exported class: an implicit copy would not compile
+    static_assert(!std::is_copy_constructible_v<EntityManager>, "EntityManager owns its signature pages");
+    static_assert(std::is_nothrow_move_constructible_v<EntityManager>, "EntityManager moves");
 
 }
 

@@ -28,6 +28,10 @@ namespace jasperengine {
     class JASPERENGINE_API AnimEngine {
     public:
         static AnimEngine& instance();
+        // the one engine; not copyable (it owns its tweens: MSVC instantiates the copies of
+        // an exported class)
+        AnimEngine(const AnimEngine&) = delete;
+        AnimEngine& operator=(const AnimEngine&) = delete;
 
         // once per frame (idempotent while the times do not change): the UI clock time in
         // seconds; the game clock follows Engine::getGameTime()
