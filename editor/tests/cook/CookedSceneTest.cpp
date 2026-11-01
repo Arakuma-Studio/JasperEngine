@@ -14,6 +14,9 @@
 #include "Catalog.h"
 #include "component/ActionComponent.h"
 #include "component/AudioSourceComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/SkyboxComponent.h"
 #include "component/SplineComponent.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "cook/SceneCooker.h"
@@ -195,6 +198,119 @@ TEST(CookedScene, SplineCurveThroughAccessors) {
     EXPECT_FLOAT_EQ(after.spline.knots()[1].rollDeg, 12.0f);
     EXPECT_EQ(after.spline.upAxis(), Vector3(0.0f, 0.0f, 1.0f));
     EXPECT_GT(after.spline.version(), SplineComponent().spline.version()) << "the load must mark the curve dirty";
+}
+
+// The default sky of a new 3D scene is six images the editor holds in memory (the Compile path's
+// generated code embeds them); a prebuilt player only reads files, so its cooked Skybox names the
+// files the build ships (SceneCooker::defaultSkyFiles), or the player has a cube texture with no
+// face ("Texture is missing texture for face 0" and no sky: the upgrade test's prebuilt player of
+// an origin/main 3D scene)
+TEST(CookedScene, DefaultSkyShipsItsFaces) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    const Entity entity = scene->createEntity();
+    ASSERT_NE(entity, NULL_ENTITY);
+    ProjectUtils::addEntityComponent(scene, entity, ComponentType::SkyboxComponent, source.scene->entities, YAML::Node());
+    ProjectUtils::setDefaultSkyTexture(scene->getComponent<SkyboxComponent>(entity).texture);
+
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {entity}, loaded, error)) << error;
+    const Texture& texture = loaded.scene->scene->getComponent<SkyboxComponent>(entity).texture;
+    ASSERT_EQ(texture.getNumFaces(), 6u);
+    std::set<std::string> shipped;
+    for (const editor::cook::CookedFileBytes& file : editor::cook::SceneCooker::defaultSkyFiles()) {
+        ASSERT_GT(file.bytes.size(), 8u) << file.relativePath;
+        EXPECT_EQ(std::string(file.bytes.begin(), file.bytes.begin() + 4), "\x89PNG") << file.relativePath;
+        shipped.insert(file.relativePath);
+    }
+    for (size_t f = 0; f < 6; f++) {
+        const std::string path = texture.getPath(f);
+        ASSERT_FALSE(path.empty()) << "face " << f << " names no file";
+        EXPECT_TRUE(shipped.count("assets/" + path)) << path << " is not shipped";
+    }
+}
+
+// A body's colliders keep what their scene codec saves beside the reflected fields (the hooks of
+// ComponentHooks.cpp): a 2D polygon's vertex count (a player's vertex array holds its maximum, so
+// with no count a polygon fell back to the box of pointA and pointB: the upgrade test's prebuilt
+// player let its balls fall through the ground), a 2D collider's collision filter, and a 3D
+// body's allowed degrees of freedom and a mesh collider's indices
+TEST(CookedScene, RigidBodiesKeepTheirColliders) {
+    const char* text = R"(formatVersion: 1
+id: 4242
+name: Bodies
+scene:
+  backgroundColor: [0, 0, 0, 1]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Ground
+    components:
+      transform:
+        position: [30, 20, 0]
+      rigidbody2d:
+        enabled: true
+        type: static
+        numColliders: 2
+        colliders:
+          - type: polygon
+            pointA: [450, 20]
+            pointB: [0, 0]
+            friction: 0.4
+            contactEvents: true
+            categoryBits: 6
+            maskBits: 3
+            groupIndex: -2
+            vertices: [[0, 0], [900, 0], [900, 40], [0, 40]]
+          - type: chain
+            loop: true
+            categoryBits: 8
+            maskBits: 65533
+            groupIndex: 5
+            vertices: [[0, 0], [10, 0], [10, 10], [0, 10], [-5, 5]]
+  - type: Entity
+    entity: 1002
+    name: Rock
+    components:
+      transform:
+        position: [0, 1, 0]
+      rigidbody:
+        enabled: true
+        type: dynamic
+        allowedDOFs:
+          translationX: true
+          translationY: true
+          translationZ: false
+          rotationX: false
+          rotationY: true
+          rotationZ: false
+        numColliders: 1
+        colliders:
+          - type: mesh
+            source: raw_mesh
+            vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+            indices: [0, 1, 2, 0, 2, 3, 0, 3, 1, 1, 3, 2]
+)";
+    DecodedScene source = decodeSceneText(text, "Bodies.scene");
+    Scene* scene = source.scene->scene;
+    ASSERT_EQ(source.scene->entities.size(), 2u);
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, source.scene->entities, loaded, error)) << error;
+    for (ComponentType type : {ComponentType::Rigidbody2DComponent, ComponentType::RigidbodyComponent}) {
+        const reflect::ComponentDesc* desc = reflect::find(type);
+        ASSERT_NE(desc, nullptr);
+        for (Entity entity : source.scene->entities) {
+            if (!desc->find(scene, entity)) continue;
+            EXPECT_EQ(encodeOf(*desc, loaded.scene->scene, entity), encodeOf(*desc, scene, entity)) << desc->cppName;
+        }
+    }
+    const Collider2D& polygon = loaded.scene->scene->getComponent<Rigidbody2DComponent>(source.scene->entities[0]).colliders[0];
+    EXPECT_EQ(polygon.numVertices, 4u);
+    EXPECT_EQ(polygon.groupIndex, -2);
 }
 
 TEST(RuntimeFields, Generated) {

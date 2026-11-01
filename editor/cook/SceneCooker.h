@@ -35,7 +35,7 @@ namespace jasperengine::editor {
 namespace jasperengine::editor::cook {
 
     struct CookedFileBytes {
-        std::string relativePath;      // "scenes/3.jscn", "prefabs/2.jpfb"
+        std::string relativePath;      // "scenes/3.jscn", "prefabs/2.jpfb", "assets/je-default-sky/..."
         std::vector<uint8_t> bytes;
     };
 
@@ -61,6 +61,11 @@ namespace jasperengine::editor::cook {
         // prefab of the build; on the main thread, while the scenes are loaded
         static bool cookProject(Project* project, std::vector<CookedFileBytes>& files, std::vector<CookedPrefabInfo>& prefabs,
                                 std::string& error);
+
+        // The default sky's six images (a new 3D scene's Skybox, held in memory by the editor) as
+        // the files a prebuilt build ships under assets/ ("assets/je-default-sky/..."): a cooked
+        // default-sky Skybox names them, as a player reads only files
+        static std::vector<CookedFileBytes> defaultSkyFiles();
 
         // one component's write context (the flags the scene codec and the exported code look at)
         static void describe(const EntityRegistry* registry, Entity entity, ::jasperengine::cook::WriteContext& ctx);

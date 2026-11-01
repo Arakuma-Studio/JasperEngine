@@ -103,7 +103,9 @@ namespace {
     // The input's lines without the transforms' derived values, which saves no longer write
     // (scene format 4, docs/specs/S29-version-control.md R20)
     std::string withoutDerivedTransform(const std::string& text) {
-        static const char* const keys[] = {"worldPosition:", "worldRotation:", "worldScale:", "localMatrix:", "modelMatrix:", "normalMatrix:"};
+        // and a RectTransform's scissor, the clip rectangle of the last draw (no longer written either)
+        static const char* const keys[] = {"worldPosition:", "worldRotation:", "worldScale:", "localMatrix:", "modelMatrix:", "normalMatrix:",
+                                           "scissor:"};
         std::istringstream in(text);
         std::string line, out;
         while (std::getline(in, line)) {

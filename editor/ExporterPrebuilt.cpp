@@ -470,7 +470,7 @@ bool editor::Exporter::cookScenes() {
             return false;
         }
     }
-    Out::info("Cooked %zu scenes and prefabs", cookedFiles.size());
+    Out::info("Cooked %zu scenes, prefabs and default-sky faces", cookedFiles.size());
     // the content trees the steps before made (assets, lua, the shaders under assets/shaders)
     std::string error;
     if (!copyInto(getExportProjectRoot() / "assets", contentDir / "assets", error) ||
@@ -727,7 +727,7 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
     }
     for (const cook::CookedFileBytes& file : cookedFiles) {
         if (file.relativePath.rfind("scenes/", 0) == 0) manifest.scenes.push_back(file.relativePath);
-        else manifest.prefabs.push_back(file.relativePath);
+        else if (file.relativePath.rfind("prefabs/", 0) == 0) manifest.prefabs.push_back(file.relativePath);
     }
     // the shaders the build made for its backend
     std::error_code ec;

@@ -16,6 +16,7 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "memory/MemoryStats.h"
 #include "util/JoltJobAdapter.h"
+#include "Jolt/Core/JobSystemSingleThreaded.h"
 #include "Jolt/RegisterTypes.h"
 #include "Jolt/Core/Factory.h"
 #include "Jolt/Physics/PhysicsSettings.h"
@@ -182,6 +183,11 @@ JPH::JobSystem& JoltShapeBuilder::sharedPhysicsJobSystem(){
 #else
     static JoltJobAdapter* instance = new JoltJobAdapter(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers);
 #endif
+    return *instance;
+}
+
+JPH::JobSystem& JoltShapeBuilder::callingThreadPhysicsJobSystem(){
+    static JPH::JobSystemSingleThreaded* instance = new JPH::JobSystemSingleThreaded(JPH::cMaxPhysicsJobs);
     return *instance;
 }
 

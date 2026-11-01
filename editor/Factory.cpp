@@ -814,7 +814,8 @@ std::string editor::Factory::formatScriptPropertyValue(const ScriptPropertyValue
     } else if (std::holds_alternative<float>(value)) {
         return formatFloat(std::get<float>(value));
     } else if (std::holds_alternative<std::string>(value)) {
-        return formatString(std::get<std::string>(value));
+        // not a bare literal: AssetRef, also an alternative, converts from a C string too
+        return "std::string(" + formatString(std::get<std::string>(value)) + ")";
     } else if (std::holds_alternative<Vector2>(value)) {
         return formatVector2(std::get<Vector2>(value));
     } else if (std::holds_alternative<Vector3>(value)) {

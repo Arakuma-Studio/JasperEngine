@@ -449,8 +449,16 @@ async def test_outside_edit_is_reported(ed: Editor):
     ed.check_eq(found[0].get("line"), 3, f"line: {found[0]}")
     time.sleep(0.05)
     path.write_text(good)
-    r = await ed.call_raw("editor_status")
-    ext = (r.structured if isinstance(r.structured, dict) else {}).get("external_changes") or {}
-    ed.check(not [p for p in ext.get("problems", []) if p.get("path") == "assets/vat/quad.vat"], f"fixed: {ext}")
+    # the watcher's batch of the broken write may still be on its way (read before the fix was
+    # written): the next reports, as soon as they have the fixed file, have no problem for it
+    reports = []
+    for _ in range(20):
+        r = await ed.call_raw("editor_status")
+        ext = (r.structured if isinstance(r.structured, dict) else {}).get("external_changes") or {}
+        reports.append(ext)
+        if not [p for p in ext.get("problems", []) if p.get("path") == "assets/vat/quad.vat"]:
+            break
+        await asyncio.sleep(0.25)
+    ed.check(not [p for p in reports[-1].get("problems", []) if p.get("path") == "assets/vat/quad.vat"], f"fixed: {reports}")
     error = await lua(ed, 'return object("quad"):getVertexAnimator():getLoadError()')
     ed.check_eq(error[0], "", "the animator plays the fixed file")

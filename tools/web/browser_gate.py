@@ -25,6 +25,9 @@ page URL's query), "seconds" (the run length when --seconds is not given), "capt
 its value must contain), and "allow": substrings of console lines and uncaught exceptions that are expected (a
 deliberate crash) and fail nothing. Exit 2 when the gate itself cannot run (no Chrome, no page target).
 
+--until-line TEXT ends the run at the first console line containing TEXT (a game that prints when it
+is done; --seconds is then the cap).
+
 A baseline's "click": n clicks the canvas centre n times after the run (CDP Input.dispatchMouseEvent:
 trusted events, so a page can lock the pointer), each followed by "after_click_seconds" (default 2)
 of running; the console lines it causes are checked like the others.
@@ -314,6 +317,7 @@ def main() -> int:
     parser.add_argument("--transcript", type=Path, help="write the console transcript here too")
     parser.add_argument("--baseline", type=Path, help="JSON: rgb, tolerance (the canvas centre pixel), isolated")
     parser.add_argument("--expect", action="append", default=[], help="fail unless a console line contains this (repeatable)")
+    parser.add_argument("--until-line", help="end the run as soon as a console line contains this (--seconds is then the cap)")
     parser.add_argument("--query", action="append", default=[],
                         help="extra name=value added to the page URL's query (repeatable), e.g. jasperengine_watch_probe=1")
     parser.add_argument("--eval", dest="evaluate", help="JS expression evaluated in the page after the run; its value is printed")
@@ -379,7 +383,7 @@ def main() -> int:
         ready = False
         if args.until_ready:
             ready = cdp.pump(args.timeout, until=lambda event: READY_LINE in console_text(event))
-        cdp.pump(seconds)
+        cdp.pump(seconds, until=(lambda event: args.until_line in console_text(event)) if args.until_line else None)
 
         # user gestures the page waits for (pointer lock, audio): trusted clicks at the canvas centre
         for _ in range(int(baseline.get("click", 0))):

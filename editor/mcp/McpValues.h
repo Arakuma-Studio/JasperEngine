@@ -104,12 +104,23 @@ namespace jasperengine::editor::mcp {
         // editedKeys: for a shaderParams / shaderUniforms / shaderTextures collection, the
         // entries this edit names (only those are checked against the shader's manifest);
         // null checks every entry of `value`.
+        // A field of a submesh material linked to a .material file (submeshes[N].material.<field>)
+        // makes it the GameObject's own material first (unlinked, as an edit of the whole material
+        // does): left linked, the edit would be replaced by the file's value the next time the
+        // scene opens.
         static Command* buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity, ComponentType component,
                                              const std::string& propertyName, const PropertyData& property,
                                              const Json& value, std::string& error,
                                              std::function<void()> onChanged = nullptr,
                                              const std::string* shaderReference = nullptr,
                                              const std::set<std::string>* editedKeys = nullptr);
+
+    private:
+        static Command* buildPropertyCommandUnlinked(Project* project, uint32_t sceneId, Entity entity, ComponentType component,
+                                                     const std::string& propertyName, const PropertyData& property,
+                                                     const Json& value, std::string& error, std::function<void()> onChanged,
+                                                     const std::string* shaderReference, const std::set<std::string>* editedKeys);
+    public:
 
         // One edit of set_properties / create_entity / add_component
         struct Change {
