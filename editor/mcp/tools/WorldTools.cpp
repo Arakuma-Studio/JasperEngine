@@ -4165,8 +4165,21 @@ const std::vector<std::pair<const char*, EntityCreationType>>& uiTypes() {
         {"button", EntityCreationType::BUTTON}, {"input_field", EntityCreationType::INPUT_FIELD},
         {"progress_bar", EntityCreationType::PROGRESSBAR}, {"scrollbar", EntityCreationType::SCROLLBAR},
         {"layout_group", EntityCreationType::LAYOUT_GROUP}, {"container", EntityCreationType::GAMEOBJECT},
-        {"polygon", EntityCreationType::POLYGON}};
+        {"polygon", EntityCreationType::POLYGON}, {"onscreen_stick", EntityCreationType::ONSCREEN_STICK_FIXED},
+        {"onscreen_button", EntityCreationType::ONSCREEN_BUTTON}, {"touch_area", EntityCreationType::TOUCH_AREA}};
     return table;
+}
+
+// on-screen controls: a stick's [horizontal, vertical] or a touch area's actions
+bool readActionPair(const Json& node, const std::string& where, std::string& horizontal, std::string& vertical, std::string& error) {
+    const Json& actions = node["actions"];
+    if (!actions.is_array() || actions.size() != 2 || !actions[0].is_string() || !actions[1].is_string()) {
+        error = where + ".actions must be [horizontal, vertical] action names (Project Settings > Input).";
+        return false;
+    }
+    horizontal = actions[0].get<std::string>();
+    vertical = actions[1].get<std::string>();
+    return true;
 }
 
 bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::string& where, Json& out, std::string& error) {
@@ -4179,6 +4192,15 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
     EntityCreationType type;
     const std::string typeName = lowerText(stringOr(node, "type", ""));
     if (!pickName(uiTypes(), typeName, type, where + ".type", error)) return false;
+    if (type == EntityCreationType::ONSCREEN_STICK_FIXED && has(node, "mode")) {
+        static const std::vector<std::pair<const char*, EntityCreationType>> modes = {
+            {"fixed", EntityCreationType::ONSCREEN_STICK_FIXED}, {"floating", EntityCreationType::ONSCREEN_STICK_FLOATING},
+            {"dynamic", EntityCreationType::ONSCREEN_STICK_DYNAMIC}};
+        if (!pickName(modes, lowerText(stringOr(node, "mode", "")), type, where + ".mode", error)) return false;
+    } else if (has(node, "mode")) {
+        error = where + ".mode (fixed, floating, dynamic) is for onscreen_stick.";
+        return false;
+    }
     if (++build.count > 300) {
         error = "create_ui builds at most 300 elements per call.";
         return false;
@@ -4291,11 +4313,35 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         }
     }
     if (has(node, "value")) {
-        if (!scene->findComponent<ProgressbarComponent>(entity)) {
-            error = where + ".value is for progress_bar (0-1).";
+        if (scene->findComponent<OnScreenButtonComponent>(entity)) {
+            addProp<float>(*multi, target, entity, ComponentType::OnScreenButtonComponent, "value", std::clamp(numberOr(node, "value", 1.0f), -1.0f, 1.0f));
+        } else if (scene->findComponent<ProgressbarComponent>(entity)) {
+            addProp<float>(*multi, target, entity, ComponentType::ProgressbarComponent, "value", std::clamp(numberOr(node, "value", 0.5f), 0.0f, 1.0f));
+        } else {
+            error = where + ".value is for progress_bar (0-1) and onscreen_button (-1..1).";
             return false;
         }
-        addProp<float>(*multi, target, entity, ComponentType::ProgressbarComponent, "value", std::clamp(numberOr(node, "value", 0.5f), 0.0f, 1.0f));
+    }
+    if (has(node, "action")) {
+        if (!scene->findComponent<OnScreenButtonComponent>(entity) || !node["action"].is_string()) {
+            error = where + ".action (an Input action name) is for onscreen_button.";
+            return false;
+        }
+        addProp<std::string>(*multi, target, entity, ComponentType::OnScreenButtonComponent, "action", node["action"].get<std::string>());
+    }
+    if (has(node, "actions")) {
+        std::string horizontal, vertical;
+        if (!readActionPair(node, where, horizontal, vertical, error)) return false;
+        if (scene->findComponent<OnScreenStickComponent>(entity)) {
+            addProp<std::string>(*multi, target, entity, ComponentType::OnScreenStickComponent, "horizontalAction", horizontal);
+            addProp<std::string>(*multi, target, entity, ComponentType::OnScreenStickComponent, "verticalAction", vertical);
+        } else if (scene->findComponent<TouchAreaComponent>(entity)) {
+            addProp<std::string>(*multi, target, entity, ComponentType::TouchAreaComponent, "horizontalAction", horizontal);
+            addProp<std::string>(*multi, target, entity, ComponentType::TouchAreaComponent, "verticalAction", vertical);
+        } else {
+            error = where + ".actions is for onscreen_stick and touch_area.";
+            return false;
+        }
     }
     if (has(node, "placeholder")) {
         if (!scene->findComponent<InputFieldComponent>(entity)) {
@@ -4377,6 +4423,10 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
     if (textEntity != NULL_ENTITY && textEntity != entity) out["text_entity"] = entityJson(target, textEntity);
     if (ProgressbarComponent* bar = scene->findComponent<ProgressbarComponent>(entity)) out["fill"] = entityJson(target, bar->fill);
     if (ScrollbarComponent* bar = scene->findComponent<ScrollbarComponent>(entity)) out["bar"] = entityJson(target, bar->bar);
+    if (OnScreenStickComponent* stick = scene->findComponent<OnScreenStickComponent>(entity)) {
+        out["background"] = entityJson(target, stick->background);
+        out["handle"] = entityJson(target, stick->handle);
+    }
     if (has(node, "children")) {
         if (!node["children"].is_array()) {
             error = where + ".children must be an array of nodes.";
@@ -5875,7 +5925,9 @@ void registerWorldTools(McpRegistry& registry) {
         "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, color, "
         "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text "
         "= title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
-        "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins} in px, "
+        "layout_group (direction), container, polygon; touch controls feeding Input actions: onscreen_stick "
+        "(mode fixed|floating|dynamic, actions [h, v]), onscreen_button (action, value, text), touch_area "
+        "(actions). layout {anchor, size, position, pivot, margins} in px, "
         "y down: an anchor (top_left, center, top_wide, ..., stretch) pins to the parent (screen for roots), "
         "position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear. canvas_group: true | {alpha, "
         "interactable, blocks_raycasts, ignore_parent_groups, render_mode} adds a Canvas Group (guide ui.md).",

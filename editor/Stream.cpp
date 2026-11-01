@@ -5435,6 +5435,18 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::ProgressbarComponent, true)] = encodeProgressbarComponent(progressbar);
     }
 
+    if (signature.test(registry->getComponentId<OnScreenStickComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::OnScreenStickComponent, true)] = encodeOnScreenStickComponent(registry->getComponent<OnScreenStickComponent>(entity));
+    }
+
+    if (signature.test(registry->getComponentId<OnScreenButtonComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::OnScreenButtonComponent, true)] = encodeOnScreenButtonComponent(registry->getComponent<OnScreenButtonComponent>(entity));
+    }
+
+    if (signature.test(registry->getComponentId<TouchAreaComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::TouchAreaComponent, true)] = encodeTouchAreaComponent(registry->getComponent<TouchAreaComponent>(entity));
+    }
+
     if (signature.test(registry->getComponentId<InputFieldComponent>())) {
         const InputFieldComponent& inputfield = registry->getComponent<InputFieldComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::InputFieldComponent, true)] = encodeInputFieldComponent(inputfield);
@@ -5822,6 +5834,45 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::InputFieldComponent, existing, &inputfield);
             registry->getComponent<InputFieldComponent>(entity) = std::move(inputfield);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::OnScreenStickComponent, true);
+    if (compNode[compName]) {
+        OnScreenStickComponent* existing = registry->findComponent<OnScreenStickComponent>(entity);
+        OnScreenStickComponent stick = decodeOnScreenStickComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<OnScreenStickComponent>())){
+            registry->addComponent<OnScreenStickComponent>(entity, std::move(stick));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::OnScreenStickComponent, existing, &stick);
+            registry->getComponent<OnScreenStickComponent>(entity) = std::move(stick);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::OnScreenButtonComponent, true);
+    if (compNode[compName]) {
+        OnScreenButtonComponent* existing = registry->findComponent<OnScreenButtonComponent>(entity);
+        OnScreenButtonComponent control = decodeOnScreenButtonComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<OnScreenButtonComponent>())){
+            registry->addComponent<OnScreenButtonComponent>(entity, std::move(control));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::OnScreenButtonComponent, existing, &control);
+            registry->getComponent<OnScreenButtonComponent>(entity) = std::move(control);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::TouchAreaComponent, true);
+    if (compNode[compName]) {
+        TouchAreaComponent* existing = registry->findComponent<TouchAreaComponent>(entity);
+        TouchAreaComponent area = decodeTouchAreaComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<TouchAreaComponent>())){
+            registry->addComponent<TouchAreaComponent>(entity, std::move(area));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::TouchAreaComponent, existing, &area);
+            registry->getComponent<TouchAreaComponent>(entity) = std::move(area);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -6955,6 +7006,147 @@ ProgressbarComponent editor::Stream::decodeProgressbarComponent(const YAML::Node
     progressbar.needUpdateProgressbar = true;
 
     return progressbar;
+}
+
+namespace {
+
+    const char* stickModeToString(OnScreenStickMode mode) {
+        switch (mode) {
+            case OnScreenStickMode::FLOATING: return "floating";
+            case OnScreenStickMode::DYNAMIC: return "dynamic";
+            default: return "fixed";
+        }
+    }
+
+    OnScreenStickMode stringToStickMode(const std::string& text) {
+        if (text == "floating") return OnScreenStickMode::FLOATING;
+        if (text == "dynamic") return OnScreenStickMode::DYNAMIC;
+        return OnScreenStickMode::FIXED;
+    }
+
+    const char* stickAxesToString(OnScreenStickAxes axes) {
+        switch (axes) {
+            case OnScreenStickAxes::HORIZONTAL: return "horizontal";
+            case OnScreenStickAxes::VERTICAL: return "vertical";
+            default: return "both";
+        }
+    }
+
+    OnScreenStickAxes stringToStickAxes(const std::string& text) {
+        if (text == "horizontal") return OnScreenStickAxes::HORIZONTAL;
+        if (text == "vertical") return OnScreenStickAxes::VERTICAL;
+        return OnScreenStickAxes::BOTH;
+    }
+
+    const char* visibilityToString(OnScreenVisibility visibility) {
+        return visibility == OnScreenVisibility::TOUCH_DEVICES_ONLY ? "touch_devices_only" : "always";
+    }
+
+    OnScreenVisibility stringToVisibility(const std::string& text) {
+        return text == "touch_devices_only" ? OnScreenVisibility::TOUCH_DEVICES_ONLY : OnScreenVisibility::ALWAYS;
+    }
+
+}
+
+YAML::Node editor::Stream::encodeOnScreenStickComponent(const OnScreenStickComponent& stick) {
+    YAML::Node node;
+    node["enabled"] = stick.enabled;
+    node["mode"] = stickModeToString(stick.mode);
+    node["background"] = stick.background;
+    node["handle"] = stick.handle;
+    node["handleRange"] = stick.handleRange;
+    node["deadZone"] = stick.deadZone;
+    node["moveThreshold"] = stick.moveThreshold;
+    node["axes"] = stickAxesToString(stick.axes);
+    node["snapX"] = stick.snapX;
+    node["snapY"] = stick.snapY;
+    node["hideWhenReleased"] = stick.hideWhenReleased;
+    node["clampToArea"] = stick.clampToArea;
+    node["horizontalAction"] = stick.horizontalAction;
+    node["verticalAction"] = stick.verticalAction;
+    node["visibility"] = visibilityToString(stick.visibility);
+    return node;
+}
+
+OnScreenStickComponent editor::Stream::decodeOnScreenStickComponent(const YAML::Node& node, const OnScreenStickComponent* oldStick) {
+    OnScreenStickComponent stick;
+    if (oldStick) {
+        stick = *oldStick;
+    }
+
+    if (node["enabled"]) stick.enabled = node["enabled"].as<bool>();
+    if (node["mode"]) stick.mode = stringToStickMode(node["mode"].as<std::string>());
+    if (node["background"]) stick.background = YamlNumbers::as<Entity>(node["background"]);
+    if (node["handle"]) stick.handle = YamlNumbers::as<Entity>(node["handle"]);
+    if (node["handleRange"]) stick.handleRange = std::max(0.0f, YamlNumbers::as<float>(node["handleRange"]));
+    if (node["deadZone"]) stick.deadZone = std::clamp(YamlNumbers::as<float>(node["deadZone"]), 0.0f, 1.0f);
+    if (node["moveThreshold"]) stick.moveThreshold = std::max(0.0f, YamlNumbers::as<float>(node["moveThreshold"]));
+    if (node["axes"]) stick.axes = stringToStickAxes(node["axes"].as<std::string>());
+    if (node["snapX"]) stick.snapX = node["snapX"].as<bool>();
+    if (node["snapY"]) stick.snapY = node["snapY"].as<bool>();
+    if (node["hideWhenReleased"]) stick.hideWhenReleased = node["hideWhenReleased"].as<bool>();
+    if (node["clampToArea"]) stick.clampToArea = node["clampToArea"].as<bool>();
+    if (node["horizontalAction"]) stick.horizontalAction = node["horizontalAction"].as<std::string>();
+    if (node["verticalAction"]) stick.verticalAction = node["verticalAction"].as<std::string>();
+    if (node["visibility"]) stick.visibility = stringToVisibility(node["visibility"].as<std::string>());
+
+    return stick;
+}
+
+YAML::Node editor::Stream::encodeOnScreenButtonComponent(const OnScreenButtonComponent& button) {
+    YAML::Node node;
+    node["enabled"] = button.enabled;
+    node["action"] = button.action;
+    node["value"] = button.value;
+    node["pressWhenPointerEnters"] = button.pressWhenPointerEnters;
+    node["releaseWhenPointerLeaves"] = button.releaseWhenPointerLeaves;
+    node["visibility"] = visibilityToString(button.visibility);
+    return node;
+}
+
+OnScreenButtonComponent editor::Stream::decodeOnScreenButtonComponent(const YAML::Node& node, const OnScreenButtonComponent* oldButton) {
+    OnScreenButtonComponent button;
+    if (oldButton) {
+        button = *oldButton;
+    }
+
+    if (node["enabled"]) button.enabled = node["enabled"].as<bool>();
+    if (node["action"]) button.action = node["action"].as<std::string>();
+    if (node["value"]) button.value = std::clamp(YamlNumbers::as<float>(node["value"]), -1.0f, 1.0f);
+    if (node["pressWhenPointerEnters"]) button.pressWhenPointerEnters = node["pressWhenPointerEnters"].as<bool>();
+    if (node["releaseWhenPointerLeaves"]) button.releaseWhenPointerLeaves = node["releaseWhenPointerLeaves"].as<bool>();
+    if (node["visibility"]) button.visibility = stringToVisibility(node["visibility"].as<std::string>());
+
+    return button;
+}
+
+YAML::Node editor::Stream::encodeTouchAreaComponent(const TouchAreaComponent& area) {
+    YAML::Node node;
+    node["enabled"] = area.enabled;
+    node["horizontalAction"] = area.horizontalAction;
+    node["verticalAction"] = area.verticalAction;
+    node["sensitivity"] = area.sensitivity;
+    node["invertX"] = area.invertX;
+    node["invertY"] = area.invertY;
+    node["visibility"] = visibilityToString(area.visibility);
+    return node;
+}
+
+TouchAreaComponent editor::Stream::decodeTouchAreaComponent(const YAML::Node& node, const TouchAreaComponent* oldArea) {
+    TouchAreaComponent area;
+    if (oldArea) {
+        area = *oldArea;
+    }
+
+    if (node["enabled"]) area.enabled = node["enabled"].as<bool>();
+    if (node["horizontalAction"]) area.horizontalAction = node["horizontalAction"].as<std::string>();
+    if (node["verticalAction"]) area.verticalAction = node["verticalAction"].as<std::string>();
+    if (node["sensitivity"]) area.sensitivity = YamlNumbers::as<float>(node["sensitivity"]);
+    if (node["invertX"]) area.invertX = node["invertX"].as<bool>();
+    if (node["invertY"]) area.invertY = node["invertY"].as<bool>();
+    if (node["visibility"]) area.visibility = stringToVisibility(node["visibility"].as<std::string>());
+
+    return area;
 }
 
 YAML::Node editor::Stream::encodeInputFieldComponent(const InputFieldComponent& inputfield) {

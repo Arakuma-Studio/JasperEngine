@@ -202,3 +202,15 @@ void ScriptBase::onDestroy() { inherited(*this, ScriptMessage::Destroy); }
 void ScriptBase::onApplicationPause(bool paused) { (void)paused; inherited(*this, ScriptMessage::ApplicationPause); }
 void ScriptBase::onApplicationFocus(bool focused) { (void)focused; inherited(*this, ScriptMessage::ApplicationFocus); }
 void ScriptBase::onApplicationQuit() { inherited(*this, ScriptMessage::ApplicationQuit); }
+
+void ScriptBase::onPointerDown(PointerEventData&) { inherited(*this, ScriptMessage::PointerDown); }
+void ScriptBase::onPointerUp(PointerEventData&) { inherited(*this, ScriptMessage::PointerUp); }
+void ScriptBase::onPointerClick(PointerEventData&) { inherited(*this, ScriptMessage::PointerClick); }
+void ScriptBase::onPointerEnter(PointerEventData&) { inherited(*this, ScriptMessage::PointerEnter); }
+void ScriptBase::onPointerExit(PointerEventData&) { inherited(*this, ScriptMessage::PointerExit); }
+void ScriptBase::onInitializePotentialDrag(PointerEventData&) { inherited(*this, ScriptMessage::InitializePotentialDrag); }
+void ScriptBase::onBeginDrag(PointerEventData&) { inherited(*this, ScriptMessage::BeginDrag); }
+void ScriptBase::onDrag(PointerEventData&) { inherited(*this, ScriptMessage::Drag); }
+void ScriptBase::onEndDrag(PointerEventData&) { inherited(*this, ScriptMessage::EndDrag); }
+void ScriptBase::onDrop(PointerEventData&) { inherited(*this, ScriptMessage::Drop); }
+void ScriptBase::onScroll(PointerEventData&) { inherited(*this, ScriptMessage::Scroll); }

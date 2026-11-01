@@ -25,7 +25,7 @@ Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scr
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
-Most others: Unity's name + "Component" (AudioSourceComponent, Light2DComponent...).
+Most others: Unity's name + "Component" (AudioSourceComponent...).
 Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequences).
 
 ## Addressing
@@ -143,7 +143,7 @@ Two kinds (create_script): a ScriptBase subclass, or a subclass of the GameObjec
 (Mesh, Primitive, Sprite, ...) to call its methods on `this`. No reflection macros
 (GENERATED_BODY, GDCLASS): inherit, declare a (jasperengine::Scene*, jasperengine::Entity)
 constructor, expose fields with DPROPERTY("Speed") (DPROPERTY("Tint", Color4) for colors).
-Includes are flat and quoted ("ScriptBase.h", "Engine.h", "Input.h", "Log.h", "Mesh.h"), never
+Includes are flat and quoted ("ScriptBase.h", "Engine.h", "Mesh.h"), never
 <core/...>. Override init/start/onEnable/onDisable/onDestroy as in Lua.
 REGISTER_ENGINE_EVENT(onUpdate) in the constructor or init, UNREGISTER_ENGINE_EVENT in the
 destructor; components: REGISTER_BUTTON_EVENT / REGISTER_UI_EVENT / REGISTER_COMPONENT_EVENT
@@ -151,7 +151,7 @@ destructor; components: REGISTER_BUTTON_EVENT / REGISTER_UI_EVENT / REGISTER_COM
 DEGREES: Quaternion(angle, axis); std::sin/cos want radians (Angle::defaultToRad). Script
 directories are include roots compiled whole (a build runs only with a C++ script attached);
 build settings go in ProjectBuild.cmake, never the generated CMakeLists.txt.
-compile_scripts reports errors without playing. More: jasper://docs/cpp-scripting.
+More: jasper://docs/cpp-scripting.
 
 ## Play and time
 - play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
@@ -178,7 +178,9 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   Player (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
-- UI (text, image, button, panel, layout group...; HTML/CSS: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
+- UI (text, image, button, panel, layout group...; touch controls onscreen_stick/onscreen_button/
+  touch_area feed Input actions; scripts get onPointerDown(e)...: lua-api 1.7; HTML/CSS: below):
+  create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
   UI camera: put HUDs and menus in a child UI scene (set_child_scene). Fade, disable or
   click-through a UI subtree: Canvas Group (jasper://docs/ui).

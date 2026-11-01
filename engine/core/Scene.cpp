@@ -164,6 +164,21 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
         inputField.onSubmit.removeByTagSubstring(tag);
     });
 
+    removeComponentSubscriptionsByTag<OnScreenStickComponent>(this, substring, [](OnScreenStickComponent& stick, const std::string& tag) {
+        stick.onValueChanged.removeByTagSubstring(tag);
+        stick.onPress.removeByTagSubstring(tag);
+        stick.onRelease.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<OnScreenButtonComponent>(this, substring, [](OnScreenButtonComponent& button, const std::string& tag) {
+        button.onPress.removeByTagSubstring(tag);
+        button.onRelease.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<TouchAreaComponent>(this, substring, [](TouchAreaComponent& area, const std::string& tag) {
+        area.onDrag.removeByTagSubstring(tag);
+    });
+
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
 }
 

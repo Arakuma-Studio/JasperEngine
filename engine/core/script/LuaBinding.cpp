@@ -18,6 +18,7 @@
 #include "ScriptProperty.h"
 #include "ScriptEvent.h"
 #include "ScriptMessages.h"
+#include "util/FunctionSubscribe.h"
 #include "ScriptRuntime.h"
 #include "object/EntityHandle.h"
 #include "object/GameObject.h"
@@ -54,6 +55,7 @@
 #include "object/ui/Scrollbar.h"
 #include "object/ui/Progressbar.h"
 #include "object/ui/InputField.h"
+#include "object/ui/OnScreenControls.h"
 #include "object/ui/UIDocument.h"
 #include "subsystem/UIDocumentSystem.h"
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -388,6 +390,24 @@ void LuaBinding::configureProjectLuaLoader() {
     lua_pop(L, 1);
 }
 
+// ui-multitouch D4: a method named like an EventSystem callback (onPointerDown, onDrag...)
+// subscribed to a UIComponent pointer event (x, y) is the old pattern: the engine does not
+// also call it with a PointerEventData while that subscription lives
+static void noteUIPointerSubscription(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag) {
+    ScriptMessage message;
+    if (!methodName || !tag || !ScriptMessages::fromMethodName(methodName, message) || message < ScriptMessage::PointerDown) {
+        return;
+    }
+    if (!luabridge::isInstance<FunctionSubscribe<void(float,float)>>(L, eventIndex)) {
+        return;
+    }
+    auto event = luabridge::get<FunctionSubscribe<void(float,float)>*>(L, eventIndex);
+    if (!event || !event.value()) {
+        return;
+    }
+    ScriptMessages::noteLegacySubscription(lua_topointer(L, selfIndex), methodName, event.value()->subscriptionProbe(tag));
+}
+
 // Common implementation for event registration
 int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive) {
     // Look up self[methodName] using __index
@@ -490,6 +510,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
         return lua_error(L);
     }
 
+    noteUIPointerSubscription(L, eventIndex, selfIndex, methodName, lua_tostring(L, tagIndex));
     return 0;
 }
 
@@ -881,6 +902,9 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Scrollbar, "scrollbar");
     DISPATCH_TYPE(Progressbar, "progressbar");
     DISPATCH_TYPE(InputField, "inputfield");
+    DISPATCH_TYPE(OnScreenStick, "onscreenstick");
+    DISPATCH_TYPE(OnScreenButton, "onscreenbutton");
+    DISPATCH_TYPE(TouchArea, "toucharea");
     DISPATCH_TYPE(UIDocument, "uidocument");
     DISPATCH_TYPE(Bone, "bone");
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -1407,6 +1431,8 @@ void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry
                 lua_setfield(luastate, -2, "isActiveAndEnabled");
             }
             lua_pop(luastate, 1);
+            // D4's notes of the instance (ui-multitouch): its table address can be reused
+            ScriptMessages::forgetLegacySubscriptions(lua_topointer(luastate, -1));
             // the Event listeners it owns go now, so nothing keeps it alive
             ScriptEvent::releaseOwner(luastate, -1);
         }

@@ -231,6 +231,104 @@ bool editor::CreateEntityCmd::execute(){
         progressbarComp.value = 0.5f;
         progressbarComp.needUpdateProgressbar = true;
 
+    }else if (type == EntityCreationType::ONSCREEN_STICK_FIXED || type == EntityCreationType::ONSCREEN_STICK_FLOATING ||
+              type == EntityCreationType::ONSCREEN_STICK_DYNAMIC){
+
+        // the area a press may start in (transparent), its base circle and the knob inside it
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
+        scene->addComponent<UIComponent>(entity, {});
+        scene->addComponent<ImageComponent>(entity, {});
+        scene->addComponent<OnScreenStickComponent>(entity, {});
+
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+        layout.width = 300;
+        layout.height = 300;
+        layout.anchorPreset = AnchorPreset::BOTTOM_LEFT;
+        layout.usingAnchors = true;
+        scene->getComponent<UIComponent>(entity).color = Vector4(1.0f, 1.0f, 1.0f, 0.0f);
+
+        const std::string baseTexture = ProjectUtils::ensureOnScreenControlTexture(project->getAssetsPath(), false);
+        const std::string knobTexture = ProjectUtils::ensureOnScreenControlTexture(project->getAssetsPath(), true);
+        auto addCircle = [&](Entity parent, const char* name, unsigned int size, const std::string& texture){
+            Entity child = scene->createEntity();
+            scene->addComponent<Transform>(child, {});
+            scene->addComponent<RectTransformComponent>(child, {});
+            scene->addComponent<UIComponent>(child, {});
+            scene->addComponent<ImageComponent>(child, {});
+            scene->addEntityChild(parent, child, false);
+            RectTransformComponent& childLayout = scene->getComponent<RectTransformComponent>(child);
+            childLayout.width = size;
+            childLayout.height = size;
+            childLayout.anchorPreset = AnchorPreset::CENTER;
+            childLayout.usingAnchors = true;
+            if (!texture.empty())
+                scene->getComponent<UIComponent>(child).texture.setPath(texture);
+            scene->setEntityName(child, name);
+            registerChildEntity(child, parent);
+            return child;
+        };
+        const Entity background = addCircle(entity, "Background", 160, baseTexture);
+        const Entity handle = addCircle(background, "Handle", 64, knobTexture);
+
+        OnScreenStickComponent& stick = scene->getComponent<OnScreenStickComponent>(entity);
+        stick.background = background;
+        stick.handle = handle;
+        stick.mode = (type == EntityCreationType::ONSCREEN_STICK_FLOATING) ? OnScreenStickMode::FLOATING
+                   : (type == EntityCreationType::ONSCREEN_STICK_DYNAMIC) ? OnScreenStickMode::DYNAMIC
+                   : OnScreenStickMode::FIXED;
+
+    }else if (type == EntityCreationType::ONSCREEN_BUTTON){
+
+        // a round Button (its visuals follow the press of any finger) with the control
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
+        scene->addComponent<UIComponent>(entity, {});
+        scene->addComponent<ButtonComponent>(entity, {});
+        scene->addComponent<ImageComponent>(entity, {});
+        scene->addComponent<OnScreenButtonComponent>(entity, {});
+
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+        layout.width = 120;
+        layout.height = 120;
+        layout.anchorPreset = AnchorPreset::BOTTOM_RIGHT;
+        layout.usingAnchors = true;
+
+        const std::string baseTexture = ProjectUtils::ensureOnScreenControlTexture(project->getAssetsPath(), false);
+        if (!baseTexture.empty())
+            scene->getComponent<UIComponent>(entity).texture.setPath(baseTexture);
+
+        ButtonComponent& buttonComp = scene->getComponent<ButtonComponent>(entity);
+        buttonComp.colorPressed = Vector4(0.6f, 0.6f, 0.6f, 1.0f);
+        scene->getSystem<UISystem>()->createButtonObjects(entity, buttonComp);
+        registerChildEntity(buttonComp.label, entity);
+        scene->setEntityName(buttonComp.label, "Label");
+
+        TextComponent& textComp = scene->getComponent<TextComponent>(buttonComp.label);
+        textComp.text = "Fire";
+        textComp.needUpdateText = true;
+        scene->getComponent<UIComponent>(buttonComp.label).color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+
+    }else if (type == EntityCreationType::TOUCH_AREA){
+
+        // the right half of the screen, transparent: drags there look around (Mouse X / Mouse Y)
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
+        scene->addComponent<UIComponent>(entity, {});
+        scene->addComponent<ImageComponent>(entity, {});
+        scene->addComponent<TouchAreaComponent>(entity, {});
+
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+        layout.width = 100;
+        layout.height = 100;
+        layout.usingAnchors = true;
+        layout.anchorPreset = AnchorPreset::NONE;
+        layout.anchorPointLeft = 0.5f;
+        layout.anchorPointRight = 1.0f;
+        layout.anchorPointTop = 0.0f;
+        layout.anchorPointBottom = 1.0f;
+        scene->getComponent<UIComponent>(entity).color = Vector4(1.0f, 1.0f, 1.0f, 0.0f);
+
     }else if (type == EntityCreationType::INPUT_FIELD){
 
         scene->addComponent<Transform>(entity, {});

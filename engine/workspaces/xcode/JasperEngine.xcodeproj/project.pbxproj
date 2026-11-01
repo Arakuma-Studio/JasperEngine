@@ -3437,6 +3437,16 @@
 		4A534E47F3B27EF73B48BF8A /* ParticleShapes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47030B69308A26E830 /* ParticleShapes.h */; };
 		4A534E47F8F6648CDEE6113A /* ParticleSimulation.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47336D59CB877901B4 /* ParticleSimulation.h */; };
 		4A534E4771B3412C33904150 /* ParticleUpgrade.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478AFD9A93AB71B6C7 /* ParticleUpgrade.h */; };
+		4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47884A25441D62340D /* OnScreenControls.cpp */; };
+		4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47884A25441D62340D /* OnScreenControls.cpp */; };
+		4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */; };
+		4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */; };
+		4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */; };
+		4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */; };
+		4A534E47A2DD8B4564147CDE /* OnScreenControlComponents.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E52435C695296268 /* OnScreenControlComponents.h */; };
+		4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A3734219166C9A6F /* OnScreenControls.h */; };
+		4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477650920F4D670D0F /* OnScreenControls.h */; };
+		4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD6F5BB381B88CCB /* PointerEventData.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6900,6 +6910,13 @@
 		4A534E47030B69308A26E830 /* ParticleShapes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleShapes.h; sourceTree = "<group>"; };
 		4A534E47336D59CB877901B4 /* ParticleSimulation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSimulation.h; sourceTree = "<group>"; };
 		4A534E478AFD9A93AB71B6C7 /* ParticleUpgrade.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleUpgrade.h; sourceTree = "<group>"; };
+		4A534E47884A25441D62340D /* OnScreenControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OnScreenControls.cpp; sourceTree = "<group>"; };
+		4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OnScreenControls.cpp; sourceTree = "<group>"; };
+		4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemPointer.cpp; sourceTree = "<group>"; };
+		4A534E47E52435C695296268 /* OnScreenControlComponents.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControlComponents.h; sourceTree = "<group>"; };
+		4A534E47A3734219166C9A6F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
+		4A534E477650920F4D670D0F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
+		4A534E47AD6F5BB381B88CCB /* PointerEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PointerEventData.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8474,6 +8491,7 @@
 				4A534E47C782824D41EC527F /* PhysicsCommon.h */,
 				4A534E47ECB20D024971B61A /* RagdollComponent.h */,
 				4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */,
+				4A534E47E52435C695296268 /* OnScreenControlComponents.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8628,6 +8646,7 @@
 				4A534E47D89F43391B4A415F /* TrailSystem.h */,
 				4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */,
 				4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */,
+				4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -9656,6 +9675,9 @@
 				48544D4C00000000000002B4 /* UIElementInternal.h */,
 				48544D4C00000000000002B6 /* UIEvent.h */,
 				48544D4C00000000000002B8 /* UIValue.h */,
+				4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */,
+				4A534E477650920F4D670D0F /* OnScreenControls.h */,
+				4A534E47AD6F5BB381B88CCB /* PointerEventData.h */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -10435,6 +10457,15 @@
 			path = media;
 			sourceTree = "<group>";
 		};
+		4A534E47535074DEA48446A6 /* controls */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47884A25441D62340D /* OnScreenControls.cpp */,
+				4A534E47A3734219166C9A6F /* OnScreenControls.h */,
+			);
+			path = controls;
+			sourceTree = "<group>";
+		};
 		48544D4C0000000000000047 /* htmlui */ = {
 			isa = PBXGroup;
 			children = (
@@ -10478,6 +10509,7 @@
 				434F4D50564A0EBD33D8D4B9 /* compat */,
 				434F4D50147CAC73EC41A50D /* effects */,
 				564944458116A96C5CD0F039 /* media */,
+				4A534E47535074DEA48446A6 /* controls */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -12306,6 +12338,10 @@
 				4A534E47F3B27EF73B48BF8A /* ParticleShapes.h in Headers */,
 				4A534E47F8F6648CDEE6113A /* ParticleSimulation.h in Headers */,
 				4A534E4771B3412C33904150 /* ParticleUpgrade.h in Headers */,
+				4A534E47A2DD8B4564147CDE /* OnScreenControlComponents.h in Headers */,
+				4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */,
+				4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */,
+				4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14397,6 +14433,9 @@
 				4A534E473F24882C1A62997B /* ParticleUpgrade.cpp in Sources */,
 				4A534E476DACC88BC9C47409 /* ParticleClassesLua.cpp in Sources */,
 				4A534E47BAC7D2CEF29CFFE6 /* ActionSystemParticles.cpp in Sources */,
+				4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */,
+				4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */,
+				4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14867,6 +14906,9 @@
 				4A534E4715A1589DC34790B4 /* ParticleUpgrade.cpp in Sources */,
 				4A534E4738981FC54EBE9280 /* ParticleClassesLua.cpp in Sources */,
 				4A534E4734884D6ECAFA0459 /* ActionSystemParticles.cpp in Sources */,
+				4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */,
+				4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */,
+				4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

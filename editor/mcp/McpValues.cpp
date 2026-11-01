@@ -313,6 +313,32 @@ const EnumOptions& orientationOptions() {
     return options;
 }
 
+const EnumOptions& stickModeOptions() {
+    static const EnumOptions options = {
+        {(int)OnScreenStickMode::FIXED, "fixed", "Fixed"},
+        {(int)OnScreenStickMode::FLOATING, "floating", "Floating"},
+        {(int)OnScreenStickMode::DYNAMIC, "dynamic", "Dynamic"}
+    };
+    return options;
+}
+
+const EnumOptions& stickAxesOptions() {
+    static const EnumOptions options = {
+        {(int)OnScreenStickAxes::BOTH, "both", "Both"},
+        {(int)OnScreenStickAxes::HORIZONTAL, "horizontal", "Horizontal"},
+        {(int)OnScreenStickAxes::VERTICAL, "vertical", "Vertical"}
+    };
+    return options;
+}
+
+const EnumOptions& onScreenVisibilityOptions() {
+    static const EnumOptions options = {
+        {(int)OnScreenVisibility::ALWAYS, "always", "Always"},
+        {(int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "touch_devices_only", "Touch Devices Only"}
+    };
+    return options;
+}
+
 const EnumOptions& actionStateOptions() {
     static const EnumOptions options = {
         {(int)ActionState::Running, "running", "Running"},
@@ -1178,6 +1204,15 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::ScrollbarComponent:
         case ComponentType::ProgressbarComponent:
             if (name == "type") return &orientationOptions();
+            break;
+        case ComponentType::OnScreenStickComponent:
+            if (name == "mode") return &stickModeOptions();
+            if (name == "axes") return &stickAxesOptions();
+            if (name == "visibility") return &onScreenVisibilityOptions();
+            break;
+        case ComponentType::OnScreenButtonComponent:
+        case ComponentType::TouchAreaComponent:
+            if (name == "visibility") return &onScreenVisibilityOptions();
             break;
         case ComponentType::SpriteComponent:
             if (name == "pivotPreset") return &pivotPresetOptions();

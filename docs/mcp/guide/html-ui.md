@@ -133,7 +133,7 @@ return Terminal
   from the scene's camera; the nearest texture document whose surface it hits gets it at the
   hit's texture coordinate, with the usual rules (an element, or a page with a background,
   takes it; a transparent page passes it on). A press keeps the pointer until the release
-  (drags); touch works per finger; the wheel goes to the document under the mouse; keys go to
+  (drags); every finger is its own pointer (Pointer Events); the wheel goes to the document under the mouse; keys go to
   the document that took the last press. The hit test reads the mesh's CPU geometry
   (primitives, sprites, imported models), ignores other objects in front of the surface and
   tests skinned or morph-target meshes in their bind pose. The mouse cursor shape follows
@@ -616,7 +616,9 @@ get no input). Create elements with `createElement` or `innerHTML`, then `append
 
 | DOM name | Fired by |
 |---|---|
-| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout` | the pointer (mouse and touch) |
+| `pointerdown`, `pointermove`, `pointerup`, `pointercancel`, `pointerover`, `pointerout` (bubble), `pointerenter`, `pointerleave` (do not bubble) | every pointer: the mouse (`pointerId` 1, every button) and each finger (`pointerType` `"touch"`, `pointerId` = `fingerId` + 2); "Pointer events" below |
+| `gotpointercapture`, `lostpointercapture` | `setPointerCapture` and the end of a capture |
+| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `mouseenter`, `mouseleave` | every pointer too (compatibility events, with its `pointerId`): each finger clicks on its own |
 | `wheel` | the mouse wheel (`deltaX`, `deltaY` in steps, positive down/right) |
 | `keydown`, `keyup` | the keyboard and gamepads, to the focused element ("Input and focus") |
 | `textinput` | typed text, to the focused element |
@@ -631,16 +633,18 @@ get no input). Create elements with `createElement` or `innerHTML`, then `append
 | `play`, `pause`, `loop`, `complete`, `error`, `load` | `<lottie>` (they do not bubble) |
 | any other name | `dispatchEvent` |
 
-`mouseenter`, `mouseleave`, `pointer*`, `touch*`, `contextmenu`, `beforeinput` and
-`composition*` never reach documents: `addEventListener` logs a warning listing the supported
-events (use `mouseover`/`mouseout` and `mousedown`).
+`touch*` (Touch Events: use the pointer events, `pointerType == "touch"`), `contextmenu`,
+`beforeinput` and `composition*` never reach documents: `addEventListener` logs a warning
+listing the supported events.
 
 A listener gets a `UIEvent`: `type`, `target`, `currentTarget`, `eventPhase` (1 capture,
 2 target, 3 bubble), `button` (0 left, 1 middle, 2 right), `clientX`/`clientY` (document px),
 `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`, `key` (browser key names:
 `"Enter"`, `"Escape"`, `"ArrowUp"`, `"a"`), `code` (`"KeyA"`; a gamepad's `"GamepadA"`, ...),
 `keyCode` (`Input.KEY_*`), `repeat` (`event["repeat"]`), `gamepad` (the pad's id, -1 for the
-keyboard), `data` (`textinput`), `animationName`, `propertyName`,
+keyboard), `pointerId`, `pointerType` (`"mouse"`, `"touch"`, `"pen"`), `isPrimary`, `buttons` (1
+left, 2 right, 4 middle), `pressure` (0.5 while pressed), `width`, `height`, `fingerId` (the
+`Input` finger id, -1 for the mouse), `data` (`textinput`), `animationName`, `propertyName`,
 `elapsedTime`, `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`, and
 `stopPropagation()`, `stopImmediatePropagation()`, `preventDefault()`. The event is valid only
 while the listener runs. `preventDefault()` skips the element's own action (a checkbox does not
@@ -1332,11 +1336,63 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
 
 ### Touch, text fields and the cursor
 
-**Touch.** Every finger is a pointer; taps are clicks. Hover-only affordances do not exist on
-touch: show them by default or on `:focus`/`:active`, or use `@media (hover: hover)`, evaluated
-once at load (false on touch devices). Each pressed element gets `:active`, but lifting any
-finger clears it on all of them, and only the last pressed element can be clicked. Linux
-desktops have no multi-touch.
+**Touch.** Every finger is a pointer of its own: its own `:hover` (only while it is down),
+`:active`, capture, drag and click. Two fingers press two buttons; lifting one releases and
+clicks only its own. Hover-only affordances do not exist on touch: show them by default or on
+`:focus`/`:active`, or use `@media (hover: hover)`, evaluated once at load (false on touch
+devices). A finger that starts on a scrollable box pans it once it moves past a few pixels,
+where `touch-action` allows (then it gets `pointercancel` and loses `:active`); on-screen
+controls and game surfaces use `touch-action: none`. Linux desktops have no multi-touch: the
+Game view's Simulate Touch with an Alt-pinned finger and `send_input` cover testing.
+
+**Pointer events.** As in a browser (W3C Pointer Events 3): per pointer `pointerover` →
+`pointerenter` → `pointerdown` → `pointermove`s → `pointerup` → `click` → `pointerout` →
+`pointerleave` (a finger leaves with its release), and the compatibility mouse events after the
+pointer event of the same moment (`mousedown` after `pointerdown`). `preventDefault()` on
+`pointerdown` suppresses the `mousedown` and the focus change. A finger is captured by the
+element it pressed (implicit capture): its moves, up and cancel go there wherever it is, while
+`:hover` follows what is under it. `el:setPointerCapture(event.pointerId)` captures the mouse
+or a finger for a drag (a custom slider, a joystick); `el:releasePointerCapture(id)`,
+`el:hasPointerCapture(id)`; `gotpointercapture` / `lostpointercapture` fire before the
+pointer's next event, and the capture ends with the release. Deviation from browsers: the
+compatibility mouse events fire for every finger, not only the first (the engine's earlier
+advice was `mousedown` for touch, which keeps working with two fingers). `touch-action`: `auto`
+(default), `none`, `pan-x`, `pan-y`, `pan-x pan-y`, `manipulation` (= auto: no zoom here); not
+inherited, the effective value is the intersection from the touched element up to its scroll
+box. Gestures (pinch, rotate) are two pointers: keep each `pointerId`'s position.
+
+```lua
+-- a custom slider: the knob follows the finger or mouse that grabbed it
+knob:addEventListener("pointerdown", function(e)
+    knob:setPointerCapture(e.pointerId)
+end)
+knob:addEventListener("pointermove", function(e)
+    if knob:hasPointerCapture(e.pointerId) then setValue(e.clientX) end
+end)
+```
+
+**On-screen controls.** `<onscreen-stick>`, `<onscreen-button>` and `<touch-area>` feed the
+input actions (`jasper://docs/input` 4.1), so `Input.getAxis("Horizontal")` reads the stick and
+mouse-look code reading `Mouse X`/`Mouse Y` works with the touch area. Each takes the first
+pointer that presses it; three fingers on three controls work at once.
+
+```html
+<onscreen-stick mode="floating" dead-zone="0.1" horizontal-action="Horizontal" vertical-action="Vertical"></onscreen-stick>
+<touch-area sensitivity="0.1" invert-y></touch-area>
+<onscreen-button action="Jump" value="1" press-on-enter>Jump</onscreen-button>
+```
+
+| Element | Attributes (defaults) | State and events |
+|---|---|---|
+| `onscreen-stick` | `mode` (`fixed`, `floating`: the base appears under the finger, `dynamic`: it follows past `move-threshold`), `handle-range` (1), `dead-zone` (0), `move-threshold` (1), `axes` (`both`, `horizontal`, `vertical`), `snap-x`, `snap-y`, `horizontal-action` (`Horizontal`), `vertical-action` (`Vertical`), `visibility` (`always`, `touch-devices-only`) | `data-pressed`, `data-x`, `data-y` (-1..1, y up); `:active` while held; `stickstart`, `stickmove`, `stickend` (`event.detail.x` / `.y`) |
+| `onscreen-button` | `action` (`Fire1`), `value` (1; -1 on an axis), `press-on-enter`, `release-on-leave`, `visibility` | `data-pressed`, `:active`; the usual pointer and click events |
+| `touch-area` | `horizontal-action` (`Mouse X`), `vertical-action` (`Mouse Y`), `sensitivity` (0.1), `invert-x`, `invert-y`, `visibility` | `data-pressed`; `areadrag` (`event.detail.dx` / `.dy`, document px) |
+
+A stick without children gets `<div class="stick-base"><div class="stick-knob"></div></div>`
+(a 160 px translucent circle and a 64 px knob from the UA sheet; give your own children these
+classes to restyle). The stick maths is Joystick Pack's in document px: the base's half width is
+the radius; the knob moves with `transform: translate(...)`. Released, removed, hidden with
+`display: none`, or with its document hidden or unloaded, a control clears what it wrote.
 
 **Text fields.** Focusing one opens the virtual keyboard (Android, iOS, Web) and places the IME
 window at the caret. Composition shows inside the field on Windows, macOS, iOS, Android and
@@ -1534,7 +1590,7 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | `doc.getElementById("x")`, `el.classList.add("x")` | colon calls: `doc:getElementById("x")`, `el.classList:add("x")` | LuaLS `param-type-mismatch` / `missing-parameter` |
 | `el.innerText = "x"`, `el.onclick = fn` | `el.textContent = "x"`, `el:addEventListener("click", fn)` | LuaLS `inject-field` |
 | `getElementByID`, other misspelt members | the DOM names (`getElementById`) | LuaLS `undefined-field` |
-| `addEventListener("onclick")`, `"mouseenter"`, `"pointerdown"` | `"click"`, `"mouseover"`/`"mouseout"`, `"mousedown"` | LuaLS `param-type-mismatch` (`UIEventType`); a warning at run time |
+| `addEventListener("onclick")`, `"touchstart"` | `"click"`, `"pointerdown"` (`event.pointerType == "touch"`) | LuaLS `param-type-mismatch` (`UIEventType`); a warning at run time |
 | `setTimeout`, `setInterval`, `requestAnimationFrame` | `anime.createTimer({ duration = 2000, onComplete = fn })`, or `RegisterEngineEvent(self, "onUpdate")` | none (Lua has no such globals) |
 | `fetch`, `XMLHttpRequest` | call Lua `Http` (`jasper://docs/networking`): in the document's `<script type="text/lua">` `Http.get(url, {owner = document}, function(res) ... end)` (no `self` there; the document's GameObject owns it), in the GameObject's script `{owner = self}`; documents themselves load nothing from the network | none |
 | `localStorage` | `UserSettings.setStringForKey(key, value)` / `getStringForKey` | none |

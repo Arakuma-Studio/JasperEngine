@@ -593,6 +593,36 @@ void prepare<ButtonComponent>(ButtonComponent& button, Entity, CloneContext& ctx
     }
 }
 
+// the on-screen controls (ui-multitouch): references follow the copy, the runtime state starts over
+template<>
+void prepare<OnScreenStickComponent>(OnScreenStickComponent& stick, Entity, CloneContext& ctx) {
+    stick.background = ctx.remap(stick.background);
+    stick.handle = ctx.remap(stick.handle);
+    stick.value = Vector2(0, 0);
+    stick.pressed = false;
+    stick.pointerId = INT_MIN;
+    stick.restKnown = false;
+    stick.onValueChanged.clear();
+    stick.onPress.clear();
+    stick.onRelease.clear();
+}
+
+template<>
+void prepare<OnScreenButtonComponent>(OnScreenButtonComponent& button, Entity, CloneContext&) {
+    button.pressed = false;
+    button.pointers.clear();
+    button.onPress.clear();
+    button.onRelease.clear();
+}
+
+template<>
+void prepare<TouchAreaComponent>(TouchAreaComponent& area, Entity, CloneContext&) {
+    area.delta = Vector2(0, 0);
+    area.pressed = false;
+    area.pointerId = INT_MIN;
+    area.onDrag.clear();
+}
+
 template<>
 void prepare<InputFieldComponent>(InputFieldComponent& input, Entity, CloneContext& ctx) {
     input.text = ctx.remap(input.text);
@@ -957,6 +987,9 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<ScrollbarComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ProgressbarComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<InputFieldComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<OnScreenStickComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<OnScreenButtonComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TouchAreaComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<MeshPolygonComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PolygonComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

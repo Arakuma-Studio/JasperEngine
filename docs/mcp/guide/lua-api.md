@@ -421,6 +421,57 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 3D equivalent: `local rb = Rigidbody(self.scene, self.entity)`; in `onFixedUpdate`:
 `rb:applyForce(Vector3(0, 10, 0))`; mass is a property: `rb.mass`.
 
+
+### 1.7 UI pointer callbacks (Unity's EventSystem)
+
+The component UI (RectTransform elements with an Image) sends Unity's pointer messages to scripts
+by method name, `e` a `PointerEventData`. Each finger and mouse button is its own pointer: two
+fingers press two buttons, lifting one releases only its own. A message goes to the element under
+the pointer, else its first ancestor whose script defines the method (ExecuteHierarchy).
+
+| Method | When |
+|---|---|
+| `onPointerEnter(e)` / `onPointerExit(e)` | the pointer comes over / leaves the element or a child (every GameObject on the way gets it; a finger enters on its down and leaves with its up) |
+| `onPointerDown(e)` / `onPointerUp(e)` | pressed; released or cancelled (`e.canceled`): the up goes to the GameObject that got the down |
+| `onPointerClick(e)` | released over the pressed GameObject without a drag (`e.clickCount`: 2 for a double click within 0.3 s) |
+| `onInitializePotentialDrag(e)` | on the down, to the drag handler (set `e.useDragThreshold = false` to start the drag at once) |
+| `onBeginDrag(e)`, `onDrag(e)`, `onEndDrag(e)` | past 4 px; each move; the release or cancel |
+| `onDrop(e)` | released while dragging, to the handler under the pointer (`e.pointerDrag` is what was dragged) |
+| `onScroll(e)` | the wheel over it (`e.scrollDelta`) |
+
+`PointerEventData` (read-only unless noted): `pointerId` (-1 / -2 / -3 the mouse's left / right /
+middle button, a finger's `Touch.fingerId`), `button` (`Input.MOUSE_BUTTON_*`), `isTouch`,
+`position`, `delta`, `pressPosition` (canvas px, y down, as `Input.getMousePosition`),
+`localPosition` (the receiving element's own), `uiPosition`, `uiDelta`, `scrollDelta`,
+`clickCount`, `clickTime`, `dragging`, `eligibleForClick`, `canceled`, `useDragThreshold` (rw),
+`used`, `use()` (a used down is not handled by the built-in Button, Panel, Scrollbar and
+InputField), and the GameObjects (or nil) `pointerEnter`, `pointerPress`, `rawPointerPress`,
+`pointerDrag`, `target` (the one receiving the call).
+
+```lua
+---@class Slot : ScriptInstance
+local Slot = {}
+function Slot:onBeginDrag(e) self.start = self.gameObject.position end
+function Slot:onDrag(e) local p = self.gameObject.position; self.gameObject.position = Vector3(p.x + e.delta.x, p.y + e.delta.y, p.z) end
+function Slot:onDrop(e) Log.print(e.pointerDrag.name .. " dropped on " .. self.gameObject.name) end
+return Slot
+```
+
+- The right and middle mouse buttons reach these callbacks (`e.button`); Button, Panel, Scrollbar
+  and InputField react to the left button and fingers only.
+- A press ends cancelled (`onPointerUp` with `e.canceled`, `onEndDrag`, no click, no drop) when the
+  touch is cancelled, released outside the canvas, the app pauses or loses focus, or the pressed
+  element is deactivated or disabled (`Button.disabled` too).
+- The legacy component events (`ui.onPointerDown(x, y)`, `onClick`, `onDrag`...) still fire per
+  pointer, on the element the pointer pressed only; `ui:getPointerEventData()` gives the event of
+  the one running. A method subscribed with `RegisterEvent` to such an event (the old pattern) is
+  not also called with `e` under the same name while subscribed.
+- `Input.isPointerOverUI([pointerId])`: the pointer (none: the mouse or any finger) is over UI that
+  takes it, or a press there holds it; check it before world clicks (Unity's
+  `EventSystem.IsPointerOverGameObject`).
+- C++ scripts override `onPointerDown(PointerEventData& e)` ... on `ScriptBase`.
+- Gestures (pinch, rotate) are two pointers: keep each finger's `position` by `pointerId`.
+
 ---
 
 ## 2. Globals and singletons
@@ -500,6 +551,7 @@ Unity-style polling with edges, touches and input actions (details: `jasper://do
 | `Input.getPressedControl()` | string or nil: the first control pressed this frame (`"space"`, `"mouse_left"`, `"gamepad_a"`, `"left_x+"`) |
 | `Input.touchCount`, `Input.touches` (properties), `Input.getTouch(index)` (0-based), `Input.getTouchById(fingerId)` | Unity's touches this frame (ended/cancelled ones included in their last frame): `Touch` or nil |
 | `Input.multiTouchEnabled` (rw, default true), `Input.touchSupported` | false: only the first finger is reported / `System.isTouchDevice()` |
+| `Input.isPointerOverUI([pointerId])` | bool: the pointer (-1 the mouse, a finger's `fingerId`; none: the mouse or any finger) is over UI that takes events (component UI or HTML content) or held by it (1.7) |
 | `Input.getAxis(name)`, `Input.getAxisRaw(name)` | number: the input action's smoothed / raw value (-1..1, button 0..1; mouse movement unclamped) |
 | `Input.getButton(name)`, `getButtonDown(name)`, `getButtonUp(name)` | bool |
 | `Input.getVector(xName, yName)` | `Vector2`, length <= 1 |
@@ -1554,6 +1606,12 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 | `Scrollbar` (Image) | `type` (`ScrollbarType.*`), `barSize`, `step`, `barColor`, `barAlpha` | `getScrollbarComponent()`, `setBarTexture(path)` |
 | `Progressbar` (Image) | `type`, `value` (0..1), `fillColor`, `fillAlpha` | `getProgressbarComponent()`, `setFillTexture(path)` |
 | `InputField` (Image) | `text`, `disabled`, `textColor`, `textFont`, `fontSize`, `maxTextSize`, `placeholder`, `placeholderColor`, `password`, `passwordChar`, `cursorIndex`, `cursorColor`, `selectionColor`, `cursorBlink`, `cursorWidth` | `getInputFieldComponent()`, `getTextObject()`, `setSelection(...)` |
+| `OnScreenStick` (Image) | `enabled`, `mode` (`OnScreenStickMode.*`), `background`, `handle` (entities), `handleRange`, `deadZone`, `moveThreshold`, `axes` (`OnScreenStickAxes.*`), `snapX`, `snapY`, `hideWhenReleased`, `clampToArea`, `horizontalAction`, `verticalAction`, `visibility`; ro `value` (Vector2, y up), `pressed`, `pointerId`; events `onValueChanged(x, y)`, `onPress`, `onRelease` | `getOnScreenStickComponent()` |
+| `OnScreenButton` (Image) | `enabled`, `action`, `value`, `pressWhenPointerEnters`, `releaseWhenPointerLeaves`, `visibility`; ro `pressed`; events `onPress`, `onRelease` | `getOnScreenButtonComponent()` |
+| `TouchArea` (Image) | `enabled`, `horizontalAction`, `verticalAction`, `sensitivity`, `invertX`, `invertY`, `visibility`; ro `delta` (this frame, canvas px), `pressed`, `pointerId`; event `onDrag(dx, dy)` | `getTouchAreaComponent()` |
+
+The three on-screen controls feed input actions (`jasper://docs/input` 4.1); wrapping a GameObject
+without the component adds it.
 
 Component structs returned by `get*Component()` expose the event objects of section 1.3 and
 some raw fields (`ButtonComponent.pressed`, `hovered` ro; `disabled` rw;
@@ -2147,6 +2205,9 @@ use the methods. Physics colliders keep the rest shape.
 | `CanvasGroupRenderMode` | `PER_ELEMENT`, `FLATTEN` |
 | `AlphaTweenTarget` | `AUTO`, `COLOR`, `CANVAS_GROUP` |
 | `ScrollbarType`, `ProgressbarType` | `VERTICAL`, `HORIZONTAL` |
+| `OnScreenStickMode` | `FIXED`, `FLOATING`, `DYNAMIC` |
+| `OnScreenStickAxes` | `BOTH`, `HORIZONTAL`, `VERTICAL` |
+| `OnScreenVisibility` | `ALWAYS`, `TOUCH_DEVICES_ONLY` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
 | `ParticleSystemShapeType` | `Sphere`, `Hemisphere`, `Cone`, `ConeVolume`, `Box`, `BoxShell`, `BoxEdge`, `Circle`, `Edge`, `Rectangle`, `Donut` |
 | `ParticleSystemCurveMode` | `Constant`, `Curve`, `TwoCurves`, `TwoConstants` |
@@ -2306,7 +2367,7 @@ Rigidbody wrappers by index.
     empty object. A table with `nil` in the middle is not an array (`{1, nil, 3}` encodes as an
     object `{"1":1,"3":3}`): store `Json.null` to keep a place. `Json.decode` gives integers for
     `1` and floats for `1.0`; compare JSON nulls with `Json.null`, never `nil`.
-26. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
+28. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
     Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
     raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.
 27. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script

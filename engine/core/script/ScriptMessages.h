@@ -27,7 +27,7 @@ namespace jasperengine {
     // ScriptBase virtual when the class overrides it. Main thread only (physics queues what a
     // step produced and sends after it); errors are logged with a traceback, never propagate. One mechanism for the lifecycle
     // (script-lifecycle), the physics contacts (physics-contacts) and the UI pointer events.
-    // The physics values keep their order; features append theirs before Count (< 32).
+    // The physics values keep their order; features append theirs before Count (< 64).
     enum class ScriptMessage : uint8_t {
         CollisionEnter, CollisionStay, CollisionExit, TriggerEnter, TriggerStay, TriggerExit,
         CollisionEnter2D, CollisionStay2D, CollisionExit2D, TriggerEnter2D, TriggerStay2D, TriggerExit2D,
@@ -36,14 +36,17 @@ namespace jasperengine {
         Init, Start, Enable, Disable, Destroy, ApplicationPause, ApplicationFocus, ApplicationQuit,
         // particles: a version 2 Particle System with stopAction Callback finished
         ParticleSystemStopped,
+        // ui-multitouch: the EventSystem callbacks of the component UI (a PointerEventData argument)
+        PointerDown, PointerUp, PointerClick, PointerEnter, PointerExit, InitializePotentialDrag,
+        BeginDrag, Drag, EndDrag, Drop, Scroll,
         Count
     };
-    static_assert(static_cast<int>(ScriptMessage::Count) <= 32, "ScriptMessageMask holds 32 messages");
+    static_assert(static_cast<int>(ScriptMessage::Count) < 64, "ScriptMessageMask holds 63 messages (all-ones mask shifts by Count)");
 
-    using ScriptMessageMask = uint32_t;          // bit (1u << (int)message)
+    using ScriptMessageMask = uint64_t;          // bit (1 << (int)message)
 
     constexpr ScriptMessageMask scriptMessageBit(ScriptMessage m) {
-        return 1u << static_cast<unsigned>(m);
+        return static_cast<ScriptMessageMask>(1) << static_cast<unsigned>(m);
     }
 
     // What a delivery requires besides a live instance (send's `deliver` argument)
@@ -56,8 +59,28 @@ namespace jasperengine {
     class JASPERENGINE_API ScriptMessages {
     public:
         // "onCollisionEnter", ..., "init", "start", "onEnable", "onDisable", "onDestroy",
-        // "onApplicationPause", "onApplicationFocus", "onApplicationQuit"
+        // "onApplicationPause", "onApplicationFocus", "onApplicationQuit", "onPointerDown", ...
         static const char* methodName(ScriptMessage m);
+        // the message of a method name; false for other names
+        static bool fromMethodName(const char* name, ScriptMessage& out);
+
+        // Whether a live, enabled entry of the GameObject defines the message (Lua: a function in
+        // the instance or its class, read now; C++: an override), skipping the Lua instances that
+        // subscribed a method of that name to a component event (isLegacySubscription). The
+        // EventSystem's handler search (ScriptRuntime::findHandler).
+        static bool defines(Scene* scene, Entity entity, ScriptMessage m);
+
+        // ui-multitouch D4's collision rule: a Lua instance that subscribed its method `name` to a
+        // UIComponent pointer event with RegisterEvent (the old `onPointerDown(x, y)` pattern) is
+        // not also called with a PointerEventData under that name while one such subscription
+        // lives. Keyed by the instance table; each note keeps a probe of its subscription
+        // (FunctionSubscribe::subscriptionProbe), so an unregistered, cleared or destroyed
+        // event's note no longer counts.
+        static void noteLegacySubscription(const void* instanceTable, const std::string& method,
+                                           std::function<bool()> subscriptionAlive);
+        static bool isLegacySubscription(const void* instanceTable, const char* method);
+        // the instance is released: its notes go (the address can be reused)
+        static void forgetLegacySubscriptions(const void* instanceTable);
 
         // The messages some live script instance of the GameObject defines (Lua: a function in
         // the instance or its class; C++: an override, ScriptEntry::cppMessageMask), enabled or

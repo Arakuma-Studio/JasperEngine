@@ -7,6 +7,7 @@
 #include "Scene.h"
 #include "Entity.h"
 #include "component/ScriptComponent.h"
+#include "PointerEventData.h"
 #include "object/EntityHandle.h"
 
 #include <type_traits>
@@ -135,9 +136,25 @@ namespace jasperengine {
         // and its last particle died (Unity OnParticleSystemStopped).
         virtual void onParticleSystemStopped();
 
+        // The component UI's EventSystem callbacks (ui-multitouch, Unity's IPointerDownHandler...):
+        // sent up the hierarchy from the element under the pointer to the first GameObject whose
+        // script overrides them. The event lives for the call (copy what you keep); use() and
+        // useDragThreshold write back.
+        virtual void onPointerDown(PointerEventData& e);
+        virtual void onPointerUp(PointerEventData& e);
+        virtual void onPointerClick(PointerEventData& e);
+        virtual void onPointerEnter(PointerEventData& e);
+        virtual void onPointerExit(PointerEventData& e);
+        virtual void onInitializePotentialDrag(PointerEventData& e);
+        virtual void onBeginDrag(PointerEventData& e);
+        virtual void onDrag(PointerEventData& e);
+        virtual void onEndDrag(PointerEventData& e);
+        virtual void onDrop(PointerEventData& e);
+        virtual void onScroll(PointerEventData& e);
+
         // the messages (ScriptMessage bits) whose base method ran: not overridden, so not sent
         // again and not among ScriptMessages::receivers
-        uint32_t inheritedMessages = 0;
+        uint64_t inheritedMessages = 0;   // ScriptMessageMask
         // set by a base message method (ScriptMessages reads it after a call without touching a
         // script the call may have destroyed)
         static bool baseMessageRan;

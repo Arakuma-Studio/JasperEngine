@@ -1623,6 +1623,86 @@ std::string editor::Factory::createProgressbarComponent(int indentSpaces, Entity
     return code.str();
 }
 
+namespace {
+    const char* stickModeCode(OnScreenStickMode mode) {
+        switch (mode) {
+            case OnScreenStickMode::FLOATING: return "OnScreenStickMode::FLOATING";
+            case OnScreenStickMode::DYNAMIC: return "OnScreenStickMode::DYNAMIC";
+            default: return "OnScreenStickMode::FIXED";
+        }
+    }
+    const char* stickAxesCode(OnScreenStickAxes axes) {
+        switch (axes) {
+            case OnScreenStickAxes::HORIZONTAL: return "OnScreenStickAxes::HORIZONTAL";
+            case OnScreenStickAxes::VERTICAL: return "OnScreenStickAxes::VERTICAL";
+            default: return "OnScreenStickAxes::BOTH";
+        }
+    }
+    const char* visibilityCode(OnScreenVisibility visibility) {
+        return visibility == OnScreenVisibility::TOUCH_DEVICES_ONLY ? "OnScreenVisibility::TOUCH_DEVICES_ONLY" : "OnScreenVisibility::ALWAYS";
+    }
+}
+
+std::string editor::Factory::createOnScreenStickComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<OnScreenStickComponent>(entity)) return "";
+    const OnScreenStickComponent& stick = scene->getComponent<OnScreenStickComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "OnScreenStickComponent stick;\n";
+    code << ind << "stick.enabled = " << formatBool(stick.enabled) << ";\n";
+    code << ind << "stick.mode = " << stickModeCode(stick.mode) << ";\n";
+    code << ind << "stick.background = " << formatEntity(stick.background, entityVarNames) << ";\n";
+    code << ind << "stick.handle = " << formatEntity(stick.handle, entityVarNames) << ";\n";
+    code << ind << "stick.handleRange = " << formatFloat(stick.handleRange) << ";\n";
+    code << ind << "stick.deadZone = " << formatFloat(stick.deadZone) << ";\n";
+    code << ind << "stick.moveThreshold = " << formatFloat(stick.moveThreshold) << ";\n";
+    code << ind << "stick.axes = " << stickAxesCode(stick.axes) << ";\n";
+    code << ind << "stick.snapX = " << formatBool(stick.snapX) << ";\n";
+    code << ind << "stick.snapY = " << formatBool(stick.snapY) << ";\n";
+    code << ind << "stick.hideWhenReleased = " << formatBool(stick.hideWhenReleased) << ";\n";
+    code << ind << "stick.clampToArea = " << formatBool(stick.clampToArea) << ";\n";
+    code << ind << "stick.horizontalAction = " << formatString(stick.horizontalAction) << ";\n";
+    code << ind << "stick.verticalAction = " << formatString(stick.verticalAction) << ";\n";
+    code << ind << "stick.visibility = " << visibilityCode(stick.visibility) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "OnScreenStickComponent", "stick", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createOnScreenButtonComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<OnScreenButtonComponent>(entity)) return "";
+    const OnScreenButtonComponent& button = scene->getComponent<OnScreenButtonComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "OnScreenButtonComponent onscreenbutton;\n";
+    code << ind << "onscreenbutton.enabled = " << formatBool(button.enabled) << ";\n";
+    code << ind << "onscreenbutton.action = " << formatString(button.action) << ";\n";
+    code << ind << "onscreenbutton.value = " << formatFloat(button.value) << ";\n";
+    code << ind << "onscreenbutton.pressWhenPointerEnters = " << formatBool(button.pressWhenPointerEnters) << ";\n";
+    code << ind << "onscreenbutton.releaseWhenPointerLeaves = " << formatBool(button.releaseWhenPointerLeaves) << ";\n";
+    code << ind << "onscreenbutton.visibility = " << visibilityCode(button.visibility) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "OnScreenButtonComponent", "onscreenbutton", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createTouchAreaComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<TouchAreaComponent>(entity)) return "";
+    const TouchAreaComponent& area = scene->getComponent<TouchAreaComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "TouchAreaComponent toucharea;\n";
+    code << ind << "toucharea.enabled = " << formatBool(area.enabled) << ";\n";
+    code << ind << "toucharea.horizontalAction = " << formatString(area.horizontalAction) << ";\n";
+    code << ind << "toucharea.verticalAction = " << formatString(area.verticalAction) << ";\n";
+    code << ind << "toucharea.sensitivity = " << formatFloat(area.sensitivity) << ";\n";
+    code << ind << "toucharea.invertX = " << formatBool(area.invertX) << ";\n";
+    code << ind << "toucharea.invertY = " << formatBool(area.invertY) << ";\n";
+    code << ind << "toucharea.visibility = " << visibilityCode(area.visibility) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "TouchAreaComponent", "toucharea", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createInputFieldComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<InputFieldComponent>(entity)) return "";
     InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
@@ -3397,6 +3477,9 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::ScrollbarComponent: return createScrollbarComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ProgressbarComponent: return createProgressbarComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::InputFieldComponent: return createInputFieldComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::OnScreenStickComponent: return createOnScreenStickComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::OnScreenButtonComponent: return createOnScreenButtonComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::TouchAreaComponent: return createTouchAreaComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PanelComponent: return createPanelComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PolygonComponent: return createPolygonComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::MeshPolygonComponent: return createMeshPolygonComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);

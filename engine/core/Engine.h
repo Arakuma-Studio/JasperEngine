@@ -387,6 +387,11 @@ namespace jasperengine {
         static Framebuffer compositeFramebuffer;
 
         static bool transformCoordPos(float& x, float& y);
+        // ui-multitouch D6: a pointer ends without a click in the documents and the component
+        // UI of every scene (a finger or mouse button released outside the canvas; touch false:
+        // pointerOrButton is the mouse button), or every pointer (pause, focus loss)
+        static void cancelUIPointer(int pointerOrButton, bool touch);
+        static void cancelAllUIPointers();
         // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
         static void flushCharInput();
         // systemDraw: the held gamepad directions a document took repeat (UI clock)
@@ -470,6 +475,10 @@ namespace jasperengine {
         static bool isIgnoreEventsHandledByUI();
 
         static bool isUIEventReceived();
+        // Input.isPointerOverUI (Unity's EventSystem.IsPointerOverGameObject, ui-multitouch D15):
+        // that pointer (-1 / -2 / -3 the mouse, >= 0 a finger; INT_MIN the mouse or any finger)
+        // is over a component UI element that takes events or HTML content, or either holds it
+        static bool isPointerOverUI(int pointerId);
         
         static void setUpdateTimeMS(unsigned int updateTimeMS);
         static void setUpdateTime(float updateTime);
