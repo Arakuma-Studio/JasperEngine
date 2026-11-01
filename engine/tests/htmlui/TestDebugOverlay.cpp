@@ -1022,6 +1022,8 @@ TEST_F(DebugOverlayTest, StatsBelowTheConsoleInPortraitAndLandscape){
 // stay (the trimmed rows above them move the scroll up by as much)
 TEST_F(DebugOverlayTest, ListStaysWhileReadingAFullBuffer){
     ASSERT_TRUE(fixture->waitUntilLoaded());
+    // the overlay's clock: a burst of lines waits 0.1 s of it
+    Engine::setFixedDeltatime(0.05);
     Log::setBufferSize(500);
     enable();
     DebugOverlay::showConsole();
@@ -1029,7 +1031,8 @@ TEST_F(DebugOverlayTest, ListStaysWhileReadingAFullBuffer){
     Log::clearEntries();
     for (int i = 0; i < 500; i++)
         Log::print("line %d", i);
-    GpuEnvironment::drawFrames(3);
+    GpuEnvironment::drawFrames(4);
+    ASSERT_EQ(rows(), 500);
     Rml::Element* list = byId("list");
     ASSERT_NE(list, nullptr);
     list->SetScrollTop(list->GetScrollHeight() / 2.0f);

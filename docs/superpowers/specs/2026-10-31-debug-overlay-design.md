@@ -566,3 +566,12 @@ the code:
     `xcode_sync_effects.py`). Apple: the owner's Mac compiled the branch before this merge for
     macOS and iOS (reported by the lead; not rebuilt after the merge). Windows not built
     (`PSAPI_VERSION 2` and `K32GetProcessMemoryInfo` written against the headers).
+19. **Verification of the second review's fixes** (box 2203, on top of the merged tree above, no
+    new merge): editor, tests and `jasperengine-htmlui-tests` rebuilt (980 and 400 steps) with 0
+    compiler warnings. `jasperengine-editor-tests`: 1865 tests, 1856 passed, 9 skipped, 0 failed.
+    GPU suite: 3177 of 3177 passed (`DebugOverlay*` 21; a rebuild of 500 rows 0.73 ms, a line
+    added 0.53 ms, a line into a collapsed full 100,000-line buffer 0.26 ms, each with its
+    layout). MCP `test_debug_overlay` (with the slow Release export), `test_html_ui_tools`
+    (155 tools, 114892 chars, unchanged) and `test_docs`: 46 passed, 0 failed. Web and Android
+    compile the 9 changed engine sources with no diagnostics; `xcode_sync_engine.py --check`
+    passes (no source added).
