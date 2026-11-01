@@ -661,6 +661,12 @@ original play the same, `HumanoidRetargetTest` checks it on every conversion).
   `set_humanoid` Avatar fields, humanoid tracks in `edit_animation`, `get_animation`'s
   `retarget_report` and `realised` (computed through the play-time binding of the entry).
 
+**Lost in the merge, restored.** The player entries' `retarget` / `mirror` / `footIK` were on
+`AnimationPlayerClip` but not in the scene codec (`StreamComponents.cpp`: an upstream scene's
+flagged entries loaded unflagged and a save dropped them), the S08 tables (`set_properties
+clips[i].retarget` was refused) or the exported Factory code (exported games played them as
+generic entries); `RuntimeFields.gen.inc` and `docs/mcp/TOOLS.md` are regenerated.
+
 **Rules and deviations.**
 9. Mirror and Foot IK apply whenever the Animator has a humanoid avatar (Unity: every clip of a
    humanoid avatar is humanoid); upstream applied them to humanoid clips and Retarget entries only
