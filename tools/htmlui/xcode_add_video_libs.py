@@ -8,7 +8,9 @@
 # - static library targets dav1d-<platform>, opus-<platform> and webm-<platform> (ios, macos;
 #   products lib<name>-<platform>.a), cloned from lunasvg-<platform> (deployment targets, hidden
 #   visibility, warnings off), compiling the sources their CMakeLists.txt compile (read from
-#   them) with their defines and private search paths. dav1d's bit-depth templates are compiled
+#   them) with their defines and private search paths, and without a header map (USE_HEADERMAP =
+#   NO: Xcode's project header map resolved dav1d's "config.h" to thorvg's; the generated
+#   xcode/cpu_*.c stop the build when config.h is not dav1d's). dav1d's bit-depth templates are compiled
 #   twice by CMake (OBJECT libraries with BITDEPTH 8 and 16); Xcode compiles each file once per
 #   target, so the script writes one wrapper per template and depth,
 #   engine/libs/dav1d/bitdepth/<name>_<8|16>.c (#define BITDEPTH, #include the template);
@@ -100,6 +102,11 @@ def dav1d_wrappers():
             "// CPU feature detection of dav1d's %s asm, in that architecture's slices only (CMake\n"
             "// compiles it for its target alone).\n"
             "#include \"config.h\"\n"
+            "// config.h must be dav1d's: another library's (through Xcode's header map, which the targets\n"
+            "// turn off) leaves dav1d without a bit depth (it decodes nothing) and its asm unassembled\n"
+            "#ifndef DAV1D_ENGINE_CONFIG_H\n"
+            "#error \"config.h is not engine/libs/dav1d/config/config.h: is USE_HEADERMAP = NO on the dav1d targets?\"\n"
+            "#endif\n"
             "#if (%s) && HAVE_ASM\n"
             "#include \"src/%s/cpu.c\"\n"
             "#endif\n" % (name, arch, condition, name))
@@ -423,6 +430,29 @@ def add_dav1d_asm(project):
         project.add_to_list(project.target_by_name(name), "buildRules", "\t\t\t\t%s /* PBXBuildRule */," % rule)
 
 
+def disable_headermaps(project, libs):
+    """USE_HEADERMAP = NO in the libraries' configurations: their quoted includes resolve through
+    their own search paths, as CMake's do. Xcode's project header map (-iquote, searched before
+    them) maps a header's file name to any header of that name in the project: dav1d's
+    "config.h" became engine/libs/thorvg/config/config.h (no ARCH_AARCH64, CONFIG_8BPC, ...: the
+    asm did not assemble and the C decoder had no bit depth)."""
+    for lib in libs:
+        for platform in PLATFORMS:
+            name = "%s-%s" % (lib["name"], platform)
+            for config in project.configurations('Build configuration list for PBXNativeTarget "%s"' % name).values():
+                first, last = project.block(config)
+                settings = [i for i in range(first, last) if re.match(r"^\t\t\t\t[^\t]", project.lines[i])]
+                if any(project.lines[i].strip().startswith("USE_HEADERMAP =") for i in settings):
+                    continue
+                # Xcode keeps the keys sorted: before the first key after it, or at the end
+                keys = [(project.lines[i].strip().strip('"'), i) for i in settings]
+                at = next((i for key, i in keys if key > "USE_HEADERMAP"), None)
+                if at is None:
+                    at = next(i for i in range(first, last) if project.lines[i] == "\t\t\t};")
+                project.lines.insert(at, "\t\t\t\tUSE_HEADERMAP = NO;")
+                project.added.append("USE_HEADERMAP = NO in " + config)
+
+
 def add_public_interface(project, libs):
     configs = engine_configurations(project)
     for config in configs:
@@ -537,6 +567,7 @@ def main():
         add_library_files(project, lib)
         link_libraries(project, lib, portal)
     configs = add_public_interface(project, libs)
+    disable_headermaps(project, libs)
     add_dav1d_asm(project)
     media = add_media_sources(project)
     phases = add_sibling_source(project, "HtmlUIClassesLua.cpp", "HtmlUIMediaLua.cpp")

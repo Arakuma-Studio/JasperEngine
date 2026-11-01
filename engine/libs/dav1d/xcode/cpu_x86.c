@@ -2,6 +2,11 @@
 // CPU feature detection of dav1d's x86-64 asm, in that architecture's slices only (CMake
 // compiles it for its target alone).
 #include "config.h"
+// config.h must be dav1d's: another library's (through Xcode's header map, which the targets
+// turn off) leaves dav1d without a bit depth (it decodes nothing) and its asm unassembled
+#ifndef DAV1D_ENGINE_CONFIG_H
+#error "config.h is not engine/libs/dav1d/config/config.h: is USE_HEADERMAP = NO on the dav1d targets?"
+#endif
 #if (ARCH_X86_64) && HAVE_ASM
 #include "src/x86/cpu.c"
 #endif
