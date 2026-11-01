@@ -6,6 +6,7 @@
 #include "component/PointsComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "particles/ParticleFields.h"
+#include "shader/ShaderGlobals.h"
 #include "util/FileUtils.h"
 
 #include "AppSettings.h"
@@ -1507,7 +1508,34 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
                     check.log += rel + ":" + std::to_string(line) + ": " + mismatch + "\n";
                 }
             }
-        } else if (use.shaderType != static_cast<int>(ShaderType::DEPTH)) {
+        }
+        if (!effect) {
+            // the global shader values it reads, against Project Settings > Graphics > Shader
+            // Globals, at its fragment shader (vertex when only the vertex stage reads them)
+            const Util::CustomShaderPaths paths = ShaderReference::isLibrary(use.base) ? Util::CustomShaderPaths()
+                                                                                        : project->resolveCustomShaderFiles(use.base);
+            const std::string file = ShaderReference::isLibrary(use.base)
+                ? "engine/shaderlib/library/" + ShaderReference::getLibraryName(use.base) + ".frag"
+                : (paths.frag.empty() ? paths.vert : paths.frag);
+            for (const ShaderGlobalDiagnostic& d : ShaderGlobals::checkShader(data, project->getShaderGlobals())) {
+                check.findings.push_back({"shader", file, 0, 0, d.error ? "error" : "warning", d.code + ": " + d.message, d.code});
+                if (!d.error) continue;
+                check.ok = false;
+                check.errors.push_back({{"severity", "error"}, {"source", file}, {"line", 0}, {"message", d.code + ": " + d.message}});
+                check.log += file + ": error: " + d.code + ": " + d.message + "\n";
+            }
+            // sokol binds at most 8 uniform blocks a stage (a globals block counts)
+            for (const ShaderStage& stage : data.stages) {
+                if (stage.uniformblocks.size() <= 8) continue;
+                const std::string message = std::string("uniform-block-limit: the ") + (stage.type == ShaderStageType::VERTEX ? "vertex" : "fragment") +
+                    " stage declares " + std::to_string(stage.uniformblocks.size()) + " uniform blocks, over the 8 a stage binds";
+                check.findings.push_back({"shader", file, 0, 0, "error", message, "uniform-block-limit"});
+                check.ok = false;
+                check.errors.push_back({{"severity", "error"}, {"source", file}, {"line", 0}, {"message", message}});
+                check.log += file + ": error: " + message + "\n";
+            }
+        }
+        if (!effect && use.shaderType != static_cast<int>(ShaderType::DEPTH)) {
             // a shader-library manifest (a UI effect's comment header is its own manifest,
             // checked above): its syntax, and its @property/@texture rows against what compiled
             for (const ShaderManifestDiagnostic& d : validateShaderManifest(use.base, {&data}, true)) {
@@ -1566,8 +1594,11 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
                 : ShaderReference::isLibrary(use.base)
                 ? "engine/shaderlib/library/" + ShaderReference::getLibraryName(use.base) + ".frag"
                 : project->resolveCustomShaderFiles(use.base).frag;
-            check.findings.push_back({"shader", entry, 0, 0, "error", first.empty() ? std::string(e.what()) : first,
-                                      effect ? fx::compat::codes::EffectShaderCompile.id() : std::string()});
+            // a globals block over its size fails the compile with its own code
+            const std::string what = e.what();
+            const bool globalsTooLarge = what.rfind("globals-block-too-large", 0) == 0;
+            check.findings.push_back({"shader", entry, 0, 0, "error", globalsTooLarge ? what : (first.empty() ? what : first),
+                                      effect ? fx::compat::codes::EffectShaderCompile.id() : globalsTooLarge ? std::string("globals-block-too-large") : std::string()});
         }
     }
     return check;

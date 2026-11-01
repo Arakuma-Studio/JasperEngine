@@ -121,11 +121,12 @@ LIMITS.update({"create_ragdoll": 900})
 # http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
 # input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
 # merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
+# shader globals (spec 2026-10-31-shader-globals 6.7): no new tool; get_shader_uniforms names the globals a
+# shader reads and its global_bindings (+51); merged with main (persistence, ui-canvas-group, physics-3d,
+# http): 151 tools measured 107680, the limit set to it
 # particles: the new import_unity_particles (Unity ParticleSystem prefabs and scenes) and create_particles'
 # version 2 arguments (renderer, modules, upgrade, force, duration, speed)
-# particles merged with main (ui-canvas-group, physics-3d, http): 152 tools, total 108583 (tool_budget.py on
-# the merged tree)
-TOTAL_LIMIT = 108583
+TOTAL_LIMIT = 108583  # re-measured below on the tree merged with main
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

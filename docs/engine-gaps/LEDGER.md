@@ -43,7 +43,7 @@ origin/main).
 | 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | review |
 | 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | review |
 | 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | impl |
-| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | impl |
+| 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | review |
 | 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | impl |
 | 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | merged |
 | 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | review |
@@ -52,8 +52,8 @@ origin/main).
 | 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | specced |
 | 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | merged |
-| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | impl |
-| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | impl |
+| 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | review |
+| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | review |
 | 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | review |
 | 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | merged |
 | 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
@@ -164,3 +164,23 @@ origin/main).
   (AsyncOwners re-keyed when persistence moves objects). Lead trimmed the agent guide to 16351 bytes and set the
   measured tool budget. Not pushed yet: waiting for ui-canvas-group's fix of an old-scene re-save regression.
   platform-services is doing its final merge of main (16 files conflicted).
+- 2026-10-31 23:2x: the lead's session restarted, stopping every agent and remote job. All four Linux boxes
+  survived (idle). Resumed 15 agents from their transcripts (platform-services mid-merge; review fixes on
+  particles, shader-globals, physics-contacts, ui-scaling-text, native-bridge, camera-shake, coroutines,
+  ui-canvas-group; final suites of audio-mixer; implementations of anim-layers, debug-overlay, safe-area,
+  video-mp4; the ui-multitouch review, which an API limit had stopped). Tailscale: this host had none before the
+  lead installed it; it joins the owner's tailnet through a login link (no auth key) to build on the owner's Mac.
+- 2026-11-01: the owner's Mac (macOS 26.2, 14 cores, Xcode 26.6 with the iOS 26.5 SDK and simulator) is reachable
+  over Tailscale (`ssh mac`, user mapacho, a dedicated key; plain sshd via `tailscale nc`). Apple compile checks run
+  there in `~/engine-gaps-check` (`applecheck.sh <ref>`: the iOS Simulator and macOS app schemes, nice'd, 8 jobs,
+  DEVELOPER_DIR set per command, dav1d asm disabled locally per #26). The rented macOS box is no longer needed.
+  ui-multitouch review: 2 high (a press released outside the canvas never ends; HTML press-on-enter buttons stay
+  pressed under implicit capture), fixes in progress. video-mp4 implemented, in review. Box 2204 (Vultr) is slow
+  from CPU steal; agents moved off it.
+- 2026-11-01: Mac check of main (b6989373c): iOS and macOS app schemes 0 errors. shader-globals review fixes done
+  (framebuffer-global lifetime, cached texture resolution, Android context loss, renames refused in Play) and merged
+  locally (82890abd7). Its agent found a physics-3d merge bug on main: the 3D world capacity and the 3D physics
+  switch shared the project.yaml key `physics3D` -> lead moved the capacity to `physics3DWorld` with a round-trip
+  test (91e646d41). video-mp4 review: 4 confirmed high defects (exports without 3D physics fail to link; video
+  render textures by raw pointer; persistent players lose their output; a regex stack overflow in the Android
+  export) + platform issues; fixes in progress.

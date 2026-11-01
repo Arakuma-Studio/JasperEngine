@@ -2631,6 +2631,23 @@ void editor::Project::resetPlayInput() const{
     applyInputActions();
 }
 
+void editor::Project::setShaderGlobals(const std::vector<ShaderGlobalDecl>& decls){
+    shaderGlobals = decls;
+    applyShaderGlobals();
+}
+
+const std::vector<ShaderGlobalDecl>& editor::Project::getShaderGlobals() const{
+    return shaderGlobals;
+}
+
+void editor::Project::applyShaderGlobals() const{
+    ShaderGlobals::declare(shaderGlobals);
+}
+
+void editor::Project::resetPlayShaderGlobals() const{
+    ShaderGlobals::resetToDefaults();
+}
+
 static bool isInsideRoot(const std::filesystem::path& path, const std::filesystem::path& root){
     std::error_code ec;
     std::filesystem::path relativePath = std::filesystem::relative(path, root, ec);
@@ -5532,6 +5549,7 @@ void editor::Project::resetConfigs() {
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
     setPhysics3DWorldSettings(Physics3DWorldSettings());
     resetInputActions();
+    setShaderGlobals({});
     packNativeResources = defaultPackNativeResources;
     versionControlMetadata = defaultVersionControlMetadata;
     shaderOverrides = {};
@@ -6928,7 +6946,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals());
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8629,7 +8647,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp);
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp, getShaderGlobals());
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
@@ -9233,6 +9251,8 @@ void editor::Project::start(uint32_t sceneId) {
     applyLayerCollisionMatrices();
     // and from clean input (Project Settings > Input, no runtime rebinding)
     resetPlayInput();
+    // and from the declared global shader values (Project Settings > Graphics > Shader Globals)
+    resetPlayShaderGlobals();
     CommandHandle::get(sceneId)->beginPlaySession();
     editor::getEditorHost().saveAllCodeEditors();
     editor::getEditorHost().requestScenePlayFocus(sceneId);
@@ -9468,6 +9488,8 @@ void editor::Project::stop(uint32_t sceneId) {
             applyLayerCollisionMatrices();
             // so do held input, rebinding overrides and simulated input sources
             resetPlayInput();
+            // and the global shader values scripts set (Shader.setGlobal*)
+            resetPlayShaderGlobals();
 
             // what the game stored in UserSettings / PlayerPrefs is on disk when Play has stopped
             UserSettings::save();

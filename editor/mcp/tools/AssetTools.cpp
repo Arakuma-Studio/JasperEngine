@@ -3,6 +3,8 @@
 
 // W4: assets, import, materials, shaders, text files, placeholder art
 #include "McpTools.h"
+#include "util/ShaderGlobalsJson.h"
+#include "shader/ShaderGlobals.h"
 #include "W4Shared.h"
 #include "AnimationClipTools.h"
 
@@ -2515,6 +2517,79 @@ std::string uniformSetNote(const Json& members, const std::string& name, bool& d
            "the value is kept and applies once declared.";
 }
 
+// ---- global shader values (ShaderGlobals): what a shader's globals blocks and texture
+// uniforms read, and the members bound to globals
+
+const char* globalsMemberGlsl(ShaderUniformType type) {
+    return type == ShaderUniformType::MAT4 ? "mat4" : type == ShaderUniformType::MAT3 ? "mat3" : uniformTypeName(type);
+}
+
+void addGlobalMember(Json& list, const std::string& member, const char* stage, const std::string& glsl) {
+    for (const Json& entry : list) {
+        if (entry.value("member", "") == member && entry.value("stage", "") == stage) return;
+    }
+    ShaderGlobalValue value;
+    const bool exists = ShaderGlobals::get(ShaderGlobals::findID(member), value);
+    Json entry = {{"member", member}, {"stage", stage}, {"global", member}, {"glsl", glsl}, {"declared", exists && value.declared}};
+    if (!exists) {
+        entry["type"] = nullptr;
+        entry["value"] = nullptr;
+    } else {
+        entry["type"] = ShaderGlobals::getTypeName(value.type);
+        if (ShaderGlobals::isTexture(value.type))
+            entry["value"] = value.texture.isFramebuffer() ? std::string("<render target>") : value.texture.getPath(0);
+        else
+            entry["value"] = ShaderGlobalsJson::valueToJson(value.type, value.arraySize, value.values);
+    }
+    list.push_back(entry);
+}
+
+void appendGlobalMembers(Json& list, const ShaderLibraryBindings& bindings) {
+    auto block = [&list](const std::shared_ptr<GlobalsBlockLayout>& layout, const char* stage) {
+        if (!layout) return;
+        for (const GlobalsBlockLayout::Member& member : layout->members) {
+            std::string glsl = globalsMemberGlsl(member.type);
+            if (member.arrayCount > 1) glsl += "[" + std::to_string(member.arrayCount) + "]";
+            addGlobalMember(list, member.name, stage, glsl);
+        }
+    };
+    block(bindings.vsGlobals, "vertex");
+    block(bindings.fsGlobals, "fragment");
+    for (const GlobalTextureSlot& texture : bindings.globalTextures)
+        addGlobalMember(list, ShaderGlobals::nameOf(texture.globalId), "texture", texture.cube ? "textureCube" : "texture2D");
+}
+
+// the globals the loaded shaders of the entity's component read (a mesh: every submesh, or one)
+Json componentGlobalMembers(Scene* scene, Entity entity, ComponentType component, int submesh) {
+    Json list = Json::array();
+    if (component == ComponentType::MeshComponent) {
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {
+            for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                if (submesh >= 0 && (int)s != submesh) continue;
+                appendGlobalMembers(list, mesh->submeshes[s].libraryBindings);
+                appendGlobalMembers(list, mesh->submeshes[s].depthLibraryBindings);
+            }
+        }
+    } else if (UIComponent* ui = component == ComponentType::UIComponent ? scene->findComponent<UIComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, ui->libraryBindings);
+    } else if (PointsComponent* points = component == ComponentType::PointsComponent ? scene->findComponent<PointsComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, points->libraryBindings);
+    } else if (LineRendererComponent* lines = component == ComponentType::LineRendererComponent ? scene->findComponent<LineRendererComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, lines->libraryBindings);
+    } else if (SkyboxComponent* sky = component == ComponentType::SkyboxComponent ? scene->findComponent<SkyboxComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, sky->libraryBindings);
+    } else if (TrailRendererComponent* trail = component == ComponentType::TrailRendererComponent ? scene->findComponent<TrailRendererComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, trail->libraryBindings);
+    }
+    return list;
+}
+
+Json globalBindingsJson(const ShaderGlobalBindings& bindings) {
+    Json json = Json::object();
+    for (const auto& binding : bindings) json[binding.first] = binding.second;
+    return json;
+}
+
 bool passIndexArg(const CallPtr& call, const std::vector<PostProcessPass>& passes, int& index) {
     const Json& value = call->args()["pass_index"];
     index = value.is_number_integer() ? value.get<int>() : -1;
@@ -2583,9 +2658,19 @@ void getShaderUniformsTool(const CallPtr& call) {
         const PostProcessPass& p = passes[index];
         bool buildFailed = false;
         passUniformMembers(members, warnings, p, buildFailed);
+        // the globals the pass's shader reads, from its reflection
+        Json globals = Json::array();
+        std::shared_ptr<ShaderRender> passShader = ShaderPool::get(ShaderType::POSTPROCESS, 0, ShaderPool::registerCustomShader(p.shader));
+        if (!buildFailed && passShader && passShader->isCreated()) {
+            ShaderLibraryBindings bindings;
+            bindings.vsGlobals = ShaderGlobals::acquireLayout(passShader->shaderData, ShaderGlobals::VERTEX_BLOCK);
+            bindings.fsGlobals = ShaderGlobals::acquireLayout(passShader->shaderData, ShaderGlobals::FRAGMENT_BLOCK);
+            appendGlobalMembers(globals, bindings);
+        }
         call->ok("Post-process pass " + std::to_string(index) + " (" + p.shader + "): " + std::to_string(members.size()) + " member(s).",
                  Json{{"pass_index", index}, {"shader", p.shader}, {"enabled", p.enabled}, {"build_failed", buildFailed},
-                      {"members", members}, {"warnings", warnings}, {"values", uniformValuesJson(p.uniforms)}});
+                      {"members", members}, {"warnings", warnings}, {"values", uniformValuesJson(p.uniforms)},
+                      {"globals", globals}, {"global_bindings", globalBindingsJson(p.shaderGlobalBindings)}});
         return;
     }
     ShaderType shaderType;
@@ -2610,7 +2695,9 @@ void getShaderUniformsTool(const CallPtr& call) {
                      {"build_failed", Catalog::isCustomShaderBuildFailed(scene, where.entity, where.component)},
                      {"members", members},
                      {"warnings", Catalog::getShaderUniformWarnings(blocks)},
-                     {"values", uniformValuesJson(sub.material.shaderParams)}};
+                     {"values", uniformValuesJson(sub.material.shaderParams)},
+                     {"globals", componentGlobalMembers(scene, where.entity, where.component, submesh)},
+                     {"global_bindings", globalBindingsJson(sub.material.shaderGlobalBindings)}};
         if (manifest) data["parameters"] = manifestParameters(manifest.get(), sub.material.shaderParams);
         // what this variant reads of the scene (phase 3) and the cost
         if (const uint32_t reads = Catalog::getMaterialSceneInputs(scene, where.entity, submesh, false)) {
@@ -2635,7 +2722,10 @@ void getShaderUniformsTool(const CallPtr& call) {
                  {"build_failed", Catalog::isCustomShaderBuildFailed(scene, where.entity, where.component)},
                  {"members", members},
                  {"warnings", warnings},
-                 {"values", uniformValuesJson(*values)}};
+                 {"values", uniformValuesJson(*values)},
+                 {"globals", componentGlobalMembers(scene, where.entity, where.component, -1)}};
+    if (const ShaderGlobalBindings* bindings = Catalog::getPropertyRef<ShaderGlobalBindings>(scene, where.entity, where.component, "shaderGlobalBindings"))
+        data["global_bindings"] = globalBindingsJson(*bindings);
     // a mesh's depth fork declares blocks of its own, listed in the same members
     if (std::string* depth = Catalog::getPropertyRef<std::string>(scene, where.entity, where.component, "customDepthShader")) {
         data["custom_depth_shader"] = *depth;
@@ -3656,8 +3746,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Get Shader Uniforms";
         tool.description =
             "A custom or library shader's parameters (u_vs/u_fs_customParams, a pass's u_fs_postParams): GLSL type, "
-            "engine-written (time, resolution), value; library shaders add label, kind, default. entity (+ "
-            "component, + submesh) or pass_index; known once compiled.";
+            "engine-written (time, resolution), value; library shaders add label, kind, default; globals read "
+            "(u_vs/u_fs_globals) and global_bindings. entity (+ component, + submesh) or pass_index; known once compiled.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

@@ -1129,6 +1129,7 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderDataSerializer.cpp
     core/shader/ShaderManifest.cpp
     core/shader/ShaderUniforms.cpp
+    core/shader/ShaderGlobals.cpp
     core/shader/ShaderVariantCollection.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp

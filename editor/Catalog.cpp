@@ -205,6 +205,7 @@ namespace {
         {"material.shaderParams", SubmeshOverride_ShaderParams},
         {"material.shaderTextures", SubmeshOverride_ShaderTextures},
         {"material.shaderFeatures", SubmeshOverride_ShaderFeatures},
+        {"material.shaderGlobalBindings", SubmeshOverride_ShaderGlobalBindings},
         {"material.blendMode", SubmeshOverride_BlendMode},
         {"material.cullMode", SubmeshOverride_CullMode},
         {"material.depthWrite", SubmeshOverride_DepthWrite},
@@ -262,7 +263,7 @@ namespace {
     // shader, its features, textures and render state are resolved when the mesh loads, so a
     // change reloads it; parameters only rewrite the uniform blocks.
     const char* const kMaterialLibraryFields[] = {
-        "shader", "shaderParams", "shaderTextures", "shaderFeatures", "blendMode", "cullMode", "depthWrite",
+        "shader", "shaderParams", "shaderTextures", "shaderFeatures", "shaderGlobalBindings", "blendMode", "cullMode", "depthWrite",
         "depthTest", "depthOffsetFactor", "depthOffsetUnits", "sortPriority", "lighting",
         // phase 2
         "stencil", "stencil.compare", "stencil.ref", "stencil.readMask", "stencil.writeMask", "stencil.pass",
@@ -329,6 +330,8 @@ namespace {
         if (field == "shaderParams") return data(PropertyType::Custom, UpdateFlags_Shader_Uniforms, &Material::shaderParams);
         if (field == "shaderTextures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture, &Material::shaderTextures);
         if (field == "shaderFeatures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload, &Material::shaderFeatures);
+        // members following a global: rewritten into the blocks like the parameters
+        if (field == "shaderGlobalBindings") return data(PropertyType::Custom, UpdateFlags_Shader_Uniforms, &Material::shaderGlobalBindings);
         if (field == "blendMode") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::blendMode);
         if (field == "cullMode") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::cullMode);
         if (field == "depthWrite") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::depthWrite);
@@ -372,6 +375,7 @@ namespace {
         makeFastProperty<UIComponent, Texture, &UIComponent::texture>("texture", PropertyType::Texture, UpdateFlags_UI_Texture),
         makeFastProperty<UIComponent, std::string, &UIComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<UIComponent, ShaderUniformValues, &UIComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        makeFastProperty<UIComponent, ShaderGlobalBindings, &UIComponent::shaderGlobalBindings>("shaderGlobalBindings", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
         // shader library: resolved when the UI loads its shader
         makeFastProperty<UIComponent, std::vector<std::pair<std::string, Texture>>, &UIComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
         makeFastProperty<UIComponent, std::vector<std::string>, &UIComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
@@ -853,6 +857,7 @@ namespace {
         makeFastProperty<TrailRendererComponent, int, &TrailRendererComponent::sortPriority>("sortPriority", PropertyType::Int, UpdateFlags_None),
         makeFastProperty<TrailRendererComponent, std::string, &TrailRendererComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<TrailRendererComponent, ShaderUniformValues, &TrailRendererComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        makeFastProperty<TrailRendererComponent, ShaderGlobalBindings, &TrailRendererComponent::shaderGlobalBindings>("shaderGlobalBindings", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
         makeFastProperty<TrailRendererComponent, std::vector<std::pair<std::string, Texture>>, &TrailRendererComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
         makeFastProperty<TrailRendererComponent, std::vector<std::string>, &TrailRendererComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
         makeFastProperty<TrailRendererComponent, MaterialBlendMode, &TrailRendererComponent::blendMode>("blendMode", PropertyType::Enum, UpdateFlags_Shader_Reload),
@@ -912,6 +917,7 @@ namespace {
         makeFastProperty<SkyboxComponent, bool, &SkyboxComponent::visible>("visible", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<SkyboxComponent, std::string, &SkyboxComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<SkyboxComponent, ShaderUniformValues, &SkyboxComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        makeFastProperty<SkyboxComponent, ShaderGlobalBindings, &SkyboxComponent::shaderGlobalBindings>("shaderGlobalBindings", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
         makeFastProperty<SkyboxComponent, std::vector<std::pair<std::string, Texture>>, &SkyboxComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
         makeFastProperty<SkyboxComponent, std::vector<std::string>, &SkyboxComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
     };
@@ -3666,6 +3672,7 @@ namespace {
         if (propertyName == "texture") return {PropertyType::Texture, UpdateFlags_Points_Texture, &def.texture, &comp->texture};
         if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
+        if (propertyName == "shaderGlobalBindings") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderGlobalBindings, &comp->shaderGlobalBindings};
         if (propertyName == "shaderTextures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, &comp->shaderTextures};
         if (propertyName == "shaderFeatures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, &comp->shaderFeatures};
         if (propertyName == "blendMode") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, &comp->blendMode};
@@ -3758,6 +3765,7 @@ namespace {
         ps["texture"] = {PropertyType::Texture, UpdateFlags_Points_Texture, &def.texture, comp ? &comp->texture : nullptr};
         ps["customShader"] = {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
         ps["shaderUniforms"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, comp ? &comp->shaderUniforms : nullptr};
+        ps["shaderGlobalBindings"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderGlobalBindings, comp ? &comp->shaderGlobalBindings : nullptr};
         ps["shaderTextures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, comp ? &comp->shaderTextures : nullptr};
         ps["shaderFeatures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, comp ? &comp->shaderFeatures : nullptr};
         ps["blendMode"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, comp ? &comp->blendMode : nullptr};
@@ -3814,6 +3822,7 @@ namespace {
         if (propertyName == "maxLines") return {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, &comp->maxLines};
         if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
+        if (propertyName == "shaderGlobalBindings") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderGlobalBindings, &comp->shaderGlobalBindings};
         if (propertyName == "shaderTextures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, &comp->shaderTextures};
         if (propertyName == "shaderFeatures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, &comp->shaderFeatures};
         if (propertyName == "blendMode") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, &comp->blendMode};
@@ -3892,6 +3901,7 @@ namespace {
         ps["maxLines"] = {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, comp ? &comp->maxLines : nullptr};
         ps["customShader"] = {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
         ps["shaderUniforms"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, comp ? &comp->shaderUniforms : nullptr};
+        ps["shaderGlobalBindings"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderGlobalBindings, comp ? &comp->shaderGlobalBindings : nullptr};
         ps["shaderTextures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, comp ? &comp->shaderTextures : nullptr};
         ps["shaderFeatures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, comp ? &comp->shaderFeatures : nullptr};
         ps["blendMode"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, comp ? &comp->blendMode : nullptr};
@@ -5354,7 +5364,7 @@ bool editor::Catalog::isCustomDepthShaderBuildFailed(Scene* scene, Entity entity
 }
 
 bool editor::Catalog::splitShaderEntryProperty(const std::string& propertyName, std::string& collection, std::string& key) {
-    for (const char* name : {"shaderParams.", "shaderTextures.", "shaderUniforms."}) {
+    for (const char* name : {"shaderParams.", "shaderTextures.", "shaderUniforms.", "shaderGlobalBindings."}) {
         const size_t at = propertyName.find(name);
         if (at == std::string::npos) continue;
         const std::string prefix = propertyName.substr(0, at);
@@ -5362,9 +5372,11 @@ bool editor::Catalog::splitShaderEntryProperty(const std::string& propertyName, 
         const bool material = prefix.compare(0, 10, "submeshes[") == 0 &&
                               (endsWith(prefix, "].material.") || endsWith(prefix, "].material.extraPass."));
         const bool component = prefix.empty();
-        // a material has shaderParams, a component shaderUniforms; both have shaderTextures
+        // a material has shaderParams, a component shaderUniforms; both have shaderTextures and
+        // shaderGlobalBindings (an extra pass has none)
         const std::string field(name, std::strlen(name) - 1);
-        if ((material && field == "shaderUniforms") || (component && field == "shaderParams") || (!material && !component)) {
+        if ((material && field == "shaderUniforms") || (component && field == "shaderParams") || (!material && !component) ||
+                (field == "shaderGlobalBindings" && endsWith(prefix, "extraPass."))) {
             return false;
         }
         key = propertyName.substr(at + std::strlen(name));
@@ -6612,6 +6624,10 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (property == "shaderTextures" || endsWith(property, "material.shaderTextures") || endsWith(property, "extraPass.shaderTextures")) {
                 auto* source = Catalog::getPropertyRef<std::vector<std::pair<std::string, Texture>>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<std::pair<std::string, Texture>>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (property == "shaderGlobalBindings" || endsWith(property, "material.shaderGlobalBindings")) {
+                auto* source = Catalog::getPropertyRef<ShaderGlobalBindings>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<ShaderGlobalBindings>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (property == "shaderFeatures" || endsWith(property, "material.shaderFeatures") || endsWith(property, "extraPass.shaderFeatures")) {
                 auto* source = Catalog::getPropertyRef<std::vector<std::string>>(sourceRegistry, sourceEntity, compType, property);

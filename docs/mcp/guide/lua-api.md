@@ -922,6 +922,38 @@ Buoyancy needs no script: a dynamic `Rigidbody` with `buoyancy > 0` floats (4.14
 `library:underwater` post-process pass switches itself on under a surface (shaders guide,
 "Water").
 
+### 2.10.2 Shader (static): global shader values
+
+Unity's `Shader.SetGlobal*` / `Shader.PropertyToID`: values every shader declaring them reads
+(a member of its `u_vs_globals` / `u_fs_globals` block, or a texture uniform of the name), and
+library shader parameters bound to them follow (the shaders guide, "Global values").
+Project Settings > Graphics > Shader Globals declares them with their defaults; Play starts and
+stops with those. `name` is the global's name or the id `propertyToID` gave. Setters return
+`false` (and log once) when the global is of another kind; wrong argument types raise an error.
+
+| Name | Notes |
+|---|---|
+| `Shader.propertyToID(name)` | a stable integer for this run |
+| `Shader.setGlobalFloat(name, n)`, `setGlobalInt(name, i)` | an int is stored as a float (Unity's SetGlobalInt) |
+| `Shader.setGlobalVector(name, Vector4 \| Vector3 \| Vector2)` | missing components 0 |
+| `Shader.setGlobalColor(name, Vector4 \| Vector3)` | sRGB in, stored linear (alpha as is) |
+| `Shader.setGlobalMatrix(name, Matrix4)` | only a `matrix4` global |
+| `Shader.setGlobalFloatArray(name, {n...})`, `setGlobalVectorArray(name, {Vector4...})` | 1..64; a first set fixes an undeclared array's size |
+| `Shader.setGlobalTexture(name, Texture \| "path" \| Framebuffer)` | `nil`: the default texture again |
+| `Shader.getGlobalFloat/Int/Vector/Color/Matrix/FloatArray/VectorArray/Texture(name)` | `getGlobalColor` is sRGB; `nil` when unknown or of another kind |
+| `Shader.hasGlobal(name)`, `Shader.getGlobalNames()` | declared first, then the ones scripts made |
+| `Shader.resetGlobals()` | back to the defaults; the names scripts made are dropped |
+
+```lua
+local tint = Shader.propertyToID("FogTint")
+function Fog:onUpdate()
+    Shader.setGlobalColor(tint, Vector4(1, 0.5 + 0.5 * math.sin(Engine.gameTime), 0, 1))
+end
+```
+
+Values outlive scene loads (like Unity). A material or component parameter can follow one:
+`setShaderGlobalBinding(member, global)` (4.3).
+
 ### 2.11 Angle (static)
 
 `Angle.degToRad(d)`, `Angle.radToDeg(r)`, `Angle.defaultToRad(a)`, `Angle.defaultToDeg(a)`,
@@ -1152,12 +1184,16 @@ first, before distance); methods `setShaderParam(name, value)` (colours linear; 
 faces, the layouts a Skybox takes) or `setShaderCubeTexture(uniform, front, back, left, right,
 up, down)` (six images), `getShaderTexture(uniform)` (a cube map's single image or front
 face), `setShaderFeature(define, on)` (a `@keywords` value is
-`"GROUP_VALUE"`), `isShaderFeatureEnabled(define)`. A material with `shader = ""` feeds the
+`"GROUP_VALUE"`), `isShaderFeatureEnabled(define)`, `setShaderGlobalBinding(member, global)`
+(the parameter follows a global shader value, 2.10.2, over its own; `nil` unbinds) and
+`getShaderGlobalBinding(member)` (`nil` unbound). A material with `shader = ""` feeds the
 shader its submesh draws with (the mesh's `customShader`, else the scene default): a copy from
 `getMaterial` / `material` resolves defaults and features against that one. UI (Image, Text,
-Polygon), Points, LineRenderer and Skybox objects have the same parameter/texture/feature
-methods for their `customShader` (but `setShaderCubeTexture`: set a cube uniform of theirs from
-the editor or MCP), and (but Skybox) `blendMode` and `depthWrite`.
+Polygon), Points, LineRenderer, TrailRenderer and Skybox objects have the same
+parameter/texture/feature/global binding methods for their `customShader` (but
+`setShaderCubeTexture`: set a cube uniform of theirs from the editor or MCP), and (but Skybox)
+`blendMode` and `depthWrite`; a post-process pass: `scene:setPostProcessGlobalBinding(index,
+member, global)`.
 `stencil` (`MaterialStencil()`: `compare` (`MaterialStencilCompare.*`: `AUTO` takes the shader's
 rule, `DISABLED`, `NEVER` ... `ALWAYS`), `ref`, `readMask`, `writeMask` (0-255), `pass`, `fail`,
 `depthFail` (`MaterialStencilOp.*`)) and `colorWrite` (`MaterialColorWrite.*`: `AUTO`, `NONE`,

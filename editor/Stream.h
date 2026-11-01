@@ -289,6 +289,9 @@ namespace jasperengine::editor {
         static void decodeRibbonFields(const YAML::Node& node, T& component, const T& defaults);
 
     public:
+        // custom-block members that follow a global shader value: {member: global}
+        static YAML::Node encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings);
+        static ShaderGlobalBindings decodeShaderGlobalBindings(const YAML::Node& node);
         // Unity AnimationCurve and Gradient (lines and trails spec 6.1). A curve:
         // {keys: [[time, value], [time, value, inTangent, outTangent]...], pre: clamp|loop|
         // ping_pong, post: ...} (wraps written when not clamp, tangents when not flat, .inf

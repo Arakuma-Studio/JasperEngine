@@ -7,6 +7,7 @@
 #include "SceneManager.h"
 #include "Catalog.h"
 #include "action/Ease.h"
+#include "shader/ShaderGlobals.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -169,6 +170,9 @@ namespace jasperengine::editor{
         // Unity's MinMaxCurve / MinMaxGradient literals (particles spec 6.7)
         static std::string formatMinMaxCurve(const MinMaxCurve& curve);
         static std::string formatMinMaxGradient(const MinMaxGradient& gradient);
+        // {{"member", "global"}, ...} and a ShaderGlobalDecl{...} literal (shader globals spec 6.5)
+        static std::string formatShaderGlobalBindings(const ShaderGlobalBindings& bindings);
+        static std::string formatShaderGlobalDecl(const ShaderGlobalDecl& decl);
 
         static std::string prefabToFunctionName(const std::filesystem::path& prefabPath);
         static std::string prefabToBuildFunctionName(const std::filesystem::path& prefabPath);

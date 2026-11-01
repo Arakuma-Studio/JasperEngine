@@ -3,6 +3,7 @@
 
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
+#include "shader/ShaderGlobals.h"
 #include "window/widget/CurveField.h"
 #include "window/widget/GradientField.h"
 #include "window/widget/MinMaxFields.h"
@@ -2040,6 +2041,12 @@ void editor::InspectorWindow::drawTagCombo(SceneProject* sceneProject, const std
 bool editor::InspectorWindow::consumeTagsAndLayersRequest(){
     bool requested = tagsAndLayersRequested;
     tagsAndLayersRequested = false;
+    return requested;
+}
+
+bool editor::InspectorWindow::consumeShaderGlobalsRequest(){
+    bool requested = shaderGlobalsRequested;
+    shaderGlobalsRequested = false;
     return requested;
 }
 
@@ -6218,7 +6225,23 @@ void editor::InspectorWindow::drawShaderUniformWarnings(const std::vector<std::s
     }
 }
 
-bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue){
+namespace {
+    // the components a value member of a custom block has (0: not a value a global can feed)
+    int uniformComponents(const ShaderUniform& uniform){
+        if (uniform.arrayCount > 1 || ShaderUniforms::isReserved(uniform.name) || !ShaderUniforms::isEditable(uniform))
+            return 0;
+        switch (uniform.type){
+            case ShaderUniformType::FLOAT: case ShaderUniformType::INT: return 1;
+            case ShaderUniformType::FLOAT2: case ShaderUniformType::INT2: return 2;
+            case ShaderUniformType::FLOAT3: case ShaderUniformType::INT3: return 3;
+            case ShaderUniformType::FLOAT4: case ShaderUniformType::INT4: return 4;
+            default: return 0;
+        }
+    }
+}
+
+bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue,
+                                                   float reserveRight){
     const std::string& name = uniform.name;
 
     ImGui::TableNextRow();
@@ -6263,7 +6286,7 @@ bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform,
     float fields[4] = {value.x, value.y, value.z, value.w};
     bool changed = false;
     std::string uniformId = idPrefix + name;
-    ImGui::SetNextItemWidth(-1);
+    ImGui::SetNextItemWidth(reserveRight > 0.0f ? -reserveRight : -1.0f);
     if (isInt){
         int intFields[4] = {(int)fields[0], (int)fields[1], (int)fields[2], (int)fields[3]};
         changed = ImGui::DragScalarN(uniformId.c_str(), ImGuiDataType_S32, intFields, components, 1.0f);
@@ -6296,10 +6319,33 @@ void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneP
         return;
     const ShaderUniformValues values = *valuesRef;
     const uint32_t sceneId = sceneProject->id;
+    // members that follow a global shader value (a mesh keeps them on its materials)
+    ShaderGlobalBindings* bindingsRef = cpType == ComponentType::MeshComponent ? nullptr
+        : Catalog::getPropertyRef<ShaderGlobalBindings>(sceneProject->scene, entity, cpType, "shaderGlobalBindings");
+    const ShaderGlobalBindings bindings = bindingsRef ? *bindingsRef : ShaderGlobalBindings();
+    auto setBindings = [&](const ShaderGlobalBindings& value) {
+        CommandHandle::get(sceneId)->addCommandNoMerge(
+            new PropertyCmd<ShaderGlobalBindings>(project, sceneId, entity, cpType, "shaderGlobalBindings", value));
+    };
+    const float linkWidth = getGlobalLinkButtonWidth() + ImGui::GetStyle().ItemSpacing.x;
 
     for (const ShaderUniform& uniform : rows.members) {
+        const int components = bindingsRef ? uniformComponents(uniform) : 0;
+        const std::string bound = components > 0 ? ShaderGlobals::getBinding(bindings, uniform.name) : std::string();
+        ImGui::PushID(("uniform_" + uniform.name).c_str());
+        if (!bound.empty()) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("%s", uniform.name.c_str());
+            ImGui::TableSetColumnIndex(1);
+            drawBoundGlobalValue(bound, components, false, ImGui::GetContentRegionAvail().x - linkWidth);
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
+            ImGui::PopID();
+            continue;
+        }
         Vector4 newValue;
-        if (drawShaderUniformRow(uniform, values, "##shader_uniform_", newValue)) {
+        if (drawShaderUniformRow(uniform, values, "##shader_uniform_", newValue, components > 0 ? linkWidth : 0.0f)) {
             ShaderUniformValues newValues = values;
             ShaderUniforms::set(newValues, uniform.name, newValue);
 
@@ -6311,6 +6357,9 @@ void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneP
             cmd->setNoMerge();
             cmd = nullptr;
         }
+        if (components > 0)
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
+        ImGui::PopID();
     }
 
     drawShaderUniformWarnings(rows.warnings);
@@ -6412,8 +6461,32 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
     }
 
     const ShaderUniformValues& values = passes[index].uniforms;
+    // members that follow a global shader value
+    const ShaderGlobalBindings& bindings = passes[index].shaderGlobalBindings;
+    auto setBindings = [&](const ShaderGlobalBindings& value){
+        std::vector<PostProcessPass> newPasses = passes;
+        newPasses[index].shaderGlobalBindings = value;
+        CommandHandle::get(sceneId)->addCommandNoMerge(
+            new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses));
+    };
+    const float linkWidth = getGlobalLinkButtonWidth() + ImGui::GetStyle().ItemSpacing.x;
     for (const ShaderUniform& uniform : resolved.block.members){
         ImGui::PushID(uniform.name.c_str());
+        const int components = uniformComponents(uniform);
+        const std::string bound = components > 0 ? ShaderGlobals::getBinding(bindings, uniform.name) : std::string();
+        if (!bound.empty()){
+            const ShaderManifestProperty* property = resolved.manifest ? resolved.manifest->findProperty(uniform.name) : nullptr;
+            const bool color = property && (property->kind == ShaderPropertyKind::COLOR || property->kind == ShaderPropertyKind::HDRCOLOR);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(property && !property->label.empty() ? property->label.c_str() : uniform.name.c_str());
+            ImGui::TableSetColumnIndex(1);
+            drawBoundGlobalValue(bound, components, color, ImGui::GetContentRegionAvail().x - linkWidth);
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
+            ImGui::PopID();
+            continue;
+        }
         // a member the shader's manifest declares (@property): its label, range and widget, and
         // its default while unset (what the engine renders), with a reset arrow once set
         const ShaderManifestProperty* property = resolved.manifest ? resolved.manifest->findProperty(uniform.name) : nullptr;
@@ -6451,7 +6524,7 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
             ImGui::TableSetColumnIndex(1);
             Vector4 edited;
             bool continuous = true;
-            if (drawShaderPropertyValue(*property, "##pp_param_" + uniform.name, value, edited, continuous)){
+            if (drawShaderPropertyValue(*property, "##pp_param_" + uniform.name, value, edited, continuous, components > 0 ? -linkWidth : -1.0f)){
                 std::vector<PostProcessPass> newPasses = passes;
                 newPasses[index].setUniform(uniform.name, edited);
                 Command* passCmd = new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses);
@@ -6467,7 +6540,7 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
                 ImGui::SetTooltip("%s", uniform.name.c_str());
         }else{
             Vector4 newValue;
-            if (drawShaderUniformRow(uniform, values, "##pp_uniform_", newValue)){
+            if (drawShaderUniformRow(uniform, values, "##pp_uniform_", newValue, components > 0 ? linkWidth : 0.0f)){
                 std::vector<PostProcessPass> newPasses = passes;
                 newPasses[index].setUniform(uniform.name, newValue);
 
@@ -6483,6 +6556,8 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
             cmd->setNoMerge();
             cmd = nullptr;
         }
+        if (components > 0)
+            drawGlobalLinkButton(uniform.name, components, bindings, setBindings);
         ImGui::PopID();
     }
 
