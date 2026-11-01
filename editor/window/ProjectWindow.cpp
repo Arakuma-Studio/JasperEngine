@@ -25,6 +25,10 @@
 #include "command/type/CopyFileCmd.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateMaterialFileCmd.h"
+#include "camera/ShakePreset.h"
+#include "camera/ShakePresets.h"
+#include "animation/AnimationClipIO.h"
+#include "util/ProjectFileWrites.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/CreateDirCmd.h"
 #include "command/type/DeleteFileCmd.h"
@@ -975,6 +979,10 @@ void editor::ProjectWindow::renderCreateMenuItems() {
     }
     if (ImGui::MenuItem(ICON_FA_CHILD_REACHING " Create Avatar Mask")){
         assetsCreateAvatarMask();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_BURST " Create Shake Preset")){
+        assetsCreateShakePreset();
         ImGui::CloseCurrentPopup();
     }
     if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE " Create Physics Material")){
@@ -4205,6 +4213,29 @@ void editor::ProjectWindow::assetsCreateAvatarMask() {
     for (auto& part : initial.parts) part = 1.0f;
     const fs::path relative = uniqueRelativePath(currentPath, "New Avatar Mask", anim::MASK_EXTENSION);
     if (!createAnimAsset<AvatarMaskDocument, anim::AvatarMaskData>(project, relative, initial, "Create Avatar Mask")) {
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+void editor::ProjectWindow::assetsCreateShakePreset() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    camera::ShakePresetFile file;
+    file.guid = anim::generateClipGuid();
+    file.preset = *camera::findBuiltinShakePreset(camera::defaultNewShakePresetName());
+    const fs::path relative = uniqueRelativePath(currentPath, "New Shake Preset", camera::SHAKE_EXTENSION);
+    std::string error;
+    if (!ProjectFileWrites::writeUndoable(project, {{project->getProjectPath() / relative, camera::writeShakePreset(file)}}, error)) {
+        Backend::getApp().registerAlert("Create Shake Preset", error);
         return;
     }
     scanDirectory(currentPath);

@@ -538,6 +538,13 @@ namespace jasperengine::editor {
         // written when empty), attachments[] are {socket, entity}. Decoding never loads; over an
         // old component everything it played is reset (the system starts it again) except the
         // editor's Preview toggle, and the callbacks are cleared.
+        // camera shake spec 7.1: the authored fields (each written; a missing key decodes to its
+        // default); decoding over an existing component keeps its runtime (the shakes play on)
+        static YAML::Node encodeCameraShakerComponent(const CameraShakerComponent& shaker);
+        static CameraShakerComponent decodeCameraShakerComponent(const YAML::Node& node, const CameraShakerComponent* oldShaker = nullptr);
+        static YAML::Node encodeCameraFollowComponent(const CameraFollowComponent& follow);
+        static CameraFollowComponent decodeCameraFollowComponent(const YAML::Node& node, const CameraFollowComponent* oldFollow = nullptr);
+
         static YAML::Node encodeVertexAnimatorComponent(const VertexAnimatorComponent& animator);
         static VertexAnimatorComponent decodeVertexAnimatorComponent(const YAML::Node& node, const VertexAnimatorComponent* oldAnimator = nullptr);
 

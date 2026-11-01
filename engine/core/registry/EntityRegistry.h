@@ -77,6 +77,8 @@
 #include "component/RagdollComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/PrefabComponent.h"
+#include "component/CameraShakerComponent.h"
+#include "component/CameraFollowComponent.h"
 
 namespace jasperengine {
 

@@ -397,6 +397,9 @@ namespace jasperengine::editor {
         // createMaskAsset hooks, set by this window)
         void assetsCreateAnimatorController();
         void assetsCreateAvatarMask();
+        // Assets > Create > Shake Preset: "New Shake Preset.shake" with the explosion preset's values,
+        // one project undo step, then renamed in place (camera shake spec 6)
+        void assetsCreateShakePreset();
         // Unity's Create > Physics Material / Physics Material 2D (the 2D preset: friction 0.4,
         // geometric mean / maximum)
         void assetsCreatePhysicsMaterial(bool preset2D);

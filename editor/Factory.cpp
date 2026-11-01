@@ -3442,6 +3442,56 @@ std::string editor::Factory::createLatticeModifierComponent(int indentSpaces, En
     return code.str();
 }
 
+std::string editor::Factory::createCameraShakerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<CameraShakerComponent>(entity)) return "";
+    const CameraShakerComponent& shaker = scene->getComponent<CameraShakerComponent>(entity);
+    const CameraShakerComponent defaults;
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CameraShakerComponent camerashaker;\n";
+    if (!shaker.enabled) code << ind << "camerashaker.enabled = false;\n";
+    if (shaker.global != defaults.global) code << ind << "camerashaker.global = " << formatBool(shaker.global) << ";\n";
+    if (shaker.unscaledTime != defaults.unscaledTime) code << ind << "camerashaker.unscaledTime = " << formatBool(shaker.unscaledTime) << ";\n";
+    if (shaker.mode == CameraShakeMode::Mode3D) code << ind << "camerashaker.mode = CameraShakeMode::Mode3D;\n";
+    if (shaker.mode == CameraShakeMode::Mode2D) code << ind << "camerashaker.mode = CameraShakeMode::Mode2D;\n";
+    code << ind << "camerashaker.positionScale = " << formatFloat(shaker.positionScale) << ";\n";
+    code << ind << "camerashaker.rotationScale = " << formatFloat(shaker.rotationScale) << ";\n";
+    if (!shaker.startPreset.empty()) code << ind << "camerashaker.startPreset = " << formatString(shaker.startPreset) << ";\n";
+    code << ind << "camerashaker.traumaDecay = " << formatFloat(shaker.traumaDecay) << ";\n";
+    code << ind << "camerashaker.traumaPower = " << formatFloat(shaker.traumaPower) << ";\n";
+    code << ind << "camerashaker.traumaMaxOffset = " << formatVector3(shaker.traumaMaxOffset) << ";\n";
+    code << ind << "camerashaker.traumaMaxAngle = " << formatVector3(shaker.traumaMaxAngle) << ";\n";
+    code << ind << "camerashaker.traumaFrequency = " << formatFloat(shaker.traumaFrequency) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CameraShakerComponent", "camerashaker", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createCameraFollowComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<CameraFollowComponent>(entity)) return "";
+    const CameraFollowComponent& follow = scene->getComponent<CameraFollowComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CameraFollowComponent camerafollow;\n";
+    if (!follow.enabled) code << ind << "camerafollow.enabled = false;\n";
+    code << ind << "camerafollow.target = " << formatEntity(follow.target, entityVarNames) << ";\n";
+    code << ind << "camerafollow.offset = " << formatVector3(follow.offset) << ";\n";
+    if (follow.offsetSpace == FollowOffsetSpace::Target) code << ind << "camerafollow.offsetSpace = FollowOffsetSpace::Target;\n";
+    if (follow.offsetSpace == FollowOffsetSpace::TargetYaw) code << ind << "camerafollow.offsetSpace = FollowOffsetSpace::TargetYaw;\n";
+    code << ind << "camerafollow.damping = " << formatVector3(follow.damping) << ";\n";
+    code << ind << "camerafollow.maxSpeed = " << formatFloat(follow.maxSpeed) << ";\n";
+    code << ind << "camerafollow.lookAt = " << formatBool(follow.lookAt) << ";\n";
+    code << ind << "camerafollow.lookAtOffset = " << formatVector3(follow.lookAtOffset) << ";\n";
+    code << ind << "camerafollow.rotationDamping = " << formatFloat(follow.rotationDamping) << ";\n";
+    code << ind << "camerafollow.deadZone = " << formatVector2(follow.deadZone) << ";\n";
+    code << ind << "camerafollow.useBounds = " << formatBool(follow.useBounds) << ";\n";
+    code << ind << "camerafollow.boundsMin = " << formatVector3(follow.boundsMin) << ";\n";
+    code << ind << "camerafollow.boundsMax = " << formatVector3(follow.boundsMax) << ";\n";
+    code << ind << "camerafollow.unscaledTime = " << formatBool(follow.unscaledTime) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CameraFollowComponent", "camerafollow", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createLatticeFollowerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<LatticeFollowerComponent>(entity)) return "";
     LatticeFollowerComponent& follower = scene->getComponent<LatticeFollowerComponent>(entity);
@@ -3517,6 +3567,8 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::PoseAnimatorComponent: return createPoseAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AnimationPlayerComponent: return createAnimationPlayerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::VertexAnimatorComponent: return createVertexAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::CameraShakerComponent: return createCameraShakerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::CameraFollowComponent: return createCameraFollowComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraComponent: return createCameraComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AudioSourceComponent: return createAudioSourceComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ScriptComponent: return createScriptComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);

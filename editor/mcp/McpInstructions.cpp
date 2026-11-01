@@ -226,6 +226,7 @@ Read the page before using these tools:
 - Crowds: bake_vertex_animation (preview, then output) -> .vat on a Vertex Animator
   (jasper://docs/vertex-animation).
 - Particles: create_particles, import_unity_particles (jasper://docs/particles).
+- Shake/follow: camerashaker, CameraShake.shake("explosion"); camerafollow (jasper://docs/camera).
 - Lines, lasers, trails: line_renderer / trail_renderer (jasper://docs/lines-trails).
 - Bend/squash: edit_lattice (jasper://docs/lattice). GPU fluid: type fluid_simulation
   (jasper://docs/fluid). Textures from examples: synthesize_texture

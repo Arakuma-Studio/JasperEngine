@@ -1164,6 +1164,20 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<LatticeFollowerComponent>(entity, Stream::decodeLatticeFollowerComponent(componentNode));
             }
             break;
+        case ComponentType::CameraShakerComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<CameraShakerComponent>(entity, {});
+            }else{
+                registry->addComponent<CameraShakerComponent>(entity, Stream::decodeCameraShakerComponent(componentNode));
+            }
+            break;
+        case ComponentType::CameraFollowComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<CameraFollowComponent>(entity, {});
+            }else{
+                registry->addComponent<CameraFollowComponent>(entity, Stream::decodeCameraFollowComponent(componentNode));
+            }
+            break;
         case ComponentType::LatticeTracksComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<LatticeTracksComponent>(entity, {});
@@ -1714,6 +1728,19 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeLatticeFollowerComponent(registry->getComponent<LatticeFollowerComponent>(entity));
             }
             registry->removeComponent<LatticeFollowerComponent>(entity);
+            break;
+        case ComponentType::CameraShakerComponent:
+            // the view offset (or the transform-mode base) goes back (CameraControlSystem::onComponentRemoved)
+            if (encodeComponent){
+                oldComponent = Stream::encodeCameraShakerComponent(registry->getComponent<CameraShakerComponent>(entity));
+            }
+            registry->removeComponent<CameraShakerComponent>(entity);
+            break;
+        case ComponentType::CameraFollowComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeCameraFollowComponent(registry->getComponent<CameraFollowComponent>(entity));
+            }
+            registry->removeComponent<CameraFollowComponent>(entity);
             break;
         case ComponentType::LatticeTracksComponent:
             if (encodeComponent){

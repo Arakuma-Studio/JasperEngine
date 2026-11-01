@@ -175,12 +175,16 @@ namespace jasperengine::editor{
         // on-screen controls feeding Input actions (ui-multitouch spec 7.4)
         OnScreenStickComponent,
         OnScreenButtonComponent,
-        TouchAreaComponent
+        TouchAreaComponent,
+        // MilkShake's Shaker: shakes from presets and trauma (camera shake spec 7.1)
+        CameraShakerComponent,
+        // Cinemachine-lite follow: offset, SmoothDamp, look-at, dead zone, bounds (camera shake spec 7.1)
+        CameraFollowComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::TouchAreaComponent;
+    constexpr ComponentType LastComponentType = ComponentType::CameraFollowComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
 
     enum class PropertyType{

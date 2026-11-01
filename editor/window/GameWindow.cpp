@@ -12,6 +12,7 @@
 #include "Backend.h"
 #include "Theme.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/CameraControlSystem.h"
 #include "registry/PhysicsLayers.h"
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
@@ -750,6 +751,22 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             drawList->PushClipRect(canvasMin, canvasMax, true);
             drawList->AddImage(texture, imageMin, imageMax);
             drawList->PopClipRect();
+        }
+
+        // the Camera Shaker Inspector's edit-mode preview: redrawn every frame while it shakes
+        if (!running && sceneProject && sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            std::shared_ptr<CameraControlSystem> cameras = sceneProject->scene->findSystem<CameraControlSystem>();
+            if (cameras && cameras->isPreviewing()) {
+                sceneProject->needUpdateRender = true;
+                editPassDirty = true;
+                const char* badge = ICON_FA_BURST "  Shake preview";
+                const ImVec2 badgeSize = ImGui::CalcTextSize(badge);
+                const ImVec2 pad = Theme::dpi(ImVec2(8.0f, 4.0f));
+                const ImVec2 badgeMin(areaMin.x + Theme::dpi(8.0f), areaMin.y + Theme::dpi(8.0f));
+                const ImVec2 badgeMax(badgeMin.x + badgeSize.x + pad.x * 2.0f, badgeMin.y + badgeSize.y + pad.y * 2.0f);
+                drawList->AddRectFilled(badgeMin, badgeMax, IM_COL32(20, 20, 20, 210), Theme::dpi(3.0f));
+                drawList->AddText(ImVec2(badgeMin.x + pad.x, badgeMin.y + pad.y), IM_COL32(255, 200, 80, 255), badge);
+            }
         }
 
         if (message) {

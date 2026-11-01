@@ -59,6 +59,7 @@
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
 #include "subsystem/TrailSystem.h"
+#include "subsystem/CameraControlSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
@@ -734,6 +735,18 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
         if (transform(path) && !path.empty() && path != animator.animation) {
             animator.animation = path;
             animator.needsLoad = true;
+            changed = true;
+        }
+    });
+
+    // Camera Shaker: a start preset that is a .shake file (a built-in name is no path)
+    visitComponents(registry->getComponentArray<CameraShakerComponent>(), [&](CameraShakerComponent& shaker) {
+        if (shaker.startPreset.size() <= 6 || shaker.startPreset.compare(shaker.startPreset.size() - 6, 6, ".shake") != 0) {
+            return;
+        }
+        std::string path = shaker.startPreset;
+        if (transform(path) && !path.empty() && path != shaker.startPreset) {
+            shaker.startPreset = path;
             changed = true;
         }
     });
@@ -5747,6 +5760,16 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
         trails->setPaused(pause);
         if (!pause) trails->clearPreviews();
     }
+    // Camera Follow and the Camera Shakers hold in edit mode (the Inspector's shake preview runs)
+    scene->getSystem<CameraControlSystem>()->setPaused(pause);
+}
+
+void editor::Project::stopCameraShakePreviews() {
+    for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
+        if (sceneProject && sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            sceneProject->scene->getSystem<CameraControlSystem>()->stopPreview();
+        }
+    }
 }
 
 void editor::Project::stopVertexAnimatorPreviews() {
@@ -6096,6 +6119,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         sceneProject->scene->getSystem<ActionSystem>()->resetPlayers();
         // and the Vertex Animators (vertex animation spec 3.4)
         sceneProject->scene->getSystem<VertexAnimatorSystem>()->resetAnimators();
+        // and the camera shakes (their view offsets) and the followers' motion
+        sceneProject->scene->getSystem<CameraControlSystem>()->resetAll();
 
         // The copy goes with Stop, so its id does too: after the prefab instances the game
         // made in it went (their destroyer finds the copy by that id), before the copy is
@@ -7102,6 +7127,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
     editor::getEditorHost().stopTransientPreviews();
     stopVertexAnimatorPreviews();
+    stopCameraShakePreviews();
 
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
@@ -7141,6 +7167,7 @@ void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
     // first: a physics gesture that settles now commits, and its scene counts as changed below
     editor::getEditorHost().stopTransientPreviews();
     stopVertexAnimatorPreviews();
+    stopCameraShakePreviews();
 
     std::vector<uint32_t> sceneIds;
     // the prefab stages first: the scenes saved after them hold their assets' new state
@@ -9344,6 +9371,8 @@ void editor::Project::start(uint32_t sceneId) {
     editor::getEditorHost().stopTransientPreviews();
     // a previewing Vertex Animator plays from its start
     stopVertexAnimatorPreviews();
+    // a shake previewed in the Game view does not carry into the game
+    stopCameraShakePreviews();
 
     // Exit any editor camera preview before starting: covers the owned-runtime path
     // where the source scene's render never enters play mode, so stopping wouldn't

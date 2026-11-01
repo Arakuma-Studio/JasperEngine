@@ -14,6 +14,7 @@
 
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
+#include "command/type/AddComponentCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
@@ -318,6 +319,8 @@ enum class AppMenuCommand : uint32_t {
     AssetsCreateAnimationClip,      // shown only once AnimationClipAppHooks::createClipAsset is set
     AssetsCreateAnimatorController, // (createControllerAsset)
     AssetsCreateAvatarMask,         // (createMaskAsset)
+    AssetsCreateShakePreset,
+    AddCameraShakerToMainCamera,
     AssetsCreateCppScript,
     AssetsShowInFileManager,
     AssetsOpen,
@@ -626,6 +629,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     if (animationClipAppHooks().createMaskAsset) {
         assetsCreateItems.push_back(menuCommand(AppMenuCommand::AssetsCreateAvatarMask, "Avatar Mask"));
     }
+    assetsCreateItems.push_back(menuCommand(AppMenuCommand::AssetsCreateShakePreset, "Shake Preset"));
     assetsCreateItems.push_back(menuSeparator());
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
 
@@ -645,8 +649,16 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::ClearTrash, "Empty Trash...", !isProjectBusy)
     }));
 
-    menu.menus.push_back(menuSubmenu("GameObject",
-        gameObjectMenuItems(selectedScene, canCreate, canCreateChild)));
+    // Camera Shaker on the scene's main camera (camera shake spec 9), after the create items
+    std::vector<PlatformMenuItem> gameObjectItems = gameObjectMenuItems(selectedScene, canCreate, canCreateChild);
+    {
+        const Entity mainCamera = hasSelectedScene ? project.getGameCamera(selectedSceneId) : NULL_ENTITY;
+        const bool canAddShaker = hasSelectedScene && !isProjectBusy && mainCamera != NULL_ENTITY && selectedScene->scene &&
+                                  !selectedScene->scene->findComponent<CameraShakerComponent>(mainCamera);
+        gameObjectItems.push_back(menuSeparator());
+        gameObjectItems.push_back(menuCommand(AppMenuCommand::AddCameraShakerToMainCamera, "Add Camera Shaker to Main Camera", canAddShaker));
+    }
+    menu.menus.push_back(menuSubmenu("GameObject", std::move(gameObjectItems)));
 
     menu.menus.push_back(menuSubmenu("Component", {
         menuShortcut(AppMenuCommand::AddComponent, "Add...", "Ctrl+Shift+A", canAddComponent)
@@ -1031,6 +1043,20 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreatePoseAnimation:
             projectWindow->assetsCreatePoseAnimation();
             break;
+        case AppMenuCommand::AssetsCreateShakePreset:
+            projectWindow->assetsCreateShakePreset();
+            break;
+        case AppMenuCommand::AddCameraShakerToMainCamera: {
+            SceneProject* scene = project.getSelectedScene();
+            const Entity mainCamera = scene ? project.getGameCamera(scene->id) : NULL_ENTITY;
+            if (scene && scene->scene && !project.isAnyScenePlaying() && mainCamera != NULL_ENTITY &&
+                !scene->scene->findComponent<CameraShakerComponent>(mainCamera)) {
+                CommandHandle::get(scene->id)->addCommandNoMerge(
+                    new AddComponentCmd(&project, scene->id, mainCamera, ComponentType::CameraShakerComponent));
+                project.setSelectedEntity(scene->id, mainCamera);
+            }
+            break;
+        }
         case AppMenuCommand::AssetsCreateAnimationClip:
             if (animationClipAppHooks().createClipAsset) {
                 animationClipAppHooks().createClipAsset(&project);

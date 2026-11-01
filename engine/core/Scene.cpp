@@ -15,6 +15,7 @@
 #include "subsystem/LatticeSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
 #include "subsystem/TrailSystem.h"
+#include "subsystem/CameraControlSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
@@ -46,6 +47,9 @@ void Scene::init(){
     registerSystem<LatticeSystem>();
     // after the lattices, before Render reads the GPU state it writes (vertex animation spec 3.4)
     registerSystem<VertexAnimatorSystem>();
+    // Camera Follow, then the Camera Shakers: after this frame's animation, physics interpolation
+    // and onUpdate, before the layout and Render build the matrices (camera shake spec 5.2)
+    registerSystem<CameraControlSystem>();
     registerSystem<UISystem>();
     registerSystem<UIDocumentSystem>();
     registerSystem<FluidSystem>();

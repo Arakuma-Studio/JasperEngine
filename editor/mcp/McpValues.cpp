@@ -1,6 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/ProjectChecks.h"
+#include "camera/ShakePresets.h"
+#include "camera/ShakePreset.h"
 #include "McpValues.h"
 #include "particles/ParticleFields.h"
 #include "shader/ShaderGlobals.h"
@@ -181,6 +184,11 @@ bool isVertexAnimationProperty(ComponentType component, const std::string& prope
 // String properties holding an asset reference instead of plain text: stored relative to the
 // assets folder, project-relative over MCP (a model's or document's filename, a Pose Animator's
 // animation, an Animation Player's clip, a Vertex Animator's animation)
+// a Camera Shaker's start preset naming a .shake file (a built-in name is no path)
+bool isShakePresetPathProperty(ComponentType component, const std::string& propertyName, const std::string& value) {
+    return component == ComponentType::CameraShakerComponent && propertyName == "startPreset" && Util::isShakePresetFile(value);
+}
+
 // A Rigidbody 2D's or one of its colliders' physics material (a .physicsmaterial)
 bool isPhysicsMaterialProperty(ComponentType component, const std::string& propertyName) {
     return (component == ComponentType::Rigidbody2DComponent || component == ComponentType::RigidbodyComponent) &&
@@ -396,6 +404,24 @@ const EnumOptions& cullingModeOptions() {
     static const EnumOptions options = {
         {(int)CullingMode::BACK, "back", "Back"},
         {(int)CullingMode::FRONT, "front", "Front"}
+    };
+    return options;
+}
+
+const EnumOptions& cameraShakeModeOptions() {
+    static const EnumOptions options = {
+        {(int)CameraShakeMode::Auto, "auto", "Auto"},
+        {(int)CameraShakeMode::Mode3D, "3d", "3D"},
+        {(int)CameraShakeMode::Mode2D, "2d", "2D"}
+    };
+    return options;
+}
+
+const EnumOptions& followOffsetSpaceOptions() {
+    static const EnumOptions options = {
+        {(int)FollowOffsetSpace::World, "world", "World"},
+        {(int)FollowOffsetSpace::Target, "target", "Target"},
+        {(int)FollowOffsetSpace::TargetYaw, "target_yaw", "Target Yaw"}
     };
     return options;
 }
@@ -1207,6 +1233,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"rigidbody_interpolation", &rigidbodyInterpolationOptions()},
         {"light_type", &lightTypeOptions()},
         {"camera_type", &cameraTypeOptions()},
+        {"camera_shake_mode", &cameraShakeModeOptions()},
+        {"follow_offset_space", &followOffsetSpaceOptions()},
         {"lattice_interpolation", &latticeInterpolationOptions()},
         {"lattice_outside", &latticeOutsideOptions()},
         {"lattice_jiggle_anchor", &latticeJiggleAnchorOptions()},
@@ -1290,6 +1318,12 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::LatticeModifierComponent:
             if (name == "bindings[].stage") return &latticeStageOptions();
             if (name == "bindings[].mask") return &latticeMaskOptions();
+            break;
+        case ComponentType::CameraShakerComponent:
+            if (name == "mode") return &cameraShakeModeOptions();
+            break;
+        case ComponentType::CameraFollowComponent:
+            if (name == "offsetSpace") return &followOffsetSpaceOptions();
             break;
         case ComponentType::CameraComponent:
             if (name == "type") return &cameraTypeOptions();
@@ -3281,6 +3315,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         case PropertyType::String: {
             const std::string& value = *static_cast<std::string*>(ref);
             if (isPlayerClipProperty(ctx.component, name)) return clipPathToJson(ctx.project, value);
+            if (isShakePresetPathProperty(ctx.component, name, value)) return assetPathToJson(ctx.project, value);
             return isAssetPathProperty(ctx.component, name) ? assetPathToJson(ctx.project, value) : value;
         }
         case PropertyType::Float:
@@ -3575,6 +3610,31 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                         ".clip, its GUID follows the file.";
                 return nullptr;
             }
+            if (component == ComponentType::CameraShakerComponent && propertyName == "startPreset" && !text.empty()) {
+                // a built-in name, or a .shake that exists and reads (project-relative, or its stored form)
+                if (!Util::isShakePresetFile(text)) {
+                    if (!camera::findBuiltinShakePreset(text)) {
+                        std::string names;
+                        for (const std::string& name : camera::builtinShakePresetNames()) names += (names.empty() ? "" : ", ") + name;
+                        error = "startPreset: '" + text + "' is no built-in preset (" + names + ") and no .shake path.";
+                        return nullptr;
+                    }
+                } else {
+                    std::string stored;
+                    if (!storedAssetPathFromJson(project, text, stored, error)) return nullptr;
+                    std::string content;
+                    if (!ProjectChecks::readFile(project->resolveAssetPath(stored), content)) {
+                        error = "startPreset: " + text + " does not exist (write it first: write_file with a .shake).";
+                        return nullptr;
+                    }
+                    camera::ShakeParseResult parsed = camera::parseShakePreset(content);
+                    if (!parsed.ok()) {
+                        error = "startPreset: " + text + " is no shake preset: " + parsed.errorText();
+                        return nullptr;
+                    }
+                    text = stored;
+                }
+            }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
             // a foliage layer's FBX mesh loads from its import, created here the first time
             if (component == ComponentType::TerrainComponent && endsWith(propertyName, "meshPath") &&
@@ -3611,6 +3671,19 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
         }
         case PropertyType::Float: {
             if (!value.is_number()) return expect("a number");
+            // camera shake spec 10: the Camera Shaker's and Camera Follow's ranges
+            if (component == ComponentType::CameraShakerComponent || component == ComponentType::CameraFollowComponent) {
+                const double number = value.get<double>();
+                if (component == ComponentType::CameraShakerComponent && propertyName == "traumaPower" &&
+                        !(number >= 1.0 && number <= 4.0)) {
+                    error = "traumaPower must be 1 to 4 (shake = trauma ^ power; 2 by default).";
+                    return nullptr;
+                }
+                if (!(number >= 0.0) || !std::isfinite(number)) {
+                    error = propertyName + " must be 0 or more.";
+                    return nullptr;
+                }
+            }
             // as the scene file reads it back (Stream clamps a negative fade to none)
             if (component == ComponentType::AnimationPlayerComponent && propertyName == "defaultFadeTime" &&
                     !(value.get<double>() >= 0.0)) {
@@ -3632,11 +3705,19 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
         case PropertyType::Vector2: {
             Vector2 v = property.ref ? *static_cast<Vector2*>(property.ref) : Vector2::ZERO;
             if (!parseVector2(value, v)) return expect("[x,y]");
+            if (component == ComponentType::CameraFollowComponent && propertyName == "deadZone" && (v.x < 0.0f || v.y < 0.0f)) {
+                error = "deadZone is a width and a height: both 0 or more.";
+                return nullptr;
+            }
             return new PropertyCmd<Vector2>(project, sceneId, entity, component, propertyName, v, onChanged);
         }
         case PropertyType::Vector3: {
             Vector3 v = property.ref ? *static_cast<Vector3*>(property.ref) : Vector3::ZERO;
             if (!parseVector3(value, v)) return expect("[x,y,z] (or \"#RRGGBB\")");
+            if (component == ComponentType::CameraFollowComponent && propertyName == "damping" && (v.x < 0.0f || v.y < 0.0f || v.z < 0.0f)) {
+                error = "damping is a smooth time in seconds per axis: 0 (rigid) or more.";
+                return nullptr;
+            }
             return new PropertyCmd<Vector3>(project, sceneId, entity, component, propertyName, v, onChanged);
         }
         case PropertyType::Vector4: {

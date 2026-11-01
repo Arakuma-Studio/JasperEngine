@@ -18,6 +18,7 @@
 #include "manager/SceneManager.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "subsystem/CameraControlSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -49,6 +50,7 @@
 #include "pool/AnimationClipPool.h"
 #include "pool/AvatarMaskPool.h"
 #include "pool/AnimatorControllerPool.h"
+#include "pool/ShakePresetPool.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
@@ -997,6 +999,7 @@ void Engine::clearPools(){
     AnimationClipPool::clear();
     AvatarMaskPool::clear();
     AnimatorControllerPool::clear();
+    ShakePresetPool::clear();
     PhysicsMaterialPool::clear();
 }
 
@@ -1582,6 +1585,12 @@ void Engine::runFrame(bool draw){
         // while the editor's Play is paused (Engine::pauseGameEvents)
         if (onUpdate.isEnabled())
             ScriptScheduler::beginFrame(frameDelta, unscaledDeltatime);
+
+        // transform-mode Camera Shakers write their base back before anything of this frame
+        // moves their GameObjects (they shake it again in the scene update)
+        for (int i = 0; i < scenes.size(); i++) {
+            if (auto cameras = scenes[i]->findSystem<CameraControlSystem>()) cameras->preUpdate();
+        }
 
         // 0) start of the scripts enabled since the last frame, before their first fixed
         //    update and update (Unity)

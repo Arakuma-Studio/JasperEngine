@@ -12104,6 +12104,16 @@ void RenderSystem::updateCamera(CameraComponent& camera, Transform& transform){
     if (camera.hasCustomViewMatrix){
         camera.viewMatrix = camera.customViewMatrix;
     }
+    camera.steadyWorldUp = Vector3(camera.viewMatrix[0][1], camera.viewMatrix[1][1], camera.viewMatrix[2][1]);
+    if (!camera.hasCustomViewMatrix && camera.hasViewOffset){
+        // a Camera Shaker's offset, a local pose O = T(p) * T(c) * R * T(-c) in camera space:
+        // view = O^-1 * view (camera shake spec 5.1)
+        const Vector3& p = camera.viewOffsetPosition;
+        const Vector3& c = camera.viewOffsetPivot;
+        Matrix4 inverseOffset = Matrix4::translateMatrix(c) * camera.viewOffsetRotation.inverse().getRotationMatrix();
+        inverseOffset.translateInPlace(-c.x - p.x, -c.y - p.y, -c.z - p.z);
+        camera.viewMatrix = inverseOffset * camera.viewMatrix;
+    }
 
     camera.worldRight = Vector3(camera.viewMatrix[0][0], camera.viewMatrix[1][0], camera.viewMatrix[2][0]);
     camera.worldUp = Vector3(camera.viewMatrix[0][1], camera.viewMatrix[1][1], camera.viewMatrix[2][1]);
