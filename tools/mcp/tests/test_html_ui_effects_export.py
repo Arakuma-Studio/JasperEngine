@@ -279,9 +279,10 @@ async def test_desktop_player_draws_the_effects(ed: Editor):
     # waits for the shaders still being made (S32), however long they take on a loaded machine
     # (a grab at 8 s caught the effects' stand-ins with the build server at load 60). 480 fixed
     # frames at 60 fps: the 8 s of game time the grab had
-    raw = await ed.call_raw("run_build", {"seconds": 240, "fixed_fps": 60, "screenshot_frame": 480, "quit_after": 480})
+    raw = await ed.call_raw("run_build", {"seconds": 300, "fixed_fps": 60, "screenshot_frame": 480, "quit_after": 480})
     ed.check(not raw.is_error, raw.text)
     ed.check(not raw.value["crashed"], f"the player crashed: {raw.value}")
+    ed.check(len(raw.images) == 1, f"the player wrote its screenshot: {raw.text[:2000]}")
     png = raw.images[0][0]
     (ed.scratch.root / "html-ui-effects-player.png").write_bytes(png)
     # pixelate's cells: the gaps between them show the page (a plain red/green box has none)
