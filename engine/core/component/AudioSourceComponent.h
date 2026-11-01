@@ -93,6 +93,8 @@ namespace jasperengine{
         // where a 3D source was last frame (its velocity is the move from there); runtime
         Vector3 lastPosition = Vector3(0, 0, 0);
         bool positionTracked = false;
+        // the velocity its voices were last given (SoLoud's, units a second)
+        Vector3 lastVelocity = Vector3(0, 0, 0);
 
         bool startTrigger = false;
         bool stopTrigger = false;

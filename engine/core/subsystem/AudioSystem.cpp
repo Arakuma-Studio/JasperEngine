@@ -385,6 +385,7 @@ void AudioSystem::moveSourceVoices(Scene* from, AudioSourceComponent& source, Sc
     target.playingTime = source.playingTime;
     target.lastPosition = source.lastPosition;
     target.positionTracked = source.positionTracked;
+    target.lastVelocity = source.lastVelocity;
     target.oneShots = source.oneShots;
     target.pendingOneShots = source.pendingOneShots;
     target.fade = source.fade;
@@ -1274,6 +1275,8 @@ void AudioSystem::update(double dt){
         const bool hasVoices = audio.handle != 0 || !audio.oneShots.empty();
         if (!hasVoices) {
             audio.needUpdate = false;
+            // a new voice starts without a velocity
+            audio.lastVelocity = Vector3(0, 0, 0);
             continue;
         }
 
@@ -1300,9 +1303,11 @@ void AudioSystem::update(double dt){
         }
 
         // 3D voices follow the source (its one-shots too, Unity)
-        if (use3DAudio && (audio.needUpdate || moved)) {
+        // and when it stops, a velocity of none (its pitch comes back)
+        if (use3DAudio && (audio.needUpdate || moved || velocity != audio.lastVelocity)) {
             if (audio.handle != 0) apply3dParameters(audio, audio.handle, worldPosition, velocity);
             for (const AudioOneShot& shot : audio.oneShots) apply3dParameters(audio, shot.handle, worldPosition, velocity);
+            audio.lastVelocity = velocity;
         }
         if (use3DAudio) {
             any3D = true;

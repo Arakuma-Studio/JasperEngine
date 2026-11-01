@@ -176,6 +176,7 @@ namespace {
         audio.playingTime = 0;
         audio.lastPosition = Vector3(0, 0, 0);
         audio.positionTracked = false;
+        audio.lastVelocity = Vector3(0, 0, 0);
         audio.startTrigger = false;
         audio.pauseTrigger = false;
         audio.stopTrigger = false;
