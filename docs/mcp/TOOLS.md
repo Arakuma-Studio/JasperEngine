@@ -174,7 +174,7 @@ Project Settings and editor preferences as flat dotted keys (player.product_name
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `category` | string |  | player, web, linux, windows, macos, ios, android, graphics, quality, physics, physics2d, input, scripting, editor, tags_and_layers, preferences or all. |
+| `category` | string |  | player, web, linux, windows, macos, ios, android, graphics, quality, physics, physics2d, input, scripting, debug, editor, tags_and_layers, preferences or all. |
 | `describe` | boolean |  |  |
 | `keys` | array of string |  | Keys or categories. |
 
@@ -1024,7 +1024,7 @@ Run Lua in the running game: the values as JSON (handles as {type, entity, name,
 
 Hints: read-only, idempotent
 
-Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), audio (voices, mixer_meters dB), console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), platform (lifecycle, orientation, opened_urls...), http (request counts, last failures); stopped: play_would_start.
+Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, audio (voices, mixer_meters dB), console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), platform (lifecycle, orientation, opened_urls...), http (request counts, last failures); stopped: play_would_start.
 
 No parameters.
 

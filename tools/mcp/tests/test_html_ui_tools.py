@@ -166,7 +166,9 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 # lead: main with camera-shake + ui-scaling-text + audio-mixer: provisional (112276 + audio-mixer's +799), re-measured on the merged tree
 TOTAL_LIMIT = 113075
 # debug overlay: no new tool; get_project_settings' category list (+ "debug") and get_play_state's
-# debug_overlay block (+22); re-measured on the tree merged with main
+# debug_overlay block (+22); measured on the tree merged with main dce634fb7 (everything above):
+# 154 tools, total 113014 (test_budget on the full MCP run), the limit set to it
+TOTAL_LIMIT = 113014
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
