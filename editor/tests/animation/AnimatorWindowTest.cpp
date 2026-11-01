@@ -125,6 +125,8 @@ namespace {
         track.keys = {a, b};
         data.tracks = {track};
         writeAll(assets() / ("animator/" + name + ".anim"), anim::writeClip(data));
+        // the database gives the new file its GUID (written into it)
+        project()->refreshAssetDatabase(true);
         return "animator/" + name + ".anim";
     }
 
@@ -171,7 +173,10 @@ namespace {
     AnimatorScene animatorScene(const std::string& controller) {
         AnimatorScene out;
         Project* p = project();
-        if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
+        if (SceneProject* current = p->getSelectedScene()){
+            current->isModified = false;
+            current->playState = ScenePlayState::STOPPED;      // (a failed test may have left it playing)
+        }
         p->createNewScene("Animator", SceneType::SCENE_3D);
         out.sceneProject = p->getScene(p->getSelectedSceneId());
         Scene* scene = out.sceneProject->scene;
@@ -453,7 +458,8 @@ TEST(AnimatorWindow, PreviewsOnTheBoundAnimatorAndDrivesLiveParameters) {
     EXPECT_NEAR(s.legX(), 0.0f, 1e-5f);
 
     // play mode: the parameters are the runtime's; editing them does not touch the file
-    ASSERT_TRUE(s.scene()->getSystem<AnimatorSystem>()->instance(s.root));
+    std::string error;
+    ASSERT_TRUE(s.scene()->getSystem<AnimatorSystem>()->preview(s.root, 0.0f, &error)) << error << " (the runtime, bound)";
     s.sceneProject->playState = ScenePlayState::PLAYING;
     EXPECT_TRUE(window.isLive());
     ASSERT_TRUE(window.setLiveParameter("Speed", 2.5f));
@@ -538,7 +544,8 @@ TEST(AnimatorWindow, EveryPanelDrawsInAFrame) {
     frames.frame(window);
     frames.frame(window);
     window.stopPreview();
-    ASSERT_TRUE(s.scene()->getSystem<AnimatorSystem>()->instance(s.root));
+    error.clear();
+    ASSERT_TRUE(s.scene()->getSystem<AnimatorSystem>()->preview(s.root, 0.0f, &error)) << error << " (the runtime, bound)";
     s.sceneProject->playState = ScenePlayState::PLAYING;
     ASSERT_TRUE(window.isLive());
     frames.frame(window);
