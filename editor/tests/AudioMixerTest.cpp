@@ -21,6 +21,7 @@
 #include "component/CameraComponent.h"
 #include "io/UserSettings.h"
 #include "object/sound/AudioSource.h"
+#include "player/PlayerConfig.h"
 #include "pool/SoundPool.h"
 #include "reflect/Reflect.h"
 #include "subsystem/AudioSystem.h"
@@ -1551,4 +1552,35 @@ TEST_F(AudioSourceTest, ALayerScenesSoundsAreHeardByTheMainCamera) {
     layer->getSystem<AudioSystem>()->update(kFrame60);
     Engine::removeScene(layer);
     delete layer;
+}
+
+// ---- prebuilt players: the project's audio, as the generated init and Play have it -------------
+
+TEST_F(AudioMixerRuntimeTest, APrebuiltPlayerConfiguresTheAudioAsTheGeneratedInitDoes) {
+    fs::create_directories(root / "assets" / "audio");
+    std::ofstream(root / "assets" / "audio" / "Main.mixer") << exampleMixer;
+    player::PlayerConfig game;
+    game.audioMixer = "audio/Main.mixer";
+    game.audioMaxRealVoices = 16;
+    game.audioMaxVoices = 100;
+    game.audioSampleRate = 48000;
+    player::PlayerConfig read;
+    std::string error;
+    ASSERT_TRUE(player::PlayerConfig::fromJson(game.toJson(), read, error)) << error;
+    player::applyAudio(read);
+    EXPECT_EQ(AudioSystem::getConfig().maxRealVoices, 16);
+    EXPECT_EQ(AudioSystem::getConfig().maxVoices, 100);
+    EXPECT_EQ(AudioSystem::getConfig().sampleRate, 48000);
+    EXPECT_TRUE(AudioMixer::hasAsset());
+    EXPECT_EQ(AudioMixer::getPath(), "audio/Main.mixer");
+    EXPECT_EQ(AudioMixer::getGroupNames(), (std::vector<std::string>{"Master", "Music", "SFX"}));
+
+    // a game.json of an older editor (no audio): the defaults, no mixer
+    nlohmann::json old = game.toJson();
+    old.erase("audio");
+    ASSERT_TRUE(player::PlayerConfig::fromJson(old, read, error)) << error;
+    EXPECT_EQ(read.audioMixer, "");
+    EXPECT_EQ(read.audioMaxRealVoices, AudioConfig().maxRealVoices);
+    EXPECT_EQ(read.audioMaxVoices, AudioConfig().maxVoices);
+    EXPECT_EQ(read.audioSampleRate, AudioConfig().sampleRate);
 }
