@@ -837,7 +837,11 @@ TEST_F(PersistenceTest, ReleasedScriptsLeavePersistentEvents) {
 TEST_F(PersistenceTest, Persistent3DSoundsUseTheMainCameraAsListener) {
     Scene* level = newScene();
     const Entity cameraEntity = entity(level, "LevelCamera");
-    level->addComponent<CameraComponent>(cameraEntity, CameraComponent());
+    // perspective: it hears at its position (an orthographic or UI camera at the centre of its
+    // view, AudioSourceTest.A2DCamerasListenerStandsAtTheCentreOfItsView)
+    CameraComponent perspective;
+    perspective.type = CameraType::CAMERA_PERSPECTIVE;
+    level->addComponent<CameraComponent>(cameraEntity, perspective);
     level->getComponent<Transform>(cameraEntity).position = Vector3(5, 6, 7);
     level->getComponent<Transform>(cameraEntity).worldPosition = Vector3(5, 6, 7);
     level->setCamera(cameraEntity);
