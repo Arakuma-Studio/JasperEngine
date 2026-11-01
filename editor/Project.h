@@ -1851,7 +1851,7 @@ namespace jasperengine::editor{
         // mixer reloads when it is that file
         void audioFilesChanged(const std::vector<std::filesystem::path>& changed);
         // Play starts from the start snapshot and the remembered values; Play stops back to the
-        // asset's values (no script overrides, the listener unpaused)
+        // asset's values (no script overrides, the listener unpaused, the global volume at 1)
         void resetPlayAudio(bool starting) const;
 
         // Project Settings > Debug (project.yaml `debug:`). Changed through DebugSettingsCmd
