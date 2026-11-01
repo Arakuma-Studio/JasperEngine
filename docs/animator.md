@@ -10,14 +10,22 @@ see `docs/pose-animation.md`).
 |---|---|---|
 | What it plays | a list of clips, by name | a state machine of clips and blend trees |
 | Control | `play`, `crossFade`, `blend`, `queue` | parameters (float, int, bool, trigger) that drive transitions |
-| Layers, masks, additive | no | yes (Avatar Masks, override or additive layers) |
+| Layers, masks, additive | yes (clip layers with weights, Avatar Masks, override or additive) | yes (per state machine layer) |
 | Montages, IK, root motion | no | yes |
 | Retargeting | by bone names | humanoid clips play on any humanoid |
 
 The Animation Player stays the simple path. A GameObject with both works: the Animator runs after
 the player and owns the bones its clips animate. **Create Animator Controller from Animation
-Player** (the Animator's **New from Player** button, or `edit_animator_controller {from_player}`)
-makes a controller with a state per clip of a player.
+Player** (the Animator's **New from Player** button, the Animation Player's **Create Animator
+Controller from Clips**, or `edit_animator_controller {from_player}`) makes a controller with a
+state per clip of a player, its layers as controller layers.
+
+A **disabled** Animation Player beside an Animator hands over to it: its `play`, `crossFade`,
+`stop`, `setFloat` / `setBool` / `setTrigger`..., state reads and `onStateEnter` / `onStateExit`
+go to the Animator (the Inspector says so on the player). Create Animator Controller from Clips
+sets that up: it adds the Animator playing the new controller and disables the player in one undo
+step. Scenes and prefabs made before the Animator joined the engine, whose Animation Player named
+a controller, load the same way (the player's controller moved to an Animator).
 
 ## Getting started
 
@@ -66,9 +74,12 @@ motion speed and direction. Children may be nested trees; a tree has at most 32 
 The first layer always weighs 1. Further layers override (blend over the layers below by their
 weight) or add (an additive layer adds each clip's difference from its reference pose: the first
 frame, the rest pose, or a time). An **Avatar Mask** (`.mask`, Assets > Create > Avatar Mask)
-limits a layer to body parts (click them on the figure: head, body, arms, hands, legs, root
-motion) and transform paths with weights (drop a model on the Transforms field to list its
-bones).
+limits a layer: each GameObject under the masked one gets a weight from 0 to 1, the first rule
+that applies: its transform path entry (or the nearest parent's entry that includes children),
+else its humanoid body part (click the parts on the figure: head, body, arms, hands, fingers, legs,
+root; a part can weigh a fraction), else the mask's **Default**. **Root Hierarchy** also gives the
+root part the GameObject and what lies between it and the hips. Animation Player layers use the
+same masks. The **Preview Model** builds the transform tree and figure from a model or prefab.
 
 ## Montages
 
@@ -123,7 +134,14 @@ per frame (see `docs/perf/animator.md`).
 
 ## Files
 
-`.controller`, `.mask` and `.montage` are JSON (`"format": "jasperengine.controller"`, `"version":
-1`, a `guid`), written in a canonical order with unknown keys kept. They are assets with GUIDs:
-references follow renames and moves, and renaming a clip rewrites the controllers and montages
-that use it.
+`.controller` and `.mask` are JSON version 2, `.montage` version 1 (`"format":
+"jasperengine.controller"`, `"version"`, a `guid`), written in a canonical order with unknown keys
+kept. They are assets with GUIDs: references follow renames and moves, and renaming a clip
+rewrites the controllers and montages that use it.
+
+Version 1 files load converted: the Animator's earlier masks (true / false body parts, exact
+paths) and the controllers and masks of the Animation Player's former controller support (flat
+states and transitions, `humanoid` and `transforms` masks), which share the version 1 header and
+are told apart by their members. The Inspector notes a converted file; the next edit saves it as
+version 2, keeping every member (what the engine does not read is written back as it was).
+`jasperengine-editor check --anims` reports them too.
