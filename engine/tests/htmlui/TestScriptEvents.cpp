@@ -235,10 +235,15 @@ TEST_F(ScriptEventTest, CustomEvents){
 
 TEST_F(ScriptEventTest, UnsupportedEventsWarn){
     UIElement btn = document->getElementById("btn");
-    EXPECT_EQ(btn.addEventListener("mouseenter", [](UIEvent&){}), 0u);
-    EXPECT_EQ(btn.addEventListener("pointerdown", [](UIEvent&){}), 0u);
+    EXPECT_EQ(btn.addEventListener("contextmenu", [](UIEvent&){}), 0u);
+    EXPECT_EQ(btn.addEventListener("beforeinput", [](UIEvent&){}), 0u);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "supported: click"), 2u);
+    // Touch Events: Pointer Events cover them (ui-multitouch)
     EXPECT_EQ(btn.addEventListener("touchstart", [](UIEvent&){}), 0u);
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "supported: click"), 3u);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "use the Pointer Events"), 1u);
+    // the pointer events and mouseenter / mouseleave are supported now
+    EXPECT_NE(btn.addEventListener("pointerdown", [](UIEvent&){}), 0u);
+    EXPECT_NE(btn.addEventListener("mouseenter", [](UIEvent&){}), 0u);
     TestSystem::get().clearLogs();
 }
 

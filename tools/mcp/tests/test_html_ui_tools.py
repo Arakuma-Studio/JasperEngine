@@ -112,6 +112,7 @@ LIMITS.update({"user_settings": 550})
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
 # ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
 # create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
+TOTAL_LIMIT = 106771
 # physics-3d: create_ragdoll (506, capped at 900), set_joint's 3D arguments (cone_half_angle and the
 # no-body_b wording), edit_colliders' 3D vertices / indices / is_trigger / material, configure_game_view's
 # physics_debug / physics_debug_contacts; measured on the tree merged with main (script-lifecycle,
@@ -136,14 +137,23 @@ LIMITS.update({"create_ragdoll": 900})
 # particles merged with main (shader-globals, persistence, ui-canvas-group, physics-3d, http): 152 tools, total
 # 108637 (tool_budget.py on the merged tree)
 # merged by the lead (+ particles): provisional, re-measured on the merged tree
-TOTAL_LIMIT = 108800
+# ui-multitouch (spec 2026-10-31-ui-multitouch 10): create_ui's onscreen_stick / onscreen_button / touch_area
+# types and their mode / action / actions fields (+209); merged with main (shader-globals): 151 tools measured
+# 107889, the limit set to it
+# merged by the lead (+ ui-multitouch): provisional, re-measured on the merged tree
+# coroutines (spec 2026-10-31-coroutines 7): get_play_state names its coroutines/timers counts and
+# get_runtime_entity the scripts' coroutines and timers (+83); merged with main (platform-services): 108160 + 83
+# merged by the lead (+ coroutines): provisional, re-measured on the merged tree
+# re-measured on main 66fb7f0dd (everything above merged; guide-headroom adds no tool text): 152 tools
+# 109388 (test_budget / tool_budget.py), the limit set to it
 # anim layers (spec 10, 11.4, 11.5): get_animation 670 -> 815 (mask, controller: +145) and
 # preview_animation 654 -> 721 (over: +67), phase 1 +212 (under its 600); edit_animator 2290 (under its
 # 3500; the op fields are in jasper://docs/animation); focus_window's "animator" (+11): +2513 in all, the
 # limits raised by them; measured on the tree merged with main (particles, physics-contacts,
 # platform-services, shader-globals): 153 tools, total 111616 (tool_budget.py), the limit set to it
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
-TOTAL_LIMIT = 111616
+# merged by the lead (guide-headroom + anim-layers): provisional, re-measured on the merged tree
+TOTAL_LIMIT = 112100
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

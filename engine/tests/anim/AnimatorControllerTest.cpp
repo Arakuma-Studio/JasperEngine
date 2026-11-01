@@ -18,6 +18,7 @@
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/AnimatorController.h"
 #include "object/AnimationPlayer.h"
+#include "object/Model.h"
 #include "pool/AnimationClipPool.h"
 #include "pool/AnimatorControllerPool.h"
 #include "script/LuaBinding.h"
@@ -410,7 +411,7 @@ TEST_F(Controllers, LayersAndPlayFromScript){
     object.play("Other");
     EXPECT_TRUE(object.isPlaying("Other"));
     EXPECT_TRUE(object.isPlaying("Base Layer.Other"));
-    object.play("Base Layer.Idle", 0, 0.5f);
+    object.playInLayer("Base Layer.Idle", 0, 0.5f);
     step(0.0);
     EXPECT_EQ(object.getCurrentStateName(), "Idle");
     EXPECT_NEAR(object.getCurrentStateInfo().normalizedTime, 0.5f, 1e-5f);
@@ -583,4 +584,137 @@ TEST(ControllerIO, BuildDoesNotRepeatWarnings){
     const size_t count = parsed.warnings.size();
     EXPECT_GE(count, 1u);
     EXPECT_EQ(anim::AnimatorController::build(*parsed.data, parsed.warnings)->getWarnings().size(), count);
+}
+
+// independent review: ordered interruption (current_state: only transitions listed before the
+// running one), normalized durations, transition offset and cycle offset, speed parameters, int
+// equals / not_equal, the callback order (clip events, onStateExit, onStateEnter), Model:playAnimation
+// through a controller, Lua-safe parameter names, playInLayer / crossFadeInLayer
+TEST_F(Controllers, OrderedInterruptionFromTheCurrentState){
+    clip("a", still(1));
+    clip("b", still(2));
+    clip("c", still(3));
+    clip("d", still(4));
+    AnimationPlayer object = player(controller("ordered", R"({"format": "jasperengine.controller", "version": 1,
+      "parameters": [{"name": "GoB", "type": "bool"}, {"name": "GoC", "type": "bool"}, {"name": "GoD", "type": "bool"}],
+      "layers": [{"name": "Base Layer", "states": [{"name": "A", "clip": "@a.anim"}, {"name": "B", "clip": "@b.anim"},
+                                                   {"name": "C", "clip": "@c.anim"}, {"name": "D", "clip": "@d.anim"}],
+        "transitions": [
+          {"from": "A", "to": "D", "conditions": [{"parameter": "GoD", "mode": "if"}], "has_exit_time": false, "duration": 1},
+          {"from": "A", "to": "B", "conditions": [{"parameter": "GoB", "mode": "if"}], "has_exit_time": false, "duration": 1, "interruption": "current_state"},
+          {"from": "A", "to": "C", "conditions": [{"parameter": "GoC", "mode": "if"}], "has_exit_time": false, "duration": 1}]}]})"));
+    step(0.1);
+    object.setBool("GoB", true);
+    step(0.1);
+    ASSERT_EQ(object.getNextStateInfo().name, "B");
+    object.setBool("GoC", true);
+    step(0.1);
+    EXPECT_EQ(object.getNextStateInfo().name, "B") << "A->C is listed after A->B: it cannot interrupt";
+    object.setBool("GoD", true);
+    step(0.1);
+    EXPECT_EQ(object.getNextStateInfo().name, "D") << "A->D is listed before A->B: it interrupts";
+}
+
+TEST_F(Controllers, DurationsOffsetsSpeedsAndIntConditions){
+    clip("a", still(1, 2.0f));
+    clip("b", slide(10, 1.0f));
+    AnimationPlayer object = player(controller("timing", R"({"format": "jasperengine.controller", "version": 1,
+      "parameters": [{"name": "N", "type": "int"}, {"name": "Rate", "type": "float", "default": 2}],
+      "layers": [{"name": "Base Layer", "states": [{"name": "A", "clip": "@a.anim"},
+                                                   {"name": "B", "clip": "@b.anim", "speed_parameter": "Rate", "cycle_offset": 0.25},
+                                                   {"name": "C", "clip": "@b.anim"}],
+        "transitions": [
+          {"from": "A", "to": "B", "conditions": [{"parameter": "N", "mode": "equals", "threshold": 3}], "has_exit_time": false,
+           "duration": 0.25, "fixed_duration": false},
+          {"from": "B", "to": "C", "conditions": [{"parameter": "N", "mode": "not_equal", "threshold": 3}], "has_exit_time": false,
+           "duration": 0, "offset": 0.5}]}]})"));
+    step(0.1);
+    object.setInteger("N", 2);
+    step(0.1);
+    EXPECT_FALSE(object.isInTransition()) << "2 != 3";
+    object.setInteger("N", 3);
+    step(0.1);
+    ASSERT_TRUE(object.isInTransition());
+    EXPECT_NEAR(object.getNextStateInfo().normalizedTime, 0.25f, 1e-5f) << "B starts at its cycle offset";
+    step(0.25);
+    EXPECT_TRUE(object.isInTransition()) << "a normalized duration: 0.25 x A's 2 s = 0.5 s";
+    EXPECT_NEAR(weight(object, "Base Layer.B"), 0.5f, 1e-4f);
+    step(0.25);
+    EXPECT_FALSE(object.isInTransition());
+    // speed_parameter Rate 2: B (1 s) advances 2 per second
+    const float before = object.getCurrentStateInfo().normalizedTime;
+    step(0.1);
+    EXPECT_NEAR(object.getCurrentStateInfo().normalizedTime - before, 0.2f, 1e-4f);
+    EXPECT_NEAR(object.getCurrentStateInfo().speed, 2.0f, 1e-6f);
+    object.setInteger("N", 4);
+    step(0.1);
+    EXPECT_EQ(object.getCurrentStateName(), "C");
+    EXPECT_NEAR(object.getCurrentStateInfo().normalizedTime, 0.5f, 1e-5f) << "the transition's offset wins over the cycle offset";
+}
+
+TEST_F(Controllers, CallbacksFollowTheStepsClipEvents){
+    ClipData a = still(1, 1.0f);
+    a.events = {ClipEventData{0.95f, "onLate", {}}};
+    clip("a", a);
+    clip("b", still(2));
+    AnimationPlayer object = player(controller("order", R"({"format": "jasperengine.controller", "version": 1,
+      "layers": [{"name": "Base Layer", "states": [{"name": "A", "clip": "@a.anim"}, {"name": "B", "clip": "@b.anim"}],
+        "transitions": [{"from": "A", "to": "B", "exit_time": 0.9, "duration": 0}]}]})"));
+    std::vector<std::string> log;
+    object.getOnEvent().add("test", std::function<void(const AnimationEvent&)>([&](const AnimationEvent& e){ log.push_back(e.functionName); }));
+    object.getOnStateExit().add("test", std::function<void(int, const std::string&)>([&](int, const std::string& n){ log.push_back("exit " + n); }));
+    object.getOnStateEnter().add("test", std::function<void(int, const std::string&)>([&](int, const std::string& n){ log.push_back("enter " + n); }));
+    step(0.0);
+    log.clear();
+    step(0.5);
+    step(0.5);     // crosses 0.9 (exit) and 0.95 (the event) in one step
+    ASSERT_EQ(log.size(), 3u);
+    EXPECT_EQ(log[0], "onLate");
+    EXPECT_EQ(log[1], "exit A");
+    EXPECT_EQ(log[2], "enter B");
+    object.getOnEvent().clear();
+    object.getOnStateExit().clear();
+    object.getOnStateEnter().clear();
+}
+
+TEST_F(Controllers, ModelPlayAnimationAndLayerForms){
+    scene.addComponent<ModelComponent>(root, {});
+    scene.addComponent<MeshComponent>(root, {});
+    scene.getComponent<ModelComponent>(root).needUpdateModel = false;
+    clip("a", still(1));
+    clip("b", still(2));
+    AnimationPlayer object = player(controller("model", R"({"format": "jasperengine.controller", "version": 1,
+      "layers": [{"name": "Base Layer", "states": [{"name": "A", "clip": "@a.anim"}, {"name": "B", "clip": "@b.anim"}]}]})"));
+    step(0.1);
+    Model model(&scene, root);
+    model.playAnimation("B", 0.2f);
+    step(0.1);
+    EXPECT_TRUE(object.isInTransition()) << "Model:playAnimation crossfades the controller";
+    EXPECT_EQ(object.getNextStateInfo().name, "B");
+    step(0.2);
+    EXPECT_EQ(object.getCurrentStateName(), "B");
+    model.stopAnimations(0.0f);
+    EXPECT_FALSE(object.isPlaying());
+    object.playInLayer("A", 0, 0.5f);
+    step(0.0);
+    EXPECT_EQ(object.getCurrentStateName(), "A");
+    EXPECT_NEAR(object.getCurrentStateInfo().normalizedTime, 0.5f, 1e-5f);
+    object.crossFadeInLayer("Base Layer.B", 0.4f, 0);
+    step(0.1);
+    EXPECT_NEAR(weight(object, "Base Layer.B"), 0.25f, 1e-4f);
+    object.play("A", 0.4f, PlayMode::StopAll);
+    step(0.1);
+    EXPECT_TRUE(object.isInTransition()) << "play with a fade crossfades with a controller too";
+}
+
+TEST(ControllerIO, ParameterNamesAreLuaIdentifiers){
+    anim::ControllerParseResult parsed = anim::parseController(R"({"format": "jasperengine.controller", "version": 1,
+      "parameters": [{"name": "Speed", "type": "float"}, {"name": "is running", "type": "bool"}, {"name": "end", "type": "bool"},
+                     {"name": "2fast", "type": "bool"}, {"name": "_ok2", "type": "trigger"}]})");
+    ASSERT_TRUE(parsed.ok());
+    ASSERT_EQ(parsed.data->parameters.size(), 2u);
+    EXPECT_EQ(parsed.data->parameters[1].name, "_ok2");
+    int dropped = 0;
+    for (const ClipWarning& warning : parsed.warnings) dropped += warning.message.find("not a Lua-safe name") != std::string::npos;
+    EXPECT_EQ(dropped, 3);
 }

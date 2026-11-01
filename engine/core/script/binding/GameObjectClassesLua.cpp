@@ -50,6 +50,9 @@
 #include "Scrollbar.h"
 #include "Progressbar.h"
 #include "InputField.h"
+#include "OnScreenControls.h"
+
+#include <algorithm>
 #include "LayoutGroup.h"
 #include "object/ui/CanvasGroup.h"
 #include "AudioSource.h"
@@ -2451,6 +2454,66 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getInputFieldComponent", &InputField::getComponent<InputFieldComponent>)
         .endClass();
 
+    // ui-multitouch: the on-screen controls (input sources feeding Input actions)
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<OnScreenStick, Image>("OnScreenStick")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", [] (const OnScreenStick* self) -> bool { return self->getStick().enabled; }, [] (OnScreenStick* self, bool value) { self->getStick().enabled = value; })
+        .addProperty("mode", [] (const OnScreenStick* self) -> OnScreenStickMode { return self->getStick().mode; }, [] (OnScreenStick* self, OnScreenStickMode value) { self->getStick().mode = value; })
+        .addProperty("background", [] (const OnScreenStick* self) -> Entity { return self->getStick().background; }, [] (OnScreenStick* self, Entity value) { self->getStick().background = value; })
+        .addProperty("handle", [] (const OnScreenStick* self) -> Entity { return self->getStick().handle; }, [] (OnScreenStick* self, Entity value) { self->getStick().handle = value; })
+        .addProperty("handleRange", [] (const OnScreenStick* self) -> float { return self->getStick().handleRange; }, [] (OnScreenStick* self, float value) { self->getStick().handleRange = std::max(0.0f, value); })
+        .addProperty("deadZone", [] (const OnScreenStick* self) -> float { return self->getStick().deadZone; }, [] (OnScreenStick* self, float value) { self->getStick().deadZone = std::max(0.0f, std::min(1.0f, value)); })
+        .addProperty("moveThreshold", [] (const OnScreenStick* self) -> float { return self->getStick().moveThreshold; }, [] (OnScreenStick* self, float value) { self->getStick().moveThreshold = std::max(0.0f, value); })
+        .addProperty("axes", [] (const OnScreenStick* self) -> OnScreenStickAxes { return self->getStick().axes; }, [] (OnScreenStick* self, OnScreenStickAxes value) { self->getStick().axes = value; })
+        .addProperty("snapX", [] (const OnScreenStick* self) -> bool { return self->getStick().snapX; }, [] (OnScreenStick* self, bool value) { self->getStick().snapX = value; })
+        .addProperty("snapY", [] (const OnScreenStick* self) -> bool { return self->getStick().snapY; }, [] (OnScreenStick* self, bool value) { self->getStick().snapY = value; })
+        .addProperty("hideWhenReleased", [] (const OnScreenStick* self) -> bool { return self->getStick().hideWhenReleased; }, [] (OnScreenStick* self, bool value) { self->getStick().hideWhenReleased = value; })
+        .addProperty("clampToArea", [] (const OnScreenStick* self) -> bool { return self->getStick().clampToArea; }, [] (OnScreenStick* self, bool value) { self->getStick().clampToArea = value; })
+        .addProperty("horizontalAction", [] (const OnScreenStick* self) -> std::string { return self->getStick().horizontalAction; }, [] (OnScreenStick* self, std::string value) { self->getStick().horizontalAction = value; })
+        .addProperty("verticalAction", [] (const OnScreenStick* self) -> std::string { return self->getStick().verticalAction; }, [] (OnScreenStick* self, std::string value) { self->getStick().verticalAction = value; })
+        .addProperty("visibility", [] (const OnScreenStick* self) -> OnScreenVisibility { return self->getStick().visibility; }, [] (OnScreenStick* self, OnScreenVisibility value) { self->getStick().visibility = value; })
+        .addProperty("value", [] (const OnScreenStick* self) -> Vector2 { return self->getStick().value; })
+        .addProperty("pressed", [] (const OnScreenStick* self) -> bool { return self->getStick().pressed; })
+        .addProperty("pointerId", [] (const OnScreenStick* self) -> int { return self->getStick().pointerId; })
+        .addProperty("onValueChanged", [] (OnScreenStick* self, lua_State* L) { return &self->getStick().onValueChanged; }, [] (OnScreenStick* self, lua_State* L) { self->getStick().onValueChanged = L; })
+        .addProperty("onPress", [] (OnScreenStick* self, lua_State* L) { return &self->getStick().onPress; }, [] (OnScreenStick* self, lua_State* L) { self->getStick().onPress = L; })
+        .addProperty("onRelease", [] (OnScreenStick* self, lua_State* L) { return &self->getStick().onRelease; }, [] (OnScreenStick* self, lua_State* L) { self->getStick().onRelease = L; })
+        .addFunction("getOnScreenStickComponent", &OnScreenStick::getComponent<OnScreenStickComponent>)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<OnScreenButton, Image>("OnScreenButton")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", [] (const OnScreenButton* self) -> bool { return self->getControl().enabled; }, [] (OnScreenButton* self, bool value) { self->getControl().enabled = value; })
+        .addProperty("action", [] (const OnScreenButton* self) -> std::string { return self->getControl().action; }, [] (OnScreenButton* self, std::string value) { self->getControl().action = value; })
+        .addProperty("value", [] (const OnScreenButton* self) -> float { return self->getControl().value; }, [] (OnScreenButton* self, float value) { self->getControl().value = std::max(-1.0f, std::min(1.0f, value)); })
+        .addProperty("pressWhenPointerEnters", [] (const OnScreenButton* self) -> bool { return self->getControl().pressWhenPointerEnters; }, [] (OnScreenButton* self, bool value) { self->getControl().pressWhenPointerEnters = value; })
+        .addProperty("releaseWhenPointerLeaves", [] (const OnScreenButton* self) -> bool { return self->getControl().releaseWhenPointerLeaves; }, [] (OnScreenButton* self, bool value) { self->getControl().releaseWhenPointerLeaves = value; })
+        .addProperty("visibility", [] (const OnScreenButton* self) -> OnScreenVisibility { return self->getControl().visibility; }, [] (OnScreenButton* self, OnScreenVisibility value) { self->getControl().visibility = value; })
+        .addProperty("pressed", [] (const OnScreenButton* self) -> bool { return self->getControl().pressed; })
+        .addProperty("onPress", [] (OnScreenButton* self, lua_State* L) { return &self->getControl().onPress; }, [] (OnScreenButton* self, lua_State* L) { self->getControl().onPress = L; })
+        .addProperty("onRelease", [] (OnScreenButton* self, lua_State* L) { return &self->getControl().onRelease; }, [] (OnScreenButton* self, lua_State* L) { self->getControl().onRelease = L; })
+        .addFunction("getOnScreenButtonComponent", &OnScreenButton::getComponent<OnScreenButtonComponent>)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<TouchArea, Image>("TouchArea")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", [] (const TouchArea* self) -> bool { return self->getArea().enabled; }, [] (TouchArea* self, bool value) { self->getArea().enabled = value; })
+        .addProperty("horizontalAction", [] (const TouchArea* self) -> std::string { return self->getArea().horizontalAction; }, [] (TouchArea* self, std::string value) { self->getArea().horizontalAction = value; })
+        .addProperty("verticalAction", [] (const TouchArea* self) -> std::string { return self->getArea().verticalAction; }, [] (TouchArea* self, std::string value) { self->getArea().verticalAction = value; })
+        .addProperty("sensitivity", [] (const TouchArea* self) -> float { return self->getArea().sensitivity; }, [] (TouchArea* self, float value) { self->getArea().sensitivity = value; })
+        .addProperty("invertX", [] (const TouchArea* self) -> bool { return self->getArea().invertX; }, [] (TouchArea* self, bool value) { self->getArea().invertX = value; })
+        .addProperty("invertY", [] (const TouchArea* self) -> bool { return self->getArea().invertY; }, [] (TouchArea* self, bool value) { self->getArea().invertY = value; })
+        .addProperty("visibility", [] (const TouchArea* self) -> OnScreenVisibility { return self->getArea().visibility; }, [] (TouchArea* self, OnScreenVisibility value) { self->getArea().visibility = value; })
+        .addProperty("delta", [] (const TouchArea* self) -> Vector2 { return self->getArea().delta; })
+        .addProperty("pressed", [] (const TouchArea* self) -> bool { return self->getArea().pressed; })
+        .addProperty("pointerId", [] (const TouchArea* self) -> int { return self->getArea().pointerId; })
+        .addProperty("onDrag", [] (TouchArea* self, lua_State* L) { return &self->getArea().onDrag; }, [] (TouchArea* self, lua_State* L) { self->getArea().onDrag = L; })
+        .addFunction("getTouchAreaComponent", &TouchArea::getComponent<TouchAreaComponent>)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .deriveClass<PoseAnimator, EntityHandle>("PoseAnimator")
         .addConstructor <void (*) (Scene*, Entity)> ()
@@ -2562,11 +2625,16 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("play",
             luabridge::overload<const std::string&>(&AnimationPlayer::play),
             luabridge::overload<const std::string&, float>(&AnimationPlayer::play),
-            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::playWithArguments))
+            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::play))
         .addFunction("crossFade",
             luabridge::overload<const std::string&>(&AnimationPlayer::crossFade),
             luabridge::overload<const std::string&, float>(&AnimationPlayer::crossFade),
-            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::crossFadeWithArguments))
+            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::crossFade))
+        // Unity's Animator.Play(name, layer, normalizedTime) / CrossFadeInFixedTime(name, seconds, layer)
+        .addFunction("playInLayer",
+            luabridge::overload<const std::string&, int>(&AnimationPlayer::playInLayer),
+            luabridge::overload<const std::string&, int, float>(&AnimationPlayer::playInLayer))
+        .addFunction("crossFadeInLayer", &AnimationPlayer::crossFadeInLayer)
         .addFunction("blend",
             luabridge::overload<const std::string&, float>(&AnimationPlayer::blend),
             luabridge::overload<const std::string&, float, float>(&AnimationPlayer::blend))

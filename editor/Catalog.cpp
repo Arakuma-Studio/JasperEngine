@@ -434,6 +434,44 @@ namespace {
         makeFastProperty<ScrollbarComponent, int, &ScrollbarComponent::barMarginBottom>("barMarginBottom", PropertyType::Int, UpdateFlags_None),
     };
 
+    // ui-multitouch: the on-screen controls (the runtime state is not a property)
+    static const FastPropertyDescriptor kOnScreenStickProperties[] = {
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, OnScreenStickMode, &OnScreenStickComponent::mode>("mode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, Entity, &OnScreenStickComponent::background>("background", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, Entity, &OnScreenStickComponent::handle>("handle", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, float, &OnScreenStickComponent::handleRange>("handleRange", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, float, &OnScreenStickComponent::deadZone>("deadZone", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, float, &OnScreenStickComponent::moveThreshold>("moveThreshold", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, OnScreenStickAxes, &OnScreenStickComponent::axes>("axes", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::snapX>("snapX", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::snapY>("snapY", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::hideWhenReleased>("hideWhenReleased", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, bool, &OnScreenStickComponent::clampToArea>("clampToArea", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, std::string, &OnScreenStickComponent::horizontalAction>("horizontalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, std::string, &OnScreenStickComponent::verticalAction>("verticalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<OnScreenStickComponent, OnScreenVisibility, &OnScreenStickComponent::visibility>("visibility", PropertyType::Enum, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kOnScreenButtonProperties[] = {
+        makeFastProperty<OnScreenButtonComponent, bool, &OnScreenButtonComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, std::string, &OnScreenButtonComponent::action>("action", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, float, &OnScreenButtonComponent::value>("value", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, bool, &OnScreenButtonComponent::pressWhenPointerEnters>("pressWhenPointerEnters", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, bool, &OnScreenButtonComponent::releaseWhenPointerLeaves>("releaseWhenPointerLeaves", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<OnScreenButtonComponent, OnScreenVisibility, &OnScreenButtonComponent::visibility>("visibility", PropertyType::Enum, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kTouchAreaProperties[] = {
+        makeFastProperty<TouchAreaComponent, bool, &TouchAreaComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, std::string, &TouchAreaComponent::horizontalAction>("horizontalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, std::string, &TouchAreaComponent::verticalAction>("verticalAction", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, float, &TouchAreaComponent::sensitivity>("sensitivity", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, bool, &TouchAreaComponent::invertX>("invertX", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, bool, &TouchAreaComponent::invertY>("invertY", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TouchAreaComponent, OnScreenVisibility, &TouchAreaComponent::visibility>("visibility", PropertyType::Enum, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kProgressbarProperties[] = {
         makeFastProperty<ProgressbarComponent, Entity, &ProgressbarComponent::fill>("fill", PropertyType::Entity, UpdateFlags_None),
         makeFastProperty<ProgressbarComponent, ProgressbarType, &ProgressbarComponent::type>("type", PropertyType::Enum, UpdateFlags_None),
@@ -1710,6 +1748,18 @@ namespace {
 
     PropertyData resolveScrollbarPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<ScrollbarComponent*>(comp), propertyName, kScrollbarProperties);
+    }
+
+    PropertyData resolveOnScreenStickPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<OnScreenStickComponent*>(comp), propertyName, kOnScreenStickProperties);
+    }
+
+    PropertyData resolveOnScreenButtonPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<OnScreenButtonComponent*>(comp), propertyName, kOnScreenButtonProperties);
+    }
+
+    PropertyData resolveTouchAreaPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<TouchAreaComponent*>(comp), propertyName, kTouchAreaProperties);
     }
 
     PropertyData resolveProgressbarPropertyFast(void* comp, const std::string& propertyName) {
@@ -3086,6 +3136,18 @@ namespace {
         enumerateFromDescriptors(comp, ps, kScrollbarProperties);
     }
 
+    void enumerateOnScreenStickProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kOnScreenStickProperties);
+    }
+
+    void enumerateOnScreenButtonProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kOnScreenButtonProperties);
+    }
+
+    void enumerateTouchAreaProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kTouchAreaProperties);
+    }
+
     void enumerateProgressbarProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kProgressbarProperties);
     }
@@ -4108,6 +4170,9 @@ namespace {
         {ComponentType::AnimationPlayerComponent, &findComponentPtr<AnimationPlayerComponent>, &resolveAnimationPlayerPropertyFast, &enumerateAnimationPlayerProperties},
         {ComponentType::VertexAnimatorComponent, &findComponentPtr<VertexAnimatorComponent>, &resolveVertexAnimatorPropertyFast, &enumerateVertexAnimatorProperties},
         {ComponentType::CanvasGroupComponent, &findComponentPtr<CanvasGroupComponent>, &resolveCanvasGroupPropertyFast, &enumerateCanvasGroupProperties},
+        {ComponentType::OnScreenStickComponent, &findComponentPtr<OnScreenStickComponent>, &resolveOnScreenStickPropertyFast, &enumerateOnScreenStickProperties},
+        {ComponentType::OnScreenButtonComponent, &findComponentPtr<OnScreenButtonComponent>, &resolveOnScreenButtonPropertyFast, &enumerateOnScreenButtonProperties},
+        {ComponentType::TouchAreaComponent, &findComponentPtr<TouchAreaComponent>, &resolveTouchAreaPropertyFast, &enumerateTouchAreaProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
@@ -4187,6 +4252,9 @@ namespace {
             case ComponentType::AnimationPlayerComponent: return &getEnabledRef<AnimationPlayerComponent>;
             case ComponentType::VertexAnimatorComponent: return &getEnabledRef<VertexAnimatorComponent>;
             case ComponentType::CanvasGroupComponent: return &getEnabledRef<CanvasGroupComponent>;
+            case ComponentType::OnScreenStickComponent: return &getEnabledRef<OnScreenStickComponent>;
+            case ComponentType::OnScreenButtonComponent: return &getEnabledRef<OnScreenButtonComponent>;
+            case ComponentType::TouchAreaComponent: return &getEnabledRef<TouchAreaComponent>;
             default: return nullptr;
         }
     }
@@ -4342,6 +4410,12 @@ std::string computeComponentName(editor::ComponentType component){
         name = "TrailRendererComponent";
     }else if(component == ComponentType::CanvasGroupComponent){
         name = "CanvasGroupComponent";
+    }else if(component == ComponentType::OnScreenStickComponent){
+        name = "OnScreenStickComponent";
+    }else if(component == ComponentType::OnScreenButtonComponent){
+        name = "OnScreenButtonComponent";
+    }else if(component == ComponentType::TouchAreaComponent){
+        name = "TouchAreaComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -4478,6 +4552,9 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::SpriteComponent: return "Sprite Renderer";
         case ComponentType::TextComponent: return "Text";
         case ComponentType::InputFieldComponent: return "Input Field";
+        case ComponentType::OnScreenStickComponent: return "On-Screen Stick";
+        case ComponentType::OnScreenButtonComponent: return "On-Screen Button";
+        case ComponentType::TouchAreaComponent: return "Touch Area";
         case ComponentType::TilemapComponent: return "Tilemap";
         case ComponentType::TranslateTracksComponent: return "Position Tracks";
         case ComponentType::LayoutGroupComponent: return "Layout Group";
@@ -4548,6 +4625,9 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::SpriteComponent: return ICON_FA_IMAGE;
         case ComponentType::TextComponent: return ICON_FA_FONT;
         case ComponentType::InputFieldComponent: return ICON_FA_KEYBOARD;
+        case ComponentType::OnScreenStickComponent: return ICON_FA_GAMEPAD;
+        case ComponentType::OnScreenButtonComponent: return ICON_FA_CIRCLE_DOT;
+        case ComponentType::TouchAreaComponent: return ICON_FA_HAND_POINTER;
         case ComponentType::TilemapComponent: return ICON_FA_BORDER_ALL;
         case ComponentType::TranslateTracksComponent: return ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT;
         case ComponentType::LayoutGroupComponent: return ICON_FA_TABLE_CELLS;
@@ -4630,6 +4710,12 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<AnimationPlayerComponent>();
         case ComponentType::VertexAnimatorComponent:
             return registry->getComponentId<VertexAnimatorComponent>();
+        case ComponentType::OnScreenStickComponent:
+            return registry->getComponentId<OnScreenStickComponent>();
+        case ComponentType::OnScreenButtonComponent:
+            return registry->getComponentId<OnScreenButtonComponent>();
+        case ComponentType::TouchAreaComponent:
+            return registry->getComponentId<TouchAreaComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -4826,6 +4912,12 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::TextComponent;
     }else if(normalizedName == "inputfield"){
         return ComponentType::InputFieldComponent;
+    }else if(normalizedName == "onscreenstick"){
+        return ComponentType::OnScreenStickComponent;
+    }else if(normalizedName == "onscreenbutton"){
+        return ComponentType::OnScreenButtonComponent;
+    }else if(normalizedName == "toucharea"){
+        return ComponentType::TouchAreaComponent;
     }else if(normalizedName == "tilemap"){
         return ComponentType::TilemapComponent;
     }else if(normalizedName == "tween"){
@@ -5047,6 +5139,15 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<InputFieldComponent>(entity)){
         ret.push_back(ComponentType::InputFieldComponent);
+    }
+    if (registry->findComponent<OnScreenStickComponent>(entity)){
+        ret.push_back(ComponentType::OnScreenStickComponent);
+    }
+    if (registry->findComponent<OnScreenButtonComponent>(entity)){
+        ret.push_back(ComponentType::OnScreenButtonComponent);
+    }
+    if (registry->findComponent<TouchAreaComponent>(entity)){
+        ret.push_back(ComponentType::TouchAreaComponent);
     }
     if (registry->findComponent<TilemapComponent>(entity)){
         ret.push_back(ComponentType::TilemapComponent);
@@ -6065,6 +6166,24 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::InputFieldComponent: {
             YAML::Node encoded = Stream::encodeInputFieldComponent(sourceRegistry->getComponent<InputFieldComponent>(sourceEntity));
             targetRegistry->getComponent<InputFieldComponent>(targetEntity) = Stream::decodeInputFieldComponent(encoded);
+            break;
+        }
+
+        case ComponentType::OnScreenStickComponent: {
+            YAML::Node encoded = Stream::encodeOnScreenStickComponent(sourceRegistry->getComponent<OnScreenStickComponent>(sourceEntity));
+            targetRegistry->getComponent<OnScreenStickComponent>(targetEntity) = Stream::decodeOnScreenStickComponent(encoded);
+            break;
+        }
+
+        case ComponentType::OnScreenButtonComponent: {
+            YAML::Node encoded = Stream::encodeOnScreenButtonComponent(sourceRegistry->getComponent<OnScreenButtonComponent>(sourceEntity));
+            targetRegistry->getComponent<OnScreenButtonComponent>(targetEntity) = Stream::decodeOnScreenButtonComponent(encoded);
+            break;
+        }
+
+        case ComponentType::TouchAreaComponent: {
+            YAML::Node encoded = Stream::encodeTouchAreaComponent(sourceRegistry->getComponent<TouchAreaComponent>(sourceEntity));
+            targetRegistry->getComponent<TouchAreaComponent>(targetEntity) = Stream::decodeTouchAreaComponent(encoded);
             break;
         }
 

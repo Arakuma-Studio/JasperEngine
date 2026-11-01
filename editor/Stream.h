@@ -455,6 +455,14 @@ namespace jasperengine::editor {
         static YAML::Node encodeInputFieldComponent(const InputFieldComponent& inputfield);
         static InputFieldComponent decodeInputFieldComponent(const YAML::Node& node, const InputFieldComponent* oldInputField = nullptr);
 
+        // ui-multitouch: the on-screen controls (their runtime state is never written)
+        static YAML::Node encodeOnScreenStickComponent(const OnScreenStickComponent& stick);
+        static OnScreenStickComponent decodeOnScreenStickComponent(const YAML::Node& node, const OnScreenStickComponent* oldStick = nullptr);
+        static YAML::Node encodeOnScreenButtonComponent(const OnScreenButtonComponent& button);
+        static OnScreenButtonComponent decodeOnScreenButtonComponent(const YAML::Node& node, const OnScreenButtonComponent* oldButton = nullptr);
+        static YAML::Node encodeTouchAreaComponent(const TouchAreaComponent& area);
+        static TouchAreaComponent decodeTouchAreaComponent(const YAML::Node& node, const TouchAreaComponent* oldArea = nullptr);
+
         static YAML::Node encodePanelComponent(const PanelComponent& panel);
         static PanelComponent decodePanelComponent(const YAML::Node& node, const PanelComponent* oldPanel = nullptr);
 

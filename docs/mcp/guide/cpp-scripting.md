@@ -156,6 +156,36 @@ The method name must be the Engine event's name (`onUpdate`, `onFixedUpdate`,
 `onPostUpdate`, `onKeyDown`, ...). Events of a disabled script (inactive GameObject or
 disabled entry) are skipped. Registering in the constructor or in `init()` both work.
 
+## Timers and time (Invoke)
+
+C++ scripts have no coroutines (C++20 `co_await` is not used: projects build with C++17 too);
+the Lua game's coroutines port to timers or to state in `onUpdate`. A `ScriptBase` script:
+
+```cpp
+// in a method (the constructor too): once in 2 s, then every 0.5 s from 1 s
+invoke([this]() { spawn(); }, 2.0f);
+TaskId blink = invokeRepeating([this]() { toggle(); }, 1.0f, 0.5f);
+invoke([this]() { resumeMenu(); }, 0.3f, TimeMode::Unscaled);   // runs at timeScale 0
+cancelInvoke(blink);      // false when it is not this script's or already done
+cancelAllInvokes();
+bool pending = isInvoking();   // or isInvoking(id)
+```
+
+The timers belong to the script: they keep running while it is disabled or its GameObject is
+inactive and are cancelled when the script is deleted (`~ScriptBase`: GameObject destroyed,
+scene unloaded, Play stop). Callbacks run on the main thread after `onUpdate` (with the Lua
+timers, in creation order, at most once a frame; a late repeat is rescheduled from now);
+exceptions are not caught. Code that is not a script: `#include "Timer.h"`,
+`jasperengine::Timer::after(2.0, fn)`, `Timer::every(0.5, fn, TimeMode::Scaled, owner, count)`,
+`Timer::cancel(id)` (or `ScriptScheduler::after/every` from `"ScriptScheduler.h"`; an `owner`
+pointer makes `ScriptScheduler::cancelOwner(owner)` end them, unowned ones end at Play stop).
+
+Time under Unity's names: `#include "EngineTime.h"`, `jasperengine::Time::getDeltaTime()` (the
+fixed step inside `onFixedUpdate`), `getUnscaledDeltaTime()`, `getFixedDeltaTime()`, `getTime()`,
+`getUnscaledTime()`, `getRealtimeSinceStartup()`, `getTimeSinceLevelLoad()`, `getTimeScale()`...;
+or `Engine::getDeltatime()`, `Engine::getUnscaledDeltatime()`, `Engine::getUpdateTime()` (the
+fixed step; `Engine::getFixedDeltatime()` is a fixed frame delta, Unity's captureDeltaTime).
+
 ## Saves and JSON
 
 - PlayerPrefs: `jasperengine::UserSettings` (`"io/UserSettings.h"`, flat include

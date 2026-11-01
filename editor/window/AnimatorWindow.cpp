@@ -151,7 +151,10 @@ void editor::AnimatorWindow::attach(const std::shared_ptr<AnimatorControllerDocu
     validationRevision = ~uint64_t(0);
     clearSelection();
     layer = 0;
+    layerNames.clear();
+    currentLayerName.clear();
     framePending = true;
+    syncLayers();
     if (doc){
         listener = doc->addListener([this](AnimatorControllerDocument&, AnimatorControllerDocument::Change change){
             // undo, redo, an outside edit: indices may have moved
@@ -159,7 +162,7 @@ void editor::AnimatorWindow::attach(const std::shared_ptr<AnimatorControllerDocu
             if (change == AnimatorControllerDocument::Change::Removed){
                 setNotice("The controller file is gone (an undo of its creation, or a delete)", true);
             }
-            setCurrentLayer(layer);
+            syncLayers();
         });
     }
 }
@@ -170,6 +173,10 @@ bool editor::AnimatorWindow::openController(const std::string& controller, uint3
     std::shared_ptr<AnimatorControllerDocument> document = AnimatorControllerDocument::open(project, controller, &openError);
     sceneId = scene;
     entity = target;
+    {
+        AnimationPlayerComponent* player = boundPlayer();
+        boundControllerField = player ? player->controller : std::string();
+    }
     if (!document){
         close();
         error = openError.empty() ? "cannot open " + controller : openError;
@@ -237,6 +244,7 @@ void editor::AnimatorWindow::setCurrentLayer(int index){
         framePending = true;
     }
     layer = clamped;
+    currentLayerName = doc && (size_t)layer < doc->data().layers.size() ? doc->data().layers[(size_t)layer].name : std::string();
     // a selection past the data (after an undo) goes
     if (const anim::ControllerLayer* data = currentLayerData()){
         if (selected.kind == animator::ItemKind::State && (size_t)selected.index >= data->states.size()) clearSelection();
@@ -245,6 +253,48 @@ void editor::AnimatorWindow::setCurrentLayer(int index){
                                                [&](int s){ return s < 0 || (size_t)s >= data->states.size(); }), selectedStateList.end());
     }
     if (doc && selected.kind == animator::ItemKind::Parameter && (size_t)selected.index >= doc->data().parameters.size()) clearSelection();
+}
+
+void editor::AnimatorWindow::syncLayers(){
+    std::vector<std::string> names;
+    if (doc){
+        for (const anim::ControllerLayer& data : doc->data().layers) names.push_back(data.name);
+    }
+    if (names == layerNames){
+        setCurrentLayer(layer);
+        return;
+    }
+    // the layer list changed (an edit, an undo or redo, an outside change): the current layer
+    // stays by name; a rename keeps its index; anything else falls back to the base layer
+    int target = 0;
+    auto found = std::find(names.begin(), names.end(), currentLayerName);
+    if (found != names.end()) target = (int)(found - names.begin());
+    else if (names.size() == layerNames.size() && (size_t)layer < names.size()) target = layer;
+    const bool sameIndices = names.size() == layerNames.size() && target == layer;
+    layerNames = names;
+    // indices into the old list (states, transitions of another layer) must not survive
+    if (!sameIndices) clearSelection();
+    if (target != layer) framePending = true;
+    layer = target;
+    setCurrentLayer(target);
+}
+
+void editor::AnimatorWindow::followBoundController(){
+    AnimationPlayerComponent* player = boundPlayer();
+    if (entity == NULL_ENTITY || sceneId == 0) return;
+    const std::string field = player ? player->controller : std::string();
+    if (field == boundControllerField) return;
+    boundControllerField = field;
+    if (field.empty()){
+        // the player lost its controller (the Inspector, MCP, an undo): nothing to show
+        stopPreview();
+        close();
+        SceneProject* sceneProject = boundSceneProject();
+        const std::string who = sceneProject && sceneProject->scene->isEntityCreated(entity) ? sceneProject->scene->getEntityName(entity) : std::string("the GameObject");
+        error = who + "'s Animation Player has no Animator Controller";
+        return;
+    }
+    openController(field, sceneId, entity, nullptr);
 }
 
 const anim::ControllerLayer* editor::AnimatorWindow::currentLayerData() const{
@@ -375,7 +425,7 @@ bool editor::AnimatorWindow::commit(anim::ControllerData data, const std::string
         return false;
     }
     noticeText.clear();
-    setCurrentLayer(layer);
+    syncLayers();
     return true;
 }
 
@@ -676,7 +726,7 @@ bool editor::AnimatorWindow::removeLayer(int index){
         setNotice(editError, true);
         return false;
     }
-    if (layer >= index) layer = std::max(0, layer - 1);
+    // the current layer stays by name (the removed one: the base layer), syncLayers
     return commit(data, "Remove Layer");
 }
 
@@ -688,9 +738,7 @@ bool editor::AnimatorWindow::moveLayer(int from, int to){
         setNotice(editError, true);
         return false;
     }
-    if (!commit(data, "Move Layer")) return false;
-    if (layer == from) setCurrentLayer(to);
-    return true;
+    return commit(data, "Move Layer");
 }
 
 bool editor::AnimatorWindow::renameLayer(int index, const std::string& name){
@@ -860,6 +908,7 @@ void editor::AnimatorWindow::show(){
         return;
     }
     followSelection();
+    followBoundController();
     if (focusRequested){
         ImGui::SetNextWindowFocus();
         focusRequested = false;

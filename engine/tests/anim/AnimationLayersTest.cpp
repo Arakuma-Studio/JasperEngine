@@ -720,3 +720,48 @@ TEST_F(Layers, RemovingALayerShiftsRuntimeMoves){
     EXPECT_EQ(object.getState("hold").getLayer(), 1) << "it stays on B";
     EXPECT_EQ(object.getLayerName(1), "B");
 }
+
+// independent review: skipping the bones a full Override layer replaces gives exactly the pose of
+// composing them (fractional state weights inside the layer included); a loading or failed mask
+// makes its layer contribute nothing
+TEST_F(Layers, OcclusionMatchesTheFullComposition){
+    ClipData hold2 = hold();
+    hold2.tracks[0].keys[0].value = axisAngle(-30, 0, 1, 0);
+    hold2.tracks[0].keys[1].value = axisAngle(-30, 0, 1, 0);
+    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}, {"hold2", hold2, 1}},
+                                    {layer(anim::BASE_LAYER_NAME), layer("Upper", 1.0f)});
+    object.play("walk");
+    object.play("hold");
+    object.blend("hold2", 0.4f, 0.0f);
+    object.getState("hold").setWeight(0.6f);
+    step(0.25, 2);
+    const Quaternion occluded = transform(arm).rotation;
+    // the same frame with the upper layer just under 1: no occlusion, the full composition
+    object.setLayerWeight("Upper", 0.9999999f);
+    object.getState("walk").setTime(0.5f);
+    object.getState("hold").setTime(0.5f);
+    object.getState("hold2").setTime(0.5f);
+    object.sample();
+    const Quaternion composed = transform(arm).rotation;
+    EXPECT_GT(quatDot(occluded, composed), 1.0f - 1e-5f);
+    const Quaternion expected = Quaternion::slerp(0.4f, rotation(45, 1, 0, 0), rotation(-30, 0, 1, 0), true);
+    EXPECT_GT(quatDot(occluded, expected), 1.0f - 1e-3f) << "weights 0.6 / 0.4 inside the layer (normalized sum ~ slerp)";
+    EXPECT_NEAR(transform(leg).position.x, 1.0f, 1e-5f) << "the base still owns the leg";
+}
+
+TEST_F(Layers, ALayerWithoutItsMaskContributesNothing){
+    const std::string broken = prefix + "broken.mask";
+    animtest::writeAsset(broken, "{\"format\": \"jasperengine.mask\", \"version\": 1,,}");
+    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}},
+                                    {layer(anim::BASE_LAYER_NAME), layer("Upper", 1.0f, AnimationLayerBlend::Override, broken)});
+    object.play("walk");
+    object.play("hold");
+    step(0.25, 2);
+    EXPECT_GT(quatDot(transform(arm).rotation, rotation(45, 0, 0, 1)), 1.0f - 1e-5f) << "a mask that does not parse: the walk shows";
+    EXPECT_NEAR(transform(hand).position.y, 7.0f, 1e-5f);
+    // fixed on disk: the layer takes effect after the retry (1 s) once the pool reloads it
+    animtest::writeAsset(broken, anim::writeAvatarMask(armMask()));
+    AvatarMaskPool::invalidate(broken);
+    step(0.6, 2);
+    EXPECT_NEAR(transform(hand).position.y, 1.0f, 1e-5f);
+}

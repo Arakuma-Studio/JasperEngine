@@ -131,6 +131,10 @@ namespace jasperengine::editor{
         // Texture rows: one more square button after the row's own (the Normal Texture's
         // Sprite Normal Map wand), drawn with the rows' button size
         std::function<void(const ImVec2&)> extraButton = nullptr;
+        // String rows: a dropdown of these values beside the field (free text still allowed),
+        // e.g. the project's Input actions
+        const std::vector<std::string>* stringSuggestions = nullptr;
+        const char* suggestionsEmpty = nullptr;   // shown in the dropdown when there are none
     };
 
     class InspectorWindow{
@@ -694,6 +698,9 @@ namespace jasperengine::editor{
         void drawScrollbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawProgressbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawOnScreenStickComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawOnScreenButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPanelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawRectTransformComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

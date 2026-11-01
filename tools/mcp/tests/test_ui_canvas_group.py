@@ -7,7 +7,11 @@ A UI scene over black (canvas 1280 x 720) on an owned empty project. Pixel value
 as the Game view stores them: white at alpha 0.5 over black reads ~128.
 """
 
-from harness import Editor
+import asyncio
+import os
+import time
+
+from harness import Editor, skip
 from htmlui_pixels import Shot
 
 EDITOR = {"create": True, "name": "Canvas Group"}
@@ -221,3 +225,72 @@ async def test_flatten_overlap_pixels(ed: Editor):
 async def test_stubs_know_canvas_group(ed: Editor):
     hits = await ed.call("search_engine_api", query="CanvasGroup fadeOut", max_results=5)
     ed.check("fadeOut" in repr(hits), f"the API search finds the fade helpers: {hits!r}"[:400])
+
+
+FLATTEN_SCRIPT = """local AddFlatten = {}
+function AddFlatten:start()
+    -- a FLATTEN group made by a script in a scene that has none (spec 7.10: the export ships the
+    -- composite whatever the scenes hold)
+    local group = CanvasGroup(self.scene)
+    group.alpha = 0.5
+    group.renderMode = CanvasGroupRenderMode.FLATTEN
+    local root = group:getGameObject()
+    for i = 0, 1 do
+        local image = Image(self.scene)
+        image:setSize(200, 200)
+        image.color = Vector4(1, 1, 1, 1)
+        image.position = Vector3(100 + i * 100, 100 + i * 100, 0)
+        root:addChild(image)
+        image.entityOwned = false
+    end
+    group.entityOwned = false
+    print("flatten group added")
+end
+return AddFlatten
+"""
+
+
+async def test_export_script_added_flatten_group(ed: Editor):
+    """An exported player where a script adds a FLATTEN group to a scene without any composites
+    it: the overlap reads like one layer (~128 over black), not stacked (~191)."""
+    if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
+        skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (compiles the engine)")
+    made = await ed.call("create_scene", name="Exported", type="UI")
+    sid = made["scene"]["id"]
+    await ed.call("set_scene_settings", scene=sid, settings={"background_color": [0, 0, 0, 1]})
+    holder = (await ed.call("create_entity", scene=sid, type="empty", name="Holder"))["entity_id"]
+    await ed.call("create_script", kind="lua", name="AddFlatten", content=FLATTEN_SCRIPT, scene=sid, entity=holder)
+    await ed.call("save_scene", scene=sid, path="scenes/Exported")
+    # every open scene is saved (the project's untitled default too: a build generates them all)
+    await ed.call("save_project", untitled_scene_dir="scenes")
+    await ed.call("edit_build_scenes", action="set_start", scene=sid)
+    await ed.call("set_project_settings", values={
+        "graphics.runtime_shaders": False,
+        "preferences.build_jobs": 5,
+        "player.window_width": 1280,
+        "player.window_height": 720,
+    })
+    out = ed.scratch.root / "export-flatten"
+    t0 = time.monotonic()
+    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=5, timeout_seconds=30)
+    job = r
+    while job["status"] == "running":
+        await asyncio.sleep(15)
+        job = await ed.call("get_job", job_id=r["job_id"], log_lines=10)
+        ed.check(time.monotonic() - t0 < 7200, f"build still running: {job}")
+    ed.check(job["status"] == "succeeded", f"{job}"[:2000])
+    raw = await ed.call_raw("run_build", {"seconds": 6, "screenshot_after_seconds": 4, "max_width": 1280})
+    ed.check(not raw.is_error and not raw.value["crashed"], raw.text[:1500])
+    ed.check("flatten group added" in str(raw.value["log"]), f"the script ran: {raw.value['log']!r}"[:1500])
+    png = raw.images[0][0]
+    (ed.scratch.root / "canvas-group-export.png").write_bytes(png)
+    from htmlui_pixels import decode_png
+    w, h, ch, rows = decode_png(png)
+    sx, sy = w / 1280, h / 720
+    def px(x, y):
+        row = rows[int(y * sy)]
+        i = int(x * sx) * ch
+        return round(sum(row[i:i + 3]) / 3)
+    overlap, single = px(250, 250), px(150, 150)
+    ed.check(abs(overlap - 128) <= 6 and abs(single - 128) <= 6,
+             f"the export composites the layer: overlap {overlap}, single {single} (expected ~128 both)")

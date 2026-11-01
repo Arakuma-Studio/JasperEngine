@@ -663,3 +663,86 @@ TEST(AnimatorWindow, ShortcutsNeedTheWindowFocused){
     ImGui::DestroyContext(context);
     ImGui::SetCurrentContext(previous);
 }
+
+// a layer list change (remove, move, their undo and redo) keeps the current layer by name and drops
+// a selection of the old indices: Delete never reaches another layer
+TEST(AnimatorWindow, LayerListChangesDropStaleSelections){
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project());
+    std::shared_ptr<AnimatorControllerDocument> doc = freshController(window, "layerlist");
+    ASSERT_TRUE(doc);
+    window.createState("", false, nullptr);                 // Base Layer: New State
+    ASSERT_EQ(window.addLayer(), 1);
+    window.createState("", false, nullptr);                 // New Layer: New State
+    ASSERT_EQ(window.addLayer(), 2);
+    ASSERT_TRUE(window.renameLayer(2, "Upper"));
+    EXPECT_EQ(window.currentLayer(), 2) << "a rename keeps the layer";
+    window.createState("", false, nullptr);                 // Upper: New State
+    window.selectStates({0});
+    EXPECT_EQ(window.selection().layer, 2);
+
+    ASSERT_TRUE(window.removeLayer(1));
+    EXPECT_EQ(window.currentLayer(), 1) << "Upper, now index 1, stays current";
+    EXPECT_EQ(window.selection().kind, animator::ItemKind::None) << "the old indices' selection goes";
+    window.selectStates({0});
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    EXPECT_EQ(window.currentLayer(), 2) << "after the undo Upper is index 2 again";
+    EXPECT_EQ(window.selection().kind, animator::ItemKind::None);
+    EXPECT_FALSE(window.deleteSelection()) << "nothing selected: nothing deleted";
+    for (const anim::ControllerLayer& layer : doc->data().layers) EXPECT_EQ(layer.states.size(), 1u) << layer.name;
+    ASSERT_TRUE(project()->getProjectCommandHistory()->redo());
+    EXPECT_EQ(window.currentLayer(), 1);
+
+    // removing the current layer falls back to the base
+    ASSERT_TRUE(window.removeLayer(1));
+    EXPECT_EQ(window.currentLayer(), 0);
+    EXPECT_EQ(doc->data().layers.size(), 1u);
+}
+
+// the bound player's controller field changes (the Inspector, MCP, an undo): the window follows it
+TEST(AnimatorWindow, FollowsTheBoundPlayersControllerField){
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project());
+    std::shared_ptr<AnimatorControllerDocument> first = freshController(window, "fieldA");
+    std::shared_ptr<AnimatorControllerDocument> second = freshController(window, "fieldB");
+    ASSERT_TRUE(first && second);
+    PlayerScene s = playerScene("animator/fieldA.controller");
+    std::string error;
+    ASSERT_TRUE(window.openController("animator/fieldA.controller", s.sceneProject->id, s.root, &error)) << error;
+    window.followBoundController();
+    EXPECT_EQ(window.document(), first);
+    AnimationPlayerComponent& player = s.sceneProject->scene->getComponent<AnimationPlayerComponent>(s.root);
+    player.controller = "animator/fieldB.controller";
+    window.followBoundController();
+    EXPECT_EQ(window.document(), second);
+    EXPECT_EQ(window.boundEntity(), s.root);
+    player.controller.clear();
+    window.followBoundController();
+    EXPECT_FALSE(window.document());
+    EXPECT_NE(window.openError().find("no Animator Controller"), std::string::npos) << window.openError();
+    player.controller = "animator/fieldA.controller";
+    window.followBoundController();
+    EXPECT_EQ(window.document(), first);
+}
+
+// parameter names are Lua identifiers: the window refuses others with a notice, never a silent drop
+TEST(AnimatorWindow, ParameterNamesAreLuaIdentifiers){
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project());
+    std::shared_ptr<AnimatorControllerDocument> doc = freshController(window, "names");
+    ASSERT_TRUE(doc);
+    ASSERT_EQ(window.addParameter(anim::ControllerParameterType::Float), 0);
+    ASSERT_EQ(window.addParameter(anim::ControllerParameterType::Float), 1);
+    EXPECT_EQ(doc->data().parameters[0].name, "NewFloat");
+    EXPECT_EQ(doc->data().parameters[1].name, "NewFloat1") << "numbered without a space";
+    const std::string before = doc->data().parameters[0].name;
+    EXPECT_FALSE(window.renameParameter(0, "Move Speed"));
+    EXPECT_NE(window.notice().find("not a valid parameter name"), std::string::npos) << window.notice();
+    EXPECT_FALSE(window.renameParameter(0, "2fast"));
+    EXPECT_FALSE(window.renameParameter(0, "end")) << "a Lua keyword";
+    ASSERT_EQ(doc->data().parameters.size(), 2u) << "nothing dropped";
+    EXPECT_EQ(doc->data().parameters[0].name, before);
+    EXPECT_TRUE(window.renameParameter(0, "move_speed"));
+    anim::ControllerData data = doc->data();
+    EXPECT_EQ(animator::addParameter(data, anim::ControllerParameterType::Bool, "not valid"), -1);
+}
