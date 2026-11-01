@@ -128,8 +128,9 @@ namespace jasperengine{
 
         bool overrideMassProperties = false;
         Vector3 solidBoxSize;
-        float solidBoxDensity;
-        
+        // kg/m3, the default of Collider3D::density
+        float solidBoxDensity = 1000.0f;
+
         BodyType type = BodyType::STATIC;
         RigidbodyMotionQuality motionQuality = RigidbodyMotionQuality::DISCRETE;
         float gravityFactor = 1.0f;
