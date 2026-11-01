@@ -17,8 +17,8 @@ Libraries of the engine, the editor and the tools:
 | [Lua](https://www.lua.org) | 5.4.7 | `engine/libs/lua/` (`LICENSE`, from `lua.h`) | MIT | the scripting runtime |
 | [LuaBridge3](https://github.com/kunitoki/LuaBridge3) | 3.0.1 | `engine/libs/luabridge3/` (`LICENSE.txt`) | MIT | the C++ bindings of the Lua API |
 | [JSON for Modern C++](https://github.com/nlohmann/json) | 3.11.3 | `engine/libs/json/` (`LICENSE`, from `json.hpp`) | MIT | JSON reading and writing |
-| [stb](https://github.com/nothings/stb) | stb_image 2.30, stb_truetype 1.26, stb_image_write, stb_image_resize2, stb_rect_pack, stb_vorbis | `engine/libs/stb/` (`LICENSE`, from the headers) | MIT or public domain | image decoding and encoding, font rasterisation, Ogg Vorbis |
-| [SoLoud](https://github.com/jarikomppa/soloud) | 202002 (`SOLOUD_VERSION`) | `engine/libs/soloud/` (`LICENSE`) | zlib/libpng (its bundled parts as listed in `LICENSE`) | audio |
+| [stb](https://github.com/nothings/stb) | stb_image 2.30, stb_truetype 1.26, stb_image_write, stb_image_resize2, stb_rect_pack | `engine/libs/stb/` (`LICENSE`, from the headers) | MIT or public domain | image decoding and encoding, font rasterisation |
+| [SoLoud](https://github.com/jarikomppa/soloud) | 202002 (`SOLOUD_VERSION`) | `engine/libs/soloud/` (`LICENSE`) | zlib/libpng (its bundled parts as listed in `LICENSE`) | audio (Ogg Vorbis through its bundled stb_vorbis 1.22, public domain or MIT as in the file) |
 | [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader) | 2.0 | `engine/libs/tinyobjloader/` (`LICENSE`, from `tiny_obj_loader.h`) | MIT | OBJ model loading |
 | [tinygltf](https://github.com/syoyo/tinygltf) | 2.x | `engine/libs/tinygltf/` (`LICENSE`, from `tiny_gltf.h`: MIT, plus the bundled base64 (zlib-style) and dlib URI decoding (Boost) code) | MIT | glTF model loading |
 | [TinyXML-2](https://github.com/leethomason/tinyxml2) | 10.0.0 | `engine/libs/tinyxml2/` (`LICENSE.txt`) | zlib | XML (tilemaps, sprite sheets) |

@@ -4,6 +4,9 @@
 # ~BusInstance read the destroyed Bus); AlignedFloatBuffer::clear() leaves an uninitialised buffer
 # alone (src/core/soloud.cpp: the nosound backend cleared it with memset of a null pointer);
 # postinit_internal frees the resample arrays of an earlier init (src/core/soloud.cpp: re-inits leaked them).
+# SoLoud's own stb_vorbis.c is compiled here, not the stock copy (stb has none): it reads through SoLoud's
+# File (soloud_file_hack_on.h), which WavStream hands it; the stock one took that File* for a FILE* and
+# every streamed or compressed-in-memory Ogg aborted.
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
@@ -40,6 +43,9 @@ add_library(
     src/audiosource/wav/dr_impl.cpp
     src/audiosource/wav/soloud_wav.cpp
     src/audiosource/wav/soloud_wavstream.cpp
+    # SoLoud's copy, which reads through SoLoud's File with soloud_file_hack_on.h: WavStream hands
+    # stb_vorbis a SoLoud File*, which a stock copy takes for a FILE*
+    src/audiosource/wav/stb_vorbis.c
 
     src/backend/miniaudio/soloud_miniaudio.cpp
     src/backend/nosound/soloud_nosound.cpp
