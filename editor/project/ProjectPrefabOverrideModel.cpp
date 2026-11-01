@@ -8,6 +8,7 @@
 // Mode saves and external edits use, with the undo snapshots built on it.
 
 #include "Project.h"
+#include "command/CommandHistory.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"
@@ -1363,6 +1364,8 @@ void editor::Project::refreshPrefabInstances(const std::filesystem::path& filepa
         // the ids are the file's, so the instances' members keep their registry entities
         prefab->takeAssetData(std::move(loaded));
         prefab->isModified = false;
+        // what the file holds again
+        prefab->savedAt = CommandHistory::stampSave();
         for (auto& [sceneId, instances] : prefab->instances) {
             for (Prefab::Instance& instance : instances) {
                 instance.rootRegistryEntity = prefab->root;
@@ -1414,7 +1417,7 @@ editor::PrefabUndoState editor::Project::capturePrefabUndoState(uint32_t sceneId
         if (!prefab || !prefab->registry) {
             continue;
         }
-        state.assets.push_back({path, encodePrefabNode(path), prefab->isModified, prefab->needsUpgrade});
+        state.assets.push_back({path, encodePrefabNode(path), prefab->isModified, prefab->needsUpgrade, prefab->savedAt});
         for (const auto& pair : findOutermostInstancesOf(path)) {
             if (std::find(roots.begin(), roots.end(), pair) == roots.end()) {
                 roots.push_back(pair);
@@ -1426,7 +1429,8 @@ editor::PrefabUndoState editor::Project::capturePrefabUndoState(uint32_t sceneId
         if (!sceneProject || !sceneProject->scene) {
             continue;
         }
-        state.instances.push_back({rootSceneId, root, Stream::encodeEntity(root, sceneProject->scene, this, sceneProject), sceneProject->isModified});
+        state.instances.push_back({rootSceneId, root, Stream::encodeEntity(root, sceneProject->scene, this, sceneProject), sceneProject->isModified,
+                                   sceneProject->savedAt});
     }
     return state;
 }
@@ -1440,8 +1444,10 @@ void editor::Project::restorePrefabUndoState(const PrefabUndoState& state) {
         std::string rootName = asset.path.stem().string();
         prefab->loadRegistry(asset.node, rootName);
         resolveRegistryPrefabRefs(prefab->registry.get());
-        prefab->isModified = asset.isModified;
-        prefab->needsUpgrade = asset.needsUpgrade;
+        // written since the capture, its file holds what is undone here: the next save writes it
+        const bool savedSince = prefab->savedAt != asset.savedAt;
+        prefab->isModified = asset.isModified || savedSince;
+        prefab->needsUpgrade = asset.needsUpgrade && !savedSince;
         for (auto& [sceneId, instances] : prefab->instances) {
             for (Prefab::Instance& instance : instances) {
                 instance.rootRegistryEntity = prefab->root;
@@ -1454,7 +1460,7 @@ void editor::Project::restorePrefabUndoState(const PrefabUndoState& state) {
             continue;
         }
         reimportPrefabInstance(sceneProject, instance.root, instance.rootNode);
-        sceneProject->isModified = instance.sceneModified;
+        sceneProject->isModified = instance.sceneModified || sceneProject->savedAt != instance.sceneSavedAt;
     }
     for (SceneProject& sceneProject : scenes) {
         if (sceneProject.scene) {

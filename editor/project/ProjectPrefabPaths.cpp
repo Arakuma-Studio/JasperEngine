@@ -8,6 +8,7 @@
 // 9.R8): its references are Animation Player entries {clip: path hint, guid}.
 
 #include "Project.h"
+#include "command/CommandHistory.h"
 #include "asset/AssetFileWrite.h"
 #include "EditorHost.h"
 #include "DocumentFile.h"
@@ -752,6 +753,7 @@ editor::SaveResult editor::Project::savePrefabToDisk(const std::filesystem::path
         prefab->loadReport.clearDropped();
     }
     prefab->isModified = false;
+    prefab->savedAt = CommandHistory::stampSave();
     prefab->needsUpgrade = false;
     markReferencedSceneIdsPersisted(prefab->registry.get());
     // the database keeps the GUID and learns the file's new time and size

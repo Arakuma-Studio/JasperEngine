@@ -197,6 +197,9 @@ namespace jasperengine::editor{
         // Bumped on structural changes so the Hierarchy window can cache its tree.
         uint64_t structureVersion = 0;
         bool isModified = false;
+        // CommandHistory::stampSave of its last write (Project::markSceneSaved), 0 = none since it
+        // loaded: a capture that restores isModified compares it with the one it saw
+        uint64_t savedAt = 0;
         // True while the id has never reached disk, so a scene replacing this one
         // can take it over instead of drawing a new one
         bool transientId = false;
@@ -444,12 +447,14 @@ namespace jasperengine::editor{
             YAML::Node node;          // Project::encodePrefabNode
             bool isModified = false;
             bool needsUpgrade = false;
+            uint64_t savedAt = 0;        // Prefab::savedAt: a write since makes the restore modified
         };
         struct InstanceState {
             uint32_t sceneId = NULL_PROJECT_SCENE;
             Entity root = NULL_ENTITY;   // an outermost instance root
             YAML::Node rootNode;         // the root as the scene file writes it
             bool sceneModified = false;
+            uint64_t sceneSavedAt = 0;   // SceneProject::savedAt, as the asset's
         };
         std::vector<Asset> assets;
         std::vector<InstanceState> instances;
@@ -1206,6 +1211,10 @@ namespace jasperengine::editor{
                      const std::string& alertTitle = "", const std::string& alertMessage = "");
         bool saveSceneFile(SceneProject* sceneProject, const std::filesystem::path& path, bool stopTransientPreviews = true,
                 DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
+        // Its file holds it now: not modified, stamped (savedAt), and its history learns it
+        // (CommandHistory::markSaved, on the main thread): an undo of a step in the file leaves it
+        // modified
+        void markSceneSaved(SceneProject* sceneProject);
         bool saveSceneForPlayStartup(SceneProject* sceneProject);
         bool saveLoadedSceneOnStop(SceneProject* loadedSceneProject, SceneProject* editorScene, bool keepModified);
         // Only the shaderKeys of the file on disk: what Stop saves of a scene that ran as a Play copy

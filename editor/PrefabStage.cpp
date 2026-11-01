@@ -807,7 +807,7 @@ bool editor::Project::savePrefabStage(uint32_t sceneId, DegradedSavePolicy polic
         prefabsSavedWhilePlaying.insert(nestedChanged.begin(), nestedChanged.end());
     }
 
-    sceneProject.isModified = false;
+    markSceneSaved(&sceneProject);
     stage->outsideChangeWarned = false;
     if (Prefab* saved = getPrefab(path)) {
         (void)saved;

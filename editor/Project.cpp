@@ -6675,7 +6675,7 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
             sceneProject->isModified = true;
             return false;
         }
-        sceneProject->isModified = false;
+        markSceneSaved(sceneProject);
     } catch (const Stream::IncompleteSave& e) {
         // the encode would have lost a GameObject: nothing written, the scene stays modified
         const std::string message = "Couldn't save \"" + FileUtils::pathToUtf8(relPath) + "\": " + e.what() +
@@ -6694,6 +6694,23 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         *outcome = SaveResult::Saved;
     }
     return true;
+}
+
+void editor::Project::markSceneSaved(SceneProject* sceneProject) {
+    sceneProject->isModified = false;
+    sceneProject->savedAt = CommandHistory::stampSave();
+    // the history is the main thread's (a background save tells it from there)
+    const uint32_t sceneId = sceneProject->id;
+    auto tell = [sceneId]() {
+        if (CommandHistory* history = CommandHandle::find(sceneId)) {
+            history->markSaved();
+        }
+    };
+    if (editor::getEditorHost().isMainThread()) {
+        tell();
+    } else {
+        editor::getEditorHost().enqueueMainThreadTask(tell);
+    }
 }
 
 bool editor::Project::saveSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews,

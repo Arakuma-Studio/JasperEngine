@@ -2965,6 +2965,13 @@ void editor::App::engineInit(int argc, char** argv) {
         // a prefab stage's Auto Save writes after its changes
         project.notePrefabStageChange((uint32_t)sceneId);
     };
+    // An undo puts back the modified flag of before its step; a save since wrote the step to
+    // the file, so the scene now differs from it (and the next save writes the undone state)
+    CommandHistory::onUndoPastSave = [this](size_t sceneId){
+        if (SceneProject* sceneProject = project.getScene((uint32_t)sceneId)){
+            sceneProject->isModified = true;
+        }
+    };
     // A drag on a widget is one undo step (S24 R11): its first command opens the edit; a
     // command the history drops waits until no widget may still point at it
     CommandHistory::deferReleases = true;
