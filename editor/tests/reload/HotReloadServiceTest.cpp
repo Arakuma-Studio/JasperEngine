@@ -330,6 +330,7 @@ TEST(HotReloadKinds, FilesByKind) {
     EXPECT_EQ(reload::kindOf("a/b.css"), "ui");
     EXPECT_EQ(reload::kindOf("a/b.scene"), "scene");
     EXPECT_EQ(reload::kindOf("a/b.prefab"), "prefab");
+    EXPECT_EQ(reload::kindOf("a/b.shake"), "animation") << "Shake Presets: read again, their problems reported";
     EXPECT_EQ(reload::kindOf("project.yaml"), "project");
     EXPECT_EQ(reload::kindOf("a/b.bin"), "");
     EXPECT_TRUE(reload::isEditorOwnedFile("assets/terrain_maps/terrain_edit_height.png"));

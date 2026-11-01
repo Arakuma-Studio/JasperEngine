@@ -438,7 +438,7 @@ TEST_F(LogListenerTest, LuaListenerGetsMessageTraceAndLevel) {
     // the script released (LuaBinding::releaseLuaScriptInstance): its subscriptions go
     lua_getglobal(L, "LogTest");
     const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
-    LuaBinding::removeScriptSubscriptions(nullptr, ref);
+    LuaBinding::removeScriptSubscriptions(ref);
     LuaBinding::releaseLuaRef(ref);
     Log::warn("after release");
     ASSERT_EQ(run("return #LogTest.calls", &results), "");
@@ -625,7 +625,7 @@ TEST_F(LogListenerTest, LuaCommandsGoWithTheirScript) {
 
     lua_getglobal(L, "Cheats");
     const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
-    LuaBinding::removeScriptSubscriptions(nullptr, ref);
+    LuaBinding::removeScriptSubscriptions(ref);
     LuaBinding::releaseLuaRef(ref);
     EXPECT_FALSE(DebugOverlay::hasCommand("give"));
 
