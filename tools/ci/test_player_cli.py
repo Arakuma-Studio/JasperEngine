@@ -4,7 +4,7 @@ image of docker/runtime.Dockerfile:
 
     tools/build.sh linux                      # the editor install (build/linux/editor-install)
     tools/build.sh players                    # Linux runtimes; PLAYER_PLATFORM=web for the web ones
-    tools/build.sh exec runtime python3 tools/ci/test_player_cli.py [--only linux,components,web,fallback]
+    tools/build.sh exec runtime python3 tools/ci/test_player_cli.py [--only linux,components,variants,web,fallback]
 
 - linux (AC1): `jasperengine-editor build --platform linux` of tools/fixtures/unified-lighting
   with each Linux backend whose runtime is installed (--backends), timed (R28: <= 20 s with a warm
@@ -20,6 +20,17 @@ image of docker/runtime.Dockerfile:
   COOP/COEP headers (pthreads player), without them (the service worker isolates the page after
   one reload: pthreads player), without them and with the service worker blocked (single-thread
   player), and a build with Web: Multithreaded off has no -mt files and runs single-thread.
+- variants (S34 AC3, AC5): tools/fixtures/unified-lighting (scripts that build meshes: no HTML UI),
+  physics-placement (static primitives, no scripts, no physics components, no start scene in its
+  project.yaml: no HTML UI, no runtime shader compiler) and the upgrade fixture
+  tools/test-projects/upgrade-from-main/project (HTML UI documents without video, physics,
+  scripts; its `duration` script property and a `"load"` log label renamed in the copy, as video
+  members have those names and a name scan keeps video for them) built for Linux glcore get the player variant their modules
+  need (no W-PLAYER-VARIANT), which leaves modules out; physics-placement also with the full
+  player and lite3d alone (it takes lite3d, with no warning: no variant of fewer modules is
+  missing); built with the full player alone they warn W-PLAYER-VARIANT and use it; each
+  variant's build and the full player's run headless to the same frame, pixel for pixel (not
+  atmosphere: its clouds differ between two runs of one player).
 - fallback (AC3): tools/fixtures/prefab-runtime (C++ scripts) reports `method: compile` and
   `compile_reason: C++ scripts (...)`, and here fails with `needs a C++ toolchain`; with
   --method prebuilt it fails listing the reasons.
@@ -257,6 +268,87 @@ def check_web(args, players: Path, out: Path) -> None:
     print("ok: web.multithreaded false: no -mt files, single-thread player")
 
 
+def check_variants(args, players: Path, out: Path) -> None:
+    full_id = "linux-x64-glcore-release"
+    if not (players / full_id).is_dir():
+        raise Failure(f"no {full_id} in {players}: run tools/build.sh players")
+    # a players directory with the full player alone
+    full_only = out / "players-full-only"
+    shutil.rmtree(full_only, ignore_errors=True)
+    full_only.mkdir(parents=True)
+    (full_only / full_id).symlink_to(players / full_id, target_is_directory=True)
+    # the variant each fixture gets from every installed variant, then the others it also runs
+    # with when they are the only variant installed next to the full player
+    expected = {"unified-lighting": ["core"], "physics-placement": ["lite2d", "lite3d"], "upgrade-from-main": ["ui"]}
+    sources = {"unified-lighting": FIXTURES / "unified-lighting", "physics-placement": FIXTURES / "physics-placement",
+               "upgrade-from-main": REPO / "tools/test-projects/upgrade-from-main/project"}
+
+    def copy(fixture: str, target: Path) -> Path:
+        project = fresh_copy(sources[fixture], target)
+        if fixture == "upgrade-from-main":
+            # its directors' "duration" script property (self.duration, the scenes' values) and the
+            # title's "load" transcript label are also the names of video members (UIElement.duration,
+            # :load()), which a name scan keeps video for: the same game under other names
+            renamed = 0
+            for path in list(project.rglob("*.lua")) + list(project.rglob("*.scene")):
+                text = path.read_text(encoding="utf-8")
+                new = text.replace('name = "duration"', 'name = "runFrames"').replace("self.duration", "self.runFrames")
+                new = new.replace("- name: duration\n", "- name: runFrames\n").replace('T.log("load"', 'T.log("loading"')
+                if new != text:
+                    path.write_text(new, encoding="utf-8")
+                    renamed += 1
+            leftover = [str(p) for p in project.rglob("*.lua") if re.search(r"\bduration\b|\"load\"", p.read_text(encoding="utf-8"))]
+            if renamed == 0 or leftover:
+                raise Failure(f"upgrade-from-main: renaming its duration property: {renamed} files, still in {leftover}")
+        return project
+
+    def frame(exe: Path, shot: Path) -> None:
+        game = run([exe, "--headless", "--after-ready", "--quit-after", "30", "--fixed-fps", "60", "--screenshot", shot, "--fail-on-error"],
+                   cwd=exe.parent, timeout=600, check=False)
+        if game.returncode != 0 or not shot.is_file():
+            raise Failure(f"{exe}: exited {game.returncode}\n{game.stdout[-3000:]}\n{game.stderr[-3000:]}")
+        if pngdiff.flat(pngdiff.load(shot), tolerance=8):
+            raise Failure(f"{exe}: the frame is one colour (nothing drawn): {shot}")
+
+    def with_variant(variant_id: str) -> Path:  # a players directory with the full player and this variant
+        directory = out / f"players-{variant_id}"
+        shutil.rmtree(directory, ignore_errors=True)
+        directory.mkdir(parents=True)
+        for runtime in (full_id, variant_id):
+            (directory / runtime).symlink_to(players / runtime, target_is_directory=True)
+        return directory
+
+    with Xvfb():
+        for fixture, variants in expected.items():
+            whole = build(args.editor, full_only, copy(fixture, out / f"full-{fixture}-project"), out / f"full-{fixture}",
+                          "linux", "--backend", "glcore")
+            first_id = f"{full_id}-{variants[0]}"
+            if lines(whole, "player") != [full_id] or f"W-PLAYER-VARIANT: the smaller player {first_id} fits" not in whole.stdout:
+                raise Failure(f"{fixture}: with the full player alone expected it and W-PLAYER-VARIANT naming {first_id}:\n{whole.stdout}")
+            full_shot = out / f"full-{fixture}.png"
+            frame(Path(lines(whole, "executable")[0]), full_shot)
+            for index, variant in enumerate(variants):
+                variant_id = f"{full_id}-{variant}"
+                if not (players / variant_id).is_dir():
+                    raise Failure(f"no {variant_id} in {players}: run tools/build.sh players (every release variant)")
+                source_players = players if index == 0 else with_variant(variant_id)
+                project = copy(fixture, out / f"variant-{fixture}-{variant}-project")
+                stripped = build(args.editor, source_players, project, out / f"variant-{fixture}-{variant}", "linux", "--backend", "glcore")
+                if lines(stripped, "player") != [variant_id] or "W-PLAYER-VARIANT" in stripped.stdout:
+                    raise Failure(f"{fixture}: expected the player {variant_id}:\n{stripped.stdout}")
+                left_out = lines(stripped, "left_out")[0].split()
+                if not left_out or left_out == ["none"]:
+                    raise Failure(f"{fixture}: {variant_id} left nothing out:\n{stripped.stdout}")
+                print(f"ok: {fixture} -> {variant_id} (modules: {lines(stripped, 'modules')[0]}; left out: {' '.join(left_out)})")
+                for reason in lines(stripped, "module"):
+                    print(f"    module: {reason}")
+                shot = out / f"variant-{fixture}-{variant}.png"
+                frame(Path(lines(stripped, "executable")[0]), shot)
+                run([sys.executable, REPO / "tools/mcp/pngdiff.py", shot, full_shot, "--tolerance", "0", "--max-fraction", "0",
+                     "--diff", out / f"variant-{fixture}-{variant}-diff.png"])
+                print(f"ok: {fixture}: {variant_id} and {full_id} draw the same frame")
+
+
 def check_fallback(args, players: Path, out: Path) -> None:
     project = fresh_copy(FIXTURES / "prefab-runtime", out / "fallback-project")
     result = build(args.editor, players, project, out / "fallback", "linux", check=False)
@@ -277,14 +369,15 @@ def main() -> int:
     parser.add_argument("--players", type=Path, default=REPO / "build/players")
     parser.add_argument("--out", type=Path, default=REPO / "build/player-cli")
     parser.add_argument("--backends", default="glcore,gles3,vulkan")
-    parser.add_argument("--only", default="linux,components,web,fallback")
+    parser.add_argument("--only", default="linux,components,variants,web,fallback")
     parser.add_argument("--write-goldens", action="store_true")
     args = parser.parse_args()
     if not args.editor.is_file():
         print(f"no editor at {args.editor}: run tools/build.sh linux", file=sys.stderr)
         return 1
     args.out.mkdir(parents=True, exist_ok=True)
-    checks = {"linux": check_linux, "components": check_components, "web": check_web, "fallback": check_fallback}
+    checks = {"linux": check_linux, "components": check_components, "variants": check_variants, "web": check_web,
+              "fallback": check_fallback}
     try:
         for name in args.only.split(","):
             if name not in checks:

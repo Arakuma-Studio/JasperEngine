@@ -13,8 +13,8 @@
 #include "Rigidbody.h"
 #include "CharacterController.h"
 #include "Buoyancy.h"
-#include "WaterVolume.h"
 #endif
+#include "WaterVolume.h"
 #include "object/spline/Spline.h"
 #include "object/spline/SplineExtrude.h"
 #include "object/spline/SplineInstantiate.h"

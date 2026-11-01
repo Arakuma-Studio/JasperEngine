@@ -20,7 +20,9 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <cstdlib>
 #include <set>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -720,6 +722,13 @@ TextureDataPool::PendingTexture TextureDataPool::startAsyncLoad(const std::strin
                     ResourceProgress::failBuild(buildId);
                     throw std::runtime_error("Shutdown requested");
                 }
+                // tests: JASPER_TEXTURE_LOAD_DELAY_MS holds every async texture decode that long,
+                // so a screenshot or a readiness check meets a texture still loading
+                static const int delayMs = [](){
+                    const char* value = std::getenv("JASPER_TEXTURE_LOAD_DELAY_MS");
+                    return value ? std::max(0, std::atoi(value)) : 0;
+                }();
+                if (delayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
                 if (isCooked) {
                     result.cooked = true;
                     CookedPiece piece;
@@ -1265,7 +1274,7 @@ void TextureDataPool::update(){
 
     // main-thread Basis transcodes: everything while the scenes load, then a slice of each frame
     if (!basisJobs.empty()){
-        const bool unlimited = !Engine::areScenesLoaded();
+        const bool unlimited = !Engine::areScenesLoaded(false);
         const auto sliceStart = std::chrono::steady_clock::now();
         auto sliceLeft = [&](){
             return unlimited || std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - sliceStart).count() < kBasisFrameSliceMs;
@@ -1403,6 +1412,31 @@ std::vector<TextureResidentInfo> TextureDataPool::getResidentTextures(){
 size_t TextureDataPool::pendingWorkCount(){
     std::lock_guard<std::mutex> lock(cacheMutex);
     return backgroundBuilds.size() + basisJobs.size() + poolPlannedReloads.size();
+}
+
+size_t TextureDataPool::getLoadingCount(){
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    size_t count = basisJobs.size();
+    for (const auto* builds : {&pendingBuilds, &backgroundBuilds}){
+        for (const auto& [id, pending] : *builds){
+            if (!pending.task.isReady()) count++;
+        }
+    }
+    return count;
+}
+
+std::vector<std::string> TextureDataPool::getLoadingIds(size_t max){
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    std::vector<std::string> out;
+    for (const auto* builds : {&pendingBuilds, &backgroundBuilds}){
+        for (const auto& [id, pending] : *builds){
+            if (out.size() < max && !pending.task.isReady()) out.push_back(id);
+        }
+    }
+    for (const auto& job : basisJobs){
+        if (out.size() < max) out.push_back(job->id);
+    }
+    return out;
 }
 
 void TextureDataPool::quiescePending(bool cancel) {

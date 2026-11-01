@@ -770,6 +770,9 @@ namespace jasperengine::editor{
         bool developmentBuild = false;
         std::string buildMethod = "auto";
         bool packContent = false;
+        // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
+        // out the engine modules the project cannot reach (export: stripEngineCode, default on)
+        bool stripEngineCode = true;
         ApplicationSettings applicationSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
@@ -937,6 +940,8 @@ namespace jasperengine::editor{
         friend class SceneViewController;
         // the cooked scenes and prefabs of a prebuilt build read what the generated sources do (S30)
         friend class cook::SceneCooker;
+        // and the modules a build needs, what the build ships (S34)
+        friend class ModuleUsageDetector;
         std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
         Entity getSceneCamera(const SceneProject* sceneProject) const;
         void cleanupPlaySession(const std::shared_ptr<PlaySession>& session);
@@ -1550,6 +1555,8 @@ namespace jasperengine::editor{
         void setBuildMethod(const std::string& method) { buildMethod = method; }
         bool isPackContent() const { return packContent; }
         void setPackContent(bool enabled) { packContent = enabled; }
+        bool isStripEngineCode() const { return stripEngineCode; }
+        void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
         // S30: what the generated main.cpp gives SceneManager::registerScene, for game.json
         void collectInvolvedScenesForExport(uint32_t sceneId, std::vector<uint32_t>& involvedSceneIds) {
             collectInvolvedScenes(sceneId, involvedSceneIds);

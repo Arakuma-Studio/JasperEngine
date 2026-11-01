@@ -37,6 +37,12 @@ option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
 # OFF leaves the library out and the navmesh API fails (grids keep working). The export sets it
 # from Project Settings > Navigation.
 option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crowds" ON)
+# The HTML/CSS UI (UI Document components, their Lua API, anime, widgets, effects, the on-screen
+# controls: RmlUi, lexbor, ThorVG, msdfgen, the Lucide icons) and its <video> (dav1d, Opus,
+# libwebm). A player variant or a Compile build leaves out what its project cannot reach
+# (docs/specs/S34-player-size.md); the editor, the tests and the full player have both.
+option(JASPERENGINE_HTMLUI "Compile the HTML UI" ON)
+option(JASPERENGINE_VIDEO "Compile the HTML UI's <video> (needs JASPERENGINE_HTMLUI)" ON)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -241,8 +247,22 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         else()
             set(JE_PLAYER_FLAVOUR release)
         endif()
-        set(JASPERENGINE_PLAYER_ID "${JE_PLAYER_PLATFORM}-${JE_PLAYER_ARCH}-${JE_PLAYER_BACKEND}-${JE_PLAYER_FLAVOUR}" CACHE STRING
-            "The player's runtime id (set from the platform, backend and flavour)" FORCE)
+        # A release player is built for one variant of engine/player/variants.json, a set of the
+        # optional modules (docs/specs/S34-player-size.md R4): the variant sets them here, and its
+        # name follows the flavour in the id (-lite); the full player keeps the plain id. The
+        # development flavour is always full.
+        set(JASPERENGINE_PLAYER_VARIANT "full" CACHE STRING "The release player's variant (engine/player/variants.json)")
+        include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperPlayerVariants.cmake)
+        jasperengine_player_variant("${JASPERENGINE_PLAYER_VARIANT}" jePlayerVariantSuffix)
+        if(jePlayerVariantSuffix AND JE_PLAYER_FLAVOUR STREQUAL "development")
+            message(FATAL_ERROR "JASPERENGINE_PLAYER_VARIANT=${JASPERENGINE_PLAYER_VARIANT}: a development player is always the full one")
+        endif()
+        set(jePlayerId "${JE_PLAYER_PLATFORM}-${JE_PLAYER_ARCH}-${JE_PLAYER_BACKEND}-${JE_PLAYER_FLAVOUR}")
+        if(jePlayerVariantSuffix)
+            string(APPEND jePlayerId "-${jePlayerVariantSuffix}")
+        endif()
+        set(JASPERENGINE_PLAYER_ID "${jePlayerId}" CACHE STRING
+            "The player's runtime id (set from the platform, backend, flavour and variant)" FORCE)
         add_definitions("-DJASPERENGINE_PLAYER" "-DJASPERENGINE_PLAYER_ID=\"${JASPERENGINE_PLAYER_ID}\"")
         message(STATUS "Player runtime ${JASPERENGINE_PLAYER_ID}")
     endif()
@@ -959,6 +979,8 @@ if(jasperengineShippedGame AND NOT JASPERENGINE_DEVELOPMENT_BUILD)
 endif()
 option(JASPERENGINE_RELEASE_LINK "A release game's size-optimised link (sections, hidden visibility, ThinLTO and ICF with lld)"
     ${JASPERENGINE_RELEASE_LINK_DEFAULT})
+# GCC's link-time optimisation in that link (Linux release games; Android's Clang has ThinLTO)
+option(JASPERENGINE_RELEASE_LTO "The release link of a GCC Linux game with link-time optimisation" ON)
 # A shipped game (a prebuilt player or a Compile build, release or Development) ships stripped:
 # it is built with debug information, which the link's post-build step moves into the build
 # tree's symbols/ (desktop: <exe>.debug with a debug link, <exe>.dSYM, the PDB). Publish prepare
@@ -1000,6 +1022,15 @@ if(JASPERENGINE_RELEASE_LINK)
             add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-flto=thin>)
             add_link_options(-flto=thin "LINKER:--thinlto-cache-dir=${CMAKE_BINARY_DIR}/thinlto-cache" LINKER:--icf=safe)
             set(jasperengineLto "ThinLTO, --icf=safe")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND JASPERENGINE_RELEASE_LTO)
+            # GCC's LTO (docs/specs/S34-player-size.md D7): the whole program optimised at the link,
+            # identical functions folded (-fipa-icf across units), its partitions compiled by as
+            # many jobs as the machine has (-flto=auto); the archives through gcc-ar, which CMake's
+            # interprocedural optimisation selects
+            set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+            add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-flto=auto>)
+            add_link_options(-flto=auto)
+            set(jasperengineLto "GCC LTO")
         else()
             set(jasperengineLto "no LTO")
         endif()
@@ -1037,8 +1068,25 @@ endif()
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
-# the HTML UI's MTSDF glyphs (S16)
-add_subdirectory(libs/msdfgen)
+# The optional modules (docs/specs/S34-player-size.md R1): the video of an HTML UI, and the
+# editor's shared engine has every module (its windows and the Play of any project use them)
+if(JASPERENGINE_VIDEO AND NOT JASPERENGINE_HTMLUI)
+    message(STATUS "JASPERENGINE_VIDEO needs JASPERENGINE_HTMLUI: the build has no video")
+    set(JASPERENGINE_VIDEO OFF)
+endif()
+if(JASPERENGINE_SHARED AND NOT (JASPERENGINE_HTMLUI AND JASPERENGINE_VIDEO AND JASPERENGINE_RUNTIME_SHADERS))
+    message(FATAL_ERROR "The editor's engine (JASPERENGINE_SHARED) has every module: JASPERENGINE_HTMLUI, JASPERENGINE_VIDEO and JASPERENGINE_RUNTIME_SHADERS stay ON")
+endif()
+set(JASPERENGINE_HTMLUI_LIBS "")
+set(JASPERENGINE_VIDEO_LIBS "")
+if(JASPERENGINE_HTMLUI)
+    # the HTML UI's MTSDF glyphs (S16)
+    add_subdirectory(libs/msdfgen)
+    list(APPEND JASPERENGINE_HTMLUI_LIBS msdfgen thorvg rmlui lexbor)
+endif()
+if(JASPERENGINE_VIDEO)
+    list(APPEND JASPERENGINE_VIDEO_LIBS dav1d opus webm)
+endif()
 if(JASPERENGINE_NAVIGATION)
     add_subdirectory(libs/recastnavigation)
 endif()
@@ -1090,15 +1138,20 @@ if(JASPERENGINE_TRACY)
     endif()
     add_subdirectory(libs/tracy)
 endif()
+# SVG images (texture/TextureData, and the HTML UI's)
 add_subdirectory(libs/lunasvg)
-add_subdirectory(libs/thorvg)
-add_subdirectory(libs/rmlui)
-# the HTML5 parser of the HTML UI compatibility layer (engine/core/htmlui/compat/html)
-add_subdirectory(libs/lexbor)
-# the HTML UI's <video>: AV1 (dav1d), Opus (libopus) and the WebM parser (libwebm)
-add_subdirectory(libs/dav1d)
-add_subdirectory(libs/opus)
-add_subdirectory(libs/libwebm)
+if(JASPERENGINE_HTMLUI)
+    add_subdirectory(libs/thorvg)
+    add_subdirectory(libs/rmlui)
+    # the HTML5 parser of the HTML UI compatibility layer (engine/core/htmlui/compat/html)
+    add_subdirectory(libs/lexbor)
+endif()
+if(JASPERENGINE_VIDEO)
+    # the HTML UI's <video>: AV1 (dav1d), Opus (libopus) and the WebM parser (libwebm)
+    add_subdirectory(libs/dav1d)
+    add_subdirectory(libs/opus)
+    add_subdirectory(libs/libwebm)
+endif()
 
 if(JASPERENGINE_RUNTIME_SHADERS)
     # A game only needs the back end of its own graphics API (GLSL is always in);
@@ -1136,10 +1189,14 @@ if(JASPERENGINE_TEXTURE_ENCODERS)
     list(APPEND JASPERENGINE_TEXTURE_LIBS basisu_encoder bc7enc_rdo astcenc)
 endif()
 
+set(jasperengineQuietVideoLibs "")
+if(JASPERENGINE_VIDEO)
+    set(jasperengineQuietVideoLibs dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm)
+endif()
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer msdfgen lunasvg thorvg rmlui lexbor
-    dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm ${JASPERENGINE_PHYSICS_LIBS} ${JASPERENGINE_TEXTURE_LIBS})
+    harfbuzz sheenbidi meshoptimizer lunasvg ${JASPERENGINE_HTMLUI_LIBS}
+    ${jasperengineQuietVideoLibs} ${JASPERENGINE_PHYSICS_LIBS} ${JASPERENGINE_TEXTURE_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
 if(JASPERENGINE_NAVIGATION)
@@ -1165,9 +1222,16 @@ endif()
 # One C++ standard for every object of the binary: libc++ template definitions instantiated
 # at two standards across a library boundary (tinygltf and RmlUi pass std containers into
 # engine code) broke Wasm signatures. Most of these set a standard of their own, or none.
+set(jasperengineCxxHtmlUILibs "")
+if(JASPERENGINE_HTMLUI)
+    set(jasperengineCxxHtmlUILibs msdfgen thorvg rmlui)
+endif()
+if(JASPERENGINE_VIDEO)
+    list(APPEND jasperengineCxxHtmlUILibs webm)
+endif()
 jasperengine_apply_cxx_standard(
-    sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer msdfgen
-    lunasvg thorvg rmlui webm ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
+    sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
+    lunasvg ${jasperengineCxxHtmlUILibs} ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
 if(JASPERENGINE_TEXTURE_ENCODERS)
     jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc)
 endif()
@@ -1180,6 +1244,9 @@ if(JASPERENGINE_HTMLUI_TESTS)
     if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         message(FATAL_ERROR "JASPERENGINE_HTMLUI_TESTS needs the standalone engine build (cmake -S engine): the editor's shared engine hides the RmlUi symbols the tests use")
     endif()
+endif()
+if((JASPERENGINE_HTMLUI_TESTS OR JASPERENGINE_TESTS) AND NOT (JASPERENGINE_HTMLUI AND JASPERENGINE_VIDEO))
+    message(FATAL_ERROR "The tests cover the HTML UI and its video: JASPERENGINE_HTMLUI and JASPERENGINE_VIDEO stay ON")
 endif()
 if((JASPERENGINE_HTMLUI_TESTS OR JASPERENGINE_TESTS) AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # the tests read render targets back (engine/tests/support/Readback.cpp)
@@ -1202,6 +1269,7 @@ set(JASPERENGINE_SRCS
     core/player/Launch.cpp
     core/player/LaunchOptions.cpp
     core/player/PlayerConfig.cpp
+    core/player/PlayerModules.cpp
     core/player/RunControl.cpp
     core/Input.cpp
     core/input/InputControlPath.cpp
@@ -1614,12 +1682,26 @@ set(JASPERENGINE_SRCS
     core/util/XMLUtils.cpp
 )
 
-# HTML/CSS compatibility layer (phase 2): globbed per directory
-include(core/htmlui/compat/CompatSources.cmake)
-list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
-# HTML UI widgets (S17): virtual views, tooltips, drag and drop, Markdown
-include(core/htmlui/widgets/WidgetsSources.cmake)
-list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
+# The video module (docs/specs/S34-player-size.md R1): <video>, its decoders and its Lua API
+if(NOT JASPERENGINE_VIDEO)
+    list(FILTER JASPERENGINE_SRCS EXCLUDE REGEX "^core/(htmlui/media/|script/binding/HtmlUIMediaLua)")
+    # the format rules stay: the compatibility layer drops a video used as a CSS image
+    list(APPEND JASPERENGINE_SRCS core/htmlui/media/VideoFormats.cpp)
+endif()
+# The HTML UI module: core/htmlui (but its clock, which the engine advances), the UI Document
+# system, the documents' Lua objects and bindings, the on-screen controls and the Lottie runtime
+if(JASPERENGINE_HTMLUI)
+    # HTML/CSS compatibility layer (phase 2): globbed per directory
+    include(core/htmlui/compat/CompatSources.cmake)
+    list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
+    # HTML UI widgets (S17): virtual views, tooltips, drag and drop, Markdown
+    include(core/htmlui/widgets/WidgetsSources.cmake)
+    list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
+else()
+    list(FILTER JASPERENGINE_SRCS EXCLUDE REGEX
+        "^core/(htmlui/|subsystem/UIDocumentSystem|object/ui/(UIDocument|UIElement|UIEvent|UIDataModel|UIValue|HtmlUI)|script/binding/HtmlUI|input/InputVirtualControls|util/ThorVGRuntime)")
+    list(APPEND JASPERENGINE_SRCS core/htmlui/HtmlUIClock.cpp)
+endif()
 # Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
 include(core/particles/ParticleSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
@@ -1629,7 +1711,9 @@ list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
 # Splines (S18): the core, geometry and layouts (no contraction, bit-identical output)
 include(core/spline/SplineSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SPLINE_SRCS})
-include(libs/lucide/lucide.cmake)
+if(JASPERENGINE_HTMLUI)
+    include(libs/lucide/lucide.cmake)
+endif()
 
 if(JASPERENGINE_PHYSICS_2D)
     list(APPEND JASPERENGINE_SRCS
@@ -1704,8 +1788,10 @@ if(JASPERENGINE_TESTS)
         APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_ANIM_TEST_HOOKS)
 endif()
 
-jasperengine_htmlui_compat_embed(jasperengine)
-jasperengine_htmlui_lucide_embed(jasperengine)
+if(JASPERENGINE_HTMLUI)
+    jasperengine_htmlui_compat_embed(jasperengine)
+    jasperengine_htmlui_lucide_embed(jasperengine)
+endif()
 jasperengine_target_warnings(jasperengine)
 # Unity build: the HTML UI sources keep generic file-local helpers (lower, trim, startsWith, PI,
 # Registry, Cache, ...) in anonymous namespaces at global scope, one helper set per file
@@ -1772,6 +1858,8 @@ target_compile_definitions(jasperengine
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
         JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
+        JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
+        JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
     PRIVATE
         $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
 )
@@ -1805,8 +1893,8 @@ target_link_libraries(
 
     PUBLIC
 
-    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer msdfgen lunasvg thorvg rmlui lexbor
-    dav1d opus webm zstd_decompress
+    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg
+    ${JASPERENGINE_HTMLUI_LIBS} ${JASPERENGINE_VIDEO_LIBS} zstd_decompress
     ${JASPERENGINE_PHYSICS_LIBS}
 )
 if(JASPERENGINE_NAVIGATION)

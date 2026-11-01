@@ -54,19 +54,19 @@
 #include "Engine.h"
 #include "ObjectManager.h"
 #include "PrefabAsset.h"
+#include "WaterVolume.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"
-#include "Buoyancy.h"
-#include "WaterVolume.h"
-#include "CharacterController.h"
-#include "ControllerColliderHit.h"
 #include "Joint2D.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Rigidbody.h"
+#include "Buoyancy.h"
+#include "CharacterController.h"
+#include "ControllerColliderHit.h"
 #include "Joint3D.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"

@@ -13,7 +13,9 @@
 
 #include "Log.h"
 #include "input/InputActions.h"
+#if JASPERENGINE_HTMLUI
 #include "input/InputVirtualControls.h"
+#endif
 
 #include <string>
 #include <vector>
@@ -248,9 +250,11 @@ void LuaBinding::registerGameplayClasses(lua_State *L){
         .addStaticFunction("getBindingDisplayName", &InputActions::getBindingDisplayName)
         .addStaticFunction("getControlDisplayName", [] (const std::string& path) { return InputActions::getControlDisplayName(path, 0); })
         .addStaticFunction("isControlBound", &InputActions::isControlBound)
+#if JASPERENGINE_HTMLUI
         // on-screen controls: HTML UI elements as virtual/<name> sticks and buttons
         .addStaticFunction("bindVirtualStick", &InputVirtualControls::bindStick)
         .addStaticFunction("bindVirtualButton", &InputVirtualControls::bindButton)
         .addStaticFunction("unbindVirtualControl", &InputVirtualControls::unbind)
+#endif
         .endClass();
 }

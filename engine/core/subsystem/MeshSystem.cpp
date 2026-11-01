@@ -2696,6 +2696,29 @@ bool MeshSystem::loadGLTFTexture(int textureIndex, ModelComponent& model, Textur
 
         std::string id = gltfTextureDedupKey(getModelTextureKey(model.filename), *model.gltfModel, textureIndex);
 
+        // The pooled CPU copy goes once a GPU texture is made of it (setReleaseDataAfterLoad
+        // below), and a Texture of this image that makes its own GPU texture later (another
+        // sampler, or one remade after its GPU copy went) found no pixels and drew white. It
+        // makes them again from the model's decoded image (ModelPool keeps the model while it is
+        // used), as the packed lobe maps do (loadGLTFLobeMap).
+        std::weak_ptr<tinygltf::Model> source = model.gltfModel;
+        const int imageIndex = tex.source;
+        TextureDataPool::setGenerator(id, [source, imageIndex, colorFormat]() -> TextureData {
+            std::shared_ptr<tinygltf::Model> gltf = source.lock();
+            if (!gltf || imageIndex < 0 || (size_t)imageIndex >= gltf->images.size())
+                return TextureData();
+            const tinygltf::Image& decoded = gltf->images[imageIndex];
+            const size_t size = (size_t)decoded.component * decoded.width * decoded.height;
+            if (decoded.width <= 0 || decoded.height <= 0 || decoded.image.size() < size)
+                return TextureData();
+            unsigned char* pixels = static_cast<unsigned char*>(std::malloc(size));
+            if (!pixels)
+                return TextureData();
+            std::memcpy(pixels, decoded.image.data(), size);
+            // not owned: the pool's copy owns the pixels (TextureDataPool::loadGenerated)
+            return TextureData(decoded.width, decoded.height, (unsigned int)size, colorFormat, decoded.component, pixels);
+        });
+
         auto existingData = TextureDataPool::get(id);
         const bool canReuse = existingData && existingData->at(0).getData() && existingData->at(0).getSize() >= imageSize;
         if (canReuse) {

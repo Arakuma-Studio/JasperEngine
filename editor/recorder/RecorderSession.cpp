@@ -13,6 +13,7 @@
 #include "htmlui/VideoImporter.h"
 #include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
+#include "pool/TextureDataPool.h"
 #include "render/SystemRender.h"
 #include "subsystem/AudioSystem.h"
 #include "texture/Framebuffer.h"
@@ -477,10 +478,11 @@ void RecorderSession::captureFrame() {
     }
     if (currentState == State::Arming) beginRecording();
     if (shaderHold != ShaderHold::None) {
-        // a frame drawn while shaders and pipelines were still being created (S32) shows their
-        // stand-ins: the game is held (it draws, it does not advance) until creation is idle and
-        // one whole frame has been drawn since, then that frame is the recorded one
-        const bool idle = SystemRender::isGpuCreationIdle();
+        // a frame drawn while shaders and pipelines were still being created (S32), or textures
+        // still loading, shows their stand-ins: the game is held (it draws, it does not advance)
+        // until both are idle and one whole frame has been drawn since, then that frame is the
+        // recorded one
+        const bool idle = SystemRender::isGpuCreationIdle() && TextureDataPool::getLoadingCount() == 0;
         const bool timedOut = Clock::now() - shaderHoldStart > std::chrono::seconds(30);
         if (!idle && !timedOut) {
             shaderHold = ShaderHold::Waiting;
@@ -491,7 +493,7 @@ void RecorderSession::captureFrame() {
             return;
         }
         if (timedOut && !idle) {
-            working.warnings.push_back("frame " + std::to_string(frameIndex) + " was recorded with shaders still being created (30 s)");
+            working.warnings.push_back("frame " + std::to_string(frameIndex) + " was recorded with shaders still being created or textures still loading (30 s)");
         }
         shaderHold = ShaderHold::None;
         Engine::setSimulationHeld(heldBeforeShaders);
@@ -507,7 +509,7 @@ void RecorderSession::captureFrame() {
     const bool inRange = frameIndex >= first && (last < 0 || frameIndex <= last);
     sink->mixAudio(frameIndex, inRange);
     if (!inRange) return;
-    if (!SystemRender::isGpuCreationIdle()) {
+    if (!SystemRender::isGpuCreationIdle() || TextureDataPool::getLoadingCount() > 0) {
         heldBeforeShaders = Engine::isSimulationHeld();
         Engine::setSimulationHeld(true);
         shaderHold = ShaderHold::Waiting;

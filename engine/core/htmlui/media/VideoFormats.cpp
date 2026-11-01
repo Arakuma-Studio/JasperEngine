@@ -3,7 +3,9 @@
 
 #include "VideoFormats.h"
 
+#if JASPERENGINE_VIDEO
 #include "VideoDemuxer.h"
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -154,6 +156,7 @@ bool VideoFormats::isVideoPath(const std::string& path){
     return playable(extension) || rejected(extension);
 }
 
+#if JASPERENGINE_VIDEO
 namespace {
 
     VideoProbe probeWith(VideoDemuxer& demuxer, bool opened);
@@ -203,6 +206,32 @@ VideoProbe probeWith(VideoDemuxer& demuxer, bool opened){
 }
 
 }
+#else
+// A build without the video module (docs/specs/S34-player-size.md R1) is made only for documents
+// with no <video>: the compat layer's checks of one never run there, and a probe finds nothing
+namespace {
+
+VideoProbe noVideoModule(){
+    VideoProbe probe;
+    probe.error.code = MediaErrorCode::SRC_NOT_SUPPORTED;
+    probe.error.message = "this build has no video (the export left the video module out)";
+    return probe;
+}
+
+}
+
+VideoProbe VideoFormats::probeFile(const std::string&){
+    return noVideoModule();
+}
+
+VideoProbe VideoFormats::probeMemory(const uint8_t*, size_t, const std::string&){
+    return noVideoModule();
+}
+
+VideoProbe VideoFormats::probeStdio(FILE*, const std::string&){
+    return noVideoModule();
+}
+#endif
 
 std::string VideoFormats::codecName(const std::string& id){
     static const std::pair<const char*, const char*> names[] = {

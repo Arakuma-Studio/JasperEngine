@@ -13,11 +13,11 @@
 #include "shader/ShaderManifest.h"
 #include "texture/Material.h"
 #include "util/WaterWaves.h"
+#include "subsystem/SplineSystem.h"
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/RigidbodyComponent.h"
 #include "subsystem/PhysicsSystem.h"
-#include "subsystem/SplineSystem.h"
 #include "Jolt/Physics/Body/BodyLock.h"
 #include "Jolt/Physics/Body/BodyLockInterface.h"
 #endif

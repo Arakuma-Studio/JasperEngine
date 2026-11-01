@@ -7,7 +7,9 @@
 #include "Engine.h"
 #include "Input.h"
 #include "input/InputActions.h"
+#if JASPERENGINE_HTMLUI
 #include "input/InputVirtualControls.h"
+#endif
 #include "Log.h"
 #include "Scene.h"
 #include "SceneManager.h"
@@ -205,8 +207,10 @@
 #include "object/ui/InputField.h"
 #include "object/ui/Text.h"
 #include "object/ui/RectTransform.h"
+#if JASPERENGINE_HTMLUI
 #include "object/ui/UIDocument.h"
 #include "object/ui/UIElement.h"
+#endif
 
 #include "pool/ShaderPool.h"
 #include "pool/SoundPool.h"

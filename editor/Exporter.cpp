@@ -3,6 +3,7 @@
 
 #include "Exporter.h"
 #include "shader/ShaderWarmup.h"
+#include "player/PlayerModules.h"
 #include "util/EditorScripts.h"
 #include "navigation/NavigationEditor.h"
 #include "asset/AssetFileWrite.h"
@@ -978,6 +979,22 @@ std::string editor::Exporter::getAppName() const {
 
 fs::path editor::Exporter::getBuildCacheDir() const {
     return project->getProjectInternalPath() / "export" / (config.mode == ExportMode::Desktop ? "desktop" : "web");
+}
+
+std::vector<std::string> editor::Exporter::compiledModules() const {
+    // what Project Settings allow (the HTML UI and its video have no switch of their own)
+    std::vector<std::string> modules = {"htmlui", "video"};
+    if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
+    if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
+    if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
+    if (project->getNavigationSettings().includeInBuilds) modules.push_back("navigation");
+    // of them, those the project reaches (a source export: all of them)
+    if (moduleUsageKnown)
+        modules.erase(std::remove_if(modules.begin(), modules.end(), [this](const std::string& m) { return !moduleUsage.needs(m); }), modules.end());
+    std::vector<std::string> ordered;
+    for (const std::string& module : player::allModules())
+        if (std::find(modules.begin(), modules.end(), module) != modules.end()) ordered.push_back(module);
+    return ordered;
 }
 
 fs::path editor::Exporter::getSharedBuildCacheDir() const {
@@ -1991,6 +2008,15 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                         missingBuildReferences.push_back(line);
                     }
                 }
+            }
+
+            // S34: the engine modules the build needs, from what it ships while every scene is
+            // loaded (a source export keeps every module its settings allow: its user's code may
+            // use any)
+            moduleUsageKnown = false;
+            if (imported && config.mode != ExportMode::SourceCode) {
+                moduleUsage = ModuleUsageDetector::analyze(ModuleUsageDetector::collect(project));
+                moduleUsageKnown = true;
             }
 
             // Unload all scenes that were not loaded before export
@@ -3042,10 +3068,18 @@ bool editor::Exporter::copyEngine() {
             projectSettings += indent + "set(JASPERENGINE_WINDOW_ICON ON)";
         }
         projectSettings += indent + "set(JASPERENGINE_CXX_STANDARD " + std::to_string(project->getCxxStandard()) + ")";
-        projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
-        projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
-        projectSettings += indent + std::string("set(JASPERENGINE_NAVIGATION ") + (project->getNavigationSettings().includeInBuilds ? "ON" : "OFF") + ")";
-        projectSettings += indent + std::string("set(JASPERENGINE_RUNTIME_SHADERS ") + (project->isRuntimeShadersEnabled() ? "ON" : "OFF") + ")";
+        // the optional modules (S34 R6): those Project Settings allow, of the ones the project needs
+        const std::vector<std::string> modules = compiledModules();
+        auto moduleSwitch = [&](const char* option, const char* module) {
+            const bool on = std::find(modules.begin(), modules.end(), module) != modules.end();
+            projectSettings += indent + "set(" + option + (on ? " ON)" : " OFF)");
+        };
+        moduleSwitch("JASPERENGINE_PHYSICS_2D", "physics2d");
+        moduleSwitch("JASPERENGINE_PHYSICS_3D", "physics3d");
+        moduleSwitch("JASPERENGINE_NAVIGATION", "navigation");
+        moduleSwitch("JASPERENGINE_RUNTIME_SHADERS", "runtimeshaders");
+        moduleSwitch("JASPERENGINE_HTMLUI", "htmlui");
+        moduleSwitch("JASPERENGINE_VIDEO", "video");
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
             projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";

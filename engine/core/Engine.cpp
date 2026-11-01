@@ -22,7 +22,9 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUIClock.h"
+#if JASPERENGINE_HTMLUI
 #include "htmlui/anim/AnimEngine.h"
+#endif
 #include "util/StringUtils.h"
 #include "util/Utf16Combiner.h"
 #include "component/ButtonComponent.h"
@@ -1768,9 +1770,11 @@ namespace{
     }
 }
 
-bool Engine::areScenesLoaded(){
-    // and no shader, pipeline or GL warm draw still being created (spec S32 R9)
-    bool ready = ShaderPool::getPendingShaderCount() == 0 && SystemRender::isGpuCreationIdle() && !scenes.empty();
+bool Engine::areScenesLoaded(bool textures){
+    // and no shader, pipeline or GL warm draw still being created (spec S32 R9), and no texture
+    // still loading: a frame drawn meanwhile shows a stand-in for it
+    bool ready = ShaderPool::getPendingShaderCount() == 0 && SystemRender::isGpuCreationIdle() && !scenes.empty() &&
+                 (!textures || TextureDataPool::getLoadingCount() == 0);
     // a game replaying its warm-up list holds its first scene until the list is ready (spec S32 R12)
     if (ready && SystemRender::getShaderCreationSettings().holdFirstSceneForWarmup)
         ready = ShaderWarmup::isDone();
@@ -1790,6 +1794,11 @@ std::string Engine::describeNotLoaded(){
     auto add = [&out](const std::string& part){ out += (out.empty() ? "" : "; ") + part; };
     if (scenes.empty()) add("no scene");
     if (const size_t pending = ShaderPool::getPendingShaderCount()) add(std::to_string(pending) + " shader build(s) pending");
+    if (const size_t textures = TextureDataPool::getLoadingCount()){
+        std::string list;
+        for (const std::string& id : TextureDataPool::getLoadingIds(8)) list += (list.empty() ? "" : ", ") + id;
+        add(std::to_string(textures) + " texture load(s) pending: " + list);
+    }
     for (Scene* scene : scenes){
         const std::vector<std::string> waiting = scene->getSystem<RenderSystem>()->describeNotLoaded();
         if (!waiting.empty()){
@@ -2239,7 +2248,9 @@ void Engine::systemShutdown(){
     Engine::onShutdown.call();
 
     // anime's, the timers' and the input actions' Lua references go while the Lua state still exists
+#if JASPERENGINE_HTMLUI
     AnimEngine::instance().reset();
+#endif
     Scheduler::game().clear();
     InputActions::unload();
     LuaBinding::cleanup();

@@ -11,7 +11,9 @@
 #                    a release build)
 #   symbols/lib/<abi>/*.so  the same libraries before stripping (the runtime's symbols)
 #
-#   tools/players/android_player.sh <release|development> [OUT] [gles3|vulkan]
+#   tools/players/android_player.sh <release|development> [OUT] [gles3|vulkan] [variant]
+#
+# variant: a release variant of engine/player/variants.json (default full; S34 R4)
 #
 # Runs inside the android build image (tools/build.sh players with PLAYER_PLATFORM=android). Then
 # tools/players/package_player.py --platform android --android-dir OUT makes the runtime.
@@ -20,6 +22,7 @@ set -euo pipefail
 FLAVOUR="${1:?release or development}"
 OUT="${2:-build/players-build/android-$FLAVOUR}"
 BACKEND="${3:-gles3}"
+PLAYER_VARIANT="${4:-full}"
 [[ "$BACKEND" == gles3 || "$BACKEND" == vulkan ]] || { echo "backend is gles3 or vulkan (got $BACKEND)" >&2; exit 1; }
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 case "$FLAVOUR" in
@@ -32,7 +35,7 @@ APP="$ROOT/engine/workspaces/androidstudio/app"
 # no `clean`: its native step needs the CMake AGP installs only while building; the APK of an
 # earlier run goes, the merged resources are rewritten by the build
 rm -rf "$APP/build/outputs/apk"
-(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" "$TASK")
+(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" -PjasperPlayerVariant="$PLAYER_VARIANT" "$TASK")
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
