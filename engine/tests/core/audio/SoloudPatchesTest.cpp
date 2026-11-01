@@ -140,8 +140,20 @@ namespace {
         ASSERT_EQ(stream.mSampleCount, length) << "the stream's length is the whole decode's";
         const size_t point = (size_t)std::floor(loopPoint * kRate);
         EXPECT_LT(worstDifference(out, 16, ref, 16, length - 32), tolerance) << "the first pass plays the clip";
+        // where the stream went on from: the reference's frame that matches best
+        int lag = 0;
+        float best = 1e9f;
+        for (int shift = -3000; shift <= 3000; shift++) {
+            if ((long)point + 16 + shift < 0) continue;
+            const float diff = worstDifference(out, length + 16, ref, point + 16 + shift, 1024);
+            if (diff < best) {
+                best = diff;
+                lag = shift;
+            }
+        }
         EXPECT_LT(worstDifference(out, length + 16, ref, point + 16, 4096), tolerance)
-            << "after the wrap the stream plays from its loop point (frame " << point << ")";
+            << "after the wrap the stream plays from its loop point (frame " << point << "); it plays from "
+            << (long)point + lag << " (" << best << ")";
     }
 
 }

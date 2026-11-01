@@ -292,29 +292,35 @@ namespace SoLoud
 		break;
 		case WAVSTREAM_OGG:
 			{
-				if (mOggFrameOffset < mOggFrameSize)
+				// JasperEngine local patch: the stream ends at its length, the last page's granule, as
+				// Wav::loadogg cuts it. stb_vorbis decodes the last packet whole (valid files a few
+				// hundred frames past the granule), and upstream played those frames before a loop
+				// wrapped: every wrap came that much late.
+				unsigned int want = aSamplesToRead;
+				if (mOffset >= mParent->mSampleCount)
+					want = 0;
+				else if (mParent->mSampleCount - mOffset < want)
+					want = mParent->mSampleCount - mOffset;
+				while (offset < want)
 				{
-					int b = getOggData(mOggOutputs, aBuffer, aSamplesToRead, aBufferSize, mOggFrameSize, mOggFrameOffset, mChannels);
-					mOffset += b;
-					offset += b;
-					mOggFrameOffset += b;
-				}
-
-				while (offset < aSamplesToRead)
-				{
-					mOggFrameSize = stb_vorbis_get_frame_float(mCodec.mOgg, NULL, &mOggOutputs);
-					mOggFrameOffset = 0;
-					int b = getOggData(mOggOutputs, aBuffer + offset, aSamplesToRead - offset, aBufferSize, mOggFrameSize, mOggFrameOffset, mChannels);
-					mOffset += b;
-					offset += b;
-					mOggFrameOffset += b;
-
-					if (mOffset >= mParent->mSampleCount || b == 0)
+					if (mOggFrameOffset >= mOggFrameSize)
 					{
-						mOffset += offset;
-						return offset;
+						mOggFrameSize = stb_vorbis_get_frame_float(mCodec.mOgg, NULL, &mOggOutputs);
+						mOggFrameOffset = 0;
+						if (mOggFrameSize <= 0)
+						{
+							// the decoder ended before the length: so does the stream
+							mOggFrameSize = 0;
+							mOffset = mParent->mSampleCount;
+							break;
+						}
 					}
+					int b = getOggData(mOggOutputs, aBuffer + offset, want - offset, aBufferSize, mOggFrameSize, mOggFrameOffset, mChannels);
+					mOffset += b;
+					offset += b;
+					mOggFrameOffset += b;
 				}
+				return offset;
 			}
 			break;
 		case WAVSTREAM_WAV:
