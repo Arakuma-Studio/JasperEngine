@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
+#include "Screen.h"
 #include "registry/PhysicsLayers.h"
 #include "McpTools.h"
 #include "texture/TextureCookQueue.h"
@@ -21,6 +22,7 @@
 #include "Backend.h"
 #include "AppSettings.h"
 #include "Engine.h"
+#include "Screen.h"
 #include "Platform.h"
 #include "Project.h"
 #include "net/Http.h"
@@ -41,6 +43,7 @@
 #include "util/GraphicUtils.h"
 #include "util/PlatformRules.h"
 #include "window/DeviceProfiles.h"
+#include "window/GameResolutions.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/JobsMemoryWindow.h"
@@ -74,6 +77,7 @@
 #endif
 
 #include <algorithm>
+#include <cstdio>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -375,6 +379,33 @@ void readGameView(const CaptureJobPtr& job, uint32_t sceneId, bool running) {
             Engine::computeViewLayout(fbWidth, fbHeight, (int)project->getCanvasWidth(), (int)project->getCanvasHeight(),
                                       project->getScalingMode(), canvasWidth, canvasHeight, viewRect);
             addCanvasInfo(info, canvasWidth, canvasHeight, viewRect, fbWidth, job->req.maxWidth);
+        }
+        // a simulated device: where its safe area is in the image, and its screen drawn over it
+        const DeviceProfile* device = Platform::getSimulation().device;
+        Rect safe;
+        if (device && gw->getSafeAreaInImage((float)fbWidth, (float)fbHeight, safe)) {
+            const double scale = (job->req.maxWidth > 0 && fbWidth > job->req.maxWidth) ? double(job->req.maxWidth) / fbWidth : 1.0;
+            info["device"] = device->id;
+            info["safe_area_in_image"] = rectJson(safe, scale);
+            if (job->req.deviceOverlay && (gw->getSettings().deviceOverlay || gw->getSettings().safeAreaOutline)) {
+                std::vector<uint8_t> rgba;
+                if (!GraphicUtils::readFramebufferRGBA(fb, rgba)) {
+                    job->fail("Reading the view's framebuffer back failed.");
+                    return;
+                }
+                rasterizeDeviceOverlay(rgba.data(), fbWidth, fbHeight, *device, gw->getLayoutOrientation(),
+                                       gw->getSettings().safeAreaOutline, &safe, gw->getSettings().deviceOverlay);
+                std::vector<uint8_t> png;
+                int width = 0, height = 0;
+                if (!encodePixels(rgba.data(), fbWidth, fbHeight, 4, job->req.maxWidth, png, width, height)) {
+                    job->fail("Encoding the screenshot failed.");
+                    return;
+                }
+                // the device's screen drawn (false: the safe-area outline only)
+                info["device_overlay"] = gw->getSettings().deviceOverlay;
+                finishWithPng(job, std::move(png), width, height, fbWidth, fbHeight, std::move(info));
+                return;
+            }
         }
     }
     readFramebuffer(job, fb, std::move(info));
@@ -735,6 +766,7 @@ void screenshotTool(const CallPtr& call) {
     request.savePath = args.value("save_path", "");
     request.focus = args.value("focus", true);
     request.timeoutMs = static_cast<int>(std::clamp(args.value("timeout_seconds", 30.0), 1.0, 600.0) * 1000.0);
+    request.deviceOverlay = args.value("device_overlay", true);
     if (request.view != "game" && request.view != "scene" && request.view != "editor") {
         call->fail("view must be \"game\" (the Game view: the running game, or the scene through its game camera), "
                    "\"scene\" (a Scene view with gizmos) or \"editor\" (the whole editor window).");
@@ -761,6 +793,11 @@ void screenshotTool(const CallPtr& call) {
             text += " Game canvas " + std::to_string(result.info["canvas"].value("width", 0)) + "x" +
                     std::to_string(result.info["canvas"].value("height", 0)) + " drawn at x=" + r["x"].dump() +
                     " y=" + r["y"].dump() + " w=" + r["width"].dump() + " h=" + r["height"].dump() + " in the image.";
+        }
+        if (result.info.contains("safe_area_in_image")) {
+            const Json& r = result.info["safe_area_in_image"];
+            text += " Safe area at x=" + r["x"].dump() + " y=" + r["y"].dump() + " w=" + r["width"].dump() + " h=" +
+                    r["height"].dump() + " (" + result.info.value("device", std::string()) + ").";
         }
         if (result.info.contains("saved_to")) text += " Saved to " + result.info["saved_to"].get<std::string>() + ".";
         if (!result.note.empty()) text += " Note: " + result.note;
@@ -1498,6 +1535,8 @@ const std::vector<std::string>& aspectNames() {
     return names;
 }
 
+void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& changed);
+
 void configureGameViewTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -1514,6 +1553,12 @@ void configureGameViewTool(const CallPtr& call) {
             return;
         }
         settings.aspect = static_cast<int>(it - aspectNames().begin());
+        // an aspect replaces a fixed resolution, as the toolbar's Aspect entries do (a
+        // resolution given in the same call still wins: it is applied below)
+        settings.resolution.clear();
+        settings.resolutionWidth = 0;
+        settings.resolutionHeight = 0;
+        settings.resolutionDpi = 0.0f;
         changed.push_back("aspect");
     }
     if (args.contains("scale")) {
@@ -1561,6 +1606,37 @@ void configureGameViewTool(const CallPtr& call) {
         TextureCookQueue::get().setViewFamily(family);
         changed.push_back("simulate_textures");
     }
+    if (args.contains("custom_device")) {
+        const Json& custom = args["custom_device"];
+        if (!custom.is_object()) {
+            call->fail("custom_device must be {width, height, insets: {top, right, bottom, left}, corner_radius} (pixels, portrait).");
+            return;
+        }
+        CustomDeviceSettings& c = settings.custom;
+        auto number = [&](const Json& object, const char* key, float& out, float low, float high) {
+            if (!object.contains(key)) return true;
+            if (!object[key].is_number() || !std::isfinite(object[key].get<double>())) return false;
+            out = std::clamp(object[key].get<float>(), low, high);
+            return true;
+        };
+        float width = (float)c.width, height = (float)c.height;
+        bool ok = number(custom, "width", width, 16.0f, 16384.0f) && number(custom, "height", height, 16.0f, 16384.0f) &&
+                  number(custom, "corner_radius", c.cornerRadius, 0.0f, 8192.0f) && number(custom, "dpi", c.dpi, 0.0f, 2000.0f);
+        if (ok && custom.contains("insets")) {
+            const Json& insets = custom["insets"];
+            ok = insets.is_object() && number(insets, "top", c.top, 0.0f, 16384.0f) && number(insets, "right", c.right, 0.0f, 16384.0f) &&
+                 number(insets, "bottom", c.bottom, 0.0f, 16384.0f) && number(insets, "left", c.left, 0.0f, 16384.0f);
+        }
+        if (!ok) {
+            call->fail("custom_device: width, height, corner_radius, dpi and insets {top, right, bottom, left} are numbers (pixels).");
+            return;
+        }
+        c.width = (int)std::lround(width);
+        c.height = (int)std::lround(height);
+        // a custom screen is meant to be shown
+        if (!args.contains("device")) settings.device = "custom";
+        changed.push_back("custom_device");
+    }
     // the runtime collider / joint wireframes (Physics.debugDraw): every scene, Play and exports
     if (args.contains("physics_debug")) {
         Physics::setDebugDraw(args.value("physics_debug", false));
@@ -1590,10 +1666,18 @@ void configureGameViewTool(const CallPtr& call) {
         } else {
             std::string ids;
             for (const DeviceProfile& profile : deviceProfiles()) ids += std::string(" ") + profile.id;
-            call->fail("device must be none or one of:" + ids + ".");
+            call->fail("device must be none, custom (with custom_device) or one of:" + ids + ".");
             return;
         }
         changed.push_back("device");
+    }
+    if (args.contains("device_overlay")) {
+        settings.deviceOverlay = args.value("device_overlay", true);
+        changed.push_back("device_overlay");
+    }
+    if (args.contains("safe_area_outline")) {
+        settings.safeAreaOutline = args.value("safe_area_outline", false);
+        changed.push_back("safe_area_outline");
     }
     if (args.contains("language")) {
         const std::string language = args["language"].is_string() ? args["language"].get<std::string>() : std::string();
@@ -1607,6 +1691,39 @@ void configureGameViewTool(const CallPtr& call) {
     }
 
     if (!changed.empty()) gw->applySettings(settings);
+
+    // a fixed resolution: a preset or custom name, "WxH[@dpi]", {width, height, dpi[, name]} (a
+    // name saves it as a custom one), "free" back to the aspect
+    if (args.contains("resolution")) {
+        const Json& value = args["resolution"];
+        std::string error;
+        bool ok = false;
+        if (value.is_string()) {
+            ok = gw->setResolution(value.get<std::string>(), &error);
+        } else if (value.is_object()) {
+            GameResolution resolution;
+            resolution.width = value.value("width", 0);
+            resolution.height = value.value("height", 0);
+            resolution.dpi = value.value("dpi", 0.0f);
+            resolution.name = value.value("name", std::string());
+            if (!isValidGameResolution(resolution.width, resolution.height, resolution.dpi)) {
+                error = "resolution {width, height} must be 16..16384, dpi 0..2000";
+            } else if (!resolution.name.empty()) {
+                ok = gw->addCustomResolution(resolution, &error) && gw->setResolution(resolution.name, &error);
+            } else {
+                char text[64];
+                std::snprintf(text, sizeof(text), "%dx%d@%g", resolution.width, resolution.height, resolution.dpi);
+                ok = gw->setResolution(text, &error);
+            }
+        } else {
+            error = "resolution must be a string (\"1920x1080\", a preset name, \"free\") or {width, height, dpi, name}";
+        }
+        if (!ok) {
+            call->fail("resolution: " + error + ".");
+            return;
+        }
+        changed.push_back("resolution");
+    }
 
     if (args.contains("orientation")) {
         ScreenOrientation orientation;
@@ -1631,11 +1748,43 @@ void configureGameViewTool(const CallPtr& call) {
         gw->turnDevice(orientation);
         changed.push_back("orientation");
     }
-    settings = gw->getSettings();
+    // the Game view lays the new screen out and hands its insets to Screen in the next frames
+    if (changed.empty()) {
+        replyGameViewSettings(call, changed);
+        return;
+    }
+    auto frames = std::make_shared<int>(0);
+    call->waitUntil([frames]() { return ++*frames >= 3; }, 5000, [call, changed](bool) {
+        replyGameViewSettings(call, changed);
+    });
+}
+
+void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& changed) {
+    McpContext& ctx = call->ctx();
+    GameWindow* gw = ctx.gameWindow();
+    Project* project = ctx.project();
+    const GameViewSettings& settings = gw->getSettings();
 
     const PlatformSimulation& simulation = Platform::getSimulation();
     Json devices = Json::array();
     for (const DeviceProfile& profile : deviceProfiles()) devices.push_back(profile.id);
+    devices.push_back("custom");
+    auto rectArray = [](const Rect& rect) {
+        auto r = [](float v) { return std::round(v * 100.0f) / 100.0f; };
+        return Json::array({r(rect.getX()), r(rect.getY()), r(rect.getWidth()), r(rect.getHeight())});
+    };
+    Json resolutions = Json::array();
+    for (const GameResolution& r : builtInGameResolutions()) resolutions.push_back(r.name);
+    Json customResolutions = Json::array();
+    for (const GameResolution& r : project->getCustomResolutions())
+        customResolutions.push_back({{"name", r.name}, {"width", r.width}, {"height", r.height}, {"dpi", r.dpi}});
+    int fixedWidth = 0, fixedHeight = 0;
+    float fixedDpi = 0.0f;
+    Json resolution = "free";
+    if (gw->getFixedResolution(fixedWidth, fixedHeight, fixedDpi)) {
+        resolution = {{"name", simulation.device ? std::string(simulation.device->id) : settings.resolution},
+                      {"width", fixedWidth}, {"height", fixedHeight}, {"dpi", fixedDpi}};
+    }
 
     // the lines the playing scenes drew last frame (0 until a frame is drawn after turning it on)
     size_t physicsDebugLines = 0;
@@ -1651,7 +1800,7 @@ void configureGameViewTool(const CallPtr& call) {
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
         {"simulate_textures", textureFamilyName(TextureCookQueue::get().getViewFamily())},
-        {"atmosphere_quality", atmosphereNames[std::clamp(settings.atmosphereQuality + 1, 0, 4)]},
+        {"atmosphere_quality", std::vector<std::string>{"project", "off", "low", "medium", "high"}[(size_t)std::clamp(settings.atmosphereQuality + 1, 0, 4)]},
         {"physics_debug", Physics::isDebugDraw()},
         {"physics_debug_contacts", Physics::isDebugDrawContacts()},
         {"physics_debug_lines", physicsDebugLines},
@@ -1664,9 +1813,24 @@ void configureGameViewTool(const CallPtr& call) {
         {"device", simulation.device ? Json(simulation.device->id) : Json("none")},
         {"orientation", PlatformRules::orientationName(simulation.orientation)},
         {"language", settings.language.empty() ? std::string("system") : settings.language},
+        {"device_overlay", settings.deviceOverlay},
+        {"safe_area_outline", settings.safeAreaOutline},
+        // Screen.safeArea (canvas) and Screen.safeAreaPixels (render pixels) as the game sees them now
+        {"safe_area", rectArray(Screen::getSafeArea())},
+        {"safe_area_pixels", rectArray(Screen::getSafeAreaPixels())},
         {"devices", devices},
+        {"resolution", resolution},
+        {"resolutions", resolutions},
+        {"custom_resolutions", customResolutions},
+        // Screen.dpi as Play reads it: the device's, a resolution preset's, else the host's
+        {"screen_dpi", Screen::getDpi()},
         {"changed", changed}
     };
+    if (simulation.device && std::string(simulation.device->id) == "custom") {
+        const CustomDeviceSettings& c = settings.custom;
+        data["custom_device"] = {{"width", c.width}, {"height", c.height}, {"corner_radius", c.cornerRadius},
+                                 {"dpi", c.dpi}, {"insets", {{"top", c.top}, {"right", c.right}, {"bottom", c.bottom}, {"left", c.left}}}};
+    }
     call->ok(std::string(changed.empty() ? "Game view settings: " : "Updated the Game view: ") + data.dump(), data);
 }
 
@@ -1707,14 +1871,16 @@ void registerViewTools(McpRegistry& registry) {
         tool.description =
             "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its "
             "camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the "
-            "whole window. canvas_rect_in_image maps image -> send_input coords; warns on a flat image.";
+            "whole window. canvas_rect_in_image maps image -> send_input coords; a simulated device: its "
+            "overlay, safe_area_in_image. Warns on a flat image.";
         tool.inputSchema = object({
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
             {"max_width", w3::maxWidthArgSchema(8192, 1024)},
             {"save_path", string("Also write the PNG to this project-relative path.")},
             {"focus", withDefault(boolean("Front the view's tab if needed."), true)},
-            {"timeout_seconds", withDefault(number("", 1, 600), 30)}
+            {"timeout_seconds", withDefault(number("", 1, 600), 30)},
+            {"device_overlay", withDefault(boolean(""), true)}
         });
         tool.annotations.readOnly = true;
         tool.writesFiles = [](const Json& args) {
@@ -1828,8 +1994,9 @@ void registerViewTools(McpRegistry& registry) {
         tool.title = "Configure Game View";
         tool.description =
             "Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). aspect "
-            "project = the canvas size (a project setting); the game renders at render_size. device, orientation, "
-            "language: a simulated phone and system language (editor only).";
+            "project = the canvas size (a project setting); the game renders at render_size. resolution: a fixed size the "
+            "game renders at (screenshots too), with its dpi as Screen.dpi. device, orientation, "
+            "language: a simulated phone and system language (editor only); safe_area is Screen.safeArea.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
@@ -1842,9 +2009,13 @@ void registerViewTools(McpRegistry& registry) {
             {"physics_debug", boolean("Collider/joint wireframes in Play.")},
             {"physics_debug_contacts", boolean("")},
             {"network", stringEnum("offline: Http to non-localhost fails with \"offline\". Works while playing.", {"online", "offline"})},
-            {"device", string("An id of devices, or none.")},
+            {"device", string("An id of devices, custom, or none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
-            {"language", string("es-MX..., or system.")}
+            {"language", string("es-MX..., or system.")},
+            {"device_overlay", boolean("")},
+            {"safe_area_outline", boolean("")},
+            {"custom_device", anyObject("{width, height, insets {top,right,bottom,left}, corner_radius} px, dpi")},
+            {"resolution", any("\"1920x1080\", \"WxH@dpi\", a resolutions name, free, or {width, height, dpi, name} (a name saves it).")}
         });
         tool.annotations.idempotent = true;
         tool.handler = configureGameViewTool;

@@ -25,8 +25,10 @@
 #include "animation/AnimatorPose.h"
 #include "animation/AvatarMaskWeights.h"
 #include "animation/ClipBinding.h"
+#include "animation/HumanoidClip.h"
 #include "animation/KeyframeSampling.h"
 #include "lattice/LatticeSolver.h"
+#include "pool/AnimationClipPool.h"
 #include "pool/AnimatorAssetPool.h"
 
 #include <algorithm>
@@ -34,6 +36,7 @@
 #include <unordered_map>
 
 using namespace jasperengine;
+using playerdetail::completePropertyRest;
 
 namespace {
 
@@ -65,6 +68,8 @@ namespace {
                 return width;
             }
             case ClipChannel::Property:
+            case ClipChannel::Humanoid:
+            case ClipChannel::HumanoidPosition:
                 break;
         }
         return 0;
@@ -118,6 +123,11 @@ namespace {
                 }
                 break;
             case ClipChannel::Property:
+                // one element per component, in key space
+                if (slot.propertyRest && index < 4) out[0] = slot.propertyRest->value[index];
+                break;
+            case ClipChannel::Humanoid:
+            case ClipChannel::HumanoidPosition:
                 break;
         }
     }
@@ -186,21 +196,77 @@ void playerdetail::buildPoseSlots(Scene* scene, anim::PlayerPoseScratch& scratch
     scratch.touched.clear();
     scratch.written.clear();
     std::unordered_map<Entity, std::array<uint32_t, 6>> byTarget;
+    // property slots by (target, property key)
+    std::unordered_map<uint64_t, uint32_t> byProperty;
     uint32_t elements = 0;
+    // the slot of one (target, single-element transform channel)
+    auto transformSlot = [&](Entity target, ClipChannel channel){
+        auto found = byTarget.find(target);
+        if (found == byTarget.end()){
+            std::array<uint32_t, 6> none;
+            none.fill(NO_SLOT);
+            found = byTarget.emplace(target, none).first;
+        }
+        uint32_t& slotIndex = found->second[(size_t)channel];
+        if (slotIndex == NO_SLOT){
+            anim::PoseSlot slot;
+            slot.target = target;
+            slot.channel = channel;
+            slot.first = elements;
+            slot.width = 1;
+            slot.rest = &rest[target];
+            slotIndex = (uint32_t)scratch.slots.size();
+            scratch.slots.push_back(slot);
+            elements += 1;
+        }
+        return slotIndex;
+    };
     for (const PoseSlotSource& source : sources){
         std::vector<uint32_t>& trackSlots = *source.slots;
         const anim::ClipBindings& bindings = *source.bindings;
+        if (source.humanoidSlots) source.humanoidSlots->clear();
         if (!bindings.clip){
             trackSlots.clear();
             continue;
+        }
+        // a humanoid clip's realised bones: Rotation / Position slots of the bone entities
+        if (source.humanoidSlots && bindings.humanoid){
+            for (const anim::HumanoidOutput& output : bindings.humanoid->outputs){
+                source.humanoidSlots->push_back(transformSlot(output.entity, output.channel));
+            }
         }
         const std::vector<AnimationClip::Track>& tracks = bindings.clip->getTracks();
         trackSlots.assign(tracks.size(), NO_SLOT);
         for (size_t i = 0; i < tracks.size() && i < bindings.targets.size(); i++){
             const Entity target = bindings.targets[i];
             const AnimationClip::Track& track = tracks[i];
-            // property tracks are not sampled yet (anim-properties adds their slots here)
-            if (target == NULL_ENTITY || !track.isSampled() || track.channel == ClipChannel::Property) continue;
+            // humanoid tracks reach the bones through their binding's outputs (above)
+            if (target == NULL_ENTITY || !track.isSampled() || isHumanoidChannel(track.channel)) continue;
+            if (track.channel == ClipChannel::Property){
+                // one slot per (target, property): one element per component of the whole value
+                if (i >= bindings.properties.size()) continue;
+                const anim::PropertyBinding& binding = bindings.properties[i];
+                anim::PropertyRest* propertyRest = completePropertyRest(scene, target, rest[target], binding);
+                if (!propertyRest || binding.width == 0) continue;
+                const uint64_t id = ((uint64_t)target << 32) | binding.key;
+                auto found = byProperty.find(id);
+                if (found == byProperty.end()){
+                    anim::PoseSlot slot;
+                    slot.target = target;
+                    slot.channel = ClipChannel::Property;
+                    slot.first = elements;
+                    slot.width = binding.width;
+                    slot.key = binding.key;
+                    slot.rest = &rest[target];
+                    slot.propertyRest = propertyRest;
+                    slot.discrete = binding.discrete;
+                    found = byProperty.emplace(id, (uint32_t)scratch.slots.size()).first;
+                    scratch.slots.push_back(slot);
+                    elements += slot.width;
+                }
+                trackSlots[i] = found->second;
+                continue;
+            }
             auto found = byTarget.find(target);
             if (found == byTarget.end()){
                 std::array<uint32_t, 6> none;
@@ -325,7 +391,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
         sources.reserve(states.size());
         runtime.scratch.builtFor.assign(states.size(), 0);
         for (size_t i = 0; i < states.size(); i++){
-            sources.push_back({&states[i].bindings, &states[i].trackSlots});
+            sources.push_back({&states[i].bindings, &states[i].trackSlots, &states[i].humanoidSlots});
             runtime.scratch.builtFor[i] = states[i].bindings.clip ? states[i].bindings.serial : 0;
         }
         playerdetail::buildPoseSlots(scene, runtime.scratch, sources, runtime.rest);
@@ -363,6 +429,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
             state.maskStamp = stamp;
             if (!mask && state.mixing.empty()){
                 state.trackMask.clear();
+                state.humanoidMask.clear();
             }else{
                 const std::vector<AnimationClip::Track>& tracks = state.bindings.clip->getTracks();
                 state.trackMask.assign(tracks.size(), 1.0f);
@@ -372,9 +439,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
                     if (target != NULL_ENTITY) mixing.push_back({target, transform.recursive});
                 }
                 const anim::HumanoidSlots* humanoid = runtime.humanoid.get();
-                for (size_t i = 0; i < tracks.size() && i < state.bindings.targets.size(); i++){
-                    const Entity target = state.bindings.targets[i];
-                    if (target == NULL_ENTITY) continue;
+                auto weightOf = [&](Entity target){
                     float weight = mask ? anim::maskWeightOf(*mask, scene, entity, target, layer.maskEntities, humanoid).weight : 1.0f;
                     if (!state.mixing.empty()){
                         bool covered = false;
@@ -388,16 +453,42 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
                         }
                         if (!covered) weight = 0.0f;
                     }
-                    state.trackMask[i] = weight;
+                    return weight;
+                };
+                for (size_t i = 0; i < tracks.size() && i < state.bindings.targets.size(); i++){
+                    const Entity target = state.bindings.targets[i];
+                    // masks and mixing transforms select transforms: property tracks always
+                    // apply (Unity's Avatar Mask filters transform curves only)
+                    if (target == NULL_ENTITY || tracks[i].channel == ClipChannel::Property) continue;
+                    state.trackMask[i] = weightOf(target);
+                }
+                // a humanoid clip's realised bones (anim-retarget): masked like any bone
+                state.humanoidMask.clear();
+                if (state.bindings.humanoid){
+                    for (const anim::HumanoidOutput& output : state.bindings.humanoid->outputs){
+                        state.humanoidMask.push_back(weightOf(output.entity));
+                    }
                 }
             }
         }
         if (layer.blend == AnimationLayerBlend::Additive && layerIndex > 0){
-            if (state.referenceSerial != state.bindings.serial || state.referenceClip != state.bindings.clip.get()){
+            const uint8_t humanoidFlags = state.bindings.humanoid ? (uint8_t)((anim::stateMirror(state) ? 1 : 0) | (anim::stateFootIK(state) ? 2 : 0)) : 0;
+            if (state.referenceSerial != state.bindings.serial || state.referenceClip != state.bindings.clip.get() ||
+                (state.bindings.humanoid && state.humanoidReferenceFlags != humanoidFlags)){
                 anim::sampleClipTracks(*state.bindings.clip, state.bindings.clip->getAdditiveReference(), state.reference);
                 state.referenceSerial = state.bindings.serial;
                 state.referenceClip = state.bindings.clip.get();
                 state.referenceWarned = false;
+                // a humanoid clip: its realised bones at the reference time (7.5)
+                state.humanoidReference.clear();
+                if (state.bindings.humanoid){
+                    anim::HumanoidBinding& humanoid = *state.bindings.humanoid;
+                    humanoid.mirror = anim::stateMirror(state);
+                    humanoid.footIK = anim::stateFootIK(state);
+                    anim::sampleHumanoidBinding(*state.bindings.clip, humanoid, state.bindings.clip->getAdditiveReference(), nullptr);
+                    state.humanoidReference = humanoid.outputs;
+                }
+                state.humanoidReferenceFlags = humanoidFlags;
             }
         }
     }
@@ -430,17 +521,25 @@ void ActionSystem::evaluateLayeredPlayer(Entity entity, AnimationPlayerComponent
         input.layer = runtime.stateLayer(state);
         input.trackMask = state.trackMask.empty() ? nullptr : state.trackMask.data();
         input.trackSlots = state.trackSlots.data();
+        const size_t outputs = state.bindings.humanoid ? state.bindings.humanoid->outputs.size() : 0;
+        if (outputs > 0 && state.humanoidSlots.size() == outputs){
+            input.humanoidSlots = state.humanoidSlots.data();
+            input.humanoidMask = state.humanoidMask.size() == outputs ? state.humanoidMask.data() : nullptr;
+        }
         if (input.layer > 0 && scratch.layerInputs[(size_t)input.layer].blend == AnimationLayerBlend::Additive){
             if (state.reference.size() != state.bindings.clip->getTracks().size()) continue;
             input.reference = state.reference.data();
             input.referenceWarned = &state.referenceWarned;
+            input.discreteWarned = &state.discreteAdditiveWarned;
+            input.humanoidReference = state.humanoidReference.size() == outputs ? state.humanoidReference.data() : nullptr;
         }
         scratch.stateInputs.push_back(input);
     }
     composePlayerLayers(scratch, nullptr);
 }
 
-void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::vector<std::pair<Entity, ClipChannel>>* written){
+void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::vector<std::pair<Entity, ClipChannel>>* written,
+                                       std::vector<std::pair<Entity, uint32_t>>* writtenProperties){
     anim::TrackSample sample;
 
     // 0. occlusion: an Override layer at weight 1 whose states' weights reach 1 on a single-element
@@ -466,6 +565,25 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                 }
                 e.coverage += w;
                 if (e.coverage >= 1.0f && e.occluder < 0) e.occluder = (int)l;
+            }
+            // a humanoid clip's realised bones cover their slots the same way
+            if (state.humanoidSlots){
+                const std::vector<anim::HumanoidOutput>& outputs = state.bindings->humanoid->outputs;
+                for (size_t o = 0; o < outputs.size(); o++){
+                    const uint32_t slotIndex = state.humanoidSlots[o];
+                    if (slotIndex == NO_SLOT || !anim::isLive(*state.bindings->humanoid, outputs[o])) continue;
+                    const float w = state.weight * (state.humanoidMask ? state.humanoidMask[o] : 1.0f);
+                    if (!(w > 0.0f)) continue;
+                    const uint32_t index = scratch.slots[slotIndex].first;
+                    anim::PoseElement& e = scratch.elements[index];
+                    if (e.coverLayer < 0) scratch.covered.push_back(index);
+                    if (e.coverLayer != (int)l){
+                        e.coverLayer = (int)l;
+                        e.coverage = 0.0f;
+                    }
+                    e.coverage += w;
+                    if (e.coverage >= 1.0f && e.occluder < 0) e.occluder = (int)l;
+                }
             }
         }
     }
@@ -493,7 +611,7 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                 const float w = state.weight * mask;
                 if (!(w > 0.0f)){
                     // masked out on the base layer: the bone stays at its rest (spec 5.2)
-                    if (l == 0 && slot.width == 1){
+                    if (l == 0 && slot.width == 1 && track.channel != ClipChannel::Property){
                         playerdetail::completeRest(scene, target, rest, track.channel);
                         if (rest.hasTransform) touch(scratch, slot.first);
                     }
@@ -574,8 +692,84 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                         }
                         break;
                     }
-                    case ClipChannel::Property:
+                    case ClipChannel::Property: {
+                        if (!slot.propertyRest || i >= bindings.properties.size()) continue;
+                        if (slot.discrete && !track.discrete) anim::sampleTrackStepped(track, state.time, sample);
+                        if (slot.discrete){
+                            // stepped values have no delta: an additive layer skips them (warned once)
+                            if (additive){
+                                if (state.discreteWarned && !*state.discreteWarned){
+                                    *state.discreteWarned = true;
+                                    Log::warn("Animation Player: '%s.%s' (%s) is a discrete property: additive layers skip it",
+                                              track.component.c_str(), track.property.c_str(), track.path.c_str());
+                                }
+                                continue;
+                            }
+                            // the contributor with the largest weight (ties: the later state)
+                            anim::PoseElement& e = touch(scratch, slot.first);
+                            e.weight += w;
+                            if (!sample.weights.empty() && (!e.hasRef || w >= e.ref[0])){
+                                e.hasRef = true;
+                                e.ref[0] = w;
+                                e.sum[0] = sample.weights[0];
+                            }
+                            break;
+                        }
+                        const anim::PropertyBinding& binding = bindings.properties[i];
+                        for (size_t j = 0; j < sample.weights.size(); j++){
+                            const size_t k = binding.swizzle >= 0 ? (size_t)binding.swizzle : j;
+                            if (k >= slot.width) break;
+                            if (track.overridden & (1u << k)) continue;
+                            float value = sample.weights[j];
+                            if (additive) value -= j < reference->weights.size() ? reference->weights[j] : 0.0f;
+                            addScalar(touch(scratch, slot.first + (uint32_t)k), value, w);
+                        }
+                        // RGB keys of a Color4 key an opaque alpha (no delta on additive layers)
+                        if (anim::keysOpaqueAlpha(binding, sample.weights.size()) && slot.width > 3 && !(track.overridden & 8u)){
+                            addScalar(touch(scratch, slot.first + 3u), additive ? 0.0f : 1.0f, w);
+                        }
+                        break;
+                    }
+                    case ClipChannel::Humanoid:
+                    case ClipChannel::HumanoidPosition:
                         continue;
+                }
+            }
+            // a humanoid clip (anim-retarget 7.3, 7.5): its realised bones, as rotation and position
+            // samples of their entities (additive: the delta from their value at the reference)
+            if (state.humanoidSlots && (!additive || state.humanoidReference)){
+                anim::HumanoidBinding& humanoid = *state.bindings->humanoid;
+                const std::vector<anim::HumanoidOutput>& outputs = humanoid.outputs;
+                bool needed = false;
+                for (size_t o = 0; o < outputs.size() && !needed; o++){
+                    const uint32_t slotIndex = state.humanoidSlots[o];
+                    needed = slotIndex != NO_SLOT && anim::isLive(humanoid, outputs[o]) &&
+                             !(scratch.elements[scratch.slots[slotIndex].first].occluder > (int)l);
+                }
+                if (needed) anim::sampleHumanoidBinding(*state.clip, humanoid, state.time, &bindings.cursors);
+                for (size_t o = 0; needed && o < outputs.size(); o++){
+                    const uint32_t slotIndex = state.humanoidSlots[o];
+                    // a conditional counterpart, unmirrored: not this clip's bone (no touch either)
+                    if (slotIndex == NO_SLOT || !anim::isLive(humanoid, outputs[o])) continue;
+                    const anim::PoseSlot& slot = scratch.slots[slotIndex];
+                    if (scratch.elements[slot.first].occluder > (int)l) continue;
+                    anim::ChannelRest& rest = *slot.rest;
+                    if (!rest.hasTransform) playerdetail::completeRest(scene, slot.target, rest, slot.channel);
+                    if (!rest.hasTransform) continue;
+                    const float w = state.weight * (state.humanoidMask ? state.humanoidMask[o] : 1.0f);
+                    if (!(w > 0.0f)){
+                        // masked out on the base layer: the bone stays at its rest (spec 5.2)
+                        if (l == 0) touch(scratch, slot.first);
+                        continue;
+                    }
+                    const anim::HumanoidOutput& output = outputs[o];
+                    if (output.channel == ClipChannel::Position){
+                        addVector(touch(scratch, slot.first), additive ? output.position - state.humanoidReference[o].position : output.position, w);
+                    }else if (additive){
+                        addRotationDelta(touch(scratch, slot.first), state.humanoidReference[o].rotation.inverse() * output.rotation, w);
+                    }else{
+                        addRotation(touch(scratch, slot.first), output.rotation, w);
+                    }
                 }
             }
             if (zeroScale && state.referenceWarned && !*state.referenceWarned){
@@ -596,6 +790,23 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
             float rest[4] = {0.0f, 0.0f, 0.0f, 0.0f};
             const bool needRest = l == 0 ? S < 1.0f : !e.hasResult;
             if (needRest || rotation) restOf(slot, index - slot.first, rest);
+
+            if (slot.discrete){
+                // winner takes all: the base layer's winner against the rest's 1 - S, an Override
+                // layer above replaces R when its λ·min(1, S) reaches one half (ties: the higher layer)
+                if (l == 0){
+                    const bool restWins = S < 1.0f && 1.0f - S > (e.hasRef ? e.ref[0] : -1.0f);
+                    e.result[0] = (restWins || !e.hasRef) ? rest[0] : e.sum[0];
+                }else{
+                    if (!(S > 0.0f) || !e.hasRef || additive) continue;
+                    const float alpha = lambda * std::min(1.0f, S);
+                    if (alpha >= 0.5f) e.result[0] = e.sum[0];
+                    else if (!e.hasResult) e.result[0] = rest[0];
+                }
+                e.hasResult = true;
+                if (!hadResult) scratch.written.push_back(index);
+                continue;
+            }
 
             if (l == 0){
                 // R = lerp(rest, avg, min(1, S)): the rest fills what the states leave (R1)
@@ -734,7 +945,30 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                 accum.weights[point] += 1.0f;
                 break;
             }
-            case ClipChannel::Property:
+            case ClipChannel::Property: {
+                if (!slot.propertyRest) break;
+                PropertyBlendAccum& accum = propertyAccum(target, slot.key, slot.propertyRest);
+                const uint32_t k = index - slot.first;
+                if (slot.discrete){
+                    accum.total += 1.0f;
+                    if (1.0f >= accum.bestWeight){
+                        accum.bestWeight = 1.0f;
+                        accum.bestValue = e.result[0];
+                    }
+                }else if (k < 4){
+                    accum.sums[k] += e.result[0];
+                    accum.weights[k] += 1.0f;
+                }
+                if (writtenProperties){
+                    std::pair<Entity, uint32_t> entry(target, slot.key);
+                    if (std::find(writtenProperties->begin(), writtenProperties->end(), entry) == writtenProperties->end()){
+                        writtenProperties->push_back(entry);
+                    }
+                }
+                continue;
+            }
+            case ClipChannel::Humanoid:
+            case ClipChannel::HumanoidPosition:
                 break;
         }
         if (written){
@@ -747,7 +981,8 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
 
 void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim::ClipPreviewSession& session,
                                  std::vector<anim::ClipBindings>& bindings, const std::vector<LayeredPreviewState>& states,
-                                 std::vector<std::pair<Entity, ClipChannel>>& written){
+                                 std::vector<std::pair<Entity, ClipChannel>>& written,
+                                 std::vector<std::pair<Entity, uint32_t>>& writtenProperties){
     anim::PlayerPoseScratch& scratch = session.scratch;
     const size_t layerCount = std::max<size_t>(1, preview.layers.size());
 
@@ -769,18 +1004,23 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
             }
         }
     }
-    if (humanoidNeeded && (!session.humanoid || session.humanoidRevision != scene->hierarchyRevision())){
-        session.humanoid = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, root));
+    if (humanoidNeeded && (!session.humanoid || session.humanoidRevision != scene->hierarchyRevision() ||
+                           session.humanoidPool != AnimationClipPool::revision())){
+        playerdetail::refreshHumanoidSlots(scene, root, session.humanoid);
         session.humanoidRevision = scene->hierarchyRevision();
+        session.humanoidPool = AnimationClipPool::revision();
     }
 
     // one slot table over every previewed clip's bindings (an editor preview: rebuilt per call)
     session.trackSlots.assign(states.size(), std::vector<uint32_t>());
     session.trackMasks.assign(states.size(), std::vector<float>());
     session.references.resize(states.size());
+    session.humanoidSlots.assign(states.size(), std::vector<uint32_t>());
+    session.humanoidMasks.assign(states.size(), std::vector<float>());
+    session.humanoidReferences.assign(states.size(), std::vector<anim::HumanoidOutput>());
     std::vector<playerdetail::PoseSlotSource> sources;
     for (size_t i = 0; i < states.size(); i++){
-        sources.push_back({&bindings[states[i].bindings], &session.trackSlots[i]});
+        sources.push_back({&bindings[states[i].bindings], &session.trackSlots[i], &session.humanoidSlots[i]});
     }
     playerdetail::buildPoseSlots(scene, scratch, sources, session.rest);
 
@@ -795,11 +1035,15 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
         if (!binding.clip || !(state.weight > 0.0f)) continue;
         const size_t layer = state.layer >= 0 && (size_t)state.layer < layerCount ? (size_t)state.layer : 0;
         const std::vector<AnimationClip::Track>& tracks = binding.clip->getTracks();
+        const size_t outputs = binding.humanoid ? binding.humanoid->outputs.size() : 0;
         if (masks[layer]){
             session.trackMasks[i].assign(tracks.size(), 1.0f);
             for (size_t t = 0; t < tracks.size() && t < binding.targets.size(); t++){
-                if (binding.targets[t] == NULL_ENTITY) continue;
+                if (binding.targets[t] == NULL_ENTITY || tracks[t].channel == ClipChannel::Property) continue;
                 session.trackMasks[i][t] = anim::maskWeightOf(*masks[layer], scene, root, binding.targets[t], maskEntities[layer], session.humanoid.get()).weight;
+            }
+            for (size_t o = 0; o < outputs; o++){
+                session.humanoidMasks[i].push_back(anim::maskWeightOf(*masks[layer], scene, root, binding.humanoid->outputs[o].entity, maskEntities[layer], session.humanoid.get()).weight);
             }
         }
         anim::PoseStateInput input;
@@ -810,12 +1054,21 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
         input.layer = (int)layer;
         input.trackMask = session.trackMasks[i].empty() ? nullptr : session.trackMasks[i].data();
         input.trackSlots = session.trackSlots[i].data();
+        if (outputs > 0 && session.humanoidSlots[i].size() == outputs){
+            input.humanoidSlots = session.humanoidSlots[i].data();
+            input.humanoidMask = session.humanoidMasks[i].size() == outputs ? session.humanoidMasks[i].data() : nullptr;
+        }
         if (layer > 0 && scratch.layerInputs[layer].blend == AnimationLayerBlend::Additive){
             anim::sampleClipTracks(*binding.clip, binding.clip->getAdditiveReference(), session.references[i]);
             input.reference = session.references[i].data();
+            if (outputs > 0){
+                anim::sampleHumanoidBinding(*binding.clip, *binding.humanoid, binding.clip->getAdditiveReference(), nullptr);
+                session.humanoidReferences[i] = binding.humanoid->outputs;
+                input.humanoidReference = session.humanoidReferences[i].data();
+            }
         }
         if (session.trackSlots[i].size() != tracks.size()) continue;
         scratch.stateInputs.push_back(input);
     }
-    composePlayerLayers(scratch, &written);
+    composePlayerLayers(scratch, &written, &writtenProperties);
 }

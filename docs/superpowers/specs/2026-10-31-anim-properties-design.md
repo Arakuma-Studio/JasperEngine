@@ -572,3 +572,210 @@ MCP tests (`tools/mcp/tests/test_animation_properties.py`):
 - **`ui-scaling-text` (#21).** Per-character text effects are separate. Text colour is `ui.color`.
 - **Follow-up for the lead: a "UI Canvas Group" (group alpha and interactable).** The GAP-REPORT
   omits it, and the game's `GameOverMenu` and `go` clips need it (see the final report).
+
+## Implementation notes
+
+Decisions taken where the spec was silent, ambiguous or in conflict with the code, and deviations.
+Code references are to the `gaps/anim-properties` branch.
+
+### Engine
+
+- **Files.** The registry is `engine/core/animation/PropertyBindings.{h,cpp}`: rows of
+  `AnimatableProperty` with `has` / `read` / `write` (and an optional `snapshot` / `restore`)
+  taking `PropertyParams` (the literal submesh index, the shader member or script field), so one
+  row serves `submeshes[N]...` and `...shaderParams.<member>`. `parsePropertyRef` is the pure
+  parse of (component, property) the clip loader uses; `bindProperty` is the per-entity binding
+  (the declared type of a script field wins; a shader member's manifest type, `COLOR`/`HDRCOLOR`
+  as sRGB Color4, else the keys' width). Property identities are interned (`internPropertyKey`,
+  main thread, at bind) so the accumulator is keyed by `(entity, uint32)` with no string work per
+  frame.
+- **CanvasGroup (ui-canvas-group merged first).** The five `canvasGroupTracks()` rows of
+  `CanvasGroupTracks.h` are registered as `canvasgroup.*`; the CanvasGroup non-goal and its
+  `ui.color.a` recipe are dropped (the docs show the real `canvasgroup.alpha` track). The
+  Inspector's Canvas Group rows go through `propertyRow`, so they are Record sources like every
+  other row; the `edit_animation canvasgroup.alpha` check (0.5 at 0.5 s) is in
+  `test_animation_properties.py`.
+- **Clip model.** `ClipTrackData` gets `kind`, `width` (key width; 1 for a swizzle), `swizzle`,
+  `discrete` and `known`; `normalize` recomputes them from (component, property) and the keys
+  (a script field or shader member keeps the kind its keys or the editor gave it). Runtime
+  tracks reuse the morph `weights` arrays for their key-space floats; a discrete track's easings
+  are STEP; `Track::overridden` marks the components of a whole-property track that a swizzle
+  track of the same clip keys (the swizzle wins). `ClipData::findPropertyTrack` /
+  `findTrack(const ClipTrackData&)` find a track by its identity.
+- **Unknown properties** (a v1 file's track this engine cannot animate) are kept verbatim
+  (`preserved`) and not played; the normalize warning is "unknown animatable property
+  'light.fooBar' (did you mean 'intensity'?): kept in the file, not played". A component given
+  in the wrong case suggests the Catalog key ("did you mean 'light'?"). Known property tracks are
+  written canonically (bools as literals, ints without decimals, one float as a number), so a v1
+  file with now-animatable tracks is rewritten in the canonical form; unknown ones round-trip
+  byte for byte.
+- **sRGB.** Colours use the engine's own curve, `Color::sRGBToLinear` (gamma 2.2, as the
+  Inspector's colour widgets and the Lua wrappers), not the piecewise sRGB curve: test 4 checks
+  `Color::sRGBToLinear(0.5)` (0.2176), not 0.2140. The conversion is odd-symmetric so an
+  overshooting ease below 0 gives no NaN.
+- **Cones** are keyed as what the Inspector's HalfCone rows show: the full cone angle in degrees
+  (`acos(cos) * 2`, Unity's Spot Angle), always degrees (never `Engine::isUseDegrees`), written as
+  `cos(half)`. The spec said half-angles; the Inspector shows the full angle.
+- **Script fields.** `LuaBinding::get/setLuaScriptProperty` (raw instance field, a fresh Vector
+  userdata per write, `ScriptProperty::value` updated). Reserved members cannot be properties
+  (script-lifecycle refuses them), and `script:<Class>.enabled` is an extra row: the script's
+  checkbox through `ScriptRuntime::setScriptEnabled` (onEnable / onDisable), a deferred write
+  like `active`. `isActiveAndEnabled` and `gameObject` are refused as read-only. A declared Int
+  keyed with numbers steps (`anim::sampleTrackStepped`).
+- **Writes.** `ActionSystem::flushPropertyBlend` runs after the lattice loop: rest-filled average
+  (continuous, per component) or the winner (discrete, the rest counting with `1 - W`, ties to the
+  later contributor), converted to stored values and written only when the stored value differs.
+  Deferred writes (`gameobject.active`, a script's `enabled`) are collected, the pose blend is
+  cleared, and `ActionSystem::update` applies them once its pose blend scope has ended (so an
+  onEnable they run may `sample()` a player; outside `update`, a flush applies them itself), in
+  hierarchy order (the Transforms' order: parents first, siblings in their order, not the hash
+  order of the accumulator), each re-checking `isEntityCreated`; the binding is copied into the
+  queue so no rest or runtime is held across the callbacks. A component no track keys keeps its
+  stored value bit for bit (no key-space round trip: a `ui.color.a` fade never rewrites r, g, b).
+- **Rests** keep the stored value besides the key-space one; a preview restore (engine and
+  editor) writes the stored value, so a preview never changes a value by an ULP (with gamma 2.2
+  in float, about half of the linear values do not survive the round trip).
+- **`enabled` rows** do what the components' Lua setters do (every setter audited): the Trail
+  Renderer's clears its points when disabled, the Joint 2D's makes a broken joint fresh when
+  enabled again, the Lattice's bumps its revision, the Rigidbody 2D's enables or disables a loaded
+  body now; the others only set the flag. The On-Screen Stick, On-Screen Button and Touch Area
+  have their `enabled` rows, and after the merge with anim-retarget's main the Camera Shaker,
+  Camera Follow, Video Player and Text Effect (whose setter also re-applies the effect) (the
+  editor test checks that every component with the Inspector's checkbox has one, except the
+  Animation Player: it found those four).
+- **Script bindings (P4).** A binding picks its script once (the first enabled one of the class,
+  else the first) and keeps its index, so with two scripts of a class an `enabled = false` key
+  disables the same one every frame; a rebind (a missing component's retry, a hierarchy change)
+  passes the previous index to `bindProperty` (`preferredScriptIndex`), which keeps it while it
+  is still a Lua script of the class. Its bind stamp is the script instance and its
+  `ScriptEntry::instanceGeneration` (a new number per Lua instance: the registry refs are reused):
+  a player checks its script bindings every update, on its own (also on frames whose hierarchy
+  changed), and binds them again when either changed (a reload, a script removed or reordered),
+  so a field whose declared type changed takes the new type. A binding made without an index
+  resolves it when it writes `enabled`. RGB keys
+  (`"#RRGGBB"`, 3 numbers) of a Color4 key an opaque alpha (1), on script fields as on rows.
+- **Layers.** Property slots in `buildPoseSlots` (one element per component). Continuous
+  elements compose with the linear rules (additive `v - v_ref`); discrete elements keep the
+  largest-weight sample; the base layer's winner competes with the rest at `1 - S`, an Override
+  layer above replaces R when `λ·min(1, S) >= 0.5`; additive layers skip discrete tracks (warned
+  once per state). Avatar masks and mixing transforms filter transforms only: property tracks
+  always apply (Unity's Avatar Mask masks transform curves).
+- **Missing components** count as unresolved tracks: besides the hierarchy-revision retry, a
+  player with unbound property tracks looks for them again every 0.25 s (test 9). The reason is
+  logged once per change of it ("property track 'Lamp : light.intensity' does not bind: no 'light'
+  component"), as are the Button `ui.color` warning (P5), a sprite without frames or a frame out
+  of range (P6) and a clip animating its own root's `active`.
+- **Sprite frame.** `read` gives the frame whose rect the sprite shows (-1 when none); rows with
+  side effects have `snapshot` / `restore` (the sprite's texture rect, an anchor row's preset and
+  `usingAnchors`) that a preview restore puts back after the value.
+- **Steps with tangents** (a deliberate change for v1 files). A `step` ease now survives on keys
+  with tangents (Unity's Constant tangent: the Hermite segment holds its key's value) and plays
+  stepped; before, the loader dropped it with a warning and played the Hermite segment. No file
+  relied on it silently (every such file loaded with that warning, and the engine's importers never
+  write a step with tangents), so v1 files are not special-cased. Other eases are still dropped in
+  favour of the tangents; when a tangent edit gives a track its first tangents, the window says
+  how many eases became linear (`cliptangents::droppedEases`). Older readers reset the step to
+  linear with their warning.
+- **Performance (spec 14).** `Properties.PerformanceBudget` (100 UI alpha fades and 100
+  flickering light intensities through one player, the whole `ActionSystem::update`, best of
+  8 x 30 frames, Release): 0.041 ms per frame on the shared build box (budget 0.08 ms; skipped
+  above the core count of load). The anim-layers budget test (`Layers.PerformanceBudget`, 0.6 ms)
+  measured 0.603-0.624 ms on the box at load 1, where anim-layers' own notes measured
+  0.597-0.608 ms: it sits at its line as before.
+
+### Editor and MCP
+
+- **Names.** `editor/animation/ClipPropertyNames.{h,cpp}`: the Add Property groups (the UI
+  element's own name for `ui`: Image, Text, Button...; "Sprite Renderer" for a sprite's mesh;
+  "GameObject"; "<Class> (Script)"), the Inspector labels, and the resolution of the names agents
+  give (`"Image"` and `"Text"` -> `ui`, `"Sprite Renderer"` + `color` -> the mesh's
+  `submeshes[0].material.baseColorFactor`, `"<Class> (Script)"` -> `script:<Class>`).
+- **Record.** `ClipRecordHooks` gets `ClipPropertyKey`, `claimsProperty` / `animatesProperty`
+  and property write listeners (`before/afterPropertyWrite`, called by `PropertyCmd` through
+  `channelsOf`, and by `EntityStateCmd` for the active state). The Inspector's `propertyRow`
+  routes every row command through `submitRowCommand`: when Record claims the row's property,
+  the command's new value (`RecordablePropertyCommand`, stored units) is converted to key space
+  and recorded, and the command is dropped (no scene step). The GameObject header's active
+  checkbox and the component headers' enable checkboxes record the same way. Lua script rows
+  record as `script:<Class>.<field>`. Not record sources: the shader-library member rows (they
+  edit their collection property as one command) and the script header's enable checkbox. The
+  Hierarchy has no active toggle (nothing to hook). The rows resolve their property keys only
+  while a record listener is installed (Record on), not every frame otherwise. When the clip has
+  only component tracks of a property (`color.a`), Record keys those and adds component tracks
+  for the components the edit
+  changed, instead of a whole-property track that would overlap them.
+- **Scene writes during a preview.** Every scene command that writes a previewed property puts
+  its rest back first and takes the written value as the new rest (stop keeps it, undo writes the
+  rest, never the previewed value): a property row's `PropertyCmd`, a Lua script row
+  (`scripts[N].<field>`: the component write key `"scripts"`, resolved to `script:<Class>.<field>`
+  of that script, the same instance the preview bound), and a whole-component write (Reset, Paste
+  Component Values: an empty property, every previewed property of that component, a Mesh's
+  submesh rows included).
+- **Unity's UI y axis.** The layout space is y-down, Unity's RectTransform y-up: the porting docs
+  (guide, `animation-clips.md`, the glossary) and the registry's `unityName` hints give the
+  conversions (anchored position y and offsets negated; pivot y and anchor y `1 - y`, anchor min
+  and max swapped: Unity's `m_AnchorMin.y` is `anchorPointBottom`). The GameOverPanel port keys
+  `-150 -> 70 -> 0` and checks that the panel comes from above its place and overshoots below.
+- **The window.** Key identities (`KeyId`, drag identities, pending values, copied keys) carry the
+  property, so two property tracks of one GameObject never alias. Bool rows draw their on bars,
+  int and frame rows their values, colour rows a strip of the sampled colour; the value column
+  uses a checkbox, an int drag, the colour picker (sRGB) or drags; vectors and colours fold out
+  their components.
+- **Curves.** `editor/animation/ClipTangents.{h,cpp}` holds the pure tangent edits; the controller
+  applies them (`setTangentMode`, `setSideTangent`, `setTangentSlope` with one merge key per
+  handle drag) and refreshes Auto / Linear / Flat keys in every commit, so they follow moved keys.
+  Clamped Auto is flat at the ends of a track (Unity's two-key Auto curve eases in and out) and
+  limited to 3x each side's linear slope. Discrete properties are drawn at their values (a bool on
+  0..1, a frame index at its index), not on a separate band, and drag in time only.
+- **MCP.** `edit_animation` property tracks go through the .anim parser itself (one rule for the
+  file and the tool; its warnings appear in `changes`); `get_animation {root, list_properties}`
+  lists `{component, property, kind, label, group, value, discrete?}`; samples, keys and
+  `preview_animation.properties` are in key space with bools as JSON bools; the binding report
+  items of property tracks carry `property` and no write_file rename fix (property track lines
+  share their path prefix). `preview_animation` lists the first 16 properties with
+  `properties_total`. `get_runtime_entity` now reports `active` and `active_in_hierarchy`
+  (the MCP test reads the stats' state there).
+- **Tests.** Engine: `engine/tests/anim/PropertyTracksTest.cpp` (tests 1-12, the GameOverPanel
+  port: GameStatsShowing's six stepped active tracks and three events, GameOverMenu/go's
+  CanvasGroup alpha and anchored position y, EarnAnim's text colour, falling.anim's sprite swap,
+  at 60 fps against the Unity timings, and the performance budget). Editor
+  (`AnimationClipControllerTest.cpp`): the registry against the Catalog, Clamped Auto (test 13)
+  and the tangent edits, Add Property's list and names, Record of an Inspector colour row (sRGB,
+  no scene command, a project undo step) and of the active checkbox, a handle drag as one undo
+  step, scene edits during a property preview (a script row, a Reset), the eases notice, pasted
+  keys keeping their kind (`AnimationWindowClipTest`). Review fixes, engine: exact rest restores
+  and bit-exact unkeyed components, the `enabled` setter side effects, hierarchy-ordered deferred
+  writes with a `sample()` inside onEnable, one script instance per binding and the rebind after a
+  reload, opaque alpha of RGB keys. MCP: `tools/mcp/tests/test_animation_properties.py`, and
+  `test_animation_properties_export.py` (acceptance criterion 2: the same port built with
+  `build_project desktop` and run with `run_build`; a probe script prints the values at 0.3, 1.0
+  and 3.6 s; `JASPER_SLOW_BUILD=1`). The script-lifecycle case of test 2
+  (an `onEnable` reading the frame's animated colour) follows from the deferred flush order and
+  is covered by the play-mode event check (handlers see the values written).
+- **Verification at handoff** (merged with main fda5c0d0f, Linux box): editor + tests build with
+  0 warnings; editor unit tests 1641 passed, 9 skipped, 0 failed; anim tests 197 passed, 1 skipped
+  (`Layers.PerformanceBudget` under load); full MCP suite 923 passed, 21 skipped, 10 failed (only
+  the baseline `test_animation_assets` x5 and `test_lattice_scene` x5). Web: an em++ syntax check of
+  the changed engine sources. Not run here: the Apple, Windows and Android builds (no platform code
+  changed; the Xcode project lists the new source) and on-device timings.
+- **Verification after the review fixes** (not merged with main again): 0 warnings; editor unit
+  tests 1644 passed, 9 skipped, 0 failed; anim tests 202 passed, 1 skipped (`Layers.PerformanceBudget`
+  under load); MCP `test_animation*`, `test_docs`, `test_stubs`, `test_html_ui_tools`,
+  `test_ui_canvas_group`: only the baseline `test_animation_assets` x5 fail; the exported Linux
+  player (`test_animation_properties_export.py`, `JASPER_SLOW_BUILD=1`) passes: at 1.0 s alpha 1,
+  offset 0, puntaje on and record off; at 0.3 s 48 below its rest on screen; at 3.6 s every stat on
+  and the events saw `score:true|record:true|coins:true`. Web: em++ syntax checks with physics 2D
+  on and off (the Rigidbody 2D enabled row's body calls are guarded).
+- **Verification after the re-review and the merge with main d08d63b31** (anim-retarget,
+  video-mp4, native-bridge, xcode26-dav1d, asan-sweep; box 2202): humanoid and property tracks
+  side by side in `ClipTypes`, the IO, the layer evaluator, the validation, the Animation window
+  (`clipui::findRuntimeTrack` finds both) and `edit_animation`. 0 warnings; editor unit tests
+  1811 passed, 9 skipped, 0 failed; anim tests 229 passed, 1 skipped; pose tests 219 passed. The
+  timing tests skip themselves above the box's core count of load; at a load of 13 they ran and
+  `CanvasGroupTest.PerformanceBudgets` (414 vs 400 us), `PhysicsContactsTest.ContactProcessingCostIsSmall`
+  and `Layers.PerformanceBudget` (0.61 vs 0.6 ms, at its line before this branch too) missed by a
+  few percent. Full MCP suite (-j3): 950 passed, 22 skipped, 11 failed: the baseline
+  `test_animation_assets` x5 and `test_lattice_scene` x5, and `test_html_ui_tools::test_budget`
+  before `TOTAL_LIMIT` was set to the measured 114703 (155 tools; then 40 passed with test_docs).
+  The exported Linux player test passes. `tools/check-physics-off.sh`: 3d-off, 2d-off, both-off
+  pass with 0 warnings. The Xcode sync scripts pass `--check`.

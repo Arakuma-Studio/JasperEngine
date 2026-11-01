@@ -8,6 +8,8 @@
 #include "Engine.h"
 #include "math/Vector2.h"
 #include "util/CharExtent.h"
+#include "util/TextGlyphInfo.h"
+#include "math/Vector4.h"
 
 #include <array>
 
@@ -37,6 +39,29 @@ namespace jasperengine{
 
         bool pivotBaseline = false;
         bool pivotCentered = false;
+
+        // Outline (TMP "Outline"): UI units drawn outside the glyph edge, and its colour
+        // (linear, as UIComponent::color; Text's setters take sRGB)
+        float outlineWidth = 0.0f;
+        Vector4 outlineColor = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+        // Shadow (TMP "Underlay"): colour (linear), offset in UI units (y down: right-down),
+        // softness (blur radius) and dilate (the shape grows), UI units
+        bool shadowEnabled = false;
+        Vector4 shadowColor = Vector4(0.0f, 0.0f, 0.0f, 0.5f);
+        Vector2 shadowOffset = Vector2(2.0f, 2.0f);
+        float shadowSoftness = 0.0f;
+        float shadowDilate = 0.0f;
+        // TMP maxVisibleCharacters: characters past it are not drawn (-1 all)
+        int visibleCharacters = -1;
+
+        // runtime: each glyph quad's character (cluster) and line, the atlas options it was
+        // built with, and whether its buffer carries a vertex colour (a Text Effect)
+        std::vector<TextGlyphInfo> glyphInfo;
+        float rasterScale = 1.0f;
+        int sdfPadding = 0;
+        bool vertexColor = false;
+        // bumped by every rebuild of the glyphs (a Text Effect takes them as its base again)
+        unsigned long buildCount = 0;
 
         std::shared_ptr<STBText> stbtext = NULL;
 

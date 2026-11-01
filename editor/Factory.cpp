@@ -12,6 +12,7 @@
 #include "particles/ParticleEffectCodec.h"
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
+#include "util/VideoTextureLink.h"
 #include "component/FluidSimulationComponent.h"
 #include "editor/Out.h"
 #include <cmath>
@@ -227,6 +228,24 @@ std::string editor::Factory::toIdentifier(const std::string& name) {
     }
 
     return out;
+}
+
+std::string editor::Factory::formatCanvasScaler(const CanvasScalerSettings& settings) {
+    static const char* const modes[] = {"UIScaleMode::FollowGameCanvas", "UIScaleMode::ConstantPixelSize",
+                                        "UIScaleMode::ScaleWithScreenSize", "UIScaleMode::ConstantPhysicalSize"};
+    static const char* const matchModes[] = {"ScreenMatchMode::MatchWidthOrHeight", "ScreenMatchMode::Expand", "ScreenMatchMode::Shrink"};
+    static const char* const units[] = {"PhysicalUnit::Centimeters", "PhysicalUnit::Millimeters", "PhysicalUnit::Inches",
+                                        "PhysicalUnit::Points", "PhysicalUnit::Picas"};
+    const CanvasScalerSettings d;
+    std::string out = "[](){ CanvasScalerSettings s;";
+    if (settings.mode != d.mode) out += std::string(" s.mode = ") + modes[(int)settings.mode] + ";";
+    if (settings.scaleFactor != d.scaleFactor) out += " s.scaleFactor = " + formatFloat(settings.scaleFactor) + ";";
+    if (settings.referenceResolution != d.referenceResolution) out += " s.referenceResolution = " + formatVector2(settings.referenceResolution) + ";";
+    if (settings.screenMatchMode != d.screenMatchMode) out += std::string(" s.screenMatchMode = ") + matchModes[(int)settings.screenMatchMode] + ";";
+    if (settings.matchWidthOrHeight != d.matchWidthOrHeight) out += " s.matchWidthOrHeight = " + formatFloat(settings.matchWidthOrHeight) + ";";
+    if (settings.physicalUnit != d.physicalUnit) out += std::string(" s.physicalUnit = ") + units[(int)settings.physicalUnit] + ";";
+    if (settings.fallbackScreenDPI != d.fallbackScreenDPI) out += " s.fallbackScreenDPI = " + formatFloat(settings.fallbackScreenDPI) + ";";
+    return out + " return s; }()";
 }
 
 std::string editor::Factory::formatVector2(const Vector2& v) {
@@ -572,6 +591,16 @@ std::string editor::Factory::formatSceneColorScale(SceneColorScale scale) {
         case SceneColorScale::HALF: return "SceneColorScale::HALF";
         default: return "SceneColorScale::HALF";
     }
+}
+
+std::string editor::Factory::formatAudioLoadType(AudioLoadType loadType) {
+    switch (loadType) {
+        case AudioLoadType::Auto: return "AudioLoadType::Auto";
+        case AudioLoadType::DecompressOnLoad: return "AudioLoadType::DecompressOnLoad";
+        case AudioLoadType::CompressedInMemory: return "AudioLoadType::CompressedInMemory";
+        case AudioLoadType::Streaming: return "AudioLoadType::Streaming";
+    }
+    return "AudioLoadType::Auto";
 }
 
 std::string editor::Factory::formatUIEventState(UIEventState state) {
@@ -1436,6 +1465,65 @@ std::string editor::Factory::createMeshPolygonComponent(int indentSpaces, Entity
     return code.str();
 }
 
+std::string editor::Factory::createSafeAreaComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<SafeAreaComponent>(entity)) return "";
+    const SafeAreaComponent& safeArea = scene->getComponent<SafeAreaComponent>(entity);
+    const SafeAreaComponent defaults;
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "SafeAreaComponent safearea;\n";
+    // what differs from the defaults (every edge, extras included)
+    if (safeArea.enabled != defaults.enabled) code << ind << "safearea.enabled = " << formatBool(safeArea.enabled) << ";\n";
+    if (safeArea.left != defaults.left) code << ind << "safearea.left = " << formatBool(safeArea.left) << ";\n";
+    if (safeArea.top != defaults.top) code << ind << "safearea.top = " << formatBool(safeArea.top) << ";\n";
+    if (safeArea.right != defaults.right) code << ind << "safearea.right = " << formatBool(safeArea.right) << ";\n";
+    if (safeArea.bottom != defaults.bottom) code << ind << "safearea.bottom = " << formatBool(safeArea.bottom) << ";\n";
+    if (safeArea.includeExtraInsets != defaults.includeExtraInsets) code << ind << "safearea.includeExtraInsets = " << formatBool(safeArea.includeExtraInsets) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "SafeAreaComponent", "safearea", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createTextEffectComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<TextEffectComponent>(entity)) return "";
+    TextEffectComponent& effect = scene->getComponent<TextEffectComponent>(entity);
+    static const char* const types[] = {"None", "Wave", "Bounce", "Shake", "Pulse", "Typewriter", "FadeIn", "Grow", "Unfold", "Rainbow", "Gradient"};
+    static const char* const mixes[] = {"Multiply", "Add", "Replace"};
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    const TextEffectComponent d;
+    const TextEffectLayer dl;
+    code << ind << "TextEffectComponent textEffect;\n";
+    if (effect.enabled != d.enabled) code << ind << "textEffect.enabled = " << formatBool(effect.enabled) << ";\n";
+    for (size_t i = 0; i < effect.layers.size(); i++){
+        const TextEffectLayer& l = effect.layers[i];
+        if (l == dl) continue;
+        const std::string layer = "textEffect.layers[" + std::to_string(i) + "]";
+        code << ind << layer << ".type = TextEffectType::" << types[std::min((size_t)l.type, (size_t)10)] << ";\n";
+        if (l.enabled != dl.enabled) code << ind << layer << ".enabled = " << formatBool(l.enabled) << ";\n";
+        if (l.amplitude != dl.amplitude) code << ind << layer << ".amplitude = " << formatFloat(l.amplitude) << ";\n";
+        if (l.duration != dl.duration) code << ind << layer << ".duration = " << formatFloat(l.duration) << ";\n";
+        if (l.spread != dl.spread) code << ind << layer << ".spread = " << formatFloat(l.spread) << ";\n";
+        if (l.phaseStep != dl.phaseStep) code << ind << layer << ".phaseStep = " << formatFloat(l.phaseStep) << ";\n";
+        if (l.frequency != dl.frequency) code << ind << layer << ".frequency = " << formatFloat(l.frequency) << ";\n";
+        if (l.charactersPerSecond != dl.charactersPerSecond) code << ind << layer << ".charactersPerSecond = " << formatFloat(l.charactersPerSecond) << ";\n";
+        if (l.fadeTime != dl.fadeTime) code << ind << layer << ".fadeTime = " << formatFloat(l.fadeTime) << ";\n";
+        for (const TextEffectGradientStop& stop : l.gradient){
+            code << ind << layer << ".gradient.push_back(TextEffectGradientStop{" << formatVector4(stop.color) << ", " << formatFloat(stop.position) << "});\n";
+        }
+        if (l.mix != dl.mix) code << ind << layer << ".mix = TextEffectMix::" << mixes[std::min((size_t)l.mix, (size_t)2)] << ";\n";
+        if (l.saturation != dl.saturation) code << ind << layer << ".saturation = " << formatFloat(l.saturation) << ";\n";
+        if (l.lightness != dl.lightness) code << ind << layer << ".lightness = " << formatFloat(l.lightness) << ";\n";
+    }
+    if (effect.autoPlay != d.autoPlay) code << ind << "textEffect.autoPlay = " << formatBool(effect.autoPlay) << ";\n";
+    if (effect.loop != d.loop) code << ind << "textEffect.loop = " << formatBool(effect.loop) << ";\n";
+    if (effect.useUnscaledTime != d.useUnscaledTime) code << ind << "textEffect.useUnscaledTime = " << formatBool(effect.useUnscaledTime) << ";\n";
+    if (effect.startIndex != d.startIndex) code << ind << "textEffect.startIndex = " << effect.startIndex << ";\n";
+    if (effect.length != d.length) code << ind << "textEffect.length = " << effect.length << ";\n";
+    if (!effect.forWords.empty()) code << ind << "textEffect.forWords = " << formatString(effect.forWords) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "TextEffectComponent", "textEffect", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<SpriteComponent>(entity)) return "";
     SpriteComponent& sprite = scene->getComponent<SpriteComponent>(entity);
@@ -1608,6 +1696,41 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
     code << ind << "terrain.heightMapLoaded = false;\n";
     if (!terrain.enabled) code << ind << "terrain.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "TerrainComponent", "terrain", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createVideoPlayerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->isComponentRegistered<VideoPlayerComponent>() || !scene->findComponent<VideoPlayerComponent>(entity)) return "";
+    VideoPlayerComponent& player = scene->getComponent<VideoPlayerComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "VideoPlayerComponent player;\n";
+    if (!player.enabled) code << ind << "player.enabled = false;\n";
+    // only what differs from the defaults; the runtime (its texture, its listeners) starts fresh
+    const VideoPlayerComponent defaults;
+    if (player.source != defaults.source) code << ind << "player.source = " << "VideoPlayerSource(" << (int)player.source << ")" << ";\n";
+    if (player.clip != defaults.clip) code << ind << "player.clip = " << formatString(player.clip) << ";\n";
+    if (player.url != defaults.url) code << ind << "player.url = " << formatString(player.url) << ";\n";
+    if (player.playOnAwake != defaults.playOnAwake) code << ind << "player.playOnAwake = " << formatBool(player.playOnAwake) << ";\n";
+    if (player.waitForFirstFrame != defaults.waitForFirstFrame) code << ind << "player.waitForFirstFrame = " << formatBool(player.waitForFirstFrame) << ";\n";
+    if (player.isLooping != defaults.isLooping) code << ind << "player.isLooping = " << formatBool(player.isLooping) << ";\n";
+    if (player.skipOnDrop != defaults.skipOnDrop) code << ind << "player.skipOnDrop = " << formatBool(player.skipOnDrop) << ";\n";
+    if (player.playbackSpeed != defaults.playbackSpeed) code << ind << "player.playbackSpeed = " << formatFloat(player.playbackSpeed) << ";\n";
+    if (player.timeUpdateMode != defaults.timeUpdateMode) code << ind << "player.timeUpdateMode = " << "VideoTimeUpdateMode(" << (int)player.timeUpdateMode << ")" << ";\n";
+    if (player.renderMode != defaults.renderMode) code << ind << "player.renderMode = " << "VideoRenderMode(" << (int)player.renderMode << ")" << ";\n";
+    if (player.targetCamera != defaults.targetCamera) code << ind << "player.targetCamera = " << formatEntity(player.targetCamera, entityVarNames) << ";\n";
+    if (player.targetCameraAlpha != defaults.targetCameraAlpha) code << ind << "player.targetCameraAlpha = " << formatFloat(player.targetCameraAlpha) << ";\n";
+    if (player.aspectRatio != defaults.aspectRatio) code << ind << "player.aspectRatio = " << "VideoAspectRatio(" << (int)player.aspectRatio << ")" << ";\n";
+    if (player.targetMaterialRenderer != defaults.targetMaterialRenderer) code << ind << "player.targetMaterialRenderer = " << formatEntity(player.targetMaterialRenderer, entityVarNames) << ";\n";
+    if (player.targetMaterialProperty != defaults.targetMaterialProperty) code << ind << "player.targetMaterialProperty = " << formatString(player.targetMaterialProperty) << ";\n";
+    if (player.targetSubmesh != defaults.targetSubmesh) code << ind << "player.targetSubmesh = " << std::to_string(player.targetSubmesh) << ";\n";
+    if (player.renderTextureWidth != defaults.renderTextureWidth) code << ind << "player.renderTextureWidth = " << formatUInt(player.renderTextureWidth) << "u" << ";\n";
+    if (player.renderTextureHeight != defaults.renderTextureHeight) code << ind << "player.renderTextureHeight = " << formatUInt(player.renderTextureHeight) << "u" << ";\n";
+    if (player.audioOutputMode != defaults.audioOutputMode) code << ind << "player.audioOutputMode = " << "VideoAudioOutputMode(" << (int)player.audioOutputMode << ")" << ";\n";
+    if (player.directVolume != defaults.directVolume) code << ind << "player.directVolume = " << formatFloat(player.directVolume) << ";\n";
+    if (player.directMute != defaults.directMute) code << ind << "player.directMute = " << formatBool(player.directMute) << ";\n";
+    if (player.targetAudioSource != defaults.targetAudioSource) code << ind << "player.targetAudioSource = " << formatEntity(player.targetAudioSource, entityVarNames) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "VideoPlayerComponent", "player", assignExisting);
     return code.str();
 }
 
@@ -2254,6 +2377,56 @@ std::string editor::Factory::createLatticeModifierComponent(int indentSpaces, En
     return code.str();
 }
 
+std::string editor::Factory::createCameraShakerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<CameraShakerComponent>(entity)) return "";
+    const CameraShakerComponent& shaker = scene->getComponent<CameraShakerComponent>(entity);
+    const CameraShakerComponent defaults;
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CameraShakerComponent camerashaker;\n";
+    if (!shaker.enabled) code << ind << "camerashaker.enabled = false;\n";
+    if (shaker.global != defaults.global) code << ind << "camerashaker.global = " << formatBool(shaker.global) << ";\n";
+    if (shaker.unscaledTime != defaults.unscaledTime) code << ind << "camerashaker.unscaledTime = " << formatBool(shaker.unscaledTime) << ";\n";
+    if (shaker.mode == CameraShakeMode::Mode3D) code << ind << "camerashaker.mode = CameraShakeMode::Mode3D;\n";
+    if (shaker.mode == CameraShakeMode::Mode2D) code << ind << "camerashaker.mode = CameraShakeMode::Mode2D;\n";
+    code << ind << "camerashaker.positionScale = " << formatFloat(shaker.positionScale) << ";\n";
+    code << ind << "camerashaker.rotationScale = " << formatFloat(shaker.rotationScale) << ";\n";
+    if (!shaker.startPreset.empty()) code << ind << "camerashaker.startPreset = " << formatString(shaker.startPreset) << ";\n";
+    code << ind << "camerashaker.traumaDecay = " << formatFloat(shaker.traumaDecay) << ";\n";
+    code << ind << "camerashaker.traumaPower = " << formatFloat(shaker.traumaPower) << ";\n";
+    code << ind << "camerashaker.traumaMaxOffset = " << formatVector3(shaker.traumaMaxOffset) << ";\n";
+    code << ind << "camerashaker.traumaMaxAngle = " << formatVector3(shaker.traumaMaxAngle) << ";\n";
+    code << ind << "camerashaker.traumaFrequency = " << formatFloat(shaker.traumaFrequency) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CameraShakerComponent", "camerashaker", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createCameraFollowComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<CameraFollowComponent>(entity)) return "";
+    const CameraFollowComponent& follow = scene->getComponent<CameraFollowComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CameraFollowComponent camerafollow;\n";
+    if (!follow.enabled) code << ind << "camerafollow.enabled = false;\n";
+    code << ind << "camerafollow.target = " << formatEntity(follow.target, entityVarNames) << ";\n";
+    code << ind << "camerafollow.offset = " << formatVector3(follow.offset) << ";\n";
+    if (follow.offsetSpace == FollowOffsetSpace::Target) code << ind << "camerafollow.offsetSpace = FollowOffsetSpace::Target;\n";
+    if (follow.offsetSpace == FollowOffsetSpace::TargetYaw) code << ind << "camerafollow.offsetSpace = FollowOffsetSpace::TargetYaw;\n";
+    code << ind << "camerafollow.damping = " << formatVector3(follow.damping) << ";\n";
+    code << ind << "camerafollow.maxSpeed = " << formatFloat(follow.maxSpeed) << ";\n";
+    code << ind << "camerafollow.lookAt = " << formatBool(follow.lookAt) << ";\n";
+    code << ind << "camerafollow.lookAtOffset = " << formatVector3(follow.lookAtOffset) << ";\n";
+    code << ind << "camerafollow.rotationDamping = " << formatFloat(follow.rotationDamping) << ";\n";
+    code << ind << "camerafollow.deadZone = " << formatVector2(follow.deadZone) << ";\n";
+    code << ind << "camerafollow.useBounds = " << formatBool(follow.useBounds) << ";\n";
+    code << ind << "camerafollow.boundsMin = " << formatVector3(follow.boundsMin) << ";\n";
+    code << ind << "camerafollow.boundsMax = " << formatVector3(follow.boundsMax) << ";\n";
+    code << ind << "camerafollow.unscaledTime = " << formatBool(follow.unscaledTime) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CameraFollowComponent", "camerafollow", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createLatticeFollowerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<LatticeFollowerComponent>(entity)) return "";
     LatticeFollowerComponent& follower = scene->getComponent<LatticeFollowerComponent>(entity);
@@ -2842,6 +3015,11 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     out << ind2 << "scene->setGravity3D(" << formatVector3(scene->getGravity3D()) << ");\n";
     if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
         out << ind2 << "scene->setPhysicsInterpolation(" << formatBool(scene->isPhysicsInterpolation()) << ");\n";
+    // the scene's own Canvas Scaler (it uses the project default otherwise)
+    if (scene->getCanvasScaler() != CanvasScalerSettings())
+        out << ind2 << "scene->setCanvasScaler(" << formatCanvasScaler(scene->getCanvasScaler()) << ");\n";
+    if (!scene->isCanvasScalerUseProjectDefault())
+        out << ind2 << "scene->setCanvasScalerUseProjectDefault(false);\n";
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         out << ind2 << "scene->setPhysics2DSubSteps(" << scene->getPhysics2DSubSteps() << ");\n";
     out << ind2 << "scene->setLightState(" << formatLightState(scene->getLightState()) << ");\n";
@@ -2982,6 +3160,20 @@ std::string editor::Factory::createCameraTextureLinks(int indentSpaces, EntityRe
                     links << ind << "if (!" << fluidExpr << ".simulator) " << fluidExpr << ".simulator = std::make_shared<FluidSimulator>();\n";
                     links << ind << "scene->getComponent<" << Catalog::getComponentName(cpType) << ">(" << formatEntity(entity, entityVarNames) << ")."
                           << propName << ".setFramebuffer(" << fluidExpr << ".simulator->getOutputFramebuffer());\n";
+                    continue;
+                }
+                Entity videoEntity = VideoTextureLink::parse(texture->getId());
+                if (videoEntity != NULL_ENTITY) {
+                    // a Video Player's render texture: its object made here when it has none yet
+                    if (!registry->isEntityCreated(videoEntity) || !registry->isComponentRegistered<VideoPlayerComponent>() ||
+                        !registry->findComponent<VideoPlayerComponent>(videoEntity))
+                        continue;
+                    if (namedCamerasOnly && (!entityVarNames || !entityVarNames->count(videoEntity)))
+                        continue;
+                    const std::string videoExpr = "scene->getComponent<VideoPlayerComponent>(" + formatEntity(videoEntity, entityVarNames) + ")";
+                    links << ind << "if (!" << videoExpr << ".output) " << videoExpr << ".output = std::make_shared<VideoTextureConverter>();\n";
+                    links << ind << "scene->getComponent<" << Catalog::getComponentName(cpType) << ">(" << formatEntity(entity, entityVarNames) << ")."
+                          << propName << ".setFramebuffer(" << videoExpr << ".output->getFramebuffer());\n";
                     continue;
                 }
                 Entity cameraEntity = CameraTextureLink::parse(texture->getId());

@@ -5,7 +5,8 @@
 #include "util/FileUtils.h"
 #include "io/AtomicFile.h"
 
-#include "htmlui/media/VideoFormats.h"
+#include "media/VideoFormats.h"
+#include "media/VideoSourceFactory.h"
 #include "util/CommandRunner.h"
 #include "util/ShellEnv.h"
 #include "util/FileUtils.h"
@@ -79,8 +80,38 @@ bool VideoImporter::isVideoFile(const fs::path& path){
     return jasperengine::VideoFormats::isVideoPath(pathString(path));
 }
 
+namespace {
+
+    // a file one of the export platforms plays through its decoders
+    bool playsSomewhere(const jasperengine::VideoProbe& probe){
+        using jasperengine::VideoSourceFactory;
+        if (probe.playable)
+            return true;
+        if (!probe.readable || probe.encrypted || probe.container.empty())
+            return false;
+        for (int p = 0; p < VideoSourceFactory::PLATFORM_COUNT; p++){
+            if (std::string(VideoSourceFactory::playableOn((VideoSourceFactory::Platform)p, probe)) != "no")
+                return true;
+        }
+        return false;
+    }
+
+}
+
+namespace {
+
+    // kept as it is: AV1/Opus WebM (the engine's software path), or an MP4/MOV the platforms'
+    // decoders play; a WebM of another codec (VP9) is converted as before, so it plays everywhere
+    bool keptAsIs(const jasperengine::VideoProbe& probe){
+        if (probe.playable && probe.audioPlayable && probe.backend == "webm")
+            return true;
+        return playsSomewhere(probe) && probe.container != "webm" && probe.container != "matroska";
+    }
+
+}
+
 bool VideoImporter::isPlayable(const fs::path& path){
-    return probeHost(path).playable;
+    return keptAsIs(probeHost(path));
 }
 
 void VideoImporter::setFfmpegPath(const std::string& path){
@@ -197,7 +228,7 @@ bool VideoImporter::hasToneMapping(const std::string& ffmpeg){
 }
 
 VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::path& targetDir, bool overwrite,
-                                            const std::function<void(const std::string&)>& onLine){
+                                            const std::function<void(const std::string&)>& onLine, bool convert){
     VideoImportResult result;
     std::error_code ec;
     const std::string name = pathString(input.filename());
@@ -206,7 +237,8 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
 
     // already the engine's format: copied
     const jasperengine::VideoProbe probe = probeHost(input);
-    if (probe.playable && probe.audioPlayable){
+    const bool webmPlayable = probe.playable && probe.audioPlayable && probe.backend == "webm";
+    if (!convert && keptAsIs(probe)){
         result.output = targetDir / input.filename();
         if (fs::exists(result.output, ec) && !overwrite){
             result.message = pathString(result.output.filename()) + " already exists";
@@ -215,7 +247,17 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
         FileUtils::copyFileAtomic(input, result.output, ec);
         result.ok = !ec;
         result.copied = !ec;
-        result.message = ec ? "could not copy " + name + ": " + ec.message() : name + " is AV1/Opus WebM: copied";
+        result.message = ec ? "could not copy " + name + ": " + ec.message() :
+                         webmPlayable ? name + " is AV1/Opus WebM: copied" :
+                         name + " (" + jasperengine::VideoFormats::codecName(probe.videoCodec) + " in " + probe.container +
+                             ") plays through each platform's decoders: copied (Convert to WebM (AV1) in the Project window plays it in software everywhere)";
+        return result;
+    }
+    // already AV1/Opus WebM: nothing to convert
+    if (convert && webmPlayable){
+        result.output = input;
+        result.ok = true;
+        result.message = name + " is AV1/Opus WebM already";
         return result;
     }
 
@@ -329,8 +371,11 @@ ImportedResource RemoteVideoImporter::run(const std::string& url, const std::str
 
     std::string local, content;
     if (converted.ok){
-        // played as it is (copied) or converted: the .webm
-        local = importer.importPath(stem + ".webm");
+        // played as it is (copied: its own extension, an MP4 stays one) or converted: the .webm
+        std::string extension = pathString(converted.output.extension());
+        if (extension.empty())
+            extension = ".webm";
+        local = importer.importPath(stem + extension);
         std::ifstream in(converted.output, std::ios::binary);
         content.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }else if (converted.copied){

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // W4: Lua/C++ scripts, compile check, code editor sync
+#include "camera/ShakePreset.h"
+#include "media/VideoFormats.h"
 #include "McpTools.h"
 #include "DocumentFile.h"
 #include "jobs/JobSystem.h"
@@ -116,6 +118,8 @@ std::string assetType(const fs::path& path) {
     if (Util::isParticleEffectFile(p)) return "particle_effect";
     if (Util::isModelFile(p)) return "model";
     if (Util::isAudioFile(p)) return "audio";
+    // .webm, .mkv, .mp4, .m4v, .mov (the probe decides what plays where)
+    if (jasperengine::VideoFormats::isPlayableExtension(p)) return "video";
     if (Util::isFontFile(p)) return "font";
     if (Util::isHtmlFile(p)) return "html";
     if (Util::isCssFile(p)) return "css";
@@ -128,6 +132,8 @@ std::string assetType(const fs::path& path) {
     if (Util::isAnimationClipFile(p) || Util::isPoseAnimationFile(p) || Util::isAnimatorAssetFile(p)) return "animation";
     // Vertex Animations (.vat; the generated .vat.glb is a model)
     if (Util::isVertexAnimationFile(p)) return "vertex_animation";
+    // Shake Presets (.shake, camera shake spec 6)
+    if (Util::isShakePresetFile(p)) return "shake";
     return "other";
 }
 
@@ -136,7 +142,7 @@ bool isTextFile(const fs::path& path) {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
         ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
-        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller"
+        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake"
     };
     if (path.filename() == "CMakeLists.txt" || path.filename() == "AGENTS.md") return true;
     return text.count(extensionOf(path)) > 0;
@@ -338,6 +344,8 @@ Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
     return reload::syncHtmlUi(ctx.project(), changed);
 }
 
+// SYNC4: upstream (camera-shake) reports an invalid .shake as a sync problem; on our S05 funnel that
+// belongs in editor/reload (classification + reload::addAnimationFileProblems), not here yet.
 Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool full, const SyncOptions& sync) {
     Project* project = ctx.project();
     Json notes = Json::array();

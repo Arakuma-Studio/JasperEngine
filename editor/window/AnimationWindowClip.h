@@ -72,8 +72,11 @@ namespace jasperengine::editor{
             std::string path;
             ClipChannel channel = ClipChannel::Position;
             float time = 0.0f;
+            std::string property;       // property tracks: "component.property" (propertyId)
             bool operator==(const KeyId& other) const;
         };
+        // the identity of the key of `track` at `time`
+        static KeyId keyIdOf(const ClipTrackData& track, float time);
 
         // an event by identity (time, function, n-th of the events with both equal)
         struct EventId{
@@ -136,6 +139,7 @@ namespace jasperengine::editor{
             int component = -1;     // Component rows: the value component (x/y/z, morph target)
             std::string label;      // the full label "Path : Channel (Missing!)"
             std::string leaf;       // what the row shows: "Leaf : Channel"
+            std::string channelText;    // what follows " : " ("Position", a property's "Image.Color")
             bool missing = false;
             std::string message;    // the binding problem (tooltip)
             // the layer's mask hides the track's target: "masked out by Arm.mask on layer Holding"
@@ -145,6 +149,9 @@ namespace jasperengine::editor{
         struct CopiedKey{
             std::string path;
             ClipChannel channel = ClipChannel::Position;
+            std::string component;      // property tracks
+            std::string property;
+            PropertyKind kind = PropertyKind::None;     // property tracks: the copied track's kind
             std::vector<int> points;
             float offset = 0.0f;    // from the earliest copied key
             ClipKey key;
@@ -422,6 +429,11 @@ namespace jasperengine::editor{
         bool snapKeysToFrames(std::string* error);
         bool setFrameRate(float rate, std::string* error);
         bool setComponentValue(size_t track, int component, float value, bool newEdit, std::string* error);
+        // a property track's whole key value (key space) from the value column: previewed (pink)
+        // until K, or keyed at the playhead with Record (anim-properties spec 10)
+        bool setPropertyValue(size_t track, const std::vector<float>& value, bool newEdit, std::string* error);
+        // the value column of a property row (checkbox, int, float, colour, vector components)
+        void drawPropertyValueField(const Row& row, ImVec2 pos, float width, float height);
         bool setPreviewModel(const std::string& model, std::string* error);
         void frameKeys(bool selectedOnly, float width);
 

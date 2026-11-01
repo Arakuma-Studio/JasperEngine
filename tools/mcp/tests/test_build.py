@@ -44,9 +44,12 @@ PREBUILT_PLAYERS = ["glcore-development"]
 ACTION_NAMES_SCRIPT = """local ActionNames = {}
 function ActionNames:init()
     Log.print("input actions: " .. table.concat(Input.getActionNames(), ","))
+    Log.print("mixer groups: " .. table.concat(AudioMixer.getGroupNames(), ",") .. " exposed " ..
+              table.concat(AudioMixer.getParameterNames(), ","))
 end
 return ActionNames
 """
+MIXER_LINE = "mixer groups: Master,Music exposed MusicVolume"
 ACTION_NAMES_LINE = "input actions: Horizontal,Vertical,Fire1,Fire2,Fire3,Jump,Mouse X,Mouse Y,Mouse ScrollWheel,Submit,Cancel,Dash"
 
 
@@ -135,6 +138,11 @@ async def test_prepare_project(ed: Editor):
     actions = settings["settings"]["input.manager_actions"] + [
         {"name": "Dash", "type": "button", "bindings": [{"kind": "buttons", "positive": ["left_shift"]}]}]
     await ed.call("set_project_settings", values={"input.manager_actions": actions})
+    # and the project's Audio Mixer (audio/Main.mixer, loaded by the generated init)
+    if ed.has_tool("audio_mixer"):
+        await ed.call("audio_mixer", action="edit", ops=[
+            {"op": "add_group", "name": "Music"},
+            {"op": "expose", "name": "MusicVolume", "group": "Music", "volume": True}])
     s = await ed.call("save_project", untitled_scene_dir="scenes")
     ed.check_eq(len(s["scenes_in_build"]), 1)
     scene = s["scenes_in_build"][0]
@@ -193,6 +201,10 @@ async def test_source_export(ed: Editor):
              "main.cpp loads the actions asset")
     assets = [a for a in out.rglob("InputManager.inputactions") if '"name": "Dash"' in a.read_text()]
     ed.check(assets, "the exported actions asset has Dash")
+    # Project Settings > Audio: main.cpp loads the mixer, which ships with the assets
+    if ed.has_tool("audio_mixer"):
+        ed.check(any('AudioMixer::load("audio/Main.mixer");' in m.read_text() for m in mains), "main.cpp loads the mixer")
+        ed.check(any(p.name == "Main.mixer" for p in out.rglob("*.mixer")), "the .mixer is exported")
 
     # a non-empty directory needs overwrite
     msg = await ed.call("build_project", mode="source", output_dir=str(out), expect_error=True)
@@ -746,6 +758,8 @@ async def test_desktop_build_and_run(ed: Editor):
     ed.check_eq(r.get("exit_code"), 0, f"the player got ready and quit after its frames: {r}")
     log_text = "\n".join(r["log"]) if isinstance(r["log"], list) else str(r["log"])
     ed.check_in(ACTION_NAMES_LINE, log_text, "the player has the project's input actions")
+    if ed.has_tool("audio_mixer"):
+        ed.check_in(MIXER_LINE, log_text, "the player loaded the project's mixer")
     ed.check(raw.images, f"screenshot: {raw.text[:2000]}")
     ed.check_in("player's frame", r["screenshot"]["note"])
     shot = ed.scratch.root / "player.png"

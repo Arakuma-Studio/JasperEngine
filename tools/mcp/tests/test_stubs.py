@@ -51,6 +51,7 @@ function Bad:init()
     Engine.useDegrees = 1
     Input.KEY_SPACE = {}
     AudioSystem.globalVolume = true
+    AudioMixer.setFloat("MusicVolume", "loud")
     Vector3.UNIT_X = 5
     SceneManager.currentSceneName = 3
     Engine.scene = "main"
@@ -77,11 +78,12 @@ BAD_LUA_EXPECTED = {
     20: "assign-type-mismatch",  # boolean <- integer
     21: "assign-type-mismatch",  # integer constant <- table
     22: "assign-type-mismatch",  # number <- boolean
-    23: "assign-type-mismatch",  # Vector3 constant <- integer
-    24: "assign-type-mismatch",  # string <- integer
-    25: "assign-type-mismatch",  # Scene <- string
-    26: "assign-type-mismatch",  # number <- boolean, indexed with a string
-    27: "assign-type-mismatch",  # integer <- string (Http)
+    23: "param-type-mismatch",   # AudioMixer.setFloat: a string where the value (number) goes
+    24: "assign-type-mismatch",  # Vector3 constant <- integer
+    25: "assign-type-mismatch",  # string <- integer
+    26: "assign-type-mismatch",  # Scene <- string
+    27: "assign-type-mismatch",  # number <- boolean, indexed with a string
+    28: "assign-type-mismatch",  # integer <- string (Http)
 }
 
 # A script without engine fields assigned: the plugin leaves the checks driven by the doc
@@ -153,6 +155,50 @@ function Good:init()
     Time.timeScale = 0.5
     Time.captureDeltaTime = 0
     print(Engine.unscaledDeltatime, Engine.unscaledTime, Engine.maxDeltatime, Coroutine.running(), Coroutine.isInside())
+    -- the audio mixer (audio-mixer): option tables, nil results, the group and effect handles
+    local muted = AudioMixer.setFloat("MusicVolume", -80, 0.5, {unscaled = true})
+    local cutoff = AudioMixer.getFloat("lowPassCutoff") or 22000
+    AudioMixer.transitionTo("Gameplay", 0.65)
+    AudioMixer.transitionToSnapshots({"Menu", "Gameplay"}, {0.5, 0.5}, 1)
+    local music = AudioMixer.getGroup("Music")
+    if music then
+        music.volume = AudioMixer.linearToDb(0.5)
+        music.mute = not muted
+        local lowpass = music:getEffect(1) or music:getEffect("lowpass")
+        if lowpass then lowpass:setParameter("cutoff", cutoff * 0.5, 0.9) end
+        print(music:getMeter(), music:getEffectCount(), #AudioMixer.getGroupNames())
+    end
+    AudioListener.pause = false
+    AudioListener.volume = 0.8
+    local sound = AudioSource(self.scene, self.entity)
+    sound.outputGroup = "SFX"
+    sound.loadType = AudioLoadType.DecompressOnLoad
+    sound.pitch = 1.2
+    sound.priority = 64
+    sound:playOneShot("sfx/coin.wav", 0.7)
+    sound:fadeOut(1.5, {pause = true})
+    sound:fadeTo(0.5, 2)
+    AudioSource.playClipAtPoint(self.scene, "sfx/boom.wav", Vector3(0, 0, 0), 1, "SFX")
+    AudioSystem.preload("music/theme.ogg", AudioLoadType.Streaming)
+    -- the Video Player: fields, enums, events, methods and statics (video-mp4)
+    local vp = self.go:getVideoPlayer()
+    if vp and self.go:hasVideoPlayer() then
+        vp.source = VideoPlayerSource.URL
+        vp.url = System.getUserDataPath() .. "/ads/ad1.mp4"
+        vp.timeUpdateMode = VideoTimeUpdateMode.UNSCALED_GAME_TIME
+        vp.renderMode = VideoRenderMode.RENDER_TEXTURE
+        vp.aspectRatio = VideoAspectRatio.FIT_INSIDE
+        vp.audioOutputMode = VideoAudioOutputMode.DIRECT
+        vp.isLooping = false
+        vp.playbackSpeed = 1.5
+        vp.targetCamera = nil
+        vp.onPrepareCompleted = function(p) p:play() end
+        vp.onErrorReceived = function(p, message) Log.print(message) end
+        vp:prepare()
+        local framebuffer = vp:getFramebuffer()
+        print(framebuffer, vp.isPrepared, vp.frameCount, vp.length, vp.time, vp.frame, vp.backend, vp.texture)
+        print(VideoPlayer.canPlay("ads/ad1.mp4"), VideoPlayer.clearCache(), VideoPlayer.clearCache("https://cdn.example.com/a.mp4"))
+    end
 end
 
 function Good:onContact(bodyA, shapeA, bodyB, shapeB)
@@ -225,6 +271,21 @@ function Good:onUpdate()
     Http.timeout = 20
     Http.logFailures = true
     req:cancel()
+    -- native-bridge: the hand-written signatures and option classes
+    local code, err, errCode = Native.call("Device", "getCode", 1, "two", {three = 3})
+    print(code, err, errCode == "not_found")
+    local call = Native.callAsync("Ads", "show", {"unit"}, function(result, message, c)
+        print(result, message, c)
+    end, {owner = self, thread = "background", timeout = 5})
+    Native.callAsync("Ads", "load", function(result) print(result) end)
+    print(call.id, call.result, call.errorCode, call.errorMessage, call.plugin, call.method, call:isDone())
+    call:cancel()
+    local id = Native.on("Ads", "paid", function(payload) print(payload) end, self)
+    Native.off(id)
+    print(Native.has("Ads"), Native.has("Ads", "show"))
+    Native.setMock("Ads", {show = function() return Native.pending() end})
+    Native.emitMock("Ads", "paid", {value = 1})
+    Native.clearMock("Ads")
 end
 
 return Good

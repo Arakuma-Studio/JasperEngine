@@ -35,14 +35,17 @@
 #include "component/ReflectionProbeComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/TextEffectComponent.h"
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/Transform.h"
@@ -102,6 +105,8 @@
 #include "component/RagdollComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/PrefabComponent.h"
+#include "component/CameraShakerComponent.h"
+#include "component/CameraFollowComponent.h"
 
 namespace jasperengine {
 
@@ -192,6 +197,10 @@ namespace jasperengine {
         EntityRegistry();
         EntityRegistry(EntityPool defaultPool);
         virtual ~EntityRegistry();
+        // not copyable (EntityManager owns its signature pages; MSVC instantiates the copies
+        // of an exported class)
+        EntityRegistry(const EntityRegistry&) = delete;
+        EntityRegistry& operator=(const EntityRegistry&) = delete;
 
         // The Scene this registry is, if it is one
         virtual Scene* asScene() { return nullptr; }

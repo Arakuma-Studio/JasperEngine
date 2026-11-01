@@ -118,7 +118,7 @@ bool editor::RemoveComponentCmd::execute() {
         ProjectUtils::reconcileTrackedEntities(scene, sceneProject->entities, project, sceneId);
 
         // textures showing this camera's (or fluid's) output follow it
-        if (componentType == ComponentType::CameraComponent || componentType == ComponentType::FluidSimulationComponent){
+        if (CameraTextureLink::isLinkSourceType(componentType)){
             CameraTextureLink::resolve(sceneProject->scene);
         }
 
@@ -148,7 +148,7 @@ void editor::RemoveComponentCmd::undo() {
         }
 
         // textures showing this camera's (or fluid's) output follow it
-        if (componentType == ComponentType::CameraComponent || componentType == ComponentType::FluidSimulationComponent){
+        if (CameraTextureLink::isLinkSourceType(componentType)){
             CameraTextureLink::resolve(sceneProject->scene);
         }
 

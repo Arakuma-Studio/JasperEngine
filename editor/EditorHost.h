@@ -121,6 +121,8 @@ namespace jasperengine::editor {
         // Window > Texture Synthesis with an image: as the example ("Synthesize Texture..."), or
         // its synthesis recipe restored (editRecipe, "Edit Synthesis...")
         virtual void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe);
+        // Window > Audio > Audio Mixer with a .mixer (empty: the project's mixer, made on first use)
+        virtual void openAudioMixerWindow(const std::filesystem::path& mixer = {});
         // Window > Animation > Vertex Animation Baker with a source: a model, prefab, .anim,
         // .poseanim or Houdini / OpenVAT export ("Bake Vertex Animation...", "Import as Vertex
         // Animation..."), or a .vat (its recipe: "Open in Baker"); bakeNow runs it at once

@@ -4,19 +4,43 @@
 # (less android.keep_screen_on and android.orientation: upstream renamed them in SYNC#4, to
 # player.keep_screen_on and player.default_orientation / player.allowed_orientations; ProjectTools'
 # renamedSettings tells an agent asking for the old keys)
+# (plus the keys upstream's settingsTable added in SYNC#4, 047eccf9b..27d562a6b: audio.*, debug.*,
+# graphics.ui_scale, web.viewport_fit_cover and the native plugins' android/ios/macos/web keys)
 android.abis
 android.adaptive_icon_background
 android.adaptive_icon_foreground
 android.allow_backup
 android.application_name
+android.extra_permissions
 android.fullscreen
+android.gradle_dependencies
+android.gradle_properties
+android.gradle_repositories
 android.launcher_icon
+android.manifest_application_xml
+android.manifest_xml
 android.min_sdk
 android.package_name
 android.permissions
 android.target_sdk
 android.version_code
 android.version_name
+audio.default_output_group
+audio.max_real_voices
+audio.max_voices
+audio.mixer
+audio.sample_rate
+debug.log_buffer_size
+debug.log_stack_traces
+debug.overlay
+debug.overlay_allow_lua
+debug.overlay_gesture
+debug.overlay_open_on_error
+debug.overlay_popup
+debug.overlay_stats
+debug.overlay_stats_corner
+debug.overlay_stats_key
+debug.overlay_toggle_key
 editor.assets_dir
 editor.version_control_files
 graphics.canvas_height
@@ -34,13 +58,21 @@ graphics.shadow_tier.macos
 graphics.shadow_tier.web
 graphics.shadow_tier.windows
 graphics.texture_strategy
+graphics.ui_scale
 ios.application_name
 ios.build_number
 ios.bundle_identifier
+ios.cocoapods
+ios.deployment_target
+ios.entitlements_xml
+ios.frameworks
 ios.hide_home_indicator
 ios.hide_status_bar
 ios.icon
+ios.plist_entries
+ios.plist_xml
 ios.supports_high_refresh_rate
+ios.swift_packages
 ios.version_name
 linux.application_name
 linux.categories
@@ -48,8 +80,10 @@ linux.comment
 macos.application_name
 macos.build_number
 macos.bundle_identifier
+macos.frameworks
 macos.high_dpi
 macos.icon
+macos.plist_entries
 macos.version_name
 physics.enabled
 physics.layer_collision_matrix
@@ -116,6 +150,8 @@ web.favicon
 web.head_include
 web.hide_emscripten_ui
 web.resize_canvas_to_window
+web.script_urls
+web.viewport_fit_cover
 windows.company_name
 windows.file_version
 windows.product_name

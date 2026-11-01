@@ -90,8 +90,9 @@ namespace jasperengine::pose {
         const int ib = rig.boneIndex(lower);
         const int ic = rig.boneIndex(end);
 
-        std::vector<Quatd> rot;
-        std::vector<Affine3d> world;
+        // scratch kept per thread: Foot IK runs per leg per frame (anim-retarget 13, no allocation)
+        thread_local std::vector<Quatd> rot;
+        thread_local std::vector<Affine3d> world;
         rig.computeWorldPrecise(pose, rot, world);
 
         const Vec3d a = world[ia].t;

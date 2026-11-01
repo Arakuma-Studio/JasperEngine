@@ -668,6 +668,33 @@ bool anim::buildSubClip(const tinygltf::Model& model, int animationIndex, ClipDa
     return true;
 }
 
+bool anim::readModelFile(const std::string& modelPath, const std::function<bool(const tinygltf::Model&)>& read, std::string* error){
+    if (!isModelFilePath(modelPath)){
+        if (error) *error = modelPath + " is not a glTF, GLB or FBX model";
+        return false;
+    }
+    const std::string key = MeshSystem::getModelFilenameKey(modelPath);
+    if (std::shared_ptr<tinygltf::Model> pooled = ModelPool::getGLTF(key)){
+        std::lock_guard<std::recursive_mutex> lock(MeshSystem::getPooledGLTFMutex());
+        return read(*pooled);
+    }
+    tinygltf::Model parsed;
+    std::string parseError;
+    if (!MeshSystem::parseGLTFFile(modelPath, parsed, &parseError)){
+        if (error){
+            File imported;
+            if (lower(FileData::getFilePathExtension(modelPath)) == "fbx" &&
+                    imported.open(MeshSystem::getImportedModelPath(modelPath).c_str()) != FileErrors::FILEDATA_OK){
+                *error = "cannot load " + modelPath + ": the FBX is not imported yet (the editor makes its .glb when it imports the file)";
+            }else{
+                *error = "cannot load " + modelPath + ": " + parseError;
+            }
+        }
+        return false;
+    }
+    return read(parsed);
+}
+
 void anim::dropModelFileParse(const std::string& modelPath){
     const std::string key = modelPath.empty() ? std::string() : MeshSystem::getModelFilenameKey(modelPath);
     ParseCache& cache = parseCache();

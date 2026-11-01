@@ -38,11 +38,22 @@ Projects made before the rename are migrated once with
 | Window menu | View menu |
 | GameObject, Component, Assets menus | Scene and Project menus, the Structure "+" menu |
 | Animation Clip (`.anim` asset; Assets > Create > Animation Clip) | none (new): keyframe animations lived only inside a scene or prefab as an Animation entity. A JasperEngine clip is JSON (`{"format": "jasperengine.anim"}`, not Unity's YAML), binds tracks by path relative to the GameObject that plays it, and is referenced by GUID; see [animation-clips.md](animation-clips.md) |
+| An Animation Clip's `m_IsActive` curve (GameObject active) | the property track `gameobject.active` (stepped; applied after the other values, parents first) |
+| An Animation Clip's `m_Enabled` curve (a component's checkbox) | the property track `<component>.enabled` (`ui`, `light`, `canvasgroup`, `rigidbody`...; `script:<Class>.enabled` for a Lua script) |
+| An Animation Clip's `m_Color` curve (Image, Text, SpriteRenderer), TMP `m_fontColor` | `ui.color` on the UI element (keys in sRGB); a sprite's `mesh.submeshes[0].material.baseColorFactor` (Add Property: Sprite Renderer : Color); one channel: `ui.color.a` |
+| Material curves (`material._Color`, `_EmissionColor`, `_Metallic`, `_MainTex_ST`) | `mesh.submeshes[N].material.baseColorFactor`, `.emissiveFactor`, `.metallicFactor`, `submeshes[N].textureRect`; shader library parameters `submeshes[N].material.shaderParams.<member>` |
+| An Animation Clip's MonoBehaviour field curves | `script:<Class>.<field>` (a declared Lua `properties` field: bool, int, float, vector, color); not C++ script fields |
+| `m_AnchoredPosition`, `m_SizeDelta`, `m_Pivot`, `m_AnchorMin` / `m_AnchorMax` curves (RectTransform) | `recttransform.positionOffset`, `width` / `height`, `pivot`, `anchorPointLeft` / `Right` / `Bottom` / `Top`; layout space is y-down, so y values convert: position y -> -y, pivot y -> 1 - y, `m_AnchorMin.y` -> `anchorPointBottom` 1 - y, `m_AnchorMax.y` -> `anchorPointTop` 1 - y |
+| A sprite swap (`m_Sprite` PPtr curve) | `sprite.frame` (the frame index, stepped) |
+| Animation window key tangents (Clamped Auto, Free Smooth, Flat, Broken, Linear / Constant per side) | the curves view's key menu (Auto, Free Smooth, Flat, Broken, Left / Right / Both Tangents) and its draggable handles |
 | Animation window with an Animation Clip (Preview, Record, Dopesheet / Curves, Add Property, events) | Animation window (entity Animations only). It now edits clips when the selected GameObject or an ancestor has an Animation Player, or when a clip is opened from the Project window or the Inspector; entity Animations still open in its older mode |
 | A model's imported clips (the Animation tab of a model's Import Settings; sub-assets such as `Take 001`) | none (new): model clips, read-only, named `<model>#<animation>` (`hero.gltf#Walk`; `"Wave 2"` for a second animation named Wave), with **Extract to .anim** for an editable copy and the Model section's **Use Animation Player** |
 | Animator Controller (`.controller`), Animator window (Window > Animation > Animator: Layers, Parameters, state machine graph, blend trees), Avatar Mask (`.mask`), Animation Montage (Unreal's montages, `.montage`), Avatar / Configure Avatar | none (new): Assets > Create > Animator Controller / Avatar Mask / Animation Montage; the Avatar is the model's `.humanoid` map |
 | none: Unity has no pose-to-pose animation (the closest is keyframing a humanoid clip in the Animation window) | none (new): Pose Animation (Window > Animation > Pose Animation; `.poseanim` assets and templates), played by the Pose Animator or baked to an Animation Clip or an Animation; see [pose-animation.md](pose-animation.md) |
-| Avatar (Rig > Animation Type Humanoid, Configure Avatar) | none (new): the humanoid map, bones mapped to body parts from their names; fixes in the Pose Animation window's Map Bones... popup, stored in a `<model>.humanoid` file next to the model |
+| Avatar (Rig > Configure Avatar) | none (new): the model's humanoid map (22 body slots, fingers, eyes, jaw) detected from bone names, with twist corrections; edited in the Avatar Configuration window (Inspector > Model > Rig > Configure Avatar...) or MCP `set_humanoid`, stored in a `<model>.humanoid` file next to the model; see [pose-animation.md](pose-animation.md#the-avatar-configuration-window) |
+| Rig > Animation Type: Humanoid / Generic | Rig > Animation Type (`animation_type` in the `.humanoid` file): a Humanoid model's clips play retargeted on any humanoid character |
+| humanoid (muscle) clip, retargeting | humanoid clip: a `.anim` with `humanoid` tracks (per-slot joint rotations from the neutral pose, body position, foot goals; no muscles), from Animation Type Humanoid, an entry's **Retarget**, or Convert to Humanoid Clip...; see [animation-clips.md](animation-clips.md#humanoid-clips-and-retargeting) |
+| Animator state Mirror / Foot IK | the player entry's (and controller state's) **Mirror** / **Foot IK**; Lua `state.mirror` / `state.footIK` |
 | Color picker (the Color window: Hexadecimal, Intensity, the eyedropper, Swatches and `.colors` libraries) | ImGui's colour popup (no eyedropper, swatches or HDR Intensity); see [editor/color-picker.md](editor/color-picker.md) |
 | Curve Editor, Gradient Editor, curve presets (`.curves`), Wrap Mode (Clamp, Loop, Ping Pong), tangent modes (Clamped Auto, Auto, Free Smooth, Flat, Broken; Free, Linear, Constant) | the Particle System's key tables; see [editor/curves.md](editor/curves.md) |
 | Unity Hub (projects, templates, Add project from disk) | none (new): the Project Hub (File > Project Hub..., Shift at launch, `--hub`), with zip and Git import; the editor used to open a temporary project; see [editor/project-hub.md](editor/project-hub.md) |
@@ -131,6 +142,17 @@ Unchanged: `Entity`, `Scene`, `Transform`, `Camera`, `Light`, `Light2D`, `Mesh`,
 `SpriteAnimation`, the keyframe tracks, `Joint2D`/`Joint3D`, `Contact2D`/`Contact3D`
 and `CollideShapeResult3D`.
 
+Unity's `VideoPlayer` is the **Video Player** component (`VideoPlayerComponent`, Lua
+`VideoPlayer`: `gameObject:getVideoPlayer()`, Add Component > Video > Video Player): `source`,
+`clip`, `url`, `playOnAwake`, `isLooping`, `renderMode`, `timeUpdateMode`, `audioOutputMode`,
+`prepare()`, `play()`, `isPrepared`, `frame`, `frameCount`, the events `prepareCompleted` ->
+`onPrepareCompleted` (likewise `started`, `loopPointReached`, `errorReceived`, `seekCompleted`,
+`frameReady`). A `VideoClip` asset is the `clip` path of a video file (.mp4, .mov, .webm); a
+`RenderTexture` target is the player's own texture, used through the `video|<entity>` texture link
+(`player.texture`, `player:getFramebuffer()`); `SetDirectAudioVolume(0, v)` is `directVolume`.
+Not offered: `DSPTime` (the audio follows the picture) and `APIOnly` audio. See
+[mcp/guide/video.md](mcp/guide/video.md).
+
 New, with no Unity counterpart: `FluidSimulation` / `FluidSimulationComponent`
 (GameObject > Effects > Fluid Simulation, Pavel Dobryakov's WebGL fluid). Unity has no
 built-in fluid component; there it takes a Custom Render Texture or compute-shader
@@ -163,7 +185,31 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | `Application.internetReachability` | `System.getInternetReachability()` (`NetworkReachability.*`) |
 | `Handheld.Vibrate()` | `System.vibrate([ms])`; iOS-style feedback: `System.hapticFeedback(HapticFeedback.*)` |
 | Player > Default Orientation, Allowed Orientations for Auto Rotation | Project Settings > Player > Resolution and Presentation (`player.default_orientation`, `player.allowed_orientations`; shared by Android and iOS) |
-| Device Simulator (orientation, language, `SystemInfo.deviceModel`) | the Game view's Device menu (device, Rotate, Language) |
+| Device Simulator (orientation, language, `SystemInfo.deviceModel`, safe area, notch overlay) | the Game view's Device menu (device or Custom..., Rotate, Language), Device Overlay and Safe Area toggles; MCP `configure_game_view {device}` |
+| `Screen.safeArea` (pixels, bottom-left origin) | `Screen.safeArea` (canvas units, top-left origin); pixels: `Screen.safeAreaPixels` (top-left); insets: `Screen.safeAreaInsets` (`EdgeInsets`) |
+| `Screen.cutouts` | `Screen.cutouts` (canvas units; empty on iOS) |
+| Community `SafeArea` script (Crystal SafeArea, a `CanvasHelper` safe panel) | the Safe Area component (GameObject > UI > Safe Area; per-edge Left/Top/Right/Bottom) |
+| A banner margin added to the safe panel | `Screen.setExtraInsets(l, t, r, b [, "pixels"])` |
+| Player > Android > *Render outside safe area* | the default Android fullscreen (the game draws under the cutout; `Screen.safeArea` keeps the UI out) |
+| CSS `env(safe-area-inset-*)` (`viewport-fit=cover`) | the same in HTML UI documents (live); web export `web.viewport_fit_cover` |
+
+## UI scaling, TextMesh Pro, UI particles
+
+New with ui-scaling-text (details: [ui.md](mcp/guide/ui.md), HTML: [html-ui.md](mcp/guide/html-ui.md)).
+
+| Unity term | JasperEngine |
+|---|---|
+| `CanvasScaler` (UI Scale Mode, Reference Resolution, Screen Match Mode, Match, Scale Factor, Physical Unit, Fallback Screen DPI) | the Canvas Scaler: Project Settings > Graphics > UI Scale (`graphics.ui_scale`), a scene's Canvas Scaler (scene setting `canvas_scaler`, Lua `scene:getCanvasScaler()`: `uiScaleMode`, `referenceResolution`, `screenMatchMode`, `matchWidthOrHeight`, `scaleFactor`, `physicalUnit`, `fallbackScreenDPI`); the extra mode Follow Game Canvas (default) keeps the game canvas |
+| `CanvasScaler.ScaleMode.*`, `ScreenMatchMode.*`, `CanvasScaler.Unit.*` | `UIScaleMode.*`, `ScreenMatchMode.*`, `PhysicalUnit.*` (same names) |
+| A script switching `matchWidthOrHeight` between 0 and 1 by aspect (`CanvasScaleAdjuster`) | Screen Match Mode Expand |
+| `RectTransformUtility.ScreenPointToLocalPointInRectangle` (screen to canvas units) | `UI.canvasToUI(scene, point)` / `UI.uiToCanvas(scene, point)` |
+| Game view resolution presets (fixed resolution, custom sizes) | the Game view's resolution menu (Resolutions, Add custom...); MCP `configure_game_view {resolution}` |
+| TMP Outline (Thickness, Color) | Text `outlineWidth` (UI units), `outlineColor` |
+| TMP Underlay (Offset, Softness, Dilate, Color) | Text `shadowEnabled`, `shadowOffset` (UI units, right-down), `shadowSoftness`, `shadowDilate`, `shadowColor` |
+| TMP `maxVisibleCharacters` | Text `visibleCharacters` |
+| TextMesh Pro Effect (Waves, Grow, Unfold, Bounce, Sketch; Duration, Amplitude, Character Duration Ratio, Gradient + Mix, Repeat, AutoPlay, ForWords) | Text Effect component (`TextEffect` in Lua): layers Wave (amplitude 0.3 x TMP Amplitude em), Grow, Unfold, Bounce, Shake, Gradient (spread = Character Duration Ratio, mix add/multiply), `loop`, `autoPlay`, `forWords`; HTML: CSS `text-effect` |
+| Coffee `UIParticle` (particles in a canvas) | a Particle System under the UI element (GameObject > UI > Particle System, `useUnscaledTime`); HTML: `<particle-system src="....prefab">` |
+| `ParticleSystem.main.useUnscaledTime` | `ParticleSystem.useUnscaledTime` |
 
 ## Coroutines, timers and time
 
@@ -187,6 +233,25 @@ and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
 | `Time.time`, `fixedTime`, `unscaledTime`, `realtimeSinceStartup`, `timeSinceLevelLoad`, `frameCount` | the same names on `Time` (`Engine.gameTime`, `Engine.frameCount`) |
 | `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
 
+## Camera shake and camera follow
+
+Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
+[docs/camera.md](camera.md)); Lua: [lua-api.md](mcp/guide/lua-api.md) 4.9.1.
+
+| Unity term | JasperEngine name |
+|---|---|
+| MilkShake `Shaker` (component) | Camera Shaker component (`camerashaker`; Lua `CameraShaker`, `go:getCameraShaker()`): on a camera a view offset, the Transform never written |
+| MilkShake `Shaker.ShakeAll(preset)`, `GlobalShakers`, `addToGlobalShakers` | `CameraShake.shake(preset)` on every shaker with `global` on (default on) |
+| MilkShake `shaker.Shake(preset, seed)`, `ShakeFromPoint(point, maxDistance, preset)` | `shaker:shake(preset, {seed = s})`, `shaker:shakeAt(point, radius, preset)` / `CameraShake.shakeAt` |
+| MilkShake `ShakePreset` (asset), `ShakeParameters` | Shake Preset: a `.shake` file (Assets > Create > Shake Preset) or a built-in name (`CameraShake.getPresetNames()`), or a Lua table |
+| MilkShake `ShakeInstance`: `Stop(fade, true)`, `Pause(fade)`, `Resume(fade)`, `StrengthScale`, `RoughnessScale`, `State`, `IsFinished` | `ShakeInstance`: `stop([fade])`, `pause([fade])`, `resume([fade])`, `strengthScale`, `roughnessScale`, `state`, `isFinished()` (plus `isValid()`) |
+| EZ Camera Shake `CameraShakePresets.Bump / HandheldCamera / Vibration` | built-ins `bump`, `handheld`, `vibration` (strength = magnitude / 2) |
+| Trauma shake ("Juicing Your Cameras With Math") | `CameraShake.addTrauma(x)`, `traumaPower`, `traumaDecay`, `traumaMaxOffset`, `traumaMaxAngle` |
+| Cinemachine Impulse Source (`GenerateImpulse`) / Impulse Listener (gain) | `CameraShake.shake` / `shakeAt` (distance falloff only, no propagation speed) / Camera Shaker (`positionScale`, `rotationScale`; `mode` "2d") |
+| Cinemachine virtual camera follow (Transposer / Framing Transposer + Composer), simple cases | Camera Follow component (`camerafollow`): `target`, `offset` (`offsetSpace`), `damping`, `lookAt`, `deadZone` (2D), bounds; no blending, priorities or collision |
+| `Mathf.SmoothDamp` in a hand-written follow script | Camera Follow `damping` (the same formula, per world axis) and `maxSpeed` |
+| `transform.localPosition = shake` on a child camera (MilkShake's setup) | not needed: the shake is a view offset, put the Camera Shaker on the camera itself |
+
 ## Saves and data
 
 | Unity term | JasperEngine name |
@@ -198,6 +263,36 @@ and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
 | `File.ReadAllText` / `WriteAllText` / `AppendAllText` / `Exists` / `Delete`, `Directory.CreateDirectory` / `GetFileSystemEntries` | `File.readText` / `writeText` (atomic) / `appendText` / `exists` / `remove`, `File.makeDirs` / `File.list` (return `nil, message` on failure) |
 | `Resources.Load<TextAsset>(path).text`, `StreamingAssets` files | `File.readText("asset://path")` (read-only, in the APK on Android too); `Json.readFile("asset://...")` |
 | ScriptableObject (data assets) | a JSON file (`Json.readFile("lua://data/items.json")`) or a Lua data module (`require("data.items")`): jasper://docs/lua-api 2.4.2 |
+
+## Debugging
+
+| Unity term | JasperEngine name |
+|---|---|
+| `Debug.Log`, `Debug.LogWarning`, `Debug.LogError` | `Log.print`, `Log.warn`, `Log.error` (Lua; any values, tab-joined like `print`), C++ `Log::print/warn/error` |
+| `LogType` (`Log`, `Warning`, `Error`) | `LogLevel` (`INFO`, `VERBOSE`, `DEBUG`, `WARN`, `ERROR`) |
+| `Application.logMessageReceived` (`condition, stackTrace, type`) | `Log.onMessageReceived` (`RegisterEvent(self, Log.onMessageReceived, "onLog")`, handler `(message, stackTrace, level)`), C++ `Log::addListener` |
+| `Application.logMessageReceivedThreaded` | C++ `Log::addListener(fn, LogDelivery::AnyThread)` |
+| `Debug.isDebugBuild`, the Development Build checkbox | `Engine.isDevelopmentBuild`: the editor's Play and exports built with the Debug build type |
+| IngameDebugConsole (`DebugLogManager`, `DebugLogConsole.AddCommand`, `ExecuteCommand`, the popup) | `DebugOverlay` (`showConsole`, `toggleConsole`, `addCommand`, `executeCommand`; the popup and the backquote key), Project Settings > Debug |
+| Graphy (FPS, RAM, audio monitors) | the debug overlay's stats panel (`DebugOverlay.statsMode`, F3) and `DebugOverlay.getStats()` |
+
+See [mcp/guide/debugging.md](mcp/guide/debugging.md).
+
+## Native plugins
+
+Details: jasper://docs/native-bridge.
+
+| Unity term | JasperEngine name |
+|---|---|
+| `new AndroidJavaClass("com.me.X").CallStatic<T>("m", args)` | `Native.call("X", "m", ...)` (a public static method of a class in `plugins/native/android`; the full name works too) |
+| `AndroidJavaProxy` callbacks, `UnitySendMessage` / `SendMessage` from native code | `NativeCall` (`Native.callAsync`: one result) or `JasperNative.emit(plugin, event, payload)` + `Native.on(plugin, event, fn)` |
+| `[DllImport("__Internal")]` functions (iOS) | Objective-C/Swift class methods `+ (id)m:(NSArray*)args` in `plugins/native/ios` or `apple` |
+| `.jslib` (`mergeInto(LibraryManager.library, ...)`), `SendMessage` (Web) | `plugins/native/web/*.js` with `JasperNative.register(name, {...})`, `JasperNative.emit` |
+| `Assets/Plugins/Android`, `Assets/Plugins/iOS`, `Assets/Plugins/WebGL` | `plugins/native/android`, `plugins/native/ios` (or `apple`), `plugins/native/web` |
+| Native C++ plugins (desktop `DllImport`) | `JASPERENGINE_NATIVE_PLUGIN(Name)` in `plugins/native/cpp` |
+| External Dependency Manager `*Dependencies.xml` (`androidPackage`, `iosPod`) | `android.gradle_dependencies` + `android.gradle_repositories`, `ios.cocoapods` (Project Settings > Native Plugins) |
+| `mainTemplate.gradle`, `gradleTemplate.properties`, custom `AndroidManifest.xml` | `android.gradle_*` settings, `android.manifest_xml` / `manifest_application_xml`, `plugins/native/android/AndroidManifest.xml` (merged) |
+| `PostProcessBuild` Info.plist / capabilities edits | `ios.plist_entries`, `ios.plist_xml`, `ios.frameworks`, `ios.entitlements_xml`, `ios.swift_packages` |
 
 ## UI (Canvas Group)
 
@@ -246,6 +341,28 @@ true for both sides; a click or key the UI consumed does not count; an unknown n
 reads 0 (Unity throws). On-screen sticks and buttons feed the same actions, so
 `Input.getAxis("Horizontal")` sums keyboard, gamepad and the touch stick. See
 [mcp/guide/input.md](mcp/guide/input.md).
+
+## Audio
+
+The project has one Audio Mixer asset (`.mixer`, JSON), chosen in Project Settings > Audio and
+edited in Window > Audio > Audio Mixer or with MCP `audio_mixer`. Without one every sound plays
+through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md).
+
+| Unity term | JasperEngine name |
+|---|---|
+| `AudioMixer` (asset) | `.mixer` asset (Assets > Create > Audio Mixer); Lua `AudioMixer` (static: the project's mixer) |
+| `AudioMixerGroup`, `AudioSource.outputAudioMixerGroup` | mixer group; `AudioSource.outputGroup` (the group's name, "" = Master); Lua `AudioMixer.getGroup(name)` -> `AudioMixerGroup` |
+| `AudioMixer.SetFloat` / `GetFloat` / `ClearFloat`, exposed parameters | `AudioMixer.setFloat(name, value [, seconds [, opts]])` / `getFloat(name)` / `clearFloat(name)`; expose in the Audio Mixer window (right-click a fader or a value) or `audio_mixer` op `expose`; "Remember" keeps script values in UserSettings |
+| `AudioMixerSnapshot.TransitionTo`, `AudioMixer.TransitionToSnapshots`, `FindSnapshot` | `AudioMixer.transitionTo(name, seconds [, opts])`, `AudioMixer.transitionToSnapshots(names, weights, seconds)`, snapshots by name |
+| Audio Mixer update mode Normal / Unscaled Time | mixer `updateMode` "scaled" / "unscaled"; per call `{unscaled = true}` |
+| Lowpass / Highpass / Echo / SFX Reverb / ParamEQ / Distortion / Flange / Duck Volume effects | mixer effects `lowpass`, `highpass`, `bandpass`, `echo`, `reverb`, `equalizer`, `distortion`, `flanger`, `lofi`, `bassboost`, `duck`, `limiter` (up to 8 per group) |
+| `AudioSource.PlayOneShot(clip, volumeScale)` | `sound:playOneShot(path [, volumeScale])` (up to `maxVoices` overlapping voices) |
+| `AudioSource.PlayClipAtPoint(clip, position, volume)` | `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` |
+| AudioClip Load Type Decompress On Load / Compressed In Memory / Streaming | `AudioSource.loadType` (`AudioLoadType.DecompressOnLoad` / `CompressedInMemory` / `Streaming`, default `Auto`: streams files of 1 MiB and more): per source, no clip import settings |
+| `AudioSource.pitch` | `pitch` (= `speed`) |
+| `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
+| `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
+| volume fades (tweens, `DOFade`) | `sound:fadeIn(seconds)`, `fadeOut(seconds [, {pause = true}])`, `fadeTo(volume, seconds)` |
 
 ## Layers and physics
 

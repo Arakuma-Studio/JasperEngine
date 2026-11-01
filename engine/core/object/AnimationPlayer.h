@@ -27,6 +27,9 @@
 //     target's layer. A layer is a 0-based index or a name: an unknown one warns once and does
 //     nothing (getters return 0, "" or -1). Layer weight, mask and blend setters are runtime
 //     (not saved); addLayer / removeLayer are authored (the next update reloads).
+//   * humanoid clips (anim-retarget 8): addClip(path, name, options) with options.retarget plays
+//     a generic clip retargeted from its source model; AnimationState mirror / footIK override
+//     the entry's flags at runtime (not saved); isHumanoid tells a humanoid or retargeted state.
 //   * upstream's Animation Player with an Animator Controller (docs/specs/S21-animation.md
 //     "Upstream absorption"): the controller plays on the GameObject's Animator (S21), which
 //     the scene migration adds for upstream's controller players, leaving the player disabled.
@@ -53,6 +56,7 @@
 #include "component/AnimationPlayerComponent.h"
 
 #include <string>
+#include <vector>
 
 namespace jasperengine{
 
@@ -74,6 +78,21 @@ namespace jasperengine{
         bool queued = false;
         size_t boundTracks = 0;         // tracks whose path resolved
         size_t trackCount = 0;
+        // humanoid playback (anim-retarget): a humanoid clip, or a generic one retargeted; its
+        // effective Mirror / Foot IK; the bones it drives on the root's rig (0: no humanoid rig)
+        bool humanoid = false;
+        bool retarget = false;
+        bool mirror = false;
+        bool footIK = false;
+        size_t humanoidBones = 0;
+    };
+
+    // AnimationPlayer:addClip options (anim-retarget 8; layer: anim layers spec 8)
+    struct JASPERENGINE_API AnimationClipOptions{
+        bool retarget = false;          // play a generic clip as a humanoid clip, retargeted from its source model
+        bool mirror = false;
+        bool footIK = false;
+        int layer = 0;
     };
 
     // upstream's AnimatorStateInfo of the Animation Player's controller (named ControllerStateInfo
@@ -131,6 +150,14 @@ namespace jasperengine{
         void addMixingTransform(const std::string& path, bool recursive);
         bool removeMixingTransform(const std::string& path);
         void clearMixingTransforms();
+
+        void setMirror(bool mirror);
+        bool getMirror() const;
+        void setFootIK(bool footIK);
+        bool getFootIK() const;
+        void resetMirror();
+        void resetFootIK();
+        bool isHumanoid() const;
     };
 
     class JASPERENGINE_API AnimationPlayer: public EntityHandle{
@@ -165,12 +192,16 @@ namespace jasperengine{
         AnimationState getState(const std::string& name) const;
         // the runtime view of a state (default-constructed when unknown)
         AnimationStateInfo getStateInfo(const std::string& name) const;
+        // the property tracks a state's clip binds now, as "path:component.property" (debugging;
+        // empty while its clip loads or for an unknown state)
+        std::vector<std::string> getAnimatedProperties(const std::string& name) const;
 
         // clip list (an authored change: the next update reloads)
         // path: asset-relative .anim or "<model>#<clip>"; name empty = default name. False when
         // the state name is taken.
         bool addClip(const std::string& path);
         bool addClip(const std::string& path, const std::string& name);
+        bool addClip(const std::string& path, const std::string& name, const AnimationClipOptions& options);
         bool removeClip(const std::string& name);
         int getClipCount() const;
         // 0-based state name ("" out of range)

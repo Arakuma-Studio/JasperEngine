@@ -37,6 +37,7 @@
 #include "math/Vector3.h"
 #include "animation/AnimationClip.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -105,6 +106,12 @@ namespace jasperengine::anim{
     JASPERENGINE_API bool listModelFileNodes(const std::string& modelPath, std::vector<std::string>& out, std::string* error);
     JASPERENGINE_API bool buildModelSubClip(const std::string& reference, ClipData& out,
                                             std::vector<ClipWarning>& warnings, std::string* error);
+    // Runs `read` on the whole parsed model of `modelPath` (skins, meshes and buffers too, for a
+    // humanoid source rig): the pooled parse under the pooled-glTF mutex when the model is loaded,
+    // else a parse of the file of its own, not kept (callers cache what they derive from it:
+    // HumanoidSourceCache)
+    JASPERENGINE_API bool readModelFile(const std::string& modelPath, const std::function<bool(const tinygltf::Model&)>& read,
+                                        std::string* error);
     // drops the kept parse of `modelPath` (every file when empty): AnimationClipPool::invalidateModel
     // (MeshSystem::invalidateModelFile / invalidateModelParse), clear and clearUnused call it
     JASPERENGINE_API void dropModelFileParse(const std::string& modelPath);

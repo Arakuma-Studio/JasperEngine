@@ -9,6 +9,7 @@
 #include "Log.h"
 #include "log/LogSinks.h"
 #include "util/PlatformRules.h"
+#include "Screen.h"
 #include <limits>
 #include <mutex>
 #include <set>
@@ -605,4 +606,14 @@ void System::loadingStartCrazyGames(){
 }
 
 void System::loadingStopCrazyGames(){
+}
+
+bool System::getSimulatedSafeArea(EdgeInsets& insets){
+    const char* text = getenv("JASPERENGINE_SIMULATE_SAFE_AREA");
+    if (!text || text[0] == '\0') return false;
+    if (!Screen::parseSimulatedSafeArea(text, insets)){
+        Log::warn("JASPERENGINE_SIMULATE_SAFE_AREA=\"%s\" is not \"top,right,bottom,left\" (integer pixels); ignored", text);
+        return false;
+    }
+    return true;
 }

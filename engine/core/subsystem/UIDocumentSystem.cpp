@@ -3,14 +3,20 @@
 
 #include "UIDocumentSystem.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "Scene.h"
+#include "component/Transform.h"
 #include "Engine.h"
+#include "Screen.h"
 #include "Input.h"
 #include "Log.h"
 #include "object/ui/UIElement.h"
 #include "htmlui/HtmlUI.h"
 #include "htmlui/HtmlUIContext.h"
 #include "htmlui/HtmlUIClock.h"
+#include "htmlui/UIParticleSystemElement.h"
 #include "htmlui/anim/AnimEngine.h"
 
 #include <atomic>
@@ -20,7 +26,10 @@
 #include <RmlUi/Core/Input.h>
 #include <RmlUi/Core/Property.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <iterator>
 
 namespace jasperengine{
 
@@ -60,7 +69,10 @@ void UIDocumentSystem::destroyContext(){
     scriptContextDestroying();
     reloadContextDestroyed();
     documents.clear();
+    safeAreaApplied.clear();
     inputState.reset();
+    if (context)
+        contextScenes().erase(context->getRmlContext());
     delete context;
     context = nullptr;
     if (acquired){
@@ -108,6 +120,7 @@ bool UIDocumentSystem::ensureContext(){
         return false;
     }
     context = created;
+    contextScenes()[created->getRmlContext()] = scene;
     scriptContextCreated();
 
     if (debuggerVisible){
@@ -117,9 +130,75 @@ bool UIDocumentSystem::ensureContext(){
     return true;
 }
 
+std::unordered_map<const Rml::Context*, Scene*>& UIDocumentSystem::contextScenes(){
+    static std::unordered_map<const Rml::Context*, Scene*> scenes;
+    return scenes;
+}
+
+Scene* UIDocumentSystem::sceneOfContext(const Rml::Context* context){
+    auto it = contextScenes().find(context);
+    return it != contextScenes().end() ? it->second : nullptr;
+}
+
+void UIDocumentSystem::addRuntimeEntity(Entity entity){
+    if (std::find(runtimeEntities.begin(), runtimeEntities.end(), entity) == runtimeEntities.end())
+        runtimeEntities.push_back(entity);
+}
+
+void UIDocumentSystem::removeRuntimeEntity(Entity entity){
+    runtimeEntities.erase(std::remove(runtimeEntities.begin(), runtimeEntities.end(), entity), runtimeEntities.end());
+}
+
+bool UIDocumentSystem::isRuntimeEntity(Entity entity) const{
+    // the entity or one of its ancestors
+    for (Entity e = entity; e != NULL_ENTITY;){
+        if (std::find(runtimeEntities.begin(), runtimeEntities.end(), e) != runtimeEntities.end())
+            return true;
+        const Transform* transform = scene->findComponent<Transform>(e);
+        e = transform ? transform->parent : NULL_ENTITY;
+    }
+    return false;
+}
+
 void UIDocumentSystem::getLayoutSize(int& width, int& height) const{
-    width = (referenceWidth != 0) ? referenceWidth : Engine::getCanvasWidth();
-    height = (referenceHeight != 0) ? referenceHeight : Engine::getCanvasHeight();
+    width = Engine::getCanvasWidth();
+    height = Engine::getCanvasHeight();
+    // the Canvas Scaler's UI size, in whole CSS pixels
+    if (scene->isDocumentScaled()){
+        width = std::max(1, (int)std::lround(scene->getCanvasScale().uiWidth));
+        height = std::max(1, (int)std::lround(scene->getCanvasScale().uiHeight));
+    }
+    if (referenceWidth != 0)
+        width = referenceWidth;
+    if (referenceHeight != 0)
+        height = referenceHeight;
+}
+
+void UIDocumentSystem::getFrameSize(float& width, float& height) const{
+    if (frameWidth > 0.0f && frameHeight > 0.0f){
+        width = frameWidth;
+        height = frameHeight;
+        return;
+    }
+    int layoutWidth = 0, layoutHeight = 0;
+    getLayoutSize(layoutWidth, layoutHeight);
+    width = (float)layoutWidth;
+    height = (float)layoutHeight;
+    // a scaled document still covers the game canvas a 2D camera shows; a UI camera spans the UI size
+    if (scene->isDocumentScaled() && referenceWidth == 0 && referenceHeight == 0){
+        if (scene->isUIScaled()){
+            width = scene->getCanvasScale().uiWidth;
+            height = scene->getCanvasScale().uiHeight;
+        }else{
+            width = (float)Engine::getCanvasWidth();
+            height = (float)Engine::getCanvasHeight();
+        }
+    }
+}
+
+void UIDocumentSystem::setFrameSize(float width, float height){
+    frameWidth = width;
+    frameHeight = height;
 }
 
 void UIDocumentSystem::unloadEntityDocument(Entity entity){
@@ -215,6 +294,8 @@ void UIDocumentSystem::update(double dt){
     for (size_t i = 0; i < components->size(); i++){
         applyComponent(components->getEntity(i), components->getComponentFromIndex(i));
     }
+    // the live safe area, before the layout below
+    updateSafeAreaProperties();
 
     // p2-html: <script type="text/lua"> of the documents loaded above, before the layout
     compatRunScripts();
@@ -224,9 +305,55 @@ void UIDocumentSystem::update(double dt){
     context->update();
     textureUpdate();
     scriptUpdate();
+    // <particle-system> elements a script detached (with an ancestor too) get no update: their
+    // prefabs go now, and come back when the element is attached again
+    UIParticleSystemElement::releaseDetached(scene);
 }
 
 void UIDocumentSystem::draw(){
+}
+
+void UIDocumentSystem::updateSafeAreaProperties(){
+    const uint64_t revision = Screen::getSafeAreaRevision();
+    int width, height;
+    getLayoutSize(width, height);
+
+    // documents gone since the last call
+    for (auto it = safeAreaApplied.begin(); it != safeAreaApplied.end();){
+        auto document = documents.find(it->first);
+        it = (document == documents.end() || document->second != it->second.document) ? safeAreaApplied.erase(it) : std::next(it);
+    }
+
+    for (const auto& entry : documents){
+        const Entity entity = entry.first;
+        Rml::ElementDocument* rmlDocument = entry.second;
+        SafeAreaApplied& applied = safeAreaApplied[entity];
+        if (applied.document == rmlDocument && applied.revision == revision && applied.width == width && applied.height == height)
+            continue;
+        applied.document = rmlDocument;
+        applied.revision = revision;
+        applied.width = width;
+        applied.height = height;
+
+        // CSS px of the document: canvas units at the document's layout scale. A document on a
+        // mesh (texture mode) is not on the screen: no insets
+        const bool screenDocument = getTextureContext(entity) == nullptr;
+        const float canvasWidth = Screen::getSafeAreaCanvasWidth();
+        const float canvasHeight = Screen::getSafeAreaCanvasHeight();
+        const float sx = (screenDocument && canvasWidth > 0.0f) ? (float)width / canvasWidth : 0.0f;
+        const float sy = (screenDocument && canvasHeight > 0.0f) ? (float)height / canvasHeight : 0.0f;
+        auto set = [rmlDocument](const char* prefix, const EdgeInsets& insets, float sx, float sy){
+            const struct { const char* edge; float value; } edges[] = {
+                {"top", insets.top * sy}, {"right", insets.right * sx}, {"bottom", insets.bottom * sy}, {"left", insets.left * sx}};
+            for (const auto& edge : edges){
+                char value[32];
+                std::snprintf(value, sizeof(value), "%gpx", std::round(std::max(0.0f, edge.value) * 1000.0f) / 1000.0f);
+                rmlDocument->SetProperty(std::string(prefix) + edge.edge, value);
+            }
+        };
+        set("--jasper-safe-area-inset-", Screen::getSafeAreaInsets(), sx, sy);
+        set("--jasper-device-safe-area-inset-", Screen::getDeviceSafeAreaInsets(), sx, sy);
+    }
 }
 
 void UIDocumentSystem::onComponentAdded(Entity entity, ComponentId componentId){
@@ -291,6 +418,8 @@ void UIDocumentSystem::setReferenceSize(int width, int height){
 void UIDocumentSystem::clearReferenceSize(){
     referenceWidth = 0;
     referenceHeight = 0;
+    frameWidth = 0.0f;
+    frameHeight = 0.0f;
 }
 
 bool UIDocumentSystem::loadDocumentNow(Entity entity){
@@ -311,6 +440,7 @@ bool UIDocumentSystem::loadDocumentNow(Entity entity){
     context->setDimensions(Rml::Vector2i(width, height));
 
     applyComponent(entity, *document);
+    updateSafeAreaProperties();
     // style and layout, so elements and their boxes can be queried right away
     context->update();
     textureUpdate();

@@ -14,6 +14,15 @@ namespace jasperengine::editor::reflect {
 
 namespace {
 
+    // upstream's audio-mixer load types (SoundPool::loadTypeName's tokens)
+    constexpr EnumItem kAudioLoadTypeItems[] = {
+        {static_cast<int>(AudioLoadType::Auto), "auto", "Auto", "AudioLoadType::Auto"},
+        {static_cast<int>(AudioLoadType::DecompressOnLoad), "decompress_on_load", "Decompress On Load", "AudioLoadType::DecompressOnLoad"},
+        {static_cast<int>(AudioLoadType::CompressedInMemory), "compressed_in_memory", "Compressed In Memory", "AudioLoadType::CompressedInMemory"},
+        {static_cast<int>(AudioLoadType::Streaming), "streaming", "Streaming", "AudioLoadType::Streaming"},
+    };
+    const EnumDesc kAudioLoadType{"AudioLoadType", kAudioLoadTypeItems, static_cast<int>(AudioLoadType::Auto)};
+
     // ---------------------------------------------------------------- Camera
 
     bool cameraUsesTarget(const void* camera) { return static_cast<const CameraComponent*>(camera)->useTarget; }
@@ -113,6 +122,13 @@ namespace {
         JE_FIELD(AudioSourceComponent, dopplerFactor, .ops = &ops::FiniteFloat, .flags = OmitIfNonFinite, .updateFlags = kAudio, .min = 0.0f,
                  .step = 0.01f, .format = "%.3f", .label = "Doppler", .group = "3D Audio Source Settings", .uiOrder = 14),
         // the loaded clip's: read only
+        // upstream (audio-mixer): written only when not their default
+        JE_FIELD(AudioSourceComponent, outputGroup, .flags = OmitIfDefault, .updateFlags = kAudio, .label = "Output"),
+        JE_FIELD(AudioSourceComponent, outputGroupName, .flags = OmitIfDefault | Hidden, .updateFlags = kAudio),
+        JE_FIELD(AudioSourceComponent, loadType, .enumDesc = &kAudioLoadType, .flags = OmitIfDefault, .updateFlags = kAudio),
+        JE_FIELD(AudioSourceComponent, priority, .flags = OmitIfDefault, .updateFlags = kAudio, .min = 0.0f, .max = 256.0f),
+        JE_FIELD(AudioSourceComponent, maxVoices, .flags = OmitIfDefault, .updateFlags = kAudio, .min = 1.0f, .max = 64.0f),
+        JE_FIELD(AudioSourceComponent, ignoreListenerPause, .flags = OmitIfDefault, .updateFlags = kAudio),
         JE_FIELD(AudioSourceComponent, length, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),
         JE_FIELD(AudioSourceComponent, playingTime, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),
     };
@@ -135,15 +151,26 @@ namespace {
         AudioSourceComponent& audio = *static_cast<AudioSourceComponent*>(comp);
         const AudioSourceComponent* old = static_cast<const AudioSourceComponent*>(ctx.old);
         const std::string oldFilename = old ? old->filename.path : std::string();
-        const bool keepLoadedSample = old && oldFilename == audio.filename && old->sample && old->loaded;
-        if (!keepLoadedSample && old && !oldFilename.empty()) {
+        // (upstream's audio-mixer rules) a sample is "<file>#<load type>": another load type is
+        // another sample
+        const bool keepLoadedSample = old && oldFilename == audio.filename && old->sample && old->loaded &&
+                                      old->loadType == audio.loadType;
+        if (!keepLoadedSample && old && !old->sampleKey.empty()) {
             audio.sample.reset();
-            SoundPool::remove(oldFilename);
+            SoundPool::remove(old->sampleKey);
         }
+        if (!keepLoadedSample) {
+            audio.sample.reset();
+            audio.sampleKey.clear();
+        }
+        // the voices stay with the component (an Inspector edit or an undo in Play does not leave
+        // one playing on its own): the system applies the new values to them, stops them when the
+        // state says Stopped, and when the file changed (no sample) before it loads the new one
+        audio.groupWarned = false;
+        audio.lastVolumeApplied = -1;
         audio.loaded = keepLoadedSample;
         audio.loadFailed = false;
         audio.length = keepLoadedSample ? old->length : 0;
-        audio.handle = 0;
         audio.playingTime = 0;
         audio.lastPosition = Vector3(0, 0, 0);
         audio.startTrigger = false;

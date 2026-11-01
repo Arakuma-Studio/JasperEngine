@@ -226,6 +226,8 @@ editor::ProjectFileWrites::Refreshed editor::ProjectFileWrites::refresh(Project*
     PoseAnimationDocument::filesChanged(changedPaths);
     AnimationClipDocument::filesChanged(changedPaths, project);
     VatDocument::filesChanged(changedPaths, project);
+    // the project's audio mixer is heard as the file now says (Edit mode and Play alike)
+    project->audioFilesChanged(changedPaths);
 
     if (anyMaterial || force) {
         // the linked .material files written (every one when forced) read again into their

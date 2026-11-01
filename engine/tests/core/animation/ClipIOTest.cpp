@@ -122,9 +122,11 @@ TEST(ClipIO, RootFormatAndVersionAreRequired){
     EXPECT_FALSE(anim::parseClip("{\"format\": \"jasperengine.anim\"}").ok());
     EXPECT_FALSE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 0}").ok());
     EXPECT_FALSE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 1.5}").ok());
-    anim::ClipParseResult newer = anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 2}");
+    // version 2 is the humanoid clip format (anim-retarget); 3 is newer than this engine
+    EXPECT_TRUE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 2}").ok());
+    anim::ClipParseResult newer = anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 3}");
     ASSERT_FALSE(newer.ok());
-    EXPECT_NE(newer.error.message.find("version 2"), std::string::npos) << newer.error.message;
+    EXPECT_NE(newer.error.message.find("version 3"), std::string::npos) << newer.error.message;
 
     anim::ClipParseResult minimal = anim::parseClip(wrapClip(""));
     ASSERT_TRUE(minimal.ok());
@@ -152,8 +154,9 @@ TEST(ClipIO, CanonicalFileRoundTripsByteForByte){
     std::vector<ClipWarning> warnings;
     ClipData data = parseOk(canonicalText, &warnings);
     EXPECT_EQ(anim::writeClip(data), canonicalText);
-    // the property track and the unknown keys are the only warnings
-    EXPECT_TRUE(hasWarning(warnings, "tracks[5]", "property tracks are not supported yet")) << listWarnings(warnings);
+    // the property track this engine cannot animate (kept verbatim) and the unknown keys are the
+    // only warnings
+    EXPECT_TRUE(hasWarning(warnings, "tracks[5]", "unknown animatable property 'Light.intensity'")) << listWarnings(warnings);
     EXPECT_TRUE(hasWarning(warnings, "", "cycle_offset, curves")) << listWarnings(warnings);
     EXPECT_EQ(warnings.size(), 2u) << listWarnings(warnings);
 
@@ -599,9 +602,10 @@ TEST(ClipIO, MixedTangentTracksReportEachDroppedEase){
     ASSERT_EQ(data.tracks.size(), 1u);
     for (const ClipKey& key : data.tracks[0].keys){
         EXPECT_TRUE(key.hasTangents());
-        EXPECT_EQ(key.ease, EaseType::LINEAR);
+        // a step stays (a Constant segment holds the key's value: anim-properties' tangent edits)
+        EXPECT_EQ(key.ease, key.time == 1.0f ? EaseType::STEP : EaseType::LINEAR);
     }
-    EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[1].ease", "the track uses tangents")) << listWarnings(warnings);
+    EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys[1].ease", "the track uses tangents")) << listWarnings(warnings);
     EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[3].ease", "the track uses tangents")) << listWarnings(warnings);
     EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys[2].ease", "")) << "a linear key loses nothing";
 }
@@ -813,7 +817,8 @@ TEST(ClipIO, PropertyTracksAreKeptAndFollowPathEdits){
     ClipData data = parseOk(wrapClip("\"tracks\": [{\"path\": \"Lamp\", \"channel\": \"property\", \"component\": \"Light\", "
                                      "\"property\": \"intensity\", \"keys\": [[0, 1], [1, 2]], \"future\": {\"x\": 1}}]"), &warnings);
     ASSERT_EQ(data.tracks.size(), 1u);
-    EXPECT_TRUE(hasWarning(warnings, "tracks[0]", "not supported yet")) << listWarnings(warnings);
+    EXPECT_TRUE(hasWarning(warnings, "tracks[0]", "kept in the file, not played")) << listWarnings(warnings);
+    EXPECT_TRUE(hasWarning(warnings, "tracks[0]", "did you mean 'light'")) << "component keys are lowercase: " << listWarnings(warnings);
     EXPECT_EQ(data.findTrack("Lamp", ClipChannel::Property), -1) << "findTrack never returns property tracks";
     std::string text = anim::writeClip(data);
     EXPECT_NE(text.find("    {\"path\":\"Lamp\",\"channel\":\"property\",\"component\":\"Light\",\"property\":\"intensity\","

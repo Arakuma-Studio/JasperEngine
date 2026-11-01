@@ -21,6 +21,10 @@
 // - setSkin may be called before or after build; it recomputes the floor, the sole offsets,
 //   the neutral hips height and humanScale (valid() turns false if the skin makes the rig
 //   degenerate). A skin without samples falls back to the sole estimate.
+// - Twist corrections (anim-retarget 6.2, the sidecar's `twist`) turn a slot's neutral world
+//   rotation about its neutral direction: N_b <- axisAngle(neutralDirection_b, twist) * N_b
+//   (the direction stays; carried children turn with it). They are part of the neutral pose,
+//   so pose animations and humanoid clips on the rig both see them.
 
 #ifndef POSE_RIG_H
 #define POSE_RIG_H
@@ -46,8 +50,11 @@ namespace jasperengine::pose {
     public:
         // Validates (validateHumanoid) and computes every derived value; false with `error` set
         // when the map is invalid or the rig is degenerate (hips not above the floor)
-        bool build(const Skeleton& skeleton, const HumanoidMap& humanoid, std::string* error);
+        // `twistDegrees` (optional): the twist corrections per slot (see above)
+        bool build(const Skeleton& skeleton, const HumanoidMap& humanoid, std::string* error,
+                   const std::array<float, HUMAN_BONE_COUNT>* twistDegrees = nullptr);
         bool valid() const;
+        float twist(HumanBone bone) const;                  // the slot's twist correction, degrees
 
         bool has(HumanBone bone) const;
         int boneIndex(HumanBone bone) const;                // skeleton bone index, -1 when unmapped
@@ -85,6 +92,14 @@ namespace jasperengine::pose {
         // Animator's humanoid retargeting maps local rotations between rigs with (S21 D12);
         // identity for an unmapped slot
         void slotFrame(HumanBone bone, Quaternion& left, Quaternion& neutral) const;
+        // one slot: its joint rotation E relative to the neutral pose (local = left * E * neutral,
+        // canonical frame; the humanoid clip value) <-> its local rotation. Identity / the
+        // identity for slots the rig does not have.
+        Quatd jointRotationFromLocal(HumanBone bone, const Quatd& local) const;
+        Quaternion localFromJointRotation(HumanBone bone, const Quatd& rotation) const;
+        Quatd localFromJointRotationPrecise(HumanBone bone, const Quatd& rotation) const;
+        // the canonical world rotation of any skeleton bone in the rest pose (C^-1 * rest world)
+        Quatd restWorldCanonical(int skeletonBone) const;
 
         void setSkin(std::shared_ptr<PoseSkin> skin);
         const PoseSkin* skin() const;                       // optional exact lowest point
@@ -135,6 +150,8 @@ namespace jasperengine::pose {
         HumanPose neutral;
         Vec3d neutralHips;                      // model space
         std::array<double, HUMAN_BONE_COUNT> soles{};
+        std::array<float, HUMAN_BONE_COUNT> twists{};
+        std::vector<Quatd> restCanonical;      // per skeleton bone
         double floor = 0.0;
         double scale = 1.0;
         std::shared_ptr<PoseSkin> skinPtr;

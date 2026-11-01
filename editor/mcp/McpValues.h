@@ -141,6 +141,10 @@ namespace jasperengine::editor::mcp {
         // is now light.new"); one that is read-only, or a value outside its hard range, is refused.
         // Properties no table describes are left to the edit.
         static bool checkReflectedChanges(std::vector<Change>& changes, std::vector<std::string>& warnings, std::string& error);
+        // A RectTransform property the entity's Safe Area component drives (anchors, offsets,
+        // size): the error that refuses setting it, "" when it is free
+        static std::string safeAreaDrivenError(Scene* scene, Entity entity, const std::string& property);
+
         // parseChanges without the renamed names mapped to the current ones
         static bool parseChangesAsGiven(const Json& changes, std::vector<Change>& out, std::string& error);
         // The commands for `changes` on each entity, added to `multi`: per entity and
@@ -199,6 +203,13 @@ namespace jasperengine::editor::mcp {
         // Recomputes every Transform's world matrix and values now (the transform system only runs
         // between frames, so a GameObject made or moved this frame reads stale world values)
         static void refreshTransforms(SceneProject* scene);
+
+        // A Canvas Scaler as {mode, scale_factor, reference, match_mode, match, physical_unit,
+        // fallback_dpi} (enums by snake name). FromJson changes the fields the object names on
+        // `out` (aliases reference_resolution, screen_match_mode, match_width_or_height,
+        // fallback_screen_dpi accepted); false with `error` on an unknown key or a bad value
+        static Json canvasScalerToJson(const CanvasScalerSettings& settings);
+        static bool canvasScalerFromJson(const Json& value, CanvasScalerSettings& out, std::string& error);
 
         static Json entityToJson(SceneProject* scene, Entity entity);
         static bool entityFromJson(SceneProject* scene, const Json& value, Entity& out, std::string& error);
@@ -261,6 +272,10 @@ namespace jasperengine::editor::mcp {
         // only: FluidStats in snake_case plus the matching preset, the device's support and the
         // simulator's last error; null when the entity has no FluidSimulationComponent
         static Json fluidStatsToJson(Scene* scene, Entity entity);
+        // A Video Player's playback state (get_entity, get_runtime_entity: "video"): prepared,
+        // playing, time, frame, frameCount, length, backend, codecs, error, prepareProgress; null
+        // when the entity has none or nothing was opened yet (edit mode)
+        static Json videoStatusToJson(Scene* scene, Entity entity);
         // A UI element's Canvas Group chain (ui canvas group spec 7.8): {inherited_alpha,
         // interactable, blocks_raycasts, group: "<path>"}; null outside any group or without a
         // RectTransform; a FLATTEN group adds flatten {layered, layer_alpha, the scene's layer stats}

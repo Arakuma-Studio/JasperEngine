@@ -53,6 +53,7 @@ namespace SoLoud
 	{
 	public:
 		Bus();
+		virtual ~Bus();
 		virtual BusInstance *createInstance();
 		// Set filter. Set to NULL to clear the filter.
 		virtual void setFilter(unsigned int aFilterId, Filter *aFilter);

@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 #include "io/Data.h"
+#include "math/EdgeInsets.h"
 #include "sokol_gfx.h"
 
 namespace jasperengine {
@@ -210,6 +211,7 @@ namespace jasperengine {
         friend class EarlySystemScope;
         // TEST-ONLY seam (no engine code defines it): a test detaches and restores the instance
         friend struct SystemTestAccess;
+        friend struct SafeAreaTestAccess;
 
         static System* systemInstance;
         static ApplicationInfo applicationInfo;
@@ -340,6 +342,11 @@ namespace jasperengine {
         virtual bool vibrate(int milliseconds);
         virtual bool hapticFeedback(HapticFeedback type);
 
+        // Desktop builds: fixed safe-area insets (view pixels) to test a game's notch layout
+        // without a phone, from JASPERENGINE_SIMULATE_SAFE_AREA="top,right,bottom,left" at start
+        // (Engine::systemViewLoaded pushes them). False when unset or malformed (a warning).
+        bool getSimulatedSafeArea(EdgeInsets& insets);
+
         // Display: dots per inch of the screen (0 unknown) and its refresh rate in Hz
         virtual float getScreenDpi();
         virtual float getRefreshRate();
@@ -413,6 +420,11 @@ namespace jasperengine {
         // os_log, the debugger, and the project's player.log when enabled). A System that
         // overrides platformLog adds a PlatformSink here to keep receiving messages.
         virtual void installLogSinks();
+
+        // resident memory of the process in bytes (the stats overlay); 0 when the platform
+        // does not tell. Linux/Android /proc/self/statm, Windows the working set, Apple the
+        // physical footprint, Web the WebAssembly heap (debug/ProcessMemory.cpp)
+        virtual uint64_t getProcessMemoryBytes();
 
         virtual bool getBoolForKey(const char *key, bool defaultValue);
         virtual int getIntegerForKey(const char *key, int defaultValue);

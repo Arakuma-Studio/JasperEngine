@@ -76,7 +76,7 @@ Parity stops at:
 
 - **No JavaScript, no network access from documents, no `<canvas>` or `<iframe>`** (by design;
   Lua's `Http` makes requests, `jasper://docs/networking`).
-  `<video>` plays AV1 + Opus WebM only (see "Video"). Remote fonts, images and videos are
+  `<video>` plays AV1 + Opus WebM everywhere and MP4 through the platform's decoders (see "Video"). Remote fonts, images and videos are
   imported into the project by the editor.
 - **The unsupported CSS** listed under "CSS that differs": container queries, blend modes,
   vertical text, multi-column layout, `subgrid`, scroll snapping, ... Each use is reported.
@@ -307,7 +307,7 @@ pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`, `::placeholder
 | `<script>` (JavaScript) | `<script type="text/lua">` or a Lua script on the GameObject (`HTMLUI-HTML-0006`, error) |
 | `onclick="..."` and every `on*` attribute | `el:addEventListener("click", fn)` in Lua, or `data-event-click` with a data model (`HTMLUI-HTML-0005`, error) |
 | `<canvas>` | a Lottie animation or an image sequence; 3D content drawn by the game behind a transparent part of the page, or the document on a mesh in texture mode (`HTMLUI-HTML-0002`: a placeholder box) |
-| `<video src="clip.mp4">` (H.264, VP9, ...) | `<video src="clip.webm">` with AV1 + Opus: `import_files` converts the file with FFmpeg (`HTMLUI-HTML-0027`) |
+| `<video src="clip.avi">` (Ogg/Theora, AVI, ...) | `<video src="clip.webm">` with AV1 + Opus (`HTMLUI-HTML-0027`); MP4 (H.264, HEVC) plays through the platform's decoders |
 | `<iframe>` | another UI Document (`HTMLUI-HTML-0002`) |
 | `<div/>` | `<div></div>`: in HTML a non-void element does not self-close (`HTMLUI-HTML-0026`) |
 | Tailwind's Play CDN, GSAP, jQuery `<script>`s | a built stylesheet (Tailwind CLI output), the Lua `anime` API, Lua (`HTMLUI-HTML-0007`) |
@@ -548,6 +548,39 @@ Shadows, outlines, glows, blurs and blurred `text-shadow`s up to 0.3 em are draw
 from distance-field glyphs, sharp at any pixel ratio and without layers; larger ones (and the
 first frame before those glyphs exist) are drawn the old way, through an offscreen layer or CPU
 glyphs.
+
+### Animated text: `text-effect`
+
+The engine's `text-effect` (inherited) animates each character, with the formulas of the native
+Text Effect component (`jasper://docs/ui`): a comma list of functions, applied in order, omitted
+trailing arguments taking their defaults:
+
+| Function | Arguments (defaults) |
+|---|---|
+| `wave()` | amplitude `<length>` (0.15em), period `<time>` (1.5s), phase step `<angle>` (0.3rad) |
+| `bounce()` | `<length>` (0.3em), `<time>` (1s), spread 0..1 (0.5) |
+| `shake()` | `<length>` (0.05em), frequency Hz (12) |
+| `pulse()` | scale change (0.15), `<time>` (1s), spread (0.5) |
+| `typewriter()` | characters per second (30), fade `<time>` (0s) |
+| `fade-in()` | `<time>` (0.5s), spread (0.5): one-shot |
+| `grow()`, `unfold()` | `<time>` (0.5s), spread (0.5), amplitude (1: the whole change, TMP's Amplitude): one-shot |
+| `rainbow()` | `<time>` (2s), hue step `<angle>` (20deg), saturation `%` (80%), lightness `%` (60%) |
+| `gradient()` | `<time>` (1.5s), `multiply` / `add` / `replace` (multiply), colour stops `<color> [<percentage>]` |
+
+```css
+h1 { text-effect: wave(0.12em 1.5s), gradient(1.5s add #ffffff, #ffd040); }
+.dialog p { text-effect: typewriter(40 0.05s); text-effect-iteration: 1; }
+```
+
+The index runs on across elements (`Hello <b>World</b>` waves as one text) and lines; outlines and
+shadows (`font-effect`, `text-shadow`) follow each glyph. `text-effect-iteration: infinite |
+<integer>` repeats the one-shot functions (typewriter, fade-in, grow, unfold), then `texteffectend`
+(bubbles) fires at the element that declares the effect; `text-effect-time: ui` (default, unscaled:
+runs at `Engine.timeScale = 0`) or `game`. `doc:setReducedMotion(true)` holds the motion functions
+still (wave, bounce, shake, pulse, grow, unfold; an effect of only those still ends). Lua:
+`el.style.textEffect = "bounce()"` (set, changed or `none` at runtime; new content types again, a
+new line wrap does not), `el:restartTextEffect()` (on any element of the effect: all of it). An animating text regenerates its glyphs each frame (never its layout):
+cheap for titles and dialog lines.
 
 ### CSS units, fonts and icons
 
@@ -1276,13 +1309,20 @@ transforms, clipping and filters apply to them as to `<img>`.
 <video src="video/trailer.webm" poster="video/trailer.png" controls></video>
 ```
 
-**Format: WebM with AV1 video and Opus audio, nothing else.** The engine decodes it itself (dav1d,
-libopus, libwebm: BSD licences, no patents to license, the same on every platform) instead of
-using each platform's decoders, so a video plays identically on desktop, mobile and Web.
-`.mkv` with the same codecs plays too. MP4/H.264, MOV, VP8/VP9 WebM, Ogg/Theora, AVI and the
-rest are reported (`HTMLUI-HTML-0027`, the fix is the conversion) and show their poster or nothing.
+**Formats**: WebM with AV1 video and Opus audio plays everywhere, decoded by the engine itself
+(dav1d, libopus, libwebm: BSD licences, no patents to license, identical frames on desktop, mobile
+and Web); `.mkv` with the same codecs too. **MP4/MOV** (H.264 + AAC, HEVC where the platform has
+it) and VP8/VP9 WebM play through each platform's decoders (Android MediaCodec, AVFoundation,
+Media Foundation, the browser, Linux with the system's FFmpeg): jasper://docs/video has the
+per-platform matrix. `src` may be an `https://` URL (downloaded into the media cache, played while
+it downloads when the MP4 is fast start; the browser streams it on the Web).
+`canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')` answers for the platform it runs on;
+`element.videoBackend` (and `inspect_ui`'s media `backend`) says what decodes it (`webm`,
+`ffmpeg`, `mediacodec`, `avfoundation`, `mediafoundation`, `browser`). Ogg/Theora, AVI and the rest
+are reported (`HTMLUI-HTML-0027`, the fix is the conversion) and show their poster or nothing.
 
-**Converting**: `import_files {"sources": ["/abs/clip.mp4"], "to_dir": "assets/ui/video"}` writes
+**Converting** (for WebM AV1 everywhere; MP4s are imported as they are): the Project window's
+*Convert to WebM (AV1)...* on a video, or `import_files` on a non-MP4 file (e.g. `"/abs/clip.avi"`), writes
 `clip.webm` (AV1 with SVT-AV1, libaom or rav1e, keyframes every 2 s, 8-bit 4:2:0, at most 4096
 px; Opus 128 kb/s stereo) and does not copy the original; files dropped on the Project window
 and video URLs (in `import_files`, or a document's remote `<video src>` when the editor imports
@@ -1320,7 +1360,7 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
   `canPlayType(type)`, `fastSeek(t)`; properties `currentTime` (set = seek), `duration`
   (NaN before the metadata), `paused`, `ended`, `seeking`, `loop`, `autoplay`, `controls`,
   `muted`, `defaultMuted`, `volume`, `playbackRate`, `defaultPlaybackRate`, `readyState`,
-  `networkState`, `videoWidth`, `videoHeight`, `currentSrc`, `poster`, `preload`, `error` (`nil`
+  `networkState`, `videoWidth`, `videoHeight`, `currentSrc`, `videoBackend` (what decodes it: `webm`, `ffmpeg`, `mediacodec`, `avfoundation`, `mediafoundation`, `browser`), `poster`, `preload`, `error` (`nil`
   or `{code, message}`); constants `UIElement.HAVE_ENOUGH_DATA`, `UIElement.MEDIA_ERR_SRC_NOT_SUPPORTED`, ...
   Out of range values (`volume = 2`) warn and leave the value (HTML throws).
 - Events (they do not bubble): `loadstart`, `durationchange`, `loadedmetadata`, `loadeddata`,
@@ -1344,6 +1384,36 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
   captions (`HTMLUI-HTML-0002`), `playsinline`/`crossorigin` and the like (dropped, info
   `HTMLUI-HTML-0028`), picture-in-picture, `preservesPitch` (pitch follows `playbackRate`),
   `::-webkit-media-controls-*`, HDR (8-bit SDR is shown; 10-bit is decoded and rounded).
+
+### Particles: `<particle-system>`
+
+`<particle-system src="fx/confetti.prefab" autoplay loop time="ui" scale="1">` plays a prefab's
+Particle System (a prefab whose GameObjects have a Particle System and its Points emitter: texture,
+sprite frames, blending) and draws its particles in document order: above what comes before it,
+below what comes after, inside the element's clip (`overflow: hidden`) and transform. The emitter
+is at the centre of its content box (0 x 0 by default: give it a size or position it), one prefab
+unit is `scale` CSS px, y up. `time="ui"` (default) plays while the game is paused, `game` follows
+`Engine.timeScale`; `loop="false"` plays once (the prefab's own setting otherwise); without
+`autoplay` it waits for `el:play()`.
+
+```html
+<div class="panel" style="overflow: hidden">
+  <particle-system id="confetti" src="fx/confetti.prefab" autoplay scale="40" style="position: absolute; left: 50%; top: 30%"></particle-system>
+  <button id="again">Play again</button>
+</div>
+```
+
+Lua: `el:play()`, `el:pause()`, `el:stop()`, `el:clear()`, `el:isPlaying()`,
+`el:getParticleSystem()` (the system of its hidden GameObject: every `ParticleSystem` API works;
+`nil` until the element's first update made the prefab, e.g. in `onLoad`, in edit mode, or when its
+`src` failed); event `complete` when a system that does not loop stops. `play()` / `pause()` /
+`stop()` before the prefab exists are queued (the last one applies, over `autoplay`). The prefab is
+made on a hidden GameObject of the document's scene (not in the Hierarchy, not saved; none of its
+renderers draws) and goes, with all its children, with the element, its document or a new `src`.
+Screen and texture-mode (world) documents both work. Prefabs exist in Play and in exported games: in
+edit mode the element is empty. A `src` that names no prefab with a Particle System logs
+`HTMLUI-HTML-0029` and adds it to the document's diagnostics (`inspect_ui`). Keep a system under
+about 1000 particles (one mesh is rebuilt each frame).
 
 ### Fonts
 
@@ -1611,6 +1681,34 @@ The page is the canvas, so responsiveness is about the canvas size:
   `inspect_ui {"viewport": [720, 1280]}` returns the tree laid out at that size (both restore
   the real size). For a screenshot at another aspect, `configure_game_view {"aspect": "9:16"}`.
 
+### UI scaling (Canvas Scaler)
+
+Screen documents lay out in the scene's **UI size** when a Canvas Scaler scales it
+(`graphics.ui_scale`, the scene setting `canvas_scaler`; modes and formulas: `jasper://docs/ui`),
+the canvas above otherwise (the default, Follow Game Canvas). With Scale With Screen Size 1920 x
+1080 and `match_mode: expand`, `100vw` x `100vh` is 1920 x 1440 on a 4:3 screen and 2400 x 1080 on
+a 20:9 one: design for the reference, let flex and `%` take the extra room. Text is rasterized at
+the screen's pixels either way. Preview real devices with `configure_game_view {"resolution":
+"2400x1080"}` (or a preset, `"WxH@dpi"`, `"free"`), then `screenshot`; `getBoundingClientRect()`
+of `body` is the UI size.
+
+### Safe areas (notches)
+
+`env(safe-area-inset-top|right|bottom|left[, fallback])` is the live safe-area inset of the
+screen (`Screen.safeAreaInsets`, the app's extra insets such as a banner included), in the
+document's CSS px, as in a mobile browser with `viewport-fit=cover`:
+
+```css
+.hud { padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.bottom-bar { position: absolute; left: 0; right: 0; bottom: max(12px, env(safe-area-inset-bottom)); }
+```
+
+It is a runtime variable (`var(--jasper-safe-area-inset-<edge>, <fallback or 0px>)`): a rotation or
+`Screen.setExtraInsets` lays the document out again without a reload; `calc()`, `min()`, `max()`
+and `clamp()` keep it. `--jasper-device-safe-area-inset-*` leave the extras out. Documents on meshes
+get 0. Try it with a phone in the Game view (`configure_game_view {"device": "iphone_15_pro"}`);
+details in jasper://docs/safe-area.
+
 ## The loop in detail
 
 ### UI diagnostics
@@ -1705,7 +1803,7 @@ Read-only, edit mode and play. Returns:
   `atlasBytes`, `atlasEvictions`, ...); with `"detail": "full"` each element also has
   `paint: {path: "primitive" | "mesh", reason}` and, with text, `raster: {mode: "bitmap" | "msdf" |
   "stretched", scale}`;
-- a `<video>`'s entry has `media`: `currentSrc`, `currentTime`, `duration`, `paused`, `ended`,
+- a `<video>`'s entry has `media`: `currentSrc`, `backend`, `currentTime`, `duration`, `paused`, `ended`,
   `seeking`, `loop`, `muted`, `volume`, `playbackRate`, `readyState`, `networkState`,
   `videoWidth`/`videoHeight`, `frame` (the index on screen), `droppedFrames`, `decodeMs`,
   `memoryBytes`, `poster` (showing it), `error`, and with `controls` their rectangles

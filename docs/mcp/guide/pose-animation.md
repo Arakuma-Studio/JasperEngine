@@ -113,7 +113,7 @@ last pose back to the first. `length` = all holds + all transitions; a one-pose 
 | `apply_preset` | `name`: one of the feel presets below; `clear_custom` as in `set_settings` |
 | `auto_timing` | holds and transition durations from how far each pose moves (bigger moves get longer snaps); the total length stays |
 | `set_preview_model` | `model`: the model file previews and metrics use (`""` clears) |
-| `set_humanoid` | `model`, `bones {slot: bone name}`: fixes the auto-detected bone mapping of a model, written to its `.humanoid` sidecar (`""` = slot unmapped, `null` = back to auto-detect) |
+| `set_humanoid` | `model` and any of: `bones {slot: bone name}` (fixes the auto-detected bone mapping; `""` = slot unmapped, `null` = back to auto-detect), `extra_bones {left_index_proximal: bone, jaw: "" ...}` (fingers, eyes, jaw, same values), `twist {slot: degrees}` (-180..180 about the slot's neutral direction; null or 0 clears) and `animation_type` (`generic` / `humanoid`: a humanoid model's clips play retargeted). Written to its `.humanoid` sidecar (the model's Avatar). Without `path` (only `set_humanoid` ops) it edits the Avatar alone, one project step |
 | `apply_template` | `name`, `mode`: `replace` (default: the template's settings and poses; the preview model stays) or `append` (its poses after the existing ones) |
 | `save_template` | `name`, `description`, `category` (default "User"): the animation as it is at this op becomes a project template, written in the call's undo step |
 

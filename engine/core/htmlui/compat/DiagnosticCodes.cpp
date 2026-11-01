@@ -137,6 +137,11 @@ namespace {
          "The Markdown of a <markdown> element holds HTML markup. Markdown is rendered without HTML passthrough: the markup "
          "shows as its text (text from servers or players is safe this way). Write Markdown, or put the HTML outside the "
          "<markdown> element."},
+        {codes::ParticleSystemSource, W, false, "particle-system-source", "Particle system source missing",
+         "A <particle-system src=\"...\"> names no prefab of the build, or a prefab whose GameObjects have no Particle "
+         "System (with an Action): the element draws nothing. Name a .prefab of the project that has one (MCP "
+         "create_particles then create_prefab, or the Hierarchy's Particle System saved as a prefab); prefabs exist in Play "
+         "and in exported games, not in edit mode."},
 
         // ---- CSS
         {codes::UnknownProperty, W, false, "unknown-property", "Unknown property",

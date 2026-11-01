@@ -280,6 +280,7 @@ namespace jasperengine{
         SPRITE_VS_PARAMS,
         UI_VS_PARAMS,
         UI_FS_PARAMS,
+        UI_FS_TEXT_PARAMS,
         POINTS_VS_PARAMS,
         LINES_VS_PARAMS,
         VS_SKINNING,

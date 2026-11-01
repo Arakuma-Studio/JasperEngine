@@ -55,9 +55,14 @@ namespace jasperengine{
         std::string name;       // state name; empty = file stem / sub-clip name
         ClipWrapMode wrap = ClipWrapMode::Default;  // Default = the clip's own
         int layer = 0;          // index into the player's layers (anim layers spec 5.3)
+        // humanoid playback (anim-retarget 7.1), each written only when true:
+        bool retarget = false;  // play a generic clip as a humanoid clip, converted from its source model
+        bool mirror = false;    // humanoid clips: left and right swapped
+        bool footIK = false;    // humanoid clips: the feet pinned to the clip's foot goals
 
         bool operator==(const AnimationPlayerClip& other) const{
-            return clip == other.clip && guid == other.guid && name == other.name && wrap == other.wrap && layer == other.layer;
+            return clip == other.clip && guid == other.guid && name == other.name && wrap == other.wrap && layer == other.layer &&
+                   retarget == other.retarget && mirror == other.mirror && footIK == other.footIK;
         }
         bool operator!=(const AnimationPlayerClip& other) const{ return !(*this == other); }
     };

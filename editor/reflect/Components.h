@@ -125,6 +125,12 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kOnScreenButtonDesc;
     extern const ComponentDesc kTouchAreaDesc;
     extern const ComponentDesc kRagdollDesc;
+    // UpstreamMediaReflect.cpp (camera shake, ui-scaling-text, video-mp4, safe-area)
+    extern const ComponentDesc kCameraShakerDesc;
+    extern const ComponentDesc kCameraFollowDesc;
+    extern const ComponentDesc kTextEffectDesc;
+    extern const ComponentDesc kVideoPlayerDesc;
+    extern const ComponentDesc kSafeAreaDesc;
 
 }
 

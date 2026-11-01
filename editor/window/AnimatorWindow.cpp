@@ -1867,6 +1867,7 @@ void AnimatorWindow::drawStateInspector(ControllerDef& def, StateDef& state){
             changed |= ImGui::DragFloat("Reference Time", &state.additiveTime, 0.01f, 0.0f, 600.0f, "%.2f s");
         }
     }
+    // SYNC4-ABSORB(retarget): upstream's state Retarget / Mirror / Foot IK checkboxes (its old state inspector, deleted here) wait for the retarget absorption
     ImGui::SeparatorText("Transitions");
     for (size_t t = 0; t < state.transitions.size(); t++){
         ImGui::PushID((int)t);

@@ -211,6 +211,16 @@ namespace {
         JE_FIELD(TextComponent, fixedHeight, .updateFlags = kText, .label = "Height", .group = "Fixed size"),
         JE_FIELD(TextComponent, pivotBaseline, .updateFlags = kText, .label = "Baseline", .group = "Pivot"),
         JE_FIELD(TextComponent, pivotCentered, .updateFlags = kText, .label = "Center", .group = "Pivot"),
+        // upstream (ui-scaling-text): outline, shadow and visible characters, written only when set
+        JE_FIELD(TextComponent, outlineWidth, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Outline"),
+        JE_FIELD(TextComponent, outlineColor, .flags = OmitIfDefault | ColorLinear, .updateFlags = kText, .group = "Outline"),
+        JE_FIELD(TextComponent, shadowEnabled, .flags = OmitIfDefault, .updateFlags = kText, .label = "Shadow", .group = "Shadow"),
+        JE_FIELD(TextComponent, shadowColor, .flags = OmitIfDefault | ColorLinear, .updateFlags = kText, .group = "Shadow"),
+        JE_FIELD(TextComponent, shadowOffset, .flags = OmitIfDefault, .updateFlags = kText, .group = "Shadow"),
+        JE_FIELD(TextComponent, shadowSoftness, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Shadow"),
+        JE_FIELD(TextComponent, shadowDilate, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Shadow"),
+        JE_FIELD(TextComponent, visibleCharacters, .flags = OmitIfDefault, .updateFlags = kText, .min = -1.0f,
+                 .tooltip = "Characters past it are not drawn (-1: all)."),
     };
 
     // ---------------------------------------------------------------- Image

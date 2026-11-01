@@ -21,6 +21,26 @@ std::string anim::defaultStateName(const AnimationPlayerClip& entry){
     return dot == std::string::npos || dot == 0 ? file : file.substr(0, dot);
 }
 
+bool anim::readPropertyRest(Scene* scene, Entity entity, const PropertyBinding& binding, PropertyRest& rest){
+    float stored[4] = {0, 0, 0, 0};
+    if (!readPropertyStored(scene, entity, binding, stored)) return false;
+    rest.has = true;
+    for (int k = 0; k < 4; k++){
+        rest.stored[k] = stored[k];
+        rest.value[k] = stored[k];
+    }
+    storedToKey(binding.kind, binding.display, rest.value, std::min<size_t>(binding.width, 4));
+    rest.hasSnapshot = snapshotProperty(scene, entity, binding, rest.snapshot);
+    return true;
+}
+
+bool anim::restorePropertyRest(Scene* scene, Entity entity, const PropertyRest& rest){
+    if (!rest.has) return false;
+    const bool written = writePropertyStored(scene, entity, rest.binding, rest.stored);
+    if (rest.hasSnapshot) restoreProperty(scene, entity, rest.binding, rest.snapshot);
+    return written;
+}
+
 std::vector<std::string> anim::playerStateNames(const std::vector<AnimationPlayerClip>& clips){
     std::vector<std::string> names;
     names.reserve(clips.size());
@@ -68,6 +88,7 @@ void anim::ClipPreviewSession::reset(){
     rest.clear();
     bindings.clear();
     written.clear();
+    writtenProperties.clear();
     previousTimes.clear();
     scratch = PlayerPoseScratch();
     trackSlots.clear();
@@ -451,6 +472,10 @@ namespace {
         ClipWrapMode wrap = ClipWrapMode::Default;
         int layer = 0;
         size_t entry = SIZE_MAX;
+        // humanoid playback (anim-retarget 7.1)
+        bool retarget = false;
+        bool mirror = false;
+        bool footIK = false;
     };
 
 }
@@ -489,6 +514,9 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
                 spec.name = names[i];
                 spec.clip = entry.clip;
                 spec.wrap = entry.wrap;
+                spec.retarget = entry.retarget;
+                spec.mirror = entry.mirror;
+                spec.footIK = entry.footIK;
                 spec.entry = i;
                 spec.layer = entry.layer;
                 if (entry.layer < 0 || entry.layer >= layerCount){
@@ -506,10 +534,11 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
         for (size_t i = 0; i < specs.size(); i++){
             const StateSpec& spec = specs[i];
             PlayerStateRuntime& state = states[i];
+            const std::string poolKey = retargetPoolKey(spec.clip, spec.retarget);
             int old = runtime.findState(spec.name);
             if (old >= 0){
                 state = runtime.states[(size_t)old];
-                if (state.clip != spec.clip){
+                if (state.poolKey != poolKey){
                     state.bindings = ClipBindings();
                     state.loadFailed = false;
                     state.retryTimer = 0.0f;
@@ -520,6 +549,10 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
             state.name = spec.name;
             state.entry = spec.entry;
             state.clip = spec.clip;
+            state.poolKey = poolKey;
+            state.retarget = spec.retarget;
+            state.mirror = spec.mirror;
+            state.footIK = spec.footIK;
             state.entryWrap = spec.wrap;
             state.layer = spec.layer;
             if (state.layerOverride >= layerCount) state.layerOverride = -1;
@@ -547,6 +580,22 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
         runtime.warnedLayers.clear();
     }
     return runtime;
+}
+
+std::string anim::retargetPoolKey(const std::string& clip, bool retarget){
+    return retarget && !clip.empty() ? clip + "@humanoid" : clip;
+}
+
+bool anim::stateMirror(const PlayerStateRuntime& state){
+    return state.mirrorOverride >= 0 ? state.mirrorOverride != 0 : state.mirror;
+}
+
+bool anim::stateFootIK(const PlayerStateRuntime& state){
+    return state.footIKOverride >= 0 ? state.footIKOverride != 0 : state.footIK;
+}
+
+bool anim::stateIsHumanoid(const PlayerStateRuntime& state){
+    return state.retarget || (state.bindings.clip && state.bindings.clip->isHumanoid());
 }
 
 ClipWrapMode anim::stateWrap(const PlayerStateRuntime& state){

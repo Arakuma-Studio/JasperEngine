@@ -126,7 +126,13 @@ namespace jasperengine::editor {
         SaveProjectAsTemplate,
         ToggleColorPicker,
         ToggleRecorder,
-        ToggleRecording
+        ToggleRecording,
+        // upstream (audio-mixer, native-bridge, camera-shake): after S27's
+        ToggleAudioMixer,             // Window > Audio > Audio Mixer
+        AssetsCreateAudioMixer,
+        AssetsCreateNativePlugin,
+        AssetsCreateShakePreset,
+        AddCameraShakerToMainCamera   // GameObject > Add Camera Shaker to Main Camera
     };
 
 }

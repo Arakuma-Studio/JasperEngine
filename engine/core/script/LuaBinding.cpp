@@ -16,6 +16,7 @@
 
 #include "Log.h"
 #include "memory/MemoryStats.h"
+#include "debug/DebugOverlay.h"
 #include "System.h"
 #include "Engine.h"
 #include "Scene.h"
@@ -256,6 +257,8 @@ void LuaBinding::createLuaState(){
 
     // the thread making the state owns it; from here on its allocations check the thread
     luaThread.store(std::this_thread::get_id(), std::memory_order_relaxed);
+    // and is the main thread of the log (its listeners, Log.onMessageReceived)
+    Log::setMainThread();
     const char* check = std::getenv("JASPER_LUA_THREAD_CHECK");
     if (check && std::strcmp(check, "abort") == 0)
         setThreadCheck(ThreadCheck::Abort);
@@ -912,6 +915,7 @@ void LuaBinding::registerClasses(lua_State *L){
     // the coroutines, invoke and Time (ScriptScheduler); the one global Timer, on the C++
     // Scheduler, is the util classes' (its handles also work with Coroutine.waitFor)
     registerCoroutineClasses(L);
+    registerNativeClasses(L);
     registerUtilClasses(L);
     registerThreadClasses(L);
     registerProfilerClasses(L);
@@ -1024,6 +1028,10 @@ namespace {
 }
 
 void LuaBinding::cleanup(){
+    // nothing may call into the state once it is closed: a line logged later would reach the
+    // scripts' log listeners, a console command its Lua function
+    Log::onMessageReceived.clear();
+    DebugOverlay::removeOwnedCommands();
     // no coroutine thread or timer reference may outlive the state
     ScriptScheduler::clear();
     clearScriptChunks(luastate);
@@ -1555,6 +1563,9 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
 
     int ref = luaL_ref(L, LUA_REGISTRYINDEX);
     scriptEntry.instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
+    // the refs are reused: the generation tells this instance from an earlier one (main thread)
+    static uint64_t instanceGenerations = 0;
+    scriptEntry.instanceGeneration = ++instanceGenerations;
 
     // lets RegisterEngineEvent and the instance's members find this entry
     lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
@@ -1711,6 +1722,203 @@ void LuaBinding::callScriptHook(Scene* scene, Entity entity, const char* functio
     }
 }
 #endif
+namespace {
+    // the first enabled (else first) Lua script `className` of the GameObject and its declared
+    // property `name`; false when either is missing
+    bool findAnimatedScriptField(Scene* scene, Entity entity, const std::string& className, const std::string& name,
+                                 ScriptEntry*& entryOut, ScriptProperty*& propertyOut, size_t index) {
+        ScriptComponent* scripts = (scene && scene->isEntityCreated(entity)) ? scene->findComponent<ScriptComponent>(entity) : nullptr;
+        if (!scripts) {
+            return false;
+        }
+        ScriptEntry* chosen = nullptr;
+        if (index != SIZE_MAX) {
+            if (index >= scripts->scripts.size() || scripts->scripts[index].type != ScriptType::LUA ||
+                scripts->scripts[index].className != className) {
+                return false;
+            }
+            chosen = &scripts->scripts[index];
+        }
+        for (ScriptEntry& entry : scripts->scripts) {
+            if (index != SIZE_MAX) {
+                break;
+            }
+            if (entry.type != ScriptType::LUA || entry.className != className) {
+                continue;
+            }
+            if (!chosen || (!chosen->enabled && entry.enabled)) {
+                chosen = &entry;
+            }
+            if (chosen->enabled) {
+                break;
+            }
+        }
+        if (!chosen) {
+            return false;
+        }
+        for (ScriptProperty& property : chosen->properties) {
+            if (property.name == name) {
+                entryOut = chosen;
+                propertyOut = &property;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool scriptValueToFloats(const ScriptPropertyValue& value, ScriptPropertyType type, float* out) {
+        switch (type) {
+            case ScriptPropertyType::Bool:
+                if (!std::holds_alternative<bool>(value)) return false;
+                out[0] = std::get<bool>(value) ? 1.0f : 0.0f;
+                return true;
+            case ScriptPropertyType::Int:
+                if (std::holds_alternative<int>(value)) { out[0] = (float)std::get<int>(value); return true; }
+                if (std::holds_alternative<float>(value)) { out[0] = std::round(std::get<float>(value)); return true; }
+                return false;
+            case ScriptPropertyType::Float:
+                if (std::holds_alternative<float>(value)) { out[0] = std::get<float>(value); return true; }
+                if (std::holds_alternative<int>(value)) { out[0] = (float)std::get<int>(value); return true; }
+                return false;
+            case ScriptPropertyType::Vector2:
+                if (!std::holds_alternative<Vector2>(value)) return false;
+                out[0] = std::get<Vector2>(value).x; out[1] = std::get<Vector2>(value).y;
+                return true;
+            case ScriptPropertyType::Vector3:
+            case ScriptPropertyType::Color3: {
+                if (!std::holds_alternative<Vector3>(value)) return false;
+                const Vector3& v = std::get<Vector3>(value);
+                out[0] = v.x; out[1] = v.y; out[2] = v.z;
+                return true;
+            }
+            case ScriptPropertyType::Vector4:
+            case ScriptPropertyType::Color4: {
+                if (!std::holds_alternative<Vector4>(value)) return false;
+                const Vector4& v = std::get<Vector4>(value);
+                out[0] = v.x; out[1] = v.y; out[2] = v.z; out[3] = v.w;
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+
+    // the Lua value at `index` as floats of `type` (false when it is another type)
+    bool luaValueToFloats(lua_State* L, int index, ScriptPropertyType type, float* out) {
+        switch (type) {
+            case ScriptPropertyType::Bool:
+                if (!lua_isboolean(L, index)) return false;
+                out[0] = lua_toboolean(L, index) ? 1.0f : 0.0f;
+                return true;
+            case ScriptPropertyType::Int:
+            case ScriptPropertyType::Float:
+                if (lua_type(L, index) != LUA_TNUMBER) return false;
+                out[0] = (float)lua_tonumber(L, index);
+                return true;
+            case ScriptPropertyType::Vector2: {
+                if (!luabridge::isInstance<Vector2>(L, index)) return false;
+                auto v = luabridge::get<Vector2>(L, index);
+                if (!v) return false;
+                out[0] = v.value().x; out[1] = v.value().y;
+                return true;
+            }
+            case ScriptPropertyType::Vector3:
+            case ScriptPropertyType::Color3: {
+                if (!luabridge::isInstance<Vector3>(L, index)) return false;
+                auto v = luabridge::get<Vector3>(L, index);
+                if (!v) return false;
+                out[0] = v.value().x; out[1] = v.value().y; out[2] = v.value().z;
+                return true;
+            }
+            case ScriptPropertyType::Vector4:
+            case ScriptPropertyType::Color4: {
+                if (!luabridge::isInstance<Vector4>(L, index)) return false;
+                auto v = luabridge::get<Vector4>(L, index);
+                if (!v) return false;
+                out[0] = v.value().x; out[1] = v.value().y; out[2] = v.value().z; out[3] = v.value().w;
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+}
+
+bool LuaBinding::getLuaScriptProperty(Scene* scene, Entity entity, const std::string& className, const std::string& name,
+                                      ScriptPropertyType type, float* out, size_t index) {
+    ScriptEntry* entry = nullptr;
+    ScriptProperty* property = nullptr;
+    if (!findAnimatedScriptField(scene, entity, className, name, entry, property, index)) {
+        return false;
+    }
+    lua_State* L = luastate;
+    if (L && entry->instance) {
+        const int top = lua_gettop(L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry->instance)));
+        if (lua_istable(L, -1)) {
+            lua_pushstring(L, name.c_str());
+            lua_rawget(L, -2);
+            const bool ok = luaValueToFloats(L, -1, type, out);
+            lua_settop(L, top);
+            if (ok) {
+                return true;
+            }
+        }
+        lua_settop(L, top);
+    }
+    return scriptValueToFloats(property->value, type, out);
+}
+
+bool LuaBinding::setLuaScriptProperty(Scene* scene, Entity entity, const std::string& className, const std::string& name,
+                                      ScriptPropertyType type, const float* in, size_t index) {
+    ScriptEntry* entry = nullptr;
+    ScriptProperty* property = nullptr;
+    if (!findAnimatedScriptField(scene, entity, className, name, entry, property, index)) {
+        return false;
+    }
+    // the stored value first (the Inspector shows it in play mode)
+    switch (type) {
+        case ScriptPropertyType::Bool: property->value = in[0] > 0.5f; break;
+        case ScriptPropertyType::Int: property->value = (int)std::lround(in[0]); break;
+        case ScriptPropertyType::Float: property->value = in[0]; break;
+        case ScriptPropertyType::Vector2: property->value = Vector2(in[0], in[1]); break;
+        case ScriptPropertyType::Vector3:
+        case ScriptPropertyType::Color3: property->value = Vector3(in[0], in[1], in[2]); break;
+        case ScriptPropertyType::Vector4:
+        case ScriptPropertyType::Color4: property->value = Vector4(in[0], in[1], in[2], in[3]); break;
+        default: return false;
+    }
+    lua_State* L = luastate;
+    if (!L || !entry->instance) {
+        return true;
+    }
+    const int top = lua_gettop(L);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry->instance)));
+    if (!lua_istable(L, -1)) {
+        lua_settop(L, top);
+        return true;
+    }
+    lua_pushstring(L, name.c_str());
+    bool pushed = true;
+    switch (type) {
+        case ScriptPropertyType::Bool: lua_pushboolean(L, in[0] > 0.5f); break;
+        case ScriptPropertyType::Int: lua_pushinteger(L, (lua_Integer)std::llround(in[0])); break;
+        case ScriptPropertyType::Float: lua_pushnumber(L, in[0]); break;
+        // a fresh userdata per change: a table holding the old value never sees it mutate
+        case ScriptPropertyType::Vector2: pushed = static_cast<bool>(luabridge::push<Vector2>(L, Vector2(in[0], in[1]))); break;
+        case ScriptPropertyType::Vector3:
+        case ScriptPropertyType::Color3: pushed = static_cast<bool>(luabridge::push<Vector3>(L, Vector3(in[0], in[1], in[2]))); break;
+        case ScriptPropertyType::Vector4:
+        case ScriptPropertyType::Color4: pushed = static_cast<bool>(luabridge::push<Vector4>(L, Vector4(in[0], in[1], in[2], in[3]))); break;
+        default: pushed = false; break;
+    }
+    if (pushed) {
+        // raw: a declared property is a plain field of the instance (never an engine member)
+        lua_rawset(L, -3);
+    }
+    lua_settop(L, top);
+    return pushed;
+}
 
 void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry) {
     // async work owned by the instance (HTTP requests with owner = self) ends without its

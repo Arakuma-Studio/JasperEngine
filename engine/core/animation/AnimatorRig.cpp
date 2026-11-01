@@ -451,6 +451,11 @@ void anim::sampleClip(const RigClipBinding& binding, const AnimatorRig& rig, flo
             }
             case ClipChannel::Property:
                 break;
+            // SYNC4-ABSORB(retarget): humanoid clip tracks (anim-retarget) play on the Animator
+            // once the retarget absorption puts them on S21's one retarget path
+            case ClipChannel::Humanoid:
+            case ClipChannel::HumanoidPosition:
+                break;
         }
     }
 }

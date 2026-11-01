@@ -28,6 +28,7 @@ namespace jasperengine{
     struct ParticleDeathInfo;
     struct ParticleSubEmitInfo;
     struct AnimationEvent;
+    class VideoPlayer;
 
     namespace lua_reload { struct CallbackRecord; }
 
@@ -91,6 +92,8 @@ namespace jasperengine{
         void push_value(lua_State *vm, NavMeshSurface o);
         // an input action's callback gets the event itself: event:consume() reaches it
         void push_value(lua_State *vm, const InputActionEvent& o);
+        // the Video Player of an event (onPrepareCompleted, ...)
+        void push_value(lua_State *vm, const VideoPlayer &o);
 
         template <typename T>
         static T get_value(lua_State *vm);

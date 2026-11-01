@@ -27,6 +27,7 @@
 #include "LuaWatchdog.h"
 #include "Log.h"
 #include "animation/AnimationEvent.h"
+#include "object/VideoPlayer.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -244,6 +245,11 @@ void LuaFunctionBase::push_value(lua_State *vm, NavMeshAgent o){
 
 void LuaFunctionBase::push_value(lua_State *vm, NavMeshSurface o){
     if (!luabridge::push<NavMeshSurface>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, const VideoPlayer &o){
+    if (!luabridge::push<VideoPlayer>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 

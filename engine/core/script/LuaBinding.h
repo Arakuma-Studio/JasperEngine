@@ -11,6 +11,7 @@
 #include "Export.h"
 #include "ecs/Entity.h"
 #include "animation/AnimationEvent.h"
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -26,6 +27,7 @@ namespace jasperengine {
     struct ScriptEntry;
     struct ControllerColliderHit;
     struct ScriptProperty;
+    enum class ScriptPropertyType;
 
     class JASPERENGINE_API LuaBinding {
         
@@ -84,6 +86,7 @@ namespace jasperengine {
         static void registerIOClasses(lua_State *L);
         static void registerMathClasses(lua_State *L);
         static void registerNetClasses(lua_State *L);
+        static void registerNativeClasses(lua_State *L);
         static void registerGameObjectClasses(lua_State *L);
         static void registerUtilClasses(lua_State *L);
         static void registerThreadClasses(lua_State *L);
@@ -226,6 +229,19 @@ namespace jasperengine {
         // onStateEnter layer index), else as floats
         static bool callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args,
                                         bool integers = false);
+        // A clip's property track on a Lua script field (anim-properties spec 5.7): the declared
+        // `properties` field `name` of the GameObject's first enabled (else first) Lua script
+        // `className`, as floats of its type (Bool 0/1, Int, Float, Vector2-4, Color3/4 as stored:
+        // linear). The read takes the instance field (self.<name>) when the instance exists, else
+        // ScriptProperty::value; the write sets both (the instance field raw, a fresh Vector
+        // userdata for vectors: a script holding the old one never sees it change). False when
+        // the script or the declared field is missing. `index`: the script at that index of the
+        // GameObject's scripts (a binding picks it once; false when it is not a `className`
+        // Lua script any more). Main thread.
+        static bool getLuaScriptProperty(Scene* scene, Entity entity, const std::string& className, const std::string& name,
+                                         ScriptPropertyType type, float* out, size_t index = SIZE_MAX);
+        static bool setLuaScriptProperty(Scene* scene, Entity entity, const std::string& className, const std::string& name,
+                                         ScriptPropertyType type, const float* in, size_t index = SIZE_MAX);
         static void clearLoadedProjectModules();
 
         static std::string getLuaStackErrorString(lua_State* L, int index = -1);

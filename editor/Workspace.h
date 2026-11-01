@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Project.h"
+#include "window/GameResolutions.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -65,6 +66,8 @@ public:
     const SpriteNormalsWindowSettings& getSpriteNormalsSettings() const { return spriteNormalsSettings; }
 
     bool isSimulateTouch() const { return simulateTouch; }
+    // the Game view's "Add custom..." resolutions
+    const std::vector<GameResolution>& getCustomResolutions() const { return customResolutions; }
 
     // Keyed by project-relative path, so reordering scenes never rewrites this file
     const SceneState* getSceneState(const std::filesystem::path& sceneFilepath) const;
@@ -92,6 +95,7 @@ private:
     SpriteNormalsWindowSettings spriteNormalsSettings;
 
     bool simulateTouch = false;
+    std::vector<GameResolution> customResolutions;
 
     std::map<std::string, SceneState> sceneStates;
     bool adoptedLegacy = false;

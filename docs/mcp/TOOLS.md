@@ -20,6 +20,7 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Shadows](#shadows) (2): `get_shadow_stats`, `set_shadow_debug`
 - [Console](#console) (6): `clear_console`, `get_log_config`, `list_timers`, `read_console`, `set_log_level`, `wait_for_log`
 - [Saved data (PlayerPrefs)](#saved-data-playerprefs) (1): `user_settings`
+- [Audio](#audio) (1): `audio_mixer`
 - [Scripts](#scripts) (10): `attach_script`, `check_script`, `code_editor`, `compile_scripts`, `create_script`, `detach_script`, `list_scripts`, `set_script_properties`, `sync_files`, `update_script_entry`
 - [Assets, materials and shaders](#assets-materials-and-shaders) (25): `apply_material_preset`, `check_shader`, `create_folder`, `create_material`, `delete_asset`, `fork_shader`, `generate_placeholder_art`, `get_asset_info`, `get_material_variant`, `get_shader_uniforms`, `import_files`, `import_unity_particles`, `link_material`, `list_assets`, `list_material_presets`, `list_shaders`, `move_asset`, `read_file`, `search_files`, `set_light_unit`, `set_shader_uniform`, `set_texture_settings`, `update_material`, `view_asset`, `write_file`
 - [Texture synthesis](#texture-synthesis) (1): `synthesize_texture`
@@ -283,7 +284,7 @@ Project Settings and editor preferences as flat dotted keys (player.product_name
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `category` | string |  | player, web, linux, windows, macos, ios, android, graphics, quality, physics, physics2d, input, scripting, editor, tags_and_layers, preferences or all. |
+| `category` | string |  | player, web, linux, windows, macos, ios, android, graphics, quality, physics, physics2d, input, scripting, debug, editor, tags_and_layers, preferences or all. |
 | `describe` | boolean |  |  |
 | `keys` | array of string |  | Keys or categories. |
 | `search` | string |  | Words: matches {key, page, label, scope} of every Preferences/Project Settings row. |
@@ -1338,7 +1339,7 @@ After play stop: the edits made while playing that can be kept, rows {id, kind, 
 
 Group: `core`. Hints: read-only, idempotent
 
-Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), platform (lifecycle, orientation, opened_urls...), http (request counts, last failures); stopped: play_would_start.
+Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, audio (voices, mixer_meters dB), console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), platform (lifecycle, orientation, opened_urls...), http (request counts, last failures), safe_area; stopped: play_would_start.
 
 No parameters.
 
@@ -1438,7 +1439,7 @@ space: canvas px (Input.getMousePosition), normalized 0..1, view = Game view px.
 
 Group: `core`. Hints: idempotent
 
-Set component properties of a GameObject in the running game, live: property + value, or values {name: value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua.
+Set component properties of a GameObject in the running game, live: property + value, or values {name: value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua. videoplayer also: state play|pause|stop|prepare, time, frame.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -1482,7 +1483,7 @@ Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a pause
 
 Group: `core`. Hints: idempotent
 
-Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). aspect project = the canvas size (a project setting); the game renders at render_size. device, orientation, language: a simulated phone and system language (editor only).
+Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). aspect project = the canvas size (a project setting); the game renders at render_size. resolution: a fixed size the game renders at (screenshots too), with its dpi as Screen.dpi. device, orientation, language: a simulated phone and system language (editor only); safe_area is Screen.safeArea.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -1495,6 +1496,8 @@ Read (no arguments) or change the Game view toolbar settings (editor preferences
 | `orientation` | `"portrait"` \| `"portrait_upside_down"` \| `"landscape_left"` \| `"landscape_right"` |  |  |
 | `physics_debug` | boolean |  | Collider/joint wireframes in Play. |
 | `physics_debug_contacts` | boolean |  |  |
+| `resolution` |  |  | "1920x1080", "WxH@dpi", a resolutions name, free, or {width, height, dpi, name} (a name saves it). |
+| `safe_area_outline` | boolean |  |  |
 | `scale` | number (1..5) |  |  |
 | `show_stats` | boolean |  |  |
 | `simulate_textures` | `"desktop"` \| `"mobile"` \| `"android_etc2"` \| `"web"` |  | Cooked textures of this platform in every view. |
@@ -1557,10 +1560,11 @@ Frame GameObjects in the Scene view like pressing F (runtime-spawned too; none g
 
 Group: `core`. Hints: read-only
 
-Capture a view as PNG. game: the running game, or (stopped) the selected scene through its camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the whole window. canvas_rect_in_image maps image -> send_input coords; warns on a flat image.
+Capture a view as PNG. game: the running game, or (stopped) the selected scene through its camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the whole window. canvas_rect_in_image maps image -> send_input coords; a simulated device: its overlay, safe_area_in_image. Warns on a flat image.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
+| `device_overlay` | boolean |  | Default: `true`. |
 | `focus` | boolean |  | Front the view's tab if needed. Default: `true`. |
 | `max_width` | integer (0..8192) |  | Default: `1024`. |
 | `save_path` | string |  | Also write the PNG to this project-relative path. |
@@ -1859,6 +1863,21 @@ The project's UserSettings/PlayerPrefs store, shared with the game in Play (chan
 | `key` | string |  |  |
 | `type` | `"string"` \| `"int"` \| `"float"` \| `"bool"` |  | set: how it is stored. |
 | `value` |  |  | set: string, number or boolean. |
+
+
+## Audio
+
+### `audio_mixer`
+
+*Audio Mixer*
+
+The project's Audio Mixer (.mixer; Unity's AudioMixer). get: groups, effects, exposed parameters, snapshots (in Play also live values and meters). edit: `ops` applied in order, one undo step, heard at once; creates audio/Main.mixer in the assets when the project has none. Ops and effect parameters: jasper://docs/audio.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `"get"` \| `"edit"` | yes |  |
+| `mixer` | string |  | A .mixer path; default the project's. |
+| `ops` | array of object |  | edit: [{op: add_group\|remove_group\|set_group\|add_effect\|set_effect\|remove_effect\|expose\|unexpose\|set_exposed\|add_snapshot\|set_snapshot\|remove_snapshot\|set_start_snapshot\|set_mixer, ...}] |
 
 
 ## Scripts
@@ -2973,7 +2992,7 @@ Keyframes in seconds. clip (.anim): a shared clip file, tracks by path from the 
 | `animation` | integer or string |  |  |
 | `autoplay` | boolean |  |  |
 | `clip` | string |  |  |
-| `create` | object {from, remove_tracks} |  |  |
+| `create` | object {from, humanoid, remove_tracks} |  |  |
 | `delete_removed` | boolean |  | Default: `true`. |
 | `duration` | number |  | -1: until actions end. |
 | `events` | array of object {args, function, time} |  |  |
@@ -3063,7 +3082,7 @@ Build or edit a Tilemap: texture, tile rects (tileset slice or rects), then ops 
 
 Group: `core`. Hints: read-only, idempotent
 
-entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys or tween values), or for another GameObject the animations targeting it or its children (model clips too) and the Animation Player playing it (states, layers, controller, bindings; live in play). clip (.anim or "model.gltf#Walk"): settings, tracks, events, users; times: values sampled there; root: bindings. mask (.mask; root: coverage) or controller (.controller summary).
+entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys or tween values), or for another GameObject the animations targeting it or its children (model clips too) and the Animation Player playing it (states, layers, controller, bindings; live in play). clip (.anim or "model.gltf#Walk"): settings, tracks, events, users; times: values sampled there; root: bindings (humanoid: retarget_report, realised at times); root + list_properties (a path): its animatable properties. mask (.mask; root: coverage) or controller (.controller summary).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

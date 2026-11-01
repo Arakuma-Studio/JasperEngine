@@ -786,6 +786,9 @@ TEST_F(InputTest, PointersOutsideTheCanvasFocusLossAndPauseReleaseControls){
 // review HIGH 1 and D6, the component UI: a finger lifted or a mouse button released outside
 // the canvas, a lost focus and a pause cancel its pointers (the controls let go, no click)
 TEST_F(InputTest, ComponentUIPointersOutsideTheCanvasFocusLossAndPauseAreCancelled){
+    // focused, as an app is: a pause in an earlier test took the focus and a resume does not give
+    // it back (platform services), so the focus loss below would be no change
+    Engine::systemFocus(true);
     InputActions::loadDefaults();
     InputActions::resetRuntimeState();
     // where the document has nothing: x 500..620, y 180..300 (centre (560, 240), radius 60)

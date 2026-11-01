@@ -310,6 +310,9 @@ namespace jasperengine::editor {
         bool copyCustomShaderSources();
         bool copyLua();
         bool copyCppScripts();
+        // plugins/native/{android,apple,ios,macos,web} -> <export>/project/plugins/native/...
+        // (mirrored: what the project no longer has goes); cpp/ ships as a script root
+        bool copyNativePlugins();
         bool copyEngine();
         bool writeExportSettingsScript(std::string& cmakeContent);
         bool writeAndroidProjectSettings();
@@ -319,6 +322,11 @@ namespace jasperengine::editor {
         bool addXcodeProjectSources(std::string& xcodeProject);
         // The project's C++ standard and the scene capacities, as the CMake build sets them
         bool writeXcodeBuildSettings(std::string& xcodeProject);
+        // native plugins: plugins/native/{apple,ios,macos} sources and SDKs, system frameworks,
+        // Swift packages, Swift settings, entitlements, deployment target
+        bool addNativePluginsToXcode(std::string& xcodeProject);
+        // workspaces/xcode: the entitlements file and the CocoaPods Podfile (removed when unset)
+        bool writeNativeAppleFiles();
         bool writeWindowsResourceFile(bool includeIcon);
         bool writeAppIcon();
         bool buildAndSaveShaders();
@@ -342,6 +350,9 @@ namespace jasperengine::editor {
         static const char* postFxLicensePath();
         static const char* openEngineLicensePath();
 
+        // the first scene or prefab file with a Video Player playing an http(s) url ("" for none:
+        // Android exports then need no INTERNET for videos)
+        std::string videoUrlScene() const;
         // Aggregates SceneMaxValues across all project scenes into the capacities that
         // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).
         std::vector<std::pair<std::string, unsigned int>> getSceneMaxValues() const;
@@ -359,6 +370,12 @@ namespace jasperengine::editor {
         static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
 
     public:
+        // a scene or prefab file's text: a Video Player with an http(s) url
+        static bool hasUrlVideoPlayer(const std::string& sceneText);
+        // the first of `files` (relative to `root`: Lua, C++ scripts, HTML UI documents) that may
+        // play a URL video (sets a Video Player's url, an HTML <video> of an http(s) URL); ""
+        static std::string scriptVideoUrlFile(const std::filesystem::path& root, const std::vector<std::filesystem::path>& files);
+
         // a PNG copied (read once) without its jasper.* text chunks (util/PngEditorChunks.h; one
         // without them, or not a well-formed PNG, as it is); false when it is not a .png or could
         // not be read or written this way (the caller then copies the file)

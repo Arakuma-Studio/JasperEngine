@@ -7,6 +7,10 @@
 #include "Project.h"
 #include "AppSettings.h"
 #include "window/PlayInput.h"
+#include "window/DeviceProfiles.h"
+#include "window/GameResolutions.h"
+
+#include <set>
 
 namespace jasperengine::editor {
 
@@ -42,10 +46,35 @@ namespace jasperengine::editor {
         // the Device menu's Custom language field
         char customLanguage[32] = {0};
         bool customLanguageOpen = false;
+        // the Device menu's Custom... device fields
+        CustomDeviceSettings customDeviceEdit;
+        bool customDeviceOpen = false;
+        // what the last syncSafeArea pushed to Screen (the simulated insets)
+        struct SafeAreaPush {
+            const DeviceProfile* device = nullptr;
+            ScreenOrientation orientation = ScreenOrientation::Portrait;
+            int width = -1, height = -1;
+            CustomDeviceSettings custom;
+        };
+        SafeAreaPush safeAreaPushed;
+        uint64_t editSafeAreaRevision = 0;
+        // scenes whose Scene view was hidden when the safe area changed: they redraw once shown
+        // (a hidden view left dirty would keep the Game view's preview drawing every frame)
+        std::set<uint32_t> safeAreaRedrawPending;
         ImVec2 engineScale = ImVec2(1.0f, 1.0f);
         // the Recorder's output size (S27 R27): the game renders at it, shown scaled to fit
         int overrideWidth = 0;
         int overrideHeight = 0;
+        // the game renders at a fixed resolution (a preset or a device) shown at fitScale
+        bool fixed = false;
+        float fitScale = 1.0f;
+        // the "Add custom..." popup's fields
+        char customName[64] = {0};
+        int customWidth = 1920;
+        int customHeight = 1080;
+        float customDpi = 0.0f;
+        bool customPopupRequested = false;
+        void drawCustomResolutionPopup();
 
         // Scene drawn by the edit-mode pass and whether it needs drawing again
         uint32_t editPassSceneId = NULL_PROJECT_SCENE;
@@ -60,6 +89,13 @@ namespace jasperengine::editor {
         void saveSettings();
         // the device simulation of the settings into editor::Platform (System and Screen in Play)
         void applySimulation();
+        // the simulated device's insets to Screen (scaled to the render size) when they change,
+        // and in edit mode the project canvas the editor scenes lay UI out for (Scene view too)
+        void syncSafeArea();
+        // the orientation the render size is laid out for
+        ScreenOrientation renderOrientation() const;
+        // the safe rectangle drawn over an image of w x h: Screen's in Play, the device's stopped
+        Rect safeAreaInImage(float w, float h) const;
         void drawDeviceMenu();
         void drawToolbar();
         void drawContent(uint32_t sceneId);
@@ -110,6 +146,9 @@ namespace jasperengine::editor {
         const GameViewSettings& getSettings();
         void applySettings(const GameViewSettings& newSettings);
         static int getAspectCount();
+        // the simulated device's safe rectangle in a game image of w x h pixels (MCP screenshot
+        // safe_area_in_image); false without a device
+        bool getSafeAreaInImage(float w, float h, Rect& rect) const;
 
         // the orientation of the simulated device the game image is laid out for (the engine's
         // Screen.orientation with a device; App hands it over with the size)
@@ -125,6 +164,15 @@ namespace jasperengine::editor {
         uint8_t getRotatableOrientations() const;
         // the Device menu's languages (BCP 47), System first as ""
         static const std::vector<std::string>& languagePresets();
+
+        // A fixed resolution the game renders at: the simulated device's screen, else the
+        // resolution preset; false in aspect mode (the view's own size)
+        bool getFixedResolution(int& width, int& height, float& dpi) const;
+        // a preset or custom name, "WxH", "WxH@dpi"; "" or "free" back to aspect mode
+        bool setResolution(const std::string& name, std::string* error = nullptr);
+        // the project's custom resolutions (editor workspace); a name already used is replaced
+        bool addCustomResolution(const GameResolution& resolution, std::string* error = nullptr);
+        void removeCustomResolution(const std::string& name);
     };
 
 }

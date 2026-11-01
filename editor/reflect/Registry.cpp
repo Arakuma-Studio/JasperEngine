@@ -105,6 +105,11 @@ namespace {
         &kOnScreenButtonDesc,
         &kTouchAreaDesc,
         &kRagdollDesc,
+        &kCameraShakerDesc,
+        &kCameraFollowDesc,
+        &kTextEffectDesc,
+        &kVideoPlayerDesc,
+        &kSafeAreaDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -196,6 +201,11 @@ namespace {
         &kOnScreenButtonDesc,
         &kTouchAreaDesc,
         &kRagdollDesc,
+        &kCameraShakerDesc,
+        &kCameraFollowDesc,
+        &kTextEffectDesc,
+        &kVideoPlayerDesc,
+        &kSafeAreaDesc,
     };
 
     // the order a GameObject lists its components in (Catalog::findComponents: the exported code)
@@ -285,6 +295,11 @@ namespace {
         &kOnScreenButtonDesc,
         &kTouchAreaDesc,
         &kRagdollDesc,
+        &kCameraShakerDesc,
+        &kCameraFollowDesc,
+        &kTextEffectDesc,
+        &kVideoPlayerDesc,
+        &kSafeAreaDesc,
     };
 
     constexpr const EnumDesc* kEnums[] = {

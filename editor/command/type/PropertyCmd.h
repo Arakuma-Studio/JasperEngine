@@ -85,8 +85,18 @@ namespace jasperengine::editor{
         return field ? !reflect::isStructural(*desc, *field) : !desc->structural;
     }
 
+    // What Record reads of a property edit (anim-properties spec 10): the Inspector row builds the
+    // command, Record takes its values instead of running it
+    class RecordablePropertyCommand{
+    public:
+        virtual ~RecordablePropertyCommand() {}
+        // the new value of each entity as floats of the stored value (float, double, ints and
+        // unsigned, bool 0/1, Vector2 to 4); false for other value types
+        virtual bool newValueFloats(std::vector<std::pair<Entity, std::vector<float>>>& out) const = 0;
+    };
+
     template<typename T>
-    class PropertyCmd: public Command, public EntityEdit{
+    class PropertyCmd: public Command, public EntityEdit, public RecordablePropertyCommand{
 
     private:
         Project* project;
@@ -145,6 +155,44 @@ namespace jasperengine::editor{
         // the Vector3 components (bit 0 x, 1 y, 2 z) the value carries as the Scene view shows
         // them, not edited (an Inspector Transform row's other fields): see shownComponents
         void setShownComponents(uint32_t mask){ shownComponents = mask; }
+
+        bool newValueFloats(std::vector<std::pair<Entity, std::vector<float>>>& out) const override{
+            out.clear();
+            for (const auto& entry : values){
+                const T& value = entry.second.newValue;
+                // (sized, then filled: an initializer list assign trips GCC's -Wnonnull here)
+                std::vector<float> floats(4, 0.0f);
+                size_t width = 0;
+                if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double> || std::is_same_v<T, int> || std::is_same_v<T, unsigned int>){
+                    floats[0] = (float)value;
+                    width = 1;
+                }else if constexpr (std::is_same_v<T, bool>){
+                    floats[0] = value ? 1.0f : 0.0f;
+                    width = 1;
+                }else if constexpr (std::is_same_v<T, Vector2>){
+                    floats[0] = value.x;
+                    floats[1] = value.y;
+                    width = 2;
+                }else if constexpr (std::is_same_v<T, Vector3>){
+                    floats[0] = value.x;
+                    floats[1] = value.y;
+                    floats[2] = value.z;
+                    width = 3;
+                }else if constexpr (std::is_same_v<T, Vector4>){
+                    floats[0] = value.x;
+                    floats[1] = value.y;
+                    floats[2] = value.z;
+                    floats[3] = value.w;
+                    width = 4;
+                }else{
+                    (void)value;
+                    return false;
+                }
+                floats.resize(width);
+                out.push_back({entry.first, floats});
+            }
+            return !out.empty();
+        }
 
         bool execute() override{
             SceneProject* sceneProject = project->getScene(sceneId);

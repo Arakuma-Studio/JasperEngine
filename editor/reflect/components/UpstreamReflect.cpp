@@ -153,9 +153,6 @@ namespace {
 
     const ComponentCodec kRagdollCodec = JE_STREAM_CODEC(RagdollComponent, encodeRagdollComponent, decodeRagdollComponent);
 
-    // origin/main's short name of the Trail Renderer (MCP, set_properties)
-    constexpr const char* kTrailRendererAliases[] = {"trail"};
-
     constexpr const char* kRagdollKnownKeys[] = {"animator", "enabled", "inheritVelocity", "root", "selfCollision", "simulated", "totalMass"};
 
 }

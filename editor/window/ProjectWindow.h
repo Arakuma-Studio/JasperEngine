@@ -526,6 +526,12 @@ namespace jasperengine::editor {
         // Layer, no states) and Avatar Mask ("New Avatar Mask.mask": every part 1, default 1), in
         // the current folder as one project undo step (the App's createControllerAsset /
         // createMaskAsset hooks, set by this window)
+        // Assets > Create > Shake Preset: "New Shake Preset.shake" with the explosion preset's values,
+        // one project undo step, then renamed in place (camera shake spec 6)
+        void assetsCreateShakePreset();
+        // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
+        // one project undo step, then renamed in place
+        void assetsCreateAudioMixer();
         // Unity's Create > Physics Material / Physics Material 2D (the 2D preset: friction 0.4,
         // geometric mean / maximum)
         void assetsCreatePhysicsMaterial(bool preset2D);

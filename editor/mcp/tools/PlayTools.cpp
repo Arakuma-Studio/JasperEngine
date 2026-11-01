@@ -9,9 +9,12 @@
 //   eval_lua              run Lua in the game's Lua state, results as JSON
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
+#include "camera/ShakerRuntime.h"
 #include "object/physics/Joint3D.h"
 #include "object/physics/Rigidbody.h"
 #include "McpTools.h"
+
+#include "debug/DebugOverlay.h"
 #include "HtmlUiShared.h"
 #include "PlayViewCommon.h"
 
@@ -23,6 +26,7 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpValues.h"
+#include "subsystem/VideoPlayerSystem.h"
 
 #include "App.h"
 #include "Catalog.h"
@@ -32,6 +36,8 @@
 #include "input/InputActions.h"
 #include "input/InputControlPath.h"
 #include "Platform.h"
+#include "audio/AudioMixer.h"
+#include "subsystem/AudioSystem.h"
 #include "Project.h"
 #include "Screen.h"
 #include "command/CommandHandle.h"
@@ -614,6 +620,20 @@ Json playInputJson() {
     return {{"actions", actions}, {"touches", Input::getTouchCount()}, {"keys_held", keys}};
 }
 
+// What the game's audio does now (get_play_state while playing): the voices, and the mixer
+// groups that are audible (above -60 dB)
+Json playAudioJson() {
+    Json meters = Json::object();
+    for (const std::string& group : AudioMixer::getGroupNames()) {
+        const float db = AudioMixer::getMeterDb(group);
+        if (db > -60.0f) meters[group] = std::round(db * 10.0f) / 10.0f;
+    }
+    Json out = {{"voices", AudioSystem::getVoiceCount()}, {"mixer_meters", meters}};
+    if (!AudioSystem::isOutputAvailable()) out["output"] = "none (mixing without a device)";
+    if (AudioSystem::isListenerPaused()) out["listener_paused"] = true;
+    return out;
+}
+
 } // namespace
 
 // ================================================================== shared (w3)
@@ -674,6 +694,20 @@ Json platformJson() {
     return out;
 }
 
+// Screen.safeArea as the game sees it (canvas units; stopped: for the project canvas, as the
+// Scene view lays UI out), the insets with extras, the extras, and the simulated device
+Json safeAreaJson() {
+    auto r = [](float v) { return std::round(v * 100.0f) / 100.0f; };
+    const Rect rect = Screen::getSafeArea();
+    const EdgeInsets insets = Screen::getSafeAreaInsets();
+    const EdgeInsets extra = Screen::getExtraInsets();
+    const PlatformSimulation& simulation = Platform::getSimulation();
+    return {{"rect", {r(rect.getX()), r(rect.getY()), r(rect.getWidth()), r(rect.getHeight())}},
+            {"insets", {r(insets.left), r(insets.top), r(insets.right), r(insets.bottom)}},
+            {"extra", {r(extra.left), r(extra.top), r(extra.right), r(extra.bottom)}},
+            {"device", simulation.device ? Json(simulation.device->id) : Json()}};
+}
+
 Json playStateJson(McpContext& ctx) {
     Project* project = ctx.project();
     PlayToolsState& s = state();
@@ -696,6 +730,7 @@ Json playStateJson(McpContext& ctx) {
         out["platform"] = platformJson();
         out["http"] = httpJson();
     }
+    out["safe_area"] = safeAreaJson();
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     // Play Mode Changes waiting after a Stop (get_play_changes)
     size_t pending = 0;
@@ -703,7 +738,15 @@ Json playStateJson(McpContext& ctx) {
     out["pending_play_changes"] = pending;
     if (!s.held.empty()) out["held_input"] = heldInputJson();
     // what the game's input reads (the Input Manager's actions, touches, keys)
-    if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
+    if (playId != NULL_PROJECT_SCENE && s.current.active) {
+        out["input"] = playInputJson();
+        // the on-device console and stats overlay (Project Settings > Debug, DebugOverlay)
+        static const char* const statsModes[] = {"off", "fps", "full"};
+        const int statsMode = static_cast<int>(DebugOverlay::getStatsMode());
+        out["debug_overlay"] = {{"enabled", DebugOverlay::isEnabled()}, {"console_visible", DebugOverlay::isConsoleVisible()},
+                                {"stats", statsMode >= 0 && statsMode < 3 ? statsModes[statsMode] : "off"}};
+    }
+    if (playId != NULL_PROJECT_SCENE && s.current.active) out["audio"] = playAudioJson();
     // script coroutines and pending timers of the game (get_runtime_entity lists them per script)
     out["coroutines"] = ScriptScheduler::coroutineCount();
     out["timers"] = ScriptScheduler::timerCount();
@@ -2238,6 +2281,40 @@ void addRuntimeState(Scene* scene, Entity entity, ComponentType type, const std:
     }
 }
 
+// camera shake spec 10: a Camera Shaker's play state and a Camera Follow's motion (read only)
+Json shakerRuntimeJson(const CameraShakerComponent& shaker) {
+    Json instances = Json::array();
+    float trauma = 0.0f;
+    Vector3 position(0, 0, 0), rotation(0, 0, 0);
+    if (const camera::ShakerRuntime* runtime = shaker.runtime.get()) {
+        for (const camera::ShakerInstanceEntry& entry : runtime->instances) {
+            const char* state = "stopped";
+            switch (entry.instance.getState()) {
+                case camera::ShakeState::FadingIn: state = "fading_in"; break;
+                case camera::ShakeState::Sustained: state = "sustained"; break;
+                case camera::ShakeState::FadingOut: state = "fading_out"; break;
+                default: break;
+            }
+            if (entry.instance.isPaused() && !entry.instance.isFinished()) state = "paused";
+            instances.push_back({{"preset", entry.presetName}, {"state", state},
+                                 {"strength", McpValues::number(entry.instance.getCurrentStrength())}});
+        }
+        trauma = runtime->trauma.trauma;
+        position = runtime->offsetPosition;
+        rotation = runtime->offsetRotation;
+    }
+    return {{"instances", instances}, {"trauma", McpValues::number(trauma)},
+            {"offset_position", McpValues::toJson(position)}, {"offset_rotation", McpValues::toJson(rotation)}};
+}
+
+Json followRuntimeJson(const CameraFollowComponent& follow) {
+    Json runtime = {{"velocity", McpValues::toJson(follow.velocity)}, {"desired", McpValues::toJson(follow.desired)},
+                    {"placed", follow.placed}};
+    if (follow.foreignWriteDetected) runtime["foreign_write"] = true;
+    if (follow.targetPersistent) runtime["target_persistent"] = true;
+    return runtime;
+}
+
 // the live state of a 2D joint (Unity's read-outs): forces N, torques N m, points, engine angle units
 Json joint2DReadoutsJson(Scene* scene, Entity entity) {
     Joint2D joint(scene, entity);
@@ -2402,6 +2479,11 @@ void getRuntimeEntityTool(const CallPtr& call) {
             }
             addRuntimeState(sp->scene, entity, type, onlyProps, props);
         }
+        if (type == ComponentType::CameraShakerComponent) {
+            props["runtime"] = shakerRuntimeJson(sp->scene->getComponent<CameraShakerComponent>(entity));
+        } else if (type == ComponentType::CameraFollowComponent) {
+            props["runtime"] = followRuntimeJson(sp->scene->getComponent<CameraFollowComponent>(entity));
+        }
         components[componentNameOf(type)] = props;
     }
 
@@ -2410,6 +2492,9 @@ void getRuntimeEntityTool(const CallPtr& call) {
     data["path"] = EntityPath::of(sp->scene, entity);
     data["scene"] = McpRefs::sceneJson(project, *sp);
     data["created_at_runtime"] = std::find(created.begin(), created.end(), entity) != created.end();
+    // activeSelf / activeInHierarchy (what a clip's gameobject.active keys or a script set)
+    data["active"] = sp->scene->isEntityActive(entity);
+    data["active_in_hierarchy"] = sp->scene->isEntityActiveInHierarchy(entity);
     // in the DontDestroyOnLoad scene, or marked to move there
     if (project->isPersistentPlayScene(sp->id) || SceneManager::isPersistent(sp->scene, entity)) data["persistent"] = true;
     data["components"] = components;
@@ -2421,6 +2506,11 @@ void getRuntimeEntityTool(const CallPtr& call) {
     // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)
     const Json groupState = McpValues::canvasGroupStateToJson(sp->scene, entity);
     if (!groupState.is_null()) data["canvas_group_state"] = groupState;
+    // a Video Player's playback
+    if (only.empty() || only.count(ComponentType::VideoPlayerComponent)) {
+        const Json video = McpValues::videoStatusToJson(sp->scene, entity);
+        if (!video.is_null()) data["video"] = video;
+    }
     // physics read-outs (joint forces and angles, body mass and velocities)
     if ((only.empty() || only.count(ComponentType::Joint2DComponent)) && sp->scene->findComponent<Joint2DComponent>(entity)) {
         data["joint2d"] = joint2DReadoutsJson(sp->scene, entity);
@@ -2447,6 +2537,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
     if (data.contains("scripts") && !data["scripts"].empty()) text += "\nscripts: " + data["scripts"].dump();
     if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
     if (data.contains("canvas_group_state")) text += "\ncanvas_group_state: " + data["canvas_group_state"].dump();
+    if (data.contains("video")) text += "\nvideo: " + data["video"].dump();
     if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
     if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
     if (data.contains("physics")) text += "\nphysics: " + data["physics"].dump();
@@ -2499,6 +2590,59 @@ void setRuntimePropertyTool(const CallPtr& call) {
     if (values.empty()) {
         call->fail("Pass property + value, or values {name: value}.");
         return;
+    }
+
+    // a Video Player's playback (spec 6.10): state play | pause | stop | prepare, time (seconds,
+    // seeks), frame (seeks to it); its fields go on below as any component's
+    if (component == ComponentType::VideoPlayerComponent) {
+        std::shared_ptr<VideoPlayerSystem> videos = sp->scene->findSystem<VideoPlayerSystem>();
+        if (!videos) {
+            call->fail("The scene has no Video Player system.");
+            return;
+        }
+        const bool seeks = values.contains("time") || values.contains("frame");
+        if (values.contains("state")) {
+            const Json& value = values["state"];
+            const std::string state = value.is_string() ? value.get<std::string>() : std::string();
+            if (state == "play") videos->play(entity);
+            else if (state == "pause") videos->pause(entity);
+            else if (state == "stop") videos->stop(entity);
+            else if (state == "prepare") videos->prepare(entity);
+            else {
+                call->fail("state must be play, pause, stop or prepare.");
+                return;
+            }
+            values.erase("state");
+        }
+        if (seeks && !videos->getStatus(entity).prepared) {
+            call->fail("time and frame seek a prepared player: state prepare (or play), then wait until video.prepared.");
+            return;
+        }
+        if (values.contains("time")) {
+            if (!values["time"].is_number() || values["time"].get<double>() < 0.0) {
+                call->fail("time must be a number of seconds >= 0.");
+                return;
+            }
+            videos->setTime(entity, values["time"].get<double>());
+            values.erase("time");
+        }
+        if (values.contains("frame")) {
+            if (!values["frame"].is_number_integer() || values["frame"].get<int64_t>() < 0) {
+                call->fail("frame must be an integer >= 0.");
+                return;
+            }
+            videos->setFrame(entity, values["frame"].get<int64_t>());
+            values.erase("frame");
+        }
+        if (values.empty()) {
+            Json data = McpRefs::entityJson(sp, entity);
+            data["component"] = componentNameOf(component);
+            const Json video = McpValues::videoStatusToJson(sp->scene, entity);
+            data["video"] = video;
+            call->ok("Video Player of \"" + data.value("path", std::string()) + "\": " + video.dump() +
+                     " (the next frames show it; get_runtime_entity reads it again).", data);
+            return;
+        }
     }
 
     const std::map<std::string, PropertyData> properties = Catalog::findEntityProperties(sp->scene, entity, component);
@@ -4029,9 +4173,10 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), "
+            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, audio "
+            "(voices, mixer_meters dB), "
             "console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), "
-            "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures); stopped: play_would_start.";
+            "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures), safe_area; stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -4185,7 +4330,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Set Runtime Property";
         tool.description =
             "Set component properties of a GameObject in the running game, live: property + value, or values {name: "
-            "value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua.";
+            "value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua. videoplayer also: "
+            "state play|pause|stop|prepare, time, frame.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},

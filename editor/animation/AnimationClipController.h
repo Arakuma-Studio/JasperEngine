@@ -31,6 +31,7 @@
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ClipRecordHooks.h"
+#include "animation/ClipTangents.h"
 #include "animation/ClipValidation.h"
 #include "animation/PreviewOwner.h"
 #include "animation/PreviewParticles.h"
@@ -143,12 +144,29 @@ namespace jasperengine::editor{
         void update(double dt, int frame);
         // the bound entities' local transforms as the preview shows them (up to `max`)
         std::vector<BoundTransform> sampledBoundTransforms(size_t max = 8) const;
+        // the open clip's bound properties as the preview shows them, in key space (sRGB
+        // colours, bools 0/1; a swizzle track its component), up to `max`
+        struct BoundProperty{
+            std::string path;
+            Entity entity = NULL_ENTITY;
+            std::string component;
+            std::string property;
+            PropertyKind kind = PropertyKind::Float;
+            std::vector<float> value;
+        };
+        std::vector<BoundProperty> sampledBoundProperties(size_t max = 16) const;
 
         // ---- keying (each one commit; `mergeKey` "" = its own undo step) ----
 
-        // a track for `path` : `channel` with a key at the playhead holding the current value;
+        // a track for `path` : `channel` with a key at the playhead holding the current value
+        // (a humanoid channel: `path` is the bone name, the value from the bound humanoid rig);
         // `newTrack` (optional) receives its index after the commit
         bool addProperty(const std::string& path, ClipChannel channel, size_t* newTrack, std::string* error);
+        // the same for an animatable property (anim-properties spec 10, Add Property): `component`
+        // the Catalog key, "gameobject" or "script:<Class>", `property` its name (a swizzle
+        // "color.a" keys that component alone)
+        bool addPropertyTrack(const std::string& path, const std::string& component, const std::string& property,
+                              size_t* newTrack, std::string* error);
         // keys `tracks` (all tracks when empty) at `time` with the bound entities' current values
         bool keyTracks(const std::vector<size_t>& tracks, float time, const std::string& mergeKey, std::string* error);
         // K: every bound channel; Shift+K: the channels whose value differs from the clip
@@ -169,16 +187,28 @@ namespace jasperengine::editor{
         bool isDraggingKeys() const;
         // a key's stable identity across commits: (path, channel, time within ANIM_TIME_EPSILON)
         static bool findKey(const ClipData& data, const std::string& path, ClipChannel channel, float time, KeyRef& out);
+        // the same by a track's identity (property tracks: path, component and property)
+        static bool findKey(const ClipData& data, const ClipTrackData& like, float time, KeyRef& out);
         bool deleteKeys(const std::vector<KeyRef>& keys, std::string* error);
         bool setEase(const std::vector<KeyRef>& keys, EaseType ease, std::string* error);
         // the keys' tangent mode (the curves view's Tangents menu, S21 R27): the track becomes a
-        // Hermite one (its eases drop, Constant keys step); Free unifies a key's two sides
-        bool setTangentMode(const std::vector<KeyRef>& keys, ClipTangentMode mode, std::string* error);
+        // Hermite one (its eases drop, Constant keys step); Free unifies a key's two sides. Scalar
+        // curves and continuous property tracks (anim-properties); `notice`: the eases the edit
+        // turned linear
+        bool setTangentMode(const std::vector<KeyRef>& keys, ClipTangentMode mode, std::string* error, std::string* notice = nullptr);
         // a dragged tangent handle: `slope` (value units per second) for component `component`
         // on the key's out side (`outSide`) or in side; a Broken key moves that side only, any
         // other mode both sides and turns Free (Unity). `mergeKey`: one undo step per drag
         bool setKeyTangent(const KeyRef& key, size_t component, bool outSide, float slope, const std::string& mergeKey,
                            std::string* error);
+        // anim-properties' Left / Right / Both Tangents (ClipTangents.h): one side Free, Linear or
+        // Constant on the keys of scalar curves (rotations and discrete properties are skipped); the
+        // key becomes Broken (Both Linear: Linear). One commit
+        bool setSideTangent(const std::vector<KeyRef>& keys, cliptangents::Side side, cliptangents::SideType type, std::string* error,
+                            std::string* notice = nullptr);
+        // anim-properties' handle drag, on setKeyTangent (Left: the in side, otherwise the out side)
+        bool setTangentSlope(const KeyRef& key, size_t component, cliptangents::Side side, float slope, const std::string& mergeKey,
+                             std::string* error, std::string* notice = nullptr);
         bool removeTrack(size_t track, std::string* error);
         // rewrites a track's path (the row's Rebind / Retarget): changes the clip for every user
         bool retargetTrack(size_t track, const std::string& newPath, std::string* error);
@@ -325,6 +355,8 @@ namespace jasperengine::editor{
             std::string path;
             ClipChannel channel = ClipChannel::Position;
             float time = 0.0f;
+            std::string component;      // property tracks
+            std::string property;
         };
         std::vector<DragIdentity> dragIdentities;
         uint64_t dragRevision = 0;
@@ -337,6 +369,8 @@ namespace jasperengine::editor{
             ClipChannel channel = ClipChannel::Position;
             std::vector<int> points;
             std::vector<float> value;
+            std::string component;      // property tracks (value in key space)
+            std::string property;
         };
         std::vector<PendingValue> pending;
         float pendingTime = 0.0f;
@@ -363,11 +397,37 @@ namespace jasperengine::editor{
         bool recordEligible(uint32_t sceneId, Entity entity, ClipChannel channel) const;
         bool recordAnimates(uint32_t sceneId, Entity entity, ClipChannel channel) const;
         void recordValue(uint32_t sceneId, Entity entity, const ClipRecordValue& value, const std::string& mergeKey);
+        // properties (anim-properties spec 10): Record of Inspector rows and checkboxes, scene
+        // writes of previewed properties (their rest, 9.R6)
+        bool recordClaimsProperty(uint32_t sceneId, Entity entity, const ClipPropertyKey& property) const;
+        bool recordAnimatesProperty(uint32_t sceneId, Entity entity, const ClipPropertyKey& property) const;
+        void recordPropertyValue(uint32_t sceneId, Entity entity, const ClipRecordValue& value, const std::string& mergeKey);
+        void beforePropertySceneWrite(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
+        void afterPropertySceneWrite(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
+        // the previewed property keys of `entity` a write of `property` touches: that one, every
+        // one of its component (an empty property: Reset, Paste Component Values), a Lua script
+        // row ("scripts" "scripts[N].<field>": the field of that script, "" every script field)
+        std::vector<uint32_t> previewedKeysOf(Scene* scene, Entity entity, const ClipPropertyKey& property) const;
+        // the previewed property back to its rest (key space) and what its write changed besides
+        void writePropertyRest(Entity entity, uint32_t key);
+        ClipRecordHooks::Id beforePropertyListener = 0;
+        ClipRecordHooks::Id afterPropertyListener = 0;
         // the root key values are read on (the preview root while previewing, else the bound root)
         Entity valueRoot(SceneProject** sceneProject) const;
         // the key value of `track` now: the bound entity's current value (relative tracks: its
-        // offset from the preview rest); false when the track's path does not resolve
+        // offset from the preview rest); false when the track's path does not resolve. A humanoid
+        // track's (anim-retarget 9): the value of the bound root's humanoid rig's current pose
+        // (false without a humanoid rig)
         bool currentTrackValue(const ClipTrackData& track, std::vector<float>& out) const;
+    public:
+        // the bound root's humanoid rig (Record and Key on humanoid tracks; null without one),
+        // looked up again when the hierarchy changes
+        std::shared_ptr<const anim::HumanoidSlots> boundHumanoid() const;
+    private:
+        mutable std::shared_ptr<const anim::HumanoidSlots> humanoidCache;
+        mutable Entity humanoidCacheRoot = NULL_ENTITY;
+        mutable uint64_t humanoidCacheRevision = 0;
+        mutable uint64_t humanoidCachePool = 0;     // AnimationClipPool::revision(): an Avatar edit rebuilds it
         bool editable(std::string* error) const;
         bool commitEdit(const ClipData& data, const std::string& undoName, const std::string& mergeKey, std::string* error);
         bool setKeyTangentPrepared(ClipData& data, const KeyRef& ref, size_t component, bool outSide, float slope,

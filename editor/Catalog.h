@@ -102,6 +102,9 @@ namespace jasperengine::editor{
         UpdateFlags_Joint3D_Params      = (uint64_t)1 << 53,
         // a Ragdoll's root or animator: its parts are collected again
         UpdateFlags_Ragdoll             = (uint64_t)1 << 54,
+        // a Text Effect's selection or layers changed: its glyphs again from their base (upstream
+        // ui-scaling-text: bit 53 there; oe-port's bits took 50-54)
+        UpdateFlags_TextEffect          = (uint64_t)1 << 55,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -203,12 +206,23 @@ namespace jasperengine::editor{
         TouchAreaComponent,
         // a character's bone bodies switched between animated and simulated (upstream's physics-3d;
         // appended here, not after Joint3D as upstream has it, so oe-port's ordinals stay)
-        RagdollComponent
+        RagdollComponent,
+        // upstream after ours (camera shake spec 7.1, ui-scaling-text 7.3, video-mp4 6.4, safe-area 6.3)
+        // MilkShake's Shaker: shakes from presets and trauma
+        CameraShakerComponent,
+        // Cinemachine-lite follow: offset, SmoothDamp, look-at, dead zone, bounds
+        CameraFollowComponent,
+        // per-character animation of a Text
+        TextEffectComponent,
+        // Unity's VideoPlayer
+        VideoPlayerComponent,
+        // drives a RectTransform to Screen.safeArea
+        SafeAreaComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::RagdollComponent;
+    constexpr ComponentType LastComponentType = ComponentType::SafeAreaComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
@@ -236,6 +250,16 @@ namespace jasperengine::editor{
         Shader,     // ShaderRef: a custom shader reference (path + the .vert/.frag GUIDs)
         Curve,      // Curve: an animation curve (math/Curve.h, docs/specs/S27-editor-tools.md R45)
         Gradient    // Gradient: a colour gradient (math/Curve.h; the Line and Trail Renderers' colorGradient)
+    };
+
+    // a scene's Canvas Scaler as one scene property ("canvas_scaler"): its own settings and
+    // whether the project's UI Scale applies instead
+    struct SceneCanvasScaler {
+        bool useProjectDefault = true;
+        CanvasScalerSettings settings;
+
+        bool operator==(const SceneCanvasScaler& other) const { return useProjectDefault == other.useProjectDefault && settings == other.settings; }
+        bool operator!=(const SceneCanvasScaler& other) const { return !(*this == other); }
     };
 
     struct PropertyData{
@@ -701,6 +725,11 @@ namespace jasperengine::editor{
                     return scene->getPostProcessPasses();
                 }
             }
+            else if (propertyName == "canvas_scaler") {
+                if constexpr (std::is_same_v<T, SceneCanvasScaler>) {
+                    return SceneCanvasScaler{scene->isCanvasScalerUseProjectDefault(), scene->getCanvasScaler()};
+                }
+            }
 
             // Return default value if property not found
             if constexpr (std::is_same_v<T, Vector4>) return Vector4(0.0, 0.0, 0.0, 1.0);
@@ -718,6 +747,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return std::vector<PostProcessPass>();
             if constexpr (std::is_same_v<T, ShadowDebugView>) return ShadowDebugView::NONE;
             if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
+            if constexpr (std::is_same_v<T, SceneCanvasScaler>) return SceneCanvasScaler();
             // Add other types as needed
         }
 
@@ -875,6 +905,9 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "post_process") {
                 if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return d.postProcess;
+            }
+            else if (propertyName == "canvas_scaler") {
+                if constexpr (std::is_same_v<T, SceneCanvasScaler>) return SceneCanvasScaler{d.canvasScalerUseProjectDefault, d.canvasScaler};
             }
 
             // Unknown property (or type mismatch): fall back to the type-generic default.
@@ -1123,6 +1156,12 @@ namespace jasperengine::editor{
             else if (propertyName == "post_process") {
                 if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) {
                     scene->setPostProcessPasses(value);
+                }
+            }
+            else if (propertyName == "canvas_scaler") {
+                if constexpr (std::is_same_v<T, SceneCanvasScaler>) {
+                    scene->setCanvasScaler(value.settings);
+                    scene->setCanvasScalerUseProjectDefault(value.useProjectDefault);
                 }
             }
         }

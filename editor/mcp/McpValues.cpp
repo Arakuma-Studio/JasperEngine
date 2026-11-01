@@ -1,6 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/ProjectChecks.h"
+#include "camera/ShakePresets.h"
+#include "camera/ShakePreset.h"
 #include "McpValues.h"
 #include "shader/ShaderGlobals.h"
 
@@ -28,6 +31,7 @@
 #include "component/ModelComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TextComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
@@ -43,7 +47,14 @@
 #include "util/CameraTextureLink.h"
 #include "util/Color.h"
 #include "util/FluidTextureLink.h"
+#include "util/VideoTextureLink.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/CameraFollowComponent.h"
+#include "component/CameraShakerComponent.h"
+#include "util/TextEffects.h"
+#include "subsystem/VideoPlayerSystem.h"
 #include "fluid/FluidPresets.h"
 #include "fluid/FluidSimulator.h"
 #include "util/EntityClipboard.h"
@@ -265,6 +276,11 @@ bool isVertexAnimationProperty(ComponentType component, const std::string& prope
 // String properties holding an asset reference instead of plain text: stored relative to the
 // assets folder, project-relative over MCP (a model's or document's filename, a Pose Animator's
 // animation, an Animation Player's clip, a Vertex Animator's animation)
+// a Camera Shaker's start preset naming a .shake file (a built-in name is no path)
+bool isShakePresetPathProperty(ComponentType component, const std::string& propertyName, const std::string& value) {
+    return component == ComponentType::CameraShakerComponent && propertyName == "startPreset" && Util::isShakePresetFile(value);
+}
+
 // A Rigidbody 2D's or one of its colliders' physics material (a .physicsmaterial)
 bool isPhysicsMaterialProperty(ComponentType component, const std::string& propertyName) {
     return (component == ComponentType::Rigidbody2DComponent || component == ComponentType::RigidbodyComponent) &&
@@ -378,6 +394,157 @@ const EnumOptions& tableOptions(const reflect::EnumDesc& desc, uint64_t mask = 0
 
 // framebuffers have no mipmaps: their filters
 constexpr uint64_t kFramebufferFilters = reflect::enums::bit((int)TextureFilter::NEAREST) | reflect::enums::bit((int)TextureFilter::LINEAR);
+
+// SYNC4: upstream's enums of components the reflection tables don't describe yet (camera-shake's
+// Camera Shaker / Camera Follow, video-mp4's Video Player, audio-mixer's Audio Source load type,
+// ui-scaling-text's Text Effect): hand-written until their descriptors are added
+// (editor/reflect/components), then these go and the reflected field's table answers.
+const EnumOptions& cameraShakeModeOptions() {
+    static const EnumOptions options = {
+        {(int)CameraShakeMode::Auto, "auto", "Auto"},
+        {(int)CameraShakeMode::Mode3D, "3d", "3D"},
+        {(int)CameraShakeMode::Mode2D, "2d", "2D"}
+    };
+    return options;
+}
+
+const EnumOptions& followOffsetSpaceOptions() {
+    static const EnumOptions options = {
+        {(int)FollowOffsetSpace::World, "world", "World"},
+        {(int)FollowOffsetSpace::Target, "target", "Target"},
+        {(int)FollowOffsetSpace::TargetYaw, "target_yaw", "Target Yaw"}
+    };
+    return options;
+}
+
+const EnumOptions& videoSourceOptions() {
+    static const EnumOptions options = {
+        {(int)VideoPlayerSource::CLIP, "clip", "Video Clip"},
+        {(int)VideoPlayerSource::URL, "url", "URL"}
+    };
+    return options;
+}
+
+const EnumOptions& videoTimeUpdateModeOptions() {
+    static const EnumOptions options = {
+        {(int)VideoTimeUpdateMode::GAME_TIME, "game_time", "Game Time"},
+        {(int)VideoTimeUpdateMode::UNSCALED_GAME_TIME, "unscaled_game_time", "Unscaled Game Time"}
+    };
+    return options;
+}
+
+const EnumOptions& videoRenderModeOptions() {
+    static const EnumOptions options = {
+        {(int)VideoRenderMode::CAMERA_FAR_PLANE, "camera_far_plane", "Camera Far Plane"},
+        {(int)VideoRenderMode::CAMERA_NEAR_PLANE, "camera_near_plane", "Camera Near Plane"},
+        {(int)VideoRenderMode::RENDER_TEXTURE, "render_texture", "Render Texture"},
+        {(int)VideoRenderMode::MATERIAL_OVERRIDE, "material_override", "Material Override"},
+        {(int)VideoRenderMode::API_ONLY, "api_only", "API Only"}
+    };
+    return options;
+}
+
+const EnumOptions& videoAspectRatioOptions() {
+    static const EnumOptions options = {
+        {(int)VideoAspectRatio::NO_SCALING, "no_scaling", "No Scaling"},
+        {(int)VideoAspectRatio::FIT_VERTICALLY, "fit_vertically", "Fit Vertically"},
+        {(int)VideoAspectRatio::FIT_HORIZONTALLY, "fit_horizontally", "Fit Horizontally"},
+        {(int)VideoAspectRatio::FIT_INSIDE, "fit_inside", "Fit Inside"},
+        {(int)VideoAspectRatio::FIT_OUTSIDE, "fit_outside", "Fit Outside"},
+        {(int)VideoAspectRatio::STRETCH, "stretch", "Stretch"}
+    };
+    return options;
+}
+
+const EnumOptions& videoAudioOutputModeOptions() {
+    static const EnumOptions options = {
+        {(int)VideoAudioOutputMode::NONE, "none", "None"},
+        {(int)VideoAudioOutputMode::AUDIO_SOURCE, "audio_source", "Audio Source"},
+        {(int)VideoAudioOutputMode::DIRECT, "direct", "Direct"}
+    };
+    return options;
+}
+
+const EnumOptions& audioLoadTypeOptions() {
+    static const EnumOptions options = {
+        {(int)AudioLoadType::Auto, "auto", "Auto"},
+        {(int)AudioLoadType::DecompressOnLoad, "decompress_on_load", "Decompress On Load"},
+        {(int)AudioLoadType::CompressedInMemory, "compressed_in_memory", "Compressed In Memory"},
+        {(int)AudioLoadType::Streaming, "streaming", "Streaming"}
+    };
+    return options;
+}
+
+const EnumOptions& textEffectTypeOptions() {
+    static const EnumOptions options = {
+        {(int)TextEffectType::None, "none", "None"},
+        {(int)TextEffectType::Wave, "wave", "Wave"},
+        {(int)TextEffectType::Bounce, "bounce", "Bounce"},
+        {(int)TextEffectType::Shake, "shake", "Shake"},
+        {(int)TextEffectType::Pulse, "pulse", "Pulse"},
+        {(int)TextEffectType::Typewriter, "typewriter", "Typewriter"},
+        {(int)TextEffectType::FadeIn, "fade_in", "Fade In"},
+        {(int)TextEffectType::Grow, "grow", "Grow"},
+        {(int)TextEffectType::Unfold, "unfold", "Unfold"},
+        {(int)TextEffectType::Rainbow, "rainbow", "Rainbow"},
+        {(int)TextEffectType::Gradient, "gradient", "Gradient"}
+    };
+    return options;
+}
+
+const EnumOptions& textEffectMixOptions() {
+    static const EnumOptions options = {
+        {(int)TextEffectMix::Multiply, "multiply", "Multiply"},
+        {(int)TextEffectMix::Add, "add", "Add"},
+        {(int)TextEffectMix::Replace, "replace", "Replace"}
+    };
+    return options;
+}
+
+// "layers[2].type" -> "layers[].type"
+std::string pendingReflectionName(const std::string& name) {
+    std::string out;
+    out.reserve(name.size());
+    for (size_t i = 0; i < name.size(); i++) {
+        out.push_back(name[i]);
+        if (name[i] == '[') {
+            size_t j = i + 1;
+            while (j < name.size() && std::isdigit(static_cast<unsigned char>(name[j]))) j++;
+            i = j - 1;
+        }
+    }
+    return out;
+}
+
+// The upstream enums above, by component and property; nullptr for every other property
+const EnumOptions* pendingReflectionOptions(ComponentType component, const std::string& propertyName) {
+    const std::string name = pendingReflectionName(propertyName);
+    switch (component) {
+        case ComponentType::VideoPlayerComponent:
+            if (name == "source") return &videoSourceOptions();
+            if (name == "timeUpdateMode") return &videoTimeUpdateModeOptions();
+            if (name == "renderMode") return &videoRenderModeOptions();
+            if (name == "aspectRatio") return &videoAspectRatioOptions();
+            if (name == "audioOutputMode") return &videoAudioOutputModeOptions();
+            break;
+        case ComponentType::CameraShakerComponent:
+            if (name == "mode") return &cameraShakeModeOptions();
+            break;
+        case ComponentType::CameraFollowComponent:
+            if (name == "offsetSpace") return &followOffsetSpaceOptions();
+            break;
+        case ComponentType::AudioSourceComponent:
+            if (name == "loadType") return &audioLoadTypeOptions();
+            break;
+        case ComponentType::TextEffectComponent:
+            if (name == "layers[].type") return &textEffectTypeOptions();
+            if (name == "layers[].mix") return &textEffectMixOptions();
+            break;
+        default:
+            break;
+    }
+    return nullptr;
+}
 
 const EnumOptions& atmosphereQualityOptions() {
     static const EnumOptions options = {
@@ -655,6 +822,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"collider3d_type", &tableOptions(reflect::enums::kCollider3DType)},
         {"light_type", &tableOptions(reflect::enums::kLightType)},
         {"camera_type", &tableOptions(reflect::enums::kCameraType)},
+        {"camera_shake_mode", &cameraShakeModeOptions()},
+        {"follow_offset_space", &followOffsetSpaceOptions()},
         {"lattice_interpolation", &tableOptions(reflect::enums::kLatticeInterpolation)},
         {"lattice_outside", &tableOptions(reflect::enums::kLatticeOutside)},
         {"lattice_jiggle_anchor", &tableOptions(reflect::enums::kLatticeJiggleAnchor)},
@@ -668,6 +837,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
 }
 
 const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, const std::string& propertyName) {
+    // SYNC4: components the reflection tables don't describe yet (see pendingReflectionOptions)
+    if (const EnumOptions* pending = pendingReflectionOptions(component, propertyName)) return pending;
     // the field's enum table ("colliders[2].type": the colliders' type field)
     const reflect::ComponentDesc* desc = reflect::find(component);
     const reflect::FieldDesc* field = desc ? reflect::findField(*desc, propertyName) : nullptr;
@@ -866,6 +1037,75 @@ double McpValues::number(float value) {
 }
 
 Json McpValues::toJson(const Vector2& value) { return Json::array({number(value.x), number(value.y)}); }
+
+Json McpValues::canvasScalerToJson(const CanvasScalerSettings& settings) {
+    return Json{{"mode", CanvasScaler::modeName(settings.mode)},
+                {"scale_factor", number(settings.scaleFactor)},
+                {"reference", toJson(settings.referenceResolution)},
+                {"match_mode", CanvasScaler::matchModeName(settings.screenMatchMode)},
+                {"match", number(settings.matchWidthOrHeight)},
+                {"physical_unit", CanvasScaler::unitName(settings.physicalUnit)},
+                {"fallback_dpi", number(settings.fallbackScreenDPI)}};
+}
+
+bool McpValues::canvasScalerFromJson(const Json& value, CanvasScalerSettings& out, std::string& error) {
+    if (!value.is_object()) {
+        error = "must be an object {mode, scale_factor, reference, match_mode, match, physical_unit, fallback_dpi}";
+        return false;
+    }
+    CanvasScalerSettings settings = out;
+    auto readPositive = [&](const Json& v, const char* key, double minimum, const char* minimumText, float& target) {
+        if (!v.is_number() || !std::isfinite(v.get<double>()) || v.get<double>() < minimum) {
+            error = std::string(key) + " must be a number >= " + minimumText;
+            return false;
+        }
+        target = static_cast<float>(v.get<double>());
+        return true;
+    };
+    auto readName = [&](const Json& v, const char* key, const char* names, auto parse) {
+        if (!v.is_string() || !parse(v.get<std::string>().c_str())) {
+            error = std::string(key) + " must be one of " + names;
+            return false;
+        }
+        return true;
+    };
+    for (auto it = value.begin(); it != value.end(); ++it) {
+        const std::string& key = it.key();
+        const Json& v = it.value();
+        if (key == "mode") {
+            if (!readName(v, "mode", "follow_game_canvas, constant_pixel_size, scale_with_screen_size, constant_physical_size",
+                          [&](const char* n){ return CanvasScaler::parseMode(n, settings.mode); })) return false;
+        } else if (key == "scale_factor") {
+            if (!readPositive(v, "scale_factor", 0.01, "0.01", settings.scaleFactor)) return false;
+        } else if (key == "reference" || key == "reference_resolution") {
+            Vector2 reference = settings.referenceResolution;
+            if (!parseVector2(v, reference) || !(reference.x >= 1.0f) || !(reference.y >= 1.0f)) {
+                error = key + " must be [width, height] (>= 1)";
+                return false;
+            }
+            settings.referenceResolution = reference;
+        } else if (key == "match_mode" || key == "screen_match_mode") {
+            if (!readName(v, "match_mode", "match_width_or_height, expand, shrink",
+                          [&](const char* n){ return CanvasScaler::parseMatchMode(n, settings.screenMatchMode); })) return false;
+        } else if (key == "match" || key == "match_width_or_height") {
+            if (!v.is_number() || v.get<double>() < 0.0 || v.get<double>() > 1.0) {
+                error = key + " must be a number 0 (width) .. 1 (height)";
+                return false;
+            }
+            settings.matchWidthOrHeight = static_cast<float>(v.get<double>());
+        } else if (key == "physical_unit") {
+            if (!readName(v, "physical_unit", "centimeters, millimeters, inches, points, picas",
+                          [&](const char* n){ return CanvasScaler::parseUnit(n, settings.physicalUnit); })) return false;
+        } else if (key == "fallback_dpi" || key == "fallback_screen_dpi") {
+            if (!readPositive(v, key.c_str(), 1.0, "1", settings.fallbackScreenDPI)) return false;
+        } else {
+            error = "unknown key \"" + key + "\" (mode, scale_factor, reference, match_mode, match, physical_unit, fallback_dpi)";
+            return false;
+        }
+    }
+    out = settings;
+    return true;
+}
 Json McpValues::toJson(const Vector3& value) { return Json::array({number(value.x), number(value.y), number(value.z)}); }
 Json McpValues::toJson(const Vector4& value) {
     return Json::array({number(value.x), number(value.y), number(value.z), number(value.w)});
@@ -1083,6 +1323,10 @@ Json playerClipsToJson(Project* project, const std::vector<AnimationPlayerClip>&
         Json item{{"clip", clipPathToJson(project, entry.clip)}, {"name", entry.name}, {"wrap", anim::wrapName(entry.wrap)}};
         if (!entry.guid.empty()) item["guid"] = entry.guid;
         if (entry.layer != 0) item["layer"] = entry.layer;
+        // humanoid playback (anim-retarget): only when set
+        if (entry.retarget) item["retarget"] = true;
+        if (entry.mirror) item["mirror"] = true;
+        if (entry.footIK) item["footIK"] = true;
         list.push_back(item);
     }
     return list;
@@ -1212,8 +1456,9 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
             for (auto it = item.begin(); it != item.end(); ++it) {
                 const std::string key = it->first.as<std::string>();
                 // guid: as get_entity shows it, so a list read back is taken; its value is ignored
-                if (key != "clip" && key != "guid" && key != "name" && key != "wrap" && key != "layer") {
-                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap, layer}; its guid follows the clip).";
+                if (key != "clip" && key != "guid" && key != "name" && key != "wrap" && key != "layer" && key != "retarget" &&
+                    key != "mirror" && key != "footIK") {
+                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap, layer, retarget, mirror, footIK}; its guid follows the clip).";
                     return false;
                 }
                 if (!it->second.IsScalar() && !it->second.IsNull()) {
@@ -1266,6 +1511,18 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
                 return false;
             }
             if (layer == 0) entry.remove("layer");
+        }
+        for (const char* flag : {"retarget", "mirror", "footIK"}) {
+            if (!constEntry[flag]) continue;
+            bool on = false;
+            const std::string text = constEntry[flag].Scalar();
+            if (text != "true" && text != "false" && !YamlNumbers::readPlain(text, on)) {
+                error = at + "." + flag + " must be true or false.";
+                return false;
+            }
+            if (text == "true") on = true;
+            if (on) entry[flag] = "true";
+            else entry.remove(flag);
         }
         rebuilt.push_back(entry);
     }
@@ -1472,6 +1729,10 @@ Json McpValues::textureToJson(Project* project, SceneProject* scene, const Textu
     if (fluid != NULL_ENTITY) {
         return Json{{"fluid", entityToJson(scene, fluid)}};
     }
+    const Entity video = VideoTextureLink::parse(texture.getId());
+    if (video != NULL_ENTITY) {
+        return Json{{"video", entityToJson(scene, video)}};
+    }
     if (texture.empty() || texture.isFramebuffer()) return nullptr;
 
     static const Texture defaults;
@@ -1538,17 +1799,17 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
         out = Texture();
         return true;
     }
-    // a link id as a scene file keeps it: "camera|<entity id>", "fluid|<entity id>"
+    // a link id as a scene file keeps it: "camera|<entity id>", "fluid|<entity id>", "video|<entity id>"
     if (value.is_string()) {
         const std::string text = value.get<std::string>();
-        if (text.rfind("camera|", 0) == 0 || text.rfind("fluid|", 0) == 0) {
+        if (text.rfind("camera|", 0) == 0 || text.rfind("fluid|", 0) == 0 || text.rfind("video|", 0) == 0) {
             const Entity linked = CameraTextureLink::parseLink(text);
             if (linked == NULL_ENTITY) {
-                error = "\"" + text + "\" is not a texture link; one is \"camera|<entity id>\" or \"fluid|<entity id>\".";
+                error = "\"" + text + "\" is not a texture link; one is \"camera|<entity id>\", \"fluid|<entity id>\" or \"video|<entity id>\".";
                 return false;
             }
             Json link = Json::object();
-            link[text[0] == 'c' ? "camera" : "fluid"] = linked;
+            link[text[0] == 'c' ? "camera" : text[0] == 'f' ? "fluid" : "video"] = linked;
             return textureFromJson(project, scene, link, out, camera, error);
         }
     }
@@ -1560,17 +1821,32 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     }
     if (!value.is_object()) {
         error = "a texture is null, a project-relative path, {\"path\": ..., \"min_filter\": ...}, "
-                "{\"cube\": [front, back, left, right, up, down] or \"path\"}, {\"camera\": <entity>} or {\"fluid\": <entity>}.";
+                "{\"cube\": [front, back, left, right, up, down] or \"path\"}, {\"camera\": <entity>}, {\"fluid\": <entity>} or {\"video\": <entity>}.";
         return false;
     }
-    static const std::set<std::string> keys = {"path", "cube", "camera", "fluid", "id", "min_filter", "mag_filter", "wrap_u",
+    static const std::set<std::string> keys = {"path", "cube", "camera", "fluid", "video", "id", "min_filter", "mag_filter", "wrap_u",
                                                "wrap_v", "alpha_border", "svg_scale"};
     for (auto it = value.begin(); it != value.end(); ++it) {
         if (!keys.count(it.key())) {
-            error = "unknown texture key \"" + it.key() + "\"; valid: path, cube, camera, fluid, min_filter, mag_filter, "
+            error = "unknown texture key \"" + it.key() + "\"; valid: path, cube, camera, fluid, video, min_filter, mag_filter, "
                     "wrap_u, wrap_v, alpha_border, svg_scale.";
             return false;
         }
+    }
+    if (value.contains("video")) {
+        if (!scene || !scene->scene) {
+            error = "a video texture needs a loaded scene.";
+            return false;
+        }
+        Entity videoEntity = NULL_ENTITY;
+        if (!entityFromJson(scene, value["video"], videoEntity, error)) return false;
+        if (videoEntity == NULL_ENTITY || !scene->scene->isEntityCreated(videoEntity) ||
+            !scene->scene->findComponent<VideoPlayerComponent>(videoEntity)) {
+            error = "the player of a video texture must be a GameObject with a Video Player component.";
+            return false;
+        }
+        out = VideoTextureLink::make(scene->scene, videoEntity);
+        return true;
     }
     if (value.contains("fluid")) {
         if (!scene || !scene->scene) {
@@ -2256,6 +2532,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         case PropertyType::String: {
             const std::string& value = *static_cast<std::string*>(ref);
             if (isPlayerClipProperty(ctx.component, name)) return clipPathToJson(ctx.project, value);
+            if (isShakePresetPathProperty(ctx.component, name, value)) return assetPathToJson(ctx.project, value);
             return isAssetPathProperty(ctx.component, name) ? assetPathToJson(ctx.project, value) : value;
         }
         case PropertyType::Asset: {
@@ -2616,6 +2893,31 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                         ".clip, its GUID follows the file.";
                 return nullptr;
             }
+            if (component == ComponentType::CameraShakerComponent && propertyName == "startPreset" && !text.empty()) {
+                // a built-in name, or a .shake that exists and reads (project-relative, or its stored form)
+                if (!Util::isShakePresetFile(text)) {
+                    if (!camera::findBuiltinShakePreset(text)) {
+                        std::string names;
+                        for (const std::string& name : camera::builtinShakePresetNames()) names += (names.empty() ? "" : ", ") + name;
+                        error = "startPreset: '" + text + "' is no built-in preset (" + names + ") and no .shake path.";
+                        return nullptr;
+                    }
+                } else {
+                    std::string stored;
+                    if (!storedAssetPathFromJson(project, text, stored, error)) return nullptr;
+                    std::string content;
+                    if (!ProjectChecks::readFile(project->resolveAssetPath(stored), content)) {
+                        error = "startPreset: " + text + " does not exist (write it first: write_file with a .shake).";
+                        return nullptr;
+                    }
+                    camera::ShakeParseResult parsed = camera::parseShakePreset(content);
+                    if (!parsed.ok()) {
+                        error = "startPreset: " + text + " is no shake preset: " + parsed.errorText();
+                        return nullptr;
+                    }
+                    text = stored;
+                }
+            }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
             // an Asset script property is project-relative: a GUID given names its file
             if (stringType == PropertyType::Asset && propertyName.compare(0, 8, "scripts[") == 0 && Guid::isValidText(text)) {
@@ -2661,6 +2963,19 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
         }
         case PropertyType::Float: {
             if (!value.is_number()) return expect("a number");
+            // camera shake spec 10: the Camera Shaker's and Camera Follow's ranges
+            if (component == ComponentType::CameraShakerComponent || component == ComponentType::CameraFollowComponent) {
+                const double number = value.get<double>();
+                if (component == ComponentType::CameraShakerComponent && propertyName == "traumaPower" &&
+                        !(number >= 1.0 && number <= 4.0)) {
+                    error = "traumaPower must be 1 to 4 (shake = trauma ^ power; 2 by default).";
+                    return nullptr;
+                }
+                if (!(number >= 0.0) || !std::isfinite(number)) {
+                    error = propertyName + " must be 0 or more.";
+                    return nullptr;
+                }
+            }
             // as the scene file reads it back (Stream clamps a negative fade to none)
             if (component == ComponentType::AnimationPlayerComponent && propertyName == "defaultFadeTime" &&
                     !(value.get<double>() >= 0.0)) {
@@ -2682,6 +2997,10 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
         case PropertyType::Vector2: {
             Vector2 v = property.ref ? *static_cast<Vector2*>(property.ref) : Vector2::ZERO;
             if (!parseVector2(value, v)) return expect("[x,y]");
+            if (component == ComponentType::CameraFollowComponent && propertyName == "deadZone" && (v.x < 0.0f || v.y < 0.0f)) {
+                error = "deadZone is a width and a height: both 0 or more.";
+                return nullptr;
+            }
             return new PropertyCmd<Vector2>(project, sceneId, entity, component, propertyName, v, onChanged);
         }
         case PropertyType::Vector3: {
@@ -2697,6 +3016,10 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 return new PropertyCmd<Vector3>(project, sceneId, entity, component, propertyName, Vector3(c.x, c.y, c.z), onChanged);
             }
             if (!parseVector3(value, v)) return expect("[x,y,z] (or \"#RRGGBB\", {\"srgb\":[r,g,b]}, {\"linear\":[r,g,b]})");
+            if (component == ComponentType::CameraFollowComponent && propertyName == "damping" && (v.x < 0.0f || v.y < 0.0f || v.z < 0.0f)) {
+                error = "damping is a smooth time in seconds per axis: 0 (rigid) or more.";
+                return nullptr;
+            }
             return new PropertyCmd<Vector3>(project, sceneId, entity, component, propertyName, v, onChanged);
         }
         case PropertyType::Vector4: {
@@ -3252,6 +3575,22 @@ bool McpValues::parseChangesAsGiven(const Json& changes, std::vector<Change>& ou
     return true;
 }
 
+Json McpValues::videoStatusToJson(Scene* scene, Entity entity) {
+    if (!scene || !scene->isComponentRegistered<VideoPlayerComponent>() || !scene->findComponent<VideoPlayerComponent>(entity)) return nullptr;
+    std::shared_ptr<VideoPlayerSystem> system = scene->findSystem<VideoPlayerSystem>();
+    if (!system) return nullptr;
+    const VideoPlayerSystem::Status s = system->getStatus(entity);
+    if (s.backend.empty() && s.error.empty() && !s.preparing) return nullptr;
+    auto round3 = [](double v) { return std::round(v * 1000.0) / 1000.0; };
+    Json out = {{"prepared", s.prepared}, {"preparing", s.preparing}, {"playing", s.playing}, {"paused", s.paused},
+                {"time", round3(s.time)}, {"frame", s.frame}, {"frameCount", s.frameCount}, {"frameRate", round3(s.frameRate)},
+                {"length", round3(s.length)}, {"width", s.width}, {"height", s.height}, {"backend", s.backend},
+                {"videoCodec", s.videoCodec}, {"audioCodec", s.audioCodec}, {"prepareProgress", round3(s.prepareProgress)},
+                {"buffered", round3(s.bufferedSeconds)}};
+    out["error"] = s.error.empty() ? Json(nullptr) : Json(s.error);
+    return out;
+}
+
 Json McpValues::canvasGroupStateToJson(Scene* scene, Entity entity) {
     if (!scene || !scene->isEntityCreated(entity) || !scene->findComponent<RectTransformComponent>(entity)) return nullptr;
     const CanvasGroupState state = scene->getSystem<UISystem>()->getCanvasGroupState(entity);
@@ -3337,6 +3676,18 @@ static bool isWholeValueProperty(Scene* scene, Entity entity, ComponentType comp
            (property == "stencil" || endsWith(property, ".stencil") || endsWith(property, "material.extraPass") ||
             property == "shaderUniforms" || endsWith(property, "shaderParams") || endsWith(property, "shaderTextures") ||
             endsWith(property, "shaderFeatures") || endsWith(property, "shaderGlobalBindings"));
+}
+
+std::string McpValues::safeAreaDrivenError(Scene* scene, Entity entity, const std::string& property) {
+    static const std::set<std::string> driven = {
+        "width", "height", "anchorPointLeft", "anchorPointTop", "anchorPointRight", "anchorPointBottom",
+        "anchorOffsetLeft", "anchorOffsetTop", "anchorOffsetRight", "anchorOffsetBottom", "positionOffset",
+        "anchorPreset", "usingAnchors"};
+    if (!scene || !scene->findComponent<SafeAreaComponent>(entity)) return std::string();
+    const std::string root = property.substr(0, property.find_first_of(".["));
+    if (!property.empty() && driven.count(root) == 0) return std::string();
+    return "RectTransform" + (property.empty() ? std::string() : "." + property) + " of \"" + scene->getEntityName(entity) +
+           "\" is driven by the Safe Area component (remove it or edit the Safe Area edges).";
 }
 
 // A player without authored layers plays one Base Layer (playerLayers), which has no layers[0].*
@@ -3501,6 +3852,16 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 error = label + " has no " + componentLabel + " component; add it first (add_component, or create_entity's "
                         "components).";
                 return false;
+            }
+            if (component == ComponentType::RectTransformComponent) {
+                for (const Change& change : changes) {
+                    if (change.component != component) continue;
+                    const std::string driven = safeAreaDrivenError(scene->scene, entity, change.property);
+                    if (!driven.empty()) {
+                        error = driven;
+                        return false;
+                    }
+                }
             }
             // A whole value set as one command (a material, an extra pass, a stencil, a shader
             // library collection) and a path inside it in the same call: each command is built from
@@ -3846,7 +4207,7 @@ bool runCommand(CommandHistory* history, Command* cmd, std::string& error, const
         return false;
     }
     std::string logged;
-    for (const LogEntry& entry : Out::getLogsSince(logId, 5, true)) {
+    for (const editor::LogEntry& entry : Out::getLogsSince(logId, 5, true)) {
         if (!logged.empty()) logged += " ";
         logged += entry.message;
     }

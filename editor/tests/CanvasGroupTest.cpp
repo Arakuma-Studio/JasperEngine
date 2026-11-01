@@ -950,7 +950,8 @@ TEST_F(CanvasGroupTest, FlattenCompositeIsABuildKeyNotASceneKey){
 
 // ---- 13. performance (Release only)
 
-#ifdef NDEBUG
+// optimised builds only; not under the sanitizers (they slow everything several times)
+#if defined(NDEBUG) && !defined(__SANITIZE_ADDRESS__)
 TEST_F(CanvasGroupTest, PerformanceBudgets){
     // The budgets are for an idle machine (spec 9: Release, host). A build box running other
     // agents' builds cannot time them: skipped above half its cores of load; below that, each

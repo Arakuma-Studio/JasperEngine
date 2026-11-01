@@ -544,6 +544,87 @@ bool ClipSceneActions::extractSubClip(Project* project, uint32_t sceneId, Entity
     return true;
 }
 
+std::string ClipSceneActions::humanoidClipPath(Project* project, const std::string& source){
+    anim::SubClipReference parsed;
+    std::string directory;
+    std::string name;
+    if (anim::parseSubClipReference(source, parsed)){
+        directory = subClipDirectory(project, source);
+        name = parsed.clip;
+    }else{
+        const fs::path file = project->resolveAssetPath(fs::u8path(source));
+        directory = projectRelative(project, file.parent_path());
+        name = editor::FileUtils::pathToUtf8(file.stem());
+    }
+    const std::string base = (directory.empty() ? std::string() : directory + "/") + name + " (Humanoid)";
+    std::string path = base + ".anim";
+    std::error_code ec;
+    for (int k = 2; fs::exists(project->getProjectPath() / fs::u8path(path), ec) && k < 1000; k++){
+        path = base + " " + std::to_string(k) + ".anim";
+    }
+    return path;
+}
+
+bool ClipSceneActions::convertToHumanoid(Project* project, uint32_t sceneId, Entity player, size_t entry, const std::string& source,
+                                         const std::string& model, const std::string& clipPath, ClipActionResult& result, std::string& error){
+    result = ClipActionResult();
+    if (!project) return fail(error, "no project");
+    fs::path absolute;
+    if (!checkClipPath(project, clipPath, absolute, error)) return false;
+    std::error_code ec;
+    if (fs::exists(absolute, ec)) return fail(error, "'" + projectRelative(project, absolute) + "' already exists: convert into a new file");
+    // the source clip as players store it
+    const std::string reference = ClipConverters::playerEntry(project, source).clip;
+    ClipData data;
+    std::string failure;
+    if (anim::isSubClipReference(reference)){
+        if (!anim::buildModelSubClip(reference, data, result.warnings, &failure)) return fail(error, failure);
+    }else{
+        std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project, projectRelative(project, project->resolveAssetPath(fs::u8path(reference))), &failure);
+        if (!document) return fail(error, failure);
+        data = document->data();
+    }
+    const std::string rig = model.empty() ? ClipConverters::humanoidSourceModel(reference, data) : ClipConverters::playerEntry(project, model).clip;
+    if (rig.empty()) return fail(error, "'" + reference + "' names no source model: choose the model it was made on (or set its Preview Model)");
+    ClipData converted;
+    if (!ClipConverters::convertToHumanoid(data, rig, converted, result.warnings, &failure)) return fail(error, failure);
+    result.clip = projectRelative(project, absolute);
+
+    Scene* scene = nullptr;
+    if (player != NULL_ENTITY){
+        scene = editableScene(project, sceneId, error);
+        if (!scene) return false;
+        if (!isEntity(scene, player)) return fail(error, "the Animation Player's GameObject is gone");
+        const AnimationPlayerComponent* component = scene->findComponent<AnimationPlayerComponent>(player);
+        if (!component || entry >= component->clips.size()) return fail(error, "the Animation Player entry is gone");
+    }
+    if (!scene){
+        result.projectStep = true;
+        if (!AnimationClipDocument::create(project, result.clip, converted, "Convert to Humanoid Clip", &failure)) return fail(error, failure);
+        result.status = "Converted '" + reference + "' to the humanoid clip '" + result.clip + "' on " + rig + " (one project undo step)";
+        return true;
+    }
+    // Use in this player: the entry plays the file (its state name kept), one scene step
+    stopPreviewsFor(sceneId, {player});
+    const std::string text = newClipText(project, converted);
+    const AnimationPlayerClip file = fileEntry(project, absolute, text);
+    std::vector<AnimationPlayerClip> list = scene->getComponent<AnimationPlayerComponent>(player).clips;
+    const std::string name = stateName(list[entry]);
+    list[entry].clip = file.clip;
+    list[entry].guid = file.guid;
+    list[entry].retarget = false;   // humanoid already
+    if (stateName(list[entry]) != name) list[entry].name = name;
+    result.entries.push_back(entry);
+    result.player = player;
+    std::vector<Command*> commands;
+    commands.push_back(new PropertyCmd<std::vector<AnimationPlayerClip>>(project, sceneId, player, ComponentType::AnimationPlayerComponent,
+                                                                         "clips", list));
+    if (!runStep(project, sceneId, {{result.clip, text}}, std::move(commands), player, result, error)) return false;
+    result.status = "Converted '" + reference + "' to the humanoid clip '" + result.clip + "'; the Animation Player of " + nameOf(scene, player) +
+                    " plays it now (one scene undo step)";
+    return true;
+}
+
 bool ClipSceneActions::useAnimationPlayer(Project* project, uint32_t sceneId, Entity model, ClipActionResult& result, std::string& error){
     result = ClipActionResult();
     Scene* scene = editableScene(project, sceneId, error);

@@ -16,7 +16,10 @@
 #include "Engine.h"
 
 #include <climits>
+#include <cmath>
 #include "Log.h"
+#include "debug/DebugOverlay.h"
+#include "debug/DebugStats.h"
 #include "Scene.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
@@ -28,11 +31,13 @@
 #include "input/InputManagerFormat.h"
 #include "json.hpp"
 
+#include <cstring>
 #include <set>
 #include <stdexcept>
 #include "System.h"
 #include "player/RunControl.h"
 #include "Screen.h"
+#include "util/CanvasScalerRef.h"
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
 #include "picking/MeshRaycast.h"
@@ -159,6 +164,29 @@ static bool luaComponentIds(lua_State* L, int index, Scene* scene, const char* f
         ids.push_back(id);
     }
     return true;
+}
+
+// Screen.setExtraInsets(left, top, right, bottom [, unit]): unit "canvas" (default) or "pixels"
+static int luaScreenSetExtraInsets(lua_State* L){
+    const char* edges[] = {"left", "top", "right", "bottom"};
+    float values[4];
+    for (int i = 0; i < 4; i++){
+        if (lua_type(L, i + 1) != LUA_TNUMBER){
+            return luaL_error(L, "Screen.setExtraInsets: %s must be a number (left, top, right, bottom [, \"canvas\"|\"pixels\"])", edges[i]);
+        }
+        values[i] = (float)lua_tonumber(L, i + 1);
+    }
+    bool pixels = false;
+    if (!lua_isnoneornil(L, 5)){
+        const char* unit = lua_type(L, 5) == LUA_TSTRING ? lua_tostring(L, 5) : nullptr;
+        if (unit && std::string(unit) == "pixels"){
+            pixels = true;
+        }else if (!unit || std::string(unit) != "canvas"){
+            return luaL_error(L, "Screen.setExtraInsets: unit must be \"canvas\" or \"pixels\"");
+        }
+    }
+    Screen::setExtraInsets(EdgeInsets(values[0], values[1], values[2], values[3]), pixels);
+    return 0;
 }
 
 // ---- Input (Unity's Input class: edges, touches, the Input Manager's actions)
@@ -1088,6 +1116,236 @@ namespace{
     lua_Integer luaMeshRaycastAll(){ return MeshRaycast::ALL; }
 }
 
+// ---- Log and DebugOverlay (feature debug-overlay). Lua is built as C: lua_error longjmps over
+// C++ destructors, so every check that can raise comes before the first C++ object.
+namespace {
+
+    struct LogLevelNames {};
+
+#if 0 // SYNC4-ABSORB(log-overlay): upstream's Log.print... (tab-joined values, a traceback per
+      // Project Settings > Debug) wait for the log-overlay absorption; S09's Log.* (category
+      // lua, chunk and line) stay the Lua Log functions meanwhile
+    // Log.print/verbose/debug/warn/error(...): the values joined with tabs (tostring), a Lua
+    // traceback per Project Settings > Debug > Log Stack Traces
+    int luaLogLine(lua_State* L, LogLevel level){
+        const int count = lua_gettop(L);
+        luaL_Buffer buffer;
+        luaL_buffinit(L, &buffer);
+        if (count == 0)
+            luaL_addstring(&buffer, "(nil)");
+        for (int i = 1; i <= count; i++){
+            if (i > 1)
+                luaL_addchar(&buffer, '\t');
+            luaL_tolstring(L, i, nullptr);
+            luaL_addvalue(&buffer);
+        }
+        luaL_pushresult(&buffer);
+        if (Log::wantsStackTrace(level))
+            luaL_traceback(L, L, nullptr, 1);
+        else
+            lua_pushliteral(L, "");
+        size_t messageLength = 0, traceLength = 0;
+        const char* message = lua_tolstring(L, -2, &messageLength);
+        const char* trace = lua_tolstring(L, -1, &traceLength);
+        {
+            const std::string messageText(message, messageLength);
+            const std::string traceText(trace, traceLength);
+            lua_pop(L, 2);
+            Log::emitEntry(level, messageText, traceText, true);
+        }
+        return 0;
+    }
+
+    int luaLogPrint(lua_State* L){ return luaLogLine(L, LogLevel::Info); }
+    int luaLogVerbose(lua_State* L){ return luaLogLine(L, LogLevel::Trace); }
+    int luaLogDebug(lua_State* L){ return luaLogLine(L, LogLevel::Debug); }
+    int luaLogWarn(lua_State* L){ return luaLogLine(L, LogLevel::Warn); }
+    int luaLogError(lua_State* L){ return luaLogLine(L, LogLevel::Error); }
+#endif
+
+    // Log.getEntries([maxCount [, levels]]): the buffered lines, newest last
+    int luaLogGetEntries(lua_State* L){
+        lua_Integer maxCount = 0;
+        if (!lua_isnoneornil(L, 1)){
+            maxCount = luaL_checkinteger(L, 1);
+            if (maxCount < 0)
+                return luaL_argerror(L, 1, "must be 0 (all) or more");
+        }
+        uint32_t mask = LOG_LEVELS_ALL;
+        if (!lua_isnoneornil(L, 2)){
+            luaL_checktype(L, 2, LUA_TTABLE);
+            mask = 0;
+            const lua_Integer length = (lua_Integer)lua_rawlen(L, 2);
+            for (lua_Integer i = 1; i <= length; i++){
+                lua_rawgeti(L, 2, i);
+                int isNumber = 0;
+                const lua_Integer value = lua_tointegerx(L, -1, &isNumber);
+                lua_pop(L, 1);
+                if (!isNumber || value < 0 || value > static_cast<lua_Integer>(LogLevel::Error))
+                    return luaL_argerror(L, 2, "a list of LogLevel values (LogLevel.INFO .. LogLevel.ERROR)");
+                mask |= logLevelBit(static_cast<LogLevel>(value));
+            }
+        }
+        const std::vector<LogEntry> entries = Log::getEntries(static_cast<size_t>(maxCount), mask);
+        lua_createtable(L, static_cast<int>(entries.size()), 0);
+        for (size_t i = 0; i < entries.size(); i++){
+            const LogEntry& entry = entries[i];
+            lua_createtable(L, 0, 8);
+            lua_pushinteger(L, static_cast<lua_Integer>(entry.id));
+            lua_setfield(L, -2, "id");
+            lua_pushinteger(L, static_cast<lua_Integer>(entry.level));
+            lua_setfield(L, -2, "level");
+            lua_pushlstring(L, entry.message.data(), entry.message.size());
+            lua_setfield(L, -2, "message");
+            lua_pushlstring(L, entry.stackTrace.data(), entry.stackTrace.size());
+            lua_setfield(L, -2, "stackTrace");
+            lua_pushnumber(L, entry.time);
+            lua_setfield(L, -2, "time");
+            lua_pushinteger(L, static_cast<lua_Integer>(entry.frame));
+            lua_setfield(L, -2, "frame");
+            lua_pushboolean(L, entry.mainThread);
+            lua_setfield(L, -2, "mainThread");
+            lua_pushboolean(L, entry.fromLua);
+            lua_setfield(L, -2, "fromLua");
+            lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+        }
+        return 1;
+    }
+
+    // Log.count(level)
+    int luaLogCount(lua_State* L){
+        const lua_Integer level = luaL_checkinteger(L, 1);
+        if (level < 0 || level > static_cast<lua_Integer>(LogLevel::Error))
+            return luaL_argerror(L, 1, "a LogLevel value (LogLevel.INFO .. LogLevel.ERROR)");
+        lua_pushinteger(L, static_cast<lua_Integer>(Log::getCount(static_cast<LogLevel>(level))));
+        return 1;
+    }
+
+    // DebugOverlay.statsMode = DebugOverlay.STATS_OFF / STATS_FPS / STATS_FULL (no other value)
+    int luaDebugOverlaySetStatsMode(lua_State* L){
+        // a number with an integral value (2 and 2.0), 0 .. 2
+        const lua_Number mode = lua_type(L, 1) == LUA_TNUMBER ? lua_tonumber(L, 1) : -1.0;
+        if (mode != std::floor(mode) || mode < static_cast<lua_Number>(DebugOverlaySettings::Stats::Off) ||
+            mode > static_cast<lua_Number>(DebugOverlaySettings::Stats::Full))
+            return luaL_argerror(L, 1, "DebugOverlay.statsMode takes DebugOverlay.STATS_OFF, STATS_FPS or STATS_FULL (0, 1 or 2)");
+        DebugOverlay::setStatsMode(static_cast<DebugOverlaySettings::Stats>(static_cast<int>(mode)));
+        return 0;
+    }
+
+    // DebugOverlay.getStats(): DebugStatsSnapshot's fields, camelCase
+    int luaDebugOverlayGetStats(lua_State* L){
+        const DebugStatsSnapshot s = DebugStats::sample();
+        lua_createtable(L, 0, 20);
+        auto number = [L](const char* name, double value){
+            lua_pushnumber(L, value);
+            lua_setfield(L, -2, name);
+        };
+        auto integer = [L](const char* name, uint64_t value){
+            lua_pushinteger(L, static_cast<lua_Integer>(value));
+            lua_setfield(L, -2, name);
+        };
+        number("fps", s.fps);
+        number("frameMs", s.frameMs);
+        number("frameMsAvg", s.frameMsAvg);
+        number("frameMsMin", s.frameMsMin);
+        number("frameMsMax", s.frameMsMax);
+        number("frameMs1PercentLow", s.frameMs1PercentLow);
+        integer("drawCalls", s.drawCalls);
+        integer("instances", s.instances);
+        integer("triangles", s.triangles);
+        integer("processMemoryBytes", s.processMemoryBytes);
+        integer("luaMemoryBytes", s.luaMemoryBytes);
+        integer("audioVoices", s.audioVoices);
+        integer("audioVoicesMax", s.audioVoicesMax);
+        integer("bodies2D", s.bodies2D);
+        integer("bodies3D", s.bodies3D);
+        integer("entities", s.entities);
+        integer("scenes", s.scenes);
+        integer("coroutines", s.coroutines);
+        integer("timers", s.timers);
+        integer("htmlUiDrawCalls", s.htmlUiDrawCalls);
+        return 1;
+    }
+
+    // a console command's Lua function, unreferenced when the command goes (while its state lives)
+    struct LuaCommandFunction {
+        lua_State* L = nullptr;
+        int ref = LUA_NOREF;
+        ~LuaCommandFunction(){
+            if (L && ref != LUA_NOREF && LuaBinding::getLuaState() == L)
+                luaL_unref(L, LUA_REGISTRYINDEX, ref);
+        }
+    };
+
+    // the table `self` of the Lua function that called (a script method), or 0
+    const void* callerSelf(lua_State* L){
+        lua_Debug ar;
+        if (!lua_getstack(L, 1, &ar))
+            return nullptr;
+        const void* self = nullptr;
+        for (int i = 1; ; i++){
+            const char* name = lua_getlocal(L, &ar, i);
+            if (!name)
+                break;
+            if (std::strcmp(name, "self") == 0 && lua_istable(L, -1))
+                self = lua_topointer(L, -1);
+            lua_pop(L, 1);
+            if (self || std::strcmp(name, "self") == 0)
+                break;
+        }
+        return self;
+    }
+
+    // DebugOverlay.addCommand(name, description, fn [, owner]): fn(args) gets the words after the
+    // name. The owner (a script table; by default the `self` of the calling method) takes the
+    // command with it when it is released
+    int luaDebugOverlayAddCommand(lua_State* L){
+        size_t nameLength = 0;
+        const char* name = luaL_checklstring(L, 1, &nameLength);
+        size_t descriptionLength = 0;
+        const char* description = lua_isnoneornil(L, 2) ? "" : luaL_checklstring(L, 2, &descriptionLength);
+        luaL_checktype(L, 3, LUA_TFUNCTION);
+        const void* owner = nullptr;
+        if (!lua_isnoneornil(L, 4)){
+            luaL_checktype(L, 4, LUA_TTABLE);
+            owner = lua_topointer(L, 4);
+        }else{
+            owner = callerSelf(L);
+        }
+        lua_pushvalue(L, 3);
+        const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        bool added = false;
+        {
+            const std::string commandName(name, nameLength);
+            auto function = std::make_shared<LuaCommandFunction>();
+            function->L = L;
+            function->ref = ref;
+            // without an owner a Lua command still goes with the Lua state (Play stop, quit)
+            const std::string ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string("lua");
+            added = DebugOverlay::addCommand(commandName, std::string(description, descriptionLength),
+                [function, commandName](const std::vector<std::string>& args){
+                    lua_State* state = function->L;
+                    if (!state || LuaBinding::getLuaState() != state)
+                        return;
+                    lua_rawgeti(state, LUA_REGISTRYINDEX, function->ref);
+                    lua_createtable(state, static_cast<int>(args.size()), 0);
+                    for (size_t i = 0; i < args.size(); i++){
+                        lua_pushlstring(state, args[i].data(), args[i].size());
+                        lua_rawseti(state, -2, static_cast<lua_Integer>(i + 1));
+                    }
+                    if (LuaBinding::pcallWithTraceback(state, 1, 0) != LUA_OK){
+                        const std::string error = LuaBinding::getLuaStackErrorString(state, -1);
+                        lua_pop(state, 1);
+                        Log::error("Lua Error: console command '%s': %s", commandName.c_str(), error.c_str());
+                    }
+                }, ownerTag);
+        }
+        lua_pushboolean(L, added);
+        return 1;
+    }
+
+}
+
 void LuaBinding::registerCoreClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
 
@@ -1100,6 +1358,53 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("STRETCH", Scaling::STRETCH)
         .addVariable("NATIVE", Scaling::NATIVE)
         .endNamespace();
+
+    // the Canvas Scaler (Unity's CanvasScaler.ScaleMode, ScreenMatchMode, Unit)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("UIScaleMode")
+        .addVariable("FollowGameCanvas", UIScaleMode::FollowGameCanvas)
+        .addVariable("ConstantPixelSize", UIScaleMode::ConstantPixelSize)
+        .addVariable("ScaleWithScreenSize", UIScaleMode::ScaleWithScreenSize)
+        .addVariable("ConstantPhysicalSize", UIScaleMode::ConstantPhysicalSize)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ScreenMatchMode")
+        .addVariable("MatchWidthOrHeight", ScreenMatchMode::MatchWidthOrHeight)
+        .addVariable("Expand", ScreenMatchMode::Expand)
+        .addVariable("Shrink", ScreenMatchMode::Shrink)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PhysicalUnit")
+        .addVariable("Centimeters", PhysicalUnit::Centimeters)
+        .addVariable("Millimeters", PhysicalUnit::Millimeters)
+        .addVariable("Inches", PhysicalUnit::Inches)
+        .addVariable("Points", PhysicalUnit::Points)
+        .addVariable("Picas", PhysicalUnit::Picas)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<CanvasScalerRef>("CanvasScaler")
+        .addProperty("uiScaleMode", &CanvasScalerRef::getUIScaleMode, &CanvasScalerRef::setUIScaleMode)
+        .addProperty("scaleFactor", &CanvasScalerRef::getScaleFactor, &CanvasScalerRef::setScaleFactor)
+        .addProperty("referenceResolution", &CanvasScalerRef::getReferenceResolution, &CanvasScalerRef::setReferenceResolution)
+        .addProperty("screenMatchMode", &CanvasScalerRef::getScreenMatchMode, &CanvasScalerRef::setScreenMatchMode)
+        .addProperty("matchWidthOrHeight", &CanvasScalerRef::getMatchWidthOrHeight, &CanvasScalerRef::setMatchWidthOrHeight)
+        .addProperty("physicalUnit", &CanvasScalerRef::getPhysicalUnit, &CanvasScalerRef::setPhysicalUnit)
+        .addProperty("fallbackScreenDPI", &CanvasScalerRef::getFallbackScreenDPI, &CanvasScalerRef::setFallbackScreenDPI)
+        .addProperty("useProjectDefault", &CanvasScalerRef::isUseProjectDefault, &CanvasScalerRef::setUseProjectDefault)
+        .addProperty("canvasSize", &CanvasScalerRef::getCanvasSize)
+        .addProperty("appliedScaleFactor", &CanvasScalerRef::getAppliedScaleFactor)
+        .endClass();
+
+    // the UI's statics: canvas pixels (Input, the game canvas) <-> a scene's UI units
+    luabridge::getGlobalNamespace(L)
+        .beginClass<UIStatics>("UI")
+        .addStaticFunction("canvasToUI", &UIStatics::canvasToUI)
+        .addStaticFunction("uiToCanvas", &UIStatics::uiToCanvas)
+        .addStaticProperty("reducedMotion", &UISystem::isReducedMotion, &UISystem::setReducedMotion)
+        .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginNamespace("Platform")
@@ -1866,6 +2171,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("isHeadless", &Engine::isHeadless)
         .addStaticFunction("quit", [] (std::optional<int> code) { Engine::quit(code.value_or(0)); })
         .addStaticProperty("frameCount", &Engine::getGameFrames)
+        // Unity's Debug.isDebugBuild: the editor's Play and Debug-type exports
+        .addStaticProperty("isDevelopmentBuild", &Engine::isDevelopmentBuild)
         .addStaticProperty("targetFrameRate", &Engine::getTargetFrameRate, &Engine::setTargetFrameRate)
         .addStaticProperty("vSyncCount", &Engine::getVSyncCount, &Engine::setVSyncCount)
         .addStaticProperty("isFocused", &Engine::isFocused)
@@ -1894,6 +2201,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onFocus", [] () { return &Engine::onFocus; }, [] (lua_State* L) { Engine::onFocus = L; })
         .addStaticProperty("onOrientationChanged", [] () { return &Engine::onOrientationChanged; }, [] (lua_State* L) { Engine::onOrientationChanged = L; })
         .addStaticProperty("onLowMemory", [] () { return &Engine::onLowMemory; }, [] (lua_State* L) { Engine::onLowMemory = L; })
+        .addStaticProperty("onSafeAreaChanged", [] () { return &Engine::onSafeAreaChanged; }, [] (lua_State* L) { Engine::onSafeAreaChanged = L; })
         .addStaticProperty("onSceneLoaded", [] () { return &Engine::onSceneLoaded; }, [] (lua_State* L) { Engine::onSceneLoaded = L; })
         .addStaticProperty("onTouchStart", [] () { return &Engine::onTouchStart; }, [] (lua_State* L) { Engine::onTouchStart = L; })
         .addStaticProperty("onTouchEnd", [] () { return &Engine::onTouchEnd; }, [] (lua_State* L) { Engine::onTouchEnd = L; })
@@ -2862,6 +3170,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("fixedResolutionHeight", &Scene::getFixedResolutionHeight, &Scene::setFixedResolutionHeight)
         .addProperty("fixedResolutionFilter", &Scene::getFixedResolutionFilter, &Scene::setFixedResolutionFilter)
         .addFunction("setFixedResolutionSize", &Scene::setFixedResolutionSize)
+        .addFunction("getCanvasScaler", [] (Scene* self) { return CanvasScalerRef(self); })
         .addProperty("defaultMeshShader", &Scene::getDefaultMeshShader, &Scene::setDefaultMeshShader)
         .addProperty("defaultUIShader", &Scene::getDefaultUIShader, &Scene::setDefaultUIShader)
         .addProperty("defaultSkyShader", &Scene::getDefaultSkyShader, &Scene::setDefaultSkyShader)
@@ -2995,6 +3304,57 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("info", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Info, *self->category, text); })
         .addFunction("warn", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Warn, *self->category, text); })
         .addFunction("error", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Error, *self->category, text); })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LogLevel")
+        .addVariable("INFO", LogLevel::Info)
+        .addVariable("VERBOSE", LogLevel::Trace)
+        .addVariable("DEBUG", LogLevel::Debug)
+        .addVariable("WARN", LogLevel::Warn)
+        .addVariable("ERROR", LogLevel::Error)
+        .endNamespace();
+
+    // Log.onMessageReceived's event: (message, stackTrace, level)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const std::string&, const std::string&, int)>>("FunctionSubscribe_V_SSI")
+        .addFunction("__call", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::call)
+        .addFunction("call", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(const std::string&, const std::string&, int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::string&, const std::string&, int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::has)
+        .endClass();
+
+    // the engine's log (feature debug-overlay): the buffer and listeners, on S09's Log class
+    // (re-opened: its print... and categories are S09's)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Log>("Log")
+        // Unity's Application.logMessageReceived: RegisterEvent(self, Log.onMessageReceived, "onLog")
+        .addStaticProperty("onMessageReceived", [] () { return &Log::onMessageReceived; }, [] (lua_State* L) { Log::onMessageReceived = L; })
+        .addStaticFunction("getEntries", &luaLogGetEntries)
+        .addStaticFunction("clear", &Log::clearEntries)
+        .addStaticFunction("count", &luaLogCount)
+        .addStaticProperty("bufferSize", [] () -> int { return (int)std::min<size_t>(Log::getBufferSize(), INT32_MAX); },
+                           // 0 .. Log::maxBufferSize (100000), clamped
+                           [] (int size) { Log::setBufferSize(size > 0 ? (size_t)size : 0); })
+        .endClass();
+
+    // the on-device console and stats overlay (Unity's IngameDebugConsole and Graphy)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<DebugOverlay>("DebugOverlay")
+        .addStaticProperty("enabled", &DebugOverlay::isEnabled, &DebugOverlay::setEnabled)
+        .addStaticFunction("showConsole", &DebugOverlay::showConsole)
+        .addStaticFunction("hideConsole", &DebugOverlay::hideConsole)
+        .addStaticFunction("toggleConsole", &DebugOverlay::toggleConsole)
+        .addStaticProperty("consoleVisible", &DebugOverlay::isConsoleVisible)
+        .addStaticProperty("statsMode", &DebugOverlay::getStatsMode, static_cast<lua_CFunction>(&luaDebugOverlaySetStatsMode))
+        .addStaticProperty("STATS_OFF", [] () -> int { return (int)DebugOverlaySettings::Stats::Off; })
+        .addStaticProperty("STATS_FPS", [] () -> int { return (int)DebugOverlaySettings::Stats::Fps; })
+        .addStaticProperty("STATS_FULL", [] () -> int { return (int)DebugOverlaySettings::Stats::Full; })
+        .addStaticFunction("getStats", &luaDebugOverlayGetStats)
+        .addStaticFunction("addCommand", &luaDebugOverlayAddCommand)
+        .addStaticFunction("removeCommand", &DebugOverlay::removeCommand)
+        .addStaticFunction("executeCommand", &DebugOverlay::executeCommand)
         .endClass();
 
     // Unity's TouchPhase (the values of Input.TOUCH_BEGAN ...)
@@ -3432,6 +3792,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("sleepTimeout", &Screen::getSleepTimeout, &Screen::setSleepTimeout)
         .addStaticProperty("dpi", &Screen::getDpi)
         .addStaticProperty("refreshRate", &Screen::getRefreshRate)
+        .addStaticProperty("safeArea", &Screen::getSafeArea)
+        .addStaticProperty("safeAreaInsets", &Screen::getSafeAreaInsets)
+        .addStaticProperty("deviceSafeArea", &Screen::getDeviceSafeArea)
+        .addStaticProperty("deviceSafeAreaInsets", &Screen::getDeviceSafeAreaInsets)
+        .addStaticProperty("safeAreaPixels", &Screen::getSafeAreaPixels)
+        .addStaticProperty("cutouts", &Screen::getCutouts)
+        .addStaticProperty("extraInsets", &Screen::getExtraInsets)
+        .addStaticFunction("setExtraInsets", &luaScreenSetExtraInsets)
+        .addStaticFunction("clearExtraInsets", &Screen::clearExtraInsets)
         .endClass();
 
 #endif //DISABLE_LUA_BINDINGS

@@ -17,6 +17,7 @@
 #include "Matrix4.h"
 #include "Quaternion.h"
 #include "Rect.h"
+#include "EdgeInsets.h"
 #include "Ray.h"
 #include "Sphere.h"
 #include "Plane.h"
@@ -615,6 +616,19 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addFunction("contains", &Rect::contains)
         .addFunction("isNormalized", &Rect::isNormalized)
         .addFunction("isZero", &Rect::isZero)
+        .endClass();
+
+    // Distances in from the four edges of a rectangle (Screen.safeAreaInsets, Screen.extraInsets)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<EdgeInsets>("EdgeInsets")
+        .addConstructor<void(), void(float, float, float, float)>()
+        .addProperty("left", &EdgeInsets::left, &EdgeInsets::left)
+        .addProperty("top", &EdgeInsets::top, &EdgeInsets::top)
+        .addProperty("right", &EdgeInsets::right, &EdgeInsets::right)
+        .addProperty("bottom", &EdgeInsets::bottom, &EdgeInsets::bottom)
+        .addFunction("__tostring", &EdgeInsets::toString)
+        .addFunction("__eq", &equalsLua<EdgeInsets>)
+        .addFunction("isZero", &EdgeInsets::isZero)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

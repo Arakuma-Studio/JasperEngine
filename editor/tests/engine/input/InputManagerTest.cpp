@@ -18,6 +18,7 @@
 #include "Engine.h"
 #include "Input.h"
 #include "Out.h"
+#include "PhysicsTestScene.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 #include "input/InputControlPath.h"
@@ -283,6 +284,9 @@ TEST_F(InputEdgesTest, AnAppPauseStillLetsTheTouchCancelReachScripts) {
     // found no finger and onTouchCancel (and the documents' cancel) never came. S22's focus
     // release (a pause takes the focus) cancels the fingers through systemTouchCancel itself:
     // onTouchCancel comes once, the platform's own cancel after it finds nothing left
+    // (systemPause saves the user settings through System::instance(): one must be set, also
+    // when this suite runs on its own)
+    if (!System::hasInstance()) physicstest::installTestSystem();
     std::vector<int> cancelled;
     struct Listener {
         std::vector<int>* log;

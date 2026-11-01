@@ -108,6 +108,9 @@ void EditorHost::openPrefabAsset(const std::filesystem::path& path, uint32_t, ui
     Out::warning("Prefab Mode needs the editor window: %s not opened", path.string().c_str());
 }
 
+void EditorHost::openAudioMixerWindow(const std::filesystem::path&) {
+}
+
 void EditorHost::openTextureSynthesis(const std::filesystem::path& image, bool) {
     Out::warning("Texture Synthesis needs the editor window: %s not opened", image.string().c_str());
 }

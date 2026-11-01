@@ -74,6 +74,9 @@ namespace jasperengine::editor{
         // a version 2 Particle System on its own GameObject (Unity's: the default quad renderer)
         PARTICLE_SYSTEM,
         FORCE_FIELD,
+        // a Points emitter in UI units under a UI element and its Particle System child
+        // (unscaled time, local space): particles drawn in canvas order, clipped by panels
+        UI_PARTICLE_SYSTEM,
         POINTS,
         LINE_RENDERER,
         TRAIL_RENDERER,
@@ -83,6 +86,10 @@ namespace jasperengine::editor{
         UI_DOCUMENT,
         WATER,
         FLUID_SIMULATION,
+        // a Video Player into its render texture (video|<entity>), and one on the main
+        // camera's far plane (a looping background)
+        VIDEO_PLAYER,
+        VIDEO_BACKGROUND,
         // a unit lattice (Transform + LatticeComponent); the menus create one through
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
         LATTICE,
@@ -104,7 +111,9 @@ namespace jasperengine::editor{
         SPLINE_FILL_2D,
         SPLINE_CIRCLE_2D,
         // not a GameObject: the Hierarchy's "3D Object > Ragdoll..." opens the wizard on the selection
-        RAGDOLL_WIZARD
+        RAGDOLL_WIZARD,
+        // a full-stretch RectTransform the Safe Area component drives (GameObject > UI > Safe Area)
+        SAFE_AREA
     };
 
     class CreateEntityCmd: public Command{

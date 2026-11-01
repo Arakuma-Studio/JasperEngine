@@ -133,6 +133,7 @@
 #define MAX_BROADPHASELAYER_3D 6
 #endif
 
+#include "util/CanvasScaler.h"
 #include "Export.h"
 #include "render/GpuCreation.h"
 #include "System.h"
@@ -342,6 +343,8 @@ namespace jasperengine {
         static Rect viewRect;
 
         static Scaling scalingMode;
+        // the project's Canvas Scaler (Project Settings > Graphics > UI Scale)
+        static CanvasScalerSettings defaultCanvasScaler;
         static TextureStrategy textureStrategy;
         
         static bool callMouseInTouchEvent;
@@ -376,7 +379,8 @@ namespace jasperengine {
         static bool shaderTimeFixed;
         // setPinnedShaderTime's time, negative when not pinned
         static double pinnedShaderTime;
-        static uint64_t gameFrames;
+        // read by Log from any thread (the frame of a line)
+        static std::atomic<uint64_t> gameFrames;
         static double unscaledDeltatime;
         static double unscaledTime;
         static double fixedTime;
@@ -391,6 +395,10 @@ namespace jasperengine {
 
         static std::atomic<bool> viewLoaded;
         static std::atomic<bool> paused;
+        // the two holds of `paused` (main thread)
+        static bool osPaused;
+        static bool nativePaused;
+        static void applyPause();
         static std::atomic<bool> focused;
 
         // Engine.targetFrameRate / vSyncCount and the pacing the platform applies
@@ -403,6 +411,7 @@ namespace jasperengine {
         static double orientationPendingSince;
         static std::atomic<bool> asyncLoading;
         static bool frameRunning;
+        static bool developmentBuild;
 
         static CursorType mouseCursorType;
         static MouseMode mouseMode;
@@ -450,12 +459,17 @@ namespace jasperengine {
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
         // free to add or remove scenes without invalidating the caller's traversal.
         static std::vector<Scene*> getScenesSnapshot();
+        // the snapshot with the debug overlay's Scene on top when it has one (keys: only while
+        // a field of the overlay has the focus)
+        static std::vector<Scene*> getInputScenes(bool keys);
         static bool ensureCompositeFramebuffer();
         static void beginCompositeFramebuffer();
         static void endCompositeFramebuffer();
         static void runFrame(bool draw);
         // recomputes the frame pacing and hands it to the System
         static void applyFramePacing();
+        // desktop builds: JASPERENGINE_SIMULATE_SAFE_AREA as the platform's insets
+        static void applySimulatedSafeArea();
         
     public:
         class AsyncThreadScope {
@@ -505,6 +519,12 @@ namespace jasperengine {
         
         static void setScalingMode(Scaling scalingMode);
         static Scaling getScalingMode();
+
+        // The UI's own space, the project default each scene uses unless it overrides it
+        // (Scene::setCanvasScaler). FollowGameCanvas (the default) lays the UI out in the game
+        // canvas above. A change recomputes every running scene's UI size.
+        static void setDefaultCanvasScaler(const CanvasScalerSettings& settings);
+        static const CanvasScalerSettings& getDefaultCanvasScaler();
 
         static void setTextureStrategy(TextureStrategy textureStrategy);
         static TextureStrategy getTextureStrategy();
@@ -662,6 +682,11 @@ namespace jasperengine {
         // the "Engine ready:" line was logged (every scene loaded, no shader build pending)
         static bool isReadySignalled();
 
+        // A development build (Unity's Debug.isDebugBuild): the editor's Play and exports built
+        // with the Debug build type (JASPERENGINE_DEVELOPMENT_BUILD, set by the generated init).
+        // The debug overlay's "development" mode follows it
+        static void setDevelopmentBuild(bool development);
+        static bool isDevelopmentBuild();
         // Scaled seconds and frames the update loop has run (since start; not while paused or held)
         static double getGameTime();
         static uint64_t getGameFrames();
@@ -800,11 +825,16 @@ namespace jasperengine {
         // The app goes to the background (pause) and comes back (resume). Idempotent: a
         // second pause or resume in a row does nothing. Leaving, a focused app loses focus
         // first (onFocus(false), then onPause); onResume always comes before onFocus(true).
+        // The engine is paused while the OS or a native SDK (setNativePause) holds it: one
+        // onPause when the first hold starts, one onResume when the last ends.
         static void systemPause();
         static void systemResume();
+        // A native SDK's full-screen view (NativeBridge::pauseEngine/resumeEngine, applied
+        // each frame by NativeBridge::update); false at Play stop. Idempotent.
+        static void setNativePause(bool held);
         // The app became frontmost and gets input (true), or something covers it: a system
         // dialog, the notification shade, another window (false). Idempotent; gaining focus
-        // while paused resumes first. Fires onFocus.
+        // while the OS holds the pause resumes first. Fires onFocus.
         static void systemFocus(bool hasFocus);
         // After a rotation or resize: fires onOrientationChanged when Screen::getOrientation()
         // differs from the last one seen. systemViewChanged calls it after onCanvasChanged; a
@@ -812,10 +842,14 @@ namespace jasperengine {
         // ORIENTATION_SIZE_TIMEOUT seconds, checked every frame), a half turn fires at once.
         static void systemOrientationChanged();
         static constexpr double ORIENTATION_SIZE_TIMEOUT = 0.5;
+        // a quarter turn is known and waits for its view size (Screen holds the safe-area insets
+        // the platform pushes meanwhile: they belong to the new size)
+        static bool isOrientationPending();
         // The system is short of memory: onLowMemory, before the platform frees its own caches
         static void systemLowMemory();
-        // Play stop / start in the editor: focused, not paused, no orientation seen yet, and the
-        // default frame pacing again, without any event (nothing listens any more)
+        // Play stop / start in the editor: focused, not paused (neither hold), no orientation
+        // seen yet, and the default frame pacing again, without any event (nothing listens any
+        // more)
         static void resetApplicationState();
 
         //-----Frame pacing and application state-----
@@ -916,6 +950,9 @@ namespace jasperengine {
         static FunctionSubscribe<void(int)> onOrientationChanged;
         // the system is short of memory (Android, iOS)
         static FunctionSubscribe<void()> onLowMemory;
+        // Screen.safeArea changed (a rotation, the platform's insets, Screen.setExtraInsets): once
+        // per change, after onCanvasChanged and onOrientationChanged
+        static FunctionSubscribe<void()> onSafeAreaChanged;
         // The stack loaded by SceneManager is ready, before its loading scene closes.
         static FunctionSubscribe<void()> onSceneLoaded;
         static FunctionSubscribe<void(int,float,float)> onTouchStart;

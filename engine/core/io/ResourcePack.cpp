@@ -326,6 +326,13 @@ bool ResourcePack::contains(const std::string& path) {
     return contentEntryPack(path, key) != nullptr || findEntry(path) != nullptr;
 }
 
+bool ResourcePack::size(const std::string& path, uint64_t& outSize) {
+    const PackEntry* entry = findEntry(path);
+    if (!entry) return false;
+    outSize = entry->size;
+    return true;
+}
+
 bool ResourcePack::read(const std::string& path, std::vector<unsigned char>& outData) {
     std::string key;
     if (const JPak* pack = contentEntryPack(path, key)) {
@@ -353,6 +360,39 @@ bool ResourcePack::read(const std::string& path, std::vector<unsigned char>& out
     }
 
     deobfuscate(outData.data(), outData.size(), entry->key, entry->shift);
+    return true;
+}
+
+ResourcePack::RangeReader::~RangeReader() {
+    if (file) std::fclose(static_cast<FILE*>(file));
+}
+
+bool ResourcePack::RangeReader::open(const std::string& path) {
+    const PackEntry* entry = findEntry(path);
+    if (!entry) return false;
+    FILE* handle = System::instance().platformFopen(state().filename.c_str(), "rb");
+    if (!handle) return false;
+    if (file) std::fclose(static_cast<FILE*>(file));
+    file = handle;
+    entryOffset = entry->offset;
+    entrySize = entry->size;
+    key = entry->key;
+    shift = entry->size ? (uint32_t)(entry->shift % entry->size) : 0;
+    return true;
+}
+
+// Byte i of the entry is stored at (i + shift) % size, XOR key (deobfuscate's rotation, inverted)
+bool ResourcePack::RangeReader::readRange(uint64_t from, unsigned char* dst, size_t count) {
+    if (!file || from + count > entrySize) return false;
+    FILE* handle = static_cast<FILE*>(file);
+    size_t done = 0;
+    while (done < count) {
+        const uint64_t stored = (from + done + shift) % entrySize;
+        const size_t run = (size_t)std::min<uint64_t>(count - done, entrySize - stored);
+        if (!seekFile(handle, entryOffset + stored) || !readExact(handle, dst + done, run)) return false;
+        done += run;
+    }
+    for (size_t i = 0; i < count; i++) dst[i] ^= key;
     return true;
 }
 

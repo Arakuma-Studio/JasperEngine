@@ -5,6 +5,7 @@
 // tilemaps, sprite sheets and sprite animations, keyframe animations and tweens, physics
 // colliders and joints, UI widget trees and rect layouts, particle systems, models, and the
 // point lists of polygons / shadow casters / line renderers.
+#include "util/ProjectUtils.h"
 #include "McpTools.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
@@ -3857,6 +3858,10 @@ void editAnimationTool(const CallPtr& call) {
 
 void getAnimationTool(const CallPtr& call) {
     const Json& args = call->args();
+    if (has(args, "list_properties")) {
+        clip_tools::listProperties(call);
+        return;
+    }
     if (has(args, "clip")) {
         clip_tools::getClip(call);
         return;
@@ -4053,8 +4058,7 @@ float layoutParentHeight(Scene* scene, Entity entity) {
         parent = ptf ? ptf->parent : NULL_ENTITY;
     }
     UISystem* ui = scene->getSystem<UISystem>().get();
-    const int height = ui ? ui->getAnchorReferenceHeight() : 0;
-    return static_cast<float>(height != 0 ? height : Engine::getCanvasHeight());
+    return ui ? ui->getCanvasSize().y : static_cast<float>(Engine::getCanvasHeight());
 }
 
 // RectTransform layout: absolute (position + size), an anchor preset (+ size, offset), or
@@ -4068,6 +4072,10 @@ bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity,
     }
     if (!layout.is_object()) {
         error = "layout must be an object {anchor, size, position, pivot, margins}.";
+        return false;
+    }
+    if (const std::string driven = McpValues::safeAreaDrivenError(scene, entity, ""); !driven.empty()) {
+        error = driven;
         return false;
     }
     const bool mirrored = uiMirrored(target);
@@ -4203,6 +4211,7 @@ const std::vector<std::pair<const char*, EntityCreationType>>& uiTypes() {
         {"button", EntityCreationType::BUTTON}, {"input_field", EntityCreationType::INPUT_FIELD},
         {"progress_bar", EntityCreationType::PROGRESSBAR}, {"scrollbar", EntityCreationType::SCROLLBAR},
         {"layout_group", EntityCreationType::LAYOUT_GROUP}, {"container", EntityCreationType::GAMEOBJECT},
+        {"safe_area", EntityCreationType::SAFE_AREA},
         {"polygon", EntityCreationType::POLYGON}, {"onscreen_stick", EntityCreationType::ONSCREEN_STICK_FIXED},
         {"onscreen_button", EntityCreationType::ONSCREEN_BUTTON}, {"touch_area", EntityCreationType::TOUCH_AREA}};
     return table;
@@ -4241,6 +4250,11 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
     }
     if (++build.count > 300) {
         error = "create_ui builds at most 300 elements per call.";
+        return false;
+    }
+    if (type == EntityCreationType::SAFE_AREA && has(node, "layout")) {
+        error = where + ": a safe_area is laid out by its Safe Area component (it fits the screen's safe area); "
+                "drop layout and lay its children out inside it.";
         return false;
     }
     std::string name = stringOr(node, "name", "");
@@ -4311,6 +4325,32 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         return false;
     }
     if (has(node, "multiline") && textEntity != NULL_ENTITY) addProp<bool>(*multi, target, textEntity, tc, "multiline", boolOr(node, "multiline", true));
+    // TMP outline {width, color} and underlay shadow {offset, color, softness, dilate} (UI units, colours linear)
+    if (has(node, "outline")) {
+        const Json& outline = node["outline"];
+        Vector4 outlineColor(0.0f, 0.0f, 0.0f, 1.0f);
+        if (textEntity == NULL_ENTITY || !outline.is_object() || (outline.contains("color") && !parseColor4(outline["color"], outlineColor))) {
+            error = where + ".outline must be {width, color} on an element with text.";
+            return false;
+        }
+        addProp<float>(*multi, target, textEntity, tc, "outlineWidth", std::max(0.0f, (float)numberOr(outline, "width", 2.0f)));
+        addProp<Vector4>(*multi, target, textEntity, tc, "outlineColor", outlineColor);
+    }
+    if (has(node, "shadow")) {
+        const Json& shadow = node["shadow"];
+        Vector4 shadowColor(0.0f, 0.0f, 0.0f, 0.5f);
+        Vector2 offset(2.0f, 2.0f);
+        if (textEntity == NULL_ENTITY || !shadow.is_object() || (shadow.contains("color") && !parseColor4(shadow["color"], shadowColor)) ||
+            (shadow.contains("offset") && !McpValues::parseVector2(shadow["offset"], offset))) {
+            error = where + ".shadow must be {offset: [x, y], color, softness, dilate} on an element with text.";
+            return false;
+        }
+        addProp<bool>(*multi, target, textEntity, tc, "shadowEnabled", true);
+        addProp<Vector4>(*multi, target, textEntity, tc, "shadowColor", shadowColor);
+        addProp<Vector2>(*multi, target, textEntity, tc, "shadowOffset", offset);
+        addProp<float>(*multi, target, textEntity, tc, "shadowSoftness", std::max(0.0f, (float)numberOr(shadow, "softness", 0.0f)));
+        addProp<float>(*multi, target, textEntity, tc, "shadowDilate", std::max(0.0f, (float)numberOr(shadow, "dilate", 0.0f)));
+    }
     Vector4 color;
     if (has(node, "text_color")) {
         if (textEntity == NULL_ENTITY || !parseColor4(node["text_color"], color)) {
@@ -4959,6 +4999,9 @@ void createParticlesTool(const CallPtr& call) {
         addProp<particles::ParticleEffectDocument>(*multi, target, system, ComponentType::ParticleSystemComponent, "inlineEffect", document);
     }
 
+    // SYNC4-ABSORB(particles): upstream's (ui-scaling-text) UI particles for create_particles (in a UI
+    // scene or under a RectTransform: y flipped, useUnscaledTime, localSpace, the soft particle
+    // texture) wait for the particles absorption: S20's effect document has no unscaled time
     if (has(args, "properties") && !addCatalogProperties(target.project, target.scene, system, ComponentType::ParticleSystemComponent, args["properties"], *multi, error)) {
         failWith("properties: " + error);
         return;
@@ -5632,21 +5675,25 @@ void registerWorldTools(McpRegistry& registry) {
         "Animation Player plays it; create {from?: entity Animation or \"model.gltf#Walk\"}; root checks paths "
         "(bindings); a project undo step (from an Animation, or a model clip with root: scene). Without clip: an entity Animation (creates one under target), tweens, "
         "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation, "
-        "morph weights or lattice points; the same "
-        "path|target+channel replaces or merges. "
+        "morph weights, lattice points or a component property (channel property: component, property); the same "
+        "path|target+channel replaces or merges. Humanoid: create.humanoid {model?} converts from; tracks {channel: "
+        "humanoid|humanoid_position, bone, keys}. "
         "Guide: jasper://docs/animation.",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
-            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}})},
+            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}, {"humanoid", object({{"model", assetPath("")}})}})},
             {"root", entityRef("")},
             {"animation", entityRef("")},
             {"target", entityRef("Required to create.")},
             {"name", string("")},
             {"tracks", array(object({
-                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice"})},
+                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice", "property", "humanoid", "humanoid_position"})},
                 {"keys", array(openKeyItem, "")},
                 {"path", string("")},
+                {"component", string("")},
+                {"property", string("")},
+                {"bone", string("")},
                 {"target", entityRef("Default: target.")},
                 {"start_time", number("")},
                 {"mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
@@ -5685,7 +5732,10 @@ void registerWorldTools(McpRegistry& registry) {
         "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys or tween "
         "values), or for another GameObject the animations targeting it or its children (model clips too) and "
         "the Animation Player playing it (states, layers, mask coverage, bindings; live in play). clip (.anim or "
-        "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings. "
+        // SYNC4-ABSORB(retarget): upstream's "(humanoid: retarget_report, realised at times)" after root: bindings
+        // waits for the retarget absorption
+        "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings; "
+        "root + list_properties (a path): its animatable properties. "
         "mask (.mask; root: coverage) or controller (.controller summary).",
         object({
             {"scene", sceneRef()},
@@ -5695,6 +5745,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"controller", assetPath("")},
             {"times", array(number(""), "Seconds.")},
             {"root", entityRef("")},
+            {"list_properties", string("")},
             {"max_keys", withDefault(integer("Per track."), 50)}
         }),
         getAnimationTool, true, true);
@@ -5716,10 +5767,11 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- UI
     add("create_ui", "Create UI",
-        "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, color, "
-        "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text = "
+        "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, outline {width, "
+        "color}, shadow {offset, color, softness}, color, colors, texture, value, placeholder, direction, multiline, "
+        "properties, children}. Types: panel (text = "
         "title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
-        "layout_group (direction), container, polygon; touch controls feeding Input actions: onscreen_stick, "
+        "layout_group (direction), container, polygon, safe_area (fits Screen.safeArea); touch controls feeding Input actions: onscreen_stick, "
         "onscreen_button, touch_area. layout {anchor, size, position, pivot, margins}: px, y "
         "DOWN from the parent's top-left; an anchor (top_left, center, top_wide, ..., stretch) pins to the "
         "parent (screen for roots), position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear. canvas_group: true | {alpha, interactable, "

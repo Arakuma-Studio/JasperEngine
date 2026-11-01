@@ -757,7 +757,7 @@ namespace jasperengine{
 		// scene mesh LOD switch the levels were built (or freed) for
 		bool lastMeshLodEnabled = false;
 		// pipelines the objects were loaded with, to catch a destination change
-		uint16_t loadedPipelines;
+		uint16_t loadedPipelines = 0;
 
 		// Projected spotlight masks share one horizontal R8 atlas of SPOT_MASK_ATLAS_TILES
 		// fixed-size tiles, given to the masked spot lights in scene order
@@ -980,6 +980,8 @@ namespace jasperengine{
 		struct CameraPass{
 			CameraComponent* camera = nullptr;
 			Transform* cameraTransform = nullptr;
+			// the camera's entity (NULL_ENTITY: a mirror's or a view's own camera)
+			Entity entity = NULL_ENTITY;
 			// the view camera: culled instances, detail levels, SSAO, SSR, post-process, fixed resolution
 			bool isMain = false;
 			// draws into camera->framebuffer

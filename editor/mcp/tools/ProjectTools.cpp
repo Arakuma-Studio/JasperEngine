@@ -15,6 +15,7 @@
 #include "McpTools.h"
 #include "log/Logger.h"
 #include "DocumentFile.h"
+#include "W4Shared.h"
 
 #include "mcp/McpDataSafety.h"
 #include "mcp/McpCall.h"
@@ -33,12 +34,16 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
+#include "audio/AudioMixer.h"
+#include "command/type/DebugSettingsCmd.h"
+#include "DebugSettings.h"
 #include "input/InputActions.h"
 #include "registry/TagManager.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "util/ShaderGlobalsJson.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
+#include "util/NativePlugins.h"
 #include "util/SafeWrite.h"
 #include "util/ShellEnv.h"
 #include "window/CodeEditor.h"
@@ -53,6 +58,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <regex>
 #include <memory>
 #include <map>
 #include <set>
@@ -709,6 +715,11 @@ void saveProjectTool(const CallPtr& call) {
 // The settings registry's MCP rows (editor/settings: the table these tools had before S25), in
 // registration order
 using Setting = SettingRow;
+// SYNC4: upstream added rows to its hand-written table here (native-bridge: web.script_urls,
+// macos/ios plist/frameworks, ios.cocoapods/swift_packages/entitlements_xml/deployment_target,
+// android.gradle_*/extra_permissions/manifest*_xml; safe-area: web.viewport_fit_cover;
+// ui-scaling-text: graphics.ui_scale; audio-mixer: audio.*; debug-overlay: debug.*). They belong
+// in editor/settings/SettingsRows.cpp (S25).
 
 const std::vector<std::reference_wrapper<const SettingRow>>& settingsTable() {
     static const std::vector<std::reference_wrapper<const SettingRow>> table = [] {
@@ -1244,6 +1255,124 @@ void editProjectBuildFileTool(const CallPtr& call) {
              "log for CMake errors.", Json{{"path", "ProjectBuild.cmake"}, {"bytes", content.size()}});
 }
 
+
+// ---- native_plugins: plugins/native (feature native-bridge, docs/mcp/guide/native-bridge.md)
+
+const std::vector<std::string>& nativeSettingKeys() {
+    static const std::vector<std::string> keys = {
+        "android.gradle_dependencies", "android.gradle_repositories", "android.gradle_properties", "android.extra_permissions",
+        "android.manifest_xml", "android.manifest_application_xml", "ios.plist_entries", "ios.plist_xml", "ios.frameworks",
+        "ios.cocoapods", "ios.swift_packages", "ios.entitlements_xml", "ios.deployment_target", "macos.plist_entries",
+        "macos.frameworks", "web.script_urls"};
+    return keys;
+}
+
+void nativePluginsTool(const CallPtr& call) {
+    McpContext& ctx = call->ctx();
+    Project* project = ctx.project();
+    const Json& args = call->args();
+    const std::string action = args.value("action", "list");
+    const fs::path projectPath = project->getProjectPath();
+
+    if (action == "list") {
+        const NativePlugins::Scan scan = NativePlugins::scan(projectPath);
+        Json data;
+        data["root"] = FileUtils::pathToGenericUtf8(NativePlugins::relativeRoot());
+        data["exists"] = scan.exists;
+        Json plugins = Json::array();
+        for (const NativePlugins::PluginInfo& plugin : NativePlugins::listPlugins(scan)) {
+            Json platforms = Json::object();
+            for (const auto& [platform, files] : plugin.files) platforms[platform] = files;
+            plugins.push_back({{"name", plugin.name}, {"platforms", platforms}, {"methods", plugin.methods}});
+        }
+        data["plugins"] = plugins;
+        Json counts = Json::object();
+        for (const std::string& platform : NativePlugins::platformNames()) {
+            if (scan.count(platform)) counts[platform] = scan.count(platform);
+        }
+        data["files"] = counts;
+        data["mocks"] = NativePlugins::listMocks(project->getLuaPath());
+        Json settings = Json::object();
+        for (const Setting& setting : settingsTable()) {
+            if (std::find(nativeSettingKeys().begin(), nativeSettingKeys().end(), setting.key) == nativeSettingKeys().end()) continue;
+            SettingsContext rowContext = settingsContext(ctx);
+            const Json value = setting.get(rowContext);
+            // only what is set (the defaults are empty, and 15.0)
+            if ((value.is_string() && (value.get<std::string>().empty() || (setting.key == "ios.deployment_target" && value == "15.0"))) ||
+                ((value.is_array() || value.is_object()) && value.empty())) {
+                continue;
+            }
+            settings[setting.key] = value;
+        }
+        data["settings"] = settings;
+        std::string text = std::to_string(plugins.size()) + " native plugin(s)";
+        if (!scan.exists) text += " (no plugins/native folder yet: action create makes one)";
+        text += ", " + std::to_string(data["mocks"].size()) + " Lua mock(s), " + std::to_string(settings.size()) + " native setting(s) set.";
+        call->ok(text, data);
+        return;
+    }
+    if (action != "create") {
+        call->fail("action must be \"list\" or \"create\".");
+        return;
+    }
+    if (ctx.isPlaying()) {
+        call->fail("Stop Play mode before creating a native plugin (its C++ joins the Play library at the next Play).");
+        return;
+    }
+    NativePlugins::CreateOptions options;
+    options.name = args.value("name", "");
+    if (args.contains("platforms")) {
+        if (!args["platforms"].is_array()) {
+            call->fail("platforms must be a list: android, ios, macos, web, cpp.");
+            return;
+        }
+        for (const Json& platform : args["platforms"]) {
+            if (platform.is_string()) options.platforms.push_back(platform.get<std::string>());
+        }
+    } else {
+        options.platforms = {"android", "ios", "web", "cpp"};
+    }
+    options.androidLanguage = args.value("android_language", "java");
+    options.appleLanguage = args.value("apple_language", "objc");
+    options.package = args.value("package", options.package);
+    options.overwrite = args.value("overwrite", false);
+    if (args.contains("methods")) {
+        if (!args["methods"].is_array()) {
+            call->fail("methods must be a list of {name, async}.");
+            return;
+        }
+        for (const Json& method : args["methods"]) {
+            NativePlugins::MethodSpec spec;
+            if (method.is_string()) {
+                spec.name = method.get<std::string>();
+            } else if (method.is_object()) {
+                spec.name = method.value("name", "");
+                spec.async = method.value("async", false);
+            }
+            options.methods.push_back(spec);
+        }
+    }
+    const std::string invalid = NativePlugins::validate(options);
+    if (!invalid.empty()) {
+        call->fail(invalid + ".");
+        return;
+    }
+    std::vector<NativePlugins::CreatedFile> written;
+    std::string error;
+    if (!NativePlugins::create(projectPath, project->getLuaPath(), options, written, error)) {
+        call->fail(error + ".");
+        return;
+    }
+    if (ctx.projectWindow()) ctx.projectWindow()->refreshCurrentDirectory();
+    Json files = Json::array();
+    for (const NativePlugins::CreatedFile& file : written) files.push_back({{"path", file.path}, {"overwritten", file.overwritten}});
+    Json data = {{"name", options.name}, {"files", files}};
+    data["try"] = "eval_lua in Play: return Native.call('" + options.name + "', '" +
+                  (options.methods.empty() ? std::string("method") : options.methods[0].name) + "') (the Lua mock answers outside the device)";
+    call->ok("Wrote " + std::to_string(written.size()) + " file(s) of the native plugin " + options.name +
+             " (not undoable). The Lua mock " + written.back().path + " answers in editor Play and desktop builds; the platform files "
+             "answer on their platforms.", data);
+}
 } // namespace
 
 void registerProjectTools(McpRegistry& registry) {
@@ -1337,7 +1466,7 @@ void registerProjectTools(McpRegistry& registry) {
             "platform overrides. describe adds each key's type, allowed values, meaning.";
         tool.inputSchema = object({
             {"category", string("player, web, linux, windows, macos, ios, android, graphics, quality, physics, "
-                                "physics2d, input, scripting, editor, tags_and_layers, preferences or all.")},
+                                "physics2d, input, scripting, debug, editor, tags_and_layers, preferences or all.")},
             {"keys", array(Json{{"type", "string"}}, "Keys or categories.")},
             {"describe", withDefault(boolean(""), false)},
             {"search", string("Words: matches {key, page, label, scope} of every Preferences/Project Settings row.")}
@@ -1345,6 +1474,28 @@ void registerProjectTools(McpRegistry& registry) {
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getProjectSettingsTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "native_plugins";
+        tool.title = "Native Plugins";
+        tool.description =
+            "plugins/native for Lua's Native.call (Java/Kotlin, ObjC/Swift, JS, C++). list: plugins, methods, Lua mocks, "
+            "native settings. create: one plugin's files for the platforms plus its Lua mock; refuses to overwrite. SDK "
+            "settings: set_project_settings android.gradle_*, ios.cocoapods... jasper://docs/native-bridge.";
+        tool.inputSchema = object({
+            {"action", stringEnum("", {"list", "create"})},
+            {"name", string("e.g. Device")},
+            {"platforms", array(stringEnum("", {"android", "ios", "macos", "web", "cpp"}), "default android, ios, web, cpp")},
+            {"android_language", stringEnum("", {"java", "kotlin"})},
+            {"apple_language", stringEnum("", {"objc", "swift"})},
+            {"package", string("default com.example.plugins")},
+            {"methods", array(object({{"name", string("")}, {"async", boolean("")}}, {"name"}), "")},
+            {"overwrite", boolean("")}
+        }, {"action"});
+        tool.handler = nativePluginsTool;
         registry.addTool(std::move(tool));
     }
 

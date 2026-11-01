@@ -1,4 +1,9 @@
 # SoLoud - https://github.com/jarikomppa/soloud/
+# Local patches (keep them when updating SoLoud): Bus has a destructor that stops its voices
+# (src/core/soloud_bus.cpp: AudioSource's own destructor ran after the Bus part was destroyed, and
+# ~BusInstance read the destroyed Bus); AlignedFloatBuffer::clear() leaves an uninitialised buffer
+# alone (src/core/soloud.cpp: the nosound backend cleared it with memset of a null pointer);
+# postinit_internal frees the resample arrays of an earlier init (src/core/soloud.cpp: re-inits leaked them).
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
@@ -34,8 +39,10 @@ add_library(
 
     src/audiosource/wav/dr_impl.cpp
     src/audiosource/wav/soloud_wav.cpp
+    src/audiosource/wav/soloud_wavstream.cpp
 
     src/backend/miniaudio/soloud_miniaudio.cpp
+    src/backend/nosound/soloud_nosound.cpp
     # the null driver: the editor's Recorder mixes offline in step with the game (S27 R29)
     src/backend/null/soloud_null.cpp
 
@@ -63,6 +70,10 @@ if(APPLE)
         ${AV_FOUNDATION_LIBRARY} ${AUDIOTOOLBOX_LIBRARY}
     )
 endif()
+
+# no device (CI, servers, headless boxes): NoSound mixes in its own thread with no output,
+# Null on the main thread (AudioSystem; audio-mixer spec A14)
+target_compile_definitions(soloud PRIVATE WITH_NOSOUND WITH_NULL)
 
 find_package(Threads REQUIRED)
 target_link_libraries(soloud PRIVATE Threads::Threads)

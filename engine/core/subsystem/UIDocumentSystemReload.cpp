@@ -541,6 +541,8 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState, UIReloa
         newDocument->Hide();
     }
     component->appliedVisible = visible;
+    // the live safe-area insets (env(safe-area-inset-*)) before the first layout
+    updateSafeAreaProperties();
 
     // 3. restore: values, then layout, then scroll and focus
     restoreValues(newDocument, snapshot);

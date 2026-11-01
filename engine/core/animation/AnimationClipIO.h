@@ -5,8 +5,12 @@
 // - Purpose: the one .anim parser and canonical writer, shared by the engine (AnimationClipPool),
 //   the editor document, MCP, the CLI checks and the tests.
 // - Thread-safety: pure functions of their arguments (no engine state): any thread.
-// - Format: UTF-8 JSON {"format": "jasperengine.anim", "version": 1, "guid", "frame_rate", "wrap",
-//   "length", "additive_reference" (only when not 0), "tracks", "events", "preview", "source", unknown keys...}.
+// - Format: UTF-8 JSON {"format": "jasperengine.anim", "version": 1 | 2, "guid", "frame_rate", "wrap",
+//   "length", "additive_reference" (only when not 0), "humanoid" (only when set), "tracks", "events",
+//   "preview", "source", unknown keys...}. Version 2 (anim-retarget 6.1) is written only for a clip
+//   with humanoid tracks ({"channel": "humanoid" | "humanoid_position", "bone", "keys"}: no path);
+//   every other clip is written as version 1, byte for byte as before. Humanoid keys accept
+//   {"angles": [dof1, dof2, twist]} degrees for the 22 slots (written back as quaternions).
 // - Invariants:
 //   * parseClip fails (data empty, error set) only for: text that is not JSON (error.line/column
 //     of the syntax error), a non-object root, a missing or different `format`, a missing or
@@ -46,7 +50,11 @@
 namespace jasperengine::anim{
 
     constexpr const char* ANIM_FORMAT = "jasperengine.anim";
-    constexpr int ANIM_VERSION = 1;
+    // the newest version this engine reads and writes (humanoid clips); clips without humanoid
+    // tracks are written as version 1
+    constexpr int ANIM_VERSION = 2;
+    // humanoid track bones: the 22 slots, then the 33 extra bones (ClipTrackData::humanBone)
+    constexpr int HUMANOID_TRACK_BONE_COUNT = 22 + 33;
     constexpr const char* ANIM_EXTENSION = ".anim";
     // frame_rate bounds and key time resolution (seconds)
     constexpr float ANIM_MIN_FRAME_RATE = 1.0f;
@@ -102,6 +110,10 @@ namespace jasperengine::anim{
     // File names of the enums ("position", "ping_pong", "quad_out"...); false for unknown names
     JASPERENGINE_API const char* channelName(ClipChannel channel);
     JASPERENGINE_API bool channelFromName(const std::string& name, ClipChannel& out);
+    // a humanoid track's bone name: "left_upper_arm", "left_index_proximal" (humanoid), "hips",
+    // "left_foot", "right_foot" (humanoid_position); "" when out of range
+    JASPERENGINE_API const char* humanoidTrackBoneName(ClipChannel channel, int humanBone);
+    JASPERENGINE_API bool humanoidTrackBoneFromName(ClipChannel channel, const std::string& name, int& out);
     // "default", "once", "loop", "ping_pong", "clamp_forever"
     JASPERENGINE_API const char* wrapName(ClipWrapMode wrap);
     JASPERENGINE_API bool wrapFromName(const std::string& name, ClipWrapMode& out);

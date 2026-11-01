@@ -380,6 +380,14 @@ void getEntityTool(const CallPtr& call) {
             text += ". trail: " + stats.dump();
         }
     }
+    // a Video Player's playback (read only; in Play)
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::VideoPlayerComponent) != filter.end()) {
+        const Json video = McpValues::videoStatusToJson(registry, entity);
+        if (!video.is_null()) {
+            data["video"] = video;
+            text += ". video: " + video.dump();
+        }
+    }
     // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)
     const Json groupState = McpValues::canvasGroupStateToJson(registry, entity);
     if (!groupState.is_null()) {

@@ -12,7 +12,10 @@
 #include "render/TextureRender.h"
 #include "texture/Framebuffer.h"
 #include "fluid/FluidSimulator.h"
+#include "media/VideoTextureConverter.h"
+#include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/AudioSystem.h"
 #include "ecs/EntityManager.h"
 #include "Log.h"
 
@@ -43,6 +46,7 @@ struct CloneContext {
     std::unordered_map<const Framebuffer*, FramebufferCopy> framebuffers;
     // a copied fluid with a simulator -> the copy's own (made first: its output is mapped)
     std::unordered_map<Entity, std::shared_ptr<FluidSimulator>> fluidSimulators;
+    std::unordered_map<Entity, std::shared_ptr<VideoTextureConverter>> videoOutputs;
     // meshes whose external buffers point into the file data of a model copied with them
     std::unordered_set<Entity> modelMeshes;
 
@@ -370,6 +374,32 @@ void prepare<TextComponent>(TextComponent& text, Entity, CloneContext&) {
     text.atlasVersion = 0;
     text.needReloadAtlas = false;
     text.needUpdateText = true;
+    text.glyphInfo.clear();
+    text.rasterScale = 1.0f;
+    text.sdfPadding = 0;
+}
+
+template<>
+void prepare<TextEffectComponent>(TextEffectComponent& effect, Entity, CloneContext&) {
+    // the authored fields are copied; the copy starts as a loaded scene starts it (autoPlay),
+    // with no callbacks
+    effect.onComplete.clear();
+    effect.onCharacterRevealed.clear();
+    effect.playing = false;
+    effect.finished = false;
+    effect.started = false;
+    effect.time = 0.0;
+    effect.cycleTime = 0.0;
+    effect.revealed = 0;
+    effect.previewInEditor = false;
+    effect.needRestart = false;
+    effect.needApply = true;
+    effect.applied = false;
+    effect.wasActive = false;
+    effect.appliedBuild = 0;
+    effect.basePositions.clear();
+    effect.appliedText.clear();
+    effect.appliedFontSize = 0;
 }
 
 template<>
@@ -379,6 +409,8 @@ void prepare<CameraComponent>(CameraComponent& camera, Entity, CloneContext& ctx
     auto it = camera.framebuffer ? ctx.framebuffers.find(camera.framebuffer) : ctx.framebuffers.end();
     camera.framebuffer = it != ctx.framebuffers.end() ? it->second.framebuffer : new Framebuffer();
     camera.render = CameraRender();
+    // the original's shake offset is its shaker's, not the copy's
+    camera.hasViewOffset = false;
     camera.needUpdate = true;
 }
 
@@ -501,6 +533,26 @@ void prepare<VertexAnimatorComponent>(VertexAnimatorComponent& animator, Entity,
 }
 
 template<>
+void prepare<VideoPlayerComponent>(VideoPlayerComponent& player, Entity sourceEntity, CloneContext& ctx) {
+    // the copy plays on its own (its own texture; the textures showing the original's show its
+    // own after the remap), with no listeners of the original; a moved one keeps its texture,
+    // its listeners and (VideoPlayerSystem::handOver) its playback
+    auto it = ctx.videoOutputs.find(sourceEntity);
+    player.output = it != ctx.videoOutputs.end() ? it->second : nullptr;
+    player.targetCamera = ctx.remap(player.targetCamera);
+    player.targetMaterialRenderer = ctx.remap(player.targetMaterialRenderer);
+    player.targetAudioSource = ctx.remap(player.targetAudioSource);
+    if (ctx.move)
+        return;
+    player.onPrepareCompleted.clear();
+    player.onStarted.clear();
+    player.onLoopPointReached.clear();
+    player.onErrorReceived.clear();
+    player.onSeekCompleted.clear();
+    player.onFrameReady.clear();
+}
+
+template<>
 void prepare<FluidSimulationComponent>(FluidSimulationComponent& fluid, Entity sourceEntity, CloneContext& ctx) {
     // the copy runs its own simulation (its own targets and output), restarted from its
     // settings: the simulator clone() made for it when the original had one (the copied
@@ -542,7 +594,18 @@ void prepare<AudioSourceComponent>(AudioSourceComponent& audio, Entity, CloneCon
     }
     // its own voice and sample: a Playing state starts it (play on awake)
     audio.sample.reset();
+    audio.sampleKey.clear();
     audio.handle = 0;
+    audio.oneShots.clear();
+    audio.pendingOneShots.clear();
+    // a running fade does not carry over; fadeIn / fadeOut leave the authored volume
+    if (audio.fade.active && audio.fade.restore) audio.volume = audio.fade.restoreVolume;
+    audio.fade = AudioFade();
+    audio.voicePaused = false;
+    audio.listenerPaused = false;
+    audio.resolvedGroup.clear();
+    audio.groupWarned = false;
+    audio.lastVolumeApplied = -1;
     audio.loaded = false;
     audio.loadFailed = false;
     audio.playingTime = 0;
@@ -734,6 +797,12 @@ void prepare<CanvasGroupComponent>(CanvasGroupComponent& group, Entity, CloneCon
 }
 
 template<>
+void prepare<SafeAreaComponent>(SafeAreaComponent& safeArea, Entity, CloneContext&) {
+    // the copy drives its own RectTransform at the next UI update
+    safeArea.appliedRevision = 0;
+}
+
+template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
@@ -769,6 +838,27 @@ template<>
 void prepare<LatticeFollowerComponent>(LatticeFollowerComponent& follower, Entity, CloneContext& ctx) {
     follower.lattice = ctx.remap(follower.lattice);
     follower.rest = ctx.remap(follower.rest);
+}
+
+template<>
+void prepare<CameraShakerComponent>(CameraShakerComponent& shaker, Entity, CloneContext&) {
+    // a copy starts with no shake (its start preset plays when it is enabled)
+    shaker.runtime.reset();
+}
+
+template<>
+void prepare<CameraFollowComponent>(CameraFollowComponent& follow, Entity, CloneContext& ctx) {
+    // a persistent target stays (the copy follows the same persistent GameObject)
+    if (!follow.targetPersistent) follow.target = ctx.remap(follow.target);
+    // a copy is placed without damping on its first update
+    const CameraFollowComponent defaults;
+    follow.velocity = defaults.velocity;
+    follow.desired = defaults.desired;
+    follow.followedTarget = NULL_ENTITY;
+    follow.placed = false;
+    follow.foreignWriteDetected = false;
+    follow.warnedForeignWrite = false;
+    follow.warnedMissingTarget = false;
 }
 
 template<>
@@ -1079,6 +1169,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<MirrorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LayoutGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CanvasGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SafeAreaComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
@@ -1154,6 +1245,10 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<AnimationPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<VertexAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<CameraShakerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<CameraFollowComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TextEffectComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VideoPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 
@@ -1168,7 +1263,7 @@ T* componentOf(EntityRegistry* registry, Entity entity, const Signature& signatu
 
 // EntityCloner::move: what the copy took over is no longer the original's, so destroying it
 // stops no voice, releases no script instance, fires no callback and destroys nothing else
-void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx) {
+void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx, EntityRegistry* target) {
     const Signature signature = source->getSignature(entity);
     if (ScriptComponent* scripts = componentOf<ScriptComponent>(source, entity, signature)) {
         for (ScriptEntry& entry : scripts->scripts) {
@@ -1183,6 +1278,15 @@ void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx) {
         }
     }
     if (AudioSourceComponent* audio = componentOf<AudioSourceComponent>(source, entity, signature)) {
+        // the copy's voices (main and one-shots) count under its scene now: the old scene's
+        // stopSceneSounds and the voice budget see them there (audio-mixer moveSourceVoices)
+        Scene* fromScene = dynamic_cast<Scene*>(source);
+        Scene* toScene = dynamic_cast<Scene*>(target);
+        const Entity copy = ctx.remap(entity);
+        AudioSourceComponent* moved = toScene && copy != NULL_ENTITY ? toScene->findComponent<AudioSourceComponent>(copy) : nullptr;
+        if (fromScene && toScene && moved) {
+            AudioSystem::moveSourceVoices(fromScene, *audio, toScene, *moved);
+        }
         audio->handle = 0;
         audio->sample.reset();
         audio->loaded = false;
@@ -1193,6 +1297,18 @@ void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx) {
         audio->onStart.clear();
         audio->onPause.clear();
         audio->onStop.clear();
+    }
+    // a Video Player's render texture went with it: its removal here frees nothing
+    if (source->isComponentRegistered<VideoPlayerComponent>()) {
+        if (VideoPlayerComponent* video = componentOf<VideoPlayerComponent>(source, entity, signature)) {
+            video->output.reset();
+            video->onPrepareCompleted.clear();
+            video->onStarted.clear();
+            video->onLoopPointReached.clear();
+            video->onErrorReceived.clear();
+            video->onSeekCompleted.clear();
+            video->onFrameReady.clear();
+        }
     }
     if (ActionComponent* action = componentOf<ActionComponent>(source, entity, signature)) {
         // stopped: its removal stops nothing (no onStop), and a target outside it stays
@@ -1371,6 +1487,7 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
     }
     // cameras and fluids first: textures showing what one renders follow it to the copy
     const bool fluidsRegistered = source->isComponentRegistered<FluidSimulationComponent>();
+    const bool videosRegistered = source->isComponentRegistered<VideoPlayerComponent>();
     for (Entity entity : sources) {
         if (CameraComponent* camera = source->findComponent<CameraComponent>(entity)) {
             if (camera->framebuffer && !ctx.framebuffers.count(camera->framebuffer)) {
@@ -1382,6 +1499,12 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
             std::shared_ptr<FluidSimulator> copy = std::make_shared<FluidSimulator>();
             ctx.framebuffers[fluid->simulator->getOutputFramebuffer()] = {copy->getOutputFramebuffer(), entity, map[entity]};
             ctx.fluidSimulators[entity] = copy;
+        }
+        VideoPlayerComponent* video = videosRegistered ? source->findComponent<VideoPlayerComponent>(entity) : nullptr;
+        if (video && video->output) {
+            std::shared_ptr<VideoTextureConverter> copy = std::make_shared<VideoTextureConverter>();
+            ctx.framebuffers[video->output->getFramebuffer()] = {copy->getFramebuffer(), entity, map[entity]};
+            ctx.videoOutputs[entity] = copy;
         }
     }
 
@@ -1453,6 +1576,7 @@ std::vector<Entity> EntityCloner::move(Scene* source, const std::vector<Entity>&
     // render targets are the copies' own (the GPU state of everything drawn reloads), as for
     // a clone: textures showing a moved camera's or fluid's output show the copy's
     const bool fluidsRegistered = source->isComponentRegistered<FluidSimulationComponent>();
+    const bool videosRegistered = source->isComponentRegistered<VideoPlayerComponent>() && target->isComponentRegistered<VideoPlayerComponent>();
     for (Entity entity : sources) {
         if (CameraComponent* camera = source->findComponent<CameraComponent>(entity)) {
             if (camera->framebuffer && !ctx.framebuffers.count(camera->framebuffer)) {
@@ -1464,6 +1588,13 @@ std::vector<Entity> EntityCloner::move(Scene* source, const std::vector<Entity>&
             std::shared_ptr<FluidSimulator> copy = std::make_shared<FluidSimulator>();
             ctx.framebuffers[fluid->simulator->getOutputFramebuffer()] = {copy->getOutputFramebuffer(), entity, map[entity]};
             ctx.fluidSimulators[entity] = copy;
+        }
+        // a Video Player keeps its render texture (and plays on): the textures showing it stay,
+        // their video|<id> links name the moved GameObject
+        VideoPlayerComponent* video = videosRegistered ? source->findComponent<VideoPlayerComponent>(entity) : nullptr;
+        if (video && video->output) {
+            ctx.framebuffers[video->output->getFramebuffer()] = {video->output->getFramebuffer(), entity, map[entity]};
+            ctx.videoOutputs[entity] = video->output;
         }
     }
 
@@ -1480,8 +1611,17 @@ std::vector<Entity> EntityCloner::move(Scene* source, const std::vector<Entity>&
         copyComponents(source, sourceEntity, target, copy, ctx);
     }
 
+    // the moved Video Players' playback goes on in the target (before the originals go)
+    if (source->isComponentRegistered<VideoPlayerComponent>() && target->isComponentRegistered<VideoPlayerComponent>()) {
+        std::shared_ptr<VideoPlayerSystem> from = source->findSystem<VideoPlayerSystem>();
+        std::shared_ptr<VideoPlayerSystem> to = target->findSystem<VideoPlayerSystem>();
+        for (Entity entity : sources) {
+            if (from && to && source->findComponent<VideoPlayerComponent>(entity))
+                from->handOver(entity, *to, map[entity]);
+        }
+    }
     for (Entity entity : sources) {
-        handOver(source, entity, ctx);
+        handOver(source, entity, ctx, target);
     }
     return copies;
 }

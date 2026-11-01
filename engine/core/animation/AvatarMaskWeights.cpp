@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AvatarMaskWeights.h"
+#include "animation/HumanoidClip.h"
 
 #include "Scene.h"
 #include "animation/AnimatorAssetIO.h"
@@ -95,10 +96,18 @@ anim::HumanoidSlots anim::resolveHumanoidSlots(Scene* scene, Entity root){
     for (Entity model : models){
         pose::ModelRigInfo info;
         std::vector<Entity> boneEntities;
+        std::vector<Matrix4> bridges;
         std::string error;
-        if (!pose::buildModelRig(scene, model, info, boneEntities, nullptr, &error)){
+        if (slots.model == NULL_ENTITY && !scene->getComponent<ModelComponent>(model).bonesIdMapping.empty()) slots.model = model;
+        if (!pose::buildModelRig(scene, model, info, boneEntities, &bridges, &error)){
             if (firstError.empty()) firstError = error;
             continue;
+        }
+        slots.model = model;
+        // the rig humanoid clips realise on (anim-retarget 7.4)
+        auto target = std::make_shared<HumanoidTarget>();
+        if (buildHumanoidTarget(info, boneEntities, bridges, model, scene->getComponent<ModelComponent>(model).filename, *target)){
+            slots.target = target;
         }
         for (int slot = 0; slot < pose::HUMAN_BONE_COUNT; slot++){
             const std::string& bone = info.humanoid.bones[(size_t)slot];

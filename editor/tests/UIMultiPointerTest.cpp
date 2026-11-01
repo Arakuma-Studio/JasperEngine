@@ -628,8 +628,9 @@ TEST_F(UIMultiPointerTest, IsPointerOverUIPerPointer) {
 TEST(OnScreenControlsEditor, CatalogStreamAndExport) {
     using editor::Catalog;
     using editor::ComponentType;
-    // appended together after the types before them; later ones may follow (SYNC#4 moved the
-    // Ragdoll after them)
+    // appended together after the Canvas Group; later ones may follow (SYNC#4 moved the Ragdoll
+    // after them; the camera components, the Text Effect... append after it)
+    EXPECT_EQ(static_cast<int>(ComponentType::OnScreenStickComponent), static_cast<int>(ComponentType::CanvasGroupComponent) + 1);
     EXPECT_EQ(static_cast<int>(ComponentType::OnScreenButtonComponent), static_cast<int>(ComponentType::OnScreenStickComponent) + 1);
     EXPECT_EQ(static_cast<int>(ComponentType::TouchAreaComponent), static_cast<int>(ComponentType::OnScreenButtonComponent) + 1);
     EXPECT_LE(static_cast<int>(ComponentType::TouchAreaComponent), static_cast<int>(editor::LastComponentType));

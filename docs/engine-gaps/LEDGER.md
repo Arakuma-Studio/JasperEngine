@@ -40,30 +40,30 @@ origin/main).
 | # | Feature (branch `gaps/<name>`) | Covers | Status |
 |---|---|---|---|
 | 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | merged |
-| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | review |
+| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | merged |
 | 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | merged |
-| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | impl |
+| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | merged |
 | 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | merged |
-| 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | review |
+| 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | merged |
 | 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | merged |
 | 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | merged |
 | 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | merged |
 | 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | merged |
-| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | impl |
-| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | impl |
+| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | merged |
+| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | merged |
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | merged |
 | 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | merged |
-| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | review |
+| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | merged |
 | 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | merged |
 | 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | merged |
 | 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
 | 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | merged |
 | 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | merged |
-| 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | review |
+| 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | merged |
 | 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | merged |
-| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | impl |
-| 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | review |
-| 26 | `xcode26-dav1d` | iOS/macOS builds fail on Xcode 26.6 (pre-existing on the original main): dav1d's aarch64 assembly (src/arm/64/refmvs.S ...) does not assemble; fix and verify on a macOS box | todo |
+| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | merged |
+| 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | merged |
+| 26 | `xcode26-dav1d` | iOS/macOS builds fail on Xcode 26.6 (pre-existing on the original main): dav1d's aarch64 assembly (src/arm/64/refmvs.S ...) does not assemble; fix and verify on a macOS box | merged |
 | 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | merged |
 
 ## Log
@@ -227,3 +227,52 @@ origin/main).
   platform-services, ui-multitouch, physics-contacts, physics-3d, anim-layers, shader-globals, coroutines,
   particles, ui-canvas-group (+ guide-headroom). Next batch: camera-shake (final merge done, 0ea304609),
   audio-mixer, native-bridge, then ui-scaling-text, video-mp4, safe-area as their final merges land.
+- 2026-11-01: merged locally (not pushed yet): camera-shake, ui-scaling-text, audio-mixer, anim-retarget (after its
+  review fixes; a re-review of the fixes is running). Lead fixes found by the batch checks: camera-shake's order test
+  assumed it was last (dce634fb7); the owner's Mac found the Xcode project lacked SoLoud's 12 filter sources (the
+  audio mixer's effects; link error) -> added, and tools/xcode_sync_engine.py now also compares SoLoud's CMake list
+  (1d7690f0b); the audio-mixer merge had duplicated Generator::configure (1c75bd8fc). The Mac also found Apple
+  compile errors on unmerged branches: native-bridge (a C++ parameter named `id` hid Objective-C's id; fixed,
+  macOS/iOS now 0 errors) and video-mp4 (enum values YES/NO, Objective-C macros; fixing). Session restart: all
+  agents revived; box 2201's sshd had lost /run/sshd when unattended-upgrades stopped ssh.service -> fixed, every
+  box now key-only with a cron that keeps /run/sshd. #26 xcode26-dav1d started (on the owner's Mac, own directory).
+- 2026-11-01: pushed 6faebce08 (verified tip 5fde0ada4 + its TOOLS.md): camera-shake, ui-scaling-text, audio-mixer
+  (1c75bd8fc, pushed earlier), anim-retarget (two review rounds), video-mp4, native-bridge, xcode26-dav1d. Linux:
+  0 warnings, unit 1800 passed (+ the CanvasGroupTest.PerformanceBudgets load flake), full MCP 944 passed with only
+  the 10 baseline failures, 155 tools 114475. Owner's Mac: macOS + iOS 0 errors with dav1d's assembly ON (no local
+  workaround any more). Lead fixes: the app targets link AVFoundation/AudioToolbox/CoreMedia/CoreVideo explicitly
+  (Objective-C++ does not autolink; the macOS app failed on the video backend, iOS linked only via the ads SDK;
+  xcode_sync_engine.py enforces it), native-bridge's exporter links the engine's system frameworks into every Apple
+  export (iOS/macOS exports with Objective-C + Swift plugins and an SPM package build on the Mac, with and without
+  plugins), a FileDialogs bit clash (audio mixer and video both 1 << 15), a broken Xcode group from a union merge.
+  xcode26-dav1d's real cause: Xcode's project header map resolved dav1d's config.h to thorvg's (the asm-off
+  workaround built a dav1d that decodes nothing). asan-sweep merged locally after this (892dd9912), in the next batch.
+- 2026-11-01: correction: CanvasGroupTest.PerformanceBudgets is NOT a load flake since 5fde0ada4. It fails on an
+  idle box every run (structural pass over 5000 transforms 424 us vs 400 budget, best of 50); it passed on
+  7fd144900. A merge between them (dav1d, video-mp4, native-bridge or anim-retarget's fixes) slowed the pass:
+  task perf-canvasgroup bisects and fixes it (PhysicsContactsTest.ContactProcessingCostIsSmall checked too).
+  asan-sweep pushed (d08d63b31 + this entry): Linux 0 warnings, unit 1799 passed + those two timing tests, full MCP
+  944 passed with only the 10 baseline failures, 155 tools 114475; owner's Mac macOS + iOS 0 errors.
+- 2026-11-01: correction of the correction: the canvas group timing failure is not a regression from the batch.
+  Bisected on idle box 2201 (best of 250): the structural pass was ~420 us at both 7fd144900 and 5fde0ada4 (the
+  earlier pass at 7fd144900 was the test skipping itself under load). Root cause: getSignature/isCreated searched
+  EntityManager's std::map (tree cache misses, 43% of the pass). Task perf-canvasgroup: a paged signature cache next
+  to the map (812a7c3ac) -> 250 us; the physics contact timing test made robust (GC before each trial, best-of
+  rounds; noise, not a regression). In review (core ECS change).
+- 2026-11-01: pushed safe-area and anim-properties (verified 1b753e5d4 + TOOLS.md from that build): Linux 0 warnings,
+  unit 1836 passed (+ the two timing tests whose fix is in review), full MCP 955 passed with only the 10 baseline
+  failures and the autosync load flake, 155 tools 115098; owner's Mac macOS + iOS 0 errors. Merge notes: the Video
+  Player then the Safe Area in the component order; the Safe Area got its `enabled` animation row (anim-properties'
+  reverse test); safe-area's Game view devices combine with ui-scaling-text's resolutions (one device list).
+- 2026-11-01: FINAL. Pushed debug-overlay (two review rounds; the second found a removeListener deadlock, fixed:
+  every removed call wakes the remover and no wait happens from inside a listener) and perf-canvasgroup (reviewed:
+  EntityManager's paged signature cache, not copyable for MSVC's dllexport, physics cost budgets independent of box
+  load, AnimationClipControllerTest's undo isolation). Every feature of the table is merged and pushed.
+  Final verification of b14b9c2f9 (box 2201, idle): build 0 warnings; unit 1874 passed, 0 failed (the timing tests
+  included); full MCP 961 passed, only the 10 baseline failures (test_animation_assets x5, test_lattice_scene x5,
+  pre-existing on the original main); 155 tools 115120 chars (TOTAL_LIMIT), TOOLS.md from this build; owner's Mac:
+  JasperEngine macOS and iOS 0 errors with dav1d's assembly on.
+  Not verified anywhere: Windows builds (no Windows toolchain here; MSVC-specific risks addressed by reading only),
+  runs on real devices or simulators (Apple and Android builds compile and link; Android exports assemble), the
+  editor windows by eye. Known leftovers recorded in the specs' Implementation notes (e.g. asan-sweep: a raw
+  Framebuffer per CameraComponent is never freed, ~680 bytes per camera, needs render-target ownership work).

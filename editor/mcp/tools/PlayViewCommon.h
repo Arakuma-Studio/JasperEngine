@@ -75,6 +75,7 @@ namespace jasperengine::editor::mcp::w3 {
         std::string savePath;            // also write the PNG here (project-relative or absolute)
         bool focus = true;               // bring the view's tab to the front when it must render
         int timeoutMs = 20000;
+        bool deviceOverlay = true;       // game view with a simulated device: its screen drawn over the image
     };
 
     struct CaptureResult {

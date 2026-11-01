@@ -198,6 +198,13 @@ jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (group animation, jasper://docs/lattice).
 Colours ("#hex", {srgb}), curves, templates, recording: jasper://docs/editor-tools.
 Sprite normal maps for 2D lights: generate_sprite_normals (jasper://docs/sprite-normals).
+Clip property tracks (active, colours...): channel property; get_animation list_properties.
+Sound: audio_mixer (jasper://docs/audio). Shake/follow: camerashaker, camerafollow
+(jasper://docs/camera). Canvas Scaler, text effects, Game view resolutions and devices:
+configure_game_view (jasper://docs/ui); safe areas: create_ui safe_area
+(jasper://docs/safe-area). Video: type video_player (jasper://docs/video). On-device
+console/FPS: DebugOverlay (jasper://docs/debugging). Native SDKs: Native.call, native_plugins
+(jasper://docs/native-bridge).
 
 ## Post-processing
 Main camera only: apply_post_processing_preset (film, vhs, mobile_adaptive...), then
@@ -221,6 +228,8 @@ Scenes in Build order and the start scene live in project.yaml (project tools).
 build_project: a game per platform or a CMake project; ship: jasper://docs/shipping.
 Before exporting: scenes saved, Console clean in play, the start scene right.
 )JE"
+// SYNC4-ABSORB(retarget): upstream's guide line "Clip on another humanoid rig: clips[i].retarget
+// or create.humanoid" waits for the retarget absorption
 R"JE(
 ## HTML/CSS UI
 Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript): create_ui_document

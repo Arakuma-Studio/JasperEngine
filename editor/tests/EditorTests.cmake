@@ -40,6 +40,10 @@ if(NOT WIN32)
 else()
     list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/HttpTest\\.cpp$")
 endif()
+# VideoMp4Test: the Linux FFmpeg backend and the media cache against that server
+if(WIN32 OR APPLE)
+    list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/VideoMp4Test\\.cpp$")
+endif()
 
 # the child ProcessExecTest runs (argument echo, environment, timeouts, a process tree, floods)
 add_executable(je_vcs_process_helper ${CMAKE_CURRENT_LIST_DIR}/vcs/ProcessHelper.cpp)
@@ -66,6 +70,9 @@ jasperengine_add_test_target(jasperengine-editor-tests
         JASPER_TEST_FIXTURES_DIR="${CMAKE_CURRENT_LIST_DIR}/fixtures"
         # upstream's name of the same folder
         JASPER_EDITOR_TEST_FIXTURES="${CMAKE_CURRENT_LIST_DIR}/fixtures"
+        # the video tests' clips (tools/media/make_test_clips.sh) and the HTML UI's WebM fixtures
+        JASPER_MEDIA_TEST_CLIPS="${CMAKE_SOURCE_DIR}/engine/tests/media/clips"
+        JASPER_HTMLUI_VIDEO_FIXTURES="${CMAKE_SOURCE_DIR}/engine/tests/htmlui/fixtures/video"
         # tests that run the editor binary (CLI exit codes)
         JASPER_TEST_EDITOR_BINARY="$<TARGET_FILE:jasperengine-editor>"
         JASPER_TEST_LOG_CRASH_HELPER="$<TARGET_FILE:je_log_crash_helper>"

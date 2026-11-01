@@ -115,6 +115,12 @@ EntityRegistry::EntityRegistry() {
     registerComponent<OnScreenButtonComponent>(ComponentOrder::Insertion, "OnScreenButtonComponent");
     registerComponent<TouchAreaComponent>(ComponentOrder::Insertion, "TouchAreaComponent");
 
+    // upstream (camera shake spec 7.1, ui-scaling-text, video-mp4, safe-area): after ours
+    registerComponent<CameraShakerComponent>(ComponentOrder::Insertion, "CameraShakerComponent");
+    registerComponent<CameraFollowComponent>(ComponentOrder::Insertion, "CameraFollowComponent");
+    registerComponent<TextEffectComponent>(ComponentOrder::Hierarchy, "TextEffectComponent");
+    registerComponent<VideoPlayerComponent>(ComponentOrder::Insertion, "VideoPlayerComponent");
+    registerComponent<SafeAreaComponent>(ComponentOrder::Hierarchy, "SafeAreaComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

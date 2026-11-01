@@ -31,7 +31,9 @@ async def test_console_cursor_and_filters(ed: Editor):
     ed.check(errors["entries"] and all(e["type"] == "error" for e in errors["entries"]), f"type filter: {errors}")
     found = await ed.call("read_console", since=cursor, contains="MCP-PROBE-INFO")
     ed.check_eq(len(found["entries"]), 1, "contains filter is case-insensitive")
-    rx = await ed.call("read_console", since=cursor, regex=r"probe-(info|error)$")
+    # a Lua Log.error carries its Lua traceback under the message (Project Settings > Debug)
+    ed.check(any("mcp-probe-error\nstack traceback:" in m for m in msgs), f"Log.error with its traceback: {msgs}")
+    rx = await ed.call("read_console", since=cursor, regex=r"probe-(info|error)(\n|$)")
     ed.check_eq(len(rx["entries"]), 2, "regex filter")
     await ed.check_error("read_console", regex="([")
 

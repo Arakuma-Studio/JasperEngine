@@ -391,10 +391,13 @@ TEST_F(ClipConverters_, ValidationOutcomes) {
     ClipValidationReport unchecked = ClipValidation::validate(data, nullptr, NULL_ENTITY);
     EXPECT_EQ(unchecked.total, 8u);
     EXPECT_EQ(unchecked.resolved, 0u);
+    // (a property this engine cannot animate is reported without a root too: "Light" is not the
+    // Catalog key "light", anim-properties)
     for (const TrackReport& t : unchecked.tracks) {
-        EXPECT_EQ(t.status, t.channel == ClipChannel::Property ? TrackBindingStatus::NotSampled : TrackBindingStatus::Unchecked);
+        EXPECT_EQ(t.status, t.channel == ClipChannel::Property ? TrackBindingStatus::UnknownProperty : TrackBindingStatus::Unchecked);
     }
-    EXPECT_TRUE(unchecked.ok());
+    EXPECT_FALSE(unchecked.ok()) << "an unknown property is a problem";
+    EXPECT_NE(unchecked.tracks.back().message.find("did you mean 'light'"), std::string::npos) << unchecked.tracks.back().message;
 
     ClipValidationReport report = ClipValidation::validateInScene(project(), project()->getScene(sceneId), data, hero);
     ASSERT_EQ(report.tracks.size(), data.tracks.size());
@@ -425,7 +428,7 @@ TEST_F(ClipConverters_, ValidationOutcomes) {
     const TrackReport* cageReport = reportOf(report, "Cage", ClipChannel::Lattice);
     EXPECT_EQ(cageReport->status, TrackBindingStatus::LatticeIndexOutOfRange);
     EXPECT_EQ(cageReport->badPoints, std::vector<int>{points + 2});
-    EXPECT_EQ(report.tracks.back().status, TrackBindingStatus::NotSampled);
+    EXPECT_EQ(report.tracks.back().status, TrackBindingStatus::UnknownProperty);
 
     // resolved = Ok + duplicate; total = sampled tracks
     EXPECT_EQ(report.resolved, 4u);

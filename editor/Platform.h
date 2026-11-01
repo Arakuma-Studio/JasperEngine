@@ -23,6 +23,8 @@ namespace jasperengine::editor{
         ScreenOrientation orientation = ScreenOrientation::Portrait;
         // BCP 47 tag; "" = the host's languages
         std::string language;
+        // the Game view's fixed resolution's dpi (0: none, the host's); a device's own wins
+        float dpi = 0.0f;
     };
 
     // A System.openURL call made in the editor (MCP get_play_state.platform.opened_urls)
@@ -72,6 +74,8 @@ namespace jasperengine::editor{
         static void setSimulatedOrientation(ScreenOrientation orientation);
         // "" = the host's languages
         static void setSimulatedLanguage(const std::string& language);
+        // Screen.dpi of a Game view resolution preset (0 = the host's)
+        static void setSimulatedDpi(float dpi);
         static const PlatformSimulation& getSimulation();
         // the orientation of the layout the engine's view has now (App, before setSizes)
         static void setShownOrientation(ScreenOrientation orientation);

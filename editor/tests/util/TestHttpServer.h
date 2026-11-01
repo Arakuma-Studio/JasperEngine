@@ -22,6 +22,9 @@
 //   /cookies              two Set-Cookie headers
 //   /count/{ms}           counts the requests running at once (maxConcurrent), waits, 200
 //   /drop                 closes the connection without answering
+//   /file/{name}          a file given to addFile (video tests): ETag and Last-Modified, a matching
+//                         If-None-Match is 304, Range: bytes=N- is 206; ?trickle=MS sends it in
+//                         4 KiB chunks MS apart, ?cut=N closes the connection after N body bytes
 #pragma once
 
 #include <atomic>
@@ -57,6 +60,11 @@ namespace jaspertest {
         // the bytes /bytes/{n} sends
         static std::string pattern(size_t n, size_t offset = 0);
 
+        // a file /file/{name} serves, with its ETag ("" for none)
+        void addFile(const std::string& name, std::string bytes, std::string etag);
+        // the next request of /file/{name} closes after `bytes` body bytes (a broken download)
+        void cutNext(const std::string& name, size_t bytes);
+
     private:
         int listenSocket = -1;
         int boundPort = 0;
@@ -66,6 +74,8 @@ namespace jaspertest {
         std::vector<std::thread> connections;
         mutable std::mutex countMutex;
         std::map<std::string, int> counts;
+        struct File { std::string bytes; std::string etag; size_t cutNext = 0; };
+        std::map<std::string, File> files;
         std::map<std::string, std::vector<std::pair<std::string, std::string>>> lastHeaders;
         std::atomic<int> active{0};
         std::atomic<int> maxActive{0};

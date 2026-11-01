@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "window/GameResolutions.h"
 #include "Scene.h"
 #include "Catalog.h"
 #include "render/SceneRender.h"
@@ -616,6 +617,46 @@ namespace jasperengine::editor{
     // Name, identifier, version and build below are overrides: empty (or 0)
     // means the ApplicationSettings value.
 
+    // An Info.plist value of the native plugin settings (ios.plist_entries, macos.plist_entries):
+    // a string, a boolean, a number or a list of strings
+    struct NativePlistValue {
+        enum class Kind { String, Bool, Integer, Real, StringArray };
+        Kind kind = Kind::String;
+        std::string text;                   // String
+        bool flag = false;                  // Bool
+        long long integer = 0;              // Integer
+        double real = 0.0;                  // Real
+        std::vector<std::string> items;     // StringArray
+        bool operator==(const NativePlistValue& other) const {
+            if (kind != other.kind) return false;
+            switch (kind) {
+                case Kind::String: return text == other.text;
+                case Kind::Bool: return flag == other.flag;
+                case Kind::Integer: return integer == other.integer;
+                case Kind::Real: return real == other.real;
+                case Kind::StringArray: return items == other.items;
+            }
+            return false;
+        }
+        bool operator!=(const NativePlistValue& other) const { return !(*this == other); }
+    };
+
+    // A CocoaPod of the iOS export's Podfile (ios.cocoapods)
+    struct NativeCocoaPod {
+        std::string name;       // "Google-Mobile-Ads-SDK"
+        std::string version;    // "~> 11.0"; "" = any
+        std::string source;     // a spec repository URL; "" = the CocoaPods trunk
+        bool operator==(const NativeCocoaPod& other) const { return name == other.name && version == other.version && source == other.source; }
+    };
+
+    // A Swift package of the iOS export (ios.swift_packages): up to the next major version
+    struct NativeSwiftPackage {
+        std::string url;                    // "https://github.com/RevenueCat/purchases-ios"
+        std::string version;                // minimum version, "4.0.0"
+        std::vector<std::string> products;  // linked into the iOS target, e.g. {"RevenueCat"}
+        bool operator==(const NativeSwiftPackage& other) const { return url == other.url && version == other.version && products == other.products; }
+    };
+
     struct WebProjectSettings {
         std::string applicationName;
         std::filesystem::path favicon;
@@ -623,6 +664,11 @@ namespace jasperengine::editor{
         std::string headInclude;
         bool resizeCanvasToWindow = true;
         bool hideEmscriptenUI = false;
+        // native plugins (web.script_urls): <script src> in <head>, before plugins/native/web/*.js
+        std::vector<std::string> scriptUrls;
+        // the page's viewport covers the whole screen (viewport-fit=cover): the canvas reaches
+        // under a phone's notch and env(safe-area-inset-*) reports it (Screen.safeArea)
+        bool viewportFitCover = true;
     };
 
     struct LinuxProjectSettings {
@@ -645,6 +691,9 @@ namespace jasperengine::editor{
         std::string buildNumber;
         std::filesystem::path icon;
         bool highDpi = true;
+        // native plugins (macos.plist_entries, macos.frameworks): merged into Info.plist, linked
+        std::map<std::string, NativePlistValue> plistEntries;
+        std::vector<std::string> frameworks;   // "StoreKit"; "Name?" = weak
     };
 
     struct IOSProjectSettings {
@@ -662,6 +711,14 @@ namespace jasperengine::editor{
         // S30: the team that signs a device build, and the archive's export method
         std::string teamId;
         std::string exportMethod = "development";   // development, ad-hoc, app-store
+        // native plugins (ios.*): what SDKs need from the Xcode project
+        std::map<std::string, NativePlistValue> plistEntries;   // merged into Info.plist (replacing keys)
+        std::string plistXml;              // raw <key>..</key><value> pairs appended to the top dict
+        std::vector<std::string> frameworks;   // system frameworks linked: "StoreKit"; "Name?" = weak
+        std::vector<NativeCocoaPod> cocoapods;  // workspaces/xcode/Podfile
+        std::vector<NativeSwiftPackage> swiftPackages;
+        std::string entitlementsXml;       // the <dict> body of ios/JasperEngine.entitlements
+        std::string deploymentTarget = "15.0";   // IPHONEOS_DEPLOYMENT_TARGET, at least 15.0
     };
 
     // Android INTERNET permission: Auto adds it when the exported Lua or C++ uses Http (or the
@@ -700,6 +757,13 @@ namespace jasperengine::editor{
         std::string packageFormat = "aab";
         std::filesystem::path keystorePath;
         std::string keystoreAlias;
+        // native plugins (android.*): what SDKs need from the Gradle project
+        std::vector<std::string> gradleDependencies;   // "group:name:version" -> implementation; other text verbatim
+        std::vector<std::string> gradleRepositories;   // Maven repository URLs
+        std::vector<std::string> gradleProperties;     // "key=value" lines of gradle.properties
+        std::vector<std::string> extraPermissions;     // full names: "com.google.android.gms.permission.AD_ID"
+        std::string manifestXml;               // raw XML inside <manifest>, before <application>
+        std::string manifestApplicationXml;    // raw XML inside <application>
     };
 
     // Google's sample AdMob apps, which only serve test ads. Exports never fall back to them.
@@ -778,6 +842,12 @@ namespace jasperengine::editor{
         unsigned int canvasWidth;
         unsigned int canvasHeight;
         Scaling scalingMode;
+        // Project Settings > Graphics > UI Scale (the Canvas Scaler's project default)
+        CanvasScalerSettings uiScale;
+        // the Game view's image (setEditViewSize); 0 = the canvas
+        float editViewWidth = 0.0f;
+        float editViewHeight = 0.0f;
+        float editViewDpi = 0.0f;
         TextureStrategy textureStrategy;
         bool vsyncEnabled;
         // Quality > Atmosphere Quality: desktop, mobile, web
@@ -856,6 +926,10 @@ namespace jasperengine::editor{
         LoadingSettings loadingSettings;
         ThreadingProjectSettings threadingSettings;
         ShaderCreationProjectSettings shaderCreationSettings;
+        AudioSettings audioSettings;
+        DebugSettings debugSettings;
+        // applyDebugSettingsForPlay ran for the running Play (until it stops): changes apply live
+        mutable bool debugSettingsInPlay = false;
         TerrainEditorSettings terrainEditorSettings;
         TextureProjectSettings textureSettings;
         std::vector<std::filesystem::path> inspectedAssets;
@@ -863,6 +937,7 @@ namespace jasperengine::editor{
         NavigationProjectSettings navigationSettings;
         SpriteNormalsWindowSettings spriteNormalsSettings;
         bool simulateTouch;
+        std::vector<GameResolution> customResolutions;
 
         // True while project.yaml holds the only copy of this user's editor state
         bool workspaceMigrationPending = false;
@@ -1434,6 +1509,19 @@ namespace jasperengine::editor{
         void setScalingMode(Scaling scalingMode);
         Scaling getScalingMode() const;
 
+        // the Canvas Scaler every scene uses unless it overrides it; applied to the Engine at
+        // Play and by the generated main of exports. A change relays the edit-mode UI scenes out.
+        void setUIScale(const CanvasScalerSettings& uiScale);
+        const CanvasScalerSettings& getUIScale() const;
+        // The UI size an edit-mode scene lays out at: its Canvas Scaler for the Game view's
+        // resolution (getEditViewSize), so the Scene view shows what the Game view will
+        void applyEditCanvasScale(Scene* scene, SceneType type, SceneRender* sceneRender) const;
+        void applyEditCanvasScaleToAll();
+        // The view the Scene view lays UI out for: what the Game view shows (its fixed
+        // resolution, else its size; GameWindow sets it), the canvas before; dpi 0 = unknown
+        void setEditViewSize(float width, float height, float dpi);
+        void getEditViewSize(float& width, float& height, float& dpi) const;
+
         void setTextureStrategy(TextureStrategy textureStrategy);
         TextureStrategy getTextureStrategy() const;
 
@@ -1516,6 +1604,11 @@ namespace jasperengine::editor{
         // sources under it compile without a script component referencing them.
         void setScriptDirs(std::vector<std::filesystem::path> scriptDirs);
         const std::vector<std::filesystem::path>& getScriptDirs() const;
+        // What the Play library and the exports compile: getScriptDirs() plus plugins/native/cpp
+        // (the C++ native plugins) when that folder exists
+        std::vector<std::filesystem::path> getBuildScriptDirs() const;
+        // plugins/native/cpp has C++ sources (the Play library is built for them)
+        bool hasNativeCppPlugins() const;
 
         void setCxxStandard(int standard);
         int getCxxStandard() const;
@@ -1742,6 +1835,34 @@ namespace jasperengine::editor{
         bool clearShaderWarmup();
         const LoadingSettings& getLoadingSettings() const;
 
+        // Project Settings > Audio (audio-mixer spec 9): the mixer asset, the voices, the sample
+        // rate, the group new Audio Sources get. Setting them loads the mixer into the engine.
+        const AudioSettings& getAudioSettings() const;
+        void setAudioSettings(const AudioSettings& settings);
+        // the project mixer's file (absolute; empty when none is set)
+        std::filesystem::path getAudioMixerFile() const;
+        // where a new project mixer goes (audio/Main.mixer, assets-relative)
+        static constexpr const char* defaultAudioMixerPath = "audio/Main.mixer";
+        // Loads the project mixer into the engine's AudioMixer with the asset's values (Edit mode
+        // and live edits keep their runtime; Play starts it over); a missing or broken file leaves
+        // the implicit Master (logged). False + error when it does not read.
+        bool applyAudioMixer(std::string* error = nullptr);
+        // a file changed on disk (an editor write, its undo / redo, an external edit): the project
+        // mixer reloads when it is that file
+        void audioFilesChanged(const std::vector<std::filesystem::path>& changed);
+        // Play starts from the start snapshot and the remembered values; Play stops back to the
+        // asset's values (no script overrides, the listener unpaused)
+        void resetPlayAudio(bool starting) const;
+
+        // Project Settings > Debug (project.yaml `debug:`). Changed through DebugSettingsCmd
+        // (undoable), read by Generator and Play start; a running Play takes a change at once
+        // (DebugOverlay::updateSettings: the console open, the stats picked stay)
+        const DebugSettings& getDebugSettings() const;
+        void setDebugSettings(const DebugSettings& settings);
+        // the engine as Play starts: the log buffer and stack traces, the development build
+        // flag, DebugOverlay::configure (development mode: on in the editor's Play)
+        void applyDebugSettingsForPlay() const;
+
         TerrainEditorSettings& getTerrainEditorSettings();
         const TerrainEditorSettings& getTerrainEditorSettings() const;
 
@@ -1766,6 +1887,9 @@ namespace jasperengine::editor{
         // Play acts as a touch device: the mouse is one finger and isTouchDevice() is true
         bool isSimulateTouch() const;
         void setSimulateTouch(bool simulateTouch);
+        // the Game view's custom resolutions (editor workspace, this user's)
+        const std::vector<GameResolution>& getCustomResolutions() const;
+        void setCustomResolutions(const std::vector<GameResolution>& resolutions);
 
         CommandHistory* getProjectCommandHistory();
 
@@ -2826,6 +2950,9 @@ namespace jasperengine::editor{
         uint32_t getPlaySessionSceneId() const;
         // Camera the game renders through: the main camera, else the scene default
         Entity getGameCamera(uint32_t sceneId) const;
+        // the Camera Shaker Inspector's edit-mode shake preview (CameraControlSystem::stopPreview) of every
+        // stopped scene: Play, a save
+        void stopCameraShakePreviews();
         void waitForPlaySessionToFinish();
 
         std::vector<Scene*> getRunningRuntimeLayers(uint32_t sceneId);

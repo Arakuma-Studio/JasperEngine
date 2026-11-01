@@ -13,9 +13,11 @@
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/SplineComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"
+#include "audio/AudioMixer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1049,6 +1051,22 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             }
         }
     }
+    if (updateFlags & UpdateFlags_TextEffect){
+        if (TextEffectComponent* effect = registry->findComponent<TextEffectComponent>(entity)){
+            effect->needApply = true;
+            // a type changed: an amplitude left at the old type's default takes the new one's
+            // (Grow and Unfold use TMP's Amplitude, 1 = the whole change)
+            for (size_t i = 0; i < effect->layers.size(); i++){
+                TextEffectLayer& layer = effect->layers[i];
+                if (layer.type != effect->editedTypes[i]){
+                    const TextEffectType type = layer.type;
+                    layer.type = effect->editedTypes[i];
+                    TextEffects::setType(layer, type);
+                    effect->editedTypes[i] = type;
+                }
+            }
+        }
+    }
     if (updateFlags & (UpdateFlags_Text | UpdateFlags_Text_Atlas)){
         if (TextComponent* text = registry->findComponent<TextComponent>(entity)){
             if (updateFlags & UpdateFlags_Text)
@@ -1189,6 +1207,17 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     if (updateFlags & UpdateFlags_AudioSource){
         if (AudioSourceComponent* audio = registry->findComponent<AudioSourceComponent>(entity)){
             audio->needUpdate = true;
+            audio->priority = std::clamp(audio->priority, 0, 256);
+            audio->maxVoices = std::clamp(audio->maxVoices, 1, 64);
+            // the group is set by name: its id follows (a name not in the mixer keeps the last id,
+            // the runtime then finds the group by name, else plays through Master)
+            if (audio->outputGroupName.empty()) {
+                audio->outputGroup.clear();
+            } else {
+                const std::string id = AudioMixer::findGroupId(audio->outputGroupName);
+                if (!id.empty()) audio->outputGroup = id;
+            }
+            audio->groupWarned = false;
         }
     }
     if (updateFlags & UpdateFlags_Fluid_Reset){
@@ -1336,14 +1365,17 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
     auto sourceProperties = Catalog::findEntityProperties(sourceRegistry, sourceEntity, compType);
     auto propIt = sourceProperties.find(property);
     PropertyType propType;
+    uint64_t updateFlags;
     if (propIt != sourceProperties.end()) {
         propType = propIt->second.type;
+        updateFlags = propIt->second.updateFlags;
     } else {
         const PropertyData found = Catalog::findProperty(sourceRegistry, sourceEntity, compType, property);
         if (!found.ref || !Catalog::findProperty(targetRegistry, targetEntity, compType, property).ref) {
             return; // Property not found
         }
         propType = found.type;
+        updateFlags = found.updateFlags;
     }
 
     // Copy based on property type
@@ -1614,8 +1646,9 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         }
     }
 
-    // Apply any update flags that are associated with this property
-    updateEntity(targetRegistry, targetEntity, propIt->second.updateFlags);
+    // Apply any update flags that are associated with this property (a looked-up name's too:
+    // propIt is end() for those)
+    updateEntity(targetRegistry, targetEntity, updateFlags);
 }
 
 editor::PropertyData editor::Catalog::findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){
