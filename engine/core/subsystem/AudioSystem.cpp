@@ -130,12 +130,6 @@ bool AudioSystem::init(){
         if (outputUnavailable) {
             return false;
         }
-        // --headless and --silent-audio open no device (docs/specs/S30-shipping.md R17)
-        if (platformConfig().silentAudio) {
-            outputUnavailable = true;
-            Log::print("Audio output off (--silent-audio or --headless): sounds are muted");
-            return false;
-        }
 
         if (!backendFromEnvironment) {
             backendFromEnvironment = true;
@@ -145,19 +139,29 @@ bool AudioSystem::init(){
             }
         }
 
+        // --headless and --silent-audio open no device but mix as a device would, on the null
+        // driver pumped by the frames' unscaled time (docs/specs/S30-shipping.md R17): sounds play,
+        // end and fire their events, so the game's logic is that of a normal run
+        AudioBackend opened = backend;
+        if (platformConfig().silentAudio && opened == AudioBackend::Auto) {
+            opened = AudioBackend::Null;
+            Log::print("Audio output off (--silent-audio or --headless): mixing without output");
+        }
+
         SoLoud::Soloud& soloud = getSoloud();
         const unsigned int flags = SoLoud::Soloud::CLIP_ROUNDOFF;
         const unsigned int rate = config.sampleRate > 0 ? (unsigned int)config.sampleRate : (unsigned int)SoLoud::Soloud::AUTO;
         SoLoud::result result = SoLoud::SO_NO_ERROR + 1;
 
-        if (backend == AudioBackend::Auto) {
+        outputAvailable = false;
+        if (opened == AudioBackend::Auto) {
             result = soloud.init(flags, SoLoud::Soloud::MINIAUDIO, rate);
             outputAvailable = result == SoLoud::SO_NO_ERROR;
             if (!outputAvailable) {
                 Log::warn("No audio output available (%s): mixing without output", soloud.getErrorString(result));
             }
         }
-        if (result != SoLoud::SO_NO_ERROR && backend != AudioBackend::Null) {
+        if (result != SoLoud::SO_NO_ERROR && opened != AudioBackend::Null) {
             result = soloud.init(flags, SoLoud::Soloud::NOSOUND, rate == SoLoud::Soloud::AUTO ? 44100 : rate);
         }
         if (result != SoLoud::SO_NO_ERROR) {
@@ -182,7 +186,7 @@ bool AudioSystem::init(){
 }
 
 bool AudioSystem::isOutputAvailable(){
-    return inited ? outputAvailable : (!outputUnavailable && backend == AudioBackend::Auto);
+    return inited ? outputAvailable : (!outputUnavailable && backend == AudioBackend::Auto && !platformConfig().silentAudio);
 }
 
 bool AudioSystem::isInited(){
