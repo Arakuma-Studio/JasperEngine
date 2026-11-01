@@ -42,7 +42,7 @@ origin/main).
 | 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | merged |
 | 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | merged |
 | 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | merged |
-| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | impl |
+| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | merged |
 | 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | merged |
 | 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | merged |
 | 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | merged |
@@ -50,7 +50,7 @@ origin/main).
 | 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | merged |
 | 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | merged |
 | 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | merged |
-| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | impl |
+| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | merged |
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | merged |
 | 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | merged |
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | merged |
@@ -259,3 +259,8 @@ origin/main).
   EntityManager's std::map (tree cache misses, 43% of the pass). Task perf-canvasgroup: a paged signature cache next
   to the map (812a7c3ac) -> 250 us; the physics contact timing test made robust (GC before each trial, best-of
   rounds; noise, not a regression). In review (core ECS change).
+- 2026-11-01: pushed safe-area and anim-properties (verified 1b753e5d4 + TOOLS.md from that build): Linux 0 warnings,
+  unit 1836 passed (+ the two timing tests whose fix is in review), full MCP 955 passed with only the 10 baseline
+  failures and the autosync load flake, 155 tools 115098; owner's Mac macOS + iOS 0 errors. Merge notes: the Video
+  Player then the Safe Area in the component order; the Safe Area got its `enabled` animation row (anim-properties'
+  reverse test); safe-area's Game view devices combine with ui-scaling-text's resolutions (one device list).

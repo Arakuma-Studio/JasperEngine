@@ -195,6 +195,7 @@ LIMITS.update({"edit_animation": 3700, "get_animation": 870, "edit_pose_animatio
 # total 114703 (tool_budget.py), the limits set to them
 LIMITS.update({"edit_animation": 3800, "get_animation": 960})
 # lead: + anim-properties (+228 over the measured 114475 of main d08d63b31) on the provisional 114870: provisional 115098, re-measured on the merged tree
+# measured on main 1b753e5d4 (everything above merged): 155 tools, total 115098 (tool_budget.py)
 TOTAL_LIMIT = 115098
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
