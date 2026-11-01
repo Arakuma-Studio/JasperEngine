@@ -174,14 +174,14 @@ float TrailRenderer::getEndWidth() const{
     return LineRibbonBuilder::widthAt(trail.widthMultiplier, trail.widthCurve, 1.0f);
 }
 
-void TrailRenderer::setWidthCurve(const upcurve::AnimationCurve& curve){
+void TrailRenderer::setWidthCurve(const Curve& curve){
     TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
     trail.widthCurve = curve;
     trail.widthCurve.normalize();
     trail.needUpdateRibbon = true;
 }
 
-upcurve::AnimationCurve TrailRenderer::getWidthCurve() const{
+Curve TrailRenderer::getWidthCurve() const{
     return getComponent<TrailRendererComponent>().widthCurve;
 }
 
@@ -195,14 +195,14 @@ LineWidthUnit TrailRenderer::getWidthUnit() const{
     return getComponent<TrailRendererComponent>().widthUnit;
 }
 
-void TrailRenderer::setColorGradient(const upcurve::Gradient& gradient){
+void TrailRenderer::setColorGradient(const Gradient& gradient){
     TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
     trail.colorGradient = gradient;
     trail.colorGradient.normalize();
     trail.needUpdateRibbon = true;
 }
 
-upcurve::Gradient TrailRenderer::getColorGradient() const{
+Gradient TrailRenderer::getColorGradient() const{
     return getComponent<TrailRendererComponent>().colorGradient;
 }
 
@@ -334,7 +334,7 @@ bool TrailRenderer::removeShaderUniform(const std::string& name){
 
 Vector4 TrailRenderer::getShaderParam(const std::string& name) const{
     const TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
-    return ShaderLibraryValues::getParam(trail.shaderUniforms, trail.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail.customShader, name);
+    return ShaderLibraryValues::getParam(trail.shaderUniforms, trail.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail.customShader.path, name);
 }
 
 bool TrailRenderer::setShaderGlobalBinding(const std::string& member, const std::string& global){
@@ -365,13 +365,13 @@ std::string TrailRenderer::getShaderTexture(const std::string& name) const{
 
 void TrailRenderer::setShaderFeature(const std::string& define, bool enabled){
     TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
-    if (ShaderLibraryValues::setFeature(trail.shaderFeatures, trail.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail.customShader, define, enabled))
+    if (ShaderLibraryValues::setFeature(trail.shaderFeatures, trail.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail.customShader.path, define, enabled))
         trail.needReload = true;
 }
 
 bool TrailRenderer::isShaderFeatureEnabled(const std::string& define) const{
     const TrailRendererComponent& trail = getComponent<TrailRendererComponent>();
-    return ShaderLibraryValues::isFeatureEnabled(trail.shaderFeatures, trail.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail.customShader, define);
+    return ShaderLibraryValues::isFeatureEnabled(trail.shaderFeatures, trail.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : trail.customShader.path, define);
 }
 
 void TrailRenderer::setBlendMode(MaterialBlendMode blendMode){

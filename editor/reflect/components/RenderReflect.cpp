@@ -291,14 +291,17 @@ namespace {
         JE_FIELD(LineRendererComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
         JE_FIELD(LineRendererComponent, lines, .flags = ListWhole, .updateFlags = kLines),
-        // upstream (lines and trails): the polyline and its ribbon. SYNC4-ABSORB(curve): widthCurve and
-        // colorGradient are upstream's curve types (the codec writes them; no reflection ops yet)
+        // upstream (lines and trails): the polyline and its ribbon (S27's Curve and Gradient)
         JE_FIELD(LineRendererComponent, mode, .enumDesc = &enums::kLineRendererMode, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, positions, .ops = &ops::PushBackList<Vector3>, .flags = NoDefault | ListWhole, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, loop, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, useWorldSpace, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, widthMultiplier, .updateFlags = kLines, .min = 0.0f),
+        JE_FIELD(LineRendererComponent, widthCurve, .updateFlags = kLines, .tooltip = "The width over the line's length (0 to 1), times Width Multiplier.",
+                 .drawer = "curve"),
         JE_FIELD(LineRendererComponent, widthUnit, .enumDesc = &enums::kLineWidthUnit, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, colorGradient, .updateFlags = kLines, .tooltip = "The polyline's colour over its length (0 to 1).",
+                 .drawer = "gradient"),
         JE_FIELD(LineRendererComponent, numCornerVertices, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, numCapVertices, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, alignment, .enumDesc = &enums::kLineAlignment),
@@ -548,6 +551,20 @@ namespace {
 
 }
 
+namespace {
+
+    // every point of a polyline as its own property ("positions[2]": Vector3), as the Inspector
+    // and MCP name them (origin/main's catalog listed them so)
+    void lineExtraProperties(void* comp, std::map<std::string, PropertyData>& out) {
+        if (!comp) return;
+        LineRendererComponent& lines = *static_cast<LineRendererComponent*>(comp);
+        for (size_t i = 0; i < lines.positions.size(); i++) {
+            out["positions[" + std::to_string(i) + "]"] = PropertyData{PropertyType::Vector3, UpdateFlags_Lines, nullptr, &lines.positions[i]};
+        }
+    }
+
+}
+
 const ComponentDesc kLineRendererDesc{
     .type = ComponentType::LineRendererComponent, .cppName = "LineRendererComponent", .key = "linerenderer", .displayName = "Line Renderer",
     .icon = ICON_FA_GRIP_LINES,
@@ -557,6 +574,7 @@ const ComponentDesc kLineRendererDesc{
     .decodeApply = DecodeApply::MarkOnly,
     .codegen = JE_FACTORY_CODEGEN(createLineRendererComponent),
     .extraKeys = kLineRendererKnownKeys,
+    .extraProperties = &lineExtraProperties,
 };
 
 namespace {

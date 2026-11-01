@@ -364,9 +364,9 @@ float LineRenderer::getEndWidth() const{
     return LineRibbonBuilder::widthAt(lines.widthMultiplier, lines.widthCurve, 1.0f);
 }
 
-void LineRenderer::setWidthCurve(const upcurve::AnimationCurve& curve){
+void LineRenderer::setWidthCurve(const Curve& curve){
     LineRendererComponent& lines = getComponent<LineRendererComponent>();
-    upcurve::AnimationCurve normalized = curve;
+    Curve normalized = curve;
     normalized.normalize();
     if (lines.widthCurve != normalized){
         lines.widthCurve = normalized;
@@ -374,7 +374,7 @@ void LineRenderer::setWidthCurve(const upcurve::AnimationCurve& curve){
     }
 }
 
-upcurve::AnimationCurve LineRenderer::getWidthCurve() const{
+Curve LineRenderer::getWidthCurve() const{
     return getComponent<LineRendererComponent>().widthCurve;
 }
 
@@ -390,9 +390,9 @@ LineWidthUnit LineRenderer::getWidthUnit() const{
     return getComponent<LineRendererComponent>().widthUnit;
 }
 
-void LineRenderer::setColorGradient(const upcurve::Gradient& gradient){
+void LineRenderer::setColorGradient(const Gradient& gradient){
     LineRendererComponent& lines = getComponent<LineRendererComponent>();
-    upcurve::Gradient normalized = gradient;
+    Gradient normalized = gradient;
     normalized.normalize();
     if (lines.colorGradient != normalized){
         lines.colorGradient = normalized;
@@ -400,7 +400,7 @@ void LineRenderer::setColorGradient(const upcurve::Gradient& gradient){
     }
 }
 
-upcurve::Gradient LineRenderer::getColorGradient() const{
+Gradient LineRenderer::getColorGradient() const{
     return getComponent<LineRendererComponent>().colorGradient;
 }
 

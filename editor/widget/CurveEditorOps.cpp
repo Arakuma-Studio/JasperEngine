@@ -340,6 +340,26 @@ std::vector<int> curveops::pasteKeys(Curve& curve, const std::vector<CurveKey>& 
     return indices;
 }
 
+View curveops::zoom(const View& view, float x, float y, float timeFactor, float valueFactor) {
+    View out = view;
+    const float t = view.toTime(x), v = view.toValue(y);
+    out.t0 = t + (view.t0 - t) * timeFactor;
+    out.t1 = t + (view.t1 - t) * timeFactor;
+    out.v0 = v + (view.v0 - v) * valueFactor;
+    out.v1 = v + (view.v1 - v) * valueFactor;
+    return out;
+}
+
+View curveops::pan(const View& view, float dx, float dy) {
+    View out = view;
+    const float dt = dx / view.scaleX(), dv = -dy / view.scaleY();
+    out.t0 -= dt;
+    out.t1 -= dt;
+    out.v0 -= dv;
+    out.v1 -= dv;
+    return out;
+}
+
 View curveops::frame(const std::vector<const Curve*>& curves, const std::vector<KeyRef>& selection, const View& pixels, float margin,
                      float minSpan) {
     float t0 = std::numeric_limits<float>::infinity(), t1 = -t0, v0 = t0, v1 = -t0;

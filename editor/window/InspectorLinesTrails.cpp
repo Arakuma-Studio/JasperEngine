@@ -9,7 +9,7 @@
 // corners, caps, alignment and texture. The Trail Renderer has Unity's rows plus the same
 // ribbon settings and, in Play, its point count. Every value is a Catalog property edited
 // through PropertyCmd (undo, multi-selection, prefab override markers); the curve and gradient
-// rows are propertyRow's Curve / Gradient types (CurveField, GradientField).
+// rows are propertyRow's Curve / Gradient types (S27's Curve and Gradient fields).
 
 #include "InspectorWindow.h"
 
