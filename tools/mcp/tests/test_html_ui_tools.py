@@ -189,7 +189,13 @@ LIMITS.update({"edit_animation": 3700, "get_animation": 870, "edit_pose_animatio
 # get_play_state's safe_area (+390 on its branch), custom_device's dpi; measured on the tree merged
 # with main 7fd144900 (everything above): 154 tools, total 113752 (test_budget), the limit set to it
 # lead: + safe-area (+395 over the measured 113357 of main 7fd144900) on main's measured 114475: provisional 114870, re-measured on the merged tree
-TOTAL_LIMIT = 114870
+# anim properties (spec 2026-10-31-anim-properties 11): edit_animation's property channel (channel enum,
+# component, property), get_animation's list_properties, preview_animation's properties_total; measured on
+# the tree merged with main d08d63b31 (everything above): edit_animation 3786, get_animation 958, 155 tools,
+# total 114703 (tool_budget.py), the limits set to them
+LIMITS.update({"edit_animation": 3800, "get_animation": 960})
+# lead: + anim-properties (+228 over the measured 114475 of main d08d63b31) on the provisional 114870: provisional 115098, re-measured on the merged tree
+TOTAL_LIMIT = 115098
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

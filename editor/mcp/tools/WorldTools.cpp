@@ -3838,6 +3838,10 @@ void editAnimationTool(const CallPtr& call) {
 
 void getAnimationTool(const CallPtr& call) {
     const Json& args = call->args();
+    if (has(args, "list_properties")) {
+        clip_tools::listProperties(call);
+        return;
+    }
     if (has(args, "clip")) {
         clip_tools::getClip(call);
         return;
@@ -5942,7 +5946,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Animation Player plays it; create {from?: entity Animation or \"model.gltf#Walk\"}; root checks paths "
         "(bindings); a project undo step (from an Animation, or a model clip with root: scene). Without clip: an entity Animation (creates one under target), tweens, "
         "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation, "
-        "morph weights or lattice points; the same "
+        "morph weights, lattice points or a component property (channel property: component, property); the same "
         "path|target+channel replaces or merges. Humanoid: create.humanoid {model?} converts from; tracks {channel: "
         "humanoid|humanoid_position, bone, keys}. "
         "Guide: jasper://docs/animation.",
@@ -5955,9 +5959,11 @@ void registerWorldTools(McpRegistry& registry) {
             {"target", entityRef("Required to create.")},
             {"name", string("")},
             {"tracks", array(object({
-                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice", "humanoid", "humanoid_position"})},
+                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice", "property", "humanoid", "humanoid_position"})},
                 {"keys", array(openKeyItem, "")},
                 {"path", string("")},
+                {"component", string("")},
+                {"property", string("")},
                 {"bone", string("")},
                 {"target", entityRef("Default: target.")},
                 {"start_time", number("")},
@@ -5998,7 +6004,7 @@ void registerWorldTools(McpRegistry& registry) {
         "values), or for another GameObject the animations targeting it or its children (model clips too) and "
         "the Animation Player playing it (states, layers, controller, bindings; live in play). clip (.anim or "
         "\"model.gltf#Walk\"): settings, tracks, events, users; times: values sampled there; root: bindings (humanoid: "
-        "retarget_report, realised at times). "
+        "retarget_report, realised at times); root + list_properties (a path): its animatable properties. "
         "mask (.mask; root: coverage) or controller (.controller summary).",
         object({
             {"scene", sceneRef()},
@@ -6008,6 +6014,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"controller", assetPath("")},
             {"times", array(number(""), "Seconds.")},
             {"root", entityRef("")},
+            {"list_properties", string("")},
             {"max_keys", withDefault(integer("Per track."), 50)}
         }),
         getAnimationTool, true, true);

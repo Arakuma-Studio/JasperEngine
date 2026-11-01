@@ -3157,6 +3157,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::constOverload<>(&AnimationPlayer::isPlaying),
             luabridge::constOverload<const std::string&>(&AnimationPlayer::isPlaying))
         .addFunction("getState", &AnimationPlayer::getState)
+        .addFunction("getAnimatedProperties", &AnimationPlayer::getAnimatedProperties)
         .addFunction("addClip",
             luabridge::overload<const std::string&>(&AnimationPlayer::addClip),
             luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip),

@@ -156,6 +156,7 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
 | `rotation` | `[x, y, z, w]`, `{"euler": [x, y, z]}` degrees or `{"quat": [...]}` | written as quaternions; with both `euler` and `quat` (a key read from a result) `euler` wins; `relative`: multiplies the rest rotation; a turn over 180 degrees between two keys needs middle keys |
 | `morph` | `[w0, w1, ...]` one weight per morph target (at most 8) | shorter arrays mean 0 for the rest |
 | `lattice` | `points` (below) | the path is the cage (the lattice GameObject), not the mesh |
+| `property` | `true`/`false`, a number, `[x, y(, z, w)]`, colours `[r, g, b(, a)]` sRGB or `"#RRGGBB[AA]"` | with `component` and `property`: see Property tracks below |
 
 - `ease` is the easing of the segment that starts at the key: `linear` (default), `step`, or
   `<quad|cubic|quart|quint|sine|expo|circ|back|elastic|bounce>_<in|out|in_out>` (`quad_out`).
@@ -168,11 +169,13 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
 - Per track: `mode: "replace"` (default: the track's keys become these) or `"merge"` (keys at
   the same time within 1 ms are replaced, others added); `loop: true` repeats the track's own
   keys inside a longer clip; `keys: []` with mode replace removes the track.
-- A track is identified by path + channel: giving the same pair edits that track. Its keys are
-  `{path, target, channel, keys, mode, loop, relative}`; other keys are refused.
+- A track is identified by path + channel (property tracks: + component and property): giving
+  the same edits that track. Its keys are `{path, target, channel, keys, mode, loop, relative}`
+  (property tracks add `component`, `property`); other keys are refused.
 - Results return keys as `{time, value | points, ease}` (`ease` only when not linear, `in`/`out`
-  for tangent keys of imported model clips), rotations as `{quat, euler}`; `max_keys` caps the
-  keys listed per track (`key_count` is the real count).
+  for tangent keys, with `tangent_mode` when the curves view made them: `auto`, `free`, `flat`,
+  `broken`, `linear`), rotations as `{quat, euler}`; `max_keys` caps the keys listed per track
+  (`key_count` is the real count).
 - Tangents: a key you send with `in`/`out` (both, the value's width) keeps them, and a key sent
   back unchanged (same time and value, linear) keeps the tangents it had, in `replace` and
   `merge`; `merge` leaves the keys it does not touch as they are. A key you change without
@@ -180,6 +183,52 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
   warning says so). In a rotation track with tangents, such a key keeps the quaternion sign of
   the key it replaces (inserted: of the previous key), so `{"euler": ...}` values don't flip the
   curve. Lattice keys have no tangents.
+
+## Property tracks
+
+`{path, channel: "property", component, property, keys}` animates a component value (Unity's
+`m_IsActive`, `m_Enabled`, `m_Color`, material and MonoBehaviour field curves). `component` is the
+Catalog key (as `set_properties`) or the Inspector name (`"Image"` -> `ui`), `gameobject` or
+`script:<Class>`; `property` the Catalog name, optionally with `.r .g .b .a` / `.x .y .z .w` (one
+component: `color.a`). An unknown name is refused with a did-you-mean and the component's list.
+List what a GameObject has with `get_animation {root, list_properties: "Panel/Stats"}`
+(`[{component, property, kind, label, value}]`).
+
+| component | properties |
+|---|---|
+| `gameobject` | `active` (bool) |
+| components with the checkbox | `enabled` (bool) |
+| `ui` (Image, Text, Button graphic) | `color` (sRGB) |
+| `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `disabled` |
+| `canvasgroup` | `alpha` (0-1), `interactable`, `blocksRaycasts`, `ignoreParentGroups` |
+| `recttransform` | `positionOffset` (anchored position), `width`, `height`, `pivot`, `anchorPointLeft/Top/Right/Bottom`, `anchorOffsetLeft/Top/Right/Bottom` |
+| `mesh` | `submeshes[N].material.baseColorFactor` (a sprite's colour: N = 0), `.emissiveFactor`, `.metallicFactor`, `.roughnessFactor`, `.alphaCutoff`, `submeshes[N].textureRect`, `submeshes[N].material.shaderParams.<member>` |
+| `sprite` | `frame` (index, stepped: Unity's sprite swap) |
+| `light` | `color`, `intensity`, `range`, `innerConeCos`, `outerConeCos` (keys: the full cone angle in degrees, Unity's Spot Angle; not a cosine, not the half angle) |
+| `light2d` | `color`, `intensity`, `range`, `falloff`, `height` |
+| `camera` | `yfov`, `near`, `far`, `left`, `right`, `bottom`, `top` |
+| `audiosource` | `volume`, `speed` (pitch), `pan` |
+| `fog` | `color`, `density`, `linearStart`, `linearEnd` |
+| `skybox` / `progressbar` | `color` / `value` |
+| `ui`, `linerenderer`, `points`, `skybox` | `shaderUniforms.<member>` |
+| `script:<Class>` | its declared bool/int/float/vector/color `properties`, `enabled` |
+
+- Keys are in the Inspector's units: sRGB colours, full cone angles in degrees. Bools, ints and frames step (an
+  ease is ignored with a warning); the rest interpolate. Results and `times` samples return the
+  same units (bools as JSON bools).
+- `active` changes apply after the other values, parents first; events run after the values (a
+  handler at 0.5 sees the GameObject turned on at 0.5). A clip that turns off its own root stops
+  its player until something turns it on.
+- A Button overwrites `ui.color` from its state colours: animate `button.colorNormal`.
+- Bindings report `missing_component` (no such component, submesh, shader member or script field
+  on the GameObject) and `unknown_property`. `preview_animation` lists `properties` (the first
+  16 previewed values; `properties_total` counts them all); `get_runtime_entity` shows them in play.
+- Unity ports: `m_IsActive` -> `gameobject.active`; Image `m_Color` / TMP `m_fontColor` ->
+  `ui.color`; CanvasGroup `m_Alpha` -> `canvasgroup.alpha`; a sprite swap -> `sprite.frame` keys.
+  The UI's layout space is y-down (Unity's is y-up): `m_AnchoredPosition.y` v -> `positionOffset.y`
+  -v; `m_Pivot.y` v -> `pivot.y` 1 - v; `m_AnchorMin.y` v -> `anchorPointBottom` 1 - v and
+  `m_AnchorMax.y` v -> `anchorPointTop` 1 - v; `m_OffsetMin.y` / `m_OffsetMax.y` v ->
+  `anchorOffsetBottom` / `anchorOffsetTop` -v (x values port as they are).
 
 ## Events and Lua scripts
 

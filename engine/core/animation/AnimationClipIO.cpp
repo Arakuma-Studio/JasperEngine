@@ -4,6 +4,7 @@
 #include "AnimationClipIO.h"
 
 #include "animation/AnimJson.h"
+#include "animation/PropertyBindings.h"
 #include "pose/HumanExtraBones.h"
 #include "pose/PoseDofs.h"
 #include "pose/PoseRig.h"
@@ -409,7 +410,98 @@ namespace{
     }
 
     size_t channelWidth(const ClipTrackData& track, size_t morphCount){
-        return ClipData::valueWidth(track.channel, morphCount, track.points.size());
+        return ClipData::valueWidth(track.channel, morphCount, track.points.size(), track.width);
+    }
+
+    const char* const tangentModeNames[] = {"", "auto", "free", "flat", "broken", "linear"};
+
+    // Step 0 of a property track: what (component, property) is. Known: kind, width, swizzle and
+    // discrete set from the registry (a script field's or shader member's kind from its keys: the
+    // parser's, or the first key's width); unknown: kept as read, not played
+    void resolvePropertyTrack(ClipTrackData& track, const TrackOrigin& origin, std::vector<ClipWarning>* warnings){
+        anim::PropertyRef ref;
+        anim::parsePropertyRef(track.component, track.property, ref);
+        track.known = ref.known;
+        if (!ref.known){
+            track.kind = PropertyKind::None;
+            track.width = 0;
+            track.swizzle = -1;
+            track.discrete = false;
+            track.keys.clear();
+            warn(warnings, origin.path, ref.error + ": kept in the file, not played");
+            return;
+        }
+        track.swizzle = ref.swizzle;
+        if (ref.swizzle >= 0){
+            track.kind = PropertyKind::Float;
+            track.width = 1;
+            track.discrete = false;
+            return;
+        }
+        if (ref.kind != PropertyKind::None){
+            track.kind = ref.kind;
+            track.width = anim::kindWidth(ref.kind);
+            track.discrete = ref.discrete;
+            return;
+        }
+        // from the keys: the kind given (parser, editor) when the keys have its width
+        size_t width = track.keys.empty() ? 0 : track.keys[0].value.size();
+        if (track.kind != PropertyKind::None && (track.keys.empty() || width == anim::kindWidth(track.kind) ||
+                                                 (width == 3 && track.kind == PropertyKind::Color4))){
+            track.width = anim::kindWidth(track.kind);
+        }else{
+            width = std::min<size_t>(std::max<size_t>(width, 1), 4);
+            track.kind = width == 2 ? PropertyKind::Vector2 : width == 3 ? PropertyKind::Vector3 : width == 4 ? PropertyKind::Vector4 : PropertyKind::Float;
+            track.width = width;
+        }
+        track.discrete = anim::kindIsDiscrete(track.kind);
+    }
+
+    // Step 1 of a property track's keys (before the shared checks): widths, bools, ints, and no
+    // ease or tangents on discrete properties (they step)
+    void sanitizePropertyKeys(ClipTrackData& track, TrackOrigin& origin, std::vector<ClipWarning>* warnings){
+        bool easeWarned = false;
+        std::vector<ClipKey> kept;
+        std::vector<std::string> keptOrigins;
+        for (size_t k = 0; k < track.keys.size(); k++){
+            ClipKey key = track.keys[k];
+            const std::string& keyPath = origin.keys[k];
+            if (key.value.size() == 3 && track.width == 4 && track.kind == PropertyKind::Color4){
+                key.value.push_back(1.0f);
+            }
+            if (key.value.size() != track.width){
+                warn(warnings, member(keyPath, "value"), "expected " + std::to_string(track.width) + " value" + (track.width == 1 ? "" : "s") +
+                     " for the " + anim::kindName(track.kind) + " property, key dropped");
+                continue;
+            }
+            if (track.kind == PropertyKind::Bool){
+                for (float& v : key.value) v = v > 0.5f ? 1.0f : 0.0f;
+            }else if (track.kind == PropertyKind::Int || track.kind == PropertyKind::Frame){
+                for (float& v : key.value){
+                    if (std::isfinite(v) && v != std::round(v)){
+                        warn(warnings, member(keyPath, "value"), shortNumber(v) + " is not a whole number: rounded");
+                        v = std::round(v);
+                    }
+                }
+            }
+            if (track.discrete){
+                if (key.hasTangents() || !key.inTangent.empty() || !key.outTangent.empty()){
+                    warn(warnings, keyPath, "tangents ignored: a discrete property steps");
+                    key.inTangent.clear();
+                    key.outTangent.clear();
+                }
+                key.tangentMode = ClipTangentMode::None;
+                if (key.ease != EaseType::LINEAR && key.ease != EaseType::STEP && !easeWarned){
+                    easeWarned = true;
+                    warn(warnings, member(keyPath, "ease"), std::string("ignored: ") + anim::kindName(track.kind) + " properties step");
+                }
+                key.ease = EaseType::LINEAR;
+            }
+            kept.push_back(std::move(key));
+            keptOrigins.push_back(origin.keys[k]);
+        }
+        track.keys = std::move(kept);
+        origin.keys = std::move(keptOrigins);
     }
 
     // humanoid tracks after every path track, by channel, then bone (anim-retarget 6.1)
@@ -451,10 +543,12 @@ namespace{
     // Step 1: each key on its own (widths, numbers, time, tangents, ease); bad keys go
     void sanitizeKeys(ClipTrackData& track, TrackOrigin& origin, std::vector<ClipWarning>* warnings){
         const std::string& path = origin.path;
-        if (track.relative && (track.channel == ClipChannel::Morph || track.channel == ClipChannel::Lattice || isHumanoidChannel(track.channel))){
+        if (track.relative && (track.channel == ClipChannel::Morph || track.channel == ClipChannel::Lattice || track.channel == ClipChannel::Property ||
+                               isHumanoidChannel(track.channel))){
             warn(warnings, member(path, "relative"), "only position, rotation and scale tracks can be relative, ignored");
             track.relative = false;
         }
+        if (track.channel == ClipChannel::Property) sanitizePropertyKeys(track, origin, warnings);
 
         if (track.channel == ClipChannel::Lattice){
             // points: valid, unique (the later column wins), ascending (columns follow)
@@ -521,6 +615,9 @@ namespace{
         }else if (isRotationChannel(track.channel)){
             fixedWidth = 4;
             expected = "expected [x, y, z, w]";
+        }else if (track.channel == ClipChannel::Property){
+            fixedWidth = track.width;
+            expected = "expected the property's values";
         }
 
         std::vector<ClipKey> kept;
@@ -572,7 +669,8 @@ namespace{
             if (key.ease == EaseType::CUSTOM){
                 key.ease = EaseType::LINEAR;
             }
-            if (key.hasTangents() && key.ease != EaseType::LINEAR){
+            // (a step stays: Unity's Constant tangent, its segment holds the key's value)
+            if (key.hasTangents() && key.ease != EaseType::LINEAR && key.ease != EaseType::STEP){
                 warn(warnings, member(keyPath, "ease"), "tangents win over the ease: ease ignored");
                 key.ease = EaseType::LINEAR;
             }
@@ -658,8 +756,8 @@ namespace{
             }
             key.inTangent = k > 0 ? before : after;
             key.outTangent = k + 1 < track.keys.size() ? after : before;
-            // tangents win over the ease
-            if (key.ease != EaseType::LINEAR){
+            // tangents win over the ease (a step stays: a Constant segment)
+            if (key.ease != EaseType::LINEAR && key.ease != EaseType::STEP){
                 warn(warnings, member(origin.keys[k], "ease"), "ignored: the track uses tangents");
                 key.ease = EaseType::LINEAR;
             }
@@ -735,9 +833,12 @@ namespace{
             origins.tracks = std::move(keptOrigins);
         }
 
-        // tracks, step 1: every key on its own
+        // tracks, step 1: every key on its own (a property track's identity first)
         for (size_t i = 0; i < data.tracks.size(); i++){
-            if (data.tracks[i].channel != ClipChannel::Property){
+            if (data.tracks[i].channel == ClipChannel::Property){
+                resolvePropertyTrack(data.tracks[i], origins.tracks[i], warnings);
+            }
+            if (data.tracks[i].channel != ClipChannel::Property || data.tracks[i].known){
                 sanitizeKeys(data.tracks[i], origins.tracks[i], warnings);
                 // reported per track as written (a merge concatenates sorted tracks out of order)
                 const std::vector<ClipKey>& keys = data.tracks[i].keys;
@@ -802,7 +903,7 @@ namespace{
         for (size_t t = 0; t < tracks.size(); t++){
             ClipTrackData& track = tracks[t];
             TrackOrigin& origin = trackOrigins[t];
-            if (track.channel == ClipChannel::Property) continue;
+            if (track.channel == ClipChannel::Property && !track.known) continue;
 
             if (track.channel == ClipChannel::Morph){
                 // shorter arrays mean 0 for the rest
@@ -833,6 +934,10 @@ namespace{
             }
 
             completeTangents(track, origin, warnings);
+            // the editor hint only on keys with tangents
+            for (ClipKey& key : track.keys){
+                if (!key.hasTangents()) key.tangentMode = ClipTangentMode::None;
+            }
         }
         data.tracks = std::move(tracks);
 
@@ -917,8 +1022,107 @@ namespace{
         float eulerAngles[3] = {0, 0, 0};
     };
 
+    // A property track's value context: the kind its keys have (None: taken from the first key
+    // read, a script field or a shader member)
+    struct PropertyValueContext{
+        PropertyKind kind = PropertyKind::None;
+        size_t width = 0;
+    };
+
+    // one property key value (or tangent) in key space
+    bool readPropertyValue(const OJson& json, PropertyValueContext& context, bool tangent, const std::string& path,
+                           ParsedValue& out, std::vector<ClipWarning>& warnings){
+        out.values.clear();
+        PropertyKind kind = context.kind;
+        if (kind == PropertyKind::None && !tangent){
+            // the first key decides: true/false a bool, a number a float, n numbers a vector,
+            // "#RRGGBB[AA]" a colour
+            if (json.is_boolean()) kind = PropertyKind::Bool;
+            else if (json.is_number()) kind = PropertyKind::Float;
+            else if (json.is_string()) kind = json.get<std::string>().size() == 9 ? PropertyKind::Color4 : PropertyKind::Color3;
+            else if (json.is_array() && json.size() == 1) kind = PropertyKind::Float;
+            else if (json.is_array() && json.size() >= 2 && json.size() <= 4){
+                kind = json.size() == 2 ? PropertyKind::Vector2 : json.size() == 3 ? PropertyKind::Vector3 : PropertyKind::Vector4;
+            }else{
+                warn(&warnings, path, "expected true/false, a number, an array of 2 to 4 numbers or \"#RRGGBB[AA]\"");
+                return false;
+            }
+        }
+        const size_t width = anim::kindWidth(kind);
+        switch (kind){
+            case PropertyKind::Bool: {
+                if (tangent){
+                    warn(&warnings, path, "a bool has no tangents");
+                    return false;
+                }
+                if (json.is_boolean()){
+                    out.values.push_back(json.get<bool>() ? 1.0f : 0.0f);
+                }else{
+                    float number = 0.0f;
+                    if (!toFloat(json, number)){
+                        warn(&warnings, path, "expected true or false");
+                        return false;
+                    }
+                    if (number != 0.0f && number != 1.0f) warn(&warnings, path, "expected true or false (or 0 / 1): " + shortNumber(number) + " read as " + (number != 0.0f ? "true" : "false"));
+                    out.values.push_back(number != 0.0f ? 1.0f : 0.0f);
+                }
+                break;
+            }
+            case PropertyKind::Int:
+            case PropertyKind::Frame:
+            case PropertyKind::Float: {
+                float number = 0.0f;
+                if (json.is_array() && json.size() == 1 && toFloat(json[0], number)){
+                    out.values.push_back(number);
+                }else if (toFloat(json, number)){
+                    out.values.push_back(number);
+                }else{
+                    warn(&warnings, path, kind == PropertyKind::Float ? "expected a number" : "expected a whole number");
+                    return false;
+                }
+                break;
+            }
+            case PropertyKind::Vector2:
+            case PropertyKind::Vector3:
+            case PropertyKind::Vector4:
+                if (!readNumbers(json, width, out.values)){
+                    warn(&warnings, path, "expected an array of " + std::to_string(width) + " numbers");
+                    return false;
+                }
+                break;
+            case PropertyKind::Color3:
+            case PropertyKind::Color4: {
+                if (json.is_string() && !tangent){
+                    if (!anim::parseHexColor(json.get<std::string>(), out.values)){
+                        warn(&warnings, path, "expected \"#RRGGBB\" or \"#RRGGBBAA\"");
+                        return false;
+                    }
+                }else if (!readNumbers(json, 0, out.values) || (out.values.size() != 3 && out.values.size() != 4)){
+                    warn(&warnings, path, kind == PropertyKind::Color4 ? "expected [r, g, b, a] (sRGB), [r, g, b] or \"#RRGGBB[AA]\""
+                                                                      : "expected [r, g, b] (sRGB) or \"#RRGGBB\"");
+                    return false;
+                }
+                if (kind == PropertyKind::Color4 && out.values.size() == 3){
+                    // a colour without alpha is opaque (tangents: no change of alpha)
+                    out.values.push_back(tangent ? 0.0f : 1.0f);
+                }else if (kind == PropertyKind::Color3 && out.values.size() == 4){
+                    warn(&warnings, path, "the property has no alpha: dropped");
+                    out.values.resize(3);
+                }
+                break;
+            }
+            case PropertyKind::None:
+                return false;
+        }
+        if (context.kind == PropertyKind::None && !tangent){
+            context.kind = kind;
+            context.width = width;
+        }
+        return true;
+    }
+
     bool readValue(const OJson& json, ClipChannel channel, int humanBone, bool tangent, const std::string& path,
-                   ParsedValue& out, std::vector<ClipWarning>& warnings){
+                   ParsedValue& out, std::vector<ClipWarning>& warnings, PropertyValueContext* property = nullptr){
         switch (channel){
             case ClipChannel::Humanoid:
                 // a slot's joint angles (the pose system's DOFs, degrees), written back as E
@@ -1010,7 +1214,8 @@ namespace{
                 return true;
             }
             case ClipChannel::Property:
-                return false;
+                if (!property) return false;
+                return readPropertyValue(json, *property, tangent, path, out, warnings);
         }
         return false;
     }
@@ -1022,6 +1227,7 @@ namespace{
         ParsedValue in;
         ParsedValue out;
         bool tangents = false;
+        ClipTangentMode tangentMode = ClipTangentMode::None;
         size_t origin = 0;
     };
 
@@ -1035,12 +1241,13 @@ namespace{
     }
 
     bool readKey(const OJson& json, ClipChannel channel, int humanBone, const std::string& path, ParsedKey& key,
-                 std::vector<ClipWarning>& warnings){
+                 std::vector<ClipWarning>& warnings, PropertyValueContext* property = nullptr){
         const OJson* time = nullptr;
         const OJson* value = nullptr;
         const OJson* ease = nullptr;
         const OJson* in = nullptr;
         const OJson* out = nullptr;
+        const OJson* tangentMode = nullptr;
         std::string valuePath = member(path, "value");
         std::string easePath = member(path, "ease");
         if (json.is_array()){
@@ -1059,6 +1266,7 @@ namespace{
                 else if (name == "ease") ease = &*it;
                 else if (name == "in") in = &*it;
                 else if (name == "out") out = &*it;
+                else if (name == "tangent_mode") tangentMode = &*it;
                 else warn(&warnings, member(path, name.c_str()), "unknown key ignored");
             }
             if (!value){
@@ -1073,7 +1281,7 @@ namespace{
             warn(&warnings, member(path, "time"), "expected a time in seconds, key dropped");
             return false;
         }
-        if (!readValue(*value, channel, humanBone, false, valuePath, key.value, warnings)){
+        if (!readValue(*value, channel, humanBone, false, valuePath, key.value, warnings, property)){
             warn(&warnings, path, "key dropped");
             return false;
         }
@@ -1083,11 +1291,23 @@ namespace{
             if (!ok){
                 warn(&warnings, path, "in and out tangents go together: tangents ignored");
             }else{
-                ok = readValue(*in, channel, humanBone, true, member(path, "in"), key.in, warnings) &&
-                     readValue(*out, channel, humanBone, true, member(path, "out"), key.out, warnings);
+                ok = readValue(*in, channel, humanBone, true, member(path, "in"), key.in, warnings, property) &&
+                     readValue(*out, channel, humanBone, true, member(path, "out"), key.out, warnings, property);
                 if (!ok) warn(&warnings, path, "tangents ignored");
             }
             key.tangents = ok;
+        }
+        if (tangentMode){
+            bool found = false;
+            if (tangentMode->is_string()){
+                for (size_t i = 1; i < sizeof(tangentModeNames) / sizeof(tangentModeNames[0]); i++){
+                    if (tangentMode->get<std::string>() == tangentModeNames[i]){
+                        key.tangentMode = (ClipTangentMode)i;
+                        found = true;
+                    }
+                }
+            }
+            if (!found) warn(&warnings, member(path, "tangent_mode"), "expected auto, free, flat, broken or linear: ignored");
         }
         return true;
     }
@@ -1105,7 +1325,7 @@ namespace{
         }
         auto channel = json.find("channel");
         if (channel == json.end() || !channel->is_string() || !anim::channelFromName(channel->get<std::string>(), track.channel)){
-            warn(&warnings, member(path, "channel"), "expected position, rotation, scale, morph, lattice, humanoid or humanoid_position, track dropped");
+            warn(&warnings, member(path, "channel"), "expected position, rotation, scale, morph, lattice, property, humanoid or humanoid_position, track dropped");
             return false;
         }
         auto trackPath = json.find("path");
@@ -1135,19 +1355,26 @@ namespace{
             track.path = trackPath->get<std::string>();
         }
 
+        PropertyValueContext propertyContext;
         if (track.channel == ClipChannel::Property){
             auto component = json.find("component");
             auto property = json.find("property");
             if (component != json.end() && component->is_string()) track.component = component->get<std::string>();
             if (property != json.end() && property->is_string()) track.property = property->get<std::string>();
-            track.preserved = json.dump(-1, ' ', false, OJson::error_handler_t::replace);
-            warn(&warnings, path, "property tracks are not supported yet: kept in the file, not played");
-            return true;
+            anim::PropertyRef ref;
+            if (!anim::parsePropertyRef(track.component, track.property, ref)){
+                // not animatable (normalize says so): kept as read, written back verbatim
+                track.preserved = json.dump(-1, ' ', false, OJson::error_handler_t::replace);
+                return true;
+            }
+            propertyContext.kind = ref.swizzle >= 0 ? PropertyKind::Float : ref.kind;
+            propertyContext.width = anim::kindWidth(propertyContext.kind);
         }
 
         for (auto it = json.begin(); it != json.end(); ++it){
             const std::string& name = it.key();
             if (name == "path" || name == "channel" || name == "keys" || (name == "bone" && isHumanoidChannel(track.channel))) continue;
+            if (track.channel == ClipChannel::Property && (name == "component" || name == "property")) continue;
             if (name == "relative" || name == "loop"){
                 if (!it->is_boolean()){
                     warn(&warnings, member(path, name.c_str()), "expected true or false, ignored");
@@ -1176,7 +1403,8 @@ namespace{
             std::string keyPath = indexed(path, "keys", k);
             ParsedKey key;
             key.origin = k;
-            if (!readKey((*keys)[k], track.channel, track.humanBone, keyPath, key, warnings)){
+            if (!readKey((*keys)[k], track.channel, track.humanBone, keyPath, key, warnings,
+                         track.channel == ClipChannel::Property ? &propertyContext : nullptr)){
                 parsed.push_back(ParsedKey());
                 parsed.back().origin = SIZE_MAX;
                 continue;
@@ -1239,9 +1467,12 @@ namespace{
                 out.inTangent = std::move(key.in.values);
                 out.outTangent = std::move(key.out.values);
             }
+            out.tangentMode = key.tangentMode;
             track.keys.push_back(std::move(out));
             origin.keys.push_back(indexed(path, "keys", key.origin));
         }
+        // a script field's or shader member's kind, as its keys said (normalize keeps it)
+        if (track.channel == ClipChannel::Property) track.kind = propertyContext.kind;
         return true;
     }
 
@@ -1360,7 +1591,18 @@ namespace{
         return text + "]";
     }
 
-    std::string valueText(const ClipTrackData& track, const std::vector<float>& value){
+    // a property value: bools as literals, ints without decimals, one float as a number
+    std::string propertyValueText(const ClipTrackData& track, const std::vector<float>& value, bool tangent){
+        if (!tangent && track.kind == PropertyKind::Bool && value.size() == 1) return value[0] > 0.5f ? "true" : "false";
+        if (!tangent && (track.kind == PropertyKind::Int || track.kind == PropertyKind::Frame) && value.size() == 1){
+            return number((float)std::round(value[0]));
+        }
+        if (value.size() == 1) return number(value[0]);
+        return floatsText(value, 0, value.size());
+    }
+
+    std::string valueText(const ClipTrackData& track, const std::vector<float>& value, bool tangent = false){
+        if (track.channel == ClipChannel::Property) return propertyValueText(track, value, tangent);
         if (track.channel != ClipChannel::Lattice) return floatsText(value, 0, value.size());
         std::string text = "{\"points\": [";
         for (size_t i = 0; i < track.points.size(); i++){
@@ -1374,7 +1616,12 @@ namespace{
         if (key.hasTangents()){
             std::string text = "{\"time\": " + timeNumber(key.time) + ", \"value\": " + valueText(track, key.value);
             if (key.ease != EaseType::LINEAR) text += std::string(", \"ease\": ") + quote(anim::easeName(key.ease));
-            return text + ", \"in\": " + valueText(track, key.inTangent) + ", \"out\": " + valueText(track, key.outTangent) + "}";
+            text += ", \"in\": " + valueText(track, key.inTangent, true) + ", \"out\": " + valueText(track, key.outTangent, true);
+            const size_t mode = (size_t)key.tangentMode;
+            if (key.tangentMode != ClipTangentMode::None && mode < sizeof(tangentModeNames) / sizeof(tangentModeNames[0])){
+                text += std::string(", \"tangent_mode\": ") + quote(tangentModeNames[mode]);
+            }
+            return text + "}";
         }
         std::string text = "[" + timeNumber(key.time) + ", " + valueText(track, key.value);
         if (key.ease != EaseType::LINEAR) text += std::string(", ") + quote(anim::easeName(key.ease));
@@ -1382,7 +1629,7 @@ namespace{
     }
 
     std::string trackText(const ClipTrackData& track){
-        if (track.channel == ClipChannel::Property){
+        if (track.channel == ClipChannel::Property && !track.known){
             // the track as read, with the fields an editor may have changed (a Retarget renames
             // the path) written over it; compact like any preserved JSON
             OJson object = OJson::parse(track.preserved, nullptr, false);
@@ -1396,6 +1643,9 @@ namespace{
         std::string text = isHumanoidChannel(track.channel)
             ? "    {\"channel\": " + quote(anim::channelName(track.channel)) + ", \"bone\": " + quote(anim::humanoidTrackBoneName(track.channel, track.humanBone))
             : "    {\"path\": " + quote(track.path) + ", \"channel\": " + quote(anim::channelName(track.channel));
+        if (track.channel == ClipChannel::Property){
+            text += ", \"component\": " + quote(track.component) + ", \"property\": " + quote(track.property);
+        }
         if (track.relative) text += ", \"relative\": true";
         if (track.loop) text += ", \"loop\": true";
         if (track.keys.empty()) return text + ", \"keys\": []}";
@@ -1642,7 +1892,7 @@ std::string anim::writeClip(const ClipData& input){
         for (float& v : key.outTangent) v = quantizeValue(v);
     };
     for (ClipTrackData& track : data.tracks){
-        if (track.channel == ClipChannel::Property) continue;
+        if (track.channel == ClipChannel::Property && !track.known) continue;
         for (ClipKey& key : track.keys){
             quantize(key);
             // a quaternion just inside the 1e-5 band can leave it once rounded: normalized

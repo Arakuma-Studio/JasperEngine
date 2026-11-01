@@ -2393,6 +2393,9 @@ void getRuntimeEntityTool(const CallPtr& call) {
     data["path"] = EntityPath::of(sp->scene, entity);
     data["scene"] = McpRefs::sceneJson(project, *sp);
     data["created_at_runtime"] = std::find(created.begin(), created.end(), entity) != created.end();
+    // activeSelf / activeInHierarchy (what a clip's gameobject.active keys or a script set)
+    data["active"] = sp->scene->isEntityActive(entity);
+    data["active_in_hierarchy"] = sp->scene->isEntityActiveInHierarchy(entity);
     // in the DontDestroyOnLoad scene, or marked to move there
     if (project->isPersistentPlayScene(sp->id) || SceneManager::isPersistent(sp->scene, entity)) data["persistent"] = true;
     data["components"] = components;

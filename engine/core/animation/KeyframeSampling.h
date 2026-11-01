@@ -103,16 +103,20 @@ namespace jasperengine::anim{
     // One track's raw value at a clip time (no relative or rest applied)
     struct JASPERENGINE_API TrackSample{
         ClipChannel channel = ClipChannel::Position;
-        bool valid = false;                 // false: property track or no keys
+        bool valid = false;                 // false: an unknown property track or no keys
         Vector3 vector = Vector3(0, 0, 0);  // position, scale
         Quaternion rotation;                // rotation
-        std::vector<float> weights;         // morph (track width)
+        std::vector<float> weights;         // morph, property (track width; property in key space)
         std::vector<Vector3> offsets;       // lattice, parallel to the track's points
     };
 
     // `cursor` (optional) is the track's search hint
     JASPERENGINE_API bool sampleTrack(const AnimationClip::Track& track, float clipTime, TrackSample& out,
                                       KeyCursor* cursor = nullptr);
+    // A property track's row stepped (the key at or before the time; at a key time, that key, with
+    // the STEP rule's slack): what a discrete binding of a track whose keys interpolate reads (a
+    // script's Int field keyed with numbers)
+    JASPERENGINE_API bool sampleTrackStepped(const AnimationClip::Track& track, float clipTime, TrackSample& out);
     // every track of the clip at `clipTime` (out[i] is getTracks()[i])
     JASPERENGINE_API void sampleClipTracks(const AnimationClip& clip, float clipTime, std::vector<TrackSample>& out);
 

@@ -7,6 +7,7 @@
 #include "Engine.h"
 #include "util/Color.h"
 #include "util/Angle.h"
+#include "animation/AnimationPlayerRuntime.h"
 #include "animation/KeyframeSampling.h"
 #include "subsystem/MeshSystem.h"
 #include "lattice/LatticeSolver.h"
@@ -1650,6 +1651,15 @@ void ActionSystem::clearPoseBlend(){
         }
     }
     morphBlend.clear();
+    for (auto it = propertyBlend.begin(); it != propertyBlend.end();){
+        if (!scene->isEntityCreated(it->second.target)){
+            it = propertyBlend.erase(it);
+        }else{
+            it->second.active = false;
+            it->second.rest = nullptr;
+            ++it;
+        }
+    }
     for (auto it = latticeBlend.begin(); it != latticeBlend.end();){
         if (!scene->isEntityCreated(it->first)){
             it = latticeBlend.erase(it);
@@ -1781,7 +1791,113 @@ void ActionSystem::flushPoseBlend(){
         }
     }
 
+    // properties after the transforms (anim-properties spec 5.6); the writes that run user
+    // callbacks (GameObject active, a script's enabled) wait for the end of the flush, and in
+    // update() for the end of its pose blend scope (an onEnable may sample a player)
+    flushPropertyBlend(deferredPropertyWrites);
+
     clearPoseBlend();
+
+    if (!poseBlendScope) applyDeferredPropertyWrites();
+}
+
+size_t ActionSystem::hierarchyIndex(Scene* scene, Entity entity){
+    if (!scene || !scene->isEntityCreated(entity) || !scene->findComponent<Transform>(entity)) return SIZE_MAX;
+    return scene->getComponentArray<Transform>()->getIndex(entity);
+}
+
+void ActionSystem::applyDeferredPropertyWrites(){
+    if (deferredPropertyWrites.empty()) return;
+    // taken out first: a callback sampling a player flushes (and applies) its own
+    std::vector<DeferredPropertyWrite> writes;
+    writes.swap(deferredPropertyWrites);
+    // hierarchy order (parents first, siblings in order); every one re-checked (an onEnable /
+    // onDisable before it may have destroyed GameObjects or added components: nothing is held
+    // across these writes)
+    std::vector<std::pair<size_t, size_t>> order;
+    order.reserve(writes.size());
+    for (size_t i = 0; i < writes.size(); i++) order.push_back({hierarchyIndex(scene, writes[i].target), i});
+    std::stable_sort(order.begin(), order.end(), [](const auto& a, const auto& b){ return a.first < b.first; });
+    for (const auto& entry : order){
+        const DeferredPropertyWrite& write = writes[entry.second];
+        if (!scene->isEntityCreated(write.target)) continue;
+        anim::writePropertyKeySpace(scene, write.target, write.binding, &write.value);
+    }
+}
+
+ActionSystem::PropertyBlendAccum& ActionSystem::propertyAccum(Entity target, uint32_t key, const anim::PropertyRest* rest){
+    PropertyBlendAccum& accum = propertyBlend[((uint64_t)target << 32) | key];
+    if (!accum.active){
+        accum.active = true;
+        accum.target = target;
+        accum.rest = rest;
+        for (int k = 0; k < 4; k++){
+            accum.sums[k] = 0.0f;
+            accum.weights[k] = 0.0f;
+        }
+        accum.total = 0.0f;
+        accum.bestWeight = -1.0f;
+        accum.bestValue = 0.0f;
+    }
+    return accum;
+}
+
+void ActionSystem::flushPropertyBlend(std::vector<DeferredPropertyWrite>& deferred){
+    for (auto& entry : propertyBlend){
+        PropertyBlendAccum& accum = entry.second;
+        if (!accum.active || !accum.rest) continue;
+        const Entity target = accum.target;
+        const anim::PropertyRest& rest = *accum.rest;
+        const anim::PropertyBinding& binding = rest.binding;
+        const size_t width = std::min<size_t>(binding.width, 4);
+        if (width == 0 || !scene->isEntityCreated(target)) continue;
+
+        float stored[4] = {0, 0, 0, 0};
+        const bool known = anim::readPropertyStored(scene, target, binding, stored);
+        float current[4] = {stored[0], stored[1], stored[2], stored[3]};
+        anim::storedToKey(binding.kind, binding.display, current, width);
+
+        // the value in key space: the rest fills what the contributors leave (R1)
+        float value[4] = {0, 0, 0, 0};
+        if (binding.discrete){
+            value[0] = accum.bestValue;
+            if (accum.total < 1.0f && rest.has && 1.0f - accum.total > accum.bestWeight) value[0] = rest.value[0];
+        }else{
+            for (size_t k = 0; k < width; k++){
+                const float w = accum.weights[k];
+                if (w > 0.0f){
+                    value[k] = (rest.has && w < 1.0f) ? accum.sums[k] + rest.value[k] * (1.0f - w) : accum.sums[k] / w;
+                }else{
+                    // a component no track keys keeps its value
+                    value[k] = known ? current[k] : rest.value[k];
+                }
+            }
+        }
+
+        // written only when the stored value changes; a component no track keys keeps its stored
+        // value exactly (no key-space round trip: a ui.color.a fade leaves r, g, b alone)
+        float next[4] = {value[0], value[1], value[2], value[3]};
+        anim::keyToStored(binding.kind, binding.display, binding.discrete || binding.interpolateInt, next, width);
+        if (known && !binding.discrete){
+            for (size_t k = 0; k < width; k++){
+                if (!(accum.weights[k] > 0.0f)) next[k] = stored[k];
+            }
+        }
+        bool changed = !known;
+        for (size_t k = 0; k < width && !changed; k++){
+            if (next[k] != stored[k]) changed = true;
+        }
+        if (!changed) continue;
+        if (binding.deferred){
+            DeferredPropertyWrite write;
+            write.target = target;
+            write.value = value[0];
+            write.binding = binding;
+            deferred.push_back(std::move(write));
+            continue;
+        }
+        anim::writePropertyStored(scene, target, binding, next);
+    }
 }
 
 float ActionSystem::getDuration(Entity entity) {
@@ -2380,6 +2496,8 @@ void ActionSystem::update(double dt){
     // Write the blended (weighted-average) pose to each animated target.
     flushPoseBlend();
     poseBlendScope = false;
+    // the writes that run onEnable / onDisable, now that a callback may sample a player
+    applyDeferredPropertyWrites();
 
     // clip events and onFinish, after the pose is written
     dispatchPlayerCallbacks();

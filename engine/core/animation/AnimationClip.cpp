@@ -27,7 +27,8 @@ float ClipData::effectiveLength() const{
     if (hasExplicitLength()) return length;
     float last = 0.0f;
     for (const ClipTrackData& track : tracks){
-        if (track.channel == ClipChannel::Property) continue;
+        // a property that is not animatable has no keys (kept verbatim)
+        if (track.channel == ClipChannel::Property && !track.known) continue;
         last = std::max(last, track.lastKeyTime());
     }
     for (const ClipEventData& event : events){
@@ -64,7 +65,21 @@ int ClipData::findHumanoidTrack(ClipChannel channel, int humanBone) const{
     return -1;
 }
 
-size_t ClipData::valueWidth(ClipChannel channel, size_t morphCount, size_t pointCount){
+int ClipData::findPropertyTrack(const std::string& path, const std::string& component, const std::string& property) const{
+    for (size_t i = 0; i < tracks.size(); i++){
+        const ClipTrackData& track = tracks[i];
+        if (track.channel == ClipChannel::Property && track.path == path && track.component == component && track.property == property) return (int)i;
+    }
+    return -1;
+}
+
+int ClipData::findTrack(const ClipTrackData& like) const{
+    if (like.channel == ClipChannel::Property) return findPropertyTrack(like.path, like.component, like.property);
+    if (isHumanoidChannel(like.channel)) return findHumanoidTrack(like.channel, like.humanBone);
+    return findTrack(like.path, like.channel);
+}
+
+size_t ClipData::valueWidth(ClipChannel channel, size_t morphCount, size_t pointCount, size_t propertyWidth){
     switch (channel){
         case ClipChannel::Position:
         case ClipChannel::Scale:
@@ -78,7 +93,7 @@ size_t ClipData::valueWidth(ClipChannel channel, size_t morphCount, size_t point
         case ClipChannel::Lattice:
             return 3 * pointCount;
         case ClipChannel::Property:
-            return 0;
+            return propertyWidth;
     }
     return 0;
 }
@@ -128,7 +143,7 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
     // sizes first: the Track pointers point into the storage, which must not move afterwards
     size_t times = 0, vectors = 0, rotations = 0, weights = 0, points = 0;
     for (const ClipTrackData& track : data.tracks){
-        if (track.channel == ClipChannel::Property) continue;
+        if (track.channel == ClipChannel::Property && !track.known) continue;
         size_t keys = track.keys.size();
         bool tangents = keys > 0 && track.keys[0].hasTangents();
         size_t copies = tangents ? 3 : 1;
@@ -144,13 +159,12 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
                 rotations += keys * copies;
                 break;
             case ClipChannel::Morph:
+            case ClipChannel::Property:
                 weights += keys * copies * (keys > 0 ? track.keys[0].value.size() : 0);
                 break;
             case ClipChannel::Lattice:
                 vectors += keys * copies * track.points.size();
                 points += track.points.size();
-                break;
-            case ClipChannel::Property:
                 break;
         }
     }
@@ -173,8 +187,15 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
         track.property = source.property;
         track.preserved = source.preserved;
         if (source.channel == ClipChannel::Property){
-            clip->tracks.push_back(std::move(track));
-            continue;
+            track.kind = source.kind;
+            track.swizzle = source.swizzle;
+            track.discrete = source.discrete;
+            track.known = source.known;
+            if (!source.known){
+                clip->tracks.push_back(std::move(track));
+                continue;
+            }
+            clip->propertyTracks = clip->propertyTracks || !source.keys.empty();
         }
         size_t keys = source.keys.size();
         bool tangents = keys > 0 && source.keys[0].hasTangents();
@@ -185,7 +206,8 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
         track.easings = clip->easingStorage.data() + clip->easingStorage.size();
         for (const ClipKey& key : source.keys){
             clip->timeStorage.push_back(key.time);
-            clip->easingStorage.push_back(key.ease);
+            // a discrete property steps (the key at or before the time; at a key time its value)
+            clip->easingStorage.push_back(track.discrete ? EaseType::STEP : key.ease);
         }
 
         if (isVectorChannel(source.channel)){
@@ -215,7 +237,7 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
                 track.inRotations = append(&ClipKey::inTangent);
                 track.outRotations = append(&ClipKey::outTangent);
             }
-        }else if (source.channel == ClipChannel::Morph){
+        }else if (source.channel == ClipChannel::Morph || source.channel == ClipChannel::Property){
             track.width = keys > 0 ? source.keys[0].value.size() : 0;
             auto append = [&](const std::vector<float> ClipKey::* member){
                 const float* start = clip->weightStorage.data() + clip->weightStorage.size();
@@ -252,6 +274,19 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
         }
         clip->tracks.push_back(std::move(track));
     }
+
+    // a whole-property track gives way, component by component, to the swizzle tracks of the
+    // same property on the same path (ClipValidation warns about the overlap)
+    for (Track& whole : clip->tracks){
+        if (whole.channel != ClipChannel::Property || !whole.known || whole.swizzle >= 0) continue;
+        for (const Track& part : clip->tracks){
+            if (part.channel != ClipChannel::Property || !part.known || part.swizzle < 0 || part.keyCount == 0) continue;
+            if (part.path != whole.path || part.component != whole.component) continue;
+            const size_t dot = part.property.rfind('.');
+            if (dot == std::string::npos || part.property.compare(0, dot, whole.property) != 0 || dot != whole.property.size()) continue;
+            whole.overridden |= (uint8_t)(1u << part.swizzle);
+        }
+    }
     return shared;
 }
 
@@ -277,13 +312,18 @@ ClipData AnimationClip::toData() const{
         out.component = track.component;
         out.property = track.property;
         out.preserved = track.preserved;
+        out.kind = track.kind;
+        out.swizzle = track.swizzle;
+        out.discrete = track.discrete;
+        out.known = track.known;
+        if (track.channel == ClipChannel::Property && track.known) out.width = track.width;
         if (track.channel == ClipChannel::Lattice && track.points){
             out.points.assign(track.points, track.points + track.width);
         }
         for (size_t k = 0; k < track.keyCount; k++){
             ClipKey key;
             key.time = track.times[k];
-            key.ease = track.easings[k];
+            key.ease = (track.channel == ClipChannel::Property && track.discrete) ? EaseType::LINEAR : track.easings[k];
             auto vectorRow = [&](const Vector3* values, size_t width, std::vector<float>& row){
                 for (size_t i = 0; i < width; i++){
                     const Vector3& v = values[k * width + i];
@@ -325,13 +365,12 @@ ClipData AnimationClip::toData() const{
                     }
                     break;
                 case ClipChannel::Morph:
+                case ClipChannel::Property:
                     weightRow(track.weights, key.value);
                     if (track.inWeights){
                         weightRow(track.inWeights, key.inTangent);
                         weightRow(track.outWeights, key.outTangent);
                     }
-                    break;
-                case ClipChannel::Property:
                     break;
             }
             out.keys.push_back(std::move(key));

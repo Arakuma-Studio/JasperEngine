@@ -102,6 +102,7 @@
 #include "pose/PoseEditSession.h"
 #include "animation/PreviewOwner.h"
 #include "animation/ClipRecordHooks.h"
+#include "animation/PropertyBindings.h"
 #include "command/type/MorphWeightsCmd.h"
 #include "window/InspectorWindowClips.h"
 #include "component/AnimationPlayerComponent.h"
@@ -1944,7 +1945,10 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     if (activeMixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
     const bool activeClicked = ImGui::Checkbox("##active", &activeValue);
     UIProbe::item("inspector.active");
-    if (activeClicked){
+    if (activeClicked && recordPropertyToggle(sceneProject, entities, ComponentType::Transform, ClipRecordHooks::activeProperty(),
+                                              activeMixed ? true : activeValue)){
+        // Record keyed it (gameobject.active, anim-properties): no scene step
+    }else if (activeClicked){
         // after this frame's drawing: in Play it runs onEnable / onDisable (deferredCommands)
         const uint32_t commandSceneId = project->getSelectedSceneId();
         const uint32_t stateSceneId = sceneProject->id;
@@ -2275,7 +2279,10 @@ bool editor::InspectorWindow::drawComponentHeader(SceneProject* sceneProject, co
         bool value = enabled && !enabledMixed;
         ImGui::BeginDisabled(readOnly);
         if (enabledMixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
-        if (ImGui::Checkbox("##enabled", &value)){
+        ClipPropertyKey enabledKey;
+        ClipRecordHooks::propertyOf(cpType, "enabled", enabledKey);
+        if (ImGui::Checkbox("##enabled", &value) &&
+            !recordPropertyToggle(sceneProject, entities, cpType, enabledKey, enabledMixed ? true : value)){
             const bool newValue = enabledMixed ? true : value;
             MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
             for (Entity entity : entities){
@@ -2849,6 +2856,24 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         return false;
     }
 
+    // Record (anim-properties spec 10): a row of an animatable property is a record source;
+    // Unity tints the fields Record keys (animated ones stronger)
+    bool rowRecorded = false;
+    bool rowAnimated = false;
+    if (cpType != ComponentType::Transform && ClipRecordHooks::hasRecordListeners()){
+        for (Entity entity : entities){
+            const ClipPropertyKey key = rowPropertyKey(sceneProject, entity, cpType, id);
+            if (key.empty() || !ClipRecordHooks::claimsProperty(sceneProject->id, entity, key)) continue;
+            rowRecorded = true;
+            rowAnimated = rowAnimated || ClipRecordHooks::animatesProperty(sceneProject->id, entity, key);
+        }
+    }
+    struct RowTint{
+        bool pushed;
+        ~RowTint(){ if (pushed) ImGui::PopStyleColor(); }
+    } rowTint{rowRecorded};
+    if (rowRecorded) ImGui::PushStyleColor(ImGuiCol_FrameBg, ImLerp(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), rowAnimated ? 0.55f : 0.78f));
+
     constexpr float compThreshold = 1e-4;
     constexpr float zeroThreshold = 1e-4;
 
@@ -2907,7 +2932,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector2>(project, sceneProject->id, entity, cpType, id, static_cast<Vector2>(defArr), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -2939,7 +2964,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                     nextValue.y = std::max(0.0f, nextValue.y);
                 }
                 cmd = new PropertyCmd<Vector2>(project, sceneProject->id, entity, cpType, id, nextValue, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
 
@@ -2975,7 +3000,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                     nextValue.y = std::max(0.0f, nextValue.y);
                 }
                 cmd = new PropertyCmd<Vector2>(project, sceneProject->id, entity, cpType, id, nextValue, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
 
@@ -3031,7 +3056,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ (void)entity; return vector3Value(static_cast<Vector3>(defArr)); })){
                 for (Entity& entity : entities){
                     cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, static_cast<Vector3>(defArr), settings.onValueChanged);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                     finishProperty = true;
                 }
             }
@@ -3072,7 +3097,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 // Apply to all entities
                 for (Entity& entity : entities) {
                     cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, newDirection, settings.onValueChanged);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                 }
 
                 newValue = newDirection;
@@ -3112,7 +3137,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                     auto* rowCmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(newValue.x, eValue[entity].y, eValue[entity].z), settings.onValueChanged);
                     rowCmd->setShownComponents(0b110);   // y and z as shown: x is the edit
                     cmd = rowCmd;
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                 }
             }
         }
@@ -3148,7 +3173,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                     auto* rowCmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, newValue.y, eValue[entity].z), settings.onValueChanged);
                     rowCmd->setShownComponents(0b101);   // x and z as shown: y is the edit
                     cmd = rowCmd;
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                 }
             }
         }
@@ -3184,7 +3209,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                     auto* rowCmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, eValue[entity].y, newValue.z), settings.onValueChanged);
                     rowCmd->setShownComponents(0b011);   // x and y as shown: z is the edit
                     cmd = rowCmd;
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                 }
             }
         }
@@ -3242,7 +3267,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, static_cast<Vector4>(defArr), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -3271,7 +3296,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, 0.0f, 0.0f, settings.format)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, Vector4(newValue.x, eValue[entity].y, eValue[entity].z, eValue[entity].w), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
 
@@ -3302,7 +3327,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, 0.0f, 0.0f, settings.format)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, Vector4(eValue[entity].x, newValue.y, eValue[entity].z, eValue[entity].w), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
 
@@ -3333,7 +3358,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::DragFloat(("##input_z_"+id).c_str(), &(newValue.z), settings.stepSize, 0.0f, 0.0f, settings.format)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, Vector4(eValue[entity].x, eValue[entity].y, newValue.z, eValue[entity].w), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
 
@@ -3364,7 +3389,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::DragFloat(("##input_w_"+id).c_str(), &(newValue.w), settings.stepSize, 0.0f, 0.0f, settings.format)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, Vector4(eValue[entity].x, eValue[entity].y, eValue[entity].z, newValue.w), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
 
@@ -3424,7 +3449,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ (void)entity; return rotationValue(static_cast<Quaternion>(defArr)); })){
                 for (Entity& entity : entities){
                     cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, static_cast<Quaternion>(defArr), settings.onValueChanged);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                     finishProperty = true;
                 }
             }
@@ -3456,7 +3481,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return rotationValue(Quaternion(newValue.x, eValue[entity].y, eValue[entity].z, order)); })){
                 for (Entity& entity : entities){
                     cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(newValue.x, eValue[entity].y, eValue[entity].z, order), settings.onValueChanged);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                 }
             }
         }
@@ -3490,7 +3515,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return rotationValue(Quaternion(eValue[entity].x, newValue.y, eValue[entity].z, order)); })){
                 for (Entity& entity : entities){
                     cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, newValue.y, eValue[entity].z, order), settings.onValueChanged);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                 }
             }
         }
@@ -3524,7 +3549,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return rotationValue(Quaternion(eValue[entity].x, eValue[entity].y, newValue.z, order)); })){
                 for (Entity& entity : entities){
                     cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, eValue[entity].y, newValue.z, order), settings.onValueChanged);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                 }
             }
         }
@@ -3577,7 +3602,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -3598,7 +3623,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (inputChanged){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, std::string(buffer.data()), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
         if (dif)
@@ -3650,7 +3675,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<bool>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -3660,7 +3685,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::Checkbox(("##checkbox_"+id).c_str(), &newValue)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<bool>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
         if (dif)
@@ -3703,7 +3728,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<float>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -3740,7 +3765,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 }else{
                     cmd = new PropertyCmd<float>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
                 }
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
         if (dif)
@@ -3775,7 +3800,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<double>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -3794,7 +3819,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::DragScalar(("##input_double_"+id).c_str(), ImGuiDataType_Double, &newValue, settings.stepSize, minPtr, maxPtr, settings.format)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<double>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
         if (dif)
@@ -3821,7 +3846,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
             finishProperty = true;
         }
@@ -3835,7 +3860,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         auto setMask = [&](auto computeValue){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, computeValue(eValue[entity]), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
             finishProperty = true;
         };
@@ -3907,7 +3932,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -3917,7 +3942,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::DragInt(("##input_uint_"+id).c_str(), (int*)&newValue, static_cast<int>(ceil(settings.stepSize)), 0.0f, INT_MAX)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
         if (dif)
@@ -3948,7 +3973,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -3963,7 +3988,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                            clampInt ? ImGuiSliderFlags_AlwaysClamp : 0)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
         if (dif)
@@ -3995,7 +4020,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, static_cast<Vector3>(defArr), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -4005,7 +4030,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::ColorEdit3((label+"##checkbox_"+id).c_str(), (float*)&newValue.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Color::sRGBToLinear(newValue), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
         if (dif)
@@ -4037,7 +4062,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, static_cast<Vector4>(defArr), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -4047,7 +4072,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::ColorEdit4((label+"##checkbox_"+id).c_str(), (float*)&newValue.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, Color::sRGBToLinear(newValue), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
         if (dif)
@@ -4092,7 +4117,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 } else {
                     cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, *static_cast<unsigned int*>(defArr), settings.onValueChanged);
                 }
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -4121,7 +4146,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 } else {
                     cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, static_cast<unsigned int>(newSliderValue), settings.onValueChanged);
                 }
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
         }
 
@@ -4172,7 +4197,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             for (Entity& entity : entities){
                 int defValue = (*enumEntries)[item_default].value;
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, defValue, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -4189,7 +4214,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             int newValue = (*enumEntries)[item_current].value;
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
             finishProperty = true;
         }
@@ -4239,7 +4264,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             for (Entity& entity : entities){
                 Ease defaultEase(static_cast<EaseType>((*enumEntries)[item_default].value));
                 cmd = new PropertyCmd<Ease>(project, sceneProject->id, entity, cpType, id, defaultEase, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -4257,7 +4282,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 Ease newValue = eValue[entity];
                 newValue.setType(newType);
                 cmd = new PropertyCmd<Ease>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
             finishProperty = true;
         }
@@ -4285,7 +4310,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent) && defValue){
                 for (Entity& entity : entities){
                     cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, *defValue, settings.onValueChanged);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                 }
                 finishProperty = true;
             }
@@ -4293,7 +4318,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (edit.changed){
                 for (Entity& entity : entities){
                     cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                 }
             }
             if (edit.finished)
@@ -4345,7 +4370,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<FontArray>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -4405,7 +4430,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -4509,7 +4534,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                     Texture texture(relative.string());
                     for (Entity& entity : entities){
                         cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
-                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                        submitRowCommand(sceneProject, cpType, id);
                         finishProperty = true;
                     }
                 }
@@ -4670,7 +4695,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -4704,7 +4729,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
                 for (Entity& entity : entities){
                     cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    submitRowCommand(sceneProject, cpType, id);
                     finishProperty = true;
                 }
             }
@@ -4789,7 +4814,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                         texture.setCubeMap(relative.string());
                         for (Entity& entity : entities){
                             cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
-                            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                            submitRowCommand(sceneProject, cpType, id);
                             finishProperty = true;
                         }
                     }
@@ -4904,7 +4929,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                             texture.setCubePath(faceIndex, relative.string());
                             for (Entity& entity : entities){
                                 cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
-                                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                                submitRowCommand(sceneProject, cpType, id);
                                 finishProperty = true;
                             }
                         }
@@ -4961,7 +4986,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Material>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -5216,7 +5241,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                                         } else {
                                             cmd = new PropertyCmd<Material>(project, sceneProject->id, entity, cpType, id, cachedMatDropMaterial, settings.onValueChanged);
                                         }
-                                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                                        submitRowCommand(sceneProject, cpType, id);
                                         finishProperty = true;
                                     }
 
@@ -5266,7 +5291,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                                     Texture texture(droppedImagePath);
                                     for (Entity& entity : entities) {
                                         cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, baseTexId, texture, settings.onValueChanged);
-                                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                                        submitRowCommand(sceneProject, cpType, id);
                                         finishProperty = true;
                                     }
                                 } else {
@@ -5323,7 +5348,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, *defVal, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -5378,7 +5403,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (pickerResult.chosen) {
             for (Entity& entity : entities) {
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, pickerResult.entity, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
             finishProperty = true;
         }
@@ -5397,7 +5422,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 if (payload->IsDelivery() && valid) {
                     for (Entity& entity : entities) {
                         cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, droppedEntity, settings.onValueChanged);
-                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                        submitRowCommand(sceneProject, cpType, id);
                     }
                     finishProperty = true;
                 }
@@ -5415,7 +5440,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::Button((ICON_FA_XMARK "##clear_local_entity_" + id).c_str())) {
             for (Entity& entity : entities) {
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, NULL_ENTITY, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
             finishProperty = true;
         }
@@ -5480,7 +5505,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 // Write entity and sceneId as one command so prefab propagation sees the
                 // complete reference (a split write would propagate a stale sceneId).
                 cmd = new PropertyCmd<EntityReference>(project, sceneProject->id, entity, cpType, id, EntityReference{*defVal, 0}, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
                 finishProperty = true;
             }
         }
@@ -5575,7 +5600,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (extPickerResult.chosen) {
             for (Entity& entity : entities) {
                 cmd = new PropertyCmd<EntityReference>(project, sceneProject->id, entity, cpType, id, EntityReference{extPickerResult.entity, extPickerResult.sceneId}, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
             finishProperty = true;
         }
@@ -5602,7 +5627,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 if (payload->IsDelivery() && valid) {
                     for (Entity& entity : entities) {
                         cmd = new PropertyCmd<EntityReference>(project, sceneProject->id, entity, cpType, id, EntityReference{droppedEntity, storedSceneId}, settings.onValueChanged);
-                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                        submitRowCommand(sceneProject, cpType, id);
                     }
                     finishProperty = true;
                 }
@@ -5620,7 +5645,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::Button((ICON_FA_XMARK "##clear_ext_entity_" + id).c_str())) {
             for (Entity& entity : entities) {
                 cmd = new PropertyCmd<EntityReference>(project, sceneProject->id, entity, cpType, id, EntityReference{NULL_ENTITY, 0}, settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                submitRowCommand(sceneProject, cpType, id);
             }
             finishProperty = true;
         }
@@ -5664,6 +5689,81 @@ bool editor::InspectorWindow::recordRowEdit(SceneProject* sceneProject, Componen
         value.channel = channel;
         value.value = valueOf(entity);
         ClipRecordHooks::record(sceneProject->id, entity, value, mergeKey);
+    }
+    return true;
+}
+
+editor::ClipPropertyKey editor::InspectorWindow::rowPropertyKey(SceneProject* sceneProject, Entity entity, ComponentType cpType, const std::string& id) const{
+    ClipPropertyKey key;
+    if (!sceneProject || !sceneProject->scene) return key;
+    if (cpType == ComponentType::ScriptComponent){
+        // "scripts[N].<field>": a declared property (or enabled) of a Lua script
+        if (id.compare(0, 8, "scripts[") != 0) return key;
+        const size_t close = id.find("].", 8);
+        if (close == std::string::npos) return key;
+        const size_t index = (size_t)std::strtoul(id.c_str() + 8, nullptr, 10);
+        const ScriptComponent* scripts = sceneProject->scene->findComponent<ScriptComponent>(entity);
+        if (!scripts || index >= scripts->scripts.size() || scripts->scripts[index].type != ScriptType::LUA) return key;
+        return ClipRecordHooks::scriptPropertyOf(scripts->scripts[index].className, id.substr(close + 2));
+    }
+    ClipRecordHooks::propertyOf(cpType, id, key);
+    return key;
+}
+
+bool editor::InspectorWindow::recordPropertyCommand(SceneProject* sceneProject, ComponentType cpType, const std::string& id, Command* command){
+    const RecordablePropertyCommand* recordable = dynamic_cast<const RecordablePropertyCommand*>(command);
+    std::vector<std::pair<Entity, std::vector<float>>> values;
+    if (!sceneProject || !ClipRecordHooks::hasRecordListeners() || !recordable || !recordable->newValueFloats(values)) return false;
+    bool claimed = false;
+    for (const auto& entry : values){
+        const ClipPropertyKey key = rowPropertyKey(sceneProject, entry.first, cpType, id);
+        if (!key.empty() && ClipRecordHooks::claimsProperty(sceneProject->id, entry.first, key)) claimed = true;
+    }
+    if (!claimed) return false;
+    const std::string mergeKey = ClipRecordHooks::gestureMergeKey(RecordSource::Inspector, nullptr);
+    for (const auto& entry : values){
+        // the selection's GameObjects Record does not key stay as they are
+        const ClipPropertyKey key = rowPropertyKey(sceneProject, entry.first, cpType, id);
+        if (key.empty() || !ClipRecordHooks::claimsProperty(sceneProject->id, entry.first, key)) continue;
+        anim::PropertyRef ref;
+        anim::parsePropertyRef(key.component, key.property, ref);
+        const anim::PropertyBinding binding = anim::bindProperty(sceneProject->scene, entry.first, ref, 0);
+        if (binding.status != anim::PropertyBindStatus::Bound) continue;
+        // the stored value the row computed (linear colours, cone cosines) in the keys' units
+        float value[4] = {0, 0, 0, 0};
+        for (size_t k = 0; k < 4 && k < entry.second.size(); k++) value[k] = entry.second[k];
+        anim::storedToKey(binding.kind, binding.display, value, binding.width);
+        ClipRecordValue recorded;
+        recorded.channel = ClipChannel::Property;
+        recorded.property = key;
+        recorded.value.assign(value, value + binding.width);
+        ClipRecordHooks::record(sceneProject->id, entry.first, recorded, mergeKey);
+    }
+    return true;
+}
+
+void editor::InspectorWindow::submitRowCommand(SceneProject* sceneProject, ComponentType cpType, const std::string& id){
+    if (cpType != ComponentType::Transform && cmd && recordPropertyCommand(sceneProject, cpType, id, cmd)){
+        delete cmd;
+        cmd = nullptr;
+        return;
+    }
+    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+}
+
+bool editor::InspectorWindow::recordPropertyToggle(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType,
+                                                   const ClipPropertyKey& key, bool value){
+    (void)cpType;
+    if (!sceneProject || key.empty() || !ClipRecordHooks::claimsAnyProperty(sceneProject->id, entities, key)) return false;
+    // one key edit per click
+    const std::string mergeKey;
+    for (Entity entity : entities){
+        if (!ClipRecordHooks::claimsProperty(sceneProject->id, entity, key)) continue;
+        ClipRecordValue recorded;
+        recorded.channel = ClipChannel::Property;
+        recorded.property = key;
+        recorded.value = {value ? 1.0f : 0.0f};
+        ClipRecordHooks::record(sceneProject->id, entity, recorded, mergeKey);
     }
     return true;
 }

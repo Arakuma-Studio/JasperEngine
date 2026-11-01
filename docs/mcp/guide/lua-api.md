@@ -1633,6 +1633,7 @@ on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs
 | `removeClip(name)`, `getClipCount()`, `getClipName(i)` | `getClipName` is 0-based, `""` out of range |
 | `speed`, `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled` | rw; `speed` multiplies every state (negative plays backwards); `enabled = false`: time stops, nothing is written |
 | `isLoaded()` | every clip loaded and bound |
+| `getAnimatedProperties(name)` | the state's bound property tracks, `{"path:component.property", ...}` (debugging; empty while its clip loads). A clip animating a script field sets `self.<field>` (read it in `onUpdate`; a write of yours there is overwritten by the clip in the same frame, as in Unity) |
 | `onEvent` | rw, a function called with ONE `AnimationEvent` (below) per clip event |
 | `onFinish` | rw, a function called with the state name when a `once` state ends, and once when a `clamp_forever` state first reaches its end (never for loop / ping_pong); fires on a zero-weight layer too |
 | `getLayerCount()` | >= 1 (layer 0 is the base layer) |

@@ -936,6 +936,7 @@ set(JASPERENGINE_SRCS
     core/animation/AnimationPlayerRuntime.cpp
     core/animation/VertexAnimatorRuntime.cpp
     core/animation/ClipBinding.cpp
+    core/animation/PropertyBindings.cpp
     core/animation/HumanoidClip.cpp
     core/animation/KeyframeSampling.cpp
     core/animation/ModelSubClips.cpp

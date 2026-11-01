@@ -221,6 +221,7 @@ camera only: apply_post_processing_preset, then set_scene_settings post_processi
 Read the page before using these tools:
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; play with an
   Animation Player (jasper://docs/animation).
+  Property tracks (active, colours...): channel property; get_animation list_properties.
 - Humanoid poses (.poseanim): get/edit/render_pose_animation, mirror_pose; degrees from
   standing, arms down (jasper://docs/pose-animation).
 - Clip on another humanoid rig: clips[i].retarget or create.humanoid (jasper://docs/animation).

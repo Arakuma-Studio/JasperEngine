@@ -45,8 +45,17 @@ namespace jasperengine::editor::clipui{
         return isHumanoidChannel(track.channel) ? std::string(anim::humanoidTrackBoneName(track.channel, track.humanBone)) : track.path;
     }
 
-    // the runtime track of an editable track (-1 when none): humanoid tracks by bone, others by path
+    // the runtime track of an editable track (-1 when none): humanoid tracks by bone, property
+    // tracks by (path, component, property), others by path
     inline int findRuntimeTrack(const AnimationClip& clip, const ClipTrackData& track){
+        if (track.channel == ClipChannel::Property){
+            const std::vector<AnimationClip::Track>& tracks = clip.getTracks();
+            for (size_t i = 0; i < tracks.size(); i++){
+                if (tracks[i].channel == ClipChannel::Property && tracks[i].path == track.path && tracks[i].component == track.component &&
+                    tracks[i].property == track.property) return (int)i;
+            }
+            return -1;
+        }
         return clip.findTrack(trackIdentityPath(track), track.channel);
     }
 

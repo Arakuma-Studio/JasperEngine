@@ -755,6 +755,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
+    ${EDITOR_DIR}/animation/ClipPropertyNames.cpp
+    ${EDITOR_DIR}/animation/ClipTangents.cpp
     ${EDITOR_DIR}/animation/PlayerModelLayout.cpp
     ${EDITOR_DIR}/animation/PreviewOwner.cpp
 
