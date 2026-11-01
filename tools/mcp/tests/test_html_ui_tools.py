@@ -130,8 +130,9 @@ LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (shader-globals + platform-services): provisional sum, re-measured on the merged tree
 # safe area (spec 6.7): configure_game_view's device_overlay, safe_area_outline, custom_device and
 # safe_area, screenshot's device_overlay / safe_area_in_image, create_ui / create_entity safe_area,
-# get_play_state's safe_area (+390 on its branch); measured on the merged tree below
-TOTAL_LIMIT = 108700
+# get_play_state's safe_area (+390 on its branch); measured on the tree merged with main
+# (platform-services, shader-globals): 151 tools, total 108538
+TOTAL_LIMIT = 108540
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
