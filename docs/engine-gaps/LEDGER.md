@@ -211,3 +211,11 @@ origin/main).
   Engine::getUnscaledDeltatime -> fixed (94a22289c); lead now builds after each batch of merges before moving on.
   Final verification of the batch (Linux full suites + physics-off variants on box 2201, iOS/macOS on the owner's
   Mac) running. anim-layers implemented (both phases), in review; anim-properties and anim-retarget started on it.
+- 2026-11-01: batch verification of 94a22289c (ui-canvas-group, physics-3d, http, shader-globals, platform-services,
+  physics-contacts, particles, ui-multitouch, coroutines + lead fixes): Linux 0 warnings, unit 1601 passed, full MCP
+  only the 10 baseline failures (+ the budget limit, corrected); physics-off builds (3d-off, 2d-off, both-off) pass.
+  The Mac check found an iOS/macOS compile error: two headers named OnScreenControls.h (component UI and HTML UI)
+  and a bare include that Xcode resolved to the wrong one -> include by path (4a627a9e8). guide-headroom merged
+  (guide 14966 bytes); anim-layers merged (review fixes done). camera-shake, ui-scaling-text and video-mp4 conflict
+  heavily with main now (they carry older copies of merged features): each does one final merge of main itself.
+  Re-verifying the tip (4a627a9e8) on Linux and the Mac before pushing.
