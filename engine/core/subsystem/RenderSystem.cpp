@@ -5656,6 +5656,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     if (terrain && !terrain->heightMapLoaded)
         return false;
 
+    // tests: JASPER_MESH_LOAD_HOLD_FILE holds it (MeshSystem::isMeshLoadHeld)
+    if (MeshSystem::isMeshLoadHeld(scene))
+        return false;
+
     // a Spline Extrude's Mesh is the template of its chunks (SplineSystem): never drawn itself
     if (scene->findComponent<SplineExtrudeComponent>(entity)){
         mesh.loadCalled = true;

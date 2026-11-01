@@ -366,8 +366,43 @@ MeshSystem::MeshSystem(Scene* scene): SubSystem(scene){
     declareHookType(scene->getComponentId<InstancedMeshComponent>());
 }
 
+// the scenes that loaded a model in the background, for JASPER_MESH_LOAD_HOLD_FILE
+static const std::string& meshLoadHoldFile(){
+    static const std::string file = [](){
+        const char* value = std::getenv("JASPER_MESH_LOAD_HOLD_FILE");
+        return std::string(value ? value : "");
+    }();
+    return file;
+}
+
+static std::mutex& getMeshLoadHoldMutex(){
+    static std::mutex* mutex = new std::mutex();
+    return *mutex;
+}
+
+static std::set<const Scene*>& getMeshLoadHoldScenes(){
+    static std::set<const Scene*>* scenes = new std::set<const Scene*>();
+    return *scenes;
+}
+
+bool MeshSystem::isMeshLoadHeld(const Scene* scene){
+    if (meshLoadHoldFile().empty())
+        return false;
+    {
+        std::lock_guard<std::mutex> lock(getMeshLoadHoldMutex());
+        if (!getMeshLoadHoldScenes().count(scene))
+            return false;
+    }
+    std::error_code ec;
+    return std::filesystem::exists(meshLoadHoldFile(), ec);
+}
+
 MeshSystem::~MeshSystem(){
     cancelAsyncModelLoads();
+    if (!meshLoadHoldFile().empty()){
+        std::lock_guard<std::mutex> lock(getMeshLoadHoldMutex());
+        getMeshLoadHoldScenes().erase(scene);
+    }
 }
 
 void MeshSystem::setImageDecodeMaxDimension(int dimension){
@@ -5038,6 +5073,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     bool res = false;
 
     if (asyncLoad){
+        if (!meshLoadHoldFile().empty()){
+            std::lock_guard<std::mutex> lock(getMeshLoadHoldMutex());
+            getMeshLoadHoldScenes().insert(scene);
+        }
         // Async loader already produced a parsed model; reuse it (and cache it).
         auto cached = ModelPool::getGLTF(poolKey);
         if (cached){

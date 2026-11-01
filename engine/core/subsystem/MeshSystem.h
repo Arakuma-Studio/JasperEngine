@@ -304,6 +304,11 @@ namespace jasperengine{
         // Used by the thumbnail worker so previews don't decode/upload full-size 4K maps.
         static void setImageDecodeMaxDimension(int dimension);
 
+        // tests: JASPER_MESH_LOAD_HOLD_FILE=<path> holds the first load (RenderSystem::loadMesh)
+        // of the meshes of a scene that loaded a model in the background, while that file exists:
+        // what else loads the same model meanwhile (a Project window thumbnail) comes first
+        static bool isMeshLoadHeld(const Scene* scene);
+
         void createInstancedMesh(Entity entity);
         void removeInstancedMesh(Entity entity);
         bool hasInstancedMesh(Entity entity) const;
