@@ -1293,6 +1293,7 @@ bool editor::Project::reimportPrefabInstance(SceneProject* sceneProject, Entity 
         members.push_back(member.localEntity);
     }
     const std::vector<Entity> selection = sceneProject->selectedEntities;
+    const std::vector<Entity> order = sceneProject->entities;
     const Entity mainCamera = sceneProject->mainCamera;
     const bool wasModified = sceneProject->isModified;
 
@@ -1327,6 +1328,9 @@ bool editor::Project::reimportPrefabInstance(SceneProject* sceneProject, Entity 
     }
 
     ProjectUtils::sortEntitiesByTransformOrder(scene, sceneProject->entities);
+    // the members came back at the end of the list: one without a Transform among them, and the
+    // scene's own, go back to their place, so a reimport (an apply, its undo) leaves the list as it was
+    ProjectUtils::keepUntransformedPlaces(scene, order, sceneProject->entities);
     CameraTextureLink::resolve(scene);
     if (mainCamera != NULL_ENTITY && scene->isEntityCreated(mainCamera)) {
         sceneProject->mainCamera = mainCamera;

@@ -91,7 +91,13 @@ public:
     // Whether a GameObject's branch sits where it belongs: in its parent's branch, and not between
     // another GameObject and that one's children
     static bool isBranchPlace(EntityRegistry* registry, Entity entity);
-    static void sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities);
+    // Transform order; a GameObject without a Transform stays after the branch of the top-level
+    // GameObject it followed (not `moved`, which a move just placed elsewhere), in its order
+    static void sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities, Entity moved = NULL_ENTITY);
+    // Puts each GameObject without a Transform back after the GameObject it followed in `before`
+    // (the first one still listed; the front when none), the others as they are: an undo that
+    // cannot tell from the list what moved gives it back as it was
+    static void keepUntransformedPlaces(EntityRegistry* registry, const std::vector<Entity>& before, std::vector<Entity>& entities);
 
     static bool moveEntityOrderByTarget(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity target, InsertionType type, Entity& oldParent, size_t& oldIndex, bool& hasTransform);
     // sortEntities false leaves the tracked list to one sortEntitiesByTransformOrder by the
