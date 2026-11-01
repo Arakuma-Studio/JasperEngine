@@ -3,6 +3,7 @@
 
 #include "manager/ObjectManager.h"
 #include "Engine.h"
+#include "shader/ShaderGlobals.h"
 #include "Log.h"
 #include "Scene.h"
 #include "Input.h"
@@ -953,6 +954,8 @@ void Engine::endCompositeFramebuffer(){
 void Engine::clearPools(){
     // first: its assets' payload textures go back to the texture pools cleared next
     VertexAnimationPool::clear();
+    // the global shader textures (Shader.setGlobalTexture) hold pool entries too
+    ShaderGlobals::releaseTextures();
     TexturePool::clear();
     SoundPool::clear();
     TextureDataPool::clear();

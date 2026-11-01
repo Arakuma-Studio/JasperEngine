@@ -370,3 +370,105 @@ Acceptance:
   adds the field when rebasing.
 - `anim-properties` (#12): animating a global from a clip is not in scope (scripts set globals).
 - `script-data` / `coroutines`: none. `persistence` (#20): globals already persist across loads.
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/shader-globals`, on `gaps/lines-trails` with
+`main` merged in).
+
+1. **Colour conversion**: `setGlobalColor`, colour defaults and the Project Settings picker use
+   the engine's `Color::sRGBToLinear` (gamma 2.2), the conversion every material colour, the
+   Inspector's pickers and Gradient keys use, so a global bound to a material colour renders
+   exactly as the same colour typed into the material. 0.5 therefore becomes 0.2176376, not the
+   piecewise sRGB curve's 0.21404114 named in section 9 (the unit test checks 0.2176376).
+2. **Layout cache**: the packed globals blocks are cached by their reflected layout (block name,
+   size, members' names, types, offsets, counts), not by `ShaderRender*`: programs with the same
+   block share one packing, a layout lives while a loaded object holds it (`shared_ptr` in
+   `ShaderLibraryBindings`, `weak_ptr` in the cache), and a hot-reloaded or destroyed program
+   cannot leave a stale entry, so `ShaderPool::remove` needs no hook. The slot stays per
+   program (`slotVSGlobals` / `slotFSGlobals`).
+3. **declare() keeps unchanged values**: a global whose declaration (type, size, default) is
+   unchanged keeps its current value, a new or changed one takes its default, a removed one is
+   dropped. Editing Project Settings during Play therefore does not wipe what scripts set into
+   the other globals (section 6.1 said "resets values").
+4. **Texture globals**: any texture uniform the manifest and `shaderTextures` do not claim and
+   whose name is a valid global name (engine textures are all `u_*`) binds to the global of its
+   name, in either stage, every draw (fallback white, black for a cube, also while loading or
+   when the kind differs). This also covers globals made after the object loaded. The sampler is
+   whatever the shader pairs with the texture (`<name>_smp` is the documented convention).
+5. **Vertex hook**: to write a vertex-lighting fork without copying the library's vertex code,
+   `includes/surface_vs.glsl` gained `SURFACE_VERTEX` / `surfaceVertex(worldPosition,
+   worldNormal, color, uv)`, called after the varyings are written. The fixture's
+   `vertex_lights` fork and the docs use it; no library shader defines it.
+6. **Bindings scope**: materials (submeshes), UI (Image, Text, Polygon), Points, Line Renderer,
+   Trail Renderer (the field lines-trails added, now editable everywhere), Skybox and
+   post-process passes. A material's extra pass and a mesh component's own `shaderUniforms`
+   (a fork set on the mesh) have none; Unity's implicit "material wins unless absent" rule is not
+   reproduced (explicit bindings only). Bindings refuse texture and matrix globals; a binding to
+   a global that does not exist reads 0 until a script sets it.
+7. **Rename** in Project Settings (OK) is one project-history step that renames the bindings of
+   the open scenes (`ShaderGlobalsCmd`); scenes that are not open keep the old name (they read 0,
+   `check_shader` / "Used by" show it). MCP renames with `graphics.shader_globals.<old>:
+   {name: <new>}`. There are no `.material` asset files in this engine, so "project materials"
+   are the scenes' materials.
+8. **Project Settings page**: the edited list is declared to the engine on every valid edit, so
+   the Scene and Game views follow while the dialog is open; Cancel (or closing it) declares the
+   project's list again. The Live column and "Copy Live Values to Defaults" appear while a scene
+   plays. "Used by" is scanned when the page opens and on its refresh button (bindings and the
+   loaded programs of the open scenes' objects); post-process programs are not scanned.
+9. **Export**: `Generator` emits `ShaderGlobals::declare({ShaderGlobalDecl{...}, ...})` into
+   main.cpp (`Generator::shaderGlobalsInitSource`, `Factory::formatShaderGlobalDecl`). Exports
+   already copy the whole assets directory, so texture defaults need no resource-list entry.
+10. **Diagnostics**: `ShaderGlobals::checkShader` (engine) feeds `check_shader` (findings with
+    `code` global-undeclared / global-type-mismatch as warnings) and the Console (a warning when
+    a fork is built for the editor's backend). `globals-block-too-large` fails the compile in
+    `ShaderVariantCompiler::compile` (editor and runtime alike), so the object falls back like
+    any failed fork; `uniform-block-limit` is a `check_shader` error.
+11. **project.yaml**: `shaderGlobals: [{name, type, arraySize (arrays), default}]`; a colour
+    default is `"#RRGGBBAA"` when it is exactly an 8-bit sRGB colour, else `[r, g, b, a]` sRGB
+    numbers (lossless); an entry that cannot be read is left out with an error, the rest kept.
+12. **Agent guide**: the merged tree's guide was over its 16 KB budget (lines-trails' line); the
+    shader-globals line was added and a few sentences elsewhere were shortened to fit (16333
+    bytes; after the later merges of main: 16373).
+13. **Not done**: the frame-stats bench of section 8 (500 draws on a mid-range Android phone) was
+    not measured: no device here. The `SMOKE_BACKEND=gles3/vulkan` smoke runs were not run;
+    every backend's compile and reflection offsets are checked by the unit test
+    `GlobalsBlockPackTest.CompiledBlocksMatchThePackerOnEveryBackend` (and the four vertex lights
+    test) instead.
+14. **GL targets**: the OpenGL / GLES3 / WebGL2 targets flatten uniform blocks (SPIRV-Cross),
+    which takes only `vec4` and `mat4` arrays and no indexing of a block's vector by a variable.
+    So a `float_array` global is declared (and generated: Copy GLSL, `glsl_vs` / `glsl_fs`) as
+    `vec4 x[N]` read in `.x` (std140 gives `float x[N]` the same 16-byte stride, so the packer
+    fills either), and `check_shader` warns about float/vec2/vec3 arrays in a globals block. The
+    vertex-lights shaders copy the block's vectors to locals before indexing them per light.
+15. **Verification** (merged with main at e0d9f2b21, built on the shared host: the build boxes were
+    overloaded): editor and tests build with no warnings; unit tests 1264 passed, 9 skipped, 0
+    failed (28 shader-globals tests, the every-backend compiles included); MCP
+    `test_shader_globals.py` 9/9 with `JASPER_SLOW_BUILD=1` (run on the previous merge: a Desktop
+    export compiles main.cpp's `ShaderGlobals::declare` and the player draws the default colour);
+    the full MCP suite (`-j2`) 863 passed, 11 failed: the 10 baseline failures plus
+    `test_stochastic_tiling::test_old_scene_resaves_byte_identical`, which comes from physics-2d
+    (it fails the same with the physics-2d branch's own editor: the old `maxColliders2D` keys are
+    dropped on resave). Tool budget 106825 measured on the merged tree. Android and Web builds
+    were not run: no platform code changed.
+16. **Review fixes**: a texture global holding a render target lets go of it when the
+    `Framebuffer` is destroyed (its destructor calls `ShaderGlobals::forgetFramebuffer`: a
+    camera destroyed, a Lua `Framebuffer` collected), taking its default texture again with a
+    warning; file textures are resolved once per value into a cached `TextureRender*` and a load
+    that fails is remembered (warned once) until the value changes; `releaseTextures` (a view
+    loss, shutdown) drops only GPU and pixel references, keeping paths and render targets so the
+    textures load again with the next view; Project Settings refuses renames and removals of bound
+    globals during Play, and a rename's undo/redo waits for Play to stop
+    (`ShaderGlobalsCmd::undoRefusal`; `set_project_settings` is refused while playing anyway);
+    `setShaderGlobalBinding(member, x)` raises unless x is a string or nil; negative colour
+    components are clamped to 0 (no NaN). Post-process bindings are authored over MCP in the
+    `set_scene_settings post_process` entries. The Project Settings edit (preview, Cancel, OK) is
+    `editor/util/ShaderGlobalsEdit`, unit-tested. The `SMOKE_BACKEND=gles3/vulkan` smoke runs
+    were not run: the fixture has no saved scene for `tools/smoke-test.sh` and each backend needs
+    a full export build; the every-backend compile and offset tests stand in for them.
+17. **Verification after the review fixes** (merged with main at b6989373c, built and tested on the
+    host, idle after the session restart): no compiler warnings; unit tests 1386 passed, 8
+    skipped, 0 failed; `test_shader_globals.py` 12 passed (the slow export case skipped this
+    time; it passed before the fixes); the full MCP suite (`-j2`) 874 passed, 11 failed: the 10
+    baseline failures and `test_stochastic_tiling::test_old_scene_resaves_byte_identical` (the
+    ui-canvas-group regression being fixed on its branch). Tool budget 107680 measured.
