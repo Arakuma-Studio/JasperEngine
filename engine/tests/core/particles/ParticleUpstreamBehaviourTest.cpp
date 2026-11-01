@@ -671,7 +671,10 @@ TEST(ParticleUpstreamScene, ChildrenFollowPlayAndStop){
 TEST(ParticleUpstreamScene, DeactivatedGameObjectClearsAndReplaysOnReactivation){
     Scene scene;
     ParticleSystem system(&scene);
-    ASSERT_TRUE(system.setInlineEffect(R"({"version": 1, "duration": 5, "seed": 3, "maxParticles": 100,
+    // Always Simulate: no camera draws this scene, and S20's culling would pause a looping system
+    // that has bounds once the shared frame counter (other tests' renders) moves past its last
+    // seen frame; the test is about deactivation
+    ASSERT_TRUE(system.setInlineEffect(R"({"version": 1, "duration": 5, "seed": 3, "maxParticles": 100, "cullingMode": "alwaysSimulate",
         "modules": [{"type": "main", "startLifetime": 10, "startSpeed": 0},
                     {"type": "emission", "rateOverTime": 60}, {"type": "shape", "enabled": false}]})"));
     frames(scene, 20);
