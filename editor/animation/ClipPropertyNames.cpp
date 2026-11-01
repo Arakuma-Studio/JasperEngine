@@ -147,6 +147,15 @@ bool ClipPropertyNames::resolve(const std::string& component, const std::string&
             break;
         }
     }
+    if (outComponent == Catalog::getComponentName(ComponentType::SpriteComponent, true) &&
+        (outProperty == "color" || outProperty.compare(0, 6, "color.") == 0)){
+        // the key itself ("sprite" "color", as Lua's Sprite.color): the mesh material colour
+        anim::PropertyRef own;
+        if (!anim::parsePropertyRef(outComponent, outProperty, own)){
+            outComponent = "mesh";
+            outProperty = "submeshes[0].material.baseColorFactor" + outProperty.substr(5);
+        }
+    }
     anim::PropertyRef ref;
     if (anim::parsePropertyRef(outComponent, outProperty, ref)) return true;
     error = ref.error;

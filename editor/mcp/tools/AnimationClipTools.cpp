@@ -2086,13 +2086,18 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
         data["bound_total"] = all.size();
         // the clip's properties as the preview shows them (key space: sRGB colours, bools)
         Json properties = Json::array();
-        for (const AnimationClipController::BoundProperty& p : c.sampledBoundProperties(16)) {
+        const std::vector<AnimationClipController::BoundProperty> allProperties = c.sampledBoundProperties(std::numeric_limits<size_t>::max());
+        for (size_t i = 0; i < allProperties.size() && i < 16; i++) {
+            const AnimationClipController::BoundProperty& p = allProperties[i];
             Json item = {{"path", p.path}, {"component", p.component}, {"property", p.property},
                          {"value", propertyValueJson(p.kind, p.value)}};
             if (sp && p.entity != NULL_ENTITY) item["entity"] = McpRefs::entityJson(sp, p.entity);
             properties.push_back(item);
         }
-        if (!properties.empty()) data["properties"] = properties;
+        if (!properties.empty()) {
+            data["properties"] = properties;
+            data["properties_total"] = allProperties.size();
+        }
         data["unresolved"] = c.getUnresolvedPaths();
         // the preview loops the clip whatever its wrap (the window's playback); Play mode follows wrap
         std::string text = "Clip preview: " + action + " \"" + c.getStateName() + "\" (" + c.getClipPath() + ") at " + fmt(c.getTime()) + " s" +

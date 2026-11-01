@@ -191,13 +191,15 @@ namespace jasperengine::editor{
         bool setEase(const std::vector<KeyRef>& keys, EaseType ease, std::string* error);
         // Unity's key tangents (anim-properties spec 10; ClipTangents.h) on the keys of scalar
         // curves (rotations and discrete properties are skipped): a mode (Auto, Free Smooth, Flat,
-        // Broken, Linear), or a side's Free / Linear / Constant; one commit each
-        bool setTangentMode(const std::vector<KeyRef>& keys, ClipTangentMode mode, std::string* error);
-        bool setSideTangent(const std::vector<KeyRef>& keys, cliptangents::Side side, cliptangents::SideType type, std::string* error);
+        // Broken, Linear), or a side's Free / Linear / Constant; one commit each. `notice`: what
+        // the edit changed besides (a track's first tangents turn its other eases linear)
+        bool setTangentMode(const std::vector<KeyRef>& keys, ClipTangentMode mode, std::string* error, std::string* notice = nullptr);
+        bool setSideTangent(const std::vector<KeyRef>& keys, cliptangents::Side side, cliptangents::SideType type, std::string* error,
+                            std::string* notice = nullptr);
         // a tangent handle drag: one component's slope on a side (mirrored unless the key is
         // Broken); `mergeKey` the drag's (one undo step per drag)
         bool setTangentSlope(const KeyRef& key, size_t component, cliptangents::Side side, float slope, const std::string& mergeKey,
-                             std::string* error);
+                             std::string* error, std::string* notice = nullptr);
         bool removeTrack(size_t track, std::string* error);
         // rewrites a track's path (the row's Rebind / Retarget): changes the clip for every user
         bool retargetTrack(size_t track, const std::string& newPath, std::string* error);
@@ -390,6 +392,10 @@ namespace jasperengine::editor{
         void recordPropertyValue(uint32_t sceneId, Entity entity, const ClipRecordValue& value, const std::string& mergeKey);
         void beforePropertySceneWrite(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
         void afterPropertySceneWrite(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
+        // the previewed property keys of `entity` a write of `property` touches: that one, every
+        // one of its component (an empty property: Reset, Paste Component Values), a Lua script
+        // row ("scripts" "scripts[N].<field>": the field of that script, "" every script field)
+        std::vector<uint32_t> previewedKeysOf(Scene* scene, Entity entity, const ClipPropertyKey& property) const;
         // the previewed property back to its rest (key space) and what its write changed besides
         void writePropertyRest(Entity entity, uint32_t key);
         ClipRecordHooks::Id beforePropertyListener = 0;

@@ -1306,7 +1306,9 @@ void AnimationWindowClip::drawKeyContextMenu(){
             {"Broken", ClipTangentMode::Broken, "The two handles move independently"}};
         for (const ModeChoice& choice : modes){
             if (ImGui::MenuItem(choice.label, nullptr, shownMode == choice.mode)){
-                if (!ctl.setTangentMode(selectedRefs, choice.mode, &error)) setNotice(error, true);
+                std::string notice;
+                if (!ctl.setTangentMode(selectedRefs, choice.mode, &error, &notice)) setNotice(error, true);
+                else if (!notice.empty()) setNotice(notice, true);
             }
             ImGui::SetItemTooltip("%s", choice.help);
         }
@@ -1316,13 +1318,19 @@ void AnimationWindowClip::drawKeyContextMenu(){
         for (const SideChoice& side : sides){
             if (!ImGui::BeginMenu(side.label)) continue;
             if (ImGui::MenuItem("Free")){
-                if (!ctl.setSideTangent(selectedRefs, side.side, cliptangents::SideType::Free, &error)) setNotice(error, true);
+                std::string notice;
+                if (!ctl.setSideTangent(selectedRefs, side.side, cliptangents::SideType::Free, &error, &notice)) setNotice(error, true);
+                else if (!notice.empty()) setNotice(notice, true);
             }
             if (ImGui::MenuItem("Linear")){
-                if (!ctl.setSideTangent(selectedRefs, side.side, cliptangents::SideType::Linear, &error)) setNotice(error, true);
+                std::string notice;
+                if (!ctl.setSideTangent(selectedRefs, side.side, cliptangents::SideType::Linear, &error, &notice)) setNotice(error, true);
+                else if (!notice.empty()) setNotice(notice, true);
             }
             if (ImGui::MenuItem("Constant")){
-                if (!ctl.setSideTangent(selectedRefs, side.side, cliptangents::SideType::Constant, &error)) setNotice(error, true);
+                std::string notice;
+                if (!ctl.setSideTangent(selectedRefs, side.side, cliptangents::SideType::Constant, &error, &notice)) setNotice(error, true);
+                else if (!notice.empty()) setNotice(notice, true);
             }
             ImGui::EndMenu();
         }

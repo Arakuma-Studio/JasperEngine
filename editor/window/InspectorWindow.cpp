@@ -2834,7 +2834,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
     // Unity tints the fields Record keys (animated ones stronger)
     bool rowRecorded = false;
     bool rowAnimated = false;
-    if (cpType != ComponentType::Transform){
+    if (cpType != ComponentType::Transform && ClipRecordHooks::hasRecordListeners()){
         for (Entity entity : entities){
             const ClipPropertyKey key = rowPropertyKey(sceneProject, entity, cpType, id);
             if (key.empty() || !ClipRecordHooks::claimsProperty(sceneProject->id, entity, key)) continue;
@@ -5662,7 +5662,7 @@ editor::ClipPropertyKey editor::InspectorWindow::rowPropertyKey(SceneProject* sc
 bool editor::InspectorWindow::recordPropertyCommand(SceneProject* sceneProject, ComponentType cpType, const std::string& id, Command* command){
     const RecordablePropertyCommand* recordable = dynamic_cast<const RecordablePropertyCommand*>(command);
     std::vector<std::pair<Entity, std::vector<float>>> values;
-    if (!sceneProject || !recordable || !recordable->newValueFloats(values)) return false;
+    if (!sceneProject || !ClipRecordHooks::hasRecordListeners() || !recordable || !recordable->newValueFloats(values)) return false;
     bool claimed = false;
     for (const auto& entry : values){
         const ClipPropertyKey key = rowPropertyKey(sceneProject, entry.first, cpType, id);

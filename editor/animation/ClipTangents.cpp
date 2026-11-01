@@ -112,6 +112,17 @@ void cliptangents::ensureTangents(ClipTrackData& track){
     track.keys = std::move(keys);
 }
 
+size_t cliptangents::droppedEases(const ClipTrackData& track){
+    bool all = true;
+    for (const ClipKey& key : track.keys) all = all && key.hasTangents() && key.inTangent.size() == key.value.size();
+    if (all) return 0;
+    size_t count = 0;
+    for (const ClipKey& key : track.keys){
+        if (key.ease != EaseType::LINEAR && key.ease != EaseType::STEP) count++;
+    }
+    return count;
+}
+
 void cliptangents::refresh(ClipTrackData& track){
     if (!editable(track)) return;
     bool any = false;

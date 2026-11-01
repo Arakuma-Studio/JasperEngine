@@ -925,9 +925,12 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
         const float slope = -(dy / pixelsPerValue) / (dx / pixelsPerSecond);
         std::string error;
         const cliptangents::Side side = draggedHandle.side < 0 ? cliptangents::Side::Left : cliptangents::Side::Right;
-        if (!c.setTangentSlope({draggedHandle.track, draggedHandle.key}, (size_t)draggedHandle.component, side, slope, handleMergeKey, &error)){
+        std::string notice;
+        if (!c.setTangentSlope({draggedHandle.track, draggedHandle.key}, (size_t)draggedHandle.component, side, slope, handleMergeKey, &error, &notice)){
             setNotice(error, true);
             drag = Drag::None;
+        }else if (!notice.empty()){
+            setNotice(notice, true);
         }
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
     }

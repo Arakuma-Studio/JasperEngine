@@ -27,7 +27,8 @@
 //   (its call sites do not ask claims()). A write notifies once per channel it writes: a Transform
 //   property write ("position") one channel, a whole-Transform write (gizmo, paste, reset) three
 //   (Position, Rotation, Scale), a lattice offsets write Lattice, a whole MeshComponent write
-//   Morph; before* runs before the value changes, after* once it changed (also for undo/redo).
+//   Morph and Property (every property of the component: Reset, Paste Component Values);
+//   before* runs before the value changes, after* once it changed (also for undo/redo).
 //   Listeners only write values of existing components (never add or remove components or
 //   entities): the call sites hold component pointers across the call.
 
@@ -102,6 +103,9 @@ namespace jasperengine::editor{
 
         static Id addRecordListener(ClipRecordListener listener);
         static void removeRecordListener(Id id);
+        // some listener is installed (Record is on somewhere): the sources skip resolving their
+        // rows' keys every frame otherwise
+        static bool hasRecordListeners();
         // some listener claims it
         static bool claims(uint32_t sceneId, Entity entity, ClipChannel channel);
         // the first claiming listener records it; false when none claimed (build the scene command)
@@ -122,9 +126,11 @@ namespace jasperengine::editor{
 
         // The channels a component write touches (implemented): Transform "position" / "rotation"
         // / "scale" that one, "" (the whole component) all three, other Transform properties none;
-        // LatticeComponent "offsets" or "" Lattice; MeshComponent "" or "morphWeights[i]" Morph;
-        // a property of the animatable registry (anim-properties: "ui" "color", "light"
-        // "intensity", "enabled" of a component with the checkbox) Property; anything else none
+        // LatticeComponent "offsets" Lattice, "" Lattice and Property; MeshComponent
+        // "morphWeights[i]" Morph, "" Morph and Property; a property of the animatable registry
+        // (anim-properties: "ui" "color", "light" "intensity", "enabled" of a component with the
+        // checkbox), a Lua script row ("scripts[N].<field>") or the whole of a component with
+        // registry rows ("") Property; anything else none
         static std::vector<ClipChannel> channelsOf(ComponentType type, const std::string& property);
         // The animatable property a Catalog (component, property) write is (propertyOf), false
         // when none: the registry name (submesh material rows "submeshes[N]...", shader-library
@@ -133,6 +139,15 @@ namespace jasperengine::editor{
         // A Lua script's declared property, "script:<Class>" "<name>"
         static ClipPropertyKey scriptPropertyOf(const std::string& className, const std::string& name);
         static ClipPropertyKey activeProperty();    // "gameobject" "active"
+        // The property key a component write notifies (before/afterComponentWrite): propertyOf's;
+        // a whole-component write ("") the component with an empty property (every property of
+        // it); a ScriptComponent write scriptRowComponent() with the Catalog row
+        // ("scripts[N].<field>", "" for all), which listeners resolve on the GameObject (the
+        // script's class). False when the write touches no animatable property
+        static bool componentWriteKey(ComponentType type, const std::string& property, ClipPropertyKey& out);
+        static const char* scriptRowComponent(){ return "scripts"; }
+        // "scripts[N].<field>" split (false for other names)
+        static bool scriptRow(const std::string& property, size_t& index, std::string& field);
 
         // ---- property record and writes (anim-properties spec 10) ----
 

@@ -144,6 +144,7 @@ namespace jasperengine::editor{
             ClipChannel channel = ClipChannel::Position;
             std::string component;      // property tracks
             std::string property;
+            PropertyKind kind = PropertyKind::None;     // property tracks: the copied track's kind
             std::vector<int> points;
             float offset = 0.0f;    // from the earliest copied key
             ClipKey key;

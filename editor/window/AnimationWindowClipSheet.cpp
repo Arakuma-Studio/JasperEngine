@@ -883,6 +883,7 @@ void AnimationWindowClip::copySelected(){
         copied.channel = track.channel;
         copied.component = track.component;
         copied.property = track.property;
+        copied.kind = track.kind;
         copied.points = track.points;
         copied.key = track.keys[ref.key];
         copied.offset = copied.key.time - earliest;
@@ -944,7 +945,7 @@ bool AnimationWindowClip::paste(float time, std::string* error){
         const ClipTrackData& selected = data.tracks[selectedRefs.front().track];
         // (a property's keys onto another GameObject's same property, or onto a property of their kind)
         const bool sameProperty = selected.channel != ClipChannel::Property ||
-            (selected.kind == data.tracks[selectedRefs.front().track].kind && selected.width == clipboard.front().key.value.size());
+            (selected.kind == clipboard.front().kind && selected.width == clipboard.front().key.value.size());
         const bool otherTrack = selected.path != clipboard.front().path || selected.component != clipboard.front().component ||
                                 selected.property != clipboard.front().property;
         if (oneTrack && selected.channel == clipboard.front().channel && otherTrack && sameProperty &&

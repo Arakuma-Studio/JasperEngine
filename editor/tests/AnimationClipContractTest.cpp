@@ -98,8 +98,12 @@ TEST(AnimationClipContract, ChannelsOfComponentWrites){
               (Channels{ClipChannel::Position, ClipChannel::Rotation, ClipChannel::Scale}));
     EXPECT_TRUE(ClipRecordHooks::channelsOf(ComponentType::Transform, "parent").empty());
     EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::LatticeComponent, "offsets"), Channels{ClipChannel::Lattice});
-    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::MeshComponent, ""), Channels{ClipChannel::Morph});
-    EXPECT_TRUE(ClipRecordHooks::channelsOf(ComponentType::CameraComponent, "").empty());
+    // a whole-component write (Reset, Paste Component Values) also writes its animatable
+    // properties (anim-properties): the previewed ones are notified
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::MeshComponent, ""), (Channels{ClipChannel::Morph, ClipChannel::Property}));
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::CameraComponent, ""), Channels{ClipChannel::Property});
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::ScriptComponent, "scripts[0].glow"), Channels{ClipChannel::Property});
+    EXPECT_TRUE(ClipRecordHooks::channelsOf(ComponentType::ActionComponent, "").empty()) << "no animatable property";
 }
 
 TEST(AnimationClipContract, Document){

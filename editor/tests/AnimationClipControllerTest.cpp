@@ -24,6 +24,7 @@
 #include "Stream.h"
 #include "command/CommandHandle.h"
 #include "command/type/ClipSceneActions.h"
+#include "command/type/ComponentValuesCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/CreatePrefabCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -57,6 +58,7 @@
 #include "component/LightComponent.h"
 #include "component/ProgressbarComponent.h"
 #include "component/RectTransformComponent.h"
+#include "component/ScriptComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/UIComponent.h"
@@ -2043,6 +2045,14 @@ TEST(PropertyRegistryCatalog, EveryRowIsACatalogPropertyOfACompatibleType){
         checked++;
     }
     EXPECT_GT(checked, 60u);
+    // and the other way: every component with the Inspector's enabled checkbox has its row (the
+    // Animation Player's own is not animatable)
+    for (int i = 0; i < ComponentTypeCount; i++){
+        const ComponentType type = static_cast<ComponentType>(i);
+        if (!Catalog::hasEnabledProperty(type) || type == ComponentType::AnimationPlayerComponent) continue;
+        const std::string component = Catalog::getComponentName(type, true);
+        EXPECT_TRUE(anim::findAnimatableProperty(component, "enabled")) << component << " has an enabled checkbox but no enabled row";
+    }
     EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::UIComponent, "color"), (std::vector<ClipChannel>{ClipChannel::Property}));
     EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::LightComponent, "intensity"), (std::vector<ClipChannel>{ClipChannel::Property}));
     EXPECT_TRUE(ClipRecordHooks::channelsOf(ComponentType::MeshComponent, "castShadows").empty()) << "not animatable";
@@ -2133,6 +2143,14 @@ TEST_F(AnimationClipControllerTest, AddPropertyListsAndNamesUiProperties) {
     std::string component, property, error;
     ASSERT_TRUE(ClipPropertyNames::resolve("Image", "color", component, property, error)) << error;
     EXPECT_EQ(component, "ui") << "an Inspector name resolves to the Catalog key";
+    // the key itself: a sprite's colour is its mesh material colour (Lua's Sprite.color)
+    ASSERT_TRUE(ClipPropertyNames::resolve("sprite", "color", component, property, error)) << error;
+    EXPECT_EQ(component, "mesh");
+    EXPECT_EQ(property, "submeshes[0].material.baseColorFactor");
+    ASSERT_TRUE(ClipPropertyNames::resolve("sprite", "color.a", component, property, error)) << error;
+    EXPECT_EQ(property, "submeshes[0].material.baseColorFactor.a");
+    ASSERT_TRUE(ClipPropertyNames::resolve("sprite", "frame", component, property, error)) << error;
+    EXPECT_EQ(component, "sprite") << "its own rows stay";
     EXPECT_FALSE(ClipPropertyNames::resolve("light", "fooBar", component, property, error));
     EXPECT_NE(error.find("did you mean"), std::string::npos) << error;
     EXPECT_NE(error.find("intensity"), std::string::npos) << "the component's animatable properties are listed: " << error;
@@ -2242,4 +2260,87 @@ TEST_F(AnimationClipControllerTest, TangentEditsAreClipStepsAndAHandleDragIsOne)
     ASSERT_GE(hand, 0);
     EXPECT_TRUE(c.setTangentMode({{(size_t)hand, 0}}, ClipTangentMode::Flat, &error)) << "scale is a scalar curve: " << error;
     EXPECT_FALSE(s.sceneProject->isModified);
+}
+
+// H1: scene commands during a property preview edit the rest: a Lua script field row (the
+// Inspector's and set_script_properties' PropertyCmd on "scripts[N].<field>") and a whole-component
+// Reset. Stop keeps what they wrote, and undo puts the rest back, never the previewed value
+TEST_F(AnimationClipControllerTest, SceneEditsDuringAPropertyPreviewEditTheRest) {
+    ClipScene s = clipScene("anim/glow.anim");
+    const Entity panel = addImage(s, "Panel", s.hero, Vector4(1, 0.5f, 0.2f, 1));
+    const Vector4 restColour = s.scene->getComponent<UIComponent>(panel).color;
+    ScriptComponent scripts;
+    ScriptEntry torch;
+    torch.type = ScriptType::LUA;
+    torch.enabled = true;
+    torch.className = "Torch";
+    ScriptProperty glow;
+    glow.name = "glow";
+    glow.type = ScriptPropertyType::Float;
+    glow.value = 0.2f;
+    torch.properties = {glow};
+    scripts.scripts.push_back(torch);
+    s.scene->addComponent<ScriptComponent>(panel, scripts);
+    auto glowOf = [&](){ return std::get<float>(s.scene->getComponent<ScriptComponent>(panel).scripts[0].properties[0].value); };
+
+    ClipData data;
+    ClipTrackData glowTrack;
+    glowTrack.path = "Panel";
+    glowTrack.channel = ClipChannel::Property;
+    glowTrack.component = "script:Torch";
+    glowTrack.property = "glow";
+    glowTrack.keys = {key(0, {1}), key(1, {1})};
+    ClipTrackData colourTrack = glowTrack;
+    colourTrack.component = "ui";
+    colourTrack.property = "color";
+    colourTrack.keys = {key(0, {0, 0, 0, 1}), key(1, {0, 0, 0, 1})};
+    data.tracks = {glowTrack, colourTrack};
+    writeClip("anim/glow.anim", data);
+    AnimationClipDocument::checkDiskChanges(project());
+
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    EXPECT_FLOAT_EQ(glowOf(), 1.0f) << "previewed";
+    EXPECT_FLOAT_EQ(s.scene->getComponent<UIComponent>(panel).color.x, 0.0f) << "previewed black";
+    CommandHistory* history = CommandHandle::get(s.id);
+
+    // the script row: glow = 3 is the new rest
+    ASSERT_TRUE(history->addCommand(new PropertyCmd<float>(project(), s.id, panel, ComponentType::ScriptComponent, "scripts[0].glow", 3.0f)));
+    // Reset of the Image's UI values (white): the colour's new rest
+    Command* reset = ComponentValuesCmd::buildReset(project(), s.id, {panel}, ComponentType::UIComponent, &error);
+    ASSERT_TRUE(reset) << error;
+    ASSERT_TRUE(history->addCommand(reset));
+    const Vector4 resetColour = s.scene->getComponent<UIComponent>(panel).color;
+    c.update(0.0);
+    EXPECT_FLOAT_EQ(glowOf(), 1.0f) << "previewed again";
+    c.stopPreview();
+    EXPECT_FLOAT_EQ(glowOf(), 3.0f) << "stop keeps the edit, not the rest before it";
+    const Vector4 kept = s.scene->getComponent<UIComponent>(panel).color;
+    EXPECT_EQ(kept.x, resetColour.x) << "stop keeps the Reset";
+    EXPECT_NE(kept.x, 0.0f);
+    ASSERT_TRUE(history->undo());
+    const Vector4 undone = s.scene->getComponent<UIComponent>(panel).color;
+    // (the command's own copy of the component, through its YAML)
+    EXPECT_FLOAT_EQ(undone.x, restColour.x) << "undoing the Reset writes the rest, not the previewed black";
+    EXPECT_FLOAT_EQ(undone.y, restColour.y);
+    ASSERT_TRUE(history->undo());
+    EXPECT_FLOAT_EQ(glowOf(), 0.2f) << "undo writes the rest, not the previewed 1";
+}
+
+// the curves view says when a track's first tangents turn its eases linear
+TEST_F(AnimationClipControllerTest, TangentEditsSayWhichEasesBecameLinear) {
+    ClipScene s = clipScene();
+    AnimationClipController& c = controller();
+    std::string error, notice;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    const int arm = c.getDocument()->data().findTrack("Arm", ClipChannel::Position);
+    ASSERT_GE(arm, 0);
+    ASSERT_TRUE(c.setEase({{(size_t)arm, 0}}, EaseType::CUBIC_IN_OUT, &error)) << error;
+    ASSERT_TRUE(c.setTangentMode({{(size_t)arm, 1}}, ClipTangentMode::Auto, &error, &notice)) << error;
+    EXPECT_NE(notice.find("1 key's ease became linear tangents"), std::string::npos) << notice;
+    ASSERT_TRUE(c.setTangentMode({{(size_t)arm, 0}}, ClipTangentMode::Flat, &error, &notice)) << error;
+    EXPECT_TRUE(notice.empty()) << "nothing more to replace: " << notice;
 }

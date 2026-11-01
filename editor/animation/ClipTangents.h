@@ -34,14 +34,18 @@ namespace jasperengine::editor::cliptangents{
     float clampedAutoSlope(float previousTime, float previousValue, float time, float value, float nextTime, float nextValue,
                            bool hasPrevious, bool hasNext);
 
-    // every key with tangents (the ones without get their linear slopes)
+    // every key with tangents (the ones without get their linear slopes). Tangents win over
+    // eases, so the track's eases other than step (cubic_in_out, bounce...) become linear: the
+    // callers say so (droppedEases first)
     void ensureTangents(ClipTrackData& track);
+    // the keys whose ease ensureTangents would replace (0 when every key has tangents already)
+    size_t droppedEases(const ClipTrackData& track);
     // Auto, Linear and Flat keys computed again from their neighbours (after keys moved)
     void refresh(ClipTrackData& track);
     // a key's mode (Auto, Free = Free Smooth, Flat, Broken, Linear)
     void setMode(ClipTrackData& track, size_t key, ClipTangentMode mode);
-    // one side (or both) Free, Linear or Constant; the key becomes Broken unless both sides
-    // end up Linear (Linear) or the change is to Both Free (Free Smooth)
+    // one side (or both) Free, Linear or Constant (Unity's Left / Right / Both Tangents); the
+    // key becomes Broken, except Both Linear, which is Linear
     void setSide(ClipTrackData& track, size_t key, Side side, SideType type);
     // a handle drag: `side`'s slope of one component (mirrored to the other side unless the key
     // is Broken); the key becomes Free (Broken stays Broken)

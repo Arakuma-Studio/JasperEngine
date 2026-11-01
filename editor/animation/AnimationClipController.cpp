@@ -21,6 +21,7 @@
 #include "component/LatticeComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
+#include "component/ScriptComponent.h"
 #include "component/Transform.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -552,13 +553,7 @@ namespace{
     anim::PropertyRest* takePropertyRest(Scene* scene, Entity entity, anim::ChannelRest& rest, const anim::PropertyBinding& binding){
         if (binding.status != anim::PropertyBindStatus::Bound) return nullptr;
         anim::PropertyRest& property = rest.properties[binding.key];
-        if (!property.has){
-            float value[4] = {0, 0, 0, 0};
-            if (!anim::readPropertyKeySpace(scene, entity, binding, value)) return nullptr;
-            property.has = true;
-            for (int k = 0; k < 4; k++) property.value[k] = value[k];
-            property.hasSnapshot = anim::snapshotProperty(scene, entity, binding, property.snapshot);
-        }
+        if (!property.has && !anim::readPropertyRest(scene, entity, binding, property)) return nullptr;
         property.binding = binding;
         // the binding of the whole property (a swizzle track's component is written as part of it)
         property.binding.swizzle = -1;
@@ -1258,8 +1253,7 @@ void AnimationClipController::writePropertyRest(Entity entity, uint32_t key){
     if (it == session.rest.end()) return;
     auto property = it->second.properties.find(key);
     if (property == it->second.properties.end() || !property->second.has) return;
-    anim::writePropertyKeySpace(sceneProject->scene, entity, property->second.binding, property->second.value);
-    if (property->second.hasSnapshot) anim::restoreProperty(sceneProject->scene, entity, property->second.binding, property->second.snapshot);
+    anim::restorePropertyRest(sceneProject->scene, entity, property->second);
 }
 
 void AnimationClipController::takeSnapshot(SceneProject* sceneProject){
@@ -1495,17 +1489,59 @@ void AnimationClipController::afterSceneWrite(uint32_t id, Entity entity, ClipCh
     takeRest(sceneProject->scene, entity, it->second, channel, true);
 }
 
+std::vector<uint32_t> AnimationClipController::previewedKeysOf(Scene* scene, Entity entity, const ClipPropertyKey& property) const{
+    std::vector<uint32_t> keys;
+    const bool scripts = property.component == ClipRecordHooks::scriptRowComponent();
+    size_t scriptIndex = 0;
+    std::string field;
+    if (scripts && !property.property.empty() && !ClipRecordHooks::scriptRow(property.property, scriptIndex, field)) return keys;
+    std::string scriptClass;
+    if (scripts && !field.empty()){
+        // the row's script: its class names the track component
+        const ScriptComponent* component = scene->findComponent<ScriptComponent>(entity);
+        if (!component || scriptIndex >= component->scripts.size() || component->scripts[scriptIndex].type != ScriptType::LUA) return keys;
+        scriptClass = "script:" + component->scripts[scriptIndex].className;
+    }
+    for (const std::pair<Entity, uint32_t>& entry : session.writtenProperties){
+        if (entry.first != entity) continue;
+        const anim::PropertyKeyInfo* info = anim::propertyKeyInfo(entry.second);
+        if (!info) continue;
+        bool match = false;
+        if (scripts){
+            if (!info->ref.script) continue;
+            if (field.empty()){
+                match = true;
+            }else if (info->component == scriptClass && info->property == field){
+                // the instance the preview bound (two scripts of a class: only its own rows)
+                auto rest = session.rest.find(entity);
+                const anim::PropertyRest* bound = nullptr;
+                if (rest != session.rest.end()){
+                    auto found = rest->second.properties.find(entry.second);
+                    if (found != rest->second.properties.end()) bound = &found->second;
+                }
+                match = !bound || bound->binding.scriptIndex < 0 || (size_t)bound->binding.scriptIndex == scriptIndex;
+            }
+        }else if (property.property.empty()){
+            match = info->component == property.component;
+        }else{
+            match = info->component == property.component && info->property == property.property;
+            if (!match){
+                // a name the registry spells another way (a swizzle, a parametrized row)
+                const anim::PropertyBinding binding = propertyBindingOf(scene, entity, property.component, property.property, 0);
+                match = binding.status == anim::PropertyBindStatus::Bound && binding.key == entry.second;
+            }
+        }
+        if (match) keys.push_back(entry.second);
+    }
+    return keys;
+}
+
 void AnimationClipController::beforePropertySceneWrite(uint32_t id, Entity entity, const ClipPropertyKey& property){
     if (!isPreviewing() || id != previewSceneId) return;
     SceneProject* sceneProject = sceneProjectOf(previewSceneId);
     if (!sceneProject || sceneProject->playState != ScenePlayState::STOPPED || !sceneProject->scene->isEntityCreated(entity)) return;
-    const anim::PropertyBinding binding = propertyBindingOf(sceneProject->scene, entity, property.component, property.property, 0);
-    if (binding.status != anim::PropertyBindStatus::Bound) return;
     // the command reads and edits the rest, not the previewed value
-    const std::pair<Entity, uint32_t> entry(entity, binding.key);
-    if (std::find(session.writtenProperties.begin(), session.writtenProperties.end(), entry) != session.writtenProperties.end()){
-        writePropertyRest(entity, binding.key);
-    }
+    for (uint32_t key : previewedKeysOf(sceneProject->scene, entity, property)) writePropertyRest(entity, key);
 }
 
 void AnimationClipController::afterPropertySceneWrite(uint32_t id, Entity entity, const ClipPropertyKey& property){
@@ -1514,18 +1550,16 @@ void AnimationClipController::afterPropertySceneWrite(uint32_t id, Entity entity
     if (!sceneProject || sceneProject->playState != ScenePlayState::STOPPED || !sceneProject->scene->isEntityCreated(entity)) return;
     auto it = session.rest.find(entity);
     if (it == session.rest.end()) return;
-    const anim::PropertyBinding binding = propertyBindingOf(sceneProject->scene, entity, property.component, property.property, 0);
-    if (binding.status != anim::PropertyBindStatus::Bound) return;
-    auto rest = it->second.properties.find(binding.key);
-    if (rest == it->second.properties.end() || !rest->second.has) return;
     // the value the command wrote (a named value: the new rest even when equal to what was
     // shown); the preview shows again on the next update
-    float value[4] = {0, 0, 0, 0};
-    if (anim::readPropertyKeySpace(sceneProject->scene, entity, rest->second.binding, value)){
-        for (int k = 0; k < 4; k++) rest->second.value[k] = value[k];
-        rest->second.hasSnapshot = anim::snapshotProperty(sceneProject->scene, entity, rest->second.binding, rest->second.snapshot);
+    bool any = false;
+    for (uint32_t key : previewedKeysOf(sceneProject->scene, entity, property)){
+        auto rest = it->second.properties.find(key);
+        if (rest == it->second.properties.end() || !rest->second.has) continue;
+        anim::readPropertyRest(sceneProject->scene, entity, rest->second.binding, rest->second);
+        any = true;
     }
-    needsApply = true;
+    if (any) needsApply = true;
 }
 
 // ---- keying ----
@@ -2095,44 +2129,64 @@ bool AnimationClipController::setEase(const std::vector<KeyRef>& keys, EaseType 
     return commitEdit(data, "Set Interpolation", "", error);
 }
 
-bool AnimationClipController::setTangentMode(const std::vector<KeyRef>& keys, ClipTangentMode mode, std::string* error){
+namespace{
+    // the notice of eases a track's first tangents replaced
+    void easesNotice(size_t dropped, std::string* notice){
+        if (!notice) return;
+        notice->clear();
+        if (dropped == 0) return;
+        *notice = std::to_string(dropped) + (dropped == 1 ? " key's ease" : " keys' eases") +
+                  " became linear tangents (a curve with tangents plays them; steps stay)";
+    }
+}
+
+bool AnimationClipController::setTangentMode(const std::vector<KeyRef>& keys, ClipTangentMode mode, std::string* error, std::string* notice){
     if (!editable(error)) return false;
     ClipData data = document->data();
-    size_t edited = 0;
+    size_t edited = 0, dropped = 0;
     for (const KeyRef& ref : keys){
         if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) return fail(error, "no such key");
         if (!cliptangents::editable(data.tracks[ref.track])) continue;
+        dropped += cliptangents::droppedEases(data.tracks[ref.track]);
         cliptangents::setMode(data.tracks[ref.track], ref.key, mode);
         edited++;
     }
     if (edited == 0) return fail(error, "rotations and stepped properties have no tangents to edit (use Interpolation)");
-    return commitEdit(data, "Set Tangents", "", error);
+    if (!commitEdit(data, "Set Tangents", "", error)) return false;
+    easesNotice(dropped, notice);
+    return true;
 }
 
 bool AnimationClipController::setSideTangent(const std::vector<KeyRef>& keys, cliptangents::Side side, cliptangents::SideType type,
-                                             std::string* error){
+                                             std::string* error, std::string* notice){
     if (!editable(error)) return false;
     ClipData data = document->data();
-    size_t edited = 0;
+    size_t edited = 0, dropped = 0;
     for (const KeyRef& ref : keys){
         if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) return fail(error, "no such key");
         if (!cliptangents::editable(data.tracks[ref.track])) continue;
+        dropped += cliptangents::droppedEases(data.tracks[ref.track]);
         cliptangents::setSide(data.tracks[ref.track], ref.key, side, type);
         edited++;
     }
     if (edited == 0) return fail(error, "rotations and stepped properties have no tangents to edit (use Interpolation)");
-    return commitEdit(data, "Set Tangents", "", error);
+    if (!commitEdit(data, "Set Tangents", "", error)) return false;
+    easesNotice(dropped, notice);
+    return true;
 }
 
 bool AnimationClipController::setTangentSlope(const KeyRef& key, size_t component, cliptangents::Side side, float slope,
-                                              const std::string& mergeKey, std::string* error){
+                                              const std::string& mergeKey, std::string* error, std::string* notice){
     if (!editable(error)) return false;
     if (!finite(slope)) return fail(error, "the slope must be a finite number");
     ClipData data = document->data();
     if (key.track >= data.tracks.size() || key.key >= data.tracks[key.track].keys.size()) return fail(error, "no such key");
     if (!cliptangents::editable(data.tracks[key.track])) return fail(error, "rotations and stepped properties have no tangents to edit");
+    const size_t dropped = cliptangents::droppedEases(data.tracks[key.track]);
     cliptangents::setSlope(data.tracks[key.track], key.key, component, side, slope);
-    return commitEdit(data, "Drag Tangent", mergeKey, error);
+    if (!commitEdit(data, "Drag Tangent", mergeKey, error)) return false;
+    easesNotice(dropped, notice);
+    return true;
 }
 
 bool AnimationClipController::removeTrack(size_t track, std::string* error){

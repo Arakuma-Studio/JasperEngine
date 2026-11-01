@@ -7,6 +7,7 @@
 #include "animation/PropertyBindings.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
 
 using namespace jasperengine;
@@ -96,6 +97,10 @@ ClipRecordHooks::Id ClipRecordHooks::addRecordListener(ClipRecordListener listen
 void ClipRecordHooks::removeRecordListener(Id id){
     if (id == 0) return;
     removeFrom(registry().record, id);
+}
+
+bool ClipRecordHooks::hasRecordListeners(){
+    return !registry().record.empty();
 }
 
 bool ClipRecordHooks::claims(uint32_t sceneId, Entity entity, ClipChannel channel){
@@ -276,6 +281,49 @@ void ClipRecordHooks::afterChannelWrite(uint32_t sceneId, Entity entity, ClipCha
     notify(registry().after, sceneId, entity, channel);
 }
 
+namespace{
+    // the component has registry rows (its enabled checkbox included)
+    bool hasPropertyRows(ComponentType type){
+        if (type == ComponentType::Transform || type == ComponentType::AnimationPlayerComponent) return false;
+        if (type == ComponentType::ScriptComponent) return true;
+        const std::string component = Catalog::getComponentName(type, true);
+        for (const anim::AnimatableProperty& row : anim::animatableProperties()){
+            if (component == row.component) return true;
+        }
+        return false;
+    }
+}
+
+bool ClipRecordHooks::componentWriteKey(ComponentType type, const std::string& property, ClipPropertyKey& out){
+    out = ClipPropertyKey();
+    if (type == ComponentType::ScriptComponent){
+        // "scripts[N].<field>" (or "" / "scripts": every script), resolved by the listeners
+        // against the GameObject's scripts
+        if (!property.empty() && property.compare(0, 7, "scripts") != 0) return false;
+        out.component = scriptRowComponent();
+        out.property = property == "scripts" ? std::string() : property;
+        return true;
+    }
+    if (property.empty()){
+        if (!hasPropertyRows(type)) return false;
+        out.component = Catalog::getComponentName(type, true);
+        return true;
+    }
+    return propertyOf(type, property, out);
+}
+
+bool ClipRecordHooks::scriptRow(const std::string& property, size_t& index, std::string& field){
+    if (property.compare(0, 8, "scripts[") != 0) return false;
+    const size_t close = property.find("].", 8);
+    if (close == std::string::npos || close == 8) return false;
+    for (size_t i = 8; i < close; i++){
+        if (property[i] < '0' || property[i] > '9') return false;
+    }
+    index = (size_t)std::strtoul(property.c_str() + 8, nullptr, 10);
+    field = property.substr(close + 2);
+    return !field.empty();
+}
+
 std::vector<ClipChannel> ClipRecordHooks::channelsOf(ComponentType type, const std::string& property){
     switch (type){
         case ComponentType::Transform:
@@ -285,17 +333,21 @@ std::vector<ClipChannel> ClipRecordHooks::channelsOf(ComponentType type, const s
             if (property == "scale") return {ClipChannel::Scale};
             return {};
         case ComponentType::LatticeComponent:
-            if (property.empty() || property == "offsets") return {ClipChannel::Lattice};
-            return {};
+            // the whole component also writes its enabled checkbox
+            if (property.empty()) return {ClipChannel::Lattice, ClipChannel::Property};
+            if (property == "offsets") return {ClipChannel::Lattice};
+            break;
         case ComponentType::MeshComponent:
-            // the whole component, or one weight ("morphWeights[i]", T3c)
-            if (property.empty() || property.compare(0, 12, "morphWeights") == 0) return {ClipChannel::Morph};
+            // the whole component (its weights and every submesh row), or one weight
+            // ("morphWeights[i]", T3c)
+            if (property.empty()) return {ClipChannel::Morph, ClipChannel::Property};
+            if (property.compare(0, 12, "morphWeights") == 0) return {ClipChannel::Morph};
             break;
         default:
             break;
     }
     ClipPropertyKey key;
-    if (propertyOf(type, property, key)) return {ClipChannel::Property};
+    if (componentWriteKey(type, property, key)) return {ClipChannel::Property};
     return {};
 }
 
@@ -306,7 +358,7 @@ void ClipRecordHooks::beforeComponentWrite(uint32_t sceneId, Entity entity, Comp
             continue;
         }
         ClipPropertyKey key;
-        if (propertyOf(type, property, key)) beforePropertyWrite(sceneId, entity, key);
+        if (componentWriteKey(type, property, key)) beforePropertyWrite(sceneId, entity, key);
     }
 }
 
@@ -317,7 +369,7 @@ void ClipRecordHooks::afterComponentWrite(uint32_t sceneId, Entity entity, Compo
             continue;
         }
         ClipPropertyKey key;
-        if (propertyOf(type, property, key)) afterPropertyWrite(sceneId, entity, key);
+        if (componentWriteKey(type, property, key)) afterPropertyWrite(sceneId, entity, key);
     }
 }
 
