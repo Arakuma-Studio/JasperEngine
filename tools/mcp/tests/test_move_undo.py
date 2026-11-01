@@ -54,6 +54,8 @@ async def test_undo_of_a_move_puts_it_back():
 
         async def case(name: str, setup, move: dict) -> None:
             h = await Moves.create(ed, f"Move Undo {name}", name)
+            # only GameObjects with a Transform: the list's own order is test_scene_order.py's
+            await ed.call("delete_entities", scene=h.sid, entity="Skybox")
             await setup(h)
 
             async def step():
@@ -129,6 +131,7 @@ async def test_undo_of_a_move_puts_it_back():
         await case("into an earlier root, before a sibling with children", leaf_before_branch, {"entity": "S", "parent": "R0"})
         # what a split costs later: a move of the sibling leaves its child behind
         h = await Moves.create(ed, "Move Undo the split, then a move", "the split, then a move")
+        await ed.call("delete_entities", scene=h.sid, entity="Skybox")
         await leaf_before_branch(h)
         await h.save()
         await ed.call("move_entity", scene=h.sid, entity="S", parent="R0")

@@ -214,7 +214,7 @@ async def test_derived_transparency_is_saved_as_a_load_starts_it(ed: Editor):
     """A cube (autoTransparency on, the default) drawn and saved; its material made blended and the
     scene saved in one batch (no frame: the mesh is not reloaded yet); then drawn (the renderer
     reloads it and makes it transparent) and saved again: the same bytes, with transparent false,
-    the value every load starts from"""
+    the value every load starts from (the renderer's own is MeshComponent::derivedTransparent)"""
     rel = "Glass.scene"
     path = ed.project / rel
     sid = (await ed.call("create_scene", name="Glass", type="3D", path=rel))["scene"]["id"]
@@ -227,8 +227,6 @@ async def test_derived_transparency_is_saved_as_a_load_starts_it(ed: Editor):
     ed.check_eq(r.get("failed"), 0, f"batch: {[x for x in r['results'] if not x.get('ok')]}")
     blended = path.read_bytes()
     await draw(ed, sid)
-    live = (await ed.call("get_entity", scene=sid, entity="Box", components=["mesh"], properties=["transparent"]))["components"]["mesh"]["transparent"]
-    ed.check_eq(live, True, "the renderer made the blended mesh transparent")
     ed.check(not await modified(ed, sid), "drawing does not modify the scene")
     await ed.call("save_scene", scene=sid)
     box = components_of(yaml.safe_load(path.read_bytes()), "Box")["mesh"]

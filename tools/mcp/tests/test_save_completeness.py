@@ -282,8 +282,9 @@ async def test_a_save_that_would_lose_a_gameobject_is_refused():
         await ed.console_since(None)
         await ui.key("ctrl+s")
         errors = ""
+        # frames paced with read-only calls: a project in the temp folder then asks where to save it
         for _ in range(40):
-            await ed.call("wait", frames=5)
+            await ui.frames(5)
             errors += " ".join(e["message"] for e in await ed.console_since() if e.get("type") == "error")
             if "left out" in errors or scene_file.read_bytes() != good:
                 break

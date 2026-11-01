@@ -44,23 +44,24 @@ class Order(History):
         ed = self.ed
         start = await self.save()
         start_roots = await self.roots()
-        ed.check_eq(start_roots, hierarchy_roots(start), f"{label}: the Hierarchy lists the file's order")
         await operation()
         after = await self.save()
+        after_roots = await self.roots()
         names_before = [n for n in top_level(start) if n not in moved]
         names_after = [n for n in top_level(after) if n not in moved]
         print(f"[{label}] before {top_level(start)}\n[{label}] after  {top_level(after)}")
+        # the file first (the list's order), then the Hierarchy's view of it (get_scene_tree)
         kept_before, kept_after = common_order(names_before, names_after)
         ed.check_eq(kept_after, kept_before, f"{label}: the other GameObjects keep their order in the file")
         if expect_after is not None:
             ed.check_eq(top_level(after), expect_after, f"{label}: the file's GameObjects")
-        after_roots = await self.roots()
-        ed.check_eq(after_roots, hierarchy_roots(after), f"{label}: the Hierarchy lists the file's order")
-        ed.check_eq(self.loose(after_roots, moved), self.loose(start_roots, moved), f"{label}: the GameObjects without a Transform keep their order")
         for _ in range(undos):
             await ed.call("undo", scene=self.sid)
         undone = await self.save()
         ed.check(undone == start, f"{label}: undo gives back the file byte for byte:\n{first_difference(start, undone)}")
+        ed.check_eq(start_roots, hierarchy_roots(start), f"{label}: the Hierarchy lists the file's order")
+        ed.check_eq(after_roots, hierarchy_roots(after), f"{label}: the Hierarchy lists the file's order after it")
+        ed.check_eq(self.loose(after_roots, moved), self.loose(start_roots, moved), f"{label}: the GameObjects without a Transform keep their order")
         ed.check_eq(await self.roots(), start_roots, f"{label}: undo gives back the Hierarchy's order")
         for _ in range(undos):
             await ed.call("redo", scene=self.sid)

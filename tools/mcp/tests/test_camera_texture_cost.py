@@ -165,6 +165,10 @@ async def test_prefab_apply_costs_about_an_instantiation_per_instance(ed: Editor
     applied = await saved()
     ed.check(b"castShadows: false" in applied[1], "the override went into the prefab")
     undo = await cpu("undo", scene=sid)
+    print(f"[apply] {n} instances: apply {apply:.2f} s, undo {undo:.2f} s, instantiating them {instantiate:.2f} s main-thread CPU")
+    ratios = [round(apply / max(instantiate, 1 / hz), 2), round(undo / max(instantiate, 1 / hz), 2)]
+    print(f"[apply] against instantiating the instances: apply x{ratios[0]}, undo x{ratios[1]}")
+    ed.check(max(ratios) < 3.0, f"the apply and its undo cost about as much as instantiating the instances: {ratios}")
     ed.check_eq(await mesh_shadows(names), [False, True, True], "undo: the override and the prefab back")
     undone = await saved()
     ed.check(undone[0] == start[0], f"undo gives back the scene byte for byte: {first_difference(start[0], undone[0])}")
@@ -173,7 +177,3 @@ async def test_prefab_apply_costs_about_an_instantiation_per_instance(ed: Editor
     redone = await saved()
     ed.check(redone == applied, f"redo gives back the applied scene and prefab byte for byte: "
                                 f"{first_difference(applied[0], redone[0])}\n{first_difference(applied[1], redone[1])}")
-    print(f"[apply] {n} instances: apply {apply:.2f} s, undo {undo:.2f} s, instantiating them {instantiate:.2f} s main-thread CPU")
-    ratios = [round(apply / max(instantiate, 1 / hz), 2), round(undo / max(instantiate, 1 / hz), 2)]
-    print(f"[apply] against instantiating the instances: apply x{ratios[0]}, undo x{ratios[1]}")
-    ed.check(max(ratios) < 3.0, f"the apply and its undo cost about as much as instantiating the instances: {ratios}")
