@@ -77,9 +77,13 @@ namespace jasperengine::pose {
     JASPERENGINE_API bool resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
                                           std::string* error, std::vector<std::string>* notes = nullptr);
     // the same, then the extra bones (fingers, eyes, jaw: resolveExtraBones with the sidecar's
-    // extra_bones); false when either fails
+    // extra_bones). False only when the body map fails: invalid extra_bones overrides fall back to
+    // auto-detect (`extraError` and a note say why), as the editor shows them, so one bad finger
+    // never costs a model its rig in Play or an export. Strict callers (Apply, set_humanoid)
+    // refuse a non-empty `extraError`.
     JASPERENGINE_API bool resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
-                                          HumanExtraMap& extra, std::string* error, std::vector<std::string>* notes = nullptr);
+                                          HumanExtraMap& extra, std::string* error, std::vector<std::string>* notes = nullptr,
+                                          std::string* extraError = nullptr);
 
     // The sidecar's content in `stamp`, "" when there is none: what decides whether a cached rig
     // is current (the engine file API has no modification times in exported games, the text is
@@ -96,6 +100,7 @@ namespace jasperengine::pose {
         AnimationType animationType = AnimationType::Generic;
         HumanoidOverrides overrides;
         std::vector<std::string> notes;
+        std::string extraError;                // the sidecar's extra_bones did not validate (auto-detect used)
     };
 
     // Rigs shared by model file and sidecar: get() returns the cached rig when the model path, the

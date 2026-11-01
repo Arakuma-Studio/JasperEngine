@@ -859,3 +859,65 @@ the `gaps/anim-retarget` branch (based on `gaps/anim-layers`).
   (`tools/xcode_sync_engine.py`).
 - Not verified: Android / Apple / Windows builds (no platform code changed), an exported Linux build
   playing the hero walk on the robot, device performance, the Avatar window and Rig foldout by eye.
+
+### Review fixes (2026-11-01)
+
+- **Mirror and one-sided extra bones (H1)**: a humanoid binding outputs the clip's extra bones and
+  their mirror counterparts; a bone the (mirrored) sample has no value for is written at its rest
+  (E = identity), never a stale scratch value. Unmirrored, the counterpart is therefore held at
+  its rest by the clip (Unity's default muscle value for a curve a humanoid clip lacks): a
+  right-hand-only clip on an Override layer keeps the left fingers at rest too. Test:
+  `MirroredRightHandCurlDrivesTheLeftHand` (hero rig).
+- **One rule for bad hands and head overrides (H2)**: `pose::resolveHumanoid` with the extra bones
+  fails only on the body map; invalid `extra_bones` fall back to auto-detect
+  (`resolveExtraBonesOrAuto`, shared by PoseRigCache, the humanoid source rigs and
+  PoseRigProvider; a note, `ModelRigInfo::extraError` and one `Log::warn` per rig build). The
+  Avatar window's Apply and `set_humanoid` refuse such overrides with what is wrong and how to fix
+  it.
+- **Rig info keeps the Avatar (H3)**: PoseRigProvider sets `overrides` as soon as the sidecar reads
+  (also for a body map that does not validate) and `sidecarError` when it does not read; the Rig
+  foldout's Animation Type refuses to rewrite an unreadable sidecar, `get_asset_info` reports its
+  error as `avatar.error`.
+- **The Avatar preview is a PreviewOwner (H4)**: acquired in setPreview(true) (another owner of the
+  root, a delete, copy or prefab step restores it first), released in stopPreview.
+- **Avatar window and the project (M1, M2)**: `syncWithProject` every frame (and before a
+  preview): another model file on the GameObject reopens, a hierarchy change rebinds the bones
+  when they changed (edits kept, the preview restarted on the new bones), a sidecar changed on
+  disk (stat first, bytes when it moved) becomes the saved copy and, without edits, the working
+  copy (with edits: a status line, Discard takes the file). Configure Avatar... runs
+  `requestOpen`: the bound model keeps its edits, another model with edits asks Apply / Discard /
+  Cancel first.
+- **Caches (M3, M4)**: the Animation window's and the editor preview's humanoid rigs are keyed on
+  AnimationClipPool::revision() too; the Inspector polls a retarget entry's conversion
+  (pollOrLoad) and keeps a failure for a second or until the pool changes.
+- **controllerFromClips (M5)** copies Retarget, Mirror and Foot IK into the states.
+- **get_animation (M6, M7)**: a clip of an Animation Type: Humanoid model is realised from the
+  pool's humanoid clip (and its bindings validated against it: no retarget advice); the realisation
+  uses the root's entry Mirror and Foot IK (`retarget_report.mirror`, `foot_ik`).
+  `unmapped_source_bones` applies the player's unique-name fallback (`anim::uniqueNamesUnder`).
+- **MCP humanoid keys (M9 and Lows)**: a key value may be the output form `{quat, angles}` (both
+  must agree within 0.05 degrees), `{angles: [a, b, c]}` or `{angles: {dof: degrees}}`; errors name
+  the slot's DOF order; `in` / `out` tangents are accepted; a quaternion off unit length is
+  normalized, not refused. `get_asset_info` on a humanoid .anim lists its tracks by `bone`.
+- **Conversion (Lows)**: scale tracks of slot, extra and in-between bones are dropped (the target
+  maps those bones by role, not name; spec 7.2 said "scale copied"), and a dropped track whose keys
+  all sit at the bone's rest gives no warning.
+- **Lua (Lows)**: addClip's name and options are type-checked (unknown option, a non-boolean flag,
+  a non-number layer are errors); `AnimationState:resetMirror()` / `resetFootIK()` go back to the
+  entry's values; the stub docs of `mirror`, `footIK` and `getHumanoidInfo` are fixed;
+  `getHumanoidInfo().missing` follows the sidecar's overrides.
+- **Others (Lows)**: solveLimbIK uses thread-local scratch (no allocation per leg per frame); an
+  additive humanoid reference is realised again when Lua changes the state's Mirror or Foot IK;
+  the Bindings report's Map Bones... opens the skinned model under the player; the Avatar window's
+  test clip, when it is a generic clip of this very model, converts with the working copy (both
+  sides show unsaved mapping and twist edits).
+- **Rejected: Bake to Humanoid Clip writing E "from the pose frames"**. The baked frames are the
+  final bone locals (after Foot IK, grounding and the hips offset), not the pose keys' angles; the
+  conversion maps each of those locals with E = jointRotationFromLocal(local) on the model's own
+  rig (the file's rig equals the scene's, test 1), which is exactly the E of the frame. Writing E
+  from the pose keys would drop what the bake adds.
+- **Tests (M8, M10, M11)**: the MCP test compares rotations by angle (0.05 degrees); test 12 checks
+  the walk's left thigh (which the walk animates and the wave's realisation does not match); the
+  Record test expects independent values (the neutral pose keys E = identity, a 40 degree turn
+  from it keys a 40 degree E); the Avatar test checks Redo's bytes; Convert's Use in this player
+  and the undo of both forms are tested.

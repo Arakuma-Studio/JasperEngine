@@ -9,6 +9,7 @@
 #include "component/Transform.h"
 #include "animation/ModelSubClips.h"
 #include "pose/PoseFile.h"
+#include "Log.h"
 
 #include "tiny_gltf.h"
 
@@ -445,10 +446,13 @@ bool pose::resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& ov
 }
 
 bool pose::resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
-                           HumanExtraMap& extra, std::string* error, std::vector<std::string>* notes){
+                           HumanExtraMap& extra, std::string* error, std::vector<std::string>* notes, std::string* extraError){
     extra = HumanExtraMap();
+    if (extraError) extraError->clear();
     if (!resolveHumanoid(skeleton, overrides, out, error, notes)) return false;
-    return resolveExtraBones(skeleton, out, overrides.extraBones, extra, error, notes);
+    // the body map stands; bad hands and head overrides go back to auto-detect
+    resolveExtraBonesOrAuto(skeleton, out, overrides.extraBones, extra, extraError, notes);
+    return true;
 }
 
 bool pose::humanoidSidecarStamp(const std::string& modelPath, std::string& stamp, std::string* error){
@@ -489,7 +493,13 @@ bool PoseRigCache::get(const std::string& modelPath, const std::string& sidecarS
 
     // built without the lock: the skin factory reads the scene, and builds take a while
     ModelRigInfo info;
-    if (!resolveHumanoid(skeleton, overrides, info.humanoid, info.extra, error, &info.notes)) return false;
+    std::string extraError;
+    if (!resolveHumanoid(skeleton, overrides, info.humanoid, info.extra, error, &info.notes, &extraError)) return false;
+    if (!extraError.empty()){
+        // once per rig build (cached): the model still plays, with auto-detected hands and head
+        Log::warn("%s: %s (fingers, eyes and jaw auto-detected instead)", humanoidSidecarPath(modelPath).c_str(), extraError.c_str());
+    }
+    info.extraError = extraError;
     info.animationType = overrides.animationType.value_or(AnimationType::Generic);
     info.overrides = overrides;
     std::shared_ptr<PoseSkin> skin = skinFactory ? skinFactory() : nullptr;

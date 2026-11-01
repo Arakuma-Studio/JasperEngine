@@ -366,4 +366,21 @@ namespace jasperengine::pose {
         return true;
     }
 
+
+    bool resolveExtraBonesOrAuto(const Skeleton& skeleton, const HumanoidMap& humanoid,
+                                 const std::array<std::optional<std::string>, HUMAN_EXTRA_BONE_COUNT>& overrides,
+                                 HumanExtraMap& out, std::string* error, std::vector<std::string>* notes){
+        if (error) error->clear();
+        std::string problem;
+        std::vector<std::string> applied;
+        if (resolveExtraBones(skeleton, humanoid, overrides, out, &problem, notes ? &applied : nullptr)){
+            if (notes) notes->insert(notes->end(), applied.begin(), applied.end());
+            return true;
+        }
+        out = autoDetectExtraBones(skeleton, humanoid, notes);
+        if (notes) notes->push_back(problem + " (fingers, eyes and jaw auto-detected instead)");
+        if (error) *error = problem;
+        return false;
+    }
+
 }

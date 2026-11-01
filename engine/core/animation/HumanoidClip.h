@@ -101,9 +101,10 @@ namespace jasperengine::anim{
     // likewise (an affine map of the bone's translation); the mapped extra bones with a rotation
     // track; the two foot goals sampled with forward kinematics on the union of the leg tracks'
     // key times and a frame-rate grid (the clip's, at least 30 Hz), keyframe-reduced within 1e-4
-    // humanScale. Other tracks (props, unmapped leaf bones, scale, morph, lattice, property) are
-    // copied unchanged; animated bones between slots and translations of mapped bones other than
-    // the hips are dropped with a warning. Events and settings are copied. A clip that is humanoid
+    // humanScale. Other tracks (props, unmapped leaf bones and their scale, morph, lattice,
+    // property) are copied unchanged; animated bones between slots, translations of mapped bones
+    // other than the hips and the scale of mapped bones are dropped, with a warning unless every
+    // key sits at the bone's rest. Events and settings are copied. A clip that is humanoid
     // already is copied as it is. Deterministic.
     JASPERENGINE_API bool convertToHumanoid(const ClipData& generic, const HumanoidSource& source, ClipData& out,
                                             std::vector<ClipWarning>& warnings, std::string* error,
@@ -157,7 +158,8 @@ namespace jasperengine::anim{
     // slot (the fold for slots the target lacks, neutral for slots the clip lacks), the hips local
     // position (the neutral one without a body offset), Mirror, then Foot IK (both legs to their
     // goals, the feet keeping their world rotation), and the local rotation of every mapped extra
-    // bone in the sample. Rotations are skeleton locals (before the bridge).
+    // bone (its rest when the mirrored sample has no value for it). Rotations are skeleton locals
+    // (before the bridge).
     JASPERENGINE_API void realiseHumanoid(const HumanoidTarget& target, const HumanoidSample& sample, bool mirror, bool footIK,
                                           pose::HumanPose& out, std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT>& extraLocal);
 
@@ -187,7 +189,8 @@ namespace jasperengine::anim{
         // per clip track: the sample field it feeds (-1 none): 0..54 slot / extra, 100 + k a position
         std::vector<int16_t> trackField;
         // what the clip writes on the target: every present slot (when the clip has slot tracks),
-        // the hips position (when it has a body offset), the mapped extra bones it has
+        // the hips position (when it has a body offset), the mapped extra bones it has and their
+        // mirror counterparts (at rest unless mirrored)
         std::vector<HumanoidOutput> outputs;
         // playback options of the state, set by its owner before sampling
         bool mirror = false;

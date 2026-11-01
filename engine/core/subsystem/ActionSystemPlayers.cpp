@@ -134,19 +134,6 @@ namespace {
     }
 
     // the entities under `root` (itself excluded) by name, -> NULL_ENTITY for names used twice
-    void namesUnder(Scene* scene, Entity root, std::unordered_map<std::string, Entity>& out){
-        auto transforms = scene->getComponentArray<Transform>();
-        Transform* rootTransform = transforms->findComponent(root);
-        if (!rootTransform) return;
-        const size_t first = (size_t)(rootTransform - transforms->findComponentFromIndex(0));
-        const size_t last = scene->findBranchLastIndex(root);
-        for (size_t i = first + 1; i <= last && i < transforms->size(); i++){
-            const Entity entity = transforms->getEntity(i);
-            auto inserted = out.emplace(scene->getEntityNameRef(entity), entity);
-            if (!inserted.second) inserted.first->second = NULL_ENTITY;
-        }
-    }
-
     // ClipBindings::serial: one number per resolve, process-wide (main thread)
     uint64_t bindSerial = 0;
 
@@ -175,7 +162,7 @@ namespace {
                 std::vector<anim::PathSegment> segments;
                 if (anim::parsePath(tracks[i].path, segments) && !segments.empty() && segments.back().index == 0){
                     if (!namesCollected){
-                        namesUnder(scene, root, names);
+                        anim::uniqueNamesUnder(scene, root, names);
                         namesCollected = true;
                     }
                     auto found = names.find(segments.back().name);
@@ -1311,9 +1298,11 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         // a humanoid clip realises on the root's rig (looked up once per hierarchy revision)
         const anim::HumanoidSlots* humanoid = nullptr;
         if (clip->isHumanoid()){
-            if (!session.humanoid || session.humanoidRevision != scene->hierarchyRevision()){
+            if (!session.humanoid || session.humanoidRevision != scene->hierarchyRevision() ||
+                session.humanoidPool != AnimationClipPool::revision()){
                 session.humanoid = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, root));
                 session.humanoidRevision = scene->hierarchyRevision();
+                session.humanoidPool = AnimationClipPool::revision();
             }
             humanoid = session.humanoid.get();
         }

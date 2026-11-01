@@ -206,6 +206,9 @@ namespace jasperengine::anim{
         std::vector<uint32_t> humanoidSlots;
         std::vector<float> humanoidMask;
         std::vector<HumanoidOutput> humanoidReference;
+        // the Mirror / Foot IK the reference was realised with (bit 0, bit 1): a change (Lua
+        // state.mirror / footIK) realises it again
+        uint8_t humanoidReferenceFlags = 0;
 
         // ---- Animator Controller states (anim layers spec 11.2) ----
         // the driver owns the state: its time (sampled at drivenTime), weight and events
@@ -623,6 +626,7 @@ namespace jasperengine::anim{
         // the root's humanoid rig (masks and humanoid clips)
         std::shared_ptr<HumanoidSlots> humanoid;
         uint64_t humanoidRevision = 0;      // the hierarchy revision it was resolved at
+        uint64_t humanoidPool = 0;          // AnimationClipPool::revision() then (an Avatar edit rebuilds the rig)
 
         // a scene edit changed a previewed channel: the new value is its rest (R6)
         void setRest(Entity entity, const ChannelRest& value);

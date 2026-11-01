@@ -23,6 +23,7 @@
 #include "animation/HumanoidClip.h"
 #include "animation/KeyframeSampling.h"
 #include "lattice/LatticeSolver.h"
+#include "pool/AnimationClipPool.h"
 #include "pool/AvatarMaskPool.h"
 #include "pose/PoseAnimatorRuntime.h"
 
@@ -435,7 +436,9 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
             }
         }
         if (layer.blend == AnimationLayerBlend::Additive && layerIndex > 0){
-            if (state.referenceSerial != state.bindings.serial || state.referenceClip != state.bindings.clip.get()){
+            const uint8_t humanoidFlags = state.bindings.humanoid ? (uint8_t)((anim::stateMirror(state) ? 1 : 0) | (anim::stateFootIK(state) ? 2 : 0)) : 0;
+            if (state.referenceSerial != state.bindings.serial || state.referenceClip != state.bindings.clip.get() ||
+                (state.bindings.humanoid && state.humanoidReferenceFlags != humanoidFlags)){
                 anim::sampleClipTracks(*state.bindings.clip, state.bindings.clip->getAdditiveReference(), state.reference);
                 state.referenceSerial = state.bindings.serial;
                 state.referenceClip = state.bindings.clip.get();
@@ -449,6 +452,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
                     anim::sampleHumanoidBinding(*state.bindings.clip, humanoid, state.bindings.clip->getAdditiveReference(), nullptr);
                     state.humanoidReference = humanoid.outputs;
                 }
+                state.humanoidReferenceFlags = humanoidFlags;
             }
         }
     }
@@ -898,9 +902,11 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
             }
         }
     }
-    if (humanoidNeeded && (!session.humanoid || session.humanoidRevision != scene->hierarchyRevision())){
+    if (humanoidNeeded && (!session.humanoid || session.humanoidRevision != scene->hierarchyRevision() ||
+                           session.humanoidPool != AnimationClipPool::revision())){
         session.humanoid = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, root));
         session.humanoidRevision = scene->hierarchyRevision();
+        session.humanoidPool = AnimationClipPool::revision();
     }
 
     // one slot table over every previewed clip's bindings (an editor preview: rebuilt per call)

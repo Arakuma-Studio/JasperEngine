@@ -685,7 +685,7 @@ before every MCP call), and the open window, the Inspector and running players p
 | `tracks[]` | `path`, `channel`, `keys`; optional `relative` (position, rotation, scale only) and `loop` (the track's keys repeat inside a longer clip) |
 | `events[]` | `time`, `function` (a Lua identifier, not a keyword), `args` (at most 8 numbers, strings, booleans) |
 | `preview.model` | editor only: the model or prefab (asset-relative) to preview on when no GameObject is bound |
-| `source` | written by Extract, Convert and Bake (`{"kind": "model" / "entity" / "pose", "path", "name"}`); ignored at runtime, except that a Retarget entry converts a `.anim` from its `source.path` model (else its `preview.model`) |
+| `source` | written by Extract, Convert and Bake (`{"kind": "model" / "entity" / "pose", "path", "name"}`); ignored at runtime, except that a Retarget entry converts a `.anim` from its `source.path` model when `kind` is `model` (else from its `preview.model`) |
 | `humanoid` | humanoid clips: `{"source_model", "human_scale"}` of the rig it was made on (informational: the reports' scale ratio) |
 
 Channels and values:

@@ -4345,12 +4345,10 @@ editor::AvatarWindow* editor::App::getAvatarWindow() const{
 
 void editor::App::openAvatarWindow(uint32_t sceneId, Entity entity){
     std::string error;
-    if (!avatarWindow->openModel(sceneId, entity, &error)){
+    // the bound model keeps its edits; another one asks about unsaved edits first
+    if (!avatarWindow->requestOpen(sceneId, entity, &error)){
         Out::warning("Configure Avatar: %s", error.c_str());
-        return;
     }
-    avatarWindow->setOpen(true);
-    avatarWindow->requestFocus();
 }
 
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{

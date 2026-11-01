@@ -1561,7 +1561,7 @@ on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs
 | `sample()` | applies the current times once (e.g. paused) |
 | `isPlaying()`, `isPlaying(name)` | bool; false for a `once` state that ended (held) |
 | `getState(name)` | an `AnimationState` (below) |
-| `addClip(path [, name [, options]])` | appends an entry (`name` empty or nil = the file stem / model clip name); false when the name is taken. `options`: `{retarget = bool (play a generic clip as a humanoid clip, from its source model), mirror = bool, footIK = bool, layer = int}` |
+| `addClip(path [, name [, options]])` | appends an entry (`name` empty or nil = the file stem / model clip name); false when the name is taken. `options`: `{retarget = bool (play a generic clip as a humanoid clip, from its source model), mirror = bool, footIK = bool, layer = int}` (other keys or types are an error) |
 | `removeClip(name)`, `getClipCount()`, `getClipName(i)` | `getClipName` is 0-based, `""` out of range |
 | `speed`, `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled` | rw; `speed` multiplies every state (negative plays backwards); `enabled = false`: time stops, nothing is written |
 | `isLoaded()` | every clip loaded and bound |
@@ -1618,8 +1618,8 @@ calls made inside them take effect next frame.
 changes): rw `time`, `normalizedTime`, `speed` (the state's own), `weight`, `wrap` (`"once"`,
 `"loop"`, `"ping_pong"`, `"clamp_forever"`; `"default"` = the entry's), `enabled` (false pauses),
 `layer` (a runtime move: time and weight are kept, the tracks re-mask), `mirror` and `footIK` (humanoid
-clips: runtime overrides of the entry's Mirror / Foot IK); ro `name`, `clip`, `length`, `isHumanoid` (a
-humanoid clip, or a generic one retargeted);
+clips: runtime overrides of the entry's Mirror / Foot IK; `resetMirror()` / `resetFootIK()` go back to
+the entry's); ro `name`, `clip`, `length`, `isHumanoid` (a humanoid clip, or a generic one retargeted);
 `isValid()`; `addMixingTransform(path [, recursive=true])`, `removeMixingTransform(path)`,
 `clearMixingTransforms()` (Unity's legacy AddMixingTransform: with any, the state animates only
 those paths, below them too unless `recursive` is false; multiplied with the layer's mask). An

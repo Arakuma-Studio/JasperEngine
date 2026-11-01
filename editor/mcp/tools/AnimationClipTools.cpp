@@ -30,6 +30,7 @@
 #include "pose/PoseRigProvider.h"
 #include "pool/AnimationClipPool.h"
 #include "pose/PoseDofs.h"
+#include "pose/PoseMath.h"
 #include "pose/PoseRig.h"
 #include "animation/ClipValidation.h"
 #include "animation/KeyframeSampling.h"
@@ -824,6 +825,77 @@ std::string nearestHumanoidBone(ClipChannel channel, const std::string& name) {
     return best;
 }
 
+// A humanoid key value as the .anim parser takes it: [x, y, z, w], {quat}, {angles: [a, b, c]},
+// {angles: {<dof>: degrees}} (the slot's DOF names, as get_animation lists them) or the output
+// form {quat, angles} sent back (the two must agree). Errors name the slot's DOF order.
+bool humanoidKeyValue(ClipChannel channel, int humanBone, const Json& given, const std::string& at, Json& out, std::string& error) {
+    out = given;
+    if (channel != ClipChannel::Humanoid || !given.is_object()) return true;
+    const bool slot = humanBone >= 0 && humanBone < pose::HUMAN_BONE_COUNT;
+    std::string order;
+    if (slot) {
+        const pose::BoneDofInfo& dofs = pose::boneDofInfo(pose::boneAt(humanBone));
+        for (int k = 0; k < pose::DOFS_PER_BONE; k++) order += std::string(k ? ", " : "") + dofs.dofs[k].name;
+    }
+    const std::string bone = anim::humanoidTrackBoneName(channel, humanBone);
+    for (auto it = given.begin(); it != given.end(); ++it) {
+        if (it.key() != "quat" && it.key() != "angles") {
+            error = at + ": unknown key \"" + it.key() + "\" (a humanoid value is [x, y, z, w], {quat} or {angles: [" + order + "]} degrees).";
+            return false;
+        }
+    }
+    Json angles;
+    if (given.contains("angles")) {
+        if (!slot) {
+            error = at + ".angles: " + bone + " is a finger, eye or jaw bone: give {quat: [x, y, z, w]} (angles are for the 22 body slots).";
+            return false;
+        }
+        const pose::BoneDofInfo& dofs = pose::boneDofInfo(pose::boneAt(humanBone));
+        const Json& a = given["angles"];
+        std::array<double, pose::DOFS_PER_BONE> values{};
+        if (a.is_array() && a.size() == (size_t)pose::DOFS_PER_BONE && std::all_of(a.begin(), a.end(), [](const Json& v) { return v.is_number(); })) {
+            for (int k = 0; k < pose::DOFS_PER_BONE; k++) values[(size_t)k] = a[(size_t)k].get<double>();
+        } else if (a.is_object()) {
+            for (auto it = a.begin(); it != a.end(); ++it) {
+                int k = 0;
+                while (k < pose::DOFS_PER_BONE && it.key() != dofs.dofs[k].name) k++;
+                if (k == pose::DOFS_PER_BONE || !it.value().is_number()) {
+                    error = at + ".angles." + it.key() + ": " + bone + "'s angles are {" + order + "} (degrees, any of them; the others 0).";
+                    return false;
+                }
+                values[(size_t)k] = it.value().get<double>();
+            }
+        } else {
+            error = at + ".angles: " + bone + "'s angles are [" + order + "] or {" + order + "} (degrees).";
+            return false;
+        }
+        angles = Json::array({values[0], values[1], values[2]});
+    }
+    if (!angles.is_null() && given.contains("quat")) {
+        // the output form sent back: the quaternion stands when both say the same rotation
+        const Json& q = given["quat"];
+        if (!q.is_array() || q.size() != 4 || !std::all_of(q.begin(), q.end(), [](const Json& v) { return v.is_number(); })) {
+            error = at + ".quat must be [x, y, z, w].";
+            return false;
+        }
+        float a[pose::DOFS_PER_BONE] = {angles[0].get<float>(), angles[1].get<float>(), angles[2].get<float>()};
+        const pose::Quatd fromAngles = pose::jointRotation(pose::boneAt(humanBone), a).normalized();
+        const pose::Quatd fromQuat = pose::Quatd(q[3].get<double>(), q[0].get<double>(), q[1].get<double>(), q[2].get<double>()).normalized();
+        if (pose::radToDeg(pose::angleBetween(fromAngles, fromQuat)) > 0.05) {
+            error = at + ": quat and angles say different rotations: give one of them (angles [" + order + "] degrees, or quat).";
+            return false;
+        }
+        out = q;
+        return true;
+    }
+    if (!angles.is_null()) {
+        out = {{"angles", angles}};
+        return true;
+    }
+    if (given.contains("quat")) out = given["quat"];
+    return true;
+}
+
 // A humanoid track (anim-retarget 10): {channel: "humanoid", bone, keys} with key values
 // {quat} / [x, y, z, w] / {angles: [dof1, dof2, twist]} (slots), or {channel: "humanoid_position",
 // bone: hips | left_foot | right_foot, keys} with [left, up, forward]. The keys go through the
@@ -884,13 +956,22 @@ bool applyHumanoidTrack(EditContext& ctx, const Json& item, const std::string& w
             error = at + " must be {time, value, ease?}.";
             return false;
         }
-        Json value = key["value"];
-        if (value.is_object() && value.contains("quat") && value.size() == 1) value = value["quat"];
+        Json value;
+        if (!humanoidKeyValue(channel, humanBone, key["value"], at + ".value", value, error)) return false;
         Json entry = {{"time", key["time"]}, {"value", value}};
         if (key.contains("ease")) entry["ease"] = key["ease"];
+        // the Hermite tangents get_animation lists (units per second, as the file stores them)
+        if (key.contains("in") != key.contains("out")) {
+            error = at + ": in and out go together (Hermite tangents, as get_animation lists them).";
+            return false;
+        }
+        if (key.contains("in")) {
+            entry["in"] = key["in"];
+            entry["out"] = key["out"];
+        }
         for (auto it = key.begin(); it != key.end(); ++it) {
-            if (it.key() != "time" && it.key() != "value" && it.key() != "ease") {
-                error = at + ": unknown key \"" + it.key() + "\" (a humanoid key is {time, value, ease}).";
+            if (it.key() != "time" && it.key() != "value" && it.key() != "ease" && it.key() != "in" && it.key() != "out") {
+                error = at + ": unknown key \"" + it.key() + "\" (a humanoid key is {time, value, ease, in?, out?}).";
                 return false;
             }
         }
@@ -905,6 +986,8 @@ bool applyHumanoidTrack(EditContext& ctx, const Json& item, const std::string& w
         return false;
     }
     for (const ClipWarning& warning : parsed.warnings) {
+        // a quaternion off unit length (rounded output sent back) is normalized, not refused
+        if (warning.message.find("not a unit quaternion") != std::string::npos) continue;
         if (warning.path.rfind("tracks[0].keys", 0) == 0 || warning.path.rfind("tracks[0]", 0) == 0) {
             error = where + warning.path.substr(std::string("tracks[0]").size()) + ": " + warning.message;
             return false;
@@ -1998,22 +2081,43 @@ void getClip(const CallPtr& call) {
         humanoidWrap = wrap;
     }
 
-    // a humanoid clip, or one the root's player entry retargets (anim-retarget 10): its
-    // realisation on the root's rig at the times, and the retarget report
+    // a humanoid clip, a clip of an Animation Type: Humanoid model (the pool serves it humanoid),
+    // or one the root's player entry retargets (anim-retarget 10): its realisation on the root's
+    // rig at the times, with the entry's Mirror and Foot IK, and the retarget report
+    bool entryMirror = false;
+    bool entryFootIK = false;
     if (root != NULL_ENTITY) {
         std::shared_ptr<const AnimationClip> humanoidClip = document->clip()->isHumanoid() ? document->clip() : nullptr;
-        if (!humanoidClip) {
-            if (const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(root)) {
-                for (const AnimationPlayerClip& entry : player->clips) {
-                    if (!entry.retarget || entry.clip.empty()) continue;
-                    if (AnimationClipDocument::open(project, entryClipJson(project, entry.clip), nullptr) != document) continue;
-                    std::string convertError;
-                    humanoidClip = AnimationClipPool::getOrLoad(anim::retargetPoolKey(entry.clip, true), &convertError);
-                    if (!humanoidClip) out["retarget_report"] = {{"error", convertError}};
-                    retargeted = humanoidClip;
-                    break;
+        const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(root);
+        const AnimationPlayerClip* playing = nullptr;
+        if (player) {
+            for (const AnimationPlayerClip& entry : player->clips) {
+                if (entry.clip.empty() || AnimationClipDocument::open(project, entryClipJson(project, entry.clip), nullptr) != document) continue;
+                playing = &entry;
+                break;
+            }
+        }
+        if (playing) {
+            entryMirror = playing->mirror;
+            entryFootIK = playing->footIK;
+        }
+        anim::SubClipReference sub;
+        if (!humanoidClip && subClip && anim::parseSubClipReference(relative, sub)) {
+            const std::string model = FileUtils::pathToGenericUtf8(project->normalizeToAssetsRelative(project->getProjectPath() / FileUtils::pathFromUtf8(sub.model)));
+            if (ClipConverters::isHumanoidModel(model)) {
+                std::string loadError;
+                std::shared_ptr<const AnimationClip> pooled = AnimationClipPool::getOrLoad(model + "#" + sub.clip, &loadError);
+                if (pooled && pooled->isHumanoid()) {
+                    humanoidClip = pooled;
+                    retargeted = pooled;
                 }
             }
+        }
+        if (!humanoidClip && playing && playing->retarget) {
+            std::string convertError;
+            humanoidClip = AnimationClipPool::getOrLoad(anim::retargetPoolKey(playing->clip, true), &convertError);
+            if (!humanoidClip) out["retarget_report"] = {{"error", convertError}};
+            retargeted = humanoidClip;
         }
         if (humanoidClip) {
             const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(scene->scene, root);
@@ -2024,18 +2128,30 @@ void getClip(const CallPtr& call) {
             } else {
                 anim::HumanoidBinding binding;
                 anim::bindHumanoidClip(*humanoidClip, slots.target, binding);
+                binding.mirror = entryMirror;
+                binding.footIK = entryFootIK;
                 const ClipHumanoidInfo& info = humanoidClip->getHumanoidInfo();
                 const float targetScale = slots.target->rig->humanScale();
                 report["target"] = {{"model", projectPathOf(project, slots.target->modelPath)}, {"human_scale", r6(targetScale)}};
                 report["source"] = {{"model", projectPathOf(project, info.sourceModel)}, {"human_scale", r6(info.humanScale)}};
                 if (info.humanScale > 0.0f) report["scale_ratio"] = r6(targetScale / info.humanScale);
+                report["mirror"] = entryMirror;
+                report["foot_ik"] = entryFootIK;
                 report["folded"] = binding.folded;
                 report["missing_on_target"] = binding.missingOnTarget;
-                // generic tracks that bind neither by path nor by bone name on this rig
+                // generic tracks that bind neither by path nor by unique bone name on this rig (the
+                // player's rule, anim::uniqueNamesUnder)
                 Json unmapped = Json::array();
+                std::unordered_map<std::string, Entity> names;
+                anim::uniqueNamesUnder(scene->scene, root, names);
                 for (const AnimationClip::Track& track : humanoidClip->getTracks()) {
                     if (!track.isSampled() || isHumanoidChannel(track.channel)) continue;
                     if (anim::resolvePath(scene->scene, root, track.path) != NULL_ENTITY) continue;
+                    std::vector<anim::PathSegment> segments;
+                    if (anim::parsePath(track.path, segments) && !segments.empty() && segments.back().index == 0) {
+                        auto found = names.find(segments.back().name);
+                        if (found != names.end() && found->second != NULL_ENTITY) continue;
+                    }
                     if (std::find(unmapped.begin(), unmapped.end(), Json(track.path)) == unmapped.end()) unmapped.push_back(track.path);
                 }
                 report["unmapped_source_bones"] = unmapped;
@@ -2072,7 +2188,8 @@ void getClip(const CallPtr& call) {
                         realised.push_back({{"time", r6(t)}, {"bones", bones}, {"hips_local_position", hips}});
                     }
                     out["realised"] = realised;
-                    sampled += ", realised on \"" + scene->scene->getEntityName(root) + "\"'s humanoid rig (realised)";
+                    sampled += ", realised on \"" + scene->scene->getEntityName(root) + "\"'s humanoid rig (realised" +
+                               std::string(entryMirror ? ", mirrored" : "") + (entryFootIK ? ", Foot IK" : "") + ")";
                 }
             }
             out["retarget_report"] = report;
@@ -2295,6 +2412,7 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
 
 Json avatarJson(Project* project, const fs::path& model) {
     const std::shared_ptr<const PoseRigInfo> info = PoseRigProvider::forModelFile(project, model);
+    if (!info->sidecarError.empty()) return {{"error", info->sidecarError}};
     if (info->boneNames.empty()) return nullptr;
     Json mapped = Json::object();
     for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++) {
@@ -2333,6 +2451,12 @@ bool clipAssetInfo(Project* project, const fs::path& file, Json& data, std::stri
     const ClipData& clip = document->data();
     Json tracks = Json::array();
     for (const ClipTrackData& track : clip.tracks) {
+        if (isHumanoidChannel(track.channel)) {
+            // humanoid tracks name a bone, not a path
+            const char* bone = anim::humanoidTrackBoneName(track.channel, track.humanBone);
+            tracks.push_back({{"bone", bone ? bone : ""}, {"channel", anim::channelName(track.channel)}, {"key_count", track.keys.size()}});
+            continue;
+        }
         tracks.push_back({{"path", track.path}, {"channel", anim::channelName(track.channel)}, {"key_count", track.keys.size()}});
     }
     const std::vector<ClipUser> users = findClipUsers(project, rel);

@@ -26,6 +26,7 @@
 #include "lattice/LatticeSolver.h"
 #include "math/AABB.h"
 #include "math/Matrix4.h"
+#include "pool/AnimationClipPool.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -1475,10 +1476,12 @@ std::shared_ptr<const anim::HumanoidSlots> AnimationClipController::boundHumanoi
     const Entity target = valueRoot(&sceneProject);
     if (target == NULL_ENTITY || !sceneProject || !sceneProject->scene) return nullptr;
     Scene* scene = sceneProject->scene;
-    if (!humanoidCache || humanoidCacheRoot != target || humanoidCacheRevision != scene->hierarchyRevision()){
+    if (!humanoidCache || humanoidCacheRoot != target || humanoidCacheRevision != scene->hierarchyRevision() ||
+        humanoidCachePool != AnimationClipPool::revision()){
         humanoidCache = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, target));
         humanoidCacheRoot = target;
         humanoidCacheRevision = scene->hierarchyRevision();
+        humanoidCachePool = AnimationClipPool::revision();
     }
     return humanoidCache->target ? humanoidCache : nullptr;
 }

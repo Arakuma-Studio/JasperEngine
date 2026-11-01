@@ -444,6 +444,15 @@ namespace jasperengine::editor{
         Entity humanoidRoot = NULL_ENTITY;
         uint64_t humanoidRevision = 0;
         uint64_t humanoidPool = 0;
+        // a retarget entry's conversion ("<clip>@humanoid"): polled, never a blocking build in
+        // the draw; a failure is kept until the pool changes or a second passed
+        struct ConversionEntry{
+            std::shared_ptr<const AnimationClip> clip;
+            uint64_t pool = 0;
+            double retryAt = 0.0;
+            bool loading = false;
+        };
+        std::map<std::string, ConversionEntry> conversions;
 
         // a clip setting being dragged: committed once when the drag ends
         bool editingFrameRate = false;
@@ -1397,7 +1406,20 @@ void editor::InspectorWindow::drawAnimationPlayerBindings(SceneProject* scenePro
             // a humanoid (or retargeted) state: the rig it plays on (anim-retarget 9)
             std::shared_ptr<const AnimationClip> humanoidClip;
             if (row.document->data().isHumanoid()) humanoidClip = row.document->clip();
-            else if (clips[i].retarget) humanoidClip = AnimationClipPool::getOrLoad(anim::retargetPoolKey(clips[i].clip, true));
+            else if (clips[i].retarget){
+                const std::string key = anim::retargetPoolKey(clips[i].clip, true);
+                InspectorClipState::ConversionEntry& conversion = state.conversions[key];
+                const double now = ImGui::GetTime();
+                if (conversion.loading || conversion.pool != AnimationClipPool::revision() || (!conversion.clip && now >= conversion.retryAt)){
+                    bool loading = false;
+                    conversion.clip = AnimationClipPool::pollOrLoad(key, loading);
+                    conversion.loading = loading;
+                    conversion.pool = AnimationClipPool::revision();
+                    conversion.retryAt = now + CLIP_RETRY_SECONDS;
+                }
+                if (state.conversions.size() > 256) state.conversions.clear();
+                else humanoidClip = conversion.clip;
+            }
             if (humanoidClip && humanoidClip->isHumanoid()){
                 if (!state.humanoidRig || state.humanoidRoot != entity || state.humanoidRevision != sceneProject->scene->hierarchyRevision() ||
                     state.humanoidPool != AnimationClipPool::revision()){
@@ -1408,10 +1430,12 @@ void editor::InspectorWindow::drawAnimationPlayerBindings(SceneProject* scenePro
                 }
                 if (!state.humanoidRig->target){
                     ImGui::TextColored(warning, ICON_FA_TRIANGLE_EXCLAMATION " Humanoid clip, but not a humanoid: %s", state.humanoidRig->error.c_str());
-                    if (ImGui::SmallButton("Map Bones...")){
-                        const Entity model = state.humanoidRig->target ? state.humanoidRig->target->model : entity;
-                        Backend::getApp().openAvatarWindow(sceneProject->id, sceneProject->scene->findComponent<ModelComponent>(model) ? model : entity);
-                    }
+                    // the skinned model under the player (it may be a child of the player's GameObject)
+                    const Entity model = state.humanoidRig->model;
+                    ImGui::BeginDisabled(model == NULL_ENTITY);
+                    if (ImGui::SmallButton("Map Bones...")) Backend::getApp().openAvatarWindow(sceneProject->id, model);
+                    ImGui::EndDisabled();
+                    if (model == NULL_ENTITY) ImGui::SetItemTooltip("No skinned Model on or under this GameObject");
                 }else{
                     anim::HumanoidBinding binding;
                     anim::bindHumanoidClip(*humanoidClip, state.humanoidRig->target, binding);

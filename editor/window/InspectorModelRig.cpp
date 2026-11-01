@@ -55,7 +55,10 @@ void editor::InspectorWindow::drawModelRig(ComponentType cpType, SceneProject* s
         if (ImGui::Selectable("Humanoid", humanoid)) chosen = 1;
         ImGui::SetItemTooltip("The model's clips play as humanoid clips, retargeted on any humanoid character");
         ImGui::EndCombo();
-        if (chosen >= 0 && (chosen == 1) != humanoid){
+        if (chosen >= 0 && (chosen == 1) != humanoid && !info->sidecarError.empty()){
+            // rewriting an unreadable sidecar from nothing would wipe its Avatar
+            Out::error("Animation Type: %s (fix or delete the file first)", info->sidecarError.c_str());
+        }else if (chosen >= 0 && (chosen == 1) != humanoid){
             pose::HumanoidOverrides changed = overrides;
             if (chosen == 1) changed.animationType = pose::AnimationType::Humanoid;
             else changed.animationType.reset();

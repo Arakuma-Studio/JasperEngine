@@ -4,6 +4,7 @@
 #include "ClipBinding.h"
 
 #include "animation/AnimationClip.h"
+#include "component/Transform.h"
 #include "lattice/LatticeSolver.h"
 #include "registry/EntityRegistry.h"
 
@@ -184,6 +185,20 @@ Entity anim::resolvePath(EntityRegistry* registry, Entity root, const std::vecto
     result.entity = current;
     if (info) *info = result;
     return current;
+}
+
+void anim::uniqueNamesUnder(EntityRegistry* registry, Entity root, std::unordered_map<std::string, Entity>& out){
+    if (!registry) return;
+    auto transforms = registry->getComponentArray<Transform>();
+    Transform* rootTransform = transforms->findComponent(root);
+    if (!rootTransform) return;
+    const size_t first = (size_t)(rootTransform - transforms->findComponentFromIndex(0));
+    const size_t last = registry->findBranchLastIndex(root);
+    for (size_t i = first + 1; i <= last && i < transforms->size(); i++){
+        const Entity entity = transforms->getEntity(i);
+        auto inserted = out.emplace(registry->getEntityNameRef(entity), entity);
+        if (!inserted.second) inserted.first->second = NULL_ENTITY;
+    }
 }
 
 bool anim::relativePath(EntityRegistry* registry, Entity root, Entity entity, std::string& out){

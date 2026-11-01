@@ -23,6 +23,7 @@
 #include "component/PoseAnimatorComponent.h"
 #include "pose/HumanBones.h"
 #include "pose/HumanoidMapIO.h"
+#include "pose/ModelRig.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseBaker.h"
 #include "pose/PoseMetrics.h"
@@ -971,6 +972,21 @@ bool setHumanoid(EditState& state, const Json& op, const std::string& path, std:
                 set.push_back("twist " + it.key() + " " + fmt(degrees));
             } else {
                 error = path + ".twist." + it.key() + " must be degrees from -180 to 180 (about the slot's neutral direction), or null";
+                return false;
+            }
+        }
+    }
+    // the hands and head as they will resolve: an override the runtime would drop (a bone that
+    // is a body slot's, a finger outside its hand) is refused here, not silently auto-detected
+    if ((op.contains("extra_bones") || op.contains("bones")) && !info->skeleton.bones.empty()) {
+        HumanoidMap body;
+        std::string bodyError;
+        if (pose::resolveHumanoid(info->skeleton, edit->overrides, body, &bodyError, nullptr)) {
+            HumanExtraMap extra;
+            std::string problem;
+            if (!pose::resolveExtraBones(info->skeleton, body, edit->overrides.extraBones, extra, &problem, nullptr)) {
+                error = path + ".extra_bones: " + problem + " (a finger goes under its hand's bone, eyes and jaw under the head; "
+                        "\"\" unmaps, null is auto-detect; get_asset_info's avatar lists the mapped bones)";
                 return false;
             }
         }

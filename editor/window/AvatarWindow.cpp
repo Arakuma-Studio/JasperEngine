@@ -7,6 +7,7 @@
 #include "Scene.h"
 #include "Theme.h"
 #include "animation/AnimationClip.h"
+#include "animation/ClipConverters.h"
 #include "animation/KeyframeSampling.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
@@ -77,6 +78,9 @@ editor::AvatarWindow::AvatarWindow(Project* project): project(project){
 }
 
 editor::AvatarWindow::~AvatarWindow(){
+    // the preview's owner token holds `this` in its stop
+    stopPreview();
+    PreviewOwner::release(previewToken);
 }
 
 void editor::AvatarWindow::setOpen(bool open){
@@ -112,33 +116,147 @@ bool editor::AvatarWindow::openModel(uint32_t id, Entity target, std::string* er
     skeleton = built;
     boneEntities = entities;
     bridges = folded;
+    boundRevision = sceneptr->hierarchyRevision();
     bones.clear();
     for (const pose::SkeletonBone& bone : skeleton.bones) bones.push_back(bone.name);
     sidecar = project->resolveAssetPath(FileUtils::pathFromUtf8(pose::humanoidSidecarPath(model)));
-    saved = pose::HumanoidOverrides();
-    std::error_code ec;
     status.clear();
     statusError = false;
-    if (fs::is_regular_file(sidecar, ec)){
-        std::string text;
-        std::vector<std::string> warnings;
-        std::string why;
-        if (!ProjectChecks::readFile(sidecar, text) || !pose::parseHumanoidOverrides(text, saved, warnings, &why)){
-            status = "the sidecar cannot be read (" + why + "): Apply writes a new one";
-            statusError = true;
-            saved = pose::HumanoidOverrides();
-        }
+    pendingOpen = false;
+    std::string problem;
+    if (!readSaved(&problem)){
+        status = "the sidecar cannot be read (" + problem + "): Apply writes a new one";
+        statusError = true;
     }
     edited = saved;
     testLoaded.reset();
+    testBase.reset();
+    testLocal.reset();
+    testLocalWith.reset();
     resolve();
     return true;
+}
+
+bool editor::AvatarWindow::requestOpen(uint32_t id, Entity target, std::string* error){
+    if (id == sceneId && target == entity && !model.empty() && scene()){
+        // the bound model again: its working copy stays
+        setOpen(true);
+        requestFocus();
+        return true;
+    }
+    if (isDirty() && !model.empty() && scene()){
+        // unsaved edits of another model: asked first (drawClosePrompt opens it after)
+        pendingOpen = true;
+        pendingScene = id;
+        pendingEntity = target;
+        closePrompt = true;
+        setOpen(true);
+        requestFocus();
+        return true;
+    }
+    if (!openModel(id, target, error)) return false;
+    setOpen(true);
+    requestFocus();
+    return true;
+}
+
+bool editor::AvatarWindow::readSaved(std::string* problem){
+    saved = pose::HumanoidOverrides();
+    sidecarBytes.clear();
+    std::error_code ec;
+    sidecarExists = fs::is_regular_file(sidecar, ec);
+    sidecarTime = sidecarExists ? fs::last_write_time(sidecar, ec) : fs::file_time_type{};
+    sidecarSize = sidecarExists ? fs::file_size(sidecar, ec) : 0;
+    if (!sidecarExists) return true;
+    std::vector<std::string> warnings;
+    std::string why;
+    if (!ProjectChecks::readFile(sidecar, sidecarBytes) || !pose::parseHumanoidOverrides(sidecarBytes, saved, warnings, &why)){
+        saved = pose::HumanoidOverrides();
+        if (problem) *problem = why.empty() ? std::string("cannot be read") : why;
+        return false;
+    }
+    return true;
+}
+
+void editor::AvatarWindow::rebind(){
+    Scene* sceneptr = scene();
+    if (!sceneptr) return;
+    pose::Skeleton built;
+    std::vector<Entity> entities;
+    std::vector<Matrix4> folded;
+    const bool ok = pose::buildSkeleton(sceneptr, entity, built, entities, &folded);
+    boundRevision = sceneptr->hierarchyRevision();
+    if (ok && entities == boneEntities && built.bones.size() == skeleton.bones.size()) return;   // the same bones
+    // reimported (new bone entities) or another skeleton: the edits stay, the bones and the
+    // preview are rebound
+    const bool wasPreviewing = previewing;
+    stopPreview();
+    if (!ok){
+        skeleton = pose::Skeleton();
+        boneEntities.clear();
+        bridges.clear();
+        bones.clear();
+        resolve();
+        return;
+    }
+    skeleton = built;
+    boneEntities = entities;
+    bridges = folded;
+    bones.clear();
+    for (const pose::SkeletonBone& bone : skeleton.bones) bones.push_back(bone.name);
+    resolve();
+    if (wasPreviewing) setPreview(true);
+}
+
+void editor::AvatarWindow::syncWithProject(){
+    Scene* sceneptr = scene();
+    if (!sceneptr || model.empty()) return;
+    // another model file on the GameObject: its own Avatar
+    const ModelComponent* component = sceneptr->findComponent<ModelComponent>(entity);
+    if (!component || component->filename != model){
+        if (component && !component->filename.empty() && !isDirty()){
+            openModel(sceneId, entity, nullptr);
+        }else{
+            stopPreview();
+        }
+        return;
+    }
+    if (sceneptr->hierarchyRevision() != boundRevision) rebind();
+    // the sidecar written by someone else (undo, Map Bones, set_humanoid, the Inspector)
+    std::error_code ec;
+    const bool exists = fs::is_regular_file(sidecar, ec);
+    const fs::file_time_type time = exists ? fs::last_write_time(sidecar, ec) : fs::file_time_type{};
+    const uintmax_t size = exists ? fs::file_size(sidecar, ec) : 0;
+    if (exists == sidecarExists && time == sidecarTime && size == sidecarSize) return;
+    std::string bytes;
+    if (exists) ProjectChecks::readFile(sidecar, bytes);
+    if (exists == sidecarExists && bytes == sidecarBytes){
+        sidecarTime = time;
+        sidecarSize = size;
+        return;
+    }
+    const bool clean = !isDirty();
+    std::string problem;
+    if (!readSaved(&problem)){
+        status = "the sidecar changed on disk and cannot be read (" + problem + ")";
+        statusError = true;
+        return;
+    }
+    if (clean){
+        edited = saved;
+        resolve();
+        status = "Reloaded: the sidecar changed on disk";
+        statusError = false;
+    }else{
+        status = "The sidecar changed on disk: Discard takes it, Apply writes your edits over it";
+        statusError = true;
+    }
 }
 
 void editor::AvatarWindow::resolve(){
     current = Resolved();
     std::string error;
-    if (!pose::resolveHumanoid(skeleton, edited, current.humanoid, current.extra, &error, &current.notes)){
+    if (!pose::resolveHumanoid(skeleton, edited, current.humanoid, current.extra, &error, &current.notes, &current.extraError)){
         current.error = error;
         // what auto-detect and the overrides give, for the rows, even when it does not validate
         pose::HumanoidMap map;
@@ -203,14 +321,29 @@ bool editor::AvatarWindow::apply(std::string* error){
         if (error) *error = "no model";
         return false;
     }
+    if (!current.extraError.empty()){
+        // the runtime would drop these overrides (auto-detect instead): fixed here, not saved
+        const std::string why = "Hands & Head: " + current.extraError + " (set the row to Auto or pick a bone under its hand / the head)";
+        if (error) *error = why;
+        status = why;
+        statusError = true;
+        return false;
+    }
     std::string why;
-    if (!ProjectFileWrites::writeUndoable(project, {{sidecar, pose::writeHumanoidOverrides(edited)}}, why)){
+    const std::string text = pose::writeHumanoidOverrides(edited);
+    if (!ProjectFileWrites::writeUndoable(project, {{sidecar, text}}, why)){
         if (error) *error = why;
         status = why;
         statusError = true;
         return false;
     }
     saved = edited;
+    // what is on disk now (syncWithProject then sees nothing new)
+    sidecarBytes = text;
+    std::error_code ec;
+    sidecarExists = fs::is_regular_file(sidecar, ec);
+    sidecarTime = sidecarExists ? fs::last_write_time(sidecar, ec) : fs::file_time_type{};
+    sidecarSize = sidecarExists ? fs::file_size(sidecar, ec) : 0;
     status = "Applied: " + fs::u8path(model).filename().u8string() + ".humanoid written (one undo step)";
     statusError = false;
     return true;
@@ -240,8 +373,22 @@ void editor::AvatarWindow::setPreview(bool on){
         stopPreview();
         return;
     }
+    // the bones as they are now (a reload since the last frame)
+    syncWithProject();
     Scene* sceneptr = scene();
-    if (!sceneptr) return;
+    SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
+    if (!sceneptr || !sceneProject || sceneProject->playState != ScenePlayState::STOPPED) return;
+    // the model root is ours first: another preview of it (or above / below) restores before the
+    // snapshot, and a delete, copy or save restores ours (9.R7)
+    previewToken = PreviewOwner::acquire(sceneId, entity, sceneptr, "Avatar Configuration", [this](){
+        restoreTransforms();
+        previewing = false;
+        testPlaying = false;
+        previewToken = 0;
+    });
+    PreviewOwner::setWrites(previewToken, [this](Entity written){
+        return previewing && std::find(boneEntities.begin(), boneEntities.end(), written) != boneEntities.end();
+    });
     savedTransforms.clear();
     for (Entity bone : boneEntities){
         if (const Transform* transform = sceneptr->findComponent<Transform>(bone)){
@@ -255,12 +402,50 @@ void editor::AvatarWindow::setPreview(bool on){
 void editor::AvatarWindow::setTestClip(const std::string& clip){
     testClip = clip;
     testLoaded.reset();
+    testBase.reset();
+    testLocal.reset();
+    testLocalWith.reset();
+    testSourceModel.clear();
     testError.clear();
     testTime = 0.0f;
     std::snprintf(testClipText, sizeof(testClipText), "%s", clip.c_str());
     if (clip.empty()) return;
     // played retargeted: a generic clip converts from its source model (anim-retarget 7.4)
     testLoaded = AnimationClipPool::getOrLoad(clip + "@humanoid", &testError);
+    if (!testLoaded) return;
+    std::shared_ptr<const AnimationClip> base = AnimationClipPool::getOrLoad(clip);
+    if (base && !base->isHumanoid()){
+        testBase = base;
+        testSourceModel = ClipConverters::humanoidSourceModel(clip, base->toData());
+    }
+}
+
+std::shared_ptr<const AnimationClip> editor::AvatarWindow::previewClip(){
+    // a clip of this very model converts with the working copy (the pool's conversion has the
+    // saved sidecar): mapping and twist edits show on the source side too
+    const bool own = testBase && !testSourceModel.empty() && current.rig &&
+                     fs::path(testSourceModel).lexically_normal() == fs::path(model).lexically_normal();
+    if (!own || !isDirty()) return testLoaded;
+    if (testLocal && testLocalWith && *testLocalWith == edited) return testLocal;
+    testLocal.reset();
+    testLocalWith = edited;
+    std::shared_ptr<const anim::HumanoidSource> cached;
+    std::string error;
+    if (!anim::HumanoidSourceCache::get(model, cached, &error) || !cached) return testLoaded;
+    // the file's skeleton, bone paths and rest (the sidecar does not change them), the edited rig
+    anim::HumanoidSource local = *cached;
+    local.rig = current.rig;
+    local.humanoid = current.humanoid;
+    local.extra = current.extra;
+    local.extraBones.assign(pose::HUMAN_EXTRA_BONE_COUNT, -1);
+    for (int x = 0; x < pose::HUMAN_EXTRA_BONE_COUNT; x++){
+        local.extraBones[(size_t)x] = pose::findSkeletonBone(current.rig->skeleton(), current.extra.bones[(size_t)x]);
+    }
+    ClipData converted;
+    std::vector<ClipWarning> warnings;
+    if (!anim::convertToHumanoid(testBase->toData(), local, converted, warnings, &error)) return testLoaded;
+    testLocal = AnimationClip::build(converted, warnings, nullptr);
+    return testLocal;
 }
 
 void editor::AvatarWindow::setTestTime(float seconds){
@@ -275,12 +460,12 @@ void editor::AvatarWindow::updatePreview(){
     pose::HumanPose pose = current.rig->neutralPose();
     std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT> extra;
     std::vector<anim::HumanoidOutput> outputs;
-    if (testLoaded){
+    if (std::shared_ptr<const AnimationClip> clip = previewClip()){
         anim::HumanoidBinding binding;
-        if (anim::bindHumanoidClip(*testLoaded, target, binding)){
+        if (anim::bindHumanoidClip(*clip, target, binding)){
             binding.mirror = mirror;
             binding.footIK = footIK;
-            anim::sampleHumanoidBinding(*testLoaded, binding, anim::wrapClipTime(testTime, testLoaded->getLength(), ClipWrapMode::Loop), nullptr);
+            anim::sampleHumanoidBinding(*clip, binding, anim::wrapClipTime(testTime, clip->getLength(), ClipWrapMode::Loop), nullptr);
             pose = binding.pose;
             outputs = binding.outputs;
         }
@@ -306,10 +491,20 @@ void editor::AvatarWindow::updatePreview(){
 
 void editor::AvatarWindow::stopPreview(){
     if (!previewing) return;
+    restoreTransforms();
     previewing = false;
     testPlaying = false;
+    const PreviewOwner::Token token = previewToken;
+    previewToken = 0;
+    PreviewOwner::release(token);
+}
+
+void editor::AvatarWindow::restoreTransforms(){
     Scene* sceneptr = scene();
-    if (!sceneptr) return;
+    if (!sceneptr){
+        savedTransforms.clear();
+        return;
+    }
     for (const Saved& entry : savedTransforms){
         if (Transform* transform = sceneptr->isEntityCreated(entry.entity) ? sceneptr->findComponent<Transform>(entry.entity) : nullptr){
             transform->position = entry.position;
@@ -327,6 +522,9 @@ void editor::AvatarWindow::stopTransientPreviews(){
 void editor::AvatarWindow::clearSceneState(uint32_t id){
     if (id != sceneId) return;
     previewing = false;
+    PreviewOwner::release(previewToken);
+    previewToken = 0;
+    pendingOpen = false;
     savedTransforms.clear();
     entity = NULL_ENTITY;
     model.clear();
@@ -335,6 +533,9 @@ void editor::AvatarWindow::clearSceneState(uint32_t id){
 
 void editor::AvatarWindow::projectClosed(){
     previewing = false;
+    PreviewOwner::release(previewToken);
+    previewToken = 0;
+    pendingOpen = false;
     savedTransforms.clear();
     entity = NULL_ENTITY;
     model.clear();
@@ -351,6 +552,7 @@ void editor::AvatarWindow::show(){
         focusRequested = false;
     }
     ImGui::SetNextWindowSize(ImVec2(Theme::dpi(620.0f), Theme::dpi(640.0f)), ImGuiCond_FirstUseEver);
+    syncWithProject();
     bool open = true;
     if (ImGui::Begin(WINDOW_NAME, &open)){
         if (!scene() || model.empty()){
@@ -412,6 +614,10 @@ void editor::AvatarWindow::drawHeader(){
                            slots, fingers, eyes, jaw ? " · jaw" : "", current.rig->humanScale());
     }else{
         ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " Not a humanoid: %s", current.error.c_str());
+    }
+    if (!current.extraError.empty()){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " Hands & Head: %s", current.extraError.c_str());
+        ImGui::SetItemTooltip("These overrides do not validate: auto-detect is used, and Apply refuses them");
     }
     ImGui::BeginDisabled(!isDirty());
     if (ImGui::Button("Apply")){
@@ -574,20 +780,37 @@ void editor::AvatarWindow::drawClosePrompt(){
         closePrompt = false;
     }
     if (ImGui::BeginPopupModal("Unsaved Avatar###AvatarClose", nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
-        ImGui::Text("Apply the changes to %s.humanoid?", fs::u8path(model).filename().u8string().c_str());
+        ImGui::Text(pendingOpen ? "Apply the changes to %s.humanoid before opening another Avatar?" : "Apply the changes to %s.humanoid?",
+                    fs::u8path(model).filename().u8string().c_str());
+        // then: the requested model's Avatar, or the window closes
+        auto next = [this](){
+            if (pendingOpen){
+                pendingOpen = false;
+                std::string error;
+                if (!openModel(pendingScene, pendingEntity, &error)){
+                    status = error;
+                    statusError = true;
+                }
+            }else{
+                setOpen(false);
+            }
+        };
         if (ImGui::Button("Apply")){
             std::string error;
-            if (apply(&error)) setOpen(false);
+            if (apply(&error)) next();
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
         if (ImGui::Button("Discard")){
             discard();
-            setOpen(false);
+            next();
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        if (ImGui::Button("Cancel")){
+            pendingOpen = false;
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
 }

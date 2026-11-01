@@ -172,6 +172,14 @@ bool AnimationState::getFootIK() const{
     return state && anim::stateFootIK(*state);
 }
 
+void AnimationState::resetMirror(){
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)) state->mirrorOverride = -1;
+}
+
+void AnimationState::resetFootIK(){
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)) state->footIKOverride = -1;
+}
+
 bool AnimationState::isHumanoid() const{
     const anim::PlayerStateRuntime* state = findState(scene, entity, name);
     return state && anim::stateIsHumanoid(*state);

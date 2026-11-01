@@ -137,12 +137,12 @@ namespace jasperengine{
         bool removeMixingTransform(const std::string& path);
         void clearMixingTransforms();
 
-        // humanoid playback (anim-retarget 8): runtime overrides of the entry's Mirror and Foot IK
         void setMirror(bool mirror);
         bool getMirror() const;
         void setFootIK(bool footIK);
         bool getFootIK() const;
-        // a humanoid clip, or a generic clip being retargeted
+        void resetMirror();
+        void resetFootIK();
         bool isHumanoid() const;
     };
 

@@ -367,6 +367,7 @@ namespace jasperengine::editor{
         mutable std::shared_ptr<const anim::HumanoidSlots> humanoidCache;
         mutable Entity humanoidCacheRoot = NULL_ENTITY;
         mutable uint64_t humanoidCacheRevision = 0;
+        mutable uint64_t humanoidCachePool = 0;     // AnimationClipPool::revision(): an Avatar edit rebuilds it
         bool editable(std::string* error) const;
         bool commitEdit(const ClipData& data, const std::string& undoName, const std::string& mergeKey, std::string* error);
     };

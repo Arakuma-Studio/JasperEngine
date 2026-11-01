@@ -5,6 +5,7 @@
 
 #include "animation/AnimJson.h"
 #include "pose/HumanExtraBones.h"
+#include "pose/PoseDofs.h"
 #include "pose/PoseRig.h"
 
 #include "Engine.h"
@@ -928,7 +929,9 @@ namespace{
                         return false;
                     }
                     if (json.size() != 1 || !readNumbers(json["angles"], 3, angles)){
-                        warn(&warnings, path, "expected {\"angles\": [dof1, dof2, twist]} degrees");
+                        const pose::BoneDofInfo& dofs = pose::boneDofInfo(pose::boneAt(humanBone));
+                        warn(&warnings, path, std::string("expected {\"angles\": [") + dofs.dofs[0].name + ", " + dofs.dofs[1].name + ", " +
+                                              dofs.dofs[2].name + "]} degrees (" + pose::humanBoneName(pose::boneAt(humanBone)) + "'s joint angles)");
                         return false;
                     }
                     out.values.resize(4);

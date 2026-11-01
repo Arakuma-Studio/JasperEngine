@@ -15,16 +15,25 @@
 //     animations (said there).
 //   * Notes: the auto-detect notes.
 // - Edits are a working copy: the preview follows them live; Apply writes the sidecar as one
-//   project undo step (ProjectFileWrites: the model's clips and rigs reload); closing with changes
+//   project undo step (ProjectFileWrites: the model's clips and rigs reload) and refuses hands and
+//   head overrides that do not validate; closing with changes, or opening another model's Avatar,
 //   asks Apply, Discard or Cancel. The action functions are what the widgets run (editor tests
 //   drive them).
-// - The preview writes the bone Transforms directly and puts them back (stopPreview) when the tab
-//   or the window closes, before a save or Play (stopTransientPreviews), and on project changes.
+// - syncWithProject (every frame): a sidecar written outside the window (undo of Apply, Map
+//   Bones, set_humanoid, the Inspector's Animation Type) becomes the saved copy, and the working
+//   copy too when it has no edits; a reimported model or a changed hierarchy rebinds the bones
+//   (the edits stay); another model file on the GameObject reopens.
+// - The preview owns the model root (PreviewOwner, animation clips 9.R7: a delete, copy, save or
+//   another preview restores it first), writes the bone Transforms directly and puts them back
+//   (stopPreview) when the tab or the window closes, before a save or Play
+//   (stopTransientPreviews), and on project changes. A test clip converted from this model's own
+//   rig plays with the unsaved edits on both sides.
 // - Thread-safety: main thread.
 
 #pragma once
 
 #include "animation/HumanoidClip.h"
+#include "animation/PreviewOwner.h"
 #include "ecs/Entity.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
@@ -67,6 +76,11 @@ namespace jasperengine::editor{
         // when it has no Model with bones. Unsaved edits of another model are asked about first in
         // the UI; here they are dropped.
         bool openModel(uint32_t sceneId, Entity entity, std::string* error);
+        // what Configure Avatar... runs: the bound model again keeps its edits; another model with
+        // unsaved edits asks first (Apply / Discard / Cancel), then opens
+        bool requestOpen(uint32_t sceneId, Entity entity, std::string* error);
+        bool hasPendingOpen() const { return pendingOpen; }
+        void syncWithProject();
         uint32_t boundScene() const { return sceneId; }
         Entity boundEntity() const { return entity; }
         const std::string& modelFile() const { return model; }        // asset-relative
@@ -90,6 +104,7 @@ namespace jasperengine::editor{
             pose::HumanExtraMap extra;
             std::shared_ptr<pose::PoseRig> rig;     // null when the map is no valid humanoid
             std::string error;
+            std::string extraError;                 // hands and head overrides that do not validate (Apply refuses)
             std::vector<std::string> notes;
         };
         const Resolved& resolved() const { return current; }
@@ -113,6 +128,10 @@ namespace jasperengine::editor{
     private:
         void resolve();
         Scene* scene() const;
+        bool readSaved(std::string* problem);
+        void rebind();
+        void restoreTransforms();
+        std::shared_ptr<const AnimationClip> previewClip();
         void drawHeader();
         void drawMapping();
         void drawPose();
@@ -133,6 +152,15 @@ namespace jasperengine::editor{
         std::vector<Entity> boneEntities;
         std::vector<Matrix4> bridges;
         std::vector<std::string> bones;
+        uint64_t boundRevision = 0;
+        // the sidecar as last read or written (stat first, bytes when it moved)
+        std::string sidecarBytes;
+        bool sidecarExists = false;
+        std::filesystem::file_time_type sidecarTime{};
+        uintmax_t sidecarSize = 0;
+        bool pendingOpen = false;
+        uint32_t pendingScene = 0;
+        Entity pendingEntity = NULL_ENTITY;
         pose::HumanoidOverrides saved;
         pose::HumanoidOverrides edited;
         Resolved current;
@@ -143,10 +171,16 @@ namespace jasperengine::editor{
 
         // preview
         bool previewing = false;
+        PreviewOwner::Token previewToken = 0;
         struct Saved{ Entity entity; Vector3 position; Quaternion rotation; };
         std::vector<Saved> savedTransforms;
         std::string testClip;
         std::shared_ptr<const AnimationClip> testLoaded;
+        // a generic test clip of this model: converted with the working copy while it has edits
+        std::shared_ptr<const AnimationClip> testBase;
+        std::string testSourceModel;
+        std::shared_ptr<const AnimationClip> testLocal;
+        std::optional<pose::HumanoidOverrides> testLocalWith;
         std::string testError;
         float testTime = 0.0f;
         bool testPlaying = false;

@@ -22,13 +22,21 @@
 #include "animation/AvatarMask.h"
 #include "animation/ClipRecordHooks.h"
 #include "animation/HumanoidClip.h"
+#include "command/CommandHandle.h"
+#include "command/CommandHistory.h"
 #include "command/type/ClipSceneActions.h"
+#include "command/type/DeleteEntityCmd.h"
+#include "command/type/ModelLoadCmd.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "object/Model.h"
 #include "pose/HumanoidMapIO.h"
+#include "pose/PoseRigProvider.h"
 #include "pose/PoseMath.h"
 #include "subsystem/MeshSystem.h"
 #include "window/AvatarWindow.h"
+#include "window/InspectorAnimLayers.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -145,6 +153,39 @@ namespace {
         return s;
     }
 
+    // an empty model GameObject (Transform, Mesh, Model) of a scene, a root of its hierarchy
+    Entity addModelObject(uint32_t sceneId, const std::string& name) {
+        SceneProject* sceneProject = project()->getScene(sceneId);
+        Scene* scene = sceneProject->scene;
+        const Entity entity = scene->createUserEntity();
+        scene->setEntityName(entity, name);
+        scene->addComponent<Transform>(entity, Transform());
+        scene->addComponent<MeshComponent>(entity, {});
+        scene->addComponent<ModelComponent>(entity, {});
+        sceneProject->entities.push_back(entity);
+        return entity;
+    }
+
+    // a model GameObject loaded by ModelLoadCmd (deletable, undoable): its scene and entity
+    ModelScene loadedModel(const std::string& file, const std::string& name) {
+        ModelScene s;
+        Project* p = project();
+        if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
+        p->createNewScene(name + "Scene", SceneType::SCENE_3D);
+        s.id = p->getSelectedSceneId();
+        SceneProject* sceneProject = p->getScene(s.id);
+        s.scene = sceneProject->scene;
+        s.model = addModelObject(s.id, name);
+        Engine::setAsyncLoading(false);     // the load finishes inside the command
+        EXPECT_TRUE(CommandHandle::get(s.id)->addCommand(new ModelLoadCmd(p, s.id, s.model, file)));
+        EXPECT_FALSE(s.scene->getComponent<ModelComponent>(s.model).filename.empty()) << file << " loaded";
+        return s;
+    }
+
+    double degreesBetween(const Quaternion& a, const Quaternion& b) {
+        return pose::radToDeg(pose::angleBetween(pose::Quatd(a).normalized(), pose::Quatd(b).normalized()));
+    }
+
     class HumanoidEditorTest : public ::testing::Test {
     protected:
         Host host;
@@ -191,11 +232,14 @@ TEST_F(HumanoidEditorTest, AvatarWindowAppliesTheSidecarAsOneUndoStep) {
     EXPECT_EQ(written.bones[(size_t)pose::boneIndex(pose::HumanBone::LeftUpperArm)], std::optional<std::string>("mixamorig:LeftArm"));
     EXPECT_EQ(written.twist[(size_t)pose::boneIndex(pose::HumanBone::LeftLowerArm)], std::optional<float>(15.0f));
 
-    // undo puts the bytes back (here: no sidecar), redo writes it again
+    // undo puts the bytes back (here: no sidecar), redo writes the same bytes again
+    const std::string applied = readAll(sidecar);
     ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
     EXPECT_FALSE(fs::exists(sidecar));
     ASSERT_TRUE(project()->getProjectCommandHistory()->redo());
-    EXPECT_TRUE(fs::exists(sidecar));
+    ASSERT_TRUE(fs::exists(sidecar));
+    EXPECT_EQ(readAll(sidecar), applied);
+    EXPECT_EQ(applied, pose::writeHumanoidOverrides(written));
 
     // a second edit over an existing sidecar: undo restores its exact bytes
     const std::string before = readAll(sidecar);
@@ -283,23 +327,31 @@ TEST_F(HumanoidEditorTest, RecordOnAHumanoidClipKeysTheSlotE) {
     const Entity arm = humanoid->target->slotEntities[(size_t)pose::boneIndex(pose::HumanBone::LeftUpperArm)];
     c.setRecording(true);
     ASSERT_TRUE(ClipRecordHooks::claims(s.id, arm, ClipChannel::Rotation));
-    // the gizmo turns the upper arm 40 degrees about the model's Z
-    const Quaternion rest = s.scene->getComponent<Transform>(arm).rotation;
-    const pose::Quatd turned = pose::Quatd(rest) * pose::axisAngleRad(pose::Vec3d(0, 0, 1), pose::degToRad(40.0));
-    ClipRecordValue value;
-    value.channel = ClipChannel::Rotation;
-    value.value = {(float)turned.x, (float)turned.y, (float)turned.z, (float)turned.w};
-    ASSERT_TRUE(ClipRecordHooks::record(s.id, arm, value, ""));
-    const ClipData& recorded = c.getDocument()->data();
-    const int track = recorded.findHumanoidTrack(ClipChannel::Humanoid, pose::boneIndex(pose::HumanBone::LeftUpperArm));
-    ASSERT_GE(track, 0) << "a humanoid track, not a path track";
-    EXPECT_LT(recorded.findTrack("Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm",
-                                 ClipChannel::Rotation), 0);
-    const std::vector<float>& E = recorded.tracks[(size_t)track].keys[0].value;
-    const pose::Quatd local = pose::Quatd(humanoid->target->bridgeRotationInverse[(size_t)pose::boneIndex(pose::HumanBone::LeftUpperArm)].inverse() *
-                                          turned.toQuaternion()).normalized();
-    const pose::Quatd expected = humanoid->target->rig->jointRotationFromLocal(pose::HumanBone::LeftUpperArm, local);
-    EXPECT_LT(pose::radToDeg(pose::angleBetween(pose::Quatd(E[3], E[0], E[1], E[2]), expected)), 0.01);
+    // independent expectations (not the formula under test): E is relative to the neutral pose,
+    // so the arm in its neutral pose keys the identity, and the neutral pose turned 40 degrees
+    // about the bone's own Z keys a 40 degree E (E = N R N^-1 for local = left * E * N)
+    const size_t slot = (size_t)pose::boneIndex(pose::HumanBone::LeftUpperArm);
+    const Quaternion bridgeInverse = humanoid->target->bridgeRotationInverse[slot];
+    const pose::Quatd neutral(humanoid->target->rig->neutralPose().rotations[slot]);
+    auto recordLocal = [&](const pose::Quatd& skeletonLocal) {
+        const Quaternion transformLocal = (bridgeInverse * skeletonLocal.normalized().toQuaternion()).normalized();
+        ClipRecordValue value;
+        value.channel = ClipChannel::Rotation;
+        value.value = {transformLocal.x, transformLocal.y, transformLocal.z, transformLocal.w};
+        EXPECT_TRUE(ClipRecordHooks::record(s.id, arm, value, ""));
+        const ClipData& recorded = c.getDocument()->data();
+        const int track = recorded.findHumanoidTrack(ClipChannel::Humanoid, (int)slot);
+        EXPECT_GE(track, 0) << "a humanoid track, not a path track";
+        EXPECT_LT(recorded.findTrack("Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm",
+                                     ClipChannel::Rotation), 0);
+        if (track < 0) return pose::Quatd();
+        const std::vector<float>& E = recorded.tracks[(size_t)track].keys[0].value;
+        return pose::Quatd(E[3], E[0], E[1], E[2]).normalized();
+    };
+    const pose::Quatd atNeutral = recordLocal(neutral);
+    EXPECT_LT(pose::radToDeg(pose::angleBetween(atNeutral, pose::Quatd())), 0.01) << "the neutral pose is E = identity";
+    const pose::Quatd turned = recordLocal(neutral * pose::axisAngleRad(pose::Vec3d(0, 0, 1), pose::degToRad(40.0)));
+    EXPECT_NEAR(pose::radToDeg(pose::angleBetween(turned, pose::Quatd())), 40.0, 0.01) << "a 40 degree turn from neutral";
     c.stopPreview();
 }
 
@@ -332,4 +384,223 @@ TEST_F(HumanoidEditorTest, EntryFlagsRoundTripThroughTheStream) {
     const std::string oldText = YAML::Dump(Stream::encodeAnimationPlayerComponent(old));
     EXPECT_EQ(oldText.find("retarget"), std::string::npos);
     EXPECT_EQ(YAML::Dump(Stream::encodeAnimationPlayerComponent(Stream::decodeAnimationPlayerComponent(YAML::Load(oldText)))), oldText);
+}
+
+// ---- review fixes ----
+
+TEST_F(HumanoidEditorTest, ConvertUseInThisPlayerAndItsUndo) {
+    copyFixture("hero_animated.gltf", "models/use/hero.gltf");
+    ModelScene s = modelScene("models/use/hero.gltf", "UseHero");
+    AnimationPlayerComponent player;
+    AnimationPlayerClip entry;
+    entry.clip = "models/use/hero.gltf#Walk";
+    entry.retarget = true;
+    player.clips = {entry};
+    s.scene->addComponent<AnimationPlayerComponent>(s.model, player);
+    const std::string output = ClipSceneActions::humanoidClipPath(project(), "models/use/hero.gltf#Walk");
+    ClipActionResult result;
+    std::string error;
+    ASSERT_TRUE(ClipSceneActions::convertToHumanoid(project(), s.id, s.model, 0, "models/use/hero.gltf#Walk", "", output, result, error)) << error;
+    EXPECT_FALSE(result.projectStep) << "the file and the entry: one scene step";
+    const fs::path file = project()->getProjectPath() / output;
+    ASSERT_TRUE(fs::exists(file));
+    const AnimationPlayerClip& used = s.scene->getComponent<AnimationPlayerComponent>(s.model).clips[0];
+    EXPECT_EQ(used.clip, "models/use/Walk (Humanoid).anim");
+    EXPECT_FALSE(used.retarget) << "the file is humanoid: no retarget";
+    // undo: the entry back as it was, the file gone; redo: both again
+    ASSERT_TRUE(CommandHandle::get(s.id)->undo());
+    EXPECT_FALSE(fs::exists(file));
+    EXPECT_EQ(s.scene->getComponent<AnimationPlayerComponent>(s.model).clips[0], entry);
+    ASSERT_TRUE(CommandHandle::get(s.id)->redo());
+    EXPECT_TRUE(fs::exists(file));
+    EXPECT_EQ(s.scene->getComponent<AnimationPlayerComponent>(s.model).clips[0].clip, "models/use/Walk (Humanoid).anim");
+
+    // the file alone (no player): a project step, undone by the project history
+    const std::string alone = "assets/models/use/Walk alone.anim";
+    ASSERT_TRUE(ClipSceneActions::convertToHumanoid(project(), 0, NULL_ENTITY, SIZE_MAX, "models/use/hero.gltf#Walk", "", alone, result, error)) << error;
+    EXPECT_TRUE(result.projectStep);
+    ASSERT_TRUE(fs::exists(project()->getProjectPath() / alone));
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    EXPECT_FALSE(fs::exists(project()->getProjectPath() / alone));
+}
+
+TEST_F(HumanoidEditorTest, AvatarPreviewOwnsTheRootSoADeleteNeverKeepsTheNeutralPose) {
+    copyFixture("hero_tpose.gltf", "models/owner/hero.gltf");
+    ModelScene s = loadedModel("models/owner/hero.gltf", "OwnerHero");
+    ASSERT_NE(s.model, NULL_ENTITY);
+    const fs::path sceneFile = project()->getProjectPath() / "AvatarOwner.scene";
+    ASSERT_TRUE(project()->saveSceneToPath(s.id, sceneFile));
+    const std::string unpreviewed = readAll(sceneFile);
+
+    AvatarWindow window(project());
+    std::string error;
+    ASSERT_TRUE(window.openModel(s.id, s.model, &error)) << error;
+    const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(s.scene, s.model);
+    ASSERT_TRUE(slots.target) << slots.error;
+    const Entity arm = slots.target->slotEntities[(size_t)pose::boneIndex(pose::HumanBone::LeftUpperArm)];
+    const std::string armName = s.scene->getEntityName(arm);
+    const Quaternion rest = s.scene->getComponent<Transform>(arm).rotation;
+    window.setPreview(true);
+    ASSERT_TRUE(window.isPreviewing());
+    ASSERT_GT(degreesBetween(s.scene->getComponent<Transform>(arm).rotation, rest), 1.0) << "the neutral pose is on";
+    EXPECT_NE(PreviewOwner::ownerOf(s.id, s.model).token, 0) << "the preview owns the model root";
+
+    // delete the model: the preview restores first; undo brings the rest back; save writes it
+    ASSERT_TRUE(CommandHandle::get(s.id)->addCommand(new DeleteEntityCmd(project(), s.id, s.model)));
+    EXPECT_FALSE(window.isPreviewing());
+    ASSERT_TRUE(CommandHandle::get(s.id)->undo());
+    const Entity model = s.scene->findEntity("OwnerHero");
+    ASSERT_NE(model, NULL_ENTITY);
+    const Entity armAgain = s.scene->findEntity(armName);
+    ASSERT_NE(armAgain, NULL_ENTITY);
+    EXPECT_LT(degreesBetween(s.scene->getComponent<Transform>(armAgain).rotation, rest), 1e-3) << "the undone delete is at rest";
+    ASSERT_TRUE(project()->saveSceneToPath(s.id, sceneFile));
+    EXPECT_EQ(readAll(sceneFile), unpreviewed) << "no neutral pose saved";
+
+    // another owner of the root (the Animation window, a pose edit) stops the Avatar preview
+    ASSERT_TRUE(window.openModel(s.id, model, &error)) << error;
+    window.setPreview(true);
+    ASSERT_TRUE(window.isPreviewing());
+    const PreviewOwner::Token other = PreviewOwner::acquire(s.id, model, s.scene, "test", [](){});
+    EXPECT_FALSE(window.isPreviewing());
+    EXPECT_LT(degreesBetween(s.scene->getComponent<Transform>(armAgain).rotation, rest), 1e-3);
+    PreviewOwner::release(other);
+}
+
+TEST_F(HumanoidEditorTest, AvatarWorkingCopyFollowsTheProject) {
+    copyFixture("hero_tpose.gltf", "models/follow/hero.gltf");
+    copyFixture("hero_tpose.gltf", "models/follow/other.gltf");
+    ModelScene s = loadedModel("models/follow/hero.gltf", "FollowHero");
+    ASSERT_NE(s.model, NULL_ENTITY);
+    const fs::path sidecar = assets() / "models/follow/hero.gltf.humanoid";
+    AvatarWindow window(project());
+    std::string error;
+    ASSERT_TRUE(window.openModel(s.id, s.model, &error)) << error;
+
+    // Apply, then its undo: the saved copy and the clean working copy follow the file
+    window.setTwist(pose::HumanBone::LeftLowerArm, 20.0f);
+    ASSERT_TRUE(window.apply(&error)) << error;
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    ASSERT_FALSE(fs::exists(sidecar));
+    window.syncWithProject();
+    EXPECT_FALSE(window.isDirty());
+    EXPECT_FALSE(window.overrides().twist[(size_t)pose::boneIndex(pose::HumanBone::LeftLowerArm)].has_value())
+        << "the undone twist is gone from the working copy (the next Apply would have written it back)";
+
+    // a sidecar written elsewhere (set_humanoid, Map Bones, the Inspector) while editing: the
+    // edits stay, Discard takes the file
+    window.setTwist(pose::HumanBone::RightLowerArm, 10.0f);
+    pose::HumanoidOverrides external;
+    external.animationType = pose::AnimationType::Humanoid;
+    std::ofstream(sidecar) << pose::writeHumanoidOverrides(external);
+    window.syncWithProject();
+    EXPECT_TRUE(window.isDirty());
+    EXPECT_EQ(window.overrides().twist[(size_t)pose::boneIndex(pose::HumanBone::RightLowerArm)], std::optional<float>(10.0f));
+    window.discard();
+    EXPECT_TRUE(window.overrides().isHumanoid()) << "Discard takes the file as it is now";
+
+    // Configure Avatar... again on the same model keeps the edits; another model asks first
+    window.setTwist(pose::HumanBone::RightLowerArm, 12.0f);
+    ASSERT_TRUE(window.requestOpen(s.id, s.model, &error)) << error;
+    EXPECT_TRUE(window.isDirty()) << "the bound model again: its working copy stays";
+    const Entity other = addModelObject(s.id, "FollowOther");
+    ASSERT_TRUE(CommandHandle::get(s.id)->addCommand(new ModelLoadCmd(project(), s.id, other, "models/follow/other.gltf")));
+    ASSERT_NE(other, NULL_ENTITY);
+    ASSERT_TRUE(window.requestOpen(s.id, other, &error)) << error;
+    EXPECT_TRUE(window.hasPendingOpen()) << "unsaved edits: asked before opening another model";
+    EXPECT_EQ(window.boundEntity(), s.model);
+    EXPECT_TRUE(window.isDirty());
+    window.discard();
+    ASSERT_TRUE(window.requestOpen(s.id, other, &error)) << error;
+    EXPECT_EQ(window.boundEntity(), other) << "no edits: opens directly";
+    EXPECT_FALSE(window.hasPendingOpen());
+
+    // a reloaded model (new bone entities): the window rebinds, the preview writes the new bones
+    ASSERT_TRUE(window.openModel(s.id, s.model, &error)) << error;
+    window.setTwist(pose::HumanBone::LeftLowerArm, 5.0f);
+    ASSERT_TRUE(CommandHandle::get(s.id)->addCommand(new ModelLoadCmd(project(), s.id, s.model, "models/follow/other.gltf")));
+    ASSERT_TRUE(CommandHandle::get(s.id)->addCommand(new ModelLoadCmd(project(), s.id, s.model, "models/follow/hero.gltf")));
+    window.syncWithProject();
+    EXPECT_TRUE(window.isDirty()) << "the edits survive the reload";
+    const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(s.scene, s.model);
+    ASSERT_TRUE(slots.target) << slots.error;
+    const Entity arm = slots.target->slotEntities[(size_t)pose::boneIndex(pose::HumanBone::LeftUpperArm)];
+    const Quaternion rest = s.scene->getComponent<Transform>(arm).rotation;
+    window.setPreview(true);
+    EXPECT_GT(degreesBetween(s.scene->getComponent<Transform>(arm).rotation, rest), 1.0) << "the preview writes the reloaded bones";
+    window.stopPreview();
+    EXPECT_LT(degreesBetween(s.scene->getComponent<Transform>(arm).rotation, rest), 1e-3);
+    window.discard();
+}
+
+TEST_F(HumanoidEditorTest, InvalidHandsAndHeadOverridesAreRefusedAndNeverCostTheRig) {
+    copyFixture("hero_tpose.gltf", "models/extra/hero.gltf");
+    ModelScene s = modelScene("models/extra/hero.gltf", "ExtraHero");
+    const fs::path sidecar = assets() / "models/extra/hero.gltf.humanoid";
+    AvatarWindow window(project());
+    std::string error;
+    ASSERT_TRUE(window.openModel(s.id, s.model, &error)) << error;
+    // a body slot's bone as a finger: the window says so and Apply refuses
+    window.setExtraBone(pose::HumanExtraBone::LeftIndexProximal, std::string("mixamorig:LeftArm"));
+    EXPECT_FALSE(window.resolved().extraError.empty());
+    ASSERT_TRUE(window.resolved().rig) << "the body map still works";
+    EXPECT_FALSE(window.apply(&error));
+    EXPECT_NE(error.find("Hands & Head"), std::string::npos) << error;
+    EXPECT_FALSE(fs::exists(sidecar));
+    window.discard();
+
+    // such a sidecar written by hand: the runtime keeps the rig (auto-detected fingers), as the
+    // editor shows it
+    pose::HumanoidOverrides bad;
+    bad.animationType = pose::AnimationType::Humanoid;
+    bad.extraBones[(size_t)pose::extraIndex(pose::HumanExtraBone::LeftIndexProximal)] = std::string("mixamorig:LeftArm");
+    std::ofstream(sidecar) << pose::writeHumanoidOverrides(bad);
+    const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(s.scene, s.model);
+    ASSERT_TRUE(slots.target) << slots.error;
+    EXPECT_GE(slots.target->extra.mappedCount(0, pose::HUMAN_FINGER_BONE_COUNT), 12) << "auto-detected fingers";
+    const std::shared_ptr<const PoseRigInfo> info = PoseRigProvider::forModelFile(project(), assets() / "models/extra/hero.gltf");
+    EXPECT_TRUE(info->rig);
+    EXPECT_FALSE(info->extraError.empty());
+    EXPECT_EQ(info->extra.bones, slots.target->extra.bones) << "the editor and the runtime resolve the same hands";
+    fs::remove(sidecar);
+}
+
+TEST_F(HumanoidEditorTest, TheRigInfoKeepsTheAvatarOfAnInvalidBodyMap) {
+    copyFixture("hero_tpose.gltf", "models/invalid/hero.gltf");
+    const fs::path sidecar = assets() / "models/invalid/hero.gltf.humanoid";
+    // the hips unmapped (not a humanoid), with a twist and Humanoid type
+    pose::HumanoidOverrides overrides;
+    overrides.animationType = pose::AnimationType::Humanoid;
+    overrides.bones[(size_t)pose::boneIndex(pose::HumanBone::Hips)] = std::string();
+    overrides.twist[(size_t)pose::boneIndex(pose::HumanBone::LeftLowerArm)] = 30.0f;
+    std::ofstream(sidecar) << pose::writeHumanoidOverrides(overrides);
+    std::shared_ptr<const PoseRigInfo> info = PoseRigProvider::forModelFile(project(), assets() / "models/invalid/hero.gltf");
+    EXPECT_FALSE(info->rig);
+    EXPECT_TRUE(info->overrides.isHumanoid()) << "the Animation Type is read even when the map does not validate";
+    EXPECT_EQ(info->overrides, overrides) << "what the Inspector's Animation Type combo rewrites from";
+    EXPECT_TRUE(info->sidecarError.empty());
+    // an unreadable sidecar: said, so no writer rebuilds it from nothing
+    std::ofstream(sidecar) << "{ not json";
+    info = PoseRigProvider::forModelFile(project(), assets() / "models/invalid/hero.gltf");
+    EXPECT_FALSE(info->sidecarError.empty());
+    fs::remove(sidecar);
+}
+
+TEST_F(HumanoidEditorTest, ControllerFromClipsKeepsTheHumanoidFlags) {
+    AnimationPlayerComponent player;
+    AnimationPlayerClip plain;
+    plain.clip = "anim/walk.anim";
+    AnimationPlayerClip flagged;
+    flagged.clip = "models/hero.gltf#Run";
+    flagged.retarget = true;
+    flagged.mirror = true;
+    flagged.footIK = true;
+    player.clips = {plain, flagged};
+    const anim::ControllerData data = animlayersui::controllerFromClips(player);
+    ASSERT_EQ(data.layers.size(), 1u);
+    ASSERT_EQ(data.layers[0].states.size(), 2u);
+    EXPECT_FALSE(data.layers[0].states[0].retarget || data.layers[0].states[0].mirror || data.layers[0].states[0].footIK);
+    EXPECT_TRUE(data.layers[0].states[1].retarget);
+    EXPECT_TRUE(data.layers[0].states[1].mirror);
+    EXPECT_TRUE(data.layers[0].states[1].footIK);
 }

@@ -184,6 +184,60 @@ TEST_F(HumanoidModel, ConvertedWalkReproducesTheSourceOnItsRig){
     }
 }
 
+// ---- Mirror of a one-sided finger curl (review H1) ----
+
+TEST_F(HumanoidModel, MirroredRightHandCurlDrivesTheLeftHand){
+    const Entity entity = load(hero);
+    std::shared_ptr<const anim::HumanoidSource> source;
+    std::string error;
+    ASSERT_TRUE(anim::HumanoidSourceCache::get(hero, source, &error)) << error;
+    const int right = source->extraBones[(size_t)extraIndex(HumanExtraBone::RightIndexProximal)];
+    ASSERT_GE(right, 0);
+    // a right index curl only: 35 degrees about the bone's own Z
+    ClipData generic;
+    ClipTrackData curl;
+    curl.path = source->bonePaths[(size_t)right];
+    curl.channel = ClipChannel::Rotation;
+    ClipKey key;
+    const Quatd curled = Quatd(source->restRotation[(size_t)right]) * axisAngleRad(Vec3d(0, 0, 1), degToRad(35.0));
+    key.value = {(float)curled.x, (float)curled.y, (float)curled.z, (float)curled.w};
+    curl.keys.push_back(key);
+    generic.tracks.push_back(curl);
+    anim::normalize(generic);
+    ClipData converted;
+    std::vector<ClipWarning> warnings;
+    ASSERT_TRUE(anim::convertToHumanoid(generic, *source, converted, warnings, &error)) << error;
+    std::shared_ptr<const AnimationClip> clip = AnimationClip::build(converted);
+
+    const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(&scene, entity);
+    ASSERT_TRUE(slots.target) << slots.error;
+    const int leftIndex = extraIndex(HumanExtraBone::LeftIndexProximal);
+    const int rightIndex = extraIndex(HumanExtraBone::RightIndexProximal);
+    auto outputOf = [](const anim::HumanoidBinding& binding, int x) -> const anim::HumanoidOutput* {
+        for (const anim::HumanoidOutput& output : binding.outputs){
+            if (output.kind == anim::HumanoidOutput::Kind::Extra && output.index == x) return &output;
+        }
+        return nullptr;
+    };
+    const Quaternion leftRest = scene.getComponent<BoneComponent>(slots.target->extraEntities[(size_t)leftIndex]).bindRotation;
+    const Quaternion rightRest = scene.getComponent<BoneComponent>(slots.target->extraEntities[(size_t)rightIndex]).bindRotation;
+    for (bool mirror : {false, true}){
+        anim::HumanoidBinding binding;
+        ASSERT_TRUE(anim::bindHumanoidClip(*clip, slots.target, binding));
+        binding.mirror = mirror;
+        // a stale value in the scratch (an earlier sample) must not leak into a bone without a value
+        binding.extraLocal.fill(Quaternion(0.5f, 0.5f, 0.5f, 0.5f));
+        anim::sampleHumanoidBinding(*clip, binding, 0.0f, nullptr);
+        const anim::HumanoidOutput* left = outputOf(binding, leftIndex);
+        const anim::HumanoidOutput* rightOut = outputOf(binding, rightIndex);
+        ASSERT_TRUE(left && rightOut) << "both index fingers are outputs, mirrored or not";
+        const anim::HumanoidOutput* curledOut = mirror ? left : rightOut;
+        const anim::HumanoidOutput* restOut = mirror ? rightOut : left;
+        EXPECT_NEAR(degreesBetween(curledOut->rotation, mirror ? leftRest : rightRest), 35.0, 0.05) << "mirror " << mirror;
+        EXPECT_LT(degreesBetween(restOut->rotation, mirror ? rightRest : leftRest), 1e-3) << "mirror " << mirror;
+    }
+}
+
 // ---- test 11: the pool ----
 
 TEST_F(HumanoidModel, HumanoidModelsServeHumanoidClips){
@@ -346,14 +400,35 @@ TEST_F(HumanoidModel, MaskedHumanoidLayerOverAGenericWalk){
     ASSERT_TRUE(anim::bindHumanoidClip(*clip, slots.target, binding));
     anim::sampleHumanoidBinding(*clip, binding, player.getState("Wave 2").getTime(), nullptr);
     const Entity rightForearm = slots.target->slotEntities[(size_t)boneIndex(HumanBone::RightLowerArm)];
-    const Entity leftForearm = slots.target->slotEntities[(size_t)boneIndex(HumanBone::LeftLowerArm)];
+    const Entity leftThigh = slots.target->slotEntities[(size_t)boneIndex(HumanBone::LeftUpperLeg)];
+    bool foundArm = false;
+    Quaternion waveThigh;
+    bool foundThigh = false;
     for (const anim::HumanoidOutput& output : binding.outputs){
         if (output.entity == rightForearm){
+            foundArm = true;
             EXPECT_LT(degreesBetween(scene.getComponent<Transform>(rightForearm).rotation, output.rotation), 0.05);
         }
+        if (output.entity == leftThigh){
+            foundThigh = true;
+            waveThigh = output.rotation;
+        }
     }
-    // the left forearm is the walk's (it does not move it: its rest)
-    EXPECT_LT(degreesBetween(scene.getComponent<Transform>(leftForearm).rotation, scene.getComponent<BoneComponent>(leftForearm).bindRotation), 0.05);
+    ASSERT_TRUE(foundArm && foundThigh);
+    // the left thigh (masked out of the wave layer) is the walk's, which moves it: the walk's
+    // sample at its state time, not the wave's realised thigh
+    std::shared_ptr<const AnimationClip> walk = AnimationClipPool::getOrLoad(hero + "#Walk");
+    ASSERT_TRUE(walk);
+    std::string thighPath;
+    ASSERT_TRUE(anim::relativePath(&scene, entity, leftThigh, thighPath));
+    const int track = walk->findTrack(thighPath, ClipChannel::Rotation);
+    ASSERT_GE(track, 0) << "the walk animates " << thighPath;
+    std::vector<anim::TrackSample> samples;
+    anim::sampleClipTracks(*walk, player.getState("Walk").getTime(), samples);
+    const Quaternion walked = samples[(size_t)track].rotation;
+    EXPECT_GT(degreesBetween(walked, scene.getComponent<BoneComponent>(leftThigh).bindRotation), 1.0) << "the walk moves the thigh";
+    EXPECT_GT(degreesBetween(walked, waveThigh), 1.0) << "the wave's thigh differs (the mask is what keeps the walk's)";
+    EXPECT_LT(degreesBetween(scene.getComponent<Transform>(leftThigh).rotation, walked), 0.05);
 }
 
 // ---- spec 13: performance (host, Release) ----

@@ -70,7 +70,6 @@ namespace jasperengine{
         // the Pose Animator of this model (added when missing)
         PoseAnimator getPoseAnimator();
 
-        // the humanoid rig of the loaded model (anim-retarget 8): mapping, Animation Type, scale
         ModelHumanoidInfo getHumanoidInfo() const;
     };
 }

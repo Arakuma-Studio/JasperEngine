@@ -346,11 +346,13 @@ ModelHumanoidInfo Model::getHumanoidInfo() const{
     info.valid = true;
     // the sidecar's Animation Type, even when the map does not validate
     std::string stamp;
+    pose::HumanoidOverrides overrides;
     if (pose::humanoidSidecarStamp(model->filename, stamp, nullptr) && !stamp.empty()){
-        pose::HumanoidOverrides overrides;
         std::vector<std::string> warnings;
         if (pose::parseHumanoidOverrides(stamp, overrides, warnings, nullptr)){
             info.animationType = pose::animationTypeName(overrides.animationType.value_or(pose::AnimationType::Generic));
+        }else{
+            overrides = pose::HumanoidOverrides();
         }
     }
     pose::ModelRigInfo rig;
@@ -358,10 +360,12 @@ ModelHumanoidInfo Model::getHumanoidInfo() const{
     std::string error;
     if (!pose::buildModelRig(scene, entity, rig, bones, nullptr, &error)){
         info.error = error;
-        // what is missing from the auto-detected map
+        // what is missing from the map auto-detect and the sidecar's overrides give
         pose::Skeleton skeleton;
         if (pose::buildSkeleton(scene, entity, skeleton, bones)){
-            const pose::HumanoidMap map = pose::autoDetectHumanoid(skeleton);
+            pose::HumanoidMap map;
+            std::string ignored;
+            pose::resolveHumanoid(skeleton, overrides, map, &ignored, nullptr);
             for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
                 if (map.bones[(size_t)s].empty()) info.missing.push_back(pose::humanBoneName(pose::boneAt(s)));
             }

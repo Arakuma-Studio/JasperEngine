@@ -98,6 +98,14 @@ namespace jasperengine::pose {
                                             const std::array<std::optional<std::string>, HUMAN_EXTRA_BONE_COUNT>& overrides,
                                             HumanExtraMap& out, std::string* error, std::vector<std::string>* notes = nullptr);
 
+    // resolveExtraBones, or (when the overrides do not validate) auto-detect alone, `error` saying
+    // why and a note: what the runtime and the editor both use, so a bad override shows and plays
+    // the same everywhere. True when the overrides were used.
+    JASPERENGINE_API bool resolveExtraBonesOrAuto(const Skeleton& skeleton, const HumanoidMap& humanoid,
+                                                  const std::array<std::optional<std::string>, HUMAN_EXTRA_BONE_COUNT>& overrides,
+                                                  HumanExtraMap& out, std::string* error, std::vector<std::string>* notes);
+
+
 }
 
 #endif // POSE_HUMAN_EXTRA_BONES_H

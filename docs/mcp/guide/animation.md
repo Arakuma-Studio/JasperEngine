@@ -449,14 +449,16 @@ set:
   unmapped slots, fingers and dropped bones.
 
 `clips[i].mirror` (left/right swapped) and `clips[i].footIK` (legs reach the foot goals) apply to
-humanoid clips; Lua `state.mirror` / `state.footIK` override them at runtime. The target rig is the
+humanoid clips; Lua `state.mirror` / `state.footIK` override them at runtime (`state:resetMirror()`
+/ `resetFootIK()` go back). The target rig is the
 first model on or under the player root whose bones map as a humanoid (`get_asset_info` on a
 model: its `avatar` with animation_type, humanoid, mapped, missing, extra_mapped, twist and
 human_scale).
 
-Verify numerically: `get_animation {clip, root: "Robot", times: [0.5]}` on a humanoid clip (or one
-the root's entry retargets) adds `retarget_report {target {model, human_scale}, source, scale_ratio,
-folded, missing_on_target, unmapped_source_bones}` and `realised: [{time, bones: [{bone, entity,
+Verify numerically: `get_animation {clip, root: "Robot", times: [0.5]}` on a humanoid clip (a clip
+of an Animation Type: Humanoid model, or one the root's entry retargets) adds `retarget_report
+{target {model, human_scale}, source, scale_ratio, mirror, foot_ik (the root's entry's), folded,
+missing_on_target, unmapped_source_bones}` and `realised: [{time, bones: [{bone, entity,
 path, local_rotation {quat, euler}, angles}], hips_local_position}]`: compare `angles` with the
 source's, or `local_rotation` with `get_runtime_entity` in play. `folded` lists slots the target
 lacks whose rotation moved to the next slot ("chest folded into spine"); a slot the clip lacks
@@ -472,8 +474,10 @@ Humanoid tracks in edit_animation (no `path`):
 
 `bone` is a slot (`hips` ... `right_toes`), a finger (`left_index_proximal`), `left_eye`,
 `right_eye` or `jaw`; `humanoid_position` takes `hips`, `left_foot`, `right_foot`. `angles` are
-the slot's DOFs in degrees (jasper://docs/pose-animation), stored as the quaternion; results list
-humanoid keys as `{quat, angles}`. A wrong bone gets a did-you-mean. Fix a bad mapping with
+the slot's DOFs in degrees (jasper://docs/pose-animation), stored as the quaternion: `[a, b, c]` in
+the slot's DOF order or `{dof: degrees}` by name (`{"bend": 30}`, the others 0). Results list
+humanoid keys as `{quat, angles}`, and that form (with `in` / `out` tangents) goes back in as it
+is. A wrong bone gets a did-you-mean. Fix a bad mapping with
 `set_humanoid` (`bones`, `extra_bones` for fingers, eyes and jaw, `twist` (slot: degrees) to turn
 a slot's neutral pose about its direction); twists change the model's pose animations too.
 
