@@ -2524,6 +2524,7 @@ std::string editor::Generator::shaderGlobalsInitSource(const std::vector<ShaderG
     }
     source += "    });\n";
     return source;
+}
 
 std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
     const DebugSettings defaults;
