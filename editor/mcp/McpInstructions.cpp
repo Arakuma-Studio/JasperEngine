@@ -154,7 +154,7 @@ Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in 
   top-left. Put HUDs and menus in a UI scene attached as a child scene (set_child_scene): in a
   2D scene layout groups stack bottom-up and pointer input needs a UI camera.
 - Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
-- Clips (.anim): edit_animation {clip, create, tracks [{path}]}; to other humanoids:
+- Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; other rigs:
   an Animator, clips[i].retarget, create.humanoid (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, output) -> a .vat (jasper://docs/vertex-animation).
 - Animator (.controller): edit_animator_controller, control_animator (jasper://docs/animator).

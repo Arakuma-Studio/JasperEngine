@@ -9,10 +9,11 @@
 
 #include <gtest/gtest.h>
 
+#include "support/EditorTestSupport.h"
+
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "Engine.h"
-#include "Platform.h"
 #include "Project.h"
 #include "Stream.h"
 #include "animation/AnimationClipAppHooks.h"
@@ -75,7 +76,6 @@ namespace {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
-        std::unique_ptr<editor::Platform> platform;
     };
 
     Headless& headless() {
@@ -91,15 +91,15 @@ namespace {
             std::ofstream(out.dir / "project.yaml") << "name: humanoid\nassetsDir: assets\n";
             AppSettings::initialize();
             out.project.reset(new Project());
-            out.platform.reset(new editor::Platform(out.project.get()));
-            static char arg0[] = "jasperengine-editor-tests";
-            static char* argv[] = {arg0, nullptr};
-            Engine::systemInit(1, argv, out.platform.get());
+            // the support library's engine (TestMain's TestSystem) with this project's paths: a
+            // second Engine::systemInit with an editor Platform crashed the tree
+            editor::test::useProjectPaths(out.project.get());
             Engine::pauseGameEvents(true);
             Engine::setAsyncLoading(false);
             out.ready = out.project->loadProject(out.dir, false);
             return out;
         }();
+        if (h.project) editor::test::useProjectPaths(h.project.get());
         return h;
     }
 
