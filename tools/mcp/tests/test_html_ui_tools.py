@@ -112,6 +112,7 @@ LIMITS.update({"user_settings": 550})
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
 # ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
 # create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
+TOTAL_LIMIT = 106771
 # physics-3d: create_ragdoll (506, capped at 900), set_joint's 3D arguments (cone_half_angle and the
 # no-body_b wording), edit_colliders' 3D vertices / indices / is_trigger / material, configure_game_view's
 # physics_debug / physics_debug_contacts; measured on the tree merged with main (script-lifecycle,
@@ -140,7 +141,10 @@ LIMITS.update({"create_ragdoll": 900})
 # types and their mode / action / actions fields (+209); merged with main (shader-globals): 151 tools measured
 # 107889, the limit set to it
 # merged by the lead (+ ui-multitouch): provisional, re-measured on the merged tree
-TOTAL_LIMIT = 109100
+# coroutines (spec 2026-10-31-coroutines 7): get_play_state names its coroutines/timers counts and
+# get_runtime_entity the scripts' coroutines and timers (+83); merged with main (platform-services): 108160 + 83
+# merged by the lead (+ coroutines): provisional, re-measured on the merged tree
+TOTAL_LIMIT = 109200
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

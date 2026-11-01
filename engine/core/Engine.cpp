@@ -12,6 +12,7 @@
 #include "input/InputActions.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptScheduler.h"
 #include "script/ScriptRuntime.h"
 #include "lua.hpp"
 #include "manager/SceneManager.h"
@@ -119,7 +120,15 @@ double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
 uint64_t Engine::gameFrames = 0;
+// the clocks of Time (EngineTime.h): the unscaled frame delta and its sum, the fixed steps' sum,
+// the game time at the last scene load, the wall clock at start
 double Engine::unscaledDeltatime = 0.0;
+double Engine::unscaledTime = 0.0;
+double Engine::fixedTime = 0.0;
+double Engine::levelLoadGameTime = 0.0;
+uint64_t Engine::startupTime = 0;
+bool Engine::inFixedStep = false;
+float Engine::smoothDeltatime = 0.0f;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
 
@@ -694,8 +703,43 @@ float Engine::getMaxDeltatime(){
 }
 
 void Engine::setMaxDeltatime(float seconds){
-    if (seconds > 0.0f)
-        maxDeltatime = seconds;
+    if (!(seconds > 0.0f) || std::isinf(seconds)){
+        Log::warn("Engine::setMaxDeltatime: non-positive or non-finite value (%f) ignored", seconds);
+        return;
+    }
+    maxDeltatime = seconds;
+}
+
+float Engine::getUnscaledDeltatime(){
+    return (float)unscaledDeltatime;
+}
+
+double Engine::getUnscaledTime(){
+    return unscaledTime;
+}
+
+double Engine::getFixedTime(){
+    return fixedTime;
+}
+
+double Engine::getRealtimeSinceStartup(){
+    return stm_sec(stm_since(startupTime));
+}
+
+double Engine::getTimeSinceLevelLoad(){
+    return gameTime - levelLoadGameTime;
+}
+
+void Engine::markLevelLoad(){
+    levelLoadGameTime = gameTime;
+}
+
+bool Engine::isInFixedStep(){
+    return inFixedStep;
+}
+
+float Engine::getSmoothDeltatime(){
+    return smoothDeltatime;
 }
 
 float Engine::getUnscaledDeltatime(){
@@ -1279,6 +1323,7 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     drawSemaphore.release();
 
     stm_setup();
+    startupTime = stm_now();
     
     std::vector<std::string> args(argv, argv + argc);
     System::instance().args = args;
@@ -1480,9 +1525,13 @@ void Engine::runFrame(bool draw){
         frameTime = fixedDeltatime;
     }
     deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
-    unscaledDeltatime = (paused || simulationHeld) ? 0.0 : frameTime;
-    // the UI clock runs on the unscaled delta (a pause menu animates at time scale 0) and
-    // stops with the updates: a held simulation or a paused app
+    // the unscaled delta (Time.unscaledDeltaTime, realtime waits): it runs at time scale 0 (a
+    // pause menu animates) and stops with the game: a held simulation, a paused app, or the game
+    // events paused (the editor's Play pause, edit time)
+    // (getUnscaledDeltatime(): also 0 while Engine::pauseGameEvents(true), the editor's Play pause)
+    unscaledDeltatime = (paused || simulationHeld || !onUpdate.isEnabled()) ? 0.0 : frameTime;
+    // the UI clock: the same, but it keeps running while only the game events are paused (HTML
+    // UI documents animate in edit mode and in a paused Play)
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
 
     // the input of this frame is over: no low surrogate will follow a pending high one
@@ -1522,6 +1571,13 @@ void Engine::runFrame(bool draw){
         double frameDelta = deltatime;
         gameTime += frameDelta;
         gameFrames++;
+        unscaledTime += unscaledDeltatime;
+        smoothDeltatime = (gameFrames <= 1) ? (float)frameDelta : smoothDeltatime + 0.2f * ((float)frameDelta - smoothDeltatime);
+
+        // the script coroutines and timers advance with the game events: not at edit time nor
+        // while the editor's Play is paused (Engine::pauseGameEvents)
+        if (onUpdate.isEnabled())
+            ScriptScheduler::beginFrame(frameDelta, unscaledDeltatime);
 
         // 0) start of the scripts enabled since the last frame, before their first fixed
         //    update and update (Unity)
@@ -1540,10 +1596,16 @@ void Engine::runFrame(bool draw){
                     fixedStepsLeft++;
                 }
 
+                inFixedStep = true;
+                ScriptScheduler::beginFixedStep();
                 Engine::onFixedUpdate.call();
                 for (int i = 0; i < scenes.size(); i++) {
                     scenes[i]->fixedUpdate(updateTime);
                 }
+                // after the physics step: Coroutine.waitForFixedUpdate
+                ScriptScheduler::fixedPhase();
+                fixedTime += updateTime;
+                inFixedStep = false;
                 updateTimeCount -= updateTime;
                 fixedLoops++;
             }
@@ -1571,6 +1633,9 @@ void Engine::runFrame(bool draw){
             MainThreadQueue::drain();
         }
         Engine::onUpdate.call();
+        // timers, then the coroutines waiting seconds, frames, predicates or other work (Unity's
+        // yield null / WaitForSeconds point: after Update, before LateUpdate)
+        ScriptScheduler::updatePhase();
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
         }
@@ -1626,6 +1691,9 @@ void Engine::runFrame(bool draw){
             it = oneTimeScenes.erase(it);
         }
     }
+
+    // Coroutine.waitForEndOfFrame: after the draw (nothing when the update did not run)
+    ScriptScheduler::endOfFramePhase();
 
     // after the draw, so the new scenes are drawn loaded before the loading scene goes
     SceneManager::updateLoading();
@@ -1727,8 +1795,9 @@ void Engine::systemShutdown(){
     // what the game (and its onShutdown handlers) stored is on disk before it goes
     UserSettings::save();
 
-    // anime's Lua references go while the Lua state still exists
+    // anime's Lua references and the script coroutines and timers go while the Lua state still exists
     AnimEngine::instance().reset();
+    ScriptScheduler::clear();
     // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
     SceneManager::destroyPersistentScene();
 

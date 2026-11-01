@@ -1,0 +1,11 @@
+---@meta _
+-- Hand-written shapes of the Timer module (engine/core/script/binding/CoroutineClassesLua.cpp,
+-- feature coroutines), appended to the generated stubs. Rules: docs/mcp/guide/lua-api.md,
+-- "Coroutines and timers".
+
+---Options of Timer.after / Timer.every
+---@class TimerOptions
+---@field unscaled? boolean # count unscaled seconds (keeps running at Time.timeScale = 0; default false)
+---@field owner? ScriptInstance # a script instance (self): the timer is cancelled when it is released
+---@field delay? number # Timer.every: seconds to the first call (default: the interval)
+---@field count? integer # Timer.every: number of calls (default: until cancelled)

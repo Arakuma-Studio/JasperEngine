@@ -684,7 +684,9 @@ script runs after every load and reload **while the game plays** (never in edit 
 own environment (globals readable, its definitions local; `_G.x = 1` shares a value) with
 `document` and `anime` bound. Its listeners go with the old elements on reload, so a handler
 runs once however often the file was saved; what it started outside its elements (an
-`anime.createTimer`, globals) is not undone: guard it. Errors point at the HTML line
+`anime.createTimer`, a `Timer.after` / `Coroutine.start`, globals) is not undone: guard it. The
+document script is no script instance: `self:invoke` / `self:startCoroutine` do not exist
+there, `Timer.after` and `Coroutine.start` do (unowned: they end at Play stop, lua-api 2.14). Errors point at the HTML line
 (`ui/menu.html:45: ... [HTMLUI-HTML-0022]`).
 
 ```html
@@ -1591,7 +1593,7 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | `el.innerText = "x"`, `el.onclick = fn` | `el.textContent = "x"`, `el:addEventListener("click", fn)` | LuaLS `inject-field` |
 | `getElementByID`, other misspelt members | the DOM names (`getElementById`) | LuaLS `undefined-field` |
 | `addEventListener("onclick")`, `"touchstart"` | `"click"`, `"pointerdown"` (`event.pointerType == "touch"`) | LuaLS `param-type-mismatch` (`UIEventType`); a warning at run time |
-| `setTimeout`, `setInterval`, `requestAnimationFrame` | `anime.createTimer({ duration = 2000, onComplete = fn })`, or `RegisterEngineEvent(self, "onUpdate")` | none (Lua has no such globals) |
+| `setTimeout`, `setInterval`, `requestAnimationFrame` | `anime.createTimer({ duration = 2000, onComplete = fn })` (UI clock, milliseconds), gameplay `Timer.after(2, fn)` / `Timer.every(0.5, fn)` (seconds, game time; `{unscaled = true}`), `Coroutine.start(function() Coroutine.wait(2) ... end)`, or `RegisterEngineEvent(self, "onUpdate")` | none (Lua has no such globals) |
 | `fetch`, `XMLHttpRequest` | call Lua `Http` (`jasper://docs/networking`): in the document's `<script type="text/lua">` `Http.get(url, {owner = document}, function(res) ... end)` (no `self` there; the document's GameObject owns it), in the GameObject's script `{owner = self}`; documents themselves load nothing from the network | none |
 | `localStorage` | `UserSettings.setStringForKey(key, value)` / `getStringForKey` | none |
 | `alert()`, `confirm()` | a `<dialog>` with `showModal()`, or a modal element | `HTMLUI-HTML-0006` (inside JavaScript) |

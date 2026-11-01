@@ -86,7 +86,33 @@ ScriptBase::ScriptBase(Scene* scene, Entity entity)
 }
 
 ScriptBase::~ScriptBase() {
+    ScriptScheduler::cancelOwner(this);
     AsyncOwners::scriptInstanceReleased(this);
+}
+
+TaskId ScriptBase::invoke(std::function<void()> fn, float delay, TimeMode mode) {
+    return ScriptScheduler::after(delay, std::move(fn), mode, this);
+}
+
+TaskId ScriptBase::invokeRepeating(std::function<void()> fn, float delay, float interval, TimeMode mode) {
+    return ScriptScheduler::every(delay, interval, std::move(fn), mode, this);
+}
+
+bool ScriptBase::cancelInvoke(TaskId id) {
+    if (!isInvoking(id)) return false;
+    return ScriptScheduler::cancel(id);
+}
+
+void ScriptBase::cancelAllInvokes() {
+    ScriptScheduler::cancelTimersOf(this);
+}
+
+bool ScriptBase::isInvoking() const {
+    return ScriptScheduler::timerCountOf(this) > 0;
+}
+
+bool ScriptBase::isInvoking(TaskId id) const {
+    return ScriptScheduler::isPending(id) && ScriptScheduler::timerOwner(id) == this;
 }
 
 Scene* ScriptBase::getScene() const {

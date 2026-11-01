@@ -6,6 +6,9 @@
 
 #include "Scene.h"
 #include "Entity.h"
+#include "ScriptScheduler.h"
+
+#include <functional>
 #include "component/ScriptComponent.h"
 #include "PointerEventData.h"
 #include "object/EntityHandle.h"
@@ -35,7 +38,7 @@ namespace jasperengine {
     public:
         ScriptBase(Scene* scene, Entity entity);
         // virtual for the lifecycle callbacks; ends the async work owned by the script
-        // (AsyncOwners::fromScript(this))
+        // (AsyncOwners::fromScript(this)) and its timers (invoke / invokeRepeating)
         virtual ~ScriptBase();
 
         Scene* getScene() const;
@@ -45,6 +48,22 @@ namespace jasperengine {
         // script's entry is enabled. Engine events registered with
         // REGISTER_ENGINE_EVENT are skipped while it is false.
         bool isActiveAndEnabled() const;
+
+        // Unity's Invoke: calls `fn` once, `delay` seconds from now (scaled by Engine timeScale
+        // unless TimeMode::Unscaled), in the update phase after onUpdate. The timer belongs to this
+        // script: it keeps running while the script is disabled or its GameObject inactive, and is
+        // cancelled when the script is deleted. Returns its id for cancelInvoke.
+        TaskId invoke(std::function<void()> fn, float delay, TimeMode mode = TimeMode::Scaled);
+        // Unity's InvokeRepeating: first after `delay`, then every `interval` (> 0) seconds, at most
+        // once a frame (a late call is rescheduled from now)
+        TaskId invokeRepeating(std::function<void()> fn, float delay, float interval, TimeMode mode = TimeMode::Scaled);
+        // Cancels one of this script's timers; false when it is not one or already done
+        bool cancelInvoke(TaskId id);
+        // Cancels every timer of this script
+        void cancelAllInvokes();
+        // A timer of this script is pending (any, or the one with that id)
+        bool isInvoking() const;
+        bool isInvoking(TaskId id) const;
 
         // Unity's enabled: this script's entry in the Script component. Setting it calls
         // onEnable / onDisable (once the scene's scripts started); same value: nothing.

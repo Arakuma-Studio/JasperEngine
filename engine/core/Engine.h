@@ -352,6 +352,12 @@ namespace jasperengine {
         static double gameTime;
         static uint64_t gameFrames;
         static double unscaledDeltatime;
+        static double unscaledTime;
+        static double fixedTime;
+        static double levelLoadGameTime;
+        static uint64_t startupTime;
+        static bool inFixedStep;
+        static float smoothDeltatime;
         static std::atomic<bool> simulationHeld;
         static bool clampNextDelta;
 
@@ -538,6 +544,26 @@ namespace jasperengine {
         // Scaled seconds and frames the update loop has run (since start; not while paused or held)
         static double getGameTime();
         static uint64_t getGameFrames();
+
+        // The frame delta before timeScale (Unity's Time.unscaledDeltaTime): the measured frame
+        // time capped by maxDeltatime, or the fixed frame delta when set; 0 while the app is
+        // paused or the simulation held. It keeps running at time scale 0 (a pause menu).
+        static float getUnscaledDeltatime();
+        // Sum of getUnscaledDeltatime() over the frames the update loop has run
+        static double getUnscaledTime();
+        // Sum of the fixed steps run (game seconds); inside a step, the time at its start
+        static double getFixedTime();
+        // Wall clock seconds since Engine::systemInit (pauses included)
+        static double getRealtimeSinceStartup();
+        // Game seconds since the last scene load (SceneManager)
+        static double getTimeSinceLevelLoad();
+        // A scene stack was loaded now (SceneManager): getTimeSinceLevelLoad() counts from here
+        static void markLevelLoad();
+        // True inside a fixed step: onFixedUpdate, the scenes' fixed update (physics) and the
+        // coroutines waiting for it
+        static bool isInFixedStep();
+        // Exponential average of getDeltatime() (Unity's Time.smoothDeltaTime)
+        static float getSmoothDeltatime();
 
         // A host (the editor's MCP server) holds the simulation: frames may still draw, but no
         // update runs and no game time passes. Released, the first frame measures at most one

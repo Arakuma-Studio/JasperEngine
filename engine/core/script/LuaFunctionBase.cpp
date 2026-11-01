@@ -26,15 +26,15 @@
 
 using namespace jasperengine;
 
-LuaFunctionBase::LuaFunctionBase(lua_State *vm, const std::string &func): m_vm(vm) {
+LuaFunctionBase::LuaFunctionBase(lua_State *vm, const std::string &func): m_vm(vm), m_func(LUA_NOREF) {
     // get the function
-    lua_getglobal(m_vm, func.c_str());
+    lua_getglobal(vm, func.c_str());
 
-    store_function();
+    store_function(vm);
 }
 
-LuaFunctionBase::LuaFunctionBase(lua_State *vm): m_vm(vm) {
-    store_function();
+LuaFunctionBase::LuaFunctionBase(lua_State *vm): m_vm(vm), m_func(LUA_NOREF) {
+    store_function(vm);
 }
 
 LuaFunctionBase::LuaFunctionBase(const LuaFunctionBase &other): m_vm(other.m_vm) {
@@ -59,14 +59,17 @@ LuaFunctionBase& LuaFunctionBase::operator=(const LuaFunctionBase &other){
     return *this;
 }
 
-void LuaFunctionBase::store_function(){
+void LuaFunctionBase::store_function(lua_State *vm){
     // ensure it's a function
-    if (!lua_isfunction(m_vm, -1)) {
-        lua_pop(m_vm, 1);
+    if (!lua_isfunction(vm, -1)) {
+        lua_pop(vm, 1);
         throw std::runtime_error("not a valid function");
     }
     // store it in registry for later use
-    m_func = luaL_ref(m_vm, LUA_REGISTRYINDEX);
+    m_func = luaL_ref(vm, LUA_REGISTRYINDEX);
+    // called later from the main thread: `vm` may be a coroutine's, which ends (and is
+    // collected) long before the callback runs
+    m_vm = LuaBinding::mainThread(vm);
 }
 
 void LuaFunctionBase::push_function(lua_State *vm, int func){

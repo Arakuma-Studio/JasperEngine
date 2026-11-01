@@ -1189,6 +1189,12 @@
 		5C53A5D162D9C346844CB8CB /* LuaJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */; };
 		71FCE4C028E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */; };
 		5C72896B6774821F58C7FFE8 /* LuaJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */; };
+		5C7722CA13C8F27169D0B74F /* ScriptScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */; };
+		5C3BEC6A230B027038CFB065 /* ScriptScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */; };
+		5C2971B8BC53558DD35F4A85 /* CoroutineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */; };
+		5CDD7FFB6F3FFF44D5F63680 /* CoroutineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */; };
+		5CC0078C861242152915F064 /* EngineTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */; };
+		5C96984210E9C63A8E91FC8B /* EngineTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */; };
 		71FCE4C128E0FA01003C5217 /* LuaFunctionBase.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */; };
 		71FCE4C228E0FA01003C5217 /* LuaBridgeAddon.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */; };
 		71FCE4C528E0FA31003C5217 /* LuaBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4C428E0FA31003C5217 /* LuaBridge.h */; };
@@ -5401,6 +5407,12 @@
 		71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LuaFunctionBase.cpp; sourceTree = "<group>"; };
 		5CE4F17FDC667A00AD056E88 /* LuaJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaJson.h; sourceTree = "<group>"; };
 		5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LuaJson.cpp; sourceTree = "<group>"; };
+		5C601CE397BFD6A7D949A7FC /* ScriptScheduler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptScheduler.h; sourceTree = "<group>"; };
+		5C936A55C74F6B41E9BABBC8 /* Timer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Timer.h; sourceTree = "<group>"; };
+		5C829CB5345D82DBCEBD5506 /* EngineTime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EngineTime.h; sourceTree = "<group>"; };
+		5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptScheduler.cpp; sourceTree = "<group>"; };
+		5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CoroutineClassesLua.cpp; sourceTree = "<group>"; };
+		5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EngineTime.cpp; sourceTree = "<group>"; };
 		71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaFunctionBase.h; sourceTree = "<group>"; };
 		71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridgeAddon.h; sourceTree = "<group>"; };
 		71FCE4C428E0FA31003C5217 /* LuaBridge.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridge.h; sourceTree = "<group>"; };
@@ -7330,6 +7342,7 @@
 				50314C550000000000000014 /* HtmlUIClassesLua.cpp */,
 				564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */,
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
+				5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */,
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
 				4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */,
 				4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */,
@@ -8272,6 +8285,8 @@
 				48544D4C0000000000000047 /* htmlui */,
 				7162FC2B25962A0E0075B97D /* Engine.h */,
 				7162FC7225962A0E0075B97D /* Engine.cpp */,
+				5C829CB5345D82DBCEBD5506 /* EngineTime.h */,
+				5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */,
 				175DCCB9300FA22F008C19EC /* Export.h */,
 				F10B0B1E0000000000000005 /* fluid */,
 				7128D05D25BB02F800965B51 /* Input.h */,
@@ -9782,6 +9797,9 @@
 				71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */,
 				5CE4F17FDC667A00AD056E88 /* LuaJson.h */,
 				5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */,
+				5C601CE397BFD6A7D949A7FC /* ScriptScheduler.h */,
+				5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */,
+				5C936A55C74F6B41E9BABBC8 /* Timer.h */,
 				71BE623025B1DB9D006D6E02 /* LuaScript.h */,
 				71BE622F25B1DB9D006D6E02 /* LuaScript.cpp */,
 				71AD5E6D2E9F2B86004951AB /* ScriptBase.h */,
@@ -14075,6 +14093,9 @@
 				713D829C259D307F00567F9F /* CameraRender.cpp in Sources */,
 				71FCE4C028E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
 				5C72896B6774821F58C7FFE8 /* LuaJson.cpp in Sources */,
+				5C3BEC6A230B027038CFB065 /* ScriptScheduler.cpp in Sources */,
+				5CDD7FFB6F3FFF44D5F63680 /* CoroutineClassesLua.cpp in Sources */,
+				5C96984210E9C63A8E91FC8B /* EngineTime.cpp in Sources */,
 				71451BE5270CA17F00712643 /* Action.cpp in Sources */,
 				71165BC0282981BE00CF79C1 /* Base64.cpp in Sources */,
 				713D829D259D307F00567F9F /* Vector4.cpp in Sources */,
@@ -14548,6 +14569,9 @@
 				7162FD2125963AE00075B97D /* ObjectRender.cpp in Sources */,
 				71FCE4BF28E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
 				5C53A5D162D9C346844CB8CB /* LuaJson.cpp in Sources */,
+				5C7722CA13C8F27169D0B74F /* ScriptScheduler.cpp in Sources */,
+				5C2971B8BC53558DD35F4A85 /* CoroutineClassesLua.cpp in Sources */,
+				5CC0078C861242152915F064 /* EngineTime.cpp in Sources */,
 				71451BE4270CA17F00712643 /* Action.cpp in Sources */,
 				71165BBF282981BE00CF79C1 /* Base64.cpp in Sources */,
 				7162FD2325963AE00075B97D /* TextureRender.cpp in Sources */,

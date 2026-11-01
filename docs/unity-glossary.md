@@ -159,6 +159,28 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | Player > Default Orientation, Allowed Orientations for Auto Rotation | Project Settings > Player > Resolution and Presentation (`player.default_orientation`, `player.allowed_orientations`; shared by Android and iOS) |
 | Device Simulator (orientation, language, `SystemInfo.deviceModel`) | the Game view's Device menu (device, Rotate, Language) |
 
+## Coroutines, timers and time
+
+Rules and the frame order: [lua-api.md](mcp/guide/lua-api.md) 2.13 (Time) and 2.14 (coroutines
+and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
+
+| Unity term | JasperEngine name |
+|---|---|
+| `StartCoroutine(IEnumerator)` / `StartCoroutine("Name")` | `self:startCoroutine(fn, ...)` / `self:startCoroutine("name", ...)` (returns a `Coroutine`; `Coroutine.start(fn)` for code that is not a script) |
+| `StopCoroutine(c)` / `StopCoroutine("Name")`, `StopAllCoroutines()` | `self:stopCoroutine(co)` / `self:stopCoroutine("name")` (or `co:stop()`), `self:stopAllCoroutines()` |
+| `IEnumerator Start()` | `self:startCoroutine` from `init` (or `start`, which may wait, with the script lifecycle) |
+| `yield return null` | `Coroutine.nextFrame()` (or `coroutine.yield()`) |
+| `yield return new WaitForSeconds(t)` | `Coroutine.wait(t)` (game time; returns the seconds that passed) |
+| `yield return new WaitForSecondsRealtime(t)` | `Coroutine.waitRealtime(t)` (unscaled; unlike Unity it stops while the app or the editor's Play is paused) |
+| `yield return new WaitForFixedUpdate()`, `WaitForEndOfFrame()` | `Coroutine.waitForFixedUpdate()`, `Coroutine.waitForEndOfFrame()` |
+| `yield return new WaitUntil(f)`, `WaitWhile(f)` | `Coroutine.waitUntil(f [, timeout])`, `Coroutine.waitWhile(f [, timeout])` (a timeout returns false) |
+| `yield return StartCoroutine(x)`, `yield return www` / `yield return request.SendWebRequest()` | `Coroutine.waitFor(self:startCoroutine(x))` (true and its results), `Coroutine.waitFor(handle)` for anything with `isDone()`; or call `self:x()` directly (Lua yields through calls) |
+| `Invoke("M", t)`, `InvokeRepeating("M", t, r)`, `CancelInvoke(["M"])`, `IsInvoking(["M"])` | `self:invoke("m", t)`, `self:invokeRepeating("m", t, r)`, `self:cancelInvoke(["m" or timer])`, `self:isInvoking([...])` (also with a function; `unscaled` flag); C++ `ScriptBase::invoke(fn, t)`, `invokeRepeating`, `cancelInvoke(id)` |
+| `LeanTween.delayedCall(t, fn)`, DOTween `DOVirtual.DelayedCall` | `self:invoke(fn, t)` or `Timer.after(t, fn [, {owner = self, unscaled = true}])`; repeating `Timer.every(r, fn)`; C++ `jasperengine::Timer::after` |
+| `Time.deltaTime`, `unscaledDeltaTime`, `fixedDeltaTime`, `fixedUnscaledDeltaTime` | `Time.deltaTime`, `Time.unscaledDeltaTime`, `Time.fixedDeltaTime`, `Time.fixedUnscaledDeltaTime` (also `Engine.deltatime`, `Engine.unscaledDeltatime`, `Engine.updateTime`) |
+| `Time.time`, `fixedTime`, `unscaledTime`, `realtimeSinceStartup`, `timeSinceLevelLoad`, `frameCount` | the same names on `Time` (`Engine.gameTime`, `Engine.frameCount`) |
+| `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
+
 ## Saves and data
 
 | Unity term | JasperEngine name |

@@ -61,6 +61,7 @@
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "script/ScriptScheduler.h"
 #include "net/Http.h"
 #include "thread/MainThreadQueue.h"
 #include "command/CommandHandle.h"
@@ -8567,6 +8568,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         }
 
         cleanupPlaySession(session);
+        // what the scripts that ran started (Coroutine.start, Timer.after)
+        ScriptScheduler::clear();
         SceneManager::clearAll();
         PrefabManager::clearAll();
         ObjectManager::clearAll();
@@ -9499,6 +9502,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
             AnimEngine::instance().reset();
+            // every coroutine and timer of the play (unowned ones too), before the scripts go
+            ScriptScheduler::clear();
             // HTTP requests of the play end without their callbacks (nothing waits for a
             // transfer); what worker threads posted for the game is dropped
             Http::shutdown();

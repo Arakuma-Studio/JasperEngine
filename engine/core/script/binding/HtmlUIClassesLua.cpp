@@ -990,9 +990,10 @@ namespace {
 
 // ---- HtmlUILuaRef ----
 
-HtmlUILuaRef::HtmlUILuaRef(lua_State* L, int index): L(L){
-    lua_pushvalue(L, index);
-    ref = luaL_ref(L, LUA_REGISTRYINDEX);
+HtmlUILuaRef::HtmlUILuaRef(lua_State* from, int index): L(LuaBinding::mainThread(from)){
+    // the main thread is kept, never a coroutine's (it ends long before a listener fires)
+    lua_pushvalue(from, index);
+    ref = luaL_ref(from, LUA_REGISTRYINDEX);
     liveRefs++;
 }
 
@@ -1022,9 +1023,10 @@ bool HtmlUILuaRef::isSet() const{
 
 bool HtmlUILuaRef::push(lua_State* current) const{
     // the state closes before the scenes are destroyed (Engine::systemShutdown)
-    if (!isSet() || !current || current != L || LuaBinding::getLuaState() != L)
+    if (!isSet() || !current || LuaBinding::getLuaState() != L || LuaBinding::mainThread(current) != L)
         return false;
-    lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+    // on the thread running now (a coroutine's, or the main one)
+    lua_rawgeti(current, LUA_REGISTRYINDEX, ref);
     return true;
 }
 
