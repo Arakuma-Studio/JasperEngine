@@ -289,6 +289,9 @@ TEST_F(InputEdgesTest, AnAppPauseStillLetsTheTouchCancelReachScripts) {
     Engine::onTouchCancel.setEnabled(true);
     Engine::onTouchCancel.add<Listener, &Listener::cancel>("InputTest", &listener);
 
+    // the window has the focus (the pause takes it)
+    Engine::systemFocusChanged(true);
+    Engine::systemFocus(true);
     Input::addTouch(6, 10, 10);
     frame();
     Engine::systemPause();

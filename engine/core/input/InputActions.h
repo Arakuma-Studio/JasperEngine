@@ -101,6 +101,7 @@ namespace jasperengine {
         bool sourcePressLatch = false;
         bool sourceReleaseLatch = false;
         bool sourceRepressLatch = false;
+        std::string managerName;    // getManagerName's (set when the asset is built)
 
     public:
         float readValue() const;            // BUTTON: 0..1, AXIS: -1..1, VECTOR2: the length
@@ -379,8 +380,13 @@ namespace jasperengine {
         static void endFrame();
         // the actions whose Input Manager button went down / up in the last evaluation, by their
         // getManagerName (Engine.onButtonDown / onButtonUp)
-        static const std::vector<std::string>& getFrameButtonDowns();
-        static const std::vector<std::string>& getFrameButtonUps();
+        static std::vector<std::string> getFrameButtonDowns();
+        static std::vector<std::string> getFrameButtonUps();
+        // the same without a copy (Input::beginFrame fires the events from them: no allocation)
+        static size_t getFrameButtonDownCount();
+        static const std::string& getFrameButtonDown(size_t index);
+        static size_t getFrameButtonUpCount();
+        static const std::string& getFrameButtonUp(size_t index);
         // after each fixed step (Input::endFixedStep)
         static void endFixedStep();
         // Play start and stop: maps back to the asset's state, injections, virtual controls and

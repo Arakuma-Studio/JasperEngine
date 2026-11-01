@@ -173,8 +173,10 @@ namespace jasperengine {
         std::vector<std::string> namedSources;
         // an action's bindings replaced at runtime (setBindings): "Map/Action" -> bindings
         std::map<std::string, std::vector<InputBindingDesc>> bindingOverrides;
-        std::vector<std::string> frameDowns;
-        std::vector<std::string> frameUps;
+        // the actions with an Input Manager edge in the last evaluation (room for all: no
+        // allocation while evaluating)
+        std::vector<const InputAction*> frameDowns;
+        std::vector<const InputAction*> frameUps;
 
         InputActionsRuntime(){
             std::fill(std::begin(consumer), std::end(consumer), -1);
@@ -1118,11 +1120,11 @@ void InputActionsRuntime::updateAction(RAction& ra, int mapIndex, bool active, f
     action.managerUp = (managerWas && !managerHeld) || (!managerWas && !managerHeld && managerTap) || managerRepress;
     if (action.managerDown){
         action.managerFixedDown = true;
-        r.frameDowns.push_back(InputActions::getManagerName(&action));
+        r.frameDowns.push_back(&action);
     }
     if (action.managerUp){
         action.managerFixedUp = true;
-        r.frameUps.push_back(InputActions::getManagerName(&action));
+        r.frameUps.push_back(&action);
     }
 
     if (pressedNow && wasPressed && !repressed) action.heldTime += dt;
@@ -1211,6 +1213,7 @@ void InputActionsRuntime::build(bool keepMapState){
                 object->mapName = mapDesc.name;
                 object->name = actionDesc.name;
             }
+            object->managerName = mapDesc.name == InputManagerFormat::MAP_NAME ? actionDesc.name : path;
             if (object->type != actionDesc.type){
                 object->type = actionDesc.type;
                 InputActionsRuntime::resetActionState(*object);
@@ -1252,6 +1255,8 @@ void InputActionsRuntime::build(bool keepMapState){
             InputActionsRuntime::resetActionState(*object);
     }
     r.modifierEntries.reserve(r.bindings.size() + r.parts.size());
+    r.frameDowns.reserve(r.actions.size());
+    r.frameUps.reserve(r.actions.size());
     r.sortOrder();
 }
 
@@ -2530,10 +2535,32 @@ void InputActions::endFrame(){
                     r.sources.end());
 }
 
-const std::vector<std::string>& InputActions::getFrameButtonDowns(){
-    return rt().frameDowns;
+std::vector<std::string> InputActions::getFrameButtonDowns(){
+    std::vector<std::string> names;
+    for (const InputAction* action : rt().frameDowns)
+        names.push_back(action->managerName);
+    return names;
 }
 
-const std::vector<std::string>& InputActions::getFrameButtonUps(){
-    return rt().frameUps;
+std::vector<std::string> InputActions::getFrameButtonUps(){
+    std::vector<std::string> names;
+    for (const InputAction* action : rt().frameUps)
+        names.push_back(action->managerName);
+    return names;
+}
+
+size_t InputActions::getFrameButtonDownCount(){
+    return rt().frameDowns.size();
+}
+
+const std::string& InputActions::getFrameButtonDown(size_t index){
+    return rt().frameDowns[index]->managerName;
+}
+
+size_t InputActions::getFrameButtonUpCount(){
+    return rt().frameUps.size();
+}
+
+const std::string& InputActions::getFrameButtonUp(size_t index){
+    return rt().frameUps[index]->managerName;
 }

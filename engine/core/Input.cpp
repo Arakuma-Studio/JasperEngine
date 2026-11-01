@@ -817,10 +817,10 @@ void Input::beginFrame(double unscaledDeltaTime, const InputSuppression& suppres
     InputActions::evaluate((float)unscaledDeltaTime);
     // the actions' edges, after every action is evaluated (a handler reading another action
     // sees this frame's values)
-    for (const std::string& name : InputActions::getFrameButtonDowns())
-        Engine::onButtonDown.call(name);
-    for (const std::string& name : InputActions::getFrameButtonUps())
-        Engine::onButtonUp.call(name);
+    for (size_t i = 0; i < InputActions::getFrameButtonDownCount(); i++)
+        Engine::onButtonDown.call(InputActions::getFrameButtonDown(i));
+    for (size_t i = 0; i < InputActions::getFrameButtonUpCount(); i++)
+        Engine::onButtonUp.call(InputActions::getFrameButtonUp(i));
 }
 
 void Input::endFrame(){
@@ -1257,8 +1257,11 @@ int Input::gamepadControl(int slot, int button){
 }
 
 float Input::getGamepadSlotAxis(int slot, int axis, bool forGame){
-    if (!isGamepadSlotConnected(slot) || axis < 0 || axis >= GAMEPAD_AXES)
+    if (axis < 0 || axis >= GAMEPAD_AXES)
         return 0.0f;
+    // a pad gone (its slot keeps its last edges) is at rest: a trigger at -1, not 0
+    if (!isGamepadSlotConnected(slot))
+        return axisRest(axis);
     const PadSlot& pad = state().pads[slot];
     if (forGame && pad.axisUI[axis])
         return axisRest(axis);
