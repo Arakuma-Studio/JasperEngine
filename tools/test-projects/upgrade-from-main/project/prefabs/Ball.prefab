@@ -1,6 +1,6 @@
 type: Prefab
 version: 3
-guid: 16cc275eff03aecf8ca89c0b6925694c
+guid: 847cf89bab7df6db140cb329d78000dd
 nextEntity: 1002
 root: 1001
 members:
@@ -100,6 +100,19 @@ members:
         enabled: true
         type: dynamic
         numColliders: 1
+        gravityScale: 1
+        linearDamping: 0
+        angularDamping: 0
+        fixedRotation: false
+        collisionDetection: discrete
+        sleepingMode: start_awake
+        useAutoMass: true
+        mass: 1
+        autoCenterOfMass: true
+        centerOfMass: [0, 0]
+        autoInertia: true
+        inertia: 0
+        material: ""
         colliders:
           - type: circle
             pointA: [24, 24]
@@ -117,4 +130,4 @@ members:
             categoryBits: 1
             maskBits: 65535
             groupIndex: 0
-            vertices: ~
+            points: ~

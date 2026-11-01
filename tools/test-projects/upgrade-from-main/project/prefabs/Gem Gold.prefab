@@ -1,7 +1,7 @@
 type: Prefab
 version: 3
-guid: fba2299035d47a598bb8cd416a968d19
-nextEntity: 1004
+guid: 88e803008f2dde4226c324f2a5574ae3
+nextEntity: 1002
 root: 1001
 members:
   - type: Entity
@@ -107,7 +107,7 @@ members:
             vertexCount: 3456
             faceCulling: true
             textureShadow: false
-            overrideFields: 2147454975
+            overrideFields: 4294938623
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -169,7 +169,7 @@ members:
       prefab:
         name: Gem
         path: prefabs/Gem.prefab
-        guid: af9ae8e1e6dc41081e33ca4b5bd0c558
+        guid: c47849b1febd095765309f78c0a22381
     prefabInstance:
       overrides:
         - registryEntity: 1001

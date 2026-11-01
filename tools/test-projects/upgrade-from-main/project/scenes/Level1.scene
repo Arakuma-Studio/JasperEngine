@@ -1,4 +1,4 @@
-id: 414121249
+id: 1143427069
 name: Level1
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -38,11 +38,6 @@ maxValues:
   maxExternalBuffers: 11
   maxSpriteFrames: 0
   maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 1
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: points
     properties: 4
@@ -55,11 +50,15 @@ shaderKeys:
   - type: mesh
     properties: 1114
   - type: mesh
+    properties: 263171
+  - type: mesh
     properties: 33562712
   - type: sky
   - type: depth
   - type: depth
     properties: 2
+  - type: depth
+    properties: 64
   - type: blit
   - type: htmlui
   - type: htmlui
@@ -79,16 +78,24 @@ shaderKeys:
     properties: 32
   - type: htmluipost
     properties: 64
+  - type: mesh
+    properties: 263171
+    customShader: library:unlit#BLEND_ADDITIVE,PARTICLE_TEXTURE
+  - type: depth
+    customShader: library:unlit#PARTICLE_TEXTURE
+  - type: depth
+    properties: 64
+    customShader: library:unlit#PARTICLE_TEXTURE
 childScenes:
-  - id: 2411570675
+  - id: 926570148
     startActive: true
 prefabs:
   - path: prefabs/Gem Gold.prefab
-    guid: fba2299035d47a598bb8cd416a968d19
+    guid: 88e803008f2dde4226c324f2a5574ae3
   - path: prefabs/Gem.prefab
-    guid: af9ae8e1e6dc41081e33ca4b5bd0c558
+    guid: c47849b1febd095765309f78c0a22381
   - path: prefabs/Sparkle.prefab
-    guid: 5f12c9623caac413ef5174f0e9c3f6b0
+    guid: c608ca374bdefe3ff4da7fbb7951d4d0
 entities:
   - type: Entity
     entity: 1001
@@ -296,7 +303,7 @@ entities:
             vertexCount: 36
             faceCulling: true
             textureShadow: false
-            overrideFields: 2147454975
+            overrideFields: 4294938623
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -344,6 +351,21 @@ entities:
         buoyancy: 0
         waterDrag: 0.5
         waterAngularDrag: 0.01
+        material: ""
+        linearDamping: 0.05
+        angularDamping: 0.05
+        maxLinearVelocity: 500
+        maxAngularVelocity: 47.12389
+        automaticMass: true
+        mass: 1
+        automaticCenterOfMass: true
+        centerOfMass: [0, 0, 0]
+        automaticInertiaTensor: true
+        inertiaTensor: [1, 1, 1]
+        inertiaTensorRotation: [1, 0, 0, 0]
+        allowSleeping: true
+        collideKinematicVsNonDynamic: false
+        interpolation: scene
         allowedDOFs:
           translationX: true
           translationY: true
@@ -367,8 +389,11 @@ entities:
             source: none
             sourceEntity: 0
             samplesSize: 0
-            vertices: ~
-            indices: ~
+            isTrigger: false
+            vertices:
+              []
+            indices:
+              []
   - type: Entity
     entity: 1005
     name: Player
@@ -536,6 +561,21 @@ entities:
         buoyancy: 0
         waterDrag: 0.5
         waterAngularDrag: 0.01
+        material: ""
+        linearDamping: 0.05
+        angularDamping: 0.05
+        maxLinearVelocity: 500
+        maxAngularVelocity: 47.12389
+        automaticMass: true
+        mass: 1
+        automaticCenterOfMass: true
+        centerOfMass: [0, 0, 0]
+        automaticInertiaTensor: true
+        inertiaTensor: [1, 1, 1]
+        inertiaTensorRotation: [1, 0, 0, 0]
+        allowSleeping: true
+        collideKinematicVsNonDynamic: false
+        interpolation: scene
         allowedDOFs:
           translationX: true
           translationY: true
@@ -559,8 +599,11 @@ entities:
             source: none
             sourceEntity: 0
             samplesSize: 0
-            vertices: ~
-            indices: ~
+            isTrigger: false
+            vertices:
+              []
+            indices:
+              []
   - type: Entity
     entity: 1006
     name: Crate 1
@@ -673,7 +716,7 @@ entities:
             vertexCount: 36
             faceCulling: true
             textureShadow: false
-            overrideFields: 2147454975
+            overrideFields: 4294938623
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -721,6 +764,21 @@ entities:
         buoyancy: 0
         waterDrag: 0.5
         waterAngularDrag: 0.01
+        material: ""
+        linearDamping: 0.05
+        angularDamping: 0.05
+        maxLinearVelocity: 500
+        maxAngularVelocity: 47.12389
+        automaticMass: true
+        mass: 1
+        automaticCenterOfMass: true
+        centerOfMass: [0, 0, 0]
+        automaticInertiaTensor: true
+        inertiaTensor: [1, 1, 1]
+        inertiaTensorRotation: [1, 0, 0, 0]
+        allowSleeping: true
+        collideKinematicVsNonDynamic: false
+        interpolation: scene
         allowedDOFs:
           translationX: true
           translationY: true
@@ -744,8 +802,11 @@ entities:
             source: none
             sourceEntity: 0
             samplesSize: 0
-            vertices: ~
-            indices: ~
+            isTrigger: false
+            vertices:
+              []
+            indices:
+              []
   - type: Entity
     entity: 1007
     name: Crate 2
@@ -858,7 +919,7 @@ entities:
             vertexCount: 36
             faceCulling: true
             textureShadow: false
-            overrideFields: 2147454975
+            overrideFields: 4294938623
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -906,6 +967,21 @@ entities:
         buoyancy: 0
         waterDrag: 0.5
         waterAngularDrag: 0.01
+        material: ""
+        linearDamping: 0.05
+        angularDamping: 0.05
+        maxLinearVelocity: 500
+        maxAngularVelocity: 47.12389
+        automaticMass: true
+        mass: 1
+        automaticCenterOfMass: true
+        centerOfMass: [0, 0, 0]
+        automaticInertiaTensor: true
+        inertiaTensor: [1, 1, 1]
+        inertiaTensorRotation: [1, 0, 0, 0]
+        allowSleeping: true
+        collideKinematicVsNonDynamic: false
+        interpolation: scene
         allowedDOFs:
           translationX: true
           translationY: true
@@ -929,8 +1005,11 @@ entities:
             source: none
             sourceEntity: 0
             samplesSize: 0
-            vertices: ~
-            indices: ~
+            isTrigger: false
+            vertices:
+              []
+            indices:
+              []
   - type: Entity
     entity: 1008
     name: Crate 3
@@ -1043,7 +1122,7 @@ entities:
             vertexCount: 36
             faceCulling: true
             textureShadow: false
-            overrideFields: 2147454975
+            overrideFields: 4294938623
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -1091,6 +1170,21 @@ entities:
         buoyancy: 0
         waterDrag: 0.5
         waterAngularDrag: 0.01
+        material: ""
+        linearDamping: 0.05
+        angularDamping: 0.05
+        maxLinearVelocity: 500
+        maxAngularVelocity: 47.12389
+        automaticMass: true
+        mass: 1
+        automaticCenterOfMass: true
+        centerOfMass: [0, 0, 0]
+        automaticInertiaTensor: true
+        inertiaTensor: [1, 1, 1]
+        inertiaTensorRotation: [1, 0, 0, 0]
+        allowSleeping: true
+        collideKinematicVsNonDynamic: false
+        interpolation: scene
         allowedDOFs:
           translationX: true
           translationY: true
@@ -1114,8 +1208,11 @@ entities:
             source: none
             sourceEntity: 0
             samplesSize: 0
-            vertices: ~
-            indices: ~
+            isTrigger: false
+            vertices:
+              []
+            indices:
+              []
   - type: Entity
     entity: 1009
     name: Main Camera
@@ -1283,7 +1380,7 @@ entities:
             vertexCount: 3456
             faceCulling: true
             textureShadow: false
-            overrideFields: 2147454975
+            overrideFields: 4294938623
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -1345,18 +1442,13 @@ entities:
       prefab:
         name: Gem
         path: prefabs/Gem.prefab
-        guid: af9ae8e1e6dc41081e33ca4b5bd0c558
+        guid: c47849b1febd095765309f78c0a22381
     prefabInstance:
       version: 3
       memberIds:
         - [1002, 1011]
-      nested:
-        - prefabRootRegistryEntity: 1002
-          prefabPath: prefabs/Sparkle.prefab
-          memberIds:
-            - [1002, 1012]
   - type: Entity
-    entity: 1013
+    entity: 1012
     name: Gem B
     components:
       transform:
@@ -1458,7 +1550,7 @@ entities:
             vertexCount: 3456
             faceCulling: true
             textureShadow: false
-            overrideFields: 2147454975
+            overrideFields: 4294938623
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -1520,11 +1612,11 @@ entities:
       prefab:
         name: Gem
         path: prefabs/Gem.prefab
-        guid: af9ae8e1e6dc41081e33ca4b5bd0c558
+        guid: c47849b1febd095765309f78c0a22381
     prefabInstance:
       version: 3
       memberIds:
-        - [1002, 1014]
+        - [1002, 1013]
       overrides:
         - registryEntity: 1001
           properties:
@@ -1536,13 +1628,8 @@ entities:
           state:
             - active
           active: false
-      nested:
-        - prefabRootRegistryEntity: 1002
-          prefabPath: prefabs/Sparkle.prefab
-          memberIds:
-            - [1002, 1015]
   - type: Entity
-    entity: 1016
+    entity: 1014
     name: Gem C
     components:
       transform:
@@ -1644,7 +1731,7 @@ entities:
             vertexCount: 3456
             faceCulling: true
             textureShadow: false
-            overrideFields: 2147454975
+            overrideFields: 4294938623
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -1706,21 +1793,16 @@ entities:
       prefab:
         name: Gem Gold
         path: prefabs/Gem Gold.prefab
-        guid: fba2299035d47a598bb8cd416a968d19
+        guid: 88e803008f2dde4226c324f2a5574ae3
     prefabInstance:
       version: 3
       nested:
         - prefabRootRegistryEntity: 1001
           prefabPath: prefabs/Gem.prefab
           memberIds:
-            - [1002, 1017]
-          nested:
-            - prefabRootRegistryEntity: 1002
-              prefabPath: prefabs/Sparkle.prefab
-              memberIds:
-                - [1002, 1018]
+            - [1002, 1015]
   - type: Entity
-    entity: 1019
+    entity: 1016
     name: Gem D
     components:
       transform:
@@ -1822,7 +1904,7 @@ entities:
             vertexCount: 3456
             faceCulling: true
             textureShadow: false
-            overrideFields: 2147454975
+            overrideFields: 4294938623
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -1884,23 +1966,18 @@ entities:
       prefab:
         name: Gem
         path: prefabs/Gem.prefab
-        guid: af9ae8e1e6dc41081e33ca4b5bd0c558
+        guid: c47849b1febd095765309f78c0a22381
     prefabInstance:
       version: 3
       memberIds:
-        - [1002, 1020]
+        - [1002, 1017]
       overrides:
         - registryEntity: 1001
           properties:
             script:
               - scripts[0].spinSpeed
-      nested:
-        - prefabRootRegistryEntity: 1002
-          prefabPath: prefabs/Sparkle.prefab
-          memberIds:
-            - [1002, 1021]
   - type: Entity
-    entity: 1022
+    entity: 1018
     name: Gem E
     components:
       transform:
@@ -2002,7 +2079,7 @@ entities:
             vertexCount: 3456
             faceCulling: true
             textureShadow: false
-            overrideFields: 2147454975
+            overrideFields: 4294938623
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -2064,26 +2141,16 @@ entities:
       prefab:
         name: Gem Gold
         path: prefabs/Gem Gold.prefab
-        guid: fba2299035d47a598bb8cd416a968d19
+        guid: 88e803008f2dde4226c324f2a5574ae3
     prefabInstance:
       version: 3
       nested:
         - prefabRootRegistryEntity: 1001
           prefabPath: prefabs/Gem.prefab
           memberIds:
-            - [1002, 1023]
-          nested:
-            - prefabRootRegistryEntity: 1002
-              prefabPath: prefabs/Sparkle.prefab
-              memberIds:
-                - [1002, 1024]
-              overrides:
-                - registryEntity: 1002
-                  state:
-                    - name
-                  name: PickupBurst
+            - [1002, 1019]
   - type: Entity
-    entity: 1025
+    entity: 1020
     name: Beacon
     components:
       transform:
@@ -2225,7 +2292,7 @@ entities:
         enabled: true
         clips:
           - clip: assets/anim/Hover.anim
-            guid: 393c56252d5ddae7ada3fdb465012bee
+            guid: 6873fb3dd79bfcdaa26af7e9334d91d4
         defaultClip: ""
         playAutomatically: false
         speed: 1
@@ -2243,7 +2310,7 @@ entities:
                 value: Hover
                 defaultValue: Hover
   - type: Entity
-    entity: 1026
+    entity: 1021
     name: Robot
     components:
       transform:
@@ -2404,110 +2471,110 @@ entities:
         enabled: true
         filename: assets/models/robot_apose.gltf
         mergeStaticMeshes: false
-        skeleton: 1027
+        skeleton: 1022
         animations:
           []
         bonesIdMapping:
           - id: 1
-            entity: 1027
+            entity: 1022
           - id: 2
-            entity: 1028
+            entity: 1023
           - id: 3
-            entity: 1029
+            entity: 1024
           - id: 4
-            entity: 1030
+            entity: 1025
           - id: 5
-            entity: 1031
+            entity: 1026
           - id: 6
-            entity: 1032
+            entity: 1027
           - id: 7
-            entity: 1033
+            entity: 1028
           - id: 8
-            entity: 1034
+            entity: 1029
           - id: 9
-            entity: 1035
+            entity: 1030
           - id: 10
-            entity: 1036
+            entity: 1031
           - id: 11
-            entity: 1037
+            entity: 1032
           - id: 12
-            entity: 1038
+            entity: 1033
           - id: 13
-            entity: 1039
+            entity: 1034
           - id: 14
-            entity: 1040
+            entity: 1035
           - id: 15
-            entity: 1041
+            entity: 1036
           - id: 16
-            entity: 1042
+            entity: 1037
           - id: 17
-            entity: 1043
+            entity: 1038
           - id: 18
-            entity: 1044
+            entity: 1039
           - id: 19
-            entity: 1045
+            entity: 1040
           - id: 20
-            entity: 1046
+            entity: 1041
           - id: 21
-            entity: 1047
+            entity: 1042
           - id: 22
-            entity: 1048
+            entity: 1043
           - id: 23
-            entity: 1049
+            entity: 1044
         bonesNameMapping:
           - name: foot.L
-            entity: 1044
-          - name: foot.R
-            entity: 1048
-          - name: forearm.L
-            entity: 1035
-          - name: forearm.R
-            entity: 1040
-          - name: hand.L
-            entity: 1036
-          - name: hand.R
-            entity: 1041
-          - name: head
-            entity: 1031
-          - name: neck
-            entity: 1030
-          - name: pelvis
-            entity: 1027
-          - name: shin.L
-            entity: 1043
-          - name: shin.R
-            entity: 1047
-          - name: shoulder.L
-            entity: 1032
-          - name: shoulder.R
-            entity: 1037
-          - name: spine
-            entity: 1028
-          - name: spine.001
-            entity: 1029
-          - name: thigh.L
-            entity: 1042
-          - name: thigh.R
-            entity: 1046
-          - name: toe.L
-            entity: 1045
-          - name: toe.R
-            entity: 1049
-          - name: upper_arm.L
-            entity: 1033
-          - name: upper_arm.R
-            entity: 1038
-          - name: upper_arm_twist.L
-            entity: 1034
-          - name: upper_arm_twist.R
             entity: 1039
+          - name: foot.R
+            entity: 1043
+          - name: forearm.L
+            entity: 1030
+          - name: forearm.R
+            entity: 1035
+          - name: hand.L
+            entity: 1031
+          - name: hand.R
+            entity: 1036
+          - name: head
+            entity: 1026
+          - name: neck
+            entity: 1025
+          - name: pelvis
+            entity: 1022
+          - name: shin.L
+            entity: 1038
+          - name: shin.R
+            entity: 1042
+          - name: shoulder.L
+            entity: 1027
+          - name: shoulder.R
+            entity: 1032
+          - name: spine
+            entity: 1023
+          - name: spine.001
+            entity: 1024
+          - name: thigh.L
+            entity: 1037
+          - name: thigh.R
+            entity: 1041
+          - name: toe.L
+            entity: 1040
+          - name: toe.R
+            entity: 1044
+          - name: upper_arm.L
+            entity: 1028
+          - name: upper_arm.R
+            entity: 1033
+          - name: upper_arm_twist.L
+            entity: 1029
+          - name: upper_arm_twist.R
+            entity: 1034
         meshNodesMapping:
           []
         nodesIdMapping:
           []
     children:
       - type: Entity
-        entity: 1027
+        entity: 1022
         name: pelvis
         components:
           transform:
@@ -2526,7 +2593,7 @@ entities:
             fakeBillboard: false
             cylindricalBillboard: false
           bone:
-            model: 1026
+            model: 1021
             index: 0
             bindPosition: [0, 0.827, 0]
             bindRotation: [1, 0, 0, 0]
@@ -2534,7 +2601,7 @@ entities:
             offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -0.827, 0, 1]]
         children:
           - type: Entity
-            entity: 1028
+            entity: 1023
             name: spine
             components:
               transform:
@@ -2553,7 +2620,7 @@ entities:
                 fakeBillboard: false
                 cylindricalBillboard: false
               bone:
-                model: 1026
+                model: 1021
                 index: 1
                 bindPosition: [0, 0.1, 0]
                 bindRotation: [1, 0, 0, 0]
@@ -2561,7 +2628,7 @@ entities:
                 offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -0.927, 0, 1]]
             children:
               - type: Entity
-                entity: 1029
+                entity: 1024
                 name: spine.001
                 components:
                   transform:
@@ -2580,7 +2647,7 @@ entities:
                     fakeBillboard: false
                     cylindricalBillboard: false
                   bone:
-                    model: 1026
+                    model: 1021
                     index: 2
                     bindPosition: [0, 0.19, 0]
                     bindRotation: [1, 0, 0, 0]
@@ -2588,7 +2655,7 @@ entities:
                     offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.117, 0, 1]]
                 children:
                   - type: Entity
-                    entity: 1030
+                    entity: 1025
                     name: neck
                     components:
                       transform:
@@ -2607,7 +2674,7 @@ entities:
                         fakeBillboard: false
                         cylindricalBillboard: false
                       bone:
-                        model: 1026
+                        model: 1021
                         index: 3
                         bindPosition: [0, 0.24, 0]
                         bindRotation: [1, 0, 0, 0]
@@ -2615,7 +2682,7 @@ entities:
                         offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.357, 0, 1]]
                     children:
                       - type: Entity
-                        entity: 1031
+                        entity: 1026
                         name: head
                         components:
                           transform:
@@ -2634,14 +2701,14 @@ entities:
                             fakeBillboard: false
                             cylindricalBillboard: false
                           bone:
-                            model: 1026
+                            model: 1021
                             index: 4
                             bindPosition: [0, 0.08, 0]
                             bindRotation: [1, 0, 0, 0]
                             bindScale: [1, 1, 1]
                             offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.437, 0, 1]]
                   - type: Entity
-                    entity: 1032
+                    entity: 1027
                     name: shoulder.L
                     components:
                       transform:
@@ -2660,7 +2727,7 @@ entities:
                         fakeBillboard: false
                         cylindricalBillboard: false
                       bone:
-                        model: 1026
+                        model: 1021
                         index: 5
                         bindPosition: [0.06, 0.18, 0]
                         bindRotation: [0.7071066, 0, 0, -0.70710695]
@@ -2668,7 +2735,7 @@ entities:
                         offsetMatrix: [[0, 1, 0, 0], [-1, 0, 0, 0], [0, 0, 1, 0], [1.297, -0.06, 0, 1]]
                     children:
                       - type: Entity
-                        entity: 1033
+                        entity: 1028
                         name: upper_arm.L
                         components:
                           transform:
@@ -2687,7 +2754,7 @@ entities:
                             fakeBillboard: false
                             cylindricalBillboard: false
                           bone:
-                            model: 1026
+                            model: 1021
                             index: 6
                             bindPosition: [0, 0.12, 0]
                             bindRotation: [0.9396926, 0, 0, -0.3420201]
@@ -2695,7 +2762,7 @@ entities:
                             offsetMatrix: [[-0.642787, 0.766045, 0, 0], [-0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [1.109262, 0.695807, 0, 1]]
                         children:
                           - type: Entity
-                            entity: 1034
+                            entity: 1029
                             name: upper_arm_twist.L
                             components:
                               transform:
@@ -2714,7 +2781,7 @@ entities:
                                 fakeBillboard: false
                                 cylindricalBillboard: false
                               bone:
-                                model: 1026
+                                model: 1021
                                 index: 7
                                 bindPosition: [0, 0.168, 0]
                                 bindRotation: [1, 0, 0, 0]
@@ -2722,7 +2789,7 @@ entities:
                                 offsetMatrix: [[-0.642787, 0.766045, 0, 0], [-0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [1.109262, 0.527807, 0, 1]]
                             children:
                               - type: Entity
-                                entity: 1035
+                                entity: 1030
                                 name: forearm.L
                                 components:
                                   transform:
@@ -2741,7 +2808,7 @@ entities:
                                     fakeBillboard: false
                                     cylindricalBillboard: false
                                   bone:
-                                    model: 1026
+                                    model: 1021
                                     index: 8
                                     bindPosition: [0, 0.168, 0]
                                     bindRotation: [1, 0, 0, 0]
@@ -2749,7 +2816,7 @@ entities:
                                     offsetMatrix: [[-0.642787, 0.766045, 0, 0], [-0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [1.109262, 0.359807, 0, 1]]
                                 children:
                                   - type: Entity
-                                    entity: 1036
+                                    entity: 1031
                                     name: hand.L
                                     components:
                                       transform:
@@ -2768,14 +2835,14 @@ entities:
                                         fakeBillboard: false
                                         cylindricalBillboard: false
                                       bone:
-                                        model: 1026
+                                        model: 1021
                                         index: 9
                                         bindPosition: [0, 0.312, 0]
                                         bindRotation: [1, 0, 0, 0]
                                         bindScale: [1, 1, 1]
                                         offsetMatrix: [[-0.642787, 0.766045, 0, 0], [-0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [1.109262, 0.047807, 0, 1]]
                   - type: Entity
-                    entity: 1037
+                    entity: 1032
                     name: shoulder.R
                     components:
                       transform:
@@ -2794,7 +2861,7 @@ entities:
                         fakeBillboard: false
                         cylindricalBillboard: false
                       bone:
-                        model: 1026
+                        model: 1021
                         index: 10
                         bindPosition: [-0.06, 0.18, 0]
                         bindRotation: [0.7071066, 0, 0, 0.70710695]
@@ -2802,7 +2869,7 @@ entities:
                         offsetMatrix: [[0, -1, 0, 0], [1, 0, 0, 0], [0, 0, 1, 0], [-1.297, -0.06, 0, 1]]
                     children:
                       - type: Entity
-                        entity: 1038
+                        entity: 1033
                         name: upper_arm.R
                         components:
                           transform:
@@ -2821,7 +2888,7 @@ entities:
                             fakeBillboard: false
                             cylindricalBillboard: false
                           bone:
-                            model: 1026
+                            model: 1021
                             index: 11
                             bindPosition: [0, 0.12, 0]
                             bindRotation: [0.9396926, 0, 0, 0.3420201]
@@ -2829,7 +2896,7 @@ entities:
                             offsetMatrix: [[-0.642787, -0.766045, 0, 0], [0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [-1.109262, 0.695807, 0, 1]]
                         children:
                           - type: Entity
-                            entity: 1039
+                            entity: 1034
                             name: upper_arm_twist.R
                             components:
                               transform:
@@ -2848,7 +2915,7 @@ entities:
                                 fakeBillboard: false
                                 cylindricalBillboard: false
                               bone:
-                                model: 1026
+                                model: 1021
                                 index: 12
                                 bindPosition: [0, 0.168, 0]
                                 bindRotation: [1, 0, 0, 0]
@@ -2856,7 +2923,7 @@ entities:
                                 offsetMatrix: [[-0.642787, -0.766045, 0, 0], [0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [-1.109262, 0.527807, 0, 1]]
                             children:
                               - type: Entity
-                                entity: 1040
+                                entity: 1035
                                 name: forearm.R
                                 components:
                                   transform:
@@ -2875,7 +2942,7 @@ entities:
                                     fakeBillboard: false
                                     cylindricalBillboard: false
                                   bone:
-                                    model: 1026
+                                    model: 1021
                                     index: 13
                                     bindPosition: [0, 0.168, 0]
                                     bindRotation: [1, 0, 0, 0]
@@ -2883,7 +2950,7 @@ entities:
                                     offsetMatrix: [[-0.642787, -0.766045, 0, 0], [0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [-1.109262, 0.359807, 0, 1]]
                                 children:
                                   - type: Entity
-                                    entity: 1041
+                                    entity: 1036
                                     name: hand.R
                                     components:
                                       transform:
@@ -2902,14 +2969,14 @@ entities:
                                         fakeBillboard: false
                                         cylindricalBillboard: false
                                       bone:
-                                        model: 1026
+                                        model: 1021
                                         index: 14
                                         bindPosition: [0, 0.312, 0]
                                         bindRotation: [1, 0, 0, 0]
                                         bindScale: [1, 1, 1]
                                         offsetMatrix: [[-0.642787, -0.766045, 0, 0], [0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [-1.109262, 0.047807, 0, 1]]
           - type: Entity
-            entity: 1042
+            entity: 1037
             name: thigh.L
             components:
               transform:
@@ -2928,7 +2995,7 @@ entities:
                 fakeBillboard: false
                 cylindricalBillboard: false
               bone:
-                model: 1026
+                model: 1021
                 index: 15
                 bindPosition: [0.09, -0.05, 0]
                 bindRotation: [0, 0, 0.0124969985, 0.9999219]
@@ -2936,7 +3003,7 @@ entities:
                 offsetMatrix: [[-1, 0, 0, 0], [0, -0.999688, 0.024992, 0], [0, 0.024992, 0.999688, 0], [0.09, 0.776757, -0.019419, 1]]
             children:
               - type: Entity
-                entity: 1043
+                entity: 1038
                 name: shin.L
                 components:
                   transform:
@@ -2955,7 +3022,7 @@ entities:
                     fakeBillboard: false
                     cylindricalBillboard: false
                   bone:
-                    model: 1026
+                    model: 1021
                     index: 16
                     bindPosition: [0, 0.340106, 0]
                     bindRotation: [0.998841, -0.048133, 0, 0]
@@ -2963,7 +3030,7 @@ entities:
                     offsetMatrix: [[-1, 0, 0, 0], [0, -0.997459, -0.071248, 0], [0, -0.071248, 0.997459, 0], [0.09, 0.436495, 0.022657, 1]]
                 children:
                   - type: Entity
-                    entity: 1044
+                    entity: 1039
                     name: foot.L
                     components:
                       transform:
@@ -2982,7 +3049,7 @@ entities:
                         fakeBillboard: false
                         cylindricalBillboard: false
                       bone:
-                        model: 1026
+                        model: 1021
                         index: 17
                         bindPosition: [0, 0.35791, 0]
                         bindRotation: [0.8225885, 0.5686371, 0, 0]
@@ -2990,7 +3057,7 @@ entities:
                         offsetMatrix: [[-1, 0, 0, 0], [0, -0.41906, 0.907959, 0], [0, 0.907959, 0.41906, 0], [0.09, 0.04896, -0.065512, 1]]
                     children:
                       - type: Entity
-                        entity: 1045
+                        entity: 1040
                         name: toe.L
                         components:
                           transform:
@@ -3009,14 +3076,14 @@ entities:
                             fakeBillboard: false
                             cylindricalBillboard: false
                           bone:
-                            model: 1026
+                            model: 1021
                             index: 18
                             bindPosition: [0, 0.143178, 0]
                             bindRotation: [0.9767189, 0.21452303, 0, 0]
                             bindScale: [1, 1, 1]
                             offsetMatrix: [[-1, 0, 0, 0], [0, -3e-06, 1, 0], [0, 1, 3e-06, 0], [0.09, -0.112999, -0.02, 1]]
           - type: Entity
-            entity: 1046
+            entity: 1041
             name: thigh.R
             components:
               transform:
@@ -3035,7 +3102,7 @@ entities:
                 fakeBillboard: false
                 cylindricalBillboard: false
               bone:
-                model: 1026
+                model: 1021
                 index: 19
                 bindPosition: [-0.09, -0.05, 0]
                 bindRotation: [0, 0, 0.0124969985, 0.9999219]
@@ -3043,7 +3110,7 @@ entities:
                 offsetMatrix: [[-1, 0, 0, 0], [0, -0.999688, 0.024992, 0], [0, 0.024992, 0.999688, 0], [-0.09, 0.776757, -0.019419, 1]]
             children:
               - type: Entity
-                entity: 1047
+                entity: 1042
                 name: shin.R
                 components:
                   transform:
@@ -3062,7 +3129,7 @@ entities:
                     fakeBillboard: false
                     cylindricalBillboard: false
                   bone:
-                    model: 1026
+                    model: 1021
                     index: 20
                     bindPosition: [0, 0.340106, 0]
                     bindRotation: [0.998841, -0.048133, 0, 0]
@@ -3070,7 +3137,7 @@ entities:
                     offsetMatrix: [[-1, 0, 0, 0], [0, -0.997459, -0.071248, 0], [0, -0.071248, 0.997459, 0], [-0.09, 0.436495, 0.022657, 1]]
                 children:
                   - type: Entity
-                    entity: 1048
+                    entity: 1043
                     name: foot.R
                     components:
                       transform:
@@ -3089,7 +3156,7 @@ entities:
                         fakeBillboard: false
                         cylindricalBillboard: false
                       bone:
-                        model: 1026
+                        model: 1021
                         index: 21
                         bindPosition: [0, 0.35791, 0]
                         bindRotation: [0.8225885, 0.5686371, 0, 0]
@@ -3097,7 +3164,7 @@ entities:
                         offsetMatrix: [[-1, 0, 0, 0], [0, -0.41906, 0.907959, 0], [0, 0.907959, 0.41906, 0], [-0.09, 0.04896, -0.065512, 1]]
                     children:
                       - type: Entity
-                        entity: 1049
+                        entity: 1044
                         name: toe.R
                         components:
                           transform:
@@ -3116,14 +3183,14 @@ entities:
                             fakeBillboard: false
                             cylindricalBillboard: false
                           bone:
-                            model: 1026
+                            model: 1021
                             index: 22
                             bindPosition: [0, 0.143178, 0]
                             bindRotation: [0.9767189, 0.21452303, 0, 0]
                             bindScale: [1, 1, 1]
                             offsetMatrix: [[-1, 0, 0, 0], [0, -3e-06, 1, 0], [0, 1, 3e-06, 0], [-0.09, -0.112999, -0.02, 1]]
   - type: Entity
-    entity: 1050
+    entity: 1045
     name: PickupSound
     components:
       audiosource:
@@ -3145,7 +3212,7 @@ entities:
         attenuationRolloffFactor: 1
         dopplerFactor: 1
   - type: Entity
-    entity: 1051
+    entity: 1046
     name: PickupFX
     components:
       transform:
@@ -3171,13 +3238,13 @@ entities:
         texture: ~
         points: ~
   - type: Entity
-    entity: 1052
-    name: Particle System 2
+    entity: 1047
+    name: PickupBurst
     components:
       action:
         state: Stopped
         speed: 1
-        target: 1051
+        target: 1046
         ownedTarget: false
       particlesystem:
         enabled: true
@@ -3293,7 +3360,7 @@ entities:
           toScale: [1, 1, 1]
           function: LINEAR
   - type: Entity
-    entity: 1053
+    entity: 1048
     name: HUD
     components:
       transform:
@@ -3322,7 +3389,7 @@ entities:
             className: HudUI
             enabled: true
   - type: Entity
-    entity: 1054
+    entity: 1049
     name: Director
     components:
       transform:
@@ -3361,17 +3428,17 @@ entities:
                 displayName: Pickup Sound
                 type: EntityReference
                 ptrTypeName: AudioSource
-                value: 1050
+                value: 1045
                 defaultValue: 0
               - name: burst
                 displayName: Pickup Burst
                 type: EntityReference
                 ptrTypeName: ParticleSystem
-                value: 1024
+                value: 1047
                 defaultValue: 0
               - name: hud
                 displayName: HUD
                 type: EntityReference
                 ptrTypeName: UIDocument
-                value: 1053
+                value: 1048
                 defaultValue: 0

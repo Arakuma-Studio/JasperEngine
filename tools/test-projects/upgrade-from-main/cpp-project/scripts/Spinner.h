@@ -1,3 +1,6 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
 // The C++ script fixture of the upgrade test (tools/ci/upgrade_from_main): spins a target,
 // moves its own GameObject, prints the same kind of transcript the Lua game does.
 #pragma once

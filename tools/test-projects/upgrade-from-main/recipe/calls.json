@@ -233,7 +233,7 @@
   "arguments": {
    "kind": "lua",
    "name": "Title",
-   "content": "-- Title screen: an HTML UI menu. Enter (or a click on Play) starts the game.\n---@class Title : ScriptInstance\nlocal Title = {\n    properties = {\n        { name = \"nextScene\", displayName = \"Next Scene\", type = \"string\", default = \"Level1\" },\n        { name = \"startDelay\", displayName = \"Start Delay (frames)\", type = \"int\", default = 6 },\n    }\n}\n\nlocal T = require(\"lib.transcript\")\n\nfunction Title:init()\n    T.enter(\"Title\")\n    T.schedule(\"Title\", { { Input.KEY_ENTER, 30, 32 } })\n    self.doc = UIDocument(self.scene, self.entity)\n    self.startAt = -1\n    self.clicks = 0\n    self.onPlay = function(event)\n        self.clicks = self.clicks + 1\n        self:start(\"click\")\n    end\n    RegisterEvent(self, self.doc.onLoad, \"bind\")\n    self:bind()\n    RegisterEngineEvent(self, \"onUpdate\")\n    RegisterEngineEvent(self, \"onPostUpdate\")\nend\n\nfunction Title:bind()\n    local play = self.doc:getElementById(\"play\")\n    if play then play:addEventListener(\"click\", self.onPlay) end\nend\n\nfunction Title:start(how)\n    if self.startAt >= 0 then return end\n    self.startAt = T.frame + self.startDelay\n    local status = self.doc:getElementById(\"status\")\n    if status then\n        status.textContent = \"Starting (\" .. how .. \")\"\n        status.classList:add(\"ready\")\n    end\n    T.log(\"start\", how)\nend\n\nfunction Title:onUpdate()\n    if T.pressed(Input.KEY_ENTER) then self:start(\"enter\") end\n    local ticks = self.doc:getElementById(\"ticks\")\n    if ticks then ticks.textContent = \"frame \" .. T.frame end\n    if self.startAt >= 0 and T.frame == self.startAt then\n        T.log(\"load\", self.nextScene)\n        SceneManager.loadScene(self.nextScene)\n    end\nend\n\nfunction Title:onPostUpdate()\n    if T.frame % 10 == 0 then\n        local ticks = self.doc:getElementById(\"ticks\")\n        local status = self.doc:getElementById(\"status\")\n        T.log(\"ui\", ticks and ticks.textContent or \"?\", status and status.textContent or \"?\",\n              status ~= nil and status.classList:contains(\"ready\"), self.clicks)\n    end\n    T.step()\nend\n\nreturn Title\n",
+   "content": "-- Title screen: an HTML UI menu. Enter (or a click on Play) starts the game.\n---@class Title : ScriptInstance\nlocal Title = {\n    properties = {\n        { name = \"nextScene\", displayName = \"Next Scene\", type = \"string\", default = \"Level1\" },\n        { name = \"startDelay\", displayName = \"Start Delay (frames)\", type = \"int\", default = 6 },\n    }\n}\n\nlocal T = require(\"lib.transcript\")\n\nfunction Title:init()\n    T.enter(\"Title\")\n    T.schedule(\"Title\", { { Input.KEY_ENTER, 30, 32 } })\n    self.doc = UIDocument(self.scene, self.entity)\n    self.startAt = -1\n    self.clicks = 0\n    self.onPlay = function(event)\n        self.clicks = self.clicks + 1\n        self:begin(\"click\")\n    end\n    RegisterEvent(self, self.doc.onLoad, \"bind\")\n    self:bind()\n    RegisterEngineEvent(self, \"onUpdate\")\n    RegisterEngineEvent(self, \"onPostUpdate\")\nend\n\nfunction Title:bind()\n    local play = self.doc:getElementById(\"play\")\n    if play then play:addEventListener(\"click\", self.onPlay) end\nend\n\nfunction Title:begin(how)\n    if self.startAt >= 0 then return end\n    self.startAt = T.frame + self.startDelay\n    local status = self.doc:getElementById(\"status\")\n    if status then\n        status.textContent = \"Starting (\" .. how .. \")\"\n        status.classList:add(\"ready\")\n    end\n    T.log(\"start\", how)\nend\n\nfunction Title:onUpdate()\n    if T.pressed(Input.KEY_ENTER) then self:begin(\"enter\") end\n    local ticks = self.doc:getElementById(\"ticks\")\n    if ticks then ticks.textContent = \"frame \" .. T.frame end\n    if self.startAt >= 0 and T.frame == self.startAt then\n        T.log(\"load\", self.nextScene)\n        SceneManager.loadScene(self.nextScene)\n    end\nend\n\nfunction Title:onPostUpdate()\n    if T.frame % 10 == 0 then\n        local ticks = self.doc:getElementById(\"ticks\")\n        local status = self.doc:getElementById(\"status\")\n        T.log(\"ui\", ticks and ticks.textContent or \"?\", status and status.textContent or \"?\",\n              status ~= nil and status.classList:contains(\"ready\"), self.clicks)\n    end\n    T.step()\nend\n\nreturn Title\n",
    "overwrite": true
   }
  },
@@ -774,13 +774,13 @@
  {
   "tool": "get_scene_tree",
   "arguments": {
-   "scene": "735800631"
+   "scene": "505242426"
   }
  },
  {
   "tool": "set_script_properties",
   "arguments": {
-   "scene": "735800631",
+   "scene": "505242426",
    "entity": "1001",
    "values": {
     "value": 10
@@ -790,7 +790,7 @@
  {
   "tool": "set_transform",
   "arguments": {
-   "scene": "735800631",
+   "scene": "505242426",
    "entity": "1001",
    "scale": [
     0.55,
@@ -803,7 +803,7 @@
   "tool": "prefab_mode",
   "arguments": {
    "action": "save",
-   "scene": "735800631"
+   "scene": "505242426"
   }
  },
  {
@@ -999,16 +999,24 @@
   }
  },
  {
-  "tool": "create_particles",
+  "tool": "create_entity",
   "arguments": {
    "scene": "scenes/Level1.scene",
-   "preset": "sparks",
+   "type": "points",
    "name": "PickupFX",
    "position": [
     0,
     1,
     0
-   ],
+   ]
+  }
+ },
+ {
+  "tool": "create_particles",
+  "arguments": {
+   "scene": "scenes/Level1.scene",
+   "preset": "sparks",
+   "emitter_entity": "PickupFX",
    "autoplay": false,
    "loop": false,
    "bursts": [
@@ -1029,7 +1037,7 @@
   "tool": "rename_entity",
   "arguments": {
    "scene": "scenes/Level1.scene",
-   "entity": "1024",
+   "entity": "1047",
    "name": "PickupBurst"
   }
  },
