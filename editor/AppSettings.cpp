@@ -339,6 +339,7 @@ bool AppSettings::loadSettings() {
                 if (panelsNode["animator"]) panelVisibility.animator = panelsNode["animator"].as<bool>();
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
+                if (panelsNode["audioMixer"]) panelVisibility.audioMixer = panelsNode["audioMixer"].as<bool>();
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
                 if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
                 if (panelsNode["spriteNormals"]) panelVisibility.spriteNormals = panelsNode["spriteNormals"].as<bool>();
@@ -354,6 +355,13 @@ bool AppSettings::loadSettings() {
                 if (gameNode["device"]) gameViewSettings.device = gameNode["device"].as<std::string>();
                 if (gameNode["orientation"]) gameViewSettings.orientation = gameNode["orientation"].as<int>();
                 if (gameNode["language"]) gameViewSettings.language = gameNode["language"].as<std::string>();
+                if (gameNode["resolution"] && gameNode["resolution"].IsMap()) {
+                    const YAML::Node& resolution = gameNode["resolution"];
+                    if (resolution["name"]) gameViewSettings.resolution = resolution["name"].as<std::string>();
+                    if (resolution["width"]) gameViewSettings.resolutionWidth = resolution["width"].as<int>();
+                    if (resolution["height"]) gameViewSettings.resolutionHeight = resolution["height"].as<int>();
+                    if (resolution["dpi"]) gameViewSettings.resolutionDpi = resolution["dpi"].as<float>();
+                }
                 if (gameNode["device_overlay"]) gameViewSettings.deviceOverlay = gameNode["device_overlay"].as<bool>();
                 if (gameNode["safe_area_outline"]) gameViewSettings.safeAreaOutline = gameNode["safe_area_outline"].as<bool>();
                 if (const YAML::Node customNode = gameNode["custom_device"]; customNode && customNode.IsMap()) {
@@ -365,6 +373,7 @@ bool AppSettings::loadSettings() {
                     if (customNode["bottom"]) custom.bottom = customNode["bottom"].as<float>();
                     if (customNode["left"]) custom.left = customNode["left"].as<float>();
                     if (customNode["corner_radius"]) custom.cornerRadius = customNode["corner_radius"].as<float>();
+                    if (customNode["dpi"]) custom.dpi = customNode["dpi"].as<float>();
                 }
             }
         }
@@ -515,6 +524,7 @@ bool AppSettings::saveSettings() {
         panelsNode["animator"] = panelVisibility.animator;
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
+        panelsNode["audioMixer"] = panelVisibility.audioMixer;
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;
         panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
         panelsNode["spriteNormals"] = panelVisibility.spriteNormals;
@@ -529,6 +539,14 @@ bool AppSettings::saveSettings() {
         if (!gameViewSettings.device.empty()) gameNode["device"] = gameViewSettings.device;
         if (gameViewSettings.orientation != GameViewSettings{}.orientation) gameNode["orientation"] = gameViewSettings.orientation;
         if (!gameViewSettings.language.empty()) gameNode["language"] = gameViewSettings.language;
+        if (!gameViewSettings.resolution.empty()) {
+            YAML::Node resolution;
+            resolution["name"] = gameViewSettings.resolution;
+            resolution["width"] = gameViewSettings.resolutionWidth;
+            resolution["height"] = gameViewSettings.resolutionHeight;
+            if (gameViewSettings.resolutionDpi > 0.0f) resolution["dpi"] = gameViewSettings.resolutionDpi;
+            gameNode["resolution"] = resolution;
+        }
         if (!gameViewSettings.deviceOverlay) gameNode["device_overlay"] = false;
         if (gameViewSettings.safeAreaOutline) gameNode["safe_area_outline"] = true;
         if (gameViewSettings.custom != CustomDeviceSettings{}) {
@@ -541,6 +559,7 @@ bool AppSettings::saveSettings() {
             customNode["bottom"] = custom.bottom;
             customNode["left"] = custom.left;
             customNode["corner_radius"] = custom.cornerRadius;
+            if (custom.dpi > 0.0f) customNode["dpi"] = custom.dpi;
             gameNode["custom_device"] = customNode;
         }
         editorNode["game_view"] = gameNode;

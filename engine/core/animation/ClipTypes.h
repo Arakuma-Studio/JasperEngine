@@ -8,7 +8,8 @@
 // - Thread-safety: plain types.
 // - Invariants: the enum order is the canonical order of tracks with the same path in files
 //   (Position < Rotation < Scale < Morph < Lattice < Property); appending is allowed, reordering
-//   is not.
+//   is not. Humanoid tracks (anim-retarget 6.1) have no path: they sort after every path track,
+//   by channel, then by bone.
 
 #ifndef CLIP_TYPES_H
 #define CLIP_TYPES_H
@@ -27,8 +28,31 @@ namespace jasperengine{
         Scale,      // Transform.scale, [x, y, z]
         Morph,      // MeshComponent morph weights, one per morph target
         Lattice,    // LatticeComponent offsets of `points` (flat indices), [x, y, z] each
-        Property    // reserved (spec 2.3): kept and written back, never sampled
+        Property,   // reserved (spec 2.3): kept and written back, never sampled
+        // humanoid clips (anim-retarget 6.1): identified by `humanBone`, never by path
+        Humanoid,           // a slot's joint rotation E relative to the neutral pose, or an extra
+                            // bone's canonical rest delta: quaternion [x, y, z, w]
+        HumanoidPosition    // the body (hips) offset or a foot IK goal: [left, up, forward] in
+                            // humanScale units, relative to the neutral hips
     };
+
+    // the two humanoid channels
+    inline bool isHumanoidChannel(ClipChannel channel){
+        return channel == ClipChannel::Humanoid || channel == ClipChannel::HumanoidPosition;
+    }
+    // channels whose keys are quaternions / three-float vectors
+    inline bool isRotationChannel(ClipChannel channel){
+        return channel == ClipChannel::Rotation || channel == ClipChannel::Humanoid;
+    }
+    inline bool isVectorChannel(ClipChannel channel){
+        return channel == ClipChannel::Position || channel == ClipChannel::Scale || channel == ClipChannel::HumanoidPosition;
+    }
+
+    // `humanBone` of a HumanoidPosition track
+    constexpr int HUMANOID_POSITION_HIPS = 0;
+    constexpr int HUMANOID_POSITION_LEFT_FOOT = 1;
+    constexpr int HUMANOID_POSITION_RIGHT_FOOT = 2;
+    constexpr int HUMANOID_POSITION_COUNT = 3;
 
     // Unity's WrapMode. Default only in Animation Player clip entries: the clip's own.
     enum class ClipWrapMode : uint8_t {

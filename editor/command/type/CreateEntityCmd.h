@@ -76,6 +76,9 @@ namespace jasperengine::editor{
         PARTICLE_SYSTEM_LEGACY,
         // a version 2 Particle System drawn as GL points on its own GameObject (billboards only)
         PARTICLE_SYSTEM_POINTS,
+        // a Points emitter in UI units under a UI element and its Particle System child
+        // (unscaled time, local space): particles drawn in canvas order, clipped by panels
+        UI_PARTICLE_SYSTEM,
         POINTS,
         LINE_RENDERER,
         TRAIL_RENDERER,

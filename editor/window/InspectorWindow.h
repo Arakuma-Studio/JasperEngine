@@ -349,6 +349,14 @@ namespace jasperengine::editor{
         void clearVertexAnimatorPreviewScene(uint32_t sceneId);
         // the inspected .vat (Project window click)
         void drawVatAsset(const std::filesystem::path& asset);
+        // InspectorWindowCamera.cpp (camera shake spec 9)
+        void drawCameraShakerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawCameraFollowComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawShakePresetAsset(const std::filesystem::path& asset);
+        // the Test strip's edit-mode preview stops once its GameObject (or .shake) is not shown
+        void syncCameraShakePreview(SceneProject* shown, const std::vector<Entity>& selection);
+        // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
+        void drawAudioMixerAsset(const std::filesystem::path& asset);
         // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
         void drawPhysicsMaterialAsset(const std::filesystem::path& asset);
         // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo
@@ -692,6 +700,9 @@ namespace jasperengine::editor{
         // the morph target weights of a mesh with blend shapes (names from its model)
         void drawBlendShapes(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Model's Rig foldout (anim-retarget 9): Animation Type, the Avatar's status, Configure
+        // Avatar..., human scale (InspectorModelRig.cpp)
+        void drawModelRig(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         void drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawScrollbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -702,6 +713,7 @@ namespace jasperengine::editor{
         void drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPanelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawRectTransformComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

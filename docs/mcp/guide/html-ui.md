@@ -548,6 +548,39 @@ colour is multiplied by the element's `opacity`):
 Each blurred shadow, glow or blur of a text draws through an offscreen layer: fine for titles
 and counters, not for long body text.
 
+### Animated text: `text-effect`
+
+The engine's `text-effect` (inherited) animates each character, with the formulas of the native
+Text Effect component (`jasper://docs/ui`): a comma list of functions, applied in order, omitted
+trailing arguments taking their defaults:
+
+| Function | Arguments (defaults) |
+|---|---|
+| `wave()` | amplitude `<length>` (0.15em), period `<time>` (1.5s), phase step `<angle>` (0.3rad) |
+| `bounce()` | `<length>` (0.3em), `<time>` (1s), spread 0..1 (0.5) |
+| `shake()` | `<length>` (0.05em), frequency Hz (12) |
+| `pulse()` | scale change (0.15), `<time>` (1s), spread (0.5) |
+| `typewriter()` | characters per second (30), fade `<time>` (0s) |
+| `fade-in()` | `<time>` (0.5s), spread (0.5): one-shot |
+| `grow()`, `unfold()` | `<time>` (0.5s), spread (0.5), amplitude (1: the whole change, TMP's Amplitude): one-shot |
+| `rainbow()` | `<time>` (2s), hue step `<angle>` (20deg), saturation `%` (80%), lightness `%` (60%) |
+| `gradient()` | `<time>` (1.5s), `multiply` / `add` / `replace` (multiply), colour stops `<color> [<percentage>]` |
+
+```css
+h1 { text-effect: wave(0.12em 1.5s), gradient(1.5s add #ffffff, #ffd040); }
+.dialog p { text-effect: typewriter(40 0.05s); text-effect-iteration: 1; }
+```
+
+The index runs on across elements (`Hello <b>World</b>` waves as one text) and lines; outlines and
+shadows (`font-effect`, `text-shadow`) follow each glyph. `text-effect-iteration: infinite |
+<integer>` repeats the one-shot functions (typewriter, fade-in, grow, unfold), then `texteffectend`
+(bubbles) fires at the element that declares the effect; `text-effect-time: ui` (default, unscaled:
+runs at `Engine.timeScale = 0`) or `game`. `doc:setReducedMotion(true)` holds the motion functions
+still (wave, bounce, shake, pulse, grow, unfold; an effect of only those still ends). Lua:
+`el.style.textEffect = "bounce()"` (set, changed or `none` at runtime; new content types again, a
+new line wrap does not), `el:restartTextEffect()` (on any element of the effect: all of it). An animating text regenerates its glyphs each frame (never its layout):
+cheap for titles and dialog lines.
+
 ### CSS units, fonts and icons
 
 - `px` is a canvas pixel; `vw`/`vh` (and `dvh`, `svh`, `lvh`) are the canvas, which has one
@@ -1177,6 +1210,36 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
   `HTMLUI-HTML-0028`), picture-in-picture, `preservesPitch` (pitch follows `playbackRate`),
   `::-webkit-media-controls-*`, HDR (8-bit SDR is shown; 10-bit is decoded and rounded).
 
+### Particles: `<particle-system>`
+
+`<particle-system src="fx/confetti.prefab" autoplay loop time="ui" scale="1">` plays a prefab's
+Particle System (a prefab whose GameObjects have a Particle System and its Points emitter: texture,
+sprite frames, blending) and draws its particles in document order: above what comes before it,
+below what comes after, inside the element's clip (`overflow: hidden`) and transform. The emitter
+is at the centre of its content box (0 x 0 by default: give it a size or position it), one prefab
+unit is `scale` CSS px, y up. `time="ui"` (default) plays while the game is paused, `game` follows
+`Engine.timeScale`; `loop="false"` plays once (the prefab's own setting otherwise); without
+`autoplay` it waits for `el:play()`.
+
+```html
+<div class="panel" style="overflow: hidden">
+  <particle-system id="confetti" src="fx/confetti.prefab" autoplay scale="40" style="position: absolute; left: 50%; top: 30%"></particle-system>
+  <button id="again">Play again</button>
+</div>
+```
+
+Lua: `el:play()`, `el:pause()`, `el:stop()`, `el:clear()`, `el:isPlaying()`,
+`el:getParticleSystem()` (the system of its hidden GameObject: every `ParticleSystem` API works;
+`nil` until the element's first update made the prefab, e.g. in `onLoad`, in edit mode, or when its
+`src` failed); event `complete` when a system that does not loop stops. `play()` / `pause()` /
+`stop()` before the prefab exists are queued (the last one applies, over `autoplay`). The prefab is
+made on a hidden GameObject of the document's scene (not in the Hierarchy, not saved; none of its
+renderers draws) and goes, with all its children, with the element, its document or a new `src`.
+Screen and texture-mode (world) documents both work. Prefabs exist in Play and in exported games: in
+edit mode the element is empty. A `src` that names no prefab with a Particle System logs
+`HTMLUI-HTML-0029` and adds it to the document's diagnostics (`inspect_ui`). Keep a system under
+about 1000 particles (one mesh is rebuilt each frame).
+
 ### Fonts
 
 - Built in: Roboto and Noto Sans Arabic; every generic family maps to them.
@@ -1442,6 +1505,17 @@ The page is the canvas, so responsiveness is about the canvas size:
   [1920, 1080], [1024, 768], [720, 1280]]}` runs every check at each size, and
   `inspect_ui {"viewport": [720, 1280]}` returns the tree laid out at that size (both restore
   the real size). For a screenshot at another aspect, `configure_game_view {"aspect": "9:16"}`.
+
+### UI scaling (Canvas Scaler)
+
+Screen documents lay out in the scene's **UI size** when a Canvas Scaler scales it
+(`graphics.ui_scale`, the scene setting `canvas_scaler`; modes and formulas: `jasper://docs/ui`),
+the canvas above otherwise (the default, Follow Game Canvas). With Scale With Screen Size 1920 x
+1080 and `match_mode: expand`, `100vw` x `100vh` is 1920 x 1440 on a 4:3 screen and 2400 x 1080 on
+a 20:9 one: design for the reference, let flex and `%` take the extra room. Text is rasterized at
+the screen's pixels either way. Preview real devices with `configure_game_view {"resolution":
+"2400x1080"}` (or a preset, `"WxH@dpi"`, `"free"`), then `screenshot`; `getBoundingClientRect()`
+of `body` is the UI size.
 
 ### Safe areas (notches)
 

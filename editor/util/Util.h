@@ -197,11 +197,17 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".controller";
         }
 
+        // Shake Presets (CameraShakerComponent::startPreset, CameraShake.shake("x.shake"))
+        inline static bool isShakePresetFile(const std::string& path) {
+            return fileExtension(path) == ".shake";
+        }
+
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
                    isHtmlFile(path) || isCssFile(path) || isPoseAnimationFile(path) || isAnimationClipFile(path) ||
-                   isAvatarMaskFile(path) || isAnimatorControllerFile(path);
+                   isAvatarMaskFile(path) || isAnimatorControllerFile(path) ||
+                   isShakePresetFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

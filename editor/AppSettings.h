@@ -21,6 +21,7 @@ struct PanelVisibilitySettings {
     bool animator = false;
     bool terrain = false;
     bool textureSynthesis = false;
+    bool audioMixer = false;
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
     bool spriteNormals = false;
@@ -37,6 +38,7 @@ struct PanelVisibilitySettings {
             && animator == other.animator
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
+            && audioMixer == other.audioMixer
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
             && spriteNormals == other.spriteNormals
@@ -58,10 +60,12 @@ struct CustomDeviceSettings {
     float bottom = 0.0f;
     float left = 0.0f;
     float cornerRadius = 0.0f;
+    // Screen.dpi (Constant Physical Size); 0: the computer's
+    float dpi = 0.0f;
 
     bool operator==(const CustomDeviceSettings& other) const {
         return width == other.width && height == other.height && top == other.top && right == other.right
-            && bottom == other.bottom && left == other.left && cornerRadius == other.cornerRadius;
+            && bottom == other.bottom && left == other.left && cornerRadius == other.cornerRadius && dpi == other.dpi;
     }
     bool operator!=(const CustomDeviceSettings& other) const { return !(*this == other); }
 };
@@ -77,6 +81,12 @@ struct GameViewSettings {
     std::string device;
     int orientation = 1;
     std::string language;
+    // a fixed resolution (window/GameResolutions.h): the game renders at that size, fitted to
+    // the view; "" = the aspect above (the view's own size). A device's screen wins over it.
+    std::string resolution;
+    int resolutionWidth = 0;
+    int resolutionHeight = 0;
+    float resolutionDpi = 0.0f;
     // the device's screen drawn over the game (rounded corners, cutout, home indicator) and
     // the safe area outlined (safe-area spec 6.6)
     bool deviceOverlay = true;
@@ -87,6 +97,8 @@ struct GameViewSettings {
         return aspect == other.aspect && scale == other.scale
             && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
             && device == other.device && orientation == other.orientation && language == other.language
+            && resolution == other.resolution && resolutionWidth == other.resolutionWidth
+            && resolutionHeight == other.resolutionHeight && resolutionDpi == other.resolutionDpi
             && deviceOverlay == other.deviceOverlay && safeAreaOutline == other.safeAreaOutline && custom == other.custom;
     }
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }

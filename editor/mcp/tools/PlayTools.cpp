@@ -9,6 +9,7 @@
 //   eval_lua              run Lua in the game's Lua state, results as JSON
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
+#include "camera/ShakerRuntime.h"
 #include "object/physics/Joint3D.h"
 #include "object/physics/Rigidbody.h"
 #include "McpTools.h"
@@ -32,6 +33,8 @@
 #include "Platform.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
+#include "audio/AudioMixer.h"
+#include "subsystem/AudioSystem.h"
 #include "Project.h"
 #include "Screen.h"
 #include "command/CommandHandle.h"
@@ -606,6 +609,20 @@ Json playInputJson() {
     return {{"actions", actions}, {"touches", Input::getTouchCount()}, {"keys_held", keys}};
 }
 
+// What the game's audio does now (get_play_state while playing): the voices, and the mixer
+// groups that are audible (above -60 dB)
+Json playAudioJson() {
+    Json meters = Json::object();
+    for (const std::string& group : AudioMixer::getGroupNames()) {
+        const float db = AudioMixer::getMeterDb(group);
+        if (db > -60.0f) meters[group] = std::round(db * 10.0f) / 10.0f;
+    }
+    Json out = {{"voices", AudioSystem::getVoiceCount()}, {"mixer_meters", meters}};
+    if (!AudioSystem::isOutputAvailable()) out["output"] = "none (mixing without a device)";
+    if (AudioSystem::isListenerPaused()) out["listener_paused"] = true;
+    return out;
+}
+
 } // namespace
 
 // ================================================================== shared (w3)
@@ -706,6 +723,7 @@ Json playStateJson(McpContext& ctx) {
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     if (!s.held.empty()) out["held_input"] = heldInputJson();
     if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
+    if (playId != NULL_PROJECT_SCENE && s.current.active) out["audio"] = playAudioJson();
     // script coroutines and pending timers of the game (get_runtime_entity lists them per script)
     out["coroutines"] = ScriptScheduler::coroutineCount();
     out["timers"] = ScriptScheduler::timerCount();
@@ -2164,6 +2182,40 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
     return scripts;
 }
 
+// camera shake spec 10: a Camera Shaker's play state and a Camera Follow's motion (read only)
+Json shakerRuntimeJson(const CameraShakerComponent& shaker) {
+    Json instances = Json::array();
+    float trauma = 0.0f;
+    Vector3 position(0, 0, 0), rotation(0, 0, 0);
+    if (const camera::ShakerRuntime* runtime = shaker.runtime.get()) {
+        for (const camera::ShakerInstanceEntry& entry : runtime->instances) {
+            const char* state = "stopped";
+            switch (entry.instance.getState()) {
+                case camera::ShakeState::FadingIn: state = "fading_in"; break;
+                case camera::ShakeState::Sustained: state = "sustained"; break;
+                case camera::ShakeState::FadingOut: state = "fading_out"; break;
+                default: break;
+            }
+            if (entry.instance.isPaused() && !entry.instance.isFinished()) state = "paused";
+            instances.push_back({{"preset", entry.presetName}, {"state", state},
+                                 {"strength", McpValues::number(entry.instance.getCurrentStrength())}});
+        }
+        trauma = runtime->trauma.trauma;
+        position = runtime->offsetPosition;
+        rotation = runtime->offsetRotation;
+    }
+    return {{"instances", instances}, {"trauma", McpValues::number(trauma)},
+            {"offset_position", McpValues::toJson(position)}, {"offset_rotation", McpValues::toJson(rotation)}};
+}
+
+Json followRuntimeJson(const CameraFollowComponent& follow) {
+    Json runtime = {{"velocity", McpValues::toJson(follow.velocity)}, {"desired", McpValues::toJson(follow.desired)},
+                    {"placed", follow.placed}};
+    if (follow.foreignWriteDetected) runtime["foreign_write"] = true;
+    if (follow.targetPersistent) runtime["target_persistent"] = true;
+    return runtime;
+}
+
 // the live state of a 2D joint (Unity's read-outs): forces N, torques N m, points, engine angle units
 Json joint2DReadoutsJson(Scene* scene, Entity entity) {
     Joint2D joint(scene, entity);
@@ -2326,6 +2378,11 @@ void getRuntimeEntityTool(const CallPtr& call) {
                     props[name] = "<unreadable>";
                 }
             }
+        }
+        if (type == ComponentType::CameraShakerComponent) {
+            props["runtime"] = shakerRuntimeJson(sp->scene->getComponent<CameraShakerComponent>(entity));
+        } else if (type == ComponentType::CameraFollowComponent) {
+            props["runtime"] = followRuntimeJson(sp->scene->getComponent<CameraFollowComponent>(entity));
         }
         components[componentNameOf(type)] = props;
     }
@@ -3753,7 +3810,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), "
+            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), audio "
+            "(voices, mixer_meters dB), "
             "console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), "
             "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures), safe_area; stopped: play_would_start.";
         tool.inputSchema = object({});

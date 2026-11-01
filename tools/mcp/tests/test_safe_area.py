@@ -262,16 +262,27 @@ async def test_html_env_is_the_live_inset(ed: Editor):
 
 async def test_custom_device_and_none(ed: Editor):
     s = await setup(ed)
-    view = await ed.call("configure_game_view", custom_device={"width": 1000, "height": 2000,
+    # a resolution preset is a size without insets; a device's screen wins over it
+    view = await ed.call("configure_game_view", device="none", resolution="1080x2400")
+    near(ed, view["safe_area"], [0, 0, CANVAS[0], CANVAS[1]], "a resolution preset: no insets", 0.01)
+    view = await ed.call("configure_game_view", custom_device={"width": 1000, "height": 2000, "dpi": 420,
                                                               "insets": {"top": 200, "bottom": 100}, "corner_radius": 50})
     ed.check_eq(view["device"], "custom")
     ed.check_eq(view["custom_device"]["insets"]["top"], 200)
+    ed.check_eq(view["custom_device"]["dpi"], 420)
+    ed.check_eq(view["render_size"], [1000, 2000])
     expected = edit_expected((0, 200, 0, 100), (1000, 2000))
     near(ed, view["safe_area"], expected, "the custom device's safe area", 1.5)
     bad = await ed.call_raw("configure_game_view", {"custom_device": {"width": "wide"}})
     ed.check(bad.is_error and "custom_device" in bad.text, bad.text)
+    try:
+        await ed.call("play", action="start", scene=s["scene"])
+        await ed.call("wait", frames=3)
+        ed.check_eq(await lua(ed, "return Screen.dpi"), [420], "the custom device's dpi is Screen.dpi")
+    finally:
+        await ed.call("play", action="stop")
 
-    view = await ed.call("configure_game_view", device="none")
+    view = await ed.call("configure_game_view", device="none", resolution="free")
     near(ed, view["safe_area"], [0, 0, CANVAS[0], CANVAS[1]], "no device: the whole canvas", 0.01)
     try:
         await ed.call("play", action="start", scene=s["scene"])

@@ -72,9 +72,11 @@ namespace {
         info.model = editor::ProjectChecks::projectRelative(project->getProjectPath(), modelFile);
         pose::HumanoidOverrides overrides;
         if (!readOverrides(project, sidecarOf(modelFile), overrides, info.notes, info.error)){
+            info.sidecarError = info.error;
             return;
         }
-        pose::Skeleton skeleton;
+        info.overrides = overrides;
+        pose::Skeleton& skeleton = info.skeleton;
         if (!pose::buildSkeleton(scene, model, skeleton, info.boneEntities, &info.bridges) || skeleton.bones.empty()){
             info.error = info.model + " has no skeleton (bones): pose animations need a skinned humanoid model";
             return;
@@ -92,9 +94,14 @@ namespace {
             info.error = info.model + ": not a usable humanoid: " + error;
             return;
         }
+        // the Avatar's fingers, eyes and jaw (anim-retarget 6.3; a bad override is said, the body
+        // map still works: the runtime's fallback, pose::resolveHumanoid) and its twist
+        // corrections (6.2: they move the neutral pose)
+        pose::resolveExtraBonesOrAuto(skeleton, info.humanoid, overrides.extraBones, info.extra, &info.extraError, &info.notes);
         auto rig = std::make_shared<pose::PoseRig>();
         rig->setSkin(pose::buildSkin(scene, model, skeleton, info.boneEntities));
-        if (!rig->build(skeleton, info.humanoid, &error)){
+        const std::array<float, pose::HUMAN_BONE_COUNT> twist = overrides.twistDegrees();
+        if (!rig->build(skeleton, info.humanoid, &error, &twist)){
             info.error = info.model + ": " + error;
             return;
         }

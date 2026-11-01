@@ -282,7 +282,7 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 | `Panel(...):getPanelComponent()` | `onMove` / `onResize` | none / `width, height` |
 | `InputField(...):getInputFieldComponent()` | `onChange`, `onSubmit` | none |
 | `Action(...):getActionComponent()` (any Action/Tween/Animation entity) | `onStart`, `onPause`, `onStop`, `onStep` | none |
-| `AudioSource(...):getAudioSourceComponent()` | `onStart`, `onPause`, `onStop` | none |
+| `AudioSource(...):getAudioSourceComponent()` | `onStart` (play, playOnAwake, a resume), `onPause`, `onStop` (`stop()`, `fadeOut`, the natural end of a non-looping clip, a voice stolen) | none |
 | `PoseAnimator(...):getPoseAnimatorComponent()` | `onFinish` | none |
 | `self.scene:getPhysicsSystem()` (2D) | `beginContact2D`, `endContact2D` | `bodyA, shapeA, bodyB, shapeB` (Rigidbody2D, index, Rigidbody2D, index) |
 | same | `beginSensorContact2D`, `endSensorContact2D` | `sensorBody, sensorShape, visitorBody, visitorShape` |
@@ -981,6 +981,7 @@ Entities are plain integers (`0` = none).
 | `physics2DSubSteps` (integer, rw) | Box2D sub-steps of each fixed step, 1-16 (default 4); the scene setting `physics_2d_sub_steps` |
 | `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality`, `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
+| `getCanvasScaler()` | the scene's `CanvasScaler` (UI scale, `jasper://docs/ui`): rw `uiScaleMode` (`UIScaleMode.FollowGameCanvas`/`ConstantPixelSize`/`ScaleWithScreenSize`/`ConstantPhysicalSize`), `scaleFactor`, `referenceResolution` (Vector2), `screenMatchMode` (`ScreenMatchMode.MatchWidthOrHeight`/`Expand`/`Shrink`), `matchWidthOrHeight` (0 width..1 height), `physicalUnit` (`PhysicalUnit.Centimeters`/`Millimeters`/`Inches`/`Points`/`Picas`), `fallbackScreenDPI`, `useProjectDefault`; ro `canvasSize` (Vector2, UI units now), `appliedScaleFactor`. Reads give what applies; setting a field of a scene on the project default overrides from it. Applies from the next frame |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
 `gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw),
@@ -988,8 +989,28 @@ Entities are plain integers (`0` = none).
 `createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`
 (partial).
 
-`AudioSystem` (static): `AudioSystem.stopAll()`, `pauseAll()`, `resumeAll()`,
-`AudioSystem.globalVolume` (rw).
+`AudioSystem` (static): `AudioSystem.stopAll()`, `pauseAll()` / `resumeAll()` (the app pause: the
+mixer's Master bus holds; a source a script paused stays paused), `AudioSystem.globalVolume` (rw,
+= `AudioListener.volume`), `preload(path [, loadType])` (decode or open a clip ahead),
+`isOutputAvailable()` (false without an audio device: sounds still mix, meters still read),
+`getVoiceCount()`.
+
+`AudioListener` (static, Unity's): `pause` (rw: every source but the `ignoreListenerPause` ones
+holds; a pause menu), `volume` (rw, 0..1, everything).
+
+`AudioMixer` (static, the project's Audio Mixer, Project Settings > Audio; `jasper://docs/audio`):
+`setFloat(name, value [, seconds [, opts]])` -> bool (an exposed parameter: a group volume in dB, an
+effect value; it overrides snapshots until `clearFloat(name)`), `getFloat(name)` -> number or nil,
+`clearFloat(name)`, `hasParameter(name)`, `getParameterNames()`, `transitionTo(snapshot, seconds
+[, opts])`, `transitionToSnapshots(names, weights, seconds [, opts])`, `getSnapshotNames()`,
+`getCurrentSnapshot()`, `getGroup(name)` -> `AudioMixerGroup` or nil, `getGroupNames()`,
+`getMeter(group)` -> dB (-80 silent), `saveParameters()` / `loadParameters()` (the `remember`
+ones, UserSettings), `dbToLinear(db)`, `linearToDb(v)`. `opts = {unscaled = true}`: unscaled
+time (default: the mixer's update mode, scaled). `AudioMixerGroup`: `name`, `id` (ro), `volume`
+(dB), `mute`, `solo`, `bypassEffects` (rw), `setVolume(db, seconds [, opts])`, `getEffect(index
+(1-based) or type)` -> `AudioMixerEffect` (`type`, `id` ro; `bypass`, `wet` rw;
+`setParameter(name, value [, seconds [, opts]])` -> bool, `getParameter(name)`), `getEffectCount()`,
+`getMeter()`.
 
 ### 2.10 Physics / Physics2D / LayerMask (static)
 
@@ -1083,6 +1104,12 @@ Values outlive scene loads (like Unity). A material or component parameter can f
 
 `Color.linearTosRGB(...)`, `Color.sRGBToLinear(...)`: accept `Vector3`, `Vector4`, `(r,g,b)`
 or `(r,g,b,a)`.
+
+### 2.12.1 UI (static)
+
+`UI.canvasToUI(scene, Vector2)` / `UI.uiToCanvas(scene, Vector2)`: game canvas pixels (`Input`,
+touches) to a scene's UI units and back (they differ when its Canvas Scaler scales the UI);
+`UI.reducedMotion` (rw, default false): Text Effects skip their motion layers.
 
 ### 2.13 Time (static, Unity's Time)
 
@@ -1503,7 +1530,9 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 `loadModel(path)`, `loadGLTF(path)`, `loadOBJ(path)`, `getAnimation(i)`,
 `findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations(fadeTime)`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
-`resetToBindPose()`, `enabled` (rw), `getPoseAnimator()` (the model's PoseAnimator, added when missing).
+`resetToBindPose()`, `enabled` (rw), `getPoseAnimator()` (the model's PoseAnimator, added when missing),
+`getHumanoidInfo()` (`{humanoid, animationType ("generic"/"humanoid"), humanScale, missing = {slot names},
+extraMapped, error?}`: its Avatar; nil without bones).
 
 With an Animation Player on the Model's GameObject (4.8.2), `playAnimation(name [, fadeTime])`
 crossfades to the player's state of that name (over the player's `defaultFadeTime` when no fade
@@ -1572,7 +1601,7 @@ on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs
 | `sample()` | applies the current times once (e.g. paused) |
 | `isPlaying()`, `isPlaying(name)` | bool; false for a `once` state that ended (held) |
 | `getState(name)` | an `AnimationState` (below) |
-| `addClip(path [, name])` | appends an entry (`name` empty = the file stem / model clip name); false when the name is taken |
+| `addClip(path [, name [, options]])` | appends an entry (`name` empty or nil = the file stem / model clip name); false when the name is taken. `options`: `{retarget = bool (play a generic clip as a humanoid clip, from its source model), mirror = bool, footIK = bool, layer = int}` (other keys or types are an error) |
 | `removeClip(name)`, `getClipCount()`, `getClipName(i)` | `getClipName` is 0-based, `""` out of range |
 | `speed`, `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled` | rw; `speed` multiplies every state (negative plays backwards); `enabled = false`: time stops, nothing is written |
 | `isLoaded()` | every clip loaded and bound |
@@ -1628,7 +1657,9 @@ calls made inside them take effect next frame.
 `AnimationState` (by player + state name, looked up on every access; works across clip list
 changes): rw `time`, `normalizedTime`, `speed` (the state's own), `weight`, `wrap` (`"once"`,
 `"loop"`, `"ping_pong"`, `"clamp_forever"`; `"default"` = the entry's), `enabled` (false pauses),
-`layer` (a runtime move: time and weight are kept, the tracks re-mask); ro `name`, `clip`, `length`;
+`layer` (a runtime move: time and weight are kept, the tracks re-mask), `mirror` and `footIK` (humanoid
+clips: runtime overrides of the entry's Mirror / Foot IK; `resetMirror()` / `resetFootIK()` go back to
+the entry's); ro `name`, `clip`, `length`, `isHumanoid` (a humanoid clip, or a generic one retargeted);
 `isValid()`; `addMixingTransform(path [, recursive=true])`, `removeMixingTransform(path)`,
 `clearMixingTransforms()` (Unity's legacy AddMixingTransform: with any, the state animates only
 those paths, below them too unless `recursive` is false; multiplied with the layer's mask). An
@@ -1771,6 +1802,85 @@ A camera looks at its target by default (`isUsingTarget()`): the GameObject's ro
 ignored until `disableTarget()`. Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch),
 cos(pitch)cos(yaw)) * distance, then `setTarget(target)`.
 
+### 4.9.1 CameraShake, CameraShaker, ShakeInstance, CameraFollow
+
+Camera shake (MilkShake's Shaker) and a small follow component. On a camera the shake is a view
+offset: `position` and `rotation` are never shaken, so scripts and Camera Follow move the camera
+freely while it shakes. Without a camera, a Camera Shaker moves its Transform additively (the
+base under it is whatever else writes it). Both run after `onUpdate`, before the frame is drawn.
+Agents: `jasper://docs/camera`; users: `docs/camera.md`.
+
+A **preset** is a built-in name (`CameraShake.getPresetNames()`: `explosion`, `light_explosion`,
+`earthquake`, `punch`, `shock`, `electrocute`, `drunk`, `offroad`, `jumpscare_2d`, `eh_shake`,
+`entity_shake`, `invader_drunk`, `invaders_explosion`, `handheld`, `vibration`, `bump`), a
+`.shake` path relative to the assets folder, or a table `{type = "one_shot"|"sustained",
+strength, roughness, fadeIn, fadeOut, positionInfluence = Vector3, rotationInfluence = Vector3}`
+(missing keys: the `.shake` defaults). An unknown name logs one warning and shakes nothing.
+**options** (all optional): `{strength, roughness, seed, unscaled, fadeIn, fadeOut}`:
+`strength` / `roughness` scale the preset, the same `seed` shakes the same way, `unscaled`
+overrides the shaker's `unscaledTime`, the fades override the preset's.
+
+| `CameraShake` (static, a dot) | Notes |
+|---|---|
+| `shake(preset [, options])` | a `ShakeInstance` on every global Camera Shaker (Global on, enabled, active, every running scene); invalid with a warning when there is none |
+| `shakeAt(position, radius, preset [, options])` | the same, strength and roughness scaled by `max(0, 1 - d / radius)` (d from the shaker, x/y only in 2D); none at d >= radius |
+| `addTrauma(amount)` | every global shaker; trauma in [0, 1], shake = trauma ^ power, decaying linearly |
+| `stopAll([fade])` | every global shaker's shakes fade out over `fade` (default: their fade out; 0: now) |
+| `getPresetNames()` | the built-in names (a table) |
+
+| `CameraShaker` (EntityHandle) | Notes |
+|---|---|
+| `CameraShaker(scene, entity)` | adds the component when missing; `GameObject:getCameraShaker()` returns `nil` without one, `hasCameraShaker()` |
+| `shake(preset [, options])`, `shakeAt(position, radius, preset [, options])` | this shaker, whatever its `global`; a disabled shaker keeps the shake for when it is enabled |
+| `addTrauma(amount)`, `stopAll([fade])`, `getInstanceCount()` | |
+| `trauma` | rw, 0..1 |
+| `enabled`, `global`, `unscaledTime` | rw |
+| `mode` | rw, `"auto"` (2D for orthographic / UI cameras), `"3d"`, `"2d"` (x/y in tenths of the view height and roll only) |
+| `positionScale`, `rotationScale` | rw, gains (>= 0) |
+| `startPreset` | rw, played on start and on an enable unless the shake it started still plays (`""` = none) |
+| `traumaDecay`, `traumaPower` (1..4), `traumaMaxOffset` (Vector3, units), `traumaMaxAngle` (Vector3, degrees), `traumaFrequency` | rw |
+| `offsetPosition`, `offsetRotation` | ro, the offset applied this frame (Vector3; rotation in Euler degrees) |
+
+| `ShakeInstance` (a handle) | Notes |
+|---|---|
+| `stop([fade])` | fades out over `fade` (default: the preset's fade out; 0: now) |
+| `pause([fade])`, `resume([fade])` | the noise slows to a stop over `fade` (default 0) and back; a paused sustained shake holds its offset |
+| `isPaused()`, `isFinished()`, `isValid()` | invalid once every instance is gone (finished, its shaker destroyed, its scene unloaded): its calls do nothing |
+| `strengthScale`, `roughnessScale` | rw; on a handle from a static call they set every shaker's instance, and read the first live one |
+| `state` | ro, `"fading_in"`, `"sustained"`, `"fading_out"`, `"paused"`, `"stopped"` |
+| `count` | ro, the live instances (one per shaker reached) |
+
+| `CameraFollow` (EntityHandle) | Notes |
+|---|---|
+| `CameraFollow(scene, entity)` | adds the component when missing; `GameObject:getCameraFollow()` returns `nil` without one, `hasCameraFollow()` |
+| `target` | rw, the GameObject followed (this scene's, or one of the persistent DontDestroyOnLoad scene) or `nil`; another scene's is refused with a warning |
+| `offset` (Vector3), `offsetSpace` (`"world"`, `"target"`, `"target_yaw"`) | rw |
+| `damping` (Vector3, SmoothDamp seconds per world axis; 0 = rigid), `maxSpeed` (0 = unlimited) | rw |
+| `lookAt`, `lookAtOffset` (Vector3), `rotationDamping` | rw; a `useTarget` camera gets its `target` set, others are turned |
+| `deadZone` (Vector2, world x/y; orthographic and UI cameras), `useBounds`, `boundsMin`, `boundsMax` | rw |
+| `unscaledTime`, `enabled` | rw |
+| `snap()` | the next update places it without damping |
+
+Camera Follow owns its Transform while enabled: a script that also moves it is overwritten
+(warned once). Writes in `onPostUpdate` reach the camera a frame late.
+
+```lua
+-- MilkShake's CameraShaker.cs, ported
+function Hazard:onExplode()
+    CameraShake.shake("explosion")
+end
+function Rush:start()  self.heavy = CameraShake.shake("earthquake")  end
+function Rush:finish() if self.heavy then self.heavy:stop(0.2) end end
+
+-- a hit: trauma piles up and settles
+function Player:onHit(damage)
+    CameraShake.addTrauma(math.min(0.6, damage / 50))
+end
+
+-- a pause menu that still shakes (Time.timeScale = 0)
+CameraShake.shake("shock", {unscaled = true})
+```
+
 ### 4.10 Light (GameObject) / Light2D (GameObject)
 
 Light rw: `type` (`LightType.*`), `enabled`, `direction` (Vector3), `color` (Vector3),
@@ -1808,7 +1918,8 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 
 | Class | rw properties | methods |
 |---|---|---|
-| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all) | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |
 | `Button` (Image) | `label`, `labelColor`, `labelFont`, `labelFontSize`, `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `disabled` | `getButtonComponent()`, `getLabelObject()`, `setTextureNormal/Hovered/Pressed/Disabled(path)`, `setColorNormal(r,g,b[,a])` (and Hovered/Pressed/Disabled), `setLabelColor(r,g,b,a)` |
 | `Panel` (Image) | `title`, `titleColor`, `titleFont`, `titleFontSize`, `headerColor`, `minWidth`, `minHeight`, `canMove`, `canResize`, `canBringToFront` | `getPanelComponent()`, `setMinSize(w,h)` |
@@ -1863,10 +1974,20 @@ Methods: `play()`, `pause()`, `stop()`, `seek(t)`, `loadSound(path)`, `destroySo
 `isPlaying()`, `isPaused()`, `isStopped()`, `getLength()`, `getPlayingTime()`,
 `getGameObject()`, `setMinMaxDistance(min, max)`, `setInaudibleBehavior(mustTick, kill)`,
 `getAudioSourceComponent()`.
-rw: `enabled`, `volume`, `speed`, `pan`, `looping`, `loopingPoint`, `sound3D`,
+rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopingPoint`, `sound3D`,
 `clockedSound`, `protectVoice`, `minDistance`, `maxDistance`, `attenuationModel`
-(`AudioSourceAttenuation.*`), `attenuationRolloffFactor`, `dopplerFactor`.
-Restart a one-shot: `snd:stop(); snd:play()`.
+(`AudioSourceAttenuation.*`), `attenuationRolloffFactor`, `dopplerFactor`, `outputGroup` (the
+mixer group by name, "" = Master), `loadType` (`AudioLoadType.*`, Auto streams files of 1 MiB and
+more), `priority` (0 most important .. 256, default 128), `maxVoices` (1..64, default 8),
+`ignoreListenerPause`.
+Mixer and voices: `playOneShot(path [, volumeScale])` (an extra voice over what plays, Unity's
+PlayOneShot; the oldest one-shot is stolen past `maxVoices`), `fadeIn(seconds [, opts])`,
+`fadeOut(seconds [, opts])` (`opts.pause` pauses instead of stopping; the volume comes back for
+the next play), `fadeTo(volume, seconds [, opts])`, `isFading()`, `getVoiceCount()`,
+`getResolvedLoadType()`; static `AudioSource.playClipAtPoint(scene, path, position [, volume
+[, group]])` (stops with `scene`). `isPlaying()` follows the voice: true for a looping clip at any
+pitch, and right after `play()`. `play()` on a playing source starts it over; two sources play
+one clip at once.
 
 ### 4.13 Rigidbody2D (EntityHandle) - 2D physics (Box2D)
 
@@ -2164,7 +2285,7 @@ Writing a module field of a version 1 system is an error naming `upgrade()`.
 
 #### Version 1 (legacy)
 
-rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitterShape`
+rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `useUnscaledTime` (plays at `Engine.timeScale` 0: UI particles), `emitterShape`
 (`ParticleEmitterShape.*`). Methods: `reset()`, `addBurst(time, count)` / `addBurst(time, minCount, maxCount)`,
 `setBursts(...)`, `clearBursts()`, `setLifeInitializer(min [, max])`, `setPositionInitializer(minV3 [, maxV3])`,
 `setSpherePositionInitializer(r [, r2])`, `setCirclePositionInitializer(...)`,
@@ -2296,6 +2417,11 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `needReload`; ro `loaded`; events `onLoad`, `onUnload`); events `onLoad`, `onUnload`;
   static `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
   Getters load a document that is due, so `init` can query elements.
+- `<particle-system>` elements (`jasper://docs/html-ui`): `el:play()`, `el:pause()`, `el:stop()`,
+  `el:isPlaying()`, `el:clear()` (its live particles go), `el:getParticleSystem()` (the
+  `ParticleSystem` of its hidden entity: every particle API works; `nil` before the element's first
+  update or when its `src` failed; play/pause/stop before that are queued); event `complete`. Text effects:
+  `el.style.textEffect = "wave(0.15em 1.5s)"`, `el:restartTextEffect()`, event `texteffectend`.
 - `UIElement` (weak handle; `nil` when a query finds nothing; any use but `isValid()` of a
   dead one raises): rw `id`, `className`, `textContent`, `innerHTML`, `outerHTML` (HTML in an
   `.html` document), `value`, `checked`, `disabled`, `scrollTop`, `scrollLeft`; ro `tagName`
@@ -2408,6 +2534,7 @@ use the methods. Physics colliders keep the rest shape.
 | `ActionState` | `Running`, `Paused`, `Stopped` |
 | `AudioSourceState` | `Playing`, `Paused`, `Stopped` |
 | `AudioSourceAttenuation` | `NO_ATTENUATION`, `INVERSE_DISTANCE`, `LINEAR_DISTANCE`, `EXPONENTIAL_DISTANCE` |
+| `AudioLoadType` | `Auto`, `DecompressOnLoad`, `CompressedInMemory`, `Streaming` |
 | `AnchorPreset` | `NONE`, `TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_LEFT`, `BOTTOM_RIGHT`, `CENTER_LEFT`, `CENTER_TOP`, `CENTER_RIGHT`, `CENTER_BOTTOM`, `CENTER`, `LEFT_WIDE`, `TOP_WIDE`, `RIGHT_WIDE`, `BOTTOM_WIDE`, `VERTICAL_CENTER_WIDE`, `HORIZONTAL_CENTER_WIDE`, `FULL_LAYOUT` |
 | `PivotPreset` | `CENTER`, `TOP_CENTER`, `BOTTOM_CENTER`, `LEFT_CENTER`, `RIGHT_CENTER`, `TOP_LEFT`, `BOTTOM_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT` |
 | `LayoutGroupType` | `VERTICAL`, `HORIZONTAL`, `VERTICAL_WRAP`, `HORIZONTAL_WRAP` |

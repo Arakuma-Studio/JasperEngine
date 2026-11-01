@@ -188,6 +188,13 @@ namespace jasperengine::editor::mcp {
         // between frames, so a GameObject made or moved this frame reads stale world values)
         static void refreshTransforms(SceneProject* scene);
 
+        // A Canvas Scaler as {mode, scale_factor, reference, match_mode, match, physical_unit,
+        // fallback_dpi} (enums by snake name). FromJson changes the fields the object names on
+        // `out` (aliases reference_resolution, screen_match_mode, match_width_or_height,
+        // fallback_screen_dpi accepted); false with `error` on an unknown key or a bad value
+        static Json canvasScalerToJson(const CanvasScalerSettings& settings);
+        static bool canvasScalerFromJson(const Json& value, CanvasScalerSettings& out, std::string& error);
+
         static Json entityToJson(SceneProject* scene, Entity entity);
         static bool entityFromJson(SceneProject* scene, const Json& value, Entity& out, std::string& error);
         static Json entityReferenceToJson(Project* project, SceneProject* scene, const EntityReference& value);

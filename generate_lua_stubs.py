@@ -2197,6 +2197,12 @@ OVERRIDES[('CanvasGroup', 'stopFade')] = {
     'doc': ['Stops the running fade; `jumpToEnd` writes its end alpha and completes it now (onComplete, deactivate).'],
     'overloads': [([('jumpToEnd?', 'boolean')], '')]}
 
+# <particle-system>: nil before its prefab is made or when its src failed (a LuaRef)
+OVERRIDES[('UIElement', 'getParticleSystem')] = {
+    'doc': ['The Particle System of a <particle-system> element\'s hidden GameObject; nil before the prefab',
+            'is made (document scripts, onLoad, edit mode) or when its src failed.'],
+    'overloads': [([], 'ParticleSystem|nil')]}
+
 # Mesh:getMaterial and Mesh.material push the Material copy themselves (a LuaRef: the copy
 # remembers the shader its submesh draws with, LuaBinding::setMaterialDrawnShader)
 OVERRIDES[('Mesh', 'getMaterial')] = {
@@ -2363,6 +2369,73 @@ OVERRIDES.update({
         'overloads': [([('interval', 'number'), ('fn', 'fun(timer: Timer): boolean?'), ('opts?', 'TimerOptions')], 'Timer')]},
 })
 
+# audio-mixer (ECSClassesLua.cpp, GameObjectClassesLua.cpp): option tables ({unscaled = true}),
+# `nil` results and table results; AudioTimeOptions / AudioFadeOutOptions are in
+# engine/core/script/binding/stubs/Audio.lua
+OVERRIDES.update({
+    ('AudioMixer', 'setFloat'): {
+        'doc': ["Unity's AudioMixer.SetFloat: sets an exposed parameter (a group volume in dB, an effect value),",
+                'over `seconds` (default at once). It wins over snapshots until clearFloat. False (logged once)',
+                'for an unknown name. Remembered parameters are saved to UserSettings at the end of the frame.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixer', 'getFloat'): {
+        'doc': ['The value an exposed parameter has now (a script value, else the snapshot / mixer value); nil when unknown.'],
+        'overloads': [([('name', 'string')], 'number?')]},
+    ('AudioMixer', 'getParameterNames'): {
+        'doc': ['The exposed parameter names.'],
+        'overloads': [([], 'string[]')]},
+    ('AudioMixer', 'transitionTo'): {
+        'doc': ["Unity's AudioMixerSnapshot.TransitionTo: every parameter moves to the snapshot over `seconds`",
+                '(dB linearly, frequencies along log2). False for an unknown snapshot.'],
+        'overloads': [([('snapshot', 'string'), ('seconds', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixer', 'transitionToSnapshots'): {
+        'doc': ["Unity's AudioMixer.TransitionToSnapshots: to the weighted blend of snapshots (weights normalized)."],
+        'overloads': [([('snapshots', 'string[]'), ('weights', 'number[]'), ('seconds', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixer', 'getSnapshotNames'): {
+        'doc': ['The snapshot names.'],
+        'overloads': [([], 'string[]')]},
+    ('AudioMixer', 'getGroup'): {
+        'doc': ['A mixer group by name (live values; setting its volume is a script value, like setFloat), nil when none.'],
+        'overloads': [([('name', 'string')], 'AudioMixerGroup?')]},
+    ('AudioMixer', 'getGroupNames'): {
+        'doc': ['The group names, Master first, parents before children.'],
+        'overloads': [([], 'string[]')]},
+    ('AudioMixerGroup', 'getEffect'): {
+        'doc': ['An effect of the group by index (1-based) or type ("lowpass": the first of it); nil when none.'],
+        'overloads': [([('index', 'integer')], 'AudioMixerEffect?'), ([('type', 'string')], 'AudioMixerEffect?')]},
+    ('AudioMixerGroup', 'setVolume'): {
+        'doc': ['Moves the group volume (dB) over `seconds` (a script value, like setFloat).'],
+        'overloads': [([('db', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
+    ('AudioMixerEffect', 'setParameter'): {
+        'doc': ['Sets a parameter of the effect ("cutoff", "resonance", "wet", ...: docs audio.md), over `seconds`.',
+                'A script value (wins over snapshots). False when the effect has no such parameter.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioMixerEffect', 'getParameter'): {
+        'doc': ['The value a parameter has now; nil when the effect has no such parameter.'],
+        'overloads': [([('name', 'string')], 'number?')]},
+    ('AudioSystem', 'preload'): {
+        'doc': ['Decodes (or opens, for streaming) a clip ahead so its first play or one-shot has no load; held until',
+                'the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
+        'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'boolean')]},
+    ('AudioSource', 'playOneShot'): {
+        'doc': ["Unity's PlayOneShot: the clip as an extra voice over what plays (volume x volumeScale, the",
+                "source's group, pitch, pan and position). Up to maxVoices voices; the oldest one-shot is stolen."],
+        'overloads': [([('path', 'string'), ('volumeScale?', 'number')], '')]},
+    ('AudioSource', 'fadeIn'): {
+        'doc': ['Plays from silence to the current volume over `seconds` (starting it when it is not playing).'],
+        'overloads': [([('seconds', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
+    ('AudioSource', 'fadeOut'): {
+        'doc': ['To silence over `seconds`, then stops (opts.pause: pauses); the volume is put back for the next play().'],
+        'overloads': [([('seconds', 'number'), ('opts?', 'AudioFadeOutOptions')], '')]},
+    ('AudioSource', 'fadeTo'): {
+        'doc': ['The volume moves to `volume` over `seconds`.'],
+        'overloads': [([('volume', 'number'), ('seconds', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
+    ('AudioSource', 'playClipAtPoint'): {
+        'doc': ["Unity's AudioSource.PlayClipAtPoint: the clip at a world position (3D when the scene has a camera),",
+                'through a mixer group (name; default Master); it belongs to `scene` and stops with it.'],
+        'overloads': [([('scene', 'Scene'), ('path', 'string'), ('position', 'Vector3'), ('volume?', 'number'), ('group?', 'string')], '')]},
+})
+
 # http (NetClassesLua.cpp): the request functions are lua_CFunctions (positional options and
 # callback, either may be left out); HttpOptions / HttpRequestOptions are in
 # engine/core/script/binding/stubs/Http.lua
@@ -2448,6 +2521,8 @@ PROPERTY_OVERRIDES = {
     # a coroutine's error (with its traceback) and the script instance that started it
     ('Coroutine', 'error'): ('string?', False),
     ('Coroutine', 'owner'): ('ScriptInstance?', False),
+    # the GameObject a Camera Follow follows (its scene or the persistent one), nil without one
+    ('CameraFollow', 'target'): ('GameObject?', False),
     ('HttpRequest', 'response'): ('HttpResponse|nil', False),
     ('HttpResponse', 'headers'): ('table<string, string>', True),
     ('HttpResponse', 'body'): ('string', False),
@@ -2514,6 +2589,27 @@ for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
                           ([('scene', 'Scene'), ('origin', _vec), ('direction', _vec), ('maxDistance', 'number'),
                             ('layerMask?', 'integer')], _ret)]}
 
+# Camera shake (camera shake spec 8): the shake calls are lua_CFunctions (a preset is a name, a
+# .shake path or a table; options a table); ShakePreset and ShakeOptions are in
+# engine/core/script/binding/stubs/CameraShake.lua
+_SHAKE_PRESET = 'ShakePresetName|string|ShakePreset'
+for _cls, _who, _example in (
+        ('CameraShake', 'every global Camera Shaker (enabled, active, Global on, in every running scene)',
+         '`CameraShake.shake("explosion")`, `CameraShake.shake("assets/shakes/boom.shake", {strength = 0.5})`'),
+        ('CameraShaker', 'this shaker, whatever its Global flag',
+         '`self.gameObject:getCameraShaker():shake("punch", {seed = 7})`')):
+    OVERRIDES[(_cls, 'shake')] = {
+        'doc': [f'Starts a shake on {_who}.',
+                '`preset`: a built-in name (CameraShake.getPresetNames()), a .shake path or a preset table. Returns',
+                'the ShakeInstance (invalid when nothing was shaken; an unknown name logs one warning).',
+                _example],
+        'overloads': [([('preset', _SHAKE_PRESET), ('options?', 'ShakeOptions')], 'ShakeInstance')]}
+    OVERRIDES[(_cls, 'shakeAt')] = {
+        'doc': [f'As shake, on {_who}, with the strength and roughness scaled by',
+                'max(0, 1 - d / radius), d the distance from the shaker (x/y only in 2D); none at d >= radius.'],
+        'overloads': [([('position', 'Vector3'), ('radius', 'number'), ('preset', _SHAKE_PRESET),
+                        ('options?', 'ShakeOptions')], 'ShakeInstance')]}
+
 # HTML UI (phase 1, p1-lua): the element API's lua_CFunctions (they take Lua functions and
 # option tables, and raise errors with no C++ object alive)
 _LISTENER = 'fun(event: UIEvent)'
@@ -2541,6 +2637,21 @@ OVERRIDES[('UIDocument', 'createDataModel')] = {
 OVERRIDES[('UIDocument', 'getDataModel')] = {
     'doc': ['The proxy of a data model this document created, or nil.'],
     'overloads': [([('name', 'string')], 'UIDataModel|nil')]}
+# anim-retarget: addClip's options table, Model:getHumanoidInfo's table (LuaRef in C++)
+OVERRIDES[('AnimationPlayer', 'addClip')] = {
+    'doc': ["Adds a clip entry (an authored change: the next update reloads): an asset-relative .anim or",
+            "\"<model>#<clip>\"; `name` empty or nil = the default state name. `options.retarget` plays a",
+            "generic clip as a humanoid clip, retargeted from its source model; `mirror` / `footIK` apply",
+            "to humanoid clips; `layer` is the entry's layer. False when the state name is taken."],
+    'overloads': [([('path', 'string')], 'boolean'),
+                  ([('path', 'string'), ('name', 'string')], 'boolean'),
+                  ([('path', 'string'), ('name', 'string|nil'),
+                    ('options', '{retarget?: boolean, mirror?: boolean, footIK?: boolean, layer?: integer}')], 'boolean')]}
+OVERRIDES[('Model', 'getHumanoidInfo')] = {
+    'doc': ["The model's humanoid rig (its Avatar): `humanoid` (the bone map is a valid humanoid),",
+            "`animationType` (\"generic\" or \"humanoid\", the .humanoid sidecar's), `humanScale`, the unmapped",
+            "slot names in `missing`, `extraMapped` (fingers, eyes and jaw, of 33) and `error`; nil without bones."],
+    'overloads': [([], '{humanoid: boolean, animationType: string, humanScale: number, missing: string[], extraMapped: integer, error?: string}|nil')]}
 OVERRIDES[('UIClassList', 'add')] = {
     'doc': ['Adds the classes.'], 'overloads': [([('...', 'string')], '')]}
 OVERRIDES[('UIClassList', 'remove')] = {

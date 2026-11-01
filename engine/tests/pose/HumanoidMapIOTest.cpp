@@ -142,7 +142,9 @@ TEST(HumanoidMapIO, BadFormatOrVersionFails){
     EXPECT_FALSE(parse("[]").ok);
     EXPECT_FALSE(parse("{\"version\": 1}").ok);
     EXPECT_FALSE(parse("{\"format\": \"jasperengine.poseanim\", \"version\": 1}").ok);
-    Parsed parsed = parse("{\"format\": \"jasperengine.humanoid\", \"version\": 2, \"bones\": {}}");
+    // version 2 is the Avatar form (anim-retarget); 3 is newer than this engine
+    EXPECT_TRUE(parse("{\"format\": \"jasperengine.humanoid\", \"version\": 2, \"bones\": {}}").ok);
+    Parsed parsed = parse("{\"format\": \"jasperengine.humanoid\", \"version\": 3, \"bones\": {}}");
     EXPECT_FALSE(parsed.ok);
     EXPECT_NE(parsed.error.find("version"), std::string::npos) << parsed.error;
     EXPECT_FALSE(parse("{\"format\": \"jasperengine.humanoid\", \"version\": 0}").ok);

@@ -588,6 +588,15 @@ spec was silent, ambiguous or did not fit the code:
 19. **Merge note:** `ComponentType::SafeAreaComponent` is appended last (prefab override masks use the
     ordinal): a branch appending another type at the same place conflicts there and in
     `AnimationClipContractTest`. (The ECS `Signature` limit of 64 types was raised to 128 on `main`.)
+19b. **Merge with `main` 7fd144900** (camera-shake, ui-scaling-text, audio-mixer, anim-retarget):
+    `SafeAreaComponent` follows `TextEffectComponent` (the ordinal tests stay tolerant: `>=`). With
+    ui-scaling-text's Game view resolutions a simulated device renders at its screen pixels (the
+    aspect / resolution menu is off while a device is chosen, a preset carries no insets), so the
+    pushed insets are the device's own. A Canvas Scaler scales the UI, not the safe area: the Safe
+    Area component maps the screen's fractions onto `UISystem::getCanvasSize()` (the UI size), and
+    HTML documents get `env()` in their UI-size CSS px (`getLayoutSize`). The Custom device gained a
+    dpi (0: the computer's; `Platform::getScreenDpi` falls back to it when a device has none) so
+    Constant Physical Size works on it (`custom_device.dpi`).
 20. **Verification** (tree merged with `main` at `fda5c0d0f`, which includes `5762bb259`; branch at
     the idle fix 9a14dc993), box 2203: editor and tests build with 0 new warnings; unit suite 1670 tests:
     1659 passed, 10 skipped, 1 failed: `PhysicsContactsTest.ContactProcessingCostIsSmall`, a timing test

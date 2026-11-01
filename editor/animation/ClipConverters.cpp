@@ -8,6 +8,8 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
 #include "animation/ClipEditorUtil.h"
+#include "pose/HumanoidMapIO.h"
+#include "pose/ModelRig.h"
 #include "animation/ModelSubClips.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
@@ -263,9 +265,11 @@ namespace {
         switch (track.channel){
             case ClipChannel::Position:
             case ClipChannel::Scale:
+            case ClipChannel::HumanoidPosition:
                 out = {sample.vector.x, sample.vector.y, sample.vector.z};
                 break;
             case ClipChannel::Rotation:
+            case ClipChannel::Humanoid:
                 out.resize(4);
                 quaternionToXYZW(sample.rotation, out.data());
                 break;
@@ -727,7 +731,50 @@ bool ClipConverters::extractModelSubClip(const std::string& reference, ClipData&
         out.source.path = parsed.model;
         out.source.name = parsed.clip;
     }
+    // a model whose Animation Type is Humanoid serves humanoid clips: its extract is humanoid too
+    anim::SubClipReference parsed;
+    if (anim::parseSubClipReference(reference, parsed) && isHumanoidModel(parsed.model)){
+        ClipData converted;
+        std::string failure;
+        if (convertToHumanoid(out, parsed.model, converted, warnings, &failure)){
+            out = converted;
+        }else{
+            warnings.push_back({"", "the model's Animation Type is Humanoid, but " + failure + ": extracted as a generic clip"});
+        }
+    }
     // a new asset (the model is not touched)
+    out.guid = anim::generateClipGuid();
+    return true;
+}
+
+bool ClipConverters::isHumanoidModel(const std::string& modelAsset){
+    std::string stamp;
+    if (!pose::humanoidSidecarStamp(modelAsset, stamp, nullptr) || stamp.empty()) return false;
+    pose::HumanoidOverrides overrides;
+    std::vector<std::string> warnings;
+    return pose::parseHumanoidOverrides(stamp, overrides, warnings, nullptr) && overrides.isHumanoid();
+}
+
+std::string ClipConverters::humanoidSourceModel(const std::string& reference, const ClipData& data){
+    anim::SubClipReference parsed;
+    if (anim::parseSubClipReference(reference, parsed)) return parsed.model;
+    if (data.source.kind == "model" && anim::isModelFilePath(data.source.path)) return data.source.path;
+    if (anim::isModelFilePath(data.previewModel)) return data.previewModel;
+    return std::string();
+}
+
+bool ClipConverters::convertToHumanoid(const ClipData& source, const std::string& modelAsset, ClipData& out,
+                                       std::vector<ClipWarning>& warnings, std::string* error, anim::HumanoidConversionReport* report){
+    out = ClipData();
+    if (modelAsset.empty()) return fail(error, "the clip names no source model (set its Preview Model)");
+    if (!anim::isModelFilePath(modelAsset)) return fail(error, "'" + modelAsset + "' is not a model (.gltf, .glb or .fbx)");
+    // the rig as the files are now (a sidecar or model edited since is read again)
+    anim::HumanoidSourceCache::drop(modelAsset);
+    std::shared_ptr<const anim::HumanoidSource> rig;
+    std::string failure;
+    if (!anim::HumanoidSourceCache::get(modelAsset, rig, &failure)) return fail(error, failure);
+    if (!anim::convertToHumanoid(source, *rig, out, warnings, &failure, report)) return fail(error, failure);
+    if (out.previewModel.empty()) out.previewModel = modelAsset;
     out.guid = anim::generateClipGuid();
     return true;
 }

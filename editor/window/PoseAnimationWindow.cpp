@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PoseAnimationWindow.h"
+#include "App.h"
 
 #include "Backend.h"
 #include "Scene.h"
@@ -1063,6 +1064,11 @@ void editor::PoseAnimationWindow::drawRigChip(){
             openMappingPopup(session.bound() ? session.sceneId() : candidateScene, session.bound() ? session.model() : candidateEntity);
         }
         ImGui::SetItemTooltip("Choose which skeleton bone drives each humanoid slot (writes the model's .humanoid file)");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Avatar...")){
+            Backend::getApp().openAvatarWindow(session.bound() ? session.sceneId() : candidateScene, session.bound() ? session.model() : candidateEntity);
+        }
+        ImGui::SetItemTooltip("Configure Avatar: the bone map, fingers, eyes and jaw, twist corrections and a retargeted test clip");
     }
 }
 
@@ -1278,6 +1284,24 @@ void editor::PoseAnimationWindow::drawTransport(){
         }
         ImGui::SetItemTooltip("Writes <name>.anim next to the pose animation (baking again updates it) and lists it in the\n"
                               "character's Animation Player: one clip any character with the same bones can play.");
+        if (ImGui::MenuItem(ICON_FA_PERSON " Bake to Humanoid Clip")){
+            const auto& doc = session.document();
+            if (!doc || !session.bound()){
+                setStatus("Pick a character and an animation to bake", true);
+            }else{
+                PoseClipBakeResult result;
+                std::string error;
+                const std::string name = bakeName.empty() ? fileStem(doc->path()) : bakeName;
+                if (!PoseBaker::bakeToClip(project, session.sceneId(), session.model(), *doc, name, "", result, error, true)){
+                    setStatus("Bake failed: " + error, true);
+                }else{
+                    setStatus("Baked " + std::to_string(result.frames) + " frames to the humanoid clip '" + result.clip + "' (state '" + result.name +
+                              "' of the Animation Player on " + characterName() + ")", false);
+                }
+            }
+        }
+        ImGui::SetItemTooltip("Writes <name> (Humanoid).anim: the poses' joint rotations, hips and foot goals, a clip any\n"
+                              "humanoid character plays (retargeted), listed in the character's Animation Player.");
         if (ImGui::MenuItem(ICON_FA_DIAGRAM_PROJECT " Bake into Scene")) bake();
         ImGui::SetItemTooltip("Bake to an Animation of the character in this scene (baking again updates it).\n"
                               "Plays with Model:playAnimation(name) and in the Animation window.");
@@ -2362,6 +2386,7 @@ void editor::PoseAnimationWindow::openMappingPopup(uint32_t sceneId, Entity enti
     mappingEntity = entity;
     mappingInfo = PoseRigProvider::forSceneModel(project, sceneProject->scene, entity);
     mappingOverrides = {};
+    mappingSidecar = pose::HumanoidOverrides();
     mappingError.clear();
     mappingFilter[0] = '\0';
     // the sidecar's overrides as they are
@@ -2374,6 +2399,7 @@ void editor::PoseAnimationWindow::openMappingPopup(uint32_t sceneId, Entity enti
             std::vector<std::string> warnings;
             if (pose::parseHumanoidOverrides(text, overrides, warnings, nullptr)){
                 mappingOverrides = overrides.bones;
+                mappingSidecar = overrides;
             }
         }
     }
@@ -2386,7 +2412,8 @@ void editor::PoseAnimationWindow::applyMapping(){
     ModelComponent* model = sceneProject->scene->findComponent<ModelComponent>(mappingEntity);
     if (!model) return;
     const fs::path sidecar = project->resolveAssetPath(FileUtils::pathFromUtf8(pose::humanoidSidecarPath(model->filename)));
-    pose::HumanoidOverrides overrides;
+    // the bones only: the Avatar's Animation Type, extra bones and twists stay
+    pose::HumanoidOverrides overrides = mappingSidecar;
     overrides.bones = mappingOverrides;
     const std::string text = pose::writeHumanoidOverrides(overrides);
     std::string error;

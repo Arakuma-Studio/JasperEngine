@@ -24,6 +24,14 @@
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ClipBinding.h"
 #include "animation/ClipConverters.h"
+#include "animation/ClipEditorUtil.h"
+#include "animation/AvatarMask.h"
+#include "animation/HumanoidClip.h"
+#include "pose/PoseRigProvider.h"
+#include "pool/AnimationClipPool.h"
+#include "pose/PoseDofs.h"
+#include "pose/PoseMath.h"
+#include "pose/PoseRig.h"
 #include "animation/ClipValidation.h"
 #include "animation/KeyframeSampling.h"
 #include "animation/ModelSubClips.h"
@@ -108,8 +116,20 @@ std::string entryClipJson(Project* project, const std::string& stored) {
 const std::vector<std::pair<const char*, ClipChannel>>& channelTable() {
     static const std::vector<std::pair<const char*, ClipChannel>> table = {
         {"position", ClipChannel::Position}, {"rotation", ClipChannel::Rotation}, {"scale", ClipChannel::Scale},
-        {"morph", ClipChannel::Morph}, {"lattice", ClipChannel::Lattice}};
+        {"morph", ClipChannel::Morph}, {"lattice", ClipChannel::Lattice},
+        {"humanoid", ClipChannel::Humanoid}, {"humanoid_position", ClipChannel::HumanoidPosition}};
     return table;
+}
+
+// a humanoid slot's joint angles (degrees) of an E (x y z w): the pose system's DOFs by name
+Json humanoidAnglesJson(int humanBone, const float* xyzw) {
+    if (humanBone < 0 || humanBone >= pose::HUMAN_BONE_COUNT) return nullptr;
+    float angles[pose::DOFS_PER_BONE];
+    pose::jointAngles(pose::boneAt(humanBone), pose::Quatd(quaternionFromXYZW(xyzw)).normalized(), angles);
+    Json out = Json::object();
+    const pose::BoneDofInfo& info = pose::boneDofInfo(pose::boneAt(humanBone));
+    for (int k = 0; k < pose::DOFS_PER_BONE; k++) out[info.dofs[k].name] = std::round(angles[k] * 1000.0) / 1000.0;
+    return out;
 }
 
 Channel keyChannel(ClipChannel channel) {
@@ -205,6 +225,16 @@ Json valueJson(const ClipTrackData& track, const std::vector<float>& value) {
         case ClipChannel::Rotation:
             if (value.size() >= 4) return quatJson(value.data());
             return Json::array();
+        case ClipChannel::Humanoid: {
+            // {quat, angles} (slots: the joint angles; extra bones: the quaternion only)
+            if (value.size() < 4) return Json::array();
+            Json q = {{"quat", Json::array({r6(value[0]), r6(value[1]), r6(value[2]), r6(value[3])})}};
+            Json angles = humanoidAnglesJson(track.humanBone, value.data());
+            if (!angles.is_null()) q["angles"] = angles;
+            return q;
+        }
+        case ClipChannel::HumanoidPosition:
+            return floatsJson(value, 0, 3);
         case ClipChannel::Morph:
             return floatsJson(value, 0, value.size());
         case ClipChannel::Lattice: {
@@ -233,6 +263,10 @@ Json keyJson(const ClipTrackData& track, const ClipKey& key) {
 
 Json trackJson(const ClipTrackData& track, size_t index, size_t maxKeys) {
     Json item = {{"index", index}, {"path", track.path}, {"channel", anim::channelName(track.channel)}};
+    if (isHumanoidChannel(track.channel)) {
+        item.erase("path");
+        item["bone"] = anim::humanoidTrackBoneName(track.channel, track.humanBone);
+    }
     if (track.channel == ClipChannel::Property) {
         item["component"] = track.component;
         item["property"] = track.property;
@@ -244,7 +278,7 @@ Json trackJson(const ClipTrackData& track, size_t index, size_t maxKeys) {
     item["key_count"] = track.keys.size();
     item["keys"] = keys;
     item["loop"] = track.loop;
-    item["relative"] = track.relative;
+    if (!isHumanoidChannel(track.channel)) item["relative"] = track.relative;
     if (track.channel == ClipChannel::Lattice) item["points"] = track.points;
     return item;
 }
@@ -315,6 +349,7 @@ const char* statusName(TrackBindingStatus status) {
         case TrackBindingStatus::LegacyModelLayout: return "legacy_model_layout";
         case TrackBindingStatus::UnaddressableName: return "unaddressable_name";
         case TrackBindingStatus::NotSampled: return "not_sampled";
+        case TrackBindingStatus::HumanoidNoRig: return "humanoid_no_rig";
         case TrackBindingStatus::Unchecked: return "unchecked";
     }
     return "unchecked";
@@ -392,6 +427,10 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, const
         }
         Json item = {{"path", track.path}, {"channel", anim::channelName(track.channel)}, {"status", statusName(track.status)},
                      {"nearest", track.nearest}};
+        if (isHumanoidChannel(track.channel)) {
+            item.erase("path");
+            item["bone"] = anim::humanoidTrackBoneName(track.channel, track.humanBone);
+        }
         if (!track.badPoints.empty()) item["points"] = track.badPoints;
         if (!track.message.empty()) item["message"] = track.message;
         if (clip && clip->data && track.status == TrackBindingStatus::MissingPath && !track.nearest.empty()) {
@@ -416,8 +455,9 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, const
                         if (restReason.empty()) {
                             restReason = "the clip's first rotation of " + track.path + " is " + std::to_string((int)std::lround(angle)) +
                                          " degrees from the rest of " + candidate + ": the rest pose differs a lot (likely "
-                                         "another rig, which a renamed path would turn wrong). Give that model its own clip, or "
-                                         "rename the path by hand if it is the bone you mean";
+                                         "another rig, which a renamed path would turn wrong). Play it retargeted (the entry's "
+                                         "retarget: true, or a Convert to a humanoid clip), or rename the path by hand if it is "
+                                         "the bone you mean";
                         }
                         return false;
                     }
@@ -465,9 +505,11 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, const
         // agents review I1: renaming fits renamed or reparented objects of the same rig
         out["rig_mismatch"] = "rest_mismatch paths: the clip's rotations are far from these bones' rest (rotation keys are "
                               "absolute local rotations). Likely a clip made for another rig, whose renamed paths would turn "
-                              "this character wrong: use a clip made on this rig (bake the .poseanim on this model: "
-                              "edit_pose_animation {path, bake: {model, clip: true}}, or key a new clip on it). A path of the "
-                              "same rig (a bone or prop posed far from its rest) can still be renamed by hand";
+                              "this character wrong: retarget it (set_properties animationplayer.clips[i].retarget: true, or "
+                              "convert it: edit_animation {clip: <new .anim>, create: {from: <clip>, humanoid: {}}}), or use a "
+                              "clip made on this rig (bake the .poseanim on this model: edit_pose_animation {path, bake: "
+                              "{model, clip: true}}, or key a new clip on it). A path of the same rig (a bone or prop posed far from its rest) can still "
+                              "be renamed by hand";
     }
     if (std::any_of(missing.begin(), missing.end(), [](const Json& m) { return m.contains("fix"); })) {
         out["fix_with"] = "write_file {path: <clip>, edits: [missing[i].fix, ...]} renames those paths to their fix_path, keys and tangents "
@@ -490,7 +532,8 @@ std::string bindingsText(const Json& bindings) {
                        " track(s) bound";
     if (bindings.contains("unchecked")) return text + " (not checked)";
     for (const Json& m : bindings["missing"]) {
-        text += "\n  " + m["path"].get<std::string>() + " : " + m["channel"].get<std::string>() + " " + m["status"].get<std::string>();
+        text += "\n  " + (m.contains("bone") ? "humanoid " + m["bone"].get<std::string>() : m["path"].get<std::string>()) + " : " +
+                m["channel"].get<std::string>() + " " + m["status"].get<std::string>();
         if (!m["nearest"].empty()) text += " (did you mean \"" + m["nearest"][0].get<std::string>() + "\"?" +
                                           (m.contains("fix") ? " fix: write_file edit missing[].fix -> \"" + m["fix_path"].get<std::string>() + "\""
                                            : m.contains("rest_mismatch") ? std::string(" no fix: rest pose differs a lot")
@@ -752,11 +795,242 @@ bool sameKeyValue(ClipChannel channel, const std::vector<float>& a, const std::v
     return close(1.0f) || (channel == ClipChannel::Rotation && close(-1.0f));
 }
 
+// the humanoid track bone names nearest `name` (did-you-mean)
+std::string nearestHumanoidBone(ClipChannel channel, const std::string& name) {
+    auto distance = [](const std::string& a, const std::string& b) {
+        std::vector<size_t> row(b.size() + 1);
+        for (size_t j = 0; j <= b.size(); j++) row[j] = j;
+        for (size_t i = 1; i <= a.size(); i++) {
+            size_t previous = row[0];
+            row[0] = i;
+            for (size_t j = 1; j <= b.size(); j++) {
+                const size_t current = row[j];
+                row[j] = std::min({row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] == b[j - 1] ? 0 : 1)});
+                previous = current;
+            }
+        }
+        return row[b.size()];
+    };
+    std::string best;
+    size_t bestDistance = std::max<size_t>(3, name.size() / 2) + 1;
+    const int count = channel == ClipChannel::Humanoid ? anim::HUMANOID_TRACK_BONE_COUNT : HUMANOID_POSITION_COUNT;
+    for (int b = 0; b < count; b++) {
+        const std::string candidate = anim::humanoidTrackBoneName(channel, b);
+        const size_t d = distance(lower(name), candidate);
+        if (d < bestDistance) {
+            bestDistance = d;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+// A humanoid key value as the .anim parser takes it: [x, y, z, w], {quat}, {angles: [a, b, c]},
+// {angles: {<dof>: degrees}} (the slot's DOF names, as get_animation lists them) or the output
+// form {quat, angles} sent back (the two must agree). Errors name the slot's DOF order.
+bool humanoidKeyValue(ClipChannel channel, int humanBone, const Json& given, const std::string& at, Json& out, std::string& error) {
+    out = given;
+    if (channel != ClipChannel::Humanoid || !given.is_object()) return true;
+    const bool slot = humanBone >= 0 && humanBone < pose::HUMAN_BONE_COUNT;
+    std::string order;
+    if (slot) {
+        const pose::BoneDofInfo& dofs = pose::boneDofInfo(pose::boneAt(humanBone));
+        for (int k = 0; k < pose::DOFS_PER_BONE; k++) order += std::string(k ? ", " : "") + dofs.dofs[k].name;
+    }
+    const std::string bone = anim::humanoidTrackBoneName(channel, humanBone);
+    for (auto it = given.begin(); it != given.end(); ++it) {
+        if (it.key() != "quat" && it.key() != "angles") {
+            error = at + ": unknown key \"" + it.key() + "\" (a humanoid value is [x, y, z, w], {quat} or {angles: [" + order + "]} degrees).";
+            return false;
+        }
+    }
+    Json angles;
+    if (given.contains("angles")) {
+        if (!slot) {
+            error = at + ".angles: " + bone + " is a finger, eye or jaw bone: give {quat: [x, y, z, w]} (angles are for the 22 body slots).";
+            return false;
+        }
+        const pose::BoneDofInfo& dofs = pose::boneDofInfo(pose::boneAt(humanBone));
+        const Json& a = given["angles"];
+        std::array<double, pose::DOFS_PER_BONE> values{};
+        if (a.is_array() && a.size() == (size_t)pose::DOFS_PER_BONE && std::all_of(a.begin(), a.end(), [](const Json& v) { return v.is_number(); })) {
+            for (int k = 0; k < pose::DOFS_PER_BONE; k++) values[(size_t)k] = a[(size_t)k].get<double>();
+        } else if (a.is_object()) {
+            for (auto it = a.begin(); it != a.end(); ++it) {
+                int k = 0;
+                while (k < pose::DOFS_PER_BONE && it.key() != dofs.dofs[k].name) k++;
+                if (k == pose::DOFS_PER_BONE || !it.value().is_number()) {
+                    error = at + ".angles." + it.key() + ": " + bone + "'s angles are {" + order + "} (degrees, any of them; the others 0).";
+                    return false;
+                }
+                values[(size_t)k] = it.value().get<double>();
+            }
+        } else {
+            error = at + ".angles: " + bone + "'s angles are [" + order + "] or {" + order + "} (degrees).";
+            return false;
+        }
+        angles = Json::array({values[0], values[1], values[2]});
+    }
+    if (!angles.is_null() && given.contains("quat")) {
+        // the output form sent back: the quaternion stands when both say the same rotation
+        const Json& q = given["quat"];
+        if (!q.is_array() || q.size() != 4 || !std::all_of(q.begin(), q.end(), [](const Json& v) { return v.is_number(); })) {
+            error = at + ".quat must be [x, y, z, w].";
+            return false;
+        }
+        float a[pose::DOFS_PER_BONE] = {angles[0].get<float>(), angles[1].get<float>(), angles[2].get<float>()};
+        const pose::Quatd fromAngles = pose::jointRotation(pose::boneAt(humanBone), a).normalized();
+        const pose::Quatd fromQuat = pose::Quatd(q[3].get<double>(), q[0].get<double>(), q[1].get<double>(), q[2].get<double>()).normalized();
+        if (pose::radToDeg(pose::angleBetween(fromAngles, fromQuat)) > 0.05) {
+            error = at + ": quat and angles say different rotations: give one of them (angles [" + order + "] degrees, or quat).";
+            return false;
+        }
+        out = q;
+        return true;
+    }
+    if (!angles.is_null()) {
+        out = {{"angles", angles}};
+        return true;
+    }
+    if (given.contains("quat")) out = given["quat"];
+    return true;
+}
+
+// A humanoid track (anim-retarget 10): {channel: "humanoid", bone, keys} with key values
+// {quat} / [x, y, z, w] / {angles: [dof1, dof2, twist]} (slots), or {channel: "humanoid_position",
+// bone: hips | left_foot | right_foot, keys} with [left, up, forward]. The keys go through the
+// .anim parser (its value rules and messages).
+bool applyHumanoidTrack(EditContext& ctx, const Json& item, const std::string& where, ClipChannel channel, ClipData& data, std::string& error) {
+    for (auto it = item.begin(); it != item.end(); ++it) {
+        if (it.key() == "path" || it.key() == "target") {
+            error = where + "." + it.key() + ": humanoid tracks have no path: they name their bone (\"bone\": \"left_upper_arm\").";
+            return false;
+        }
+        static const std::set<std::string> keys = {"bone", "channel", "keys", "mode", "loop"};
+        if (!keys.count(it.key())) {
+            error = where + ": unknown key \"" + it.key() + "\" (a humanoid track is {channel, bone, keys, mode, loop}).";
+            return false;
+        }
+    }
+    if (!has(item, "bone") || !item["bone"].is_string()) {
+        error = where + ".bone is required: a humanoid slot (left_upper_arm...), finger, eye or jaw" +
+                std::string(channel == ClipChannel::HumanoidPosition ? " (humanoid_position: hips, left_foot or right_foot)." : ".");
+        return false;
+    }
+    const std::string bone = item["bone"].get<std::string>();
+    int humanBone = -1;
+    if (!anim::humanoidTrackBoneFromName(channel, bone, humanBone)) {
+        const std::string suggestion = nearestHumanoidBone(channel, bone);
+        error = where + ".bone '" + bone + "' is not a " + (channel == ClipChannel::Humanoid ? "humanoid bone" : "humanoid_position bone (hips, left_foot, right_foot)") +
+                (suggestion.empty() ? std::string(".") : " (did you mean '" + suggestion + "'?).");
+        return false;
+    }
+    const std::string mode = item.contains("mode") && item["mode"].is_string() ? lower(item["mode"].get<std::string>()) : "replace";
+    if (mode != "replace" && mode != "merge") {
+        error = where + ".mode must be replace or merge.";
+        return false;
+    }
+    const bool merge = mode == "merge";
+    const std::string label = clipui::humanoidTrackLabel(channel, humanBone);
+    const int index = data.findHumanoidTrack(channel, humanBone);
+    if (has(item, "keys") && item["keys"].is_array() && item["keys"].empty()) {
+        if (merge || index < 0) {
+            error = where + (merge ? ".keys is empty: merge adds keys." : ": the clip has no " + label + " track to remove (keys: [] removes one).");
+            return false;
+        }
+        data.tracks.erase(data.tracks.begin() + index);
+        ctx.changes.push_back("removed track " + label);
+        return true;
+    }
+    if (!has(item, "keys") || !item["keys"].is_array()) {
+        error = where + ".keys must be an array of {time, value, ease?} (value " +
+                (channel == ClipChannel::Humanoid ? std::string("{quat: [x, y, z, w]} or {angles: [dof1, dof2, twist]} degrees") : std::string("[left, up, forward]")) + ").";
+        return false;
+    }
+    // the keys as one .anim track, read by the clip parser
+    Json keys = Json::array();
+    for (size_t k = 0; k < item["keys"].size(); k++) {
+        const Json& key = item["keys"][k];
+        const std::string at = where + ".keys[" + std::to_string(k) + "]";
+        if (!key.is_object() || !key.contains("time") || !key.contains("value")) {
+            error = at + " must be {time, value, ease?}.";
+            return false;
+        }
+        Json value;
+        if (!humanoidKeyValue(channel, humanBone, key["value"], at + ".value", value, error)) return false;
+        Json entry = {{"time", key["time"]}, {"value", value}};
+        if (key.contains("ease")) entry["ease"] = key["ease"];
+        // the Hermite tangents get_animation lists (units per second, as the file stores them)
+        if (key.contains("in") != key.contains("out")) {
+            error = at + ": in and out go together (Hermite tangents, as get_animation lists them).";
+            return false;
+        }
+        if (key.contains("in")) {
+            entry["in"] = key["in"];
+            entry["out"] = key["out"];
+        }
+        for (auto it = key.begin(); it != key.end(); ++it) {
+            if (it.key() != "time" && it.key() != "value" && it.key() != "ease" && it.key() != "in" && it.key() != "out") {
+                error = at + ": unknown key \"" + it.key() + "\" (a humanoid key is {time, value, ease, in?, out?}).";
+                return false;
+            }
+        }
+        keys.push_back(entry);
+    }
+    Json trackJson = {{"channel", anim::channelName(channel)}, {"bone", bone}, {"keys", keys}};
+    if (item.contains("loop") && item["loop"].is_boolean()) trackJson["loop"] = item["loop"];
+    const Json document = {{"format", anim::ANIM_FORMAT}, {"version", anim::ANIM_VERSION}, {"tracks", Json::array({trackJson})}};
+    anim::ClipParseResult parsed = anim::parseClip(document.dump());
+    if (!parsed.ok() || parsed.data->tracks.size() != 1) {
+        error = where + ": " + (parsed.ok() ? std::string("no valid key") : parsed.error.toString());
+        return false;
+    }
+    for (const ClipWarning& warning : parsed.warnings) {
+        // a quaternion off unit length (rounded output sent back) is normalized, not refused
+        if (warning.message.find("not a unit quaternion") != std::string::npos) continue;
+        if (warning.path.rfind("tracks[0].keys", 0) == 0 || warning.path.rfind("tracks[0]", 0) == 0) {
+            error = where + warning.path.substr(std::string("tracks[0]").size()) + ": " + warning.message;
+            return false;
+        }
+    }
+    ClipTrackData track = parsed.data->tracks[0];
+    if (merge && index >= 0) {
+        ClipTrackData merged = data.tracks[(size_t)index];
+        for (const ClipKey& key : track.keys) {
+            auto same = std::find_if(merged.keys.begin(), merged.keys.end(), [&](const ClipKey& k) { return std::abs(k.time - key.time) < MERGE_TIME; });
+            if (same != merged.keys.end()) *same = key;
+            else merged.keys.push_back(key);
+        }
+        std::stable_sort(merged.keys.begin(), merged.keys.end(), [](const ClipKey& a, const ClipKey& b) { return a.time < b.time; });
+        if (item.contains("loop") && item["loop"].is_boolean()) merged.loop = track.loop;
+        track = merged;
+    }
+    if (index >= 0) {
+        ctx.changes.push_back(std::string(merge ? "merged " : "replaced ") + std::to_string(keys.size()) + " key(s) into " + label +
+                              " (" + std::to_string(track.keys.size()) + " now)");
+        data.tracks[(size_t)index] = track;
+    } else {
+        ctx.changes.push_back("added track " + label + " (" + std::to_string(track.keys.size()) + " key(s))");
+        data.tracks.push_back(track);
+    }
+    return true;
+}
+
 bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, std::string& error) {
     const std::string where = "tracks[" + std::to_string(t) + "]";
     if (!item.is_object()) {
         error = where + " must be an object {path, channel, keys, mode, loop, relative}.";
         return false;
+    }
+    {
+        const std::string channel = item.contains("channel") && item["channel"].is_string() ? lower(item["channel"].get<std::string>()) : "";
+        if (channel == "humanoid" || channel == "humanoid_position") {
+            return applyHumanoidTrack(ctx, item, where, channel == "humanoid" ? ClipChannel::Humanoid : ClipChannel::HumanoidPosition, data, error);
+        }
+        if (has(item, "bone")) {
+            error = where + ".bone is for humanoid tracks: give channel humanoid or humanoid_position (path tracks have a path).";
+            return false;
+        }
     }
     if (has(item, "start_time")) {
         error = where + ".start_time: clip tracks start at their first key: shift the keys' times.";
@@ -829,7 +1103,7 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
         }
     }
     if (!known) {
-        error = where + ".channel \"" + channelName + "\" is not valid. Use one of: position, rotation, scale, morph, lattice.";
+        error = where + ".channel \"" + channelName + "\" is not valid. Use one of: position, rotation, scale, morph, lattice, humanoid, humanoid_position.";
         return false;
     }
     if ((channel == ClipChannel::Morph || channel == ClipChannel::Lattice) && item.contains("relative") && item["relative"].is_boolean() &&
@@ -1358,6 +1632,8 @@ void editClip(const CallPtr& call) {
     const bool exists = fs::exists(absolute, ec);
     Json from;
     bool makeFolder = false;
+    bool humanoidCreate = false;    // create.humanoid: Convert to Humanoid Clip (anim-retarget 10)
+    std::string humanoidModel;
     if (creating) {
         const Json& create = args["create"];
         if (create.is_boolean() && create.get<bool>()) {
@@ -1367,12 +1643,27 @@ void editClip(const CallPtr& call) {
             return;
         } else {
             for (auto it = create.begin(); it != create.end(); ++it) {
-                if (it.key() != "from" && it.key() != "remove_tracks") {
-                    call->fail("create: unknown key \"" + it.key() + "\" (create is {from?, remove_tracks?}).");
+                if (it.key() != "from" && it.key() != "remove_tracks" && it.key() != "humanoid") {
+                    call->fail("create: unknown key \"" + it.key() + "\" (create is {from?, remove_tracks?, humanoid?}).");
                     return;
                 }
             }
             if (create.contains("from")) from = create["from"];
+            if (create.contains("humanoid")) {
+                const Json& humanoid = create["humanoid"];
+                if (!humanoid.is_object() || (humanoid.size() > 1 || (humanoid.size() == 1 && !humanoid.contains("model"))) ||
+                    (humanoid.contains("model") && !humanoid["model"].is_string())) {
+                    call->fail("create.humanoid must be {model?: \"assets/models/<source>.gltf\"} (the rig the clip was made on; default: its "
+                               "model, source or preview model).");
+                    return;
+                }
+                if (!from.is_string()) {
+                    call->fail("create.humanoid converts create.from: give from (an .anim or a model clip \"<model>#<animation>\").");
+                    return;
+                }
+                humanoidCreate = true;
+                if (humanoid.contains("model")) humanoidModel = humanoid["model"].get<std::string>();
+            }
             if (create.contains("remove_tracks")) {
                 anim::SubClipReference reference;
                 if (!create["remove_tracks"].is_boolean()) {
@@ -1385,7 +1676,7 @@ void editClip(const CallPtr& call) {
                 }
             }
             // a path given as from: a clip file (copy it) or a model without "#<animation>"
-            if (from.is_string()) {
+            if (from.is_string() && !humanoidCreate) {
                 const std::string given = from.get<std::string>();
                 anim::SubClipReference reference;
                 const std::string extension = lower(fs::u8path(given).extension().string());
@@ -1414,7 +1705,58 @@ void editClip(const CallPtr& call) {
     ClipData data;
     std::vector<ClipWarning> sourceWarnings;
     std::string extractedFrom;      // Extract: the model clip (project-relative)
-    if (creating && !from.is_null()) {
+    Json humanoidReport;
+    if (creating && humanoidCreate) {
+        // the source clip (a file or a model clip) converted on its source rig
+        std::string fromRelative;
+        fs::path fromAbsolute;
+        bool fromSub = false;
+        if (!resolveClipArg(project, from, "create.from", true, fromRelative, fromAbsolute, fromSub, error)) {
+            call->fail(error);
+            return;
+        }
+        const std::string stored = fromSub ? assetForm(project, fromRelative) : std::string();
+        ClipData sourceData;
+        if (fromSub) {
+            if (!anim::buildModelSubClip(stored, sourceData, sourceWarnings, &error)) {
+                call->fail("create.from: " + error);
+                return;
+            }
+        } else {
+            std::shared_ptr<AnimationClipDocument> source = AnimationClipDocument::open(project, fromRelative, &error);
+            if (!source) {
+                call->fail("create.from: " + error);
+                return;
+            }
+            sourceData = source->data();
+        }
+        std::string model = humanoidModel.empty() ? ClipConverters::humanoidSourceModel(stored, sourceData) : std::string();
+        if (!humanoidModel.empty()) {
+            fs::path modelAbsolute;
+            if (!anim::isModelFilePath(humanoidModel) || !McpRefs::resolveProjectPath(project, humanoidModel, modelAbsolute, error, true)) {
+                call->fail("create.humanoid.model: " + (error.empty() ? "\"" + humanoidModel + "\" is not a .gltf, .glb or .fbx model" : error) + ".");
+                return;
+            }
+            model = assetForm(project, projectRel(project, modelAbsolute.lexically_normal()));
+        }
+        if (model.empty()) {
+            call->fail("create.humanoid: " + fromRelative + " names no source model: pass humanoid: {model: \"assets/models/<the rig it was made "
+                       "on>.gltf\"} (or set the clip's preview model).");
+            return;
+        }
+        anim::HumanoidConversionReport conversion;
+        if (!ClipConverters::convertToHumanoid(sourceData, model, data, sourceWarnings, &error, &conversion)) {
+            call->fail("create.humanoid: " + error);
+            return;
+        }
+        humanoidReport = {{"source_model", projectPathOf(project, model)}, {"human_scale", r6(data.humanoid.humanScale)},
+                          {"mapped_slots", conversion.mappedSlots.size()}, {"unmapped_slots", conversion.unmappedSlots},
+                          {"extra_bones", conversion.mappedExtra}, {"generic_tracks", conversion.genericTracks.size()},
+                          {"dropped", conversion.droppedBones}};
+        ctx.changes.push_back("converted " + fromRelative + " to a humanoid clip on " + projectPathOf(project, model) + " (" +
+                              std::to_string(conversion.mappedSlots.size()) + " slots, " + std::to_string(conversion.mappedExtra.size()) +
+                              " finger/eye/jaw bones, " + std::to_string(conversion.genericTracks.size()) + " generic tracks kept)");
+    } else if (creating && !from.is_null()) {
         anim::SubClipReference reference;
         if (from.is_string() && anim::parseSubClipReference(from.get<std::string>(), reference)) {
             // Extract: the model's clip as an editable file (a project step; the model is untouched)
@@ -1544,7 +1886,8 @@ void editClip(const CallPtr& call) {
     if (document && !switched.empty()) {
         // written by the scene step above
     } else if (creating) {
-        document = AnimationClipDocument::create(project, relative, data, from.is_null() ? "Create Animation Clip" : "Extract to .anim", &error);
+        document = AnimationClipDocument::create(project, relative, data, humanoidCreate ? "Convert to Humanoid Clip" :
+                                                 from.is_null() ? "Create Animation Clip" : "Extract to .anim", &error);
         if (!document) {
             madeFolders.removeNow();
             call->fail("create: " + error);
@@ -1562,6 +1905,7 @@ void editClip(const CallPtr& call) {
     Json out = clipJson(project, document->path(), document->data(), false, maxKeys);
     out["created"] = creating;
     out["changes"] = ctx.changes;
+    if (!humanoidReport.is_null()) out["humanoid"] = humanoidReport;
     Json warningList = warningsJson(warnings);
     if (!insideAssets(project, absolute)) {
         warningList.push_back(relative + " is outside the assets folder: an Animation Player in a game cannot load it");
@@ -1630,6 +1974,10 @@ void getClip(const CallPtr& call) {
 
     // sampled values at the given seconds, through the runtime sampler (headless)
     std::string sampled;
+    std::vector<float> humanoidTimes;
+    ClipWrapMode humanoidWrap = ClipWrapMode::Once;
+    // a clip the root's entry retargets: its bindings are the conversion's (what plays)
+    std::shared_ptr<const AnimationClip> retargeted;
     if (has(args, "times")) {
         const Json& times = args["times"];
         if (!times.is_array() || times.empty() || times.size() > 64) {
@@ -1687,6 +2035,18 @@ void getClip(const CallPtr& call) {
                         values.push_back(quatJson(xyzw));
                         break;
                     }
+                    case ClipChannel::Humanoid: {
+                        float xyzw[4];
+                        quaternionToXYZW(sample->rotation, xyzw);
+                        Json value = {{"quat", Json::array({r6(xyzw[0]), r6(xyzw[1]), r6(xyzw[2]), r6(xyzw[3])})}};
+                        Json angles = humanoidAnglesJson(track.humanBone, xyzw);
+                        if (!angles.is_null()) value["angles"] = angles;
+                        values.push_back(value);
+                        break;
+                    }
+                    case ClipChannel::HumanoidPosition:
+                        values.push_back(Json::array({r6(sample->vector.x), r6(sample->vector.y), r6(sample->vector.z)}));
+                        break;
                     case ClipChannel::Morph:
                         values.push_back(floatsJson(sample->weights, 0, sample->weights.size()));
                         break;
@@ -1703,18 +2063,142 @@ void getClip(const CallPtr& call) {
                         values.push_back(nullptr);
                 }
             }
-            tracks.push_back({{"index", i}, {"path", track.path}, {"channel", anim::channelName(track.channel)}, {"relative", track.relative},
-                              {"values", values}});
+            Json item = {{"index", i}, {"path", track.path}, {"channel", anim::channelName(track.channel)}, {"relative", track.relative},
+                         {"values", values}};
+            if (isHumanoidChannel(track.channel)) {
+                item.erase("path");
+                item.erase("relative");
+                item["bone"] = anim::humanoidTrackBoneName(track.channel, track.humanBone);
+            }
+            tracks.push_back(item);
         }
         Json timesOut = Json::array();
         for (float t : at) timesOut.push_back(r6(t));
         // relative tracks give their own offsets / factors (not the posed values)
         out["samples"] = {{"times", timesOut}, {"wrap_used", anim::wrapName(wrap)}, {"tracks", tracks}};
         sampled = "; sampled at " + std::to_string(at.size()) + " time(s) (samples)";
+        humanoidTimes = at;
+        humanoidWrap = wrap;
     }
 
-    FixableClip fixable{document->isReadOnly() ? nullptr : &data, document->absolutePath()};
-    const Json bindings = root != NULL_ENTITY ? bindingsJson(scene, ClipValidation::validateInScene(project, scene, data, root), &fixable)
+    // a humanoid clip, a clip of an Animation Type: Humanoid model (the pool serves it humanoid),
+    // or one the root's player entry retargets (anim-retarget 10): its realisation on the root's
+    // rig at the times, with the entry's Mirror and Foot IK, and the retarget report
+    bool entryMirror = false;
+    bool entryFootIK = false;
+    if (root != NULL_ENTITY) {
+        std::shared_ptr<const AnimationClip> humanoidClip = document->clip()->isHumanoid() ? document->clip() : nullptr;
+        const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(root);
+        const AnimationPlayerClip* playing = nullptr;
+        if (player) {
+            for (const AnimationPlayerClip& entry : player->clips) {
+                if (entry.clip.empty() || AnimationClipDocument::open(project, entryClipJson(project, entry.clip), nullptr) != document) continue;
+                playing = &entry;
+                break;
+            }
+        }
+        if (playing) {
+            entryMirror = playing->mirror;
+            entryFootIK = playing->footIK;
+        }
+        anim::SubClipReference sub;
+        if (!humanoidClip && subClip && anim::parseSubClipReference(relative, sub)) {
+            const std::string model = FileUtils::pathToGenericUtf8(project->normalizeToAssetsRelative(project->getProjectPath() / FileUtils::pathFromUtf8(sub.model)));
+            if (ClipConverters::isHumanoidModel(model)) {
+                std::string loadError;
+                std::shared_ptr<const AnimationClip> pooled = AnimationClipPool::getOrLoad(model + "#" + sub.clip, &loadError);
+                if (pooled && pooled->isHumanoid()) {
+                    humanoidClip = pooled;
+                    retargeted = pooled;
+                }
+            }
+        }
+        if (!humanoidClip && playing && playing->retarget) {
+            std::string convertError;
+            humanoidClip = AnimationClipPool::getOrLoad(anim::retargetPoolKey(playing->clip, true), &convertError);
+            if (!humanoidClip) out["retarget_report"] = {{"error", convertError}};
+            retargeted = humanoidClip;
+        }
+        if (humanoidClip) {
+            const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(scene->scene, root);
+            Json report;
+            if (!slots.target) {
+                report["error"] = "\"" + scene->scene->getEntityName(root) + "\" has no humanoid rig (" + slots.error +
+                                  "): map its model's bones (edit_pose_animation op set_humanoid); the clip's other tracks still play";
+            } else {
+                anim::HumanoidBinding binding;
+                anim::bindHumanoidClip(*humanoidClip, slots.target, binding);
+                binding.mirror = entryMirror;
+                binding.footIK = entryFootIK;
+                const ClipHumanoidInfo& info = humanoidClip->getHumanoidInfo();
+                const float targetScale = slots.target->rig->humanScale();
+                report["target"] = {{"model", projectPathOf(project, slots.target->modelPath)}, {"human_scale", r6(targetScale)}};
+                report["source"] = {{"model", projectPathOf(project, info.sourceModel)}, {"human_scale", r6(info.humanScale)}};
+                if (info.humanScale > 0.0f) report["scale_ratio"] = r6(targetScale / info.humanScale);
+                report["mirror"] = entryMirror;
+                report["foot_ik"] = entryFootIK;
+                report["folded"] = binding.folded;
+                report["missing_on_target"] = binding.missingOnTarget;
+                // generic tracks that bind neither by path nor by unique bone name on this rig (the
+                // player's rule, anim::uniqueNamesUnder)
+                Json unmapped = Json::array();
+                std::unordered_map<std::string, Entity> names;
+                anim::uniqueNamesUnder(scene->scene, root, names);
+                for (const AnimationClip::Track& track : humanoidClip->getTracks()) {
+                    if (!track.isSampled() || isHumanoidChannel(track.channel)) continue;
+                    if (anim::resolvePath(scene->scene, root, track.path) != NULL_ENTITY) continue;
+                    std::vector<anim::PathSegment> segments;
+                    if (anim::parsePath(track.path, segments) && !segments.empty() && segments.back().index == 0) {
+                        auto found = names.find(segments.back().name);
+                        if (found != names.end() && found->second != NULL_ENTITY) continue;
+                    }
+                    if (std::find(unmapped.begin(), unmapped.end(), Json(track.path)) == unmapped.end()) unmapped.push_back(track.path);
+                }
+                report["unmapped_source_bones"] = unmapped;
+                if (!humanoidTimes.empty()) {
+                    Json realised = Json::array();
+                    for (float t : humanoidTimes) {
+                        anim::sampleHumanoidBinding(*humanoidClip, binding, anim::wrapClipTime(t, humanoidClip->getLength(), humanoidWrap), nullptr);
+                        Json bones = Json::array();
+                        Json hips = nullptr;
+                        for (const anim::HumanoidOutput& output : binding.outputs) {
+                            std::string path;
+                            anim::relativePath(scene->scene, root, output.entity, path);
+                            if (output.kind == anim::HumanoidOutput::Kind::Hips) {
+                                hips = Json::array({r6(output.position.x), r6(output.position.y), r6(output.position.z)});
+                                continue;
+                            }
+                            float xyzw[4];
+                            quaternionToXYZW(output.rotation, xyzw);
+                            const bool slot = output.kind == anim::HumanoidOutput::Kind::Slot;
+                            Json item = {{"bone", slot ? pose::humanBoneName(pose::boneAt(output.index)) : pose::humanExtraBoneName(pose::extraAt(output.index))},
+                                         {"entity", McpRefs::entityJson(scene, output.entity)}, {"path", path}, {"local_rotation", quatJson(xyzw)}};
+                            if (slot) {
+                                float local[4];
+                                quaternionToXYZW(binding.pose.rotations[output.index], local);
+                                float angles[pose::DOFS_PER_BONE];
+                                slots.target->rig->anglesFromLocal(pose::boneAt(output.index), binding.pose.rotations[output.index], angles);
+                                Json named = Json::object();
+                                const pose::BoneDofInfo& dofs = pose::boneDofInfo(pose::boneAt(output.index));
+                                for (int k = 0; k < pose::DOFS_PER_BONE; k++) named[dofs.dofs[k].name] = std::round(angles[k] * 1000.0) / 1000.0;
+                                item["angles"] = named;
+                            }
+                            bones.push_back(item);
+                        }
+                        realised.push_back({{"time", r6(t)}, {"bones", bones}, {"hips_local_position", hips}});
+                    }
+                    out["realised"] = realised;
+                    sampled += ", realised on \"" + scene->scene->getEntityName(root) + "\"'s humanoid rig (realised" +
+                               std::string(entryMirror ? ", mirrored" : "") + (entryFootIK ? ", Foot IK" : "") + ")";
+                }
+            }
+            out["retarget_report"] = report;
+        }
+    }
+
+    FixableClip fixable{document->isReadOnly() || retargeted ? nullptr : &data, document->absolutePath()};
+    const Json bindings = root != NULL_ENTITY ? bindingsJson(scene, ClipValidation::validateInScene(project, scene,
+                                                             retargeted ? retargeted->toData() : data, root), &fixable)
                                               : Json(nullptr);
     if (!bindings.is_null()) out["bindings"] = bindings;
 
@@ -1727,6 +2211,17 @@ void getClip(const CallPtr& call) {
     }
     for (const Json& warning : out["warnings"]) text += "\nwarning: " + warning.get<std::string>();
     if (!bindings.is_null()) text += "\n" + bindingsText(bindings);
+    if (out.contains("retarget_report")) {
+        const Json& report = out["retarget_report"];
+        if (report.contains("error")) {
+            text += "\nretarget: " + report["error"].get<std::string>();
+        } else {
+            text += "\nretarget: on " + report["target"]["model"].get<std::string>() + " (human scale " + fmt(report["target"]["human_scale"].get<double>()) +
+                    (report.contains("scale_ratio") ? ", " + fmt(report["scale_ratio"].get<double>()) + "x the source's" : std::string()) + ")";
+            for (const Json& line : report["folded"]) text += "\n  " + line.get<std::string>();
+            if (!report["missing_on_target"].empty()) text += "\n  the rig lacks " + report["missing_on_target"].dump();
+        }
+    }
     call->ok(text, out);
 }
 
@@ -1915,6 +2410,35 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
     return true;
 }
 
+Json avatarJson(Project* project, const fs::path& model) {
+    const std::shared_ptr<const PoseRigInfo> info = PoseRigProvider::forModelFile(project, model);
+    if (!info->sidecarError.empty()) return {{"error", info->sidecarError}};
+    if (info->boneNames.empty()) return nullptr;
+    Json mapped = Json::object();
+    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++) {
+        if (!info->humanoid.bones[(size_t)b].empty()) mapped[pose::humanBoneName(pose::boneAt(b))] = info->humanoid.bones[(size_t)b];
+    }
+    Json missing = Json::array();
+    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++) {
+        if (info->humanoid.bones[(size_t)b].empty()) missing.push_back(pose::humanBoneName(pose::boneAt(b)));
+    }
+    Json extra = Json::object();
+    for (int x = 0; x < pose::HUMAN_EXTRA_BONE_COUNT; x++) {
+        if (!info->extra.bones[(size_t)x].empty()) extra[pose::humanExtraBoneName(pose::extraAt(x))] = info->extra.bones[(size_t)x];
+    }
+    Json twist = Json::object();
+    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++) {
+        if (info->overrides.twist[(size_t)b]) twist[pose::humanBoneName(pose::boneAt(b))] = r6(*info->overrides.twist[(size_t)b]);
+    }
+    Json out = {{"animation_type", pose::animationTypeName(info->overrides.animationType.value_or(pose::AnimationType::Generic))},
+                {"humanoid", info->rig != nullptr}, {"mapped", mapped}, {"missing", missing}, {"extra_mapped", extra.size()},
+                {"extra_bones", extra}, {"twist", twist}, {"human_scale", info->rig ? Json(r6(info->rig->humanScale())) : Json(nullptr)},
+                {"notes", info->notes}};
+    if (!info->error.empty()) out["error"] = info->error;
+    if (!info->extraError.empty()) out["extra_error"] = info->extraError;
+    return out;
+}
+
 bool clipAssetInfo(Project* project, const fs::path& file, Json& data, std::string& text) {
     const std::string rel = projectRel(project, file);
     std::string error;
@@ -1927,10 +2451,16 @@ bool clipAssetInfo(Project* project, const fs::path& file, Json& data, std::stri
     const ClipData& clip = document->data();
     Json tracks = Json::array();
     for (const ClipTrackData& track : clip.tracks) {
+        if (isHumanoidChannel(track.channel)) {
+            // humanoid tracks name a bone, not a path
+            const char* bone = anim::humanoidTrackBoneName(track.channel, track.humanBone);
+            tracks.push_back({{"bone", bone ? bone : ""}, {"channel", anim::channelName(track.channel)}, {"key_count", track.keys.size()}});
+            continue;
+        }
         tracks.push_back({{"path", track.path}, {"channel", anim::channelName(track.channel)}, {"key_count", track.keys.size()}});
     }
     const std::vector<ClipUser> users = findClipUsers(project, rel);
-    data["clip"] = {{"version", anim::ANIM_VERSION}, {"guid", clip.guid}, {"length", r6(clip.effectiveLength())},
+    data["clip"] = {{"version", clip.isHumanoid() ? anim::ANIM_VERSION : 1}, {"guid", clip.guid}, {"length", r6(clip.effectiveLength())},
                     {"wrap", anim::wrapName(clip.wrap)}, {"frame_rate", r6(clip.frameRate)}, {"tracks", tracks},
                     {"events", eventsJson(clip.events)}, {"warnings", warningsJson(document->loadWarnings())},
                     {"users", usersJson(project, users)}};

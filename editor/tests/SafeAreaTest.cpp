@@ -14,6 +14,7 @@
 #include "System.h"
 #include "Scene.h"
 #include "subsystem/UISystem.h"
+#include "util/CanvasScaler.h"
 #include "component/SafeAreaComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/Transform.h"
@@ -28,6 +29,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <set>
 #include <thread>
 #include <string>
@@ -444,6 +446,35 @@ TEST_F(SafeAreaTest, ComponentAnchorsTheRootToTheSafeArea) {
     EXPECT_EQ(safe.appliedRevision, Screen::getSafeAreaRevision());
 }
 
+// a Canvas Scaler scales the UI, not the safe area: the same fractions of the screen in UI units
+TEST_F(SafeAreaTest, ComponentInAScaledUIKeepsTheScreenFractions) {
+    view(1000, 2000, 500, 1000, Scaling::FITWIDTH);
+    Screen::setPlatformSafeArea(EdgeInsets(20, 100, 40, 50));
+    Scene scene;
+    CanvasScalerSettings scaler;
+    scaler.mode = UIScaleMode::ScaleWithScreenSize;
+    scaler.referenceResolution = Vector2(1080, 1920);
+    scaler.screenMatchMode = ScreenMatchMode::Expand;
+    scene.setCanvasScaler(scaler);
+    scene.setCanvasScalerUseProjectDefault(false);
+    scene.updateCameraSize();
+    ASSERT_TRUE(scene.isUIScaled());
+    const Vector2 ui = scene.getSystem<UISystem>()->getCanvasSize();
+    ASSERT_GT(std::fabs(ui.x - 500.0f), 1.0f) << "the UI size differs from the game canvas";
+
+    Entity panel = uiElement(scene, NULL_ENTITY, 10, 10);
+    scene.addComponent<SafeAreaComponent>(panel, SafeAreaComponent());
+    scene.getSystem<UISystem>()->update(0);
+
+    const RectTransformComponent& layout = scene.getComponent<RectTransformComponent>(panel);
+    EXPECT_NEAR(layout.anchorPointLeft, 10.0f / 500.0f, 1e-5f);
+    EXPECT_NEAR(layout.anchorPointTop, 50.0f / 1000.0f, 1e-5f);
+    EXPECT_NEAR(layout.anchorPointRight, 480.0f / 500.0f, 1e-5f);
+    EXPECT_NEAR(layout.anchorPointBottom, 975.0f / 1000.0f, 1e-5f);
+    EXPECT_NEAR((float)layout.width, ui.x * 470.0f / 500.0f, 1.0f);
+    EXPECT_NEAR((float)layout.height, ui.y * 925.0f / 1000.0f, 1.0f);
+}
+
 TEST_F(SafeAreaTest, ComponentUnderASmallerParentClamps) {
     view(1000, 2000, 500, 1000, Scaling::FITWIDTH);
     Screen::setPlatformSafeArea(EdgeInsets(20, 100, 40, 50));
@@ -545,7 +576,9 @@ using namespace jasperengine::editor;
 
 TEST(SafeAreaComponent, CatalogNamesAndProperties) {
     const ComponentType type = ComponentType::SafeAreaComponent;
-    EXPECT_EQ(LastComponentType, type) << "appended at the end: prefab override masks use the ordinal";
+    // appended after the Text Effect (prefab override masks use the ordinal); later features append after it
+    EXPECT_EQ(static_cast<int>(type), static_cast<int>(ComponentType::TextEffectComponent) + 1);
+    EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(type));
     EXPECT_EQ(Catalog::getComponentName(type, true), "safearea");
     EXPECT_EQ(Catalog::getComponentDisplayName(type), "Safe Area");
     EXPECT_EQ(Catalog::getComponentType("safearea"), type);

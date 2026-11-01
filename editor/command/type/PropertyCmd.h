@@ -88,6 +88,8 @@ namespace jasperengine::editor{
             case ComponentType::AnimationPlayerComponent:
             case ComponentType::VertexAnimatorComponent:
             case ComponentType::TrailRendererComponent:
+            case ComponentType::CameraShakerComponent:
+            case ComponentType::CameraFollowComponent:
             case ComponentType::SafeAreaComponent:
                 return true;
             // Transform.parent drives tree order and lock state.

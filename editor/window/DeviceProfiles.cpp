@@ -68,8 +68,10 @@ namespace {
         auto clean = [](float value){ return (std::isfinite(value) && value > 0.0f) ? std::round(value) : 0.0f; };
         const EdgeInsets portrait(clean(device.left), clean(device.top), clean(device.right), clean(device.bottom));
         const float corner = std::min(clean(device.cornerRadius), (float)std::min(width, height) * 0.5f);
+        // 0: Screen.dpi is the computer's (Platform::getScreenDpi)
+        const float dpi = (std::isfinite(device.dpi) && device.dpi > 0.0f) ? std::min(device.dpi, 2000.0f) : 0.0f;
         // a custom screen turns every way: its insets go round with it
-        return DeviceProfile{"custom", "Custom", "android", width, height, 0.0f, 1.0f, corner, CutoutShape::None,
+        return DeviceProfile{"custom", "Custom", "android", width, height, dpi, 1.0f, corner, CutoutShape::None,
                              Rect(0, 0, 0, 0), portrait, editor::rotateInsets(portrait, ScreenOrientation::LandscapeLeft),
                              editor::rotateInsets(portrait, ScreenOrientation::LandscapeRight),
                              editor::rotateInsets(portrait, ScreenOrientation::PortraitUpsideDown), false, true, "Custom"};

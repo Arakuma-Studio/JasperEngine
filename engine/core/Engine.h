@@ -125,6 +125,7 @@
 #define MAX_BROADPHASELAYER_3D 6
 #endif
 
+#include "util/CanvasScaler.h"
 #include "Export.h"
 #include "System.h"
 #include "util/FunctionSubscribe.h"
@@ -323,6 +324,8 @@ namespace jasperengine {
         static Rect viewRect;
 
         static Scaling scalingMode;
+        // the project's Canvas Scaler (Project Settings > Graphics > UI Scale)
+        static CanvasScalerSettings defaultCanvasScaler;
         static TextureStrategy textureStrategy;
         
         static bool callMouseInTouchEvent;
@@ -463,6 +466,12 @@ namespace jasperengine {
         
         static void setScalingMode(Scaling scalingMode);
         static Scaling getScalingMode();
+
+        // The UI's own space, the project default each scene uses unless it overrides it
+        // (Scene::setCanvasScaler). FollowGameCanvas (the default) lays the UI out in the game
+        // canvas above. A change recomputes every running scene's UI size.
+        static void setDefaultCanvasScaler(const CanvasScalerSettings& settings);
+        static const CanvasScalerSettings& getDefaultCanvasScaler();
 
         static void setTextureStrategy(TextureStrategy textureStrategy);
         static TextureStrategy getTextureStrategy();

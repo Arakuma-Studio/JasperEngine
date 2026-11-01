@@ -133,18 +133,21 @@ diagnostic. Documents on meshes (texture mode) get 0. Inline `style` attributes 
 
 ## Simulating phones in the editor
 
-The Game view's Device menu (left of the aspect) picks a phone or tablet: iPhone 15 Pro and Pro Max
+The Game view's Device menu (left of the aspect / resolution menu) picks a phone or tablet: iPhone 15 Pro and Pro Max
 (Dynamic Island), iPhone 13 / 14 and X (notch), iPhone SE, iPad Pro 11", Pixel 8 and Galaxy S23
-(punch hole), Pixel 3 XL (notch), or **Custom...** (your own size, portrait insets and corner
-radius). Rotate turns it (portrait, landscape left, landscape right, upside down where the device
+(punch hole), Pixel 3 XL (notch), or **Custom...** (your own size, portrait insets, corner
+radius and dpi; dpi 0 is the computer's). Rotate turns it (portrait, landscape left, landscape right, upside down where the device
 has it); the toolbar's phone icon toggles the **Device Overlay** (black rounded corners and cutout,
 the home indicator) and the square icon the **Safe Area** outline (green, dashed). With a device:
 
-- the game image has the device's aspect; the simulated insets are scaled to the rendered size and
+- the game renders at the device's screen pixels (the image fitted to the view; the aspect /
+  resolution menu is off: a resolution preset is a size without insets), the simulated insets are
   fed to the engine, so `Screen.safeArea`, Safe Area panels and HTML `env()` behave as on the phone,
   in Play and in edit mode (the Scene view's UI follows the device too);
 - in Play, `System.getDeviceModel()`, `Screen.dpi` and `Screen.orientation` are the device's
   (jasper://docs/platform-services);
+- a Canvas Scaler (`graphics.ui_scale`, jasper://docs/ui) scales the UI, not the safe area: Safe
+  Area panels and `env()` keep the same fractions of the screen in the scaled UI units;
 - input is unaffected by the overlay; the Stats overlay shows `Safe area: x,y wxh` (canvas).
 
 Nothing of the simulation reaches a build.
@@ -153,7 +156,7 @@ MCP:
 
 ```json
 {"tool": "configure_game_view", "arguments": {"device": "iphone_15_pro", "orientation": "landscape_left"}}
-{"tool": "configure_game_view", "arguments": {"custom_device": {"width": 1080, "height": 2400, "insets": {"top": 120, "bottom": 60}, "corner_radius": 80}}}
+{"tool": "configure_game_view", "arguments": {"custom_device": {"width": 1080, "height": 2400, "insets": {"top": 120, "bottom": 60}, "corner_radius": 80, "dpi": 420}}}
 {"tool": "screenshot", "arguments": {"view": "game"}}
 {"tool": "eval_lua", "arguments": {"code": "return Screen.safeArea"}}
 ```

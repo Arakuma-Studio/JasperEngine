@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "htmlui/HtmlTextEffects.h"
 #include "HtmlUIContext.h"
 
 #include "HtmlUI.h"
@@ -212,6 +213,7 @@ void HtmlUIContext::destroy(){
 
     // geometry goes back through RmlRenderer::ReleaseGeometry
     RmlRenderer::unbindContext(context);
+    htmlui::HtmlTextEffects::get().forget(context);
     Rml::RemoveContext(name);
     context = nullptr;
     navigateListener.reset();   // detached with the root element
@@ -314,6 +316,8 @@ void HtmlUIContext::unloadDocument(Rml::ElementDocument* document){
 
 void HtmlUIContext::update(){
     if (context){
+        // text-effect: the texts that animate draw again (geometry only)
+        htmlui::HtmlTextEffects::get().update(context);
         // focus tracking, animation fill modes (phase-2 hook H1)
         htmlui::compat::updateRuntime(context);
         context->Update();
@@ -431,6 +435,8 @@ const std::string& HtmlUIContext::getColorScheme() const{
 
 void HtmlUIContext::setReducedMotion(bool reduced){
     reducedMotion = reduced;
+    if (context)
+        htmlui::HtmlTextEffects::get().setReducedMotion(context, reduced);
     applyThemes();
 }
 

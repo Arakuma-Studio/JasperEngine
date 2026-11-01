@@ -73,8 +73,12 @@ namespace jasperengine::editor{
         // the pose animation (`name` empty: its file stem). An existing file there is rewritten
         // (its GUID kept) only when it was baked from this pose animation; otherwise a free name
         // is taken ("walk 2.anim"), and an explicit `clipPath` that exists is refused.
+        // `humanoid` (Bake to Humanoid Clip, anim-retarget 9): the frames as a humanoid clip of the
+        // model's rig ("<name> (Humanoid).anim"): every slot's E, the hips offset and the foot goals
+        // of the realised frames; it plays on any humanoid character
         static bool bakeToClip(Project* project, uint32_t sceneId, Entity model, PoseAnimationDocument& document,
-                               const std::string& name, const std::string& clipPath, PoseClipBakeResult& result, std::string& error);
+                               const std::string& name, const std::string& clipPath, PoseClipBakeResult& result, std::string& error,
+                               bool humanoid = false);
         // The clip Bake to Animation Clip writes, in memory only (no file, no scene change): the
         // frames on `model` of `scene` (an open scene or a private one, e.g. the Vertex Animation
         // baker's), paths from the model root, source {kind "pose", path, stem}. False + error, with

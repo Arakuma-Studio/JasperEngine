@@ -5,6 +5,8 @@
 #define LuaBridgeAddon_h
 
 #include "Scene.h"
+#include "util/CanvasScaler.h"
+#include "util/TextEffects.h"
 #include "Input.h"
 #include "FileData.h"
 #include "thread/ResourceProgress.h"
@@ -90,6 +92,7 @@ namespace luabridge
     template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
+    template<> struct Stack<AudioLoadType> : EnumWrapper<AudioLoadType>{};
 
     template<> struct Stack<EaseType> : EnumWrapper<EaseType>{};
     template<> struct Stack<ActionState> : EnumWrapper<ActionState>{};
@@ -101,6 +104,12 @@ namespace luabridge
     // Canvas Groups (ui canvas group spec 7.6)
     template<> struct Stack<CanvasGroupRenderMode> : EnumWrapper<CanvasGroupRenderMode>{};
     template<> struct Stack<AlphaTweenTarget> : EnumWrapper<AlphaTweenTarget>{};
+    // ui-scaling-text: the Canvas Scaler and Text Effect enums
+    template<> struct Stack<UIScaleMode> : EnumWrapper<UIScaleMode>{};
+    template<> struct Stack<ScreenMatchMode> : EnumWrapper<ScreenMatchMode>{};
+    template<> struct Stack<PhysicalUnit> : EnumWrapper<PhysicalUnit>{};
+    template<> struct Stack<TextEffectType> : EnumWrapper<TextEffectType>{};
+    template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};

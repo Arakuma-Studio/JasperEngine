@@ -18,8 +18,10 @@
 #include "component/LayoutGroupComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/TextComponent.h"
+#include "component/TextEffectComponent.h"
 #include "component/ImageComponent.h"
 #include "component/UIComponent.h"
+#include "util/STBText.h"
 #include "component/ButtonComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
@@ -117,8 +119,19 @@ namespace jasperengine{
         Entity lastUIFromClick; // the legacy onDoubleClick
         double lastClickTime; // monotonic wall-clock seconds (Engine::getSystemTime)
 
-        int anchorReferenceWidth;
-        int anchorReferenceHeight;
+        static bool reducedMotion;
+
+        bool textEffectsHeld = false;
+        double lastTextEffectsTime = 0.0;
+
+        // Text Effects after the layout: time, the glyphs from their base, events
+        void updateTextEffects(double dt);
+        // writes the effect (or the plain text when !effect.playing) into the text's vertices;
+        // revealed characters go to `revealedEvents`, a completed cycle sets `completed`
+        void applyTextEffect(Entity entity, TextEffectComponent& effect, TextComponent& text, UIComponent& ui,
+                             std::vector<int>& revealedEvents, bool& completed);
+        float anchorReferenceWidth;
+        float anchorReferenceHeight;
 
         bool pendingImages; // an image waited for its texture in the last update
 
@@ -180,7 +193,9 @@ namespace jasperengine{
         bool createImagePatches(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
 
         // Text
-        std::string getFontId(const TextComponent& text) const;
+        // outline/shadow shader parameters of an SDF text (UIComponent::textParams)
+        void updateTextShaderParams(TextComponent& text, UIComponent& ui);
+        void hideTextGlyphsAfter(TextComponent& text, UIComponent& ui, size_t count);
         std::string getFontTextureId(const TextComponent& text) const;
         bool isFontAtlasStale(const TextComponent& text) const;
         void syncFontAtlas(TextComponent& text, UIComponent& ui);
@@ -292,7 +307,15 @@ namespace jasperengine{
 
         bool isEntityChild(Entity child, Entity parent) const;
 
+        // game canvas pixels (pointer events) to this scene's UI units
+        void toUISpace(float& x, float& y) const;
+
     public:
+        // the atlas a text needs now: its raster scale (Canvas Scaler) and, with an outline or a
+        // shadow, an SDF padding
+        STBTextOptions getTextOptions(const TextComponent& text) const;
+        std::string getFontId(const TextComponent& text) const;
+        std::string getFontId(const TextComponent& text, const STBTextOptions& options) const;
         // An anchored element's offset is measured in its nearest layout parent's space,
         // its position in its own parent's space
         Vector2 parentToLayoutSpace(Entity entity, const Vector2& point) const;
@@ -303,10 +326,26 @@ namespace jasperengine{
 
         Rect getAnchorReferenceRect(const RectTransformComponent& layout, const Transform& transform, bool worldPosition);
 
-        void setAnchorReferenceSize(int width, int height);
+        // the editor lays a scene out at a size of its choosing (0 = none set)
+        void setAnchorReferenceSize(float width, float height);
         void clearAnchorReferenceSize();
-        int getAnchorReferenceWidth() const;
-        int getAnchorReferenceHeight() const;
+        float getAnchorReferenceWidth() const;
+        float getAnchorReferenceHeight() const;
+        // The size root elements anchor to, in UI units: the reference size above when set,
+        // else the scene's Canvas Scaler UI size (Scene::isUIScaled), else the Engine canvas
+        Vector2 getCanvasSize() const;
+        // the scale glyphs rasterize at: view pixels per UI unit when the Canvas Scaler
+        // scales this scene (crisp text), else 1 (the text's own pixel size, as before)
+        float getTextRasterScale() const;
+
+        // UI.reducedMotion: Text Effects skip their motion layers (wave, bounce, shake, pulse,
+        // grow, unfold) and keep colour and reveal ones. Global, default false.
+        static void setReducedMotion(bool reducedMotion);
+        static bool isReducedMotion();
+
+        // the editor's edit mode: Text Effects hold still unless the Inspector previews them
+        void setTextEffectsHeld(bool held);
+        bool isTextEffectsHeld() const;
 
         bool isInputFieldFocused();
 
@@ -390,6 +429,8 @@ namespace jasperengine{
         // basic UIs
         bool createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui, RectTransformComponent& layout);
         bool createOrUpdateImage(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
+        // the canvas scale or the outline/shadow asks for another atlas: flags its rebuild
+        void checkTextAtlasOptions(TextComponent& text, UIComponent& ui);
         bool createOrUpdateText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
 
         // advanced UIs

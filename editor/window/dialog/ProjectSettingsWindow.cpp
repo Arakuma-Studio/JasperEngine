@@ -10,9 +10,16 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "SettingsCategoryList.h"
+#include "window/CanvasScalerFields.h"
 #include "window/PlayInput.h"
 #include "imgui_internal.h"
 #include "command/type/InputActionsCmd.h"
+#include "command/type/AudioSettingsCmd.h"
+#include "audio/AudioMixer.h"
+#include "subsystem/AudioSystem.h"
+#include "EditorHost.h"
+#include "util/FileUtils.h"
+#include "util/Util.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "util/Color.h"
 #include "input/InputActions.h"
@@ -136,6 +143,7 @@ enum class ProjectCategory {
     Physics,
     Physics2D,
     Input,
+    Audio,
     Scripting,
     TagsAndLayers,
     Editor,
@@ -158,6 +166,7 @@ static const settingsui::Category projectCategories[] = {
     {"Physics 2D", "", "2d physics box2d rigidbody 2d"},
     {"Input", "", "input manager axes actions buttons keys keyboard mouse gamepad joystick bindings horizontal vertical "
                   "jump fire submit cancel gravity sensitivity dead snap invert rebinding"},
+    {"Audio", "", "audio mixer groups voices real voices sample rate output group sound music volume"},
     {"Scripting", "", "lua directory script directories c++ standard"},
     {"Tags and Layers", "", "tags layers"},
     {"Editor", "", "version control files assets directory"},
@@ -864,6 +873,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_canvasWidth = project->getCanvasWidth();
     m_canvasHeight = project->getCanvasHeight();
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
+    m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
     m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
@@ -974,6 +984,9 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     }
 
     m_loadingSettings = project->getLoadingSettings();
+    m_audioSettings = project->getAudioSettings();
+    snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
+    snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", m_audioSettings.defaultOutputGroup.c_str());
 
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
@@ -1058,6 +1071,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Physics: drawPhysicsSettings(); break;
         case ProjectCategory::Physics2D: drawPhysics2DSettings(); break;
         case ProjectCategory::Input: drawInputSettings(); break;
+        case ProjectCategory::Audio: drawAudioSettings(); break;
         case ProjectCategory::Scripting: drawScriptingSettings(); break;
         case ProjectCategory::TagsAndLayers: drawTagsAndLayersSettings(); break;
         case ProjectCategory::Editor: drawEditorSettings(); break;
@@ -1431,6 +1445,40 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         ImGui::Spacing();
         drawScalingPreview(scalingModeValues[m_scalingModeIndex], m_canvasWidth, m_canvasHeight);
 
+        // the Canvas Scaler's project default: the UI's own space, apart from the game canvas
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Spacing();
+        ImGui::TextUnformatted("UI Scale");
+        ImGui::SameLine();
+        if (m_uiScale != CanvasScalerSettings()) {
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            if (ImGui::SmallButton(ICON_FA_ROTATE_LEFT "##resetUIScale"))
+                m_uiScale = CanvasScalerSettings();
+            ImGui::SetItemTooltip("Restore default (Follow Game Canvas)");
+            ImGui::PopStyleColor(2);
+            ImGui::PopStyleVar();
+        }
+        ImGui::TableSetColumnIndex(1);
+        ImGui::Spacing();
+        ImGui::TextDisabled("Canvas Scaler of the UI scenes and HTML UI documents (a scene can override it)");
+        drawCanvasScalerFields("##UIScale", m_uiScale);
+        if (m_uiScale.mode != UIScaleMode::FollowGameCanvas && m_canvasWidth > 0 && m_canvasHeight > 0) {
+            float viewWidth = 0.0f, viewHeight = 0.0f, dpi = 0.0f;
+            m_project->getEditViewSize(viewWidth, viewHeight, dpi);
+            int gameCanvasWidth = m_canvasWidth, gameCanvasHeight = m_canvasHeight;
+            Rect viewRect;
+            Engine::computeViewLayout((int)viewWidth, (int)viewHeight, m_canvasWidth, m_canvasHeight, scalingModeValues[m_scalingModeIndex],
+                                      gameCanvasWidth, gameCanvasHeight, viewRect);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("%s", canvasScalerPreview(m_uiScale, viewRect.getWidth(), viewRect.getHeight(),
+                                                          (float)gameCanvasWidth, (float)gameCanvasHeight, dpi).c_str());
+            ImGui::SetItemTooltip("For the Game view's current resolution; pick another in its resolution menu.");
+        }
+
         drawComboSetting("Texture Strategy", "##TextureStrategy", textureStrategyNames, textureStrategyCount, m_textureStrategyIndex, findTextureStrategyIndex(Project::defaultTextureStrategy),
             "Only very old GPUs need power-of-two textures. Resize blurs the edges of atlas tiles. The editor applies a change when the project is reopened.");
 
@@ -1504,6 +1552,101 @@ void ProjectSettingsWindow::drawPhysicsSettings() {
                 "Scripts change it with Physics.ignoreLayerCollision; collider category and mask bits still apply to the checked pairs.");
             drawLayerCollisionMatrix("##LayerCollisionMatrix3D", m_layerCollision3D);
         }
+    }
+    endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawAudioSettings() {
+    if (beginSettingsPanel("##AudioSettingsPanel")) {
+        if (beginSettingsTable("##AudioSettingsTable")) {
+            const AudioSettings defaults;
+            AudioSettings& audio = m_audioSettings;
+
+            if (beginSettingsRow("Audio Mixer", m_audioMixerBuffer[0] != '\0')) {
+                m_audioMixerBuffer[0] = '\0';
+            }
+            const float buttonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+            ImGui::SetNextItemWidth(-helpMarkerWidth() - buttonWidth - ImGui::GetStyle().ItemSpacing.x);
+            ImGui::InputTextWithHint("##AudioMixer", "None (an implicit Master)", m_audioMixerBuffer, sizeof(m_audioMixerBuffer));
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+                    std::vector<std::string> files = Util::getStringsFromPayload(payload);
+                    if (!files.empty()) {
+                        const fs::path relative = m_project->normalizeToAssetsRelative(m_project->resolveAssetPath(FileUtils::pathFromUtf8(files[0])));
+                        if (relative.extension() == ".mixer") {
+                            snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", FileUtils::pathToGenericUtf8(relative).c_str());
+                        }
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_FOLDER_OPEN "##AudioMixerPick")) {
+                const std::string picked = FileDialogs::openFileDialog(m_project->getAssetsPath().string(), FILE_DIALOG_AUDIO_MIXER);
+                if (!picked.empty()) {
+                    const fs::path relative = m_project->normalizeToAssetsRelative(FileUtils::pathFromUtf8(picked));
+                    snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", FileUtils::pathToGenericUtf8(relative).c_str());
+                }
+            }
+            endSettingsRow("The .mixer the game plays through (assets-relative). Window > Audio > Audio Mixer edits it and "
+                           "makes audio/Main.mixer when none is set. Empty: every sound plays through an implicit Master at 0 dB.");
+
+            if (beginSettingsRow("Default Output Group", m_audioDefaultGroupBuffer[0] != '\0')) {
+                m_audioDefaultGroupBuffer[0] = '\0';
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            const std::vector<std::string> groups = AudioMixer::getGroupNames();
+            if (ImGui::BeginCombo("##AudioDefaultGroup", m_audioDefaultGroupBuffer[0] ? m_audioDefaultGroupBuffer : (groups.empty() ? "Master" : groups[0].c_str()))) {
+                for (size_t i = 0; i < groups.size(); i++) {
+                    const char* value = i == 0 ? "" : groups[i].c_str();
+                    if (ImGui::Selectable(groups[i].c_str(), strcmp(value, m_audioDefaultGroupBuffer) == 0)) {
+                        snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", value);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            endSettingsRow("The mixer group new Audio Sources play through.");
+
+            if (beginSettingsRow("Max Real Voices", audio.maxRealVoices != defaults.maxRealVoices)) {
+                audio.maxRealVoices = defaults.maxRealVoices;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            // SoLoud mixes at most 255 voices at once, the mixer's group buses among them
+            const int realVoicesLimit = std::max(1, (int)AudioMixer::maxActiveVoices - (int)AudioMixer::getGroupNames().size());
+            ImGui::DragInt("##AudioMaxRealVoices", &audio.maxRealVoices, 1.0f, 1, realVoicesLimit);
+            audio.maxRealVoices = std::clamp(audio.maxRealVoices, 1, realVoicesLimit);
+            endSettingsRow("Voices mixed at once. Past it the quietest are virtualised (silent until they are loud enough again). "
+                           "At most 255 minus the mixer's groups (each group is a voice too).");
+
+            if (beginSettingsRow("Max Voices", audio.maxVoices != defaults.maxVoices)) {
+                audio.maxVoices = defaults.maxVoices;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::DragInt("##AudioMaxVoices", &audio.maxVoices, 1.0f, 1, 1000);
+            audio.maxVoices = std::clamp(audio.maxVoices, 1, 1000);
+            endSettingsRow("Voices playing at all. Past it the least important (the highest Audio Source Priority, the oldest first) "
+                           "is stopped, or the new one does not start when it is the least important.");
+
+            if (beginSettingsRow("Sample Rate", audio.sampleRate != defaults.sampleRate)) {
+                audio.sampleRate = defaults.sampleRate;
+            }
+            static const int rates[] = {0, 22050, 44100, 48000};
+            static const char* rateNames[] = {"Auto (the device's)", "22050 Hz", "44100 Hz", "48000 Hz"};
+            int rateIndex = 0;
+            for (int i = 0; i < 4; i++) if (rates[i] == audio.sampleRate) rateIndex = i;
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            if (ImGui::Combo("##AudioSampleRate", &rateIndex, rateNames, 4)) audio.sampleRate = rates[rateIndex];
+            endSettingsRow("The output's sample rate. It applies the next time the audio opens (exports: at start).");
+
+            ImGui::EndTable();
+        }
+
+        ImGui::Spacing();
+        if (ImGui::Button(ICON_FA_SLIDERS " Open Audio Mixer")) {
+            editor::getEditorHost().openAudioMixerWindow(m_audioMixerBuffer[0] ? m_project->resolveAssetPath(FileUtils::pathFromUtf8(m_audioMixerBuffer)) : fs::path());
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", AudioSystem::isInited() ? (std::string("Output: ") + (AudioSystem::isOutputAvailable() ? AudioSystem::getBackendName() : "none (" + AudioSystem::getBackendName() + ")")).c_str() : "");
     }
     endSettingsPanel();
 }
@@ -2763,6 +2906,8 @@ bool ProjectSettingsWindow::applySettings() {
 
     m_project->setCanvasSize(m_canvasWidth, m_canvasHeight);
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
+    if (m_project->getUIScale() != m_uiScale)
+        m_project->setUIScale(m_uiScale);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setHtmlUiMsaaSamples(htmlUiMsaaValues[m_htmlUiMsaaIndex]);
@@ -2915,6 +3060,23 @@ bool ProjectSettingsWindow::applySettings() {
     // GameObjects keep a removed tag, as in Unity; scripts then see it as not defined
     m_project->setTagsAndLayers(tags, m_layerNames);
     m_project->setLayerCollisionMatrices(m_layerCollision3D, m_layerCollision2D);
+
+    // Audio: one undoable step too
+    {
+        AudioSettings audio = m_audioSettings;
+        audio.mixer = FileUtils::pathToGenericUtf8(FileUtils::pathFromUtf8(m_audioMixerBuffer));
+        while (!audio.mixer.empty() && audio.mixer.back() == ' ') audio.mixer.pop_back();
+        // "assets/audio/Main.mixer" typed as the Project window shows it
+        if (audio.mixer.rfind("assets/", 0) == 0 && !std::filesystem::exists(m_project->resolveAssetPath(FileUtils::pathFromUtf8(audio.mixer)))) {
+            audio.mixer = audio.mixer.substr(7);
+        }
+        audio.defaultOutputGroup = m_audioDefaultGroupBuffer;
+        if (audio != m_project->getAudioSettings()) {
+            auto* command = new AudioSettingsCmd(m_project, m_project->getAudioSettings(), audio);
+            command->setNoMerge();
+            m_project->getProjectCommandHistory()->addCommand(command);
+        }
+    }
 
     // Input: one undoable step of the project history (Edit > Undo with the Project window
     // focused, MCP undo scope project)

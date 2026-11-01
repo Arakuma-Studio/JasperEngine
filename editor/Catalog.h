@@ -96,6 +96,8 @@ namespace jasperengine::editor{
         UpdateFlags_Ragdoll             = (uint64_t)1 << 51,
         // a version 2 Particle System's renderer.mesh: its target draws that primitive now
         UpdateFlags_Particle_Mesh       = (uint64_t)1 << 52,
+        // a Text Effect's selection or layers changed: its glyphs again from their base
+        UpdateFlags_TextEffect          = (uint64_t)1 << 53,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -176,6 +178,12 @@ namespace jasperengine::editor{
         OnScreenStickComponent,
         OnScreenButtonComponent,
         TouchAreaComponent,
+        // MilkShake's Shaker: shakes from presets and trauma (camera shake spec 7.1)
+        CameraShakerComponent,
+        // Cinemachine-lite follow: offset, SmoothDamp, look-at, dead zone, bounds (camera shake spec 7.1)
+        CameraFollowComponent,
+        // per-character animation of a Text (ui-scaling-text spec 7.3)
+        TextEffectComponent,
         // drives a RectTransform to Screen.safeArea (safe-area spec 6.3)
         SafeAreaComponent
     };
@@ -210,6 +218,16 @@ namespace jasperengine::editor{
         // Unity's ParticleSystem.MinMaxCurve / MinMaxGradient (particles/MinMax.h)
         MinMaxCurve,
         MinMaxGradient
+    };
+
+    // a scene's Canvas Scaler as one scene property ("canvas_scaler"): its own settings and
+    // whether the project's UI Scale applies instead
+    struct SceneCanvasScaler {
+        bool useProjectDefault = true;
+        CanvasScalerSettings settings;
+
+        bool operator==(const SceneCanvasScaler& other) const { return useProjectDefault == other.useProjectDefault && settings == other.settings; }
+        bool operator!=(const SceneCanvasScaler& other) const { return !(*this == other); }
     };
 
     struct PropertyData{
@@ -611,6 +629,11 @@ namespace jasperengine::editor{
                     return scene->getPostProcessPasses();
                 }
             }
+            else if (propertyName == "canvas_scaler") {
+                if constexpr (std::is_same_v<T, SceneCanvasScaler>) {
+                    return SceneCanvasScaler{scene->isCanvasScalerUseProjectDefault(), scene->getCanvasScaler()};
+                }
+            }
 
             // Return default value if property not found
             if constexpr (std::is_same_v<T, Vector4>) return Vector4(0.0, 0.0, 0.0, 1.0);
@@ -626,6 +649,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, std::string>) return std::string();
             if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return std::vector<PostProcessPass>();
             if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
+            if constexpr (std::is_same_v<T, SceneCanvasScaler>) return SceneCanvasScaler();
             // Add other types as needed
         }
 
@@ -765,6 +789,9 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "post_process") {
                 if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return d.postProcess;
+            }
+            else if (propertyName == "canvas_scaler") {
+                if constexpr (std::is_same_v<T, SceneCanvasScaler>) return SceneCanvasScaler{d.canvasScalerUseProjectDefault, d.canvasScaler};
             }
 
             // Unknown property (or type mismatch): fall back to the type-generic default.
@@ -983,6 +1010,12 @@ namespace jasperengine::editor{
             else if (propertyName == "post_process") {
                 if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) {
                     scene->setPostProcessPasses(value);
+                }
+            }
+            else if (propertyName == "canvas_scaler") {
+                if constexpr (std::is_same_v<T, SceneCanvasScaler>) {
+                    scene->setCanvasScaler(value.settings);
+                    scene->setCanvasScalerUseProjectDefault(value.useProjectDefault);
                 }
             }
         }

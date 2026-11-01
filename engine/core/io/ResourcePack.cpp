@@ -257,6 +257,13 @@ bool ResourcePack::contains(const std::string& path) {
     return findEntry(path) != nullptr;
 }
 
+bool ResourcePack::size(const std::string& path, uint64_t& outSize) {
+    const PackEntry* entry = findEntry(path);
+    if (!entry) return false;
+    outSize = entry->size;
+    return true;
+}
+
 bool ResourcePack::read(const std::string& path, std::vector<unsigned char>& outData) {
     const PackEntry* entry = findEntry(path);
     if (!entry) return false;

@@ -13,7 +13,9 @@
 
 #include "ecs/Entity.h"
 #include "math/Matrix4.h"
+#include "pose/HumanExtraBones.h"
 #include "pose/HumanoidMap.h"
+#include "pose/HumanoidMapIO.h"
 #include "pose/PoseRig.h"
 
 #include <cstdint>
@@ -43,6 +45,16 @@ namespace jasperengine::editor{
         // scene rigs: per skeleton bone, the non-bone ancestors folded into its rest TRS
         // (skeleton local = bridge * Transform local; ModelRig's buildSkeleton)
         std::vector<Matrix4> bridges;
+        // the Avatar (anim-retarget): the sidecar as read, the extra bones (auto-detect +
+        // overrides; `extraError` when an override did not validate: auto-detect is used)
+        // `overrides` is set whenever the sidecar reads (also when the body map does not
+        // validate); `sidecarError` when the sidecar exists but cannot be read (writers refuse
+        // then: rewriting it from `overrides` would wipe the Avatar)
+        pose::HumanoidOverrides overrides;
+        std::string sidecarError;
+        pose::HumanExtraMap extra;
+        std::string extraError;
+        pose::Skeleton skeleton;                // the model's skeleton (empty when it has none)
     };
 
     class PoseRigProvider{

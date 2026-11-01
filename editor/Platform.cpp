@@ -12,6 +12,7 @@
 #include "window/DeviceProfiles.h"
 #include "imgui.h"
 
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -153,6 +154,10 @@ void editor::Platform::setSimulatedOrientation(ScreenOrientation orientation){
 
 void editor::Platform::setSimulatedLanguage(const std::string& language){
     simulation.language = LocaleRules::normalize(language);
+}
+
+void editor::Platform::setSimulatedDpi(float dpi){
+    simulation.dpi = (std::isfinite(dpi) && dpi > 0.0f) ? dpi : 0.0f;
 }
 
 const editor::PlatformSimulation& editor::Platform::getSimulation(){
@@ -322,7 +327,8 @@ bool editor::Platform::hapticFeedback(HapticFeedback type){
 }
 
 float editor::Platform::getScreenDpi(){
-    if (simulation.device) return simulation.device->dpi;
+    if (simulation.device && simulation.device->dpi > 0.0f) return simulation.device->dpi;
+    if (simulation.dpi > 0.0f) return simulation.dpi;
     return HostServices::screenDpi();
 }
 

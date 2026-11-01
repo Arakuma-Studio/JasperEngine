@@ -80,6 +80,11 @@ EntityRegistry::EntityRegistry() {
     registerComponent<OnScreenStickComponent>();
     registerComponent<OnScreenButtonComponent>();
     registerComponent<TouchAreaComponent>();
+    // camera shake spec 7.1
+    registerComponent<CameraShakerComponent>();
+    registerComponent<CameraFollowComponent>();
+    registerComponent<TextEffectComponent>();
+    // safe-area spec 6.3
     registerComponent<SafeAreaComponent>();
 }
 
