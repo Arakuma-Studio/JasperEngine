@@ -10,6 +10,9 @@
 # WavStreamInstance::seek lands on its frame in every format with the decoder's own seek
 # (src/audiosource/wav/soloud_wavstream.cpp: it tested a union member set for every format and handed
 # WAV, FLAC and MP3 decoders to stb_vorbis_seek at each loop wrap; Ogg dropped the sought frame).
+# Wav's loaders stay within the clip (src/audiosource/wav/soloud_wav.cpp: loadogg wrote the frames
+# stb_vorbis decodes past the last granule beyond mData; loadwav and loadflac copied whole blocks after
+# a short read, stale or uninitialised floats).
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 

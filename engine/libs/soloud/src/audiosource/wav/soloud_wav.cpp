@@ -118,7 +118,12 @@ namespace SoLoud
 		{
 			float tmp[512 * MAX_CHANNELS];
 			unsigned int blockSize = (mSampleCount - i) > 512 ? 512 : mSampleCount - i;
-			drwav_read_pcm_frames_f32(&decoder, blockSize, tmp);
+			// JasperEngine local patch: frames that don't decode are silence. Upstream copied the whole
+			// block whatever the read returned, so an ADPCM block dr_wav stops at (a bad header)
+			// left stale or uninitialised floats in the clip.
+			drwav_uint64 got = drwav_read_pcm_frames_f32(&decoder, blockSize, tmp);
+			if (got < blockSize)
+				memset(tmp + got * decoder.channels, 0, sizeof(float) * (blockSize - got) * decoder.channels);
 			for (j = 0; j < blockSize; j++)
 			{
 				for (k = 0; k < decoder.channels; k++)
@@ -167,6 +172,16 @@ namespace SoLoud
             {
 				break;
             }
+
+			// JasperEngine local patch: the copy stops at the length mData was sized for. The last page's
+			// granule position is the clip's length, but stb_vorbis does not always trim the last
+			// packet to it (some libVorbis files decode a few hundred frames more, files cut with
+			// ffmpeg -ss -c copy tens of thousands), and upstream wrote those frames past mData: a
+			// heap overflow.
+			if (n > (int)mSampleCount - samples)
+				n = (int)mSampleCount - samples;
+			if (n <= 0)
+				break;
 
 			unsigned int ch;
 			for (ch = 0; ch < mChannels; ch++)
@@ -249,7 +264,12 @@ namespace SoLoud
 		{
 			float tmp[512 * MAX_CHANNELS];
 			unsigned int blockSize = (mSampleCount - i) > 512 ? 512 : mSampleCount - i;
-			drflac_read_pcm_frames_f32(decoder, blockSize, tmp);
+			// JasperEngine local patch: frames that don't decode are silence. Upstream copied the whole
+			// block whatever the read returned, so a stream that ends before STREAMINFO's count (a
+			// cut file, a damaged frame) left stale or uninitialised floats in the clip.
+			drflac_uint64 got = drflac_read_pcm_frames_f32(decoder, blockSize, tmp);
+			if (got < blockSize)
+				memset(tmp + got * decoder->channels, 0, sizeof(float) * (blockSize - got) * decoder->channels);
 			for (j = 0; j < blockSize; j++)
 			{
 				for (k = 0; k < decoder->channels; k++)
