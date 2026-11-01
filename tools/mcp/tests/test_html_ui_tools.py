@@ -153,9 +153,10 @@ LIMITS.update({"create_ragdoll": 900})
 # platform-services, shader-globals): 153 tools, total 111616 (tool_budget.py), the limit set to it
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
 # merged by the lead (guide-headroom + anim-layers): provisional, re-measured on the merged tree
-TOTAL_LIMIT = 112100
 # debug overlay: no new tool; get_project_settings' category list (+ "debug") and get_play_state's
-# debug_overlay block (+22 measured); re-measured on the tree merged with main
+# debug_overlay block (+22); measured on the tree merged with main (anim-layers): 153 tools, 111923,
+# the limit set to it
+TOTAL_LIMIT = 111923
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
