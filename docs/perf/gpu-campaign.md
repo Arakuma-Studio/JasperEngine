@@ -240,7 +240,7 @@ Baseline's (Hex Terrain: over Terrain Baseline's):
 | Lobe Sheen | 0.750 (**+16.3 %**) | 0.732 (**+13.1 %**) | 1.039 (+9.6 %) | 1.024 (+7.6 %) | ≤ +15 % |
 | Lobe Specular | 0.700 (**+8.5 %**) | 0.662 (**+2.3 %**) | 0.985 (+3.9 %) | 0.994 (+4.4 %) | ≤ +3 % |
 | Terrain Baseline | 1.165 | 1.171 | 1.136 | 1.135 |  |
-| Hex Terrain | 3.723 (**3.20x**) | 2.005 (**1.71x**) | 3.330 (2.93x) | 1.565 (1.38x) | ≤ 1.35x |
+| Hex Terrain | 3.723 (**3.20x**) | 2.005 (**1.71x**) | 3.330 (2.93x) | 1.565 (1.38x) | ≤ 1.75x GL, ≤ 1.4x Vulkan (was 1.35x) |
 
 - **Output:** every scene above, and Lobe Hex, Terrain Baseline with a layer offset (the surface
   path) and the 4-layer terrain with PBR maps (normal, roughness, occlusion) with and without hex,
@@ -281,8 +281,9 @@ Baseline's (Hex Terrain: over Terrain Baseline's):
   baseline on their own; mipmaps cost nothing (the colour terrain with mipmapped layers: +0.4 %);
   the surface path without Stochastic Tiling +8 % on GL, 0 on Vulkan; the rest, by difference,
   the lattice set-up and the weights: ~0.13 ms on Vulkan, ~0.45 ms on GL. Vulkan reaches 1.38x,
-  GL 1.71x: R13's 1.35x is not met; the revision proposed in
-  `docs/specs/S11-materials-lighting.md` R13 is pending user approval.
+  GL 1.71x: over the 1.35x, so R13's hex terrain budget is now ≤ 1.75x on GL and ≤ 1.4x on Vulkan
+  at 4K (`docs/specs/S11-materials-lighting.md` R13, approved by the user 2026-11-02;
+  `gpu_campaign.py pbr` checks it by backend).
 - **Specular.** None of the cost was the draw (the lobe's block and variant shaded as the plain Lit:
   +0.3 %) nor the generic lobe path (the plain direct and environment code: no change); it was the
   per-fragment f0 = min(((ior - 1) / (ior + 1))^2 colour, 1) factor: f0 as a constant +2.5 %, its IOR

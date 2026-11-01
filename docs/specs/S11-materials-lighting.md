@@ -246,12 +246,13 @@ it is unused, so existing scenes, forks and exported games stay byte-for-byte as
   | Specular/IOR | ≤ +3% |
   | Transmission (excluding the scene-colour copy) | ≤ +20% |
   | Hex Lit | ≤ 3× texture taps of the hexed maps |
-  | 4-layer hex terrain | ≤ 1.35× terrain pass time |
+  | 4-layer hex terrain | ≤ 1.75× terrain pass time on desktop GL, ≤ 1.4× on Vulkan (4K) |
 
-  - **Proposed revision (GPU campaign perf3, pending user approval; the budget above is unchanged
-    until then):** 4-layer hex terrain ≤ 1.75× the colour-layer terrain's pass time on desktop GL
-    (≤ 1.4× on Vulkan). Evidence on the RTX 3080 Ti at 4K (docs/perf/gpu-campaign.md, S11 perf3),
-    measured 1.71× GL and 1.38× Vulkan (from 3.20× and 2.93×) with the output unchanged:
+  - **Hex terrain revision (GPU campaign perf3), approved by the user 2026-11-02** (it was ≤ 1.35×
+    the terrain pass time; `tools/perf/gpu_campaign.py pbr` checks the new bounds by backend):
+    the 4-layer hex terrain against the colour-layer Terrain Baseline at 3840x2160. Evidence on the
+    RTX 3080 Ti (docs/perf/gpu-campaign.md, S11 perf3), measured 1.71× GL and 1.38× Vulkan (from
+    3.20× and 2.93×) with the output unchanged:
     - the reference draws its colour layers with two bilinear taps each from an unmipmapped
       array (its layers ask for no mipmaps); a hex layer needs the surface-layer path and three
       trilinear taps (§6.4, R7). Those two extra taps a layer alone cost 0.28 ms on GL and 0.29 on
@@ -574,7 +575,8 @@ The unit tests use S02's gtest framework, in `engine/tests/core/`. The MCP tests
   - The per-lobe scenes (`"Lobe <name>"`, 200 full-screen-ish spheres) meet the R13 ratios in
     frame time against the `"Lit Baseline"` scene. When S15 is present they use its GPU pass
     timings.
-  - `hex-terrain` ≤ 1.35× the terrain pass time of `terrain-baseline`.
+  - `hex-terrain` ≤ 1.75× (desktop GL) / ≤ 1.4× (Vulkan) the terrain pass time of
+    `terrain-baseline` at 4K (R13, revised 2026-11-02).
   - The packing benchmark is ≤ 40 ms (gtest `TexturePackBench`, reported, threshold
     asserted).
 - **AC12 (R15–R19) manual**, done on the editor (GL), and recorded in the fixture README:
@@ -768,7 +770,8 @@ with other streams:
 - **AC11 in perf3 (the same machine, GL / Vulkan at 4K, 5 runs; docs/perf/gpu-campaign.md S11):**
   Sheen +16.3 % -> **+13.1 %** GL (+9.6 -> +7.6 % Vulkan), Specular/IOR +8.5 % -> **+2.3 %** GL
   (+3.9 -> +4.4 % Vulkan), both within R13 on GL; the hex terrain 3.20x -> 1.71x GL, 2.93x ->
-  1.38x Vulkan, over the 1.35x (revision proposed in R13, pending user approval). The output is
+  1.38x Vulkan, within R13 as revised (≤ 1.75x GL, ≤ 1.4x Vulkan, approved by the user
+  2026-11-02; it was 1.35x). The output is
   the same (every scene captured at 4K before and after: Vulkan 0 pixels differ, GL 0 but 2 of
   8.3 M by 1/255 in Lobe Sheen; goldens unchanged). perf2's per-variant overhead was not the
   variant: the hex variant held Stochastic Tiling's lattices (255 registers and spills, now 128,
