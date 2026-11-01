@@ -468,3 +468,22 @@ the code:
     `DebugOverlaySettings::Gesture::Off`, `Popup::AllDevices`; the editor's `DebugSettings` uses
     `AllBuilds`. The names in project.yaml, MCP and Lua stay `none`, `always`... (found by the
     Release export test).
+17. **Verification** (box 2203, branch merged with `main` up to anim-layers, `e5911b95f`): editor and tests
+    build with 0 compiler warnings; `jasperengine-editor-tests` 1655 passed, 10 skipped, 0 failed (two
+    order-dependent tests of other features failed once and passed on rerun:
+    `HttpTest.LuaCallbackErrorsAreLoggedAndOthersStillRun` and, earlier,
+    `PhysicsContactsTest.ContactProcessingCostIsSmall`, a 5% timing budget measured at ~7% on the
+    shared box; the overlay code is not on its path). GPU suite `jasperengine-htmlui-tests` (standalone
+    engine build): all 3121 passed before the last merges; on the final tree `DebugOverlay*`,
+    `*Input*`, `*PassThrough*`, `*DocumentSystem*`: 96 passed, and
+    `InputTest.ComponentUIPointersOutsideTheCanvasFocusLossAndPauseAreCancelled` (ui-multitouch) fails
+    only after the other `InputTest` cases (passes alone; `Engine::systemFocus` keeps the focus flag
+    across tests). Full MCP suite (merged up to coroutines/ui-multitouch/particles): 902 passed, the 10
+    baseline failures (`test_animation_assets`, `test_lattice_scene`) and the budget, since set; on the
+    final tree `test_debug_overlay` (with the slow Release export: `enabled=true development=false
+    buffer=321`, console visible, FPS, a Lua traceback), `test_docs`, `test_stubs`,
+    `test_html_ui_tools` (153 tools, 111923), `test_protocol` (guide 15040 bytes), `test_play`,
+    `test_input(_ui)`, `test_lifecycle`, `test_animation_layers`: 84 passed. Web (em++) and Android
+    (NDK r30, arm64) compile the changed engine sources; the Xcode project lists the new files
+    (`xcode_sync_engine.py --check`). Not built: Apple and Windows (`ProcessMemory.cpp`'s
+    `task_info` / `K32GetProcessMemoryInfo` paths written against the platform headers).
