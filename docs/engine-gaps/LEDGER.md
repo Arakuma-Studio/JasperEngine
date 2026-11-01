@@ -247,3 +247,9 @@ origin/main).
   plugins), a FileDialogs bit clash (audio mixer and video both 1 << 15), a broken Xcode group from a union merge.
   xcode26-dav1d's real cause: Xcode's project header map resolved dav1d's config.h to thorvg's (the asm-off
   workaround built a dav1d that decodes nothing). asan-sweep merged locally after this (892dd9912), in the next batch.
+- 2026-11-01: correction: CanvasGroupTest.PerformanceBudgets is NOT a load flake since 5fde0ada4. It fails on an
+  idle box every run (structural pass over 5000 transforms 424 us vs 400 budget, best of 50); it passed on
+  7fd144900. A merge between them (dav1d, video-mp4, native-bridge or anim-retarget's fixes) slowed the pass:
+  task perf-canvasgroup bisects and fixes it (PhysicsContactsTest.ContactProcessingCostIsSmall checked too).
+  asan-sweep pushed (d08d63b31 + this entry): Linux 0 warnings, unit 1799 passed + those two timing tests, full MCP
+  944 passed with only the 10 baseline failures, 155 tools 114475; owner's Mac macOS + iOS 0 errors.
