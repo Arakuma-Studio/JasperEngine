@@ -54,6 +54,7 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kJointSwingType;
     extern const EnumDesc kAlphaTweenTarget;
     extern const EnumDesc kClipWrapMode;
+    extern const EnumDesc kAnimationLayerBlend;
     extern const EnumDesc kAnimatorUpdateMode;
     extern const EnumDesc kAnimatorCullingMode;
     extern const EnumDesc kAnimatorWriteBones;

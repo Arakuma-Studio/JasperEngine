@@ -107,8 +107,9 @@ public:
     // {type: Prefab, version: 6, guid, nextEntity, root, members: [...]}
     // 2: header, wrapper-root model; 3: the prefab's root GameObject is `root`; 4: light shadow
     // biases in shadow texels (StreamMigrations, prefab 3 -> 4); 5: particle systems as effects;
-    // 6: no derived transform values (S29 R20)
-    static constexpr int FILE_VERSION = 6;
+    // 6: no derived transform values (S29 R20); 7: Animation Player controllers on Animators (S21
+    // upstream absorption, StreamMigrations prefab 6 -> 7)
+    static constexpr int FILE_VERSION = 7;
     // the first version with the root-GameObject layout of today (`root`, members as written)
     static constexpr int ROOT_LAYOUT_VERSION = 3;
 

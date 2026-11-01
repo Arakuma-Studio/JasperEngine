@@ -49,12 +49,12 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     YAML::Node root = YAML::Load("{name: Level1, entities: [{name: A}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 0);
-    EXPECT_EQ(result.versionCurrent, 5);
+    EXPECT_EQ(result.versionCurrent, 6);
     EXPECT_TRUE(result.migrated());
     EXPECT_FALSE(result.newer());
     ASSERT_TRUE(root.IsMap());
     EXPECT_EQ(root.begin()->first.Scalar(), "formatVersion");
-    EXPECT_EQ(root["formatVersion"].as<int>(), 5);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 6);
     EXPECT_EQ(root["name"].as<std::string>(), "Level1");
     EXPECT_EQ(root["entities"][0]["name"].as<std::string>(), "A");
     EXPECT_EQ(root.size(), 3u);
@@ -62,7 +62,7 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     // current: nothing to do
     const MigrationResult again = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_FALSE(again.migrated());
-    EXPECT_EQ(again.versionRead, 5);
+    EXPECT_EQ(again.versionRead, 6);
 }
 
 TEST(StreamMigrations, NewerIsLeftUntouched){
@@ -71,8 +71,8 @@ TEST(StreamMigrations, NewerIsLeftUntouched){
     EXPECT_TRUE(result.newer());
     EXPECT_FALSE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), 99);
-    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 6),
-            "Written by a newer JasperEngine (scene format 6; this editor writes 5).");
+    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 7),
+            "Written by a newer JasperEngine (scene format 7; this editor writes 6).");
 }
 
 TEST(StreamMigrations, OldPrefabsAreLeftToThePrefabLoader){
@@ -107,9 +107,10 @@ TEST(StreamMigrations, SceneV1ToV2ShadowBiasInTexels){
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 1);
     // 1 -> 2, then 2 -> 3 (S20's particle systems: none here), 3 -> 4 (S29's derived transform
-    // values: none here) and 4 -> 5 (S18's splines: identity)
-    ASSERT_EQ(result.applied.size(), 4u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 5);
+    // values: none here), 4 -> 5 (S18's splines: identity) and 5 -> 6 (S21's Animation Player
+    // controllers: none here)
+    ASSERT_EQ(result.applied.size(), 5u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 6);
     EXPECT_EQ(root["scene"]["shadowQuality"].as<std::string>(), "auto");
     EXPECT_FLOAT_EQ(root["entities"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
     EXPECT_FLOAT_EQ(root["entities"][1]["children"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
@@ -130,7 +131,7 @@ TEST(StreamMigrations, PrefabV3ToV4ShadowBiasInTexels){
         "{type: Prefab, version: 3, members: [{type: Entity, entity: 1001, components: {light: {type: spot, shadowBias: 0.002}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 6);
+    EXPECT_EQ(root["version"].as<int>(), 7);
     EXPECT_FLOAT_EQ(root["members"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
 }
 
@@ -162,9 +163,9 @@ TEST(StreamMigrations, SceneV2ToV3ParticleSystemsMoveToTheirTargets){
         "{type: Entity, entity: 1003, name: Lonely, components: {particlesystem: {rate: 3}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 2);
-    // 2 -> 3, then S29's 3 -> 4 and S18's identity 4 -> 5
-    ASSERT_EQ(result.applied.size(), 3u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 5);
+    // 2 -> 3, then S29's 3 -> 4, S18's identity 4 -> 5 and S21's 5 -> 6
+    ASSERT_EQ(result.applied.size(), 4u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 6);
 
     const YAML::Node fire = root["entities"][0]["components"];
     ASSERT_TRUE(fire["particlesystem"]);
@@ -204,4 +205,65 @@ TEST(StreamMigrations, PrefabV4ToV5ParticleSystems){
     EXPECT_EQ(root["version"].as<int>(), 6);
     EXPECT_TRUE(root["members"][0]["components"]["particlesystem"]);
     EXPECT_FALSE(root["members"][1]["components"]["particlesystem"]);
+}
+
+TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
+    // upstream's (anim-layers) controller on the Animation Player: an Animator on the same
+    // GameObject plays it (the player's checkbox, no retargeting: upstream had none) and the
+    // player hands over to it, disabled with its clips and layers kept; a prefab instance's
+    // override of the controller becomes an added Animator; layers are read as they are
+    YAML::Node root = YAML::Load(
+        "{formatVersion: 5, entities: ["
+        "{type: Entity, entity: 1001, name: Granjero, components: {animationplayer: {enabled: true, clips: [{clip: anim/idle.anim, name: Idle}],"
+        " layers: [{name: Base Layer}, {name: Holding, weight: 0.5, mask: anim/arm.mask}],"
+        " controller: anim/granjero.controller, controllerGuid: aaaabbbbccccddddeeeeffff00001111}}},"
+        "{type: Entity, entity: 1002, name: Plain, components: {animationplayer: {clips: [{clip: anim/walk.anim}], controller: ''}}},"
+        "{type: Entity, entity: 1003, name: Instance, prefabInstance: {overrides: [{registryEntity: 1001,"
+        " properties: {animationplayer: [controller, controllerGuid]},"
+        " components: {animationplayer: {controller: anim/other.controller, controllerGuid: 0000111122223333444455556666aaaa}}}]}}]}");
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
+    EXPECT_EQ(result.versionRead, 5);
+    ASSERT_EQ(result.applied.size(), 1u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 6);
+
+    const YAML::Node granjero = root["entities"][0]["components"];
+    ASSERT_TRUE(granjero["animator"]);
+    EXPECT_EQ(granjero["animator"]["controller"].as<std::string>(), "anim/granjero.controller");
+    EXPECT_EQ(granjero["animator"]["controllerGuid"].as<std::string>(), "aaaabbbbccccddddeeeeffff00001111");
+    EXPECT_TRUE(granjero["animator"]["enabled"].as<bool>());
+    EXPECT_EQ(granjero["animator"]["retarget"].as<std::string>(), "off");
+    EXPECT_FALSE(granjero["animationplayer"]["controller"]);
+    EXPECT_FALSE(granjero["animationplayer"]["controllerGuid"]);
+    EXPECT_FALSE(granjero["animationplayer"]["enabled"].as<bool>()) << "the player hands over";
+    EXPECT_EQ(granjero["animationplayer"]["layers"].size(), 2u) << "its layers kept";
+    EXPECT_EQ(granjero["animationplayer"]["clips"].size(), 1u) << "its clips kept";
+
+    const YAML::Node plain = root["entities"][1]["components"];
+    EXPECT_FALSE(plain["animator"]) << "an empty controller is no Animator";
+    EXPECT_FALSE(plain["animationplayer"]["controller"]);
+
+    const YAML::Node entry = root["entities"][2]["prefabInstance"]["overrides"][0];
+    bool added = false;
+    for (const YAML::Node& name : entry["addedComponents"]) added = added || name.as<std::string>() == "animator";
+    EXPECT_TRUE(added);
+    EXPECT_EQ(entry["components"]["animator"]["controller"].as<std::string>(), "anim/other.controller");
+    bool enabledOverride = false, controllerOverride = false;
+    for (const YAML::Node& name : entry["properties"]["animationplayer"]){
+        enabledOverride = enabledOverride || name.as<std::string>() == "enabled";
+        controllerOverride = controllerOverride || name.as<std::string>() == "controller";
+    }
+    EXPECT_TRUE(enabledOverride);
+    EXPECT_FALSE(controllerOverride);
+    EXPECT_FALSE(entry["components"]["animationplayer"]["enabled"].as<bool>());
+    ASSERT_EQ(result.log.lines.size(), 1u);
+    EXPECT_NE(result.log.lines[0].find("2 players got an Animator"), std::string::npos) << result.log.lines[0];
+
+    // a prefab's members the same way (6 -> 7)
+    YAML::Node prefab = YAML::Load(
+        "{type: Prefab, version: 6, members: [{type: Entity, entity: 1001, components: {animationplayer: {enabled: false, controller: anim/c.controller}}}]}");
+    const MigrationResult prefabResult = StreamMigrations::migrate(DocumentKind::Prefab, prefab);
+    EXPECT_TRUE(prefabResult.migrated());
+    EXPECT_EQ(prefab["version"].as<int>(), 7);
+    EXPECT_EQ(prefab["members"][0]["components"]["animator"]["controller"].as<std::string>(), "anim/c.controller");
+    EXPECT_FALSE(prefab["members"][0]["components"]["animator"]["enabled"].as<bool>()) << "a disabled player: a disabled Animator";
 }

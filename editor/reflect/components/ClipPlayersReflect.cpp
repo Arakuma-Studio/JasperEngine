@@ -44,6 +44,7 @@ namespace {
     }
 
     constexpr TypeOps kClipWrapOps = customProperty(ops::Enum<ClipWrapMode>);
+    constexpr TypeOps kLayerBlendOps = customProperty(ops::Enum<AnimationLayerBlend>);
 
     constexpr uint64_t kPlayerReload = UpdateFlags_AnimationPlayer_Reload;
 
@@ -55,12 +56,30 @@ namespace {
         JE_FIELD(AnimationPlayerClip, name, .updateFlags = kPlayerReload),
         JE_FIELD(AnimationPlayerClip, wrap, .ops = &kClipWrapOps, .enumDesc = &enums::kClipWrapMode, .updateFlags = kPlayerReload,
                  .tooltip = "Default: the clip's own."),
+        // the index of its layer in the player's layers (out of range: the base layer)
+        JE_FIELD(AnimationPlayerClip, layer, .flags = OmitIfDefault, .updateFlags = kPlayerReload, .tooltip = "The layer this state plays on."),
+    };
+
+    // an authored layer (upstream anim layers spec 6.3, 7.1): layers[0] is the base layer (its
+    // weight 1 and blend override whatever is written); mask: the .mask path hint (asset-relative),
+    // maskGuid its GUID (editor only)
+    constexpr FieldDesc kAnimationPlayerLayerFields[] = {
+        JE_FIELD(AnimationPlayerLayer, name, .updateFlags = kPlayerReload),
+        JE_FIELD(AnimationPlayerLayer, weight, .flags = Clamped | OmitIfDefault, .updateFlags = kPlayerReload, .min = 0.0f, .max = 1.0f,
+                 .tooltip = "How much of the layer shows over the layers below (setLayerWeight changes it at runtime)."),
+        JE_FIELD(AnimationPlayerLayer, blend, .ops = &kLayerBlendOps, .enumDesc = &enums::kAnimationLayerBlend, .flags = OmitIfDefault,
+                 .updateFlags = kPlayerReload, .tooltip = "Override replaces the layers below; Additive adds the clip's change from its additive reference."),
+        JE_FIELD(AnimationPlayerLayer, mask, .flags = OmitIfDefault, .updateFlags = kPlayerReload, .asset = AssetKind::AvatarMask,
+                 .tooltip = "An Avatar Mask (.mask): which GameObjects the layer animates, and how much."),
+        JE_FIELD(AnimationPlayerLayer, maskGuid, .flags = OmitIfDefault, .updateFlags = kPlayerReload, .label = "Mask GUID"),
     };
 
 }
 
 JE_REFLECT_STRUCT_TRAITS(AnimationPlayerClip, kAnimationPlayerClipStruct);
 const StructDesc kAnimationPlayerClipStruct = JE_STRUCT_DESC(AnimationPlayerClip, "AnimationPlayerClip", kAnimationPlayerClipFields);
+JE_REFLECT_STRUCT_TRAITS(AnimationPlayerLayer, kAnimationPlayerLayerStruct);
+const StructDesc kAnimationPlayerLayerStruct = JE_STRUCT_DESC(AnimationPlayerLayer, "AnimationPlayerLayer", kAnimationPlayerLayerFields);
 
 namespace {
 
@@ -70,6 +89,8 @@ namespace {
     constexpr FieldDesc kAnimationPlayerFields[] = {
         JE_FIELD(AnimationPlayerComponent, enabled),
         JE_FIELD(AnimationPlayerComponent, clips, .flags = ListWhole | ListTemplate, .updateFlags = kPlayerReload),
+        // empty: one Base Layer (anim::playerLayers); the whole list is what a prefab override holds
+        JE_FIELD(AnimationPlayerComponent, layers, .flags = ListWhole | ListTemplate | OmitIfDefault, .updateFlags = kPlayerReload),
         JE_FIELD(AnimationPlayerComponent, defaultClip, .tooltip = "The state played automatically (empty: the first clip)."),
         JE_FIELD(AnimationPlayerComponent, playAutomatically),
         JE_FIELD(AnimationPlayerComponent, speed),
@@ -79,7 +100,7 @@ namespace {
     const ComponentCodec kAnimationPlayerCodec = JE_STREAM_CODEC(AnimationPlayerComponent, encodeAnimationPlayerComponent,
                                                                  decodeAnimationPlayerComponent);
 
-    constexpr const char* kAnimationPlayerKnownKeys[] = {"clips", "defaultClip", "defaultFadeTime", "enabled", "playAutomatically", "speed"};
+    constexpr const char* kAnimationPlayerKnownKeys[] = {"clips", "defaultClip", "defaultFadeTime", "enabled", "layers", "playAutomatically", "speed"};
 
 }
 
