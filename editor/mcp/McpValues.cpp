@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpValues.h"
+#include "shader/ShaderGlobals.h"
 
 #include "McpRefs.h"
 
@@ -2701,6 +2702,12 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         if (ref && endsWith(name, "shaderFeatures")) {
             return shaderFeaturesToJson(*static_cast<std::vector<std::string>*>(ref));
         }
+        // members following global shader values: {member: global}
+        if (ref && endsWith(name, "shaderGlobalBindings")) {
+            Json bindings = Json::object();
+            for (const auto& binding : *static_cast<ShaderGlobalBindings*>(ref)) bindings[binding.first] = binding.second;
+            return bindings;
+        }
         // phase 2: a stencil block (material, extra pass, component) and a material's extra pass
         if (ref && (name == "stencil" || endsWith(name, ".stencil"))) {
             return stencilToJson(*static_cast<MaterialStencil*>(ref));
@@ -3309,6 +3316,40 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 }
                 return new PropertyCmd<MaterialPass>(project, sceneId, entity, component, propertyName, pass, onChanged);
             }
+            if (endsWith(propertyName, "shaderGlobalBindings")) {
+                // {member: global | null}: merged into the current bindings (null unbinds); one
+                // entry (shaderGlobalBindings.<member>) edits the list it was read from
+                if (!value.is_object()) {
+                    error = "Property " + propertyName + ": an object {member: global name | null}";
+                    return nullptr;
+                }
+                ShaderGlobalBindings bindings;
+                if (!editedKeys && property.ref) bindings = *static_cast<ShaderGlobalBindings*>(property.ref);
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    const std::string member = it.key();
+                    std::string global;
+                    if (it.value().is_string()) {
+                        global = it.value().get<std::string>();
+                    } else if (!it.value().is_null()) {
+                        error = "Property " + propertyName + "." + member + ": a global's name, or null to unbind";
+                        return nullptr;
+                    }
+                    std::string why;
+                    if (!global.empty() && !ShaderGlobals::isValidName(global, &why)) {
+                        error = "Property " + propertyName + "." + member + ": " + why;
+                        return nullptr;
+                    }
+                    ShaderGlobalValue current;
+                    if (!global.empty() && ShaderGlobals::get(ShaderGlobals::findID(global), current) &&
+                            (ShaderGlobals::isTexture(current.type) || current.type == ShaderGlobalType::Matrix4)) {
+                        error = "Property " + propertyName + "." + member + ": '" + global + "' is a " + ShaderGlobals::getTypeName(current.type) +
+                                " global, which a value member cannot follow (a texture global binds to a texture uniform of its name)";
+                        return nullptr;
+                    }
+                    ShaderGlobals::setBinding(bindings, member, global);
+                }
+                return new PropertyCmd<ShaderGlobalBindings>(project, sceneId, entity, component, propertyName, bindings, onChanged);
+            }
             if (propertyName == "shaderUniforms" || endsWith(propertyName, "shaderParams") ||
                 endsWith(propertyName, "shaderTextures") || endsWith(propertyName, "shaderFeatures")) {
                 // shader library values, checked against the manifest of the shader they feed
@@ -3606,7 +3647,7 @@ static bool isWholeValueProperty(Scene* scene, Entity entity, ComponentType comp
     return data.type == PropertyType::Custom &&
            (property == "stencil" || endsWith(property, ".stencil") || endsWith(property, "material.extraPass") ||
             property == "shaderUniforms" || endsWith(property, "shaderParams") || endsWith(property, "shaderTextures") ||
-            endsWith(property, "shaderFeatures"));
+            endsWith(property, "shaderFeatures") || endsWith(property, "shaderGlobalBindings"));
 }
 
 bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
@@ -3754,7 +3795,8 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 const bool typedProperty = property.ref && change.op == "set" &&
                     (property.type != PropertyType::Custom || change.property == "shaderUniforms" ||
                      endsWith(change.property, "shaderParams") || endsWith(change.property, "shaderTextures") ||
-                     endsWith(change.property, "shaderFeatures") || change.property == "stencil" ||
+                     endsWith(change.property, "shaderFeatures") || endsWith(change.property, "shaderGlobalBindings") ||
+                     change.property == "stencil" ||
                      endsWith(change.property, ".stencil") || endsWith(change.property, "material.extraPass") ||
                      isPlayerWrapProperty(component, change.property) ||
                      isScriptPrefabProperty(scene->scene, entity, component, change.property));

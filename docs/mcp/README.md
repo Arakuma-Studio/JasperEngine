@@ -20,6 +20,9 @@ editor, doing what you would do by hand:
   ([guide/vertex-animation.md](guide/vertex-animation.md), `bake_vertex_animation`)
 - play the game, send keyboard, mouse and touch input, inspect runtime state, and take
   screenshots of the Scene and Game views
+- simulate a phone in the Game view (model, dpi, rotation), another system language, and the
+  app's focus, pause and low-memory events, and see the URLs the game opened
+  ([guide/platform-services.md](guide/platform-services.md), `send_input` `app` events, `configure_game_view`)
 - read the Console, then export and build the game
 
 Every edit goes through the editor's command system. You can undo it with Ctrl+Z, and if you

@@ -16,7 +16,7 @@
 
         <activity android:name=".MainActivity"
             android:label="@string/app_name"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
             android:theme="@style/AppTheme"
             android:exported="true">
             <meta-data android:name="android.app.lib_name" android:value="jasperengine-android" />

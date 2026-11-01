@@ -101,6 +101,9 @@ namespace jasperengine {
         // (shadercompiler.h: 8 uniform blocks, 16 textures, 16 samplers, 16 texture-sampler
         // pairs; GLES3 has 16 fragment texture units). Empty when it fits, else what is over.
         static std::string checkResourceBudget(const ShaderData& data);
+        // A globals block (u_vs_globals / u_fs_globals, ShaderGlobals) over 1024 bytes: the
+        // "globals-block-too-large: ..." error compile() fails with; "" when they fit
+        static std::string checkGlobalsBlocks(const ShaderData& data);
     };
 
 }

@@ -2415,6 +2415,7 @@ void editor::App::show(){
     exportWindow.show();
     if (exportWindow.consumePlayerSettingsRequest()) projectSettingsWindow.open(&project, "Player");
     if (inspectorWindow->consumeTagsAndLayersRequest()) projectSettingsWindow.open(&project, "Tags and Layers");
+    if (inspectorWindow->consumeShaderGlobalsRequest()) projectSettingsWindow.open(&project, "Graphics");
     editorSettingsWindow.show();
     aboutWindow.show();
     projectSettingsWindow.show();
@@ -3258,9 +3259,14 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
         || gameTarget->getWidth() != static_cast<unsigned int>(gameWidth)
         || gameTarget->getHeight() != static_cast<unsigned int>(gameHeight);
 
-    // the Engine's view is the game's: the Scene view never changes it
+    // the Engine's view is the game's: the Scene view never changes it. A simulated device's
+    // orientation goes with the size it was laid out for (Screen.orientation, onOrientationChanged).
+    Platform::setShownOrientation(gameWindow->getLayoutOrientation());
     if (Platform::setSizes(gameWidth, gameHeight) || viewChanged || framebufferMismatch){
         Engine::systemViewChanged();
+    }else{
+        // a half turn keeps the size
+        Engine::systemOrientationChanged();
     }
 
     // the Scene view's camera follows its size before the frame updates the scene

@@ -356,7 +356,16 @@ namespace jasperengine {
 
         static std::atomic<bool> viewLoaded;
         static std::atomic<bool> paused;
-        static bool focused;
+        static std::atomic<bool> focused;
+
+        // Engine.targetFrameRate / vSyncCount and the pacing the platform applies
+        static int targetFrameRate;
+        static int vSyncCount;
+        static FramePacing framePacing;
+        // last orientation systemOrientationChanged saw (0: none yet), and since when (system
+        // time) a quarter turn waits for its view size (0: none waits)
+        static int lastOrientation;
+        static double orientationPendingSince;
         static std::atomic<bool> asyncLoading;
         static bool frameRunning;
 
@@ -393,6 +402,8 @@ namespace jasperengine {
         static void beginCompositeFramebuffer();
         static void endCompositeFramebuffer();
         static void runFrame(bool draw);
+        // recomputes the frame pacing and hands it to the System
+        static void applyFramePacing();
         
     public:
         class AsyncThreadScope {
@@ -598,12 +609,43 @@ namespace jasperengine {
         static void systemViewDestroyed();
         static void systemShutdown();
 
+        // The app goes to the background (pause) and comes back (resume). Idempotent: a
+        // second pause or resume in a row does nothing. Leaving, a focused app loses focus
+        // first (onFocus(false), then onPause); onResume always comes before onFocus(true).
         static void systemPause();
         static void systemResume();
-        // The application gained or lost the focus (platforms that report it). Idempotent:
-        // only a change fires onFocus and the scripts' onApplicationFocus.
+        // The app became frontmost and gets input (true), or something covers it: a system
+        // dialog, the notification shade, another window (false). Idempotent; gaining focus
+        // while paused resumes first. Fires onFocus.
         static void systemFocus(bool hasFocus);
+        // After a rotation or resize: fires onOrientationChanged when Screen::getOrientation()
+        // differs from the last one seen. systemViewChanged calls it after onCanvasChanged; a
+        // quarter turn reported before the view size flips waits for it (at most
+        // ORIENTATION_SIZE_TIMEOUT seconds, checked every frame), a half turn fires at once.
+        static void systemOrientationChanged();
+        static constexpr double ORIENTATION_SIZE_TIMEOUT = 0.5;
+        // The system is short of memory: onLowMemory, before the platform frees its own caches
+        static void systemLowMemory();
+        // Play stop / start in the editor: focused, not paused, no orientation seen yet, and the
+        // default frame pacing again, without any event (nothing listens any more)
+        static void resetApplicationState();
+
+        //-----Frame pacing and application state-----
+        // Unity's Application.targetFrameRate: -1 (default) is the platform's rate (60 on
+        // mobile, every animation frame on the web, as fast as vsync lets on desktops); 0 and
+        // below count as -1, more than 1000 as 1000. Desktops and the editor ignore it while
+        // vSyncCount > 0, as Unity. Kept across scene loads.
+        static void setTargetFrameRate(int fps);
+        static int getTargetFrameRate();
+        // Unity's QualitySettings.vSyncCount: present every Nth vblank (0..4; 0 = no vsync).
+        // Starts from the project's VSync setting; mobile and the web ignore it.
+        static void setVSyncCount(int count);
+        static int getVSyncCount();
+        // what the two values above give on this platform (PlatformRules::computeFramePacing)
+        static const FramePacing& getFramePacing();
+        // Unity's Application.isFocused (true at start)
         static bool isFocused();
+        static bool isPaused();
 
         static void systemTouchStart(int pointer, float x, float y);
         static void systemTouchEnd(int pointer, float x, float y);
@@ -673,7 +715,12 @@ namespace jasperengine {
         static FunctionSubscribe<void()> onPause;
         static FunctionSubscribe<void()> onResume;
         static FunctionSubscribe<void()> onShutdown;
+        // systemFocus: the app gained (true) or lost (false) focus
         static FunctionSubscribe<void(bool)> onFocus;
+        // the interface rotated: the new ScreenOrientation, after onCanvasChanged
+        static FunctionSubscribe<void(int)> onOrientationChanged;
+        // the system is short of memory (Android, iOS)
+        static FunctionSubscribe<void()> onLowMemory;
         // The stack loaded by SceneManager is ready, before its loading scene closes.
         static FunctionSubscribe<void()> onSceneLoaded;
         static FunctionSubscribe<void(int,float,float)> onTouchStart;

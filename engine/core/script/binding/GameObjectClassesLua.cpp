@@ -153,6 +153,15 @@ namespace {
 }
 
 namespace {
+    // a binding's global argument: a name, or nil to unbind (anything else is an error)
+    std::string luaBindingGlobal(const luabridge::LuaRef& global, const char* function){
+        if (global.isNil())
+            return std::string();
+        if (global.isString())
+            return global.unsafe_cast<std::string>();
+        throw std::runtime_error(std::string(function) + ": the global is a name (a string), or nil to unbind");
+    }
+
 
 // A GameObject argument: any GameObject handle (EntityHandle and what derives from it), or
 // a Lua script instance (its self: a table with scene and entity), whose class is returned
@@ -792,6 +801,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&Skybox::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Skybox::setShaderUniform))
         .addFunction("getShaderParam", &Skybox::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](Skybox* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "Skybox.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Skybox* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &Skybox::removeShaderUniform)
         .addFunction("setShaderTexture", &Skybox::setShaderTexture)
         .addFunction("getShaderTexture", &Skybox::getShaderTexture)
@@ -1705,6 +1722,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&Points::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Points::setShaderUniform))
         .addFunction("getShaderParam", &Points::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](Points* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "Points.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Points* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &Points::removeShaderUniform)
         .addFunction("setShaderTexture", &Points::setShaderTexture)
         .addFunction("getShaderTexture", &Points::getShaderTexture)
@@ -1781,6 +1806,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&LineRenderer::setShaderUniform),
             luabridge::overload<const std::string&, float>(&LineRenderer::setShaderUniform))
         .addFunction("getShaderParam", &LineRenderer::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](LineRenderer* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "LineRenderer.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const LineRenderer* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &LineRenderer::removeShaderUniform)
         .addFunction("setShaderTexture", &LineRenderer::setShaderTexture)
         .addFunction("getShaderTexture", &LineRenderer::getShaderTexture)
@@ -1869,6 +1902,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&TrailRenderer::setShaderUniform),
             luabridge::overload<const std::string&, float>(&TrailRenderer::setShaderUniform))
         .addFunction("getShaderParam", &TrailRenderer::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](TrailRenderer* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "TrailRenderer.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const TrailRenderer* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &TrailRenderer::removeShaderUniform)
         .addFunction("setShaderTexture", &TrailRenderer::setShaderTexture)
         .addFunction("getShaderTexture", &TrailRenderer::getShaderTexture)
@@ -2058,6 +2099,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&Polygon::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Polygon::setShaderUniform))
         .addFunction("getShaderParam", &Polygon::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](Polygon* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "Polygon.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Polygon* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &Polygon::removeShaderUniform)
         .addFunction("setShaderTexture", &Polygon::setShaderTexture)
         .addFunction("getShaderTexture", &Polygon::getShaderTexture)
@@ -2118,6 +2167,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&Text::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Text::setShaderUniform))
         .addFunction("getShaderParam", &Text::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](Text* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "Text.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Text* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &Text::removeShaderUniform)
         .addFunction("setShaderTexture", &Text::setShaderTexture)
         .addFunction("getShaderTexture", &Text::getShaderTexture)
@@ -2176,6 +2233,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&Image::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Image::setShaderUniform))
         .addFunction("getShaderParam", &Image::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](Image* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "Image.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Image* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &Image::removeShaderUniform)
         .addFunction("setShaderTexture", &Image::setShaderTexture)
         .addFunction("getShaderTexture", &Image::getShaderTexture)
