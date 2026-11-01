@@ -121,7 +121,7 @@ level. We do the same at module granularity, decided by the editor from the proj
 - **R6. Selection.** A prebuilt build uses the smallest installed release variant whose modules
   cover the needed ones (the full player always does). When a smaller variant fits but is not
   installed, the build uses the best installed one and warns `W-PLAYER-VARIANT` with the id to
-  download; Build Settings offers its download. A Compile build switches each module off that the
+  install (`jasperengine-editor players download <id>`, or install from file in Preferences). A Compile build switches each module off that the
   project does not need (R5) or does not allow (Project Settings), unless it has C++ scripts or
   `ProjectBuild.cmake` (their code can use anything: the settings alone decide, as today).
 - **R7. Strip Engine Code.** Project Settings > Player > Strip Engine Code (`player.strip_engine_code`,
@@ -144,7 +144,8 @@ level. We do the same at module granularity, decided by the editor from the proj
 - **R11. Size-optimised code.** `-Os`/`-Oz` is applied where the benchmarks on E show a negligible
   cost (≤ 1 % on the hot-path benches, D8), and documented per target.
 - **R12. Android C++ runtime.** The Android player links libc++ statically into
-  `libjasperengine-android.so` (no `libc++_shared.so`), so the release link drops what nothing uses.
+  `libjasperengine-android.so` (no `libc++_shared.so`), so the release link drops what nothing uses
+  — if the Android packages the player links allow it (see Deviations).
 
 ### Platform & backends
 
