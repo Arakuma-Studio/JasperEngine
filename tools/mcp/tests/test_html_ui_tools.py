@@ -158,8 +158,8 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 # 153 tools, total 111909 (tool_budget.py on the merged tree), the limit set to it
 # audio mixer (spec 2026-10-31-audio-mixer 10): the audio_mixer tool (get / edit with ops; the ops and effect
 # parameters in jasper://docs/audio) and get_play_state's audio block; merged with main 9c8c6c584:
-# MEASURE_PENDING
-TOTAL_LIMIT = 111909
+# 154 tools, total 112708 (tool_budget.py on the merged tree), the limit set to it
+TOTAL_LIMIT = 112708
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

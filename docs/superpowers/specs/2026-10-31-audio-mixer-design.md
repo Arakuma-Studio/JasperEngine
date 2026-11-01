@@ -512,3 +512,11 @@ Decisions taken while implementing (2026-10-31), where the spec was silent, ambi
   audio/Main.mixer (2 groups)" and the mixer's groups and exposed parameter from Lua; agent guide 16352 bytes;
   tool budget 152 tools, 108947 (TOTAL_LIMIT); Web (emsdk) and Android (NDK arm64) compile checks of the changed
   engine and SoLoud sources pass.
+- **Handoff merge with main 9c8c6c584** (box 2202, `-j5`): 15 conflicting files resolved with main's final
+  versions and the mixer on top (the mixer line under the guide's "Feature guides", `FILE_DIALOG_AUDIO_MIXER`
+  moved to `1 << 15` after main's dialog flags, the Xcode project as a union with every sync script `--check`
+  clean; no component or UpdateFlags entries are added by this feature). 0 warnings; unit 1676 passed, 9
+  skipped, 1 failed (`PhysicsContactsTest.ContactProcessingCostIsSmall`, a timing budget, at box load ~20; it
+  passes run alone); full MCP suite (`-j3`) 925 passed, 21 skipped, 11 failed: the 10 baseline failures and
+  `test_budget`, run with main's limit before TOTAL_LIMIT was set (it passes with it); tool budget 154 tools,
+  112708 (TOTAL_LIMIT); TOOLS.md regenerated from this build.
