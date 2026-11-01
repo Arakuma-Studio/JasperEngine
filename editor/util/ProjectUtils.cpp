@@ -908,6 +908,49 @@ Entity editor::ProjectUtils::findSplitBranch(EntityRegistry* registry) {
     return NULL_ENTITY;
 }
 
+bool editor::ProjectUtils::isBranchPlace(EntityRegistry* registry, Entity entity) {
+    const ComponentId transformId = registry->getComponentId<Transform>();
+    auto parentOf = [&](Entity of) {
+        const Transform* transform = registry->findComponent<Transform>(of);
+        return transform ? transform->parent : NULL_ENTITY;
+    };
+    const Entity parent = parentOf(entity);
+    auto transforms = registry->getComponentArray<Transform>();
+    const size_t first = transforms->getIndex(entity);
+    const size_t last = registry->findBranchLastIndex(entity);
+    // in its parent's branch: the GameObject before it is the parent or below it
+    if (parent != NULL_ENTITY && registry->isEntityCreated(parent) && registry->getSignature(parent).test(transformId)) {
+        bool inBranch = false;
+        Entity before = first > 0 ? transforms->getEntity(first - 1) : NULL_ENTITY;
+        for (size_t depth = 0; before != NULL_ENTITY && depth <= transforms->size(); depth++) {
+            if (before == parent) {
+                inBranch = true;
+                break;
+            }
+            before = parentOf(before);
+        }
+        if (!inBranch) {
+            return false;
+        }
+    }
+    // and not between a GameObject and its children: the next one's parent is none, the parent
+    // or one of the parent's parents
+    if (last + 1 < transforms->size()) {
+        const Entity nextParent = transforms->getComponentFromIndex(last + 1).parent;
+        Entity up = parent;
+        for (size_t depth = 0; nextParent != NULL_ENTITY && depth <= transforms->size(); depth++) {
+            if (up == nextParent) {
+                return true;
+            }
+            if (up == NULL_ENTITY) {
+                return false;
+            }
+            up = parentOf(up);
+        }
+    }
+    return true;
+}
+
 void editor::ProjectUtils::sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities) {
     // Key: Transform index, 0 without a Transform. Stable, so equal keys (the flat
     // GameObjects) keep the order they are listed in.
@@ -1016,6 +1059,13 @@ bool editor::ProjectUtils::moveEntityOrderByTarget(EntityRegistry* registry, std
 void editor::ProjectUtils::moveEntityOrderByIndex(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity parent, size_t index, bool hasTransform, bool sortEntities){
     if (hasTransform){
 
+        // Below its parent first, then its place read where that left it: the reparent moves the
+        // branch to the end of the parent's, so a place read before it (where the move had put it)
+        // was one branch length off when the move had taken it to an earlier index, out of a
+        // parent it was not the last child of. It came back past its next sibling, or between
+        // that sibling and its children, which split the sibling's branch
+        registry->addEntityChild(parent, source, true);
+
         auto transforms = registry->getComponentArray<Transform>();
         size_t sourceTransformIndex = transforms->getIndex(source);
 
@@ -1023,8 +1073,18 @@ void editor::ProjectUtils::moveEntityOrderByIndex(EntityRegistry* registry, std:
         if (sourceTransformIndex < index){
             index += sizeOfSourceBranch;
         }
+        index = std::min(index, transforms->size());
 
-        moveEntityOrderByTransform(registry, entities, source, parent, index, true, sortEntities);
+        moveEntityOrderByTransform(registry, entities, source, parent, index, true, false);
+        // An index the array no longer fits (something outside the history changed it since)
+        // never splits a branch: the GameObject goes to the end of its parent's instead
+        if (!isBranchPlace(registry, source)){
+            registry->moveChildToIndex(source, parent != NULL_ENTITY && registry->findComponent<Transform>(parent) ?
+                registry->findBranchLastIndex(parent) + 1 : transforms->size());
+        }
+        if (sortEntities){
+            ProjectUtils::sortEntitiesByTransformOrder(registry, entities);
+        }
 
     }else{
 

@@ -88,6 +88,9 @@ public:
     // The parent whose branch the Transform array splits (a GameObject of it comes after one
     // outside it), the first one found; NULL_ENTITY when every branch is in one run
     static Entity findSplitBranch(EntityRegistry* registry);
+    // Whether a GameObject's branch sits where it belongs: in its parent's branch, and not between
+    // another GameObject and that one's children
+    static bool isBranchPlace(EntityRegistry* registry, Entity entity);
     static void sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities);
 
     static bool moveEntityOrderByTarget(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity target, InsertionType type, Entity& oldParent, size_t& oldIndex, bool& hasTransform);
