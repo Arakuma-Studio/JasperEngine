@@ -381,10 +381,16 @@ async def test_animator_window_live_parameters(ed: Editor):
         # the running value's checkbox (drawn once the window has the running Animator)
         go = await ui.item("animator.parameter.1.live")
         await shot(ed, "10-live-parameters")
-        await ui.click(*center(go))
-        await ed.call("wait", game_seconds=0.3)
-        live = (await ed.call("get_animator", entity="Hero"))["live"]
-        ed.check(live["parameters"]["Go"] in (True, 1), f"the checkbox set the runtime's Go: {live['parameters']}")
+        # (the first click on the checkbox may only give the window the mouse: one more if the
+        # running value did not change)
+        for attempt in range(2):
+            await ui.click(*center(await ui.item("animator.parameter.1.live")))
+            await ed.call("wait", game_seconds=0.3)
+            live = (await ed.call("get_animator", entity="Hero"))["live"]
+            if live["parameters"]["Go"] in (True, 1):
+                break
+        ed.check(live["parameters"]["Go"] in (True, 1), f"the checkbox set the runtime's Go: {live['parameters']} "
+                 f"(file unchanged: {(ed.project / CONTROLLER).read_text() == S['text']})")
         ed.check_eq(live["layers"][0]["state"], "Base Layer.Run", f"Go moved Idle to Run: {live}")
         await shot(ed, "11-live-run")
         ed.check_eq((ed.project / CONTROLLER).read_text(), S["text"], "the file is unchanged")
