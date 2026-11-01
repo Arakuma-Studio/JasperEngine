@@ -20,6 +20,7 @@
 #include "Project.h"
 #include "Scene.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimationPlayerRuntime.h"
 #include "animation/AnimatorAssetDocument.h"
 #include "animation/AnimatorAssetIO.h"
 #include "animation/AnimatorInstance.h"
