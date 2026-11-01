@@ -484,6 +484,6 @@ Decisions taken while implementing (2026-10-31), where the spec was silent, ambi
   `test_stochastic_tiling::test_old_scene_resaves_byte_identical`, which fails because every scene now lists the
   HTML UI `htmluipost` shader key (ui-canvas-group's "Flatten composite always exported", `ShaderVariantCollector`
   / `Project.cpp` insertKeys): not audio, it fails the same alone; agent guide 16345 bytes; tool budget 152 tools,
-  108425 (TOTAL_LIMIT set to it); TOOLS.md regenerated from this build. Web (emsdk) and Android (NDK arm64) compile
-  checks of the changed engine sources passed on the tree merged before the last two merges (no engine audio file
-  changed since but `AudioSystem.cpp`, `EntityCloner.cpp`, recompiled on Linux only).
+  108425 (TOTAL_LIMIT set to it); TOOLS.md regenerated from this build. The changed engine sources (audio, SoLoud's
+  wavstream / nosound / null, AudioSystem, EntityCloner, bindings) compile with emsdk (Web) and the Android NDK
+  (arm64-v8a) on this merged tree.
