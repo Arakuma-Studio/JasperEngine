@@ -696,23 +696,26 @@ ambiguous or in conflict with the code:
 18. **Agent guide.** The HTTP and native lines share one bullet, and a few Lua-section lines were
     reworded shorter, to keep the merged guide under 16 KB (16376 bytes after the last main merge).
 
-### Verification (review fixes; merged with gaps/http and main at 0d00df166)
+### Verification (review fixes; merged with gaps/http and main at 2e916ebb9)
 
-- Build box 2203 (`-j3`): editor and `jasperengine-editor-tests` build with 0 errors and 0 warnings.
-- Unit suite: 1437 passed, 9 skipped, 0 failed (the `NativeBridgeTest` cases included: pause holds,
-  runOnGameThread while paused, events dropped after a Play stop, UTF-8 checks for C++ results, the
-  timeout clamp, Kotlin members' modifiers not leaking into the next class of the registry).
-- MCP e2e, full suite (`-j2`): 886 passed, 12 failed, 19 skipped. The failures: the 10 baseline
-  ones (test_animation_assets x5, test_lattice_scene x5), `test_html_ui_tools::test_budget` (the
-  merged tree measured 109170: the limit set to it, re-run passed) and
-  `test_stochastic_tiling::test_old_scene_resaves_byte_identical` (an `htmluipost` shader key on
-  re-save: the ui-canvas-group regression the ledger records on main, not this branch's).
-  `test_native_bridge.py` 4/4; with test_html_ui_tools, test_docs, test_protocol re-run: 56 passed.
-  Agent guide 16376 bytes.
+- Build box 2201 (`-j5`; 2203 was overloaded): editor and `jasperengine-editor-tests` build with 0
+  errors and 0 warnings (again after the `callId` rename, 956ee4b8e).
+- Unit suite: 1705 passed, 10 skipped, 1 failed: `CameraShakeComponents.RegistrationAndCatalog`
+  expects CameraFollowComponent last, but main's ui-scaling-text appends TextEffectComponent after
+  it (main's Catalog.h and test, unchanged here). The `NativeBridgeTest` and platform-services
+  cases pass, also after the rename.
+- MCP e2e, full suite (`-j3`): 930 passed, 10 failed (the baseline test_animation_assets x5,
+  test_lattice_scene x5), 21 skipped; test_native_bridge 4/4. Tool budget: 154 tools, 113215
+  (TOTAL_LIMIT set to it). Agent guide 15365 bytes (one line under "Feature guides").
+- Apple: the lead's Mac compile check of the engine's Xcode project (956ee4b8e) builds JasperEngine
+  macOS and iOS with 0 errors (it found `uint64_t id` parameters hiding Objective-C's `id` in
+  NativePlatformApple.mm: renamed). Exported test projects (an Objective-C and a Swift plugin in
+  apple/, an iOS-only Swift plugin importing swift-collections through ios.swift_packages, plist
+  entries and system frameworks per platform, a Lua caller) were handed over for an xcodebuild run.
 - Android, on the host: the exported test project of `test_source_export` (a Java and a Kotlin
   plugin, libs/x.jar, a plugin manifest with tools:node="remove", Gradle dependencies, a repository,
   manifest fragments) **built with `./gradlew assembleDebug`** (AGP 9, arm64 only, 0 warnings): the
-  APK has com.t.Device, com.t.k.Store, the registry, JasperNative, JasperPlatform, AD_ID and the
+  APK (merged tree, 6m 26s) has com.t.Device, com.t.k.Store, the registry, JasperNative, JasperPlatform, AD_ID and the
   application meta-data, and no READ_PHONE_STATE. Earlier rounds: `:jasperbridge:testDebugUnitTest`
   (7 NativeReflectionTest cases), NativePlatformAndroid.cpp with the NDK clang -Wall -Wextra clean,
   a copy of the generated module layout through `assembleRelease` (R8 kept the plugin classes).
@@ -721,7 +724,7 @@ ambiguous or in conflict with the code:
   Promises, rejections with codes, exceptions, unsupported values, cancellation, events and
   registrations queued before the engine, pause/resume). A full Emscripten build of an exported
   project was not run.
-- Apple (iOS/macOS) and the macOS CMake path: not buildable here; written against the iOS 15 /
+- Apple runtime and the macOS CMake path: not run here; written against the iOS 15 /
   macOS 12 SDK APIs and reviewed (the `JasperNativePlugin` marker, metaclass method lists for
   `+jasperInit`, typed objc_msgSend casts per return type, object-only parameters, ARC, NSNumber
   booleans, @try/@catch, bridging header paths, `$(inherited)` and platform/apple in the app
