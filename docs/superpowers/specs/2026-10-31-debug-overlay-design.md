@@ -506,7 +506,9 @@ the code:
     - Project Settings > Debug changed during the editor's Play apply at once
       (`Project::setDebugSettings` while `applyDebugSettingsForPlay` has run for the running Play:
       the buffer size, stack traces and `DebugOverlay::updateSettings`, which applies what changed
-      and keeps the console and a picked stats mode).
+      and keeps the console and a picked stats mode). That is the Project Settings window's path
+      (OK and its undo); MCP's `set_project_settings` is refused during Play, as for every tool
+      that edits the project, so agents change them before Play.
     - Tests added: the Canvas Scaler (`ScaleWithScreenSize` 1920x1080 does not change
       `#stats-line`'s rendered height), the touch scale by DPI, the row window (scrolling 12,000
       rows), its throttle, a timed rebuild of 500 rows and a line added, collapsed counts with the
@@ -515,8 +517,8 @@ the code:
       spec test 14 above a loading scene (`SceneManager` with a held loading scene); in
       LogListenerTest the removal stress test (4 workers logging, 200 add/remove rounds), a
       listener removing itself, the pending-queue overflow report, invalid `statsMode`,
-      `updateSettings`; in MCP the settings changed during Play, `statsMode = 3`, the buffer cap
-      and the audio voices against get_play_state.
+      `updateSettings`; in DebugSettingsTest the settings changed during Play (the command and its
+      undo); in MCP `statsMode = 3`, the buffer cap and the audio voices against get_play_state.
     - The safe area is wired (12), with a GPU test: platform insets (a notch) move the console
       and the stats panel clear of them.
 18. **Verification** (box 2203, branch merged with `main` `dce634fb7`, audio-mixer, camera-shake and

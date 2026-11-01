@@ -192,7 +192,9 @@ LIMITS.update({"edit_animation": 3700, "get_animation": 870, "edit_pose_animatio
 TOTAL_LIMIT = 114870
 # debug overlay: no new tool; get_project_settings' category list (+ "debug") and get_play_state's
 # debug_overlay block (+22); measured 113014 on the tree merged with main dce634fb7; merged with main
-# fa4eeed50 (everything above): re-measured below
+# fa4eeed50 (everything above, safe-area included): 155 tools, total 114892 (test_budget on the full
+# MCP run), the limit set to it
+TOTAL_LIMIT = 114892
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

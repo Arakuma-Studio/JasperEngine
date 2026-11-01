@@ -2264,8 +2264,7 @@ const std::vector<Setting>& settingsTable() {
 
         // ---- debug: the on-device console and stats overlay, the log (jasper://docs/debugging)
         add(debugEnumSetting("debug.overlay", "The debug overlay: development (the editor's Play and Debug-type exports), "
-                             "always, or never (DebugOverlay.enabled = true still turns it on). The debug.* keys apply to a "
-                             "running Play at once.", DebugSettingsNames::modes(), &DebugSettings::overlay));
+                             "always, or never (DebugOverlay.enabled = true still turns it on).", DebugSettingsNames::modes(), &DebugSettings::overlay));
         add(debugKeySetting("debug.overlay_toggle_key", "Opens and closes the console.", &DebugSettings::toggleKey));
         add(debugKeySetting("debug.overlay_stats_key", "Cycles the stats panel (off, fps, full).", &DebugSettings::statsKey));
         add(debugEnumSetting("debug.overlay_gesture", "Touch gesture that toggles the console (three fingers held 0.75 s).",

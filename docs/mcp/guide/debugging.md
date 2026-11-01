@@ -187,8 +187,9 @@ not wait for that call.
 ## 8. Agents (MCP)
 
 - Settings: `get_project_settings` category `debug`, `set_project_settings` with the `debug.*` keys
-  above (undoable, undo scope project). A change during Play applies to the running game at once
-  (the console stays open, a stats mode picked stays unless `debug.overlay_stats` changed).
+  above (undoable, undo scope project; not during Play, like every setting). Changed in the
+  Project Settings window during Play, they apply to the running game at once (the console stays
+  open, a stats mode picked stays unless the Stats setting changed).
   `get_play_state` shows `debug_overlay: {enabled, console_visible, stats}` while playing.
 - In Play: `eval_lua "return DebugOverlay.getStats()"` reads FPS and draw calls;
   `eval_lua "return Log.getEntries(20, {LogLevel.ERROR})"` reads errors with their traces;

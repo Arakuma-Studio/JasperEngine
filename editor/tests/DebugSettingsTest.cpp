@@ -173,3 +173,46 @@ TEST(DebugSettingsTest, PlayApplies) {
     Log::setBufferSize(500);
     EXPECT_FALSE(DebugOverlay::isEnabled());
 }
+
+// changed during the editor's Play (the dialog's OK, its undo): the running game takes them at
+// once, the console stays open, a stats mode picked stays unless the setting changed
+TEST(DebugSettingsTest, ChangesApplyDuringPlay) {
+    Project project;
+    project.applyDebugSettingsForPlay();
+    DebugOverlay::showConsole();
+    DebugOverlay::setStatsMode(DebugOverlaySettings::Stats::Fps);
+
+    DebugSettings changed = project.getDebugSettings();
+    changed.logBufferSize = 300;
+    changed.logStackTraces = LogStackTraces::All;
+    changed.openOnError = true;
+    DebugSettingsCmd command(&project, project.getDebugSettings(), changed);
+    EXPECT_TRUE(command.execute());
+    EXPECT_EQ(Log::getBufferSize(), 300u);
+    EXPECT_EQ(Log::getStackTraces(), LogStackTraces::All);
+    EXPECT_TRUE(DebugOverlay::getSettings().openOnError);
+    EXPECT_TRUE(DebugOverlay::isConsoleVisible());
+    EXPECT_EQ(DebugOverlay::getStatsMode(), DebugOverlaySettings::Stats::Fps);
+
+    DebugSettings full = changed;
+    full.stats = DebugOverlaySettings::Stats::Full;
+    project.setDebugSettings(full);
+    EXPECT_EQ(DebugOverlay::getStatsMode(), DebugOverlaySettings::Stats::Full);
+    DebugSettings never = full;
+    never.overlay = DebugSettings::Mode::Never;
+    project.setDebugSettings(never);
+    EXPECT_FALSE(DebugOverlay::isEnabled());
+
+    command.undo();
+    EXPECT_EQ(Log::getBufferSize(), 500u);
+    EXPECT_TRUE(DebugOverlay::isEnabled());
+    EXPECT_FALSE(DebugOverlay::isConsoleVisible()) << "turned off and on: closed";
+    DebugOverlay::shutdown();
+    Log::setBufferSize(500);
+    Log::setStackTraces(LogStackTraces::Warnings);
+
+    // not playing: the engine keeps what it has
+    Project idle;
+    idle.setDebugSettings(changed);
+    EXPECT_EQ(Log::getBufferSize(), 500u);
+}
