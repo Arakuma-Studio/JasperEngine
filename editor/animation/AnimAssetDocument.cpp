@@ -347,6 +347,52 @@ std::vector<AnimAssetHintEdit> jasperengine::editor::remapControllerReferences(P
     return edits;
 }
 
+std::vector<fs::path> jasperengine::editor::relinkControllerGuids(Project* project, const std::map<std::string, fs::path>& moved){
+    std::vector<fs::path> written;
+    if (!project || project->getProjectPath().empty() || moved.empty()) return written;
+    auto relink = [&](std::string& stored, const std::string& guid){
+        if (guid.empty() || anim::isSubClipReference(stored)) return false;
+        const auto found = moved.find(guid);
+        if (found == moved.end()) return false;
+        const std::string form = project->normalizeToAssetsRelative(found->second).generic_string();
+        if (fs::path(stored).lexically_normal().generic_string() == form) return false;
+        stored = form;
+        return true;
+    };
+    for (const fs::path& file : ProjectChecks::findProjectFiles(project->getProjectPath().lexically_normal(), {".controller"})){
+        std::string text;
+        if (!ProjectChecks::readFile(file, text)) continue;
+        bool named = false;
+        for (const auto& entry : moved) named |= text.find(entry.first) != std::string::npos;
+        if (!named) continue;
+        anim::ControllerParseResult parsed = anim::parseController(text);
+        if (!parsed.ok()) continue;
+        anim::ControllerData data = *parsed.data;
+        bool changed = false;
+        for (anim::ControllerLayer& layer : data.layers){
+            changed |= relink(layer.mask, layer.maskGuid);
+            for (anim::ControllerState& state : layer.states){
+                changed |= relink(state.clip, state.clipGuid);
+                for (anim::BlendTreeChild& child : state.blendTree.children) changed |= relink(child.clip, child.clipGuid);
+            }
+        }
+        if (!changed) continue;
+        const std::string newText = anim::writeController(data);
+        if (newText == text) continue;
+        if (!FileUtils::writeFileReplacing(file, newText)){
+            Out::warning("Could not update the clip and mask paths of %s", file.string().c_str());
+            continue;
+        }
+        written.push_back(file);
+    }
+    if (!written.empty()){
+        AnimatorControllerDocument::filesChanged(written, project);
+        // the MCP file sync: rewritten by the editor, not changed outside it
+        if (registry<anim::ControllerData>().filesWrittenHook) registry<anim::ControllerData>().filesWrittenHook(written);
+    }
+    return written;
+}
+
 // ---- documents ----
 
 template<class Data>

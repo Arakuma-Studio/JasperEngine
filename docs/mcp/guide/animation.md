@@ -351,9 +351,9 @@ Drive it in play: `eval_lua "GameObject(scene, id):getAnimator():setFloat('Speed
 `get_animation {entity}`: `players[0].controller` has `parameters` and per layer `current`,
 `normalized_time` and `transition: {to, progress}`. Lua also has `setBool`, `setInteger`,
 `setTrigger`, `resetTrigger`, `getCurrentStateInfo(layer)`, `isInTransition`,
-`play(state, layer, normalizedTime)`, `crossFade(state, seconds)`, and per-object script methods
-`onStateEnter(layer, name)` / `onStateExit(layer, name)`. A type mismatch (`setBool` on a trigger)
-warns once and converts.
+`playInLayer(state, layer, normalizedTime)`, `crossFadeInLayer(state, seconds, layer)`, and
+per-object script methods `onStateEnter(layer, name)` / `onStateExit(layer, name)`. A type
+mismatch (`setBool` on a trigger) warns once and converts. Parameter names are Lua identifiers.
 
 ## edit_animation: clip mode and scene mode
 

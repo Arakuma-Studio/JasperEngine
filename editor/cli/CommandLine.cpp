@@ -2189,9 +2189,11 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
 // Avatar Masks (.mask: the format) and Animator Controllers (.controller: the format and
 // anim::validateController, with the clips it names read here: .anim files parsed, model
 // sub-clips looked up in the model)
-// `guids`: each readable mask's and controller's GUID -> its project-relative path
+// `guids`: each readable mask's and controller's GUID -> its project-relative path.
+// `projectGuids`: every clip's, mask's and controller's GUID in the project -> its absolute path
+// (a controller's clips and masks are found by GUID first, as the editor does)
 void checkAnimAssetFiles(const fs::path& root, const std::vector<fs::path>& masks, const std::vector<fs::path>& controllers, ClipCheck& check,
-                         std::map<std::string, std::string>& guids) {
+                         std::map<std::string, std::string>& guids, const std::map<std::string, fs::path>& projectGuids) {
     const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
     for (const fs::path& file : masks) {
         std::string text;
@@ -2255,12 +2257,45 @@ void checkAnimAssetFiles(const fs::path& root, const std::vector<fs::path>& mask
         for (const ClipWarning& warning : parsed.warnings) {
             check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
         }
-        for (const ClipWarning& warning : anim::validateController(*parsed.data, resolve)) {
+        // a clip or mask its GUID finds elsewhere: checked there (a moved file, or a GUID
+        // naming another file than the path)
+        anim::ControllerData data = *parsed.data;
+        auto follow = [&](std::string& stored, const std::string& guid, const std::string& what) {
+            if (stored.empty() || guid.empty() || anim::isSubClipReference(stored)) return;
+            const auto found = projectGuids.find(guid);
+            const fs::path target = (assets / fs::u8path(stored)).lexically_normal();
+            if (found == projectGuids.end() || found->second == target) return;
+            const std::string foundRel = ProjectChecks::projectRelative(root, found->second);
+            std::error_code ec;
+            if (fs::is_regular_file(target, ec)) {
+                check.findings.push_back({"anim", rel, 0, 0, "warning", what + ": '" + stored + "' has the GUID of '" + foundRel +
+                                          "', which the editor uses (it resolves the GUID first): set it again in the editor, or fix the GUID"});
+            } else {
+                check.findings.push_back({"anim", rel, 0, 0, "warning", what + ": '" + stored + "' moved to '" + foundRel +
+                                          "' (found by its GUID; the editor updates the path when it sees the move)"});
+            }
+            stored = found->second.lexically_relative(assets.lexically_normal()).generic_string();
+        };
+        for (size_t l = 0; l < data.layers.size(); l++) {
+            anim::ControllerLayer& layer = data.layers[l];
+            const std::string at = "layers[" + std::to_string(l) + "]";
+            follow(layer.mask, layer.maskGuid, at + ".mask");
+            for (size_t i = 0; i < layer.states.size(); i++) {
+                anim::ControllerState& state = layer.states[i];
+                const std::string stateAt = at + ".states[" + std::to_string(i) + "]";
+                follow(state.clip, state.clipGuid, stateAt + ".clip");
+                for (size_t c = 0; c < state.blendTree.children.size(); c++) {
+                    anim::BlendTreeChild& child = state.blendTree.children[c];
+                    follow(child.clip, child.clipGuid, stateAt + ".blend_tree.children[" + std::to_string(c) + "].clip");
+                }
+            }
+        }
+        for (const ClipWarning& warning : anim::validateController(data, resolve)) {
             check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
         }
         // the masks its layers name
-        for (size_t l = 0; l < parsed.data->layers.size(); l++) {
-            const std::string& mask = parsed.data->layers[l].mask;
+        for (size_t l = 0; l < data.layers.size(); l++) {
+            const std::string& mask = data.layers[l].mask;
             std::error_code ec;
             if (!mask.empty() && !fs::is_regular_file((assets / fs::u8path(mask)).lexically_normal(), ec)) {
                 check.findings.push_back({"anim", rel, 0, 0, "error", "layers[" + std::to_string(l) + "].mask: '" + mask +
@@ -2282,8 +2317,16 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
         masks = ProjectChecks::findProjectFiles(root, {".mask"});
         controllers = ProjectChecks::findProjectFiles(root, {".controller"});
     }
+    // every clip's, mask's and controller's GUID, also when only some files are checked
+    std::map<std::string, fs::path> projectGuids;
+    for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".anim", ".mask", ".controller"})) {
+        std::string text;
+        if (!ProjectChecks::readFile(file, text)) continue;
+        const std::string guid = anim::readClipGuid(text);
+        if (!guid.empty()) projectGuids.emplace(guid, file.lexically_normal());
+    }
     std::map<std::string, std::string> assetGuids;   // mask / controller guid -> project-relative path
-    checkAnimAssetFiles(root, masks, controllers, check, assetGuids);
+    checkAnimAssetFiles(root, masks, controllers, check, assetGuids, projectGuids);
     const std::vector<fs::path> clips = all ? ProjectChecks::findProjectFiles(root, {".anim"}) : given;
     std::map<std::string, std::string> guids;   // guid -> project-relative path
     for (const fs::path& file : clips) {
