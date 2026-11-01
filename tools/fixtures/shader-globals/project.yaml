@@ -1,0 +1,46 @@
+name: ShaderGlobals
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+textureStrategy: none
+vsync: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+shaderGlobals:
+  - name: TestColor
+    type: color
+    default: "#FF0000FF"
+  - name: FogTint
+    type: color
+    default: "#808080FF"
+  - name: _CheckerTex
+    type: texture2d
+    default: textures/checker.png
+  - name: _LightPositionX
+    type: vector4
+    default: [-3, 3, 0, 0]
+  - name: _LightPositionY
+    type: vector4
+    default: [0, 0, 0, 0]
+  - name: _LightPositionZ
+    type: vector4
+    default: [2, 2, 0, 0]
+  - name: _LightRadius
+    type: vector4
+    default: [5, 0, 0, 0]
+  - name: _VertexLightColor0
+    type: color
+    default: "#FFFFFFFF"
+  - name: _VertexLightColor1
+    type: color
+    default: "#000000FF"
+  - name: _VertexLightColor2
+    type: color
+    default: "#000000FF"
+  - name: _VertexLightColor3
+    type: color
+    default: "#000000FF"

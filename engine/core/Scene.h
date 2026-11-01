@@ -264,6 +264,10 @@ namespace jasperengine{
         void setPostProcessUniform(unsigned int index, const std::string& name, float value);
         Vector4 getPostProcessUniform(unsigned int index, const std::string& name) const;
         bool removePostProcessUniform(unsigned int index, const std::string& name);
+        // a u_fs_postParams member of pass index that follows a global shader value
+        // (Shader.setGlobal*); "" unbinds. False when nothing changed
+        bool setPostProcessGlobalBinding(unsigned int index, const std::string& member, const std::string& global);
+        std::string getPostProcessGlobalBinding(unsigned int index, const std::string& member) const;
         void setPostProcessPassEnabled(unsigned int index, bool enabled);
         bool isPostProcessPassEnabled(unsigned int index) const;
 

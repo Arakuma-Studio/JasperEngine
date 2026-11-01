@@ -4,6 +4,7 @@
 #include "ShaderUniforms.h"
 
 #include "Log.h"
+#include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 
 #include <algorithm>
@@ -129,13 +130,18 @@ void CustomUniformBlock::writeValues(const ShaderUniformValues& values){
     }
 }
 
-void CustomUniformBlock::writeValues(const ShaderUniformValues& values, const ShaderUniformValues* fallbackValues, const ShaderManifest* manifest){
+void CustomUniformBlock::writeValues(const ShaderUniformValues& values, const ShaderUniformValues* fallbackValues, const ShaderManifest* manifest,
+                                     const ShaderGlobalBindings* bindings){
     for (size_t m = 0; m < members.size(); m++){
         if ((int)m == timeMember || (int)m == resolutionMember)
             continue;
         const std::string& name = members[m].name;
         Vector4 value = Vector4::ZERO;
-        if (ShaderUniforms::has(values, name)){
+        const std::string global = bindings ? ShaderGlobals::getBinding(*bindings, name) : std::string();
+        if (!global.empty()){
+            // the global's current value; zero while it does not exist (or is a texture)
+            ShaderGlobals::getBoundValue(global, value);
+        }else if (ShaderUniforms::has(values, name)){
             value = ShaderUniforms::get(values, name);
         }else if (fallbackValues && ShaderUniforms::has(*fallbackValues, name)){
             value = ShaderUniforms::get(*fallbackValues, name);

@@ -35,7 +35,7 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
 - entity: numeric id ("12" ok), or a path of names from the scene root joined by "/" with "#N" for the
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
   scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
-  and list the matching paths. Results give id and path; prefer ids.
+  listing the matches. Results give id and path; prefer ids.
   `entities` (array) instead of `entity` applies a tool to several GameObjects. parent
   omitted = scene root; max_width 0 = full size.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
@@ -161,7 +161,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits.
 - run_build runs an exported desktop player (input events, screenshots_at seconds); returns
-  its errors (Lua too) and the log tail.
+  its errors and the log tail.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (canvas pixels, y up), 64 per Box2D meter
@@ -178,8 +178,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   Player (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
-- UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
-  UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
+- UI (text, image, button, panel, layout group...; HTML/CSS: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
   UI camera: put HUDs and menus in a child UI scene (set_child_scene). Fade, disable or
   click-through a UI subtree: Canvas Group (jasper://docs/ui).
@@ -221,13 +220,14 @@ shaderUniforms. Outlines and stencil effects: apply_material_preset (list_materi
 tune its extraPass and stencil. Shaders with scene_inputs (cost_note) add a depth
 pass or colour copy per camera and must draw transparent; avoid on low-end mobile. Fork only
 when nothing fits: fork_shader copies the built-in shader and sets customShader. Read a fork
-before editing: keep its declarations, includes, varyings and output, change the math near the
-end of main(), parameters in its u_fs_customParams block (set_shader_uniform); rules and depth
-forks: jasper://docs/shaders. A failing shader draws as the built-in one (Console error).
+before editing: keep its declarations, includes, varyings and output; parameters go in its
+u_fs_customParams block (set_shader_uniform); rules: jasper://docs/shaders. A failing shader draws as the built-in one (Console error).
+Globals (Shader.SetGlobal*): Lua Shader.setGlobal*, defaults graphics.shader_globals, read as
+u_vs_globals/u_fs_globals members (jasper://docs/shaders#global-values).
 Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
 post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
-Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
+Textures from examples: synthesize_texture
 (jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice). Thick lines, lasers,
 bullet trails: line_renderer / trail_renderer, curves and gradients (jasper://docs/lines-trails).
@@ -236,8 +236,7 @@ Video Player (texture video|<id>), MP4, WebM: jasper://docs/video.
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
 (Build Settings) produces a standalone CMake project or builds players per platform (a long
-job, see The loop). The 2D/3D physics switches strip backends from the export
-(jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the
+job, see The loop). The physics switches strip backends from the export. Before exporting: every scene saved, Console clean in play, the
 start scene correct.
 )JE"
 R"JE(

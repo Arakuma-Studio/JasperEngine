@@ -4,6 +4,7 @@
 #include "manager/ObjectManager.h"
 #include "script/ScriptRuntime.h"
 #include "Scene.h"
+#include "shader/ShaderGlobals.h"
 #include "script/AsyncOwner.h"
 
 #include "object/Camera.h"
@@ -698,6 +699,25 @@ bool Scene::removePostProcessUniform(unsigned int index, const std::string& name
 
     getSystem<RenderSystem>()->needUpdatePostProcessUniforms();
     return true;
+}
+
+bool Scene::setPostProcessGlobalBinding(unsigned int index, const std::string& member, const std::string& global){
+    if (index >= settings.postProcess.size()){
+        Log::error("Post-process pass %u does not exist, cannot bind '%s'", index, member.c_str());
+        return false;
+    }
+    if (!ShaderGlobals::setBinding(settings.postProcess[index].shaderGlobalBindings, member, global))
+        return false;
+
+    getSystem<RenderSystem>()->needUpdatePostProcessUniforms();
+    return true;
+}
+
+std::string Scene::getPostProcessGlobalBinding(unsigned int index, const std::string& member) const{
+    if (index >= settings.postProcess.size())
+        return "";
+
+    return ShaderGlobals::getBinding(settings.postProcess[index].shaderGlobalBindings, member);
 }
 
 const PostProcessingSettings& Scene::getPostProcessing() const{

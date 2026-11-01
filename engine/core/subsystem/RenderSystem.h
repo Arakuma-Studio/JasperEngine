@@ -1395,6 +1395,7 @@ namespace jasperengine{
 		bool postProcessLoaded;
 		bool postProcessNeedReload;
 		bool postProcessNeedUpdateUniforms;    // rewrite pass values, no chain rebuild
+		uint64_t postProcessGlobalsVersion = 0; // ShaderGlobals version the pass values bind
 		// the scene's PostProcessingSettings changed since they were applied (phase 4)
 		bool postProcessingDirty = true;
 		// what the applied settings turn on (getPostProcessingTiers), and their colour LUTs
@@ -1659,7 +1660,13 @@ namespace jasperengine{
 		uint64_t postColorProperty(ShaderType type) const;
 		// the size of the target a camera's colour pass renders into
 		Vector2 passFrameResolution(const CameraComponent& camera) const;
+		// the frame block of the pass (and the post colour, the blurred scene and the globals)
 		void applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// the global shader values a draw's shader declares (ShaderGlobals: its globals blocks,
+		// repacked when a value changed, and its texture globals)
+		void applyGlobals(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// its texture globals only (at load, outside a pass)
+		void applyGlobalTextures(ObjectRender& render, const ShaderLibraryBindings& bindings);
 		// the scene inputs of the pass being drawn, to a colour draw whose shader declares them
 		// (the far-plane depth and black where the pass has none)
 		void applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings);

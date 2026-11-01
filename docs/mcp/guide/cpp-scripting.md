@@ -169,6 +169,19 @@ disabled entry) are skipped. Registering in the constructor or in `init()` both 
   `jasperengine::LuaJson` (`"LuaJson.h"`: `toJson`, `push`, `encode`, `decode`, the same rules
   as the Lua `Json` module).
 
+## Global shader values
+
+`jasperengine::ShaderGlobals` (`"shader/ShaderGlobals.h"`, flat `"ShaderGlobals.h"`), the Lua
+`Shader.setGlobal*` (jasper://docs/shaders#global-values), main thread only:
+`int id = ShaderGlobals::propertyToID("FogTint")` once, then `ShaderGlobals::setColor(id,
+Vector4(1, 0.5f, 0, 1))` (sRGB in), `setFloat`, `setVector`, `setMatrix`, `setFloatArray(id,
+values, count)`, `setVectorArray`, `setTexture(id, Texture("textures/noise.png"))`,
+`clearTexture`, `get(id, value)` (a `ShaderGlobalValue`: type, linear values, texture),
+`exists`, `getNames()`, `resetToDefaults()`. A renderer's parameter follows a global with
+`setShaderGlobalBinding(member, global)` (`Image`, `Text`, `Polygon`, `Points`, `LineRenderer`,
+`TrailRenderer`, `Skybox`; a mesh: `Material::shaderGlobalBindings` with
+`ShaderGlobals::setBinding`, then `setMaterial`).
+
 ## Rules that bite
 
 - Includes are quoted and resolve against the engine API snapshot: `"Engine.h"`,
