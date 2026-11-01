@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include "Engine.h"
 #include "Input.h"
 #include "Out.h"
@@ -981,8 +983,12 @@ TEST_F(InputActionsTest, UnknownNameLogsOnceAndReadsZero) {
     // the logger writes on its own thread: what it was given is out before the capture ends
     Logger::flush();
     fflush(stdout);
-    const std::string logged = testing::internal::GetCapturedStderr() + testing::internal::GetCapturedStdout() + loggedSince(mark);
-    EXPECT_EQ(count(logged, "Input action \"Fire4\" does not exist (Project Settings > Input)"), 1u) << logged;
+    const std::string err = testing::internal::GetCapturedStderr();
+    const std::string out = testing::internal::GetCapturedStdout();
+    const std::string console = loggedSince(mark);
+    // once, on each path it takes (the System of the moment may print it and give it to Out too)
+    const char* line = "Input action \"Fire4\" does not exist (Project Settings > Input)";
+    EXPECT_EQ(std::max({count(err, line), count(out, line), count(console, line)}), 1u) << err << out << console;
     EXPECT_FALSE(InputActions::hasAction("Fire4"));
 }
 
