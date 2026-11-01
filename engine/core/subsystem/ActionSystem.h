@@ -290,6 +290,11 @@ namespace jasperengine{
 			// off), else 0 / 1; a named state of a Retarget entry plays its clip retargeted
 			int mirror = -1;
 			int footIK = -1;
+			// -1 the entry's Retarget (an explicit clip: off), else 0 / 1: a generic clip played
+			// retargeted from its source model (the one retarget path); `reference` is an explicit
+			// clip's reference (a sub-clip names its model; else the clip's source or Preview Model)
+			int retarget = -1;
+			std::string reference;
 		};
 		// one layer of a layered preview (anim layers spec 7.5): the Animation window's "Preview
 		// over", MCP preview_animation `over`

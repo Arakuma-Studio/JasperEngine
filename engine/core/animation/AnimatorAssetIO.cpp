@@ -564,7 +564,8 @@ namespace{
                 reader.vector2(c, at, "position", child.position);
                 reader.number(c, at, "time_scale", child.timeScale);
                 reader.string(c, at, "direct_parameter", child.directParameter);
-                reader.keep(c, at, {"motion", "threshold", "position", "time_scale", "direct_parameter"}, child.unknownKeys);
+                reader.boolean(c, at, "mirror", child.mirror);
+                reader.keep(c, at, {"motion", "threshold", "position", "time_scale", "direct_parameter", "mirror"}, child.unknownKeys);
                 out.children.push_back(std::move(child));
             }
         }
@@ -611,9 +612,13 @@ namespace{
         reader.string(value, path, "tag", out.tag);
         reader.enumeration(value, path, "additive_reference", kReferences, out.additiveReference);
         reader.number(value, path, "additive_time", out.additiveTime);
+        reader.boolean(value, path, "mirror", out.mirror);
+        reader.boolean(value, path, "foot_ik", out.footIK);
+        reader.boolean(value, path, "retarget", out.retarget);
         readTransitions(reader, value, path, "transitions", out.transitions);
         reader.keep(value, path, {"name", "position", "motion", "speed", "speed_parameter", "cycle_offset", "cycle_offset_parameter",
-                                  "time_parameter", "loop", "tag", "additive_reference", "additive_time", "transitions"}, out.unknownKeys);
+                                  "time_parameter", "loop", "tag", "additive_reference", "additive_time", "mirror", "foot_ik", "retarget",
+                                  "transitions"}, out.unknownKeys);
     }
 
     void readMachine(Reader& reader, const OJson& value, const std::string& path, StateMachineDef& out, int depth){
@@ -725,6 +730,7 @@ namespace{
             if (tree.type == BlendTreeType::Direct){
                 out.key("direct_parameter"); out.str(child.directParameter);
             }
+            if (child.mirror){ out.key("mirror"); out.boolean(true); }
             writeUnknown(out, child.unknownKeys);
             out.close('}');
         }
@@ -776,6 +782,9 @@ namespace{
                 out.key("additive_reference"); out.str(additiveReferenceName(state.additiveReference));
             }
             if (state.additiveReference == AdditiveReference::Time){ out.key("additive_time"); out.num(state.additiveTime); }
+            if (state.mirror){ out.key("mirror"); out.boolean(true); }
+            if (state.footIK){ out.key("foot_ik"); out.boolean(true); }
+            if (state.retarget){ out.key("retarget"); out.boolean(true); }
             out.key("transitions"); writeTransitionList(out, state.transitions);
             writeUnknown(out, state.unknownKeys);
             out.close('}');
@@ -1096,11 +1105,12 @@ namespace{
     const std::set<std::string> kMachineMembers = {"name", "position", "default_state", "entry", "any_state", "states", "sub_state_machines",
                                                    "exit_transitions", "entry_position", "any_state_position", "exit_position"};
     const std::set<std::string> kStateMembers = {"name", "position", "motion", "speed", "speed_parameter", "cycle_offset", "cycle_offset_parameter",
-                                                 "time_parameter", "loop", "tag", "additive_reference", "additive_time", "transitions"};
+                                                 "time_parameter", "loop", "tag", "additive_reference", "additive_time", "mirror", "foot_ik",
+                                                 "retarget", "transitions"};
     const std::set<std::string> kTransitionMembers = {"to", "conditions", "has_exit_time", "exit_time", "fixed_duration", "duration", "offset",
                                                       "interruption_source", "ordered_interruption", "can_transition_to_self", "mute"};
     const std::set<std::string> kTreeMembers = {"type", "parameter", "parameter_y", "children"};
-    const std::set<std::string> kChildMembers = {"motion", "threshold", "position", "time_scale", "direct_parameter"};
+    const std::set<std::string> kChildMembers = {"motion", "threshold", "position", "time_scale", "direct_parameter", "mirror"};
     const std::set<std::string> kConditionMembers = {"parameter", "mode", "threshold"};
     const std::set<std::string> kControllerMembers = {"format", "version", "guid", "parameters", "layers"};
     const std::set<std::string> kMaskMembers = {"format", "version", "guid", "default", "body_parts", "root_hierarchy", "paths", "preview"};

@@ -68,6 +68,7 @@ namespace jasperengine::anim{
         float x = 0.0f, y = 0.0f;
         float timeScale = 1.0f;
         int directParameter = -1;
+        bool mirror = false;            // flips the state's Mirror
     };
 
     struct CompiledTree{
@@ -99,6 +100,9 @@ namespace jasperengine::anim{
         AnimatorStateLoop loop = AnimatorStateLoop::Inherit;
         AdditiveReference additiveReference = AdditiveReference::FirstFrame;
         float additiveTime = 0.0f;
+        bool mirror = false;            // humanoid playback (§12)
+        bool footIK = false;
+        bool retarget = false;
         uint32_t transitionBegin = 0;
         uint32_t transitionCount = 0;
         uint32_t nameHash = 0;          // of name and of fullPath (Unity's Animator.StringToHash rule: FNV-1a here)
@@ -141,6 +145,10 @@ namespace jasperengine::anim{
         std::vector<float> pairs;
         // the distinct clips (by path), in first-use order
         std::vector<AnimatorAssetRef> clips;
+        // per clip slot: it plays through the humanoid path whenever the Animator has a humanoid
+        // avatar (a state's Retarget, Mirror or Foot IK, a child's Mirror); a clip used both ways
+        // has a slot of each kind
+        std::vector<uint8_t> clipHumanoid;
         // problems found while compiling: path = where in the controller ("layers[0]...", the
         // JSON path), message
         std::vector<ClipWarning> diagnostics;

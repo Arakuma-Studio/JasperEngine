@@ -98,6 +98,7 @@ namespace jasperengine::anim{
         Vector2 position = Vector2(0, 0);   // 2D types
         float timeScale = 1.0f;
         std::string directParameter;        // Direct: the Float parameter that is its weight
+        bool mirror = false;                // flips its state's Mirror (humanoid playback)
         AnimatorUnknownKeys unknownKeys;
     };
 
@@ -125,6 +126,13 @@ namespace jasperengine::anim{
         std::string tag;
         AdditiveReference additiveReference = AdditiveReference::FirstFrame;   // additive layers
         float additiveTime = 0.0f;          // seconds, AdditiveReference::Time
+        // humanoid playback (the one retarget path, §12): left and right swapped; the legs reach
+        // the clip's foot goals; retargeted from the clip's source model whatever the Animator's
+        // Retarget (upstream's state flags). Each plays the state's clips through the humanoid
+        // path when the Animator has a humanoid avatar.
+        bool mirror = false;
+        bool footIK = false;
+        bool retarget = false;
         std::vector<TransitionDef> transitions;
         AnimatorUnknownKeys unknownKeys;
     };

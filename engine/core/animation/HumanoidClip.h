@@ -1,32 +1,24 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Contract (anim-retarget spec 7.1-7.3)
+// Contract (anim-retarget spec 7.1-7.4, on S21's one retarget path: animation/AnimatorRetarget.h)
 // - Purpose: humanoid clips, the rig-independent runtime format (Unity's muscle clips): the
-//   conversion of a generic clip on its source rig to humanoid tracks, and the realisation of a
-//   humanoid sample on any other humanoid rig (Mirror, Foot IK, the missing-slot fold), plus the
-//   cache of source rigs built from the glTF data (no scene).
-// - The maths is the pose system's (PoseRig): a slot's humanoid value is its joint rotation E
-//   relative to the neutral pose in the canonical frame (local = left * E * neutral), so rest
-//   poses (T or A), bone axis conventions and facing cancel out. With G_b = W_b * N_b^-1,
-//   G_b = G_p * E_b: E is the rotation between consecutive slots' neutral-relative frames, and a
-//   slot the target lacks folds into its next present descendant (E_t(b) = product of the clip's
-//   E over the slots strictly after b's effective target parent, parent first).
-// - The body (hips) position and the foot IK goals are model-space positions in the canonical
-//   frame relative to the neutral (grounded) hips, in humanScale units: the target places them at
-//   neutralHips + C * (value * humanScale), which scales hips height and stride.
-// - Extra bones (fingers, eyes, jaw) carry their delta from the rest local rotation expressed in
-//   the canonical frame of the bone in the rig's neutral pose: d = W δ W^-1 with δ = rest^-1 *
-//   local and W the bone's canonical world rotation in the neutral pose.
-// - Thread-safety: pure functions; HumanoidSourceCache is thread safe (the pool converts on the
-//   thread pool). A HumanoidBinding is owned by one player state (main thread).
-// - No allocation per frame: a binding's sample, pose and outputs are sized at bind.
+//   conversion of a generic clip on its source rig to humanoid tracks (Convert / Bake to Humanoid
+//   Clip, an Animation Type: Humanoid model's clips in the pool), the Animation Player's binding of
+//   a humanoid clip (or of a generic clip retargeted from its source model) to a root's rig with
+//   its bone entities, and the read-back of a rig's current pose as humanoid values (Record).
+// - The maths is AnimatorRetarget's (the one path the Animator plays too): a source's per-slot
+//   maps turn its rotation keys into E key for key (E = A * q * B with fixed A, B: the same
+//   times, eases and tangents reproduce the source exactly), realiseHumanoid poses the target.
+// - Thread-safety: conversion is pure; a HumanoidBinding is owned by one player state (main
+//   thread). No allocation per frame: a binding's sample, pose and outputs are sized at bind.
 
 #ifndef HUMANOID_CLIP_H
 #define HUMANOID_CLIP_H
 
 #include "Export.h"
 #include "animation/AnimationClip.h"
+#include "animation/AnimatorRetarget.h"
 #include "ecs/Entity.h"
 #include "math/Matrix4.h"
 #include "pose/HumanExtraBones.h"
@@ -48,42 +40,28 @@ namespace jasperengine::anim{
 
     struct KeyCursor;
 
-    // ---- the source: a generic clip's rig ----
+    // ---- the source: a generic clip's rig (AnimatorRetarget's RetargetSource) ----
 
-    // A source rig and how a clip's paths map to its bones (built from the glTF data)
-    struct JASPERENGINE_API HumanoidSource{
-        std::string modelPath;                      // as given (asset-relative)
-        std::shared_ptr<const pose::PoseRig> rig;   // twist corrections and skin applied
-        pose::HumanoidMap humanoid;
-        pose::HumanExtraMap extra;
-        std::vector<int> extraBones;                // per extra bone: its skeleton bone (-1)
-        std::vector<Matrix4> bridges;               // per skeleton bone: skeleton local = bridge * Transform local
-        std::vector<std::string> bonePaths;         // per skeleton bone: its path from the model root
-        std::vector<Quaternion> restRotation;       // per skeleton bone: the Transform-local rest rotation
-        std::vector<Vector3> restPosition;          // per skeleton bone: the Transform-local rest position
-        std::vector<Vector3> restScale;             // per skeleton bone: the Transform-local rest scale
-        std::vector<std::string> notes;             // the humanoid and extra auto-detect notes
-    };
+    using HumanoidSource = RetargetSource;
 
-    // the skeleton bone a clip track path animates: its exact path from the model root, else the
-    // path without its first segments (a clip made on a parent of the model), else a unique bone
-    // name equal to the last segment; -1 when none
-    JASPERENGINE_API int humanoidSourceBone(const HumanoidSource& source, const std::string& path);
+    // the skeleton bone a clip track path animates (RetargetSource::boneOfPath)
+    inline int humanoidSourceBone(const HumanoidSource& source, const std::string& path){ return source.boneOfPath(path); }
 
-    // Builds the source of a parsed model (glTF data, the sidecar overrides as text: "" = none):
-    // pose::buildSkeletonFromGltf + buildSkinFromGltf + resolveHumanoid (with the extra bones) +
-    // PoseRig::build with the twist corrections. False with `error` when the model has no skeleton
-    // or is not a valid humanoid.
-    JASPERENGINE_API bool buildHumanoidSource(const tinygltf::Model& gltf, const std::string& modelPath, const std::string& sidecarText,
-                                              HumanoidSource& out, std::string* error);
+    // Builds the source of a parsed model (buildRetargetSource)
+    inline bool buildHumanoidSource(const tinygltf::Model& gltf, const std::string& modelPath, const std::string& sidecarText,
+                                    HumanoidSource& out, std::string* error){
+        return buildRetargetSource(gltf, modelPath, sidecarText, out, error);
+    }
 
-    // The source rigs by model file and sidecar content (the PoseRigCache rule, from the files):
-    // the pooled glTF when the model is loaded, else a parse of the file. Thread safe.
-    class JASPERENGINE_API HumanoidSourceCache{
+    // The source rigs by model file and sidecar content (retargetSource). Thread safe.
+    class HumanoidSourceCache{
     public:
-        static bool get(const std::string& modelPath, std::shared_ptr<const HumanoidSource>& out, std::string* error);
+        static bool get(const std::string& modelPath, std::shared_ptr<const HumanoidSource>& out, std::string* error){
+            out = retargetSource(modelPath, error);
+            return out != nullptr;
+        }
         // a model file or its sidecar changed (AnimationClipPool::invalidateModel); "" = all
-        static void drop(const std::string& modelPath);
+        static void drop(const std::string& modelPath){ dropRetargetSources(modelPath); }
     };
 
     // ---- conversion ----
@@ -111,29 +89,16 @@ namespace jasperengine::anim{
                                             std::vector<ClipWarning>& warnings, std::string* error,
                                             HumanoidConversionReport* report = nullptr);
 
+    // `clip` as a humanoid clip: itself when it is one, else converted from its source model
+    // (clipRetargetSource: a sub-clip's model, the .anim's source or Preview Model); null with
+    // `error` when it names none or that model is no humanoid. Not cached (editor previews).
+    JASPERENGINE_API std::shared_ptr<const AnimationClip> humanoidClipOf(const std::shared_ptr<const AnimationClip>& clip,
+                                                                         const std::string& reference, std::string* error);
+
     // ---- the target: realisation ----
 
-    // One humanoid sample (spec 7.1): slot joint rotations E, extra deltas, the body offset and
-    // the foot goals (each with its presence bit)
-    struct JASPERENGINE_API HumanoidSample{
-        std::array<Quaternion, pose::HUMAN_BONE_COUNT> E;
-        std::bitset<pose::HUMAN_BONE_COUNT> hasE;
-        std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT> extra;
-        std::bitset<pose::HUMAN_EXTRA_BONE_COUNT> hasExtra;
-        Vector3 hips = Vector3(0, 0, 0);
-        bool hasHips = false;
-        Vector3 feet[2] = {Vector3(0, 0, 0), Vector3(0, 0, 0)};
-        bool hasFeet[2] = {false, false};
-    };
-
-    // Left/right swapped, quaternions (w, x, y, z) -> (w, x, -y, -z), positions x negated (x is the
-    // canonical left axis): the mirror of mirrorBodyPose in E space; twice is the identity
-    JASPERENGINE_API void mirrorHumanoidSample(const HumanoidSample& in, HumanoidSample& out);
-
     // The rig a humanoid clip plays on: the player root's first humanoid model (spec 5.9)
-    struct JASPERENGINE_API HumanoidTarget{
-        std::shared_ptr<const pose::PoseRig> rig;
-        pose::HumanExtraMap extra;
+    struct JASPERENGINE_API HumanoidTarget : RetargetRig{
         std::string modelPath;
         Entity model = NULL_ENTITY;
         std::array<Entity, pose::HUMAN_BONE_COUNT> slotEntities{};
@@ -142,10 +107,6 @@ namespace jasperengine::anim{
         Matrix4 hipsBridgeInverse;
         std::array<Entity, pose::HUMAN_EXTRA_BONE_COUNT> extraEntities{};
         std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT> extraBridgeRotationInverse;
-        std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT> extraRest;    // skeleton rest local
-        std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT> extraFrame;   // canonical world rotation in the neutral pose
-        // per present slot: the clip slots folded into it, parent first (the slot itself last)
-        std::array<std::vector<uint8_t>, pose::HUMAN_BONE_COUNT> chains;
 
         HumanoidTarget(){ slotEntities.fill(NULL_ENTITY); extraEntities.fill(NULL_ENTITY); }
     };
@@ -155,14 +116,7 @@ namespace jasperengine::anim{
                                               const std::vector<Matrix4>& bridges, Entity model, const std::string& modelPath,
                                               HumanoidTarget& out);
 
-    // Realises one sample on the target (spec 7.3): the local skeleton rotation of every present
-    // slot (the fold for slots the target lacks, neutral for slots the clip lacks), the hips local
-    // position (the neutral one without a body offset), Mirror, then Foot IK (both legs to their
-    // goals, the feet keeping their world rotation), and the local rotation of every mapped extra
-    // bone the sample has a value for (the others: their rest, which the outputs do not write:
-    // isLive). Rotations are skeleton locals (before the bridge).
-    JASPERENGINE_API void realiseHumanoid(const HumanoidTarget& target, const HumanoidSample& sample, bool mirror, bool footIK,
-                                          pose::HumanPose& out, std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT>& extraLocal);
+    // realiseHumanoid (AnimatorRetarget.h) poses a HumanoidTarget: it is a RetargetRig
 
     // The humanoid value of the target's current pose (anim-retarget 9: Record, Key All, MCP):
     // a slot's E from its bone's Transform (rig.jointRotationFromLocal of bridge * local), an extra
@@ -193,8 +147,9 @@ namespace jasperengine::anim{
 
     struct JASPERENGINE_API HumanoidBinding{
         std::shared_ptr<const HumanoidTarget> target;
-        // per clip track: the sample field it feeds (-1 none): 0..54 slot / extra, 100 + k a position
-        std::vector<int16_t> trackField;
+        // the clip as humanoid samples (a humanoid clip's tracks, or a generic clip through its
+        // source: a Retarget entry), the one path the Animator reads clips with too
+        RetargetBinding reader;
         // what the clip writes on the target: every present slot (when the clip has slot tracks),
         // the hips position (when it has a body offset), the mapped extra bones it has and the
         // mirror counterparts of those (each live only in the state that gives it a value)
@@ -219,12 +174,12 @@ namespace jasperengine::anim{
         return binding.mirror ? output.liveMirrored : output.liveUnmirrored;
     }
 
-    // Binds a humanoid clip to a target: false (out empty) when the clip is not humanoid or the
-    // target has no rig
+    // Binds a humanoid clip, or a generic clip retargeted from `source` (its model's rig), to a
+    // target: false (out empty) when the clip is neither or the target has no rig
     JASPERENGINE_API bool bindHumanoidClip(const AnimationClip& clip, const std::shared_ptr<const HumanoidTarget>& target,
-                                           HumanoidBinding& out);
-    // Samples the clip's humanoid tracks at `clipTime` (the state's key cursors, per clip track),
-    // realises them and fills every output's Transform-local value
+                                           HumanoidBinding& out, const std::shared_ptr<const HumanoidSource>& source = nullptr);
+    // Samples the clip at `clipTime` (the state's key cursors, per clip track), realises it and
+    // fills every output's Transform-local value
     JASPERENGINE_API void sampleHumanoidBinding(const AnimationClip& clip, HumanoidBinding& binding, float clipTime,
                                                 std::vector<KeyCursor>* cursors);
 

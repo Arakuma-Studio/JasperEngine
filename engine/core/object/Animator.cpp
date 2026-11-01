@@ -204,6 +204,8 @@ namespace{
         out.length = info.length;
         out.loop = info.loop;
         out.speed = info.speed;
+        out.mirror = info.mirror;
+        out.footIK = info.footIK;
         return out;
     }
 

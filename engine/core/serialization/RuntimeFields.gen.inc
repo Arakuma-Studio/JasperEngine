@@ -199,6 +199,13 @@ template<> struct Codec<AnimationPlayerClip> {
 template<> struct TextureVisit<AnimationPlayerClip> {
     static void visit(AnimationPlayerClip& value, const TextureVisitor& f);
 };
+template<> struct Codec<AnimationPlayerLayer> {
+    static void write(Writer& w, const AnimationPlayerLayer& value);
+    static void read(Reader& r, AnimationPlayerLayer& value);
+};
+template<> struct TextureVisit<AnimationPlayerLayer> {
+    static void visit(AnimationPlayerLayer& value, const TextureVisitor& f);
+};
 template<> struct Codec<spline::SplineKnot> {
     static void write(Writer& w, const spline::SplineKnot& value);
     static void read(Reader& r, spline::SplineKnot& value);
@@ -578,6 +585,8 @@ const FieldEntry kStruct_Collider2D_fields[] = {
     JE_RF(Collider2D, contactEvents, 0x3d777a20u, Bool),
     JE_RF(Collider2D, preSolveEvents, 0x1f20e68eu, Bool),
     JE_RF(Collider2D, sensorEvents, 0x45592808u, Bool),
+    JE_RF(Collider2D, material, 0x23926496u, String),
+    JE_RF_ENTITY(Collider2D, receiver, 0xdc436802u, Entity),
 };
 const StructTable kStruct_Collider2D{"Collider2D", kStruct_Collider2D_fields, std::size(kStruct_Collider2D_fields)};
 void Codec<Collider2D>::write(Writer& w, const Collider2D& value) { writeStruct(w, kStruct_Collider2D, &value); }
@@ -602,6 +611,9 @@ const FieldEntry kStruct_Collider3D_fields[] = {
     JE_RF_ENTITY(Collider3D, sourceEntity, 0x801cb5ceu, Entity),
     JE_RF(Collider3D, samplesSize, 0x66556b56u, UInt),
     JE_RF(Collider3D, vertices, 0x2f676f0bu, Array),
+    JE_RF(Collider3D, isTrigger, 0x89640968u, Bool),
+    JE_RF(Collider3D, material, 0x0dad7be5u, String),
+    JE_RF_ENTITY(Collider3D, receiver, 0xe2057509u, Entity),
 };
 const StructTable kStruct_Collider3D{"Collider3D", kStruct_Collider3D_fields, std::size(kStruct_Collider3D_fields)};
 void Codec<Collider3D>::write(Writer& w, const Collider3D& value) { writeStruct(w, kStruct_Collider3D, &value); }
@@ -670,11 +682,27 @@ const FieldEntry kStruct_AnimationPlayerClip_fields[] = {
     JE_RF(AnimationPlayerClip, guid, 0xeac00e5du, String),
     JE_RF(AnimationPlayerClip, name, 0x48cd5093u, String),
     JE_RF(AnimationPlayerClip, wrap, 0x26b48f64u, Enum),
+    JE_RF(AnimationPlayerClip, layer, 0x4df90275u, Int),
+    JE_RF(AnimationPlayerClip, retarget, 0xbe9e476cu, Bool),
+    JE_RF(AnimationPlayerClip, mirror, 0x8605de13u, Bool),
+    JE_RF(AnimationPlayerClip, footIK, 0x257c5704u, Bool),
 };
 const StructTable kStruct_AnimationPlayerClip{"AnimationPlayerClip", kStruct_AnimationPlayerClip_fields, std::size(kStruct_AnimationPlayerClip_fields)};
 void Codec<AnimationPlayerClip>::write(Writer& w, const AnimationPlayerClip& value) { writeStruct(w, kStruct_AnimationPlayerClip, &value); }
 void Codec<AnimationPlayerClip>::read(Reader& r, AnimationPlayerClip& value) { readStruct(r, kStruct_AnimationPlayerClip, &value); }
 void TextureVisit<AnimationPlayerClip>::visit(AnimationPlayerClip& value, const TextureVisitor& f) { visitStructTextures(kStruct_AnimationPlayerClip, &value, f); }
+
+const FieldEntry kStruct_AnimationPlayerLayer_fields[] = {
+    JE_RF(AnimationPlayerLayer, name, 0x6dcb3052u, String),
+    JE_RF(AnimationPlayerLayer, weight, 0x2ccc532du, Float),
+    JE_RF(AnimationPlayerLayer, blend, 0x527aec04u, Enum),
+    JE_RF(AnimationPlayerLayer, mask, 0xb6a887b5u, String),
+    JE_RF(AnimationPlayerLayer, maskGuid, 0x64d378fcu, String),
+};
+const StructTable kStruct_AnimationPlayerLayer{"AnimationPlayerLayer", kStruct_AnimationPlayerLayer_fields, std::size(kStruct_AnimationPlayerLayer_fields)};
+void Codec<AnimationPlayerLayer>::write(Writer& w, const AnimationPlayerLayer& value) { writeStruct(w, kStruct_AnimationPlayerLayer, &value); }
+void Codec<AnimationPlayerLayer>::read(Reader& r, AnimationPlayerLayer& value) { readStruct(r, kStruct_AnimationPlayerLayer, &value); }
+void TextureVisit<AnimationPlayerLayer>::visit(AnimationPlayerLayer& value, const TextureVisitor& f) { visitStructTextures(kStruct_AnimationPlayerLayer, &value, f); }
 
 const FieldEntry kStruct_spline__SplineKnot_fields[] = {
     JE_RF(spline::SplineKnot, position, 0x33bfcea4u, Vector3),
@@ -1045,6 +1073,12 @@ const FieldEntry kBody_AudioSourceComponent_fields[] = {
     JE_RF(AudioSourceComponent, attenuationModel, 0x183b1e5bu, Enum),
     JE_RF(AudioSourceComponent, attenuationRolloffFactor, 0x27bf2bd1u, Float),
     JE_RF(AudioSourceComponent, dopplerFactor, 0x99c70e21u, Float),
+    JE_RF(AudioSourceComponent, outputGroup, 0x40957bdeu, String),
+    JE_RF(AudioSourceComponent, outputGroupName, 0x73dc255du, String),
+    JE_RF(AudioSourceComponent, loadType, 0xe9b518deu, Enum),
+    JE_RF(AudioSourceComponent, priority, 0xd8e5ece2u, Int),
+    JE_RF(AudioSourceComponent, maxVoices, 0x4ff0bbabu, Int),
+    JE_RF(AudioSourceComponent, ignoreListenerPause, 0x6bb3160au, Bool),
 };
 const StructTable kBody_AudioSourceComponent{"audiosource", kBody_AudioSourceComponent_fields, std::size(kBody_AudioSourceComponent_fields)};
 
@@ -1052,6 +1086,19 @@ const StructTable kBody_AudioSourceComponent{"audiosource", kBody_AudioSourceCom
 const FieldEntry kBody_Rigidbody2DComponent_fields[] = {
     JE_RF(Rigidbody2DComponent, enabled, 0x8e78c911u, Bool),
     JE_RF(Rigidbody2DComponent, type, 0x89be1638u, Enum),
+    JE_RF(Rigidbody2DComponent, gravityScale, 0x506b18ecu, Float),
+    JE_RF(Rigidbody2DComponent, linearDamping, 0x822b9a71u, Float),
+    JE_RF(Rigidbody2DComponent, angularDamping, 0x77f306a8u, Float),
+    JE_RF(Rigidbody2DComponent, fixedRotation, 0xb1ac8b38u, Bool),
+    JE_RF(Rigidbody2DComponent, collisionDetection, 0x991527b3u, Enum),
+    JE_RF(Rigidbody2DComponent, sleepingMode, 0xfd9d9582u, Enum),
+    JE_RF(Rigidbody2DComponent, useAutoMass, 0xe18d2ee8u, Bool),
+    JE_RF(Rigidbody2DComponent, mass, 0xc677b3a0u, Float),
+    JE_RF(Rigidbody2DComponent, autoCenterOfMass, 0xfa06d5c7u, Bool),
+    JE_RF(Rigidbody2DComponent, centerOfMass, 0x43504b34u, Vector2),
+    JE_RF(Rigidbody2DComponent, autoInertia, 0x1be21bd7u, Bool),
+    JE_RF(Rigidbody2DComponent, inertia, 0x1f0cbb8eu, Float),
+    JE_RF(Rigidbody2DComponent, material, 0x0ad64729u, String),
     JE_RF(Rigidbody2DComponent, colliders, 0xa1ab1c35u, Array),
 };
 const StructTable kBody_Rigidbody2DComponent{"rigidbody2d", kBody_Rigidbody2DComponent_fields, std::size(kBody_Rigidbody2DComponent_fields)};
@@ -1072,6 +1119,21 @@ const FieldEntry kBody_RigidbodyComponent_fields[] = {
     JE_RF(RigidbodyComponent, overrideMassProperties, 0xe2db2b67u, Bool),
     JE_RF(RigidbodyComponent, solidBoxSize, 0x7b744dabu, Vector3),
     JE_RF(RigidbodyComponent, solidBoxDensity, 0x7dc7bb26u, Float),
+    JE_RF(RigidbodyComponent, material, 0x847134a7u, String),
+    JE_RF(RigidbodyComponent, linearDamping, 0x0b8d11f7u, Float),
+    JE_RF(RigidbodyComponent, angularDamping, 0xd6e75e7eu, Float),
+    JE_RF(RigidbodyComponent, maxLinearVelocity, 0xd33fa562u, Float),
+    JE_RF(RigidbodyComponent, maxAngularVelocity, 0x82ecede1u, Float),
+    JE_RF(RigidbodyComponent, automaticMass, 0x43c19641u, Bool),
+    JE_RF(RigidbodyComponent, mass, 0xdebdcc92u, Float),
+    JE_RF(RigidbodyComponent, automaticCenterOfMass, 0x25045cb1u, Bool),
+    JE_RF(RigidbodyComponent, centerOfMass, 0xcd63e21au, Vector3),
+    JE_RF(RigidbodyComponent, automaticInertiaTensor, 0xbcac6650u, Bool),
+    JE_RF(RigidbodyComponent, inertiaTensor, 0xe48b9f65u, Vector3),
+    JE_RF(RigidbodyComponent, inertiaTensorRotation, 0x3609f2dfu, Quat),
+    JE_RF(RigidbodyComponent, allowSleeping, 0xd5d0787eu, Bool),
+    JE_RF(RigidbodyComponent, collideKinematicVsNonDynamic, 0x456d6d16u, Bool),
+    JE_RF(RigidbodyComponent, interpolation, 0xeb948100u, Enum),
     JE_RF(RigidbodyComponent, colliders, 0xaa51737bu, Array),
 };
 const StructTable kBody_RigidbodyComponent{"rigidbody", kBody_RigidbodyComponent_fields, std::size(kBody_RigidbodyComponent_fields)};
@@ -1478,6 +1540,14 @@ const FieldEntry kBody_TextComponent_fields[] = {
     JE_RF(TextComponent, fixedHeight, 0x4053cda9u, Bool),
     JE_RF(TextComponent, pivotBaseline, 0x921eadabu, Bool),
     JE_RF(TextComponent, pivotCentered, 0xeba1acf4u, Bool),
+    JE_RF(TextComponent, outlineWidth, 0x5563a8d2u, Float),
+    JE_RF(TextComponent, outlineColor, 0x6b800909u, Vector4),
+    JE_RF(TextComponent, shadowEnabled, 0x346dc7b5u, Bool),
+    JE_RF(TextComponent, shadowColor, 0xb74840bbu, Vector4),
+    JE_RF(TextComponent, shadowOffset, 0x06e6418fu, Vector2),
+    JE_RF(TextComponent, shadowSoftness, 0xaf91db2fu, Float),
+    JE_RF(TextComponent, shadowDilate, 0xb1df77c7u, Float),
+    JE_RF(TextComponent, visibleCharacters, 0xdd043522u, Int),
 };
 const StructTable kBody_TextComponent{"text", kBody_TextComponent_fields, std::size(kBody_TextComponent_fields)};
 
@@ -1799,6 +1869,7 @@ const StructTable kBody_PoseAnimatorComponent{"poseanimator", kBody_PoseAnimator
 const FieldEntry kBody_AnimationPlayerComponent_fields[] = {
     JE_RF(AnimationPlayerComponent, enabled, 0x0905c1efu, Bool),
     JE_RF(AnimationPlayerComponent, clips, 0xfb9972e5u, Array),
+    JE_RF(AnimationPlayerComponent, layers, 0x075b6c74u, Array),
     JE_RF(AnimationPlayerComponent, defaultClip, 0xb4831349u, String),
     JE_RF(AnimationPlayerComponent, playAutomatically, 0x002276c5u, Bool),
     JE_RF(AnimationPlayerComponent, speed, 0xa82cb315u, Float),
@@ -2136,6 +2207,88 @@ const FieldEntry kBody_RagdollComponent_fields[] = {
 const StructTable kBody_RagdollComponent{"ragdoll", kBody_RagdollComponent_fields, std::size(kBody_RagdollComponent_fields)};
 #endif // JASPERENGINE_PHYSICS_3D
 
+const FieldEntry kBody_CameraShakerComponent_fields[] = {
+    JE_RF(CameraShakerComponent, enabled, 0xc65c4bf1u, Bool),
+    JE_RF(CameraShakerComponent, global, 0xea0c5c97u, Bool),
+    JE_RF(CameraShakerComponent, unscaledTime, 0x0f7a2c0cu, Bool),
+    JE_RF(CameraShakerComponent, mode, 0xa2de1963u, Enum),
+    JE_RF(CameraShakerComponent, positionScale, 0x6166e8ebu, Float),
+    JE_RF(CameraShakerComponent, rotationScale, 0xdb077254u, Float),
+    JE_RF(CameraShakerComponent, startPreset, 0xaa9086d3u, String),
+    JE_RF(CameraShakerComponent, traumaDecay, 0x473bb14cu, Float),
+    JE_RF(CameraShakerComponent, traumaPower, 0x9c1b5317u, Float),
+    JE_RF(CameraShakerComponent, traumaMaxOffset, 0x48af230bu, Vector3),
+    JE_RF(CameraShakerComponent, traumaMaxAngle, 0x315a2b3bu, Vector3),
+    JE_RF(CameraShakerComponent, traumaFrequency, 0x2503ecc8u, Float),
+};
+const StructTable kBody_CameraShakerComponent{"camerashaker", kBody_CameraShakerComponent_fields, std::size(kBody_CameraShakerComponent_fields)};
+
+const FieldEntry kBody_CameraFollowComponent_fields[] = {
+    JE_RF(CameraFollowComponent, enabled, 0xb6ef1734u, Bool),
+    JE_RF_ENTITY(CameraFollowComponent, target, 0x8503f212u, Entity),
+    JE_RF(CameraFollowComponent, offset, 0x964abfd4u, Vector3),
+    JE_RF(CameraFollowComponent, offsetSpace, 0x3f1976aau, Enum),
+    JE_RF(CameraFollowComponent, damping, 0x94d09b0bu, Vector3),
+    JE_RF(CameraFollowComponent, maxSpeed, 0xef4baef2u, Float),
+    JE_RF(CameraFollowComponent, lookAt, 0x85195441u, Bool),
+    JE_RF(CameraFollowComponent, lookAtOffset, 0xf25ec3feu, Vector3),
+    JE_RF(CameraFollowComponent, rotationDamping, 0x4cc3d449u, Float),
+    JE_RF(CameraFollowComponent, deadZone, 0x1f0fb1f3u, Vector2),
+    JE_RF(CameraFollowComponent, useBounds, 0x6a245947u, Bool),
+    JE_RF(CameraFollowComponent, boundsMin, 0x87bf6d7eu, Vector3),
+    JE_RF(CameraFollowComponent, boundsMax, 0x99ac021cu, Vector3),
+    JE_RF(CameraFollowComponent, unscaledTime, 0x9618f0d3u, Bool),
+};
+const StructTable kBody_CameraFollowComponent{"camerafollow", kBody_CameraFollowComponent_fields, std::size(kBody_CameraFollowComponent_fields)};
+
+const FieldEntry kBody_TextEffectComponent_fields[] = {
+    JE_RF(TextEffectComponent, enabled, 0x61a6a6dcu, Bool),
+    JE_RF(TextEffectComponent, autoPlay, 0xf77723aeu, Bool),
+    JE_RF(TextEffectComponent, loop, 0x7b67bd4du, Bool),
+    JE_RF(TextEffectComponent, useUnscaledTime, 0x80d20526u, Bool),
+    JE_RF(TextEffectComponent, startIndex, 0x28091733u, Int),
+    JE_RF(TextEffectComponent, length, 0x300d07c7u, Int),
+    JE_RF(TextEffectComponent, forWords, 0xb36a078fu, String),
+};
+const StructTable kBody_TextEffectComponent{"texteffect", kBody_TextEffectComponent_fields, std::size(kBody_TextEffectComponent_fields)};
+
+const FieldEntry kBody_VideoPlayerComponent_fields[] = {
+    JE_RF(VideoPlayerComponent, enabled, 0xa6b40106u, Bool),
+    JE_RF(VideoPlayerComponent, source, 0x382dc780u, Enum),
+    JE_RF(VideoPlayerComponent, clip, 0x0cca7513u, String),
+    JE_RF(VideoPlayerComponent, url, 0x93f30956u, String),
+    JE_RF(VideoPlayerComponent, playOnAwake, 0x6e68a83du, Bool),
+    JE_RF(VideoPlayerComponent, waitForFirstFrame, 0x05d90138u, Bool),
+    JE_RF(VideoPlayerComponent, isLooping, 0xfb8106a5u, Bool),
+    JE_RF(VideoPlayerComponent, skipOnDrop, 0x92ac3b8au, Bool),
+    JE_RF(VideoPlayerComponent, playbackSpeed, 0x3586fc9fu, Float),
+    JE_RF(VideoPlayerComponent, timeUpdateMode, 0x65c0c5aau, Enum),
+    JE_RF(VideoPlayerComponent, renderMode, 0x7dab31e2u, Enum),
+    JE_RF_ENTITY(VideoPlayerComponent, targetCamera, 0x53f095efu, Entity),
+    JE_RF(VideoPlayerComponent, targetCameraAlpha, 0xdd7321b1u, Float),
+    JE_RF(VideoPlayerComponent, aspectRatio, 0xc72a8ec0u, Enum),
+    JE_RF_ENTITY(VideoPlayerComponent, targetMaterialRenderer, 0xc93ae19au, Entity),
+    JE_RF(VideoPlayerComponent, targetMaterialProperty, 0x2cb6ead4u, String),
+    JE_RF(VideoPlayerComponent, targetSubmesh, 0x73808d6bu, Int),
+    JE_RF(VideoPlayerComponent, renderTextureWidth, 0x1a8850a0u, UInt),
+    JE_RF(VideoPlayerComponent, renderTextureHeight, 0x03ae8fd7u, UInt),
+    JE_RF(VideoPlayerComponent, audioOutputMode, 0x739c4c5bu, Enum),
+    JE_RF(VideoPlayerComponent, directVolume, 0x25df81b6u, Float),
+    JE_RF(VideoPlayerComponent, directMute, 0x185c35fdu, Bool),
+    JE_RF_ENTITY(VideoPlayerComponent, targetAudioSource, 0xd205c127u, Entity),
+};
+const StructTable kBody_VideoPlayerComponent{"videoplayer", kBody_VideoPlayerComponent_fields, std::size(kBody_VideoPlayerComponent_fields)};
+
+const FieldEntry kBody_SafeAreaComponent_fields[] = {
+    JE_RF(SafeAreaComponent, enabled, 0xacf54896u, Bool),
+    JE_RF(SafeAreaComponent, left, 0x44e05928u, Bool),
+    JE_RF(SafeAreaComponent, top, 0x3e2f5164u, Bool),
+    JE_RF(SafeAreaComponent, right, 0x3e22333du, Bool),
+    JE_RF(SafeAreaComponent, bottom, 0x87187142u, Bool),
+    JE_RF(SafeAreaComponent, includeExtraInsets, 0xd18a9839u, Bool),
+};
+const StructTable kBody_SafeAreaComponent{"safearea", kBody_SafeAreaComponent_fields, std::size(kBody_SafeAreaComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2236,6 +2389,11 @@ const ComponentTable kComponentTables[] = {
 #ifdef JASPERENGINE_PHYSICS_3D
     JE_RF_COMPONENT(RagdollComponent, "ragdoll", 0x1e7f8548u),
 #endif // JASPERENGINE_PHYSICS_3D
+    JE_RF_COMPONENT(CameraShakerComponent, "camerashaker", 0xf92ca41eu),
+    JE_RF_COMPONENT(CameraFollowComponent, "camerafollow", 0x35f4a93bu),
+    JE_RF_COMPONENT(TextEffectComponent, "texteffect", 0x3c28b233u),
+    JE_RF_COMPONENT(VideoPlayerComponent, "videoplayer", 0x8938ef21u),
+    JE_RF_COMPONENT(SafeAreaComponent, "safearea", 0x17cac771u),
     JE_RF_COMPONENTS_END
 };
 

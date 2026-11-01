@@ -152,11 +152,18 @@ namespace {
         return entity;
     }
 
-    // the path tracks that can resolve (humanoid tracks are realised on the rig, not by path)
-    size_t sampledTrackCount(const AnimationClip& clip){
+    // the path tracks that can resolve (humanoid tracks are realised on the rig, not by path, and
+    // so are the humanoid-mapped tracks of a Retarget entry's generic clip)
+    size_t sampledTrackCount(const anim::ClipBindings& bindings){
+        const std::vector<AnimationClip::Track>& tracks = bindings.clip->getTracks();
+        const bool retargeted = bindings.retarget && !bindings.clip->isHumanoid();
+        if (retargeted && !bindings.source) return 0;
+        const std::vector<uint8_t>* byPath = retargeted && bindings.humanoid ? &bindings.humanoid->reader.byPath : nullptr;
         size_t count = 0;
-        for (const AnimationClip::Track& track : clip.getTracks()){
-            if (track.isSampled() && !isHumanoidChannel(track.channel)) count++;
+        for (size_t i = 0; i < tracks.size(); i++){
+            if (!tracks[i].isSampled() || isHumanoidChannel(tracks[i].channel)) continue;
+            if (byPath && (i >= byPath->size() || !(*byPath)[i])) continue;
+            count++;
         }
         return count;
     }
@@ -213,15 +220,36 @@ namespace {
     }
 
     // Every track of the bindings' clip resolved again from `root`; the rest of every newly bound
-    // channel is taken now, before anything writes it. A humanoid clip (anim-retarget 7.4) binds its
-    // humanoid tracks to the root's rig `humanoid` (none: they stay unresolved) and tries its path
-    // tracks that do not resolve again by unique bone name under the root (7.6).
+    // channel is taken now, before anything writes it. A humanoid clip (anim-retarget 7.4), or a
+    // generic clip of a Retarget entry (through `bindings.source`: the one retarget path the
+    // Animator plays too), binds its humanoid motion to the root's rig `humanoid` (none: it stays
+    // unresolved) and tries its other tracks that do not resolve by path again by unique bone
+    // name under the root (7.6); a retargeted clip's humanoid-mapped tracks never bind by path. A
+    // Retarget entry whose source failed binds nothing (`retargetError`).
     void resolveBindings(Scene* scene, Entity root, anim::ClipBindings& bindings, anim::RestMap* rest,
                          const anim::HumanoidSlots* humanoid = nullptr){
         bindings.serial = ++bindSerial;
         const std::vector<AnimationClip::Track>& tracks = bindings.clip->getTracks();
         const size_t count = tracks.size();
-        const bool humanoidClip = bindings.clip->isHumanoid();
+        const bool humanoidClip = bindings.humanoidPath();
+        const bool retargeted = bindings.retarget && !bindings.clip->isHumanoid();
+        // the humanoid binding first: it says which tracks of a retargeted clip play by path
+        std::shared_ptr<anim::HumanoidBinding> humanoidBinding;
+        if (humanoidClip && humanoid && humanoid->target && (!retargeted || bindings.source)){
+            auto binding = std::make_shared<anim::HumanoidBinding>();
+            if (anim::bindHumanoidClip(*bindings.clip, humanoid->target, *binding, retargeted ? bindings.source : nullptr)){
+                humanoidBinding = binding;
+            }
+        }
+        anim::RetargetBinding probe;
+        const std::vector<uint8_t>* byPath = nullptr;
+        if (retargeted && bindings.source){
+            if (humanoidBinding){
+                byPath = &humanoidBinding->reader.byPath;
+            }else if (probe.bind(*bindings.clip, bindings.source)){
+                byPath = &probe.byPath;
+            }
+        }
         bindings.targets.assign(count, NULL_ENTITY);
         bindings.cursors.assign(count, anim::KeyCursor());
         bindings.byName.clear();
@@ -236,6 +264,8 @@ namespace {
         bool namesCollected = false;
         for (size_t i = 0; i < count; i++){
             if (!tracks[i].isSampled() || isHumanoidChannel(tracks[i].channel)) continue;
+            // a Retarget entry: nothing without its source, never the humanoid-mapped tracks
+            if (retargeted && (!bindings.source || (byPath && (i >= byPath->size() || !(*byPath)[i])))) continue;
             Entity target = resolveCached(scene, root, tracks[i].path, cache);
             if (target == NULL_ENTITY && humanoidClip && !tracks[i].path.empty()){
                 // a prop or an unmapped bone of another rig: its unique name under the root
@@ -272,16 +302,10 @@ namespace {
             bindings.resolvedCount++;
             if (rest) completeRest(scene, target, (*rest)[target], tracks[i].channel);
         }
-        bindings.humanoid.reset();
-        if (humanoidClip && humanoid && humanoid->target){
-            auto binding = std::make_shared<anim::HumanoidBinding>();
-            if (anim::bindHumanoidClip(*bindings.clip, humanoid->target, *binding)){
-                if (rest){
-                    for (const anim::HumanoidOutput& output : binding->outputs){
-                        completeRest(scene, output.entity, (*rest)[output.entity], output.channel);
-                    }
-                }
-                bindings.humanoid = binding;
+        bindings.humanoid = humanoidBinding;
+        if (humanoidBinding && rest){
+            for (const anim::HumanoidOutput& output : humanoidBinding->outputs){
+                completeRest(scene, output.entity, (*rest)[output.entity], output.channel);
             }
         }
         // every entity a resolved path went through (the targets and their ancestors), with the
@@ -925,9 +949,16 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
                 state.error.clear();
                 state.retryTimer = 0.0f;
                 state.bindings.clipGeneration = AnimationClipPool::getGeneration(state.poolKey);
-                if (changed){
+                if (changed || state.bindings.retarget != (state.retarget && !clip->isHumanoid())){
                     state.bindings.clip = clip;
                     state.bindings.resolved = false;
+                    anim::prepareRetarget(state.bindings, state.clip, state.retarget);
+                    if (!state.bindings.retargetError.empty() && !state.errorLogged){
+                        state.errorLogged = true;
+                        Log::error("Animation Player '%s': state '%s': %s", scene->getEntityName(entity).c_str(),
+                                   state.name.c_str(), state.bindings.retargetError.c_str());
+                    }
+                    state.error = state.bindings.retargetError;
                 }
                 if (state.startAtEnd){
                     state.startAtEnd = false;
@@ -936,13 +967,23 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
             }
         }
         if (!state.bindings.clip) continue;
+        // a Retarget entry follows its source model's Avatar (a sidecar edit invalidates the model)
+        if (poolChanged && state.bindings.retarget){
+            std::string error;
+            std::shared_ptr<const anim::RetargetSource> again = anim::clipRetargetSource(*state.bindings.clip, state.clip, &error);
+            if (again != state.bindings.source){
+                state.bindings.source = again;
+                state.bindings.retargetError = again ? std::string() : error;
+                state.bindings.resolved = false;
+            }
+        }
 
         anim::ClipBindings& bindings = state.bindings;
-        // a humanoid clip binds on the root's rig: again when the rig changed
-        if (bindings.clip->isHumanoid() && !runtime.humanoid){
+        // a humanoid clip (or a Retarget entry) binds on the root's rig: again when the rig changed
+        if (bindings.humanoidPath() && !runtime.humanoid){
             refreshHumanoidRig(scene, entity, runtime, true, false, false);
         }
-        const anim::HumanoidSlots* humanoid = bindings.clip->isHumanoid() ? runtime.humanoid.get() : nullptr;
+        const anim::HumanoidSlots* humanoid = bindings.humanoidPath() ? runtime.humanoid.get() : nullptr;
         if (bindings.resolved && humanoid && state.humanoidRevision != runtime.humanoidRevision){
             bindings.resolved = false;
         }
@@ -951,14 +992,14 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
             state.humanoidRevision = runtime.humanoidRevision;
             resolvedAny = true;
             // H5: a humanoid clip on a root without a humanoid rig (once per state and clip)
-            if (humanoid && !bindings.humanoid && state.humanoidWarned != bindings.clip.get()){
+            if (humanoid && !bindings.humanoid && (!bindings.retarget || bindings.source) && state.humanoidWarned != bindings.clip.get()){
                 state.humanoidWarned = bindings.clip.get();
                 Log::warn("Animation Player '%s': state '%s' plays a humanoid clip, but the root has no humanoid rig (%s): "
                           "map its model's bones (Configure Avatar...); its other tracks still play",
                           scene->getEntityName(entity).c_str(), state.name.c_str(),
                           humanoid->error.empty() ? "not a humanoid" : humanoid->error.c_str());
             }
-            if (bindings.resolvedCount < sampledTrackCount(*bindings.clip)){
+            if (bindings.resolvedCount < sampledTrackCount(bindings)){
                 bindings.nextUnresolvedRetry = runtime.clock + UNRESOLVED_RETRY_SECONDS;
             }
         }else if (bindings.hierarchyRevision != revision){
@@ -982,7 +1023,7 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
                 resolveBindings(scene, entity, bindings, &runtime.rest, humanoid);
                 state.humanoidRevision = runtime.humanoidRevision;
                 resolvedAny = true;
-            }else if (bindings.resolvedCount < sampledTrackCount(*bindings.clip)){
+            }else if (bindings.resolvedCount < sampledTrackCount(bindings)){
                 // unresolved paths may resolve now: at most 4 times a second (the revision is
                 // left behind until then, so a later frame retries)
                 if (runtime.clock >= bindings.nextUnresolvedRetry){
@@ -997,7 +1038,7 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
         }else if (bindings.unboundProperties > 0 && runtime.clock >= bindings.nextUnresolvedRetry){
             // a property's component, script or field may be there now (added at runtime): looked
             // for again at most 4 times a second
-            resolveBindings(scene, entity, bindings, &runtime.rest);
+            resolveBindings(scene, entity, bindings, &runtime.rest, humanoid);
             bindings.nextUnresolvedRetry = runtime.clock + UNRESOLVED_RETRY_SECONDS;
             resolvedAny = true;
         }
@@ -1005,7 +1046,7 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
         // (a frame that changed the hierarchy too): a reloaded, removed or reordered script binds
         // again (its declared type may have changed)
         if (bindings.resolved && bindings.scriptProperties > 0 && scriptBindingsStale(scene, bindings)){
-            resolveBindings(scene, entity, bindings, &runtime.rest);
+            resolveBindings(scene, entity, bindings, &runtime.rest, humanoid);
             resolvedAny = true;
         }
         bindings.checkedFrame = playerFrame;
@@ -1358,6 +1399,8 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         std::string key;
         bool mirror = state.mirror > 0;
         bool footIK = state.footIK > 0;
+        bool retarget = state.retarget > 0;
+        std::string reference = state.reference;
         if (clip){
             if (wrap == ClipWrapMode::Default) wrap = clip->getWrap();
             key = "clip:" + std::to_string((uintptr_t)clip.get());
@@ -1368,7 +1411,9 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
                 continue;
             }
             const AnimationPlayerClip& entry = entries[(size_t)(it - names.begin())];
-            clip = AnimationClipPool::getOrLoad(anim::retargetPoolKey(entry.clip, entry.retarget));
+            clip = AnimationClipPool::getOrLoad(entry.clip);
+            if (state.retarget < 0) retarget = entry.retarget;
+            reference = entry.clip;
             if (state.mirror < 0) mirror = entry.mirror;
             if (state.footIK < 0) footIK = entry.footIK;
             if (!clip){
@@ -1382,12 +1427,13 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
 
         // the session's bindings of this clip, resolved again after hierarchy changes
         anim::ClipBindings* bindings = nullptr;
+        const bool retargeted = retarget && !clip->isHumanoid();
         for (anim::ClipBindings& candidate : kept){
-            if (candidate.clip == clip) bindings = &candidate;
+            if (candidate.clip == clip && candidate.retarget == retargeted) bindings = &candidate;
         }
         if (!bindings){
             for (anim::ClipBindings& candidate : session.bindings){
-                if (candidate.clip == clip){
+                if (candidate.clip == clip && candidate.retarget == retargeted){
                     kept.push_back(candidate);
                     bindings = &kept.back();
                     break;
@@ -1397,12 +1443,14 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         if (!bindings){
             anim::ClipBindings created;
             created.clip = clip;
+            anim::prepareRetarget(created, reference, retargeted);
             kept.push_back(created);
             bindings = &kept.back();
         }
-        // a humanoid clip realises on the root's rig (looked up once per hierarchy revision)
+        if (!bindings->retargetError.empty() && result.humanoidError.empty()) result.humanoidError = bindings->retargetError;
+        // a humanoid clip (or a retargeted one) realises on the root's rig (looked up once per hierarchy revision)
         const anim::HumanoidSlots* humanoid = nullptr;
-        if (clip->isHumanoid()){
+        if (bindings->humanoidPath()){
             if (!session.humanoid || session.humanoidRevision != scene->hierarchyRevision() ||
                 session.humanoidPool != AnimationClipPool::revision()){
                 // kept when the rig is the same (a clip insert changes the pool revision too)
@@ -1419,7 +1467,7 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         if (bindings->humanoid){
             bindings->humanoid->mirror = mirror;
             bindings->humanoid->footIK = footIK;
-        }else if (humanoid && result.humanoidError.empty()){
+        }else if (humanoid && result.humanoidError.empty() && (!bindings->retarget || bindings->source)){
             result.humanoidError = "the root has no humanoid rig (" + (humanoid->error.empty() ? std::string("not a humanoid") : humanoid->error) + ")";
         }
         const std::vector<AnimationClip::Track>& tracks = clip->getTracks();

@@ -199,7 +199,7 @@ void reload::reloadAnimations(Context& ctx, const std::vector<fs::path>& files, 
         if (Util::isShakePresetFile(text)) ShakePresetPool::clear();
     }
     if (!files.empty()) AnimatorAssetDocument::filesChanged(files);
-    if (humanoidChanged) anim::clearRetargetSources();
+    if (humanoidChanged) anim::dropRetargetSources();
     if (all) {
         PoseAnimationDocument::checkDiskChanges();
         AnimationClipDocument::checkDiskChanges(project);

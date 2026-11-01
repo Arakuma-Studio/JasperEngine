@@ -56,10 +56,12 @@ jasperengine_skip_unity_build(
     REASON "file-local fixtures or helpers named as in another test source"
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorHumanoidTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorRetargetTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorStateMachineTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorSystemTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/ClipIOTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/HumanoidModelTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/KeyframeSamplingTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/SubClipPoolTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/ecs/SignatureTest.cpp

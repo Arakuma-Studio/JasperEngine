@@ -765,10 +765,6 @@ anim::upstream::ParseResult<anim::upstream::Mask> anim::upstream::parseMask(cons
 
 namespace{
 
-    std::string boolText(bool value){
-        return value ? "true" : "false";
-    }
-
     AnimatorParameterType toParameterType(ControllerParameterType type){
         switch (type){
             case ControllerParameterType::Float: return AnimatorParameterType::Float;
@@ -878,7 +874,7 @@ anim::ControllerDef anim::upstream::toControllerDef(const Controller& data, std:
                     c.threshold = child.threshold;
                     c.timeScale = child.speed;
                     c.unknownKeys = child.unknownKeys;
-                    if (child.mirror) c.unknownKeys.push_back({"mirror", "true"});
+                    c.mirror = child.mirror;
                     tree.children.push_back(std::move(c));
                 }
                 tree.unknownKeys = state.blendTree.unknownKeys;
@@ -894,9 +890,10 @@ anim::ControllerDef anim::upstream::toControllerDef(const Controller& data, std:
             // upstream's additive layers measured from the clip's own additive_reference
             converted.additiveReference = AdditiveReference::Clip;
             converted.unknownKeys = state.unknownKeys;
-            if (state.mirror) converted.unknownKeys.push_back({"mirror", boolText(true)});
-            if (state.footIK) converted.unknownKeys.push_back({"foot_ik", boolText(true)});
-            if (state.retarget) converted.unknownKeys.push_back({"retarget", boolText(true)});
+            // humanoid playback (anim-retarget): S21's state flags, played on the one retarget path
+            converted.mirror = state.mirror;
+            converted.footIK = state.footIK;
+            converted.retarget = state.retarget;
             machine.states.push_back(std::move(converted));
         }
         for (size_t t = 0; t < layer.transitions.size(); t++){

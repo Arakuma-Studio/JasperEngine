@@ -477,6 +477,10 @@ size_t jasperengine::editor::appendPlayerStates(anim::ControllerDef& def, const 
         }
         // the player's additive layers measured from the clip's additive_reference
         s.additiveReference = AdditiveReference::Clip;
+        // the entry's humanoid playback (upstream's per-state Retarget, Mirror, Foot IK)
+        s.retarget = entry.retarget;
+        s.mirror = entry.mirror;
+        s.footIK = entry.footIK;
         const size_t cell = cells[layer]++;
         s.position = Vector2(240.0f + 220.0f * (float)(cell % 4), 120.0f + 90.0f * (float)(cell / 4));
         def.layers[layer].machine.states.push_back(s);

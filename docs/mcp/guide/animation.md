@@ -459,9 +459,11 @@ set:
   model: "assets/models/hero.gltf", animation_type: "humanoid"}]}` (no `path`: an Avatar-only edit,
   one project step). Every `hero.gltf#Clip` then plays retargeted;
 - a player entry's `retarget`: `set_properties {entity: "Robot", values: {animationplayer:
-  {"clips[0].retarget": true}}}` converts that clip at load from its source model (a model clip's
+  {"clips[0].retarget": true}}}` plays that clip retargeted from its source model (a model clip's
   model, an `.anim`'s `source.path` or `preview.model`; without one the state fails with "the clip
-  names no source model");
+  names no source model"), read through the source's rig as it plays: the Animator's path, which
+  retargets another humanoid's clip by itself (its `retarget` auto) and has the same `mirror`,
+  `foot_ik` and `retarget` per state (jasper://docs/animator);
 - a converted file: `edit_animation {clip: "assets/anim/wave_h.anim", create: {from:
   "assets/anim/wave.anim", humanoid: {model?: "assets/models/hero.gltf"}}}` (the rig it was made
   on; default its model, source or preview model). The result's `humanoid` lists mapped and

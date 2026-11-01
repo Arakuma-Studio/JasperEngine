@@ -154,10 +154,9 @@ Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in 
   top-left. Put HUDs and menus in a UI scene attached as a child scene (set_child_scene): in a
   2D scene layout groups stack bottom-up and pointer input needs a UI camera.
 - Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
-- Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}, for an Animation
-  Player (jasper://docs/animation).
-- Crowds: bake_vertex_animation (preview, then output): a .vat a Vertex Animator plays on the
-  GPU (jasper://docs/vertex-animation).
+- Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; other rigs:
+  an Animator, clips[i].retarget, create.humanoid (jasper://docs/animation).
+- Crowds: bake_vertex_animation (preview, output) -> a .vat (jasper://docs/vertex-animation).
 - Animator (.controller): edit_animator_controller, control_animator (jasper://docs/animator).
 - Lines, lasers, trails: create_entity type line_renderer / trail_renderer (jasper://docs/lines-trails).
 
@@ -227,10 +226,7 @@ Calls time out: get_editor_health (answers mid-hang) tells hung from slow; get_c
 Scenes in Build order and the start scene live in project.yaml (project tools).
 build_project: a game per platform or a CMake project; ship: jasper://docs/shipping.
 Before exporting: scenes saved, Console clean in play, the start scene right.
-)JE"
-// SYNC4-ABSORB(retarget): upstream's guide line "Clip on another humanoid rig: clips[i].retarget
-// or create.humanoid" waits for the retarget absorption
-R"JE(
+
 ## HTML/CSS UI
 Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript): create_ui_document
 (template: blank, main_menu, hud, inventory, settings, shop...) adds the GameObject and writes

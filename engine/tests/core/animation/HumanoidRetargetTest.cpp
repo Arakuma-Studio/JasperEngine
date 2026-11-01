@@ -1,14 +1,13 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// SYNC4-ABSORB(retarget): upstream's anim-retarget engine tests (humanoid clips, mirror, foot IK, .anim v2 /
-// .humanoid v2), built against the merged engine core; revisit with the retarget absorption
-
 // Humanoid retargeting (anim-retarget spec 14, tests 3-10): a clip converted on one test rig and
 // realised on another rig gives the same joint angles and neutral-relative frames, hips height
 // scales with humanScale, a slot the target lacks folds into the next present one, Mirror, Foot
 // IK on longer legs, extra bones across bone axis conventions, twist corrections, and the .anim
-// v2 / .humanoid v2 file formats with their byte-identical v1 round trips.
+// v2 / .humanoid v2 file formats with their byte-identical v1 round trips. On S21's one retarget
+// path (AnimatorRetarget): every conversion here is also played at play time, the generic clip
+// read through the source as a Retarget entry and the Animator read it, and the two agree.
 
 #include <gtest/gtest.h>
 
@@ -52,9 +51,6 @@ namespace {
     anim::HumanoidSource sourceOf(const std::shared_ptr<PoseRig>& rig){
         anim::HumanoidSource source;
         source.modelPath = "models/test.gltf";
-        source.rig = rig;
-        source.humanoid = rig->humanoid();
-        source.extra = autoDetectExtraBones(rig->skeleton(), rig->humanoid());
         const Skeleton& skeleton = rig->skeleton();
         source.bridges.assign(skeleton.bones.size(), Matrix4());
         for (const SkeletonBone& bone : skeleton.bones){
@@ -63,7 +59,8 @@ namespace {
             source.restPosition.push_back(bone.position);
             source.restScale.push_back(bone.scale);
         }
-        for (int x = 0; x < HUMAN_EXTRA_BONE_COUNT; x++) source.extraBones.push_back(findSkeletonBone(skeleton, source.extra.bones[(size_t)x]));
+        // the rig, its extra bones and the source maps (the one retarget path's source half)
+        anim::setRetargetRig(source, rig, rig->humanoid(), autoDetectExtraBones(rig->skeleton(), rig->humanoid()));
         return source;
     }
 
@@ -133,6 +130,20 @@ namespace {
         binding.footIK = footIK;
         anim::sampleHumanoidBinding(*clip, binding, time, nullptr);
         if (keep) *keep = binding;
+        // the same clip played at play time through its source (a Retarget entry, the Animator):
+        // the same pose (the conversion maps keys with the source's maps; foot goals are sampled)
+        std::shared_ptr<const AnimationClip> genericClip = AnimationClip::build(generic);
+        auto shared = std::make_shared<const anim::HumanoidSource>(source);
+        anim::HumanoidBinding live;
+        EXPECT_TRUE(anim::bindHumanoidClip(*genericClip, target, live, shared));
+        live.mirror = mirror;
+        live.footIK = footIK;
+        anim::sampleHumanoidBinding(*genericClip, live, time, nullptr);
+        for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+            EXPECT_LT(degreesBetween(Quatd(live.pose.rotations[(size_t)b]), Quatd(binding.pose.rotations[(size_t)b])), footIK ? 0.1 : 1e-3)
+                << "play time and conversion agree: " << humanBoneName(boneAt(b));
+        }
+        EXPECT_LT((Vec3d(live.pose.hipsPosition) - Vec3d(binding.pose.hipsPosition)).length(), 1e-4);
         return binding.pose;
     }
 

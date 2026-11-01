@@ -31,6 +31,7 @@ namespace jasperengine::anim{
         int clip = -1;              // controller clip slot
         float weight = 0.0f;        // the product of the weights down the tree
         float timeScale = 1.0f;     // the product of the children's time scales
+        bool mirror = false;        // the children's Mirror flips down the tree
     };
 
     // The clip leaves of `motion` (weights scaled by `weight`) appended to `out`, at most

@@ -145,6 +145,14 @@ namespace jasperengine::anim{
         // humanoid clip that did not resolve by path are bound by unique bone name (`byName`)
         std::shared_ptr<HumanoidBinding> humanoid;
         std::vector<bool> byName;
+        // a Retarget entry playing a generic clip: the clip's source model's rig (the one retarget
+        // path reads the clip through it, as the Animator does; null: none, or it failed), and
+        // `retarget` the entry asked for it (a source that failed binds nothing: `retargetError`)
+        bool retarget = false;
+        std::shared_ptr<const RetargetSource> source;
+        std::string retargetError;
+        // the clip plays through the humanoid path (a humanoid clip, or a generic one retargeted)
+        bool humanoidPath() const { return clip && (clip->isHumanoid() || retarget); }
     };
 
     // Legacy AnimationState.AddMixingTransform: the state animates only these paths
@@ -177,7 +185,8 @@ namespace jasperengine::anim{
         ClipWrapMode wrapOverride = ClipWrapMode::Default;  // Lua state.wrap
 
         std::string clip;                   // the entry's clip reference the state was built from
-        // what the pool loads: `clip`, or "<clip>@humanoid" for a retargeted entry (anim-retarget 7.4)
+        // what the pool loads: `clip` (a Retarget entry loads its generic clip as it is: the one
+        // retarget path reads it through its source model at play time)
         std::string poolKey;
         ClipWrapMode entryWrap = ClipWrapMode::Default;     // the entry's wrap (R14)
         // humanoid playback (anim-retarget 7.1): the entry's (or controller state's) flags and the
@@ -474,8 +483,9 @@ namespace jasperengine::anim{
     JASPERENGINE_API bool stateFootIK(const PlayerStateRuntime& state);
     // the state plays a humanoid clip (one, or a generic clip retargeted)
     JASPERENGINE_API bool stateIsHumanoid(const PlayerStateRuntime& state);
-    // the pool key of a clip reference played with `retarget` ("<clip>@humanoid")
-    JASPERENGINE_API std::string retargetPoolKey(const std::string& clip, bool retarget);
+    // a Retarget entry's bindings: the source of their generic clip (`bindings.source`, or
+    // `retargetError`), set when the clip is loaded or changed
+    JASPERENGINE_API void prepareRetarget(ClipBindings& bindings, const std::string& clipReference, bool retarget);
 
     // `who` names the player in warnings. False (warned once per name) for an unknown state.
     // play: fade <= 0 is instant (Unity Play), else crossFade. StopSameLayer (Unity's default)
