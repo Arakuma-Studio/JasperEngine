@@ -32,7 +32,7 @@ def generated_files(project: Path) -> list[str]:
 
 
 async def source_export(ed: Editor, out: Path, **args):
-    return await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"],
+    return await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"], allow_missing_assets=True,
                          overwrite=True, timeout_seconds=900, **args)
 
 

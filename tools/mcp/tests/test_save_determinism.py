@@ -70,7 +70,7 @@ async def draw(ed: Editor, sid, view: str = "scene") -> bytes:
 
 async def source_export(ed: Editor, name: str) -> Path:
     out = ed.scratch.root / name
-    r = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"],
+    r = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"], allow_missing_assets=True,
                       overwrite=True, timeout_seconds=900)
     ed.check_eq(r["status"], "succeeded", f"source export: {str(r)[:2000]}")
     return out

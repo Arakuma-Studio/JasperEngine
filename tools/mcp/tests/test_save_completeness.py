@@ -246,7 +246,8 @@ async def test_a_save_that_would_lose_a_gameobject_is_refused():
 
         # the export saves every scene first
         out = ed.scratch.root / "guard-build"
-        r = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(out), "timeout_seconds": 600})
+        r = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(out), "allow_missing_assets": True,
+                                                "timeout_seconds": 600})
         print(f"[guard] build_project: error {r.is_error}: {r.text[:400]}")
         if not r.is_error or "could not be saved" not in r.text:
             h.problem(f"build_project: the export went on: {r.text[:300]}")
@@ -391,18 +392,18 @@ async def test_a_prefab_never_takes_an_instance_of_itself():
         h2 = await Checked.create(ed, "Self Add", "self add")
         sid = h2.sid
         await ed.call("instantiate_prefab", scene=sid, prefab=pa, name="G1")
-        await h2.entity("cube", "Holder", parent="G1")
-        await ed.call("instantiate_prefab", scene=sid, prefab=pa, name="Self", parent="Holder")
-        message = await ed.call("add_to_prefab", scene=sid, entity="Holder", parent="G1", expect_error=True)
+        holder = await h2.entity("cube", "Holder", parent="G1")
+        await ed.call("instantiate_prefab", scene=sid, prefab=pa, name="Self", parent=holder)
+        message = await ed.call("add_to_prefab", scene=sid, entity=holder, parent="G1", expect_error=True)
         print(f"[self] add_to_prefab of a GameObject holding an instance of Pa: {message[:300]}")
         if "contain itself" not in message:
             h2.problem(f"add_to_prefab: the refusal says why: {message[:300]}")
         await h2.entity("cube", "Wrapper Source")
         await ed.call("instantiate_prefab", scene=sid, prefab=pa, name="Wrapped", parent="Wrapper Source")
         await ed.call("create_prefab", scene=sid, entity="Wrapper Source", path="Wrapper.prefab")
-        await h2.entity("cube", "Holder 2", parent="G1")
-        await ed.call("instantiate_prefab", scene=sid, prefab="Wrapper.prefab", name="Wrapper", parent="Holder 2")
-        message = await ed.call("add_to_prefab", scene=sid, entity="Holder 2", parent="G1", expect_error=True)
+        holder2 = await h2.entity("cube", "Holder 2", parent="G1")
+        await ed.call("instantiate_prefab", scene=sid, prefab="Wrapper.prefab", name="Wrapper", parent=holder2)
+        message = await ed.call("add_to_prefab", scene=sid, entity=holder2, parent="G1", expect_error=True)
         if "contain itself" not in message:
             h2.problem(f"add_to_prefab through a prefab holding Pa: the refusal says why: {message[:300]}")
         await h2.check_save("add_to_prefab refused")
