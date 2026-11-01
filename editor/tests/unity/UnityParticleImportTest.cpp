@@ -1,23 +1,25 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// unity/UnityParticleImport (particles spec 6.10, 9) on the synthetic Unity project of
-// fixtures/unity-particles (hand-written to Unity's YAML forms; no game or Asset Store file):
-// every mapped value of a system with most modules, the axis conversion (a cone rotated
-// (-90, 0, 0) in Unity emits along the engine's +Y; no shape: along +Z), gamma to linear colours,
-// materials (a custom shader by its Blend state, the built-in ones, _TintColor, _InvFade, tiling)
-// and textures (Alpha8 expanded, PSD reported), a scene's prefab instance with modifications, a
-// removed component and a `stripped` placeholder with its own id, the report codes, numbered
-// names, dry runs.
+// unity/UnityParticleImport (docs/specs/S20-particles.md, Upstream absorption) on the synthetic
+// Unity project of fixtures/unity-particles (hand-written to Unity's YAML forms; no game or
+// Asset Store file): every mapped value of a system with most modules as an S20 effect (rotations
+// in degrees, random ranges in their order, Unity's sRGB colours as they are), the axis
+// conversion (a cone rotated (-90, 0, 0) in Unity emits along the engine's +Y; no shape: along
+// +Z), the materials in the Renderer modules (a custom shader by its Blend state, the built-in
+// ones, _TintColor, _InvFade, tiling; no .material file), textures (Alpha8 expanded, PSD
+// reported), a scene's prefab instance with modifications, a removed component and a `stripped`
+// placeholder with its own id, the report codes, numbered names, dry runs.
 
 #include <gtest/gtest.h>
 
 #include "Catalog.h"
 #include "Stream.h"
-#include "particles/ParticleSimulation.h"
+#include "particles/EmitterRuntime.h"
+#include "particles/ParticleCompiler.h"
 #include "unity/UnityParticleImport.h"
+#include "util/Prefab.h"
 #include "cli/CommandLine.h"
-#include "util/Color.h"
 
 #include "stb_image.h"
 
@@ -30,12 +32,14 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
+using namespace jasperengine::particles;
 namespace fs = std::filesystem;
 using Json = nlohmann::json;
 
 namespace {
 
-    const fs::path UNITY = fs::path(JASPER_EDITOR_TEST_FIXTURES) / "unity-particles" / "Project";
+    const fs::path UNITY = fs::path(JASPER_TEST_FIXTURES_DIR) / "unity-particles" / "Project";
+    constexpr float DEG = 57.29577951308232f;   // a Unity radian in S20's degrees
 
     // an empty engine project folder, removed at the end
     struct TempProject {
@@ -62,13 +66,6 @@ namespace {
         return unity::importParticles(options);
     }
 
-    std::string readText(const fs::path& path) {
-        std::ifstream in(path, std::ios::binary);
-        std::stringstream buffer;
-        buffer << in.rdbuf();
-        return buffer.str();
-    }
-
     // a member of a prefab file by name (depth first)
     YAML::Node findMember(const YAML::Node& members, const std::string& name) {
         for (const YAML::Node& member : members) {
@@ -93,8 +90,13 @@ namespace {
         return member["components"][Catalog::getComponentName(type, true)];
     }
 
-    ParticleSystemComponent systemOf(const YAML::Node& member) {
+    ParticleSystemComponent componentOf(const YAML::Node& member) {
         return Stream::decodeParticleSystemComponent(component(member, ComponentType::ParticleSystemComponent));
+    }
+
+    // the system's inline effect (the importer writes no .particles asset)
+    ParticleEffectDocument systemOf(const YAML::Node& member) {
+        return componentOf(member).inlineEffect;
     }
 
     const Json* systemReport(const Json& report, const std::string& path) {
@@ -111,20 +113,49 @@ namespace {
         return false;
     }
 
-    // the engine's sRGB -> linear (what Unity's gamma colours become)
-    float linear(float gamma) {
-        return Color::sRGBToLinear(Vector3(gamma, gamma, gamma)).x;
+    // the mean start direction of `count` particles of an imported system, born at once
+    Vector3 meanDirection(ParticleEffectDocument d, int count = 200) {
+        d.main.gravityModifier = MinMaxCurve(0.0f);
+        d.main.startSpeed = MinMaxCurve(1.0f);
+        d.simulationSpace = SimulationSpace::World;
+        d.startDelay = MinMaxCurve(0.0f);
+        d.prewarm = false;
+        d.maxParticles = (uint32_t)count;
+        d.emission.rateOverTime = MinMaxCurve(0.0f);
+        d.emission.rateOverDistance = MinMaxCurve(0.0f);
+        Burst burst;
+        burst.count = MinMaxCurve((float)count);
+        d.emission.bursts = {burst};
+        d.velocityOverLifetime.present = false;
+        d.forceOverLifetime.present = false;
+        d.noise.present = false;
+        d.limitVelocity.present = false;
+        EmitterRuntime runtime;
+        std::shared_ptr<const CompiledEffect> compiled = ParticleCompiler::compile(d, CompileEnvironment{});
+        EXPECT_TRUE(compiled->valid);
+        runtime.bind(compiled);
+        runtime.reset(1);
+        runtime.play();
+        EmitterInput input;
+        input.gravity[1] = 0.0f;
+        runtime.step(input);
+        const ParticleChannels& ch = runtime.particleChannels();
+        Vector3 sum(0, 0, 0);
+        for (uint32_t i = 0; i < ch.count; i++) {
+            sum = sum + Vector3(ch.get(ChVelX)[i], ch.get(ChVelY)[i], ch.get(ChVelZ)[i]).normalized();
+        }
+        return ch.count ? sum / (float)ch.count : sum;
     }
 
-    // the mean start velocity direction of `count` particles emitted by an imported system
-    Vector3 meanDirection(ParticleSystemComponent ps, int count = 200) {
-        ps.main.gravityModifier = MinMaxCurve(0.0f);
-        ParticleEmitterFrame frame;
-        ParticleEnvironment env;
-        particles::emit(ps, count, frame, env);
-        Vector3 sum(0, 0, 0);
-        for (size_t i = 0; i < ps.state.count(); i++) sum = sum + ps.state.velocity[i].normalized();
-        return ps.state.count() ? sum / (float)ps.state.count() : sum;
+    // S20's shape turn (Euler degrees: Z, then X, then Y) of v
+    Vector3 shapeTurn(const float e[3], const Vector3& v) {
+        const float r = 3.14159265f / 180.0f;
+        const float cx = std::cos(e[0] * r), sx = std::sin(e[0] * r), cy = std::cos(e[1] * r), sy = std::sin(e[1] * r);
+        const float cz = std::cos(e[2] * r), sz = std::sin(e[2] * r);
+        // Rz, then Rx, then Ry
+        Vector3 a(cz * v.x - sz * v.y, sz * v.x + cz * v.y, v.z);
+        Vector3 b(a.x, cx * a.y - sx * a.z, sx * a.y + cx * a.z);
+        return Vector3(cy * b.x + sy * b.z, b.y, -sy * b.x + cy * b.z);
     }
 
 }
@@ -149,38 +180,40 @@ TEST(UnityParticleImportTest, PrefabSystemValues) {
     EXPECT_NEAR(transform.rotation.w, 0.70710677f, 1e-5f);
     EXPECT_NEAR(transform.rotation.y, -0.70710677f, 1e-5f);
 
-    const ParticleSystemComponent ps = systemOf(flame);
-    EXPECT_EQ(ps.version, 2);
-    EXPECT_FLOAT_EQ(ps.main.duration, 2.0f);
-    EXPECT_FLOAT_EQ(ps.main.simulationSpeed, 1.5f);
-    EXPECT_TRUE(ps.main.looping);
-    EXPECT_TRUE(ps.main.prewarm);
-    EXPECT_FALSE(ps.main.autoRandomSeed);
-    EXPECT_EQ(ps.main.randomSeed, 1234u);
-    EXPECT_EQ(ps.main.simulationSpace, ParticleSystemSimulationSpace::World);
-    EXPECT_EQ(ps.main.scalingMode, ParticleSystemScalingMode::Hierarchy);
-    EXPECT_EQ(ps.main.maxParticles, 500u);
+    const ParticleSystemComponent flameSystem = componentOf(flame);
+    const ParticleEffectDocument ps = flameSystem.inlineEffect;
+    EXPECT_TRUE(flameSystem.effect.path.empty()) << "an inline effect";
+    EXPECT_FLOAT_EQ(ps.duration, 2.0f);
+    EXPECT_FLOAT_EQ(ps.simulationSpeed, 1.5f);
+    EXPECT_TRUE(ps.looping);
+    EXPECT_TRUE(ps.prewarm);
+    // Auto Random Seed off: the component's fixed seed
+    EXPECT_EQ(flameSystem.seed, 1234u);
+    EXPECT_EQ(ps.simulationSpace, SimulationSpace::World);
+    EXPECT_EQ(ps.scalingMode, ScalingMode::Hierarchy);
+    EXPECT_EQ(ps.maxParticles, 500u);
     // CFX_AutoDestructShuriken: destroyed when it finishes
-    EXPECT_EQ(ps.main.stopAction, ParticleSystemStopAction::Destroy);
+    EXPECT_EQ(ps.stopAction, StopAction::Destroy);
 
-    EXPECT_EQ(ps.main.startLifetime.mode, ParticleSystemCurveMode::TwoConstants);
-    EXPECT_FLOAT_EQ(ps.main.startLifetime.constantMin, 0.5f);
-    EXPECT_FLOAT_EQ(ps.main.startLifetime.constant, 1.0f);
+    // Two Constants: S20's first value is Unity's min
+    EXPECT_EQ(ps.main.startLifetime.mode, CurveMode::TwoConstants);
+    EXPECT_FLOAT_EQ(ps.main.startLifetime.constant, 0.5f);
+    EXPECT_FLOAT_EQ(ps.main.startLifetime.constantMax, 1.0f);
     EXPECT_FLOAT_EQ(ps.main.startSpeed.constant, 3.0f);
-    EXPECT_EQ(ps.main.startSize.mode, ParticleSystemCurveMode::Curve);
-    EXPECT_FLOAT_EQ(ps.main.startSize.constant, 2.0f);
+    EXPECT_EQ(ps.main.startSize.mode, CurveMode::Curve);
+    EXPECT_FLOAT_EQ(ps.main.startSize.multiplier, 2.0f);
     EXPECT_NEAR(ps.main.startSize.curve.evaluate(0.0f), 0.5f, 1e-5f);
-    // the roll's sign changes (left handed view)
-    EXPECT_FLOAT_EQ(ps.main.startRotation.constant, -1.0f);
-    EXPECT_FLOAT_EQ(ps.main.startRotation.constantMin, 1.0f);
+    // radians to degrees; the roll's sign changes (left handed view)
+    EXPECT_NEAR(ps.main.startRotation.constant, 1.0f * DEG, 1e-3f);
+    EXPECT_NEAR(ps.main.startRotation.constantMax, -1.0f * DEG, 1e-3f);
     EXPECT_FLOAT_EQ(ps.main.flipRotation, 0.5f);
     EXPECT_FLOAT_EQ(ps.main.gravityModifier.constant, 0.2f);
 
-    // start colour: two colours, gamma to linear
-    EXPECT_EQ(ps.main.startColor.mode, ParticleSystemGradientMode::TwoColors);
-    EXPECT_NEAR(ps.main.startColor.color.x, linear(0.5f), 1e-4f);
-    EXPECT_NEAR(ps.main.startColor.colorMin.x, 1.0f, 1e-5f);
-    EXPECT_NEAR(ps.main.startColor.colorMin.y, 0.0f, 1e-5f);
+    // start colour: two colours, Unity's sRGB as it is
+    EXPECT_EQ(ps.main.startColor.mode, GradientValueMode::TwoColors);
+    EXPECT_NEAR(ps.main.startColor.colorMax.x, 0.5f, 1e-5f);
+    EXPECT_NEAR(ps.main.startColor.color.x, 1.0f, 1e-5f);
+    EXPECT_NEAR(ps.main.startColor.color.y, 0.0f, 1e-5f);
 
     // emission and its burst
     EXPECT_FLOAT_EQ(ps.emission.rateOverTime.constant, 20.0f);
@@ -191,51 +224,58 @@ TEST(UnityParticleImportTest, PrefabSystemValues) {
     EXPECT_FLOAT_EQ(ps.emission.bursts[0].interval, 0.5f);
     EXPECT_FLOAT_EQ(ps.emission.bursts[0].probability, 0.5f);
 
-    // shape: cone, its position mirrored
-    EXPECT_EQ(ps.shape.shapeType, ParticleSystemShapeType::Cone);
+    // shape: cone (from its base), its position mirrored
+    EXPECT_EQ(ps.shape.shape, ShapeType::Cone);
+    EXPECT_EQ(ps.shape.emitFrom, ShapeEmitFrom::Base);
     EXPECT_FLOAT_EQ(ps.shape.angle, 15.0f);
     EXPECT_FLOAT_EQ(ps.shape.radius, 0.25f);
     EXPECT_FLOAT_EQ(ps.shape.position.x, -0.5f);
 
-    // colour over lifetime: three keys, linear colours, times from 0..65535
-    ASSERT_TRUE(ps.colorOverLifetime.enabled);
+    // colour over lifetime: three keys, sRGB colours, times from 0..65535
+    ASSERT_TRUE(ps.colorOverLifetime.present && ps.colorOverLifetime.enabled);
     const Gradient& gradient = ps.colorOverLifetime.color.gradient;
     ASSERT_EQ(gradient.colorKeys.size(), 3u);
     EXPECT_NEAR(gradient.colorKeys[1].time, 32768.0f / 65535.0f, 1e-5f);
-    EXPECT_NEAR(gradient.colorKeys[1].color.y, linear(0.5f), 1e-4f);
+    EXPECT_NEAR(gradient.colorKeys[1].color.y, 0.5f, 1e-5f);
     EXPECT_NEAR(gradient.alphaKeys[1].alpha, 0.5f, 1e-5f);
 
     ASSERT_TRUE(ps.sizeOverLifetime.enabled);
     EXPECT_NEAR(ps.sizeOverLifetime.size.curve.evaluate(0.0f), 0.2f, 1e-5f);
-    // velocity: x mirrored; orbital y negated
-    ASSERT_TRUE(ps.velocityOverLifetime.enabled);
-    EXPECT_FLOAT_EQ(ps.velocityOverLifetime.x.constantMin, -1.0f);
-    EXPECT_FLOAT_EQ(ps.velocityOverLifetime.x.constant, -2.0f);
-    EXPECT_FLOAT_EQ(ps.velocityOverLifetime.orbitalY.constant, -0.5f);
-    EXPECT_EQ(ps.velocityOverLifetime.space, ParticleSystemSimulationSpace::Local);
+    // velocity: x mirrored (min first); orbital y negated, in degrees
+    ASSERT_TRUE(ps.velocityOverLifetime.present && ps.velocityOverLifetime.enabled);
+    EXPECT_FLOAT_EQ(ps.velocityOverLifetime.x.constant, -1.0f);
+    EXPECT_FLOAT_EQ(ps.velocityOverLifetime.x.constantMax, -2.0f);
+    EXPECT_NEAR(ps.velocityOverLifetime.orbitalY.constant, -0.5f * DEG, 1e-3f);
+    EXPECT_EQ(ps.velocityOverLifetime.space, ValueSpace::Local);
     ASSERT_TRUE(ps.forceOverLifetime.enabled);
     EXPECT_FLOAT_EQ(ps.forceOverLifetime.y.constant, -5.0f);
-    EXPECT_EQ(ps.forceOverLifetime.space, ParticleSystemSimulationSpace::World);
-    ASSERT_TRUE(ps.limitVelocityOverLifetime.enabled);
-    EXPECT_FLOAT_EQ(ps.limitVelocityOverLifetime.limit.constant, 8.0f);
-    EXPECT_NEAR(ps.limitVelocityOverLifetime.limit.curve.evaluate(1.0f), 0.25f, 1e-5f);
-    EXPECT_FLOAT_EQ(ps.limitVelocityOverLifetime.dampen, 0.1f);
+    EXPECT_EQ(ps.forceOverLifetime.space, ValueSpace::World);
+    ASSERT_TRUE(ps.limitVelocity.present && ps.limitVelocity.enabled);
+    EXPECT_FLOAT_EQ(ps.limitVelocity.limit.multiplier, 8.0f);
+    EXPECT_NEAR(ps.limitVelocity.limit.curve.evaluate(1.0f), 0.25f, 1e-5f);
+    EXPECT_FLOAT_EQ(ps.limitVelocity.dampen, 0.1f);
     ASSERT_TRUE(ps.noise.enabled);
     EXPECT_EQ(ps.noise.octaves, 2);
 
     // texture sheet: 2x2 at 25 FPS, the start frame a share of the 4 frames
     ASSERT_TRUE(ps.textureSheetAnimation.enabled);
-    EXPECT_EQ(ps.textureSheetAnimation.numTilesX, 2);
-    EXPECT_EQ(ps.textureSheetAnimation.numTilesY, 2);
-    EXPECT_EQ(ps.textureSheetAnimation.timeMode, ParticleSystemAnimationTimeMode::FPS);
+    EXPECT_EQ(ps.textureSheetAnimation.tilesX, 2);
+    EXPECT_EQ(ps.textureSheetAnimation.tilesY, 2);
+    EXPECT_EQ(ps.textureSheetAnimation.timeMode, TextureSheetTimeMode::FPS);
     EXPECT_FLOAT_EQ(ps.textureSheetAnimation.fps, 25.0f);
     EXPECT_FLOAT_EQ(ps.textureSheetAnimation.startFrame.constant, 2.0f);
 
     // renderer
-    EXPECT_EQ(ps.renderer.renderMode, ParticleSystemRenderMode::VerticalBillboard);
-    EXPECT_EQ(ps.renderer.sortMode, ParticleSystemSortMode::Distance);
+    EXPECT_EQ(ps.renderer.renderMode, RenderMode::VerticalBillboard);
+    EXPECT_EQ(ps.renderer.sortMode, SortMode::ByDistance);
     EXPECT_FLOAT_EQ(ps.renderer.sortingFudge, 10.0f);
     EXPECT_EQ(ps.renderer.sortPriority, 2);
+    // it draws itself: no MeshComponent, no InstancedMesh, no action
+    EXPECT_FALSE(component(flame, ComponentType::MeshComponent));
+    EXPECT_FALSE(component(flame, ComponentType::InstancedMeshComponent));
+    EXPECT_FALSE(component(flame, ComponentType::ActionComponent));
+    // the prefab is in today's format (S20 components)
+    EXPECT_EQ(prefab["version"].as<int>(), Prefab::FILE_VERSION);
 
     // the report
     const Json& report = result.report;
@@ -261,14 +301,17 @@ TEST(UnityParticleImportTest, ChildSystemMeshAndUnsupportedModules) {
     const YAML::Node prefab = YAML::LoadFile((project.root / result.prefabs[0]).string());
     const YAML::Node smoke = findMember(prefab["members"], "Smoke");
     ASSERT_TRUE(smoke.IsMap());
-    const ParticleSystemComponent ps = systemOf(smoke);
-    EXPECT_EQ(ps.main.simulationSpace, ParticleSystemSimulationSpace::Local);
-    EXPECT_EQ(ps.shape.shapeType, ParticleSystemShapeType::Sphere);
-    EXPECT_EQ(ps.renderer.renderMode, ParticleSystemRenderMode::Mesh);
-    EXPECT_EQ(ps.renderer.mesh, "cube");
-    EXPECT_EQ(ps.renderer.alignment, ParticleSystemRenderSpace::Local);
-    EXPECT_EQ(ps.colorOverLifetime.color.mode, ParticleSystemGradientMode::TwoGradients);
-    EXPECT_NEAR(ps.colorOverLifetime.color.gradientMin.colorKeys.back().color.x, linear(0.5f), 1e-4f);
+    const ParticleEffectDocument ps = systemOf(smoke);
+    EXPECT_EQ(ps.simulationSpace, SimulationSpace::Local);
+    EXPECT_EQ(ps.shape.shape, ShapeType::Sphere);
+    EXPECT_EQ(ps.renderer.renderMode, RenderMode::Mesh);
+    ASSERT_EQ(ps.renderer.meshes.size(), 1u);
+    EXPECT_EQ(ps.renderer.meshes[0].type, MeshSourceType::Primitive);
+    EXPECT_EQ(ps.renderer.meshes[0].primitive, PrimitiveMesh::Cube);
+    EXPECT_EQ(ps.renderer.meshAlignment, MeshAlignment::Local);
+    // Two Gradients: S20's first is Unity's min gradient
+    EXPECT_EQ(ps.colorOverLifetime.color.mode, GradientValueMode::TwoGradients);
+    EXPECT_NEAR(ps.colorOverLifetime.color.gradient.colorKeys.back().color.x, 0.5f, 1e-5f);
     // the child's transform: (0, 1, 0) under the root
     const Transform transform = Stream::decodeTransform(component(smoke, ComponentType::Transform));
     EXPECT_FLOAT_EQ(transform.position.y, 1.0f);
@@ -287,24 +330,18 @@ TEST(UnityParticleImportTest, MaterialsAndTextures) {
     ASSERT_TRUE(result.ok) << result.error;
     const YAML::Node prefab = YAML::LoadFile((project.root / result.prefabs[0]).string());
 
-    // the custom shader "Custom/Fire Additive (Soft)" (Blend SrcAlpha One): additive, soft, its tint
-    const fs::path fireFile = project.root / "assets/fx/materials/FireAdd.material";
-    ASSERT_TRUE(fs::is_regular_file(fireFile));
-    const Material fire = Stream::decodeMaterial(YAML::LoadFile(fireFile.string()));
-    EXPECT_EQ(fire.shader, "library:unlit");
-    EXPECT_EQ(fire.blendMode, MaterialBlendMode::ADDITIVE);
+    // the custom shader "Custom/Fire Additive (Soft)" (Blend SrcAlpha One): additive, soft, its
+    // texture, in the flame's Renderer module (no .material file)
+    const RendererModule fire = systemOf(findMember(prefab["members"], "Flame")).renderer;
+    EXPECT_EQ(fire.shader, "library:particles");
+    EXPECT_EQ(fire.blend, ParticleBlend::Additive);
     EXPECT_NE(std::find(fire.shaderFeatures.begin(), fire.shaderFeatures.end(), "SOFT"), fire.shaderFeatures.end());
-    std::string baseTexture;
-    for (const auto& texture : fire.shaderTextures) {
-        if (texture.first == "u_baseTexture") baseTexture = texture.second.getPath();
-    }
-    EXPECT_EQ(baseTexture, "assets/fx/textures/flame.png");
-
-    // the flame mesh links the material file
-    const MeshComponent mesh = Stream::decodeMeshComponent(component(findMember(prefab["members"], "Flame"), ComponentType::MeshComponent));
-    ASSERT_GT(mesh.submeshes.size(), 0u);
-    EXPECT_EQ(mesh.submeshes[0].material.name, "assets/fx/materials/FireAdd.material");
-    EXPECT_FALSE(mesh.castShadows);
+    bool softness = false;
+    for (const ShaderProperty& p : fire.shaderProperties) softness = softness || (p.name == "softness" && p.value.x > 0.0f);
+    EXPECT_TRUE(softness);
+    EXPECT_EQ(fire.texture, "assets/fx/textures/flame.png");
+    EXPECT_FALSE(fs::exists(project.root / "assets/fx/materials"));
+    EXPECT_FALSE(fire.depthWrite);
 
     // the Alpha8 texture: white with the source's alpha
     int w = 0, h = 0, n = 0;
@@ -315,10 +352,11 @@ TEST(UnityParticleImportTest, MaterialsAndTextures) {
     EXPECT_EQ(pixels[4 * 1 + 3], 32);
     stbi_image_free(pixels);
 
-    // the smoke: Mobile/Particles/Alpha Blended with the default particle texture
-    const Material smoke = Stream::decodeMaterial(YAML::LoadFile((project.root / "assets/fx/materials/Smoke.material").string()));
-    EXPECT_EQ(smoke.blendMode, MaterialBlendMode::ALPHA);
-    EXPECT_NE(std::find(smoke.shaderFeatures.begin(), smoke.shaderFeatures.end(), "PARTICLE_TEXTURE"), smoke.shaderFeatures.end());
+    // the smoke: Mobile/Particles/Alpha Blended with the default particle texture (S20's soft disc)
+    const RendererModule smoke = systemOf(findMember(prefab["members"], "Smoke")).renderer;
+    EXPECT_EQ(smoke.blend, ParticleBlend::Alpha);
+    EXPECT_TRUE(smoke.texture.empty());
+    EXPECT_EQ(smoke.untexturedShape, UntexturedShape::Disc);
 
     bool alpha8 = false;
     for (const Json& texture : result.report["textures"]) alpha8 = alpha8 || texture.value("alpha8", false);
@@ -337,7 +375,7 @@ TEST(UnityParticleImportTest, ShapeAxes) {
     const Vector3 up = meanDirection(systemOf(findMember(members, "Up")));
     EXPECT_NEAR(up.y, 1.0f, 1e-3f) << up.x << " " << up.y << " " << up.z;
     // no shape: Unity's +Z, the engine's +Z (S mirrors x only)
-    const ParticleSystemComponent none = systemOf(findMember(members, "NoShape"));
+    const ParticleEffectDocument none = systemOf(findMember(members, "NoShape"));
     EXPECT_TRUE(none.shape.enabled);
     const Vector3 forward = meanDirection(none);
     EXPECT_NEAR(forward.z, 1.0f, 1e-3f) << forward.x << " " << forward.y << " " << forward.z;
@@ -348,21 +386,22 @@ TEST(UnityParticleImportTest, ShapeAxes) {
     EXPECT_NEAR(edge.y, 1.0f, 1e-3f) << edge.x << " " << edge.y << " " << edge.z;
 
     // box: scale and thickness (x, z, y)
-    const ParticleSystemComponent box = systemOf(findMember(members, "Box"));
-    EXPECT_EQ(box.shape.shapeType, ParticleSystemShapeType::Box);
+    const ParticleEffectDocument box = systemOf(findMember(members, "Box"));
+    EXPECT_EQ(box.shape.shape, ShapeType::Box);
+    EXPECT_EQ(box.shape.emitFrom, ShapeEmitFrom::Volume);
     EXPECT_FLOAT_EQ(box.shape.scale.y, 3.0f);
     EXPECT_FLOAT_EQ(box.shape.scale.z, 2.0f);
     EXPECT_FLOAT_EQ(box.shape.boxThickness.y, 0.3f);
     // donut: radius mode Loop and its spread
-    const ParticleSystemComponent donut = systemOf(findMember(members, "Donut"));
-    EXPECT_EQ(donut.shape.shapeType, ParticleSystemShapeType::Donut);
+    const ParticleEffectDocument donut = systemOf(findMember(members, "Donut"));
+    EXPECT_EQ(donut.shape.shape, ShapeType::Donut);
     EXPECT_FLOAT_EQ(donut.shape.donutRadius, 0.3f);
-    EXPECT_EQ(donut.shape.radiusMode, ParticleSystemShapeMultiModeValue::Loop);
+    EXPECT_EQ(donut.shape.radiusMode, ShapeMultiMode::Loop);
     EXPECT_FLOAT_EQ(donut.shape.radiusSpread, 0.25f);
     // hemisphere: shell (thickness 0), arc ping-pong, aligned to direction
-    const ParticleSystemComponent hemi = systemOf(findMember(members, "Hemi"));
+    const ParticleEffectDocument hemi = systemOf(findMember(members, "Hemi"));
     EXPECT_FLOAT_EQ(hemi.shape.radiusThickness, 0.0f);
-    EXPECT_EQ(hemi.shape.arcMode, ParticleSystemShapeMultiModeValue::PingPong);
+    EXPECT_EQ(hemi.shape.arcMode, ShapeMultiMode::PingPong);
     EXPECT_TRUE(hemi.shape.alignToDirection);
 
     const Json* mesh = systemReport(result.report, "Shapes/MeshShape");
@@ -375,8 +414,7 @@ TEST(UnityParticleImportTest, ConvertShapeRotation) {
     auto apply = [](const float unity[3], bool edge, const Vector3& v) {
         float e[3];
         unity::convertShapeRotation(unity, edge, e);
-        const float deg = 3.14159265f / 180.0f;
-        return particles::eulerRadians(Vector3(e[0] * deg, e[1] * deg, e[2] * deg)) * v;
+        return shapeTurn(e, v);
     };
     // the engine shape's axis (+Y) is Unity's +Z: no rotation points it along the engine's +Z
     const float none[3] = {0, 0, 0};
@@ -388,6 +426,11 @@ TEST(UnityParticleImportTest, ConvertShapeRotation) {
     // Unity's (0, 90, 0) turns +Z to its +X: the engine's -X
     const float right[3] = {0, 90, 0};
     EXPECT_NEAR(apply(right, false, Vector3(0, 1, 0)).x, -1.0f, 1e-5f);
+    // a turn about every axis: the engine's turn of the shape's other axes too
+    const float any[3] = {30, 45, 60};
+    const Vector3 x = apply(any, false, Vector3(1, 0, 0)), y = apply(any, false, Vector3(0, 1, 0));
+    EXPECT_NEAR(x.dotProduct(y), 0.0f, 1e-5f);
+    EXPECT_NEAR(x.length(), 1.0f, 1e-5f);
 }
 
 TEST(UnityParticleImportTest, SceneInstanceWithModifications) {
@@ -406,22 +449,22 @@ TEST(UnityParticleImportTest, SceneInstanceWithModifications) {
     // the instance removed its Smoke child (m_RemovedGameObjects)
     EXPECT_EQ(childNames(flame), std::vector<std::string>({"Attached"}));
     EXPECT_FALSE(findMember(members, "Smoke").IsMap());
-    // m_Materials.Array.data[0] overridden by an object reference: the Smoke material
-    const MeshComponent flameMesh = Stream::decodeMeshComponent(component(flame, ComponentType::MeshComponent));
-    ASSERT_GT(flameMesh.submeshes.size(), 0u);
-    EXPECT_EQ(flameMesh.submeshes[0].material.name, "assets/fx/materials/Smoke.material");
-    const ParticleSystemComponent ps = systemOf(flame);
-    EXPECT_FLOAT_EQ(ps.main.startSize.constant, 4.0f);
+    // m_Materials.Array.data[0] overridden by an object reference: the Smoke material (alpha
+    // blended, the default particle texture) instead of the additive flame
+    const ParticleEffectDocument ps = systemOf(flame);
+    EXPECT_EQ(ps.renderer.blend, ParticleBlend::Alpha);
+    EXPECT_TRUE(ps.renderer.texture.empty());
+    EXPECT_FLOAT_EQ(ps.main.startSize.multiplier, 4.0f);
     EXPECT_NEAR(ps.main.startSize.curve.evaluate(0.0f), 0.5f, 1e-5f);
     EXPECT_FLOAT_EQ(ps.emission.rateOverTime.constant, 50.0f);
     EXPECT_NEAR(ps.sizeOverLifetime.size.curve.evaluate(0.0f), 0.25f, 1e-5f);
-    EXPECT_FALSE(ps.main.prewarm);
+    EXPECT_FALSE(ps.prewarm);
     // the auto destruct script was removed in the scene
-    EXPECT_EQ(ps.main.stopAction, ParticleSystemStopAction::None);
+    EXPECT_EQ(ps.stopAction, StopAction::None);
 
-    const ParticleSystemComponent attached = systemOf(findMember(members, "Attached"));
-    EXPECT_EQ(attached.shape.shapeType, ParticleSystemShapeType::Edge);
-    EXPECT_EQ(attached.renderer.renderMode, ParticleSystemRenderMode::Stretch);
+    const ParticleEffectDocument attached = systemOf(findMember(members, "Attached"));
+    EXPECT_EQ(attached.shape.shape, ShapeType::Edge);
+    EXPECT_EQ(attached.renderer.renderMode, RenderMode::StretchedBillboard);
     EXPECT_FLOAT_EQ(attached.renderer.lengthScale, 3.0f);
 
     bool unknown = false;
@@ -436,11 +479,11 @@ TEST(UnityParticleImportTest, SceneInstanceWithModifications) {
     ASSERT_NE(confetti, nullptr);
     EXPECT_TRUE(hasNote(*confetti, "ui-particle"));
     EXPECT_TRUE(hasNote(*confetti, "texture-format"));
-    const ParticleSystemComponent confettiPs = systemOf(findMember(YAML::LoadFile((project.root / result.prefabs[1]).string())["members"], "Confetti"));
-    EXPECT_FALSE(confettiPs.main.playOnAwake);
-    EXPECT_FALSE(confettiPs.main.looping);
-    ASSERT_EQ(confettiPs.emission.bursts.size(), 1u);
-    EXPECT_FLOAT_EQ(confettiPs.emission.bursts[0].count.constant, 10.0f);
+    const ParticleSystemComponent confettiPs = componentOf(findMember(YAML::LoadFile((project.root / result.prefabs[1]).string())["members"], "Confetti"));
+    EXPECT_FALSE(confettiPs.playOnAwake);
+    EXPECT_FALSE(confettiPs.inlineEffect.looping);
+    ASSERT_EQ(confettiPs.inlineEffect.emission.bursts.size(), 1u);
+    EXPECT_FLOAT_EQ(confettiPs.inlineEffect.emission.bursts[0].count.constant, 10.0f);
 }
 
 TEST(UnityParticleImportTest, SelectObjectNumberedNamesAndDryRun) {
@@ -472,15 +515,9 @@ TEST(UnityParticleImportTest, SelectObjectNumberedNamesAndDryRun) {
 
 namespace {
 
-    Material materialFile(const TempProject& project, const std::string& rel) {
-        return Stream::decodeMaterial(YAML::LoadFile((project.root / rel).string()));
-    }
-
-    std::string materialOf(const YAML::Node& members, const std::string& name) {
+    RendererModule rendererOf(const YAML::Node& members, const std::string& name) {
         const YAML::Node member = findMember(members, name);
-        if (!member.IsMap()) return "";
-        const MeshComponent mesh = Stream::decodeMeshComponent(component(member, ComponentType::MeshComponent));
-        return mesh.submeshes.size() > 0 ? mesh.submeshes[0].material.name : "";
+        return member.IsMap() ? systemOf(member).renderer : RendererModule();
     }
 
 }
@@ -495,29 +532,26 @@ TEST(UnityParticleImportTest, ShaderBlendsAndSharedAssets) {
     const YAML::Node members = YAML::LoadFile((project.root / result.prefabs[0]).string())["members"];
 
     // "blend one oneminussrcalpha" (any case, after a comment naming another Blend): premultiplied
-    EXPECT_EQ(materialFile(project, materialOf(members, "Premul")).blendMode, MaterialBlendMode::PREMULTIPLIED);
+    EXPECT_EQ(rendererOf(members, "Premul").blend, ParticleBlend::Premultiplied);
     // Blend [_SrcBlend] [_DstBlend] with the material's 1 / 1: additive
-    EXPECT_EQ(materialFile(project, materialOf(members, "ByProperties")).blendMode, MaterialBlendMode::ADDITIVE);
+    EXPECT_EQ(rendererOf(members, "ByProperties").blend, ParticleBlend::Additive);
     // built-in shaders by guid: Particles/Standard Unlit with _Mode 4 additive, 202 premultiplied
-    EXPECT_EQ(materialFile(project, materialOf(members, "StandardAdd")).blendMode, MaterialBlendMode::ADDITIVE);
-    EXPECT_EQ(materialFile(project, materialOf(members, "LegacyPremul")).blendMode, MaterialBlendMode::PREMULTIPLIED);
-    // a _MainTex not in the project: the soft particle texture, with a note
-    const Material noTexture = materialFile(project, materialOf(members, "NoTexture"));
-    EXPECT_NE(std::find(noTexture.shaderFeatures.begin(), noTexture.shaderFeatures.end(), "PARTICLE_TEXTURE"), noTexture.shaderFeatures.end());
+    EXPECT_EQ(rendererOf(members, "StandardAdd").blend, ParticleBlend::Additive);
+    EXPECT_EQ(rendererOf(members, "LegacyPremul").blend, ParticleBlend::Premultiplied);
+    // a _MainTex not in the project: the soft particle, with a note
+    const RendererModule noTexture = rendererOf(members, "NoTexture");
+    EXPECT_TRUE(noTexture.texture.empty());
+    EXPECT_EQ(noTexture.untexturedShape, UntexturedShape::Disc);
     EXPECT_TRUE(hasNote(*systemReport(result.report, "Materials/NoTexture"), "texture-missing"));
 
-    // two Unity materials named Fire, two textures named smoke.png: four files
-    const std::string fireA = materialOf(members, "FireA"), fireB = materialOf(members, "FireB");
-    EXPECT_NE(fireA, fireB);
-    EXPECT_EQ(fireA, "assets/fx/materials/Fire.material");
-    EXPECT_EQ(fireB, "assets/fx/materials/Fire 1.material");
-    std::string textureA, textureB;
-    for (const auto& t : materialFile(project, fireA).shaderTextures) textureA = t.second.getPath();
-    for (const auto& t : materialFile(project, fireB).shaderTextures) textureB = t.second.getPath();
+    // two Unity materials named Fire, two textures named smoke.png: two texture files
+    const std::string textureA = rendererOf(members, "FireA").texture, textureB = rendererOf(members, "FireB").texture;
     EXPECT_EQ(textureA, "assets/fx/textures/smoke.png");
     EXPECT_EQ(textureB, "assets/fx/textures/smoke 1.png");
     EXPECT_TRUE(fs::is_regular_file(project.root / textureA));
     EXPECT_TRUE(fs::is_regular_file(project.root / textureB));
+    // the report lists both materials (by their Unity files)
+    EXPECT_GE(result.report["materials"].size(), 2u);
 
     // a material used twice: both systems carry its notes
     EXPECT_TRUE(hasNote(*systemReport(result.report, "Materials/Premul"), "shader-approximated"));
@@ -527,8 +561,7 @@ TEST(UnityParticleImportTest, ShaderBlendsAndSharedAssets) {
     bool hiddenTwin = false;
     for (const YAML::Node& child : findMember(members, "Materials")["children"]) {
         if (child["name"].as<std::string>() != "Twin") continue;
-        const MeshComponent mesh = Stream::decodeMeshComponent(component(child, ComponentType::MeshComponent));
-        hiddenTwin = hiddenTwin || !mesh.enabled;
+        hiddenTwin = hiddenTwin || !systemOf(child).renderer.enabled;
     }
     EXPECT_TRUE(hiddenTwin);
 }
@@ -554,7 +587,7 @@ TEST(UnityParticleImportTest, NestedPrefabInstances) {
     // Rig (no system) holds the Flame instance: that is the topmost system, renamed by Rig
     EXPECT_EQ(result.prefabs[0], "assets/fx/NestedFlame.prefab");
     const YAML::Node members = YAML::LoadFile((project.root / result.prefabs[0]).string())["members"];
-    const ParticleSystemComponent ps = systemOf(findMember(members, "NestedFlame"));
+    const ParticleEffectDocument ps = systemOf(findMember(members, "NestedFlame"));
     EXPECT_FLOAT_EQ(ps.main.startSpeed.constant, 9.0f) << "Rig's modification of its nested instance";
     EXPECT_FLOAT_EQ(ps.emission.rateOverTime.constant, 33.0f) << "the scene's modification of the nested object";
     EXPECT_EQ(childNames(findMember(members, "NestedFlame")), std::vector<std::string>({"Smoke"}));

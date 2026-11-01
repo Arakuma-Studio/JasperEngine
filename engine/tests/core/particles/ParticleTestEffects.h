@@ -161,7 +161,7 @@ namespace particletest {
         d.velocityOverLifetime.orbitalX = MinMaxCurve(10.0f);
         d.velocityOverLifetime.orbitalY = MinMaxCurve(20.0f);
         d.velocityOverLifetime.orbitalZ = MinMaxCurve(30.0f);
-        d.velocityOverLifetime.offset = Vector3(0.5f, 0.0f, 0.0f);
+        d.velocityOverLifetime.offsetX = MinMaxCurve(0.5f);
         d.velocityOverLifetime.radial = MinMaxCurve(0.5f);
         d.velocityOverLifetime.speedModifier = MinMaxCurve(0.9f);
 
@@ -319,7 +319,7 @@ namespace particletest {
         model.submesh = 1;
         d.renderer.meshes = {cube, model};
         d.renderer.meshSelection = MeshSelection::Index;
-        d.renderer.alignToVelocity = true;
+        d.renderer.meshAlignment = MeshAlignment::Velocity;
         d.renderer.pivot = Vector3(0.0f, 0.5f, 0.0f);
         d.renderer.flip = Vector3(0.5f, 0.0f, 0.0f);
         d.renderer.shader = "shaders/myparticles";

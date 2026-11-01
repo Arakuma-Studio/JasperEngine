@@ -1,11 +1,12 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The importer on the real game's 18 Particle Systems (particles spec 4.1, 9). The game is not
-// part of the repository (its WarFX systems are Asset Store content): the test runs only when a
-// clone is at /tmp/gamesrc/Minigames or JASPER_UNITY_GAME_DIR names one, and writes into a temp
-// folder. Each file imports, every system becomes a version 2 system, no module the game uses is
-// unsupported, and the notes are the expected ones.
+// The importer on the real game's 18 Particle Systems (docs/specs/S20-particles.md, Upstream
+// absorption). The game is not part of the repository (its WarFX systems are Asset Store
+// content): the test runs only when a clone is at /tmp/gamesrc/Minigames or
+// JASPER_UNITY_GAME_DIR names one, and writes into a temp folder. Each file imports, every system
+// becomes an S20 Particle System, no module the game uses is unsupported, and the notes are the
+// expected ones.
 
 #include <gtest/gtest.h>
 
@@ -49,8 +50,8 @@ namespace {
 
     // notes a system of the game may have: approximations the spec lists for it
     const std::set<std::string> EXPECTED_NOTES = {
-        "ui-particle", "shader-approximated", "mesh-missing", "noise-pattern", "auto-destruct", "culling-mode",
-        "material-missing", "texture-format"};
+        "ui-particle", "shader-approximated", "mesh-missing", "noise-pattern", "auto-destruct", "material-missing",
+        "texture-format", "material-approximated", "cast-shadows", "render-alignment"};
 
 }
 

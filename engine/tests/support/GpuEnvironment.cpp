@@ -149,3 +149,8 @@ void GpuEnvironment::shutdown(){
     HeadlessContext::destroy();
 #endif
 }
+
+// (lost in the sync merge e1c005fcb: the tests did not link without it)
+void GpuTestEnvironment::TearDown(){
+    GpuEnvironment::shutdown();
+}

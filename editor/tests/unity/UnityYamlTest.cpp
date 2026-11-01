@@ -105,9 +105,9 @@ TEST(UnityYamlTest, BuiltinAssetsByTheirIds) {
 }
 
 TEST(UnityYamlTest, ProjectIndexesGuidsAndFindsItsRoot) {
-    const fs::path root = fs::path(JASPER_EDITOR_TEST_FIXTURES) / "unity-particles" / "Project";
+    const fs::path root = fs::path(JASPER_TEST_FIXTURES_DIR) / "unity-particles" / "Project";
     EXPECT_EQ(Project::findRoot(root / "Assets" / "Fx" / "Flame.prefab").lexically_normal(), root.lexically_normal());
-    EXPECT_TRUE(Project::findRoot(fs::path(JASPER_EDITOR_TEST_FIXTURES) / "particles-legacy" / "presets.yaml").empty());
+    EXPECT_TRUE(Project::findRoot(fs::path(JASPER_TEST_FIXTURES_DIR) / "particles-legacy" / "presets.yaml").empty());
     Project project;
     std::string error;
     ASSERT_TRUE(project.open(root, error)) << error;

@@ -132,7 +132,7 @@ TEST(ParticleEffectCodec, Validation){
         {R"({"version": 1, "modules": [{"type": "main", "startColor": [1, 1]}]})", "main.startColor"},
         {R"({"version": 1, "modules": [{"type": "main", "startColor": {"mode": "gradient", "gradient": {"colorKeys": [[2, 1, 1, 1]]}}}]})", "main.startColor.gradient.colorKeys[0]"},
         {R"({"version": 1, "modules": [{"type": "emission", "bursts": [{"probability": 3}]}]})", "emission.bursts[0].probability"},
-        {R"({"version": 1, "modules": [{"type": "emission", "bursts": [{"count": {"mode": "curve", "curve": [[0, 1], [1, 2]]}}]}]})", "emission.bursts[0].count"},
+        {R"({"version": 1, "startDelay": {"mode": "curve", "curve": [[0, 1], [1, 2]]}, "modules": []})", "startDelay"},
         {R"({"version": 1, "modules": [{"type": "shape", "radiusThickness": 2}]})", "shape.radiusThickness"},
         {R"({"version": 1, "modules": [{"type": "shape", "shape": "mesh", "mesh": {"type": "model"}}]})", "shape.mesh.model"},
         {R"({"version": 1, "modules": [{"type": "noise", "octaves": 5}]})", "noise.octaves"},

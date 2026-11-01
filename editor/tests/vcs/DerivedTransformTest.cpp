@@ -114,15 +114,16 @@ TEST(Stream, DerivedTransformNotWritten) {
     // what was authored survives: the child's local position under its scaled parent
     EXPECT_NE(resaved.find("position: [0, 1, 0]"), std::string::npos);
     EXPECT_NE(resaved.find("scale: [2, 2, 2]"), std::string::npos);
-    // the format version moved on, with the migration that drops them (then S18's identity 4 -> 5)
-    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Scene), 5);
-    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), 6);
-    EXPECT_EQ(Prefab::FILE_VERSION, 6);
+    // the format version moved on, with the migration that drops them (then S18's identity 4 -> 5
+    // and the upstream curve form 5 -> 6)
+    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Scene), 6);
+    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), 7);
+    EXPECT_EQ(Prefab::FILE_VERSION, 7);
     YAML::Node root = YAML::Load(old);
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
-    ASSERT_EQ(result.applied.size(), 2u);
+    ASSERT_EQ(result.applied.size(), 3u);
     EXPECT_EQ(result.versionRead, 3);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 5);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 6);
     expectNoDerivedKeys(YAML::Dump(root), "a migrated scene");
 }
 
@@ -137,7 +138,7 @@ TEST(Stream, DerivedTransformMigrationReachesPrefabsAndInstances) {
     StreamMigrations::migrate(DocumentKind::Prefab, prefab);
     expectNoDerivedKeys(YAML::Dump(prefab), "a migrated prefab");
     EXPECT_EQ(prefab["members"][0]["components"]["transform"]["position"].size(), 3u);
-    EXPECT_EQ(prefab["version"].as<int>(), 6);
+    EXPECT_EQ(prefab["version"].as<int>(), 7);
 
     YAML::Node scene = YAML::Load(
         "formatVersion: 3\nentities:\n  - type: Entity\n    entity: 20\n    name: Instance\n    components:\n      transform:\n"

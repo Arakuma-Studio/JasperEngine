@@ -148,7 +148,9 @@ TEST(TrailSimulationTest, TimeScaleZeroFreezesAndTimeZeroKeepsNothing){
     // timeScale 0: dt 0, the clock stands; no point added or removed, the head still moves
     for (int i = 0; i < 100; i++){
         const unsigned int result = TrailSimulation::step(mover.trail, Vector3(mover.x + 0.5f * i, 0, 0), mover.now, 0.0f);
-        if (i > 0) EXPECT_TRUE(result & TrailSimulation::Step_Changed);
+        if (i > 0) {
+            EXPECT_TRUE(result & TrailSimulation::Step_Changed);
+        }
     }
     EXPECT_EQ(mover.trail.points.size(), before);
 
