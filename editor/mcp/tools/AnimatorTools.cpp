@@ -1125,7 +1125,9 @@ void editAnimatorControllerTool(const CallPtr& call) {
         // the diagnostics: the transitions the file had before are not this call's
         auto missingTargets = [](const ControllerDef& d, std::string* first) {
             size_t n = 0;
-            for (const ClipWarning& w : compileController(d)->diagnostics) {
+            // (held: a range-for over a member of the temporary would read a freed controller)
+            const std::shared_ptr<const CompiledController> compiled = compileController(d);
+            for (const ClipWarning& w : compiled->diagnostics) {
                 if (w.message.rfind("no state or state machine named", 0) != 0) continue;
                 if (first && first->empty()) *first = w.message;
                 n++;

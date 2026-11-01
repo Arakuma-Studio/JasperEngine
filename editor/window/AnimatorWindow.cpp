@@ -1569,7 +1569,8 @@ void AnimatorWindow::drawGraph(){
         }
     }
     if (result.contextRequested && editable()){
-        contextPosition = result.contextPosition;
+        // a node made from the menu is centred on the click (its box is 180 x 46)
+        contextPosition = ImVec2(result.contextPosition.x - 90.0f, result.contextPosition.y - 23.0f);
         if (result.contextNode) ImGui::OpenPopup("##animator_node_menu");
         else if (result.contextLink) ImGui::OpenPopup("##animator_link_menu");
         else ImGui::OpenPopup("##animator_canvas_menu");

@@ -238,7 +238,7 @@ async def test_from_player_and_write_file(ed: Editor):
     await ed.call("add_component", entity=box_id, component="animationplayer", values={"animationplayer": {
         "clips": [{"clip": "assets/anim/idle.anim", "name": "Idle"}, {"clip": "assets/anim/running.anim", "name": "Run"}], "defaultClip": "Run"}})
     # a new controller file stays in the assets folder
-    await refused(ed, "edit_animator_controller", {"path": "../box.controller", "create": True, "from_player": box_id}, "outside the assets")
+    await refused(ed, "edit_animator_controller", {"path": "../box.controller", "create": True, "from_player": box_id}, "inside the project")
     ed.check(not (ed.project / "box.controller").exists(), "nothing written outside the assets folder")
     # a failing op: no file, no Animator, nothing on the undo stack (the next undo is the
     # add_component above)
