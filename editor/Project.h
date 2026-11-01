@@ -1006,6 +1006,10 @@ namespace jasperengine::editor{
         void waitForAssetScan();
         // Found while resolving references (in the middle of an import), applied on refresh
         std::vector<AssetDatabase::Change> pendingAssetChanges;
+        // A tracked prefab file a read found gone before the database's walk did: the database
+        // forgets it now (the file put back is then new to it, an Added that relinks the Missing
+        // instances the read made), its removal waits for the next refresh
+        void forgetGonePrefabFile(const std::filesystem::path& filepath);
         // Who references what (S04): closed files from disk, documents with unsaved edits from memory
         AssetIndex assetIndex;
         MissingAssetTracker missingAssets;

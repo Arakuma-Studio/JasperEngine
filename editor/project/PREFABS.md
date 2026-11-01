@@ -111,6 +111,12 @@ project opens, and cached in `.jasperengine/assetdb/index.json` (a deletable cac
   GUID is added; with the GUID of a file that is gone, it is that file moved; with the GUID of
   a file that is still there, it is a copy and gets a new GUID. A gone file is removed. A file
   edited so that its GUID line disappeared gets it back.
+- **A read that finds a tracked prefab file gone** (`loadPrefabAsset`, the import making a
+  Missing Prefab instance from that, before a walk noticed) makes the database forget it at once
+  (`forgetGonePrefabFile`); the removal is applied by the next refresh, unless the file is back by
+  then (the same GUID at the same path: nothing went). So the file put back is new to the
+  database, an Added that relinks the instance, whether or not a walk fell between the delete and
+  the put-back (one watcher batch for both, a file moved out and back with its stamp).
 - **Editor file operations** keep it up to date, all through `AssetOps`
   (`editor/asset/AssetOps.cpp`: `RenameFileCmd`, `CopyFileCmd`, `DeleteFileCmd`, MCP
   `move_asset` / `delete_asset`), which hands the database's changes to

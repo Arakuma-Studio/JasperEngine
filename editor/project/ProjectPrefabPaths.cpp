@@ -200,8 +200,31 @@ void editor::Project::refreshAssetDatabase(bool force) {
     }
     std::vector<AssetDatabase::Change> changes = std::move(pendingAssetChanges);
     pendingAssetChanges.clear();
+    // A removal a read found (forgetGonePrefabFile) whose file is back, the same asset at the same
+    // path: nothing went. Its Added (this walk's, or a resolve's) relinks what the read left
+    // Missing, and the instances made from the file since stay as they are
+    changes.erase(std::remove_if(changes.begin(), changes.end(), [&](const AssetDatabase::Change& change) {
+        return change.type == AssetDatabase::Change::Type::Removed && !change.guid.empty() &&
+            assetDatabase.getPath(change.guid) == change.path;
+    }), changes.end());
     changes.insert(changes.end(), found.begin(), found.end());
     onAssetFilesChanged(changes);
+}
+
+void editor::Project::forgetGonePrefabFile(const fs::path& filepath) {
+    // The editor saw the file gone (a Missing Prefab instance is made from that) while the
+    // database still lists it: a file put back before its next walk would look unchanged to it
+    // (no Added), and those instances would never be relinked
+    if (projectPath.empty() || filepath.empty() || !assetDatabase.isOpen()) {
+        return;
+    }
+    std::error_code ec;
+    const fs::path full = filepath.is_absolute() ? filepath : projectPath / filepath;
+    if (fs::exists(full, ec) || ec || assetDatabase.getGuid(normalizeToProjectRelative(full)).empty()) {
+        return;
+    }
+    std::vector<AssetDatabase::Change> removed = assetDatabase.removeAssets(normalizeToProjectRelative(full));
+    pendingAssetChanges.insert(pendingAssetChanges.end(), removed.begin(), removed.end());
 }
 
 bool editor::Project::applyFileChanges(std::span<const FileChange> fileChanges) {

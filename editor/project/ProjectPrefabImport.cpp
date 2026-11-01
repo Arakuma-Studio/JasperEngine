@@ -784,6 +784,7 @@ editor::Prefab* editor::Project::loadPrefabAsset(const std::filesystem::path& fi
     }
     Prefab loaded;
     if (!readPrefabFile(filepath, loaded)) {
+        forgetGonePrefabFile(filepath);
         return nullptr;
     }
     if (it != prefabAssets.end()) {
