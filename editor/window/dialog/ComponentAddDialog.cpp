@@ -100,6 +100,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::UIComponent, "Draws a UI element"},
             {ComponentType::ImageComponent, "Displays an image"},
             {ComponentType::TextComponent, "Displays text"},
+            {ComponentType::TextEffectComponent, "Animates a Text per character: wave, typewriter, gradient..."},
             {ComponentType::ButtonComponent, "Clickable button"},
             {ComponentType::InputFieldComponent, "Editable text field"},
             {ComponentType::PanelComponent, "Movable, resizable window"},

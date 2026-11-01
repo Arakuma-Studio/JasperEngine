@@ -94,6 +94,7 @@ namespace jasperengine::htmlui::compat {
     void rewriteClipPath(DeclContext&);
     void rewriteListStyle(DeclContext&);
     void rewriteObjectFit(DeclContext&);
+    void rewriteTextEffect(DeclContext&);
     void rewriteImageRendering(DeclContext&);
     void rewriteAccentColor(DeclContext&);
     void rewriteAppearance(DeclContext&);

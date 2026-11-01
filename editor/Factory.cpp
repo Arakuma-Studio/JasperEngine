@@ -226,6 +226,24 @@ std::string editor::Factory::toIdentifier(const std::string& name) {
     return out;
 }
 
+std::string editor::Factory::formatCanvasScaler(const CanvasScalerSettings& settings) {
+    static const char* const modes[] = {"UIScaleMode::FollowGameCanvas", "UIScaleMode::ConstantPixelSize",
+                                        "UIScaleMode::ScaleWithScreenSize", "UIScaleMode::ConstantPhysicalSize"};
+    static const char* const matchModes[] = {"ScreenMatchMode::MatchWidthOrHeight", "ScreenMatchMode::Expand", "ScreenMatchMode::Shrink"};
+    static const char* const units[] = {"PhysicalUnit::Centimeters", "PhysicalUnit::Millimeters", "PhysicalUnit::Inches",
+                                        "PhysicalUnit::Points", "PhysicalUnit::Picas"};
+    const CanvasScalerSettings d;
+    std::string out = "[](){ CanvasScalerSettings s;";
+    if (settings.mode != d.mode) out += std::string(" s.mode = ") + modes[(int)settings.mode] + ";";
+    if (settings.scaleFactor != d.scaleFactor) out += " s.scaleFactor = " + formatFloat(settings.scaleFactor) + ";";
+    if (settings.referenceResolution != d.referenceResolution) out += " s.referenceResolution = " + formatVector2(settings.referenceResolution) + ";";
+    if (settings.screenMatchMode != d.screenMatchMode) out += std::string(" s.screenMatchMode = ") + matchModes[(int)settings.screenMatchMode] + ";";
+    if (settings.matchWidthOrHeight != d.matchWidthOrHeight) out += " s.matchWidthOrHeight = " + formatFloat(settings.matchWidthOrHeight) + ";";
+    if (settings.physicalUnit != d.physicalUnit) out += std::string(" s.physicalUnit = ") + units[(int)settings.physicalUnit] + ";";
+    if (settings.fallbackScreenDPI != d.fallbackScreenDPI) out += " s.fallbackScreenDPI = " + formatFloat(settings.fallbackScreenDPI) + ";";
+    return out + " return s; }()";
+}
+
 std::string editor::Factory::formatVector2(const Vector2& v) {
     return "Vector2(" + formatFloat(v.x) + ", " + formatFloat(v.y) + ")";
 }
@@ -1870,7 +1888,58 @@ std::string editor::Factory::createTextComponent(int indentSpaces, EntityRegistr
     code << ind << "text.fixedHeight = " << formatBool(text.fixedHeight) << ";\n";
     code << ind << "text.pivotBaseline = " << formatBool(text.pivotBaseline) << ";\n";
     code << ind << "text.pivotCentered = " << formatBool(text.pivotCentered) << ";\n";
+    // outline, shadow and visible characters only when set
+    const TextComponent d;
+    if (text.outlineWidth != d.outlineWidth) code << ind << "text.outlineWidth = " << formatFloat(text.outlineWidth) << ";\n";
+    if (text.outlineColor != d.outlineColor) code << ind << "text.outlineColor = " << formatVector4(text.outlineColor) << ";\n";
+    if (text.shadowEnabled != d.shadowEnabled) code << ind << "text.shadowEnabled = " << formatBool(text.shadowEnabled) << ";\n";
+    if (text.shadowColor != d.shadowColor) code << ind << "text.shadowColor = " << formatVector4(text.shadowColor) << ";\n";
+    if (text.shadowOffset != d.shadowOffset) code << ind << "text.shadowOffset = " << formatVector2(text.shadowOffset) << ";\n";
+    if (text.shadowSoftness != d.shadowSoftness) code << ind << "text.shadowSoftness = " << formatFloat(text.shadowSoftness) << ";\n";
+    if (text.shadowDilate != d.shadowDilate) code << ind << "text.shadowDilate = " << formatFloat(text.shadowDilate) << ";\n";
+    if (text.visibleCharacters != d.visibleCharacters) code << ind << "text.visibleCharacters = " << text.visibleCharacters << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "TextComponent", "text", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createTextEffectComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<TextEffectComponent>(entity)) return "";
+    TextEffectComponent& effect = scene->getComponent<TextEffectComponent>(entity);
+    static const char* const types[] = {"None", "Wave", "Bounce", "Shake", "Pulse", "Typewriter", "FadeIn", "Grow", "Unfold", "Rainbow", "Gradient"};
+    static const char* const mixes[] = {"Multiply", "Add", "Replace"};
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    const TextEffectComponent d;
+    const TextEffectLayer dl;
+    code << ind << "TextEffectComponent textEffect;\n";
+    if (effect.enabled != d.enabled) code << ind << "textEffect.enabled = " << formatBool(effect.enabled) << ";\n";
+    for (size_t i = 0; i < effect.layers.size(); i++){
+        const TextEffectLayer& l = effect.layers[i];
+        if (l == dl) continue;
+        const std::string layer = "textEffect.layers[" + std::to_string(i) + "]";
+        code << ind << layer << ".type = TextEffectType::" << types[std::min((size_t)l.type, (size_t)10)] << ";\n";
+        if (l.enabled != dl.enabled) code << ind << layer << ".enabled = " << formatBool(l.enabled) << ";\n";
+        if (l.amplitude != dl.amplitude) code << ind << layer << ".amplitude = " << formatFloat(l.amplitude) << ";\n";
+        if (l.duration != dl.duration) code << ind << layer << ".duration = " << formatFloat(l.duration) << ";\n";
+        if (l.spread != dl.spread) code << ind << layer << ".spread = " << formatFloat(l.spread) << ";\n";
+        if (l.phaseStep != dl.phaseStep) code << ind << layer << ".phaseStep = " << formatFloat(l.phaseStep) << ";\n";
+        if (l.frequency != dl.frequency) code << ind << layer << ".frequency = " << formatFloat(l.frequency) << ";\n";
+        if (l.charactersPerSecond != dl.charactersPerSecond) code << ind << layer << ".charactersPerSecond = " << formatFloat(l.charactersPerSecond) << ";\n";
+        if (l.fadeTime != dl.fadeTime) code << ind << layer << ".fadeTime = " << formatFloat(l.fadeTime) << ";\n";
+        for (const TextEffectGradientStop& stop : l.gradient){
+            code << ind << layer << ".gradient.push_back(TextEffectGradientStop{" << formatVector4(stop.color) << ", " << formatFloat(stop.position) << "});\n";
+        }
+        if (l.mix != dl.mix) code << ind << layer << ".mix = TextEffectMix::" << mixes[std::min((size_t)l.mix, (size_t)2)] << ";\n";
+        if (l.saturation != dl.saturation) code << ind << layer << ".saturation = " << formatFloat(l.saturation) << ";\n";
+        if (l.lightness != dl.lightness) code << ind << layer << ".lightness = " << formatFloat(l.lightness) << ";\n";
+    }
+    if (effect.autoPlay != d.autoPlay) code << ind << "textEffect.autoPlay = " << formatBool(effect.autoPlay) << ";\n";
+    if (effect.loop != d.loop) code << ind << "textEffect.loop = " << formatBool(effect.loop) << ";\n";
+    if (effect.useUnscaledTime != d.useUnscaledTime) code << ind << "textEffect.useUnscaledTime = " << formatBool(effect.useUnscaledTime) << ";\n";
+    if (effect.startIndex != d.startIndex) code << ind << "textEffect.startIndex = " << effect.startIndex << ";\n";
+    if (effect.length != d.length) code << ind << "textEffect.length = " << effect.length << ";\n";
+    if (!effect.forWords.empty()) code << ind << "textEffect.forWords = " << formatString(effect.forWords) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "TextEffectComponent", "textEffect", assignExisting);
     return code.str();
 }
 
@@ -3552,6 +3621,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::LayoutGroupComponent: return createLayoutGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CanvasGroupComponent: return createCanvasGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TextComponent: return createTextComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::TextEffectComponent: return createTextEffectComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ImageComponent: return createImageComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::SpriteComponent: return createSpriteComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TilemapComponent: return createTilemapComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -4015,6 +4085,11 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     out << ind2 << "scene->setGravity3D(" << formatVector3(scene->getGravity3D()) << ");\n";
     if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
         out << ind2 << "scene->setPhysicsInterpolation(" << formatBool(scene->isPhysicsInterpolation()) << ");\n";
+    // the scene's own Canvas Scaler (it uses the project default otherwise)
+    if (scene->getCanvasScaler() != CanvasScalerSettings())
+        out << ind2 << "scene->setCanvasScaler(" << formatCanvasScaler(scene->getCanvasScaler()) << ");\n";
+    if (!scene->isCanvasScalerUseProjectDefault())
+        out << ind2 << "scene->setCanvasScalerUseProjectDefault(false);\n";
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         out << ind2 << "scene->setPhysics2DSubSteps(" << scene->getPhysics2DSubSteps() << ");\n";
     out << ind2 << "scene->setLightState(" << formatLightState(scene->getLightState()) << ");\n";

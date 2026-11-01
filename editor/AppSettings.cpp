@@ -354,6 +354,13 @@ bool AppSettings::loadSettings() {
                 if (gameNode["device"]) gameViewSettings.device = gameNode["device"].as<std::string>();
                 if (gameNode["orientation"]) gameViewSettings.orientation = gameNode["orientation"].as<int>();
                 if (gameNode["language"]) gameViewSettings.language = gameNode["language"].as<std::string>();
+                if (gameNode["resolution"] && gameNode["resolution"].IsMap()) {
+                    const YAML::Node& resolution = gameNode["resolution"];
+                    if (resolution["name"]) gameViewSettings.resolution = resolution["name"].as<std::string>();
+                    if (resolution["width"]) gameViewSettings.resolutionWidth = resolution["width"].as<int>();
+                    if (resolution["height"]) gameViewSettings.resolutionHeight = resolution["height"].as<int>();
+                    if (resolution["dpi"]) gameViewSettings.resolutionDpi = resolution["dpi"].as<float>();
+                }
             }
         }
 
@@ -517,6 +524,14 @@ bool AppSettings::saveSettings() {
         if (!gameViewSettings.device.empty()) gameNode["device"] = gameViewSettings.device;
         if (gameViewSettings.orientation != GameViewSettings{}.orientation) gameNode["orientation"] = gameViewSettings.orientation;
         if (!gameViewSettings.language.empty()) gameNode["language"] = gameViewSettings.language;
+        if (!gameViewSettings.resolution.empty()) {
+            YAML::Node resolution;
+            resolution["name"] = gameViewSettings.resolution;
+            resolution["width"] = gameViewSettings.resolutionWidth;
+            resolution["height"] = gameViewSettings.resolutionHeight;
+            if (gameViewSettings.resolutionDpi > 0.0f) resolution["dpi"] = gameViewSettings.resolutionDpi;
+            gameNode["resolution"] = resolution;
+        }
         editorNode["game_view"] = gameNode;
         settingsData["editor"] = editorNode;
 

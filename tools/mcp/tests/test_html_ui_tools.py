@@ -156,7 +156,11 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 # camera-shake (camerashaker/camerafollow component types, get_runtime_entity's shake/follow state,
 # .shake assets): +91 on its branch (107717 on main 1acde245f); merged with main 5762bb259:
 # 153 tools, total 111909 (tool_budget.py on the merged tree), the limit set to it
-TOTAL_LIMIT = 111909
+# ui-scaling-text: configure_game_view's resolution (a preset, "WxH[@dpi]", {width, height, dpi, name}) and
+# create_ui's outline/shadow text props (+284 on its branch); measured on the tree merged with main
+# 5762bb259 (everything above): 153 tools, total 112185 (tool_budget.py), the limit set to it
+# merged on main with camera-shake (lead, 9c8c6c584 + ui-scaling-text): provisional sum, re-measured below
+TOTAL_LIMIT = 112276
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

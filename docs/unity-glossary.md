@@ -165,6 +165,24 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | Player > Default Orientation, Allowed Orientations for Auto Rotation | Project Settings > Player > Resolution and Presentation (`player.default_orientation`, `player.allowed_orientations`; shared by Android and iOS) |
 | Device Simulator (orientation, language, `SystemInfo.deviceModel`) | the Game view's Device menu (device, Rotate, Language) |
 
+## UI scaling, TextMesh Pro, UI particles
+
+New with ui-scaling-text (details: [ui.md](mcp/guide/ui.md), HTML: [html-ui.md](mcp/guide/html-ui.md)).
+
+| Unity term | JasperEngine |
+|---|---|
+| `CanvasScaler` (UI Scale Mode, Reference Resolution, Screen Match Mode, Match, Scale Factor, Physical Unit, Fallback Screen DPI) | the Canvas Scaler: Project Settings > Graphics > UI Scale (`graphics.ui_scale`), a scene's Canvas Scaler (scene setting `canvas_scaler`, Lua `scene:getCanvasScaler()`: `uiScaleMode`, `referenceResolution`, `screenMatchMode`, `matchWidthOrHeight`, `scaleFactor`, `physicalUnit`, `fallbackScreenDPI`); the extra mode Follow Game Canvas (default) keeps the game canvas |
+| `CanvasScaler.ScaleMode.*`, `ScreenMatchMode.*`, `CanvasScaler.Unit.*` | `UIScaleMode.*`, `ScreenMatchMode.*`, `PhysicalUnit.*` (same names) |
+| A script switching `matchWidthOrHeight` between 0 and 1 by aspect (`CanvasScaleAdjuster`) | Screen Match Mode Expand |
+| `RectTransformUtility.ScreenPointToLocalPointInRectangle` (screen to canvas units) | `UI.canvasToUI(scene, point)` / `UI.uiToCanvas(scene, point)` |
+| Game view resolution presets (fixed resolution, custom sizes) | the Game view's resolution menu (Resolutions, Add custom...); MCP `configure_game_view {resolution}` |
+| TMP Outline (Thickness, Color) | Text `outlineWidth` (UI units), `outlineColor` |
+| TMP Underlay (Offset, Softness, Dilate, Color) | Text `shadowEnabled`, `shadowOffset` (UI units, right-down), `shadowSoftness`, `shadowDilate`, `shadowColor` |
+| TMP `maxVisibleCharacters` | Text `visibleCharacters` |
+| TextMesh Pro Effect (Waves, Grow, Unfold, Bounce, Sketch; Duration, Amplitude, Character Duration Ratio, Gradient + Mix, Repeat, AutoPlay, ForWords) | Text Effect component (`TextEffect` in Lua): layers Wave (amplitude 0.3 x TMP Amplitude em), Grow, Unfold, Bounce, Shake, Gradient (spread = Character Duration Ratio, mix add/multiply), `loop`, `autoPlay`, `forWords`; HTML: CSS `text-effect` |
+| Coffee `UIParticle` (particles in a canvas) | a Particle System under the UI element (GameObject > UI > Particle System, `useUnscaledTime`); HTML: `<particle-system src="....prefab">` |
+| `ParticleSystem.main.useUnscaledTime` | `ParticleSystem.useUnscaledTime` |
+
 ## Coroutines, timers and time
 
 Rules and the frame order: [lua-api.md](mcp/guide/lua-api.md) 2.13 (Time) and 2.14 (coroutines

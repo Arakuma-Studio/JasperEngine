@@ -924,16 +924,19 @@
 		71ABBD0F277A313C001CE3AF /* AlphaTween.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD0C277A313C001CE3AF /* AlphaTween.cpp */; };
 		71ABBD10277A313C001CE3AF /* AlphaTween.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD0D277A313C001CE3AF /* AlphaTween.h */; };
 		71ABBD13277A3166001CE3AF /* TextComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD11277A3166001CE3AF /* TextComponent.h */; };
+		4A534E4719F000D92EF9191D /* TextEffectComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47796DB3DF40344704 /* TextEffectComponent.h */; };
 		71ABBD14277A3166001CE3AF /* AlphaTweenComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD12277A3166001CE3AF /* AlphaTweenComponent.h */; };
 		71ABBD1C277A31BA001CE3AF /* Text.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD18277A31BA001CE3AF /* Text.cpp */; };
 		71ABBD1D277A31BA001CE3AF /* Text.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD18277A31BA001CE3AF /* Text.cpp */; };
 		71ABBD1E277A31BA001CE3AF /* Text.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD19277A31BA001CE3AF /* Text.h */; };
+		4A534E471345135D2F624DEC /* TextEffect.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470BB9A69CE1A89342 /* TextEffect.h */; };
 		71ABBD23277A31E6001CE3AF /* UISystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD21277A31E6001CE3AF /* UISystem.h */; };
 		71ABBD24277A31E6001CE3AF /* UISystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD22277A31E6001CE3AF /* UISystem.cpp */; };
 		71ABBD25277A31E6001CE3AF /* UISystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD22277A31E6001CE3AF /* UISystem.cpp */; };
 		71ABBD29277A3210001CE3AF /* STBText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD26277A3210001CE3AF /* STBText.cpp */; };
 		71ABBD2A277A3210001CE3AF /* STBText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD26277A3210001CE3AF /* STBText.cpp */; };
 		71ABBD2B277A3210001CE3AF /* STBText.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD27277A3210001CE3AF /* STBText.h */; };
+		4A534E47ADA850E0B9F100AA /* TextGlyphInfo.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4707D4DDB4F0BECC9D /* TextGlyphInfo.h */; };
 		71ABBD2C277A3210001CE3AF /* DefaultFont.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD28277A3210001CE3AF /* DefaultFont.h */; };
 		71ABBD342783C8BB001CE3AF /* Image.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD322783C8BA001CE3AF /* Image.h */; };
 		71ABBD352783C8BB001CE3AF /* Image.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD332783C8BB001CE3AF /* Image.cpp */; };
@@ -1905,8 +1908,14 @@
 		48544D4C0000000000000292 /* librmlui-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000290 /* librmlui-ios.a */; };
 		48544D4C0000000000000293 /* librmlui-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000291 /* librmlui-macos.a */; };
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
+		4A534E471C3F4DAB332F96BE /* UIParticleSystemElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47003429E8B7BC0051 /* UIParticleSystemElement.h */; };
+		4A534E470F6F1615323BCE7C /* HtmlTextEffects.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BAF7E96D3D74E94A /* HtmlTextEffects.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		4A534E4771ADCA4EFFFC68F6 /* UIParticleSystemElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478D592BED4648F8FD /* UIParticleSystemElement.cpp */; };
+		4A534E479E432B7A243D7B2C /* HtmlTextEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476A5524DF63B1EDB3 /* HtmlTextEffects.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		4A534E47A87B6802B44200F7 /* UIParticleSystemElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478D592BED4648F8FD /* UIParticleSystemElement.cpp */; };
+		4A534E47AB42BF2CCC559963 /* HtmlTextEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476A5524DF63B1EDB3 /* HtmlTextEffects.cpp */; };
 		434F4D507A858F2513B7D0C0 /* EffectSimulator.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50B23E8A28DF9E3D0F /* EffectSimulator.h */; };
 		434F4D504F4AFBC2FF2FA6C1 /* EffectSimulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50A333501C6FB22061 /* EffectSimulator.cpp */; };
 		434F4D5022D0B1A30CA129C1 /* EffectSimulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50A333501C6FB22061 /* EffectSimulator.cpp */; };
@@ -3434,6 +3443,10 @@
 		4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730D9EC2E29E781C3 /* Screen.cpp */; };
 		4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */; };
 		4A534E47B6B13162C6157931 /* FrameLimiter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */; };
+		4A534E47C144534CF4FEA79E /* TextEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4781CB301F7B480963 /* TextEffects.cpp */; };
+		4A534E4724C240F5D9AD0E03 /* CanvasScaler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47466B4A02C7A505EF /* CanvasScaler.cpp */; };
+		4A534E4702A81B13C975CC0E /* TextEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4781CB301F7B480963 /* TextEffects.cpp */; };
+		4A534E47361DD5D17268777C /* CanvasScaler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47466B4A02C7A505EF /* CanvasScaler.cpp */; };
 		4A534E471F031487F33960F3 /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
 		4A534E474B3E5336B343B76E /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
 		4A534E4792C92F90213540FE /* Screen.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471F33544BB442A466 /* Screen.h */; };
@@ -3511,6 +3524,9 @@
 		4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */; };
 		4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */; };
 		4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */; };
+		4A534E4745BC31F5DF7490B9 /* CanvasScalerRef.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E272DE30F6985277 /* CanvasScalerRef.h */; };
+		4A534E4748DA23385687367C /* TextEffects.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */; };
+		4A534E470113400EA26A0D56 /* CanvasScaler.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47310D1BCA96AE12EB /* CanvasScaler.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -5258,13 +5274,16 @@
 		71ABBD0C277A313C001CE3AF /* AlphaTween.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AlphaTween.cpp; sourceTree = "<group>"; };
 		71ABBD0D277A313C001CE3AF /* AlphaTween.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AlphaTween.h; sourceTree = "<group>"; };
 		71ABBD11277A3166001CE3AF /* TextComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextComponent.h; sourceTree = "<group>"; };
+		4A534E47796DB3DF40344704 /* TextEffectComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextEffectComponent.h; sourceTree = "<group>"; };
 		71ABBD12277A3166001CE3AF /* AlphaTweenComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AlphaTweenComponent.h; sourceTree = "<group>"; };
 		71ABBD18277A31BA001CE3AF /* Text.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Text.cpp; sourceTree = "<group>"; };
 		71ABBD19277A31BA001CE3AF /* Text.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Text.h; sourceTree = "<group>"; };
+		4A534E470BB9A69CE1A89342 /* TextEffect.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextEffect.h; sourceTree = "<group>"; };
 		71ABBD21277A31E6001CE3AF /* UISystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISystem.h; sourceTree = "<group>"; };
 		71ABBD22277A31E6001CE3AF /* UISystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystem.cpp; sourceTree = "<group>"; };
 		71ABBD26277A3210001CE3AF /* STBText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = STBText.cpp; sourceTree = "<group>"; };
 		71ABBD27277A3210001CE3AF /* STBText.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = STBText.h; sourceTree = "<group>"; };
+		4A534E4707D4DDB4F0BECC9D /* TextGlyphInfo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextGlyphInfo.h; sourceTree = "<group>"; };
 		71ABBD28277A3210001CE3AF /* DefaultFont.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DefaultFont.h; sourceTree = "<group>"; };
 		71ABBD322783C8BA001CE3AF /* Image.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Image.h; sourceTree = "<group>"; };
 		71ABBD332783C8BB001CE3AF /* Image.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Image.cpp; sourceTree = "<group>"; };
@@ -5844,7 +5863,11 @@
 		48544D4C0000000000000290 /* librmlui-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
+		4A534E47003429E8B7BC0051 /* UIParticleSystemElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIParticleSystemElement.h; sourceTree = "<group>"; };
+		4A534E47BAF7E96D3D74E94A /* HtmlTextEffects.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlTextEffects.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		4A534E478D592BED4648F8FD /* UIParticleSystemElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIParticleSystemElement.cpp; sourceTree = "<group>"; };
+		4A534E476A5524DF63B1EDB3 /* HtmlTextEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlTextEffects.cpp; sourceTree = "<group>"; };
 		434F4D50B23E8A28DF9E3D0F /* EffectSimulator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectSimulator.h; sourceTree = "<group>"; };
 		434F4D50A333501C6FB22061 /* EffectSimulator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectSimulator.cpp; sourceTree = "<group>"; };
 		434F4D503752E7417C733B6D /* EffectValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectValue.h; sourceTree = "<group>"; };
@@ -6972,6 +6995,8 @@
 		4A534E4743499EE7BE02622E /* MainThreadQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MainThreadQueue.h; sourceTree = "<group>"; };
 		4A534E4730D9EC2E29E781C3 /* Screen.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Screen.cpp; sourceTree = "<group>"; };
 		4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FrameLimiter.cpp; sourceTree = "<group>"; };
+		4A534E4781CB301F7B480963 /* TextEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextEffects.cpp; sourceTree = "<group>"; };
+		4A534E47466B4A02C7A505EF /* CanvasScaler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CanvasScaler.cpp; sourceTree = "<group>"; };
 		4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformRules.cpp; sourceTree = "<group>"; };
 		4A534E471F33544BB442A466 /* Screen.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Screen.h; sourceTree = "<group>"; };
 		4A534E477A428FAA7908B6A0 /* EdgeInsets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EdgeInsets.h; sourceTree = "<group>"; };
@@ -7024,6 +7049,9 @@
 		4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMaskPool.h; sourceTree = "<group>"; };
 		4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JsonAssetPool.h; sourceTree = "<group>"; };
 		4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ActionSystemPlayersDetail.h; sourceTree = "<group>"; };
+		4A534E47E272DE30F6985277 /* CanvasScalerRef.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasScalerRef.h; sourceTree = "<group>"; };
+		4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextEffects.h; sourceTree = "<group>"; };
+		4A534E47310D1BCA96AE12EB /* CanvasScaler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasScaler.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8475,6 +8503,7 @@
 				7105CAA62AD61BD5007C91BA /* JoltPhysicsAux.h */,
 				71451BF2270CA3EA00712643 /* SpriteFrameData.h */,
 				71ABBD27277A3210001CE3AF /* STBText.h */,
+				4A534E4707D4DDB4F0BECC9D /* TextGlyphInfo.h */,
 				71ABBD26277A3210001CE3AF /* STBText.cpp */,
 				7128D0AD25BB18DC00965B51 /* StringUtils.h */,
 				48544D4C00000000000002DB /* Utf16Combiner.h */,
@@ -8501,8 +8530,13 @@
 				4A534E47951BAE2F6DCE875F /* PostColorLut.cpp */,
 				4A534E47BE2CA7B811737252 /* PostColorLut.h */,
 				4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */,
+				4A534E4781CB301F7B480963 /* TextEffects.cpp */,
+				4A534E47466B4A02C7A505EF /* CanvasScaler.cpp */,
 				4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */,
 				4A534E47DB493E51DF771D1F /* FrameLimiter.h */,
+				4A534E47E272DE30F6985277 /* CanvasScalerRef.h */,
+				4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */,
+				4A534E47310D1BCA96AE12EB /* CanvasScaler.h */,
 				4A534E47778D99DE934432D4 /* PlatformRules.h */,
 			);
 			path = util;
@@ -8610,6 +8644,7 @@
 				71451BB2270C9D0F00712643 /* SpriteComponent.h */,
 				715CB113288CD3F60049344B /* TerrainComponent.h */,
 				71ABBD11277A3166001CE3AF /* TextComponent.h */,
+				4A534E47796DB3DF40344704 /* TextEffectComponent.h */,
 				713E581427BA9D1300376680 /* InputFieldComponent.h */,
 				71D7494B296731A800348AB8 /* TilemapComponent.h */,
 				71451BB9270C9D0F00712643 /* TweenComponent.h */,
@@ -9801,6 +9836,7 @@
 				71033D682BD1A7F000D81FB5 /* Scrollbar.h */,
 				71033D672BD1A7F000D81FB5 /* Scrollbar.cpp */,
 				71ABBD19277A31BA001CE3AF /* Text.h */,
+				4A534E470BB9A69CE1A89342 /* TextEffect.h */,
 				71ABBD18277A31BA001CE3AF /* Text.cpp */,
 				713E580B27BA9CE400376680 /* InputField.h */,
 				713E580927BA9CE400376680 /* InputField.cpp */,
@@ -10629,7 +10665,11 @@
 				48544D4C0000000000000001 /* HtmlUI.h */,
 				48544D4C0000000000000003 /* HtmlUI.cpp */,
 				48544D4C00000000000002A6 /* HtmlUIClock.h */,
+				4A534E47003429E8B7BC0051 /* UIParticleSystemElement.h */,
+				4A534E47BAF7E96D3D74E94A /* HtmlTextEffects.h */,
 				48544D4C00000000000002A8 /* HtmlUIClock.cpp */,
+				4A534E478D592BED4648F8FD /* UIParticleSystemElement.cpp */,
+				4A534E476A5524DF63B1EDB3 /* HtmlTextEffects.cpp */,
 				48544D4CD1BC6E137B04E6B6 /* HtmlUIInspector.h */,
 				48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */,
 				48544D4CF6E10DE1E9E06189 /* HtmlUIInspectorInternal.h */,
@@ -12128,6 +12168,7 @@
 				71ABBD382791167A001CE3AF /* UIComponent.h in Headers */,
 				71BE623E25B1DB9E006D6E02 /* LuaScript.h in Headers */,
 				71ABBD1E277A31BA001CE3AF /* Text.h in Headers */,
+				4A534E471345135D2F624DEC /* TextEffect.h in Headers */,
 				7126757E2B65F4470031089C /* LineRendererComponent.h in Headers */,
 				71E54505284D5BB700C68FAB /* TranslateTracks.h in Headers */,
 				7157344C2D9A23A40078952E /* OBB.h in Headers */,
@@ -12162,6 +12203,7 @@
 				17C554F82FB903B0008804C2 /* ModelPool.h in Headers */,
 				71C005C2D2E7A0100C91BA00 /* MeshLodPool.h in Headers */,
 				71ABBD2B277A3210001CE3AF /* STBText.h in Headers */,
+				4A534E47ADA850E0B9F100AA /* TextGlyphInfo.h in Headers */,
 				71CC839726B8C4D800EEBB93 /* Light.h in Headers */,
 				717D9B4127337850002C0803 /* ParticleSystemComponent.h in Headers */,
 				715CB119288CD40E0049344B /* Terrain.h in Headers */,
@@ -12212,6 +12254,7 @@
 				7105A55A28B305910092EA05 /* Color.h in Headers */,
 				71ABBD342783C8BB001CE3AF /* Image.h in Headers */,
 				71ABBD13277A3166001CE3AF /* TextComponent.h in Headers */,
+				4A534E4719F000D92EF9191D /* TextEffectComponent.h in Headers */,
 				71E5450C284D5BB700C68FAB /* ScaleTracks.h in Headers */,
 				71E54515284D5BE000C68FAB /* AnimationComponent.h in Headers */,
 				71ABBD2C277A3210001CE3AF /* DefaultFont.h in Headers */,
@@ -12260,6 +12303,8 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				4A534E471C3F4DAB332F96BE /* UIParticleSystemElement.h in Headers */,
+				4A534E470F6F1615323BCE7C /* HtmlTextEffects.h in Headers */,
 				434F4D507A858F2513B7D0C0 /* EffectSimulator.h in Headers */,
 				434F4D505B1F49763171CF59 /* EffectValue.h in Headers */,
 				434F4D5011BEA07CC8A2964F /* EffectTypes.h in Headers */,
@@ -12522,6 +12567,9 @@
 				4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */,
 				4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */,
 				4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */,
+				4A534E4745BC31F5DF7490B9 /* CanvasScalerRef.h in Headers */,
+				4A534E4748DA23385687367C /* TextEffects.h in Headers */,
+				4A534E470113400EA26A0D56 /* CanvasScaler.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14363,6 +14411,8 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				4A534E4771ADCA4EFFFC68F6 /* UIParticleSystemElement.cpp in Sources */,
+				4A534E479E432B7A243D7B2C /* HtmlTextEffects.cpp in Sources */,
 				434F4D5022D0B1A30CA129C1 /* EffectSimulator.cpp in Sources */,
 				434F4D503637B31EF1ABE22A /* EffectValue.cpp in Sources */,
 				434F4D5018A8FE224E1B3193 /* EffectSyntax.cpp in Sources */,
@@ -14636,6 +14686,8 @@
 				4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */,
 				4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */,
 				4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */,
+				4A534E47C144534CF4FEA79E /* TextEffects.cpp in Sources */,
+				4A534E4724C240F5D9AD0E03 /* CanvasScaler.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14856,6 +14908,8 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				4A534E47A87B6802B44200F7 /* UIParticleSystemElement.cpp in Sources */,
+				4A534E47AB42BF2CCC559963 /* HtmlTextEffects.cpp in Sources */,
 				434F4D504F4AFBC2FF2FA6C1 /* EffectSimulator.cpp in Sources */,
 				434F4D5043DC7783C361E7D8 /* EffectValue.cpp in Sources */,
 				434F4D50E16C78090E603422 /* EffectSyntax.cpp in Sources */,
@@ -15129,6 +15183,8 @@
 				4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */,
 				4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */,
 				4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */,
+				4A534E4702A81B13C975CC0E /* TextEffects.cpp in Sources */,
+				4A534E47361DD5D17268777C /* CanvasScaler.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

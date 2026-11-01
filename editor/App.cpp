@@ -3431,8 +3431,23 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     Engine::computeViewLayout(width, height, (int)project.getCanvasWidth(), (int)project.getCanvasHeight(), project.getScalingMode(),
                               canvasWidth, canvasHeight, viewRect);
 
+    // a UI scene's camera covers its Canvas Scaler UI size (what it is laid out at), any other the canvas
+    auto layerCanvas = [&](SceneProject* layerScene, Entity layerCamera, float& layerWidth, float& layerHeight) {
+        layerWidth = (float)canvasWidth;
+        layerHeight = (float)canvasHeight;
+        CameraComponent* camera = layerScene->scene->findComponent<CameraComponent>(layerCamera);
+        if (layerScene->sceneType == SceneType::SCENE_UI && layerScene->scene->getCanvasScale().scaled &&
+            camera && camera->type == CameraType::CAMERA_UI) {
+            const Vector2 ui = layerScene->scene->getSystem<UISystem>()->getCanvasSize();
+            layerWidth = ui.x;
+            layerHeight = ui.y;
+        }
+    };
+
     std::vector<Engine::ViewLayer> layers;
-    layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, (float)canvasWidth, (float)canvasHeight});
+    float mainCanvasWidth = 0.0f, mainCanvasHeight = 0.0f;
+    layerCanvas(&sceneProject, cameraEntity, mainCanvasWidth, mainCanvasHeight);
+    layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, mainCanvasWidth, mainCanvasHeight});
 
     for (const ChildSceneRef& childSceneRef : sceneProject.childScenes) {
         SceneProject* childScene = project.getScene(childSceneRef.id);
@@ -3447,7 +3462,9 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
             childScene->scene->getSystem<UIDocumentSystem>()->update(0);
             childScene->scene->getSystem<RenderSystem>()->update(0);
         }
-        layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, (float)canvasWidth, (float)canvasHeight});
+        float childCanvasWidth = 0.0f, childCanvasHeight = 0.0f;
+        layerCanvas(childScene, childCamera, childCanvasWidth, childCanvasHeight);
+        layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, childCanvasWidth, childCanvasHeight});
     }
 
     Engine::drawView(GAME_VIEW_ID, target, layers);

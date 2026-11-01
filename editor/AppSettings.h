@@ -60,11 +60,19 @@ struct GameViewSettings {
     std::string device;
     int orientation = 1;
     std::string language;
+    // a fixed resolution (window/GameResolutions.h): the game renders at that size, fitted to
+    // the view; "" = the aspect above (the view's own size). A device's screen wins over it.
+    std::string resolution;
+    int resolutionWidth = 0;
+    int resolutionHeight = 0;
+    float resolutionDpi = 0.0f;
 
     bool operator==(const GameViewSettings& other) const {
         return aspect == other.aspect && scale == other.scale
             && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
-            && device == other.device && orientation == other.orientation && language == other.language;
+            && device == other.device && orientation == other.orientation && language == other.language
+            && resolution == other.resolution && resolutionWidth == other.resolutionWidth
+            && resolutionHeight == other.resolutionHeight && resolutionDpi == other.resolutionDpi;
     }
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
 };

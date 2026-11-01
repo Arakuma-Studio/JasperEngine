@@ -52,6 +52,7 @@
 #include "TrailRenderer.h"
 #include "Sprite.h"
 #include "object/ui/Text.h"   // by path: lexbor has a dom/interfaces/text.h (Xcode header maps ignore case)
+#include "object/ui/TextEffect.h"
 #include "Image.h"
 #include "Button.h"
 #include "Panel.h"
@@ -2458,8 +2459,156 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("colorWrite", &Text::getColorWrite, &Text::setColorWrite)
         .addProperty("pivotBaseline", &Text::isPivotBaseline, &Text::setPivotBaseline)
         .addProperty("pivotCentered", &Text::isPivotCentered, &Text::setPivotCentered)
+        .addProperty("outlineWidth", &Text::getOutlineWidth, &Text::setOutlineWidth)
+        .addProperty("outlineColor", &Text::getOutlineColor, &Text::setOutlineColor)
+        .addProperty("shadowEnabled", &Text::isShadowEnabled, &Text::setShadowEnabled)
+        .addProperty("shadowColor", &Text::getShadowColor, &Text::setShadowColor)
+        .addProperty("shadowOffset", &Text::getShadowOffset, &Text::setShadowOffset)
+        .addProperty("shadowSoftness", &Text::getShadowSoftness, &Text::setShadowSoftness)
+        .addProperty("shadowDilate", &Text::getShadowDilate, &Text::setShadowDilate)
+        .addProperty("visibleCharacters", &Text::getVisibleCharacters, &Text::setVisibleCharacters)
         .addFunction("getAABB", &Text::getAABB)
         .addFunction("getWorldAABB", &Text::getWorldAABB)
+        .endClass();
+
+    // Text Effect (per-character animation of a Text): enums, a layer's values, the component's
+    // script interface
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextEffectType")
+        .addVariable("None", TextEffectType::None)
+        .addVariable("Wave", TextEffectType::Wave)
+        .addVariable("Bounce", TextEffectType::Bounce)
+        .addVariable("Shake", TextEffectType::Shake)
+        .addVariable("Pulse", TextEffectType::Pulse)
+        .addVariable("Typewriter", TextEffectType::Typewriter)
+        .addVariable("FadeIn", TextEffectType::FadeIn)
+        .addVariable("Grow", TextEffectType::Grow)
+        .addVariable("Unfold", TextEffectType::Unfold)
+        .addVariable("Rainbow", TextEffectType::Rainbow)
+        .addVariable("Gradient", TextEffectType::Gradient)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextEffectMix")
+        .addVariable("Multiply", TextEffectMix::Multiply)
+        .addVariable("Add", TextEffectMix::Add)
+        .addVariable("Replace", TextEffectMix::Replace)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffectGradientStop>("TextEffectGradientStop")
+        .addConstructor<void(*)()>()
+        .addProperty("color", &TextEffectGradientStop::color, &TextEffectGradientStop::color)
+        .addProperty("position", &TextEffectGradientStop::position, &TextEffectGradientStop::position)
+        .endClass();
+
+    // a layer as values (TextEffectLayer(), then textEffect:setLayer(i, layer))
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffectLayer>("TextEffectLayer")
+        .addConstructor<void(*)()>()
+        // (a type's default amplitude follows: 1 for Grow and Unfold)
+        .addProperty("type", [] (const TextEffectLayer* self) -> TextEffectType { return self->type; },
+                             [] (TextEffectLayer* self, TextEffectType type) { TextEffects::setType(*self, type); })
+        .addProperty("enabled", &TextEffectLayer::enabled, &TextEffectLayer::enabled)
+        .addProperty("amplitude", &TextEffectLayer::amplitude, &TextEffectLayer::amplitude)
+        .addProperty("duration", &TextEffectLayer::duration, &TextEffectLayer::duration)
+        .addProperty("spread", &TextEffectLayer::spread, &TextEffectLayer::spread)
+        .addProperty("phaseStep", &TextEffectLayer::phaseStep, &TextEffectLayer::phaseStep)
+        .addProperty("frequency", &TextEffectLayer::frequency, &TextEffectLayer::frequency)
+        .addProperty("charactersPerSecond", &TextEffectLayer::charactersPerSecond, &TextEffectLayer::charactersPerSecond)
+        .addProperty("fadeTime", &TextEffectLayer::fadeTime, &TextEffectLayer::fadeTime)
+        .addProperty("gradient", &TextEffectLayer::gradient, &TextEffectLayer::gradient)
+        .addProperty("mix", &TextEffectLayer::mix, &TextEffectLayer::mix)
+        .addProperty("saturation", &TextEffectLayer::saturation, &TextEffectLayer::saturation)
+        .addProperty("lightness", &TextEffectLayer::lightness, &TextEffectLayer::lightness)
+        .endClass();
+
+    // a running effect's layer (textEffect:getLayer(i)): writes change the effect
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffectLayerRef>("TextEffectLayerRef")
+        .addProperty("type", &TextEffectLayerRef::getType, &TextEffectLayerRef::setType)
+        .addProperty("enabled", &TextEffectLayerRef::isEnabled, &TextEffectLayerRef::setEnabled)
+        .addProperty("amplitude", &TextEffectLayerRef::getAmplitude, &TextEffectLayerRef::setAmplitude)
+        .addProperty("duration", &TextEffectLayerRef::getDuration, &TextEffectLayerRef::setDuration)
+        .addProperty("spread", &TextEffectLayerRef::getSpread, &TextEffectLayerRef::setSpread)
+        .addProperty("phaseStep", &TextEffectLayerRef::getPhaseStep, &TextEffectLayerRef::setPhaseStep)
+        .addProperty("frequency", &TextEffectLayerRef::getFrequency, &TextEffectLayerRef::setFrequency)
+        .addProperty("charactersPerSecond", &TextEffectLayerRef::getCharactersPerSecond, &TextEffectLayerRef::setCharactersPerSecond)
+        .addProperty("fadeTime", &TextEffectLayerRef::getFadeTime, &TextEffectLayerRef::setFadeTime)
+        .addProperty("gradient", &TextEffectLayerRef::getGradient, &TextEffectLayerRef::setGradient)
+        .addProperty("mix", &TextEffectLayerRef::getMix, &TextEffectLayerRef::setMix)
+        .addProperty("saturation", &TextEffectLayerRef::getSaturation, &TextEffectLayerRef::setSaturation)
+        .addProperty("lightness", &TextEffectLayerRef::getLightness, &TextEffectLayerRef::setLightness)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffect>("TextEffect")
+        .addConstructor<void(*)(Scene*, Entity)>()
+        .addProperty("enabled", &TextEffect::isEnabled, &TextEffect::setEnabled)
+        .addProperty("autoPlay", &TextEffect::isAutoPlay, &TextEffect::setAutoPlay)
+        .addProperty("loop", &TextEffect::isLoop, &TextEffect::setLoop)
+        .addProperty("useUnscaledTime", &TextEffect::isUseUnscaledTime, &TextEffect::setUseUnscaledTime)
+        .addProperty("startIndex", &TextEffect::getStartIndex, &TextEffect::setStartIndex)
+        .addProperty("length", &TextEffect::getLength, &TextEffect::setLength)
+        .addProperty("forWords", &TextEffect::getForWords, &TextEffect::setForWords)
+        .addProperty("entity", &TextEffect::getEntity)
+        .addFunction("getLayer", &TextEffect::getLayer)
+        // a TextEffectLayer, or a table of its fields ({type = TextEffectType.Wave, amplitude = 0.12})
+        .addFunction("setLayer", [] (TextEffect* self, int index, luabridge::LuaRef value) {
+            TextEffectLayer layer;
+            if (value.isInstance<TextEffectLayer>()){
+                layer = value.cast<TextEffectLayer>().value();
+            }else if (value.isTable()){
+                auto number = [&](const char* key, float& target){
+                    luabridge::LuaRef field = value[key];
+                    if (field.isNumber()) target = field.unsafe_cast<float>();
+                };
+                luabridge::LuaRef type = value["type"];
+                // (a type's default amplitude: 1 for Grow and Unfold)
+                if (type.isNumber()) TextEffects::setType(layer, (TextEffectType)type.unsafe_cast<int>());
+                luabridge::LuaRef enabled = value["enabled"];
+                if (enabled.isBool()) layer.enabled = enabled.unsafe_cast<bool>();
+                number("amplitude", layer.amplitude);
+                number("duration", layer.duration);
+                number("spread", layer.spread);
+                number("phaseStep", layer.phaseStep);
+                number("frequency", layer.frequency);
+                number("charactersPerSecond", layer.charactersPerSecond);
+                number("fadeTime", layer.fadeTime);
+                number("saturation", layer.saturation);
+                number("lightness", layer.lightness);
+                luabridge::LuaRef mix = value["mix"];
+                if (mix.isNumber()) layer.mix = (TextEffectMix)mix.unsafe_cast<int>();
+                luabridge::LuaRef gradient = value["gradient"];
+                if (gradient.isTable()){
+                    for (int i = 1; i <= gradient.length(); i++){
+                        luabridge::LuaRef stop = gradient[i];
+                        if (stop.isInstance<TextEffectGradientStop>()){
+                            layer.gradient.push_back(stop.cast<TextEffectGradientStop>().value());
+                        }else if (stop.isTable()){
+                            TextEffectGradientStop entry;
+                            luabridge::LuaRef color = stop["color"];
+                            if (color.isInstance<Vector4>()) entry.color = color.cast<Vector4>().value();
+                            luabridge::LuaRef position = stop["position"];
+                            if (position.isNumber()) entry.position = position.unsafe_cast<float>();
+                            layer.gradient.push_back(entry);
+                        }
+                    }
+                }
+            }else{
+                Log::warn("TextEffect.setLayer: expects a TextEffectLayer or a table of its fields");
+                return;
+            }
+            self->setLayer(index, layer);
+        })
+        .addFunction("play", &TextEffect::play)
+        .addFunction("stop", &TextEffect::stop)
+        .addFunction("finish", &TextEffect::finish)
+        .addFunction("restart", &TextEffect::restart)
+        .addFunction("isFinished", &TextEffect::isFinished)
+        .addFunction("isPlaying", &TextEffect::isPlaying)
+        .addProperty("onComplete", [] (TextEffect* self, lua_State*) { return &self->getOnComplete(); }, [] (TextEffect* self, lua_State* L) { self->getOnComplete() = L; })
+        .addProperty("onCharacterRevealed", [] (TextEffect* self, lua_State*) { return &self->getOnCharacterRevealed(); }, [] (TextEffect* self, lua_State* L) { self->getOnCharacterRevealed() = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

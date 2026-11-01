@@ -10,6 +10,7 @@
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
+#include "util/CanvasScaler.h"
 #include <string>
 #include <vector>
 
@@ -285,6 +286,11 @@ namespace jasperengine{
         unsigned int fixedResolutionWidth = 640;
         unsigned int fixedResolutionHeight = 360;
         TextureFilter fixedResolutionFilter = TextureFilter::NEAREST;
+
+        // the UI's own space (Canvas Scaler): the project default (Engine::setDefaultCanvasScaler)
+        // unless this scene overrides it
+        bool canvasScalerUseProjectDefault = true;
+        CanvasScalerSettings canvasScaler;
 
         // scene-wide custom shaders, used when a component's customShader is empty
         // (project-relative base or "a.vert|b.frag"; empty = engine built-in)

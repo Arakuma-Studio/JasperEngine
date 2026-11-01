@@ -363,6 +363,32 @@ void prepare<TextComponent>(TextComponent& text, Entity, CloneContext&) {
     text.atlasVersion = 0;
     text.needReloadAtlas = false;
     text.needUpdateText = true;
+    text.glyphInfo.clear();
+    text.rasterScale = 1.0f;
+    text.sdfPadding = 0;
+}
+
+template<>
+void prepare<TextEffectComponent>(TextEffectComponent& effect, Entity, CloneContext&) {
+    // the authored fields are copied; the copy starts as a loaded scene starts it (autoPlay),
+    // with no callbacks
+    effect.onComplete.clear();
+    effect.onCharacterRevealed.clear();
+    effect.playing = false;
+    effect.finished = false;
+    effect.started = false;
+    effect.time = 0.0;
+    effect.cycleTime = 0.0;
+    effect.revealed = 0;
+    effect.previewInEditor = false;
+    effect.needRestart = false;
+    effect.needApply = true;
+    effect.applied = false;
+    effect.wasActive = false;
+    effect.appliedBuild = 0;
+    effect.basePositions.clear();
+    effect.appliedText.clear();
+    effect.appliedFontSize = 0;
 }
 
 template<>
@@ -1049,6 +1075,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<VertexAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraShakerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraFollowComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TextEffectComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 

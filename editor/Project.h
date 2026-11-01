@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "window/GameResolutions.h"
 #include "Scene.h"
 #include "Catalog.h"
 #include "render/SceneRender.h"
@@ -646,6 +647,12 @@ namespace jasperengine::editor{
         unsigned int canvasWidth;
         unsigned int canvasHeight;
         Scaling scalingMode;
+        // Project Settings > Graphics > UI Scale (the Canvas Scaler's project default)
+        CanvasScalerSettings uiScale;
+        // the Game view's image (setEditViewSize); 0 = the canvas
+        float editViewWidth = 0.0f;
+        float editViewHeight = 0.0f;
+        float editViewDpi = 0.0f;
         TextureStrategy textureStrategy;
         bool vsyncEnabled;
         int htmlUiMsaaSamples;
@@ -705,6 +712,7 @@ namespace jasperengine::editor{
         PhysicsPlacementSettings physicsPlacementSettings;
         SpriteNormalsWindowSettings spriteNormalsSettings;
         bool simulateTouch;
+        std::vector<GameResolution> customResolutions;
 
         // True while project.yaml holds the only copy of this user's editor state
         bool workspaceMigrationPending = false;
@@ -1189,6 +1197,19 @@ namespace jasperengine::editor{
         void setScalingMode(Scaling scalingMode);
         Scaling getScalingMode() const;
 
+        // the Canvas Scaler every scene uses unless it overrides it; applied to the Engine at
+        // Play and by the generated main of exports. A change relays the edit-mode UI scenes out.
+        void setUIScale(const CanvasScalerSettings& uiScale);
+        const CanvasScalerSettings& getUIScale() const;
+        // The UI size an edit-mode scene lays out at: its Canvas Scaler for the Game view's
+        // resolution (getEditViewSize), so the Scene view shows what the Game view will
+        void applyEditCanvasScale(Scene* scene, SceneType type, SceneRender* sceneRender) const;
+        void applyEditCanvasScaleToAll();
+        // The view the Scene view lays UI out for: what the Game view shows (its fixed
+        // resolution, else its size; GameWindow sets it), the canvas before; dpi 0 = unknown
+        void setEditViewSize(float width, float height, float dpi);
+        void getEditViewSize(float& width, float& height, float& dpi) const;
+
         void setTextureStrategy(TextureStrategy textureStrategy);
         TextureStrategy getTextureStrategy() const;
 
@@ -1410,6 +1431,9 @@ namespace jasperengine::editor{
         // Play acts as a touch device: the mouse is one finger and isTouchDevice() is true
         bool isSimulateTouch() const;
         void setSimulateTouch(bool simulateTouch);
+        // the Game view's custom resolutions (editor workspace, this user's)
+        const std::vector<GameResolution>& getCustomResolutions() const;
+        void setCustomResolutions(const std::vector<GameResolution>& resolutions);
 
         CommandHistory* getProjectCommandHistory();
 

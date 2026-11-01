@@ -116,6 +116,11 @@ namespace {
          "A <video> attribute or content without an engine equivalent was dropped: playsinline (videos always play inline), "
          "crossorigin, controlslist, disablepictureinpicture, disableremoteplayback, x-webkit-airplay, mediagroup, and the "
          "fallback content inside <video> (browsers that play video never show it either)."},
+        {codes::ParticleSystemSource, W, false, "particle-system-source", "Particle system source missing",
+         "A <particle-system src=\"...\"> names no prefab of the build, or a prefab whose GameObjects have no Particle "
+         "System (with an Action): the element draws nothing. Name a .prefab of the project that has one (MCP "
+         "create_particles then create_prefab, or the Hierarchy's Particle System saved as a prefab); prefabs exist in Play "
+         "and in exported games, not in edit mode."},
 
         // ---- CSS
         {codes::UnknownProperty, W, false, "unknown-property", "Unknown property",

@@ -227,6 +227,9 @@ Read the page before using these tools:
   (jasper://docs/vertex-animation).
 - Particles: create_particles, import_unity_particles (jasper://docs/particles).
 - Shake/follow: camerashaker, CameraShake.shake("explosion"); camerafollow (jasper://docs/camera).
+- UI scale (Canvas Scaler: scene setting canvas_scaler, graphics.ui_scale), text outline,
+  shadow and effects (TextEffect), UI particles; Game view resolutions: configure_game_view
+  (jasper://docs/ui).
 - Lines, lasers, trails: line_renderer / trail_renderer (jasper://docs/lines-trails).
 - Bend/squash: edit_lattice (jasper://docs/lattice). GPU fluid: type fluid_simulation
   (jasper://docs/fluid). Textures from examples: synthesize_texture

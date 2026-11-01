@@ -29,6 +29,7 @@
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/TextEffectComponent.h"
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"

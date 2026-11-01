@@ -91,6 +91,7 @@ namespace jasperengine{
         void setLocalSpace(bool localSpace);
         bool isLocalSpace() const;
 
+
         void setMaxPerUpdate(int maxPerUpdate);
         int getMaxPerUpdate() const;
 

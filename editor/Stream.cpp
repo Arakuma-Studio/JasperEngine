@@ -1751,6 +1751,47 @@ ScriptType editor::Stream::stringToScriptType(const std::string& str) {
     return ScriptType::CPP;
 }
 
+YAML::Node editor::Stream::encodeCanvasScaler(const CanvasScalerSettings& settings){
+    const CanvasScalerSettings d;
+    YAML::Node node(YAML::NodeType::Map);
+    if (settings.mode != d.mode)
+        node["mode"] = CanvasScaler::modeName(settings.mode);
+    if (settings.scaleFactor != d.scaleFactor)
+        node["scaleFactor"] = settings.scaleFactor;
+    if (settings.referenceResolution != d.referenceResolution)
+        node["referenceResolution"] = encodeVector2(settings.referenceResolution);
+    if (settings.screenMatchMode != d.screenMatchMode)
+        node["screenMatchMode"] = CanvasScaler::matchModeName(settings.screenMatchMode);
+    if (settings.matchWidthOrHeight != d.matchWidthOrHeight)
+        node["matchWidthOrHeight"] = settings.matchWidthOrHeight;
+    if (settings.physicalUnit != d.physicalUnit)
+        node["physicalUnit"] = CanvasScaler::unitName(settings.physicalUnit);
+    if (settings.fallbackScreenDPI != d.fallbackScreenDPI)
+        node["fallbackScreenDPI"] = settings.fallbackScreenDPI;
+    return node;
+}
+
+CanvasScalerSettings editor::Stream::decodeCanvasScaler(const YAML::Node& node){
+    CanvasScalerSettings settings;
+    if (!node || !node.IsMap())
+        return settings;
+    if (node["mode"] && !CanvasScaler::parseMode(node["mode"].as<std::string>().c_str(), settings.mode))
+        Log::warn("Unknown Canvas Scaler mode '%s', using follow_game_canvas", node["mode"].as<std::string>().c_str());
+    if (node["scaleFactor"])
+        settings.scaleFactor = decodeFinite(node["scaleFactor"], settings.scaleFactor);
+    if (node["referenceResolution"])
+        settings.referenceResolution = decodeVector2(node["referenceResolution"]);
+    if (node["screenMatchMode"] && !CanvasScaler::parseMatchMode(node["screenMatchMode"].as<std::string>().c_str(), settings.screenMatchMode))
+        Log::warn("Unknown Canvas Scaler screen match mode '%s'", node["screenMatchMode"].as<std::string>().c_str());
+    if (node["matchWidthOrHeight"])
+        settings.matchWidthOrHeight = decodeFinite(node["matchWidthOrHeight"], settings.matchWidthOrHeight);
+    if (node["physicalUnit"] && !CanvasScaler::parseUnit(node["physicalUnit"].as<std::string>().c_str(), settings.physicalUnit))
+        Log::warn("Unknown Canvas Scaler physical unit '%s'", node["physicalUnit"].as<std::string>().c_str());
+    if (node["fallbackScreenDPI"])
+        settings.fallbackScreenDPI = decodeFinite(node["fallbackScreenDPI"], settings.fallbackScreenDPI);
+    return settings;
+}
+
 YAML::Node editor::Stream::encodeVector2(const Vector2& vec){
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
@@ -3218,6 +3259,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     root["canvasHeight"] = project->getCanvasHeight();
 
     root["scalingMode"] = scalingModeToString(project->getScalingMode());
+    // absent = Follow Game Canvas (projects from before the Canvas Scaler stay unchanged)
+    if (project->getUIScale() != CanvasScalerSettings())
+        root["uiScale"] = encodeCanvasScaler(project->getUIScale());
     root["textureStrategy"] = textureStrategyToString(project->getTextureStrategy());
     root["vsync"] = project->isVSyncEnabled();
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
@@ -3608,6 +3652,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     if (node["scalingMode"]) {
         project->setScalingMode(stringToScalingMode(node["scalingMode"].as<std::string>()));
     }
+
+    project->setUIScale(decodeCanvasScaler(node["uiScale"]));
 
     if (node["textureStrategy"]) {
         project->setTextureStrategy(stringToTextureStrategy(node["textureStrategy"].as<std::string>()));
@@ -4011,6 +4057,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     project->getSpriteNormalsSettings() = workspace.getSpriteNormalsSettings();
 
     project->setSimulateTouch(workspace.isSimulateTouch());
+    project->setCustomResolutions(workspace.getCustomResolutions());
 
     // Which scenes are open is a per-user choice, so the tab list decides it. With no
     // workspace yet, the first scene opens, as it does for a fresh clone.
@@ -4533,6 +4580,12 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["fixedResolutionHeight"] = scene->getFixedResolutionHeight();
     sceneNode["fixedResolutionFilter"] = textureFilterToString(scene->getFixedResolutionFilter());
     sceneNode["enableUIEvents"] = uiEventStateToString(scene->getEnableUIEvents());
+    // absent = the project's UI Scale (scenes from before the Canvas Scaler stay unchanged)
+    if (!scene->isCanvasScalerUseProjectDefault() || scene->getCanvasScaler() != CanvasScalerSettings()) {
+        YAML::Node scaler = encodeCanvasScaler(scene->getCanvasScaler());
+        scaler["useProjectDefault"] = scene->isCanvasScalerUseProjectDefault();
+        sceneNode["canvasScaler"] = scaler;
+    }
 
     if (!scene->getDefaultMeshShader().empty())
         sceneNode["defaultMeshShader"] = scene->getDefaultMeshShader();
@@ -4726,6 +4779,10 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
     scene->setPhysics2DSubSteps(node["physics2DSubSteps"] ? YamlNumbers::as<int>(node["physics2DSubSteps"]) : SceneSettings().physics2DSubSteps);
 
+    // absent restores the defaults, so decoding into a reused scene (play restore) is exact
+    scene->setCanvasScaler(decodeCanvasScaler(node["canvasScaler"]));
+    scene->setCanvasScalerUseProjectDefault(node["canvasScaler"] && node["canvasScaler"]["useProjectDefault"]
+        ? YamlNumbers::as<bool>(node["canvasScaler"]["useProjectDefault"]) : true);
     if (node["fixedResolutionEnabled"]) {
         scene->setFixedResolutionEnabled(YamlNumbers::as<bool>(node["fixedResolutionEnabled"]));
     }
@@ -5480,6 +5537,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::TextComponent, true)] = encodeTextComponent(text);
     }
 
+    if (signature.test(registry->getComponentId<TextEffectComponent>())) {
+        const TextEffectComponent& effect = registry->getComponent<TextEffectComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::TextEffectComponent, true)] = encodeTextEffectComponent(effect);
+    }
+
     if (signature.test(registry->getComponentId<ImageComponent>())) {
         const ImageComponent& image = registry->getComponent<ImageComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ImageComponent, true)] = encodeImageComponent(image);
@@ -5952,6 +6014,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::TextComponent, existing, &text);
             registry->getComponent<TextComponent>(entity) = std::move(text);
             Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::TextEffectComponent, true);
+    if (compNode[compName]) {
+        TextEffectComponent* existing = registry->findComponent<TextEffectComponent>(entity);
+        TextEffectComponent effect = decodeTextEffectComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<TextEffectComponent>())){
+            registry->addComponent<TextEffectComponent>(entity, std::move(effect));
+        }else{
+            registry->getComponent<TextEffectComponent>(entity) = std::move(effect);
         }
     }
 
@@ -7418,6 +7491,17 @@ YAML::Node editor::Stream::encodeTextComponent(const TextComponent& text) {
     node["pivotBaseline"] = text.pivotBaseline;
     node["pivotCentered"] = text.pivotCentered;
 
+    // outline, shadow and visible characters only when set (texts from before them stay as they were)
+    const TextComponent d;
+    if (text.outlineWidth != d.outlineWidth) node["outlineWidth"] = text.outlineWidth;
+    if (text.outlineColor != d.outlineColor) node["outlineColor"] = encodeVector4(text.outlineColor);
+    if (text.shadowEnabled != d.shadowEnabled) node["shadowEnabled"] = text.shadowEnabled;
+    if (text.shadowColor != d.shadowColor) node["shadowColor"] = encodeVector4(text.shadowColor);
+    if (text.shadowOffset != d.shadowOffset) node["shadowOffset"] = encodeVector2(text.shadowOffset);
+    if (text.shadowSoftness != d.shadowSoftness) node["shadowSoftness"] = text.shadowSoftness;
+    if (text.shadowDilate != d.shadowDilate) node["shadowDilate"] = text.shadowDilate;
+    if (text.visibleCharacters != d.visibleCharacters) node["visibleCharacters"] = text.visibleCharacters;
+
     return node;
 }
 
@@ -7447,8 +7531,128 @@ TextComponent editor::Stream::decodeTextComponent(const YAML::Node& node, const 
     if (node["fixedHeight"]) text.fixedHeight = YamlNumbers::as<bool>(node["fixedHeight"]);
     if (node["pivotBaseline"]) text.pivotBaseline = YamlNumbers::as<bool>(node["pivotBaseline"]);
     if (node["pivotCentered"]) text.pivotCentered = YamlNumbers::as<bool>(node["pivotCentered"]);
+    // absent = the default, also over an old text (written only when set)
+    const TextComponent defaults;
+    text.outlineWidth = node["outlineWidth"] ? std::max(decodeFinite(node["outlineWidth"], 0.0f), 0.0f) : defaults.outlineWidth;
+    text.outlineColor = node["outlineColor"] ? decodeVector4(node["outlineColor"]) : defaults.outlineColor;
+    text.shadowEnabled = node["shadowEnabled"] ? YamlNumbers::as<bool>(node["shadowEnabled"]) : defaults.shadowEnabled;
+    text.shadowColor = node["shadowColor"] ? decodeVector4(node["shadowColor"]) : defaults.shadowColor;
+    text.shadowOffset = node["shadowOffset"] ? decodeVector2(node["shadowOffset"]) : defaults.shadowOffset;
+    text.shadowSoftness = node["shadowSoftness"] ? std::max(decodeFinite(node["shadowSoftness"], 0.0f), 0.0f) : defaults.shadowSoftness;
+    text.shadowDilate = node["shadowDilate"] ? std::max(decodeFinite(node["shadowDilate"], 0.0f), 0.0f) : defaults.shadowDilate;
+    text.visibleCharacters = node["visibleCharacters"] ? std::max(YamlNumbers::as<int>(node["visibleCharacters"]), -1) : defaults.visibleCharacters;
 
     return text;
+}
+
+YAML::Node editor::Stream::encodeTextEffectLayer(const TextEffectLayer& layer) {
+    const TextEffectLayer d;
+    YAML::Node node(YAML::NodeType::Map);
+    node["type"] = TextEffects::typeName(layer.type);
+    if (layer.enabled != d.enabled) node["enabled"] = layer.enabled;
+    // (the default amplitude is the type's: 1 for Grow and Unfold)
+    if (layer.amplitude != TextEffects::defaultAmplitude(layer.type)) node["amplitude"] = layer.amplitude;
+    if (layer.duration != d.duration) node["duration"] = layer.duration;
+    if (layer.spread != d.spread) node["spread"] = layer.spread;
+    if (layer.phaseStep != d.phaseStep) node["phaseStep"] = layer.phaseStep;
+    if (layer.frequency != d.frequency) node["frequency"] = layer.frequency;
+    if (layer.charactersPerSecond != d.charactersPerSecond) node["charactersPerSecond"] = layer.charactersPerSecond;
+    if (layer.fadeTime != d.fadeTime) node["fadeTime"] = layer.fadeTime;
+    if (!layer.gradient.empty()) {
+        YAML::Node stops(YAML::NodeType::Sequence);
+        for (const TextEffectGradientStop& stop : layer.gradient) {
+            YAML::Node entry;
+            entry["color"] = encodeVector4(stop.color);
+            entry["position"] = stop.position;
+            stops.push_back(entry);
+        }
+        node["gradient"] = stops;
+    }
+    if (layer.mix != d.mix) node["mix"] = TextEffects::mixName(layer.mix);
+    if (layer.saturation != d.saturation) node["saturation"] = layer.saturation;
+    if (layer.lightness != d.lightness) node["lightness"] = layer.lightness;
+    return node;
+}
+
+TextEffectLayer editor::Stream::decodeTextEffectLayer(const YAML::Node& node) {
+    TextEffectLayer layer;
+    if (!node || !node.IsMap()) return layer;
+    if (node["type"] && !TextEffects::parseType(node["type"].as<std::string>().c_str(), layer.type)) {
+        Log::warn("Unknown Text Effect type '%s'", node["type"].as<std::string>().c_str());
+    }
+    if (node["enabled"]) layer.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    layer.amplitude = TextEffects::defaultAmplitude(layer.type);
+    if (node["amplitude"]) layer.amplitude = decodeFinite(node["amplitude"], layer.amplitude);
+    if (node["duration"]) layer.duration = decodeFinite(node["duration"], layer.duration);
+    if (node["spread"]) layer.spread = decodeFinite(node["spread"], layer.spread);
+    if (node["phaseStep"]) layer.phaseStep = decodeFinite(node["phaseStep"], layer.phaseStep);
+    if (node["frequency"]) layer.frequency = decodeFinite(node["frequency"], layer.frequency);
+    if (node["charactersPerSecond"]) layer.charactersPerSecond = decodeFinite(node["charactersPerSecond"], layer.charactersPerSecond);
+    if (node["fadeTime"]) layer.fadeTime = decodeFinite(node["fadeTime"], layer.fadeTime);
+    if (node["gradient"] && node["gradient"].IsSequence()) {
+        for (const YAML::Node& entry : node["gradient"]) {
+            TextEffectGradientStop stop;
+            if (entry["color"]) stop.color = decodeVector4(entry["color"]);
+            if (entry["position"]) stop.position = decodeFinite(entry["position"], 0.0f);
+            layer.gradient.push_back(stop);
+        }
+    }
+    if (node["mix"] && !TextEffects::parseMix(node["mix"].as<std::string>().c_str(), layer.mix)) {
+        Log::warn("Unknown Text Effect mix '%s'", node["mix"].as<std::string>().c_str());
+    }
+    if (node["saturation"]) layer.saturation = decodeFinite(node["saturation"], layer.saturation);
+    if (node["lightness"]) layer.lightness = decodeFinite(node["lightness"], layer.lightness);
+    return layer;
+}
+
+YAML::Node editor::Stream::encodeTextEffectComponent(const TextEffectComponent& effect) {
+    const TextEffectComponent d;
+    YAML::Node node(YAML::NodeType::Map);
+    if (effect.enabled != d.enabled) node["enabled"] = effect.enabled;
+    // the layers in use, up to the last one that is not None
+    size_t used = 0;
+    for (size_t i = 0; i < effect.layers.size(); i++) {
+        if (effect.layers[i] != TextEffectLayer()) used = i + 1;
+    }
+    if (used > 0) {
+        YAML::Node layers(YAML::NodeType::Sequence);
+        for (size_t i = 0; i < used; i++) layers.push_back(encodeTextEffectLayer(effect.layers[i]));
+        node["layers"] = layers;
+    }
+    if (effect.autoPlay != d.autoPlay) node["autoPlay"] = effect.autoPlay;
+    if (effect.loop != d.loop) node["loop"] = effect.loop;
+    if (effect.useUnscaledTime != d.useUnscaledTime) node["useUnscaledTime"] = effect.useUnscaledTime;
+    if (effect.startIndex != d.startIndex) node["startIndex"] = effect.startIndex;
+    if (effect.length != d.length) node["length"] = effect.length;
+    if (!effect.forWords.empty()) node["forWords"] = effect.forWords;
+    return node;
+}
+
+TextEffectComponent editor::Stream::decodeTextEffectComponent(const YAML::Node& node, const TextEffectComponent* oldEffect) {
+    TextEffectComponent effect;
+    if (oldEffect) {
+        effect = *oldEffect;
+    }
+    if (!node || !node.IsMap()) return effect;
+    // absent = the default, also over an old effect (fields are written only when set)
+    const TextEffectComponent d;
+    effect.enabled = node["enabled"] ? YamlNumbers::as<bool>(node["enabled"]) : d.enabled;
+    effect.layers = d.layers;
+    if (node["layers"] && node["layers"].IsSequence()) {
+        for (size_t i = 0; i < node["layers"].size() && i < effect.layers.size(); i++) {
+            effect.layers[i] = decodeTextEffectLayer(node["layers"][i]);
+        }
+    }
+    for (size_t i = 0; i < effect.layers.size(); i++)
+        effect.editedTypes[i] = effect.layers[i].type;
+    effect.autoPlay = node["autoPlay"] ? YamlNumbers::as<bool>(node["autoPlay"]) : d.autoPlay;
+    effect.loop = node["loop"] ? YamlNumbers::as<bool>(node["loop"]) : d.loop;
+    effect.useUnscaledTime = node["useUnscaledTime"] ? YamlNumbers::as<bool>(node["useUnscaledTime"]) : d.useUnscaledTime;
+    effect.startIndex = node["startIndex"] ? std::max(YamlNumbers::as<int>(node["startIndex"]), 0) : d.startIndex;
+    effect.length = node["length"] ? std::max(YamlNumbers::as<int>(node["length"]), -1) : d.length;
+    effect.forWords = node["forWords"] ? node["forWords"].as<std::string>() : d.forWords;
+    effect.needApply = true;
+    return effect;
 }
 
 YAML::Node editor::Stream::encodeImageComponent(const ImageComponent& image) {
@@ -10981,6 +11185,7 @@ YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemCom
     node["emitter"] = particles.emitter;
     node["loop"] = particles.loop;
     node["localSpace"] = particles.localSpace;
+    if (particles.useUnscaledTime) node["useUnscaledTime"] = true;
     node["rate"] = particles.rate;
     node["maxPerUpdate"] = particles.maxPerUpdate;
 
@@ -11140,9 +11345,6 @@ YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemCom
     scaleMod["function"] = encodeEase(particles.scaleModifier.function);
     node["scaleModifier"] = scaleMod;
 
-    // shared with version 2; written only when set, so older files stay as they were
-    if (particles.useUnscaledTime) node["useUnscaledTime"] = true;
-
     return node;
 }
 
@@ -11154,6 +11356,8 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     if (node["emitter"]) particles.emitter = YamlNumbers::as<bool>(node["emitter"]);
     if (node["loop"]) particles.loop = YamlNumbers::as<bool>(node["loop"]);
     if (node["localSpace"]) particles.localSpace = YamlNumbers::as<bool>(node["localSpace"]);
+    // (absent: off, also over an old component; version 2 reads it again below)
+    particles.useUnscaledTime = node["useUnscaledTime"] ? YamlNumbers::as<bool>(node["useUnscaledTime"]) : false;
     if (node["rate"]) particles.rate = YamlNumbers::as<int>(node["rate"]);
     if (node["maxPerUpdate"]) particles.maxPerUpdate = YamlNumbers::as<int>(node["maxPerUpdate"]);
 

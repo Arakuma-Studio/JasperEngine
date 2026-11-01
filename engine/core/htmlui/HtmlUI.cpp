@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "htmlui/HtmlTextEffects.h"
+#include "htmlui/UIParticleSystemElement.h"
 #include "HtmlUI.h"
 
 #include "HtmlUIContext.h"
@@ -95,6 +97,9 @@ bool HtmlUI::acquire(){
     ThorVGRuntime::acquire();
     UILottieElement::registerInstancer();
     UIVideoElement::registerInstancer();
+    UIParticleSystemElement::registerInstancer();
+    // text-effect (per-character animation): the fork's text effect provider
+    htmlui::HtmlTextEffects::install();
     // the on-screen controls (ui-multitouch): <onscreen-stick>, <onscreen-button>, <touch-area>
     UIOnScreenControl::registerInstancers();
     // the compat layer's runtime emulations (phase-2 hook H1), before any document loads
@@ -131,11 +136,13 @@ void HtmlUI::release(){
     debuggerContext = nullptr;
     debuggerVisible = false;
 
+    htmlui::HtmlTextEffects::uninstall();
     Rml::Shutdown();
 
     // after Rml::Shutdown: the documents (and their ThorVG animations) are gone
     UILottieElement::releaseInstancer();
     UIVideoElement::releaseInstancer();
+    UIParticleSystemElement::releaseInstancer();
     UIOnScreenControl::releaseInstancers();
     htmlui::compat::releaseRuntime();
     htmlui::EffectRegistry::get().shutdown();

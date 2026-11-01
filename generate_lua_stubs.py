@@ -2189,6 +2189,12 @@ OVERRIDES[('CanvasGroup', 'stopFade')] = {
     'doc': ['Stops the running fade; `jumpToEnd` writes its end alpha and completes it now (onComplete, deactivate).'],
     'overloads': [([('jumpToEnd?', 'boolean')], '')]}
 
+# <particle-system>: nil before its prefab is made or when its src failed (a LuaRef)
+OVERRIDES[('UIElement', 'getParticleSystem')] = {
+    'doc': ['The Particle System of a <particle-system> element\'s hidden GameObject; nil before the prefab',
+            'is made (document scripts, onLoad, edit mode) or when its src failed.'],
+    'overloads': [([], 'ParticleSystem|nil')]}
+
 # Mesh:getMaterial and Mesh.material push the Material copy themselves (a LuaRef: the copy
 # remembers the shader its submesh draws with, LuaBinding::setMaterialDrawnShader)
 OVERRIDES[('Mesh', 'getMaterial')] = {

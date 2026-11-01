@@ -93,6 +93,7 @@ int Engine::preferredCanvasHeight;
 Rect Engine::viewRect;
 
 Scaling Engine::scalingMode = Scaling::FITWIDTH;
+CanvasScalerSettings Engine::defaultCanvasScaler;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
 
 bool Engine::callMouseInTouchEvent = false;
@@ -493,6 +494,20 @@ void Engine::setScalingMode(Scaling scalingMode){
 
 Scaling Engine::getScalingMode(){
     return scalingMode;
+}
+
+void Engine::setDefaultCanvasScaler(const CanvasScalerSettings& settings){
+    Engine::defaultCanvasScaler = settings;
+
+    if (viewLoaded){
+        for (Scene* scene : getScenesSnapshot()){
+            scene->updateCameraSize();
+        }
+    }
+}
+
+const CanvasScalerSettings& Engine::getDefaultCanvasScaler(){
+    return defaultCanvasScaler;
 }
 
 void Engine::setTextureStrategy(TextureStrategy textureStrategy){
