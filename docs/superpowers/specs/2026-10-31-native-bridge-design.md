@@ -617,8 +617,10 @@ ambiguous or in conflict with the code:
    idempotent) and the native one (`Engine::setNativePause`, applied each frame by
    `NativeBridge::update()` from the `pauseEngine`/`resumeEngine` count, paused frames included).
    The engine is paused while either holds: one `onPause` when the first starts, one `onResume`
-   when the last ends (no onResume while an ad still shows after the app came back). Play stop
-   drops the native hold. `NativeBridge::postToGameThread` (JasperNative `runOnGameThread`)
+   when the last ends (no onResume while an ad still shows after the app came back). The OS hold
+   keeps platform-services' focus order (focus lost before the pause; gaining focus while the OS
+   holds resumes first, then `onFocus(true)`, even while the native hold keeps the engine paused).
+   Play stop drops both holds (`resetApplicationState`). `NativeBridge::postToGameThread` (JasperNative `runOnGameThread`)
    tasks run in `update()` too, so a `resumeEngine` from one works while paused; Play stop drops
    queued tasks, and events emitted before a Play stop never reach the next Play (generation).
    On Android the natives are registered in `JNI_OnLoad` (MainActivity's `System.loadLibrary`), so
@@ -692,32 +694,36 @@ ambiguous or in conflict with the code:
     Generator and the Exporter; `getScriptDirs()` stays the setting. `libs/json` joined the engine
     API include directories (`NativeBridge.h` is in `JasperEngine.h`).
 18. **Agent guide.** The HTTP and native lines share one bullet, and a few Lua-section lines were
-    reworded shorter, to keep the merged guide under 16 KB (16353 bytes).
+    reworded shorter, to keep the merged guide under 16 KB (16376 bytes after the last main merge).
 
-### Verification (merged with gaps/http and main at 92cc07d2a)
+### Verification (review fixes; merged with gaps/http and main at 0d00df166)
 
 - Build box 2203 (`-j3`): editor and `jasperengine-editor-tests` build with 0 errors and 0 warnings.
-- Unit suite: 1238 passed, 8 skipped, 0 failed (the 19 `NativeBridgeTest` cases included). One earlier
-  full run had `HttpTest.LuaCallbackErrorsAreLoggedAndOthersStillRun` fail once (its log count);
-  it passes alone, with its suite and in the next full run: a flake of that test, not reproduced.
-- MCP e2e: `test_native_bridge.py` 4/4 (create/list, settings keys, editor Play with a C++ plugin and a
-  mock across two Plays, the source export incl. byte-identical re-export); with test_stubs,
-  test_docs, test_html_ui_tools (budget 107834), test_protocol (guide size), test_http, test_build,
-  test_autosync, test_play, test_lua_threads: 89 passed + the budget (re-run: passed).
-- Android, on the host: `./gradlew :jasperbridge:testDebugUnitTest` (the 7 NativeReflectionTest cases)
-  and `:app:compileDebugJavaWithJavac` with no javac warnings; NativePlatformAndroid.cpp compiles with
-  the NDK clang (arm64, -Wall -Wextra) clean; **the exported test project** (a Java and a Kotlin
-  plugin, libs/x.jar, a plugin manifest with tools:node="remove", Gradle dependencies, a
-  repository, manifest fragments) **built with `./gradlew assembleDebug`** (arm64 only): the APK has
-  com.t.Device, com.t.k.Store, the registry, JasperNative, AD_ID and the application meta-data, and
-  no READ_PHONE_STATE. A hand-made copy of the generated module layout also passed
-  `assembleRelease` (R8 kept the plugin classes; AGP 9 built-in Kotlin compiled the .kt).
-- Web: `tools/native-bridge/web-smoke/run.sh` (em++ 6.0.10 + node): 28 checks pass (registered and
-  global-path calls, value types, Promises, rejections with codes, exceptions, unsupported values,
-  cancellation, events and registrations queued before the engine, pause/resume). NativeBridge.cpp,
-  NativeClassesLua.cpp and NativePlatformWeb.cpp compile with em++ -Wall -Wextra clean. A full
-  Emscripten build of an exported project was not run.
+- Unit suite: 1437 passed, 9 skipped, 0 failed (the `NativeBridgeTest` cases included: pause holds,
+  runOnGameThread while paused, events dropped after a Play stop, UTF-8 checks for C++ results, the
+  timeout clamp, Kotlin members' modifiers not leaking into the next class of the registry).
+- MCP e2e, full suite (`-j2`): 886 passed, 12 failed, 19 skipped. The failures: the 10 baseline
+  ones (test_animation_assets x5, test_lattice_scene x5), `test_html_ui_tools::test_budget` (the
+  merged tree measured 109170: the limit set to it, re-run passed) and
+  `test_stochastic_tiling::test_old_scene_resaves_byte_identical` (an `htmluipost` shader key on
+  re-save: the ui-canvas-group regression the ledger records on main, not this branch's).
+  `test_native_bridge.py` 4/4; with test_html_ui_tools, test_docs, test_protocol re-run: 56 passed.
+  Agent guide 16376 bytes.
+- Android, on the host: the exported test project of `test_source_export` (a Java and a Kotlin
+  plugin, libs/x.jar, a plugin manifest with tools:node="remove", Gradle dependencies, a repository,
+  manifest fragments) **built with `./gradlew assembleDebug`** (AGP 9, arm64 only, 0 warnings): the
+  APK has com.t.Device, com.t.k.Store, the registry, JasperNative, JasperPlatform, AD_ID and the
+  application meta-data, and no READ_PHONE_STATE. Earlier rounds: `:jasperbridge:testDebugUnitTest`
+  (7 NativeReflectionTest cases), NativePlatformAndroid.cpp with the NDK clang -Wall -Wextra clean,
+  a copy of the generated module layout through `assembleRelease` (R8 kept the plugin classes).
+- Web: `tools/native-bridge/web-smoke/run.sh` (em++ + node, -Wall -Wextra clean): 29 checks pass
+  (registered objects and dotted global paths, bare browser globals not plugins, value types,
+  Promises, rejections with codes, exceptions, unsupported values, cancellation, events and
+  registrations queued before the engine, pause/resume). A full Emscripten build of an exported
+  project was not run.
 - Apple (iOS/macOS) and the macOS CMake path: not buildable here; written against the iOS 15 /
-  macOS 12 SDK APIs and reviewed (selectors, typed objc_msgSend casts per return type, ARC, NSNumber
-  booleans, @try/@catch, bridging header paths, pbxproj objects parsed by tools/mcp/pbxproj.py in
-  the export test). Windows: no platform code (C++ plugins and mocks only).
+  macOS 12 SDK APIs and reviewed (the `JasperNativePlugin` marker, metaclass method lists for
+  `+jasperInit`, typed objc_msgSend casts per return type, object-only parameters, ARC, NSNumber
+  booleans, @try/@catch, bridging header paths, `$(inherited)` and platform/apple in the app
+  targets, pbxproj objects parsed by tools/mcp/pbxproj.py in the export test). Windows: no platform
+  code (C++ plugins and mocks only).

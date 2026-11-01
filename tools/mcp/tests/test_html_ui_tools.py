@@ -129,8 +129,9 @@ LIMITS.update({"create_ragdoll": 900})
 # (ui-canvas-group, physics-3d, http): 151 tools measured 108094 (tool_budget.py), the limit set to it
 # merged by the lead (shader-globals + platform-services): provisional sum, re-measured on the merged tree
 # native-bridge: the native_plugins tool (list / create a plugin for every platform with its Lua mock)
-# measured 1022; merged with main (after the lead's http/ui-canvas-group/physics-3d merge): 152 tools measured 108648, the limit set to it
-TOTAL_LIMIT = 108648
+# measured 1022; merged with main (shader-globals, platform-services): 152 tools measured 109170
+# (tool_budget.py), the limit set to it
+TOTAL_LIMIT = 109170
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
