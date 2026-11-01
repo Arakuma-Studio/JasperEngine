@@ -239,7 +239,12 @@ TEST_F(AnimatorUpstreamFiles, AConvertedControllerPlaysLikeTheUpstreamFile){
     upstreamFile("spine.mask", UPSTREAM_SPINE_MASK);
     const std::string upstreamPath = upstreamFile("play.controller", UPSTREAM_FULL);
 
+    // the rest pose both runs start from (an Animator binds the transforms as it finds them)
+    const Entity bones[] = {hips, spine, head, leg, foot};
+    std::vector<Transform> rest;
+    for (Entity bone : bones) rest.push_back(scene.getComponent<Transform>(bone));
     auto play = [&](const std::string& path){
+        for (size_t b = 0; b < rest.size(); b++) scene.getComponent<Transform>(bones[b]) = rest[b];
         std::vector<Vector3> samples;
         animator(path);
         Animator object(&scene, root);

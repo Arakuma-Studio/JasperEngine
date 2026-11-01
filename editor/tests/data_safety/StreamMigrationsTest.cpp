@@ -202,7 +202,7 @@ TEST(StreamMigrations, PrefabV4ToV5ParticleSystems){
         "{type: Entity, entity: 1002, name: Dust FX, components: {action: {target: 1001}, particlesystem: {rate: 9}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 6);
+    EXPECT_EQ(root["version"].as<int>(), 7) << "migrated to the current version";
     EXPECT_TRUE(root["members"][0]["components"]["particlesystem"]);
     EXPECT_FALSE(root["members"][1]["components"]["particlesystem"]);
 }

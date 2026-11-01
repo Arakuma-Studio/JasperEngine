@@ -301,7 +301,8 @@ TEST_F(AnimatorEditor, StatesFromAnAnimationPlayer) {
     const anim::StateMachineDef& machine = def.layers[0].machine;
     ASSERT_EQ(machine.states.size(), 2u);
     EXPECT_EQ(machine.states[0].name, "Walk");
-    EXPECT_EQ(machine.states[0].loop, AnimatorStateLoop::Loop);
+    // the entry's wrap replaced its clip's (a ping-pong clip loops forward): Repeat
+    EXPECT_EQ(machine.states[0].loop, AnimatorStateLoop::Repeat);
     EXPECT_EQ(machine.states[1].name, "jump");
     EXPECT_EQ(machine.states[1].motion.clip.guid, jump.guid);
     EXPECT_EQ(machine.states[1].loop, AnimatorStateLoop::Once);

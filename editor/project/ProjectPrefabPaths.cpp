@@ -238,8 +238,10 @@ void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>
     std::vector<AssetDatabase::Change> changes;
     std::vector<AssetDatabase::Change> clipChanges;
     for (const AssetDatabase::Change& change : allChanges) {
+        // (Avatar Masks too: the Animation Player layers and the controllers naming them follow)
         const auto clipLike = [](const fs::path& path) {
-            return Util::isAnimationClipFile(path.string()) || Util::isVertexAnimationFile(path.string());
+            return Util::isAnimationClipFile(path.string()) || Util::isVertexAnimationFile(path.string()) ||
+                   Util::isAvatarMaskFile(path.string());
         };
         if (clipLike(change.path) || clipLike(change.oldPath) ||
             (change.type == AssetDatabase::Change::Type::Moved && Util::isModelFile(change.path.string()))) {

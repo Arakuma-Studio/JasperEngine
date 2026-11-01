@@ -237,7 +237,9 @@ void AnimatorAssetDocument::checkDiskChanges(){
     for (const std::shared_ptr<AnimatorAssetDocument>& document : open){
         std::string onDisk;
         const bool readable = ProjectChecks::readFile(document->filePath, onDisk);
-        if (!readable || onDisk != document->text){
+        // (a document holding a load error reads the file again: it may be fixed with the text
+        // the document had before the error)
+        if (!readable || onDisk != document->text || !document->error.empty()){
             AnimatorAssetPool::invalidate(document->filePath.string());
             document->reload();
         }

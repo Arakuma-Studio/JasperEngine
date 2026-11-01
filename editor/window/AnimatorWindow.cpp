@@ -824,8 +824,15 @@ bool AnimatorWindow::resolveTypedAsset(const std::string& typed, bool clip, Anim
     SubClipReference subClip;
     const bool isSubClip = clip && parseSubClipReference(typed, subClip);
     const std::string file = isSubClip ? subClip.model : typed;
-    const fs::path absolute = project->isInsideAssetsPath(file) ? fs::path(file) : project->resolveAssetPath(file);
-    if (!project->isInsideAssetsPath(absolute.string())){
+    // absolute, project-relative ("assets/anim/run.anim") or assets-relative ("anim/run.anim")
+    const fs::path given = fs::u8path(file);
+    fs::path absolute = given.is_absolute() ? given : project->resolveAssetPath(given);
+    std::error_code existsError;
+    if (!given.is_absolute() && !fs::exists(absolute, existsError) && fs::exists(project->getProjectPath() / given, existsError)){
+        absolute = project->getProjectPath() / given;
+    }
+    absolute = absolute.lexically_normal();
+    if (!project->isInsideAssetsPath(absolute)){
         status = "\"" + typed + "\" is outside the assets folder";
         return false;
     }
