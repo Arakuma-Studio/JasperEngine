@@ -628,7 +628,8 @@ TEST_F(UIMultiPointerTest, IsPointerOverUIPerPointer) {
 TEST(OnScreenControlsEditor, CatalogStreamAndExport) {
     using editor::Catalog;
     using editor::ComponentType;
-    EXPECT_EQ(editor::LastComponentType, ComponentType::TouchAreaComponent) << "appended at the end";
+    // appended (prefab override masks use the ordinal); the Safe Area came after them
+    EXPECT_EQ(static_cast<int>(ComponentType::TouchAreaComponent) + 1, static_cast<int>(ComponentType::SafeAreaComponent));
     EXPECT_EQ(Catalog::getComponentName(ComponentType::OnScreenStickComponent, true), "onscreenstick");
     EXPECT_EQ(Catalog::getComponentType("onscreenbutton"), ComponentType::OnScreenButtonComponent);
     EXPECT_EQ(Catalog::getComponentType("toucharea"), ComponentType::TouchAreaComponent);
