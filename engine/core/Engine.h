@@ -353,7 +353,8 @@ namespace jasperengine {
         static double timeScale;
         static double fixedDeltatime;
         static double gameTime;
-        static uint64_t gameFrames;
+        // read by Log from any thread (the frame of a line)
+        static std::atomic<uint64_t> gameFrames;
         static double unscaledDeltatime;
         static double unscaledTime;
         static double fixedTime;
@@ -382,6 +383,7 @@ namespace jasperengine {
         static double orientationPendingSince;
         static std::atomic<bool> asyncLoading;
         static bool frameRunning;
+        static bool developmentBuild;
 
         static CursorType mouseCursorType;
         static MouseMode mouseMode;
@@ -417,6 +419,9 @@ namespace jasperengine {
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
         // free to add or remove scenes without invalidating the caller's traversal.
         static std::vector<Scene*> getScenesSnapshot();
+        // the snapshot with the debug overlay's Scene on top when it has one (keys: only while
+        // a field of the overlay has the focus)
+        static std::vector<Scene*> getInputScenes(bool keys);
         static bool ensureCompositeFramebuffer();
         static void beginCompositeFramebuffer();
         static void endCompositeFramebuffer();
@@ -551,6 +556,11 @@ namespace jasperengine {
         static void setFixedDeltatime(double seconds);
         static double getFixedDeltatime();
 
+        // A development build (Unity's Debug.isDebugBuild): the editor's Play and exports built
+        // with the Debug build type (JASPERENGINE_DEVELOPMENT_BUILD, set by the generated init).
+        // The debug overlay's "development" mode follows it
+        static void setDevelopmentBuild(bool development);
+        static bool isDevelopmentBuild();
         // Scaled seconds and frames the update loop has run (since start; not while paused or held)
         static double getGameTime();
         static uint64_t getGameFrames();

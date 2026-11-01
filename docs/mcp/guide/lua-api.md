@@ -495,6 +495,7 @@ return Slot
 | `targetFrameRate` | rw | Unity's `Application.targetFrameRate`: -1 (default) = the platform's rate (60 on mobile, every animation frame on the web, vsync-paced on desktops); desktops and the editor ignore it while `vSyncCount > 0`. Kept across scene loads |
 | `vSyncCount` | rw | Unity's `QualitySettings.vSyncCount` 0..4 (present every Nth vblank); starts from the project's VSync; mobile and web ignore it |
 | `isFocused` | ro | Unity's `Application.isFocused` (true at start) |
+| `isDevelopmentBuild` | ro | Unity's `Debug.isDebugBuild`: true in the editor's Play and in exports built with the Debug build type |
 | `systemTime` | ro | |
 | `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
 | `preferredCanvasWidth`, `preferredCanvasHeight` | ro | project canvas size; safe in `init()` |
@@ -600,14 +601,36 @@ Constants (static properties, integers, no parentheses):
 - Gamepad axes: `Input.GAMEPAD_AXIS_LEFT_X`, `_LEFT_Y`, `_RIGHT_X`, `_RIGHT_Y`,
   `_LEFT_TRIGGER`, `_RIGHT_TRIGGER`, `_LAST`.
 
-### 2.3 Log (static, one string argument each)
+### 2.3 Log (static) and DebugOverlay
 
-`Log.print(s)`, `Log.verbose(s)`, `Log.debug(s)`, `Log.warn(s)`, `Log.error(s)`.
-Pass ONE string: `Log.print("score " .. tostring(n))` or `Log.print(string.format("%d", n))`.
-Plain Lua `print(...)` goes to the engine log too, as an info line (the editor's Console, in
-Play and at edit time; a game's platform log in an exported build): it takes any number of
-values of any type and joins them with tabs, like standard Lua. `Log.*` add the warn / error
-levels.
+`Log.print(...)`, `Log.verbose(...)`, `Log.debug(...)`, `Log.warn(...)`, `Log.error(...)`: any
+values, joined with tabs (`tostring`), like Lua's `print`, which logs an info line too. Every line
+goes to the editor's Console (Play and edit time), the platform log of an exported game (logcat, the
+terminal), the on-device console and a ring buffer. `Log.warn`/`Log.error` lines of Lua carry a Lua
+traceback (Project Settings > Debug > Log Stack Traces); a Lua error's `stack traceback:` is split off
+into `stackTrace`. `Log.debug` is compiled out of release builds of the engine.
+
+| Name | Kind | Notes |
+|---|---|---|
+| `Log.onMessageReceived` | event | Unity's `Application.logMessageReceived`: `RegisterEvent(self, Log.onMessageReceived, "onLog")`, `function M:onLog(message, stackTrace, level)`; main thread (worker-thread lines at the next frame start); lines logged inside a handler are not re-dispatched |
+| `Log.getEntries([maxCount [, levels]])` | fn | buffered lines, oldest first (the newest `maxCount`; `levels` a list of `LogLevel`): `{id, level, message, stackTrace, time, frame, mainThread, fromLua}` |
+| `Log.count(level)` | fn | lines of that level since the last clear |
+| `Log.clear()` | fn | empties the buffer and the counts |
+| `Log.bufferSize` | rw | lines kept (default 500, Project Settings > Debug; 0 = none, at most 100000) |
+| `LogLevel.INFO`, `VERBOSE`, `DEBUG`, `WARN`, `ERROR` | enum | 0 - 4 |
+
+`DebugOverlay` (static), the on-device console and stats overlay (Unity's IngameDebugConsole and
+Graphy), details in `jasper://docs/debugging`:
+
+| Name | Kind | Notes |
+|---|---|---|
+| `enabled` | rw | master switch (initial value: Project Settings > Debug > Overlay and the build type); works in any build |
+| `showConsole()`, `hideConsole()`, `toggleConsole()` | fn | no-ops (warned once) while not enabled |
+| `consoleVisible` | ro | |
+| `statsMode` | rw | `DebugOverlay.STATS_OFF`, `STATS_FPS`, `STATS_FULL` (another value raises an error) |
+| `getStats()` | fn | `{fps, frameMs, frameMsAvg, frameMsMin, frameMsMax, frameMs1PercentLow, drawCalls, instances, triangles, processMemoryBytes, luaMemoryBytes, audioVoices, audioVoicesMax, bodies2D, bodies3D, entities, scenes, coroutines, timers, htmlUiDrawCalls}`; works while not enabled |
+| `addCommand(name, description, fn [, owner])` | fn | console command `name args...`: `fn(args)` gets a list of strings; `[a-z0-9_-]+`; removed with its script (`owner`, default the calling method's `self`) |
+| `removeCommand(name)`, `executeCommand(line)` | fn | |
 
 ### 2.4 PlayerPrefs / UserSettings (static, persistent key/value)
 
@@ -2629,6 +2652,7 @@ use the methods. Physics colliders keep the rest shape.
 | `MouseMode` | `NORMAL`, `HIDDEN`, `CAPTURED`, `CONFINED` |
 | `UIEventState` | `NOT_SET`, `ENABLED`, `DISABLED` |
 | `TouchPhase` | `Began`, `Moved`, `Stationary`, `Ended`, `Canceled` |
+| `LogLevel` | `INFO`, `VERBOSE`, `DEBUG`, `WARN`, `ERROR` |
 | `UIDocumentRenderMode` | `SCREEN`, `TEXTURE` |
 | `TextureFilter` | `NEAREST`, `LINEAR`, `NEAREST_MIPMAP_NEAREST`, `NEAREST_MIPMAP_LINEAR`, `LINEAR_MIPMAP_NEAREST`, `LINEAR_MIPMAP_LINEAR` |
 | `TextureWrap` | `REPEAT`, `MIRRORED_REPEAT`, `CLAMP_TO_EDGE`, `CLAMP_TO_BORDER` |
@@ -2747,7 +2771,8 @@ Rigidbody wrappers by index.
     also returns the copy's script.
 19. **Canvas size in `init`**: `Engine.canvasWidth/Height` can be 0 in exported builds during
     `init`; use `Engine.preferredCanvasWidth/Height` there.
-20. **`Log.*` take a single string**; build messages with `..`/`tostring`/`string.format`.
+20. **`Log.*` join their arguments with tabs** like `print` (`Log.warn("hp", hp)`); use
+    `string.format` for other layouts.
 21. **Animation Player callbacks take one value**: `player.onEvent = function(event) ... end`
     (`event.functionName`, `event.args[1]`), not `function(name, args)`; `onFinish` gets the
     state name. `GameObject:getAnimationPlayer()` is `nil` without the component (unlike

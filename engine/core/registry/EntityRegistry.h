@@ -211,6 +211,8 @@ namespace jasperengine {
         // A scene sets it past the ids it recreates, so what it creates next stays clear of them.
         void setLastEntity(Entity entity); // for internal editor use only
         std::vector<Entity> getEntityList() const;
+        // entities created (system ones included): the stats overlay
+        size_t getEntityCount() const { return entityManager.getEntityCount(); }
         // Every entity in hierarchy pre-order: the Transform hierarchy as the Hierarchy panel
         // shows it (parents before children, siblings in order, roots in order), then the
         // entities without a Transform by ascending id

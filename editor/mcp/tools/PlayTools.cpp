@@ -13,6 +13,8 @@
 #include "object/physics/Joint3D.h"
 #include "object/physics/Rigidbody.h"
 #include "McpTools.h"
+
+#include "debug/DebugOverlay.h"
 #include "HtmlUiShared.h"
 #include "PlayViewCommon.h"
 
@@ -723,7 +725,14 @@ Json playStateJson(McpContext& ctx) {
     out["safe_area"] = safeAreaJson();
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     if (!s.held.empty()) out["held_input"] = heldInputJson();
-    if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
+    if (playId != NULL_PROJECT_SCENE && s.current.active) {
+        out["input"] = playInputJson();
+        // the on-device console and stats overlay (Project Settings > Debug, DebugOverlay)
+        static const char* const statsModes[] = {"off", "fps", "full"};
+        const int statsMode = static_cast<int>(DebugOverlay::getStatsMode());
+        out["debug_overlay"] = {{"enabled", DebugOverlay::isEnabled()}, {"console_visible", DebugOverlay::isConsoleVisible()},
+                                {"stats", statsMode >= 0 && statsMode < 3 ? statsModes[statsMode] : "off"}};
+    }
     if (playId != NULL_PROJECT_SCENE && s.current.active) out["audio"] = playAudioJson();
     // script coroutines and pending timers of the game (get_runtime_entity lists them per script)
     out["coroutines"] = ScriptScheduler::coroutineCount();
@@ -3873,7 +3882,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), audio "
+            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, audio "
             "(voices, mixer_meters dB), "
             "console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), "
             "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures), safe_area; stopped: play_would_start.";

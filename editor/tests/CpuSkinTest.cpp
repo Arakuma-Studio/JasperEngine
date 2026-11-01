@@ -138,7 +138,7 @@ namespace {
         history(sceneId)->addCommandNoMerge(new ModelLoadCmd(project(), sceneId, entity, assetsRelative));
         const ModelComponent& model = sceneOf(sceneId)->getComponent<ModelComponent>(entity);
         std::string log;
-        for (const LogEntry& entry : Out::getLogsSince(logs)) log += entry.message + "\n";
+        for (const editor::LogEntry& entry : Out::getLogsSince(logs)) log += entry.message + "\n";
         EXPECT_FALSE(model.loadedFilename.empty()) << "loaded " << assetsRelative << ": " << log;
         return entity;
     }

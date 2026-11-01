@@ -772,6 +772,9 @@ namespace jasperengine::editor{
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
         AudioSettings audioSettings;
+        DebugSettings debugSettings;
+        // applyDebugSettingsForPlay ran for the running Play (until it stops): changes apply live
+        mutable bool debugSettingsInPlay = false;
         TerrainEditorSettings terrainEditorSettings;
         PhysicsPlacementSettings physicsPlacementSettings;
         SpriteNormalsWindowSettings spriteNormalsSettings;
@@ -1503,6 +1506,15 @@ namespace jasperengine::editor{
         // Play starts from the start snapshot and the remembered values; Play stops back to the
         // asset's values (no script overrides, the listener unpaused)
         void resetPlayAudio(bool starting) const;
+
+        // Project Settings > Debug (project.yaml `debug:`). Changed through DebugSettingsCmd
+        // (undoable), read by Generator and Play start; a running Play takes a change at once
+        // (DebugOverlay::updateSettings: the console open, the stats picked stay)
+        const DebugSettings& getDebugSettings() const;
+        void setDebugSettings(const DebugSettings& settings);
+        // the engine as Play starts: the log buffer and stack traces, the development build
+        // flag, DebugOverlay::configure (development mode: on in the editor's Play)
+        void applyDebugSettingsForPlay() const;
 
         TerrainEditorSettings& getTerrainEditorSettings();
         const TerrainEditorSettings& getTerrainEditorSettings() const;

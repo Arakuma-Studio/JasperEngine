@@ -32,6 +32,8 @@
 #include "Project.h"
 #include "command/type/InputActionsCmd.h"
 #include "audio/AudioMixer.h"
+#include "command/type/DebugSettingsCmd.h"
+#include "DebugSettings.h"
 #include "input/InputActions.h"
 #include "registry/TagManager.h"
 #include "command/type/ShaderGlobalsCmd.h"
@@ -1285,6 +1287,62 @@ Setting shaderGlobalSetting(const std::string& name) {
     return s;
 }
 
+
+// Project Settings > Debug: one key of DebugSettings, applied as one undoable step (undo scope project)
+Setting debugSetting(const std::string& key, const std::string& type, const std::string& description, std::vector<std::string> values,
+                     std::function<Json(const DebugSettings&)> get, std::function<bool(DebugSettings&, const Json&, std::string&)> set) {
+    Setting s;
+    s.key = key;
+    s.type = type;
+    s.description = description + " Undoable (undo scope project).";
+    s.values = std::move(values);
+    s.get = [get](McpContext& ctx) { return get(ctx.project()->getDebugSettings()); };
+    s.set = [set](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+        Project* p = ctx.project();
+        DebugSettings changed = p->getDebugSettings();
+        if (!set(changed, value, error)) return false;
+        if (apply && changed != p->getDebugSettings()) {
+            auto* command = new DebugSettingsCmd(p, p->getDebugSettings(), changed);
+            command->setNoMerge();
+            if (!p->getProjectCommandHistory()->addCommand(command)) {
+                error = "the debug settings could not be applied";
+                return false;
+            }
+        }
+        return true;
+    };
+    return s;
+}
+
+template <typename T>
+Setting debugEnumSetting(const std::string& key, const std::string& description, const std::vector<std::string>& names, T DebugSettings::*field) {
+    return debugSetting(key, "enum", description, names,
+        [field](const DebugSettings& d) { return Json(DebugSettingsNames::name(d.*field)); },
+        [field, names](DebugSettings& d, const Json& value, std::string& error) {
+            if (!value.is_string() || !DebugSettingsNames::parse(value.get<std::string>(), d.*field)) {
+                error = "must be one of:";
+                for (const std::string& name : names) error += " " + name;
+                return false;
+            }
+            return true;
+        });
+}
+
+Setting debugKeySetting(const std::string& key, const std::string& description, std::string DebugSettings::*field) {
+    return debugSetting(key, "string", description + " A key name (backquote, f3, f12, escape, a...) or \"\" for none.", {},
+        [field](const DebugSettings& d) { return Json(d.*field); },
+        [field](DebugSettings& d, const Json& value, std::string& error) {
+            std::string text;
+            if (!readString(value, text, error, 64)) return false;
+            if (!DebugSettingsNames::isKeyName(text)) {
+                error = "is not a key name (backquote, f3, f12, escape, a...)";
+                return false;
+            }
+            d.*field = text;
+            return true;
+        });
+}
+
 const std::vector<Setting>& settingsTable() {
     static const std::vector<Setting> table = [] {
         std::vector<Setting> t;
@@ -2204,6 +2262,33 @@ const std::vector<Setting>& settingsTable() {
         add(boolSetting("editor.version_control_files", "Write version-control metadata files (.gitignore etc.) with the project.",
                         [](Project& p) { return p.hasVersionControlMetadata(); }, [](Project& p, bool v) { p.setVersionControlMetadata(v); }));
 
+        // ---- debug: the on-device console and stats overlay, the log (jasper://docs/debugging)
+        add(debugEnumSetting("debug.overlay", "The debug overlay: development (the editor's Play and Debug-type exports), "
+                             "always, or never (DebugOverlay.enabled = true still turns it on).", DebugSettingsNames::modes(), &DebugSettings::overlay));
+        add(debugKeySetting("debug.overlay_toggle_key", "Opens and closes the console.", &DebugSettings::toggleKey));
+        add(debugKeySetting("debug.overlay_stats_key", "Cycles the stats panel (off, fps, full).", &DebugSettings::statsKey));
+        add(debugEnumSetting("debug.overlay_gesture", "Touch gesture that toggles the console (three fingers held 0.75 s).",
+                             DebugSettingsNames::gestures(), &DebugSettings::gesture));
+        add(debugEnumSetting("debug.overlay_popup", "The bubble with the warning/error counts that opens the console.",
+                             DebugSettingsNames::popups(), &DebugSettings::popup));
+        add(debugSetting("debug.overlay_open_on_error", "bool", "The first error opens the console.", {},
+            [](const DebugSettings& d) { return Json(d.openOnError); },
+            [](DebugSettings& d, const Json& value, std::string& error) { return readBool(value, d.openOnError, error); }));
+        add(debugEnumSetting("debug.overlay_stats", "The stats panel at start.", DebugSettingsNames::stats(), &DebugSettings::stats));
+        add(debugEnumSetting("debug.overlay_stats_corner", "Where the stats panel sits.", DebugSettingsNames::corners(), &DebugSettings::statsCorner));
+        add(debugEnumSetting("debug.overlay_allow_lua", "The console's `lua <code>` command: in development builds, always or never.",
+                             DebugSettingsNames::allowLua(), &DebugSettings::allowLua));
+        add(debugSetting("debug.log_buffer_size", "int", "Log lines kept for the console and Log.getEntries (0 = none).", {},
+            [](const DebugSettings& d) { return Json(d.logBufferSize); },
+            [](DebugSettings& d, const Json& value, std::string& error) {
+                long long v;
+                if (!readInt(value, 0, DebugSettings::maxLogBufferSize, v, error)) return false;
+                d.logBufferSize = static_cast<unsigned int>(v);
+                return true;
+            }));
+        add(debugEnumSetting("debug.log_stack_traces", "Which Lua Log.* lines carry a Lua traceback (Lua errors always do).",
+                             DebugSettingsNames::stackTraces(), &DebugSettings::logStackTraces));
+
         // ---- tags and layers
         {
             Setting s;
@@ -3083,7 +3168,7 @@ void registerProjectTools(McpRegistry& registry) {
             "platform overrides. describe adds each key's type, allowed values, meaning.";
         tool.inputSchema = object({
             {"category", string("player, web, linux, windows, macos, ios, android, graphics, quality, physics, "
-                                "physics2d, input, scripting, editor, tags_and_layers, preferences or all.")},
+                                "physics2d, input, scripting, debug, editor, tags_and_layers, preferences or all.")},
             {"keys", array(Json{{"type", "string"}}, "Keys or categories.")},
             {"describe", withDefault(boolean(""), false)}
         });

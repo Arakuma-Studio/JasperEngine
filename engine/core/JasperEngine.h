@@ -9,6 +9,8 @@
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 #include "Log.h"
+#include "debug/DebugOverlay.h"
+#include "debug/DebugStats.h"
 #include "Scene.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"

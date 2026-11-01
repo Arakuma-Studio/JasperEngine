@@ -10,6 +10,8 @@
 #include "Screen.h"
 #include "io/UserSettings.h"
 #include "input/InputActions.h"
+#include "debug/DebugOverlay.h"
+#include "debug/DebugStats.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptScheduler.h"
@@ -127,7 +129,7 @@ double Engine::updateTime = 1.0 / 60.0; //60Hz
 double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
-uint64_t Engine::gameFrames = 0;
+std::atomic<uint64_t> Engine::gameFrames{0};
 // the clocks of Time (EngineTime.h): the unscaled frame delta and its sum, the fixed steps' sum,
 // the game time at the last scene load, the wall clock at start
 double Engine::unscaledDeltatime = 0.0;
@@ -157,6 +159,7 @@ int Engine::lastOrientation = 0;
 double Engine::orientationPendingSince = 0.0;
 std::atomic<bool> Engine::asyncLoading = false;
 bool Engine::frameRunning = false;
+bool Engine::developmentBuild = false;
 
 CursorType Engine::mouseCursorType = CursorType::ARROW;
 MouseMode Engine::mouseMode = MouseMode::NORMAL;
@@ -795,12 +798,20 @@ double Engine::getFixedDeltatime(){
     return fixedDeltatime;
 }
 
+void Engine::setDevelopmentBuild(bool development){
+    developmentBuild = development;
+}
+
+bool Engine::isDevelopmentBuild(){
+    return developmentBuild;
+}
+
 double Engine::getGameTime(){
     return gameTime;
 }
 
 uint64_t Engine::getGameFrames(){
-    return gameFrames;
+    return gameFrames.load(std::memory_order_relaxed);
 }
 
 void Engine::setSimulationHeld(bool held){
@@ -986,7 +997,8 @@ void Engine::beginCompositeFramebuffer(){
 // per commit, so stacked scenes draw offscreen and are presented once. The other
 // backends draw them straight to the swapchain (re-check when sokol_gfx is updated)
 #if defined(SOKOL_VULKAN)
-    if (framebuffer || scenes.size() <= 1)
+    // the debug overlay's Scene is drawn as one more layer (while it draws anything)
+    if (framebuffer || scenes.size() + (DebugOverlay::isDrawn() ? 1 : 0) <= 1)
         return;
 
     if (ensureCompositeFramebuffer())
@@ -1082,6 +1094,10 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onSafeAreaChanged.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
 
+    // Log.onMessageReceived and the console commands a released script added
+    Log::onMessageReceived.removeByTagSubstring(substring);
+    DebugOverlay::removeCommandsByTag(substring);
+
     // a released script instance's tag is "_<address>_": the input sources it owned go too
     // (Input.simulateAxis(name, value, self), InputActions::setSourceValue(this, ...))
     if (substring.size() > 2 && substring.front() == '_' && substring.back() == '_' &&
@@ -1123,6 +1139,10 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     onGamepadAxisMove.clear();
     onButtonDown.clear();
     onButtonUp.clear();
+
+    // what scripts subscribed to the log and the console commands they added
+    Log::onMessageReceived.clear();
+    DebugOverlay::removeOwnedCommands();
 
     if (includeLifecycle) {
         onViewLoaded.clear();
@@ -1442,6 +1462,8 @@ void Engine::systemViewChanged(){
     for (Scene* scene : getScenesSnapshot()){
         scene->updateCameraSize();
     }
+    if (Scene* overlay = DebugOverlay::getScene())
+        overlay->updateCameraSize();
 
     // the canvas mapping changed: Screen.safeArea follows (its event after the two below)
     Screen::updateSafeArea();
@@ -1553,6 +1575,8 @@ void Engine::runFrame(bool draw){
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
     framerate = (rawDelta > 0.0) ? (float)(1.0 / rawDelta) : 0.0f;
+    // the stats overlay's frame times: what the device took, a float into a ring
+    DebugStats::recordFrame(rawDelta);
 
     // Cap the delta exposed to gameplay (Engine::getDeltatime) and the update loop.
     // Anything bigger than maxDeltatime gets clamped; the simulation effectively
@@ -1591,6 +1615,10 @@ void Engine::runFrame(bool draw){
     updateGamepadNavigation();
 
     drawSemaphore.acquire();
+
+    // lines other threads logged since the last frame, to the main-thread log listeners
+    // (Log.onMessageReceived), first thing of the frame
+    Log::dispatchPending();
 
     // native SDKs' engine pause requests and native call timeouts (paused frames too)
     NativeBridge::update();
@@ -1706,6 +1734,11 @@ void Engine::runFrame(bool draw){
     if (runsUpdate)
         Input::endFrame();
 
+    // the debug overlay updates on its own clock: also while the time scale is 0 or the
+    // editor holds the game, so it stays usable on a frozen game
+    if (DebugOverlay::needsUpdate())
+        DebugOverlay::update(paused ? 0.0 : frameTime);
+
     if (draw){
         Engine::onDraw.call();
 
@@ -1715,6 +1748,14 @@ void Engine::runFrame(bool draw){
         beginFrameStats();
         for (int i = 0; i < scenes.size(); i++){
             scenes[i]->draw();
+        }
+
+        // the debug overlay above every scene (the loading scene too), outside the game's
+        // frame statistics
+        if (DebugOverlay::getScene()){
+            const FrameStats gameFrameStats = currentFrameStats;
+            DebugOverlay::draw();
+            currentFrameStats = gameFrameStats;
         }
 
         endCompositeFramebuffer();
@@ -1817,6 +1858,9 @@ void Engine::systemViewDestroyed(){
     viewLoaded = false;
     Engine::onViewDestroyed.call();
 
+    // the overlay's Scene goes with the GPU objects (it is made again when shown)
+    DebugOverlay::viewDestroyed();
+
     //TODO: must destroy all scenes (even if not a layer)
     for (int i = 0; i < scenes.size(); i++){
         scenes[i]->destroy();
@@ -1846,6 +1890,9 @@ void Engine::systemShutdown(){
     ScriptRuntime::quitAll();
 
     Engine::onShutdown.call();
+
+    // the overlay (and its Lua commands) goes while the Lua state still exists
+    DebugOverlay::shutdown();
 
     // what the game (and its onShutdown handlers) stored is on disk before it goes
     UserSettings::save();
@@ -2055,13 +2102,26 @@ void Engine::applyFramePacing(){
 
 // Scenes below a loading scene only get pointer-up, so nothing stays pressed
 static bool canSendUIEvents(Scene* scene){
-    return scene->canReceiveUIEvents() && !SceneManager::isCoveredByLoading(scene);
+    return scene->canReceiveUIEvents() && (scene == DebugOverlay::getScene() || !SceneManager::isCoveredByLoading(scene));
 }
 
 // documents are an explicit request for input: they receive it unless the scene turns
-// UI events off (UIEventState::DISABLED) or a loading scene covers it
+// UI events off (UIEventState::DISABLED) or a loading scene covers it (never the debug
+// overlay's, which is above the loading scene)
 static bool canSendDocumentEvents(Scene* scene){
-    return scene->getEnableUIEvents() != UIEventState::DISABLED && !SceneManager::isCoveredByLoading(scene);
+    return scene->getEnableUIEvents() != UIEventState::DISABLED && (scene == DebugOverlay::getScene() || !SceneManager::isCoveredByLoading(scene));
+}
+
+std::vector<Scene*> Engine::getInputScenes(bool keys){
+    std::vector<Scene*> inputScenes = getScenesSnapshot();
+    // the debug overlay is the top layer: its document is offered input first and consumes
+    // it over its own elements only; keys and text only while its search or command field
+    // has the focus
+    if (Scene* overlay = DebugOverlay::getScene()){
+        if (!keys || DebugOverlay::hasTextFocus())
+            inputScenes.push_back(overlay);
+    }
+    return inputScenes;
 }
 
 bool Engine::transformCoordPos(float& x, float& y){
@@ -2350,11 +2410,13 @@ namespace {
 }
 
 void Engine::systemTouchStart(int pointer, float x, float y){
+    // the debug overlay's gestures (three fingers held) see every finger; never consumed
+    DebugOverlay::handleTouch(pointer, x, y, 0);
     if (transformCoordPos(x, y)){
         Input::addTouch(pointer, x, y);
 
         uiEventReceived = false;
-        const std::vector<Scene*> scenes = getScenesSnapshot();
+        const std::vector<Scene*> scenes = getInputScenes(false);
 
         // screen documents are in front of the component UI (one they consume does not reach
         // it), which is in front of the documents on meshes
@@ -2396,6 +2458,7 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 }
 
 void Engine::systemTouchEnd(int pointer, float x, float y){
+    DebugOverlay::handleTouch(pointer, x, y, 2);
     const bool visible = Input::isTouchVisible(pointer);
     if (!transformCoordPos(x, y)){
         // lifted outside the canvas: no event, but the finger is not down any more, and the
@@ -2411,7 +2474,7 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
         Input::removeTouch(pointer);
 
         uiEventReceived = false;
-        const std::vector<Scene*> scenes = getScenesSnapshot();
+        const std::vector<Scene*> scenes = getInputScenes(false);
 
         if (dispatchReleaseToDocuments(scenes, pointer, D_MOUSE_BUTTON_1, true, [&](UIDocumentSystem* documents){
                 return documents->eventOnPointerUp(pointer, D_MOUSE_BUTTON_1, x, y, Input::getModifiers(), true, false);
@@ -2444,13 +2507,14 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
 }
 
 void Engine::systemTouchMove(int pointer, float x, float y){
+    DebugOverlay::handleTouch(pointer, x, y, 1);
     if (transformCoordPos(x, y)){
         const bool known = Input::findTouchIndex(pointer) != (size_t)-1;
         const Vector2 previous = Input::getTouchPosition(pointer);
         Input::setTouchPosition(pointer, x, y);
 
         uiEventReceived = false;
-        const std::vector<Scene*> scenes = getScenesSnapshot();
+        const std::vector<Scene*> scenes = getInputScenes(false);
 
         // only the document a finger started on tracks it, so every scene is offered the move
         for (UIDocumentSystem* documents : documentSystemsTopFirst(scenes)){
@@ -2484,7 +2548,7 @@ void Engine::systemTouchMove(int pointer, float x, float y){
 }
 
 void Engine::cancelUIPointer(int pointerOrButton, bool touch){
-    for (Scene* scene : getScenesSnapshot()){
+    for (Scene* scene : getInputScenes(false)){
         if (touch){
             scene->getSystem<UIDocumentSystem>()->eventOnTouchCancel(pointerOrButton);
             scene->getSystem<UISystem>()->eventOnPointerCancel(pointerOrButton);
@@ -2496,7 +2560,9 @@ void Engine::cancelUIPointer(int pointerOrButton, bool touch){
 }
 
 void Engine::cancelAllUIPointers(){
-    for (Scene* scene : getScenesSnapshot()){
+    // the debug overlay's gestures too: no finger stays held across a pause or a focus loss
+    DebugOverlay::cancelGestures();
+    for (Scene* scene : getInputScenes(false)){
         scene->getSystem<UIDocumentSystem>()->cancelAllPointers();
         scene->getSystem<UISystem>()->cancelAllPointers();
     }
@@ -2506,9 +2572,13 @@ void Engine::systemTouchCancel(){
     std::vector<Touch> cancelled = Input::getTouches();
     for (const Touch& touch : cancelled)
         systemTouchCancel(touch.fingerId);
+    // the debug overlay's fingers outside the canvas, which Input never had
+    DebugOverlay::cancelGestures();
 }
 
 void Engine::systemTouchCancel(int pointer){
+    // the debug overlay sees every finger, also those outside the canvas that Input never had
+    DebugOverlay::handleTouch(pointer, 0.0f, 0.0f, 3);
     // Drop this finger only. Pointer-up would release the control and can click it.
     size_t index = Input::findTouchIndex(pointer);
     if (index == -1)
@@ -2521,7 +2591,7 @@ void Engine::systemTouchCancel(int pointer){
 
     // the documents and the component UI that tracked it let go of it without a click
     bool consumed = false;
-    for (Scene* scene : getScenesSnapshot()){
+    for (Scene* scene : getInputScenes(false)){
         if (scene->getSystem<UIDocumentSystem>()->eventOnTouchCancel(pointer))
             consumed = true;
         if (scene->canReceiveUIEvents() && scene->getSystem<UISystem>()->eventOnPointerCancel(pointer))
@@ -2540,7 +2610,7 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
             Input::setModifiers(mods);
 
         uiEventReceived = false;
-        const std::vector<Scene*> scenes = getScenesSnapshot();
+        const std::vector<Scene*> scenes = getInputScenes(false);
 
         // screen documents are in front of the component UI (one they consume does not reach
         // it), which is in front of the documents on meshes
@@ -2592,7 +2662,7 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
             Input::setModifiers(mods);
 
         uiEventReceived = false;
-        const std::vector<Scene*> scenes = getScenesSnapshot();
+        const std::vector<Scene*> scenes = getInputScenes(false);
 
         if (dispatchReleaseToDocuments(scenes, 0, button, false, [&](UIDocumentSystem* documents){
                 return documents->eventOnPointerUp(0, button, x, y, mods, false, false);
@@ -2633,7 +2703,7 @@ void Engine::systemMouseMove(float x, float y, int mods){
             Input::setModifiers(mods);
 
         uiEventReceived = false;
-        const std::vector<Scene*> scenes = getScenesSnapshot();
+        const std::vector<Scene*> scenes = getInputScenes(false);
 
         // Below the document the pointer is over, documents lose their hover (unless they hold
         // a press), as elements under an opaque one do in a browser
@@ -2695,7 +2765,7 @@ void Engine::systemMouseScroll(float xoffset, float yoffset, int mods){
     if (mods != 0)
         Input::setModifiers(mods);
 
-    const std::vector<Scene*> scenes = getScenesSnapshot();
+    const std::vector<Scene*> scenes = getInputScenes(false);
     bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
         return documents->eventOnWheel(xoffset, yoffset, mods);
     }) != nullptr;
@@ -2720,7 +2790,7 @@ void Engine::systemMouseEnter(){
 
 void Engine::systemMouseLeave(){
     Input::releaseMouseEntered();
-    for (Scene* scene : getScenesSnapshot()){
+    for (Scene* scene : getInputScenes(false)){
         scene->getSystem<UIDocumentSystem>()->eventOnMouseLeave();
         scene->getSystem<UISystem>()->eventOnPointerLeave(-1);
     }
@@ -2732,7 +2802,10 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
     if (mods != 0)
         Input::setModifiers(mods);
 
-    const std::vector<Scene*> scenes = getScenesSnapshot();
+    // the debug overlay's toggle and stats keys; never consumed
+    DebugOverlay::handleKey(key, mods, true, repeat);
+
+    const std::vector<Scene*> scenes = getInputScenes(true);
 
     // the focused document first: a text field takes the keys it types with
     const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
@@ -2756,7 +2829,7 @@ void Engine::systemKeyUp(int key, bool repeat, int mods){
 
     // every document hears the release; the one that took the press consumes it
     bool consumed = false;
-    for (Scene* scene : getScenesSnapshot()){
+    for (Scene* scene : getInputScenes(false)){
         if (scene->getSystem<UIDocumentSystem>()->eventOnKeyUp(key, mods))
             consumed = true;
     }
@@ -2766,7 +2839,7 @@ void Engine::systemKeyUp(int key, bool repeat, int mods){
 }
 
 void Engine::systemCharInput(wchar_t codepoint){
-    const std::vector<Scene*> scenes = getScenesSnapshot();
+    const std::vector<Scene*> scenes = getInputScenes(true);
 
     std::vector<uint32_t> codepoints;
     charInputCombiner.push((uint32_t)codepoint, codepoints);
@@ -2804,7 +2877,7 @@ void Engine::flushCharInput(){
 
     // a high surrogate whose low one never came
     const std::string utf8 = toUtf8(codepoints);
-    dispatchToDocuments(getScenesSnapshot(), [&](UIDocumentSystem* documents){
+    dispatchToDocuments(getInputScenes(true), [&](UIDocumentSystem* documents){
         return documents->eventOnTextInput(utf8);
     });
 }
@@ -2813,7 +2886,7 @@ void Engine::systemTextInput(const std::string& utf8){
     if (utf8.empty())
         return;
 
-    const std::vector<Scene*> scenes = getScenesSnapshot();
+    const std::vector<Scene*> scenes = getInputScenes(true);
 
     bool hadInvalid = false;
     const std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid);
@@ -2833,18 +2906,18 @@ void Engine::systemTextInput(const std::string& utf8){
 }
 
 void Engine::systemImeComposition(const std::string& utf8, int cursorCodepoints){
-    dispatchToDocuments(getScenesSnapshot(), [&](UIDocumentSystem* documents){
+    dispatchToDocuments(getInputScenes(true), [&](UIDocumentSystem* documents){
         return documents->eventOnImeComposition(utf8, cursorCodepoints);
     });
 }
 
 void Engine::systemImeCancel(){
-    for (Scene* scene : getScenesSnapshot())
+    for (Scene* scene : getInputScenes(false))
         scene->getSystem<UIDocumentSystem>()->eventOnImeCancel();
 }
 
 bool Engine::wantsTextComposition(){
-    for (Scene* scene : getScenesSnapshot()){
+    for (Scene* scene : getInputScenes(false)){
         if (canSendDocumentEvents(scene) && scene->getSystem<UIDocumentSystem>()->hasFocusedTextInput())
             return true;
     }
@@ -2935,7 +3008,7 @@ bool Engine::wantsGamepadNavigation(){
 }
 
 bool Engine::isTextInputFocused(){
-    for (Scene* scene : getScenesSnapshot()){
+    for (Scene* scene : getInputScenes(false)){
         if (canSendUIEvents(scene) && scene->getSystem<UISystem>()->isInputFieldFocused())
             return true;
         if (canSendDocumentEvents(scene) && scene->getSystem<UIDocumentSystem>()->hasFocusedTextInput())

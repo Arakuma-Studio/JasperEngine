@@ -196,7 +196,12 @@ LIMITS.update({"edit_animation": 3700, "get_animation": 870, "edit_pose_animatio
 LIMITS.update({"edit_animation": 3800, "get_animation": 960})
 # lead: + anim-properties (+228 over the measured 114475 of main d08d63b31) on the provisional 114870: provisional 115098, re-measured on the merged tree
 # measured on main 1b753e5d4 (everything above merged): 155 tools, total 115098 (tool_budget.py)
-TOTAL_LIMIT = 115098
+# debug overlay: no new tool; get_project_settings' category list (+ "debug") and get_play_state's
+# debug_overlay block (+22); measured 113014 on the tree merged with main dce634fb7; merged with main
+# fa4eeed50 (everything above, safe-area included): 155 tools, total 114892 (test_budget on the full
+# MCP run), the limit set to it
+# lead: + debug-overlay (its 114892 on main fa4eeed50, whose own total is 114870): provisional 115120, re-measured on the merged tree
+TOTAL_LIMIT = 115120
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

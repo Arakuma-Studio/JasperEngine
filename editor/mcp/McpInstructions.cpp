@@ -134,7 +134,7 @@ return Player
   not apply). Unseen names: jasper://docs/lua-api (an index), the stubs, search_engine_api.
 - Input.getAxis/getButtonDown("Jump") read Project Settings > Input actions; getKeyDown(key)
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
-- Log.print/warn/error take ONE string (use ..). Time.deltaTime/unscaledDeltaTime; waits:
+- Log.* join values like print. Time.deltaTime/unscaledDeltaTime; waits:
   self:startCoroutine(fn) + Coroutine.wait; timers: self:invoke.
 - Saves: PlayerPrefs, Json, File.writeText("data://x") (lua-api 2.4; tool user_settings).
   HTTP: Http.get/post, main-thread callbacks (jasper://docs/networking).
@@ -234,6 +234,7 @@ Read the page before using these tools:
   shadow and effects (TextEffect), UI particles; Game view resolutions: configure_game_view
   (jasper://docs/ui).
 - Lines, lasers, trails: line_renderer / trail_renderer (jasper://docs/lines-trails).
+- On-device console and FPS/stats: DebugOverlay, Log.getEntries (jasper://docs/debugging).
 - Video: type video_player / video_background, texture video|<id>; MP4 and WebM
   (jasper://docs/video).
 - Notches and safe areas: Screen.safeArea, the Safe Area component (create_ui safe_area), CSS

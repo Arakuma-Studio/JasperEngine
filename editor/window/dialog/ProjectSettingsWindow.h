@@ -58,6 +58,7 @@ namespace jasperengine::editor {
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};
         char m_audioDefaultGroupBuffer[128] = {0};
+        DebugSettings m_debugSettings;
         fs::path m_assetsDir;
         fs::path m_luaDir;
         std::vector<fs::path> m_scriptDirs;
@@ -216,6 +217,8 @@ namespace jasperengine::editor {
         // First Input problem that blocks OK, "" when there is none
         std::string inputError() const;
         void drawScriptingSettings();
+        // Debug: the on-device console and stats overlay, the log
+        void drawDebugSettings();
         void drawTagsAndLayersSettings();
         // Why the New Tag Name field cannot be added ("" when it can)
         std::string newTagError() const;

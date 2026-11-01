@@ -388,6 +388,11 @@ namespace jasperengine {
 
         virtual void platformLog(const int type, const char *fmt, va_list args);
 
+        // resident memory of the process in bytes (the stats overlay); 0 when the platform
+        // does not tell. Linux/Android /proc/self/statm, Windows the working set, Apple the
+        // physical footprint, Web the WebAssembly heap (debug/ProcessMemory.cpp)
+        virtual uint64_t getProcessMemoryBytes();
+
         virtual bool getBoolForKey(const char *key, bool defaultValue);
         virtual int getIntegerForKey(const char *key, int defaultValue);
         virtual long getLongForKey(const char *key, long defaultValue);

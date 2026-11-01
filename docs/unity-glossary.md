@@ -264,6 +264,20 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 | `Resources.Load<TextAsset>(path).text`, `StreamingAssets` files | `File.readText("asset://path")` (read-only, in the APK on Android too); `Json.readFile("asset://...")` |
 | ScriptableObject (data assets) | a JSON file (`Json.readFile("lua://data/items.json")`) or a Lua data module (`require("data.items")`): jasper://docs/lua-api 2.4.2 |
 
+## Debugging
+
+| Unity term | JasperEngine name |
+|---|---|
+| `Debug.Log`, `Debug.LogWarning`, `Debug.LogError` | `Log.print`, `Log.warn`, `Log.error` (Lua; any values, tab-joined like `print`), C++ `Log::print/warn/error` |
+| `LogType` (`Log`, `Warning`, `Error`) | `LogLevel` (`INFO`, `VERBOSE`, `DEBUG`, `WARN`, `ERROR`) |
+| `Application.logMessageReceived` (`condition, stackTrace, type`) | `Log.onMessageReceived` (`RegisterEvent(self, Log.onMessageReceived, "onLog")`, handler `(message, stackTrace, level)`), C++ `Log::addListener` |
+| `Application.logMessageReceivedThreaded` | C++ `Log::addListener(fn, LogDelivery::AnyThread)` |
+| `Debug.isDebugBuild`, the Development Build checkbox | `Engine.isDevelopmentBuild`: the editor's Play and exports built with the Debug build type |
+| IngameDebugConsole (`DebugLogManager`, `DebugLogConsole.AddCommand`, `ExecuteCommand`, the popup) | `DebugOverlay` (`showConsole`, `toggleConsole`, `addCommand`, `executeCommand`; the popup and the backquote key), Project Settings > Debug |
+| Graphy (FPS, RAM, audio monitors) | the debug overlay's stats panel (`DebugOverlay.statsMode`, F3) and `DebugOverlay.getStats()` |
+
+See [mcp/guide/debugging.md](mcp/guide/debugging.md).
+
 ## Native plugins
 
 Details: jasper://docs/native-bridge.

@@ -193,6 +193,17 @@ void AudioSystem::close(){
     outputUnavailable = false;
 }
 
+void AudioSystem::getVoiceCounts(uint32_t& active, uint32_t& max){
+    active = 0;
+    max = 0;
+    if (!inited)
+        return;
+    // the engine's voices (sources, one-shots), as get_play_state's audio.voices: SoLoud's own
+    // count has the mixer's group buses too
+    active = getVoiceCount();
+    max = getSoloud().getMaxActiveVoiceCount();
+}
+
 void AudioSystem::deInit(){
     if (inited){
         AudioMixer::onAudioShutdown();

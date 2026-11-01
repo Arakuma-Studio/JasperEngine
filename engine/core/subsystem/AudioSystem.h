@@ -150,6 +150,9 @@ namespace jasperengine{
 		static void moveSourceVoices(Scene* from, AudioSourceComponent& source, Scene* to, AudioSourceComponent& target);
 		void setListenerEnabled(bool enabled);
 		bool isListenerEnabled() const;
+		// sounds playing now (getVoiceCount: not the mixer's buses) and the most that play at once
+		// (0, 0 before the output opens)
+		static void getVoiceCounts(uint32_t& active, uint32_t& max);
 
         bool loadSound(AudioSourceComponent& audio);
 		void destroySound(AudioSourceComponent& audio);

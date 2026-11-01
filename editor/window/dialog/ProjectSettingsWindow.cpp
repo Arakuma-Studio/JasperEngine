@@ -22,6 +22,7 @@
 #include "EditorHost.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
+#include "command/type/DebugSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "util/Color.h"
 #include "input/InputActions.h"
@@ -149,6 +150,7 @@ enum class ProjectCategory {
     Input,
     Audio,
     Scripting,
+    Debug,
     TagsAndLayers,
     NativePlugins,
     Editor,
@@ -173,6 +175,8 @@ static const settingsui::Category projectCategories[] = {
                   "jump fire submit cancel gravity sensitivity dead snap invert rebinding"},
     {"Audio", "", "audio mixer groups voices real voices sample rate output group sound music volume"},
     {"Scripting", "", "lua directory script directories c++ standard"},
+    {"Debug", "", "debug overlay console log stats fps graph development build toggle key gesture popup error commands lua "
+                  "buffer stack traces ingamedebugconsole graphy"},
     {"Tags and Layers", "", "tags layers"},
     {"Native Plugins", "", "native plugins android java kotlin ios macos objective-c swift web javascript c++ gradle dependencies "
                            "repositories maven properties permissions manifest xml application info.plist plist frameworks cocoapods "
@@ -995,6 +999,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
     snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", m_audioSettings.defaultOutputGroup.c_str());
+    m_debugSettings = project->getDebugSettings();
 
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
@@ -1102,6 +1107,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Input: drawInputSettings(); break;
         case ProjectCategory::Audio: drawAudioSettings(); break;
         case ProjectCategory::Scripting: drawScriptingSettings(); break;
+        case ProjectCategory::Debug: drawDebugSettings(); break;
         case ProjectCategory::TagsAndLayers: drawTagsAndLayersSettings(); break;
         case ProjectCategory::NativePlugins: drawNativePluginsSettings(); break;
         case ProjectCategory::Editor: drawEditorSettings(); break;
@@ -1840,6 +1846,89 @@ void ProjectSettingsWindow::drawScriptingSettings() {
             "Exports also compile the engine with this standard. "
             "Choose a compatible compiler in Preferences > External Tools.");
     });
+}
+
+// a combo of the names of an enum (their order is the enum's), the labels shown
+template <typename T>
+static void drawEnumSetting(const char* label, const char* id, const char* const* labels, int count, T& value, T defaultValue, const char* tooltip) {
+    int index = static_cast<int>(value);
+    drawComboSetting(label, id, labels, count, index, static_cast<int>(defaultValue), tooltip);
+    value = static_cast<T>(std::clamp(index, 0, count - 1));
+}
+
+// a key of the debug overlay: none or a key name (InputControlNames)
+static void drawDebugKeySetting(const char* label, const char* id, std::string& key, const std::string& defaultKey, const char* tooltip) {
+    if (beginSettingsRow(label, key != defaultKey)) {
+        key = defaultKey;
+    }
+    const int code = key.empty() ? D_KEY_UNKNOWN : InputControlNames::parseKey(key);
+    const std::string shown = key.empty() ? std::string("None") : (code != D_KEY_UNKNOWN ? InputControlNames::keyName(code) : key);
+    ImGui::SetNextItemWidth(-helpMarkerWidth());
+    if (ImGui::BeginCombo(id, shown.c_str(), ImGuiComboFlags_HeightLarge)) {
+        if (ImGui::Selectable("None", key.empty())) key.clear();
+        for (const std::string& name : InputControlNames::keyNames()) {
+            const bool selected = code != D_KEY_UNKNOWN && InputControlNames::parseKey(name) == code;
+            if (ImGui::Selectable(name.c_str(), selected)) key = name;
+            if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    endSettingsRow(tooltip);
+}
+
+void ProjectSettingsWindow::drawDebugSettings() {
+    if (beginSettingsPanel("##DebugSettingsPanel")) {
+        drawSectionNote("The on-device debug overlay: a log console (filters, search, collapse, stack traces, copy, save, "
+            "commands) and an FPS / stats panel, in the editor's Play and in exported games. Scripts turn it on in any "
+            "build with DebugOverlay.enabled = true (a remote switch for one tester).");
+
+        const DebugSettings defaults;
+        DebugSettings& debug = m_debugSettings;
+
+        if (Theme::foldoutHeader("Overlay", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##DebugOverlayTable")) {
+            static const char* const modes[] = {"Never", "Development Builds", "Always"};
+            drawEnumSetting("Overlay", "##DebugOverlayMode", modes, 3, debug.overlay, defaults.overlay,
+                "Development Builds: the editor's Play and exports built with the Debug build type (Engine.isDevelopmentBuild). "
+                "Never: off unless a script sets DebugOverlay.enabled.");
+            drawDebugKeySetting("Toggle Key", "##DebugToggleKey", debug.toggleKey, defaults.toggleKey,
+                "Opens and closes the console (the backquote key, as Unity's IngameDebugConsole). The game still gets the key.");
+            drawDebugKeySetting("Stats Key", "##DebugStatsKey", debug.statsKey, defaults.statsKey,
+                "Cycles the stats panel: off, FPS, full.");
+            static const char* const gestures[] = {"Three Fingers Held", "Four Finger Tap", "None"};
+            drawEnumSetting("Gesture", "##DebugGesture", gestures, 3, debug.gesture, defaults.gesture,
+                "The touch gesture that opens and closes the console: three fingers held 0.75 s, or four fingers tapped.");
+            static const char* const popups[] = {"Never", "Touch Devices", "Always"};
+            drawEnumSetting("Popup", "##DebugPopup", popups, 3, debug.popup, defaults.popup,
+                "A small bubble at the right edge with the warning and error counts; tap it to open the console.");
+            if (beginSettingsRow("Open on Error", debug.openOnError != defaults.openOnError)) {
+                debug.openOnError = defaults.openOnError;
+            }
+            ImGui::Checkbox("##DebugOpenOnError", &debug.openOnError);
+            endSettingsRow("The first error opens the console.");
+            static const char* const stats[] = {"Off", "FPS", "Full"};
+            drawEnumSetting("Initial Stats", "##DebugStats", stats, 3, debug.stats, defaults.stats,
+                "The stats panel at start: FPS and a frame-time graph, or full (draw calls, memory, audio, physics, entities...).");
+            static const char* const corners[] = {"Top Left", "Top Right", "Bottom Left", "Bottom Right"};
+            drawEnumSetting("Stats Corner", "##DebugStatsCorner", corners, 4, debug.statsCorner, defaults.statsCorner,
+                "Where the stats panel sits. Taps go through it to the game.");
+            static const char* const allowLua[] = {"Development Builds", "Always", "Never"};
+            drawEnumSetting("Allow Lua Commands", "##DebugAllowLua", allowLua, 3, debug.allowLua, defaults.allowLua,
+                "The console's `lua <code>` command runs Lua typed on the device.");
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("Log", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##DebugLogTable")) {
+            int bufferSize = static_cast<int>(debug.logBufferSize);
+            drawIntSetting("Log Buffer Size", "##DebugLogBufferSize", bufferSize, static_cast<int>(defaults.logBufferSize), 0,
+                "Lines the log keeps for the console and Log.getEntries (0 keeps none). Every build keeps them, from the first line.");
+            debug.logBufferSize = static_cast<unsigned int>(std::clamp(bufferSize, 0, static_cast<int>(DebugSettings::maxLogBufferSize)));
+            static const char* const traces[] = {"None", "Errors", "Warnings and Errors", "All"};
+            drawEnumSetting("Log Stack Traces", "##DebugLogStackTraces", traces, 4, debug.logStackTraces, defaults.logStackTraces,
+                "Which Log.* lines of Lua scripts carry a Lua stack trace (Lua errors always do).");
+            ImGui::EndTable();
+        }
+    }
+    endSettingsPanel();
 }
 
 std::string ProjectSettingsWindow::newTagError() const {
@@ -3406,6 +3495,13 @@ bool ProjectSettingsWindow::applySettings() {
     }
 
     m_project->getLoadingSettings() = m_loadingSettings;
+
+    // Debug: one undoable step of the project history
+    if (m_debugSettings != m_project->getDebugSettings()) {
+        auto* command = new DebugSettingsCmd(m_project, m_project->getDebugSettings(), m_debugSettings);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
+    }
 
     m_project->setPackNativeResources(m_packNativeResources);
     m_project->setVersionControlMetadata(m_versionControlMetadata);
