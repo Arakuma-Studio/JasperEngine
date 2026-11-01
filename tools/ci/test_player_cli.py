@@ -21,13 +21,15 @@ image of docker/runtime.Dockerfile:
   one reload: pthreads player), without them and with the service worker blocked (single-thread
   player), and a build with Web: Multithreaded off has no -mt files and runs single-thread.
 - variants (S34 AC3, AC5): tools/fixtures/unified-lighting (scripts that build meshes: no HTML UI),
-  atmosphere (no scripts, no physics: no HTML UI, no runtime shader compiler) and the upgrade
-  fixture tools/test-projects/upgrade-from-main/project (HTML UI documents without video, physics,
+  physics-placement (static primitives, no scripts, no physics components, no start scene in its
+  project.yaml: no HTML UI, no runtime shader compiler) and the upgrade fixture
+  tools/test-projects/upgrade-from-main/project (HTML UI documents without video, physics,
   scripts) built for Linux glcore get the player variant their modules need (no
-  W-PLAYER-VARIANT), which leaves modules out; atmosphere also with the full player and lite3d
-  alone (it takes lite3d, with no warning: no variant of fewer modules is missing); built with the
-  full player alone they warn W-PLAYER-VARIANT and use it; each variant's build and the full
-  player's run headless to the same frame, pixel for pixel.
+  W-PLAYER-VARIANT), which leaves modules out; physics-placement also with the full player and
+  lite3d alone (it takes lite3d, with no warning: no variant of fewer modules is missing); built
+  with the full player alone they warn W-PLAYER-VARIANT and use it; each variant's build and the
+  full player's run headless to the same frame, pixel for pixel (not atmosphere: its clouds differ
+  between two runs of one player).
 - fallback (AC3): tools/fixtures/prefab-runtime (C++ scripts) reports `method: compile` and
   `compile_reason: C++ scripts (...)`, and here fails with `needs a C++ toolchain`; with
   --method prebuilt it fails listing the reasons.
@@ -276,8 +278,8 @@ def check_variants(args, players: Path, out: Path) -> None:
     (full_only / full_id).symlink_to(players / full_id, target_is_directory=True)
     # the variant each fixture gets from every installed variant, then the others it also runs
     # with when they are the only variant installed next to the full player
-    expected = {"unified-lighting": ["core"], "atmosphere": ["lite2d", "lite3d"], "upgrade-from-main": ["ui"]}
-    sources = {"unified-lighting": FIXTURES / "unified-lighting", "atmosphere": FIXTURES / "atmosphere",
+    expected = {"unified-lighting": ["core"], "physics-placement": ["lite2d", "lite3d"], "upgrade-from-main": ["ui"]}
+    sources = {"unified-lighting": FIXTURES / "unified-lighting", "physics-placement": FIXTURES / "physics-placement",
                "upgrade-from-main": REPO / "tools/test-projects/upgrade-from-main/project"}
 
     def frame(exe: Path, shot: Path) -> None:
