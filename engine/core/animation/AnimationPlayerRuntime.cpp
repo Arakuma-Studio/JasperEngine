@@ -534,11 +534,11 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
         for (size_t i = 0; i < specs.size(); i++){
             const StateSpec& spec = specs[i];
             PlayerStateRuntime& state = states[i];
-            const std::string poolKey = retargetPoolKey(spec.clip, spec.retarget);
+            const std::string poolKey = spec.clip;
             int old = runtime.findState(spec.name);
             if (old >= 0){
                 state = runtime.states[(size_t)old];
-                if (state.poolKey != poolKey){
+                if (state.poolKey != poolKey || state.retarget != spec.retarget){
                     state.bindings = ClipBindings();
                     state.loadFailed = false;
                     state.retryTimer = 0.0f;
@@ -582,8 +582,12 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
     return runtime;
 }
 
-std::string anim::retargetPoolKey(const std::string& clip, bool retarget){
-    return retarget && !clip.empty() ? clip + "@humanoid" : clip;
+void anim::prepareRetarget(ClipBindings& bindings, const std::string& clipReference, bool retarget){
+    bindings.retarget = retarget && bindings.clip && !bindings.clip->isHumanoid();
+    bindings.source.reset();
+    bindings.retargetError.clear();
+    if (!bindings.retarget) return;
+    bindings.source = clipRetargetSource(*bindings.clip, clipReference, &bindings.retargetError);
 }
 
 bool anim::stateMirror(const PlayerStateRuntime& state){

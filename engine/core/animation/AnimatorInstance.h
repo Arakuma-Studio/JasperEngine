@@ -53,10 +53,14 @@ namespace jasperengine::anim{
         float retry = 0.0f;
         bool reported = false;
         bool bound = false;                 // bound to the current rig
-        RigClipBinding binding;
+        RigClipBinding binding;             // the tracks that play by path (all of a clip that is not retargeted)
         RigClipCursors cursors;
+        // the one retarget path (AnimatorRetarget.h): a humanoid clip, or a generic clip of another
+        // humanoid model (Retarget Auto), or a clip whose state asks for humanoid playback
         RetargetBinding retarget;
-        bool retargeted = false;
+        std::vector<KeyCursor> retargetCursors;     // per clip track
+        bool retargeted = false;            // plays through the humanoid path
+        bool humanoid = false;              // the controller asks for the humanoid path (a state's Retarget, Mirror, Foot IK)
         ClipRootMotion rootMotion;
         // root motion: the bone, its tracks, the fixed transform of its parent chain
         int rootBone = -1;
@@ -77,6 +81,7 @@ namespace jasperengine::anim{
         bool hasReference = false;
         AdditiveReference referenceKind = AdditiveReference::FirstFrame;
         float referenceTime = 0.0f;
+        uint8_t referenceFlags = 0;         // the Mirror (1) and Foot IK (2) it was sampled with
         Pose reference;
 
         float length() const { return clip ? clip->getLength() : 0.0f; }
@@ -344,6 +349,8 @@ namespace jasperengine::anim{
             float length = 0.0f;
             bool loop = false;
             float speed = 1.0f;             // the state's speed times its speed parameter
+            bool mirror = false;            // the state's humanoid playback flags (§12)
+            bool footIK = false;
         };
         StateInfo currentState(int layer) const;
         StateInfo nextState(int layer) const;
@@ -396,7 +403,12 @@ namespace jasperengine::anim{
         void evaluateLayer(size_t layer, const AnimatorComponent& component);
         void evaluateMotion(size_t layer, const AnimatorStateRun& run, Pose& out, const AnimatorComponent& component);
         void sampleSlot(size_t slot, float clipTime, Pose& out, bool additive, AdditiveReference reference, float referenceTime,
-                        const AnimatorComponent& component);
+                        const AnimatorComponent& component, bool mirror = false, bool footIK = false);
+        // the humanoid path of a retargeted slot at `clipTime` into `out` (holding the rest elsewhere)
+        void sampleHumanoid(AnimatorClipSlot& slot, float clipTime, Pose& out, bool mirror, bool footIK, KeyCursor* cursors) const;
+        // the clip slot plays through the humanoid path: its source (null: a humanoid clip), false when it plays by path
+        bool humanoidSource(const AnimatorClipSlot& slot, const AnimatorComponent& component,
+                            std::shared_ptr<const RetargetSource>& source, std::string* error) const;
         void removeRootMotion(const AnimatorClipSlot& slot, Pose& out) const;
         // P(t) with the baked components held at the start, h(t) the heading change since time 0
         void rootPoint(const AnimatorClipSlot& slot, float clipTime, Vector3& position, float& heading) const;

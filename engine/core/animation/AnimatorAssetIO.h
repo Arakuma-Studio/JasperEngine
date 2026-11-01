@@ -99,9 +99,10 @@ namespace jasperengine::anim{
     // exit_transitions?, entry_position, any_state_position, exit_position}; a state {name,
     // position, motion, speed, speed_parameter?, cycle_offset?, cycle_offset_parameter?,
     // time_parameter?, loop? (inherit, loop, once, ping_pong, clamp_forever, repeat), tag?,
-    // additive_reference? (first_frame, rest, time, clip), additive_time?, transitions}; a
-    // motion null, {"clip": ref} or {"blend_tree": {type, parameter, parameter_y?, children}}; a
-    // child {motion, threshold | position, time_scale?, direct_parameter?}; a transition {to,
+    // additive_reference? (first_frame, rest, time, clip), additive_time?, mirror?, foot_ik?,
+    // retarget? (humanoid playback, written when true), transitions}; a motion null, {"clip": ref}
+    // or {"blend_tree": {type, parameter, parameter_y?, children}}; a child {motion, threshold |
+    // position, time_scale?, direct_parameter?, mirror?}; a transition {to,
     // conditions, has_exit_time, exit_time, fixed_duration, duration, offset,
     // interruption_source, ordered_interruption, can_transition_to_self?, mute?}; a condition
     // {parameter, mode, threshold?}; a ref {path, guid?}. Unknown members of any of these objects

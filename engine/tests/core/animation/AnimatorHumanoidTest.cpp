@@ -19,6 +19,7 @@
 #include "object/AnimationPlayer.h"
 #include "object/Model.h"
 #include "pool/AnimationClipPool.h"
+#include "pose/HumanoidMapIO.h"
 #include "pose/PoseMath.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
@@ -298,4 +299,128 @@ TEST_F(AnimatorHumanoid, HumanoidModelClipsPlayLikeThePlayer){
     const Difference d = compare(a, b, ROBOT_BONES);
     EXPECT_LT(d.degrees, 0.05) << d.bone;
     EXPECT_LT(d.meters, 1e-4);
+}
+
+// ---- upstream's anim-retarget files load and convert losslessly ----
+
+// upstream's controller: a state's Mirror, Foot IK and Retarget and a blend child's Mirror become
+// S21's fields (not unknown keys), a save writes them, the saved file reads back the same; an S21
+// version 2 file of the earlier absorption (the flags kept as unknown keys) reads them as fields
+TEST_F(AnimatorHumanoid, UpstreamControllerHumanoidFlagsConvertLosslessly){
+    const std::string text = R"({"format": "jasperengine.controller", "version": 1, "parameters": [{"name": "Speed", "type": "float", "default": 0}],
+      "layers": [{"name": "Base Layer", "default_state": "Walk",
+        "states": [{"name": "Walk", "clip": "hero.gltf#Walk", "mirror": true, "foot_ik": true, "retarget": true, "editor_note": "kept"},
+                   {"name": "Move", "blend_tree": {"parameter": "Speed", "children": [
+                     {"clip": "hero.gltf#Idle", "threshold": 0}, {"clip": "hero.gltf#Walk", "threshold": 1, "mirror": true}]}}],
+        "transitions": []}]})";
+    ControllerParseResult parsed = parseController(text);
+    ASSERT_TRUE(parsed.ok) << parsed.error.message;
+    EXPECT_EQ(parsed.dialect, AnimatorFileDialect::UpstreamVersion1);
+    const StateDef& walk = parsed.data.layers[0].machine.states[0];
+    EXPECT_TRUE(walk.mirror);
+    EXPECT_TRUE(walk.footIK);
+    EXPECT_TRUE(walk.retarget);
+    for (const auto& key : walk.unknownKeys) EXPECT_TRUE(key.first != "mirror" && key.first != "foot_ik" && key.first != "retarget") << key.first;
+    ASSERT_EQ(walk.unknownKeys.size(), 1u) << "upstream's own extra member is kept";
+    const StateDef& move = parsed.data.layers[0].machine.states[1];
+    ASSERT_TRUE(move.motion.isTree());
+    ASSERT_EQ(move.motion.tree[0].children.size(), 2u);
+    EXPECT_FALSE(move.motion.tree[0].children[0].mirror);
+    EXPECT_TRUE(move.motion.tree[0].children[1].mirror);
+    EXPECT_TRUE(move.motion.tree[0].children[1].unknownKeys.empty());
+
+    const std::string saved = writeController(parsed.data);
+    ControllerParseResult again = parseController(saved);
+    ASSERT_TRUE(again.ok) << again.error.message;
+    EXPECT_EQ(again.dialect, AnimatorFileDialect::Current);
+    EXPECT_EQ(writeController(again.data), saved) << "a second save writes the same text";
+    EXPECT_TRUE(again.data.layers[0].machine.states[0].mirror && again.data.layers[0].machine.states[0].footIK &&
+                again.data.layers[0].machine.states[0].retarget);
+    EXPECT_TRUE(again.data.layers[0].machine.states[1].motion.tree[0].children[1].mirror);
+
+    // the flags as unknown keys (what the earlier absorption wrote): S21 fields now, same text
+    ControllerDef old = parsed.data;
+    old.layers[0].machine.states[0].mirror = old.layers[0].machine.states[0].footIK = old.layers[0].machine.states[0].retarget = false;
+    old.layers[0].machine.states[0].unknownKeys.insert(old.layers[0].machine.states[0].unknownKeys.begin(),
+                                                       {{"mirror", "true"}, {"foot_ik", "true"}, {"retarget", "true"}});
+    old.layers[0].machine.states[1].motion.tree[0].children[1].mirror = false;
+    old.layers[0].machine.states[1].motion.tree[0].children[1].unknownKeys.push_back({"mirror", "true"});
+    ControllerParseResult earlier = parseController(writeController(old));
+    ASSERT_TRUE(earlier.ok) << earlier.error.message;
+    EXPECT_TRUE(earlier.data.layers[0].machine.states[0].mirror && earlier.data.layers[0].machine.states[0].footIK &&
+                earlier.data.layers[0].machine.states[0].retarget);
+    EXPECT_TRUE(earlier.data.layers[0].machine.states[1].motion.tree[0].children[1].mirror);
+    EXPECT_EQ(writeController(earlier.data), saved);
+}
+
+// upstream's .anim version 2 (humanoid tracks, angle keys, the humanoid header, a generic track)
+// and .humanoid version 2 (Animation Type, extra bones, twist) read, write and read again the
+// same; the clip plays on the Animator, the Avatar's extra-bone override is the Animator's avatar's
+TEST_F(AnimatorHumanoid, UpstreamHumanoidFilesRoundTripAndPlay){
+    const std::string animText = R"({"format": "jasperengine.anim", "version": 2, "frame_rate": 30, "wrap": "loop",
+      "humanoid": {"source_model": "models/hero.gltf", "human_scale": 0.982},
+      "tracks": [
+        {"path": "Hat", "channel": "rotation", "keys": [[0, [0, 0, 0, 1]]]},
+        {"channel": "humanoid", "bone": "hips", "keys": [[0, [0, 0, 0, 1]], [0.5, [0.02, 0, 0, 0.9998]]]},
+        {"channel": "humanoid", "bone": "left_upper_leg", "keys": [[0, {"angles": [30, 5, 0]}], [1, {"angles": [-20, 0, 10]}]]},
+        {"channel": "humanoid", "bone": "left_index_proximal", "keys": [[0, [0.2588, 0, 0, 0.9659]]]},
+        {"channel": "humanoid_position", "bone": "hips", "keys": [[0, [0, -0.02, 0]], [0.5, [0, 0.01, 0.15]]]},
+        {"channel": "humanoid_position", "bone": "left_foot", "keys": [[0, [0.09, -0.9, 0.1]]]}]})";
+    ClipParseResult parsed = parseClip(animText);
+    ASSERT_TRUE(parsed.ok()) << parsed.error.toString();
+    ASSERT_TRUE(parsed.data->isHumanoid());
+    const std::string saved = writeClip(*parsed.data);
+    EXPECT_NE(saved.find("\"version\": 2"), std::string::npos);
+    ClipParseResult again = parseClip(saved);
+    ASSERT_TRUE(again.ok()) << again.error.toString();
+    EXPECT_EQ(writeClip(*again.data), saved) << "a second save writes the same text";
+    ASSERT_EQ(again.data->tracks.size(), parsed.data->tracks.size());
+    EXPECT_EQ(again.data->humanoid.sourceModel, "models/hero.gltf");
+
+    const std::string humanoidText = "{\n  \"format\": \"jasperengine.humanoid\",\n  \"version\": 2,\n  \"animation_type\": \"humanoid\",\n"
+                                     "  \"bones\": {},\n  \"extra_bones\": {\"left_index_proximal\": \"\"},\n  \"twist\": {\"left_lower_arm\": 15}\n}\n";
+    pose::HumanoidOverrides overrides;
+    std::vector<std::string> warnings;
+    std::string error;
+    ASSERT_TRUE(pose::parseHumanoidOverrides(humanoidText, overrides, warnings, &error)) << error;
+    EXPECT_TRUE(overrides.isHumanoid());
+    ASSERT_TRUE(overrides.extraBones[(size_t)pose::extraIndex(pose::HumanExtraBone::LeftIndexProximal)].has_value());
+    pose::HumanoidOverrides reread;
+    ASSERT_TRUE(pose::parseHumanoidOverrides(pose::writeHumanoidOverrides(overrides), reread, warnings, &error)) << error;
+    EXPECT_TRUE(reread == overrides);
+
+    // the hero's Avatar unmaps its left index (and is Humanoid): the Animator's avatar follows it
+    animtest::writeAsset(hero + ".humanoid", humanoidText);
+    AnimationClipPool::invalidateModel(hero);
+    animtest::writeAsset(prefix + "upstream_h.anim", saved);
+    const Entity a = load(hero, -1);
+    rememberRest();
+    animator(controllerFile("h", controller({}, {state("H", prefix + "upstream_h.anim")})), a);
+    run(6);
+    ASSERT_TRUE(instance(a).humanoid.valid) << instance(a).humanoid.error;
+    EXPECT_LT(instance(a).humanoid.extraBones[(size_t)pose::extraIndex(pose::HumanExtraBone::LeftIndexProximal)], 0)
+        << "the sidecar's extra_bones \"\" unmaps the bone";
+    EXPECT_NEAR(instance(a).humanoid.rig->twist(pose::HumanBone::LeftLowerArm), 15.0f, 1e-4f);
+    ASSERT_TRUE(instance(a).clips[0].retargeted) << "a humanoid clip plays through the humanoid path";
+    EXPECT_GT(motion(a, "mixamorig:LeftUpLeg"), 1.0);
+    EXPECT_LT(motion(a, "mixamorig:LeftHandIndex1"), 1e-3) << "an unmapped finger is left alone";
+}
+
+// one path: an Animator state with Mirror on the model's own clip (no retargeting needed) plays
+// it mirrored through the avatar, as a Retarget + Mirror entry does
+TEST_F(AnimatorHumanoid, StateMirrorOnTheModelsOwnClip){
+    anim::ControllerDef def = controller({}, {state("Walk", hero + "#Walk")});
+    def.layers[0].machine.states[0].mirror = true;
+    const Entity a = load(hero, -1);
+    const Entity b = load(hero, 1);
+    const Entity c = load(hero, 3);
+    animator(controllerFile("mirror", def), a);
+    player(b, hero + "#Walk", true, true);
+    player(c, hero + "#Walk", false);
+    run(10);
+    ASSERT_TRUE(instance(a).clips[0].retargeted);
+    const std::vector<std::string> legs = {"mixamorig:LeftUpLeg", "mixamorig:RightUpLeg", "mixamorig:LeftLeg", "mixamorig:RightLeg"};
+    EXPECT_GT(compare(a, c, legs).degrees, 1.0) << "mirrored, unlike the plain walk";
+    const Difference d = compare(a, b, legs);
+    EXPECT_LT(d.degrees, 0.05) << d.bone;
 }

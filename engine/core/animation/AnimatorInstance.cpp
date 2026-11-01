@@ -81,14 +81,17 @@ namespace{
 
     // the clip's model ("hero.gltf#Walk" -> "hero.gltf"; a .anim's source or preview model)
     std::string sourceModelOf(const AnimationClip& clip, const std::string& path){
-        SubClipReference reference;
-        if (parseSubClipReference(path, reference)) return reference.model;
-        if (clip.getSource().kind == "model" && !clip.getSource().path.empty()){
-            SubClipReference sourceReference;
-            if (parseSubClipReference(clip.getSource().path, sourceReference)) return sourceReference.model;
-            return clip.getSource().path;
-        }
-        return clip.getPreviewModel();
+        return clipSourceModel(clip, path);
+    }
+
+    bool sameModel(const std::string& a, const std::string& b){
+        return !a.empty() && !b.empty() && MeshSystem::getModelFilenameKey(a) == MeshSystem::getModelFilenameKey(b);
+    }
+
+    // a generic clip of another model plays retargeted: the Animator's Retarget Auto (with a model
+    // of its own to retarget onto), or its state asks for the humanoid path
+    bool humanoidIntent(const AnimatorClipSlot& slot, const AnimatorComponent& component, const std::string& modelPath){
+        return slot.humanoid || (component.retarget == AnimatorRetarget::Auto && !modelPath.empty());
     }
 
 }
@@ -135,10 +138,12 @@ void anim::AnimatorInstance::setController(const std::shared_ptr<const CompiledC
     // clip slots (overrides applied); slots of the same clip keep their load
     std::vector<AnimatorClipSlot> oldClips = std::move(clips);
     clips.clear();
-    for (const AnimatorAssetRef& ref : controller->clips){
+    for (size_t c = 0; c < controller->clips.size(); c++){
+        const AnimatorAssetRef& ref = controller->clips[c];
         AnimatorClipSlot slot;
         slot.ref = ref;
         slot.path = ref.path;
+        slot.humanoid = c < controller->clipHumanoid.size() && controller->clipHumanoid[c] != 0;
         for (const AnimatorClipOverride& entry : overrides){
             if (entry.original == ref.path && !entry.replacement.empty()){
                 slot.path = entry.replacement;
@@ -233,13 +238,19 @@ void anim::AnimatorInstance::rigRequests(const AnimatorComponent& component, std
     channelPaths.clear();
     for (const AnimatorClipSlot& slot : clips){
         if (!slot.clip) continue;
-        // a clip that will be retargeted binds to the source's paths, not to this hierarchy
-        if (component.retarget == AnimatorRetarget::Auto && !modelPath.empty()){
-            const std::string source = sourceModelOf(*slot.clip, slot.path);
-            if (!source.empty() && MeshSystem::getModelFilenameKey(source) != MeshSystem::getModelFilenameKey(modelPath)) continue;
+        // a clip that will play through the humanoid path names the source's paths, not this
+        // hierarchy's: only its generic tracks (props, unmapped bones) bind by path. A humanoid
+        // clip's humanoid tracks have no path.
+        std::shared_ptr<const RetargetSource> source;
+        const bool otherModel = !slot.clip->isHumanoid() && humanoidIntent(slot, component, modelPath) &&
+                                !sameModel(sourceModelOf(*slot.clip, slot.path), modelPath) && !sourceModelOf(*slot.clip, slot.path).empty();
+        if (otherModel){
+            source = retargetSource(sourceModelOf(*slot.clip, slot.path), nullptr);
+            if (!source) continue;
         }
         for (const AnimationClip::Track& track : slot.clip->getTracks()){
-            if (!track.isSampled()) continue;
+            if (!track.isSampled() || isHumanoidChannel(track.channel)) continue;
+            if (source && source->roleOf(track.channel, source->boneOfPath(track.path)) != RetargetTrackRole::Generic) continue;
             if (track.channel == ClipChannel::Morph) channelPaths.push_back({track.path, {ClipChannel::Morph, (int)track.width}});
             else if (track.channel == ClipChannel::Lattice){
                 for (size_t n = 0; n < track.width && track.points; n++) channelPaths.push_back({track.path, {ClipChannel::Lattice, track.points[n]}});
@@ -267,6 +278,31 @@ int anim::AnimatorInstance::resolveBone(const std::string& pathOrSlot) const{
         return humanoid.valid ? humanoid.slotBones[(size_t)slot] : -1;
     }
     return rig.findBone(pathOrSlot);
+}
+
+bool anim::AnimatorInstance::humanoidSource(const AnimatorClipSlot& slot, const AnimatorComponent& component,
+                                            std::shared_ptr<const RetargetSource>& source, std::string* error) const{
+    source.reset();
+    if (!slot.clip) return false;
+    const AnimationClip& clip = *slot.clip;
+    if (!humanoid.valid){
+        if (clip.isHumanoid() && error) *error = "a humanoid clip needs a humanoid avatar (" + humanoid.error + "): its humanoid tracks do not play";
+        return false;
+    }
+    // a humanoid clip: its own tracks
+    if (clip.isHumanoid()) return true;
+    const std::string model = sourceModelOf(clip, slot.path);
+    if (!model.empty() && !sameModel(model, modelPath) && humanoidIntent(slot, component, modelPath)){
+        source = retargetSource(model, error);
+        return source != nullptr;
+    }
+    // the Animator's own model's clip (or one naming no model) on a state asking for humanoid
+    // playback: read through the Animator's avatar
+    if (slot.humanoid){
+        source = humanoid.avatar;
+        return source != nullptr;
+    }
+    return false;
 }
 
 void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorComponent& component,
@@ -394,30 +430,24 @@ void anim::AnimatorInstance::bindClip(size_t index, const AnimatorComponent& com
     slot.hasReference = false;
     if (!slot.clip || !bound) return;
     const AnimationClip& clip = *slot.clip;
-    if (component.retarget == AnimatorRetarget::Auto && humanoid.valid && !modelPath.empty()){
-        const std::string sourceModel = sourceModelOf(clip, slot.path);
-        if (!sourceModel.empty() && MeshSystem::getModelFilenameKey(sourceModel) != MeshSystem::getModelFilenameKey(modelPath)){
-            std::string error;
-            std::shared_ptr<const RetargetSource> source = retargetSource(sourceModel, &error);
-            if (source){
-                slot.retarget.bind(clip, *source, humanoid);
-                slot.retargeted = slot.retarget.active;
-            }else if (!slot.reported){
-                slot.error = error;
-            }
-        }
+    std::shared_ptr<const RetargetSource> source;
+    std::string error;
+    if (humanoidSource(slot, component, source, &error)){
+        slot.retargeted = slot.retarget.bind(clip, source);
+        if (slot.retargeted) slot.retargetCursors.assign(clip.getTracks().size(), KeyCursor());
+    }else if (!error.empty() && !slot.reported){
+        slot.error = error;
     }
-    if (!slot.retargeted){
-        slot.binding.bind(slot.clip, rig);
-        slot.cursors.resize(slot.binding.groups.size());
-    }
+    // the tracks that play by path: every track, or a retargeted clip's generic ones
+    slot.binding.bind(slot.clip, rig, slot.retargeted ? &slot.retarget.byPath : nullptr);
+    slot.cursors.resize(slot.binding.groups.size());
 
     // root motion: the clip's bone, the Animator's, the hips, the shallowest bone the clip moves
     slot.rootMotion = readClipRootMotion(clip.getUnknownKeys());
     slot.rootBone = -1;
     slot.rootPositionTrack = slot.rootRotationTrack = -1;
     if (slot.retargeted){
-        slot.rootBone = slot.retarget.targetHips;
+        slot.rootBone = humanoid.valid ? humanoid.slotBones[(size_t)pose::HumanBone::Hips] : -1;
     }else{
         slot.rootBone = resolveBone(slot.rootMotion.bone);
         if (slot.rootBone < 0) slot.rootBone = resolveBone(component.rootMotionBone);
@@ -764,6 +794,8 @@ anim::AnimatorInstance::StateInfo anim::AnimatorInstance::currentState(int layer
     info.length = run.length;
     info.loop = stateLoops(run.state, -1);
     info.speed = stateSpeed(run.state);
+    info.mirror = controller->states[(size_t)run.state].mirror;
+    info.footIK = controller->states[(size_t)run.state].footIK;
     return info;
 }
 
@@ -781,6 +813,8 @@ anim::AnimatorInstance::StateInfo anim::AnimatorInstance::nextState(int layer) c
     info.length = run.length;
     info.loop = stateLoops(run.state, -1);
     info.speed = stateSpeed(run.state);
+    info.mirror = controller->states[(size_t)run.state].mirror;
+    info.footIK = controller->states[(size_t)run.state].footIK;
     return info;
 }
 
@@ -1171,20 +1205,15 @@ bool anim::AnimatorInstance::rootSample(const AnimatorClipSlot& slot, float clip
     const std::vector<AnimationClip::Track>& tracks = slot.clip->getTracks();
     TrackSample sample;
     if (slot.retargeted){
-        const RetargetBinding& r = slot.retarget;
-        const RetargetBinding::Slot& hips = r.slots[(size_t)pose::HumanBone::Hips];
-        Quaternion local = hips.sourceRest;
-        if (hips.rotationTrack >= 0 && sampleTrack(tracks[(size_t)hips.rotationTrack], clipTime, sample)){
-            local = tracks[(size_t)hips.rotationTrack].relative ? hips.sourceRest * sample.rotation : sample.rotation;
-        }
-        q = (hips.pre * local * hips.post).normalized();
-        Vector3 h = r.sourceHipsRest;
-        if (r.hipsPositionTrack >= 0 && sampleTrack(tracks[(size_t)r.hipsPositionTrack], clipTime, sample)){
-            h = tracks[(size_t)r.hipsPositionTrack].relative ? r.sourceHipsRest + sample.vector : sample.vector;
-        }
-        const Vector3 sourceModel = r.sourceHipsParent.transformPoint(h);
-        const Vector3 targetModel = r.targetNeutralHips + r.canonical * ((sourceModel - r.sourceNeutralHips) * r.scale);
-        p = r.targetHipsParentInverse.transformPoint(targetModel);
+        // the hips of the realised clip (no Mirror, no Foot IK: the body's motion)
+        HumanoidSample sample;
+        slot.retarget.sample(*slot.clip, clipTime, nullptr, false, sample);
+        pose::HumanPose realised;
+        std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT> extraLocal;
+        realiseHumanoid(*humanoid.avatar, sample, false, false, realised, extraLocal);
+        const size_t hips = (size_t)pose::HumanBone::Hips;
+        q = (humanoid.slotBridgeInverse[hips] * realised.rotations[hips]).normalized();
+        if (sample.hasHips) p = humanoid.hipsBridgeInverse * realised.hipsPosition;
     }else{
         if (slot.rootPositionTrack >= 0 && sampleTrack(tracks[(size_t)slot.rootPositionTrack], clipTime, sample)){
             p = tracks[(size_t)slot.rootPositionTrack].relative ? rig.rest.position((size_t)slot.rootBone) + sample.vector : sample.vector;
@@ -1460,28 +1489,43 @@ void anim::AnimatorInstance::applyMontages(size_t layer, Pose& out, const Animat
 
 // ---------------------------------------------------------------- evaluation
 
+void anim::AnimatorInstance::sampleHumanoid(AnimatorClipSlot& slot, float clipTime, Pose& out, bool mirror, bool footIK, KeyCursor* cursors) const{
+    // the one retarget path: the clip as a humanoid sample, realised on the avatar, written to
+    // the rig's bones (the generic tracks of the clip play by path before)
+    HumanoidSample sample;
+    slot.retarget.sample(*slot.clip, clipTime, cursors, footIK, sample);
+    pose::HumanPose realised;
+    std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT> extraLocal;
+    std::bitset<pose::HUMAN_EXTRA_BONE_COUNT> extraLive;
+    realiseHumanoid(*humanoid.avatar, sample, mirror, footIK, realised, extraLocal, &extraLive);
+    writeRealised(humanoid, realised, extraLocal, extraLive, sample.hasHips, slot.retarget.slots.any(), out);
+}
+
 void anim::AnimatorInstance::sampleSlot(size_t index, float clipTime, Pose& out, bool additive, AdditiveReference reference,
-                                        float referenceTime, const AnimatorComponent& component){
+                                        float referenceTime, const AnimatorComponent& component, bool mirror, bool footIK){
     AnimatorClipSlot& slot = clips[index];
     out.copyFrom(rig.rest);
-    if (slot.retargeted) sampleRetargeted(slot.retarget, *slot.clip, clipTime, out);
-    else sampleClip(slot.binding, rig, clipTime, slot.cursors, out);
+    sampleClip(slot.binding, rig, clipTime, slot.cursors, out);
+    if (slot.retargeted) sampleHumanoid(slot, clipTime, out, mirror, footIK, slot.retargetCursors.data());
     if (component.applyRootMotion) removeRootMotion(slot, out);
     if (!additive) return;
-    if (!slot.hasReference || slot.referenceKind != reference || (reference == AdditiveReference::Time && slot.referenceTime != referenceTime)){
+    const uint8_t flags = (uint8_t)((mirror ? 1 : 0) | (footIK ? 2 : 0));
+    if (!slot.hasReference || slot.referenceKind != reference || (reference == AdditiveReference::Time && slot.referenceTime != referenceTime) ||
+            (slot.retargeted && slot.referenceFlags != flags)){
         slot.reference.copyFrom(rig.rest);
         if (reference != AdditiveReference::Rest){
             // Clip: the .anim's own additive_reference (upstream's rule; 0 = the first frame)
             const float at = reference == AdditiveReference::Time ? std::min(std::max(referenceTime, 0.0f), slot.length())
                            : reference == AdditiveReference::Clip ? std::min(std::max(slot.clip->getAdditiveReference(), 0.0f), slot.length())
                            : 0.0f;
-            if (slot.retargeted) sampleRetargeted(slot.retarget, *slot.clip, at, slot.reference);
-            else sampleClip(slot.binding, rig, at, slot.cursors, slot.reference);
+            sampleClip(slot.binding, rig, at, slot.cursors, slot.reference);
+            if (slot.retargeted) sampleHumanoid(slot, at, slot.reference, mirror, footIK, nullptr);
             if (component.applyRootMotion) removeRootMotion(slot, slot.reference);
         }
         slot.hasReference = true;
         slot.referenceKind = reference;
         slot.referenceTime = referenceTime;
+        slot.referenceFlags = flags;
     }
     poseMakeDelta(out, out, slot.reference);
 }
@@ -1509,7 +1553,7 @@ void anim::AnimatorInstance::evaluateMotion(size_t layer, const AnimatorStateRun
         const AnimatorClipSlot& slot = clips[(size_t)leaves[0].clip];
         const bool loops = stateLoops(run.state, leaves[0].clip);
         const float t = clipTimeAt(normalized, slot.length(), loops, loops && statePingPong(run.state, leaves[0].clip));
-        sampleSlot((size_t)leaves[0].clip, t, out, additive, s.additiveReference, s.additiveTime, component);
+        sampleSlot((size_t)leaves[0].clip, t, out, additive, s.additiveReference, s.additiveTime, component, s.mirror != leaves[0].mirror, s.footIK);
         return;
     }
     poseClear(out);
@@ -1519,7 +1563,8 @@ void anim::AnimatorInstance::evaluateMotion(size_t layer, const AnimatorStateRun
         if (!slot.ready()) continue;
         const bool loops = stateLoops(run.state, leaves[i].clip);
         const float t = clipTimeAt(normalized, slot.length(), loops, loops && statePingPong(run.state, leaves[i].clip));
-        sampleSlot((size_t)leaves[i].clip, t, temp, additive, s.additiveReference, s.additiveTime, component);
+        sampleSlot((size_t)leaves[i].clip, t, temp, additive, s.additiveReference, s.additiveTime, component, s.mirror != leaves[i].mirror,
+                   s.footIK);
         poseAccumulate(out, temp, leaves[i].weight);
         total += leaves[i].weight;
     }

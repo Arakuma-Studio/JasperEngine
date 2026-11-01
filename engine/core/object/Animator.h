@@ -21,6 +21,8 @@ namespace jasperengine{
         float length = 0.0f;            // seconds of one cycle
         bool loop = false;
         float speed = 1.0f;             // the state's speed times its speed parameter
+        bool mirror = false;            // the state's Mirror (humanoid playback)
+        bool footIK = false;            // the state's Foot IK (humanoid playback)
     };
 
     // Unity's Animator (docs/animator.md, docs/specs/S21-animation.md D16): parameters, states,

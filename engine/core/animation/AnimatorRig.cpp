@@ -303,7 +303,7 @@ void anim::AnimatorRig::build(Scene* scene, Entity root, const std::vector<std::
 
 // ---------------------------------------------------------------- binding and sampling
 
-void anim::RigClipBinding::bind(const std::shared_ptr<const AnimationClip>& newClip, const AnimatorRig& rig){
+void anim::RigClipBinding::bind(const std::shared_ptr<const AnimationClip>& newClip, const AnimatorRig& rig, const std::vector<uint8_t>* include){
     clip = newClip;
     targets.clear();
     groups.clear();
@@ -314,7 +314,8 @@ void anim::RigClipBinding::bind(const std::shared_ptr<const AnimationClip>& newC
     const std::vector<AnimationClip::Track>& tracks = clip->getTracks();
     for (size_t t = 0; t < tracks.size(); t++){
         const AnimationClip::Track& track = tracks[t];
-        if (!track.isSampled() || !track.times) continue;
+        if (!track.isSampled() || !track.times || isHumanoidChannel(track.channel)) continue;
+        if (include && (t >= include->size() || !(*include)[t])) continue;
         trackCount++;
         Target target;
         target.channel = track.channel;
@@ -451,8 +452,7 @@ void anim::sampleClip(const RigClipBinding& binding, const AnimatorRig& rig, flo
             }
             case ClipChannel::Property:
                 break;
-            // SYNC4-ABSORB(retarget): humanoid clip tracks (anim-retarget) play on the Animator
-            // once the retarget absorption puts them on S21's one retarget path
+            // humanoid tracks play through the one retarget path (AnimatorRetarget), never by path
             case ClipChannel::Humanoid:
             case ClipChannel::HumanoidPosition:
                 break;

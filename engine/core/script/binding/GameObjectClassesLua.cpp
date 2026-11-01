@@ -3798,6 +3798,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("length", &AnimatorStateInfo::length)
         .addProperty("loop", &AnimatorStateInfo::loop)
         .addProperty("speed", &AnimatorStateInfo::speed)
+        // the state's humanoid playback: left and right swapped / the legs reach the foot goals
+        .addProperty("mirror", &AnimatorStateInfo::mirror)
+        .addProperty("footIK", &AnimatorStateInfo::footIK)
         .endClass();
 
     // Unity's Animator: an Animator Controller's parameters, states, layers, montages, IK and root motion
