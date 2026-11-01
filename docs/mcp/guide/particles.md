@@ -54,6 +54,17 @@ for a given seed and frame-rate independent.
   sizeOverLifetime, sizeBySpeed, rotationOverLifetime, rotationBySpeed, externalForces, noise,
   orbit, collision, subEmitters, textureSheetAnimation, trails, customData, setOverAge, renderer.
   Main and Renderer are always there; the others are present or not, each with `enabled`.
+- Unity's fields origin/main's systems had are S20's too: the effect's `startDelay` (a number or
+  a random range picked per play), `useUnscaledTime`, `stopAction` (none, disable, destroy,
+  callback: `onParticleSystemStopped` in scripts), `emitterVelocityMode` (transform, rigidbody);
+  Main's `gravitySource` (physics3D, physics2D) and `inheritVelocityMode` (initial, current);
+  Shape's `radiusMode`/`arcMode` (random, loop, pingPong, burstSpread) with their `Spread` and
+  `Speed`, `alignToDirection`; Velocity over Lifetime's `offsetX/Y/Z` (the orbit's centre, curves);
+  Limit Velocity's `separateAxes` (`limit` is X, `limitY`, `limitZ`) and `space`; Rotation by
+  Speed's `separateAxes` (`angularVelocityX/Y`); the noise's `scrollSpeed` curve and up to 4
+  `octaves`; Texture Sheet `flipU`/`flipV`; burst counts as curves over the emitter's time; the
+  gradient mode `randomColor`; Renderer `velocityAligned` billboards, `meshAlignment`
+  (simulation, view, world, local, facing, velocity) and `textureTiling` [x, y, offset x, offset y].
 
 ## Editing
 
@@ -95,12 +106,37 @@ ps:onCollision(function(events)
 end)
 ```
 
+Unity's module access works on the effect (inline: the GameObject's own; an asset: copied inline
+first, said once): `ps.main.startSpeed = 4` (a number, `MinMaxCurve`, `{min, max}`),
+`ps.emission.rateOverTime`, `ps.shape.radius`, `ps.noise.enabled = true`; Unity's names map
+(`startLifetime`, `startRotation` in radians as in Unity, `...Multiplier` suffixes,
+`emission:getBurst(i)` / `setBurst(i, {time, count, cycles, interval, probability})` /
+`burstCount`); the enums are tables of the effect's names (`ParticleSystemShapeType.Cone`,
+`ParticleSystemSimulationSpace.World`, ...). `ps:play(true)` / `ps:stop(true, ParticleSystemStopBehavior.StopEmittingAndClear)` /
+`ps:clear(true)` take the children too; `GameObject:getParticleSystemsInChildren()`.
+
 Properties: `isPlaying`, `isPaused`, `isEmitting`, `particleCount`, `time`, `playbackSpeed`,
 `seed` (0: a new seed each play), `playOnAwake`, `effect` (asset path, "" inline).
 `onCollision`, `onParticleDeath`, `onSubEmit` deliver one batch per frame on the main thread
 (collisions capped by the Collision module's `maxCollisionEvents`). The old setters
 (`rate`, `setLifeInitializer`, `addBurst`, `start()`...) still work on the inline effect and
 log a deprecation warning once.
+
+## From origin/main and Unity
+
+- **origin/main's version 2 systems** (its Unity-shaped `particlesystem: {version: 2, main: ...}`
+  on a GameObject drawing its own quads) become S20 effects when their scene or prefab loads, with
+  every module value (radians to degrees, linear colours to sRGB, the shape's rotation order) and
+  their quad material in the Renderer (base map, base colour as `tint`, tiling, soft particles,
+  blend); the quad MeshComponent and InstancedMesh go (a Mesh-mode system keeps its MeshComponent,
+  disabled, as its mesh). Prefab instance overrides convert the same way. What does not carry over
+  is in the load report (`get_particle_migration_report`, the log).
+- **import_unity_particles {path, object?, dest?, dry_run?, overwrite?}** (the particles group; and the CLI
+  `import-unity-particles <file> --project <dir>`, Assets > Import Unity Particle System...)
+  turns a Unity `.prefab` / `.unity`'s ParticleSystems into prefabs of S20 systems (inline
+  effects; the renderer's material in the Renderer module, its texture copied) and a report:
+  per module imported / approximated / unsupported, notes with codes (`shader-approximated`,
+  `noise-pattern`, `mesh-missing`, ...). The Unity project is only read; undo removes the files.
 
 ## Force fields
 

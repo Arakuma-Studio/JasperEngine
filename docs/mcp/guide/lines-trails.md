@@ -112,23 +112,32 @@ the gizmo, cleared on release.
 
 ## Curves and gradients
 
-`AnimationCurve` and `Gradient` are Unity's (also used by the particle modules). The same
-shapes in scene files, `set_properties` and `get_entity`:
+`widthCurve` is a `Curve` and `colorGradient` a `Gradient`: S27's shared types (Unity's
+`AnimationCurve` and `Gradient`; the particle modules, tweens and force fields use them too),
+in S27's one form in scene files, `set_properties` and `get_entity`
+(docs/specs/S27-editor-tools.md):
 
-- **Curve**: `{"keys": [[time, value], [time, value, inTangent, outTangent], ...], "pre": "clamp",
-  "post": "clamp"}`. Tangents are slopes (value per time); flat when left out; `"inf"` / `"-inf"`
-  is a step (the segment holds the key before it; `.inf` in YAML). Wraps: `clamp`, `loop`,
-  `ping_pong`. Writes also take a number (a constant curve) or the keys array alone. Between two
-  keys the value is the cubic Hermite of their tangents (Unity's non-weighted keys).
-- **Gradient**: `{"mode": "blend", "colors": [[time, "#FF9600"], ...], "alphas": [[time, alpha],
-  ...]}`: up to 8 keys each, times 0..1. Colours are `"#RRGGBB"` (sRGB, as pickers show them;
-  read back so when the value is exactly an 8-bit one) or `[r, g, b]` (linear); stored linear.
-  Blending mixes two colour keys in sRGB like Unity (a red-to-blue gradient is (0.5, 0, 0.5) sRGB
-  halfway), so gradients copied from Unity look the same; alpha mixes linearly. `mode` `fixed`
-  steps to the first key at or after t. More than 8 keys: `set_properties` and Lua (`setKeys`,
-  `colorKeys`, `alphaKeys`) refuse with an error; a scene file with more loads the first 7 and
-  the last, with a warning. Writes also take one colour (`"#RRGGBBAA"`
-  or `[r, g, b, a]` linear) for a constant gradient. No keys: white, opaque.
+- **Curve**: `{"keys": [[time, value, inTangent, outTangent(, mode)], ...], "preWrapMode": "clamp",
+  "postWrapMode": "clamp"}`. Tangents are slopes (value per time); `null` is a step (the
+  segment holds the key before it). Wraps: `clamp`, `loop`, `pingPong`, `linear`,
+  `loopWithOffset`. Writes also take a number (a constant curve) or the keys array alone
+  (`[[time, value], ...]`: flat tangents). Between two keys the value is the cubic Hermite of
+  their tangents (Unity's non-weighted keys).
+- **Gradient**: `{"colorKeys": [[time, r, g, b], ...], "alphaKeys": [[time, alpha], ...], "mode":
+  "blend"}`: up to 8 keys each, times 0..1, colours sRGB (as pickers show them). Blending mixes
+  two colour keys in sRGB like Unity (a red-to-blue gradient is (0.5, 0, 0.5) sRGB halfway), so
+  gradients copied from Unity look the same; alpha mixes linearly; `"linear": true` blends in
+  linear space instead. `mode` `fixed` steps to the first key at or after t. More than 8 keys:
+  `set_properties` and Lua (`setKeys`, `colorKeys`, `alphaKeys`) refuse; a scene file with more
+  loads the first 7 and the last, with a warning. No keys: white, opaque.
+- **origin/main's form** reads too (its files, and what older scripts send):
+  `{"keys": [[time, value(, in, out)]], "pre", "post"}` curves (`"inf"` / `.inf` steps,
+  `ping_pong` / `repeat` wraps) and `{"mode", "colors": [[time, "#RRGGBB" | [r, g, b] linear]],
+  "alphas"}` gradients, one colour (`"#RRGGBBAA"`, `[r, g, b, a]` linear) for a constant one;
+  scenes saved by it are rewritten in S27's form when they load (scene format 5 -> 6, prefab 6 -> 7),
+  and `get_entity` answers in S27's form.
+- `set_shape_points` with `colors` on a Line Renderer sets `colorGradient` (one key per colour,
+  evenly over the length; linear colours, as the tool takes them, stored sRGB).
 
 In the Inspector both are fields with an inline preview that opens an editor: drag keys,
 double-click to add, Delete to remove, tangent handles and Auto / Linear / Constant / Free per key,
@@ -142,8 +151,10 @@ local curve = line.widthCurve
 curve:addKey(0.5, 2.0)              -- 1-based index of the new key, -1 if a key is at 0.5
 line.widthCurve = curve             -- assign the copy back
 local g = Gradient()
-g:setKeys({{0, Vector3(1, 0.6, 0)}, {1, Vector3(1, 0.6, 0)}}, {{0, 1}, {1, 0}})  -- sRGB colours
+g:setKeys({{0, Vector3(1, 0.6, 0)}, {1, Vector3(1, 0.6, 0)}}, {{0, 1}, {1, 0}})  -- sRGB colours; false (and a warning) past 8 keys
 line.colorGradient = g
+-- origin/main's script names work: AnimationCurve.constant(v), CurveKey (Keyframe), CurveWrap,
+-- curve:addKey(t, v, inTangent, outTangent), curve.keys, g:colorKeyCount(), g:getColorKey(i)
 ```
 
 ## Recipes
@@ -178,7 +189,7 @@ orange fading out, a point every 0.1.
 {"tool": "set_properties", "arguments": {"entity": "Trail", "values": {"trailrenderer": {
   "time": 0.3, "minVertexDistance": 0.1, "widthMultiplier": 1,
   "widthCurve": [[0, 0.223], [1, 0]],
-  "colorGradient": {"colors": [[0, "#FF9600"], [1, "#FF9600"]], "alphas": [[0, 1], [1, 0]]}}}}}
+  "colorGradient": {"colorKeys": [[0, 1, 0.588, 0], [1, 1, 0.588, 0]], "alphaKeys": [[0, 1], [1, 0]]}}}}}
 ```
 
 **2D rope**: a 20-point polyline in a pixel-unit scene, width 6, round corners (`numCornerVertices`
@@ -194,8 +205,9 @@ Renderer (`points`, `vertices`, `length`; moving in Play). Check the look with `
 
 ## Shaders
 
-Both draw with the built-in `lines` shader or a `lines` library shader / fork (`customShader`;
-`list_shaders type=lines`). Its variants: the hairline (`Vc4`), the ribbon (`Rib`), its base
+Both draw with the built-in `lines` shader or a `lines` library shader / fork (`customShader`, an
+asset reference with its GUID on both: a renamed fork is followed, and Project > Fix references
+lists a missing one; `list_shaders type=lines`). Its variants: the hairline (`Vc4`), the ribbon (`Rib`), its base
 texture (`Tex`), pixel widths (`Pxw`). A library or forked lines shader includes
 `includes/lines_vs.glsl` in its .vert (the hairline and the ribbon) and
 `includes/lines_fs.glsl` in its .frag (`lineVertexColor()`, `lineUV()`); a fork made before widths
