@@ -233,6 +233,8 @@ namespace jasperengine{
         // every built-in variant an HTML UI document draws with (export and Build Settings
         // lists): HTMLUI untextured and textured, HTMLUI_GRADIENT, the seven HTMLUI_POST
         static std::vector<std::pair<ShaderType, uint64_t>> getHtmlUIVariants();
+        // what a Video Player draws with: the HTMLUI_POST Yuv conversion and Passthrough blit
+        static std::vector<std::pair<ShaderType, uint64_t>> getVideoPlayerVariants();
         static uint64_t getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect);
         // ribbon: a thick Line Renderer or a Trail Renderer ('Rib', LINE_RIBBON); texture: the
         // built-in shader samples its u_baseTexture ('Tex'); pixelWidth: widths in screen pixels

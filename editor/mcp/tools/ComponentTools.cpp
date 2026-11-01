@@ -361,6 +361,14 @@ void getEntityTool(const CallPtr& call) {
             text += ". trail: " + stats.dump();
         }
     }
+    // a Video Player's playback (read only; in Play)
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::VideoPlayerComponent) != filter.end()) {
+        const Json video = McpValues::videoStatusToJson(registry, entity);
+        if (!video.is_null()) {
+            data["video"] = video;
+            text += ". video: " + video.dump();
+        }
+    }
     // a version 2 Particle System's runtime state (read only; moves every frame in Play)
     if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::ParticleSystemComponent) != filter.end()) {
         if (const ParticleSystemComponent* ps = registry->findComponent<ParticleSystemComponent>(entity); ps && ps->version >= 2) {

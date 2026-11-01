@@ -12,6 +12,7 @@
 #include "command/type/DeleteEntityCmd.h"
 #include "object/environment/Water.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 
 #include <algorithm>
 #include <utility>
@@ -589,6 +590,19 @@ bool editor::CreateEntityCmd::execute(){
         sprite.width = size;
         sprite.height = size;
         sprite.pivotPreset = PivotPreset::CENTER;
+
+    }else if (type == EntityCreationType::VIDEO_PLAYER || type == EntityCreationType::VIDEO_BACKGROUND){
+
+        // Unity's Video Player GameObject: the frames go into its render texture (UI Images and
+        // materials show it through "video|<entity>"), or behind the main camera's scene
+        scene->addComponent<Transform>(entity, {});
+        VideoPlayerComponent player;
+        if (type == EntityCreationType::VIDEO_BACKGROUND){
+            player.renderMode = VideoRenderMode::CAMERA_FAR_PLANE;
+            player.aspectRatio = VideoAspectRatio::FIT_OUTSIDE;
+            player.isLooping = true;
+        }
+        scene->addComponent<VideoPlayerComponent>(entity, player);
 
     }else if (type == EntityCreationType::ANIMATION){
 

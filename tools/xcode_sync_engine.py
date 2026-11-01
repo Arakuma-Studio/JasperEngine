@@ -37,7 +37,7 @@ HEADER_DIRECTORIES = ["core/component"]
 
 # platform sources outside JASPERENGINE_SRCS that both Apple engine targets compile (CMake picks
 # them per platform): the HTTP client's NSURLSession backend
-APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm"]
+APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm", "platform/apple/AVFoundationBackend.mm"]
 
 # libraries whose CMake add_library(...) source list the project's targets of the anchor follow:
 # (CMakeLists.txt relative to engine/, the source prefix relative to engine/, the anchor source)

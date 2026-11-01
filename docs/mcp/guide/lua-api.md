@@ -2335,6 +2335,32 @@ function Fluid:onUpdate()
 end
 ```
 
+### 4.17.1 VideoPlayer (EntityHandle)
+
+Unity's VideoPlayer (Add Component > Video > Video Player; jasper://docs/video).
+`self.gameObject:getVideoPlayer()` (nil without one; `hasVideoPlayer()`), `VideoPlayer(scene)`
+makes a GameObject with one.
+
+- Settings (read/write): `enabled`, `source` (`VideoPlayerSource.*`), `clip` (asset path), `url`
+  (`https://...`, `data://...`, absolute or asset path), `playOnAwake`, `waitForFirstFrame`,
+  `isLooping`, `skipOnDrop`, `playbackSpeed` (0.0625..16), `timeUpdateMode`
+  (`VideoTimeUpdateMode.*`), `renderMode` (`VideoRenderMode.*`), `targetCamera` (a GameObject or
+  nil: the main camera), `targetCameraAlpha`, `aspectRatio` (`VideoAspectRatio.*`),
+  `targetMaterialRenderer` (GameObject or nil: this one), `targetMaterialProperty`
+  (`"baseColorTexture"`, a shader `@texture` uniform), `targetSubmesh` (-1 all),
+  `renderTextureWidth`/`renderTextureHeight` (0: the video's), `audioOutputMode`
+  (`VideoAudioOutputMode.*`), `directVolume`, `directMute`, `targetAudioSource`.
+- `time` (seconds; setting it seeks), `frame` (setting it seeks), read only: `canSetTime`,
+  `frameCount`, `frameRate`, `length`, `width`, `height`, `isPrepared`, `isPlaying`, `isPaused`,
+  `prepareProgress` (0..1), `texture` (a `Texture`, nil before prepared), `backend`, `videoCodec`,
+  `audioCodec`, `error`.
+- `prepare()`, `play()`, `pause()`, `stop()`, `stepForward()`, `getFramebuffer()`
+  (`image:setTexture(vp:getFramebuffer())`), `VideoPlayer.canPlay(pathOrUrl)` ("probably", "maybe",
+  ""), `VideoPlayer.clearCache([url])`, `getVideoPlayerComponent()` (the raw fields).
+- Events (function properties, called with the player): `onPrepareCompleted`, `onStarted`,
+  `onLoopPointReached`, `onErrorReceived(player, message)`, `onSeekCompleted`,
+  `onFrameReady(player, frameIndex)`.
+
 ### 4.18 Other wrappers (partial)
 
 - `Points`: `addPoint(...)`, `updatePoint(i, ...)`, `removePoint(i)`, `clearPoints()`,
@@ -2498,6 +2524,11 @@ use the methods. Physics colliders keep the rest shape.
 | Namespace | Values |
 |---|---|
 | `BodyType` | `STATIC`, `KINEMATIC`, `DYNAMIC` |
+| `VideoPlayerSource` | `CLIP`, `URL` |
+| `VideoTimeUpdateMode` | `GAME_TIME`, `UNSCALED_GAME_TIME` |
+| `VideoRenderMode` | `CAMERA_FAR_PLANE`, `CAMERA_NEAR_PLANE`, `RENDER_TEXTURE`, `MATERIAL_OVERRIDE`, `API_ONLY` |
+| `VideoAspectRatio` | `NO_SCALING`, `FIT_VERTICALLY`, `FIT_HORIZONTALLY`, `FIT_INSIDE`, `FIT_OUTSIDE`, `STRETCH` |
+| `VideoAudioOutputMode` | `NONE`, `AUDIO_SOURCE`, `DIRECT` |
 | `Collider2DType` | `POLYGON`, `CIRCLE`, `CAPSULE`, `SEGMENT`, `CHAIN` |
 | `Collider3DType` | `SPHERE`, `BOX`, `CAPSULE`, `TAPERED_CAPSULE`, `CYLINDER`, `CONVEX_HULL`, `MESH`, `HEIGHTFIELD` |
 | `RigidbodyMotionQuality` | `DISCRETE`, `LINEAR_CAST` |

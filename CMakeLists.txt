@@ -685,6 +685,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/GraphicUtils.cpp
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
     ${EDITOR_DIR}/util/FluidTextureLink.cpp
+    ${EDITOR_DIR}/util/VideoTextureLink.cpp
     ${EDITOR_DIR}/util/FluidEditorTools.cpp
     ${EDITOR_DIR}/util/UIProbe.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp
@@ -791,6 +792,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorLinesTrails.cpp
     ${EDITOR_DIR}/window/InspectorParticles.cpp
     ${EDITOR_DIR}/window/InspectorWindowCamera.cpp
+    ${EDITOR_DIR}/window/InspectorVideo.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp

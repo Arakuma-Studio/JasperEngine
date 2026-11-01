@@ -183,12 +183,14 @@ namespace jasperengine::editor{
         // Cinemachine-lite follow: offset, SmoothDamp, look-at, dead zone, bounds (camera shake spec 7.1)
         CameraFollowComponent,
         // per-character animation of a Text (ui-scaling-text spec 7.3)
-        TextEffectComponent
+        TextEffectComponent,
+        // Unity's VideoPlayer (video-mp4 spec 6.4)
+        VideoPlayerComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::TextEffectComponent;
+    constexpr ComponentType LastComponentType = ComponentType::VideoPlayerComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
 
     enum class PropertyType{

@@ -134,6 +134,17 @@ Unchanged: `Entity`, `Scene`, `Transform`, `Camera`, `Light`, `Light2D`, `Mesh`,
 `SpriteAnimation`, the keyframe tracks, `Joint2D`/`Joint3D`, `Contact2D`/`Contact3D`
 and `CollideShapeResult3D`.
 
+Unity's `VideoPlayer` is the **Video Player** component (`VideoPlayerComponent`, Lua
+`VideoPlayer`: `gameObject:getVideoPlayer()`, Add Component > Video > Video Player): `source`,
+`clip`, `url`, `playOnAwake`, `isLooping`, `renderMode`, `timeUpdateMode`, `audioOutputMode`,
+`prepare()`, `play()`, `isPrepared`, `frame`, `frameCount`, the events `prepareCompleted` ->
+`onPrepareCompleted` (likewise `started`, `loopPointReached`, `errorReceived`, `seekCompleted`,
+`frameReady`). A `VideoClip` asset is the `clip` path of a video file (.mp4, .mov, .webm); a
+`RenderTexture` target is the player's own texture, used through the `video|<entity>` texture link
+(`player.texture`, `player:getFramebuffer()`); `SetDirectAudioVolume(0, v)` is `directVolume`.
+Not offered: `DSPTime` (the audio follows the picture) and `APIOnly` audio. See
+[mcp/guide/video.md](mcp/guide/video.md).
+
 New, with no Unity counterpart: `FluidSimulation` / `FluidSimulationComponent`
 (GameObject > Effects > Fluid Simulation, Pavel Dobryakov's WebGL fluid). Unity has no
 built-in fluid component; there it takes a Custom Render Texture or compute-shader

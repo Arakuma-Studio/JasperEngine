@@ -24,6 +24,7 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpValues.h"
+#include "subsystem/VideoPlayerSystem.h"
 
 #include "App.h"
 #include "Catalog.h"
@@ -2388,6 +2389,11 @@ void getRuntimeEntityTool(const CallPtr& call) {
     // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)
     const Json groupState = McpValues::canvasGroupStateToJson(sp->scene, entity);
     if (!groupState.is_null()) data["canvas_group_state"] = groupState;
+    // a Video Player's playback
+    if (only.empty() || only.count(ComponentType::VideoPlayerComponent)) {
+        const Json video = McpValues::videoStatusToJson(sp->scene, entity);
+        if (!video.is_null()) data["video"] = video;
+    }
     // physics read-outs (joint forces and angles, body mass and velocities)
     if ((only.empty() || only.count(ComponentType::Joint2DComponent)) && sp->scene->findComponent<Joint2DComponent>(entity)) {
         data["joint2d"] = joint2DReadoutsJson(sp->scene, entity);
@@ -2414,6 +2420,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
     if (data.contains("scripts") && !data["scripts"].empty()) text += "\nscripts: " + data["scripts"].dump();
     if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
     if (data.contains("canvas_group_state")) text += "\ncanvas_group_state: " + data["canvas_group_state"].dump();
+    if (data.contains("video")) text += "\nvideo: " + data["video"].dump();
     if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
     if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
     if (data.contains("physics")) text += "\nphysics: " + data["physics"].dump();
@@ -2466,6 +2473,59 @@ void setRuntimePropertyTool(const CallPtr& call) {
     if (values.empty()) {
         call->fail("Pass property + value, or values {name: value}.");
         return;
+    }
+
+    // a Video Player's playback (spec 6.10): state play | pause | stop | prepare, time (seconds,
+    // seeks), frame (seeks to it); its fields go on below as any component's
+    if (component == ComponentType::VideoPlayerComponent) {
+        std::shared_ptr<VideoPlayerSystem> videos = sp->scene->findSystem<VideoPlayerSystem>();
+        if (!videos) {
+            call->fail("The scene has no Video Player system.");
+            return;
+        }
+        const bool seeks = values.contains("time") || values.contains("frame");
+        if (values.contains("state")) {
+            const Json& value = values["state"];
+            const std::string state = value.is_string() ? value.get<std::string>() : std::string();
+            if (state == "play") videos->play(entity);
+            else if (state == "pause") videos->pause(entity);
+            else if (state == "stop") videos->stop(entity);
+            else if (state == "prepare") videos->prepare(entity);
+            else {
+                call->fail("state must be play, pause, stop or prepare.");
+                return;
+            }
+            values.erase("state");
+        }
+        if (seeks && !videos->getStatus(entity).prepared) {
+            call->fail("time and frame seek a prepared player: state prepare (or play), then wait until video.prepared.");
+            return;
+        }
+        if (values.contains("time")) {
+            if (!values["time"].is_number() || values["time"].get<double>() < 0.0) {
+                call->fail("time must be a number of seconds >= 0.");
+                return;
+            }
+            videos->setTime(entity, values["time"].get<double>());
+            values.erase("time");
+        }
+        if (values.contains("frame")) {
+            if (!values["frame"].is_number_integer() || values["frame"].get<int64_t>() < 0) {
+                call->fail("frame must be an integer >= 0.");
+                return;
+            }
+            videos->setFrame(entity, values["frame"].get<int64_t>());
+            values.erase("frame");
+        }
+        if (values.empty()) {
+            Json data = McpRefs::entityJson(sp, entity);
+            data["component"] = componentNameOf(component);
+            const Json video = McpValues::videoStatusToJson(sp->scene, entity);
+            data["video"] = video;
+            call->ok("Video Player of \"" + data.value("path", std::string()) + "\": " + video.dump() +
+                     " (the next frames show it; get_runtime_entity reads it again).", data);
+            return;
+        }
     }
 
     const std::map<std::string, PropertyData> properties = Catalog::findEntityProperties(sp->scene, entity, component);
@@ -3908,7 +3968,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Set Runtime Property";
         tool.description =
             "Set component properties of a GameObject in the running game, live: property + value, or values {name: "
-            "value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua.";
+            "value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua. videoplayer also: "
+            "state play|pause|stop|prepare, time, frame.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},

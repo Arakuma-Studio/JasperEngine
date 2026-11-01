@@ -5,6 +5,9 @@
 #include "Exporter.h"
 #include "shader/ShaderVariantCollector.h"
 #include "util/ExportFeatureScan.h"
+#include "yaml-cpp/yaml.h"
+#include "util/Util.h"
+#include <regex>
 #include "util/PngEditorChunks.h"
 #include "EditorHost.h"
 #include "Factory.h"
@@ -3017,6 +3020,114 @@ std::string editor::Exporter::buildScriptDirIncludes() const {
     return "target_include_directories(${APP_NAME} PRIVATE" + dirs + "\n    )";
 }
 
+namespace {
+
+    bool isHttpUrl(const std::string& value){
+        std::string head = value.substr(0, 8);
+        std::transform(head.begin(), head.end(), head.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        return head.rfind("http://", 0) == 0 || head.rfind("https://", 0) == 0;
+    }
+
+    // a Video Player component node (scene key videoplayer) with an http(s) url, anywhere under `node`
+    bool hasUrlVideoPlayerNode(const YAML::Node& node, int depth){
+        if (depth > 64 || !node)
+            return false;
+        if (node.IsMap()){
+            for (auto it = node.begin(); it != node.end(); ++it){
+                const bool player = it->first.IsScalar() && (it->first.Scalar() == "videoplayer" || it->first.Scalar() == "VideoPlayerComponent");
+                if (player && it->second.IsMap()){
+                    const YAML::Node url = it->second["url"];
+                    if (url && url.IsScalar() && isHttpUrl(url.Scalar()))
+                        return true;
+                }else if (hasUrlVideoPlayerNode(it->second, depth + 1)){
+                    return true;
+                }
+            }
+        }else if (node.IsSequence()){
+            for (const YAML::Node& child : node){
+                if (hasUrlVideoPlayerNode(child, depth + 1))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+}
+
+// A scene or prefab file's text with a Video Player (key videoplayer) whose url is http(s): the
+// YAML parsed (no regex over the text: scene files have very long lines)
+bool editor::Exporter::hasUrlVideoPlayer(const std::string& text) {
+    if (text.find("ideoplayer") == std::string::npos && text.find("ideoPlayer") == std::string::npos)
+        return false;
+    try {
+        return hasUrlVideoPlayerNode(YAML::Load(text), 0);
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+// Lua, C++ scripts and HTML UI documents that may play a URL video: a Video Player whose url (or
+// source) the code sets, or an HTML <video> with an http(s) src. Conservative: the url may be
+// any string the script builds, so setting one at all asks for INTERNET
+std::string editor::Exporter::scriptVideoUrlFile(const std::filesystem::path& root, const std::vector<std::filesystem::path>& files) {
+    for (const fs::path& relative : files) {
+        std::string extension = relative.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        const bool lua = extension == ".lua";
+        const bool cpp = extension == ".cpp" || extension == ".h" || extension == ".hpp" || extension == ".cc";
+        const bool html = extension == ".html" || extension == ".htm" || extension == ".rml";
+        if (!lua && !cpp && !html)
+            continue;
+        std::ifstream in(root / relative, std::ios::binary);
+        if (!in)
+            continue;
+        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (html){
+            std::string lower = text;
+            std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+            for (size_t at = lower.find("<video"); at != std::string::npos; at = lower.find("<video", at + 6)){
+                const size_t close = lower.find('>', at);
+                const std::string tag = lower.substr(at, close == std::string::npos ? std::string::npos : close - at);
+                if (tag.find("src=\"http") != std::string::npos || tag.find("src='http") != std::string::npos)
+                    return relative.generic_string();
+            }
+            // <source src="https://..."> inside a <video>
+            if (lower.find("<video") != std::string::npos &&
+                (lower.find("<source src=\"http") != std::string::npos || lower.find("<source src='http") != std::string::npos))
+                return relative.generic_string();
+            text = ExportFeatureScan::luaOfHtml(text);
+        }
+        if (text.find("VideoPlayer") == std::string::npos)
+            continue;
+        if (text.find(".url") != std::string::npos || text.find("setUrl") != std::string::npos ||
+            text.find("VideoPlayerSource.URL") != std::string::npos || text.find("VideoPlayerSource::URL") != std::string::npos)
+            return relative.generic_string();
+    }
+    return "";
+}
+
+// The first scene or prefab file of the project with a Video Player whose url is an http(s) URL
+// (the scene files' text: unloaded scenes count too); "" when there is none
+std::string editor::Exporter::videoUrlScene() const {
+    std::vector<fs::path> files;
+    for (const SceneProject& sceneProject : project->getScenes())
+        files.push_back(sceneProject.filepath);
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(project->getAssetsPath(), ec), end; !ec && it != end; it.increment(ec)) {
+        if (it->is_regular_file(ec) && Util::isPrefabFile(it->path().string()))
+            files.push_back(it->path());
+    }
+    for (const fs::path& file : files) {
+        std::ifstream in(file, std::ios::binary);
+        if (file.empty() || !in)
+            continue;
+        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (hasUrlVideoPlayer(text))
+            return file.filename().u8string();
+    }
+    return "";
+}
+
 std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxValues() const {
     // Aggregate the per-scene maxima into a single project-wide capacity for each
     // HybridArray. SceneProject::maxValues is refreshed for every scene during
@@ -3207,6 +3318,14 @@ bool editor::Exporter::writeAndroidProjectSettings() {
             internet = true;
             Out::info("Android: added INTERNET (Http used in %s%s)", uses[0].file.c_str(),
                       uses[0].files > 1 ? (" and " + std::to_string(uses[0].files - 1) + " more").c_str() : "");
+        } else if (const std::string video = videoUrlScene(); !video.empty()) {
+            // a Video Player playing an http(s) URL (its media cache downloads it)
+            internet = true;
+            Out::info("Android: added INTERNET (a Video Player plays a URL in %s)", video.c_str());
+        } else if (const std::string script = scriptVideoUrlFile(exportRoot, shipped); !script.empty()) {
+            // a script setting a Video Player's url, or an HTML <video> of an http(s) URL
+            internet = true;
+            Out::info("Android: added INTERNET (a video URL may be played from %s)", script.c_str());
         } else {
             // a native plugin's own networking is invisible to the scan
             std::error_code pluginError;

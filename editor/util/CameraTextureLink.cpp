@@ -5,8 +5,10 @@
 
 #include "Catalog.h"
 #include "FluidTextureLink.h"
+#include "VideoTextureLink.h"
 #include "component/CameraComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 
 using namespace jasperengine;
 
@@ -37,6 +39,8 @@ Entity editor::CameraTextureLink::parseLink(const std::string& textureId){
     Entity entity = parse(textureId);
     if (entity == NULL_ENTITY)
         entity = FluidTextureLink::parse(textureId);
+    if (entity == NULL_ENTITY)
+        entity = VideoTextureLink::parse(textureId);
     return entity;
 }
 
@@ -49,6 +53,8 @@ Framebuffer* editor::CameraTextureLink::linkFramebuffer(EntityRegistry* registry
         return nullptr;
     if (FluidTextureLink::parse(textureId) != NULL_ENTITY)
         return FluidTextureLink::outputFramebuffer(registry, entity);
+    if (VideoTextureLink::parse(textureId) != NULL_ENTITY)
+        return VideoTextureLink::outputFramebuffer(registry, entity);
     CameraComponent* camera = registry->findComponent<CameraComponent>(entity);
     return camera ? camera->framebuffer : nullptr;
 }
@@ -68,6 +74,10 @@ Texture editor::CameraTextureLink::make(EntityRegistry* registry, Entity cameraE
 void editor::CameraTextureLink::retarget(EntityRegistry* registry, Texture& texture, Entity cameraEntity){
     if (FluidTextureLink::isFluidTexture(texture)){
         FluidTextureLink::retarget(registry, texture, cameraEntity);
+        return;
+    }
+    if (VideoTextureLink::isVideoTexture(texture)){
+        VideoTextureLink::retarget(registry, texture, cameraEntity);
         return;
     }
     if (cameraEntity == NULL_ENTITY){
@@ -93,11 +103,13 @@ std::string editor::CameraTextureLink::cameraName(EntityRegistry* registry, cons
 
 bool editor::CameraTextureLink::isLinkSource(EntityRegistry* registry, Entity entity){
     return registry && registry->isEntityCreated(entity) &&
-           (registry->findComponent<CameraComponent>(entity) || registry->findComponent<FluidSimulationComponent>(entity));
+           (registry->findComponent<CameraComponent>(entity) || registry->findComponent<FluidSimulationComponent>(entity) ||
+            (registry->isComponentRegistered<VideoPlayerComponent>() && registry->findComponent<VideoPlayerComponent>(entity)));
 }
 
 bool editor::CameraTextureLink::isLinkSourceType(ComponentType type){
-    return type == ComponentType::CameraComponent || type == ComponentType::FluidSimulationComponent;
+    return type == ComponentType::CameraComponent || type == ComponentType::FluidSimulationComponent ||
+           type == ComponentType::VideoPlayerComponent;
 }
 
 bool editor::CameraTextureLink::isCameraUsed(EntityRegistry* registry, Entity cameraEntity){
@@ -170,9 +182,13 @@ bool resolveEntity(EntityRegistry* registry, Entity entity){
                 target = camera ? camera->framebuffer : nullptr;
             }else{
                 Entity fluidEntity = FluidTextureLink::parse(texture->getId());
-                if (fluidEntity == NULL_ENTITY)
+                Entity videoEntity = VideoTextureLink::parse(texture->getId());
+                if (fluidEntity != NULL_ENTITY)
+                    target = FluidTextureLink::outputFramebuffer(registry, fluidEntity);
+                else if (videoEntity != NULL_ENTITY)
+                    target = VideoTextureLink::outputFramebuffer(registry, videoEntity);
+                else
                     continue;
-                target = FluidTextureLink::outputFramebuffer(registry, fluidEntity);
             }
 
             if (texture->getFramebuffer() != target){

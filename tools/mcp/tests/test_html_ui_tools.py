@@ -170,7 +170,16 @@ LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 
 # (tool_budget.py), the limit set to it
 LIMITS.update({"edit_animation": 3700, "get_animation": 870, "edit_pose_animation": 1250})
 # lead: + anim-retarget (+365 over main 111901): provisional 113440, re-measured on the merged tree
-TOTAL_LIMIT = 113440
+# (then TOTAL_LIMIT = 112276)
+# video-mp4 (spec 6.10): no new tool; create_entity's video_player / video_background, get_asset_info's
+# video probe and playable_on, inspect_ui's media backend, set_runtime_property's videoplayer state /
+# time / frame (+~180 on its branch); merged with main 5762bb259: 153 tools measured 111997, the limit
+# set to it
+# (then TOTAL_LIMIT = 111997)
+# video-mp4 merged with main dce634fb7 (camera-shake, ui-scaling-text): 153 tools measured 112289 (on box
+# 2202), the limit set to it
+# lead: + video-mp4 (+96 over the measured 112193 of main 2e916ebb9): provisional 113536, re-measured on the merged tree
+TOTAL_LIMIT = 113536
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

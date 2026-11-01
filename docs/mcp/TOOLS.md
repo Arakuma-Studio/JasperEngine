@@ -466,7 +466,7 @@ GameObject > Create with parent (default root), name, local transform, extra com
 | `scene` | string |  |  |
 | `select` | boolean |  | Default: `true`. |
 | `targets` | array of string |  | type lattice: fitted, bound. |
-| `type` | `"empty"` \| `"bare"` \| `"cube"` \| `"plane"` \| `"wall"` \| `"mirror"` \| `"sphere"` \| `"cylinder"` \| `"capsule"` \| `"torus"` \| `"model"` \| `"terrain"` \| `"water"` \| `"camera"` \| `"directional_light"` \| `"point_light"` \| `"spot_light"` \| `"skybox"` \| `"fog"` \| `"reflection_probe"` \| `"particle_system"` \| `"fluid_simulation"` \| `"points"` \| `"line_renderer"` \| `"trail_renderer"` \| `"mesh_polygon"` \| `"sprite"` \| `"tilemap"` \| `"light_2d"` \| `"shadow_caster_2d"` \| `"rigidbody2d"` \| `"rigidbody"` \| `"joint2d"` \| `"joint3d"` \| `"audio_source"` \| `"audio_source_3d"` \| `"image"` \| `"text"` \| `"button"` \| `"scrollbar"` \| `"progressbar"` \| `"input_field"` \| `"onscreen_stick"` \| `"onscreen_button"` \| `"touch_area"` \| `"panel"` \| `"polygon"` \| `"layout_group"` \| `"canvas_group"` \| `"ui_document"` \| `"animation"` \| `"sprite_animation"` \| `"position_tween"` \| `"rotation_tween"` \| `"scale_tween"` \| `"color_tween"` \| `"alpha_tween"` \| `"translate_tracks"` \| `"rotate_tracks"` \| `"scale_tracks"` \| `"morph_tracks"` \| `"lattice_tracks"` \| `"lattice"` |  | Default: `"empty"`. |
+| `type` | `"empty"` \| `"bare"` \| `"cube"` \| `"plane"` \| `"wall"` \| `"mirror"` \| `"sphere"` \| `"cylinder"` \| `"capsule"` \| `"torus"` \| `"model"` \| `"terrain"` \| `"water"` \| `"camera"` \| `"directional_light"` \| `"point_light"` \| `"spot_light"` \| `"skybox"` \| `"fog"` \| `"reflection_probe"` \| `"particle_system"` \| `"fluid_simulation"` \| `"video_player"` \| `"video_background"` \| `"points"` \| `"line_renderer"` \| `"trail_renderer"` \| `"mesh_polygon"` \| `"sprite"` \| `"tilemap"` \| `"light_2d"` \| `"shadow_caster_2d"` \| `"rigidbody2d"` \| `"rigidbody"` \| `"joint2d"` \| `"joint3d"` \| `"audio_source"` \| `"audio_source_3d"` \| `"image"` \| `"text"` \| `"button"` \| `"scrollbar"` \| `"progressbar"` \| `"input_field"` \| `"onscreen_stick"` \| `"onscreen_button"` \| `"touch_area"` \| `"panel"` \| `"polygon"` \| `"layout_group"` \| `"canvas_group"` \| `"ui_document"` \| `"animation"` \| `"sprite_animation"` \| `"position_tween"` \| `"rotation_tween"` \| `"scale_tween"` \| `"color_tween"` \| `"alpha_tween"` \| `"translate_tracks"` \| `"rotate_tracks"` \| `"scale_tracks"` \| `"morph_tracks"` \| `"lattice_tracks"` \| `"lattice"` |  | Default: `"empty"`. |
 | `values` | object |  |  |
 
 
@@ -1119,7 +1119,7 @@ space: canvas px from top-left, normalized 0..1, view = Game view px. down holds
 
 Hints: idempotent
 
-Set component properties of a GameObject in the running game, live: property + value, or values {name: value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua.
+Set component properties of a GameObject in the running game, live: property + value, or values {name: value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua. videoplayer also: state play|pause|stop|prepare, time, frame.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

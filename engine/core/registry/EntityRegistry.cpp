@@ -84,6 +84,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<CameraShakerComponent>();
     registerComponent<CameraFollowComponent>();
     registerComponent<TextEffectComponent>();
+    // appended: ids stay those of saved scenes and the editor's ComponentType order
+    registerComponent<VideoPlayerComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

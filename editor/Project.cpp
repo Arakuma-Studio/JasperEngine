@@ -61,6 +61,7 @@
 #include "pool/SoundPool.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerDocument.h"
+#include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/TrailSystem.h"
 #include "subsystem/CameraControlSystem.h"
 #include "pose/ModelRig.h"
@@ -69,6 +70,7 @@
 #include "htmlui/anim/AnimEngine.h"
 #include "script/ScriptScheduler.h"
 #include "net/Http.h"
+#include "media/MediaCache.h"
 #include "thread/MainThreadQueue.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -85,6 +87,7 @@
 
 #include "texture/Texture.h"
 #include "component/UIDocumentComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "Engine.h"
 #include "io/UserSettings.h"
 #include "io/UserSettingsStore.h"
@@ -4324,6 +4327,11 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     if (scene->isComponentRegistered<CanvasGroupComponent>() && scene->getComponentArray<CanvasGroupComponent>()->size() > 0) {
         insertKeys(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH), 0);
     }
+    // Video Players convert their frames (HTMLUI_POST Yuv) and blit camera planes (Passthrough)
+    if (scene->isComponentRegistered<VideoPlayerComponent>() && scene->getComponentArray<VideoPlayerComponent>()->size() > 0) {
+        for (const auto& variant : ShaderPool::getVideoPlayerVariants())
+            insertKeys(variant.first, variant.second, 0);
+    }
 
     // 2D lights with shadows render occluder segments through the shadow2d
     // pass. The runtime additionally gates on an enabled ShadowCaster2D existing
@@ -5937,6 +5945,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<VertexAnimatorSystem>()->setPaused(pause);
     // and Text Effects unless the Inspector previews them
     scene->getSystem<UISystem>()->setTextEffectsHeld(pause);
+    // Video Players play nothing in edit mode (playOnAwake waits for Play)
+    if (auto videos = scene->findSystem<VideoPlayerSystem>()) videos->setPaused(pause);
     // trails keep no point in edit mode but a dragged GameObject's (TrailSystem's preview)
     if (auto trails = scene->findSystem<TrailSystem>()){
         trails->setPaused(pause);
@@ -6304,6 +6314,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         sceneProject->scene->getSystem<VertexAnimatorSystem>()->resetAnimators();
         // and the camera shakes (their view offsets) and the followers' motion
         sceneProject->scene->getSystem<CameraControlSystem>()->resetAll();
+        // and the Video Players: their sources close, playOnAwake runs again at the next Play
+        if (auto videos = sceneProject->scene->findSystem<VideoPlayerSystem>()) videos->resetPlayers();
 
         // The copy goes with Stop, so its id does too: after the prefab instances the game
         // made in it went (their destroyer finds the copy by that id), before the copy is
@@ -9765,6 +9777,8 @@ void editor::Project::stop(uint32_t sceneId) {
             // HTTP requests of the play end without their callbacks (nothing waits for a
             // transfer); what worker threads posted for the game is dropped
             Http::shutdown();
+            // the URL videos' downloads of the play (their .part files stay for a resume)
+            MediaCache::shutdown();
             MainThreadQueue::clear();
 
             const bool libraryConnected = conector.isLibraryConnected();

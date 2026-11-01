@@ -999,17 +999,24 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
     core/htmlui/controls/OnScreenControls.cpp
-    core/htmlui/media/Av1Decoder.cpp
+    core/media/Av1Decoder.cpp
+    core/media/GrowingFileReader.cpp
+    core/media/MediaByteSource.cpp
+    core/media/MediaCache.cpp
+    core/media/Mp4Probe.cpp
+    core/media/OpusAudioDecoder.cpp
+    core/media/PlatformVideoSource.cpp
+    core/media/VideoAudio.cpp
+    core/media/VideoColorConvert.cpp
+    core/media/VideoDemuxer.cpp
+    core/media/VideoFormats.cpp
+    core/media/VideoPlayback.cpp
+    core/media/VideoSourceFactory.cpp
+    core/media/VideoStream.cpp
+    core/media/VideoTextureConverter.cpp
     core/htmlui/media/UIElementVideo.cpp
-    core/htmlui/media/OpusAudioDecoder.cpp
     core/htmlui/media/UIVideoControls.cpp
     core/htmlui/media/UIVideoElement.cpp
-    core/htmlui/media/VideoAudio.cpp
-    core/htmlui/media/VideoColorConvert.cpp
-    core/htmlui/media/VideoDemuxer.cpp
-    core/htmlui/media/VideoFormats.cpp
-    core/htmlui/media/VideoPlayback.cpp
-    core/htmlui/media/VideoStream.cpp
     core/htmlui/HtmlUIInspector.cpp
     core/htmlui/HtmlUIAssertions.cpp
     core/htmlui/effects/BuiltinEffectManifests.gen.cpp
@@ -1066,6 +1073,7 @@ set(JASPERENGINE_SRCS
     core/object/LineRenderer.cpp
     core/object/TrailRenderer.cpp
     core/object/Mesh.cpp
+    core/object/VideoPlayer.cpp
     core/object/MeshPolygon.cpp
     core/object/Mirror.cpp
     core/object/FluidSimulation.cpp
@@ -1188,6 +1196,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/TrailSystem.cpp
     core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp
+    core/subsystem/VideoPlayerSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
     core/subsystem/AudioSystem.cpp
@@ -1256,6 +1265,31 @@ else()
     set(JASPERENGINE_HTTP_BACKEND core/net/HttpBackendCurl.cpp)
 endif()
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_HTTP_BACKEND})
+
+# The video decoders of MP4 and other non-AV1 video (core/media/PlatformVideoBackend.h): each
+# platform's own (docs/superpowers/specs/2026-10-31-video-mp4-design.md §6.6). Outside the list
+# above like the HTTP backend: the Xcode workspace compiles platform/apple/AVFoundationBackend.mm.
+if(EMSCRIPTEN)
+    # the browser's <video> (its JavaScript inline, EM_JS, as the engine's other Web code)
+    set(JASPERENGINE_VIDEO_BACKEND platform/emscripten/WebVideoSource.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(JASPERENGINE_VIDEO_BACKEND platform/android/MediaCodecBackend.cpp)
+elseif(WIN32)
+    set(JASPERENGINE_VIDEO_BACKEND platform/win/MediaFoundationBackend.cpp)
+elseif(APPLE)
+    set(JASPERENGINE_VIDEO_BACKEND platform/apple/AVFoundationBackend.mm)
+    set_source_files_properties(platform/apple/AVFoundationBackend.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    # Linux and FreeBSD: the system FFmpeg through dlopen, one translation unit per ABI major,
+    # each compiled against its vendored headers only (-isystem: ahead of a system FFmpeg's)
+    set(JASPERENGINE_VIDEO_BACKEND platform/linux/FFmpegBackend.cpp)
+    foreach(major 58 59 60 61 62)
+        list(APPEND JASPERENGINE_VIDEO_BACKEND platform/linux/FFmpegBackend${major}.cpp)
+        set_source_files_properties(platform/linux/FFmpegBackend${major}.cpp PROPERTIES
+            COMPILE_OPTIONS "-isystem;${CMAKE_CURRENT_SOURCE_DIR}/libs/ffmpeg-headers/${major}")
+    endforeach()
+endif()
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_VIDEO_BACKEND})
 
 # HTML/CSS compatibility layer (phase 2): globbed per directory
 include(core/htmlui/compat/CompatSources.cmake)
@@ -1330,14 +1364,19 @@ target_compile_definitions(jasperengine
 find_package(Threads REQUIRED)
 target_link_libraries(jasperengine PRIVATE Threads::Threads)
 
-# The HTTP backends' system libraries
+# The HTTP and video backends' system libraries
 if(WIN32)
-    # iphlpapi: whether a network is up at all ("offline")
-    target_link_libraries(jasperengine PRIVATE winhttp iphlpapi)
+    # iphlpapi: whether a network is up at all ("offline"). Media Foundation (the video decoders):
+    # mfplat.dll and mfreadwrite.dll are loaded at run time (Windows N editions lack them without
+    # the Media Feature Pack, platform/win/MediaFoundationBackend.cpp); mfuuid is static GUIDs
+    target_link_libraries(jasperengine PRIVATE winhttp iphlpapi mfuuid ole32)
 elseif(APPLE)
-    target_link_libraries(jasperengine PRIVATE "-framework Foundation")
-elseif(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
-    # dlopen of libcurl
+    target_link_libraries(jasperengine PRIVATE "-framework Foundation" "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    # NDK media (API 21; the API 28 custom data source is looked up with dlsym)
+    target_link_libraries(jasperengine PRIVATE mediandk)
+elseif(NOT EMSCRIPTEN)
+    # dlopen of libcurl and of FFmpeg
     target_link_libraries(jasperengine PRIVATE ${CMAKE_DL_LIBS})
 endif()
 

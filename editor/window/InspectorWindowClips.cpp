@@ -11,6 +11,7 @@
 // Window actions (open, convert, extract, use player, create) are AnimationClipInspectorHooks:
 // a button shows once its hook is set. Owner: T2c.
 
+#include "media/VideoFormats.h"
 #include "InspectorWindow.h"
 #include "window/HumanoidConvertDialog.h"
 #include "pose/PoseRigProvider.h"
@@ -1552,6 +1553,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         std::error_code ec;
         if (!fs::is_regular_file(asset, ec)) return false;
         drawAudioMixerAsset(asset);
+        return true;
+    }
+    // a video (.mp4, .m4v, .mov, .webm, .mkv): probe, platform matrix, preview (InspectorVideo.cpp)
+    if (VideoFormats::isPlayableExtension(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawVideoAsset(asset);
         return true;
     }
     // a physics material: its four fields (InspectorPhysics2D.cpp)

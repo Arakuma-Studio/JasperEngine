@@ -1589,6 +1589,11 @@ std::vector<std::pair<ShaderType, uint64_t>> ShaderPool::getHtmlUIVariants(){
     return variants;
 }
 
+std::vector<std::pair<ShaderType, uint64_t>> ShaderPool::getVideoPlayerVariants(){
+    return {{ShaderType::HTMLUI_POST, getHtmlUIPostProperties(HtmlUIPostVariant::YUV)},
+            {ShaderType::HTMLUI_POST, getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH)}};
+}
+
 uint64_t ShaderPool::getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect){
     uint64_t prop = 0;
 

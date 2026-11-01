@@ -24,6 +24,7 @@
 #include "util/CameraTextureLink.h"
 #include "util/Color.h"
 #include "util/FluidTextureLink.h"
+#include "util/VideoTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
 #include "ecs/EntityManager.h"
@@ -2362,6 +2363,14 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
         node["fluid"] = linkedFluid;
         return node;
     }
+    // a Video Player's render texture (VideoTextureLink), the same way
+    Entity linkedVideo = VideoTextureLink::parse(texture.getId());
+    if (linkedVideo != NULL_ENTITY) {
+        node["textureType"] = "2D";
+        node["source"] = "video";
+        node["video"] = linkedVideo;
+        return node;
+    }
 
     if (texture.empty() || texture.isFramebuffer())
         return node;
@@ -2486,6 +2495,11 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                 // a FluidSimulation's output, bound by CameraTextureLink::resolve too
                 if (node["fluid"]) {
                     texture.setId(FluidTextureLink::makeId(YamlNumbers::as<Entity>(node["fluid"])));
+                }
+            } else if (source == "video") {
+                // a Video Player's render texture, bound by CameraTextureLink::resolve too
+                if (node["video"]) {
+                    texture.setId(VideoTextureLink::makeId(YamlNumbers::as<Entity>(node["video"])));
                 }
             }
         }
@@ -5629,6 +5643,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::FluidSimulationComponent, true)] = encodeFluidSimulationComponent(fluid);
     }
 
+    if (registry->isComponentRegistered<VideoPlayerComponent>() && signature.test(registry->getComponentId<VideoPlayerComponent>())) {
+        const VideoPlayerComponent& player = registry->getComponent<VideoPlayerComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::VideoPlayerComponent, true)] = encodeVideoPlayerComponent(player);
+    }
+
     if (signature.test(registry->getComponentId<LatticeComponent>())) {
         const LatticeComponent& lattice = registry->getComponent<LatticeComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::LatticeComponent, true)] = encodeLatticeComponent(lattice);
@@ -6214,6 +6233,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::FluidSimulationComponent, existing, &fluid);
             registry->getComponent<FluidSimulationComponent>(entity) = std::move(fluid);
             Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::VideoPlayerComponent, true);
+    if (compNode[compName] && registry->isComponentRegistered<VideoPlayerComponent>()) {
+        VideoPlayerComponent* existing = registry->findComponent<VideoPlayerComponent>(entity);
+        VideoPlayerComponent player = decodeVideoPlayerComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<VideoPlayerComponent>())){
+            registry->addComponent<VideoPlayerComponent>(entity, std::move(player));
+        }else{
+            registry->getComponent<VideoPlayerComponent>(entity) = std::move(player);
         }
     }
 
@@ -8509,6 +8539,148 @@ UIDocumentComponent editor::Stream::decodeUIDocumentComponent(const YAML::Node& 
     }
 
     return document;
+}
+
+namespace {
+
+    const char* videoPlayerSourceName(VideoPlayerSource value){
+        return value == VideoPlayerSource::URL ? "url" : "clip";
+    }
+    VideoPlayerSource videoPlayerSourceOf(const std::string& text, VideoPlayerSource fallback){
+        if (text == "url") return VideoPlayerSource::URL;
+        if (text == "clip") return VideoPlayerSource::CLIP;
+        return fallback;
+    }
+    const char* videoTimeUpdateModeName(VideoTimeUpdateMode value){
+        return value == VideoTimeUpdateMode::UNSCALED_GAME_TIME ? "unscaled_game_time" : "game_time";
+    }
+    VideoTimeUpdateMode videoTimeUpdateModeOf(const std::string& text, VideoTimeUpdateMode fallback){
+        if (text == "unscaled_game_time") return VideoTimeUpdateMode::UNSCALED_GAME_TIME;
+        if (text == "game_time") return VideoTimeUpdateMode::GAME_TIME;
+        return fallback;
+    }
+    const char* videoRenderModeName(VideoRenderMode value){
+        switch (value){
+            case VideoRenderMode::CAMERA_FAR_PLANE: return "camera_far_plane";
+            case VideoRenderMode::CAMERA_NEAR_PLANE: return "camera_near_plane";
+            case VideoRenderMode::RENDER_TEXTURE: return "render_texture";
+            case VideoRenderMode::MATERIAL_OVERRIDE: return "material_override";
+            case VideoRenderMode::API_ONLY: return "api_only";
+        }
+        return "render_texture";
+    }
+    VideoRenderMode videoRenderModeOf(const std::string& text, VideoRenderMode fallback){
+        for (VideoRenderMode mode : {VideoRenderMode::CAMERA_FAR_PLANE, VideoRenderMode::CAMERA_NEAR_PLANE, VideoRenderMode::RENDER_TEXTURE,
+                                     VideoRenderMode::MATERIAL_OVERRIDE, VideoRenderMode::API_ONLY}){
+            if (text == videoRenderModeName(mode)) return mode;
+        }
+        return fallback;
+    }
+    const char* videoAspectRatioName(VideoAspectRatio value){
+        switch (value){
+            case VideoAspectRatio::NO_SCALING: return "no_scaling";
+            case VideoAspectRatio::FIT_VERTICALLY: return "fit_vertically";
+            case VideoAspectRatio::FIT_HORIZONTALLY: return "fit_horizontally";
+            case VideoAspectRatio::FIT_INSIDE: return "fit_inside";
+            case VideoAspectRatio::FIT_OUTSIDE: return "fit_outside";
+            case VideoAspectRatio::STRETCH: return "stretch";
+        }
+        return "fit_inside";
+    }
+    VideoAspectRatio videoAspectRatioOf(const std::string& text, VideoAspectRatio fallback){
+        for (VideoAspectRatio fit : {VideoAspectRatio::NO_SCALING, VideoAspectRatio::FIT_VERTICALLY, VideoAspectRatio::FIT_HORIZONTALLY,
+                                     VideoAspectRatio::FIT_INSIDE, VideoAspectRatio::FIT_OUTSIDE, VideoAspectRatio::STRETCH}){
+            if (text == videoAspectRatioName(fit)) return fit;
+        }
+        return fallback;
+    }
+    const char* videoAudioOutputModeName(VideoAudioOutputMode value){
+        switch (value){
+            case VideoAudioOutputMode::NONE: return "none";
+            case VideoAudioOutputMode::AUDIO_SOURCE: return "audio_source";
+            case VideoAudioOutputMode::DIRECT: return "direct";
+        }
+        return "direct";
+    }
+    VideoAudioOutputMode videoAudioOutputModeOf(const std::string& text, VideoAudioOutputMode fallback){
+        if (text == "none") return VideoAudioOutputMode::NONE;
+        if (text == "audio_source") return VideoAudioOutputMode::AUDIO_SOURCE;
+        if (text == "direct") return VideoAudioOutputMode::DIRECT;
+        return fallback;
+    }
+
+}
+
+YAML::Node editor::Stream::encodeVideoPlayerComponent(const VideoPlayerComponent& player) {
+    YAML::Node node;
+    node["enabled"] = player.enabled;
+
+    // only what differs from the defaults (Unity's); decode restores the defaults
+    const VideoPlayerComponent defaults;
+    if (player.source != defaults.source) node["source"] = videoPlayerSourceName(player.source);
+    if (player.clip != defaults.clip) node["clip"] = player.clip;
+    if (player.url != defaults.url) node["url"] = player.url;
+    if (player.playOnAwake != defaults.playOnAwake) node["playOnAwake"] = player.playOnAwake;
+    if (player.waitForFirstFrame != defaults.waitForFirstFrame) node["waitForFirstFrame"] = player.waitForFirstFrame;
+    if (player.isLooping != defaults.isLooping) node["isLooping"] = player.isLooping;
+    if (player.skipOnDrop != defaults.skipOnDrop) node["skipOnDrop"] = player.skipOnDrop;
+    if (player.playbackSpeed != defaults.playbackSpeed) encodeFinite(node, "playbackSpeed", player.playbackSpeed);
+    if (player.timeUpdateMode != defaults.timeUpdateMode) node["timeUpdateMode"] = videoTimeUpdateModeName(player.timeUpdateMode);
+    if (player.renderMode != defaults.renderMode) node["renderMode"] = videoRenderModeName(player.renderMode);
+    if (player.targetCamera != defaults.targetCamera) node["targetCamera"] = player.targetCamera;
+    if (player.targetCameraAlpha != defaults.targetCameraAlpha) encodeFinite(node, "targetCameraAlpha", player.targetCameraAlpha);
+    if (player.aspectRatio != defaults.aspectRatio) node["aspectRatio"] = videoAspectRatioName(player.aspectRatio);
+    if (player.targetMaterialRenderer != defaults.targetMaterialRenderer) node["targetMaterialRenderer"] = player.targetMaterialRenderer;
+    if (player.targetMaterialProperty != defaults.targetMaterialProperty) node["targetMaterialProperty"] = player.targetMaterialProperty;
+    if (player.targetSubmesh != defaults.targetSubmesh) node["targetSubmesh"] = player.targetSubmesh;
+    if (player.renderTextureWidth != defaults.renderTextureWidth) node["renderTextureWidth"] = player.renderTextureWidth;
+    if (player.renderTextureHeight != defaults.renderTextureHeight) node["renderTextureHeight"] = player.renderTextureHeight;
+    if (player.audioOutputMode != defaults.audioOutputMode) node["audioOutputMode"] = videoAudioOutputModeName(player.audioOutputMode);
+    if (player.directVolume != defaults.directVolume) encodeFinite(node, "directVolume", player.directVolume);
+    if (player.directMute != defaults.directMute) node["directMute"] = player.directMute;
+    if (player.targetAudioSource != defaults.targetAudioSource) node["targetAudioSource"] = player.targetAudioSource;
+    return node;
+}
+
+VideoPlayerComponent editor::Stream::decodeVideoPlayerComponent(const YAML::Node& node, const VideoPlayerComponent* oldPlayer) {
+    // the old one's runtime state (its render texture, which textures linked to "video|<entity>"
+    // show, and its listeners) stays
+    VideoPlayerComponent player;
+    if (oldPlayer) {
+        player = *oldPlayer;
+    }
+
+    if (node["enabled"]) player.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    // keys are omitted at their defaults: a missing key is the default, not the old value
+    const VideoPlayerComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    player.source = given("source") ? videoPlayerSourceOf(node["source"].as<std::string>(), defaults.source) : defaults.source;
+    player.clip = given("clip") ? node["clip"].as<std::string>() : defaults.clip;
+    player.url = given("url") ? node["url"].as<std::string>() : defaults.url;
+    player.playOnAwake = given("playOnAwake") ? YamlNumbers::as<bool>(node["playOnAwake"]) : defaults.playOnAwake;
+    player.waitForFirstFrame = given("waitForFirstFrame") ? YamlNumbers::as<bool>(node["waitForFirstFrame"]) : defaults.waitForFirstFrame;
+    player.isLooping = given("isLooping") ? YamlNumbers::as<bool>(node["isLooping"]) : defaults.isLooping;
+    player.skipOnDrop = given("skipOnDrop") ? YamlNumbers::as<bool>(node["skipOnDrop"]) : defaults.skipOnDrop;
+    player.playbackSpeed = given("playbackSpeed") ? std::clamp(decodeFinite(node["playbackSpeed"], defaults.playbackSpeed), 0.0625f, 16.0f) : defaults.playbackSpeed;
+    player.timeUpdateMode = given("timeUpdateMode") ? videoTimeUpdateModeOf(node["timeUpdateMode"].as<std::string>(), defaults.timeUpdateMode) : defaults.timeUpdateMode;
+    player.renderMode = given("renderMode") ? videoRenderModeOf(node["renderMode"].as<std::string>(), defaults.renderMode) : defaults.renderMode;
+    player.targetCamera = given("targetCamera") ? YamlNumbers::as<Entity>(node["targetCamera"]) : defaults.targetCamera;
+    player.targetCameraAlpha = given("targetCameraAlpha") ? std::clamp(decodeFinite(node["targetCameraAlpha"], defaults.targetCameraAlpha), 0.0f, 1.0f) : defaults.targetCameraAlpha;
+    player.aspectRatio = given("aspectRatio") ? videoAspectRatioOf(node["aspectRatio"].as<std::string>(), defaults.aspectRatio) : defaults.aspectRatio;
+    player.targetMaterialRenderer = given("targetMaterialRenderer") ? YamlNumbers::as<Entity>(node["targetMaterialRenderer"]) : defaults.targetMaterialRenderer;
+    player.targetMaterialProperty = given("targetMaterialProperty") ? node["targetMaterialProperty"].as<std::string>() : defaults.targetMaterialProperty;
+    player.targetSubmesh = given("targetSubmesh") ? YamlNumbers::as<int>(node["targetSubmesh"]) : defaults.targetSubmesh;
+    player.renderTextureWidth = given("renderTextureWidth") ? YamlNumbers::as<unsigned int>(node["renderTextureWidth"]) : defaults.renderTextureWidth;
+    player.renderTextureHeight = given("renderTextureHeight") ? YamlNumbers::as<unsigned int>(node["renderTextureHeight"]) : defaults.renderTextureHeight;
+    player.audioOutputMode = given("audioOutputMode") ? videoAudioOutputModeOf(node["audioOutputMode"].as<std::string>(), defaults.audioOutputMode) : defaults.audioOutputMode;
+    player.directVolume = given("directVolume") ? std::clamp(decodeFinite(node["directVolume"], defaults.directVolume), 0.0f, 1.0f) : defaults.directVolume;
+    player.directMute = given("directMute") ? YamlNumbers::as<bool>(node["directMute"]) : defaults.directMute;
+    player.targetAudioSource = given("targetAudioSource") ? YamlNumbers::as<Entity>(node["targetAudioSource"]) : defaults.targetAudioSource;
+    return player;
 }
 
 YAML::Node editor::Stream::encodeFluidSimulationComponent(const FluidSimulationComponent& fluid) {

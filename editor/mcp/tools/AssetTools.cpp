@@ -4,6 +4,8 @@
 // W4: assets, import, materials, shaders, text files, placeholder art
 #include "camera/ShakePreset.h"
 #include "camera/ShakeInstance.h"
+#include "media/VideoFormats.h"
+#include "media/VideoSourceFactory.h"
 #include "McpTools.h"
 #include "util/ShaderGlobalsJson.h"
 #include "shader/ShaderGlobals.h"
@@ -884,6 +886,35 @@ void getAssetInfoTool(const CallPtr& call) {
                 if (info.contains("duration_seconds")) text += ", " + std::to_string(info["duration_seconds"].get<double>()) + " s";
             }
         }
+    } else if (kind == "video") {
+        // the probe (header boxes only) and where it plays (video-mp4 spec 6.10)
+        const VideoProbe probe = VideoFormats::probeFile(file.string());
+        Json video = {{"container", probe.container}, {"readable", probe.readable}, {"width", probe.width}, {"height", probe.height},
+                      {"duration", std::round(probe.duration * 1000.0) / 1000.0}};
+        if (!probe.videoCodec.empty()) video["video_codec"] = {{"id", probe.videoCodecString.empty() ? probe.videoCodec : probe.videoCodecString},
+                                                               {"name", VideoFormats::codecName(probe.videoCodec)}};
+        if (!probe.audioCodec.empty()) video["audio_codec"] = {{"id", probe.audioCodecString.empty() ? probe.audioCodec : probe.audioCodecString},
+                                                               {"name", VideoFormats::codecName(probe.audioCodec)}, {"channels", probe.audioChannels}};
+        if (probe.frameRate > 0.0) video["frame_rate"] = std::round(probe.frameRate * 1000.0) / 1000.0;
+        if (probe.rotation != 0) video["rotation"] = probe.rotation;
+        const bool mp4 = probe.container == "mp4" || probe.container == "mov" || probe.container == "3gp";
+        if (mp4) video["fast_start"] = probe.fastStart;
+        if (probe.encrypted) video["encrypted"] = true;
+        Json playable = Json::object();
+        for (int p = 0; p < VideoSourceFactory::PLATFORM_COUNT; p++) {
+            const auto platform = (VideoSourceFactory::Platform)p;
+            playable[VideoSourceFactory::platformId(platform)] = VideoSourceFactory::playableOn(platform, probe);
+        }
+        video["playable_on"] = playable;
+        // here, in this editor (Play)
+        video["plays_here"] = probe.playable;
+        video["backend_here"] = probe.backend;
+        if (!probe.playable && probe.error) video["error"] = probe.error.message;
+        data["video"] = video;
+        if (mp4) data["fast_start"] = probe.fastStart;
+        data["playable_on"] = playable;
+        text += ", " + probe.container + " " + VideoFormats::codecName(probe.videoCodec) + " " + std::to_string(probe.width) + "x" +
+                std::to_string(probe.height) + ", playable_on " + playable.dump();
     } else if (kind == "material") {
         Material material;
         std::string error;

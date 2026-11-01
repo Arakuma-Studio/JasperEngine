@@ -76,7 +76,7 @@ Parity stops at:
 
 - **No JavaScript, no network access from documents, no `<canvas>` or `<iframe>`** (by design;
   Lua's `Http` makes requests, `jasper://docs/networking`).
-  `<video>` plays AV1 + Opus WebM only (see "Video"). Remote fonts, images and videos are
+  `<video>` plays AV1 + Opus WebM everywhere and MP4 through the platform's decoders (see "Video"). Remote fonts, images and videos are
   imported into the project by the editor.
 - **The unsupported CSS** listed under "CSS that differs": container queries, blend modes,
   vertical text, multi-column layout, `subgrid`, scroll snapping, ... Each use is reported.
@@ -307,7 +307,7 @@ pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`, `::placeholder
 | `<script>` (JavaScript) | `<script type="text/lua">` or a Lua script on the GameObject (`HTMLUI-HTML-0006`, error) |
 | `onclick="..."` and every `on*` attribute | `el:addEventListener("click", fn)` in Lua, or `data-event-click` with a data model (`HTMLUI-HTML-0005`, error) |
 | `<canvas>` | a Lottie animation or an image sequence; 3D content drawn by the game behind a transparent part of the page, or the document on a mesh in texture mode (`HTMLUI-HTML-0002`: a placeholder box) |
-| `<video src="clip.mp4">` (H.264, VP9, ...) | `<video src="clip.webm">` with AV1 + Opus: `import_files` converts the file with FFmpeg (`HTMLUI-HTML-0027`) |
+| `<video src="clip.avi">` (Ogg/Theora, AVI, ...) | `<video src="clip.webm">` with AV1 + Opus (`HTMLUI-HTML-0027`); MP4 (H.264, HEVC) plays through the platform's decoders |
 | `<iframe>` | another UI Document (`HTMLUI-HTML-0002`) |
 | `title="tooltip"` | a tooltip element shown on `mouseover` from Lua (`HTMLUI-HTML-0004`, info) |
 | `<div/>` | `<div></div>`: in HTML a non-void element does not self-close (`HTMLUI-HTML-0026`) |
@@ -1141,13 +1141,20 @@ transforms, clipping and filters apply to them as to `<img>`.
 <video src="video/trailer.webm" poster="video/trailer.png" controls></video>
 ```
 
-**Format: WebM with AV1 video and Opus audio, nothing else.** The engine decodes it itself (dav1d,
-libopus, libwebm: BSD licences, no patents to license, the same on every platform) instead of
-using each platform's decoders, so a video plays identically on desktop, mobile and Web.
-`.mkv` with the same codecs plays too. MP4/H.264, MOV, VP8/VP9 WebM, Ogg/Theora, AVI and the
-rest are reported (`HTMLUI-HTML-0027`, the fix is the conversion) and show their poster or nothing.
+**Formats**: WebM with AV1 video and Opus audio plays everywhere, decoded by the engine itself
+(dav1d, libopus, libwebm: BSD licences, no patents to license, identical frames on desktop, mobile
+and Web); `.mkv` with the same codecs too. **MP4/MOV** (H.264 + AAC, HEVC where the platform has
+it) and VP8/VP9 WebM play through each platform's decoders (Android MediaCodec, AVFoundation,
+Media Foundation, the browser, Linux with the system's FFmpeg): jasper://docs/video has the
+per-platform matrix. `src` may be an `https://` URL (downloaded into the media cache, played while
+it downloads when the MP4 is fast start; the browser streams it on the Web).
+`canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')` answers for the platform it runs on;
+`element.videoBackend` (and `inspect_ui`'s media `backend`) says what decodes it (`webm`,
+`ffmpeg`, `mediacodec`, `avfoundation`, `mediafoundation`, `browser`). Ogg/Theora, AVI and the rest
+are reported (`HTMLUI-HTML-0027`, the fix is the conversion) and show their poster or nothing.
 
-**Converting**: `import_files {"sources": ["/abs/clip.mp4"], "to_dir": "assets/ui/video"}` writes
+**Converting** (for WebM AV1 everywhere; MP4s are imported as they are): the Project window's
+*Convert to WebM (AV1)...* on a video, or `import_files` on a non-MP4 file (e.g. `"/abs/clip.avi"`), writes
 `clip.webm` (AV1 with SVT-AV1, libaom or rav1e, keyframes every 2 s, 8-bit 4:2:0, at most 4096
 px; Opus 128 kb/s stereo) and does not copy the original; files dropped on the Project window
 and video URLs (in `import_files`, or a document's remote `<video src>` when the editor imports
@@ -1185,7 +1192,7 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
   `canPlayType(type)`, `fastSeek(t)`; properties `currentTime` (set = seek), `duration`
   (NaN before the metadata), `paused`, `ended`, `seeking`, `loop`, `autoplay`, `controls`,
   `muted`, `defaultMuted`, `volume`, `playbackRate`, `defaultPlaybackRate`, `readyState`,
-  `networkState`, `videoWidth`, `videoHeight`, `currentSrc`, `poster`, `preload`, `error` (`nil`
+  `networkState`, `videoWidth`, `videoHeight`, `currentSrc`, `videoBackend` (what decodes it: `webm`, `ffmpeg`, `mediacodec`, `avfoundation`, `mediafoundation`, `browser`), `poster`, `preload`, `error` (`nil`
   or `{code, message}`); constants `UIElement.HAVE_ENOUGH_DATA`, `UIElement.MEDIA_ERR_SRC_NOT_SUPPORTED`, ...
   Out of range values (`volume = 2`) warn and leave the value (HTML throws).
 - Events (they do not bubble): `loadstart`, `durationchange`, `loadedmetadata`, `loadeddata`,
@@ -1603,7 +1610,7 @@ Read-only, edit mode and play. Returns:
 - `"styles": ["color", "font-size"]`: those computed values on every element;
 - `"screenshot": true`: the Game view cropped to the matches, outlined;
 - `"file": "assets/ui/x.css"`: a file's diagnostics without a live document;
-- a `<video>`'s entry has `media`: `currentSrc`, `currentTime`, `duration`, `paused`, `ended`,
+- a `<video>`'s entry has `media`: `currentSrc`, `backend`, `currentTime`, `duration`, `paused`, `ended`,
   `seeking`, `loop`, `muted`, `volume`, `playbackRate`, `readyState`, `networkState`,
   `videoWidth`/`videoHeight`, `frame` (the index on screen), `droppedFrames`, `decodeMs`,
   `memoryBytes`, `poster` (showing it), `error`, and with `controls` their rectangles

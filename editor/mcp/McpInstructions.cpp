@@ -233,6 +233,8 @@ Read the page before using these tools:
   shadow and effects (TextEffect), UI particles; Game view resolutions: configure_game_view
   (jasper://docs/ui).
 - Lines, lasers, trails: line_renderer / trail_renderer (jasper://docs/lines-trails).
+- Video: type video_player / video_background, texture video|<id>; MP4 and WebM
+  (jasper://docs/video).
 - Bend/squash: edit_lattice (jasper://docs/lattice). GPU fluid: type fluid_simulation
   (jasper://docs/fluid). Textures from examples: synthesize_texture
   (jasper://docs/texture-synthesis).

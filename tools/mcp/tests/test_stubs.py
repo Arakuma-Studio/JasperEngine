@@ -179,6 +179,25 @@ function Good:init()
     sound:fadeTo(0.5, 2)
     AudioSource.playClipAtPoint(self.scene, "sfx/boom.wav", Vector3(0, 0, 0), 1, "SFX")
     AudioSystem.preload("music/theme.ogg", AudioLoadType.Streaming)
+    -- the Video Player: fields, enums, events, methods and statics (video-mp4)
+    local vp = self.go:getVideoPlayer()
+    if vp and self.go:hasVideoPlayer() then
+        vp.source = VideoPlayerSource.URL
+        vp.url = System.getUserDataPath() .. "/ads/ad1.mp4"
+        vp.timeUpdateMode = VideoTimeUpdateMode.UNSCALED_GAME_TIME
+        vp.renderMode = VideoRenderMode.RENDER_TEXTURE
+        vp.aspectRatio = VideoAspectRatio.FIT_INSIDE
+        vp.audioOutputMode = VideoAudioOutputMode.DIRECT
+        vp.isLooping = false
+        vp.playbackSpeed = 1.5
+        vp.targetCamera = nil
+        vp.onPrepareCompleted = function(p) p:play() end
+        vp.onErrorReceived = function(p, message) Log.print(message) end
+        vp:prepare()
+        local framebuffer = vp:getFramebuffer()
+        print(framebuffer, vp.isPrepared, vp.frameCount, vp.length, vp.time, vp.frame, vp.backend, vp.texture)
+        print(VideoPlayer.canPlay("ads/ad1.mp4"), VideoPlayer.clearCache(), VideoPlayer.clearCache("https://cdn.example.com/a.mp4"))
+    end
 end
 
 function Good:onContact(bodyA, shapeA, bodyB, shapeB)

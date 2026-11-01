@@ -1,7 +1,7 @@
 # libwebm 1.0.0.32 - https://chromium.googlesource.com/webm/libwebm (BSD-3-Clause, LICENSE.TXT;
 # patent grant, PATENTS.TXT)
 #
-# The WebM/Matroska parser of the HTML UI's <video> (engine/core/htmlui/media/VideoDemuxer,
+# The WebM/Matroska parser of the HTML UI's <video> (engine/core/media/VideoDemuxer,
 # docs/html-ui/phase-6-video.md §3.2): mkvparser only (no muxer, no WebVTT, no tools).
 
 add_library(webm STATIC mkvparser/mkvparser.cc)

@@ -88,6 +88,10 @@ namespace jasperengine::editor{
         UI_DOCUMENT,
         WATER,
         FLUID_SIMULATION,
+        // a Video Player into its render texture (video|<entity>), and one on the main
+        // camera's far plane (a looping background)
+        VIDEO_PLAYER,
+        VIDEO_BACKGROUND,
         // a unit lattice (Transform + LatticeComponent); the menus create one through
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
         LATTICE,

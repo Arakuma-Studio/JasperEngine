@@ -12,6 +12,8 @@
 #include "render/TextureRender.h"
 #include "texture/Framebuffer.h"
 #include "fluid/FluidSimulator.h"
+#include "media/VideoTextureConverter.h"
+#include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "ecs/EntityManager.h"
@@ -44,6 +46,7 @@ struct CloneContext {
     std::unordered_map<const Framebuffer*, FramebufferCopy> framebuffers;
     // a copied fluid with a simulator -> the copy's own (made first: its output is mapped)
     std::unordered_map<Entity, std::shared_ptr<FluidSimulator>> fluidSimulators;
+    std::unordered_map<Entity, std::shared_ptr<VideoTextureConverter>> videoOutputs;
     // meshes whose external buffers point into the file data of a model copied with them
     std::unordered_set<Entity> modelMeshes;
 
@@ -508,6 +511,26 @@ void prepare<VertexAnimatorComponent>(VertexAnimatorComponent& animator, Entity,
         animator.onInstanceEvent.clear();
         animator.onInstanceFinish.clear();
     }
+}
+
+template<>
+void prepare<VideoPlayerComponent>(VideoPlayerComponent& player, Entity sourceEntity, CloneContext& ctx) {
+    // the copy plays on its own (its own texture; the textures showing the original's show its
+    // own after the remap), with no listeners of the original; a moved one keeps its texture,
+    // its listeners and (VideoPlayerSystem::handOver) its playback
+    auto it = ctx.videoOutputs.find(sourceEntity);
+    player.output = it != ctx.videoOutputs.end() ? it->second : nullptr;
+    player.targetCamera = ctx.remap(player.targetCamera);
+    player.targetMaterialRenderer = ctx.remap(player.targetMaterialRenderer);
+    player.targetAudioSource = ctx.remap(player.targetAudioSource);
+    if (ctx.move)
+        return;
+    player.onPrepareCompleted.clear();
+    player.onStarted.clear();
+    player.onLoopPointReached.clear();
+    player.onErrorReceived.clear();
+    player.onSeekCompleted.clear();
+    player.onFrameReady.clear();
 }
 
 template<>
@@ -1088,6 +1111,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<CameraShakerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraFollowComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TextEffectComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VideoPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 
@@ -1136,6 +1160,18 @@ void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx, En
         audio->onStart.clear();
         audio->onPause.clear();
         audio->onStop.clear();
+    }
+    // a Video Player's render texture went with it: its removal here frees nothing
+    if (source->isComponentRegistered<VideoPlayerComponent>()) {
+        if (VideoPlayerComponent* video = componentOf<VideoPlayerComponent>(source, entity, signature)) {
+            video->output.reset();
+            video->onPrepareCompleted.clear();
+            video->onStarted.clear();
+            video->onLoopPointReached.clear();
+            video->onErrorReceived.clear();
+            video->onSeekCompleted.clear();
+            video->onFrameReady.clear();
+        }
     }
     if (ActionComponent* action = componentOf<ActionComponent>(source, entity, signature)) {
         // stopped: its removal stops nothing (no onStop), and a target outside it stays
@@ -1314,6 +1350,7 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
     }
     // cameras and fluids first: textures showing what one renders follow it to the copy
     const bool fluidsRegistered = source->isComponentRegistered<FluidSimulationComponent>();
+    const bool videosRegistered = source->isComponentRegistered<VideoPlayerComponent>();
     for (Entity entity : sources) {
         if (CameraComponent* camera = source->findComponent<CameraComponent>(entity)) {
             if (camera->framebuffer && !ctx.framebuffers.count(camera->framebuffer)) {
@@ -1325,6 +1362,12 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
             std::shared_ptr<FluidSimulator> copy = std::make_shared<FluidSimulator>();
             ctx.framebuffers[fluid->simulator->getOutputFramebuffer()] = {copy->getOutputFramebuffer(), entity, map[entity]};
             ctx.fluidSimulators[entity] = copy;
+        }
+        VideoPlayerComponent* video = videosRegistered ? source->findComponent<VideoPlayerComponent>(entity) : nullptr;
+        if (video && video->output) {
+            std::shared_ptr<VideoTextureConverter> copy = std::make_shared<VideoTextureConverter>();
+            ctx.framebuffers[video->output->getFramebuffer()] = {copy->getFramebuffer(), entity, map[entity]};
+            ctx.videoOutputs[entity] = copy;
         }
     }
 
@@ -1396,6 +1439,7 @@ std::vector<Entity> EntityCloner::move(Scene* source, const std::vector<Entity>&
     // render targets are the copies' own (the GPU state of everything drawn reloads), as for
     // a clone: textures showing a moved camera's or fluid's output show the copy's
     const bool fluidsRegistered = source->isComponentRegistered<FluidSimulationComponent>();
+    const bool videosRegistered = source->isComponentRegistered<VideoPlayerComponent>() && target->isComponentRegistered<VideoPlayerComponent>();
     for (Entity entity : sources) {
         if (CameraComponent* camera = source->findComponent<CameraComponent>(entity)) {
             if (camera->framebuffer && !ctx.framebuffers.count(camera->framebuffer)) {
@@ -1407,6 +1451,13 @@ std::vector<Entity> EntityCloner::move(Scene* source, const std::vector<Entity>&
             std::shared_ptr<FluidSimulator> copy = std::make_shared<FluidSimulator>();
             ctx.framebuffers[fluid->simulator->getOutputFramebuffer()] = {copy->getOutputFramebuffer(), entity, map[entity]};
             ctx.fluidSimulators[entity] = copy;
+        }
+        // a Video Player keeps its render texture (and plays on): the textures showing it stay,
+        // their video|<id> links name the moved GameObject
+        VideoPlayerComponent* video = videosRegistered ? source->findComponent<VideoPlayerComponent>(entity) : nullptr;
+        if (video && video->output) {
+            ctx.framebuffers[video->output->getFramebuffer()] = {video->output->getFramebuffer(), entity, map[entity]};
+            ctx.videoOutputs[entity] = video->output;
         }
     }
 
@@ -1423,6 +1474,15 @@ std::vector<Entity> EntityCloner::move(Scene* source, const std::vector<Entity>&
         copyComponents(source, sourceEntity, target, copy, ctx);
     }
 
+    // the moved Video Players' playback goes on in the target (before the originals go)
+    if (source->isComponentRegistered<VideoPlayerComponent>() && target->isComponentRegistered<VideoPlayerComponent>()) {
+        std::shared_ptr<VideoPlayerSystem> from = source->findSystem<VideoPlayerSystem>();
+        std::shared_ptr<VideoPlayerSystem> to = target->findSystem<VideoPlayerSystem>();
+        for (Entity entity : sources) {
+            if (from && to && source->findComponent<VideoPlayerComponent>(entity))
+                from->handOver(entity, *to, map[entity]);
+        }
+    }
     for (Entity entity : sources) {
         handOver(source, entity, ctx, target);
     }

@@ -511,6 +511,9 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Audio", "Audio Source", ICON_FA_FILE_AUDIO, T::AUDIO_SOURCE, "Audio Source", CREATE_IN_ALL},
         {"Audio", "Audio Source 3D", ICON_FA_VOLUME_HIGH, T::AUDIO_SOURCE_3D, "Audio Source 3D", CREATE_IN_WORLD},
 
+        {"Video", "Video Player", ICON_FA_FILM, T::VIDEO_PLAYER, "Video Player", CREATE_IN_ALL},
+        {"Video", "Video Player (Camera Background)", ICON_FA_VIDEO, T::VIDEO_BACKGROUND, "Video Background", CREATE_IN_ALL},
+
         {"UI", "Image", ICON_FA_IMAGE, T::IMAGE, "Image", CREATE_IN_ALL},
         {"UI", "Text", ICON_FA_FONT, T::TEXT, "Text", CREATE_IN_ALL},
         {"UI", "Button", ICON_FA_SQUARE_CARET_RIGHT, T::BUTTON, "Button", CREATE_IN_ALL},
@@ -676,6 +679,7 @@ static const char* createSubmenuIcon(const char* submenu){
     if (name == "Effects") return ICON_FA_FIRE;
     if (name == "Light") return ICON_FA_LIGHTBULB;
     if (name == "Audio") return ICON_FA_VOLUME_HIGH;
+    if (name == "Video") return ICON_FA_FILM;
     if (name == "UI") return ICON_FA_WINDOW_RESTORE;
     if (name == "Physics") return ICON_FA_WEIGHT_HANGING;
     if (name == "Rendering") return ICON_FA_CLOUD;

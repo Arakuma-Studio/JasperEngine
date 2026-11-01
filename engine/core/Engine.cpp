@@ -56,6 +56,7 @@
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "net/Http.h"
+#include "media/MediaCache.h"
 #include "thread/MainThreadQueue.h"
 #ifndef NO_THREAD_SUPPORT
     #include "thread/ThreadPoolManager.h"
@@ -1836,6 +1837,8 @@ void Engine::systemShutdown(){
     // HTTP requests end without their callbacks and the HTTP stack's threads stop; what other
     // threads posted for the game is dropped
     Http::terminate();
+    // the media cache's downloads are forgotten (their .part files stay for a resume)
+    MediaCache::shutdown();
     MainThreadQueue::clear();
     LuaBinding::cleanup();
 

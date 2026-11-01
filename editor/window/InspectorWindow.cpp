@@ -25,6 +25,8 @@
 #include "util/EntityPayload.h"
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
+#include "util/VideoTextureLink.h"
+#include "component/VideoPlayerComponent.h"
 #include "util/FluidEditorTools.h"
 #include "util/UIProbe.h"
 #include "component/FluidSimulationComponent.h"
@@ -4412,6 +4414,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         bool isCameraTexture = CameraTextureLink::isCameraTexture(newValue);
         bool isFluidTexture = FluidTextureLink::isFluidTexture(newValue);
+        const bool isVideoTexture = VideoTextureLink::isVideoTexture(newValue);
 
         float thumbSize = ImGui::GetFrameHeight() * 3;
         Texture* thumbTexture = findThumbnail(newValue.getPath());
@@ -4426,7 +4429,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 Widgets::image(Backend::getImGuiTexture(thumbTexture->getRender()), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
                 ImGui::EndTooltip();
             }
-        } else if ((isCameraTexture || isFluidTexture) && newValue.isFramebuffer() && newValue.getFramebuffer()->isCreated()) {
+        } else if ((isCameraTexture || isFluidTexture || isVideoTexture) && newValue.isFramebuffer() && newValue.getFramebuffer()->isCreated()) {
             // live preview of the linked camera framebuffer or fluid output
             ImU32 border_col = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_FrameBg]);
             if (dif){
@@ -4437,7 +4440,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         // sampler settings (min/mag filter, wrap) only apply to an actual image texture,
         // not to a camera/framebuffer link or an empty slot
-        bool showTexSettings = settings.allowTextureSettings && !isCameraTexture && !isFluidTexture && !newValue.empty();
+        bool showTexSettings = settings.allowTextureSettings && !isCameraTexture && !isFluidTexture && !isVideoTexture && !newValue.empty();
 
         ImVec2 texButtonSize = ImGui::CalcItemSize(ImVec2(0, 0), ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
         // reserve room for the action buttons (file + camera + fluid, plus a settings button
@@ -4454,6 +4457,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             texName = std::string(ICON_FA_VIDEO) + " " + CameraTextureLink::cameraName(sceneProject->scene, newValue);
         } else if (isFluidTexture) {
             texName = std::string(ICON_FA_DROPLET) + " " + FluidTextureLink::fluidName(sceneProject->scene, newValue);
+        } else if (isVideoTexture) {
+            texName = std::string(ICON_FA_FILM) + " " + VideoTextureLink::videoName(sceneProject->scene, newValue);
         } else {
             // Never show the "?svgScale=" suffix in the slot; display the clean path/name.
             texName = TextureData::parseSvgScalePath(texName);
@@ -4561,6 +4566,28 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             }
             if (!hasCamera) {
                 ImGui::TextDisabled("No camera in scene");
+            }
+            // the Video Players' render textures (video|<entity>)
+            if (scene->isComponentRegistered<VideoPlayerComponent>()) {
+                auto videosArray = scene->getComponentArray<VideoPlayerComponent>();
+                bool separated = false;
+                for (size_t v = 0; v < videosArray->size(); v++) {
+                    Entity videoEntity = videosArray->getEntity(v);
+                    if (std::find(sceneProject->entities.begin(), sceneProject->entities.end(), videoEntity) == sceneProject->entities.end())
+                        continue;
+                    if (!separated) {
+                        ImGui::Separator();
+                        separated = true;
+                    }
+                    const std::string videoLabel = std::string(ICON_FA_FILM) + " Video Player: " + scene->getEntityName(videoEntity) +
+                                                   "##video_" + std::to_string(videoEntity);
+                    const bool linked = VideoTextureLink::parse(newValue.getId()) == videoEntity && !dif;
+                    if (ImGui::MenuItem(videoLabel.c_str(), nullptr, linked)) {
+                        applyVideoTexture(videoEntity, cpType, id, sceneProject, entities, settings.onValueChanged);
+                        finishProperty = true;
+                    }
+                    UIProbe::item("texture.video.item." + std::to_string(videoEntity));
+                }
             }
             ImGui::EndPopup();
         }
@@ -16796,6 +16823,7 @@ void editor::InspectorWindow::show(){
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
 
     trackInspectedObject();
+    closeIdleVideoPreview();
 
     // fluid previews keep their Scene view redrawing; they and the Paint Dye brush end with
     // what they work on (FluidEditorTools)
@@ -17007,6 +17035,11 @@ void editor::InspectorWindow::show(){
                     drawCameraShakerComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::CameraFollowComponent){
                     drawCameraFollowComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::VideoPlayerComponent){
+                    // its playback bar (Play) is no edit: it works on a read-only player too
+                    if (compReadOnly) ImGui::EndDisabled();
+                    drawVideoPlayerComponent(cpType, sceneProject, entities, compReadOnly);
+                    if (compReadOnly) ImGui::BeginDisabled(true);
                 }else if (cpType == ComponentType::CameraComponent){
                     drawCameraComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AudioSourceComponent){
