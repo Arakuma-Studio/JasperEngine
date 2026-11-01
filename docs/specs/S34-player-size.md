@@ -108,8 +108,9 @@ level. We do the same at module granularity, decided by the editor from the proj
   - the project's Lua scripts: the Lua names of each module, read from the Lua API description
     (the bindings' `#if` conditions, so a binding added under a module's condition is detected
     without a list to update), every name whose type is one of the module's classes, and the
-    dynamic accesses that could reach any name (`_G`, `_ENV`, `load`, `rawget`, ...), which need
-    every module;
+    dynamic accesses that could reach any name (`_G`, `_ENV`, `getfenv`, `setfenv`, `load`,
+    `loadstring`, `loadfile`, `dofile`, `debug`, `package`, a `require` of a computed name), which
+    need every module;
   - the script properties of scenes and prefabs (their object types);
   - the HTML UI documents (video: a `<video>` element), and C++ scripts (every module the project
     settings allow);
@@ -119,8 +120,8 @@ level. We do the same at module granularity, decided by the editor from the proj
   Each needed module comes with its evidence (`scene Main: Rigidbody on Player`,
   `lua/hud.lua:12: UIDocument`), shown in Build Settings, the CLI and MCP.
 - **R6. Selection.** A prebuilt build uses the smallest installed release variant whose modules
-  cover the needed ones (the full player always does). When a smaller variant fits but is not
-  installed, the build uses the best installed one and warns `W-PLAYER-VARIANT` with the id to
+  cover the needed ones (the full player always does). When a variant of fewer modules than that
+  one fits but is not installed, the build uses the best installed one and warns `W-PLAYER-VARIANT` with the id to
   install (`jasperengine-editor players download <id>`, or install from file in Preferences). A Compile build switches each module off that the
   project does not need (R5) or does not allow (Project Settings), unless it has C++ scripts or
   `ProjectBuild.cmake` (their code can use anything: the settings alone decide, as today).
@@ -214,14 +215,18 @@ level. We do the same at module granularity, decided by the editor from the proj
   (`VideoFormats`, which the compatibility layer applies to every document) stay.
 - **D4. The Lua scan.** A Lua lexer (comments skipped, identifiers and the words of every string
   literal kept: a member reached by its name, `go["getRigidbody"]`; a class name in a string is
-  not, since a global is only reached by a name through a dynamic access). Every `.lua` file of the
-  project is scanned, so `require` of a project module needs no following. Names come from the Lua API description
-  the editor embeds (`LuaApiData`); the parser records each binding's module (`modules`) from its
-  preprocessor conditions. A module's entry points are its classes, enums and globals, its members
-  of classes outside it, and every member of any class whose type names one of its classes; the
-  members of the module's own classes are reachable only through those. The dynamic accesses
-  (`_G`, `_ENV`, `getfenv`, `setfenv`, `load`, `loadstring`, `loadfile`, `dofile`, `rawget`,
-  `rawset`, `debug`, `package`, and `require` with a computed name) need every module.
+  not, since a global is only reached by a name through a dynamic access). A member counts after
+  `.` or `:` or in a string; a name on its own only when it is a class or an enum (Lua has no
+  implicit member scope: `local duration`, `{volume = 1}` reach nothing of the engine). Every
+  `.lua` file of the project is scanned, so `require` of a project module needs no following.
+  Names come from the Lua API description the editor embeds (`LuaApiData`); the parser records
+  each binding's module (`modules`) from its preprocessor conditions. A module's entry points are
+  its classes, enums and globals, its members of classes outside it, and every member of any class
+  whose type names one of its classes; the members of the module's own classes are reachable only
+  through those. The dynamic accesses (`_G`, `_ENV`, `getfenv`, `setfenv`, `load`, `loadstring`,
+  `loadfile`, `dofile`, `debug`, `package`, `require` with a computed name, `"_G"` in a string)
+  need every module; `rawget` and `rawset` index a table the script already holds, as `obj[k]`
+  does (section 9).
 - **D5. Runtime shaders.** A shader variant the cook lacks can only be asked for by a script (D4's
   evidence): what the scenes, the prefabs a script can spawn, and the scripts' quality switches
   reach is cooked already (S10, S11, S13, S32 collectors). The Lua API is split into shader-neutral
@@ -391,3 +396,121 @@ of two builds of this branch, without and with D6): Vector3 constructor and `+` 
 runs is larger than any difference). With functor userdata without a `__gc` metatable (dropped
 from D6) `go:getWorldPosition()` took 317-408 ns and `go.position` 467-577 ns in every run,
 against 203-212 ns for both before.
+
+**M8. After** (this branch, the same tools and servers; the runtimes of `tools/build.sh players`
+with every release variant). Linux, the stripped player (MiB):
+
+| Linux | full | ui | core | lite3d | lite2d |
+|---|---|---|---|---|---|
+| glcore (was 41.75) | 34.36 | 31.94 | 22.05 | 18.17 | 16.96 |
+| gles3 (was 41.75) | 34.36 | | | | |
+| vulkan (was 41.76) | 34.37 | | | | |
+
+Android, `libjasperengine-android.so` per ABI, MiB (deflated); `libc++_shared.so` is unchanged
+(Deviations (a)). CI builds the ui and lite2d variants too; the servers built these three:
+
+| ABI | full (was) | full | core | lite3d |
+|---|---|---|---|---|
+| arm64-v8a | 28.28 (11.64) | 28.16 (11.60) | 18.84 (7.46) | 14.81 (6.06) |
+| armeabi-v7a | 19.80 (10.57) | 19.59 (10.46) | 13.34 (6.88) | 10.13 (5.56) |
+| x86 | 34.73 (13.47) | 33.67 (13.38) | 22.83 (8.54) | 18.49 (7.00) |
+| x86_64 | 34.73 (13.38) | 33.64 (13.27) | 21.72 (8.23) | 17.46 (6.75) |
+
+The Play download of `tools/fixtures/unified-lighting` (`tools/ci/android_size.sh`, which now
+gets the core variant: no HTML UI, no video; `bundletool get-size total`, the maximum, MiB):
+arm64-v8a 8.45 (was 12.64, -33 %; -32 % against S30's 12.40, R15), armeabi-v7a 7.81 (11.50,
+-32 %), x86 9.57 (14.52, -34 %), x86_64 9.25 (14.41, -36 %). Its APK per ABI: 8.77, 8.15, 9.91,
+9.59 (was 12.97, 11.85, 14.86, 14.75); the universal APK 33.64 (51.61), the bundle 33.51 (51.52).
+A project that needs the full player downloads what it did less the full library's deflated
+difference above (inferred: arm64-v8a 12.60, armeabi-v7a 11.39, x86 14.43, x86_64 14.30).
+
+Web, the `.wasm` MiB (gzip -9); the `.js` files are unchanged (0.17 and 0.20):
+
+| web | full (was) | full | ui | core | lite3d | lite2d |
+|---|---|---|---|---|---|---|
+| st | 28.29 (8.20) | 28.25 (8.22) | 27.41 (7.88) | 19.59 (5.32) | 15.67 (4.28) | 14.59 (3.91) |
+| mt | 28.21 (8.15) | 28.13 (8.17) | 27.29 (7.83) | 19.55 (5.33) | 15.63 (4.28) | 14.56 (3.92) |
+
+By module (MB of named symbols, as M4), the full player before and after, and the core variant:
+
+| module | Linux glcore | Android arm64 | web st | Linux core | Android core | web core |
+|---|---|---|---|---|---|---|
+| htmlui | 8.01 → 6.24 | 4.81 → 4.81 | 4.35 → 4.35 | — | — | — |
+| video | 0.88 → 0.81 | 0.67 → 0.67 | 0.37 → 0.37 | — | — | — |
+| runtimeshaders | 1.33 → 1.21 | 1.44 → 1.44 | 1.02 → 1.02 | 1.21 | 1.44 | 1.02 |
+| physics3d | 1.36 → 1.04 | 0.73 → 0.73 | 0.87 → 0.87 | 1.02 | 0.73 | 0.87 |
+| physics2d | 0.45 → 0.41 | 0.35 → 0.35 | 0.13 → 0.13 | 0.41 | 0.35 | 0.13 |
+| navigation | 0.51 → 0.49 | 0.35 → 0.35 | 0.38 → 0.38 | 0.48 | 0.35 | 0.39 |
+| Lua bindings | 2.86 → 1.58 | 1.80 → 2.15 | 1.12 → 1.15 | 1.34 | 1.95 | 1.01 |
+| C++ standard library | 3.92 → 2.48 | 2.06 → 2.35 | 1.83 → 1.82 | 1.62 | 1.66 | 1.29 |
+| Lua | 0.16 → 0.16 | 0.15 → 0.15 | 0.15 → 0.15 | 0.14 | 0.12 | 0.12 |
+| core (always) | 18.55 → 16.34 | 13.61 → 12.75 | 13.91 → 13.84 | 14.05 | 10.79 | 11.71 |
+| total | 38.04 → 30.76 | 25.96 → 25.75 | 24.13 → 24.08 | 20.29 | 17.39 | 16.53 |
+
+Linux's full player is 18 % smaller from GCC LTO (D7: cross-unit inlining and dead-code removal
+in every group, the standard library's instantiations and the Lua bindings most) and D6 together
+(not measured apart). On
+Android (ThinLTO and `--icf=safe` already) and the web (wasm-opt), D6 and LTO change little: the
+cold registration functions keep LuaBridge's templates out of line instead of inlined into the
+engine's `register*` functions (Android: core -0.86 MB, Lua bindings and the standard library
++0.64 MB; inferred from the symbol groups). The variants are where those targets get smaller.
+
+**M9. GCC LTO** (D7, R10, R14). The full Linux glcore player of this branch built without LTO
+(`-DJASPERENGINE_RELEASE_LTO=OFF`, same commit) is 42,857,432 bytes (40.87 MiB) against
+36,032,432 (34.36 MiB) with it: LTO alone takes 6.5 MiB (16 %). Its link takes about 4.4 min on B
+(`-flto=auto` uses the jobserver); the eight Linux players of this branch's gate (glcore in every
+variant, gles3 and vulkan full) linked with it on B without a failure. Frame time on E (the two binaries with the same content,
+`tools/fixtures/physics-placement` built with the full player, 600 frames `--headless
+--fixed-fps 60`, Mesa llvmpipe on E's four cores, six interleaved runs each): LTO 224.2 s median
+(220.8-227.9), without 226.5 s (221.8-231.2, one outlier of 294.5 s left out), so no cost
+(-1 %, within the spread). The run is bound by llvmpipe's rasterisation, so it rules out a
+regression rather than measuring a gain; S30's 15 s budget is for CI's runner and its engine
+sample, not this scene on E's Mesa 23.
+
+## Deviations
+
+- **(a) R12, static libc++ on Android: not done.** With `ANDROID_STL=c++_static` the Android Gradle
+  plugin refuses the build (`CXX1212 User is using a static STL but library requires a shared STL
+  [//games-frame-pacing/swappy]`): the frame pacing library's prefab package (Swappy, which S30's
+  player links for frame pacing) is built against `libc++_shared.so`. Linking it statically would
+  mean dropping or rebuilding Swappy, which changes the frame pacing every game ships, so the STL
+  stays `c++_shared` (1.20 MiB on arm64, M2).
+- **(b) D6, functor userdata without a `__gc` metatable: dropped.** It saved 0.04 MB on Linux but
+  made `go.position` and `go:getWorldPosition()` 1.4-2.3x slower in every run of
+  `LuaBindingBench` (M7); the rest of D6 (out-of-line cold failure paths, one non-template
+  `__tostring`, cold registration functions) costs nothing measurable and is kept.
+- **(c) R11, `-Os`/`-Oz`: not adopted for any whole target.** No bench met the ≤ 1 % bar (M6): the
+  cheapest case cost 5 %, the spline evaluate 75 % (`-Os`) and 96 % (`-Oz`). Only the cold
+  registration code is size-optimised (`LUABRIDGE_COLD`, which GCC and Clang lay out for size).
+- **(d) Navigation is not a variant axis.** It is 0.35-0.51 MB (M4) and every variant keeps it;
+  its Project Settings switch still decides the Compile build (R6), so a prebuilt build of a
+  project with navigation off ships it as today.
+- **(e) The modules are reported by `build` and `build_project`, not by `get_build_info`.** They are
+  the result of an export (R5 scans the build's scenes), which `get_build_info` does not run; R17
+  lists the build-time outputs and the tool budget is unchanged.
+- **(f) Build Settings shows the modules after a build, not live.** The scan loads every scene of
+  the build (R5), which is the export's work; showing it before would mean a second load of every
+  scene whenever the window is open.
+- **(g) The Apple export (the Xcode project template) keeps today's switches.** macOS and iOS
+  builds through the checked-in Xcode project still take 2D and 3D physics and the runtime shader
+  compiler from the project settings and always build the HTML UI and video (the template defines
+  neither switch, so `Export.h` turns both on). Stripping there needs the template's per-module
+  source lists, which only the `xcode_sync` scripts maintain, and a Mac to prove the result; the
+  CMake Compile route, every prebuilt variant and every other target strip by detection. The
+  template lists the new engine files (`PlayerModules`, `UIDocumentInput.h`,
+  `UIDocumentSystemNone.h`), as the `xcode_sync` checks require.
+- **(h) Fixed on the way: the 2D-only and 3D-only builds did not compile.** A project with only one
+  physics module failed in oe-port too (the character controller headers were under the 2D switch,
+  `WaterVolume.h` and `SplineSystem.h` under the 3D one, the navmesh bake asked 2D physics for its
+  scale). The includes are now where their code is, and the bake's unit scale without 2D physics
+  is the default 64 points per metre, the value 2D physics reports when it is not configured.
+- **(i) Windows, macOS and iOS variants are built by CI only.** The build servers are Linux; the
+  `players` jobs of `.github/workflows/ci.yml` build every variant of those targets.
+- **(j) A pre-existing `tools/lua_api` failure.** `test_suggestions_keep_what_the_regex_parser_knew`
+  fails on oe-port f92d8a732 as on this branch (`Contact3D.getJoltContactManifold` and
+  `getJoltContactSettings`, S29's Jolt contact accessors); S34's `test_modules` passes.
+- **(k) Fixed on the way: a project without a start scene in `project.yaml` failed its prebuilt
+  build.** `game.json` falls back to the first scene; the content manifest kept the id 0, so the
+  payload check (and the player's own check) refused the build with `missing start scene
+  scenes/0.jscn` (S30). The manifest now names the scene `game.json` starts with. The variants
+  check of `tools/ci/test_player_cli.py` builds `tools/fixtures/physics-placement`, which has none.
