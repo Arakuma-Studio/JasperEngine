@@ -1260,7 +1260,9 @@ static void stbiw__jpg_writeBits(stbi__write_context *s, int *bitBufP, int *bitC
       if(c == 255) {
          stbiw__putc(s, 0);
       }
-      bitBuf <<= 8;
+      // JasperEngine local patch: shifted unsigned (only bits 16-23 are read; a signed shift
+      // past the top was undefined behaviour, reported by UBSan)
+      bitBuf = (int)((unsigned int)bitBuf << 8);
       bitCnt -= 8;
    }
    *bitBufP = bitBuf;

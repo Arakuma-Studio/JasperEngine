@@ -6813,14 +6813,17 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
     auto sourceProperties = Catalog::findEntityProperties(sourceRegistry, sourceEntity, compType);
     auto propIt = sourceProperties.find(property);
     PropertyType propType;
+    uint64_t updateFlags;
     if (propIt != sourceProperties.end()) {
         propType = propIt->second.type;
+        updateFlags = propIt->second.updateFlags;
     } else {
         const PropertyData found = Catalog::findProperty(sourceRegistry, sourceEntity, compType, property);
         if (!found.ref || !Catalog::findProperty(targetRegistry, targetEntity, compType, property).ref) {
             return; // Property not found
         }
         propType = found.type;
+        updateFlags = found.updateFlags;
     }
 
     // Copy based on property type
@@ -7102,8 +7105,9 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         }
     }
 
-    // Apply any update flags that are associated with this property
-    updateEntity(targetRegistry, targetEntity, propIt->second.updateFlags);
+    // Apply any update flags that are associated with this property (a looked-up name's too:
+    // propIt is end() for those)
+    updateEntity(targetRegistry, targetEntity, updateFlags);
 }
 
 editor::PropertyData editor::Catalog::findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){

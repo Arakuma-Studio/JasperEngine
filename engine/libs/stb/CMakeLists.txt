@@ -1,3 +1,9 @@
+# Local patch: stb_image_resize2.h's vertical gather and scatter index each of their two function
+# tables on its own ((c ? a[i] : b[i]) instead of (c ? a : b)[i], the same call): GCC 13's UBSan
+# object-size check reported the valid original at -O2. Keep it when updating stb_image_resize2.
+# Local patch: stb_image_write.h's stbiw__jpg_writeBits shifts its bit buffer unsigned (the signed
+# bitBuf <<= 8 overflowed: undefined behaviour). Keep it when updating stb_image_write.
+
 add_library(
 
     stb

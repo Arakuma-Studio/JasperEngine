@@ -104,6 +104,8 @@ editor::SceneRender2D::~SceneRender2D(){
         delete pair.second.icon;
     }
 
+    delete lines;
+    delete selLines;
     delete gridLines;
     delete tileLines;
     delete documentLines;

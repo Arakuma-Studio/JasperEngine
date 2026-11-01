@@ -47,7 +47,8 @@ namespace{
         double cell = 1.0;
         std::unordered_map<int64_t, std::vector<std::pair<double, double>>> cells;
 
-        static int64_t key(int64_t x, int64_t z){ return (x << 32) ^ (z & 0xFFFFFFFFll); }
+        // shifted unsigned: a negative cell's x << 32 is undefined on int64_t (C++17)
+        static int64_t key(int64_t x, int64_t z){ return (int64_t)(((uint64_t)x << 32) ^ ((uint64_t)z & 0xFFFFFFFFull)); }
         int64_t index(double v) const{ return (int64_t)std::floor(v / cell); }
 
         bool free(double x, double z, double spacing) const{
