@@ -2,7 +2,8 @@
 # Local patches (keep them when updating SoLoud): Bus has a destructor that stops its voices
 # (src/core/soloud_bus.cpp: AudioSource's own destructor ran after the Bus part was destroyed, and
 # ~BusInstance read the destroyed Bus); AlignedFloatBuffer::clear() leaves an uninitialised buffer
-# alone (src/core/soloud.cpp: the nosound backend cleared it with memset of a null pointer).
+# alone (src/core/soloud.cpp: the nosound backend cleared it with memset of a null pointer);
+# postinit_internal frees the resample arrays of an earlier init (src/core/soloud.cpp: re-inits leaked them).
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
