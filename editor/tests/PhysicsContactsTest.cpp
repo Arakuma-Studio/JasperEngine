@@ -435,7 +435,7 @@ TEST_F(PhysicsContactsTest, DestroyedInsideTriggerGivesOneExit) {
         ASSERT_EQ(exits.size(), 1u);
         EXPECT_EQ(exits[0].other, "Ball") << "the departing GameObject still exists during the call";
         EXPECT_EQ(count("Ball", "TX"), 0);
-        if (immediate) EXPECT_EQ(count("Ball", "TE"), 0) << "destroyed before its own Enter";
+        if (immediate) { EXPECT_EQ(count("Ball", "TE"), 0) << "destroyed before its own Enter"; }
     }
 }
 

@@ -26,6 +26,7 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
+#include "log/Logger.h"
 
 namespace jasperengine::physics3dtest {
 
@@ -44,8 +45,9 @@ namespace jasperengine::physics3dtest {
         }
         ~LogCapture() { SystemTestAccess::swap(previous); }
 
-        const std::vector<std::string>& lines() const { return system.lines; }
+        const std::vector<std::string>& lines() const { ::jasperengine::Logger::flush(); return system.lines; }
         size_t count(const std::string& text) const {
+            ::jasperengine::Logger::flush();
             size_t n = 0;
             for (const std::string& line : system.lines) {
                 if (line.find(text) != std::string::npos) n++;

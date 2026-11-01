@@ -32,6 +32,7 @@
 #include <string>
 #include <unistd.h>
 #include <vector>
+#include "log/Logger.h"
 
 namespace jasperengine {
     // TEST-ONLY seam (System.h befriends it): detach / restore the instance. The same
@@ -217,9 +218,11 @@ namespace jasperengine::scripttest {
         }
 
         // One engine frame (start point, fixed steps, update, destroys)
-        void frame() { Engine::systemUpdate(); }
+        // (and what it logged reaches system.logLines: the engine's logger delivers on its own thread)
+        void frame() { Engine::systemUpdate(); ::jasperengine::Logger::flush(); }
 
         bool logged(const std::string& part) const {
+            ::jasperengine::Logger::flush();   // the engine's logger delivers on its own thread
             for (const std::string& line : system.logLines) {
                 if (line.find(part) != std::string::npos) return true;
             }

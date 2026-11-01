@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "FileUtils.h"
+#include "io/AtomicFile.h"
 
 #include "FileData.h"
 #include "Log.h"
@@ -185,64 +186,20 @@ namespace {
         }
     }
 
+    // through S03's atomic writer (io::writeFileAtomic: a temporary sibling flushed to the disk,
+    // then the rename; its retries, fault injection and read-only refusal), so a crash leaves
+    // the old file or the new one
     bool atomicWrite(const fs::path& target, const std::string& bytes, std::string& reason){
         std::error_code ec;
         if (fs::is_directory(target, ec)){
             reason = "is a folder";
             return false;
         }
-        // hidden, and unique to this process and write: never a file of the game's own
-        // ("x.tmp"), never another thread's temporary file
-        static std::atomic<unsigned long> counter{0};
-#if defined(_WIN32)
-        const long pid = static_cast<long>(_getpid());
-#else
-        const long pid = static_cast<long>(getpid());
-#endif
-        fs::path name(".");
-        name += target.filename();
-        name += "." + std::to_string(pid) + "-" + std::to_string(counter.fetch_add(1)) + ".tmp";
-        const fs::path temporary = target.parent_path() / name;
-        FILE* file = openFile(temporary, "wb");
-        if (!file){
-            reason = reasonOf(errno);
+        const io::WriteResult written = io::writeFileAtomic(target, bytes);
+        if (!written.ok()){
+            reason = written.code ? reasonOf(written.code) : written.message;
             return false;
         }
-        bool ok = bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
-        int error = ok ? 0 : errno;
-        if (ok && std::fflush(file) != 0){
-            ok = false;
-            error = errno;
-        }
-        // on the disk before the rename: a crash then leaves the old file or the new one
-#if defined(_WIN32)
-        if (ok) _commit(_fileno(file));
-#else
-        if (ok) fsync(fileno(file));
-#endif
-        if (std::fclose(file) != 0 && ok){
-            ok = false;
-            error = errno;
-        }
-        if (!ok){
-            reason = reasonOf(error ? error : EIO);
-            fs::remove(temporary, ec);
-            return false;
-        }
-#if defined(_WIN32)
-        if (!MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)){
-            const DWORD code = GetLastError();
-            reason = code == ERROR_ACCESS_DENIED ? "permission denied" : std::system_category().message(static_cast<int>(code));
-            fs::remove(temporary, ec);
-            return false;
-        }
-#else
-        if (std::rename(temporary.c_str(), target.c_str()) != 0){
-            reason = reasonOf(errno);
-            fs::remove(temporary, ec);
-            return false;
-        }
-#endif
         return true;
     }
 

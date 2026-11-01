@@ -214,7 +214,7 @@ namespace {
 #define IN_EDITOR(name, ...)                                                    \
     do {                                                                        \
         auto inEditor = [&](World& w) __VA_ARGS__;                              \
-        EXPECT_EXIT(runInEditor(name, inEditor), ::testing::ExitedWithCode(0), ""); \
+        GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(runInEditor(name, inEditor), ::testing::ExitedWithCode(0), ""); \
     } while (0)
 
     bool settle(SpriteNormalsWindow& window, int maxMs = 20000) {
@@ -715,7 +715,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, EveryRetargetAsksBeforeDroppingUnsavedSt
             EXPECT_FALSE(window->hasUnsavedPaint());
             EXPECT_NE(window->currentSpec().fingerprint() + window->currentSpec().output.normal, before) << "retargeted after Discard";
             // walk's map has paint (16 px): loaded with it
-            if (name != "setSourceEntity" && name != "openForEntity") EXPECT_EQ(window->paintedPixelCount(), 16u);
+            if (name != "setSourceEntity" && name != "openForEntity") { EXPECT_EQ(window->paintedPixelCount(), 16u); }
             // reset for the next entry
             window->setConfirmPaintDiscard(true);
         }

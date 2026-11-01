@@ -52,6 +52,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include "reflect/Reflect.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -426,14 +427,24 @@ TEST(Sprite2DLightHeight, AddedLight2DIsAt64) {
     EXPECT_EQ(sceneOf(sceneId)->getComponent<Light2DComponent>(entity).height, 64.0f) << "redo";
 }
 
+namespace {
+    // a scene's Light2D node read as the scene loader reads it (the S08 table: reflect::decode)
+    Light2DComponent decodeLight2D(const YAML::Node& node) {
+        Light2DComponent light;
+        reflect::DecodeReport report;
+        reflect::decode(*reflect::find(ComponentType::Light2DComponent), node, &light, reflect::DecodeContext{}, report);
+        return light;
+    }
+}
+
 TEST(Sprite2DLightHeight, LoadedAndScriptLightsKeepTheirHeight) {
     // a scene's Light2D without height: the struct default
     YAML::Node node = YAML::Load("intensity: 2\nrange: 300\n");
-    const Light2DComponent loaded = Stream::decodeLight2DComponent(node);
+    const Light2DComponent loaded = decodeLight2D(node);
     EXPECT_EQ(loaded.height, 0.0f);
     EXPECT_EQ(loaded.intensity, 2.0f);
     // with one, its value
-    EXPECT_EQ(Stream::decodeLight2DComponent(YAML::Load("height: 12\n")).height, 12.0f);
+    EXPECT_EQ(decodeLight2D(YAML::Load("height: 12\n")).height, 12.0f);
 
     // the loader's path (ProjectUtils::addEntityComponent), and the C++ / Lua constructor
     Scene scene;

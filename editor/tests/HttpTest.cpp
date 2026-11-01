@@ -19,6 +19,7 @@
 #include "script/AsyncOwner.h"
 #include "texture/TextureData.h"
 #include "thread/MainThreadQueue.h"
+#include "log/Logger.h"
 
 #include <gtest/gtest.h>
 
@@ -63,6 +64,7 @@ namespace {
         }
 
         int count(const std::string& needle) {
+            ::jasperengine::Logger::flush();   // the engine's logger delivers on its own thread
             std::lock_guard<std::mutex> lock(mutex);
             int n = 0;
             for (const std::string& w : warnings) if (w.find(needle) != std::string::npos) n++;

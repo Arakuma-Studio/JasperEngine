@@ -45,6 +45,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include "reflect/Reflect.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -688,14 +689,24 @@ TEST_F(CanvasGroupTest, EntityRoundTripIsByteStable){
 
 TEST_F(CanvasGroupTest, OldTweensEncodeUnchanged){
     // a tween of an old scene (no unscaled time, AUTO target) writes no new keys
+    // (their codecs are the S08 tables: reflect::encode / decode)
+    const reflect::ComponentDesc& tweenDesc = *reflect::find(ComponentType::TweenComponent);
+    const reflect::ComponentDesc& alphaDesc = *reflect::find(ComponentType::AlphaTweenComponent);
     TweenComponent tween;
-    EXPECT_FALSE(Stream::encodeTweenComponent(tween)["useUnscaledTime"]);
+    EXPECT_FALSE(reflect::encode(tweenDesc, &tween, reflect::EncodeContext{})["useUnscaledTime"]);
     AlphaTweenComponent alpha{1.0f, 0.0f};
-    EXPECT_FALSE(Stream::encodeAlphaTweenComponent(alpha)["alphaTarget"]);
+    EXPECT_FALSE(reflect::encode(alphaDesc, &alpha, reflect::EncodeContext{})["alphaTarget"]);
     alpha.alphaTarget = AlphaTweenTarget::CANVAS_GROUP;
     tween.useUnscaledTime = true;
-    EXPECT_EQ(Stream::decodeAlphaTweenComponent(Stream::encodeAlphaTweenComponent(alpha)).alphaTarget, AlphaTweenTarget::CANVAS_GROUP);
-    EXPECT_TRUE(Stream::decodeTweenComponent(Stream::encodeTweenComponent(tween)).useUnscaledTime);
+    AlphaTweenComponent alphaBack{1.0f, 0.0f};
+    TweenComponent tweenBack;
+    reflect::DecodeReport report;
+    reflect::decode(alphaDesc, YAML::Load(YAML::Dump(reflect::encode(alphaDesc, &alpha, reflect::EncodeContext{}))), &alphaBack,
+                    reflect::DecodeContext{}, report);
+    reflect::decode(tweenDesc, YAML::Load(YAML::Dump(reflect::encode(tweenDesc, &tween, reflect::EncodeContext{}))), &tweenBack,
+                    reflect::DecodeContext{}, report);
+    EXPECT_EQ(alphaBack.alphaTarget, AlphaTweenTarget::CANVAS_GROUP);
+    EXPECT_TRUE(tweenBack.useUnscaledTime);
 }
 
 TEST_F(CanvasGroupTest, FactoryEmitsTheGroup){
@@ -703,7 +714,8 @@ TEST_F(CanvasGroupTest, FactoryEmitsTheGroup){
     CanvasGroupComponent& g = addGroup(root, 0.5f);
     g.interactable = false;
     g.renderMode = CanvasGroupRenderMode::FLATTEN;
-    const std::string code = Factory::createCanvasGroupComponent(4, &scene, root, "scene", "entity");
+    // the S08 tables' code (Factory::createComponent)
+    const std::string code = Factory::createComponent(4, &scene, root, ComponentType::CanvasGroupComponent, std::filesystem::path(), "scene", "entity");
     EXPECT_NE(code.find("CanvasGroupComponent canvasgroup;"), std::string::npos) << code;
     EXPECT_NE(code.find("canvasgroup.alpha = 0.5"), std::string::npos) << code;
     EXPECT_NE(code.find("canvasgroup.interactable = false;"), std::string::npos) << code;

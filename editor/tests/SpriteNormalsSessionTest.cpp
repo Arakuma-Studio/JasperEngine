@@ -1032,7 +1032,7 @@ TEST(SpriteNormalsSessionDeathTest, TheWatcherWakesOnTheUndoableWriteItsUndoAndR
     fs::remove_all(dir);
     fs::create_directories(dir / ".jasperengine");
     std::ofstream(dir / "project.yaml") << "name: wake\n";
-    EXPECT_EXIT(watcherWakesInTheEditor(dir), ::testing::ExitedWithCode(0), "");
+    GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(watcherWakesInTheEditor(dir), ::testing::ExitedWithCode(0), "");
     fs::remove_all(dir);
 }
 
@@ -1041,7 +1041,7 @@ TEST(SpriteNormalsSessionDeathTest, WriteOutputsUndoableIsOneProjectStep) {
     fs::remove_all(dir);
     fs::create_directories(dir / ".jasperengine");
     std::ofstream(dir / "project.yaml") << "name: undo\n";
-    EXPECT_EXIT(undoableWriteInTheEditor(dir), ::testing::ExitedWithCode(0), "");
+    GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(undoableWriteInTheEditor(dir), ::testing::ExitedWithCode(0), "");
     fs::remove_all(dir);
 }
 
@@ -1268,7 +1268,7 @@ TEST(SpriteNormalsRun, AProjectSwitchMakesItsResultStale) {
 }
 
 TEST(SpriteNormalsRunDeathTest, ShutdownCancelsWaitsAndCallsNothingBack) {
-    EXPECT_EXIT(shutdownWhileRunning(), ::testing::ExitedWithCode(0), "");
+    GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(shutdownWhileRunning(), ::testing::ExitedWithCode(0), "");
 }
 
 // ---- the scene

@@ -128,7 +128,7 @@ TEST(Ragdoll, WizardFindsTheBonesAndBuildsUnitysTable) {
             EXPECT_NEAR(Angle::defaultToDeg(part.joint.twistMaxAngle), 0.0f, 1e-3f);
             EXPECT_EQ(part.joint.bodyB, c.bones["LeftArm"]);
         }
-        if (part.slot == "head") EXPECT_EQ(part.collider, "sphere");
+        if (part.slot == "head") { EXPECT_EQ(part.collider, "sphere"); }
         if (part.slot == "pelvis") {
             EXPECT_EQ(part.collider, "box");
             EXPECT_FALSE(part.hasJoint);

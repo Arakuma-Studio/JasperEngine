@@ -56,7 +56,8 @@ endif()
 jasperengine_add_test_target(jasperengine-editor-tests
     EDITOR
     SOURCES ${EDITOR_TEST_SOURCES}
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR}/engine/tests/core
+    # (engine/physics: upstream's flat physics tests include "PhysicsTestScene.h" as they did)
+    INCLUDES ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR}/engine/tests/core ${CMAKE_CURRENT_LIST_DIR}/engine/physics
     ASSET_DIR ${CMAKE_CURRENT_LIST_DIR}/fixtures
     # tinyexr: FloatImageTest writes EXRs with custom channel names through it
     LINK tinyexr
@@ -64,6 +65,8 @@ jasperengine_add_test_target(jasperengine-editor-tests
         # the repository root (the data-safety corpus reads tools/fixtures)
         JASPER_TEST_REPO_DIR="${CMAKE_SOURCE_DIR}"
         JASPER_TEST_FIXTURES_DIR="${CMAKE_CURRENT_LIST_DIR}/fixtures"
+        # upstream's name of the same folder
+        JASPER_EDITOR_TEST_FIXTURES="${CMAKE_CURRENT_LIST_DIR}/fixtures"
         # tests that run the editor binary (CLI exit codes)
         JASPER_TEST_EDITOR_BINARY="$<TARGET_FILE:jasperengine-editor>"
         JASPER_TEST_LOG_CRASH_HELPER="$<TARGET_FILE:je_log_crash_helper>"

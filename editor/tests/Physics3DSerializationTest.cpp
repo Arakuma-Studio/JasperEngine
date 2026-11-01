@@ -174,7 +174,7 @@ TEST(Physics3DSerialization, EveryJointFieldRoundTripsAndOldJointsAreWorld) {
     Scene scene;
     const Entity e = scene.createEntity();
     scene.addComponent<Joint3DComponent>(e, joint);
-    const std::string code = Factory::createJoint3DComponent(4, &scene, e, "scene", "entity", false, nullptr);
+    const std::string code = Factory::createComponent(4, &scene, e, ComponentType::Joint3DComponent, std::filesystem::path(), "scene", "entity");
     for (const char* expected : {"joint3d.anchorSpace = JointAnchorSpace::LOCAL;", "joint3d.enableCollision = true;",
                                  "joint3d.breakForce = 500.000000f;", "joint3d.breakAction = JointBreakAction::CALLBACK_ONLY;",
                                  "joint3d.useMotor = true;", "joint3d.swingType = JointSwingType::PYRAMID;",
@@ -207,7 +207,7 @@ TEST(Physics3DSerialization, RagdollRoundTrips) {
     Scene scene;
     const Entity e = scene.createEntity();
     scene.addComponent<RagdollComponent>(e, ragdoll);
-    const std::string code = Factory::createRagdollComponent(4, &scene, e, "scene", "entity", false, nullptr);
+    const std::string code = Factory::createComponent(4, &scene, e, ComponentType::RagdollComponent, std::filesystem::path(), "scene", "entity");
     EXPECT_NE(code.find("ragdoll.simulated = true;"), std::string::npos);
     EXPECT_NE(code.find("ragdoll.totalMass = 70.000000f;"), std::string::npos);
 }
