@@ -1221,7 +1221,8 @@ set(JASPERENGINE_SRCS
     core/input/InputActions.cpp
     core/input/InputRebind.cpp
     core/input/InputVirtualControls.cpp
-    # SYNC4-ABSORB(input): upstream's core/input/InputControlNames.cpp (its class name is S22's, InputControlPath.h) out of the build
+    core/input/InputControlNames.cpp
+    core/input/InputManagerFormat.cpp
     core/Log.cpp
     core/diag/CrashHandler.cpp
     core/diag/CrashHandlerPosix.cpp

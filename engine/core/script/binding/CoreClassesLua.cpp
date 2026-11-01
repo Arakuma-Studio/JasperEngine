@@ -24,7 +24,8 @@
 #include "asset/AssetMap.h"
 #include "Input.h"
 #include "input/InputActions.h"
-// SYNC4-ABSORB(input): upstream's input/InputControlNames.h left out (S22's InputControlNames is input/InputControlPath.h)
+#include "input/InputControlNames.h"
+#include "input/InputManagerFormat.h"
 #include "json.hpp"
 
 #include <set>
@@ -158,6 +159,209 @@ static bool luaComponentIds(lua_State* L, int index, Scene* scene, const char* f
         ids.push_back(id);
     }
     return true;
+}
+
+// ---- Input (Unity's Input class: edges, touches, the Input Manager's actions)
+namespace{
+
+    // a key, mouse button or gamepad button by its control name ("space", "mouse_left",
+    // "gamepad_a", Unity's "left ctrl", "joystick button 0"...); one error per unknown name
+    bool luaInputControl(const std::string& name, InputControl& control){
+        static std::set<std::string> reported;
+        std::string error;
+        if (InputControlNames::parseButton(name, control, &error))
+            return true;
+        if (reported.insert(name).second)
+            Log::error("Input: %s", error.c_str());
+        return false;
+    }
+
+    bool luaControlHeld(const std::string& name){
+        InputControl control;
+        if (!luaInputControl(name, control)) return false;
+        switch (control.device){
+            case InputDevice::Key: return Input::isKeyPressed(control.code);
+            case InputDevice::Mouse: return Input::isMousePressed(control.code);
+            case InputDevice::GamepadButton:
+                for (size_t i = 0; i < Input::numGamepads(); i++){
+                    if (Input::isGamepadButtonPressed(Input::getGamepadId(i), control.code)) return true;
+                }
+                return false;
+            default: return false;
+        }
+    }
+
+    bool luaControlEdge(const std::string& name, bool down){
+        InputControl control;
+        if (!luaInputControl(name, control)) return false;
+        switch (control.device){
+            case InputDevice::Key: return down ? Input::getKeyDown(control.code) : Input::getKeyUp(control.code);
+            case InputDevice::Mouse: return down ? Input::getMouseButtonDown(control.code) : Input::getMouseButtonUp(control.code);
+            case InputDevice::GamepadButton: return down ? Input::getGamepadButtonDown(-1, control.code) : Input::getGamepadButtonUp(-1, control.code);
+            default: return false;
+        }
+    }
+
+    int luaGamepadButton(const std::string& name){
+        const int button = InputControlNames::parseGamepadButton(name);
+        if (button < 0){
+            static std::set<std::string> reported;
+            if (reported.insert(name).second)
+                Log::error("Input: unknown gamepad button \"%s\" (gamepad_a, gamepad_dpad_up, ... or Input.GAMEPAD_BUTTON_*)", name.c_str());
+        }
+        return button;
+    }
+
+    // the owner of a simulated source: a name (default "script") or a script instance (`self`),
+    // whose sources go when the instance is released
+    uintptr_t luaSourceOwner(const luabridge::LuaRef& source){
+        if (source.isTable()){
+            lua_State* L = source.state();
+            source.push(L);
+            const void* table = lua_topointer(L, -1);
+            lua_pop(L, 1);
+            return reinterpret_cast<uintptr_t>(table);
+        }
+        if (source.isString())
+            return InputActions::namedSource(source.unsafe_cast<std::string>());
+        return InputActions::namedSource("script");
+    }
+
+    // JSON <-> Lua tables, for the bindings (getBindings / setBindings)
+    void luaPushJson(lua_State* L, const nlohmann::json& value){
+        if (value.is_object()){
+            lua_newtable(L);
+            for (auto it = value.begin(); it != value.end(); ++it){
+                luaPushJson(L, it.value());
+                lua_setfield(L, -2, it.key().c_str());
+            }
+        }else if (value.is_array()){
+            lua_newtable(L);
+            for (size_t i = 0; i < value.size(); i++){
+                luaPushJson(L, value[i]);
+                lua_rawseti(L, -2, (lua_Integer)i + 1);
+            }
+        }else if (value.is_boolean()){
+            lua_pushboolean(L, value.get<bool>() ? 1 : 0);
+        }else if (value.is_number_integer()){
+            lua_pushinteger(L, (lua_Integer)value.get<long long>());
+        }else if (value.is_number()){
+            lua_pushnumber(L, value.get<double>());
+        }else if (value.is_string()){
+            const std::string& text = value.get_ref<const std::string&>();
+            lua_pushlstring(L, text.data(), text.size());
+        }else{
+            lua_pushnil(L);
+        }
+    }
+
+    // a table with keys 1..n is a list (an empty table too), else an object
+    nlohmann::json luaToJson(lua_State* L, int index, int depth = 0){
+        index = lua_absindex(L, index);
+        switch (lua_type(L, index)){
+            case LUA_TBOOLEAN: return lua_toboolean(L, index) != 0;
+            case LUA_TNUMBER:
+                if (lua_isinteger(L, index)) return (long long)lua_tointeger(L, index);
+                return lua_tonumber(L, index);
+            case LUA_TSTRING: {
+                size_t length = 0;
+                const char* text = lua_tolstring(L, index, &length);
+                return std::string(text, length);
+            }
+            case LUA_TTABLE: {
+                if (depth > 16) return nullptr;
+                const lua_Integer length = (lua_Integer)lua_rawlen(L, index);
+                size_t keys = 0;
+                lua_pushnil(L);
+                while (lua_next(L, index) != 0){
+                    keys++;
+                    lua_pop(L, 1);
+                }
+                if ((lua_Integer)keys == length){
+                    nlohmann::json list = nlohmann::json::array();
+                    for (lua_Integer i = 1; i <= length; i++){
+                        lua_rawgeti(L, index, i);
+                        list.push_back(luaToJson(L, -1, depth + 1));
+                        lua_pop(L, 1);
+                    }
+                    return list;
+                }
+                nlohmann::json object = nlohmann::json::object();
+                lua_pushnil(L);
+                while (lua_next(L, index) != 0){
+                    if (lua_type(L, -2) == LUA_TSTRING)
+                        object[lua_tostring(L, -2)] = luaToJson(L, -1, depth + 1);
+                    lua_pop(L, 1);
+                }
+                return object;
+            }
+            default: return nullptr;
+        }
+    }
+
+    // Input.getBindings(name): the bindings in use, as tables of the Input Manager's shape
+    int luaInputGetBindings(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        if (!InputActions::hasAction(name)){
+            InputActions::getBindings(name);   // logs the unknown name once
+            lua_newtable(L);
+            return 1;
+        }
+        luaPushJson(L, nlohmann::json::parse(InputManagerFormat::bindingsToJson(InputActions::getBindings(name))));
+        return 1;
+    }
+
+    // Input.setBindings(name, bindings) -> true | false, error
+    int luaInputSetBindings(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        luaL_checktype(L, 2, LUA_TTABLE);
+        std::vector<InputManagerBinding> bindings;
+        std::string error;
+        if (!InputActions::hasAction(name)){
+            error = "Input action \"" + name + "\" does not exist (Project Settings > Input)";
+        }else if (InputManagerFormat::parseBindingsJson(luaToJson(L, 2).dump(), bindings, &error, name) &&
+                   InputActions::setBindings(name, bindings, &error)){
+            lua_pushboolean(L, 1);
+            return 1;
+        }
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, error.c_str());
+        return 2;
+    }
+
+    // Input.importBindings(json) -> true | false, error
+    int luaInputImportBindings(lua_State* L){
+        const std::string json = luaL_checkstring(L, 1);
+        std::string error;
+        if (InputActions::importOverrides(json, &error)){
+            lua_pushboolean(L, 1);
+            return 1;
+        }
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, error.c_str());
+        return 2;
+    }
+
+    // Input.anyKeyDown is a property (Unity: `if Input.anyKeyDown then`) and a function (S22:
+    // `Input.anyKeyDown()`): calling a boolean with no arguments gives it back. With arguments it
+    // is the usual error
+    int luaCallBoolean(lua_State* L){
+        if (lua_gettop(L) != 1)
+            return luaL_error(L, "attempt to call a boolean value");
+        lua_pushvalue(L, 1);
+        return 1;
+    }
+
+    void luaMakeBooleansCallable(lua_State* L){
+        lua_pushboolean(L, 0);
+        if (!lua_getmetatable(L, -1))
+            lua_newtable(L);
+        lua_pushcfunction(L, &luaCallBoolean);
+        lua_setfield(L, -2, "__call");
+        lua_setmetatable(L, -2);
+        lua_pop(L, 1);
+    }
+
 }
 
 // Shader: global shader values (Unity's Shader.SetGlobal* / PropertyToID). A global is named
@@ -1709,8 +1913,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onGamepadButtonDown", [] () { return &Engine::onGamepadButtonDown; }, [] (lua_State* L) { Engine::onGamepadButtonDown = L; })
         .addStaticProperty("onGamepadButtonUp", [] () { return &Engine::onGamepadButtonUp; }, [] (lua_State* L) { Engine::onGamepadButtonUp = L; })
         .addStaticProperty("onGamepadAxisMove", [] () { return &Engine::onGamepadAxisMove; }, [] (lua_State* L) { Engine::onGamepadAxisMove = L; })
-        // an input action's button went down / up this frame (Project Settings > Input), before onUpdate
-        // SYNC4-ABSORB(Input): upstream's input actions fired these; S22's InputActions do not yet
+        // an input action's button went down / up this frame (its Input Manager name: "Jump", else
+        // "Map/Action"), before onUpdate
         .addStaticProperty("onButtonDown", [] () { return &Engine::onButtonDown; }, [] (lua_State* L) { Engine::onButtonDown = L; })
         .addStaticProperty("onButtonUp", [] () { return &Engine::onButtonUp; }, [] (lua_State* L) { Engine::onButtonUp = L; })
 
@@ -2793,9 +2997,19 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("error", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Error, *self->category, text); })
         .endClass();
 
-    // SYNC4-ABSORB(Input): upstream's Lua Input (TouchPhase names, Touch.fingerId / tapCount,
-    // control names in getKey / getKeyDown, anyKey, inputString, touchCount / getTouch, simulate*,
-    // get/setBindings) is S22's Input and InputActions classes here
+    // Unity's TouchPhase (the values of Input.TOUCH_BEGAN ...)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TouchPhase")
+        .addVariable("Began", TouchPhase::Began)
+        .addVariable("Moved", TouchPhase::Moved)
+        .addVariable("Stationary", TouchPhase::Stationary)
+        .addVariable("Ended", TouchPhase::Ended)
+        .addVariable("Canceled", TouchPhase::Canceled)
+        .endNamespace();
+
+    // Input.anyKeyDown both as Unity's property and as S22's function
+    luaMakeBooleansCallable(L);
+
     luabridge::getGlobalNamespace(L)
         .beginClass<Input>("Input")
         .addStaticProperty("MODIFIER_SHIFT", [] () -> int { return D_MODIFIER_SHIFT; })
@@ -2979,23 +3193,113 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("POINTER_PENDING", [] () -> int { return static_cast<int>(PointerLockState::PENDING); })
         .addStaticProperty("POINTER_LOCKED", [] () -> int { return static_cast<int>(PointerLockState::LOCKED); })
 
-        // levels, and the edges of the frame (of the fixed step inside onFixedUpdate)
-        .addStaticFunction("getKey", &Input::getKey)
-        .addStaticFunction("getKeyDown", &Input::getKeyDown)
-        .addStaticFunction("getKeyUp", &Input::getKeyUp)
+        // levels, and the edges of the frame (of the fixed step inside onFixedUpdate). key: an
+        // Input.KEY_* code or a control name ("space", "a", "left_shift", "mouse_left",
+        // "gamepad_a", Unity's "left ctrl", "joystick button 0"...)
+        .addStaticFunction("getKey",
+            +[](int key) { return Input::getKey(key); },
+            +[](const std::string& key) -> bool { return luaControlHeld(key); })
+        .addStaticFunction("getKeyDown",
+            +[](int key) { return Input::getKeyDown(key); },
+            +[](const std::string& key) -> bool { return luaControlEdge(key, true); })
+        .addStaticFunction("getKeyUp",
+            +[](int key) { return Input::getKeyUp(key); },
+            +[](const std::string& key) -> bool { return luaControlEdge(key, false); })
+        // button: 0 left, 1 right, 2 middle (Input.MOUSE_BUTTON_*)
         .addStaticFunction("getMouseButton", &Input::getMouseButton)
         .addStaticFunction("getMouseButtonDown", &Input::getMouseButtonDown)
         .addStaticFunction("getMouseButtonUp", &Input::getMouseButtonUp)
-        .addStaticFunction("getGamepadButtonDown", &Input::getGamepadButtonDown)
-        .addStaticFunction("getGamepadButtonUp", &Input::getGamepadButtonUp)
-        .addStaticFunction("anyKeyDown", &Input::anyKeyDown)
+        // id -1: any gamepad; button: Input.GAMEPAD_BUTTON_* or a name ("gamepad_a", "a", "dpad_up")
+        .addStaticFunction("getGamepadButtonDown",
+            +[](int id, int button) { return Input::getGamepadButtonDown(id, button); },
+            +[](int id, const std::string& button) { return Input::getGamepadButtonDown(id, luaGamepadButton(button)); })
+        .addStaticFunction("getGamepadButtonUp",
+            +[](int id, int button) { return Input::getGamepadButtonUp(id, button); },
+            +[](int id, const std::string& button) { return Input::getGamepadButtonUp(id, luaGamepadButton(button)); })
+        // a key, mouse button or gamepad button pressed this frame: a property (Unity) that may
+        // be called (Input.anyKeyDown())
+        .addStaticProperty("anyKeyDown", +[]() { return Input::anyKeyDown(); })
+        // one held now
+        .addStaticProperty("anyKey", +[]() { return Input::isAnyKeyPressed(); })
+        // UTF-8 text typed this frame (backspace "\b", return "\n")
+        .addStaticProperty("inputString", +[]() { return Input::getInputString(); })
+        // the first control pressed this frame by name ("space", "mouse_left", "gamepad_a", "left_x+"), nil when none
+        .addStaticFunction("getPressedControl", +[]() -> std::optional<std::string> {
+            const std::string name = Input::getPressedControl();
+            if (name.empty()) return std::nullopt;
+            return name;
+        })
         .addStaticFunction("getMouseDelta", &Input::getMouseDelta)
         .addStaticFunction("getMouseScrollDelta", &Input::getMouseScrollDelta)
+        // the same as properties (Unity): canvas px this frame, y down; wheel steps (y up)
+        .addStaticProperty("mouseDelta", +[]() { return Input::getMouseDelta(); })
+        .addStaticProperty("mouseScrollDelta", +[]() { return Input::getMouseScrollDelta(); })
         .addStaticFunction("getTouchCount", &Input::getTouchCount)
-        .addStaticFunction("getTouch", &Input::getTouch)
+        .addStaticProperty("touchCount", +[]() { return Input::getTouchCount(); })
+        // index 0-based; nil when out of range
+        .addStaticFunction("getTouch", +[](int index) -> std::optional<Touch> {
+            if (index < 0 || (size_t)index >= Input::getTouchCount()) return std::nullopt;
+            return Input::getTouch((size_t)index);
+        })
+        // the frame's touches (Unity's Input.touches)
+        .addStaticProperty("touches", +[]() { return Input::getFrameTouches(); })
+        // the touch of that finger this frame, nil when none
+        .addStaticFunction("getTouchById", +[](int fingerId) -> std::optional<Touch> {
+            Touch touch;
+            if (!Input::findTouchById(fingerId, touch)) return std::nullopt;
+            return touch;
+        })
+        .addStaticProperty("multiTouchEnabled", &Input::isMultiTouchEnabled, &Input::setMultiTouchEnabled)
+        // System.isTouchDevice()
+        .addStaticProperty("touchSupported", +[]() { return System::instance().isTouchDevice(); })
         .addStaticFunction("getTouchDown", &Input::getTouchDown)
         .addStaticFunction("getTouchUp", &Input::getTouchUp)
         .addStaticFunction("getPointerLockState", &Input::getPointerLockState)
+
+        // the Input Manager's actions (an action's flat name, the "Input Manager" map's first,
+        // or "Map/Action"): smoothed, -1..1 (0..1 for a button; mouse movement unclamped)
+        .addStaticFunction("getAxis", +[](const std::string& name) { return InputActions::getAxis(name); })
+        // without smoothing: -1, 0 or 1 for keys
+        .addStaticFunction("getAxisRaw", +[](const std::string& name) { return InputActions::getAxisRaw(name); })
+        .addStaticFunction("getButton", +[](const std::string& name) { return InputActions::getButton(name); })
+        .addStaticFunction("getButtonDown", +[](const std::string& name) { return InputActions::getButtonDown(name); })
+        .addStaticFunction("getButtonUp", +[](const std::string& name) { return InputActions::getButtonUp(name); })
+        // (getAxis(xName), getAxis(yName)) with the length clamped to 1 (Godot's get_vector)
+        .addStaticFunction("getVector", +[](const std::string& xName, const std::string& yName) { return InputActions::getVector(xName, yName); })
+        .addStaticFunction("hasAction", +[](const std::string& name) { return InputActions::hasAction(name); })
+        .addStaticFunction("getActionNames", +[]() { return InputActions::getActionNames(); })
+        // a disabled action reads 0 / false
+        .addStaticFunction("setActionEnabled", +[](const std::string& name, bool enabled) { InputActions::setActionEnabled(name, enabled); })
+        .addStaticFunction("isActionEnabled", +[](const std::string& name) { return InputActions::isActionEnabled(name); })
+        .addStaticFunction("simulateButton", +[](const std::string& name, bool pressed, luabridge::LuaRef source) {
+            InputActions::setSourceValue(luaSourceOwner(source), name, pressed ? 1.0f : 0.0f, InputSourceKind::Script);
+        })
+        .addStaticFunction("simulateAxis", +[](const std::string& name, float value, luabridge::LuaRef source) {
+            InputActions::setSourceValue(luaSourceOwner(source), name, value, InputSourceKind::Script);
+        })
+        .addStaticFunction("addAxisDelta", +[](const std::string& name, float delta, luabridge::LuaRef source) {
+            InputActions::addSourceDelta(luaSourceOwner(source), name, delta, InputSourceKind::Script);
+        })
+        .addStaticFunction("clearSimulated", +[](luabridge::LuaRef source) {
+            if (source.isNil()) InputActions::clearSources(InputSourceKind::Script);
+            else InputActions::clearSource(luaSourceOwner(source));
+        })
+        // ui-multitouch D15: the pointer (-1 the mouse, a finger's fingerId; none: the mouse or
+        // any finger) is over component UI that takes events or HTML content, or either holds it
+        .addStaticFunction("isPointerOverUI", +[](luabridge::LuaRef pointerId) {
+            if (pointerId.isNil()) return Engine::isPointerOverUI(INT_MIN);
+            if (!pointerId.isNumber()) return false;
+            return Engine::isPointerOverUI(pointerId.unsafe_cast<int>());
+        })
+        .addStaticFunction("getBindings", &luaInputGetBindings)
+        .addStaticFunction("setBindings", &luaInputSetBindings)
+        // undoes setBindings / importBindings of the action (without a name: of every action)
+        .addStaticFunction("resetBindings",
+            +[]() { InputActions::resetBindings(""); },
+            +[](const std::string& name) { InputActions::resetBindings(name); })
+        // the replacements as JSON text: keep it with UserSettings, give it back to importBindings
+        .addStaticFunction("exportBindings", +[]() { return InputActions::exportOverrides(); })
+        .addStaticFunction("importBindings", &luaInputImportBindings)
 
         .addStaticFunction("isKeyPressed", &Input::isKeyPressed)
         .addStaticFunction("isMousePressed", &Input::isMousePressed)

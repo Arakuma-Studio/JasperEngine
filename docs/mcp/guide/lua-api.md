@@ -544,10 +544,9 @@ Functions:
 | `Input.isMousePressed(button)`, `Input.getMouseButton(button)` | bool, button held |
 | `Input.getMouseButtonDown(button)`, `Input.getMouseButtonUp(button)` | bool, this frame |
 | `Input.getGamepadButtonDown(id, button)`, `Input.getGamepadButtonUp(id, button)` | bool, this frame |
-| `Input.anyKeyDown()` | bool, a key, mouse or gamepad button pressed this frame |
 | `Input.getMouseDelta()` | `Vector2`, canvas pixels moved this frame |
 | `Input.getMouseScrollDelta()` | `Vector2`, wheel offsets of this frame |
-| `Input.getTouchCount()`, `Input.getTouch(i)` | this frame's touches (0-based), also those lifted in the frame: `{pointer, position, phase, delta, startPosition, time, began}` |
+| `Input.getTouchCount()`, `Input.getTouch(i)` | this frame's touches (0-based, nil out of range): the fingers down, then those lifted in the frame: `{pointer, position, phase, delta, startPosition, time, began}` plus Unity's fields (below) |
 | `Input.getTouchDown(pointer)`, `Input.getTouchUp(pointer)` | bool, this frame |
 | `Input.getPointerLockState()` | `Input.POINTER_UNLOCKED` / `POINTER_PENDING` / `POINTER_LOCKED` |
 | `Input.isTouch()` | bool, any touch active |
@@ -571,30 +570,31 @@ Unity-style polling with edges, touches and input actions (details: `jasper://do
 | `Input.getKey(key)`, `Input.getKeyDown(key)`, `Input.getKeyUp(key)` | bool: held / pressed this frame / released this frame |
 | `Input.getMouseButton(b)`, `getMouseButtonDown(b)`, `getMouseButtonUp(b)` | bool; `b` 0 left, 1 right, 2 middle |
 | `Input.getGamepadButtonDown(id, button)`, `getGamepadButtonUp(id, button)` | bool; `id` -1 any pad; `button` `Input.GAMEPAD_BUTTON_*` or a name |
-| `Input.anyKey`, `Input.anyKeyDown` (properties) | bool: any key, mouse or gamepad button held / pressed this frame |
+| `Input.anyKey`, `Input.anyKeyDown` (properties) | bool: any key, mouse or gamepad button held / pressed this frame. `Input.anyKeyDown()` works too (S22's spelling: a boolean called without arguments gives itself back) |
 | `Input.inputString` (property) | UTF-8 text typed this frame (`"\b"` backspace, `"\n"` return) |
 | `Input.mouseDelta`, `Input.mouseScrollDelta` (properties) | `Vector2`: movement this frame (canvas px, y down; works captured), wheel steps (y up) |
 | `Input.getPressedControl()` | string or nil: the first control pressed this frame (`"space"`, `"mouse_left"`, `"gamepad_a"`, `"left_x+"`) |
 | `Input.touchCount`, `Input.touches` (properties), `Input.getTouch(index)` (0-based), `Input.getTouchById(fingerId)` | Unity's touches this frame (ended/cancelled ones included in their last frame): `Touch` or nil |
 | `Input.multiTouchEnabled` (rw, default true), `Input.touchSupported` | false: only the first finger is reported / `System.isTouchDevice()` |
 | `Input.isPointerOverUI([pointerId])` | bool: the pointer (-1 the mouse, a finger's `fingerId`; none: the mouse or any finger) is over UI that takes events (component UI or HTML content) or held by it (1.7) |
-| `Input.getAxis(name)`, `Input.getAxisRaw(name)` | number: the input action's smoothed / raw value (-1..1, button 0..1; mouse movement unclamped) |
+| `Input.getAxis(name)`, `Input.getAxisRaw(name)` | number: the action's smoothed / raw value (-1..1, button 0..1; mouse movement unclamped). `name`: an action of the actions asset's "Input Manager" map, else the first of that name by map priority, or `"Map/Action"` |
 | `Input.getButton(name)`, `getButtonDown(name)`, `getButtonUp(name)` | bool |
 | `Input.getVector(xName, yName)` | `Vector2`, length <= 1 |
 | `Input.hasAction(name)`, `Input.getActionNames()` | bool / string list |
 | `Input.setActionEnabled(name, enabled)`, `Input.isActionEnabled(name)` | a disabled action reads 0 / false |
 | `Input.simulateButton(name, pressed [, source])`, `Input.simulateAxis(name, value [, source])`, `Input.addAxisDelta(name, delta [, source])`, `Input.clearSimulated([source])` | virtual sources (like an on-screen control); `source` a name (default `"script"`) or `self` (cleared with the instance) |
 | `Input.getBindings(name)` | list of binding tables (`kind`, `positive`, ...) |
-| `Input.setBindings(name, bindings)`, `Input.resetBindings([name])` | `true` or `false, error` / runtime rebinding over Project Settings |
+| `Input.setBindings(name, bindings)`, `Input.resetBindings([name])` | `true` or `false, error` / runtime rebinding over the asset's bindings (dropped at Play stop) |
 | `Input.exportBindings()`, `Input.importBindings(json)` | the overrides as JSON text / `true` or `false, error` |
 
-Default actions (Unity's Input Manager): `Horizontal`, `Vertical`, `Fire1`, `Fire2`, `Fire3`,
-`Jump`, `Mouse X`, `Mouse Y`, `Mouse ScrollWheel`, `Submit`, `Cancel`. An unknown action name logs
-one error and reads 0 / false.
+Default actions (Unity's Input Manager, the "Input Manager" map of a project without an actions
+asset): `Horizontal`, `Vertical`, `Fire1`, `Fire2`, `Fire3`, `Jump`, `Mouse X`, `Mouse Y`,
+`Mouse ScrollWheel`, `Submit`, `Cancel`. An unknown action name logs one error and reads 0 / false.
 
-`Touch` (read-only fields): `fingerId`, `phase` (`TouchPhase.Began`, `Moved`, `Stationary`,
-`Ended`, `Canceled`), `position`, `startPosition`, `deltaPosition` (canvas px, y down),
-`deltaTime` (unscaled s), `tapCount`, `pointer` (= `fingerId`).
+`Touch` (a table): `fingerId` (= `pointer`), `phase` (`TouchPhase.Began`, `Moved`, `Stationary`,
+`Ended`, `Canceled`: the values of `Input.TOUCH_*`), `position`, `startPosition`, `deltaPosition`
+(= `delta`, canvas px, y down), `deltaTime` (unscaled s since it last moved), `tapCount`, `time`
+(s since it touched), `began`.
 
 Constants (static properties, integers, no parentheses):
 

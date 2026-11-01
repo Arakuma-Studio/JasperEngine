@@ -19,6 +19,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
+#include "command/type/InputActionsCmd.h"
 #include "util/ShaderGlobalsJson.h"
 #include "reflect/Reflect.h"
 #include "input/InputActions.h"
@@ -281,6 +282,35 @@ Setting boolSetting(const std::string& key, const std::string& description,
 Setting boolField(const std::string& key, const std::string& description, std::function<bool&(Project&)> field) {
     return boolSetting(key, description, [field](Project& p) { return field(p); },
                        [field](Project& p, bool v) { field(p) = v; });
+}
+
+// Unity's Input Manager actions (a list in the shape InputManagerFormat reads, or "defaults") into the
+// project's actions asset's "Input Manager" map: one step of the project history (InputActionsCmd)
+bool setInputManagerActions(SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+    std::vector<InputManagerAction> actions;
+    if (value.is_string() && value.get<std::string>() == "defaults") {
+        actions = InputManagerFormat::defaults();
+    } else if (!value.is_array()) {
+        error = "must be a list of actions [{name, type, bindings}, ...] or \"defaults\"";
+        return false;
+    } else if (!InputManagerFormat::parseActionsJson(value.dump(), actions, &error)) {
+        return false;
+    }
+    if (!apply) return true;
+    Project* p = ctx.project();
+    if (InputManagerFormat::actionsToJson(actions) == InputManagerFormat::actionsToJson(p->getInputManagerActions()) &&
+            !p->getInputActionsAsset().empty())
+        return true;
+    // a project without an asset that keeps the defaults keeps having none
+    if (p->getInputActionsAsset().empty() && InputManagerFormat::actionsToJson(actions) == InputManagerFormat::actionsToJson(InputManagerFormat::defaults()))
+        return true;
+    auto* command = new InputActionsCmd(p, actions);
+    command->setNoMerge();
+    if (!p->getProjectCommandHistory()->addCommand(command)) {
+        error = "the input actions could not be applied";
+        return false;
+    }
+    return true;
 }
 
 Setting pathSetting(const std::string& key, const std::string& description, std::function<fs::path&(Project&)> field) {
@@ -1366,9 +1396,42 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
-        // ---- input (S22)
-        add(pathSetting("input.actions", "The Input Actions asset Play and the game load at start (an .inputactions file in the assets directory).",
-                        [](Project& p) -> fs::path& { return p.getInputActionsAsset(); }));
+        // ---- input (S22, and Unity's Input Manager absorbed from the older Project Settings > Input)
+        {
+            // the asset path; an older editor's list of Input Manager actions (or "defaults") set
+            // here goes into the asset's Input Manager map, as input.manager_actions does
+            Setting s = pathSetting("input.actions", "The Input Actions asset Play and the game load at start (an .inputactions file in "
+                                    "the assets directory). Also takes a list of Input Manager actions or \"defaults\" (input.manager_actions).",
+                                    [](Project& p) -> fs::path& { return p.getInputActionsAsset(); });
+            auto setPath = s.set;
+            s.set = [setPath](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (value.is_array() || (value.is_string() && value.get<std::string>() == "defaults"))
+                    return setInputManagerActions(ctx, value, apply, error);
+                return setPath(ctx, value, apply, error);
+            };
+            add(std::move(s));
+        }
+        {
+            Setting s;
+            s.key = "input.manager_actions";
+            s.type = "list";
+            s.description =
+                "Unity's Input Manager: the actions asset's \"Input Manager\" map (Unity's 11 defaults without an asset) as virtual "
+                "axes and buttons, read by Input.getAxis / getButton / getButtonDown. Each {name, type: axis|button, description?, "
+                "press_point? (0.5), bindings: [{kind: buttons, positive: [control names], negative: [...], gravity, sensitivity, "
+                "dead, snap, invert, gamepad: any|0-15} | {kind: gamepad_axis, axis: left_x..right_trigger, gamepad, dead, "
+                "sensitivity, invert} | {kind: mouse_delta, axis: x|y|wheel, sensitivity, invert}]}. Control names: a, space, left, "
+                "left_shift, kp_0, f1, mouse_left, gamepad_a, gamepad_dpad_up... (Unity spellings accepted). Setting it replaces the "
+                "whole list (get it first to add one) and makes InputManager.inputactions when the project has no asset; "
+                "\"defaults\" restores Unity's 11. Undoable (undo scope project). Details: jasper://docs/input.";
+            s.get = [](SettingsContext& ctx) {
+                return Json::parse(InputManagerFormat::actionsToJson(ctx.project()->getInputManagerActions()))["actions"];
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                return setInputManagerActions(ctx, value, apply, error);
+            };
+            add(std::move(s));
+        }
         {
             Setting s;
             s.key = "input.deadzone";
@@ -2085,6 +2148,7 @@ const Placement placements[] = {
     {"navigation.web_bake_budget_ms", "Navigation", "", "Web Bake Budget", "navmesh bake web single thread"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
+    {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
     {"scripting.lua_dir", "Scripting", "", "Lua Directory", "lua"},
     {"scripting.script_dirs", "Scripting", "", "Script Directories", "c++ cpp"},
     {"scripting.cxx_standard", "Scripting", "", "C++ Standard", "cpp c++17 c++20 c++23"},

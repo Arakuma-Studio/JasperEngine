@@ -755,6 +755,9 @@ void Engine::systemFocusChanged(bool focused){
         }
     }
     systemTouchCancel();
+    // what no event released (a gamepad's buttons, a key or button the events left down) comes
+    // up too, without events
+    Input::releaseAll();
     Input::setModifiers(0);
     Input::clearPendingDeltas();
     if (mouseMode == MouseMode::CAPTURED)
@@ -1363,9 +1366,6 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
     // (Input.simulateAxis(name, value, self), InputActions::setSourceValue(this, ...))
-    // SYNC4-ABSORB(Input): upstream's per-owner input sources (setSourceValue / clearSource) are
-    // not in S22's InputActions; port them (or map them onto inject / setVirtual) to restore this
-#if 0
     if (substring.size() > 2 && substring.front() == '_' && substring.back() == '_' &&
             std::all_of(substring.begin() + 1, substring.end() - 1, [](char c) { return c >= '0' && c <= '9'; })) {
         try {
@@ -1373,7 +1373,6 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
         } catch (const std::exception&) {
         }
     }
-#endif
 }
 
 void Engine::clearAllSubscriptions(bool includeLifecycle) {
@@ -2183,9 +2182,9 @@ void Engine::runFrame(bool draw){
     // avoid increment updateTimeCount after resume; a held simulation only draws
     if (!paused && !simulationHeld) {
         // the input of the frame: the events since the last running frame (Input.h), then
-        // the actions it drives (their callbacks run here, before the fixed steps)
-        Input::beginFrame();
-        InputActions::evaluate((float)frameTime);
+        // the actions it drives (their callbacks, onButtonDown / onButtonUp run here, before the
+        // fixed steps), on the unscaled frame time
+        Input::beginFrame(frameTime);
 
         double frameDelta = deltatime;
         gameTime += frameDelta;
@@ -2285,6 +2284,8 @@ void Engine::runFrame(bool draw){
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->compactComponents();
         }
+        // what was for this frame only (the virtual sources' deltas) goes
+        Input::endFrame();
     }
 
     if (draw){
@@ -2981,7 +2982,9 @@ void Engine::systemTouchStart(int pointer, float x, float y){
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchStart.call(pointer, x, y);
             if (Engine::isCallMouseInTouchEvent()){
-                Input::addMousePressed(D_MOUSE_BUTTON_1);
+                // the simulated mouse is one device: a finger multiTouchEnabled hides does not press it
+                if (Input::isTouchVisible(pointer))
+                    Input::addMousePressed(D_MOUSE_BUTTON_1);
                 // the finger is where the pointer jumps to, not a motion
                 Input::warpMouse(x, y);
                 Engine::onMouseDown.call(D_MOUSE_BUTTON_1, x, y, 0);
@@ -2992,9 +2995,8 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 }
 
 void Engine::systemTouchEnd(int pointer, float x, float y){
-    // SYNC4-ABSORB(Input): upstream's Input.multiTouchEnabled hid some fingers from the simulated
-    // mouse (Input::isTouchVisible); S22's Input has every finger visible
-    const bool visible = true;
+    // a finger Input.multiTouchEnabled hides does not move or press the simulated mouse
+    const bool visible = Input::isTouchVisible(pointer);
     if (!transformCoordPos(x, y)){
         // lifted outside the canvas: no event, but the finger is not down any more, and the
         // documents and the component UI that tracked it let go of it without a click (D6)
@@ -3068,7 +3070,8 @@ void Engine::systemTouchMove(int pointer, float x, float y){
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchMove.call(pointer, x, y);
             if (Engine::isCallMouseInTouchEvent()){
-                Input::moveMouse(x, y);
+                if (Input::isTouchVisible(pointer))
+                    Input::moveMouse(x, y);
                 Engine::onMouseMove.call(x, y, 0);
             }
         }
@@ -3107,6 +3110,9 @@ void Engine::systemTouchCancel(int pointer){
     if (index == -1)
         return;
     Vector2 pos = Input::getTouchPosition(pointer);
+    // a cancelled finger that simulated the mouse lets go of it too
+    if (Engine::isCallMouseInTouchEvent() && Input::isTouchVisible(pointer))
+        Input::releaseMousePressed(D_MOUSE_BUTTON_1);
     Input::cancelTouch(pointer);
 
     // the documents and the component UI that tracked it let go of it without a click
@@ -3216,8 +3222,11 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
 }
 
 void Engine::systemMouseMove(float x, float y, int mods){
-    if (transformCoordPos(x, y)){
-        Input::moveMouse(x, y);
+    // the movement counts outside the canvas too (a captured or dragged mouse looks around)
+    const bool insideCanvas = transformCoordPos(x, y);
+    Input::addMouseMovement(x, y);
+    if (insideCanvas){
+        Input::setMousePosition(x, y);
         if (mods != 0)
             Input::setModifiers(mods);
 
@@ -3361,8 +3370,9 @@ void Engine::systemCharInput(wchar_t codepoint){
 
     std::vector<uint32_t> codepoints;
     charInputCombiner.push((uint32_t)codepoint, codepoints);
-    // SYNC4-ABSORB(Input): upstream's Input.inputString took these codepoints
-    // (Input::addInputCharacter); S22's Input has no text buffer yet
+    // Input.inputString (Unity's: the text typed this frame)
+    for (uint32_t typed : codepoints)
+        Input::addInputCharacter(typed);
 
     bool consumed;
     if (!codepoints.empty()){
@@ -3407,8 +3417,9 @@ void Engine::systemTextInput(const std::string& utf8){
 
     bool hadInvalid = false;
     const std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid);
-    // SYNC4-ABSORB(Input): upstream's Input.inputString took these codepoints
-    // (Input::addInputCharacter); S22's Input has no text buffer yet
+    // Input.inputString
+    for (uint32_t codepoint : codepoints)
+        Input::addInputCharacter(codepoint);
 
     const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
         return documents->eventOnTextInput(utf8);

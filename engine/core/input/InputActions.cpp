@@ -11,11 +11,14 @@
 #include "input/InputRebind.h"
 #include "io/Data.h"
 #include "io/UserSettings.h"
+#include "System.h"
 
 #include <algorithm>
 #include <bitset>
 #include <cmath>
 #include <map>
+#include <set>
+#include <unordered_map>
 
 using namespace jasperengine;
 
@@ -46,6 +49,7 @@ namespace jasperengine {
         struct Sample {
             Vector2 value;
             bool digital = false;
+            bool held = false;          // a digital control (a composite's part) is held now
             bool tapped = false;        // pressed and released in the window, released now
             bool repressed = false;     // released and pressed again in the window, held now
             bool actuated = false;      // held, moved, or pressed in the window
@@ -76,6 +80,10 @@ namespace jasperengine {
             std::vector<std::string> groups;
             InputCompositeType composite = InputCompositeType::NONE;
             bool normalize = true;
+            int gamepad = -1;              // its pad, -1: the map's
+            std::optional<InputSmoothing> smoothing;
+            Vector2 smoothed;              // the smoothing's value (per component)
+            int role = -1;                 // a part: its role's index (negative 0, positive 1...)
             int firstPart = 0;
             int partCount = 0;
             int virtualIndex = -1;
@@ -121,6 +129,16 @@ namespace jasperengine {
             Vector2 value;
         };
 
+        // an owner's contribution to an action (InputActions::setSourceValue / addSourceDelta)
+        struct Source {
+            uintptr_t owner = 0;
+            std::string action;            // the name it was given (flat or "Map/Action")
+            int index = -1;                // into the actions, -1 while the name is unknown
+            float value = 0.0f;
+            bool delta = false;
+            InputSourceKind kind = InputSourceKind::Control;
+        };
+
     }
 
     struct InputActionsRuntime {
@@ -145,9 +163,33 @@ namespace jasperengine {
         float defaultDeadzone = DEFAULT_DEADZONE;
         InputRebindState rebind;
         std::shared_ptr<InputOverrideStore> store;
+        // no asset loaded: Unity's defaults (InputManagerFormat::defaultsAsset)
+        bool builtin = false;
+        InputSuppression suppression;
+        // the Input Manager's names: "Map/Action" and the flat names -> index into actions
+        std::unordered_map<std::string, int> names;
+        std::set<std::string> reportedUnknown;
+        std::vector<Source> sources;
+        std::vector<std::string> namedSources;
+        // an action's bindings replaced at runtime (setBindings): "Map/Action" -> bindings
+        std::map<std::string, std::vector<InputBindingDesc>> bindingOverrides;
+        std::vector<std::string> frameDowns;
+        std::vector<std::string> frameUps;
 
         InputActionsRuntime(){
             std::fill(std::begin(consumer), std::end(consumer), -1);
+            frameDowns.reserve(16);
+            frameUps.reserve(16);
+            installDefaults();
+        }
+
+        // the asset of a game without one: Unity's defaults
+        void installDefaults(){
+            builtin = true;
+            loaded = false;
+            path.clear();
+            asset = InputManagerFormat::defaultsAsset();
+            build(false);
         }
 
         void consume(int key, int map){
@@ -211,12 +253,53 @@ namespace jasperengine {
             for (size_t i = 0; i < maps.size(); i++)
                 order[i] = (int)i;
             std::stable_sort(order.begin(), order.end(), [&](int a, int b){ return maps[a].priority > maps[b].priority; });
+            indexNames();
+        }
+
+        // the Input Manager's names: paths, then the flat names (the Input Manager map's, then
+        // the first action of a name in priority order); the sources' actions again
+        void indexNames(){
+            names.clear();
+            for (size_t a = 0; a < actions.size(); a++)
+                names.emplace(actions[a].action->getPath(), (int)a);
+            for (const RMap& map : maps){
+                if (map.name != InputManagerFormat::MAP_NAME)
+                    continue;
+                for (int a = map.firstAction; a < map.firstAction + map.actionCount; a++)
+                    names.emplace(actions[a].action->getName(), a);
+            }
+            for (int m : order){
+                const RMap& map = maps[m];
+                for (int a = map.firstAction; a < map.firstAction + map.actionCount; a++)
+                    names.emplace(actions[a].action->getName(), a);
+            }
+            for (Source& source : sources){
+                auto it = names.find(source.action);
+                source.index = it == names.end() ? -1 : it->second;
+            }
+        }
+
+        // the action of a name, -1 (and one error per name) when there is none
+        int nameIndex(const std::string& name, bool report){
+            auto it = names.find(name);
+            if (it != names.end())
+                return it->second;
+            if (report && reportedUnknown.insert(name).second)
+                Log::error("Input action \"%s\" does not exist (Project Settings > Input)", name.c_str());
+            return -1;
+        }
+
+        bool isManagerMap(int mapIndex) const{
+            return mapIndex >= 0 && mapIndex < (int)maps.size() && maps[mapIndex].name == InputManagerFormat::MAP_NAME;
         }
 
         InputOverrideStore& overrideStore();
 
         // the evaluation's steps (members: they reach InputAction's state)
         static void resetActionState(InputAction& action);
+        void noteSourceChange(int index, float before, float after);
+        void sourceSums(int index, float& bounded, float& delta) const;
+        float managerValue(int index, bool raw, bool boundedOnly);
         void fire(RAction& action, FunctionSubscribe<void(InputActionEvent&)>& event, InputActionPhase phase, int mapIndex);
         void updateAction(RAction& action, int mapIndex, bool active, float dt);
         void build(bool keepMapState);
@@ -230,16 +313,17 @@ namespace jasperengine {
 
 namespace {
 
+    // (no platform yet, as in a tool that only reads actions: nothing is stored)
     class UserSettingsStore : public InputOverrideStore {
     public:
         std::string read(const std::string& key) override{
-            return UserSettings::getStringForKey(key.c_str(), "");
+            return System::hasInstance() ? UserSettings::getStringForKey(key.c_str(), "") : std::string();
         }
         void write(const std::string& key, const std::string& value) override{
-            UserSettings::setStringForKey(key.c_str(), value);
+            if (System::hasInstance()) UserSettings::setStringForKey(key.c_str(), value);
         }
         void remove(const std::string& key) override{
-            UserSettings::removeKey(key.c_str());
+            if (System::hasInstance()) UserSettings::removeKey(key.c_str());
         }
     };
 
@@ -273,11 +357,12 @@ namespace {
         return value * (scaled / length);
     }
 
-    // the slots a map reads: its pad, or every slot with a pad (or a pad's last edges)
+    // the slots a binding reads: its pad (else its map's), or every slot with a pad (or a
+    // pad's last edges)
     template<typename F>
-    void forEachSlot(const RMap& map, F&& visit){
-        if (map.gamepad >= 0){
-            const int slot = Input::getGamepadSlot(map.gamepad);
+    void forEachSlot(int gamepad, F&& visit){
+        if (gamepad >= 0){
+            const int slot = Input::getGamepadSlot(gamepad);
             if (slot >= 0)
                 visit(slot);
             return;
@@ -295,8 +380,10 @@ namespace {
         if (!actuated)
             return;
         s.digital = true;
-        if (level)
+        if (level){
             s.value = Vector2(1.0f, 0.0f);
+            s.held = true;
+        }
         if (presses > 0 && !level)
             s.tapped = true;
         if (presses > 0 && level && edges.releases > 0)
@@ -326,9 +413,34 @@ namespace {
         return false;
     }
 
-    Sample sampleControl(InputActionsRuntime& r, const RBinding& binding, const RMap& map, int heldMods){
+    // what a focused text field or a document with gamepad focus takes (maps that ignore what
+    // the UI consumes): the keyboard, or the d-pad, the left stick and A
+    bool suppressedByUI(const InputActionsRuntime& r, const InputControlPath& control, const RMap& map){
+        if (!map.ignoreUI)
+            return false;
+        if (control.kind == InputControlKind::KEY)
+            return r.suppression.keyboard;
+        if (!r.suppression.gamepadNavigation)
+            return false;
+        switch (control.kind){
+            case InputControlKind::GAMEPAD_BUTTON:
+                return control.index == D_GAMEPAD_BUTTON_A || control.index == D_GAMEPAD_BUTTON_DPAD_UP ||
+                       control.index == D_GAMEPAD_BUTTON_DPAD_RIGHT || control.index == D_GAMEPAD_BUTTON_DPAD_DOWN ||
+                       control.index == D_GAMEPAD_BUTTON_DPAD_LEFT;
+            case InputControlKind::GAMEPAD_AXIS:
+                return control.index == D_GAMEPAD_AXIS_LEFT_X || control.index == D_GAMEPAD_AXIS_LEFT_Y;
+            case InputControlKind::GAMEPAD_STICK:
+                return control.index == 0;
+            default:
+                return false;
+        }
+    }
+
+    Sample sampleControl(InputActionsRuntime& r, const RBinding& binding, const RMap& map, int heldMods, int gamepad){
         Sample s;
         const InputControlPath& control = binding.control;
+        if (suppressedByUI(r, control, map))
+            return s;
         auto blocked = [&](int key){
             if (r.consumed[key]){
                 s.blockedBy = r.consumer[key];
@@ -346,7 +458,7 @@ namespace {
                 break;
             }
             case InputControlKind::GAMEPAD_BUTTON: {
-                forEachSlot(map, [&](int slot){
+                forEachSlot(gamepad, [&](int slot){
                     const int key = Input::gamepadControl(slot, control.index);
                     if (key < 0 || blocked(key))
                         return;
@@ -358,6 +470,7 @@ namespace {
                     if (one.value.x > s.value.x)
                         s.value = one.value;
                     s.digital = true;
+                    s.held = s.held || one.held;
                     s.tapped = s.tapped || one.tapped;
                     s.repressed = s.repressed || one.repressed;
                     s.actuated = true;
@@ -370,7 +483,7 @@ namespace {
             case InputControlKind::GAMEPAD_AXIS: {
                 float best = 0.0f;
                 int bestKey = -1;
-                forEachSlot(map, [&](int slot){
+                forEachSlot(gamepad, [&](int slot){
                     const int key = KEY_AXIS_BASE + slot * Input::GAMEPAD_AXES + control.index;
                     if (blocked(key))
                         return;
@@ -391,7 +504,7 @@ namespace {
                 const int axisX = control.index == 0 ? D_GAMEPAD_AXIS_LEFT_X : D_GAMEPAD_AXIS_RIGHT_X;
                 const int axisY = control.index == 0 ? D_GAMEPAD_AXIS_LEFT_Y : D_GAMEPAD_AXIS_RIGHT_Y;
                 float bestLength = 0.0f;
-                forEachSlot(map, [&](int slot){
+                forEachSlot(gamepad, [&](int slot){
                     const int keyX = KEY_AXIS_BASE + slot * Input::GAMEPAD_AXES + axisX;
                     const int keyY = KEY_AXIS_BASE + slot * Input::GAMEPAD_AXES + axisY;
                     if (blocked(keyX) || blocked(keyY))
@@ -487,9 +600,9 @@ namespace {
         return s;
     }
 
-    // a binding's own processing: modifiers, scale, invert, deadzone
-    Sample sampleBinding(InputActionsRuntime& r, RBinding& binding, const RMap& map, const RAction& action, int heldMods){
-        Sample s = sampleControl(r, binding, map, heldMods);
+    // a binding's own processing: modifiers, scale, invert, deadzone (gamepad: the pad it reads)
+    Sample sampleBinding(InputActionsRuntime& r, RBinding& binding, const RMap& map, const RAction& action, int heldMods, int gamepad){
+        Sample s = sampleControl(r, binding, map, heldMods, gamepad);
         binding.satisfied = false;
         if (!s.actuated)
             return s;
@@ -518,21 +631,26 @@ namespace {
         return s;
     }
 
-    Sample sampleComposite(InputActionsRuntime& r, RBinding& binding, const RMap& map, const RAction& action, int heldMods){
+    Sample sampleComposite(InputActionsRuntime& r, RBinding& binding, const RMap& map, const RAction& action, int heldMods,
+                           bool ignoreNegative){
         Sample s;
         s.digital = true;
         float magnitudes[4] = {};
         bool anyTapped = false;
-        for (int i = 0; i < binding.partCount && i < 4; i++){
+        const int gamepad = binding.gamepad >= 0 ? binding.gamepad : map.gamepad;
+        for (int i = 0; i < binding.partCount; i++){
             RBinding& part = r.parts[binding.firstPart + i];
-            if (!part.control.isValid())
+            // a role's parts: the larger magnitude counts (an Input Manager entry's button lists);
+            // a BUTTON action's Input Manager entry ignores its negative list
+            if (!part.control.isValid() || part.role < 0 || part.role >= 4 || (ignoreNegative && part.role == 0))
                 continue;
-            const Sample one = sampleBinding(r, part, map, action, heldMods);
+            const Sample one = sampleBinding(r, part, map, action, heldMods, gamepad);
             if (one.blockedBy >= 0 && s.blockedBy < 0)
                 s.blockedBy = one.blockedBy;
             if (!one.actuated)
                 continue;
-            magnitudes[i] = one.magnitude();
+            magnitudes[part.role] = std::max(magnitudes[part.role], one.magnitude());
+            s.held = s.held || one.held;
             s.digital = s.digital && one.digital;
             anyTapped = anyTapped || one.tapped;
             s.repressed = s.repressed || one.repressed;
@@ -596,6 +714,8 @@ namespace {
         binding.groups = desc.groups;
         binding.composite = desc.composite;
         binding.normalize = desc.normalize;
+        binding.gamepad = desc.gamepad;
+        binding.smoothing = desc.smoothing;
         if (binding.control.kind == InputControlKind::VIRTUAL)
             binding.virtualIndex = r.virtualIndex(binding.control.name, true);
         return binding;
@@ -797,57 +917,167 @@ void InputActionsRuntime::fire(RAction& action, FunctionSubscribe<void(InputActi
     currentEvent = saved;
 }
 
-// value, edges, held time, phase and callbacks of one action this window
+namespace {
+
+    float moveTowards(float current, float target, float maxDelta){
+        if (std::fabs(target - current) <= maxDelta) return target;
+        return current + (target > current ? maxDelta : -maxDelta);
+    }
+
+    float signOf(float value){
+        return value > 0.0f ? 1.0f : (value < 0.0f ? -1.0f : 0.0f);
+    }
+
+    // one component of Input Manager smoothing (Unity's gravity, sensitivity, snap)
+    float smoothComponent(float smoothed, float target, const InputSmoothing& smoothing, float dt){
+        if (smoothing.snap && target != 0.0f && smoothed != 0.0f && signOf(target) != signOf(smoothed))
+            smoothed = 0.0f;
+        if (target != 0.0f)
+            return smoothing.sensitivity <= 0.0f ? target : moveTowards(smoothed, target, smoothing.sensitivity * dt);
+        return smoothing.gravity <= 0.0f ? 0.0f : moveTowards(smoothed, 0.0f, smoothing.gravity * dt);
+    }
+
+    bool pastPressPoint(InputActionType type, float pressPoint, float value){
+        return (type == InputActionType::BUTTON ? value : std::fabs(value)) >= pressPoint;
+    }
+
+}
+
+void InputActionsRuntime::noteSourceChange(int index, float before, float after){
+    if (index < 0 || index >= (int)actions.size())
+        return;
+    const RAction& ra = actions[index];
+    InputAction& action = *ra.action;
+    const bool was = pastPressPoint(action.type, ra.pressPoint, before);
+    const bool now = pastPressPoint(action.type, ra.pressPoint, after);
+    if (!was && now){
+        action.sourcePressLatch = true;
+        if (action.sourceReleaseLatch)
+            action.sourceRepressLatch = true;
+    }else if (was && !now){
+        action.sourceReleaseLatch = true;
+    }
+}
+
+void InputActionsRuntime::sourceSums(int index, float& bounded, float& delta) const{
+    bounded = 0.0f;
+    delta = 0.0f;
+    for (const Source& source : sources){
+        if (source.index != index)
+            continue;
+        if (source.delta) delta += source.value;
+        else bounded += source.value;
+    }
+}
+
+// value, edges, held time, phase and callbacks of one action this window; and its Input
+// Manager view (getAxis, getButton...)
 void InputActionsRuntime::updateAction(RAction& ra, int mapIndex, bool active, float dt){
     InputActionsRuntime& r = *this;
     InputAction& action = *ra.action;
-    Vector2 value;
+    const int actionIndex = (int)(&ra - r.actions.data());
+    active = active && action.enabled;
+    Vector2 bounded;            // the bindings' bounded sum (smoothed)
+    Vector2 delta;              // their deltas
+    float buttonValue = 0.0f;   // BUTTON: the largest magnitude
+    float managerRaw = 0.0f;
+    bool managerHeld = false;
     bool tap = false;
     bool repressed = false;
-    bool anyDelta = false;
     action.consumedByMap = (!active && r.maps[mapIndex].blocked) ? r.maps[mapIndex].blockedBy : -1;
 
+    for (int b = 0; b < ra.bindingCount; b++){
+        RBinding& binding = r.bindings[ra.firstBinding + b];
+        Sample& s = binding.sample;
+        if (!active){
+            s = Sample();
+            binding.smoothed = Vector2(0.0f, 0.0f);
+            continue;
+        }
+        const bool counts = !binding.suppressed && s.actuated;
+        if (!binding.suppressed && s.blockedBy >= 0 && action.consumedByMap < 0)
+            action.consumedByMap = s.blockedBy;
+        if (binding.suppressed)
+            s = Sample();
+        // Input Manager smoothing: the value moves to the binding's target (0 when it is not
+        // actuated) at the unscaled frame time; under dead it reads 0
+        Vector2 value = counts ? s.value : Vector2(0.0f, 0.0f);
+        const Vector2 target = value;
+        if (binding.smoothing && !s.delta){
+            binding.smoothed.x = smoothComponent(binding.smoothed.x, target.x, *binding.smoothing, dt);
+            binding.smoothed.y = smoothComponent(binding.smoothed.y, target.y, *binding.smoothing, dt);
+            value = binding.smoothed;
+            if (std::sqrt(value.x * value.x + value.y * value.y) < binding.smoothing->dead)
+                value = Vector2(0.0f, 0.0f);
+        }
+        if (!counts && value.x == 0.0f && value.y == 0.0f)
+            continue;
+        tap = tap || (counts && s.tapped);
+        repressed = repressed || (counts && s.repressed);
+        if (s.delta){
+            delta += value;
+            buttonValue = std::max(buttonValue, std::sqrt(value.x * value.x + value.y * value.y));
+            continue;
+        }
+        bounded += value;
+        managerRaw += target.x;
+        buttonValue = std::max(buttonValue, std::sqrt(value.x * value.x + value.y * value.y));
+        // the Input Manager holds the button while a control is held (a smoothed axis at once),
+        // an analog one past the press point
+        if (counts){
+            if (s.digital) managerHeld = managerHeld || s.held;
+            else managerHeld = managerHeld || pastPressPoint(action.type, ra.pressPoint, target.x);
+        }
+    }
+
+    // the virtual sources: bounded ones with the bindings, deltas on top; a bounded one past the
+    // press point holds the button; one pressed (and released) since the last evaluation counts
+    // as a control pressed in the window
+    float sourceBounded = 0.0f, sourceDelta = 0.0f;
+    if (active && !r.sources.empty()){
+        sourceSums(actionIndex, sourceBounded, sourceDelta);
+        for (const Source& source : r.sources){
+            if (source.index == actionIndex && !source.delta && pastPressPoint(action.type, ra.pressPoint, source.value))
+                managerHeld = true;
+        }
+    }
+    bool managerTap = active && action.sourcePressLatch;
+    const bool sourceRepress = active && action.sourceRepressLatch;
+    action.sourcePressLatch = action.sourceReleaseLatch = action.sourceRepressLatch = false;
+    const bool bindingTap = tap;
+    const bool bindingRepress = repressed;
+    const bool injected = ra.injection.active;
+
+    Vector2 value;
     if (ra.injection.active){
         // a tap reads 0 at the window's end: pressed and released in it
         value = ra.injection.tap ? Vector2(0.0f, 0.0f) : ra.injection.value;
         tap = ra.injection.tap;
+        repressed = false;
         // a tap is one window; a count runs out (it reads 0 from the next window); -1 lasts
         if (ra.injection.tap || (ra.injection.windows > 0 && --ra.injection.windows == 0))
             ra.injection.active = false;
     }else{
-        for (int b = 0; b < ra.bindingCount; b++){
-            RBinding& binding = r.bindings[ra.firstBinding + b];
-            Sample& s = binding.sample;
-            if (!active || binding.suppressed){
-                s = Sample();
-                continue;
-            }
-            if (s.blockedBy >= 0 && action.consumedByMap < 0)
-                action.consumedByMap = s.blockedBy;
-            if (!s.actuated)
-                continue;
-            tap = tap || s.tapped;
-            repressed = repressed || s.repressed;
-            anyDelta = anyDelta || s.delta;
-            switch (action.type){
-                case InputActionType::BUTTON:
-                    value.x = std::max(value.x, s.magnitude());
-                    break;
-                case InputActionType::AXIS:
-                    value.x += s.value.x;
-                    break;
-                case InputActionType::VECTOR2:
-                    value += s.value;
-                    break;
+        switch (action.type){
+            case InputActionType::BUTTON:
+                value.x = std::max(buttonValue, std::clamp(sourceBounded, 0.0f, 1.0f));
+                if (sourceDelta != 0.0f) value.x = std::max(value.x, std::fabs(sourceDelta));
+                break;
+            case InputActionType::AXIS:
+                // bounded values are summed then clamped, deltas added unclamped on top
+                value.x = std::clamp(bounded.x + sourceBounded, -1.0f, 1.0f) + delta.x + sourceDelta;
+                break;
+            case InputActionType::VECTOR2: {
+                Vector2 sum(bounded.x + sourceBounded, bounded.y);
+                const float length = std::sqrt(sum.x * sum.x + sum.y * sum.y);
+                if (length > 1.0f)
+                    sum = sum * (1.0f / length);
+                value = sum + delta + Vector2(sourceDelta, 0.0f);
+                break;
             }
         }
-        if (action.type == InputActionType::AXIS && !anyDelta)
-            value.x = std::clamp(value.x, -1.0f, 1.0f);
-        if (action.type == InputActionType::VECTOR2 && !anyDelta){
-            const float length = std::sqrt(value.x * value.x + value.y * value.y);
-            if (length > 1.0f)
-                value = value * (1.0f / length);
-        }
+        tap = tap || managerTap;
+        repressed = repressed || sourceRepress;
     }
 
     action.value = value;
@@ -862,6 +1092,38 @@ void InputActionsRuntime::updateAction(RAction& ra, int mapIndex, bool active, f
     action.pressed = pressedNow;
     if (action.pressedThisFrame) action.fixedPressed = true;
     if (action.releasedThisFrame) action.fixedReleased = true;
+
+    // the Input Manager's view: an injection or a VECTOR2 is what the action is; else the
+    // bindings' sums, held while a control holds it; a press and release inside one window give
+    // the down and the up, and so does a release and a press again while held
+    const bool managerWas = action.managerHeld;
+    bool managerRepress = bindingRepress || sourceRepress;
+    if (action.type == InputActionType::VECTOR2 || injected){
+        action.managerBounded = action.type == InputActionType::VECTOR2 ? magnitude : value.x;
+        action.managerRaw = action.managerBounded;
+        action.managerDelta = 0.0f;
+        managerHeld = pressedNow;
+        managerTap = tap;
+        managerRepress = false;
+    }else{
+        action.managerBounded = active ? bounded.x : 0.0f;
+        action.managerRaw = active ? managerRaw : 0.0f;
+        action.managerDelta = active ? delta.x : 0.0f;
+        managerTap = active && (bindingTap || managerTap);
+        managerHeld = active && managerHeld;
+        managerRepress = active && managerRepress;
+    }
+    action.managerHeld = managerHeld;
+    action.managerDown = (!managerWas && (managerHeld || managerTap)) || managerRepress;
+    action.managerUp = (managerWas && !managerHeld) || (!managerWas && !managerHeld && managerTap) || managerRepress;
+    if (action.managerDown){
+        action.managerFixedDown = true;
+        r.frameDowns.push_back(InputActions::getManagerName(&action));
+    }
+    if (action.managerUp){
+        action.managerFixedUp = true;
+        r.frameUps.push_back(InputActions::getManagerName(&action));
+    }
 
     if (pressedNow && wasPressed && !repressed) action.heldTime += dt;
     else if (pressedNow) action.heldTime = 0.0f;
@@ -897,6 +1159,17 @@ void InputActionsRuntime::resetActionState(InputAction& action){
     action.heldTime = 0.0f;
     action.phase = InputActionPhase::WAITING;
     action.consumedByMap = -1;
+    action.managerBounded = 0.0f;
+    action.managerRaw = 0.0f;
+    action.managerDelta = 0.0f;
+    action.managerHeld = false;
+    action.managerDown = false;
+    action.managerUp = false;
+    action.managerFixedDown = false;
+    action.managerFixedUp = false;
+    action.sourcePressLatch = false;
+    action.sourceReleaseLatch = false;
+    action.sourceRepressLatch = false;
 }
 
 // the runtime arrays of the asset; maps keep the state they had (enabled, priority, pad)
@@ -951,13 +1224,19 @@ void InputActionsRuntime::build(bool keepMapState){
             if (injection != injections.end())
                 action.injection = injection->second;
             action.firstBinding = (int)r.bindings.size();
-            for (const InputBindingDesc& bindingDesc : actionDesc.bindings){
+            // the Input Manager's runtime rebinding replaces the bindings (setBindings)
+            auto replaced = r.bindingOverrides.find(path);
+            const std::vector<InputBindingDesc>& bindingDescs = replaced != r.bindingOverrides.end() ? replaced->second : actionDesc.bindings;
+            for (const InputBindingDesc& bindingDesc : bindingDescs){
                 RBinding binding = runtimeBinding(r, bindingDesc);
                 if (bindingDesc.isComposite()){
                     binding.firstPart = (int)r.parts.size();
                     binding.partCount = (int)bindingDesc.parts.size();
-                    for (const auto& part : bindingDesc.parts)
-                        r.parts.push_back(runtimeBinding(r, part.second));
+                    for (const auto& part : bindingDesc.parts){
+                        RBinding one = runtimeBinding(r, part.second);
+                        one.role = inputCompositePartIndex(bindingDesc.composite, part.first);
+                        r.parts.push_back(std::move(one));
+                    }
                 }
                 r.bindings.push_back(std::move(binding));
             }
@@ -1054,6 +1333,7 @@ bool InputActions::loadFromText(const std::string& path, const std::string& text
     r.path = path;
     r.asset = std::move(asset);
     r.loaded = true;
+    r.builtin = false;
     if (!same){
         r.overrides.clear();
         loadOverrides();
@@ -1110,6 +1390,9 @@ void InputActions::unload(){
         object->onPerformed.clear();
         object->onCanceled.clear();
     }
+    // a game without an actions asset has Unity's defaults (and their rebinding overrides)
+    r.installDefaults();
+    loadOverrides();
 }
 
 bool InputActions::isLoaded(){
@@ -1140,7 +1423,7 @@ InputAction* InputActions::get(const std::string& mapSlashAction){
         return action->action;
     // an action the asset no longer has, as a script holds it from before an edit
     auto it = r.actionObjects.find(mapSlashAction);
-    return it != r.actionObjects.end() && r.loaded ? it->second.get() : nullptr;
+    return it != r.actionObjects.end() && (r.loaded || r.builtin) ? it->second.get() : nullptr;
 }
 
 std::vector<InputAction*> InputActions::getActions(){
@@ -1368,13 +1651,16 @@ void InputActions::removeOverride(const std::string& bindingId){
 
 std::string InputActions::getOverridesKey(){
     InputActionsRuntime& r = rt();
+    // Unity's defaults (no asset) keep theirs under their own key
+    if (r.builtin)
+        return "jasperengine.input.defaults";
     const Guid guid = AssetMap::findGuid(r.path);
     return "jasperengine.input." + (guid.isNull() ? r.path : guid.str());
 }
 
 bool InputActions::saveOverrides(){
     InputActionsRuntime& r = rt();
-    if (!r.loaded)
+    if (!r.loaded && !r.builtin)
         return false;
     r.overrideStore().write(getOverridesKey(), overridesJson(r.overrides));
     return true;
@@ -1382,7 +1668,7 @@ bool InputActions::saveOverrides(){
 
 bool InputActions::loadOverrides(){
     InputActionsRuntime& r = rt();
-    if (!r.loaded)
+    if (!r.loaded && !r.builtin)
         return false;
     const std::string text = r.overrideStore().read(getOverridesKey());
     if (text.empty())
@@ -1416,7 +1702,7 @@ void InputActions::resetOverrides(){
     for (const auto& entry : previous)
         removeOverride(entry.first);
     r.overrides.clear();
-    if (r.loaded)
+    if (r.loaded || r.builtin)
         r.overrideStore().remove(getOverridesKey());
 }
 
@@ -1470,7 +1756,7 @@ std::string InputActions::getControlDisplayName(const std::string& path, int mod
 bool InputActions::isControlBound(const std::string& path){
     InputActionsRuntime& r = rt();
     const InputControlPath control = InputControlPath::parse(path);
-    if (!control.isValid() || !r.loaded)
+    if (!control.isValid() || (!r.loaded && !r.builtin))
         return false;
     for (const RMap& map : r.maps){
         if (!map.enabled)
@@ -1495,7 +1781,9 @@ bool InputActions::isControlBound(const std::string& path){
 
 void InputActions::evaluate(float dt){
     InputActionsRuntime& r = rt();
-    if (!r.loaded)
+    r.frameDowns.clear();
+    r.frameUps.clear();
+    if (!r.loaded && !r.builtin)
         return;
     r.evaluating = true;
     evaluateWindow(dt);
@@ -1553,8 +1841,12 @@ void InputActions::evaluateWindow(float dt){
                         binding.satisfied = false;
                         continue;
                     }
-                    binding.sample = binding.partCount > 0 ? sampleComposite(r, binding, map, action, heldMods)
-                                                           : sampleBinding(r, binding, map, action, heldMods);
+                    // a BUTTON's Input Manager entry (a smoothed axis1d) ignores its negative list
+                    const bool ignoreNegative = action.action->type == InputActionType::BUTTON && binding.smoothing &&
+                                                binding.composite == InputCompositeType::AXIS_1D;
+                    binding.sample = binding.partCount > 0 || binding.composite != InputCompositeType::NONE
+                        ? sampleComposite(r, binding, map, action, heldMods, ignoreNegative)
+                        : sampleBinding(r, binding, map, action, heldMods, binding.gamepad >= 0 ? binding.gamepad : map.gamepad);
                 }
             }
         }
@@ -1634,12 +1926,15 @@ void InputActions::endFixedStep(){
     for (RAction& action : rt().actions){
         action.action->fixedPressed = false;
         action.action->fixedReleased = false;
+        action.action->managerFixedDown = false;
+        action.action->managerFixedUp = false;
     }
 }
 
 void InputActions::resetSession(){
     InputActionsRuntime& r = rt();
     cancelRebind();
+    resetRuntimeState();
     for (int i = 0; i < r.virtualCount; i++)
         r.virtuals[i].value = Vector2(0.0f, 0.0f);
     for (auto& [path, object] : r.actionObjects){
@@ -1648,7 +1943,7 @@ void InputActions::resetSession(){
         object->onPerformed.clear();
         object->onCanceled.clear();
     }
-    if (r.loaded){
+    if (r.loaded || r.builtin){
         // the maps start again as the asset has them
         r.build(false);
         for (RAction& action : r.actions)
@@ -1687,7 +1982,7 @@ bool InputBinding::isValid() const{
 
 bool InputBinding::isComposite() const{
     const RBinding* binding = rt().findBinding(id);
-    return binding && binding->partCount > 0;
+    return binding && binding->composite != InputCompositeType::NONE;
 }
 
 std::string InputBinding::getPath() const{
@@ -1763,4 +2058,482 @@ InputActionMap InputActions::getMap(const std::string& name){
 
 InputBinding InputActions::getBinding(const std::string& id){
     return InputBinding(id);
+}
+
+// ---- Unity's Input Manager
+
+void InputActions::loadDefaults(){
+    unload();
+}
+
+bool InputActions::usesBuiltInDefaults(){
+    return rt().builtin;
+}
+
+void InputActions::setManagerActions(const std::vector<InputManagerAction>& actions){
+    InputActionsRuntime& r = rt();
+    if (r.evaluating){
+        r.deferred.push_back([actions](){ setManagerActions(actions); });
+        return;
+    }
+    InputManagerFormat::setInAsset(r.asset, actions);
+    r.reportedUnknown.clear();
+    r.build(true);
+}
+
+std::vector<InputManagerAction> InputActions::getManagerActions(){
+    const InputActionMapDesc* map = rt().asset.findMap(InputManagerFormat::MAP_NAME);
+    return map ? InputManagerFormat::fromMap(*map) : std::vector<InputManagerAction>();
+}
+
+bool InputActions::loadJson(const std::string& json, std::string* error){
+    std::vector<InputManagerAction> actions;
+    std::string why;
+    if (!InputManagerFormat::parseActionsJson(json, actions, &why)){
+        Log::error("Input actions not loaded: %s", why.c_str());
+        if (error) *error = why;
+        return false;
+    }
+    setManagerActions(actions);
+    return true;
+}
+
+std::string InputActions::toJson(){
+    return InputManagerFormat::actionsToJson(getManagerActions());
+}
+
+InputAction* InputActions::find(const std::string& name){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(name, false);
+    return index >= 0 ? r.actions[index].action : nullptr;
+}
+
+std::string InputActions::getManagerName(const InputAction* action){
+    if (!action)
+        return std::string();
+    return action->getMapName() == InputManagerFormat::MAP_NAME ? action->getName() : action->getPath();
+}
+
+namespace {
+
+    float clampFor(InputActionType type, float value){
+        return std::clamp(value, type == InputActionType::BUTTON ? 0.0f : -1.0f, 1.0f);
+    }
+
+}
+
+// the Input Manager's value of an action: its bindings' (smoothed or raw) bounded sum and the
+// sources' now, clamped, the deltas on top
+float InputActionsRuntime::managerValue(int index, bool raw, bool boundedOnly){
+    const InputAction& action = *actions[index].action;
+    if (!action.enabled)
+        return 0.0f;
+    if (action.getType() == InputActionType::VECTOR2)
+        return action.readValue();
+    float bounded = 0.0f, delta = 0.0f;
+    sourceSums(index, bounded, delta);
+    const float sum = clampFor(action.getType(), (raw ? action.managerRaw : action.managerBounded) + bounded);
+    if (boundedOnly)
+        return sum;
+    const float value = sum + action.managerDelta + delta;
+    return action.getType() == InputActionType::BUTTON ? std::clamp(value, 0.0f, 1.0f) : value;
+}
+
+float InputActions::getAxis(const std::string& name){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(name, true);
+    return index < 0 ? 0.0f : r.managerValue(index, false, false);
+}
+
+float InputActions::getAxisRaw(const std::string& name){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(name, true);
+    return index < 0 ? 0.0f : r.managerValue(index, true, false);
+}
+
+bool InputActions::getButton(const std::string& name){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(name, true);
+    return index >= 0 && r.actions[index].action->enabled && r.actions[index].action->managerHeld;
+}
+
+bool InputActions::getButtonDown(const std::string& name){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(name, true);
+    if (index < 0 || !r.actions[index].action->enabled)
+        return false;
+    const InputAction& action = *r.actions[index].action;
+    return Input::isFixedPhase() ? action.managerFixedDown : action.managerDown;
+}
+
+bool InputActions::getButtonUp(const std::string& name){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(name, true);
+    if (index < 0 || !r.actions[index].action->enabled)
+        return false;
+    const InputAction& action = *r.actions[index].action;
+    return Input::isFixedPhase() ? action.managerFixedUp : action.managerUp;
+}
+
+Vector2 InputActions::getVector(const std::string& xName, const std::string& yName){
+    InputActionsRuntime& r = rt();
+    auto boundedOf = [&r](const std::string& name){
+        const int index = r.nameIndex(name, true);
+        return index < 0 ? 0.0f : r.managerValue(index, false, true);
+    };
+    Vector2 vector(boundedOf(xName), boundedOf(yName));
+    const float length = std::sqrt(vector.x * vector.x + vector.y * vector.y);
+    if (length > 1.0f)
+        vector = vector * (1.0f / length);
+    return vector;
+}
+
+bool InputActions::hasAction(const std::string& name){
+    return rt().nameIndex(name, false) >= 0;
+}
+
+std::vector<std::string> InputActions::getActionNames(){
+    InputActionsRuntime& r = rt();
+    std::vector<std::string> names;
+    for (const RMap& map : r.maps){
+        if (map.name != InputManagerFormat::MAP_NAME)
+            continue;
+        for (int a = map.firstAction; a < map.firstAction + map.actionCount; a++)
+            names.push_back(r.actions[a].action->getName());
+    }
+    for (const RMap& map : r.maps){
+        if (map.name == InputManagerFormat::MAP_NAME)
+            continue;
+        for (int a = map.firstAction; a < map.firstAction + map.actionCount; a++)
+            names.push_back(r.actions[a].action->getPath());
+    }
+    return names;
+}
+
+void InputActions::setActionEnabled(const std::string& name, bool enabled){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(name, true);
+    if (index < 0)
+        return;
+    InputAction& action = *r.actions[index].action;
+    if (action.enabled == enabled)
+        return;
+    action.enabled = enabled;
+    // from rest either way: no edge of the change
+    InputActionsRuntime::resetActionState(action);
+    RAction& ra = r.actions[index];
+    for (int b = ra.firstBinding; b < ra.firstBinding + ra.bindingCount; b++)
+        r.bindings[b].smoothed = Vector2(0.0f, 0.0f);
+}
+
+bool InputActions::isActionEnabled(const std::string& name){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(name, true);
+    return index >= 0 && r.actions[index].action->enabled;
+}
+
+// ---- virtual sources
+
+void InputActions::setSourceValue(uintptr_t owner, const std::string& action, float value, InputSourceKind kind){
+    InputActionsRuntime& r = rt();
+    if (!std::isfinite(value)) value = 0.0f;
+    value = std::clamp(value, -1.0f, 1.0f);
+    for (auto it = r.sources.begin(); it != r.sources.end(); ++it){
+        if (it->owner == owner && !it->delta && it->action == action){
+            r.noteSourceChange(it->index, it->value, value);
+            if (value == 0.0f) r.sources.erase(it);
+            else it->value = value;
+            return;
+        }
+    }
+    const int index = r.nameIndex(action, true);
+    if (value == 0.0f || index < 0)
+        return;
+    r.noteSourceChange(index, 0.0f, value);
+    Source source;
+    source.owner = owner;
+    source.action = action;
+    source.index = index;
+    source.value = value;
+    source.kind = kind;
+    r.sources.push_back(source);
+}
+
+void InputActions::addSourceDelta(uintptr_t owner, const std::string& action, float delta, InputSourceKind kind){
+    InputActionsRuntime& r = rt();
+    if (!std::isfinite(delta) || delta == 0.0f)
+        return;
+    for (Source& source : r.sources){
+        if (source.owner == owner && source.delta && source.action == action){
+            source.value += delta;
+            return;
+        }
+    }
+    const int index = r.nameIndex(action, true);
+    if (index < 0)
+        return;
+    Source source;
+    source.owner = owner;
+    source.action = action;
+    source.index = index;
+    source.value = delta;
+    source.delta = true;
+    source.kind = kind;
+    r.sources.push_back(source);
+}
+
+namespace {
+
+    template<typename Pred>
+    void clearSourcesWhere(InputActionsRuntime& r, Pred&& pred){
+        r.sources.erase(std::remove_if(r.sources.begin(), r.sources.end(), [&](const Source& source){
+                            if (!pred(source)) return false;
+                            // a button released by its owner going still gives its up
+                            if (!source.delta) r.noteSourceChange(source.index, source.value, 0.0f);
+                            return true;
+                        }),
+                        r.sources.end());
+    }
+
+}
+
+void InputActions::clearSource(uintptr_t owner){
+    clearSourcesWhere(rt(), [owner](const Source& source){ return source.owner == owner; });
+}
+
+void InputActions::clearSources(InputSourceKind kind){
+    clearSourcesWhere(rt(), [kind](const Source& source){ return source.kind == kind; });
+}
+
+void InputActions::clearAllSources(){
+    clearSourcesWhere(rt(), [](const Source&){ return true; });
+}
+
+// the top bit: no user-space address has it
+static constexpr uintptr_t namedSourceBit = static_cast<uintptr_t>(1) << (sizeof(uintptr_t) * 8 - 1);
+
+uintptr_t InputActions::namedSource(const std::string& name){
+    InputActionsRuntime& r = rt();
+    auto it = std::find(r.namedSources.begin(), r.namedSources.end(), name);
+    const size_t index = static_cast<size_t>(it - r.namedSources.begin());
+    if (it == r.namedSources.end())
+        r.namedSources.push_back(name);
+    return namedSourceBit | static_cast<uintptr_t>(index + 1);
+}
+
+bool InputActions::isNamedSource(uintptr_t owner){
+    return (owner & namedSourceBit) != 0;
+}
+
+bool InputActions::isMouseMotionBound(const std::string& action){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(action, false);
+    if (index < 0)
+        return false;
+    const RAction& ra = r.actions[index];
+    for (int b = ra.firstBinding; b < ra.firstBinding + ra.bindingCount; b++){
+        const RBinding& binding = r.bindings[b];
+        if (binding.control.kind == InputControlKind::MOUSE_DELTA)
+            return true;
+        for (int p = 0; p < binding.partCount; p++){
+            if (r.parts[binding.firstPart + p].control.kind == InputControlKind::MOUSE_DELTA)
+                return true;
+        }
+    }
+    return false;
+}
+
+// ---- the Input Manager's runtime rebinding
+
+bool InputActions::setBindings(const std::string& action, const std::vector<InputManagerBinding>& bindings, std::string* error){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(action, true);
+    if (index < 0){
+        if (error) *error = "Input action \"" + action + "\" does not exist (Project Settings > Input)";
+        return false;
+    }
+    const std::string problem = InputManagerFormat::validateBindings(bindings, action);
+    if (!problem.empty()){
+        if (error) *error = problem;
+        return false;
+    }
+    if (r.evaluating){
+        r.deferred.push_back([action, bindings](){ setBindings(action, bindings, nullptr); });
+        return true;
+    }
+    const std::string path = r.actions[index].action->getPath();
+    std::vector<InputBindingDesc> descs;
+    for (size_t b = 0; b < bindings.size(); b++)
+        descs.push_back(InputManagerFormat::toBinding(bindings[b], "override/" + path + "/" + std::to_string(b)));
+    r.bindingOverrides[path] = std::move(descs);
+    r.build(true);
+    return true;
+}
+
+std::vector<InputManagerBinding> InputActions::getBindings(const std::string& action){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(action, true);
+    if (index < 0)
+        return {};
+    const std::string path = r.actions[index].action->getPath();
+    std::vector<InputManagerBinding> out;
+    auto replaced = r.bindingOverrides.find(path);
+    if (replaced != r.bindingOverrides.end()){
+        for (const InputBindingDesc& desc : replaced->second)
+            out.push_back(InputManagerFormat::fromBinding(desc));
+        return out;
+    }
+    if (const InputActionDesc* desc = r.asset.findAction(path)){
+        for (const InputBindingDesc& binding : desc->bindings){
+            // the per-binding path overrides (rebinding) apply
+            InputBindingDesc effective = binding;
+            if (auto it = r.overrides.find(binding.id); it != r.overrides.end()) effective.path = it->second;
+            for (auto& part : effective.parts){
+                if (auto it = r.overrides.find(part.second.id); it != r.overrides.end()) part.second.path = it->second;
+            }
+            out.push_back(InputManagerFormat::fromBinding(effective));
+        }
+    }
+    return out;
+}
+
+bool InputActions::hasBindingOverride(const std::string& action){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(action, false);
+    return index >= 0 && r.bindingOverrides.count(r.actions[index].action->getPath()) > 0;
+}
+
+void InputActions::resetBindings(const std::string& action){
+    InputActionsRuntime& r = rt();
+    if (action.empty()){
+        if (r.bindingOverrides.empty())
+            return;
+        r.bindingOverrides.clear();
+    }else{
+        const int index = r.nameIndex(action, true);
+        if (index < 0 || r.bindingOverrides.erase(r.actions[index].action->getPath()) == 0)
+            return;
+    }
+    if (r.evaluating){
+        r.deferred.push_back([](){ rt().build(true); });
+        return;
+    }
+    r.build(true);
+}
+
+std::string InputActions::exportOverrides(){
+    InputActionsRuntime& r = rt();
+    nlohmann::ordered_json bindings = nlohmann::ordered_json::object();
+    for (const auto& [path, descs] : r.bindingOverrides){
+        const int index = r.nameIndex(path, false);
+        const std::string name = index >= 0 ? getManagerName(r.actions[index].action) : path;
+        std::vector<InputManagerBinding> flat;
+        for (const InputBindingDesc& desc : descs)
+            flat.push_back(InputManagerFormat::fromBinding(desc));
+        bindings[name] = nlohmann::ordered_json::parse(InputManagerFormat::bindingsToJson(flat));
+    }
+    nlohmann::ordered_json json = nlohmann::ordered_json::object();
+    json["version"] = 1;
+    json["bindings"] = bindings;
+    return json.dump();
+}
+
+bool InputActions::importOverrides(const std::string& text, std::string* error){
+    const nlohmann::json json = nlohmann::json::parse(text, nullptr, false);
+    if (json.is_discarded()){
+        if (error) *error = "not valid JSON";
+        return false;
+    }
+    if (!json.is_object() || !json.contains("bindings") || !json["bindings"].is_object()){
+        if (error) *error = "expected {\"version\": 1, \"bindings\": {\"Action\": [...]}} (what exportBindings returns)";
+        return false;
+    }
+    if (json.contains("version") && (!json["version"].is_number_integer() || json["version"].get<int>() != 1)){
+        if (error) *error = "bindings version " + json["version"].dump() + " is not supported";
+        return false;
+    }
+    InputActionsRuntime& r = rt();
+    std::map<std::string, std::vector<InputBindingDesc>> overrides;
+    for (auto it = json["bindings"].begin(); it != json["bindings"].end(); ++it){
+        const int index = r.nameIndex(it.key(), false);
+        if (index < 0){
+            Log::warn("Input bindings of \"%s\" skipped: the game has no such action", it.key().c_str());
+            continue;
+        }
+        std::vector<InputManagerBinding> bindings;
+        std::string why;
+        if (!InputManagerFormat::parseBindingsJson(it.value().dump(), bindings, &why, it.key())){
+            if (error) *error = why;
+            return false;
+        }
+        const std::string path = r.actions[index].action->getPath();
+        std::vector<InputBindingDesc> descs;
+        for (size_t b = 0; b < bindings.size(); b++)
+            descs.push_back(InputManagerFormat::toBinding(bindings[b], "override/" + path + "/" + std::to_string(b)));
+        overrides[path] = std::move(descs);
+    }
+    if (r.evaluating){
+        r.deferred.push_back([overrides](){
+            rt().bindingOverrides = overrides;
+            rt().build(true);
+        });
+        return true;
+    }
+    r.bindingOverrides = std::move(overrides);
+    r.build(true);
+    return true;
+}
+
+void InputActions::resetRuntimeState(){
+    InputActionsRuntime& r = rt();
+    r.sources.clear();
+    r.frameDowns.clear();
+    r.frameUps.clear();
+    r.reportedUnknown.clear();
+    const bool hadOverrides = !r.bindingOverrides.empty();
+    r.bindingOverrides.clear();
+    for (auto& [path, object] : r.actionObjects){
+        object->enabled = true;
+        InputActionsRuntime::resetActionState(*object);
+    }
+    if (hadOverrides && !r.evaluating)
+        r.build(true);
+    for (RBinding& binding : r.bindings)
+        binding.smoothed = Vector2(0.0f, 0.0f);
+}
+
+bool InputActions::getState(const std::string& name, State& out){
+    InputActionsRuntime& r = rt();
+    const int index = r.nameIndex(name, false);
+    if (index < 0)
+        return false;
+    out.value = r.managerValue(index, false, false);
+    out.raw = r.managerValue(index, true, false);
+    out.pressed = r.actions[index].action->enabled && r.actions[index].action->managerHeld;
+    out.enabled = r.actions[index].action->enabled;
+    return true;
+}
+
+// ---- Engine
+
+void InputActions::setSuppression(const InputSuppression& suppression){
+    rt().suppression = suppression;
+}
+
+const InputSuppression& InputActions::getSuppression(){
+    return rt().suppression;
+}
+
+void InputActions::endFrame(){
+    InputActionsRuntime& r = rt();
+    r.sources.erase(std::remove_if(r.sources.begin(), r.sources.end(), [](const Source& source){ return source.delta; }),
+                    r.sources.end());
+}
+
+const std::vector<std::string>& InputActions::getFrameButtonDowns(){
+    return rt().frameDowns;
+}
+
+const std::vector<std::string>& InputActions::getFrameButtonUps(){
+    return rt().frameUps;
 }

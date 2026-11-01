@@ -5,9 +5,11 @@
 
 #include "Input.h"
 #include "input/InputControlPath.h"
+#include "input/InputManagerFormat.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <functional>
 #include <random>
@@ -19,9 +21,9 @@ using namespace jasperengine;
 namespace {
 
     const char* const MAP_KEYS[] = {"name", "priority", "enabled", "consume", "exclusive", "ignoreWhenUIConsumes", "actions"};
-    const char* const ACTION_KEYS[] = {"name", "type", "pressPoint", "holdTime", "deadzone", "bindings"};
+    const char* const ACTION_KEYS[] = {"name", "description", "type", "pressPoint", "holdTime", "deadzone", "bindings"};
     const char* const BINDING_KEYS[] = {"id", "path", "scale", "invert", "deadzone", "requiredMods", "forbiddenMods", "groups",
-                                        "composite", "normalize", "parts"};
+                                        "gamepad", "smoothing", "composite", "normalize", "parts"};
 
     template<size_t N>
     std::string passthroughOf(const InputJson& json, const char* const (&known)[N]){
@@ -101,6 +103,40 @@ namespace {
         return true;
     }
 
+    bool readSmoothing(const InputJson& json, InputSmoothing& out, std::string& error, const std::string& where){
+        if (!json.is_object()){
+            error = where + ": \"smoothing\" must be an object {gravity, sensitivity, dead, snap}";
+            return false;
+        }
+        out = InputSmoothing();
+        if (!readNumber(json, "gravity", out.gravity, error, where + " smoothing")) return false;
+        if (!readNumber(json, "sensitivity", out.sensitivity, error, where + " smoothing")) return false;
+        if (!readNumber(json, "dead", out.dead, error, where + " smoothing")) return false;
+        if (!readBool(json, "snap", out.snap, error, where + " smoothing")) return false;
+        for (auto it = json.begin(); it != json.end(); ++it){
+            if (it.key() != "gravity" && it.key() != "sensitivity" && it.key() != "dead" && it.key() != "snap"){
+                error = where + ": smoothing has gravity, sensitivity, dead and snap, not \"" + it.key() + "\"";
+                return false;
+            }
+        }
+        if (!std::isfinite(out.gravity) || !std::isfinite(out.sensitivity) || !std::isfinite(out.dead) ||
+                out.gravity < 0.0f || out.sensitivity < 0.0f || out.dead < 0.0f || out.dead >= 1.0f){
+            error = where + ": smoothing's gravity, sensitivity and dead are numbers >= 0 (dead below 1)";
+            return false;
+        }
+        return true;
+    }
+
+    InputJson smoothingToJson(const InputSmoothing& smoothing){
+        InputJson json = InputJson::object();
+        json["gravity"] = smoothing.gravity;
+        json["sensitivity"] = smoothing.sensitivity;
+        json["dead"] = smoothing.dead;
+        if (smoothing.snap)
+            json["snap"] = true;
+        return json;
+    }
+
     bool compositeFromName(const std::string& name, InputCompositeType& type){
         if (name == "axis1d"){ type = InputCompositeType::AXIS_1D; return true; }
         if (name == "dpad2d"){ type = InputCompositeType::DPAD_2D; return true; }
@@ -137,6 +173,22 @@ namespace {
                 out.groups.push_back(group.get<std::string>());
             }
         }
+        if (json.contains("gamepad")){
+            if (isPart || !json["gamepad"].is_number_integer() || json["gamepad"].get<long long>() < -1 || json["gamepad"].get<long long>() > 15){
+                error = where + ": \"gamepad\" must be -1 (the map's) or 0-15 (and not on a part)";
+                return false;
+            }
+            out.gamepad = json["gamepad"].get<int>();
+        }
+        if (json.contains("smoothing")){
+            InputSmoothing smoothing;
+            if (isPart){
+                error = where + ": \"smoothing\" is the composite's, not a part's";
+                return false;
+            }
+            if (!readSmoothing(json["smoothing"], smoothing, error, where)) return false;
+            out.smoothing = smoothing;
+        }
         if (json.contains("composite")){
             std::string name;
             if (!readString(json, "composite", name, error, where, false)) return false;
@@ -151,6 +203,16 @@ namespace {
                 return false;
             }
             for (const std::string& part : inputCompositeParts(out.composite)){
+                // a role: one part, or a list of them (several controls, or none)
+                if (parts.contains(part) && parts[part].is_array()){
+                    for (size_t i = 0; i < parts[part].size(); i++){
+                        InputBindingDesc desc;
+                        if (!bindingFromJson(parts[part][i], desc, error, where + " part " + part + "[" + std::to_string(i) + "]", true))
+                            return false;
+                        out.parts.emplace_back(part, desc);
+                    }
+                    continue;
+                }
                 InputBindingDesc desc;
                 if (parts.contains(part)){
                     if (!bindingFromJson(parts[part], desc, error, where + " part " + part, true))
@@ -179,8 +241,15 @@ namespace {
             if (!binding.normalize)
                 json["normalize"] = false;
             InputJson parts = InputJson::object();
-            for (const auto& [part, desc] : binding.parts)
-                parts[part] = bindingToJson(desc, true);
+            for (const std::string& role : inputCompositeParts(binding.composite)){
+                InputJson list = InputJson::array();
+                for (const auto& [part, desc] : binding.parts){
+                    if (part == role)
+                        list.push_back(bindingToJson(desc, true));
+                }
+                // one part as an object (as S22 wrote them), several or none as a list
+                parts[role] = list.size() == 1 ? list[0] : list;
+            }
             json["parts"] = parts;
         }else{
             json["path"] = binding.path;
@@ -197,6 +266,10 @@ namespace {
             json["forbiddenMods"] = inputModifierNames(binding.forbiddenMods);
         if (!binding.groups.empty() && !isPart)
             json["groups"] = binding.groups;
+        if (binding.gamepad >= 0)
+            json["gamepad"] = binding.gamepad;
+        if (binding.smoothing)
+            json["smoothing"] = smoothingToJson(*binding.smoothing);
         appendPassthrough(json, binding.passthrough);
         return json;
     }
@@ -277,6 +350,15 @@ std::vector<std::string> jasperengine::inputCompositeParts(InputCompositeType ty
     return {};
 }
 
+int jasperengine::inputCompositePartIndex(InputCompositeType type, const std::string& part){
+    const std::vector<std::string> names = inputCompositeParts(type);
+    for (size_t i = 0; i < names.size(); i++){
+        if (names[i] == part)
+            return (int)i;
+    }
+    return -1;
+}
+
 bool InputActionAssetDesc::parse(const std::string& text, InputActionAssetDesc& out, std::string& error){
     InputJson json = InputJson::parse(text, nullptr, false);
     if (json.is_discarded()){
@@ -342,10 +424,11 @@ bool jasperengine::inputActionAssetFromJson(const InputJson& json, InputActionAs
             }
             InputActionDesc action;
             if (!readString(actionJson, "name", action.name, error, where, true)) return false;
-            if (action.name.empty() || action.name.find('/') != std::string::npos || !actionNames.insert(action.name).second){
-                error = where + ": the name \"" + action.name + "\" must be unique in its map, not empty and without '/'";
+            if (action.name.empty() || !actionNames.insert(action.name).second){
+                error = where + ": the name \"" + action.name + "\" must be unique in its map and not empty";
                 return false;
             }
+            if (!readString(actionJson, "description", action.description, error, where, false)) return false;
             std::string type = "BUTTON";
             if (!readString(actionJson, "type", type, error, where, false)) return false;
             if (!inputActionTypeFromName(type, action.type)){
@@ -399,6 +482,7 @@ InputJson jasperengine::inputActionAssetToJson(const InputActionAssetDesc& asset
         for (const InputActionDesc& action : map.actions){
             InputJson actionJson = InputJson::object();
             actionJson["name"] = action.name;
+            if (!action.description.empty()) actionJson["description"] = action.description;
             actionJson["type"] = inputActionTypeName(action.type);
             if (action.pressPoint != 0.5f) actionJson["pressPoint"] = action.pressPoint;
             if (action.holdTime != 0.0f) actionJson["holdTime"] = action.holdTime;
@@ -567,9 +651,13 @@ namespace {
         return (size_t)index;
     }
 
+    // a map's name has no '/' ("Map/Action" splits at the first); an action's may (an Input
+    // Manager name such as "Fire/Alt")
     void checkName(const std::string& name, const char* what){
-        if (name.empty() || name.find('/') != std::string::npos)
-            fail(std::string("a ") + what + " name must not be empty or contain '/'");
+        if (name.empty())
+            fail(std::string("a ") + what + " name must not be empty");
+        if (std::string(what) == "map" && name.find('/') != std::string::npos)
+            fail("a map name must not contain '/'");
     }
 
     float numberValue(const InputJson& value, const std::string& key){
@@ -619,11 +707,15 @@ namespace {
                 fail("\"type\" must be BUTTON, AXIS or VECTOR2");
         }else if (key == "press_point") action.pressPoint = numberValue(value, key);
         else if (key == "hold_time") action.holdTime = std::max(0.0f, numberValue(value, key));
+        else if (key == "description"){
+            if (!value.is_string()) fail("\"description\" must be a string");
+            action.description = value.get<std::string>();
+        }
         else if (key == "deadzone"){
             if (value.is_null()) action.deadzone.reset();
             else action.deadzone = numberValue(value, key);
         }
-        else fail("an action has type, press_point, hold_time, deadzone (rename for name), not \"" + key + "\"");
+        else fail("an action has type, description, press_point, hold_time, deadzone (rename for name), not \"" + key + "\"");
     }
 
     void setBindingValue(InputBindingDesc& binding, bool isPart, const std::string& key, const InputJson& value){
@@ -648,9 +740,34 @@ namespace {
                 binding.groups.push_back(group.get<std::string>());
             }
         }else if (key == "normalize" && binding.isComposite()) binding.normalize = boolValue(value, key);
+        else if (key == "gamepad" && !isPart){
+            if (value.is_null()) binding.gamepad = -1;
+            else if (!value.is_number_integer() || value.get<long long>() < -1 || value.get<long long>() > 15)
+                fail("\"gamepad\" must be -1 (the map's), 0-15 or null");
+            else binding.gamepad = value.get<int>();
+        }else if (key == "smoothing" && !isPart){
+            if (value.is_null()){
+                binding.smoothing.reset();
+            }else{
+                InputSmoothing smoothing;
+                std::string error;
+                if (!readSmoothing(value, smoothing, error, "binding")) fail(error);
+                binding.smoothing = smoothing;
+            }
+        }else if ((key == "gravity" || key == "sensitivity" || key == "dead" || key == "snap") && !isPart){
+            InputSmoothing smoothing = binding.smoothing ? *binding.smoothing : InputSmoothing();
+            if (key == "snap") smoothing.snap = boolValue(value, key);
+            else{
+                const float number = numberValue(value, key);
+                if (!std::isfinite(number) || number < 0.0f) fail("\"" + key + "\" must be a number >= 0");
+                if (key == "dead" && number >= 1.0f) fail("\"dead\" must be below 1");
+                (key == "gravity" ? smoothing.gravity : key == "sensitivity" ? smoothing.sensitivity : smoothing.dead) = number;
+            }
+            binding.smoothing = smoothing;
+        }
         else fail("a binding has path, scale, invert, deadzone, required_mods, forbidden_mods" +
-                  std::string(isPart ? "" : ", groups") + std::string(binding.isComposite() ? ", normalize" : "") +
-                  ", not \"" + key + "\"");
+                  std::string(isPart ? "" : ", groups, gamepad, smoothing (gravity, sensitivity, dead, snap)") +
+                  std::string(binding.isComposite() ? ", normalize" : "") + ", not \"" + key + "\"");
     }
 
     void applyValues(const InputJson& op, const std::function<void(const std::string&, const InputJson&)>& set){
@@ -748,25 +865,70 @@ std::string jasperengine::applyInputActionsOp(InputActionAssetDesc& asset, const
             fail("\"composite\" must be axis1d or dpad2d");
         const InputJson parts = op.value("parts", InputJson::object());
         if (!parts.is_object())
-            fail("\"parts\" must be an object {part: path | {path, ...}}");
+            fail("\"parts\" must be an object {part: path | {path, ...} | [path | {path, ...}, ...]}");
         const std::vector<std::string> partNames = inputCompositeParts(binding.composite);
         for (auto it = parts.begin(); it != parts.end(); ++it){
             if (std::find(partNames.begin(), partNames.end(), it.key()) == partNames.end())
                 fail(std::string(inputCompositeName(binding.composite)) + " has no part \"" + it.key() + "\"");
         }
         for (const std::string& part : partNames){
+            if (parts.contains(part) && parts[part].is_array()){
+                for (const InputJson& one : parts[part])
+                    binding.parts.emplace_back(part, bindingFromOp(one, true));
+                continue;
+            }
             InputBindingDesc desc;
             if (parts.contains(part))
                 desc = bindingFromOp(parts[part], true);
             binding.parts.emplace_back(part, desc);
         }
-        if (op.contains("groups")) setBindingValue(binding, false, "groups", op["groups"]);
-        if (op.contains("normalize")) setBindingValue(binding, false, "normalize", op["normalize"]);
+        for (const char* key : {"groups", "normalize", "gamepad", "smoothing", "scale", "invert"}){
+            if (op.contains(key)) setBindingValue(binding, false, key, op[key]);
+        }
         freshIds(edit, binding);
         const size_t index = indexArg(op, action.bindings.size(), true);
         action.bindings.insert(action.bindings.begin() + (std::ptrdiff_t)index, binding);
         name = "Add " + std::string(binding.composite == InputCompositeType::DPAD_2D ? "2D Vector" : "1D Axis") +
                " Composite to " + path;
+    }else if (kind == "add_input_manager"){
+        // Unity's Input Manager: the "Input Manager" map with its eleven default axes and buttons
+        if (edit.findMap(InputManagerFormat::MAP_NAME)) fail(std::string("a map \"") + InputManagerFormat::MAP_NAME + "\" exists");
+        InputActionMapDesc map = InputManagerFormat::toMap(InputManagerFormat::defaults());
+        const size_t index = indexArg(op, edit.maps.size(), true);
+        edit.maps.insert(edit.maps.begin() + (std::ptrdiff_t)index, map);
+        edit.assignMissingIds();
+        name = std::string("Add Action Map ") + InputManagerFormat::MAP_NAME;
+    }else if (kind == "add_part"){
+        BindingPlace place = bindingAt(edit, str(op, "binding"));
+        if (place.composite || !place.binding->isComposite())
+            fail("add_part takes a composite's id");
+        InputBindingDesc& composite = *place.binding;
+        const std::string role = str(op, "part");
+        const int wanted = inputCompositePartIndex(composite.composite, role);
+        if (wanted < 0)
+            fail(std::string(inputCompositeName(composite.composite)) + " has no part \"" + role + "\"");
+        InputJson spec = op.contains("path") && op["path"].is_object() ? op["path"] : op;
+        spec.erase("binding");
+        spec.erase("part");
+        InputBindingDesc part = bindingFromOp(spec, true);
+        part.id = edit.newBindingId();
+        // its place: the index-th of its role (default: after the role's last part)
+        size_t roleCount = 0;
+        for (const auto& existing : composite.parts){
+            if (existing.first == role) roleCount++;
+        }
+        const size_t roleIndex = indexArg(op, roleCount, true);
+        size_t insertAt = composite.parts.size();
+        size_t seen = 0;
+        for (size_t i = 0; i < composite.parts.size(); i++){
+            const int at = inputCompositePartIndex(composite.composite, composite.parts[i].first);
+            if ((at == wanted && seen++ == roleIndex) || at > wanted){
+                insertAt = i;
+                break;
+            }
+        }
+        composite.parts.insert(composite.parts.begin() + (std::ptrdiff_t)insertAt, {role, part});
+        name = "Add " + role + " Part " + part.path;
     }else if (kind == "set"){
         const std::string target = where(op);
         if (target == "map"){
@@ -801,10 +963,16 @@ std::string jasperengine::applyInputActionsOp(InputActionAssetDesc& asset, const
             name = "Delete Action " + path;
         }else{
             BindingPlace place = bindingAt(edit, str(op, "binding"));
-            if (place.composite)
-                fail("a composite's part cannot be removed: set its path, or remove the composite");
-            name = "Delete Binding " + (place.binding->isComposite() ? std::string(inputCompositeName(place.binding->composite)) : place.binding->path);
-            place.action->bindings.erase(place.action->bindings.begin() + (std::ptrdiff_t)place.index);
+            if (place.composite){
+                // a part goes from its role (a role left empty reads 0)
+                const std::string id = place.binding->id;
+                name = "Delete Part " + place.binding->path;
+                auto& parts = place.composite->parts;
+                parts.erase(std::remove_if(parts.begin(), parts.end(), [&](const auto& part){ return part.second.id == id; }), parts.end());
+            }else{
+                name = "Delete Binding " + (place.binding->isComposite() ? std::string(inputCompositeName(place.binding->composite)) : place.binding->path);
+                place.action->bindings.erase(place.action->bindings.begin() + (std::ptrdiff_t)place.index);
+            }
         }
     }else if (kind == "rename"){
         const std::string newName = str(op, "name");
@@ -908,7 +1076,7 @@ std::string jasperengine::applyInputActionsOp(InputActionAssetDesc& asset, const
             name = "Duplicate Binding " + (copy.isComposite() ? std::string(inputCompositeName(copy.composite)) : copy.path);
         }
     }else{
-        fail("op must be add_map, add_action, add_binding, add_composite, set, remove, rename, move or duplicate, not \"" + kind + "\"");
+        fail("op must be add_map, add_input_manager, add_action, add_binding, add_composite, add_part, set, remove, rename, move or duplicate, not \"" + kind + "\"");
     }
 
     asset = std::move(edit);

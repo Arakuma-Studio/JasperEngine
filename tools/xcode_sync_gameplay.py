@@ -31,6 +31,8 @@ FILES = [
     ("input/InputRebind.h", "Input.h"),
     ("input/InputVirtualControls.cpp", "Input.cpp"),
     ("input/InputVirtualControls.h", "Input.h"),
+    ("input/InputManagerFormat.cpp", "Input.cpp"),
+    ("input/InputManagerFormat.h", "Input.h"),
     ("script/binding/GameplayClassesLua.cpp", "script/binding/ProfilerClassesLua.cpp"),
     ("component/CharacterCollision.h", "component/Joint2DComponent.h"),
     ("component/CharacterController2DComponent.h", "component/Joint2DComponent.h"),

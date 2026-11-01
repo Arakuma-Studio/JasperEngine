@@ -33,7 +33,6 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
-// SYNC4-ABSORB(input): upstream's command/type/InputActionsCmd.h (its input.actions setting) left out
 #include "input/InputActions.h"
 #include "registry/TagManager.h"
 #include "command/type/ShaderGlobalsCmd.h"
@@ -912,7 +911,7 @@ void getProjectSettingsTool(const CallPtr& call) {
         for (const Setting& s : settingsTable()) {
             const std::string c = categoryOf(s.key);
             if (category.empty()) {
-                // the platform overrides, and the input actions (long): asked for by name
+                // the platform overrides, and the input settings (the Input Manager list is long): asked for by name
                 if (platformCategories().count(c) || c == "input") continue;
             } else if (category != "all" && c != category) {
                 continue;
@@ -944,8 +943,8 @@ void getProjectSettingsTool(const CallPtr& call) {
         data["glsl_fs"] = ShaderGlobals::getGlslBlock(ctx.project()->getShaderGlobals(), ShaderStageType::FRAGMENT);
     }
     if (!args.contains("keys") && args.value("category", "").empty()) {
-        data["note"] = "Platform overrides (web, linux, windows, macos, ios, android) and input (input.actions) are left "
-                       "out: pass category or keys.";
+        data["note"] = "Platform overrides (web, linux, windows, macos, ios, android) and input (input.actions, "
+                       "input.manager_actions) are left out: pass category or keys.";
     }
     call->ok(std::to_string(values.size()) + " setting(s).", data);
 }

@@ -188,8 +188,9 @@ void editor::PlayInput::release(uint32_t sceneId) {
 void editor::PlayInput::releaseAll() {
     releaseKeys(0);
     releaseMouseButtons(0);
-    // SYNC4-ABSORB(input): upstream also released whatever else the game held (Input::releaseAll:
-    // agent-pressed keys, gamepad buttons, touches); S22's Input has no such call
+    // and whatever else the game holds (keys pressed by an agent, gamepad buttons, touches):
+    // their ups are seen by the next frame
+    Input::releaseAll();
 }
 
 void editor::PlayInput::forwardCharacters(ImGuiIO& io){

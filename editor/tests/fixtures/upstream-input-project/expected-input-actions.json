@@ -1,0 +1,318 @@
+{
+  "version": 1,
+  "actions": [
+    {
+      "bindings": [
+        {
+          "dead": 0.001,
+          "gravity": 5.0,
+          "kind": "buttons",
+          "negative": [
+            "left",
+            "a"
+          ],
+          "positive": [
+            "right",
+            "d"
+          ],
+          "sensitivity": 6.0,
+          "snap": true
+        },
+        {
+          "axis": "left_x",
+          "dead": 0.19,
+          "gamepad": "any",
+          "kind": "gamepad_axis",
+          "sensitivity": 1.0
+        }
+      ],
+      "description": "Move left / right",
+      "name": "Horizontal",
+      "type": "axis"
+    },
+    {
+      "bindings": [
+        {
+          "dead": 0.001,
+          "gravity": 3.0,
+          "kind": "buttons",
+          "negative": [
+            "down",
+            "s"
+          ],
+          "positive": [
+            "up",
+            "w"
+          ],
+          "sensitivity": 3.0,
+          "snap": true
+        },
+        {
+          "axis": "left_y",
+          "dead": 0.25,
+          "gamepad": "any",
+          "invert": true,
+          "kind": "gamepad_axis",
+          "sensitivity": 1.0
+        }
+      ],
+      "description": "Move down / up",
+      "name": "Vertical",
+      "type": "axis"
+    },
+    {
+      "bindings": [
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "left_control",
+            "mouse_left"
+          ],
+          "sensitivity": 1000.0
+        },
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "gamepad_a"
+          ],
+          "sensitivity": 1000.0
+        }
+      ],
+      "name": "Fire1",
+      "type": "button"
+    },
+    {
+      "bindings": [
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "left_alt",
+            "mouse_right"
+          ],
+          "sensitivity": 1000.0
+        },
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "gamepad_b"
+          ],
+          "sensitivity": 1000.0
+        }
+      ],
+      "name": "Fire2",
+      "type": "button"
+    },
+    {
+      "bindings": [
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "left_shift",
+            "mouse_middle"
+          ],
+          "sensitivity": 1000.0
+        },
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "gamepad_x"
+          ],
+          "sensitivity": 1000.0
+        }
+      ],
+      "name": "Fire3",
+      "type": "button"
+    },
+    {
+      "bindings": [
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "space"
+          ],
+          "sensitivity": 1000.0
+        },
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "gamepad_y"
+          ],
+          "sensitivity": 1000.0
+        }
+      ],
+      "name": "Jump",
+      "type": "button"
+    },
+    {
+      "bindings": [
+        {
+          "axis": "x",
+          "kind": "mouse_delta",
+          "sensitivity": 0.2
+        }
+      ],
+      "description": "Mouse movement, right positive",
+      "name": "Look X",
+      "type": "axis"
+    },
+    {
+      "bindings": [
+        {
+          "axis": "y",
+          "kind": "mouse_delta",
+          "sensitivity": 0.1
+        }
+      ],
+      "description": "Mouse movement, up positive",
+      "name": "Mouse Y",
+      "type": "axis"
+    },
+    {
+      "bindings": [
+        {
+          "axis": "wheel",
+          "kind": "mouse_delta",
+          "sensitivity": 0.1
+        }
+      ],
+      "description": "Mouse wheel, up positive",
+      "name": "Mouse ScrollWheel",
+      "type": "axis"
+    },
+    {
+      "bindings": [
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "enter",
+            "kp_enter",
+            "space"
+          ],
+          "sensitivity": 1000.0
+        },
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "gamepad_a"
+          ],
+          "sensitivity": 1000.0
+        }
+      ],
+      "name": "Submit",
+      "type": "button"
+    },
+    {
+      "bindings": [
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "escape"
+          ],
+          "sensitivity": 1000.0
+        },
+        {
+          "dead": 0.001,
+          "gravity": 1000.0,
+          "kind": "buttons",
+          "positive": [
+            "gamepad_b"
+          ],
+          "sensitivity": 1000.0
+        }
+      ],
+      "name": "Cancel",
+      "type": "button"
+    },
+    {
+      "bindings": [
+        {
+          "dead": 0.0,
+          "gamepad": 1,
+          "gravity": 0.0,
+          "kind": "buttons",
+          "positive": [
+            "left_shift",
+            "gamepad_right_bumper",
+            "mouse_4"
+          ],
+          "sensitivity": 0.0
+        },
+        {
+          "axis": "right_trigger",
+          "dead": 0.1,
+          "gamepad": 2,
+          "kind": "gamepad_axis",
+          "sensitivity": 1.5
+        }
+      ],
+      "description": "quick move: \"dash\"",
+      "name": "Dash",
+      "press_point": 0.3,
+      "type": "button"
+    },
+    {
+      "bindings": [
+        {
+          "dead": 0.001,
+          "gravity": 3.0,
+          "invert": true,
+          "kind": "buttons",
+          "negative": [
+            "kp_1",
+            "0"
+          ],
+          "positive": [
+            "2",
+            "page_up"
+          ],
+          "sensitivity": 3.0,
+          "snap": true
+        },
+        {
+          "axis": "wheel",
+          "invert": true,
+          "kind": "mouse_delta",
+          "sensitivity": 0.5
+        },
+        {
+          "axis": "y",
+          "kind": "mouse_delta",
+          "sensitivity": 0.05
+        },
+        {
+          "axis": "right_y",
+          "dead": 0.19,
+          "gamepad": "any",
+          "invert": true,
+          "kind": "gamepad_axis",
+          "sensitivity": 1.0
+        }
+      ],
+      "description": "true",
+      "name": "1",
+      "type": "axis"
+    }
+  ]
+}

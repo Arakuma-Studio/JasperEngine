@@ -1,12 +1,15 @@
-// (c) JasperDev and contributors
+// (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// engine/core/Input and engine/core/input (spec docs/superpowers/specs/2026-10-31-input-design.md):
-// edges per input frame (InputEdgesTest), touches with Unity's phases (InputTouchTest), the
-// input actions with Unity's Input Manager numbers, virtual sources, rebinding and the JSON
-// shape (InputActionsTest), the control-name table (InputControlNamesTest). The device state
-// is written as the platforms do between frames; Input::beginFrame / endFrame bracket a frame
-// that runs the update.
+// Unity's Input Manager on S22's Input and Input Actions (docs/specs/S22-gameplay.md "Upstream
+// absorption"; the upstream input feature's tests, adapted): edges per input frame
+// (InputEdgesTest), touches with Unity's fields (InputTouchTest), the Input Manager map with
+// Unity's numbers, virtual sources, rebinding and the flat JSON shape (InputActionsTest), the
+// merged control-name table (InputControlNamesTest). The device state is written as the
+// platforms do between frames; Input::beginFrame(dt) / endFrame bracket a frame that runs the
+// update. Where the two input features disagreed S22's semantics stand (a touch that begins and
+// ends in one window is one ENDED touch, the fingers down come before the ones lifted, edges in
+// the fixed phase are seen by one step, an app pause cancels the fingers itself): those tests say so.
 
 #include <gtest/gtest.h>
 
@@ -15,6 +18,8 @@
 #include "Out.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
+#include "input/InputControlPath.h"
+#include "input/InputManagerFormat.h"
 
 #include "json.hpp"
 
@@ -91,12 +96,12 @@ namespace {
         return out;
     }
 
-    InputAction actionNamed(const std::string& name) {
-        for (const InputAction& action : InputActions::getActions()) {
+    InputManagerAction actionNamed(const std::string& name) {
+        for (const InputManagerAction& action : InputActions::getManagerActions()) {
             if (action.name == name) return action;
         }
         ADD_FAILURE() << "no action " << name;
-        return InputAction();
+        return InputManagerAction();
     }
 
     std::vector<std::string> names(const std::vector<InputControl>& controls) {
@@ -265,14 +270,16 @@ TEST_F(InputEdgesTest, ReleaseAllGivesTheUps) {
     EXPECT_TRUE(Input::getKeyUp(D_KEY_D));
     EXPECT_TRUE(Input::getMouseButtonUp(D_MOUSE_BUTTON_LEFT));
     EXPECT_FALSE(Input::isAnyKeyPressed());
-    ASSERT_EQ(Input::getTouchCount(), 1);
+    ASSERT_EQ(Input::getTouchCount(), 1u);
     EXPECT_EQ(Input::getTouch(0).phase, TouchPhase::Canceled);
     end();
 }
 
-TEST_F(InputEdgesTest, AnAppPauseStillLetsThePlatformCancelReachScripts) {
+TEST_F(InputEdgesTest, AnAppPauseStillLetsTheTouchCancelReachScripts) {
     // review fix: Engine::systemPause released everything, so the platform's systemTouchCancel
-    // found no finger and onTouchCancel (and the documents' cancel) never came
+    // found no finger and onTouchCancel (and the documents' cancel) never came. S22's focus
+    // release (a pause takes the focus) cancels the fingers through systemTouchCancel itself:
+    // onTouchCancel comes once, the platform's own cancel after it finds nothing left
     std::vector<int> cancelled;
     struct Listener {
         std::vector<int>* log;
@@ -285,7 +292,8 @@ TEST_F(InputEdgesTest, AnAppPauseStillLetsThePlatformCancelReachScripts) {
     Input::addTouch(6, 10, 10);
     frame();
     Engine::systemPause();
-    EXPECT_EQ(Input::numTouches(), 1u);
+    EXPECT_EQ(Input::numTouches(), 0u);
+    EXPECT_EQ(cancelled, std::vector<int>{6});
     Engine::systemTouchCancel();
     EXPECT_EQ(Input::numTouches(), 0u);
     Engine::systemResume();
@@ -294,11 +302,11 @@ TEST_F(InputEdgesTest, AnAppPauseStillLetsThePlatformCancelReachScripts) {
     EXPECT_EQ(cancelled, std::vector<int>{6});
 
     begin();
-    ASSERT_EQ(Input::getTouchCount(), 1);
+    ASSERT_EQ(Input::getTouchCount(), 1u);
     EXPECT_EQ(Input::getTouch(0).phase, TouchPhase::Canceled);
     end();
     begin();
-    EXPECT_EQ(Input::getTouchCount(), 0);
+    EXPECT_EQ(Input::getTouchCount(), 0u);
     end();
 }
 
@@ -367,7 +375,7 @@ TEST_F(InputEdgesTest, ScrollDeltaSumsTheWheelEvents) {
 TEST_F(InputTouchTest, BeganMovedStationaryEnded) {
     Input::addTouch(7, 100, 200);
     begin();
-    ASSERT_EQ(Input::getTouchCount(), 1);
+    ASSERT_EQ(Input::getTouchCount(), 1u);
     Touch touch = Input::getTouch(0);
     EXPECT_EQ(touch.fingerId, 7);
     EXPECT_EQ(touch.phase, TouchPhase::Began);
@@ -399,7 +407,7 @@ TEST_F(InputTouchTest, BeganMovedStationaryEnded) {
     // the legacy list drops the finger at once
     EXPECT_EQ(Input::numTouches(), 0u);
     begin(0.02);
-    ASSERT_EQ(Input::getTouchCount(), 1);
+    ASSERT_EQ(Input::getTouchCount(), 1u);
     touch = Input::getTouch(0);
     EXPECT_EQ(touch.phase, TouchPhase::Ended);
     EXPECT_FLOAT_EQ(touch.position.x, 110);
@@ -408,24 +416,25 @@ TEST_F(InputTouchTest, BeganMovedStationaryEnded) {
     end();
 
     begin();
-    EXPECT_EQ(Input::getTouchCount(), 0);
+    EXPECT_EQ(Input::getTouchCount(), 0u);
     EXPECT_EQ(Input::getTouch(0).fingerId, -1);
     end();
 }
 
-TEST_F(InputTouchTest, ATouchThatBeginsAndEndsBetweenFramesIsBeganThenEnded) {
+TEST_F(InputTouchTest, ATouchThatBeginsAndEndsBetweenFramesIsOneEndedTouch) {
+    // S22 (R5): once, Ended, with began set (Unity reports Began, then Ended the frame after)
     Input::addTouch(0, 10, 10);
     Input::removeTouch(0);
     begin();
-    ASSERT_EQ(Input::getTouchCount(), 1);
-    EXPECT_EQ(Input::getTouch(0).phase, TouchPhase::Began);
-    end();
-    begin();
-    ASSERT_EQ(Input::getTouchCount(), 1);
+    ASSERT_EQ(Input::getTouchCount(), 1u);
     EXPECT_EQ(Input::getTouch(0).phase, TouchPhase::Ended);
+    EXPECT_TRUE(Input::getTouch(0).began);
+    EXPECT_EQ(Input::getTouch(0).fingerId, 0);
+    EXPECT_TRUE(Input::getTouchDown(0));
+    EXPECT_TRUE(Input::getTouchUp(0));
     end();
     begin();
-    EXPECT_EQ(Input::getTouchCount(), 0);
+    EXPECT_EQ(Input::getTouchCount(), 0u);
     end();
 }
 
@@ -434,7 +443,7 @@ TEST_F(InputTouchTest, CancelIsCanceled) {
     frame();
     Input::cancelTouch(2);
     begin();
-    ASSERT_EQ(Input::getTouchCount(), 1);
+    ASSERT_EQ(Input::getTouchCount(), 1u);
     EXPECT_EQ(Input::getTouch(0).phase, TouchPhase::Canceled);
     end();
 }
@@ -476,15 +485,16 @@ TEST_F(InputTouchTest, QuickTapsCountUpAndResetAfterTimeOrDistance) {
     (void)tap;
 }
 
-TEST_F(InputTouchTest, AFingerIdReusedInOneFrameIsListedTwiceEndedFirst) {
+TEST_F(InputTouchTest, AFingerIdReusedInOneFrameIsListedTwice) {
+    // S22: the fingers down at the latch first, then the ones lifted in the window
     Input::addTouch(5, 10, 10);
     frame();
     Input::removeTouch(5);
     Input::addTouch(5, 300, 300);
     begin();
-    ASSERT_EQ(Input::getTouchCount(), 2);
-    EXPECT_EQ(Input::getTouch(0).phase, TouchPhase::Ended);
-    EXPECT_EQ(Input::getTouch(1).phase, TouchPhase::Began);
+    ASSERT_EQ(Input::getTouchCount(), 2u);
+    EXPECT_EQ(Input::getTouch(0).phase, TouchPhase::Began);
+    EXPECT_EQ(Input::getTouch(1).phase, TouchPhase::Ended);
     Touch byId;
     ASSERT_TRUE(Input::findTouchById(5, byId));
     EXPECT_EQ(byId.phase, TouchPhase::Began);
@@ -502,7 +512,8 @@ TEST_F(InputTouchTest, LegacyListIsTheFingersDownNow) {
     EXPECT_TRUE(Input::isTouch());
     std::vector<Touch> fingers = Input::getTouches();
     ASSERT_EQ(fingers.size(), 2u);
-    EXPECT_EQ(fingers[0].pointer(), 1);
+    EXPECT_EQ(fingers[0].pointer, 1);
+    EXPECT_EQ(fingers[0].fingerId, 1);
     EXPECT_FLOAT_EQ(fingers[1].position.y, 40);
     Input::removeTouch(1);
     EXPECT_EQ(Input::numTouches(), 1u);
@@ -515,7 +526,7 @@ TEST_F(InputTouchTest, MultiTouchDisabledReportsOnlyTheFirstFinger) {
     Input::addTouch(1, 10, 10);
     Input::addTouch(2, 50, 50);
     begin();
-    ASSERT_EQ(Input::getTouchCount(), 1);
+    ASSERT_EQ(Input::getTouchCount(), 1u);
     EXPECT_EQ(Input::getTouch(0).fingerId, 1);
     EXPECT_TRUE(Input::isTouchVisible(1));
     EXPECT_FALSE(Input::isTouchVisible(2));
@@ -526,7 +537,7 @@ TEST_F(InputTouchTest, MultiTouchDisabledReportsOnlyTheFirstFinger) {
     Input::removeTouch(1);
     frame();
     begin();
-    EXPECT_EQ(Input::getTouchCount(), 0);
+    EXPECT_EQ(Input::getTouchCount(), 0u);
     end();
     Input::setMultiTouchEnabled(true);
 }
@@ -538,26 +549,33 @@ TEST_F(InputActionsTest, DefaultsAreUnitysInputManager) {
                                                "Mouse Y", "Mouse ScrollWheel", "Submit", "Cancel"};
     EXPECT_EQ(InputActions::getActionNames(), expected);
 
-    const InputAction horizontal = actionNamed("Horizontal");
-    EXPECT_EQ(horizontal.type, InputActionType::Axis);
+    // the built-in defaults are the Input Manager map of a game without an actions asset
+    EXPECT_TRUE(InputActions::usesBuiltInDefaults());
+    EXPECT_FALSE(InputActions::isLoaded());
+    EXPECT_EQ(InputActions::getMapNames(), std::vector<std::string>{InputManagerFormat::MAP_NAME});
+    ASSERT_NE(InputActions::get("Input Manager/Jump"), nullptr);
+    EXPECT_EQ(InputActions::find("Jump"), InputActions::get("Input Manager/Jump"));
+
+    const InputManagerAction horizontal = actionNamed("Horizontal");
+    EXPECT_EQ(horizontal.type, InputManagerActionType::Axis);
     ASSERT_EQ(horizontal.bindings.size(), 2u);
-    const InputBinding& keys = horizontal.bindings[0];
-    EXPECT_EQ(keys.kind, InputBindingKind::Buttons);
+    const InputManagerBinding& keys = horizontal.bindings[0];
+    EXPECT_EQ(keys.kind, InputManagerBindingKind::Buttons);
     EXPECT_EQ(names(keys.negative), (std::vector<std::string>{"left", "a"}));
     EXPECT_EQ(names(keys.positive), (std::vector<std::string>{"right", "d"}));
     EXPECT_FLOAT_EQ(keys.gravity, 3);
     EXPECT_FLOAT_EQ(keys.sensitivity, 3);
     EXPECT_FLOAT_EQ(keys.dead, 0.001f);
     EXPECT_TRUE(keys.snap);
-    const InputBinding& stick = horizontal.bindings[1];
-    EXPECT_EQ(stick.kind, InputBindingKind::GamepadAxis);
+    const InputManagerBinding& stick = horizontal.bindings[1];
+    EXPECT_EQ(stick.kind, InputManagerBindingKind::GamepadAxis);
     EXPECT_EQ(stick.axis, D_GAMEPAD_AXIS_LEFT_X);
     EXPECT_EQ(stick.gamepad, -1);
     EXPECT_FLOAT_EQ(stick.dead, 0.19f);
     EXPECT_FLOAT_EQ(stick.sensitivity, 1);
     EXPECT_FALSE(stick.invert);
 
-    const InputAction vertical = actionNamed("Vertical");
+    const InputManagerAction vertical = actionNamed("Vertical");
     EXPECT_EQ(names(vertical.bindings[0].negative), (std::vector<std::string>{"down", "s"}));
     EXPECT_EQ(names(vertical.bindings[0].positive), (std::vector<std::string>{"up", "w"}));
     EXPECT_EQ(vertical.bindings[1].axis, D_GAMEPAD_AXIS_LEFT_Y);
@@ -565,7 +583,7 @@ TEST_F(InputActionsTest, DefaultsAreUnitysInputManager) {
 
     auto buttonsOf = [](const std::string& name) {
         std::vector<std::vector<std::string>> out;
-        for (const InputBinding& binding : actionNamed(name).bindings) out.push_back(names(binding.positive));
+        for (const InputManagerBinding& binding : actionNamed(name).bindings) out.push_back(names(binding.positive));
         return out;
     };
     using Lists = std::vector<std::vector<std::string>>;
@@ -575,13 +593,13 @@ TEST_F(InputActionsTest, DefaultsAreUnitysInputManager) {
     EXPECT_EQ(buttonsOf("Jump"), (Lists{{"space"}, {"gamepad_y"}}));
     EXPECT_EQ(buttonsOf("Submit"), (Lists{{"enter", "kp_enter", "space"}, {"gamepad_a"}}));
     EXPECT_EQ(buttonsOf("Cancel"), (Lists{{"escape"}, {"gamepad_b"}}));
-    EXPECT_EQ(actionNamed("Fire1").type, InputActionType::Button);
+    EXPECT_EQ(actionNamed("Fire1").type, InputManagerActionType::Button);
     EXPECT_FLOAT_EQ(actionNamed("Fire1").bindings[0].gravity, 1000);
     EXPECT_FLOAT_EQ(actionNamed("Fire1").bindings[0].sensitivity, 1000);
 
-    const InputAction mouseX = actionNamed("Mouse X");
+    const InputManagerAction mouseX = actionNamed("Mouse X");
     ASSERT_EQ(mouseX.bindings.size(), 1u);
-    EXPECT_EQ(mouseX.bindings[0].kind, InputBindingKind::MouseDelta);
+    EXPECT_EQ(mouseX.bindings[0].kind, InputManagerBindingKind::MouseDelta);
     EXPECT_EQ(mouseX.bindings[0].mouseAxis, MouseDeltaAxis::X);
     EXPECT_FLOAT_EQ(mouseX.bindings[0].sensitivity, 0.1f);
     EXPECT_EQ(actionNamed("Mouse Y").bindings[0].mouseAxis, MouseDeltaAxis::Y);
@@ -736,7 +754,9 @@ TEST_F(InputActionsTest, BoundedSourcesAreSummedThenClampedDeltasAddedUnclamped)
     EXPECT_FLOAT_EQ(InputActions::getAxis("Mouse X"), 0.0f);
     end();
 
-    Input::setMouseScroll(0, 2);
+    // the wheel as the game sees it (Engine: what no UI consumed; the Input Manager map ignores
+    // what the UI takes)
+    Engine::systemMouseScroll(0, 2, 0);
     begin();
     EXPECT_NEAR(InputActions::getAxis("Mouse ScrollWheel"), 0.2f, 1e-6);
     end();
@@ -1013,9 +1033,10 @@ TEST_F(InputActionsTest, JsonLoadsAndRejectsWithTheBindingNamed) {
     EXPECT_TRUE(InputActions::loadJson(R"({"version": 1, "actions": [
         {"name": "Dash", "type": "button", "description": "a quick move",
          "bindings": [{"kind": "buttons", "positive": ["left shift", "Joystick Button 5"]}]}]})", &error)) << error;
-    ASSERT_EQ(InputActions::getActions().size(), 1u);
-    EXPECT_EQ(names(InputActions::getActions()[0].bindings[0].positive),
+    ASSERT_EQ(InputActions::getManagerActions().size(), 1u);
+    EXPECT_EQ(names(InputActions::getManagerActions()[0].bindings[0].positive),
               (std::vector<std::string>{"left_shift", "gamepad_right_bumper"}));
+    EXPECT_EQ(InputActions::getManagerActions()[0].description, "a quick move");
     // the bare list too
     EXPECT_TRUE(InputActions::loadJson(R"([{"name": "Jump", "bindings": []}])", &error)) << error;
 
@@ -1026,7 +1047,7 @@ TEST_F(InputActionsTest, JsonLoadsAndRejectsWithTheBindingNamed) {
         {R"([{"name": "A", "bindings": [{"kind": "gamepad_axis", "axis": "left_x", "dead": 1}]}])", "action \"A\" binding 1: dead must be below 1"},
         {R"([{"name": "A", "bindings": [{"kind": "buttons", "gravity": -1}]}])", "finite numbers >= 0"},
         {R"([{"name": "A", "bindings": [{"kind": "buttons", "positive": ["left_x"]}]}])", "is a gamepad axis: use a gamepad_axis binding"},
-        {R"([{"name": "A", "bindings": [{"kind": "wheel"}]}])", "kind must be buttons, gamepad_axis or mouse_delta"},
+        {R"([{"name": "A", "bindings": [{"kind": "wheel"}]}])", "kind must be buttons, gamepad_axis, mouse_delta or binding"},
         {R"([{"name": "A", "bindings": [{"kind": "buttons", "sensitivty": 2}]}])", "unknown field \"sensitivty\""},
         {R"([{"name": "A", "press_point": 0}])", "press_point must be above 0"},
         {R"([{"name": "A", "bindings": [{"kind": "buttons", "gamepad": 16}]}])", "gamepad must be \"any\" or 0-15"},
@@ -1045,11 +1066,14 @@ TEST_F(InputActionsTest, JsonLoadsAndRejectsWithTheBindingNamed) {
 }
 
 TEST_F(InputActionsTest, JsonRoundTripsTheDefaults) {
-    const std::string json = InputActions::actionsToJson(InputActions::defaults());
-    std::vector<InputAction> parsed;
+    const std::string json = InputManagerFormat::actionsToJson(InputManagerFormat::defaults());
+    std::vector<InputManagerAction> parsed;
     std::string error;
-    ASSERT_TRUE(InputActions::parseActionsJson(json, parsed, &error)) << error;
-    EXPECT_EQ(InputActions::actionsToJson(parsed), json);
+    ASSERT_TRUE(InputManagerFormat::parseActionsJson(json, parsed, &error)) << error;
+    EXPECT_EQ(InputManagerFormat::actionsToJson(parsed), json);
+    // and through the Input Manager map of an .inputactions asset (what a migrated project holds)
+    EXPECT_EQ(InputManagerFormat::actionsToJson(InputManagerFormat::fromMap(InputManagerFormat::toMap(parsed))), json);
+    EXPECT_EQ(InputActions::toJson(), json);
     // short numbers
     EXPECT_NE(json.find("\"dead\":0.001"), std::string::npos) << json;
     EXPECT_NE(json.find("\"dead\":0.19"), std::string::npos) << json;
@@ -1059,9 +1083,9 @@ TEST_F(InputActionsTest, JsonRoundTripsTheDefaults) {
 }
 
 TEST_F(InputActionsTest, OverridesExportImportRoundTrip) {
-    std::vector<InputBinding> bindings;
+    std::vector<InputManagerBinding> bindings;
     std::string error;
-    ASSERT_TRUE(InputActions::parseBindingsJson(R"([{"kind": "buttons", "positive": ["j", "gamepad_left_bumper"]}])", bindings, &error, "Jump")) << error;
+    ASSERT_TRUE(InputManagerFormat::parseBindingsJson(R"([{"kind": "buttons", "positive": ["j", "gamepad_left_bumper"]}])", bindings, &error, "Jump")) << error;
     ASSERT_TRUE(InputActions::setBindings("Jump", bindings, &error)) << error;
     EXPECT_TRUE(InputActions::hasBindingOverride("Jump"));
 
@@ -1117,13 +1141,13 @@ TEST(InputControlNamesTest, CanonicalNamesRoundTrip) {
         EXPECT_EQ(control.device, InputDevice::Key) << name;
         EXPECT_EQ(InputControlNames::name(control), name);
     }
-    for (const std::string& name : InputControlNames::mouseButtonNames()) {
+    for (const std::string& name : InputControlNames::mouseButtonControlNames()) {
         InputControl control;
         ASSERT_TRUE(InputControlNames::parseButton(name, control)) << name;
         EXPECT_EQ(control.device, InputDevice::Mouse) << name;
         EXPECT_EQ(InputControlNames::name(control), name);
     }
-    for (const std::string& name : InputControlNames::gamepadButtonNames()) {
+    for (const std::string& name : InputControlNames::gamepadButtonControlNames()) {
         InputControl control;
         ASSERT_TRUE(InputControlNames::parseButton(name, control)) << name;
         EXPECT_EQ(control.device, InputDevice::GamepadButton) << name;
@@ -1188,4 +1212,30 @@ TEST(InputControlNamesTest, UnitySpellingsAreNormalised) {
     EXPECT_EQ(InputControlNames::parseGamepadButton("rb"), D_GAMEPAD_BUTTON_RIGHT_BUMPER);
     EXPECT_EQ(InputControlNames::parseGamepadAxis("lt"), D_GAMEPAD_AXIS_LEFT_TRIGGER);
     EXPECT_EQ(InputControlNames::parseMouseButton("middle"), D_MOUSE_BUTTON_MIDDLE);
+}
+
+TEST(InputControlNamesTest, PathSegmentsAndControlNamesAreOneTable) {
+    // S22's control paths and the Input Manager's control names read the same table
+    EXPECT_EQ(InputControlNames::mouseButtonName(D_MOUSE_BUTTON_LEFT), "left");
+    EXPECT_EQ(InputControlNames::mouseButtonControlName(D_MOUSE_BUTTON_LEFT), "mouse_left");
+    EXPECT_EQ(InputControlNames::mouseButtonName(D_MOUSE_BUTTON_4), "button4");
+    EXPECT_EQ(InputControlNames::mouseButtonControlName(D_MOUSE_BUTTON_4), "mouse_4");
+    EXPECT_EQ(InputControlNames::parseMouseButton("button4"), D_MOUSE_BUTTON_4);
+    EXPECT_EQ(InputControlNames::parseMouseButton("mouse_4"), D_MOUSE_BUTTON_4);
+    EXPECT_EQ(InputControlNames::parseMouseButton("Mouse0"), D_MOUSE_BUTTON_LEFT);
+    EXPECT_EQ(InputControlNames::gamepadButtonName(D_GAMEPAD_BUTTON_DPAD_UP), "dpad_up");
+    EXPECT_EQ(InputControlNames::gamepadButtonControlName(D_GAMEPAD_BUTTON_DPAD_UP), "gamepad_dpad_up");
+    EXPECT_EQ(InputControlNames::parseGamepadButton("gamepad_dpad_up"), D_GAMEPAD_BUTTON_DPAD_UP);
+    EXPECT_EQ(InputControlNames::parseGamepadButton("joystick button 1"), D_GAMEPAD_BUTTON_B);
+    EXPECT_EQ(InputControlNames::parseGamepadButton("cross"), D_GAMEPAD_BUTTON_A);
+    // every spelling also names a control path, which keeps its canonical form
+    EXPECT_EQ(InputControlPath::parse("mouse/mouse_left").toString(), "mouse/left");
+    EXPECT_EQ(InputControlPath::parse("gamepad/gamepad_dpad_up").toString(), "gamepad/dpad_up");
+    EXPECT_EQ(InputControlPath::parse("keyboard/left ctrl").toString(), "keyboard/left_control");
+    EXPECT_EQ(InputControlPath::parse("keyboard/Alpha1").toString(), "keyboard/1");
+    EXPECT_EQ(InputControlPath::parse("gamepad/left_stick").kind, InputControlKind::GAMEPAD_STICK);
+    // a key code without a name is a number in a path and no control name
+    EXPECT_EQ(InputControlNames::keyName(33), "33");
+    EXPECT_EQ(InputControlNames::name({InputDevice::Key, 33}), "");
+    EXPECT_EQ(InputControlNames::name({InputDevice::Key, D_KEY_LEFT_CONTROL}), "left_control");
 }

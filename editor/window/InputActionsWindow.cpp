@@ -333,7 +333,7 @@ void InputActionsWindow::drawToolbar(){
 
 void InputActionsWindow::drawMaps(){
     ImGui::TextUnformatted("Action Maps");
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x - Theme::dpi(18.0f));
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - Theme::dpi(40.0f));
     if (ImGui::SmallButton(ICON_FA_PLUS "##AddMap")){
         std::string name = "New Map";
         for (int n = 2; asset.findMap(name); n++) name = "New Map " + std::to_string(n);
@@ -346,6 +346,15 @@ void InputActionsWindow::drawMaps(){
             renameFocus = true;
         }
     }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(asset.findMap(InputManagerFormat::MAP_NAME) != nullptr);
+    if (ImGui::SmallButton(ICON_FA_GAMEPAD "##AddInputManager")){
+        if (commit(op("add_input_manager")))
+            selectedMap = InputManagerFormat::MAP_NAME;
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Add the Input Manager map: Unity's default axes and buttons (Horizontal, Vertical, Fire1-3, Jump, "
+                          "Mouse X/Y, Mouse ScrollWheel, Submit, Cancel), read by Input.getAxis / getButton");
     ImGui::BeginChild("##Maps", ImVec2(0, 0), ImGuiChildFlags_None);
     std::string pendingDelete;
     for (size_t i = 0; i < asset.maps.size(); i++){
@@ -616,6 +625,13 @@ void InputActionsWindow::drawActions(){
                             selectedAction = path;
                             selectedBinding = desc.id;
                         }
+                        if (ImGui::BeginPopupContextItem("##PartMenu")){
+                            if (ImGui::MenuItem("Delete Part")){
+                                pending = op("remove");
+                                pending["binding"] = desc.id;
+                            }
+                            ImGui::EndPopup();
+                        }
                         ImGui::PopID();
                     }
                     ImGui::TreePop();
@@ -699,6 +715,11 @@ void InputActionsWindow::drawActionProperties(const InputActionDesc& action){
     const char* types[] = {"Button", "Axis", "Vector2"};
     int type = static_cast<int>(action.type);
     if (ImGui::Combo("Action Type", &type, types, 3)) setValue("type", inputActionTypeName(static_cast<InputActionType>(type)));
+    char description[256];
+    std::snprintf(description, sizeof(description), "%s", action.description.c_str());
+    ImGui::InputText("Description", description, sizeof(description));
+    if (ImGui::IsItemDeactivatedAfterEdit() && action.description != description) setValue("description", std::string(description));
+    ImGui::SetItemTooltip("For you and settings screens (the Input Manager's); the game does not read it.");
     float pressPoint = action.pressPoint;
     ImGui::SliderFloat("Press Point", &pressPoint, 0.01f, 1.0f, "%.2f");
     if (ImGui::IsItemDeactivatedAfterEdit()) setValue("press_point", pressPoint);
@@ -824,6 +845,50 @@ void InputActionsWindow::drawBindingProperties(const InputBindingDesc& binding, 
         drawModifiers("Forbidden Modifiers", "forbidden_mods", binding.id, binding.forbiddenMods);
     }
     if (!isPart){
+        // the pad its gamepad controls read (the Input Manager's per-entry gamepad)
+        int gamepad = binding.gamepad;
+        const std::string padLabel = gamepad < 0 ? std::string("The map's") : "Gamepad " + std::to_string(gamepad);
+        if (ImGui::BeginCombo("Gamepad", padLabel.c_str())){
+            if (ImGui::Selectable("The map's", gamepad < 0)) setValue("gamepad", -1);
+            for (int pad = 0; pad < 16; pad++){
+                if (ImGui::Selectable(("Gamepad " + std::to_string(pad)).c_str(), gamepad == pad)) setValue("gamepad", pad);
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SetItemTooltip("The gamepad (0-15) its gamepad controls read; the map's: the pad the map reads (any by default).");
+        // Unity's Input Manager smoothing (Key or Mouse Button entries)
+        bool smoothed = binding.smoothing.has_value();
+        if (ImGui::Checkbox("Input Manager Smoothing", &smoothed))
+            setValue("smoothing", smoothed ? InputJson{{"gravity", 3.0f}, {"sensitivity", 3.0f}, {"dead", 0.001f}} : InputJson());
+        ImGui::SetItemTooltip("Unity's Gravity, Sensitivity, Dead and Snap: the value moves to the target at Sensitivity/s and back to 0 "
+                              "at Gravity/s (0: at once), below Dead it reads 0, Snap jumps through 0 on a reversal.");
+        if (smoothed){
+            const InputSmoothing& smoothing = *binding.smoothing;
+            float gravity = smoothing.gravity, sensitivity = smoothing.sensitivity, dead = smoothing.dead;
+            bool snap = smoothing.snap;
+            ImGui::DragFloat("Gravity", &gravity, 0.1f, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+            if (ImGui::IsItemDeactivatedAfterEdit()) setValue("gravity", gravity);
+            ImGui::DragFloat("Sensitivity", &sensitivity, 0.1f, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+            if (ImGui::IsItemDeactivatedAfterEdit()) setValue("sensitivity", sensitivity);
+            ImGui::DragFloat("Dead", &dead, 0.001f, 0.0f, 0.999f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+            if (ImGui::IsItemDeactivatedAfterEdit()) setValue("dead", dead);
+            if (ImGui::Checkbox("Snap", &snap)) setValue("snap", snap);
+        }
+        // another control of a role (an Input Manager entry's button lists)
+        if (binding.isComposite()){
+            ImGui::TextUnformatted("Add a part");
+            for (const std::string& role : inputCompositeParts(binding.composite)){
+                ImGui::SameLine();
+                if (ImGui::SmallButton((ICON_FA_PLUS " " + role).c_str())){
+                    InputJson add = op("add_part");
+                    add["binding"] = binding.id;
+                    add["part"] = role;
+                    add["path"] = "keyboard/space";
+                    commit(add);
+                }
+            }
+            ImGui::SetItemTooltip("Several parts of a role: any of them actuates it (the larger magnitude counts).");
+        }
         ImGui::TextUnformatted("Control Schemes");
         for (const char* group : GROUPS){
             bool on = binding.inGroup(group);

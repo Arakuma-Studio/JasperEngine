@@ -277,12 +277,32 @@ namespace luabridge
             lua_pushboolean(L, touch.began);
             lua_setfield(L, -2, "began");
 
+            // Unity's names (TouchPhase.Began ... are the same phase values)
+            lua_pushinteger(L, touch.fingerId);
+            lua_setfield(L, -2, "fingerId");
+
+            if (!luabridge::push(L, touch.deltaPosition))
+                return makeErrorCode(ErrorCode::LuaStackOverflow);
+            lua_setfield(L, -2, "deltaPosition");
+
+            lua_pushnumber(L, touch.deltaTime);
+            lua_setfield(L, -2, "deltaTime");
+
+            lua_pushinteger(L, touch.tapCount);
+            lua_setfield(L, -2, "tapCount");
+
             return {};
         }
 
         static TypeResult<Touch> get(lua_State* L, int index)
         {
+            index = lua_absindex(L, index);
             lua_getfield(L, index, "pointer");
+            // a table with Unity's fingerId only
+            if (lua_type(L, -1) != LUA_TNUMBER){
+                lua_pop(L, 1);
+                lua_getfield(L, index, "fingerId");
+            }
             if (lua_type(L, -1) != LUA_TNUMBER)
                 return makeErrorCode(ErrorCode::InvalidTypeCast);
             if (! is_integral_representable_by<int>(L, -1))
@@ -311,7 +331,19 @@ namespace luabridge
                 touch.time = (float)lua_tonumber(L, -1);
             lua_getfield(L, index, "began");
             touch.began = lua_toboolean(L, -1) != 0;
-            lua_pop(L, 7);
+            touch.fingerId = pointer;
+            lua_getfield(L, index, "deltaPosition");
+            if (auto delta = luabridge::get<Vector2>(L, -1))
+                touch.deltaPosition = *delta;
+            else
+                touch.deltaPosition = touch.delta;
+            lua_getfield(L, index, "deltaTime");
+            if (lua_type(L, -1) == LUA_TNUMBER)
+                touch.deltaTime = (float)lua_tonumber(L, -1);
+            lua_getfield(L, index, "tapCount");
+            if (lua_type(L, -1) == LUA_TNUMBER)
+                touch.tapCount = (int)lua_tointeger(L, -1);
+            lua_pop(L, 10);
             return touch;
         }
 
@@ -319,16 +351,18 @@ namespace luabridge
         {
             if (lua_type (L, index) != LUA_TTABLE)
                 return false;
-            if (lua_getfield(L, index, "pointer") != LUA_TNUMBER)
-                return false;
-            if (!is_integral_representable_by<int>(L, -1))
-                return false;
-            if (lua_getfield(L, index, "position") != LUA_TUSERDATA)
-                return false;
-            if (!Stack<Vector2>::isInstance(L, -1))
-                return false;
-
-            return true;
+            index = lua_absindex(L, index);
+            const int top = lua_gettop(L);
+            // a pointer (S22) or a fingerId (Unity), and a position
+            bool ok = lua_getfield(L, index, "pointer") == LUA_TNUMBER;
+            if (!ok){
+                lua_pop(L, 1);
+                ok = lua_getfield(L, index, "fingerId") == LUA_TNUMBER;
+            }
+            ok = ok && is_integral_representable_by<int>(L, -1);
+            ok = ok && lua_getfield(L, index, "position") == LUA_TUSERDATA && Stack<Vector2>::isInstance(L, -1);
+            lua_settop(L, top);
+            return ok;
         }
     };
 

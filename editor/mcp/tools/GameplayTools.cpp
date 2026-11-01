@@ -123,7 +123,8 @@ Json touchesJson() {
             {"time", rounded(touch.time)},
             {"began", touch.began},
             {"down", Input::getTouchDown(touch.pointer)},
-            {"up", Input::getTouchUp(touch.pointer)}
+            {"up", Input::getTouchUp(touch.pointer)},
+            {"tap_count", touch.tapCount}
         });
     }
     return list;
@@ -186,8 +187,9 @@ Json actionsStateJson() {
         if (map.blocked) item["blocked"] = true;
         maps.push_back(item);
     }
+    // built_in_defaults: no actions asset, Unity's Input Manager defaults
     return {{"asset", InputActions::getAssetPath()}, {"loaded", InputActions::isLoaded()},
-            {"rebinding", InputActions::isRebinding()}, {"maps", maps}};
+            {"built_in_defaults", InputActions::usesBuiltInDefaults()}, {"rebinding", InputActions::isRebinding()}, {"maps", maps}};
 }
 
 // the asset file of a call: its text (empty for a file that does not exist yet) and model
@@ -289,8 +291,8 @@ void getInputActionsTool(const CallPtr& call) {
 void editInputActionsTool(const CallPtr& call) {
     const Json& args = call->args();
     if (!args.contains("ops") || !args["ops"].is_array() || args["ops"].empty()) {
-        call->fail("ops is a non-empty list of {op, ...}: add_map, add_action, add_binding, add_composite, set, remove, "
-                   "rename, move, duplicate.");
+        call->fail("ops is a non-empty list of {op, ...}: add_map, add_input_manager, add_action, add_binding, add_composite, "
+                   "add_part, set, remove, rename, move, duplicate.");
         return;
     }
     fs::path file;
@@ -463,8 +465,9 @@ void registerGameplayTools(McpRegistry& registry) {
             "add_map {name, priority?, enabled?, consume?, exclusive?, ignore_when_ui_consumes?} | add_action {map, "
             "name, type BUTTON|AXIS|VECTOR2} | add_binding {action Map/Action, path keyboard/space, gamepad/a, "
             "gamepad/left_stick, mouse/delta, touch/primary/press, virtual/<name>..., groups?, required_mods?} | "
-            "add_composite {action, composite axis1d|dpad2d, parts {up: path...}} | set {map|action|binding id, values} "
-            "| remove | rename {map|action, name} | move {..., index} | duplicate. A bad op changes nothing.";
+            "add_composite {action, composite axis1d|dpad2d, parts {up: path...}} | add_part {binding, part, path} | "
+            "add_input_manager (Unity's 11 axes) | set {map|action|binding id, values} | remove | rename {map|action, "
+            "name} | move {..., index} | duplicate. A bad op changes nothing.";
         tool.inputSchema = object({
             {"path", string("")},
             {"ops", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 200}, {"items", anyObject("")}}},

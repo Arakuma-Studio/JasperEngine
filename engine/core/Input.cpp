@@ -4,20 +4,29 @@
 
 #include "Input.h"
 
+#include "Engine.h"
 #include "Log.h"
+#include "input/InputActions.h"
+#include "input/InputControlNames.h"
 
 #include <array>
 #include <algorithm>
-#include <chrono>
+#include <cmath>
 
 using namespace jasperengine;
+
+double Input::multiTapTime = 0.3;       // UISystem's double-click time
+float Input::multiTapDistance = 24.0f;  // canvas px
 
 // The state lives in fixed arrays, so a frame makes no heap allocation: a control's edges are
 // counted in three windows (pending, frame, fixed), and the controls with edges in each window
 // are listed, so a latch touches only what changed since the last one.
 namespace {
 
-    using Clock = std::chrono::steady_clock;
+    // the longest control name getPressedControl reports ("gamepad_right_bumper", "right_trigger")
+    constexpr size_t CONTROL_NAME_SIZE = 32;
+    // code points typed between two latches (more are dropped)
+    constexpr size_t MAX_TYPED = 256;
 
     struct EdgeWindow {
         uint16_t presses = 0;
@@ -76,8 +85,20 @@ namespace {
         Vector2 position;
         Vector2 startPosition;
         Vector2 latchPosition;      // where it was at the last latch (the window's delta starts there)
-        Clock::time_point beganAt;
+        double beganAt = 0.0;       // the input clock when it touched the screen
+        double movedAt = 0.0;       // ... when a latch last saw it move (deltaTime)
+        int tapCount = 1;
         bool beganInPending = false;
+        bool hidden = false;        // multiTouchEnabled off: not the first finger
+        bool released = false;      // Input::releaseAll reported it Canceled; the platform removes it
+    };
+
+    // the last touch that ended (multi-tap)
+    struct LastTap {
+        bool valid = false;
+        double endTime = 0.0;
+        Vector2 start;
+        int tapCount = 0;
     };
 
     struct TouchEdgeRecord {
@@ -128,6 +149,9 @@ namespace {
         TouchRecord touches[D_INPUT_MAX_TOUCHES];
         size_t touchCount = 0;
         Touch endedTouches[ENDED_TOUCHES];
+        // when each began and last moved: their times are the window's latch's (deltaTime, time)
+        double endedBeganAt[ENDED_TOUCHES] = {};
+        double endedMovedAt[ENDED_TOUCHES] = {};
         size_t endedCount = 0;
         Touch frameTouches[D_INPUT_MAX_TOUCHES + ENDED_TOUCHES];
         size_t frameTouchCount = 0;
@@ -135,6 +159,20 @@ namespace {
         size_t touchEdgesUsed = 0;
         bool touchLimitWarned = false;
         bool padLimitWarned = false;
+        bool multiTouchEnabled = true;
+        LastTap lastTap;
+
+        // the input frame and clock (beginFrame(dt))
+        uint64_t inputFrame = 1;
+        bool inFrame = false;
+        double inputTime = 0.0;
+
+        // text typed (pending, then the frame's) and the first control pressed in each window
+        uint32_t typed[MAX_TYPED] = {};
+        size_t typedCount = 0;
+        std::string frameText;
+        char pendingPressed[CONTROL_NAME_SIZE] = {};
+        char framePressed[CONTROL_NAME_SIZE] = {};
     };
 
     InputState& state(){
@@ -148,6 +186,25 @@ namespace {
             record.inPending = true;
             s.pendingList.push((uint16_t)control);
         }
+    }
+
+    // the first control pressed in the pending window keeps its name (getPressedControl)
+    void notePressed(const std::string& name){
+        InputState& s = state();
+        if (name.empty() || s.pendingPressed[0] != '\0')
+            return;
+        const size_t length = std::min(name.size(), CONTROL_NAME_SIZE - 1);
+        std::copy(name.begin(), name.begin() + (std::ptrdiff_t)length, s.pendingPressed);
+        s.pendingPressed[length] = '\0';
+    }
+
+    // a control's control name (keys, mouse buttons, gamepad buttons)
+    std::string controlNameOf(int control){
+        if (control < Input::MOUSE_CONTROL_BASE)
+            return InputControlNames::name({InputDevice::Key, control});
+        if (control < Input::GAMEPAD_CONTROL_BASE)
+            return InputControlNames::name({InputDevice::Mouse, control - Input::MOUSE_CONTROL_BASE});
+        return InputControlNames::name({InputDevice::GamepadButton, (control - Input::GAMEPAD_CONTROL_BASE) % Input::GAMEPAD_BUTTONS});
     }
 
     void pressControl(int control, int mods = 0){
@@ -164,6 +221,17 @@ namespace {
         markPending(s, control);
         if (s.pendingPressTotal < 0xFFFFFFFFu)
             s.pendingPressTotal++;
+        if (s.pendingPressed[0] == '\0')
+            notePressed(controlNameOf(control));
+    }
+
+    // the direction an axis is pressed in for getPressedControl: past 0.5 (a trigger: half way)
+    int axisDirection(int axis, float value){
+        if (axis == D_GAMEPAD_AXIS_LEFT_TRIGGER || axis == D_GAMEPAD_AXIS_RIGHT_TRIGGER)
+            return ((value + 1.0f) * 0.5f >= 0.5f) ? 1 : 0;
+        if (value >= 0.5f) return 1;
+        if (value <= -0.5f) return -1;
+        return 0;
     }
 
     void releaseControl(int control){
@@ -240,19 +308,55 @@ namespace {
         return nullptr;
     }
 
-    Touch touchOf(const TouchRecord& record, Clock::time_point now){
+    // the touch as the next latch reports it (now: the input clock)
+    Touch touchOf(const TouchRecord& record, double now){
         Touch touch = {record.pointer, record.position};
+        touch.fingerId = record.pointer;
         touch.startPosition = record.startPosition;
         touch.began = record.beganInPending;
+        touch.tapCount = record.tapCount;
         if (record.beganInPending){
             touch.phase = TouchPhase::BEGAN;
             touch.delta = record.position - record.startPosition;
+            touch.deltaTime = 0.0f;
         }else{
             touch.delta = record.position - record.latchPosition;
-            touch.phase = (touch.delta.x != 0.0f || touch.delta.y != 0.0f) ? TouchPhase::MOVED : TouchPhase::STATIONARY;
+            const bool moved = touch.delta.x != 0.0f || touch.delta.y != 0.0f;
+            touch.phase = moved ? TouchPhase::MOVED : TouchPhase::STATIONARY;
+            touch.deltaTime = (float)(now - record.movedAt);
         }
-        touch.time = std::chrono::duration<float>(now - record.beganAt).count();
+        touch.deltaPosition = touch.delta;
+        touch.time = (float)(now - record.beganAt);
         return touch;
+    }
+
+    // the finger's end: reported in the next window (unless releaseAll did it), its release edge
+    void reportEnd(TouchRecord& record, TouchPhase phase){
+        InputState& s = state();
+        Touch ended = touchOf(record, s.inputTime);
+        ended.phase = phase;
+        if (!record.hidden && s.endedCount < ENDED_TOUCHES){
+            s.endedBeganAt[s.endedCount] = record.beganAt;
+            s.endedMovedAt[s.endedCount] = record.movedAt;
+            s.endedTouches[s.endedCount++] = ended;
+        }
+
+        if (TouchEdgeRecord* edges = touchEdgesFor(record.pointer)){
+            bump(edges->pending.releases);
+            edges->uiHeld = false;
+        }
+
+        // multi-tap: a short lift is a tap the next touch may count on from
+        if (!record.hidden){
+            if (phase == TouchPhase::ENDED && s.inputTime - record.beganAt < Input::multiTapTime){
+                s.lastTap.valid = true;
+                s.lastTap.endTime = s.inputTime;
+                s.lastTap.start = record.startPosition;
+                s.lastTap.tapCount = record.tapCount;
+            }else{
+                s.lastTap.valid = false;
+            }
+        }
     }
 
     void endTouch(int pointer, TouchPhase phase){
@@ -260,16 +364,10 @@ namespace {
         const int index = findTouch(pointer);
         if (index < 0)
             return;
-        const TouchRecord& record = s.touches[index];
-        Touch ended = touchOf(record, Clock::now());
-        ended.phase = phase;
-        if (s.endedCount < ENDED_TOUCHES)
-            s.endedTouches[s.endedCount++] = ended;
-
-        if (TouchEdgeRecord* edges = touchEdgesFor(pointer)){
-            bump(edges->pending.releases);
-            edges->uiHeld = false;
-        }
+        TouchRecord& record = s.touches[index];
+        // releaseAll reported it already: the platform's cancel or lift only takes it away
+        if (!record.released)
+            reportEnd(record, phase);
 
         for (size_t i = (size_t)index + 1; i < s.touchCount; i++)
             s.touches[i - 1] = s.touches[i];
@@ -336,6 +434,27 @@ void Input::warpMouse(float x, float y){
     s.hasLastMove = true;
 }
 
+void Input::addMouseMovement(float x, float y){
+    if (!std::isfinite(x) || !std::isfinite(y))
+        return;
+    InputState& s = state();
+    const Vector2 position(x, y);
+    if (s.hasLastMove)
+        s.pendingDelta += position - s.lastMovePosition;
+    s.lastMovePosition = position;
+    s.hasLastMove = true;
+}
+
+void Input::addMouseDelta(float dx, float dy){
+    if (!std::isfinite(dx) || !std::isfinite(dy))
+        return;
+    state().pendingDelta += Vector2(dx, dy);
+}
+
+void Input::resetMouseMovement(){
+    state().hasLastMove = false;
+}
+
 void Input::setMouseScroll(float xoffset, float yoffset){
     InputState& s = state();
     s.mouseScroll = Vector2(xoffset, yoffset);
@@ -363,8 +482,22 @@ void Input::addTouch(int pointer, float x, float y){
     record.position = Vector2(x, y);
     record.startPosition = record.position;
     record.latchPosition = record.position;
-    record.beganAt = Clock::now();
+    record.beganAt = s.inputTime;
+    record.movedAt = s.inputTime;
     record.beganInPending = true;
+    // a quick tap near the last one's start (that one short too) counts on from it
+    if (s.lastTap.valid && s.inputTime - s.lastTap.endTime <= multiTapTime &&
+            (record.position - s.lastTap.start).length() <= multiTapDistance)
+        record.tapCount = s.lastTap.tapCount + 1;
+    // multiTouchEnabled off: a finger while another visible one is down is not reported
+    if (!s.multiTouchEnabled){
+        for (size_t i = 0; i + 1 < s.touchCount; i++){
+            if (!s.touches[i].hidden && !s.touches[i].released){
+                record.hidden = true;
+                break;
+            }
+        }
+    }
 
     if (TouchEdgeRecord* edges = touchEdgesFor(pointer)){
         bump(edges->pending.presses);
@@ -458,8 +591,21 @@ void Input::releaseGamepadButtonPressed(int id, int button){
 
 void Input::setGamepadAxisValue(int id, int axis, float value){
     const int slot = findConnectedPadSlot(id);
-    if (slot >= 0 && axis >= 0 && axis < GAMEPAD_AXES)
-        state().pads[slot].axes[axis] = value;
+    if (slot < 0 || axis < 0 || axis >= GAMEPAD_AXES)
+        return;
+    if (!std::isfinite(value))
+        value = axisRest(axis);
+    float& current = state().pads[slot].axes[axis];
+    const int before = axisDirection(axis, current);
+    const int after = axisDirection(axis, value);
+    current = value;
+    // getPressedControl: an axis pushed past half way is a press of "left_x+", a trigger's of "left_trigger"
+    if (after != 0 && after != before){
+        std::string name = InputControlNames::gamepadAxisName(axis);
+        if (axis != D_GAMEPAD_AXIS_LEFT_TRIGGER && axis != D_GAMEPAD_AXIS_RIGHT_TRIGGER)
+            name += after > 0 ? "+" : "-";
+        notePressed(name);
+    }
 }
 
 void Input::setGamepadAxisConsumedByUI(int id, int axis, bool consumed){
@@ -504,6 +650,46 @@ void Input::setPointerLockState(PointerLockState lockState){
     state().pointerLock = lockState;
 }
 
+void Input::addInputCharacter(uint32_t codepoint){
+    // Unity's inputString: backspace is "\b", return "\n"; other control characters are left out
+    if (codepoint == '\r')
+        codepoint = '\n';
+    if (codepoint != '\b' && codepoint != '\n' && (codepoint < 32 || codepoint == 0x7f))
+        return;
+    if (codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF))
+        return;
+    InputState& s = state();
+    if (s.typedCount < MAX_TYPED)
+        s.typed[s.typedCount++] = codepoint;
+}
+
+void Input::releaseAll(){
+    InputState& s = state();
+    for (int control = 0; control < CONTROL_COUNT; control++)
+        releaseControl(control);
+    // the fingers are reported Canceled; they stay down until the platform removes them
+    for (size_t i = 0; i < s.touchCount; i++){
+        TouchRecord& record = s.touches[i];
+        if (record.released)
+            continue;
+        reportEnd(record, TouchPhase::CANCELED);
+        record.released = true;
+    }
+    s.lastTap.valid = false;
+    s.modifiers = 0;
+    // movement while away is not the player's
+    clearPendingDeltas();
+}
+
+void Input::reset(){
+    resetFrameState();
+    InputState& s = state();
+    s.multiTouchEnabled = true;
+    s.inputFrame = 1;
+    s.inFrame = false;
+    s.inputTime = 0.0;
+}
+
 // ---- windows
 
 void Input::beginFrame(){
@@ -543,18 +729,55 @@ void Input::beginFrame(){
     s.frameGameScroll = s.pendingGameScroll;
     s.pendingGameScroll = Vector2(0.0f, 0.0f);
 
+    // the text and the first control pressed of the window
+    if (s.typedCount > 0 || !s.frameText.empty()){
+        s.frameText.clear();
+        for (size_t i = 0; i < s.typedCount; i++){
+            const uint32_t c = s.typed[i];
+            if (c < 0x80){
+                s.frameText += (char)c;
+            }else if (c < 0x800){
+                s.frameText += (char)(0xC0 | (c >> 6));
+                s.frameText += (char)(0x80 | (c & 0x3F));
+            }else if (c < 0x10000){
+                s.frameText += (char)(0xE0 | (c >> 12));
+                s.frameText += (char)(0x80 | ((c >> 6) & 0x3F));
+                s.frameText += (char)(0x80 | (c & 0x3F));
+            }else{
+                s.frameText += (char)(0xF0 | (c >> 18));
+                s.frameText += (char)(0x80 | ((c >> 12) & 0x3F));
+                s.frameText += (char)(0x80 | ((c >> 6) & 0x3F));
+                s.frameText += (char)(0x80 | (c & 0x3F));
+            }
+        }
+        s.typedCount = 0;
+    }
+    std::copy(std::begin(s.pendingPressed), std::end(s.pendingPressed), s.framePressed);
+    s.pendingPressed[0] = '\0';
+
     // the frame's touches: the fingers down now, then the ones lifted in the window
     if (s.touchCount > 0 || s.endedCount > 0 || s.frameTouchCount > 0){
-        const Clock::time_point now = Clock::now();
+        const double now = s.inputTime;
         s.frameTouchCount = 0;
         for (size_t i = 0; i < s.touchCount; i++){
             TouchRecord& record = s.touches[i];
-            s.frameTouches[s.frameTouchCount++] = touchOf(record, now);
+            if (record.released)
+                continue;
+            const Touch touch = touchOf(record, now);
+            if (!record.hidden)
+                s.frameTouches[s.frameTouchCount++] = touch;
+            // deltaTime counts from the latch that saw it begin or move
+            if (touch.phase == TouchPhase::MOVED || record.beganInPending)
+                record.movedAt = now;
             record.latchPosition = record.position;
             record.beganInPending = false;
         }
-        for (size_t i = 0; i < s.endedCount; i++)
-            s.frameTouches[s.frameTouchCount++] = s.endedTouches[i];
+        for (size_t i = 0; i < s.endedCount; i++){
+            Touch ended = s.endedTouches[i];
+            ended.time = (float)(now - s.endedBeganAt[i]);
+            ended.deltaTime = ended.began ? 0.0f : (float)(now - s.endedMovedAt[i]);
+            s.frameTouches[s.frameTouchCount++] = ended;
+        }
         s.endedCount = 0;
     }
 
@@ -571,6 +794,54 @@ void Input::beginFrame(){
             }
         }
     }
+}
+
+void Input::beginFrame(double unscaledDeltaTime){
+    InputSuppression suppression;
+    suppression.keyboard = Engine::isTextInputFocused();
+    suppression.gamepadNavigation = Engine::wantsGamepadNavigation();
+    beginFrame(unscaledDeltaTime, suppression);
+}
+
+void Input::beginFrame(double unscaledDeltaTime, const InputSuppression& suppression){
+    if (!std::isfinite(unscaledDeltaTime) || unscaledDeltaTime < 0.0)
+        unscaledDeltaTime = 0.0;
+    InputState& s = state();
+    // the clock first: the window's touches are timed at its latch
+    s.inputTime += unscaledDeltaTime;
+    if (s.inFrame)
+        s.inputFrame++;
+    s.inFrame = true;
+    beginFrame();
+    InputActions::setSuppression(suppression);
+    InputActions::evaluate((float)unscaledDeltaTime);
+    // the actions' edges, after every action is evaluated (a handler reading another action
+    // sees this frame's values)
+    for (const std::string& name : InputActions::getFrameButtonDowns())
+        Engine::onButtonDown.call(name);
+    for (const std::string& name : InputActions::getFrameButtonUps())
+        Engine::onButtonUp.call(name);
+}
+
+void Input::endFrame(){
+    InputState& s = state();
+    InputActions::endFrame();
+    if (s.inFrame){
+        s.inputFrame++;
+        s.inFrame = false;
+    }
+}
+
+bool Input::isInFrame(){
+    return state().inFrame;
+}
+
+uint64_t Input::getInputFrame(){
+    return state().inputFrame;
+}
+
+double Input::getInputTime(){
+    return state().inputTime;
 }
 
 void Input::beginFixedStep(){
@@ -622,6 +893,12 @@ void Input::resetFrameState(){
     for (TouchEdgeRecord& record : s.touchEdges)
         record = TouchEdgeRecord();
     s.touchEdgesUsed = 0;
+    s.lastTap = LastTap();
+
+    s.typedCount = 0;
+    s.frameText.clear();
+    s.pendingPressed[0] = '\0';
+    s.framePressed[0] = '\0';
 }
 
 void Input::clearPendingDeltas(){
@@ -694,16 +971,52 @@ bool Input::getMouseButtonUp(int button){
 }
 
 bool Input::getGamepadButtonDown(int id, int button){
+    // id -1: any pad (one disconnected in the window too)
+    if (id < 0){
+        for (int slot = 0; slot < D_INPUT_MAX_GAMEPADS; slot++){
+            if (getGamepadSlotId(slot) >= 0 && getControlEdges(gamepadControl(slot, button)).presses > 0)
+                return true;
+        }
+        return false;
+    }
     return getControlEdges(gamepadControl(getGamepadSlot(id), button)).presses > 0;
 }
 
 bool Input::getGamepadButtonUp(int id, int button){
+    if (id < 0){
+        for (int slot = 0; slot < D_INPUT_MAX_GAMEPADS; slot++){
+            if (getGamepadSlotId(slot) >= 0 && getControlEdges(gamepadControl(slot, button)).releases > 0)
+                return true;
+        }
+        return false;
+    }
     return getControlEdges(gamepadControl(getGamepadSlot(id), button)).releases > 0;
 }
 
 bool Input::anyKeyDown(){
     const InputState& s = state();
     return (s.fixedPhase ? s.fixedPressTotal : s.framePressTotal) > 0;
+}
+
+bool Input::isAnyKeyPressed(){
+    const InputState& s = state();
+    for (const ControlRecord& record : s.controls){
+        if (record.level)
+            return true;
+    }
+    return false;
+}
+
+bool Input::isAnyKeyDown(){
+    return anyKeyDown();
+}
+
+std::string Input::getPressedControl(){
+    return state().framePressed;
+}
+
+std::string Input::getInputString(){
+    return state().frameText;
 }
 
 Vector2 Input::getMousePosition(){
@@ -736,7 +1049,7 @@ Vector2 Input::getTouchPosition(int pointer){
 
 std::vector<Touch> Input::getTouches(){
     const InputState& s = state();
-    const Clock::time_point now = Clock::now();
+    const double now = s.inputTime;
     std::vector<Touch> touches;
     touches.reserve(s.touchCount);
     for (size_t i = 0; i < s.touchCount; i++)
@@ -757,14 +1070,54 @@ Touch Input::getTouch(size_t index){
     if (index < s.frameTouchCount)
         return s.frameTouches[index];
     Touch none = {-1, Vector2(-1, -1)};
+    none.fingerId = -1;
     return none;
+}
+
+std::vector<Touch> Input::getFrameTouches(){
+    const InputState& s = state();
+    return std::vector<Touch>(s.frameTouches, s.frameTouches + s.frameTouchCount);
+}
+
+bool Input::findTouchById(int fingerId, Touch& out){
+    const InputState& s = state();
+    // a finger lifted and down again in the window is listed twice: the one down now wins
+    for (size_t i = 0; i < s.frameTouchCount; i++){
+        if (s.frameTouches[i].fingerId == fingerId && s.frameTouches[i].phase != TouchPhase::ENDED &&
+                s.frameTouches[i].phase != TouchPhase::CANCELED){
+            out = s.frameTouches[i];
+            return true;
+        }
+    }
+    for (size_t i = 0; i < s.frameTouchCount; i++){
+        if (s.frameTouches[i].fingerId == fingerId){
+            out = s.frameTouches[i];
+            return true;
+        }
+    }
+    return false;
+}
+
+void Input::setMultiTouchEnabled(bool enabled){
+    state().multiTouchEnabled = enabled;
+}
+
+bool Input::isMultiTouchEnabled(){
+    return state().multiTouchEnabled;
+}
+
+bool Input::isTouchVisible(int fingerId){
+    const int index = findTouch(fingerId);
+    return index < 0 || !state().touches[index].hidden;
 }
 
 InputControlEdges Input::getTouchEdges(int pointer){
     const TouchEdgeRecord* record = findTouchEdges(pointer);
     if (!record)
         return InputControlEdges();
-    const bool down = findTouch(pointer) >= 0;
+    // a finger releaseAll reported is not down any more for the game
+    const int index = findTouch(pointer);
+    const bool down = index >= 0 && !state().touches[index].released;
     return edgesOf(down, down && record->uiHeld, state().fixedPhase ? record->fixed : record->frame);
 }
 

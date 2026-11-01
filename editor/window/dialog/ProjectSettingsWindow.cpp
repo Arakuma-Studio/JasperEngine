@@ -3,6 +3,7 @@
 
 #include "ProjectSettingsWindow.h"
 #include "widget/ColorMath.h"
+#include "window/PlayInput.h"
 #include "widget/ColorField.h"
 #include "shortcuts/CommandCatalog.h"
 #include "settings/SettingsRegistry.h"
@@ -19,10 +20,13 @@
 #include "SettingsCategoryList.h"
 #include "asset/AssetMap.h"
 #include "input/InputActions.h"
+#include "input/InputControlNames.h"
+#include "input/InputManagerFormat.h"
 #include "io/UserSettings.h"
 #include "organisation/LabelOperations.h"
 #include "Out.h"
 #include "command/CommandHistory.h"
+#include "command/type/InputActionsCmd.h"
 #include "command/type/HtmlUiRenderSettingsCmd.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
@@ -32,6 +36,8 @@
 
 #include <algorithm>
 #include <array>
+#include <fstream>
+#include <iterator>
 #include <cmath>
 #include <cctype>
 #include <cfloat>
@@ -1073,17 +1079,9 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_layerCollision3D = project->getLayerCollisionMatrix3D();
     m_layerCollision2D = project->getLayerCollisionMatrix2D();
 
-#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page (S22 owns Project Settings > Input)
-    m_inputActions = project->getInputActions();
-    m_inputCommitted = m_inputActions;
-    m_inputCommittedJson = InputActions::actionsToJson(m_inputActions);
-    m_inputUndo.clear();
-    m_inputRedo.clear();
-    m_inputSelected = std::clamp(m_inputSelected, 0, std::max(0, static_cast<int>(m_inputActions.size()) - 1));
+    loadInputManagerActions();
     m_inputSearch[0] = '\0';
-    m_inputListen = InputListen();
 
-#endif
     m_globalsEdit.begin(project);
     m_shaderGlobalUsesScanned = false;
     m_shaderGlobalRemove = -1;
@@ -1126,7 +1124,7 @@ void ProjectSettingsWindow::show() {
 
 void ProjectSettingsWindow::drawSettings() {
     // the Input page's Listen takes Escape: it must not close the dialog in the frame it ends
-    const bool listening = false;   // SYNC4-ABSORB(input): upstream's Input page Listen (m_inputListen)
+    const bool listening = m_inputListen.action >= 0;
     const ImGuiStyle& style = ImGui::GetStyle();
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
     float regionHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
@@ -1176,7 +1174,7 @@ void ProjectSettingsWindow::drawSettings() {
 
     const bool hasAbi = hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64);
     const std::string tagsAndLayersProblem = tagsAndLayersError();
-    const std::string inputProblem;   // SYNC4-ABSORB(input): upstream's inputError()
+    const std::string inputProblem = inputError();
     const std::string shaderGlobalsProblem = m_globalsEdit.error();
     const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
 
@@ -2149,6 +2147,7 @@ void ProjectSettingsWindow::drawInputSettings() {
             ImGui::EndTable();
         }
         if (!m_inputStatus.empty()) drawSectionNote(m_inputStatus.c_str());
+        drawInputManagerSection();
     }
     endSettingsPanel();
 }
@@ -3064,17 +3063,16 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     }
 }
 
-#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page helpers
-// ---- Input (Project Settings > Input): the input actions
+// ---- Input (Project Settings > Input): the Input Manager's actions (the asset's "Input Manager" map)
 
 namespace {
 
-    const char* inputKindLabels[] = { "Key or Mouse Button", "Gamepad Axis", "Mouse Movement" };
+    const char* inputKindLabels[] = { "Key or Mouse Button", "Gamepad Axis", "Mouse Movement", "Input Actions Binding" };
     const char* mouseAxisLabels[] = { "X (right)", "Y (up)", "Wheel (up)" };
 
-    std::string inputUniqueName(const std::vector<InputAction>& actions, const std::string& base) {
+    std::string inputUniqueName(const std::vector<InputManagerAction>& actions, const std::string& base) {
         auto taken = [&actions](const std::string& name) {
-            return std::any_of(actions.begin(), actions.end(), [&name](const InputAction& a) { return a.name == name; });
+            return std::any_of(actions.begin(), actions.end(), [&name](const InputManagerAction& a) { return a.name == name; });
         };
         if (!taken(base)) return base;
         for (int n = 1;; n++) {
@@ -3090,19 +3088,21 @@ namespace {
     }
 
     // "Key or Mouse Button: right, d / left, a"
-    std::string inputBindingSummary(const InputAction& action, const InputBinding& binding) {
+    std::string inputBindingSummary(const InputManagerAction& action, const InputManagerBinding& binding) {
         switch (binding.kind) {
-            case InputBindingKind::Buttons: {
+            case InputManagerBindingKind::Buttons: {
                 std::string text = std::string(inputKindLabels[0]) + ": " + inputControlsText(binding.positive);
-                if (action.type == InputActionType::Axis && !binding.negative.empty())
+                if (action.type != InputManagerActionType::Button && !binding.negative.empty())
                     text += " / " + inputControlsText(binding.negative);
                 return text;
             }
-            case InputBindingKind::GamepadAxis:
+            case InputManagerBindingKind::GamepadAxis:
                 return std::string(inputKindLabels[1]) + ": " + InputControlNames::gamepadAxisName(binding.axis) +
                        (binding.invert ? " (inverted)" : "");
-            case InputBindingKind::MouseDelta:
-                return std::string(inputKindLabels[2]) + ": " + InputActions::mouseAxisName(binding.mouseAxis);
+            case InputManagerBindingKind::MouseDelta:
+                return std::string(inputKindLabels[2]) + ": " + InputManagerFormat::mouseAxisName(binding.mouseAxis);
+            case InputManagerBindingKind::Binding:
+                return std::string(inputKindLabels[3]) + ": " + binding.binding;
         }
         return "";
     }
@@ -3122,21 +3122,19 @@ namespace {
     }
 
 }
-#endif
 
 
-#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page (S22 owns Project Settings > Input)
 std::string ProjectSettingsWindow::inputError() const {
     // names are trimmed when their field is left (and on OK): no error while one is typed
-    std::vector<InputAction> actions = m_inputActions;
-    for (InputAction& action : actions) action.name = TagManager::trimName(action.name);
-    return InputActions::validate(actions);
+    std::vector<InputManagerAction> actions = m_inputActions;
+    for (InputManagerAction& action : actions) action.name = TagManager::trimName(action.name);
+    return InputManagerFormat::validate(actions);
 }
 
 void ProjectSettingsWindow::commitInputEdit() {
     // a drag or a text edit is one step, taken when it ends
     if (ImGui::IsAnyItemActive()) return;
-    const std::string json = InputActions::actionsToJson(m_inputActions);
+    const std::string json = InputManagerFormat::actionsToJson(m_inputActions);
     if (json == m_inputCommittedJson) return;
     m_inputUndo.push_back(m_inputCommitted);
     if (m_inputUndo.size() > 200) m_inputUndo.erase(m_inputUndo.begin());
@@ -3152,7 +3150,7 @@ void ProjectSettingsWindow::undoInputEdit() {
     m_inputActions = m_inputUndo.back();
     m_inputUndo.pop_back();
     m_inputCommitted = m_inputActions;
-    m_inputCommittedJson = InputActions::actionsToJson(m_inputActions);
+    m_inputCommittedJson = InputManagerFormat::actionsToJson(m_inputActions);
     m_inputListen = InputListen();
 }
 
@@ -3162,7 +3160,7 @@ void ProjectSettingsWindow::redoInputEdit() {
     m_inputActions = m_inputRedo.back();
     m_inputRedo.pop_back();
     m_inputCommitted = m_inputActions;
-    m_inputCommittedJson = InputActions::actionsToJson(m_inputActions);
+    m_inputCommittedJson = InputManagerFormat::actionsToJson(m_inputActions);
     m_inputListen = InputListen();
 }
 
@@ -3176,7 +3174,7 @@ void ProjectSettingsWindow::pollInputListen() {
     // the click that started it is not the control
     if (++m_inputListen.frames < 3) return;
 
-    InputBinding& binding = m_inputActions[m_inputListen.action].bindings[m_inputListen.binding];
+    InputManagerBinding& binding = m_inputActions[m_inputListen.action].bindings[m_inputListen.binding];
     auto finish = [this]() { m_inputListen = InputListen(); };
     auto addControl = [&binding, this, &finish](InputControl control) {
         std::vector<InputControl>& list = m_inputListen.list == 1 ? binding.negative : binding.positive;
@@ -3243,58 +3241,112 @@ void ProjectSettingsWindow::pollInputListen() {
         addControl(control);
 }
 
-void ProjectSettingsWindow::drawInputSettings() {
+void ProjectSettingsWindow::loadInputManagerActions() {
+    m_inputActionsSource = m_inputActionsAsset;
+    m_inputManagerReadable = true;
+    std::vector<InputManagerAction> actions;
+    if (m_inputActionsAsset.empty()) {
+        // no asset: the game has Unity's defaults
+        actions = InputManagerFormat::defaults();
+    } else {
+        std::string text;
+        const InputActionsMigration& migration = m_project->getInputActionsMigration();
+        if (migration.pending && migration.asset == m_inputActionsAsset) {
+            text = migration.text;
+        } else {
+            std::ifstream file(m_project->getProjectPath() / m_inputActionsAsset, std::ios::binary);
+            m_inputManagerReadable = file.good();
+            text.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+        }
+        InputActionAssetDesc asset;
+        std::string error;
+        if (m_inputManagerReadable && InputActionAssetDesc::parse(text, asset, error)) {
+            if (const InputActionMapDesc* map = asset.findMap(InputManagerFormat::MAP_NAME))
+                actions = InputManagerFormat::fromMap(*map);
+        } else {
+            m_inputManagerReadable = false;
+        }
+    }
+    m_inputOriginal = actions;
+    m_inputActions = actions;
+    m_inputCommitted = actions;
+    m_inputCommittedJson = InputManagerFormat::actionsToJson(actions);
+    m_inputUndo.clear();
+    m_inputRedo.clear();
+    m_inputSelected = std::clamp(m_inputSelected, 0, std::max(0, static_cast<int>(m_inputActions.size()) - 1));
+    m_inputListen = InputListen();
+}
+
+void ProjectSettingsWindow::drawInputManagerSection() {
+    // another Default Actions Asset picked above: its Input Manager map
+    if (m_inputActionsAsset != m_inputActionsSource) loadInputManagerActions();
+
     ImGuiIO& io = ImGui::GetIO();
+    // the section's own undo: the modal dialog keeps the editor's shortcuts off while it is open
     if (m_inputListen.action < 0 && !io.WantTextInput && io.KeyCtrl) {
-        if (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false))) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false))) {  // shortcut-lint: allow the modal Project Settings dialog's own Input undo (the dispatcher is off while a popup is open)
             redoInputEdit();
-        } else if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+        } else if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {  // shortcut-lint: allow the modal Project Settings dialog's own Input undo (the dispatcher is off while a popup is open)
             undoInputEdit();
         }
     }
 
-    if (beginSettingsPanel("##InputSettingsPanel")) {
-        drawSectionNote("Input actions are Unity's virtual axes and buttons: scripts read Input.getAxis(\"Horizontal\") and "
+    if (!settingsui::beginRow("input.manager_actions")) return;
+    ImGui::Spacing();
+    ImGui::SeparatorText("Input Manager");
+    if (m_inputActionsAsset.empty()) {
+        drawSectionNote("Unity's virtual axes and buttons: scripts read Input.getAxis(\"Horizontal\") and "
             "Input.getButtonDown(\"Jump\"), and the keyboard, gamepad and on-screen controls bound to an action add up. "
-            "Saved with the project; a game can rebind them at run time (Input.setBindings).");
-
-        ImGui::BeginDisabled(m_inputUndo.empty() && InputActions::actionsToJson(m_inputActions) == m_inputCommittedJson);
-        if (ImGui::Button(ICON_FA_ROTATE_LEFT " Undo")) undoInputEdit();
-        ImGui::EndDisabled();
-        ImGui::SetItemTooltip("Undo the last Input change (Ctrl+Z)");
-        ImGui::SameLine();
-        ImGui::BeginDisabled(m_inputRedo.empty());
-        if (ImGui::Button(ICON_FA_ROTATE_RIGHT " Redo")) redoInputEdit();
-        ImGui::EndDisabled();
-        ImGui::SetItemTooltip("Redo (Ctrl+Y)");
-        ImGui::SameLine();
-        if (ImGui::Button("Reset to Unity Defaults")) {
-            m_inputActions = InputActions::defaults();
-            m_inputSelected = 0;
-            m_inputListen = InputListen();
-        }
-        ImGui::SetItemTooltip("Horizontal, Vertical, Fire1-3, Jump, Mouse X/Y, Mouse ScrollWheel, Submit and Cancel "
-                              "as Unity's Input Manager has them");
-
-        const std::string problem = inputError();
-        if (!problem.empty()) {
-            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", problem.c_str());
-        }
-
-        const float listWidth = std::min(Theme::dpi(220.0f), ImGui::GetContentRegionAvail().x * 0.35f);
-        ImGui::BeginChild("##InputActionList", ImVec2(listWidth, 0), ImGuiChildFlags_Borders);
-        drawInputActionList();
-        ImGui::EndChild();
-        ImGui::SameLine();
-        ImGui::BeginChild("##InputActionDetails", ImVec2(0, 0), ImGuiChildFlags_None);
-        if (m_inputSelected >= 0 && m_inputSelected < static_cast<int>(m_inputActions.size())) {
-            drawInputActionDetails(m_inputActions[m_inputSelected], m_inputSelected);
-        } else {
-            ImGui::TextDisabled("No action selected. Add one with +.");
-        }
-        ImGui::EndChild();
+            "Without an actions asset the game has Unity's eleven defaults; OK with an edit here makes "
+            "InputManager.inputactions (its \"Input Manager\" map) the Default Actions Asset. A game can rebind them at "
+            "run time (Input.setBindings).");
+    } else if (!m_inputManagerReadable) {
+        drawSectionNote((m_inputActionsAsset.generic_string() + " cannot be read as an actions asset: fix it in Window > Input "
+            "Actions (or pick another asset) to edit its Input Manager map here.").c_str());
+        return;
+    } else {
+        drawSectionNote(("The \"Input Manager\" map of " + m_inputActionsAsset.generic_string() + ": Unity's virtual axes and "
+            "buttons, read by Input.getAxis(\"Horizontal\") and Input.getButtonDown(\"Jump\") (names the map does not have "
+            "are looked up in the asset's other maps). Window > Input Actions edits the same map with every Input Actions "
+            "feature; a game can rebind them at run time (Input.setBindings).").c_str());
     }
-    endSettingsPanel();
+
+    ImGui::BeginDisabled(m_inputUndo.empty() && InputManagerFormat::actionsToJson(m_inputActions) == m_inputCommittedJson);
+    if (ImGui::Button(ICON_FA_ROTATE_LEFT " Undo")) undoInputEdit();
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Undo the last Input Manager change (Ctrl+Z)");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(m_inputRedo.empty());
+    if (ImGui::Button(ICON_FA_ROTATE_RIGHT " Redo")) redoInputEdit();
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Redo (Ctrl+Y)");
+    ImGui::SameLine();
+    if (ImGui::Button("Reset to Unity Defaults")) {
+        m_inputActions = InputManagerFormat::defaults();
+        m_inputSelected = 0;
+        m_inputListen = InputListen();
+    }
+    ImGui::SetItemTooltip("Horizontal, Vertical, Fire1-3, Jump, Mouse X/Y, Mouse ScrollWheel, Submit and Cancel "
+                          "as Unity's Input Manager has them");
+
+    const std::string problem = inputError();
+    if (!problem.empty()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", problem.c_str());
+    }
+
+    const float height = std::max(Theme::dpi(320.0f), ImGui::GetContentRegionAvail().y);
+    const float listWidth = std::min(Theme::dpi(220.0f), ImGui::GetContentRegionAvail().x * 0.35f);
+    ImGui::BeginChild("##InputActionList", ImVec2(listWidth, height), ImGuiChildFlags_Borders);
+    drawInputActionList();
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("##InputActionDetails", ImVec2(0, height), ImGuiChildFlags_None);
+    if (m_inputSelected >= 0 && m_inputSelected < static_cast<int>(m_inputActions.size())) {
+        drawInputActionDetails(m_inputActions[m_inputSelected], m_inputSelected);
+    } else {
+        ImGui::TextDisabled("No action selected. Add one with +.");
+    }
+    ImGui::EndChild();
 
     pollInputListen();
     commitInputEdit();
@@ -3303,9 +3355,9 @@ void ProjectSettingsWindow::drawInputSettings() {
 void ProjectSettingsWindow::drawInputActionList() {
     const float buttonWidth = ImGui::GetFrameHeight();
     if (ImGui::Button(ICON_FA_PLUS "##AddInputAction", ImVec2(buttonWidth, 0))) {
-        InputAction action;
+        InputManagerAction action;
         action.name = inputUniqueName(m_inputActions, "New Action");
-        action.bindings.push_back(InputActions::makeBinding(InputBindingKind::Buttons));
+        action.bindings.push_back(InputManagerFormat::makeBinding(InputManagerBindingKind::Buttons));
         const int at = std::clamp(m_inputSelected + 1, 0, static_cast<int>(m_inputActions.size()));
         m_inputActions.insert(m_inputActions.begin() + at, action);
         m_inputSelected = at;
@@ -3316,7 +3368,7 @@ void ProjectSettingsWindow::drawInputActionList() {
     const bool hasSelection = m_inputSelected >= 0 && m_inputSelected < static_cast<int>(m_inputActions.size());
     ImGui::BeginDisabled(!hasSelection);
     if (ImGui::Button(ICON_FA_COPY "##DuplicateInputAction", ImVec2(buttonWidth, 0)) && hasSelection) {
-        InputAction copy = m_inputActions[m_inputSelected];
+        InputManagerAction copy = m_inputActions[m_inputSelected];
         copy.name = inputUniqueName(m_inputActions, copy.name);
         m_inputActions.insert(m_inputActions.begin() + m_inputSelected + 1, copy);
         m_inputSelected++;
@@ -3339,7 +3391,7 @@ void ProjectSettingsWindow::drawInputActionList() {
     const bool playing = inputPlaying(m_project);
     int moveFrom = -1, moveTo = -1;
     for (int i = 0; i < static_cast<int>(m_inputActions.size()); i++) {
-        const InputAction& action = m_inputActions[i];
+        const InputManagerAction& action = m_inputActions[i];
         std::string lower = action.name;
         std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         if (!search.empty() && lower.find(search) == std::string::npos) continue;
@@ -3375,7 +3427,7 @@ void ProjectSettingsWindow::drawInputActionList() {
         ImGui::PopID();
     }
     if (moveFrom >= 0 && moveTo >= 0 && moveFrom != moveTo) {
-        InputAction moved = m_inputActions[moveFrom];
+        InputManagerAction moved = m_inputActions[moveFrom];
         m_inputActions.erase(m_inputActions.begin() + moveFrom);
         m_inputActions.insert(m_inputActions.begin() + moveTo, moved);
         m_inputSelected = moveTo;
@@ -3383,7 +3435,7 @@ void ProjectSettingsWindow::drawInputActionList() {
     }
 }
 
-void ProjectSettingsWindow::drawInputActionDetails(InputAction& action, int actionIndex) {
+void ProjectSettingsWindow::drawInputActionDetails(InputManagerAction& action, int actionIndex) {
     ImGui::PushID(actionIndex);
     if (beginSettingsTable("##InputActionTable")) {
         projectBeginSettingsRow("Name");
@@ -3394,12 +3446,13 @@ void ProjectSettingsWindow::drawInputActionDetails(InputAction& action, int acti
         if (ImGui::IsItemDeactivatedAfterEdit()) action.name = TagManager::trimName(action.name);
         endSettingsRow("What scripts pass to Input.getAxis / getButton. Unique, case-sensitive.");
 
-        if (projectBeginSettingsRow("Type", action.type != InputActionType::Axis)) action.type = InputActionType::Axis;
-        int type = action.type == InputActionType::Button ? 1 : 0;
-        const char* typeLabels[] = { "Axis", "Button" };
+        if (projectBeginSettingsRow("Type", action.type != InputManagerActionType::Axis)) action.type = InputManagerActionType::Axis;
+        int type = static_cast<int>(action.type);
+        const char* typeLabels[] = { "Axis", "Button", "Vector2" };
         ImGui::SetNextItemWidth(-helpMarkerWidth());
-        if (ImGui::Combo("##InputActionType", &type, typeLabels, 2)) action.type = type == 1 ? InputActionType::Button : InputActionType::Axis;
-        endSettingsRow("Axis: -1..1 from a positive and a negative side. Button: 0..1, negative buttons are not read.");
+        if (ImGui::Combo("##InputActionType", &type, typeLabels, 3)) action.type = static_cast<InputManagerActionType>(type);
+        endSettingsRow("Axis: -1..1 from a positive and a negative side. Button: 0..1, negative buttons are not read. "
+            "Vector2: an Input Actions VECTOR2 (a stick, a 2D composite; Window > Input Actions edits its bindings).");
 
         projectBeginSettingsRow("Description");
         char description[256];
@@ -3417,7 +3470,7 @@ void ProjectSettingsWindow::drawInputActionDetails(InputAction& action, int acti
             projectBeginSettingsRow("Live");
             InputActions::State state;
             if (InputActions::getState(action.name, state)) {
-                const float low = action.type == InputActionType::Button ? 0.0f : -1.0f;
+                const float low = action.type == InputManagerActionType::Axis ? -1.0f : 0.0f;
                 const float fraction = std::clamp((state.value - low) / (1.0f - low), 0.0f, 1.0f);
                 char overlay[32];
                 snprintf(overlay, sizeof(overlay), "%.3f", state.value);
@@ -3470,10 +3523,11 @@ void ProjectSettingsWindow::drawInputActionDetails(InputAction& action, int acti
     }
 
     if (ImGui::Button(ICON_FA_PLUS " Add Binding")) ImGui::OpenPopup("##AddInputBinding");
+    // the Input Manager's three kinds (other bindings: Window > Input Actions)
     if (ImGui::BeginPopup("##AddInputBinding")) {
         for (int kind = 0; kind < 3; kind++) {
             if (ImGui::MenuItem(inputKindLabels[kind])) {
-                action.bindings.push_back(InputActions::makeBinding(static_cast<InputBindingKind>(kind)));
+                action.bindings.push_back(InputManagerFormat::makeBinding(static_cast<InputManagerBindingKind>(kind)));
             }
         }
         ImGui::EndPopup();
@@ -3523,8 +3577,8 @@ void ProjectSettingsWindow::drawInputControls(const char* id, std::vector<InputC
             }
         };
         group("Keys", InputControlNames::keyNames());
-        group("Mouse", InputControlNames::mouseButtonNames());
-        group("Gamepad", InputControlNames::gamepadButtonNames());
+        group("Mouse", InputControlNames::mouseButtonControlNames());
+        group("Gamepad", InputControlNames::gamepadButtonControlNames());
         ImGui::EndChild();
         ImGui::EndPopup();
     }
@@ -3547,20 +3601,29 @@ void ProjectSettingsWindow::drawInputControls(const char* id, std::vector<InputC
     ImGui::PopID();
 }
 
-void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionIndex, int bindingIndex) {
-    InputBinding& binding = action.bindings[bindingIndex];
+void ProjectSettingsWindow::drawInputBinding(InputManagerAction& action, int actionIndex, int bindingIndex) {
+    InputManagerBinding& binding = action.bindings[bindingIndex];
     if (!beginSettingsTable("##InputBindingTable")) return;
+
+    // another Input Actions binding (a path, a 2D composite, modifiers...): Window > Input Actions edits it
+    if (binding.kind == InputManagerBindingKind::Binding) {
+        projectBeginSettingsRow("Binding");
+        ImGui::TextWrapped("%s", binding.binding.c_str());
+        endSettingsRow("An Input Actions binding the Input Manager's kinds cannot show: Window > Input Actions edits it.");
+        ImGui::EndTable();
+        return;
+    }
 
     projectBeginSettingsRow("Kind");
     int kind = static_cast<int>(binding.kind);
     ImGui::SetNextItemWidth(-helpMarkerWidth());
     if (ImGui::Combo("##BindingKind", &kind, inputKindLabels, 3) && kind != static_cast<int>(binding.kind)) {
-        binding = InputActions::makeBinding(static_cast<InputBindingKind>(kind));
+        binding = InputManagerFormat::makeBinding(static_cast<InputManagerBindingKind>(kind));
         m_inputListen = InputListen();
     }
     endSettingsRow("Unity's Input Manager types: Key or Mouse Button, Joystick Axis, Mouse Movement.");
 
-    const InputBinding defaults = InputActions::makeBinding(binding.kind);
+    const InputManagerBinding defaults = InputManagerFormat::makeBinding(binding.kind);
     auto gamepadRow = [&binding]() {
         if (projectBeginSettingsRow("Gamepad", binding.gamepad != -1)) binding.gamepad = -1;
         std::string preview = binding.gamepad < 0 ? std::string("Any") : "Gamepad " + std::to_string(binding.gamepad);
@@ -3576,10 +3639,10 @@ void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionInde
     };
 
     switch (binding.kind) {
-        case InputBindingKind::Buttons: {
-            projectBeginSettingsRow(action.type == InputActionType::Axis ? "Positive Buttons" : "Buttons");
+        case InputManagerBindingKind::Buttons: {
+            projectBeginSettingsRow(action.type != InputManagerActionType::Button ? "Positive Buttons" : "Buttons");
             drawInputControls("##Positive", binding.positive, actionIndex, bindingIndex, 0);
-            if (action.type == InputActionType::Axis) {
+            if (action.type != InputManagerActionType::Button) {
                 projectBeginSettingsRow("Negative Buttons");
                 drawInputControls("##Negative", binding.negative, actionIndex, bindingIndex, 1);
             }
@@ -3595,7 +3658,7 @@ void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionInde
             endSettingsRow("Pressing the opposite side jumps to 0 first instead of sliding through it.");
             break;
         }
-        case InputBindingKind::GamepadAxis: {
+        case InputManagerBindingKind::GamepadAxis: {
             projectBeginSettingsRow("Axis");
             int axis = binding.axis;
             const std::vector<std::string>& axes = InputControlNames::gamepadAxisNames();
@@ -3624,7 +3687,7 @@ void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionInde
                 "Multiplies the value.");
             break;
         }
-        case InputBindingKind::MouseDelta: {
+        case InputManagerBindingKind::MouseDelta: {
             projectBeginSettingsRow("Axis");
             int axis = static_cast<int>(binding.mouseAxis);
             ImGui::SetNextItemWidth(-helpMarkerWidth());
@@ -3634,13 +3697,15 @@ void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionInde
                 "Multiplies the movement (Unity's default 0.1).");
             break;
         }
+        case InputManagerBindingKind::Binding:
+            // shown read-only above
+            break;
     }
     if (projectBeginSettingsRow("Invert", binding.invert)) binding.invert = false;
     ImGui::Checkbox("##Invert", &binding.invert);
     endSettingsRow("Flips the sign.");
     ImGui::EndTable();
 }
-#endif
 
 bool ProjectSettingsWindow::applySettings() {
     if (!hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64)) {
@@ -3649,7 +3714,9 @@ bool ProjectSettingsWindow::applySettings() {
     if (!tagsAndLayersError().empty()) {
         return false;
     }
-    // SYNC4-ABSORB(input): upstream's inputError() (its Input page)
+    if (!inputError().empty()) {
+        return false;
+    }
     if (!m_globalsEdit.error().empty()) {
         return false;
     }
@@ -3849,17 +3916,15 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setTagsAndLayers(tags, m_layerNames);
     m_project->setLayerCollisionMatrices(m_layerCollision3D, m_layerCollision2D);
 
-#if 0 // SYNC4-ABSORB(input): upstream's Input Manager page (S22 owns Project Settings > Input)
-    // Input: one undoable step of the project history (Edit > Undo with the Project window
-    // focused, MCP undo scope project)
-    for (InputAction& action : m_inputActions) action.name = TagManager::trimName(action.name);
-    if (InputActions::actionsToJson(m_inputActions) != InputActions::actionsToJson(m_project->getInputActions())) {
-        auto* command = new InputActionsCmd(m_project, m_project->getInputActions(), m_inputActions);
+    // Input Manager: one undoable step of the project history (Edit > Undo with the Project
+    // window focused, MCP undo scope project), into the asset just set (made when there is none)
+    for (InputManagerAction& action : m_inputActions) action.name = TagManager::trimName(action.name);
+    if (m_inputManagerReadable && InputManagerFormat::actionsToJson(m_inputActions) != InputManagerFormat::actionsToJson(m_inputOriginal)) {
+        auto* command = new InputActionsCmd(m_project, m_inputActions);
         command->setNoMerge();
         m_project->getProjectCommandHistory()->addCommand(command);
     }
 
-#endif
     // Shader Globals: one undoable step too; a renamed global's bindings follow it
     m_globalsEdit.commit();
 
