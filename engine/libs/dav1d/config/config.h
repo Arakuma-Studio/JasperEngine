@@ -15,7 +15,12 @@
 #define CONFIG_16BPC 1
 /* errors reach the engine's log through Dav1dSettings.logger (Av1Decoder) */
 #define CONFIG_LOG 1
+/* the C functions that the target's baseline asm always replaces (aarch64 NEON, x86-64 SSE2) are
+ * left out, and those CPU flags cannot be masked off (src/cpu.h); 0 keeps them, so that a mask
+ * of 0 is C only (tools/htmlui/dav1d-asm-check builds it so) */
+#ifndef TRIM_DSP_FUNCTIONS
 #define TRIM_DSP_FUNCTIONS 1
+#endif
 #define ENDIANNESS_BIG 0
 
 #if defined(__x86_64__) || defined(_M_X64)

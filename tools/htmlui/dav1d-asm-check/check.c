@@ -4,7 +4,8 @@
  * Av1Decoder.AsmDecodesBitExactlyAsC test does the same). Decodes each IVF file twice, with dav1d's
  * CPU feature mask 0 (C only) and ~0 (every feature the CPU reports), and compares every plane of
  * every frame byte for byte. Prints the CPU features dav1d found and the time per frame both ways.
- * Exit 0: every file identical.
+ * Exit 0: every file identical. dav1d must be built with TRIM_DSP_FUNCTIONS=0 (CMakeLists.txt
+ * does): its default 1 leaves out the C functions of the baseline asm and keeps that asm on.
  *
  *   dav1d-asm-check clip.ivf [clip.ivf ...]
  */
