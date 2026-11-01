@@ -63,7 +63,7 @@ origin/main).
 | 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | merged |
 | 23 | `debug-overlay` | on-device log console and stats/FPS overlay | impl |
 | 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | review |
-| 26 | `xcode26-dav1d` | iOS/macOS builds fail on Xcode 26.6 (pre-existing on the original main): dav1d's aarch64 assembly (src/arm/64/refmvs.S ...) does not assemble; fix and verify on a macOS box | todo |
+| 26 | `xcode26-dav1d` | iOS/macOS builds fail on Xcode 26.6 (pre-existing on the original main): dav1d's aarch64 assembly (src/arm/64/refmvs.S ...) does not assemble; fix and verify on a macOS box | impl |
 | 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | merged |
 
 ## Log
@@ -227,3 +227,12 @@ origin/main).
   platform-services, ui-multitouch, physics-contacts, physics-3d, anim-layers, shader-globals, coroutines,
   particles, ui-canvas-group (+ guide-headroom). Next batch: camera-shake (final merge done, 0ea304609),
   audio-mixer, native-bridge, then ui-scaling-text, video-mp4, safe-area as their final merges land.
+- 2026-11-01: merged locally (not pushed yet): camera-shake, ui-scaling-text, audio-mixer, anim-retarget (after its
+  review fixes; a re-review of the fixes is running). Lead fixes found by the batch checks: camera-shake's order test
+  assumed it was last (dce634fb7); the owner's Mac found the Xcode project lacked SoLoud's 12 filter sources (the
+  audio mixer's effects; link error) -> added, and tools/xcode_sync_engine.py now also compares SoLoud's CMake list
+  (1d7690f0b); the audio-mixer merge had duplicated Generator::configure (1c75bd8fc). The Mac also found Apple
+  compile errors on unmerged branches: native-bridge (a C++ parameter named `id` hid Objective-C's id; fixed,
+  macOS/iOS now 0 errors) and video-mp4 (enum values YES/NO, Objective-C macros; fixing). Session restart: all
+  agents revived; box 2201's sshd had lost /run/sshd when unattended-upgrades stopped ssh.service -> fixed, every
+  box now key-only with a cron that keeps /run/sshd. #26 xcode26-dav1d started (on the owner's Mac, own directory).
