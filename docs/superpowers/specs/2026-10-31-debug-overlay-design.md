@@ -521,23 +521,23 @@ the code:
       undo); in MCP `statsMode = 3`, the buffer cap and the audio voices against get_play_state.
     - The safe area is wired (12), with a GPU test: platform insets (a notch) move the console
       and the stats panel clear of them.
-18. **Verification** (box 2203, branch merged with `main` `dce634fb7`, audio-mixer, camera-shake and
-    ui-scaling-text included): editor and tests build with 0 compiler warnings; `jasperengine-editor-tests`
-    1748 tests, 1739 passed, 9 skipped, 0 failed. Full MCP suite (`run-tests.sh -j3`): 935 passed, 22
-    skipped (slow exports, missing LuaLS/clangd/xev/ImageMagick), 10 failed, all the known baseline
-    (`test_animation_assets` 5, `test_lattice_scene` 5, failing on `main` too); `test_debug_overlay` 4
-    passed there, and its slow Release export (`JASPER_SLOW_BUILD=1`) passed on the tree merged up to
-    anim-layers (`enabled=true development=false buffer=321`, console visible, FPS, a Lua traceback).
-    Tool budget: 154 tools, 113014 chars, `TOTAL_LIMIT` set to it; `test_protocol` (guide under 16 KB)
-    passed; `docs/mcp/TOOLS.md` regenerated from that build. Earlier runs, before the last merges: GPU
-    suite `jasperengine-htmlui-tests` (standalone engine build) all 3121 passed, then `DebugOverlay*`,
-    `*Input*`, `*PassThrough*`, `*DocumentSystem*` 96 passed on the anim-layers tree;
-    `InputTest.ComponentUIPointersOutsideTheCanvasFocusLossAndPauseAreCancelled` (ui-multitouch) fails
-    only after the other `InputTest` cases (passes alone; `Engine::systemFocus` keeps the focus flag
-    across tests). Two timing/order-dependent unit tests of other features failed once on earlier runs and
-    passed on rerun (`HttpTest.LuaCallbackErrorsAreLoggedAndOthersStillRun`,
-    `PhysicsContactsTest.ContactProcessingCostIsSmall`). Platform compile checks on the final tree: Web
-    (em++) and Android (NDK r30, arm64) compile the 9 changed engine sources with no diagnostics; the
-    Xcode project lists the new files (`xcode_sync_engine.py --check`). Not built: Apple and Windows
-    (`ProcessMemory.cpp`'s `task_info` / `K32GetProcessMemoryInfo` paths written against the platform
-    headers).
+18. **Verification** (box 2203, the review fixes on the tree merged with `main` `fa4eeed50`:
+    anim-retarget, video-mp4, native-bridge, xcode26-dav1d, asan-sweep, safe-area): the editor and
+    its tests (a full build, 2335 steps) and `jasperengine-htmlui-tests` (543 steps) build with 0
+    compiler warnings. `jasperengine-editor-tests`: 1862 tests, 1852 passed, 9 skipped, 1 failed,
+    `PhysicsContactsTest.ContactProcessingCostIsSmall` (a 5% timing budget, physics-contacts; it
+    passed 3 times of 3 run alone, and the same suite on the merge commit had 1861 tests, 1852
+    passed, 9 skipped, 0 failed). GPU suite `jasperengine-htmlui-tests`: 3173 of 3173 passed
+    (`DebugOverlay*` 17, a rebuild of 500 rows 0.9 ms and a line added 0.7 ms with the layout).
+    Full MCP suite (`run-tests.sh -j3`): 954 passed, 22 skipped (slow exports, LuaLS, clangd, xev,
+    ImageMagick), 10 failed, the known baseline (`test_animation_assets` 5, `test_lattice_scene` 5);
+    `test_debug_overlay` with `JASPER_SLOW_BUILD=1`: 6 passed, the Release export printing
+    `enabled=true development=false buffer=321` and `visible=true fps=true trace=true`. Tool
+    budget: 155 tools, 114892 chars, `TOTAL_LIMIT` set to it; `test_protocol` (the guide under
+    16384 bytes) passed; `docs/mcp/TOOLS.md` regenerated from that build. Web (em++) and Android
+    (NDK r30, arm64) compile the 9 changed engine sources with no diagnostics; every Xcode sync
+    script passes `--check` (`xcode_sync_engine.py`, `tools/htmlui/xcode_sync_compat.py`,
+    `xcode_sync_rmlui.py`, `xcode_add_lexbor.py`, `xcode_add_video_libs.py`,
+    `xcode_sync_effects.py`). Apple: the owner's Mac compiled the branch before this merge for
+    macOS and iOS (reported by the lead; not rebuilt after the merge). Windows not built
+    (`PSAPI_VERSION 2` and `K32GetProcessMemoryInfo` written against the headers).
