@@ -10,9 +10,9 @@ scratch copy of tools/fixtures/pose-animation:
   Ctrl+Z / Ctrl+Y with the file checked through get_animation {controller}; a state drag is one undo step; in play
   mode a parameter's checkbox changes the runtime (get_animator) and not the file.
 
-Widgets are found through the UI probe (Editor(ui_probe=True), editor/util/UIProbe.h); the Project window has no
-probe names: its tree and grid are clicked at the fixed positions of the harness's 1600x900 layout (as
-test_animation_inspector.py does). Screenshots go to $JASPER_SHOTS_DIR when set (else the scratch directory).
+Widgets are found through the UI probe (Editor(ui_probe=True), editor/util/UIProbe.h), the Project window's
+files by their "project.file.<name>" rects (as test_physics_2d_inspector.py does). Screenshots go to
+$JASPER_SHOTS_DIR when set (else the scratch directory).
 """
 
 from __future__ import annotations
@@ -84,6 +84,21 @@ class Ui:
             self.xdo("click", "5" if down else "4")
         await asyncio.sleep(0.3)
 
+    async def project_file(self, name: str, folders=("assets", "aaa_masks")):
+        """a file of the Project window (its probe rect), opening the folders on the way"""
+        await self.ed.call("focus_window", window="project")
+        for _ in range(12):
+            await self.frames(4)
+            items = self.ed.ui_items()
+            rect = items.get("project.file." + name)
+            if rect:
+                return rect
+            for folder in reversed(folders):
+                if "project.file." + folder in items:
+                    await self.click(*center(items["project.file." + folder]), double=True)
+                    break
+        self.ed.fail(f"the Project window never lists {name}: {sorted(self.ed.ui_items())}")
+
     async def frames(self, n: int = 3):
         await self.ed.call("wait", frames=n)
 
@@ -153,17 +168,17 @@ async def controller(ed: Editor) -> dict:
     return await ed.call("get_animation", controller=CONTROLLER)
 
 
-def states(got: dict) -> list:
+def controller_states(got: dict) -> list:
     return got["layers"][0]["state_machine"]["states"]
 
 
 def transitions(got: dict) -> list:
     """(from, to) of the base layer's state transitions, by source state"""
-    return [(s["name"], t["to"]) for s in states(got) for t in s["transitions"]]
+    return [(s["name"], t["to"]) for s in controller_states(got) for t in s["transitions"]]
 
 
 def transition(got: dict, source: str, index: int = 0) -> dict:
-    return next(s for s in states(got) if s["name"] == source)["transitions"][index]
+    return next(s for s in controller_states(got) if s["name"] == source)["transitions"][index]
 
 
 async def test_setup(ed: Editor):
@@ -234,13 +249,10 @@ async def test_mask_asset_inspector(ed: Editor):
     await ed.call("wait", frames=5)
     mask = ed.project / MASK
     before = mask.read_text()
-    # the tree's assets, the grid's first folder (aaa_masks), its first file (arm.mask)
+    # the mask in the Project window (its probe rect): a click shows it in the Inspector
     for _ in range(4):
-        await ui.click(85, 691)
-        await ed.call("wait", frames=5)
-        await ui.click(247, 715, double=True)
-        await ed.call("wait", frames=10)
-        await ui.click(247, 715)
+        rect = await ui.project_file("arm.mask")
+        await ui.click(*center(rect))
         await ed.call("wait", frames=10)
         if "asset.mask.figure" in ed.ui_items():
             break
@@ -299,7 +311,7 @@ async def test_animator_window_edits(ed: Editor):
     await shot(ed, "07-create-state-menu")
     await ui.click(*center(empty))
     got = await controller(ed)
-    names = [s["name"] for s in states(got)]
+    names = [s["name"] for s in controller_states(got)]
     ed.check_eq(names, ["Idle", "Run", "New State"], f"Create State > Empty: {names}")
 
     # right-click the new state -> Make Transition, then click Idle
@@ -339,13 +351,13 @@ async def test_animator_window_edits(ed: Editor):
 
     # a state drag is one undo step
     run = await ui.item("animator.state.1")
-    start = next(s["position"] for s in states(await controller(ed)) if s["name"] == "Run")
+    start = next(s["position"] for s in controller_states(await controller(ed)) if s["name"] == "Run")
     await ui.drag(center(run), (center(run)[0] + 60, center(run)[1] + 30))
-    moved = next(s["position"] for s in states(await controller(ed)) if s["name"] == "Run")
+    moved = next(s["position"] for s in controller_states(await controller(ed)) if s["name"] == "Run")
     ed.check(moved != start, f"the drag moved Run: {start} -> {moved}")
     await shot(ed, "09-dragged")
     await ui.key("ctrl+z")
-    back = next(s["position"] for s in states(await controller(ed)) if s["name"] == "Run")
+    back = next(s["position"] for s in controller_states(await controller(ed)) if s["name"] == "Run")
     ed.check_eq(back, start, "one Ctrl+Z puts it back")
     S["text"] = (ed.project / CONTROLLER).read_text()
     ed.check(path, "the header names the controller")

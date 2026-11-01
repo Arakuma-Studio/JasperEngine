@@ -61,7 +61,8 @@ async def test_tool_definition(ed: Editor):
     ed.check("jasper://docs/animator" in tool.description, "it points to the guide")
     got = await ed.session.read_resource("jasper://docs/animator")
     guide = "".join(getattr(c, "text", "") or "" for c in got.contents)
-    ed.check("Avatar Mask" in guide and "version 1" in guide, f"the guide has the masks and the version 1 files: {guide[:600]}")
+    # (the guide is served as an index of its sections)
+    ed.check("Masks and montages" in guide and "Controller ops" in guide, f"the guide has the ops and the masks: {guide[:600]}")
 
 
 async def test_build_the_granjero_port(ed: Editor):
@@ -237,7 +238,7 @@ async def test_from_player_and_write_file(ed: Editor):
     await ed.call("add_component", entity=box_id, component="animationplayer", values={"animationplayer": {
         "clips": [{"clip": "assets/anim/idle.anim", "name": "Idle"}, {"clip": "assets/anim/running.anim", "name": "Run"}], "defaultClip": "Run"}})
     # a new controller file stays in the assets folder
-    await refused(ed, "edit_animator_controller", {"path": "box.controller", "create": True, "from_player": box_id}, "assets")
+    await refused(ed, "edit_animator_controller", {"path": "../box.controller", "create": True, "from_player": box_id}, "outside the assets")
     ed.check(not (ed.project / "box.controller").exists(), "nothing written outside the assets folder")
     # a failing op: no file, no Animator, nothing on the undo stack (the next undo is the
     # add_component above)

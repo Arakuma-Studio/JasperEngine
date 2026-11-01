@@ -1121,10 +1121,34 @@ void editAnimatorControllerTool(const CallPtr& call) {
         playerEntity = entity;
     }
     if (args.contains("ops")) {
+        // a transition to a state that does not exist is refused (the op names it), not left to
+        // the diagnostics: the transitions the file had before are not this call's
+        auto missingTargets = [](const ControllerDef& d, std::string* first) {
+            size_t n = 0;
+            for (const ClipWarning& w : compileController(d)->diagnostics) {
+                if (w.message.rfind("no state or state machine named", 0) != 0) continue;
+                if (first && first->empty()) *first = w.message;
+                n++;
+            }
+            return n;
+        };
+        size_t missing = missingTargets(def, nullptr);
         for (size_t i = 0; i < args["ops"].size(); i++) {
-            if (!applyOp(project, def, args["ops"][i], changes, error)) {
+            const Json& op = args["ops"][i];
+            if (!applyOp(project, def, op, changes, error)) {
                 call->fail("ops[" + std::to_string(i) + "]: " + error + " (nothing was written).");
                 return;
+            }
+            const std::string kind = op.is_object() ? op.value("op", std::string()) : std::string();
+            if (kind == "add_transition" || kind == "set_transition") {
+                std::string message;
+                const size_t now = missingTargets(def, &message);
+                if (now > missing) {
+                    call->fail("ops[" + std::to_string(i) + "].to: \"" + op.value("to", std::string()) + "\": " + message +
+                               " (nothing was written).");
+                    return;
+                }
+                missing = now;
             }
         }
     }
@@ -1926,6 +1950,12 @@ void getController(const CallPtr& call) {
         call->fail(error.empty() ? std::string("controller: a project-relative .controller path, e.g. assets/anim/hero.controller.") : error);
         return;
     }
+    std::error_code existsError;
+    if (!fs::exists(absolute, existsError)) {
+        call->fail("controller: '" + args["controller"].get<std::string>() +
+                   "' does not exist (create one with edit_animator_controller {path, create: true}).");
+        return;
+    }
     std::shared_ptr<AnimatorAssetDocument> document = AnimatorAssetDocument::open(project, absolute.string(), &error);
     if (!document) {
         call->fail("controller: " + error + " (create one with edit_animator_controller {path, create: true}).");
@@ -1943,6 +1973,11 @@ void getMask(const CallPtr& call) {
     if (!args["mask"].is_string() ||
         !assetFilePath(project, args["mask"].get<std::string>(), "an Avatar Mask (.mask)", &Util::isAvatarMaskFile, stored, absolute, error)) {
         call->fail(error.empty() ? std::string("mask: a project-relative .mask path, e.g. assets/anim/arm.mask.") : error);
+        return;
+    }
+    std::error_code existsError;
+    if (!fs::exists(absolute, existsError)) {
+        call->fail("mask: '" + args["mask"].get<std::string>() + "' does not exist (create one with edit_avatar_mask {path, create: true}).");
         return;
     }
     std::shared_ptr<AnimatorAssetDocument> document = AnimatorAssetDocument::open(project, absolute.string(), &error);
