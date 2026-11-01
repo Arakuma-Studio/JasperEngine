@@ -1,3 +1,7 @@
+# Local patch: stb_image_resize2.h's vertical gather and scatter index each of their two function
+# tables on its own ((c ? a[i] : b[i]) instead of (c ? a : b)[i], the same call): GCC 13's UBSan
+# object-size check reported the valid original at -O2. Keep it when updating stb_image_resize2.
+
 add_library(
 
     stb
