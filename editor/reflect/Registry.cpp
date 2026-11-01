@@ -310,7 +310,7 @@ namespace {
         &enums::kSplineCollision, &enums::kSplineInstantiateMode, &enums::kSplineSpacingFit, &enums::kSplinePlantMode,
         &enums::kSplineSpanOverrideKind, &enums::kSplineAnimateMethod, &enums::kSplineLoop, &enums::kSplineEasing, &enums::kSplineAlignment,
         &enums::kLineRendererMode, &enums::kLineWidthUnit, &enums::kLineAlignment, &enums::kLineTextureMode, &enums::kCanvasGroupRenderMode, &enums::kOnScreenStickMode,
-        &enums::kOnScreenStickAxes, &enums::kOnScreenVisibility, &enums::kJointAnchorSpace, &enums::kJointBreakAction,
+        &enums::kOnScreenStickAxes, &enums::kOnScreenVisibility, &enums::kJointAnchorSpace, &enums::kCollisionDetection2D, &enums::kSleepMode2D, &enums::kRigidbodyInterpolation, &enums::kJointBreakAction,
         &enums::kJointMotion, &enums::kJointSwingType, &enums::kAlphaTweenTarget,
     };
 

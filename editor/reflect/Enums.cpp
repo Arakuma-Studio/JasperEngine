@@ -15,6 +15,7 @@
 #include "component/CanvasGroupComponent.h"
 #include "component/LineRendererComponent.h"
 #include "component/PhysicsCommon.h"
+#include "component/Rigidbody2DComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/OnScreenControlComponents.h"
@@ -321,6 +322,22 @@ namespace {
         {v(OnScreenVisibility::TOUCH_DEVICES_ONLY), "touch_devices_only", "Touch Devices Only", "OnScreenVisibility::TOUCH_DEVICES_ONLY"},
     };
 
+    // the tokens upstream's rigidbody codecs write (StreamComponents.cpp)
+    constexpr EnumItem kCollisionDetection2DItems[] = {
+        {v(CollisionDetectionMode2D::DISCRETE), "discrete", "Discrete", "CollisionDetectionMode2D::DISCRETE"},
+        {v(CollisionDetectionMode2D::CONTINUOUS), "continuous", "Continuous", "CollisionDetectionMode2D::CONTINUOUS"},
+    };
+    constexpr EnumItem kSleepMode2DItems[] = {
+        {v(RigidbodySleepMode2D::NEVER_SLEEP), "never_sleep", "Never Sleep", "RigidbodySleepMode2D::NEVER_SLEEP"},
+        {v(RigidbodySleepMode2D::START_AWAKE), "start_awake", "Start Awake", "RigidbodySleepMode2D::START_AWAKE"},
+        {v(RigidbodySleepMode2D::START_ASLEEP), "start_asleep", "Start Asleep", "RigidbodySleepMode2D::START_ASLEEP"},
+    };
+    constexpr EnumItem kRigidbodyInterpolationItems[] = {
+        {v(RigidbodyInterpolation::SCENE), "scene", "Scene", "RigidbodyInterpolation::SCENE"},
+        {v(RigidbodyInterpolation::NONE), "none", "None", "RigidbodyInterpolation::NONE"},
+        {v(RigidbodyInterpolation::INTERPOLATE), "interpolate", "Interpolate", "RigidbodyInterpolation::INTERPOLATE"},
+        {v(RigidbodyInterpolation::EXTRAPOLATE), "extrapolate", "Extrapolate", "RigidbodyInterpolation::EXTRAPOLATE"},
+    };
     constexpr EnumItem kJointAnchorSpaceItems[] = {
         {v(JointAnchorSpace::WORLD), "world", "World", "JointAnchorSpace::WORLD"},
         {v(JointAnchorSpace::LOCAL), "local", "Local", "JointAnchorSpace::LOCAL"},
@@ -690,6 +707,9 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kOnScreenStickAxes{"OnScreenStickAxes", kOnScreenStickAxesItems, v(OnScreenStickAxes::BOTH)};
     const EnumDesc kOnScreenVisibility{"OnScreenVisibility", kOnScreenVisibilityItems, v(OnScreenVisibility::ALWAYS)};
     const EnumDesc kJointAnchorSpace{"JointAnchorSpace", kJointAnchorSpaceItems, v(JointAnchorSpace::WORLD)};
+    const EnumDesc kCollisionDetection2D{"CollisionDetectionMode2D", kCollisionDetection2DItems, v(CollisionDetectionMode2D::DISCRETE)};
+    const EnumDesc kSleepMode2D{"RigidbodySleepMode2D", kSleepMode2DItems, v(RigidbodySleepMode2D::START_AWAKE)};
+    const EnumDesc kRigidbodyInterpolation{"RigidbodyInterpolation", kRigidbodyInterpolationItems, v(RigidbodyInterpolation::SCENE)};
     const EnumDesc kJointBreakAction{"JointBreakAction", kJointBreakActionItems, v(JointBreakAction::DESTROY)};
     const EnumDesc kJointMotion{"JointMotion", kJointMotionItems, v(JointMotion::FREE)};
     const EnumDesc kJointSwingType{"JointSwingType", kJointSwingTypeItems, v(JointSwingType::CONE)};

@@ -294,7 +294,7 @@ namespace {
         // upstream (lines and trails): the polyline and its ribbon. SYNC4-ABSORB(curve): widthCurve and
         // colorGradient are upstream's curve types (the codec writes them; no reflection ops yet)
         JE_FIELD(LineRendererComponent, mode, .enumDesc = &enums::kLineRendererMode, .updateFlags = kLines),
-        JE_FIELD(LineRendererComponent, positions, .ops = &ops::PushBackList<Vector3>, .flags = NoDefault | ListWhole, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, positions, .ops = &ops::PushBackList<Vector3>, .flags = NoDefault | ListWhole | ListElements, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, loop, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, useWorldSpace, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, widthMultiplier, .updateFlags = kLines, .min = 0.0f),
