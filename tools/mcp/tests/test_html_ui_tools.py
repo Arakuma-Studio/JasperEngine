@@ -185,6 +185,12 @@ LIMITS.update({"edit_animation": 3700, "get_animation": 870, "edit_pose_animatio
 # lead: + native-bridge (+1022 over the measured 112193 of main 2e916ebb9) on main measured 113357 + video's 96: provisional 114475, re-measured on the merged tree
 # measured on main 5fde0ada4 (everything above merged): 155 tools, total 114475 (tool_budget.py)
 TOTAL_LIMIT = 114475
+# anim properties (spec 2026-10-31-anim-properties 11): edit_animation's property channel (channel enum,
+# component, property), get_animation's list_properties, preview_animation's properties_total; measured on
+# the tree merged with main d08d63b31 (everything above): edit_animation 3786, get_animation 958, 155 tools,
+# total 114703 (tool_budget.py), the limits set to them
+LIMITS.update({"edit_animation": 3800, "get_animation": 960})
+TOTAL_LIMIT = 114703
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

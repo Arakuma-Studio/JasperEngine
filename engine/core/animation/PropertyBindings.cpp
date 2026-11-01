@@ -8,6 +8,8 @@
 #include "component/AudioSourceComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/CameraComponent.h"
+#include "component/CameraFollowComponent.h"
+#include "component/CameraShakerComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/FogComponent.h"
@@ -35,12 +37,14 @@
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TextEffectComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptRuntime.h"
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -222,6 +226,12 @@ namespace {
             lattice.enabled = enabled;
             lattice.revision++;
         }
+    }
+    // TextEffect::setEnabled: the effect is applied again (on, or the plain text back)
+    template<>
+    void setEnabledAsTheSetter<TextEffectComponent>(Scene*, Entity, TextEffectComponent& effect, bool enabled){
+        effect.enabled = enabled;
+        effect.needApply = true;
     }
     // Rigidbody2D::setEnabled: the loaded body leaves or joins the world now (an unloaded one
     // is loaded by the physics step, which applies the flag)
@@ -589,6 +599,10 @@ namespace {
         rows.push_back(enabledRow<OnScreenStickComponent>("onscreenstick"));
         rows.push_back(enabledRow<OnScreenButtonComponent>("onscreenbutton"));
         rows.push_back(enabledRow<TouchAreaComponent>("toucharea"));
+        rows.push_back(enabledRow<CameraShakerComponent>("camerashaker"));
+        rows.push_back(enabledRow<CameraFollowComponent>("camerafollow"));
+        rows.push_back(enabledRow<TextEffectComponent>("texteffect"));
+        rows.push_back(enabledRow<VideoPlayerComponent>("videoplayer"));
 
         // the canvas group rows' functions (filled here: the table holds plain pointers)
         for (Row& row : rows){

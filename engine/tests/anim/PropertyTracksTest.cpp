@@ -29,6 +29,7 @@
 #include "component/Rigidbody2DComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TextEffectComponent.h"
 #include "component/UIComponent.h"
 #include "object/AnimationPlayer.h"
 #include "object/Light.h"
@@ -858,6 +859,14 @@ TEST_F(Properties, EnabledWritesMirrorTheSetters){
     const uint32_t revision = scene.getComponent<LatticeComponent>(cage).revision;
     write(cage, "lattice", 0.0f);
     EXPECT_EQ(scene.getComponent<LatticeComponent>(cage).revision, revision + 1) << "the deformation is rebuilt";
+
+    Entity text = child(root, "Text");
+    TextEffectComponent effect;
+    effect.needApply = false;
+    scene.addComponent<TextEffectComponent>(text, effect);
+    write(text, "texteffect", 0.0f);
+    EXPECT_FALSE(scene.getComponent<TextEffectComponent>(text).enabled);
+    EXPECT_TRUE(scene.getComponent<TextEffectComponent>(text).needApply) << "TextEffect::setEnabled applies the text again";
 
     Entity controls = child(root, "Controls");
     scene.addComponent<OnScreenStickComponent>(controls, OnScreenStickComponent());
