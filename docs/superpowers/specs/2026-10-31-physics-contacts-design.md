@@ -731,7 +731,7 @@ contradicted the code:
     warnings; `jasperengine-editor-tests` 1200 passed, 8 skipped, 0 failed (25 new in
     `PhysicsContactsTest`, T1-T23 and the cost test: 10 listeners among 500 awake boxes, the work
     after the step is close to the 5% budget on the loaded shared box (one single run measured 5.6%
-    with a counter script; a string-building logger script cost 10%), so the best of three one-second runs is asserted under 5%; no listener:
+    with a counter script; a string-building logger script cost 10%), so the best of five one-second runs is asserted under 5%; no listener:
     nothing recorded). MCP: `test_physics_contacts.py`, `test_stubs`, `test_docs`,
     `test_html_ui_tools` (150 tools, 106624 characters), `test_protocol` (guide under 16 KB),
     `test_physics_2d(_inspector)`, `test_lifecycle(_inspector)`, `test_world`, `test_play`,

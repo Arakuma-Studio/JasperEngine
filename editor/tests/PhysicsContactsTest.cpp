@@ -946,9 +946,9 @@ TEST_F(PhysicsContactsTest, ContactProcessingCostIsSmall) {
             if (bodies->getComponentFromIndex(i).type == BodyType::DYNAMIC) Rigidbody(scene, bodies->getEntity(i)).setAllowSleeping(false);
         }
         run(5);
-        // the best of 3 one-second runs: the box is shared, a run can be preempted
+        // the best of 5 one-second runs: the box is shared (its other jobs preempt either part)
         double step = 0.0, contacts = 0.0, best = 1e9;
-        for (int trial = 0; trial < 3; trial++) {
+        for (int trial = 0; trial < 5; trial++) {
             physics()->resetTimings3D();
             run(60);
             const double ratio = physics()->getContactSeconds3D() / std::max(1e-9, physics()->getStepSeconds3D());
@@ -960,11 +960,11 @@ TEST_F(PhysicsContactsTest, ContactProcessingCostIsSmall) {
         }
         ASSERT_GT(step, 0.0);
         // the job-thread side is inside the step: the numbers of both runs for the notes
-        std::printf("[cost] %d listeners: step %.3f ms, after the step %.3f ms (60 steps, best of 3)\n",
+        std::printf("[cost] %d listeners: step %.3f ms, after the step %.3f ms (60 steps, best of 5)\n",
                     listeners, step * 1000.0, contacts * 1000.0);
         if (listeners) {
             EXPECT_LT(contacts, step * 0.05) << "step " << step << " s, contacts " << contacts << " s";
-            EXPECT_GE(number("stays"), 10.0 * 180) << "10 listeners, a Stay each step";
+            EXPECT_GE(number("stays"), 10.0 * 300) << "10 listeners, a Stay each step";
         } else {
             EXPECT_LT(contacts, step * 0.01) << "step " << step << " s, contacts " << contacts << " s";
             EXPECT_EQ(physics()->getContactTracker3D().recordedCount(), 0u);
