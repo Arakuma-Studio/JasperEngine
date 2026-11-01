@@ -1021,6 +1021,9 @@ void AudioSystem::update(double dt){
     Scene* listenerScene = persistent ? Engine::getMainScene() : scene;
     const bool hasListener = listenerScene && listenerScene->findComponent<CameraComponent>(listenerScene->getCamera()) &&
                              listenerScene->findComponent<Transform>(listenerScene->getCamera());
+    // Doppler under a perspective camera only: 2D and UI scenes move in pixels, where everyday
+    // speeds are near the speed of sound (343.3 units a second)
+    const bool doppler = hasListener && cameraPose(*listenerScene).perspective;
     bool any3D = false;
 
     // The persistent scene's 3D sounds are heard by the loaded main scene's camera every frame
@@ -1249,7 +1252,7 @@ void AudioSystem::update(double dt){
 
         // 3D voices follow the source (its one-shots too, Unity)
         if (use3DAudio && (audio.needUpdate || audio.lastPosition != worldPosition)) {
-            const Vector3 velocity = audio.lastPosition - worldPosition;
+            const Vector3 velocity = doppler ? audio.lastPosition - worldPosition : Vector3(0, 0, 0);
             if (audio.handle != 0) apply3dParameters(audio, audio.handle, worldPosition, velocity);
             for (const AudioOneShot& shot : audio.oneShots) apply3dParameters(audio, shot.handle, worldPosition, velocity);
             audio.lastPosition = worldPosition;
@@ -1286,7 +1289,7 @@ void AudioSystem::placeListener(Scene& listenerScene){
     const Vector3& position = pose.position;
     const Vector3& view = pose.view;
     const Vector3& up = pose.worldUp;
-    const Vector3 velocity = cameraLastPosition - position;
+    const Vector3 velocity = pose.perspective ? cameraLastPosition - position : Vector3(0, 0, 0);
     getSoloud().set3dListenerParameters(position.x, position.y, position.z, view.x, view.y, view.z,
                                         up.x, up.y, up.z, velocity.x, velocity.y, velocity.z);
     if (inited){
