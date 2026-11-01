@@ -621,3 +621,23 @@ spec was silent, ambiguous or did not fit the code:
     - `GeneratedProject.PlatformSourcesListEveryBackendFile` (platform-services) now skips `HttpBackend*`.
       Main's `platform/win/HttpBackendWin.cpp` is compiled into the engine library
       (`JASPERENGINE_HTTP_BACKEND`), not listed as a project platform source.
+17. **Merge with main 5762bb259** (shader-globals, platform-services final, physics-contacts, particles,
+    ui-multitouch, coroutines, guide-headroom, anim-layers).
+    - The Text Effect component comes after the on-screen controls, with update flag bit 53.
+    - The canvas-to-UI conversion moved to the per-pointer `UISystem::eventOnPointer*` (UISystemPointer.cpp).
+    - One unscaled delta: coroutines' `Engine::unscaledDeltatime`.
+    - The Particle System's `useUnscaledTime` is the one field both specs share. The particles feature's
+      accessors, Lua property, Catalog rows, generated code and file key are kept. The legacy step's
+      unscaled delta is this feature's.
+    - `create_particles` makes version-2 systems. Under a UI element or in a UI scene it now defaults to:
+      - GL points (clipped by the nearest panel, see note 11);
+      - unscaled time;
+      - local space, turned 180 degrees about x (the UI is y down);
+      - the soft image.
+    - The agent guide line is under "Feature guides".
+    - Two order-dependent tests were adapted:
+      - `OnScreenControlsEditor.CatalogStreamAndExport`: the Text Effect is now the last component.
+      - `InputTest.ComponentUIPointersOutsideTheCanvasFocusLossAndPauseAreCancelled` starts focused: an
+        earlier test's pause leaves the focus lost under platform-services' rule.
+    - Not wired: the rotation (`InstanceData.roll`) of version-2 quad particles in `<particle-system>`.
+      Quads under a UI element are not clipped by its scissor; GL points are.
