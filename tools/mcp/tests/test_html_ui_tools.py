@@ -128,7 +128,10 @@ LIMITS.update({"create_ragdoll": 900})
 # orientation and language, get_play_state's platform (+468 on its branch); merged with main
 # (ui-canvas-group, physics-3d, http): 151 tools measured 108094 (tool_budget.py), the limit set to it
 # merged by the lead (shader-globals + platform-services): provisional sum, re-measured on the merged tree
-TOTAL_LIMIT = 108160
+# physics-contacts: get_runtime_entity's physics contacts / callbacks paid by a shorter description
+# (edit_colliders' receiver is in the guide); merged with main (shader-globals): 151 tools measured 107678
+# merged by the lead (platform-services + physics-contacts): provisional, re-measured on the merged tree
+TOTAL_LIMIT = 108200
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

@@ -105,7 +105,16 @@ GameObject that defines it gets the call, enabled or not, after the fixed step t
 
 | Method | When |
 |---|---|
+| `onCollisionEnter(self, collision)`, `onCollisionStay`, `onCollisionExit` | a collider of this GameObject's Rigidbody started / keeps / stopped touching another (`Collision`, seen from this side; 4.14.1) |
+| `onTriggerEnter(self, other)`, `onTriggerStay`, `onTriggerExit` | a trigger pair (either side a trigger / sensor): `other` is the other `Collider` |
+| `onCollisionEnter2D(self, collision)`, `...Stay2D`, `...Exit2D`, `onTriggerEnter2D(self, other)`, `...Stay2D`, `...Exit2D` | the same for Rigidbody 2D (`Collision2D`, `Collider2D`; 4.13.2) |
 | `onJointBreak2D(self, joint)` | a `Joint2D` of this GameObject, or whose bodyA is it, broke (its `breakForce` / `breakTorque` passed; `joint` still exists during the call, its `breakAction` decides what follows) |
+
+The contact callbacks come once per fixed step that steps (2D first, then 3D; triggers, then
+collisions; Enter, Stay, Exit), only while the GameObject is active; a collider's `receiver`
+("Send Callbacks To") also gets them. Sleeping bodies get no Stay and no Exit; when the other side
+is destroyed, deactivated or its collider removed you still get the Exit. Rules and data:
+`jasper://docs/physics` (Collision and trigger callbacks). They cannot yield.
 
 Every instance also has (Unity's MonoBehaviour members):
 
@@ -282,8 +291,13 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 | same | `onBodyActivated3D`, `onBodyDeactivated3D` | `body` (Rigidbody) |
 | same | `shouldCollide3D` (return false to skip) | `bodyA, bodyB, baseOffset (Vector3), result (CollideShapeResult3D)` |
 
-Physics events are scene-wide: they fire for ANY pair of bodies. Filter in the handler, e.g.
-`if bodyA.entity == self.entity or bodyB.entity == self.entity then ... end`.
+Prefer the per-object callbacks (`onCollisionEnter`, `onTriggerEnter2D`..., 1.1): they come only
+to the GameObjects involved. These physics events are scene-wide: they fire for ANY pair of
+bodies. Filter in the handler, e.g.
+`if bodyA.entity == self.entity or bodyB.entity == self.entity then ... end`. They run on the main
+thread after the step (2D: also `stayContact2D`, `staySensorContact2D`, same arguments as the
+begin ones); 3D gets a `Contact3D` snapshot whose setters do nothing, unless
+`physicsSystem.synchronousContactEvents3D = true` (a Lua `shouldCollide3D` turns it on).
 2D contact events need "Contact Events" (sensor events: sensor + "Sensor Events", hit: "Hit
 Events") enabled on the Collider 2D (Inspector, or `body.shapeContactEvents = true`,
 `body.shapeSensorEvents = true`, `body.shapeEnableHitEvents = true`).
@@ -920,6 +934,7 @@ Entities are plain integers (`0` = none).
 | `Physics2D.raycastAll(...)` | same args -> table of `RayReturn` |
 | `Physics.raycast(scene, origin, direction, maxDistance [, mask])`, `Physics.raycastAll(...)` | 3D, Vector3 origin/dir |
 | `ignoreLayerCollision(l1, l2 [, ignore=true])`, `getIgnoreLayerCollision(l1, l2)`, `getLayerCollisionMask(l)`, `setLayerCollisionMask(l, mask)`, `resetLayerCollisionMatrix()` | on both `Physics` and `Physics2D` |
+| `ignoreCollision(a, b [, ignore=true])`, `getIgnoreCollision(a, b)` | on both: two GameObjects / bodies (3D: Rigidbody, 2D: Rigidbody 2D) of one scene never collide; runtime only. Error if one has no body of that dimension |
 | `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER` | static props on both |
 | `Physics.debugDraw`, `Physics.debugDrawContacts` | rw static bools: draw the colliders and joints (and contact points) of every playing scene, 3D and 2D (the Game view's Physics toggle) |
 
@@ -1673,6 +1688,22 @@ joint.maxMotorTorque = 10000
 function Car:onJointBreak2D(joint) Log.print("snap") end
 ```
 
+### 4.13.2 Collision2D, ContactPoint2D, Collider2D (the 2D callbacks' values, read-only)
+
+| Class | Members |
+|---|---|
+| `Collision2D` | `gameObject`, `collider`, `rigidbody` (the other side's), `thisCollider`, `thisRigidbody`, `otherCollider` / `otherRigidbody` (**this** side: Unity's names), `relativeVelocity` (Vector2, points/s, other minus this; Enter: before the step), `enabled`, `contactCount`, `getContact(i)`, `contacts` |
+| `ContactPoint2D` | `point`, `normal` (toward this one), `separation` (points), `normalImpulse`, `tangentImpulse`, `relativeVelocity`, `thisCollider`, `otherCollider` |
+| `Collider2D` | `gameObject`, `rigidbody` / `attachedRigidbody`, `index`, `type` (`Collider2DType`), `isTrigger` (sensor), `tag`, `compareTag(tag)`, `receiver`, `isValid()` |
+
+```lua
+function UpsideDown:onCollisionEnter2D(c)
+    if c.gameObject.tag == "Ground" and c.thisCollider.index == self.detectorCollider then
+        self.game:gameOver()
+    end
+end
+```
+
 ### 4.14 Rigidbody (EntityHandle) - 3D physics (Jolt)
 
 | Member | Kind | Notes |
@@ -1702,9 +1733,20 @@ function Car:onJointBreak2D(joint) Log.print("snap") end
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
 | `getPointVelocity(p)`, `getAccumulatedForce()`, `getCenterOfMassPosition()` | methods | |
 
-`Contact3D`: `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
-`getColliderIndex1()`, `getColliderIndex2()`, rw `combinedFriction`,
+`Contact3D` (global events): `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
+`getColliderIndex1()`, `getColliderIndex2()`, `getRelativeContactPointsOnA(i)` / `OnB(i)`,
+`numContactPoints`, `snapshot` (true after the step: setters do nothing), rw `combinedFriction`,
 `combinedRestitution`, `sensor`.
+
+### 4.14.1 Collision, ContactPoint, Collider (the 3D callbacks' values, read-only)
+
+| Class | Members |
+|---|---|
+| `Collision` | `gameObject`, `rigidbody`, `collider` (the other side's), `thisCollider`, `thisRigidbody`, `impulse` (Vector3, estimated N s on this body), `relativeVelocity` (Vector3, other minus this), `contactCount`, `getContact(i)` (0-based, error out of range), `contacts` (new 1-based table each read) |
+| `ContactPoint` | `point`, `normal` (from the other collider toward this one), `separation` (< 0 penetrating), `impulse`, `thisCollider`, `otherCollider` |
+| `Collider` | `gameObject`, `rigidbody` / `attachedRigidbody`, `index`, `type` (`Collider3DType`), `isTrigger`, `tag`, `compareTag(tag)`, `receiver` (GameObject or nil), `isValid()`; `==` compares GameObject and index |
+
+Values are copies taken at the step (safe to keep); a GameObject gone since reads as nil.
 
 **Joint3D** (EntityHandle; `go:getJoint3D()`, `Joint3D(scene, entity)`, `Joint3D(scene)` a new
 GameObject): rw `enabled`, `type` (`Joint3DType.*`), `bodyA`, `bodyB` (alias `connectedBody`;
@@ -2155,8 +2197,11 @@ Rigidbody wrappers by index.
     state; "pressed this frame" is `Input.getKeyDown`, `getMouseButtonDown`, `getButtonDown`
     (read edges in `onUpdate`: every fixed step of a frame sees them). Prefer input actions
     (`Input.getAxis("Horizontal")`) to raw keys: they add the gamepad and on-screen controls.
-16. **Physics events are global** for the scene: compare `bodyA.entity` / `bodyB.entity`
-    with `self.entity`. 2D contact events require the per-collider event flags.
+16. **Per-object contact callbacks** (`onCollisionEnter`, `onTriggerEnter2D`...) need no flag and
+    come only to the GameObjects involved; the global events (`beginContact2D`,
+    `onContactAdded3D`...) fire for every pair of the scene (compare `bodyA.entity` /
+    `bodyB.entity` with `self.entity`) and 2D ones need the collider's event flags. A filter that
+    was a Lua `shouldCollide3D` is `Physics.ignoreCollision(a, b)` (or layers) now.
 17. **Unassigned references are `nil`**: an entity-reference or Prefab property not set in
     the Inspector is `nil`; guard (`if self.target then ... end`).
 18. **Scripts by class name, not `getComponent`**: `go:getScript("Enemy")` (same GameObject:

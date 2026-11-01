@@ -18,6 +18,7 @@
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
 #include "ecs/Signature.h"
+#include "subsystem/PhysicsSystem.h"
 #include "soloud.h"
 #include "soloud_wav.h"
 
@@ -26,6 +27,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <tuple>
 
 namespace jasperengine::editor{
 
@@ -486,6 +488,15 @@ namespace jasperengine::editor{
         void endTable();
         bool propertyHeader(std::string label, float secondColSize = -1, bool defChanged = false, bool child = false, bool indent = false);
         bool propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
+        // Play mode, under a Rigidbody (2D): the pairs it touches and the contact callbacks its
+        // scripts define (physics-contacts 6.3)
+        void drawPhysicsContacts(SceneProject* sceneProject, Entity entity, bool is2D);
+        struct PhysicsContactsView{
+            double readAt = -1.0;
+            std::vector<ContactSummary> contacts;
+            std::vector<std::string> callbacks;
+        };
+        std::map<std::tuple<uint32_t, Entity, bool>, PhysicsContactsView> physicsContactsViews;
         bool propertyRowWithAutoButton(RowPropertyType propType, ComponentType cpType, std::string id, std::string label, std::string autoId, std::string autoLabel, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
         void setParticleFrames(ComponentType cpType, const std::string& propertyId, SceneProject* sceneProject, Entity entity, const std::vector<int>& frames);
         void setParticleBursts(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<ParticleBurst>& bursts);

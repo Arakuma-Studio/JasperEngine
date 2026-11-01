@@ -652,3 +652,131 @@ Fixed step 1/60 s, deterministic setups:
 - **persistence** (DontDestroyOnLoad): no contact pairs cross scenes (§7.8).
 - **coroutines**: `onCollisionEnter` may not yield (Unity allows a coroutine OnCollision): a Lua
   callback that wants to wait starts a coroutine with the `coroutines` API.
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/physics-contacts`, on `gaps/script-lifecycle` with
+`gaps/physics-2d` merged in; `physics-3d` not merged yet), where the spec was silent, ambiguous or
+contradicted the code:
+
+1. **One ScriptMessages** (the mechanism `main` has after script-lifecycle and physics-2d merged):
+   the twelve contact messages and `onJointBreak` are `ScriptBase` virtuals whose base methods mark
+   `inheritedMessages`, like the lifecycle's; a C++ script counts as receiving a message until its
+   base method ran once (spec 6.1.1's compile-time trait was dropped for that single mechanism: an
+   override may be private, protected or overloaded). So a body with a C++ script that overrides no
+   contact method is recorded until each message reached the base once; `invoke` now tells the
+   `ReceiversChanged` listeners when that happens, so physics drops the bits. Added
+   `describeReceivers` (the Inspector's Callbacks line, MCP) and the per-second error rate limit of
+   the contact messages (note 8). T22 tests that run-time detection instead of a static assert.
+2. **physics-3d** (merged into this branch late, from `main`): its `JoltPairFilter3D`, per-collider
+   trigger step (first in the listener) and trigger companions are used as they are.
+   `Physics.ignoreCollision` sets its `SCRIPT` reason through `setBodyPairIgnored3D` (queued inside a
+   step, both bodies woken); a body that goes forgets its pairs. The packed user data
+   (`entity | mask << 32`) is on the body and on its trigger companion, whose contacts count as the
+   owner's (the raw contact check accepts either id; a companion never sleeps, so its trigger pairs
+   are not kept as asleep). Manifold reduction is off for compound bodies with collision listener
+   bits (`usesManifoldReduction3D`); D15 also covers kinematic body-level sensors.
+   `Collider.isTrigger` is the collider's `isTrigger` or the body's `sensor`. Removing a 3D collider
+   renumbers the tracker's pairs like 2D.
+3. **Listener masks** are recomputed for all bodies of a scene before its next step when any
+   `ReceiversChanged` arrives (rare: an instance made, released, enabled, disabled), and at body
+   creation. 2D: a listening body's shapes get Box2D's contact / sensor events (chain segments
+   too, which Box2D makes without events); a change on a live body re-flags them and re-pairs them
+   with the refilter bit only when a flag really changes.
+4. **2D global events (D16).** `beginContact2D` / `endContact2D` / `stayContact2D` fire for pairs
+   where a shape has the authored `contactEvents` (chain segments never had their own: Box2D gives
+   them none, kept); the sensor events are not filtered, since sensor shapes always enabled them.
+   `stayContact2D` / `staySensorContact2D` start the step after the pair began (Unity's Stay; the
+   spec said "once per step per touching pair"), while either body is awake, in shape-id order.
+5. **`Collision2D.enabled` is always true:** Box2D 3 makes a contact disabled by `preSolve2D` not
+   touching (no points), so the pair gets an Exit, then an Enter when enabled again. Documented.
+6. **Data.** A 3D contact point is the midpoint of the two surface points Jolt reports, its
+   separation `(p2 - p1)·n` (negative when overlapping); `impulse` is the estimate on *this* body;
+   3D `relativeVelocity` uses the point velocities at the manifold centre (pre-solve, read in the
+   listener). Several manifolds of one collider pair (mesh triangles) merge: the deepest one's
+   normal and velocities, every point (the deepest 8). `Collider.type` / `Collider2D.type` are the
+   integer values of `Collider3DType` / `Collider2DType`. `Collider` / `Collider2D` compare with
+   `==`.
+7. **Global 3D events after the step.** Activations reported outside a step (a body added or woken
+   from the main thread holds Jolt's locks then) are also delivered after the next step, in both
+   modes. Order: activations, then added, persisted, removed, each sorted by body ids and
+   sub-shapes. `Contact3D` gained `numContactPoints` and `snapshot`; the setters' warning is once
+   per scene. The "auto synchronous" notice is `Log::print` (the engine has no info level).
+8. **Errors in callbacks** are rate-limited per script class and method (one a second) for the
+   twelve contact messages only; the lifecycle messages keep logging every error.
+9. **Scene teardown:** `Scene::isTearingDown()` is set first in `~Scene`; removals then clear the
+   pairs and send nothing (Play stop and scene loads delete their scenes).
+10. **Editor.** "Send Callbacks To" is a GameObject field (`LocalEntity` row, undoable through the
+    Catalog path `colliders[i].receiver`, prefab overrides as every Catalog property) on each 2D
+    and 3D collider; the yellow kinematic-sensor note on 2D sensors of kinematic bodies; in Play a
+    Callbacks line and a Contacts foldout under each body (single selection), read at most 10
+    times a second.
+11. **MCP.** `get_runtime_entity` adds `physics` (`contacts`, `callbacks`) for bodies and for
+    GameObjects whose scripts define contact methods (receivers). 2D contacts come from the tracker,
+    Box2D's touching contacts and sensor overlaps; 3D from the tracker for listened bodies, else a
+    narrow-phase `CollideShape` of the body at its pose (2 cm, Jolt's speculative distance).
+    `edit_colliders` takes `receiver` (an entity ref, null clears it) per collider in both
+    dimensions and lists it.
+12. **Tests.** T21's scene load uses `SceneManager.loadScene` of a scene that is not in the build
+    (unit tests have no build scenes): the call must not break the dispatch. The export parity test
+    (acceptance 6) is `tools/mcp/tests/test_physics_contacts_export.py` (`JASPER_SLOW_BUILD=1`).
+    The cost test measures `PhysicsSystem::getContactSeconds3D()` (the processing after the step,
+    callbacks included) against `getStepSeconds3D()`.
+13. **Fixes found on the way.** `Rigidbody::setAllowSleeping` / `isAllowSleeping` on a static body
+    dereferenced Jolt's missing motion properties (a crash reachable from Lua): now ignored / false.
+    `edit_colliders` dropped `material: null` / `receiver: null` (the `has()` helper treats null as
+    absent): both clear now. The agent guide's physics lines were tightened so the merged guide
+    (lines-trails pushed `main` over) stays under 16 KB with the new Collisions line.
+14. **Verification** (box, merged with `main` at `211073ea3`): editor and tests build with 0
+    warnings; `jasperengine-editor-tests` 1200 passed, 8 skipped, 0 failed (25 new in
+    `PhysicsContactsTest`, T1-T23 and the cost test: 10 listeners among 500 awake boxes, the work
+    after the step is close to the 5% budget on the loaded shared box (one single run measured 5.6%
+    with a counter script; a string-building logger script cost 10%), so the best of five one-second runs is asserted under 5%; no listener:
+    nothing recorded). MCP: `test_physics_contacts.py`, `test_stubs`, `test_docs`,
+    `test_html_ui_tools` (150 tools, 106624 characters), `test_protocol` (guide under 16 KB),
+    `test_physics_2d(_inspector)`, `test_lifecycle(_inspector)`, `test_world`, `test_play`,
+    `test_runtime_regressions`, `test_scene`, `test_water`, `test_play_stop_gizmos`,
+    `test_ui_anchors`, `test_trial_fixes`, `test_place_with_physics`: all pass except
+    `test_physics_2d.py::test_old_prefab_overrides_of_colliders`, which fails on `main` too (its fix
+    is on `gaps/physics-2d`, not merged yet). With `JASPER_SLOW_BUILD=1`,
+    `test_physics_contacts_export.py` built a Linux Desktop player whose callbacks (T1 landing, T3
+    trigger crossing) equal editor Play's. Lua stubs: 0 unresolved. Web (emscripten) build of every
+    changed engine source and Android (NDK 28, arm64) `-fsyntax-only` of the same: clean. Apple and
+    Windows: no platform code changed (the Xcode project lists the new sources).
+15. **Review fixes.** `Physics2D.ignoreCollision` is not a Box2D null joint (§6.1.8): Box2D tests
+    joints only when a broad-phase pair is made and never drops existing contacts for a null
+    joint, and the joint merged the bodies' islands. It is the set `Box2DAux::CollisionFilter`
+    refuses, and a change re-pairs both bodies' shapes (the refilter bit): a touching pair ends
+    with its Exit, an overlapping one is found again when un-ignored. Side effect: the global 2D
+    events see end / begin for the other contacts of those two bodies at that step. `destroy` /
+    `destroyImmediate` of a GameObject already being destroyed (from the Exit its destruction
+    sends, from its `onDestroy`) do nothing (`ObjectManager`); before, a nested destroy ran.
+    Raw 3D contacts whose body a global handler destroyed or made again are skipped.
+    `onContactModify3D` subscribers are called without the crash guard (`callDirect`: its
+    signal handlers are process-wide) and without a lock; the contract is in `PhysicsSystem.h`.
+    Activation events are sorted by body id. `Rigidbody2D.removeAllColliders` gives the queued
+    Exits index -1. Each has a regression test.
+16. **Cost, measured** (`ContactProcessingCostIsSmall`, 500 awake boxes on a floor, 60 steps, the
+    best of three, box 2202 under load): Jolt's step 129.0 ms with 10 listeners and 131.3 ms with
+    none (the job-thread recording is inside the step: no difference above the noise); the work
+    after the step 2.4 ms with 10 listeners (1.9%) and 0.08 ms with none (0.06%, asserted < 1%).
+    The job-thread side for unlistened bodies is two subscriber checks and a 16-bit mask read
+    per manifold (`main` had one subscriber check); it is not asserted separately.
+17. **Verification after the review and the physics-3d merge** (box 2202, `main` at `eb8f3a2f5`):
+    0 warnings; unit suite 1336 passed, 9 skipped, 0 failed (physics-3d's
+    `PairFilterChangedInsideAStepAfterIt` now asks for synchronous contact events, since global
+    handlers run after the step otherwise). FULL MCP suite: 858 passed, 19 skipped, 14 failed: the 10
+    baseline ones, 3 agent-guide size checks (the merged guide was over 16 KB: trimmed, those 3 and the
+    rest of the affected files then passed, 115 passed / 0 failed), and
+    `test_stochastic_tiling.py::test_old_scene_resaves_byte_identical` (a resaved scene gains an
+    `htmluipost` shader entry: shader / HTML UI code this branch does not touch, from `main`). Tool
+    budget 151 tools, 107438 characters (TOTAL_LIMIT set to it); TOOLS.md regenerated.
+18. **Final verification** (box 2202, merged with `main` at `0277ebcac`, after physics-3d, http,
+    ui-canvas-group and shader-globals): 0 warnings; unit suite 1415 passed, 9 skipped, 1 failed in
+    the full run: `ContactProcessingCostIsSmall` at 6.0% under the box's load (the step is
+    multi-threaded, so the ratio moves with the load); it now takes the best of five runs and passed
+    three runs of the 29 contacts tests in a row (2.8-3.7 ms after the step vs 110-173 ms of step with
+    10 listeners; 0.06 ms with none). FULL MCP suite 877 passed, 20 skipped, 11 failed: the 10 baseline
+    ones and `test_stochastic_tiling.py::test_old_scene_resaves_byte_identical` (from `main`, note
+    17). Tool budget 151 tools, 107678 characters, TOTAL_LIMIT set to it; TOOLS.md regenerated; the
+    agent guide within 16 KB.

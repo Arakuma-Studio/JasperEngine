@@ -2343,6 +2343,32 @@ PROPERTY_OVERRIDES = {
     ('Joint3D', 'connectedBody'): ('GameObject|nil', False),
 }
 
+# physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are
+# std::optional lambdas (nil once gone), contacts builds a table, getContact is a lua_CFunction
+for _col, _body, _contact in (('Collider', 'Rigidbody', 'ContactPoint'), ('Collider2D', 'Rigidbody2D', 'ContactPoint2D')):
+    PROPERTY_OVERRIDES[(_col, 'gameObject')] = ('GameObject|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'rigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'attachedRigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'receiver')] = ('GameObject|nil', False)
+for _coll, _body, _contact in (('Collision', 'Rigidbody', 'ContactPoint'), ('Collision2D', 'Rigidbody2D', 'ContactPoint2D')):
+    PROPERTY_OVERRIDES[(_coll, 'gameObject')] = ('GameObject|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'rigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'thisRigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'contacts')] = (_contact + '[]', True)
+    OVERRIDES[(_coll, 'getContact')] = {
+        'doc': ['Contact point `index` (0-based, an error out of range). Allocates nothing, unlike `contacts`.'],
+        'overloads': [([('index', 'integer')], _contact)]}
+PROPERTY_OVERRIDES[('Collision2D', 'otherRigidbody')] = ('Rigidbody2D|nil', False)
+
+for _phys, _what in (('Physics', 'Rigidbody'), ('Physics2D', 'Rigidbody 2D')):
+    OVERRIDES[(_phys, 'ignoreCollision')] = {
+        'doc': [f'Makes the two bodies (GameObjects or bodies with a {_what}, one scene) collide or not, at run',
+                'time (Unity Physics.IgnoreCollision). `ignore` defaults to true; resting pairs are woken.'],
+        'overloads': [([('a', 'EntityHandle'), ('b', 'EntityHandle'), ('ignore?', 'boolean')], '')]}
+    OVERRIDES[(_phys, 'getIgnoreCollision')] = {
+        'doc': ['Whether ignoreCollision keeps the two bodies apart.'],
+        'overloads': [([('a', 'EntityHandle'), ('b', 'EntityHandle')], 'boolean')]}
+
 for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
     OVERRIDES[(_phys, 'ignoreLayerCollision')] = {
         'doc': ['Makes the two layers (0..31) collide or not (Layer Collision Matrix); `ignore` defaults to true.'],
@@ -3445,7 +3471,7 @@ class Emitter:
             '---  onApplicationPause(self, paused) / onApplicationFocus(self, focused) / onApplicationQuit(self)',
             '---Update methods (onUpdate, onFixedUpdate, onPostUpdate) run only once registered with',
             '---RegisterEngineEvent; they are skipped while the script is not active and enabled.',
-            '---@class ScriptInstance',
+            '---@class ScriptInstance : ScriptCallbacks',
             '---@field scene Scene # the scene of the GameObject the script is attached to',
             '---@field entity integer # the GameObject\'s entity; wrap it: `Sprite(self.scene, self.entity)`',
             '---@field __name string # the script class name (the file name)',
@@ -3455,6 +3481,33 @@ class Emitter:
             '---@field gameObject GameObject # (read-only) the script\'s GameObject',
             'local ScriptInstance = {}',
             '',
+            '---The physics messages a script receives when it defines them (Unity OnCollisionEnter...): called',
+            '---on the main thread after the fixed step that caused them, enabled or not, while the GameObject',
+            '---is active (docs: jasper://docs/physics). The collision is seen from this side (`collision.collider`',
+            '---and `collision.gameObject` are the other\'s); triggers get the other collider.',
+            '---@class ScriptCallbacks',
+            'local ScriptCallbacks = {}',
+            '',
+        ]
+        for name, param, ptype, doc in (
+                ('onCollisionEnter', 'collision', 'Collision', 'started touching another collider (3D)'),
+                ('onCollisionStay', 'collision', 'Collision', 'still touching, once per fixed step (not while asleep)'),
+                ('onCollisionExit', 'collision', 'Collision', 'stopped touching (also when the other goes; no contacts then)'),
+                ('onTriggerEnter', 'other', 'Collider', 'a collider entered this trigger, or this entered a trigger (3D)'),
+                ('onTriggerStay', 'other', 'Collider', 'still overlapping, once per fixed step'),
+                ('onTriggerExit', 'other', 'Collider', 'stopped overlapping (also when the other goes)'),
+                ('onCollisionEnter2D', 'collision', 'Collision2D', 'started touching another collider (2D)'),
+                ('onCollisionStay2D', 'collision', 'Collision2D', 'still touching, once per fixed step while a body is awake'),
+                ('onCollisionExit2D', 'collision', 'Collision2D', 'stopped touching (also when the other goes)'),
+                ('onTriggerEnter2D', 'other', 'Collider2D', 'a collider entered this trigger, or this entered a trigger (2D)'),
+                ('onTriggerStay2D', 'other', 'Collider2D', 'still overlapping, once per fixed step'),
+                ('onTriggerExit2D', 'other', 'Collider2D', 'stopped overlapping (also when the other goes)'),
+                ('onJointBreak2D', 'joint', 'Joint2D', 'a 2D joint of this GameObject (or whose bodyA is it) broke')):
+            L.append('---' + doc[0].upper() + doc[1:] + '.')
+            L.append(f'---@param {param} {ptype}')
+            L.append(f'function ScriptCallbacks:{name}({param}) end')
+            L.append('')
+        L += [
         ]
         for name, doc in _GET_SCRIPT_DOCS.items():
             for line in doc:

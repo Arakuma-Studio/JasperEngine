@@ -23,9 +23,12 @@
 #include "component/RagdollComponent.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "physics/PhysicsMaterial.h"
+#include "Jolt/Core/JobSystemSingleThreaded.h"
 #endif
+#include "script/ScriptMessages.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 
@@ -257,6 +260,9 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 
 	this->scene = scene;
 
+    // the contact callbacks follow the scripts that define them
+    ScriptMessages::addReceiversChangedListener(&PhysicsSystem::onScriptReceiversChanged);
+
     // Default gravity comes from SceneSettings, the single source of truth for scene-setting
     // defaults. The live gravity value is then owned/mutated here (pushed to the Box2D/Jolt
     // worlds); serialization and the editor overwrite it via setGravity2D/3D.
@@ -277,6 +283,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 
     Physics2D::getLayerCollisionMatrix().getRows(appliedLayerRows2D);
     appliedLayerVersion2D = Physics2D::getLayerCollisionMatrix().getVersion();
+    contacts2D = makeContactState2D();
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -304,8 +311,10 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     temp_allocator = &JoltShapeBuilder::sharedPhysicsTempAllocator();
     job_system = &JoltShapeBuilder::sharedPhysicsJobSystem();
 
-    activationListener3D = new JoltActivationListener(scene, this);
-    contactListener3D = new JoltContactListener(scene, this);
+    contactRecorder3D = new ContactRecorder3D();
+    rawContacts3D = new std::vector<RawContact3D>();
+    activationListener3D = new JoltActivationListener(scene, this, contactRecorder3D);
+    contactListener3D = new JoltContactListener(scene, this, contactRecorder3D);
 
     lock3DBodies = true;
     // the Jolt world itself: ensureWorld3D, when a body or a query first needs it
@@ -398,6 +407,8 @@ PhysicsSystem::~PhysicsSystem(){
 #ifdef JASPERENGINE_PHYSICS_3D
     delete activationListener3D;
     delete contactListener3D;
+    delete contactRecorder3D;
+    delete rawContacts3D;
 
     // temp_allocator and job_system are process-shared singletons (see constructor); not owned here.
     delete broad_phase_layer_interface;
@@ -486,6 +497,8 @@ void PhysicsSystem::clearSubscriptions(){
     hitContact2D.clear();
     preSolve2D.clear();
     shouldCollide2D.clear();
+    stayContact2D.clear();
+    staySensorContact2D.clear();
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
     onBodyActivated3D.clear();
@@ -495,6 +508,7 @@ void PhysicsSystem::clearSubscriptions(){
     onContactPersisted3D.clear();
     onContactRemoved3D.clear();
     shouldCollide3D.clear();
+    onContactModify3D.clear();
 #endif
 }
 
@@ -507,6 +521,8 @@ void PhysicsSystem::removeSubscriptionsByTag(const std::string& substring){
     hitContact2D.removeByTagSubstring(substring);
     preSolve2D.removeByTagSubstring(substring);
     shouldCollide2D.removeByTagSubstring(substring);
+    stayContact2D.removeByTagSubstring(substring);
+    staySensorContact2D.removeByTagSubstring(substring);
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
     onBodyActivated3D.removeByTagSubstring(substring);
@@ -516,6 +532,7 @@ void PhysicsSystem::removeSubscriptionsByTag(const std::string& substring){
     onContactPersisted3D.removeByTagSubstring(substring);
     onContactRemoved3D.removeByTagSubstring(substring);
     shouldCollide3D.removeByTagSubstring(substring);
+    onContactModify3D.removeByTagSubstring(substring);
 #endif
 }
 
@@ -1386,9 +1403,10 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
     shapeDef.userMaterialId = userMaterial;
     shapeDef.isSensor = shapeData.sensor;
     shapeDef.enableHitEvents = shapeData.enableHitEvents;
-    shapeDef.enableContactEvents = shapeData.contactEvents;
     shapeDef.enablePreSolveEvents = shapeData.preSolveEvents;
-    shapeDef.enableSensorEvents = shapeData.sensorEvents || shapeData.sensor;
+    // authored, or a script of the body listens (physics-contacts D16)
+    shapeDef.enableContactEvents = shapeData.contactEvents || (body.listenerMask & PhysicsCallbacks::COLLISION_2D) != 0;
+    shapeDef.enableSensorEvents = shapeData.sensorEvents || shapeData.sensor || (body.listenerMask & PhysicsCallbacks::TRIGGER_2D) != 0;
     shapeDef.filter = Box2DLayers::makeFilter(layer, shapeData.categoryBits, shapeData.maskBits, shapeData.groupIndex);
     // the body's mass is computed once its dirty colliders are all made
     shapeDef.updateBodyMass = false;
@@ -1551,6 +1569,14 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
         shapeData.chain = b2CreateChain(body.body, &chainDef);
         if (b2Chain_IsValid(shapeData.chain)){
             chainsCreated2D++;
+            // Box2D makes chain segments without events: a listening body turns them on
+            if (body.listenerMask & PhysicsCallbacks::ALL_2D){
+                std::vector<b2ShapeId> segments;
+                colliderShapes(shapeData, segments);
+                for (const b2ShapeId& segment : segments){
+                    applyShapeEventFlags2D(shapeData, body.listenerMask, segment);
+                }
+            }
         }
     }
 }
@@ -1567,6 +1593,19 @@ bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent
     }
 
     const int layer = scene->getEntityLayer(entity);
+
+    // the shapes made below take the events the scripts ask for
+    std::vector<Entity> receivers;
+    for (const Collider2D& collider : body.colliders){
+        if (collider.receiver != NULL_ENTITY) receivers.push_back(collider.receiver);
+    }
+    const uint16_t mask = computeListenerMask(entity, receivers);
+    if (mask != body.listenerMask && !all){
+        // the shapes kept need their flags too
+        body.listenerMask = mask;
+        refreshListenerMask2D(entity, body);
+    }
+    body.listenerMask = mask;
 
     bool rebuilt = false;
     for (size_t i = 0; i < body.colliders.size(); i++){
@@ -1726,6 +1765,7 @@ bool PhysicsSystem::removeCollider2D(Entity entity, Rigidbody2DComponent& body, 
 
     if (!b2Body_IsValid(body.body)){
         body.colliders.erase(body.colliders.begin() + (std::ptrdiff_t)index);
+        contactColliderRemoved2D(entity, index);
         body.needUpdateColliders = true;
         return true;
     }
@@ -1733,6 +1773,7 @@ bool PhysicsSystem::removeCollider2D(Entity entity, Rigidbody2DComponent& body, 
     // Box2D is locked while it steps (a contact callback): the body is made again after it
     if (steppingWorld2D){
         body.colliders.erase(body.colliders.begin() + (std::ptrdiff_t)index);
+        contactColliderRemoved2D(entity, index);
         body.needReloadBody = true;
         body.needUpdateColliders = true;
         return true;
@@ -1740,6 +1781,7 @@ bool PhysicsSystem::removeCollider2D(Entity entity, Rigidbody2DComponent& body, 
 
     destroyCollider2D(body, index);
     body.colliders.erase(body.colliders.begin() + (std::ptrdiff_t)index);
+    contactColliderRemoved2D(entity, index);
 
     // the later colliders' shapes report their new index
     std::vector<b2ShapeId> shapes;
@@ -1974,6 +2016,11 @@ bool PhysicsSystem::usesManifoldReduction3D(const RigidbodyComponent& body) cons
     if (body.colliders.size() <= 1){
         return true;
     }
+    // exact per-collider pairs for a compound body whose collisions a script listens to
+    // (physics-contacts 6.1.4)
+    if (body.listenerMask & PhysicsCallbacks::COLLISION_3D){
+        return false;
+    }
     const JoltSurfaceMaterial* first = body.colliders[0].surface.GetPtr();
     for (const Collider3D& collider : body.colliders){
         if (collider.isTrigger){
@@ -1990,7 +2037,7 @@ bool PhysicsSystem::usesManifoldReduction3D(const RigidbodyComponent& body) cons
 
 // Unity's trigger matrix: a kinematic body with a trigger sees static and kinematic bodies too
 bool PhysicsSystem::collidesKinematicVsNonDynamic3D(const RigidbodyComponent& body) const{
-    return body.collideKinematicVsNonDynamic || (body.type == BodyType::KINEMATIC && anyTrigger3D(body));
+    return body.collideKinematicVsNonDynamic || (body.type == BodyType::KINEMATIC && (anyTrigger3D(body) || body.sensor));
 }
 
 bool PhysicsSystem::computeMassProperties3D(Entity entity, const RigidbodyComponent& body, MassInfo3D& info){
@@ -2352,6 +2399,8 @@ bool PhysicsSystem::removeCollider3D(Entity entity, RigidbodyComponent& body, si
         return false;
     }
     body.colliders.erase(body.colliders.begin() + (std::ptrdiff_t)index);
+    // its pairs end at the next step with an invalid index, the later ones shift (physics-contacts 6.1.6)
+    contactTracker3D.removeCollider(entity, (int)index);
     // the later leaves report their new index
     for (size_t i = index; i < body.colliders.size(); i++){
         Collider3D& collider = body.colliders[i];
@@ -2621,6 +2670,14 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
         createPosition = JPH::Vec3(transform->worldPosition.x, transform->worldPosition.y, transform->worldPosition.z);
         createRotation = toValidatedJoltRotation(transform->worldRotation, entity, -1);
     }
+    // the contact messages its scripts define, packed in the user data for the job threads
+    {
+        std::vector<Entity> receivers;
+        for (const Collider3D& collider : body.colliders){
+            if (collider.receiver != NULL_ENTITY) receivers.push_back(collider.receiver);
+        }
+        body.listenerMask = computeListenerMask(entity, receivers);
+    }
     JPH::BodyCreationSettings settings(shape, createPosition, createRotation, joltType, layer);
     settings.mMotionQuality = getRigidbodyMotionQualityToJolt(body.motionQuality);
     settings.mIsSensor = isSensorBody3D(body);
@@ -2639,7 +2696,7 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
     settings.mCollideKinematicVsNonDynamic = collidesKinematicVsNonDynamic3D(body);
     settings.mUseManifoldReduction = usesManifoldReduction3D(body);
     settings.mCollisionGroup = JPH::CollisionGroup(pairFilter3D, body.collisionGroupID, (JPH::CollisionGroup::SubGroupID)entity);
-    settings.mUserData = entity;
+    settings.mUserData = PhysicsCallbacks::packBodyUserData(entity, body.listenerMask);
 
     JPH::BodyInterface &body_interface = getBodyInterface3D();
 
@@ -2986,7 +3043,8 @@ void PhysicsSystem::syncTriggerCompanion3D(Entity entity, RigidbodyComponent& bo
     settings.mCollideKinematicVsNonDynamic = true;
     settings.mAllowSleeping = false;
     settings.mCollisionGroup = JPH::CollisionGroup(pairFilter3D, body.collisionGroupID, (JPH::CollisionGroup::SubGroupID)entity);
-    settings.mUserData = entity;
+    // the owner's GameObject and listener mask (its contacts are the owner's)
+    settings.mUserData = PhysicsCallbacks::packBodyUserData(entity, body.listenerMask);
     JPH::Body* companion = body_interface.CreateBody(settings);
     if (!companion){
         objectLayerTable3D->release(layer);
@@ -3873,6 +3931,11 @@ void PhysicsSystem::fixedUpdate(double dt){
 
     const float fixedStep = (float)dt;
 
+    // scripts defining contact messages appeared or went since the last step
+    if (listenerMasksDirty){
+        refreshListenerMasks();
+    }
+
 #ifdef JASPERENGINE_PHYSICS_2D
 	auto bodies2d = scene->getComponentArray<Rigidbody2DComponent>();
 
@@ -3903,6 +3966,8 @@ void PhysicsSystem::fixedUpdate(double dt){
 
             if (simulate){
                 updateRigidbody2DPosition(signature, entity, body, fixedStep);
+                // Collision2D.relativeVelocity of the pairs that start in this step
+                body.preStepLinearVelocity = b2Body_GetLinearVelocity(body.body);
 
                 body.newBody = false;
             }
@@ -3962,6 +4027,14 @@ void PhysicsSystem::fixedUpdate(double dt){
             refreshRigidbody2DLayer(pendingLayerRefresh2D[i]);
         }
         pendingLayerRefresh2D.clear();
+        // Physics2D.ignoreCollision changed by callbacks inside the step
+        if (!pendingRefilter2D.empty()){
+            std::vector<Entity> refilter;
+            refilter.swap(pendingRefilter2D);
+            for (Entity entity : refilter){
+                repairBody2D(entity);
+            }
+        }
 
         // the moved bodies' Transforms, parents first (writeBackBodies2D)
         b2BodyEvents events = b2World_GetBodyEvents(world2D);
@@ -3975,7 +4048,8 @@ void PhysicsSystem::fixedUpdate(double dt){
         }
         writeBackBodies2D(1.0f, false);
 
-        Box2DAux::manageEvents(scene, world2D);
+        // the global events, then the per-object callbacks (physics-contacts 6.1.4)
+        processContacts2D();
         // after the contact events of the step (physics-contacts D10)
         dispatchJointBreaks2D();
     }
@@ -3990,6 +4064,7 @@ void PhysicsSystem::fixedUpdate(double dt){
     updateRagdolls();
 
     auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
+    bool stepped3D = false;
 
 	for (int i = 0; i < bodies3d->size(); i++){
 		RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
@@ -4078,10 +4153,30 @@ void PhysicsSystem::fixedUpdate(double dt){
 			std::lock_guard<std::mutex> lock(debugContactsMutex3D);
 			debugContacts3D.clear();
 		}
-		{
-			StepScope stepScope(this);
-			errors = world3D.Update(fixedStep, cCollisionSteps, temp_allocator, job_system);
+		// a step synchronous on request, or while a Lua shouldCollide3D must run in it, runs
+		// its jobs on this (the Lua) thread (physics-contacts D12)
+		const bool luaFilter = shouldCollide3D.luaSubscriberCount() > 0;
+		if (luaFilter && !synchronousContactEvents3D && !loggedAutoSynchronous3D){
+			loggedAutoSynchronous3D = true;
+			Log::print("Physics: shouldCollide3D has a Lua handler, so the 3D world steps on the main thread (synchronousContactEvents3D). Physics.ignoreCollision or layers filter without it");
 		}
+		stepSynchronous3D = synchronousContactEvents3D || luaFilter;
+		JPH::JobSystem* jobs = job_system;
+		if (stepSynchronous3D){
+			if (!syncJobSystem3D){
+				syncJobSystem3D = std::make_unique<JPH::JobSystemSingleThreaded>(JPH::cMaxPhysicsJobs);
+			}
+			jobs = syncJobSystem3D.get();
+		}
+
+		contactRecorder3D->beginStep();
+		{
+			const auto stepStart = std::chrono::steady_clock::now();
+			StepScope stepScope(this);
+			errors = world3D.Update(fixedStep, cCollisionSteps, temp_allocator, jobs);
+			stepSeconds3D += std::chrono::duration<double>(std::chrono::steady_clock::now() - stepStart).count();
+		}
+		stepped3D = true;
 		reportUpdateErrors3D(errors);
 
 		// reaction forces of this step against breakForce / breakTorque, and the read-outs
@@ -4098,6 +4193,13 @@ void PhysicsSystem::fixedUpdate(double dt){
 
     // the bodies' Transforms, parents first, so nested bodies (a ragdoll) are exact
     writeBackBodies3D(1.0f, false);
+
+    // the global events (after the step), then the per-object callbacks, all on this thread
+    if (stepped3D){
+        const auto contactsStart = std::chrono::steady_clock::now();
+        processContacts3D();
+        contactSeconds3D += std::chrono::duration<double>(std::chrono::steady_clock::now() - contactsStart).count();
+    }
 
     // after the step's callbacks (physics-contacts D10)
     dispatchJointBreaks3D();
@@ -4326,6 +4428,8 @@ void PhysicsSystem::onEntityLayerChanged(Entity entity) {
 void PhysicsSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 #ifdef JASPERENGINE_PHYSICS_2D
 	if (componentId == scene->getComponentId<Rigidbody2DComponent>()) {
+		// the other sides get their Exit now, while this GameObject still exists (D6)
+		contactBodyRemoved2D(entity);
 		Rigidbody2DComponent& rigidbody2d = scene->getComponent<Rigidbody2DComponent>(entity);
 		destroyRigidbody2D(rigidbody2d);
 	} else if (componentId == scene->getComponentId<Joint2DComponent>()) {
@@ -4335,6 +4439,7 @@ void PhysicsSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 	if (componentId == scene->getComponentId<RigidbodyComponent>()) {
+		contactBodyRemoved3D(entity);
 		RigidbodyComponent& rigidbody = scene->getComponent<RigidbodyComponent>(entity);
 		// its joints hold the Jolt body: they go first (made again if a body comes back)
 		invalidateJoints3D(entity);

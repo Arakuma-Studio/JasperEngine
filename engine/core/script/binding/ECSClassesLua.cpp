@@ -240,6 +240,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("hitContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->hitContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->hitContact2D = L; })
         .addProperty("preSolve2D", [] (PhysicsSystem* self, lua_State* L) { return &self->preSolve2D; }, [] (PhysicsSystem* self, lua_State* L) { self->preSolve2D = L; })
         .addProperty("shouldCollide2D", [] (PhysicsSystem* self, lua_State* L) { return &self->shouldCollide2D; }, [] (PhysicsSystem* self, lua_State* L) { self->shouldCollide2D = L; })
+        .addProperty("stayContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->stayContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->stayContact2D = L; })
+        .addProperty("staySensorContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->staySensorContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->staySensorContact2D = L; })
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         .addProperty("lock3DBodies", &PhysicsSystem::isLock3DBodies, &PhysicsSystem::setLock3DBodies)
@@ -251,6 +253,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("onContactPersisted3D", [] (PhysicsSystem* self, lua_State* L) { return &self->onContactPersisted3D; }, [] (PhysicsSystem* self, lua_State* L) { self->onContactPersisted3D = L; })
         .addProperty("onContactRemoved3D", [] (PhysicsSystem* self, lua_State* L) { return &self->onContactRemoved3D; }, [] (PhysicsSystem* self, lua_State* L) { self->onContactRemoved3D = L; })
         .addProperty("shouldCollide3D", [] (PhysicsSystem* self, lua_State* L) { return &self->shouldCollide3D; }, [] (PhysicsSystem* self, lua_State* L) { self->shouldCollide3D = L; })
+        // global 3D contact events inside the step with live Contact3D (main thread)
+        .addProperty("synchronousContactEvents3D", &PhysicsSystem::isSynchronousContactEvents3D, &PhysicsSystem::setSynchronousContactEvents3D)
 #endif
 #ifdef JASPERENGINE_PHYSICS_2D
         .addFunction("createRigidbody2D", &PhysicsSystem::createRigidbody2D)

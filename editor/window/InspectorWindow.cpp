@@ -12346,7 +12346,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
         std::string shapeKey = "colliders[" + std::to_string(s) + "]";
 
-        beginTable(cpType, getLabelSize("Bottom Radius"), "rigidbody_collider");
+        beginTable(cpType, getLabelSize("Send Callbacks To"), "rigidbody_collider");
 
         PropertyData shapeTypeProp = Catalog::getProperty(sceneProject->scene, entities[0], cpType, shapeKey + ".type");
         int* shapeTypeDef = static_cast<int*>(shapeTypeProp.def);
@@ -12722,6 +12722,54 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
         settingsReceiver.help = "Another GameObject that also gets this collider's contact callbacks";
         propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".receiver", "Send Callbacks To", sceneProject, entities, settingsReceiver);
         endTable();
+    }
+
+    // Play: what the body touches, and the contact callbacks its scripts define
+    if (sceneProject->playState != ScenePlayState::STOPPED && entities.size() == 1){
+        drawPhysicsContacts(sceneProject, entities[0], false);
+    }
+}
+
+void editor::InspectorWindow::drawPhysicsContacts(SceneProject* sceneProject, Entity entity, bool is2D){
+    Scene* scene = sceneProject->scene;
+    // read again at most 10 times a second
+    PhysicsContactsView& view = physicsContactsViews[{sceneProject->id, entity, is2D}];
+    const double now = ImGui::GetTime();
+    if (view.readAt < 0.0 || now - view.readAt >= 0.1){
+        view.readAt = now;
+        std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+        view.contacts.clear();
+#ifdef JASPERENGINE_PHYSICS_2D
+        if (is2D && scene->findComponent<Rigidbody2DComponent>(entity)) view.contacts = physics->getContactSummary2D(entity);
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+        if (!is2D && scene->findComponent<RigidbodyComponent>(entity)) view.contacts = physics->getContactSummary3D(entity);
+#endif
+        view.callbacks = ScriptMessages::describeReceivers(scene, entity, is2D ? PhysicsCallbacks::ALL_2D : PhysicsCallbacks::ALL_3D);
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
+    std::string callbacks;
+    for (const std::string& name : view.callbacks){
+        callbacks += (callbacks.empty() ? "" : ", ") + name;
+    }
+    ImGui::TextWrapped("Callbacks: %s", callbacks.empty() ? "none (define onCollisionEnter / onTriggerEnter on a script)" : callbacks.c_str());
+    ImGui::PopStyleColor();
+
+    const std::string title = "Contacts (" + std::to_string(view.contacts.size()) + ")##physics_contacts_" + std::string(is2D ? "2d" : "3d");
+    if (ImGui::TreeNode(title.c_str())){
+        if (view.contacts.empty()){
+            ImGui::TextDisabled("Touching nothing");
+        }
+        for (const ContactSummary& contact : view.contacts){
+            const std::string other = scene->isEntityCreated(contact.other) ? scene->getEntityName(contact.other) : ("#" + std::to_string(contact.other));
+            std::string line = other + "  collider " + std::to_string(contact.collider) + " / " + std::to_string(contact.otherCollider);
+            if (contact.trigger) line += "  trigger";
+            if (contact.sinceStep > 0) line += "  since step " + std::to_string(contact.sinceStep);
+            if (contact.asleep) line += "  asleep";
+            ImGui::BulletText("%s", line.c_str());
+        }
+        ImGui::TreePop();
     }
 }
 

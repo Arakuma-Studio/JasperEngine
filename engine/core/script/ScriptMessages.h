@@ -88,6 +88,10 @@ namespace jasperengine {
                            const std::function<int(lua_State*)>& pushArgs,
                            const std::function<void(ScriptBase&)>& callCpp);
 
+        // The messages of `filter` each script of the GameObject defines, as
+        // "onTriggerEnter (Coin)" (the Inspector's Callbacks line, get_runtime_entity)
+        static std::vector<std::string> describeReceivers(Scene* scene, Entity entity, ScriptMessageMask filter);
+
         // Told when receivers(scene, entity) may have changed
         using ReceiversChanged = void (*)(Scene* scene, Entity entity);
         static void addReceiversChangedListener(ReceiversChanged listener);
