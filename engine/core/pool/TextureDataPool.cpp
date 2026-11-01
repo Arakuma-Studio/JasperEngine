@@ -20,7 +20,9 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <cstdlib>
 #include <set>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -720,6 +722,13 @@ TextureDataPool::PendingTexture TextureDataPool::startAsyncLoad(const std::strin
                     ResourceProgress::failBuild(buildId);
                     throw std::runtime_error("Shutdown requested");
                 }
+                // tests: JASPER_TEXTURE_LOAD_DELAY_MS holds every async texture decode that long,
+                // so a screenshot or a readiness check meets a texture still loading
+                static const int delayMs = [](){
+                    const char* value = std::getenv("JASPER_TEXTURE_LOAD_DELAY_MS");
+                    return value ? std::max(0, std::atoi(value)) : 0;
+                }();
+                if (delayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
                 if (isCooked) {
                     result.cooked = true;
                     CookedPiece piece;
