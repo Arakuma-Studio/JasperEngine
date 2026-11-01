@@ -654,6 +654,25 @@ alternative to what the text above asks.
   the pre-S15 commit f93897204 instead, today's editor is +25.9 %: everything merged since, not the
   profiler.
 - **Vulkan pass timers in the editor (GPU campaign):** on light frames (under ~0.5 ms, 1,000+ fps
-  uncapped, three commits a frame) captures carry none of the Game view's passes while heavy frames
-  are timed every run; the benchmark CLI's frame time is unaffected. Likely the per-commit results
-  arrive after the ring drops them (`sgj_poll`, `SGJ_MAX_AGE`). Open.
+  uncapped, three commits a frame) captures carried none of the Game view's passes while heavy frames
+  were timed every run. **Fixed in perf2:** not the timer ring (no commit dropped: `get_render_stats`
+  `gpu.commits` now counts resolved and dropped commits by reason) but the profiler: a light
+  frame's commit resolves before the frame ends, and `profiler::recordGpuFrame` only looked for
+  frames already marked, so those times reached no frame (all-zero pass medians in captures, while
+  `get_gpu_passes` live had them). Times of the frame in progress now wait for it
+  (`Profiler.GpuTimesOfTheFrameInProgressReachIt`); the probe capture went from every pass 0 to
+  CloudsScreen 0.29 ms, camera 0.24 ms.
+- **AC4 in perf2 (RTX 3080 Ti, GL, the post-processing fixture now 1.06 ms a frame,
+  `profiler_overhead.py`-style paired rounds, 30 each):**
+  - the idle profiler's machinery switched off in today's editor (sokol's stats, the trace hub and
+    pass recorder): -0.31 % [-0.80, +0.18], under the resolution; recording against idle +0.42 %
+    [-0.12, +0.95]; recording with GPU timers against idle **+3.16 %** [+2.39, +3.93] (~34 µs a
+    frame, two GL queries a pass and their read-back);
+  - tried: no `glFlush` per commit (the swap flushes): **slower**, -1.17 % [-2.00, -0.34] for the
+    flush, so it stays; one availability query a commit instead of one a pass (queries complete in
+    order) and counters that look their monitor up once: no measurable change (+0.13 % [-0.46,
+    +0.73]), kept as they do less;
+  - **proposed revision (pending approval):** the relative bounds were set on llvmpipe's ~100 ms
+    frame; on a GPU's ~1 ms frame 0.5 % is 5 µs, under the confidence interval of 30 rounds
+    (±0.5-0.7 points). Proposed: ≤ 0.5 % / 3 % / 3.5 % of the frame **or** ≤ 5 / 30 / 40 µs a frame,
+    whichever is larger; GL meets it (idle within noise, recording ~4 µs, GPU timers ~34 µs).
