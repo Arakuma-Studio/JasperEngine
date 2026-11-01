@@ -324,6 +324,13 @@ namespace jasperengine::editor {
             const Project* project, const SceneProject* sceneProject, const Prefab* prefab);
         // The GameObject keys of an entity node, the ones a Missing Prefab does not keep raw
         static bool isGameObjectKey(const std::string& key);
+        // YAML read from a file and kept to be written again as it was (a Missing Prefab's instance
+        // data, decodePrefabInstance): its empty sequences and maps get back the style they were
+        // written in. yaml-cpp reads every empty one back in flow style, and writes a default-style
+        // one (every encoder's) on the line below its key ("key:\n  []"), a flow one on the key's
+        // line ("key: []"); so an empty value on its key's line is flow, one below it default.
+        // Nodes without a mark (not read from a file) keep their style
+        static void restoreWrittenStyles(YAML::Node node);
 
         // True when a mesh's geometry is regenerated from a model's source file on load
         // (the ModelComponent root or one of a multi-node model's generated child meshes),
