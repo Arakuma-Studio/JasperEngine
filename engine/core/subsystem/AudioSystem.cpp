@@ -190,7 +190,8 @@ bool AudioSystem::isInited(){
 }
 
 void AudioSystem::mixManually(double seconds){
-    if (!inited || getSoloud().getBackendId() != SoLoud::Soloud::NULLDRIVER || !(seconds > 0.0)) return;
+    // a Recorder capture holds the null driver and mixes it itself (mixOffline), once a frame
+    if (!inited || offlineCapture || getSoloud().getBackendId() != SoLoud::Soloud::NULLDRIVER || !(seconds > 0.0)) return;
     SoLoud::Soloud& soloud = getSoloud();
     const unsigned int channels = std::max(1u, soloud.getBackendChannels());
     pumpSeconds += seconds;

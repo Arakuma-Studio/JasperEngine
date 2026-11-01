@@ -120,7 +120,8 @@ namespace jasperengine{
 		static AudioBackend getBackend();
 		// "MiniAudio", "NoSound", "null driver", "" before init
 		static std::string getBackendName();
-		// the Null backend: `seconds` of audio mixed now (AudioMixer::update does it each frame)
+		// the Null backend: `seconds` of audio mixed now (AudioMixer::update does it each frame);
+		// nothing during an offline capture, whose caller mixes (mixOffline)
 		static void mixManually(double seconds);
 
 		static void stopAll();
