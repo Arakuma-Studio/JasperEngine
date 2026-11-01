@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include <cmath>
 #include <unordered_map>
 #include "LuaBinding.h"
 #include "script/AsyncOwner.h"
@@ -1424,8 +1425,9 @@ void LuaBinding::resolveLuaScriptReferences(lua_State* L, Scene* scene, ScriptEn
     lua_pop(L, 1);
 }
 
-bool LuaBinding::callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args) {
-    return ScriptMessages::sendNamed(scene, entity, method, args);
+bool LuaBinding::callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args,
+                                     bool integers) {
+    return ScriptMessages::sendNamed(scene, entity, method, args, integers);
 }
 
 void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry) {

@@ -31,6 +31,9 @@
 #include "component/LatticeModifierComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimationPlayerRuntime.h"
+#include "animation/AnimatorController.h"
+#include "animation/AvatarMask.h"
 #include "animation/ModelSubClips.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -47,6 +50,7 @@
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "util/Util.h"
+#include "util/YamlNumbers.h"
 
 #include <algorithm>
 #include <limits>
@@ -147,6 +151,28 @@ bool isPlayerWrapProperty(ComponentType component, const std::string& propertyNa
            endsWith(propertyName, "].wrap");
 }
 
+// layers[N].blend: an AnimationLayerBlend (Catalog: Custom, one byte), "override" / "additive"
+bool isPlayerLayerBlendProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 7, "layers[") == 0 &&
+           endsWith(propertyName, "].blend");
+}
+
+// layers[N].mask: a .mask (its GUID, layers[N].maskGuid, follows it and is read-only over MCP)
+bool isPlayerMaskProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 7, "layers[") == 0 &&
+           endsWith(propertyName, "].mask");
+}
+
+bool isPlayerMaskGuidProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 7, "layers[") == 0 &&
+           endsWith(propertyName, "].maskGuid");
+}
+
+// controller: a .controller (controllerGuid follows it, read-only over MCP)
+bool isPlayerControllerProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName == "controller";
+}
+
 // A Vertex Animator's animation: a .vat (its GUID follows it, read-only over MCP)
 bool isVertexAnimationProperty(ComponentType component, const std::string& propertyName) {
     return component == ComponentType::VertexAnimatorComponent && propertyName == "animation";
@@ -164,6 +190,7 @@ bool isPhysicsMaterialProperty(ComponentType component, const std::string& prope
 bool isAssetPathProperty(ComponentType component, const std::string& propertyName) {
     return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") ||
            isPlayerClipProperty(component, propertyName) || isVertexAnimationProperty(component, propertyName) ||
+           isPlayerMaskProperty(component, propertyName) || isPlayerControllerProperty(component, propertyName) ||
            isPhysicsMaterialProperty(component, propertyName);
 }
 
@@ -1740,9 +1767,63 @@ Json playerClipsToJson(Project* project, const std::vector<AnimationPlayerClip>&
     for (const AnimationPlayerClip& entry : clips) {
         Json item{{"clip", clipPathToJson(project, entry.clip)}, {"name", entry.name}, {"wrap", anim::wrapName(entry.wrap)}};
         if (!entry.guid.empty()) item["guid"] = entry.guid;
+        if (entry.layer != 0) item["layer"] = entry.layer;
         list.push_back(item);
     }
     return list;
+}
+
+// The layers as get_entity shows them (anim layers spec 10): the effective list (one Base Layer
+// when none is authored), masks project-relative
+Json playerLayersToJson(Project* project, const std::vector<AnimationPlayerLayer>& layers) {
+    Json list = Json::array();
+    AnimationPlayerComponent player;
+    player.layers = layers;
+    for (const AnimationPlayerLayer& layer : anim::playerLayers(player)) {
+        Json item{{"name", layer.name}, {"weight", layer.weight}, {"blend", anim::layerBlendName(layer.blend)},
+                  {"mask", layer.mask.empty() ? std::string() : McpValues::assetPathToJson(project, layer.mask)}};
+        if (!layer.maskGuid.empty()) item["maskGuid"] = layer.maskGuid;
+        list.push_back(item);
+    }
+    return list;
+}
+
+// A .mask or .controller as MCP sets it (project-relative, or the stored form of an existing
+// file): the stored path and its GUID; the file must exist and parse. Empty clears it.
+bool animAssetPathFromJson(Project* project, const std::string& text, bool mask, std::string& stored, std::string& guid, std::string& error) {
+    stored.clear();
+    guid.clear();
+    if (text.empty()) return true;
+    const char* example = mask ? ".mask file, e.g. assets/anim/arm.mask (write one with write_file)"
+                               : ".controller file, e.g. assets/anim/granjero.controller (create one with edit_animator)";
+    std::string why;
+    if (!storedAssetPathFromJson(project, text, stored, why)) {
+        error = std::string("must be a ") + example + ": " + why;
+        stored.clear();
+        return false;
+    }
+    if (mask ? !Util::isAvatarMaskFile(stored) : !Util::isAnimatorControllerFile(stored)) {
+        error = std::string("must be a ") + example + ".";
+        stored.clear();
+        return false;
+    }
+    const fs::path full = project->resolveAssetPath(stored);
+    std::ifstream file(full, std::ios::binary);
+    if (!file) {
+        error = text + " does not exist: a " + example + ".";
+        stored.clear();
+        return false;
+    }
+    const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const anim::ClipParseError parseError = mask ? anim::parseAvatarMask(content).error : anim::parseController(content).error;
+    if (!parseError.empty()) {
+        error = text + " does not load: " + parseError.toString();
+        stored.clear();
+        return false;
+    }
+    guid = project->getAssetDatabase().getGuid(full);
+    if (guid.empty()) guid = anim::readClipGuid(content);
+    return true;
 }
 
 // The clip list an edit through the component's encoding left (clips set, an entry inserted,
@@ -1816,8 +1897,8 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
             for (auto it = item.begin(); it != item.end(); ++it) {
                 const std::string key = it->first.as<std::string>();
                 // guid: as get_entity shows it, so a list read back is taken; its value is ignored
-                if (key != "clip" && key != "guid" && key != "name" && key != "wrap") {
-                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap}; its guid follows the clip).";
+                if (key != "clip" && key != "guid" && key != "name" && key != "wrap" && key != "layer") {
+                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap, layer}; its guid follows the clip).";
                     return false;
                 }
                 if (!it->second.IsScalar() && !it->second.IsNull()) {
@@ -1862,13 +1943,157 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
                 return false;
             }
         }
+        if (constEntry["layer"]) {
+            int layer = 0;
+            const std::string text = constEntry["layer"].Scalar();
+            if (!YamlNumbers::readPlain(text, layer) || layer < 0) {
+                error = at + ".layer must be a layer index (0 is the base layer).";
+                return false;
+            }
+            if (layer == 0) entry.remove("layer");
+        }
         rebuilt.push_back(entry);
     }
     value["clips"] = rebuilt;
     return true;
 }
 
+// The layers an edit through the component's encoding left (anim layers spec 10): unique names,
+// the base layer's weight and blend fixed, masks that exist and parse (stored with their GUID; a
+// layer naming the mask it holds keeps it, a missing one stays missing). Entries on a layer the
+// list does not have are refused.
+bool normalizePlayerLayers(Project* project, const AnimationPlayerComponent* current, YAML::Node value, std::string& error) {
+    const YAML::Node& constValue = value;
+    const YAML::Node layers = constValue["layers"];
+    const char* const shape = "layers must be a list of {name, weight, blend, mask}, e.g. [{\"name\": \"Base Layer\"}, "
+                              "{\"name\": \"Holding\", \"weight\": 1, \"mask\": \"assets/anim/arm.mask\"}].";
+    size_t count = 1;
+    if (layers && !layers.IsNull()){
+        if (!layers.IsSequence()) {
+            error = shape;
+            return false;
+        }
+        YAML::Node rebuilt(YAML::NodeType::Sequence);
+        std::set<std::string> names;
+        for (size_t i = 0; i < layers.size(); i++) {
+            const YAML::Node item = layers[i];
+            const std::string at = "layers[" + std::to_string(i) + "]";
+            YAML::Node entry(YAML::NodeType::Map);
+            if (item.IsScalar()) {
+                entry["name"] = item.Scalar();
+            } else if (item.IsMap()) {
+                for (auto it = item.begin(); it != item.end(); ++it) {
+                    const std::string key = it->first.as<std::string>();
+                    if (key != "name" && key != "weight" && key != "blend" && key != "mask" && key != "maskGuid") {
+                        error = at + ": unknown key \"" + key + "\" (a layer is {name, weight, blend, mask}; its maskGuid follows the mask).";
+                        return false;
+                    }
+                    if (!it->second.IsScalar() && !it->second.IsNull()) {
+                        error = at + "." + key + " must be a " + (key == "weight" ? "number" : "string") + ".";
+                        return false;
+                    }
+                    if (key != "maskGuid") entry[key] = it->second.IsScalar() ? it->second.Scalar() : std::string();
+                }
+            } else {
+                error = at + ": " + shape;
+                return false;
+            }
+            const YAML::Node& constEntry = entry;
+            const std::string name = constEntry["name"] ? constEntry["name"].Scalar() : std::string();
+            if (name.empty()) {
+                error = at + ".name is required (layers are addressed by name in Lua).";
+                return false;
+            }
+            if (!names.insert(name).second) {
+                error = at + ".name \"" + name + "\" is already a layer: names are unique.";
+                return false;
+            }
+            if (constEntry["weight"]) {
+                float weight = 1.0f;
+                if (!YamlNumbers::readPlain(constEntry["weight"].Scalar(), weight) || !std::isfinite(weight) || weight < 0.0f || weight > 1.0f) {
+                    error = at + ".weight must be a number from 0 to 1.";
+                    return false;
+                }
+                if (i == 0 && weight != 1.0f) {
+                    error = at + ".weight: the base layer (index 0) always has weight 1; give the weight to a layer above it.";
+                    return false;
+                }
+            }
+            if (constEntry["blend"]) {
+                AnimationLayerBlend blend = AnimationLayerBlend::Override;
+                const std::string text = constEntry["blend"].Scalar();
+                if (!text.empty() && !anim::layerBlendFromName(text, blend)) {
+                    error = at + ".blend \"" + text + "\" is not a blend mode (override, additive).";
+                    return false;
+                }
+                if (i == 0 && blend != AnimationLayerBlend::Override) {
+                    error = at + ".blend: the base layer (index 0) always blends as override; add an additive layer above it.";
+                    return false;
+                }
+            }
+            const std::string mask = constEntry["mask"] ? constEntry["mask"].Scalar() : std::string();
+            const AnimationPlayerLayer* same = nullptr;
+            if (current && !mask.empty()) {
+                for (const AnimationPlayerLayer& held : current->layers) {
+                    if (!held.mask.empty() && (held.mask == mask || McpValues::assetPathToJson(project, held.mask) == mask)) {
+                        same = &held;
+                        break;
+                    }
+                }
+            }
+            if (same) {
+                entry["mask"] = same->mask;
+                if (!same->maskGuid.empty()) entry["maskGuid"] = same->maskGuid;
+            } else if (!mask.empty()) {
+                std::string stored, guid, why;
+                if (!animAssetPathFromJson(project, mask, true, stored, guid, why)) {
+                    error = at + ".mask " + why;
+                    return false;
+                }
+                entry["mask"] = stored;
+                if (!guid.empty()) entry["maskGuid"] = guid;
+            } else {
+                entry.remove("mask");
+            }
+            rebuilt.push_back(entry);
+        }
+        value["layers"] = rebuilt;
+        count = std::max<size_t>(1, rebuilt.size());
+    }
+    const YAML::Node clips = constValue["clips"];
+    if (clips && clips.IsSequence()) {
+        for (size_t i = 0; i < clips.size(); i++) {
+            const YAML::Node layer = clips[i].IsMap() ? clips[i]["layer"] : YAML::Node();
+            int index = 0;
+            if (layer && layer.IsScalar() && YamlNumbers::readPlain(layer.Scalar(), index) && index >= 0 && (size_t)index >= count) {
+                error = "clips[" + std::to_string(i) + "].layer " + std::to_string(index) + ": the player has " + std::to_string(count) +
+                        " layer" + (count == 1 ? "" : "s") + " (0 to " + std::to_string(count - 1) + "): add the layer first.";
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 } // namespace
+
+bool McpValues::clipReferenceFromJson(Project* project, const std::string& text, std::string& stored, std::string& guid, std::string& error) {
+    if (!clipPathFromJson(project, text, stored, guid, error)) {
+        // without the "clip: " prefix (the caller names its field)
+        if (error.compare(0, 6, "clip: ") == 0) error = error.substr(6);
+        return false;
+    }
+    return true;
+}
+
+bool McpValues::animAssetReferenceFromJson(Project* project, const std::string& text, bool mask, std::string& stored, std::string& guid,
+                                           std::string& error) {
+    return animAssetPathFromJson(project, text, mask, stored, guid, error);
+}
+
+std::string McpValues::clipReferenceToJson(Project* project, const std::string& stored) {
+    return clipPathToJson(project, stored);
+}
 
 Json McpValues::entityToJson(SceneProject* scene, Entity entity) {
     if (entity == NULL_ENTITY) return nullptr;
@@ -2994,7 +3219,11 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
     void* ref = readDefault ? property.def : property.ref;
     if (property.type == PropertyType::Custom) {
         // an Animation Player entry's wrap has a default ("default"), like an enum
-        if (readDefault) return ref && isPlayerWrapProperty(ctx.component, name) ? Json(anim::wrapName(*static_cast<ClipWrapMode*>(ref))) : Json(nullptr);
+        if (readDefault){
+            if (ref && isPlayerWrapProperty(ctx.component, name)) return Json(anim::wrapName(*static_cast<ClipWrapMode*>(ref)));
+            if (ref && isPlayerLayerBlendProperty(ctx.component, name)) return Json(anim::layerBlendName(*static_cast<AnimationLayerBlend*>(ref)));
+            return Json(nullptr);
+        }
         if (ref && name == "shaderUniforms") {
             return shaderUniformsToJson(*static_cast<ShaderUniformValues*>(ref));
         }
@@ -3028,6 +3257,12 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         }
         if (ref && isPlayerWrapProperty(ctx.component, name)) {
             return anim::wrapName(*static_cast<ClipWrapMode*>(ref));
+        }
+        if (ref && ctx.component == ComponentType::AnimationPlayerComponent && name == "layers") {
+            return playerLayersToJson(ctx.project, *static_cast<std::vector<AnimationPlayerLayer>*>(ref));
+        }
+        if (ref && isPlayerLayerBlendProperty(ctx.component, name)) {
+            return anim::layerBlendName(*static_cast<AnimationLayerBlend*>(ref));
         }
         // a version 2 Particle System's bursts and sprite frames
         if (ref && ctx.component == ComponentType::ParticleSystemComponent && name == "emission.bursts") {
@@ -3207,6 +3442,39 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 "which resamples the offsets so the shape stays.";
         return nullptr;
     }
+    // one field of a layer: the checks of a whole list (normalizePlayerLayers) that apply to it.
+    // The base layer's weight is always 1 (anim layers spec 5.2)
+    if (component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 7, "layers[") == 0) {
+        if (propertyName == "layers[0].weight") {
+            error = "layers[0].weight: the base layer always has weight 1; give a layer above it a weight (layers[1].weight).";
+            return nullptr;
+        }
+        const size_t close = propertyName.find(']');
+        size_t index = 0;
+        const bool indexed = close != std::string::npos && YamlNumbers::readPlain(propertyName.substr(7, close - 7), index);
+        const std::string field = close == std::string::npos ? std::string() : propertyName.substr(close + 1);
+        if (indexed && field == ".name" && value.is_string()) {
+            const std::string name = value.get<std::string>();
+            if (name.empty()) {
+                error = propertyName + " is required (layers are addressed by name in Lua).";
+                return nullptr;
+            }
+            const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(entity);
+            for (size_t i = 0; player && i < player->layers.size(); i++) {
+                if (i != index && player->layers[i].name == name) {
+                    error = propertyName + " \"" + name + "\" is already a layer (layers[" + std::to_string(i) + "]): names are unique.";
+                    return nullptr;
+                }
+            }
+        }
+        if (indexed && field == ".weight" && value.is_number()) {
+            const double weight = value.get<double>();
+            if (!std::isfinite(weight) || weight < 0.0 || weight > 1.0) {
+                error = propertyName + " must be a number from 0 to 1.";
+                return nullptr;
+            }
+        }
+    }
     const std::string typeName = propertyTypeName(property.type);
     auto expect = [&](const std::string& what) -> Command* {
         error = "Property " + propertyName + " is " + typeName + ": value must be " + what + ".";
@@ -3279,6 +3547,23 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName, stored, onChanged);
                 multi->addPropertyCmd<std::string>(project, sceneId, entity, component, "guid", guid);
                 return multi;
+            }
+            if (isPlayerMaskProperty(component, propertyName) || isPlayerControllerProperty(component, propertyName)) {
+                // the path and the GUID it names change together: the GUID wins when the scene loads
+                const bool mask = isPlayerMaskProperty(component, propertyName);
+                std::string stored, guid, why;
+                if (!animAssetPathFromJson(project, text, mask, stored, guid, why)) {
+                    error = propertyName + " " + why;
+                    return nullptr;
+                }
+                auto* multi = new MultiPropertyCmd();
+                multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName, stored, onChanged);
+                multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName + "Guid", guid);
+                return multi;
+            }
+            if (isPlayerMaskGuidProperty(component, propertyName) || (component == ComponentType::AnimationPlayerComponent && propertyName == "controllerGuid")) {
+                error = propertyName + " is read-only: set " + propertyName.substr(0, propertyName.size() - 4) + ", its GUID follows the file.";
+                return nullptr;
             }
             if (component == ComponentType::VertexAnimatorComponent && propertyName == "guid") {
                 error = "guid is read-only: set animation, its GUID follows the file.";
@@ -3621,6 +3906,18 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                     return nullptr;
                 }
                 return new PropertyCmd<ClipWrapMode>(project, sceneId, entity, component, propertyName, wrap, onChanged);
+            }
+            if (isPlayerLayerBlendProperty(component, propertyName)) {
+                AnimationLayerBlend blend = AnimationLayerBlend::Override;
+                if (!value.is_string() || !anim::layerBlendFromName(value.get<std::string>(), blend)) {
+                    error = "Property " + propertyName + " is a blend mode: override or additive.";
+                    return nullptr;
+                }
+                if (propertyName.compare(0, 9, "layers[0]") == 0 && blend != AnimationLayerBlend::Override) {
+                    error = "layers[0].blend: the base layer always blends as override; add an additive layer above it.";
+                    return nullptr;
+                }
+                return new PropertyCmd<AnimationLayerBlend>(project, sceneId, entity, component, propertyName, blend, onChanged);
             }
             if (isScriptPrefabProperty(scene->scene, entity, component, propertyName)) {
                 PrefabAsset prefab;
@@ -4007,14 +4304,79 @@ static bool isWholeValueProperty(Scene* scene, Entity entity, ComponentType comp
             endsWith(property, "shaderFeatures") || endsWith(property, "shaderGlobalBindings"));
 }
 
+// A player without authored layers plays one Base Layer (playerLayers), which has no layers[0].*
+// property: its field edits become one edit of the whole effective list, which then holds them
+// (as the Inspector's layer fields do), checked like any list
+static std::vector<McpValues::Change> withPlayerLayerList(Project* project, Scene* scene, Entity entity,
+                                                          const std::vector<McpValues::Change>& changes) {
+    const AnimationPlayerComponent* player = scene->findComponent<AnimationPlayerComponent>(entity);
+    if (!player || !player->layers.empty()) return changes;
+    auto isBaseField = [](const McpValues::Change& change) {
+        return change.component == ComponentType::AnimationPlayerComponent && change.op == "set" &&
+               (change.property == "layers[0].name" || change.property == "layers[0].weight" ||
+                change.property == "layers[0].blend" || change.property == "layers[0].mask");
+    };
+    bool fields = false;
+    for (const McpValues::Change& change : changes) {
+        if (change.component == ComponentType::AnimationPlayerComponent && change.property == "layers") return changes;
+        fields = fields || isBaseField(change);
+    }
+    if (!fields) return changes;
+    Json list = Json::array();
+    for (const AnimationPlayerLayer& layer : anim::playerLayers(*player)) {
+        Json item = {{"name", layer.name}, {"weight", layer.weight}, {"blend", anim::layerBlendName(layer.blend)}};
+        if (!layer.mask.empty()) item["mask"] = McpValues::assetPathToJson(project, layer.mask);
+        list.push_back(item);
+    }
+    std::vector<McpValues::Change> out;
+    size_t at = 0;
+    for (const McpValues::Change& change : changes) {
+        if (!isBaseField(change)) {
+            out.push_back(change);
+            continue;
+        }
+        if (at == 0) {
+            out.push_back({ComponentType::AnimationPlayerComponent, "layers", "set", Json(), -1});
+            at = out.size();
+        }
+        list[0][change.property.substr(10)] = change.value;
+    }
+    out[at - 1].value = list;
+    return out;
+}
+
 bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
-                                     const std::vector<Change>& changes, MultiPropertyCmd& multi, std::string& error) {
+                                     const std::vector<Change>& allChanges, MultiPropertyCmd& multi, std::string& error) {
     if (!scene || !scene->scene) {
         error = "The scene is not loaded.";
         return false;
     }
     for (Entity entity : entities) {
         const std::string label = "GameObject " + std::to_string(entity) + " \"" + scene->scene->getEntityName(entity) + "\"";
+        const std::vector<Change> changes = withPlayerLayerList(project, scene->scene, entity, allChanges);
+        // an entry's layer is one of the player's layers after this edit (anim layers spec 10)
+        if (const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(entity)) {
+            int layers = (int)anim::playerLayers(*player).size();
+            for (const Change& change : changes) {
+                if (change.component == ComponentType::AnimationPlayerComponent && change.property == "layers" && change.op == "set" &&
+                    change.value.is_array()) {
+                    layers = std::max<int>(1, (int)change.value.size());
+                }
+            }
+            for (const Change& change : changes) {
+                const std::string& name = change.property;
+                if (change.component != ComponentType::AnimationPlayerComponent || name.compare(0, 6, "clips[") != 0 || name.size() <= 12 ||
+                    name.compare(name.size() - 6, 6, ".layer") != 0 || !change.value.is_number_integer()) {
+                    continue;
+                }
+                const int layer = change.value.get<int>();
+                if (layer < 0 || layer >= layers) {
+                    error = "animationplayer." + name + " on " + label + ": " + std::to_string(layer) + " is not a layer of this player (it has " +
+                            std::to_string(layers) + "); add the layer first (layers, e.g. [{\"name\": \"Base Layer\"}, {\"name\": \"Upper\"}]).";
+                    return false;
+                }
+            }
+        }
         // components in order of first appearance
         std::vector<ComponentType> order;
         for (const Change& change : changes) {
@@ -4155,7 +4517,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                      endsWith(change.property, "shaderFeatures") || endsWith(change.property, "shaderGlobalBindings") ||
                      change.property == "stencil" ||
                      endsWith(change.property, ".stencil") || endsWith(change.property, "material.extraPass") ||
-                     isPlayerWrapProperty(component, change.property) ||
+                     isPlayerWrapProperty(component, change.property) || isPlayerLayerBlendProperty(component, change.property) ||
                      isScriptPrefabProperty(scene->scene, entity, component, change.property));
                 if (typedProperty) {
                     std::string why;
@@ -4208,7 +4570,8 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 }
                 if (component == ComponentType::AnimationPlayerComponent) {
                     std::string why;
-                    if (!normalizePlayerClips(project, scene->scene->findComponent<AnimationPlayerComponent>(entity), value, why)) {
+                    const AnimationPlayerComponent* current = scene->scene->findComponent<AnimationPlayerComponent>(entity);
+                    if (!normalizePlayerClips(project, current, value, why) || !normalizePlayerLayers(project, current, value, why)) {
                         error = componentLabel + " on " + label + ": " + why;
                         return false;
                     }

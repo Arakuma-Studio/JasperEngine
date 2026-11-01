@@ -6,7 +6,7 @@
 //   the editor document, MCP, the CLI checks and the tests.
 // - Thread-safety: pure functions of their arguments (no engine state): any thread.
 // - Format: UTF-8 JSON {"format": "jasperengine.anim", "version": 1, "guid", "frame_rate", "wrap",
-//   "length", "tracks", "events", "preview", "source", unknown keys...}.
+//   "length", "additive_reference" (only when not 0), "tracks", "events", "preview", "source", unknown keys...}.
 // - Invariants:
 //   * parseClip fails (data empty, error set) only for: text that is not JSON (error.line/column
 //     of the syntax error), a non-object root, a missing or different `format`, a missing or

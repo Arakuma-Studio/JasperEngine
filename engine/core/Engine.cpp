@@ -49,6 +49,8 @@
 #include "pool/MeshLodPool.h"
 #include "pool/MeshBufferPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/AvatarMaskPool.h"
+#include "pool/AnimatorControllerPool.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
@@ -1005,6 +1007,8 @@ void Engine::clearPools(){
     MeshLodPool::clear();
     MeshBufferPool::clear();
     AnimationClipPool::clear();
+    AvatarMaskPool::clear();
+    AnimatorControllerPool::clear();
     PhysicsMaterialPool::clear();
 }
 
@@ -1019,6 +1023,8 @@ void Engine::clearUnusedPools(){
     MeshLodPool::clearUnused();
     MeshBufferPool::clearUnused();
     AnimationClipPool::clearUnused();
+    AvatarMaskPool::clearUnused();
+    AnimatorControllerPool::clearUnused();
     PhysicsMaterialPool::clearUnused();
 }
 
@@ -1230,6 +1236,8 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         AnimationPlayerComponent& player = players->getComponentFromIndex(i);
         player.onEvent.clear();
         player.onFinish.clear();
+        player.onStateEnter.clear();
+        player.onStateExit.clear();
     }
 
     auto vertexAnimators = scene->getComponentArray<VertexAnimatorComponent>();

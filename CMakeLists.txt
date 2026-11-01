@@ -669,6 +669,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
     ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AnimatorTools.cpp
     ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
@@ -744,6 +745,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pose/PoseViewportLogic.cpp
     ${EDITOR_DIR}/animation/AnimationClipController.cpp
     ${EDITOR_DIR}/animation/AnimationClipDocument.cpp
+    ${EDITOR_DIR}/animation/AnimAssetDocument.cpp
+    ${EDITOR_DIR}/animation/AnimatorEdits.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
@@ -776,6 +779,8 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
+    ${EDITOR_DIR}/window/InspectorWindowAnimLayers.cpp
+    ${EDITOR_DIR}/window/InspectorAnimLayers.cpp
     ${EDITOR_DIR}/window/InspectorWindowVat.cpp
     ${EDITOR_DIR}/window/InspectorPhysics2D.cpp
     ${EDITOR_DIR}/window/InspectorWindowSpriteNormals.cpp
@@ -800,6 +805,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
+    ${EDITOR_DIR}/window/AnimatorWindow.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipSheet.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipEvents.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipCurves.cpp
@@ -928,6 +934,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/CreateClipCmd.cpp
     ${EDITOR_DIR}/command/type/CreateVatCmd.cpp
     ${EDITOR_DIR}/command/type/ClipSceneActions.cpp
+    ${EDITOR_DIR}/command/type/PlayerLayerActions.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabVariantAssetCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
     ${EDITOR_DIR}/command/type/UnpackPrefabCmd.cpp

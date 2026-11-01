@@ -1688,6 +1688,8 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C55B75762B8FB50E4A0 /* ContextPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */; };
+		524D4C55BAE4061CA1A51C86 /* ContextPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */; };
 		524D4C554044E87D2818FC4D /* LineClampEllipsis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */; };
 		524D4C556D598CE64B555B31 /* LineClampEllipsis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */; };
 		524D4C551FF1B7571B423E99 /* TextJustification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */; };
@@ -3453,6 +3455,29 @@
 		4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A3734219166C9A6F /* OnScreenControls.h */; };
 		4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477650920F4D670D0F /* OnScreenControls.h */; };
 		4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD6F5BB381B88CCB /* PointerEventData.h */; };
+		4A534E47C2EB8733EFA6A703 /* AnimJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */; };
+		4A534E47B883AB58AE96516A /* AnimJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */; };
+		4A534E4762ADCF900A1EE759 /* AvatarMask.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47996AB1821448E1AE /* AvatarMask.cpp */; };
+		4A534E479157A9898502F849 /* AvatarMask.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47996AB1821448E1AE /* AvatarMask.cpp */; };
+		4A534E473B6F76E6926344CF /* AnimatorController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */; };
+		4A534E474769C0AF2E2ADF1C /* AnimatorController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */; };
+		4A534E473B7ADBFE51472A17 /* AnimatorControllerPlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */; };
+		4A534E473C3FBE3B58C8E61A /* AnimatorControllerPlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */; };
+		4A534E473471AEDD7E75E664 /* AvatarMaskPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */; };
+		4A534E479511A0CC70AEAA36 /* AvatarMaskPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */; };
+		4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */; };
+		4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */; };
+		4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */; };
+		4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */; };
+		4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */; };
+		4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */; };
+		4A534E4760E68158A46EE9E7 /* AnimJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D659E046BA39D1C5 /* AnimJson.h */; };
+		4A534E47F140524B37ABEF43 /* AnimatorController.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E8C82FBFE31A0756 /* AnimatorController.h */; };
+		4A534E477173DC4F901A839F /* AvatarMask.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4785CD3820E9AA2297 /* AvatarMask.h */; };
+		4A534E4780DBE4298C5B38E0 /* AnimatorControllerPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */; };
+		4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */; };
+		4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */; };
+		4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */; };
 		4A534E4799074761EB73275F /* DebugOverlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C33063FE6F38230 /* DebugOverlay.cpp */; };
 		4A534E47616F1F38DEA04615 /* DebugOverlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C33063FE6F38230 /* DebugOverlay.cpp */; };
 		4A534E47363D69401D2B349E /* DebugOverlayResources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474C923828D7422271 /* DebugOverlayResources.cpp */; };
@@ -5690,6 +5715,7 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContextPointer.cpp; sourceTree = "<group>"; };
 		524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LineClampEllipsis.cpp; sourceTree = "<group>"; };
 		524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextJustification.cpp; sourceTree = "<group>"; };
 		524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyIdSet.cpp; sourceTree = "<group>"; };
@@ -6940,6 +6966,21 @@
 		4A534E47A3734219166C9A6F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
 		4A534E477650920F4D670D0F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
 		4A534E47AD6F5BB381B88CCB /* PointerEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PointerEventData.h; sourceTree = "<group>"; };
+		4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimJson.cpp; sourceTree = "<group>"; };
+		4A534E47996AB1821448E1AE /* AvatarMask.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AvatarMask.cpp; sourceTree = "<group>"; };
+		4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorController.cpp; sourceTree = "<group>"; };
+		4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorControllerPlayback.cpp; sourceTree = "<group>"; };
+		4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AvatarMaskPool.cpp; sourceTree = "<group>"; };
+		4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorControllerPool.cpp; sourceTree = "<group>"; };
+		4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemLayers.cpp; sourceTree = "<group>"; };
+		4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemController.cpp; sourceTree = "<group>"; };
+		4A534E47D659E046BA39D1C5 /* AnimJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimJson.h; sourceTree = "<group>"; };
+		4A534E47E8C82FBFE31A0756 /* AnimatorController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorController.h; sourceTree = "<group>"; };
+		4A534E4785CD3820E9AA2297 /* AvatarMask.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMask.h; sourceTree = "<group>"; };
+		4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorControllerPool.h; sourceTree = "<group>"; };
+		4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMaskPool.h; sourceTree = "<group>"; };
+		4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JsonAssetPool.h; sourceTree = "<group>"; };
+		4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ActionSystemPlayersDetail.h; sourceTree = "<group>"; };
 		4A534E479C33063FE6F38230 /* DebugOverlay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugOverlay.cpp; sourceTree = "<group>"; };
 		4A534E474C923828D7422271 /* DebugOverlayResources.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugOverlayResources.cpp; sourceTree = "<group>"; };
 		4A534E47C62C3BED7646C817 /* DebugStats.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebugStats.cpp; sourceTree = "<group>"; };
@@ -8242,6 +8283,13 @@
 				4A534E47AD5E53AFFD11DDEA /* VertexAnimation.h */,
 				4A534E472C320572A975C725 /* VertexAnimatorRuntime.h */,
 				4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */,
+				4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */,
+				4A534E47996AB1821448E1AE /* AvatarMask.cpp */,
+				4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */,
+				4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */,
+				4A534E47D659E046BA39D1C5 /* AnimJson.h */,
+				4A534E47E8C82FBFE31A0756 /* AnimatorController.h */,
+				4A534E4785CD3820E9AA2297 /* AvatarMask.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -8695,6 +8743,9 @@
 				4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */,
 				4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */,
 				4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */,
+				4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */,
+				4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */,
+				4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -9878,6 +9929,11 @@
 				4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */,
 				4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */,
 				4A534E47366B4EA887EC0288 /* PhysicsMaterialPool.h */,
+				4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */,
+				4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */,
+				4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */,
+				4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */,
+				4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */,
 			);
 			path = pool;
 			sourceTree = "<group>";
@@ -10749,6 +10805,7 @@
 				524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */,
 				524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */,
 				524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */,
+				524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -12393,6 +12450,13 @@
 				4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */,
 				4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */,
 				4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */,
+				4A534E4760E68158A46EE9E7 /* AnimJson.h in Headers */,
+				4A534E47F140524B37ABEF43 /* AnimatorController.h in Headers */,
+				4A534E477173DC4F901A839F /* AvatarMask.h in Headers */,
+				4A534E4780DBE4298C5B38E0 /* AnimatorControllerPool.h in Headers */,
+				4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */,
+				4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */,
+				4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */,
 				4A534E4700C2B06C425C31F7 /* DebugOverlay.h in Headers */,
 				4A534E47EBF20FD2B6EA0602 /* DebugOverlayResources.h in Headers */,
 				4A534E47CA764B3433135B26 /* DebugStats.h in Headers */,
@@ -14493,6 +14557,14 @@
 				4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */,
 				4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */,
 				4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */,
+				4A534E47C2EB8733EFA6A703 /* AnimJson.cpp in Sources */,
+				4A534E4762ADCF900A1EE759 /* AvatarMask.cpp in Sources */,
+				4A534E473B6F76E6926344CF /* AnimatorController.cpp in Sources */,
+				4A534E473B7ADBFE51472A17 /* AnimatorControllerPlayback.cpp in Sources */,
+				4A534E473471AEDD7E75E664 /* AvatarMaskPool.cpp in Sources */,
+				4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */,
+				4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */,
+				4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */,
 				4A534E4799074761EB73275F /* DebugOverlay.cpp in Sources */,
 				4A534E47363D69401D2B349E /* DebugOverlayResources.cpp in Sources */,
 				4A534E4775EA0FE24B50FD95 /* DebugStats.cpp in Sources */,
@@ -14973,6 +15045,14 @@
 				4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */,
 				4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */,
 				4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */,
+				4A534E47B883AB58AE96516A /* AnimJson.cpp in Sources */,
+				4A534E479157A9898502F849 /* AvatarMask.cpp in Sources */,
+				4A534E474769C0AF2E2ADF1C /* AnimatorController.cpp in Sources */,
+				4A534E473C3FBE3B58C8E61A /* AnimatorControllerPlayback.cpp in Sources */,
+				4A534E479511A0CC70AEAA36 /* AvatarMaskPool.cpp in Sources */,
+				4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */,
+				4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */,
+				4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */,
 				4A534E47616F1F38DEA04615 /* DebugOverlay.cpp in Sources */,
 				4A534E47880AD33FCC731DA0 /* DebugOverlayResources.cpp in Sources */,
 				4A534E470E64957D3C296FB5 /* DebugStats.cpp in Sources */,
@@ -15551,6 +15631,7 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C55B75762B8FB50E4A0 /* ContextPointer.cpp in Sources */,
 				524D4C554044E87D2818FC4D /* LineClampEllipsis.cpp in Sources */,
 				524D4C551FF1B7571B423E99 /* TextJustification.cpp in Sources */,
 				524D4C55280D970116FCD657 /* PropertyIdSet.cpp in Sources */,
@@ -15805,6 +15886,7 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C55BAE4061CA1A51C86 /* ContextPointer.cpp in Sources */,
 				524D4C556D598CE64B555B31 /* LineClampEllipsis.cpp in Sources */,
 				524D4C555F4819C5AB209F97 /* TextJustification.cpp in Sources */,
 				524D4C55D86EF33DDCE0322D /* PropertyIdSet.cpp in Sources */,
