@@ -1058,28 +1058,6 @@ Setting inputActionsSetting() {
     return s;
 }
 
-// Project Settings > Debug: one key of DebugSettings, applied as one undoable step (undo scope project)
-Setting debugSetting(const std::string& key, const std::string& type, const std::string& description, std::vector<std::string> values,
-                     std::function<Json(const DebugSettings&)> get, std::function<bool(DebugSettings&, const Json&, std::string&)> set) {
-    Setting s;
-    s.key = key;
-    s.type = type;
-    s.description = description + " Undoable (undo scope project).";
-    s.values = std::move(values);
-    s.get = [get](McpContext& ctx) { return get(ctx.project()->getDebugSettings()); };
-    s.set = [set](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-        Project* p = ctx.project();
-        DebugSettings changed = p->getDebugSettings();
-        if (!set(changed, value, error)) return false;
-        if (apply && changed != p->getDebugSettings()) {
-            auto* command = new DebugSettingsCmd(p, p->getDebugSettings(), changed);
-            command->setNoMerge();
-            if (!p->getProjectCommandHistory()->addCommand(command)) {
-                error = "the debug settings could not be applied";
-                return false;
-            }
-        }
-        return true;
 // Project Settings > Graphics > Shader Globals: the list (replaced whole) and one global by name
 // (upsert, null removes), each change one undo step of the project history
 constexpr const char* kShaderGlobalsKey = "graphics.shader_globals";
@@ -1118,33 +1096,6 @@ Setting shaderGlobalsSetting() {
     return s;
 }
 
-template <typename T>
-Setting debugEnumSetting(const std::string& key, const std::string& description, const std::vector<std::string>& names, T DebugSettings::*field) {
-    return debugSetting(key, "enum", description, names,
-        [field](const DebugSettings& d) { return Json(DebugSettingsNames::name(d.*field)); },
-        [field, names](DebugSettings& d, const Json& value, std::string& error) {
-            if (!value.is_string() || !DebugSettingsNames::parse(value.get<std::string>(), d.*field)) {
-                error = "must be one of:";
-                for (const std::string& name : names) error += " " + name;
-                return false;
-            }
-            return true;
-        });
-}
-
-Setting debugKeySetting(const std::string& key, const std::string& description, std::string DebugSettings::*field) {
-    return debugSetting(key, "string", description + " A key name (backquote, f3, f12, escape, a...) or \"\" for none.", {},
-        [field](const DebugSettings& d) { return Json(d.*field); },
-        [field](DebugSettings& d, const Json& value, std::string& error) {
-            std::string text;
-            if (!readString(value, text, error, 64)) return false;
-            if (!DebugSettingsNames::isKeyName(text)) {
-                error = "is not a key name (backquote, f3, f12, escape, a...)";
-                return false;
-            }
-            d.*field = text;
-            return true;
-        });
 // graphics.shader_globals.<name>: {type, default, array_size} (a missing field keeps the current
 // one), name: a rename (bindings follow), null: removed
 Setting shaderGlobalSetting(const std::string& name) {
@@ -1187,6 +1138,62 @@ Setting shaderGlobalSetting(const std::string& name) {
         return !apply || applyShaderGlobals(ctx, decls, renames, error);
     };
     return s;
+}
+
+
+// Project Settings > Debug: one key of DebugSettings, applied as one undoable step (undo scope project)
+Setting debugSetting(const std::string& key, const std::string& type, const std::string& description, std::vector<std::string> values,
+                     std::function<Json(const DebugSettings&)> get, std::function<bool(DebugSettings&, const Json&, std::string&)> set) {
+    Setting s;
+    s.key = key;
+    s.type = type;
+    s.description = description + " Undoable (undo scope project).";
+    s.values = std::move(values);
+    s.get = [get](McpContext& ctx) { return get(ctx.project()->getDebugSettings()); };
+    s.set = [set](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+        Project* p = ctx.project();
+        DebugSettings changed = p->getDebugSettings();
+        if (!set(changed, value, error)) return false;
+        if (apply && changed != p->getDebugSettings()) {
+            auto* command = new DebugSettingsCmd(p, p->getDebugSettings(), changed);
+            command->setNoMerge();
+            if (!p->getProjectCommandHistory()->addCommand(command)) {
+                error = "the debug settings could not be applied";
+                return false;
+            }
+        }
+        return true;
+    };
+    return s;
+}
+
+template <typename T>
+Setting debugEnumSetting(const std::string& key, const std::string& description, const std::vector<std::string>& names, T DebugSettings::*field) {
+    return debugSetting(key, "enum", description, names,
+        [field](const DebugSettings& d) { return Json(DebugSettingsNames::name(d.*field)); },
+        [field, names](DebugSettings& d, const Json& value, std::string& error) {
+            if (!value.is_string() || !DebugSettingsNames::parse(value.get<std::string>(), d.*field)) {
+                error = "must be one of:";
+                for (const std::string& name : names) error += " " + name;
+                return false;
+            }
+            return true;
+        });
+}
+
+Setting debugKeySetting(const std::string& key, const std::string& description, std::string DebugSettings::*field) {
+    return debugSetting(key, "string", description + " A key name (backquote, f3, f12, escape, a...) or \"\" for none.", {},
+        [field](const DebugSettings& d) { return Json(d.*field); },
+        [field](DebugSettings& d, const Json& value, std::string& error) {
+            std::string text;
+            if (!readString(value, text, error, 64)) return false;
+            if (!DebugSettingsNames::isKeyName(text)) {
+                error = "is not a key name (backquote, f3, f12, escape, a...)";
+                return false;
+            }
+            d.*field = text;
+            return true;
+        });
 }
 
 const std::vector<Setting>& settingsTable() {
