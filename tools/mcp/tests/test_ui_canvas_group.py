@@ -261,6 +261,8 @@ async def test_export_script_added_flatten_group(ed: Editor):
     holder = (await ed.call("create_entity", scene=sid, type="empty", name="Holder"))["entity_id"]
     await ed.call("create_script", kind="lua", name="AddFlatten", content=FLATTEN_SCRIPT, scene=sid, entity=holder)
     await ed.call("save_scene", scene=sid, path="scenes/Exported")
+    # every open scene is saved (the project's untitled default too: a build generates them all)
+    await ed.call("save_project", untitled_scene_dir="scenes")
     await ed.call("edit_build_scenes", action="set_start", scene=sid)
     await ed.call("set_project_settings", values={
         "graphics.runtime_shaders": False,
