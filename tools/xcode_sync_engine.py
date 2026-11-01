@@ -17,6 +17,10 @@
 # Only core/ is compared (and APPLE_ENGINE_SOURCES), plus the libraries listed in LIBRARIES (their
 # CMake add_library list against their own two targets, e.g. SoLoud's filters: soloud-ios/-macos);
 # the HTML UI libraries and compat layer have their own sync scripts (tools/htmlui/xcode_sync_*.py).
+# It also makes both app targets link APP_FRAMEWORKS explicitly: the engine's Objective-C++ sources
+# (.mm, and miniaudio compiled as Objective-C++) do not autolink their frameworks (clang's -fmodules
+# covers C and Objective-C only), so without them the app links only when another library happens
+# to pull them in (the iOS app's Google ads frameworks did; the macOS app and ad-free exports failed).
 
 import hashlib
 import os
@@ -44,6 +48,14 @@ APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm", "platform/apple/AV
 LIBRARIES = [
     ("libs/soloud/CMakeLists.txt", "libs/soloud", "libs/soloud/src/core/soloud_filter.cpp"),
 ]
+
+# the app targets and the system frameworks every engine build of them needs (AVFoundation: miniaudio's
+# iOS audio session, the video backend; CoreMedia/CoreVideo: the video backend's sample and pixel buffers;
+# AudioToolbox: miniaudio's Core Audio backend)
+APP_TARGETS = ["JasperEngine iOS", "JasperEngine macOS"]
+APP_FRAMEWORKS = ["AVFoundation", "AudioToolbox", "CoreMedia", "CoreVideo"]
+# the group of the project's system framework references (GameController.framework is in it)
+FRAMEWORK_GROUP_ANCHOR = "GameController.framework"
 
 OBJECT_RE = re.compile(r"^\t\t([0-9A-F]{24})(?: /\* (.*?) \*/)? = \{(.*)$")
 
@@ -91,7 +103,7 @@ def parse_project(lines):
             i += 1
             continue
         oid, comment, rest = m.group(1), m.group(2), m.group(3)
-        obj = {"comment": comment, "line": i, "children": [], "files": []}
+        obj = {"comment": comment, "line": i, "children": [], "files": [], "buildPhases": []}
         if rest.rstrip().endswith("};"):
             body = rest
             obj["end"] = i
@@ -108,7 +120,7 @@ def parse_project(lines):
         fm = re.search(r"\bfileRef = ([0-9A-F]{24})", body)
         if fm:
             obj["fileRef"] = fm.group(1)
-        for list_key, out in (("children", "children"), ("files", "files")):
+        for list_key, out in (("children", "children"), ("files", "files"), ("buildPhases", "buildPhases")):
             lm = re.search(list_key + r" = \((.*?)\);", body, re.S)
             if lm:
                 obj[out] = re.findall(r"([0-9A-F]{24}) /\*", lm.group(1))
@@ -261,18 +273,61 @@ def insert_object(lines, objects, isa, line):
     raise SystemExit("no %s section" % isa)
 
 
+def missing_frameworks(objects):
+    """[(framework, target name, Frameworks phase id)] the app targets do not link"""
+    result = []
+    for tid, target in objects.items():
+        if target.get("isa") != "PBXNativeTarget" or target.get("comment") not in APP_TARGETS:
+            continue
+        phases = [pid for pid in target.get("buildPhases", []) if objects.get(pid, {}).get("isa") == "PBXFrameworksBuildPhase"]
+        if len(phases) != 1:
+            raise SystemExit("expected one Frameworks phase in %s, found %d" % (target.get("comment"), len(phases)))
+        linked = {objects.get(objects.get(b, {}).get("fileRef"), {}).get("comment") for b in objects[phases[0]]["files"]}
+        for framework in APP_FRAMEWORKS:
+            if framework + ".framework" not in linked:
+                result.append((framework, target.get("comment"), phases[0]))
+    return result
+
+
+def add_frameworks(lines, objects, missing):
+    for framework, target, phase in missing:
+        name = framework + ".framework"
+        refs = [oid for oid, o in objects.items() if o.get("isa") == "PBXFileReference" and o.get("comment") == name]
+        if refs:
+            ref = refs[0]
+        else:
+            ref = object_id("fwref", name)
+            insert_object(lines, objects, "PBXFileReference",
+                          "\t\t%s /* %s */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = %s; path = System/Library/Frameworks/%s; sourceTree = SDKROOT; };"
+                          % (ref, name, name, name))
+            anchor = [oid for oid, o in objects.items() if o.get("isa") == "PBXFileReference" and o.get("comment") == FRAMEWORK_GROUP_ANCHOR]
+            group = [gid for gid, o in objects.items() if o.get("isa") == "PBXGroup" and anchor and anchor[0] in o["children"]]
+            if not group:
+                raise SystemExit("no group holds %s" % FRAMEWORK_GROUP_ANCHOR)
+            add_child(lines, objects, group[0], ref, name)
+        build = object_id("fw", target + ":" + name)
+        label = "%s in Frameworks" % name
+        insert_object(lines, objects, "PBXBuildFile",
+                      "\t\t%s /* %s */ = {isa = PBXBuildFile; fileRef = %s /* %s */; };" % (build, label, ref, name))
+        add_child(lines, objects, phase, build, label, key="files")
+
+
 def main():
     check = "--check" in sys.argv
     lines, objects, by_path, group_dirs, source_phases, header_phases, missing = analyse()
     if len(source_phases) != 2:
         raise SystemExit("expected 2 engine Sources phases with %s, found %d" % (ANCHOR_SOURCE, len(source_phases)))
-    if not missing:
-        print("Xcode project lists every engine source of engine/CMakeLists.txt (and of the LIBRARIES)")
+    frameworks = missing_frameworks(objects)
+    if not missing and not frameworks:
+        print("Xcode project lists every engine source of engine/CMakeLists.txt (and of the LIBRARIES), "
+              "and the app targets link " + ", ".join(APP_FRAMEWORKS))
         return 0
     if check:
         print("missing from the Xcode project (run python3 tools/xcode_sync_engine.py):")
         for path, what, _ in missing:
             print("  %s (%s)" % (path, what))
+        for framework, target, _ in frameworks:
+            print("  %s.framework (not linked by %s)" % (framework, target))
         return 1
 
     for path, what, set_phases in missing:
@@ -301,9 +356,14 @@ def main():
                           "\t\t%s /* %s */ = {isa = PBXBuildFile; fileRef = %s /* %s */; };" % (build, label, ref, name))
             add_child(lines, objects, phase, build, label, key="files")
 
+    if frameworks:
+        reparse(lines, objects)
+        add_frameworks(lines, objects, missing_frameworks(objects))
+
     with open(PROJECT, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
-    print("added to the Xcode project: " + ", ".join(sorted({p for p, _, _ in missing})))
+    added = sorted({p for p, _, _ in missing}) + ["%s.framework in %s" % (f, t) for f, t, _ in frameworks]
+    print("added to the Xcode project: " + ", ".join(added))
     return 0
 
 

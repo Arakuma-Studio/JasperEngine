@@ -3608,6 +3608,14 @@
 		4A534E4796B1A6D237E5047D /* VideoTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AA3BC5BCBE485BDA /* VideoTypes.h */; };
 		4A534E4740C9C045E5EA20CA /* VideoPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477741740820D741F9 /* VideoPlayer.h */; };
 		4A534E47E561ADFD60E21F7A /* VideoPlayerSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D88DB63824966935 /* VideoPlayerSystem.h */; };
+		4A534E47723A6ABA786CF3A1 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 717AD970290B67A5007D7DB5 /* AVFoundation.framework */; };
+		4A534E472BF60C82BD59AD65 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 717AD972290B67B8007D7DB5 /* AudioToolbox.framework */; };
+		4A534E47F9C7B00A71E60022 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A534E47982642CBDC327A37 /* CoreMedia.framework */; };
+		4A534E47C337F19E4AF28079 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A534E478AD9CA0DD4CAF8DB /* CoreVideo.framework */; };
+		4A534E471E03EAF9E82F9AA9 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 717AD970290B67A5007D7DB5 /* AVFoundation.framework */; };
+		4A534E47B680A8D906790F30 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 717AD972290B67B8007D7DB5 /* AudioToolbox.framework */; };
+		4A534E470B0822B0D59AA74F /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A534E47982642CBDC327A37 /* CoreMedia.framework */; };
+		4A534E47F768AC5D2A576E7F /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A534E478AD9CA0DD4CAF8DB /* CoreVideo.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -7183,6 +7191,8 @@
 		4A534E47AA3BC5BCBE485BDA /* VideoTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoTypes.h; sourceTree = "<group>"; };
 		4A534E477741740820D741F9 /* VideoPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoPlayer.h; sourceTree = "<group>"; };
 		4A534E47D88DB63824966935 /* VideoPlayerSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoPlayerSystem.h; sourceTree = "<group>"; };
+		4A534E47982642CBDC327A37 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
+		4A534E478AD9CA0DD4CAF8DB /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7275,6 +7285,10 @@
 				7116070B2A0D84660052A9C3 /* GoogleMobileAds.xcframework in Frameworks */,
 				713D82D7259D324700567F9F /* libjasperengine-ios.a in Frameworks */,
 				17995BFA3003C40000411B78 /* GameController.framework in Frameworks */,
+				4A534E47723A6ABA786CF3A1 /* AVFoundation.framework in Frameworks */,
+				4A534E472BF60C82BD59AD65 /* AudioToolbox.framework in Frameworks */,
+				4A534E47F9C7B00A71E60022 /* CoreMedia.framework in Frameworks */,
+				4A534E47C337F19E4AF28079 /* CoreVideo.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -7284,6 +7298,10 @@
 			files = (
 				17995BFD3003C4F600411B78 /* GameController.framework in Frameworks */,
 				713D8316259D3E7A00567F9F /* libjasperengine-macos.a in Frameworks */,
+				4A534E471E03EAF9E82F9AA9 /* AVFoundation.framework in Frameworks */,
+				4A534E47B680A8D906790F30 /* AudioToolbox.framework in Frameworks */,
+				4A534E470B0822B0D59AA74F /* CoreMedia.framework in Frameworks */,
+				4A534E47F768AC5D2A576E7F /* CoreVideo.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -9138,6 +9156,8 @@
 				7116070E2A0D86500052A9C3 /* GoogleUtilities.xcframework */,
 				7116070F2A0D86500052A9C3 /* nanopb.xcframework */,
 				711607112A0D86500052A9C3 /* UserMessagingPlatform.xcframework */,
+				4A534E47982642CBDC327A37 /* CoreMedia.framework */,
+				4A534E478AD9CA0DD4CAF8DB /* CoreVideo.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
