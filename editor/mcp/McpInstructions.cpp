@@ -161,7 +161,7 @@ More: jasper://docs/cpp-scripting.
   sends send_input events while it waits.
 - run_build runs an exported desktop player (input events, screenshots_at seconds); returns
   its errors (Lua too) and the log tail.
-- Simulated focus, pause, rotation, language, URLs: jasper://docs/platform-services.
+- Simulate focus, pause, rotation, language: jasper://docs/platform-services.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (canvas pixels, y up), 64 per Box2D meter
@@ -178,8 +178,8 @@ More: jasper://docs/cpp-scripting.
   Player (jasper://docs/animation).
 - Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
-- UI (text, image, button, panel, layout group...; touch controls onscreen_stick/onscreen_button/
-  touch_area feed Input actions; scripts get onPointerDown(e)...: lua-api 1.7; HTML/CSS: below):
+- UI (text, image, button, panel, layout group...; onscreen_stick/onscreen_button/touch_area feed
+  Input actions; onPointerDown(e)...: lua-api 1.7; HTML/CSS: below):
   create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
   UI camera: put HUDs and menus in a child UI scene (set_child_scene). Fade, disable or
