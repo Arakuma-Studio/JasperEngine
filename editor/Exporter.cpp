@@ -819,6 +819,7 @@ void editor::Exporter::runExport() {
     }
 
     if (!clearGenerated()) return;
+    holdForTest();
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!loadAndSaveAllScenes()) return;
     if (!checkMissingAssets()) return;
@@ -1850,6 +1851,20 @@ bool editor::Exporter::clearGenerated() {
     }
 
     return true;
+}
+
+// The harness holds an export at its most exposed point, the generated folder just cleared: while
+// <path> exists, after creating <path>.held to say the export got here
+void editor::Exporter::holdForTest() {
+    const char* hold = std::getenv("JASPER_TEST_EXPORT_HOLD");
+    if (!hold || !*hold) return;
+    const fs::path path(hold);
+    std::error_code ec;
+    if (!fs::exists(path, ec)) return;
+    std::ofstream(fs::path(path.string() + ".held")) << "held\n";
+    while (fs::exists(path, ec) && !isCancelled()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
 }
 
 bool editor::Exporter::loadAndSaveAllScenes() {
