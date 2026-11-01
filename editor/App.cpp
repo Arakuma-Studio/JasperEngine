@@ -2443,6 +2443,7 @@ void editor::App::show(){
     exportWindow.show();
     if (exportWindow.consumePlayerSettingsRequest()) projectSettingsWindow.open(&project, "Player");
     if (inspectorWindow->consumeTagsAndLayersRequest()) projectSettingsWindow.open(&project, "Tags and Layers");
+    if (inspectorWindow->consumeShaderGlobalsRequest()) projectSettingsWindow.open(&project, "Graphics");
     editorSettingsWindow.show();
     aboutWindow.show();
     projectSettingsWindow.show();

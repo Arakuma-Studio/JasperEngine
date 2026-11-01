@@ -287,6 +287,9 @@ namespace jasperengine{
         std::vector<std::pair<std::string, Texture>> shaderTextures;
         // enabled @feature defines and the chosen @keywords defines
         std::vector<std::string> shaderFeatures;
+        // custom-block members that follow a global shader value (Shader.setGlobal*): member ->
+        // global name, over shaderParams and the manifest default (shader globals spec 6.2)
+        ShaderGlobalBindings shaderGlobalBindings;
 
         MaterialBlendMode blendMode = MaterialBlendMode::AUTO;
         MaterialCullMode cullMode = MaterialCullMode::AUTO;
@@ -333,6 +336,7 @@ namespace jasperengine{
                    shaderParams == other.shaderParams &&
                    shaderTextures == other.shaderTextures &&
                    shaderFeatures == other.shaderFeatures &&
+                   shaderGlobalBindings == other.shaderGlobalBindings &&
                    blendMode == other.blendMode &&
                    cullMode == other.cullMode &&
                    depthWrite == other.depthWrite &&
