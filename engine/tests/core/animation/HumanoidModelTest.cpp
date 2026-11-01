@@ -632,7 +632,10 @@ TEST_F(HumanoidModel, PerformanceBudget){
     ASSERT_TRUE(anim::convertToHumanoid(data, *source, converted, warnings, &error));
     const double convertMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     std::printf("convert a 3 s clip: %.2f ms\n", convertMs);
+#ifdef NDEBUG
+    // timings hold in optimized builds only (the sanitizer builds are Debug)
     EXPECT_LT(convertMs, 5.0);
+#endif
 
     // 30 characters with one humanoid state each and Foot IK: the realisation per frame
     const Entity entity = load(hero);
