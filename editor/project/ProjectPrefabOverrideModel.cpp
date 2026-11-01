@@ -1285,7 +1285,7 @@ static std::vector<Entity> branchEntities(Scene* scene, Entity root, bool* hasLi
     for (size_t i = first; i <= last && i < transforms->size(); i++) {
         const Entity entity = transforms->getEntity(i);
         branch.push_back(entity);
-        if (hasLinkSource && CameraTextureLink::isLinkSource(scene, entity)) {
+        if (hasLinkSource && editor::CameraTextureLink::isLinkSource(scene, entity)) {
             *hasLinkSource = true;
         }
     }
