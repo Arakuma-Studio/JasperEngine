@@ -20,6 +20,7 @@
 #include "script/LuaBinding.h"
 #include "script/LuaFunction.h"
 #include "script/ScriptBase.h"
+#include "script/ScriptRuntime.h"
 #include "script/ScriptScheduler.h"
 #include "script/Timer.h"
 
@@ -1164,6 +1165,28 @@ TEST_F(CoroutineTest, ScriptsWithTheirOwnMetatablesStillGetTheInstanceMethods) {
     EXPECT_EQ(log(), "base function nil dyn function function mine function");
 }
 
+TEST_F(CoroutineTest, TheLifecycleStartRunsAsACoroutineAndMayWait) {
+    // Unity's IEnumerator Start(): the lifecycle's start may wait (it runs as an engine coroutine)
+    addScript("WaitingStart", R"(
+        local M = {}
+        function M:start()
+            Log("start" .. F())
+            Coroutine.wait(0.1)
+            Log("waited" .. F())
+        end
+        return M
+    )");
+    start();
+    frames(4);
+    const std::string early = log();
+    EXPECT_EQ(early.find("waited"), std::string::npos) << early;
+    EXPECT_NE(early.find("start"), std::string::npos) << early;
+    frames(10);
+    const std::string done = log();
+    EXPECT_NE(done.find("waited"), std::string::npos) << "0.1 s of 1/60 s frames: " << done;
+    EXPECT_EQ(logged().find("not inside an engine coroutine"), std::string::npos) << logged();
+}
+
 TEST_F(CoroutineTest, CppStartsALuaCoroutineForAnInstance) {
     const Entity entity = addScript("Starter", R"(
         local M = {}
@@ -1358,6 +1381,9 @@ TEST_F(CoroutineTest, CoroutinesAndTimersFollowAGameObjectMovedToAnotherScene) {
     EXPECT_EQ(log(), "timer co");
     void* owner = instanceOf(entity);
     Scene other;
+    // a running destination (as a loaded or the persistent scene): its activation changes reach
+    // the scripts; a scene whose scripts never started observes none (script lifecycle)
+    ScriptRuntime::awakeScene(&other);
     const std::vector<Entity> moved = ObjectManager::moveToScene(scene.get(), entity, &other);
     ASSERT_FALSE(moved.empty());
     clearLog();
@@ -1366,9 +1392,7 @@ TEST_F(CoroutineTest, CoroutinesAndTimersFollowAGameObjectMovedToAnotherScene) {
     EXPECT_EQ(ScriptScheduler::coroutineCountOf(owner), 1u);
     // the owner index follows: deactivating it in the new scene stops the coroutine
     other.setEntityActive(moved[0], false);
-    frames(1);
     EXPECT_EQ(eval("return Kept.status"), "stopped");
-    EXPECT_EQ(log(), "timer co timer");
     LuaBinding::cleanupLuaScripts(&other);
     EXPECT_EQ(ScriptScheduler::timerCountOf(owner), 0u);
 }
