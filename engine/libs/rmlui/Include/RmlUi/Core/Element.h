@@ -503,6 +503,13 @@ public:
 	void Blur();
 	/// Fakes a mouse click on this element.
 	void Click();
+	/// Fork (engine-gaps G5-3): DOM pointer capture. The element gets the pointer's move, up and cancel events until it
+	/// releases it or the pointer is released ('gotpointercapture' / 'lostpointercapture' before the pointer's next event).
+	/// @return False when the pointer is not pressed in this element's context (SetPointerCapture) or not captured by
+	/// this element (ReleasePointerCapture).
+	bool SetPointerCapture(PointerId pointer_id);
+	bool ReleasePointerCapture(PointerId pointer_id);
+	bool HasPointerCapture(PointerId pointer_id) const;
 
 	/// Adds an event listener to this element.
 	/// @param[in] event Event to attach to.

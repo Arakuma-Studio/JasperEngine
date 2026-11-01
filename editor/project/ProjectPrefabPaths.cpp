@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <system_error>
 #include <unordered_set>
 
@@ -526,6 +527,8 @@ bool editor::Project::resolveRegistryClipRefs(EntityRegistry* registry, bool may
 
 void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Change>& changes) {
     std::vector<fs::path> touched;
+    // the clips and masks back at a path: the controllers naming them by GUID follow
+    std::map<std::string, fs::path> relinked;
     for (const AssetDatabase::Change& change : changes) {
         touched.push_back((projectPath / change.path).lexically_normal());
         if (change.type == AssetDatabase::Change::Type::Moved && !change.oldPath.empty()) {
@@ -537,6 +540,9 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
         // moved outside the editor, or back (an undone delete): every entry with the GUID
         // points at the file again
         const std::string form = normalizeToAssetsRelative(projectPath / change.path).generic_string();
+        if (!change.guid.empty() && (Util::isAnimationClipFile(change.path.string()) || Util::isAvatarMaskFile(change.path.string()))) {
+            relinked[change.guid] = (projectPath / change.path).lexically_normal();
+        }
         auto relink = [&](EntityRegistry* registry) {
             bool changed = false;
             if (!registry) {
@@ -600,6 +606,8 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
             relink(prefab.registry.get());
         }
     }
+    // (their documents reload there)
+    relinkControllerGuids(this, relinked);
     AnimationClipDocument::filesChanged(touched, this);
     // Vertex Animations: their documents reload, the pool drops them, their animators reload
     VatDocument::filesChanged(touched, this);

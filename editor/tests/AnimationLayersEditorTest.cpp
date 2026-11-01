@@ -641,3 +641,38 @@ TEST(AnimationLayersEditor, ReferencesFollowRenamesAndScenesPreloadThem) {
     EXPECT_EQ(s.player().layers[1].mask, "anim/arm.mask");
     EXPECT_NE(readAll(assets() / "anim/granjero.controller").find("\"mask\": \"anim/arm.mask\""), std::string::npos);
 }
+
+// A clip and a mask moved outside the editor: the controllers naming them by GUID follow (the
+// GUID first, anim layers spec 6.3), and an open controller document reloads
+TEST(AnimationLayersEditor, ControllersFollowClipsAndMasksMovedOutsideTheEditor) {
+    ASSERT_TRUE(headless().ready);
+    // (GUIDs of their own: another test's anim/arm.mask holds MASK_GUID)
+    const char* const clipGuid = "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1";
+    const char* const maskGuid = "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1";
+    writeAll(assets() / "relink/arm.mask", maskText(maskGuid));
+    writeAll(assets() / "relink/run.anim", std::string("{\"format\": \"jasperengine.anim\", \"version\": 1, \"guid\": \"") + clipGuid +
+                                           "\", \"wrap\": \"loop\", \"tracks\": []}");
+    writeAll(assets() / "relink/hero.controller", std::string(R"({"format": "jasperengine.controller", "version": 1,
+      "layers": [{"name": "Base Layer", "states": [{"name": "Run", "clip": "relink/run.anim", "clip_guid": ")") + clipGuid + R"("},
+          {"name": "Mix", "blend_tree": {"parameter": "Speed", "children": [{"clip": "relink/run.anim", "clip_guid": ")" + clipGuid +
+          R"(", "threshold": 0}]}}]},
+        {"name": "Holding", "mask": "relink/arm.mask", "mask_guid": ")" + maskGuid + R"(", "states": []}],
+      "parameters": [{"name": "Speed", "type": "float"}]})");
+    project()->refreshAssetDatabase(true);
+    std::string error;
+    std::shared_ptr<AnimatorControllerDocument> document = AnimatorControllerDocument::open(project(), "assets/relink/hero.controller", &error);
+    ASSERT_TRUE(document) << error;
+
+    fs::create_directories(assets() / "relink/moved");
+    fs::rename(assets() / "relink/arm.mask", assets() / "relink/moved/arm.mask");
+    fs::rename(assets() / "relink/run.anim", assets() / "relink/moved/run.anim");
+    project()->refreshAssetDatabase(true);
+
+    anim::ControllerParseResult parsed = anim::parseController(readAll(assets() / "relink/hero.controller"));
+    ASSERT_TRUE(parsed.ok()) << parsed.error.toString();
+    EXPECT_EQ(parsed.data->layers[0].states[0].clip, "relink/moved/run.anim") << "a state's clip";
+    EXPECT_EQ(parsed.data->layers[0].states[1].blendTree.children[0].clip, "relink/moved/run.anim") << "a blend-tree child";
+    EXPECT_EQ(parsed.data->layers[1].mask, "relink/moved/arm.mask") << "a layer's mask";
+    EXPECT_EQ(parsed.data->layers[1].maskGuid, maskGuid) << "the GUIDs stay";
+    EXPECT_EQ(document->data().layers[1].mask, "relink/moved/arm.mask") << "the open document reloaded";
+}

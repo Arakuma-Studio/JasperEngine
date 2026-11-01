@@ -25,7 +25,8 @@
 //   (when true), "position" (when set)}. Transitions {"from", "to", "conditions" (when any),
 //   "has_exit_time", "exit_time", "duration", "fixed_duration", "offset", "interruption" (not
 //   none), "can_transition_to_self" (Any State transitions only)}. Numbers %.6g.
-// - Invariants of parsed / normalized data: parameter names unique and non-empty; per layer,
+// - Invariants of parsed / normalized data: parameter names unique Lua identifiers
+//   (anim::isLuaIdentifier); per layer,
 //   state names unique, non-empty and not "any"; transitions name existing states ("any" only
 //   as `from`); a layer's default_state names one of its states (or is empty with no states);
 //   blend tree children sorted by threshold (automate_thresholds: spaced evenly over [0, 1]);

@@ -116,6 +116,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 |---|---|---|---|
 | `object` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | use <img>, or render a texture through UIDocument render-to-texture |
 | `ol` | native | UA display and spacing |  |
+| `onscreen-button` | emulated | the engine's on-screen button (ui-multitouch): presses an Input action while a pointer holds it |  |
+| `onscreen-stick` | emulated | the engine's on-screen stick (ui-multitouch): Joystick Pack's Fixed / Floating / Dynamic feeding Input actions |  |
 | `optgroup` | rewritten | flattened: options hoisted into the select with a disabled header option (Info) |  |
 | `option` | native | RmlUi option |  |
 | `output` | rewritten | written as span |  |
@@ -158,6 +160,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `thead` | native | UA table display |  |
 | `time` | native | UA inline styles |  |
 | `title` | rewritten | RML title |  |
+| `touch-area` | emulated | the engine's touch area (ui-multitouch): a drag feeds Input actions (Mouse X / Mouse Y) |  |
 | `tr` | native | UA table display |  |
 | `track` | unsupported | dropped (HTMLUI-HTML-0002) | show captions as text elements |
 | `tt` | native | UA inline styles |  |
@@ -204,6 +207,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
 | `action` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
+| `action` | `onscreen-button` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `align` | `*` | rewritten | legacy presentational attribute |  |
 | `alt` | `*` | native | kept |  |
 | `aria-*` | `*` | native | kept |  |
@@ -214,6 +218,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `autoplay` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `autoplay` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `autoplay` | `video` | native | starts once it can play; no autoplay policy (sound allowed) |  |
+| `axes` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `background` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `background` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `background` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -240,6 +245,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `data-*` | `*` | native | kept |  |
 | `data-htmlui-*` | `*` | rewritten | reserved name; renamed (Warning) |  |
 | `data-lucide` | `*` | rewritten | Lucide icon expansion |  |
+| `dead-zone` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `decoding` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `dir` | `*` | rewritten | presentational hint |  |
 | `direction` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -256,6 +262,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `fetchpriority` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `for` | `*` | native | kept |  |
 | `form` | `*` | emulated | honored by button and submit controls |  |
+| `handle-range` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `height` | `canvas` | native | intrinsic size hint (below author CSS) |  |
 | `height` | `embed` | native | intrinsic size hint (below author CSS) |  |
 | `height` | `iframe` | native | intrinsic size hint (below author CSS) |  |
@@ -266,6 +273,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `height` | `video` | native | intrinsic size hint (below author CSS) |  |
 | `hidden` | `*` | native | UA rule [hidden] { display: none } |  |
 | `high` | `meter` | unsupported | dropped (Info) (HTMLUI-HTML-0004) | color the progress fill with a class |
+| `horizontal-action` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
+| `horizontal-action` | `touch-area` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `hover` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `hover` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `hover` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -282,6 +291,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `intermission` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `intermission` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `intermission` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `invert-x` | `touch-area` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
+| `invert-y` | `touch-area` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `is` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `itemprop` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `itemscope` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -306,6 +317,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `mode` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `mode` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `mode` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
+| `mode` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
+| `move-threshold` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `multiple` | `*` | native | kept |  |
 | `muted` | `video` | native | the initial muted state (defaultMuted) |  |
 | `name` | `*` | native | kept |  |
@@ -323,8 +336,10 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `popovertargetaction` | `*` | unsupported | popovers are not supported; dropped (Warning) (HTMLUI-HTML-0004) | toggle a positioned element's display from Lua |
 | `poster` | `video` | native | shown until playback starts or a seek; fitted by object-fit |  |
 | `preload` | `video` | native | none defers the load; metadata and auto decode the first frame |  |
+| `press-on-enter` | `onscreen-button` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `readonly` | `*` | native | kept |  |
 | `referrerpolicy` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `release-on-leave` | `onscreen-button` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `renderer` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `renderer` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `renderer` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -342,11 +357,14 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `segment` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `selected` | `*` | native | kept |  |
+| `sensitivity` | `touch-area` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `size` | `*` | native | kept |  |
 | `size` | `font` | rewritten | legacy presentational attribute |  |
 | `sizes` | `img` | rewritten | evaluated at load to choose the srcset candidate |  |
 | `sizes` | `source` | rewritten | resolved at load to choose the img source |  |
 | `slot` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `snap-x` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
+| `snap-y` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `speed` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `speed` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `speed` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -377,6 +395,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `valign` | `*` | rewritten | legacy presentational attribute |  |
 | `value` | `*` | native | kept |  |
 | `value` | `li` | native | read by the list marker emulation |  |
+| `value` | `onscreen-button` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
+| `vertical-action` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
+| `vertical-action` | `touch-area` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
+| `visibility` | `onscreen-button` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
+| `visibility` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
+| `visibility` | `touch-area` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `width` | `canvas` | native | intrinsic size hint (below author CSS) |  |
 | `width` | `embed` | native | intrinsic size hint (below author CSS) |  |
 | `width` | `iframe` | native | intrinsic size hint (below author CSS) |  |
@@ -1257,7 +1281,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-wrap-style` | rewritten | balance, pretty, stable ignored (Info) |  |
 | `timeline-scope` | unsupported | scroll-driven animations are not supported (HTMLUI-CSS-0002) | drive the animation from Lua (anime API) |
 | `top` | native |  |  |
-| `touch-action` | ignored | browser interaction hint; no effect in a game UI (HTMLUI-CSS-0003) |  |
+| `touch-action` | native | native with the fork (engine-gaps G5-4): what a touch on the element may pan |  |
 | `transform` | native |  |  |
 | `transform-box` | unsupported | not supported (Info) (HTMLUI-CSS-0002) | set transform-origin explicitly |
 | `transform-origin` | native |  |  |

@@ -109,6 +109,18 @@ async def test_mask_coverage_on_the_rig(ed: Editor):
     ed.check(finger and finger["rule"] == "humanoid:right_fingers" and finger["weight"] == 1, f"a right finger: {finger}")
     await refused(ed, "get_animation", {"mask": "assets/anim/nope.mask"}, "does not exist")
 
+    # coverage lists at most 200 rows; coverage_total counts them all (an entity without a player:
+    # every descendant)
+    crowd = await ed.call("create_entity", type="empty", name="Crowd")
+    crowd_id = crowd["entity"]["id"] if "entity" in crowd else crowd["id"]
+    for start in (0, 105):
+        await ed.call("batch", calls=[{"tool": "create_entity", "arguments": {"type": "empty", "name": f"M{k}", "parent": crowd_id}}
+                                      for k in range(start, start + 105)])
+    got = await ed.call("get_animation", mask=MASK, root=crowd_id)
+    ed.check_eq(len(got["coverage"]), 200, "capped at 200 rows")
+    ed.check(got["coverage_total"] >= 210, f"coverage_total counts every entity: {got['coverage_total']}")
+    await ed.call("delete_entities", entities=[crowd_id])
+
 
 async def test_layers_through_set_properties(ed: Editor):
     await ed.call("add_component", entity="Hero", component="animationplayer", values={"animationplayer": {

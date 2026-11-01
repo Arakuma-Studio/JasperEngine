@@ -120,6 +120,51 @@ async def test_all_or_nothing_and_undo(ed: Editor):
     ed.check_eq(r["layers"][0]["states"][0]["blend_tree"]["parameter"], "Blend", "the tree reads Blend")
     r = await ed.call("edit_animator", controller="assets/anim/mix.controller", ops=[{"op": "remove_parameter", "name": "Blend"}])
     ed.check_eq(r["layers"][0]["states"][0]["blend_tree"]["parameter"], "", "remove_parameter cleared the tree's parameter")
+    # clip "" leaves the state empty: no clip, no tree
+    r = await ed.call("edit_animator", controller="assets/anim/mix.controller", ops=[{"op": "update_state", "state": "Mix", "clip": ""}])
+    mix = r["layers"][0]["states"][0]
+    ed.check(mix.get("empty") is True and "blend_tree" not in mix and "clip" not in mix, f"an empty state: {mix}")
+
+    # misspelled keys are refused with the allowed ones, and numbers out of range (all or nothing)
+    MIX = "assets/anim/mix.controller"
+    before = (ed.project / MIX).read_text()
+    for ops, why in (([{"op": "add_state", "name": "X", "clipp": "assets/anim/idle.anim"}], "ops[0].clipp: unknown key (allowed: op, layer, name, clip"),
+                     ([{"op": "add_state", "name": "X"}, {"op": "add_transition", "from": "Mix", "to": "X", "durration": 0.2}],
+                      "ops[1].durration: unknown key"),
+                     ([{"op": "add_state", "name": "X"}, {"op": "add_transition", "from": "Mix", "to": "X",
+                       "conditions": [{"parameter": "P", "mode": "if", "treshold": 1}]}], "ops[1].conditions[0].treshold: unknown key"),
+                     ([{"op": "add_state", "name": "T", "blend_tree": {"parameter": "P", "children": [{"clip": "assets/anim/idle.anim", "treshold": 0}]}}],
+                      "ops[0].blend_tree.children[0].treshold: unknown key (allowed: clip, threshold, speed, mirror)"),
+                     ([{"op": "add_layer", "name": "L", "weight": 1.5}], "ops[0].weight: must be from 0 to 1"),
+                     ([{"op": "add_state", "name": "X"}, {"op": "add_transition", "from": "Mix", "to": "X", "duration": -1}], "ops[1].duration: must be 0 or more"),
+                     ([{"op": "add_state", "name": "X"}, {"op": "add_transition", "from": "Mix", "to": "X", "offset": 2}], "ops[1].offset: must be from 0 to 1"),
+                     ([{"op": "add_state", "name": "X", "cycle_offset": -0.5}], "ops[0].cycle_offset: must be from 0 to 1"),
+                     ([{"op": "add_parameter", "name": "N", "type": "int", "default": 1.5}], "ops[0].default: expected a whole number"),
+                     # parameter names are Lua identifiers (the reader would drop the others)
+                     ([{"op": "add_parameter", "name": "Move Speed", "type": "float"}], "ops[0].name: \"Move Speed\" is not a Lua identifier"),
+                     ([{"op": "add_parameter", "name": "end", "type": "bool"}], "is not a Lua identifier"),
+                     ([{"op": "add_parameter", "name": "Ok", "type": "bool"}, {"op": "update_parameter", "name": "Ok", "rename": "2fast"}],
+                      "ops[1].rename: \"2fast\" is not a Lua identifier")):
+        await refused(ed, "edit_animator", {"controller": MIX, "ops": ops}, why)
+    await refused(ed, "edit_animator", {"controller": "assets/anim/new.controller", "create": {"from_entitty": "Hero"}}, "create.from_entitty: unknown key")
+    ed.check_eq((ed.project / MIX).read_text(), before, "nothing written by the refusals")
+
+    # move_layer, update_transition, remove_state with its transitions
+    r = await ed.call("edit_animator", controller=MIX, ops=[
+        {"op": "add_layer", "name": "A"}, {"op": "add_layer", "name": "B", "weight": 0.5}, {"op": "move_layer", "layer": "B", "to": 1},
+        {"op": "add_parameter", "name": "Go", "type": "bool"},
+        {"op": "add_state", "name": "Idle", "clip": "assets/anim/idle.anim"}, {"op": "add_state", "name": "Run", "clip": "assets/anim/running.anim"},
+        {"op": "add_transition", "from": "Idle", "to": "Run"}, {"op": "add_transition", "from": "Run", "to": "Idle"},
+        {"op": "add_transition", "from": "Mix", "to": "Idle"},
+        {"op": "update_transition", "index": 0, "has_exit_time": False, "duration": 0.4, "fixed_duration": True, "offset": 0.25,
+         "conditions": [{"parameter": "Go", "mode": "if"}]}])
+    ed.check_eq([l["name"] for l in r["layers"]], ["Base Layer", "B", "A"], "move_layer put B above the base")
+    t = r["layers"][0]["transitions"][0]
+    ed.check_eq((t["from"], t["to"], t["has_exit_time"], t["duration"], t["fixed_duration"], t["offset"], t["conditions"]),
+                ("Idle", "Run", False, 0.4, True, 0.25, [{"parameter": "Go", "mode": "if"}]), f"update_transition: {t}")
+    r = await ed.call("edit_animator", controller=MIX, ops=[{"op": "remove_state", "state": "Run"}])
+    ed.check_eq([s["name"] for s in r["layers"][0]["states"]], ["Mix", "Idle"], "Run removed")
+    ed.check_eq([(t["from"], t["to"]) for t in r["layers"][0]["transitions"]], [("Mix", "Idle")], "its transitions went with it")
 
     got = await ed.call("get_animation", controller=CONTROLLER)
     ed.check_eq([l["name"] for l in got["layers"]], ["Base Layer", "Holding"], "get_animation {controller}")
@@ -156,6 +201,16 @@ async def test_create_from_entity_and_write_file(ed: Editor):
     # a new controller file stays in the assets folder
     await refused(ed, "edit_animator", {"controller": "box.controller", "create": {"from_entity": box_id}}, "inside the assets")
     ed.check(not (ed.project / "box.controller").exists(), "nothing written outside the assets folder")
+    # a failing op: no file, no change to the player, nothing on the undo stack (the next undo is
+    # the add_component above)
+    await refused(ed, "edit_animator", {"controller": "assets/anim/box.controller", "create": {"from_entity": box_id},
+                                        "ops": [{"op": "add_transition", "from": "Idle", "to": "Nope"}]}, "ops[0].to")
+    ed.check(not (ed.project / "assets/anim/box.controller").exists(), "no file")
+    ed.check(not harness.find_key(await ed.call("get_entity", entity=box_id, components=["animationplayer"]), "controller"), "no controller set")
+    await ed.call("undo", scope="scene")
+    got = await ed.call("get_entity", entity=box_id)
+    ed.check("animationplayer" not in json.dumps(got).lower(), f"the undo took back the add_component: {json.dumps(got)[:300]}")
+    await ed.call("redo", scope="scene")
     r = await ed.call_raw("edit_animator", {"controller": "assets/anim/box.controller", "create": {"from_entity": box_id},
                                              "ops": [{"op": "add_parameter", "name": "Go", "type": "trigger"}]})
     ed.check(not r.is_error, r.text[:600])
@@ -173,3 +228,23 @@ async def test_create_from_entity_and_write_file(ed: Editor):
                        "layers": [{"name": "Base Layer", "states": [{"name": "A"}]}]})
     r = await ed.call_raw("write_file", {"path": "assets/anim/hand.controller", "content": text})
     ed.check(not r.is_error and "unused" in r.text, f"written with its validation warnings: {r.text[:500]}")
+
+
+async def test_live_transition_progress(ed: Editor):
+    # a 5 s transition: get_animation {entity} shows it under way with its progress
+    await ed.call("edit_animator", controller="assets/anim/long.controller", create={}, ops=[
+        {"op": "add_parameter", "name": "Go", "type": "bool"},
+        {"op": "add_state", "name": "A", "clip": "assets/anim/idle.anim"}, {"op": "add_state", "name": "B", "clip": "assets/anim/running.anim"},
+        {"op": "add_transition", "from": "A", "to": "B", "has_exit_time": False, "duration": 5, "fixed_duration": True,
+         "conditions": [{"parameter": "Go", "mode": "if"}]}])
+    await ed.call("set_properties", entity="Hero", values={"animationplayer": {"controller": "assets/anim/long.controller"}})
+    await ed.call("play", action="start")
+    try:
+        await ed.call("eval_lua", code="object('Hero'):getAnimator():setBool('Go', true)")
+        await ed.call("wait", game_seconds=0.5)
+        layer = (await ed.call("get_animation", entity="Hero"))["players"][0]["controller"]["layers"][0]
+        ed.check_eq(layer["current"], "A", f"the source state while it blends: {layer}")
+        transition = layer.get("transition") or {}
+        ed.check(transition.get("to") == "B" and 0 < transition.get("progress", -1) < 0.5, f"the transition under way: {layer}")
+    finally:
+        await ed.call("play", action="stop")

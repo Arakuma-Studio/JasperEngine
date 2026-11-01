@@ -551,6 +551,18 @@ async def test_cli_anims_player_mask_and_controller_references():
         check(any(s == "warning" and "'old/hero.controller'" in m and "moved to 'assets/anim/hero.controller'" in m for s, m in scene),
               f"a moved controller found by its GUID: {scene}")
 
+        # a controller naming a moved clip and mask by GUID: checked where they are, also with --files
+        write(project, "assets/anim/good.anim", GOOD_CLIP)
+        write(project, "assets/anim/follow.controller", json.dumps({"format": "jasperengine.controller", "version": 1, "layers": [
+            {"name": "Base Layer", "states": [{"name": "Run", "clip": "old/good.anim", "clip_guid": CLIP_GUID}]},
+            {"name": "Arm", "mask": "old/arm.mask", "mask_guid": MASK_GUID, "states": []}]}, indent=2) + "\n")
+        for args in (("--anims",), ("--files", "assets/anim/follow.controller")):
+            code, data = run_json(project, *args)
+            follow = sorted((f["severity"], f["message"]) for f in data["findings"] if f["path"] == "assets/anim/follow.controller")
+            check(not any(s == "error" for s, _ in follow) and not any("does not load" in m for _, m in follow), f"{args}: found by GUID: {follow}")
+            check(any("layers[0].states[0].clip: 'old/good.anim' moved to 'assets/anim/good.anim'" in m for _, m in follow), f"{args}: the clip: {follow}")
+            check(any("layers[1].mask: 'old/arm.mask' moved to 'assets/anim/arm.mask'" in m for _, m in follow), f"{args}: the mask: {follow}")
+
 
 # ---------------------------------------------------------------------------- CLI: vertex animations
 

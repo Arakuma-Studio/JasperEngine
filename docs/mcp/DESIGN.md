@@ -466,8 +466,9 @@ the same work and reports it itself):
 (`McpInstructions.cpp`): how the engine maps to Unity, scene/entity addressing, the loop
 (inspect → edit → save → play → screenshot → read console → fix), working on code with the
 agent's own tools, play and time control, Lua and C++ scripting conventions, 2D/3D and UI,
-physics, prefabs, the shader library and forking, shipping. It is sent every session: keep it
-tight (at most 16 KB, 16,384 bytes); deeper references are the `jasper://docs/...` resources
-(`docs/mcp/guide/*.md`): move detail there rather than growing the guide.
-`test_autosync.py::test_instructions_name_real_tools` checks the size and that every tool and
-parameter name it mentions exists.
+physics, prefabs, the shader library and forking, a feature-guides index, shipping. It is sent
+every session: keep it tight (hard cap 16 KB, 16,384 bytes, checked by
+`test_protocol.py::test_initialize`; kept near 15 KB for headroom); deeper references are the
+`jasper://docs/...` resources (`docs/mcp/guide/*.md`). A feature adds at most one short line
+(usually under "Feature guides") and puts its details there. Every tool and parameter name the
+guide mentions must exist.

@@ -203,6 +203,10 @@ Max Body Pairs, Max Contact Constraints (8192 each, about 3.6 MB per world; `set
 `physics.max_bodies`, `physics.max_body_pairs`, `physics.max_contact_constraints`). Past one, the
 console names the setting (once per scene); scenes made after a change use it.
 
+The project settings `physics.enabled` (3D, Jolt) and `physics2d.enabled` (2D, Box2D) switch a
+backend off for exports: its bodies and joints are left out of the build. C++ code that must
+build either way guards on `JASPERENGINE_PHYSICS_3D` / `JASPERENGINE_PHYSICS_2D`.
+
 ## 2D bodies, colliders and materials
 
 `Rigidbody2DComponent` fields (Unity's Rigidbody2D; Catalog names for `set_properties`, `edit_colliders`

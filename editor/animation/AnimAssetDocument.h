@@ -153,5 +153,10 @@ namespace jasperengine::editor{
         std::string after;
     };
     std::vector<AnimAssetHintEdit> remapControllerReferences(Project* project, const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+    // Clips and masks the asset database saw moved (outside the editor too) or come back: the
+    // .controller files naming one by its GUID (states' and blend-tree children's clip_guid,
+    // layers' mask_guid) are rewritten to its path (the GUID first, anim layers spec 6.3) and
+    // their open documents reload. `moved`: GUID -> the file's absolute path. The files rewritten.
+    std::vector<std::filesystem::path> relinkControllerGuids(Project* project, const std::map<std::string, std::filesystem::path>& moved);
 
 }

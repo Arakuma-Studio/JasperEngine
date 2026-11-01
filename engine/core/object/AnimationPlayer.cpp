@@ -244,8 +244,10 @@ void AnimationPlayer::play(const std::string& name){
 void AnimationPlayer::play(const std::string& name, float fade){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
     if (!player.controller.empty()){
-        // Unity Animator.Play(name, layer): with a controller the second argument is the layer
-        anim::controllerPlay(player, name, (int)std::floor(fade), 0.0f, getName());
+        // the same meaning as without a controller: a fade crossfades (the layer and
+        // normalized-time form is playInLayer)
+        if (fade > 0.0f) anim::controllerCrossFade(player, name, fade, -1, getName());
+        else anim::controllerPlay(player, name, -1, 0.0f, getName());
         return;
     }
     anim::playState(player, name, fade, getName());
@@ -262,7 +264,11 @@ void AnimationPlayer::play(const std::string& name, float fade, PlayMode mode){
     anim::playState(player, name, fade, getName(), mode == PlayMode::StopAll ? PlayMode::StopAll : PlayMode::StopSameLayer);
 }
 
-void AnimationPlayer::play(const std::string& name, int layer, float normalizedTime){
+void AnimationPlayer::playInLayer(const std::string& name, int layer){
+    playInLayer(name, layer, 0.0f);
+}
+
+void AnimationPlayer::playInLayer(const std::string& name, int layer, float normalizedTime){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
     if (player.controller.empty()){
         // without a controller the layer is the state's own: a plain play from normalizedTime
@@ -283,17 +289,7 @@ void AnimationPlayer::crossFade(const std::string& name, float fade, PlayMode mo
     anim::playState(player, name, fade, getName(), mode == PlayMode::StopAll ? PlayMode::StopAll : PlayMode::StopSameLayer);
 }
 
-void AnimationPlayer::playWithArguments(const std::string& name, float fadeOrLayer, float modeOrNormalizedTime){
-    if (hasController()) play(name, (int)std::floor(fadeOrLayer), modeOrNormalizedTime);
-    else play(name, fadeOrLayer, modeOrNormalizedTime >= 1.0f ? PlayMode::StopAll : PlayMode::StopSameLayer);
-}
-
-void AnimationPlayer::crossFadeWithArguments(const std::string& name, float seconds, float modeOrLayer){
-    if (hasController()) crossFade(name, seconds, (int)std::floor(modeOrLayer));
-    else crossFade(name, seconds, modeOrLayer >= 1.0f ? PlayMode::StopAll : PlayMode::StopSameLayer);
-}
-
-void AnimationPlayer::crossFade(const std::string& name, float seconds, int layer){
+void AnimationPlayer::crossFadeInLayer(const std::string& name, float seconds, int layer){
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
     if (player.controller.empty()){
         anim::playState(player, name, seconds, getName());

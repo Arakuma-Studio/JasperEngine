@@ -465,6 +465,12 @@ void anim::normalizeController(ControllerData& data, std::vector<ClipWarning>* w
             warn(warnings, path, "a parameter without a name: dropped");
             continue;
         }
+        // Lua-safe (spec 11.1): scripts name them as strings and the editor as identifiers
+        if (!anim::isLuaIdentifier(parameter.name)){
+            warn(warnings, path, "\"" + parameter.name + "\" is not a Lua-safe name (letters, digits and _, not starting with a digit, "
+                                 "not a Lua keyword): dropped");
+            continue;
+        }
         bool taken = false;
         for (const ControllerParameter& kept : parameters) taken |= kept.name == parameter.name;
         if (taken){

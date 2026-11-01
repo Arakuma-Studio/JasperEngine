@@ -1001,10 +1001,13 @@ later animation features plug into. Code references are to the `gaps/anim-layers
 - **Exit time below 1** is checked at every `k + exit_time` (k ≥ 0) crossing, for non-looping clips
   too (their normalized time keeps growing past 1, as in Unity). An empty state counts 1 second as
   its length.
-- **`play(name, x)` with a controller** reads `x` as the layer (Unity's `Animator.Play(name,
-  layer)`), and `play(name, a, b)` as layer and normalized time. In Lua whole-number arguments go
-  through the `PlayMode` overload, which the player routes to the controller form;
-  `crossFade(name, seconds, layer)` likewise.
+- **Deviation: the layer forms have their own names.** The spec's `play(name [, layer [,
+  normalizedTime]])` and `crossFade(name, seconds [, layer])` with a controller would give
+  `play(name, a, b)` two meanings (Lua cannot tell a `PlayMode` from a layer number). They are
+  `playInLayer(name, layer [, normalizedTime])` (Unity's `Animator.Play`) and
+  `crossFadeInLayer(name, seconds, layer)` (`CrossFadeInFixedTime`), in Lua and C++. `play(name,
+  fade [, mode])` and `crossFade(name, fade [, mode])` mean the same with or without a controller
+  (a fade crossfades; a `PlayMode` has no effect with a controller).
 - **Loading.** Parameter and state calls made before the first update (from `init`) load the
   controller synchronously (AnimatorControllerPool, Data::open). A reload after an edit keeps each
   layer's current state by name and normalized time, and the parameters by name and type.
@@ -1032,10 +1035,14 @@ later animation features plug into. Code references are to the `gaps/anim-layers
 - **A reload in the middle of a transition** (a controller edit, a clip list change) completes it:
   the layer keeps the destination.
 - **Legacy calls on controller states.** `stopLayer` and `state.layer` warn once and do nothing
-  with a controller (the driver owns its states). The three-number Lua forms
-  `play(name, a, b)` / `crossFade(name, a, b)` are one binding that reads the numbers by whether the
-  player has a controller (`layer, normalizedTime` / `seconds, layer`) or not (`fade, PlayMode`);
-  the C++ API has distinct overloads.
+  with a controller (the driver owns its states).
+- **Ordered interruption.** With `interruption: current_state`, only the source's transitions
+  listed before the running one may interrupt it (Unity's Ordered Interruption, on by default).
+- **Callback order.** onStateExit / onStateEnter of a transition the driver starts are dispatched
+  after the step's clip events (stamped at the end of the step); those from Lua `play` /
+  `crossFade` before the next step's events.
+- **Parameter names** must be Lua identifiers (11.1 "Lua-safe"): the parser drops others with a
+  warning, and the Animator window and `edit_animator` refuse them.
 - **Mismatched parameter types** warn once per (parameter, requested type) and convert:
   `setBool` on a float sets 0 or 1, `setFloat` on an int rounds, `setBool` on a trigger sets it.
 
@@ -1089,7 +1096,8 @@ later animation features plug into. Code references are to the `gaps/anim-layers
   arithmetic, bit-identical results; test 1 still matches main's hash).
 - **Measured** (`Layers.PerformanceBudget`: 40 characters × 65 bones, a controller each with a
   base crossfade and a masked Override layer, the whole `ActionSystem::update`, best of 8 × 30
-  frames): 0.52–0.56 ms on the 8-core host under heavy load; 0.597–0.608 ms on the shared 2.0 GHz
+  frames): **0.361–0.375 ms on the idle 8-core host (load average 3)**, i.e. 38% under the 0.6 ms
+  budget; 0.52–0.56 ms on the same host under heavy load; 0.597–0.614 ms on the shared 2.0 GHz
   EPYC build box (load 20–30, beside an MCP suite). Like `CanvasGroupTest.PerformanceBudgets`, the
   0.6 ms assertion is skipped when the load average exceeds the core count (the time is still
   printed); on the box it sits at the line, which main's own Canvas Group budget test also

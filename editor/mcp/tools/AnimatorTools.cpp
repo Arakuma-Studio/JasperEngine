@@ -18,6 +18,7 @@
 #include "Project.h"
 #include "Scene.h"
 #include "animation/AnimAssetDocument.h"
+#include "animation/AnimationClipIO.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/AnimatorEdits.h"
@@ -32,6 +33,8 @@
 #include <cstdio>
 #include <fstream>
 #include <iterator>
+#include <limits>
+#include <map>
 #include <set>
 
 namespace fs = std::filesystem;
@@ -114,11 +117,68 @@ bool readString(const Json& op, const char* name, std::string& out, const std::s
     return true;
 }
 
-bool readNumber(const Json& op, const char* name, float& out, const std::string& where, std::string& error) {
+// a finite number (as a float) in [min, max]: the ranges the controller's reader clamps to
+// (anim::normalizeController) are refused here, as set_properties refuses
+bool readNumber(const Json& op, const char* name, float& out, const std::string& where, std::string& error,
+                float min = -std::numeric_limits<float>::max(), float max = std::numeric_limits<float>::max()) {
     if (!op.contains(name)) return true;
-    if (!op[name].is_number() || !std::isfinite(op[name].get<double>())) return fail(error, field(where, name), "expected a number");
-    out = op[name].get<float>();
+    if (!op[name].is_number() || !std::isfinite(op[name].get<double>()) || !std::isfinite(op[name].get<float>())) {
+        return fail(error, field(where, name), "expected a number");
+    }
+    const float value = op[name].get<float>();
+    if (value < min || value > max) {
+        const bool unit = min == 0.0f && max == 1.0f;
+        return fail(error, field(where, name), unit ? "must be from 0 to 1" : min == 0.0f ? "must be 0 or more" : "is out of range");
+    }
+    out = value;
     return true;
+}
+
+// the keys an object may have: the others are refused with the allowed ones (a misspelled key
+// would else be ignored)
+bool checkKeys(const Json& object, const std::vector<std::string>& allowed, const std::string& where, std::string& error) {
+    if (!object.is_object()) return true;
+    for (auto it = object.begin(); it != object.end(); ++it) {
+        if (std::find(allowed.begin(), allowed.end(), it.key()) != allowed.end()) continue;
+        std::string list;
+        for (const std::string& key : allowed) list += (list.empty() ? "" : ", ") + key;
+        return fail(error, field(where, it.key().c_str()), "unknown key (allowed: " + list + ")");
+    }
+    return true;
+}
+
+std::vector<std::string> keysOf(std::initializer_list<std::vector<std::string>> groups) {
+    std::vector<std::string> out;
+    for (const std::vector<std::string>& group : groups) out.insert(out.end(), group.begin(), group.end());
+    return out;
+}
+
+const std::vector<std::string> STATE_KEYS = {"clip", "blend_tree", "speed", "speed_parameter", "wrap", "cycle_offset", "mirror",
+                                             "foot_ik", "retarget", "position"};
+const std::vector<std::string> TRANSITION_KEYS = {"conditions", "has_exit_time", "exit_time", "duration", "fixed_duration", "offset",
+                                                  "interruption", "can_transition_to_self"};
+const std::vector<std::string> LAYER_KEYS = {"weight", "blend", "mask"};
+
+// each op's keys
+const std::vector<std::string>* opKeys(const std::string& kind) {
+    static const std::map<std::string, std::vector<std::string>> keys = {
+        {"add_parameter", {"op", "name", "type", "default"}},
+        {"update_parameter", {"op", "name", "type", "default", "rename"}},
+        {"remove_parameter", {"op", "name"}},
+        {"add_layer", keysOf({{"op", "name"}, LAYER_KEYS})},
+        {"update_layer", keysOf({{"op", "layer", "name"}, LAYER_KEYS, {"any_state_position"}})},
+        {"remove_layer", {"op", "layer"}},
+        {"move_layer", {"op", "layer", "to"}},
+        {"add_state", keysOf({{"op", "layer", "name"}, STATE_KEYS})},
+        {"update_state", keysOf({{"op", "layer", "state", "name", "rename"}, STATE_KEYS})},
+        {"remove_state", {"op", "layer", "state", "name"}},
+        {"set_default_state", {"op", "layer", "state", "name"}},
+        {"add_transition", keysOf({{"op", "layer", "from", "to"}, TRANSITION_KEYS})},
+        {"update_transition", keysOf({{"op", "layer", "index", "from", "to"}, TRANSITION_KEYS})},
+        {"remove_transition", {"op", "layer", "index"}},
+    };
+    const auto found = keys.find(kind);
+    return found == keys.end() ? nullptr : &found->second;
 }
 
 bool readBool(const Json& op, const char* name, bool& out, const std::string& where, std::string& error) {
@@ -131,7 +191,8 @@ bool readBool(const Json& op, const char* name, bool& out, const std::string& wh
 bool readPosition(const Json& op, bool& has, float* out, const std::string& where, std::string& error) {
     if (!op.contains("position")) return true;
     const Json& value = op["position"];
-    if (!value.is_array() || value.size() != 2 || !value[0].is_number() || !value[1].is_number()) {
+    if (!value.is_array() || value.size() != 2 || !value[0].is_number() || !value[1].is_number() ||
+        !std::isfinite(value[0].get<float>()) || !std::isfinite(value[1].get<float>())) {
         return fail(error, field(where, "position"), "expected [x, y] (graph pixels)");
     }
     has = true;
@@ -184,6 +245,7 @@ bool readClip(Project* project, const Json& op, const char* name, std::string& c
 
 bool readBlendTree(Project* project, const Json& value, anim::BlendTree1D& tree, const std::string& where, std::string& error) {
     if (!value.is_object()) return fail(error, where, "expected {parameter, children: [{clip, threshold, speed?}], automate_thresholds?}");
+    if (!checkKeys(value, {"parameter", "children", "automate_thresholds"}, where, error)) return false;
     tree = anim::BlendTree1D();
     if (!readString(value, "parameter", tree.parameter, where, error, true)) return false;
     if (!readBool(value, "automate_thresholds", tree.automateThresholds, where, error)) return false;
@@ -192,6 +254,7 @@ bool readBlendTree(Project* project, const Json& value, anim::BlendTree1D& tree,
         const Json& item = value["children"][c];
         const std::string at = where + ".children[" + std::to_string(c) + "]";
         if (!item.is_object()) return fail(error, at, "expected {clip, threshold, speed?}");
+        if (!checkKeys(item, {"clip", "threshold", "speed", "mirror"}, at, error)) return false;
         anim::BlendTreeChild child;
         if (!item.contains("clip")) return fail(error, field(at, "clip"), "is required");
         if (!readClip(project, item, "clip", child.clip, child.clipGuid, at, error)) return false;
@@ -207,11 +270,16 @@ bool readBlendTree(Project* project, const Json& value, anim::BlendTree1D& tree,
 bool readState(Project* project, const Json& op, anim::ControllerState& state, const std::string& where, std::string& error) {
     if (op.contains("clip") && op.contains("blend_tree")) return fail(error, where, "give clip or blend_tree, not both");
     if (op.contains("clip")) {
-        if (!readClip(project, op, "clip", state.clip, state.clipGuid, where, error)) return false;
-        if (!state.clip.empty()) {
-            state.hasBlendTree = false;
-            state.blendTree = anim::BlendTree1D();
+        // a clip replaces the blend tree; null or "" leaves the state empty (no clip, no tree)
+        const bool clear = op["clip"].is_null() || (op["clip"].is_string() && op["clip"].get<std::string>().empty());
+        if (clear) {
+            state.clip.clear();
+            state.clipGuid.clear();
+        } else if (!readClip(project, op, "clip", state.clip, state.clipGuid, where, error)) {
+            return false;
         }
+        state.hasBlendTree = false;
+        state.blendTree = anim::BlendTree1D();
     }
     if (op.contains("blend_tree")) {
         if (op["blend_tree"].is_null()) {
@@ -231,7 +299,7 @@ bool readState(Project* project, const Json& op, anim::ControllerState& state, c
             return fail(error, field(where, "wrap"), "expected default, once, loop, ping_pong or clamp_forever");
         }
     }
-    if (!readNumber(op, "cycle_offset", state.cycleOffset, where, error)) return false;
+    if (!readNumber(op, "cycle_offset", state.cycleOffset, where, error, 0.0f, 1.0f)) return false;
     if (!readBool(op, "mirror", state.mirror, where, error)) return false;
     if (!readBool(op, "foot_ik", state.footIK, where, error)) return false;
     if (!readBool(op, "retarget", state.retarget, where, error)) return false;
@@ -245,6 +313,7 @@ bool readConditions(const Json& value, std::vector<anim::ControllerCondition>& o
         const Json& item = value[c];
         const std::string at = where + "[" + std::to_string(c) + "]";
         if (!item.is_object()) return fail(error, at, "expected {parameter, mode, threshold?}");
+        if (!checkKeys(item, {"parameter", "mode", "threshold"}, at, error)) return false;
         anim::ControllerCondition condition;
         if (!readString(item, "parameter", condition.parameter, at, error, true)) return false;
         std::string mode;
@@ -261,10 +330,10 @@ bool readConditions(const Json& value, std::vector<anim::ControllerCondition>& o
 bool readTransition(const Json& op, anim::ControllerTransition& transition, const std::string& where, std::string& error) {
     if (op.contains("conditions") && !readConditions(op["conditions"], transition.conditions, field(where, "conditions"), error)) return false;
     if (!readBool(op, "has_exit_time", transition.hasExitTime, where, error)) return false;
-    if (!readNumber(op, "exit_time", transition.exitTime, where, error)) return false;
-    if (!readNumber(op, "duration", transition.duration, where, error)) return false;
+    if (!readNumber(op, "exit_time", transition.exitTime, where, error, 0.0f)) return false;
+    if (!readNumber(op, "duration", transition.duration, where, error, 0.0f)) return false;
     if (!readBool(op, "fixed_duration", transition.fixedDuration, where, error)) return false;
-    if (!readNumber(op, "offset", transition.offset, where, error)) return false;
+    if (!readNumber(op, "offset", transition.offset, where, error, 0.0f, 1.0f)) return false;
     if (op.contains("interruption")) {
         if (!op["interruption"].is_string() || !anim::interruptionFromName(op["interruption"].get<std::string>(), transition.interruption)) {
             return fail(error, field(where, "interruption"), "expected none, current_state or next_state");
@@ -274,7 +343,7 @@ bool readTransition(const Json& op, anim::ControllerTransition& transition, cons
 }
 
 bool readLayer(Project* project, const Json& op, anim::ControllerLayer& layer, const std::string& where, std::string& error) {
-    if (!readNumber(op, "weight", layer.weight, where, error)) return false;
+    if (!readNumber(op, "weight", layer.weight, where, error, 0.0f, 1.0f)) return false;
     if (op.contains("blend")) {
         if (!op["blend"].is_string() || !anim::layerBlendFromName(op["blend"].get<std::string>(), layer.blend)) {
             return fail(error, field(where, "blend"), "expected override or additive");
@@ -315,13 +384,25 @@ void gridPosition(const anim::ControllerLayer& layer, anim::ControllerState& sta
 }
 
 bool readParameterDefault(const Json& value, anim::ControllerParameterType type, float& out, const std::string& where, std::string& error) {
+    const bool flag = type == anim::ControllerParameterType::Bool || type == anim::ControllerParameterType::Trigger;
     if (value.is_boolean()) {
+        if (!flag) return fail(error, where, "expected a number (a " + std::string(anim::parameterTypeName(type)) + " parameter)");
         out = value.get<bool>() ? 1.0f : 0.0f;
         return true;
     }
-    if (!value.is_number()) return fail(error, where, std::string("expected a ") + (type == anim::ControllerParameterType::Bool ? "bool" : "number"));
-    out = value.get<float>();
+    if (flag) return fail(error, where, "expected true or false");
+    if (!value.is_number() || !std::isfinite(value.get<double>()) || !std::isfinite(value.get<float>())) return fail(error, where, "expected a number");
+    const double number = value.get<double>();
+    if (type == anim::ControllerParameterType::Int && (number != std::floor(number) || std::fabs(number) > 16777216.0)) {
+        return fail(error, where, "expected a whole number (an int parameter)");
+    }
+    out = (float)number;
     return true;
+}
+
+// parameter names are Lua identifiers (scripts read them; the reader drops the others)
+std::string notIdentifier(const std::string& name) {
+    return "\"" + name + "\" is not a Lua identifier (letters, digits and _, not starting with a digit, not a keyword, e.g. Speed or is_grounded)";
 }
 
 // every reference to a parameter renamed (conditions, blend trees, speed parameters)
@@ -342,6 +423,9 @@ void renameParameter(anim::ControllerData& data, const std::string& from, const 
 bool applyOp(Project* project, const Json& op, const std::string& where, anim::ControllerData& data, std::string& error) {
     if (!op.is_object() || !op.contains("op") || !op["op"].is_string()) return fail(error, where, "expected {op: \"add_state\", ...}");
     const std::string kind = op["op"].get<std::string>();
+    if (const std::vector<std::string>* keys = opKeys(kind)) {
+        if (!checkKeys(op, *keys, where, error)) return false;
+    }
 
     // ---- parameters
     if (kind == "add_parameter" || kind == "update_parameter" || kind == "remove_parameter") {
@@ -350,6 +434,7 @@ bool applyOp(Project* project, const Json& op, const std::string& where, anim::C
         const int index = data.findParameter(name);
         if (kind == "add_parameter") {
             if (name.empty()) return fail(error, field(where, "name"), "is empty");
+            if (!anim::isLuaIdentifier(name)) return fail(error, field(where, "name"), notIdentifier(name));
             if (index >= 0) return fail(error, field(where, "name"), "\"" + name + "\" is already a parameter");
             anim::ControllerParameter parameter;
             parameter.name = name;
@@ -378,6 +463,7 @@ bool applyOp(Project* project, const Json& op, const std::string& where, anim::C
             std::string rename;
             if (!readString(op, "rename", rename, where, error)) return false;
             if (rename.empty()) return fail(error, field(where, "rename"), "is empty");
+            if (!anim::isLuaIdentifier(rename)) return fail(error, field(where, "rename"), notIdentifier(rename));
             if (rename != name && data.findParameter(rename) >= 0) return fail(error, field(where, "rename"), "\"" + rename + "\" is already a parameter");
             parameter.name = rename;
             renameParameter(data, name, rename);
@@ -570,6 +656,70 @@ std::string summaryText(const std::string& path, const anim::ControllerData& dat
 }
 
 // the controller path argument: a project-relative .controller
+// the clips a player's tracks come from: with a controller its states' clips and blend-tree
+// children (on its layer `layer`, -1: every layer), else its entries (on `layer`, -1: all)
+std::vector<std::string> playedClips(Project* project, const AnimationPlayerComponent& player, int layer) {
+    std::vector<std::string> clips;
+    if (!player.controller.empty()) {
+        std::shared_ptr<AnimatorControllerDocument> document = AnimatorControllerDocument::open(project, assetJson(project, player.controller), nullptr);
+        if (!document) return clips;
+        const anim::ControllerData& data = document->data();
+        for (size_t l = 0; l < data.layers.size(); l++) {
+            if (layer >= 0 && (int)l != layer) continue;
+            for (const anim::ControllerState& state : data.layers[l].states) {
+                if (!state.clip.empty()) clips.push_back(state.clip);
+                for (const anim::BlendTreeChild& child : state.blendTree.children) {
+                    if (state.hasBlendTree && !child.clip.empty()) clips.push_back(child.clip);
+                }
+            }
+        }
+        return clips;
+    }
+    for (const AnimationPlayerClip& entry : player.clips) {
+        if ((layer < 0 || entry.layer == layer) && !entry.clip.empty()) clips.push_back(entry.clip);
+    }
+    return clips;
+}
+
+// the entities those clips' transform tracks bind below `root`, once per path
+std::vector<std::pair<std::string, Entity>> boundTargets(Project* project, Scene* scene, Entity root, const std::vector<std::string>& clips) {
+    std::vector<std::pair<std::string, Entity>> targets;
+    std::set<std::string> seen;
+    for (const std::string& clip : clips) {
+        std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project, clip, nullptr);
+        if (!document) continue;
+        for (const ClipTrackData& track : document->data().tracks) {
+            if (track.channel == ClipChannel::Property || !seen.insert(track.path).second) continue;
+            const Entity target = track.path.empty() ? root : anim::resolvePath(scene, root, track.path);
+            if (target != NULL_ENTITY) targets.push_back({track.path, target});
+        }
+    }
+    return targets;
+}
+
+// a masked layer's coverage of what its clips animate (the Inspector's Bindings line)
+Json maskCoverageEntry(Project* project, Scene* scene, Entity root, const std::string& layer, const std::string& mask,
+                       const std::vector<std::string>& clips) {
+    Json entry = {{"layer", layer}};
+    std::string error;
+    std::shared_ptr<AvatarMaskDocument> document = AvatarMaskDocument::open(project, mask, &error);
+    if (!document) {
+        entry["error"] = error + " (the layer contributes nothing)";
+        return entry;
+    }
+    std::vector<Entity> targets;
+    for (const std::pair<std::string, Entity>& target : boundTargets(project, scene, root, clips)) targets.push_back(target.second);
+    const animlayersui::MaskCoverage result = animlayersui::maskCoverage(scene, root, *anim::AvatarMask::build(document->data()), targets);
+    entry["covered"] = result.covered;
+    entry["total"] = result.total;
+    Json warnings = warningsJson(document->loadWarnings());
+    if (result.humanoidWithoutRig) {
+        warnings.push_back({{"path", "humanoid"}, {"message", "the root has no humanoid rig (" + result.rigError + "): the body parts do not apply"}});
+    }
+    entry["warnings"] = warnings;
+    return entry;
+}
+
 bool controllerArg(const CallPtr& call, std::string& path, fs::path& full) {
     Project* project = call->ctx().project();
     const Json& args = call->args();
@@ -698,19 +848,11 @@ void getMask(const CallPtr& call) {
         anim::HumanoidSlots slots;
         if (mask->hasHumanoid()) slots = anim::resolveHumanoidSlots(engineScene, root);
         const std::vector<Entity> entries = mask->bindTransforms(engineScene, root);
-        // the entities the root's player binds; without a player every descendant
+        // the entities the root's player binds (its controller's clips when it has one);
+        // without a player every descendant
         std::vector<std::pair<std::string, Entity>> entities;
         if (const AnimationPlayerComponent* player = engineScene->findComponent<AnimationPlayerComponent>(root)) {
-            std::set<std::string> seen;
-            for (const AnimationPlayerClip& entry : player->clips) {
-                std::shared_ptr<AnimationClipDocument> clip = entry.clip.empty() ? nullptr : AnimationClipDocument::open(project, entry.clip, nullptr);
-                if (!clip) continue;
-                for (const ClipTrackData& track : clip->data().tracks) {
-                    if (track.channel == ClipChannel::Property || !seen.insert(track.path).second) continue;
-                    const Entity target = track.path.empty() ? root : anim::resolvePath(engineScene, root, track.path);
-                    if (target != NULL_ENTITY) entities.push_back({track.path, target});
-                }
-            }
+            entities = boundTargets(project, engineScene, root, playedClips(project, *player, -1));
         }
         if (entities.empty()) entities = anim::descendantPaths(engineScene, root);
         Json coverage = Json::array();
@@ -775,6 +917,17 @@ void addPlayerLayers(Project* project, SceneProject* scene, Entity root, Json& i
             controller["error"] = error;
         }
         if (!player.clips.empty()) controller["ignored_clips"] = player.clips.size();
+        // the controller's masked layers: what their states' clips animate
+        if (document) {
+            Json coverage = Json::array();
+            const anim::ControllerData& data = document->data();
+            for (size_t l = 0; l < data.layers.size(); l++) {
+                if (data.layers[l].mask.empty()) continue;
+                coverage.push_back(maskCoverageEntry(project, engineScene, root, data.layers[l].name, data.layers[l].mask,
+                                                     playedClips(project, player, (int)l)));
+            }
+            if (!coverage.empty()) item["mask_coverage"] = coverage;
+        }
         if (playing && player.runtime->controller && player.runtime->controller->controller) {
             const anim::ControllerRuntime& runtime = *player.runtime->controller;
             const anim::ControllerData& data = runtime.controller->getData();
@@ -838,35 +991,8 @@ void addPlayerLayers(Project* project, SceneProject* scene, Entity root, Json& i
     // the masked layers' coverage (the Inspector's Bindings lines)
     Json coverage = Json::array();
     for (size_t l = 0; l < layers.size(); l++) {
-        if (layers[l].mask.empty()) continue;
-        Json entry = {{"layer", layers[l].name}};
-        std::string error;
-        std::shared_ptr<AvatarMaskDocument> document = AvatarMaskDocument::open(project, layers[l].mask, &error);
-        if (!document) {
-            entry["error"] = error + " (the layer contributes nothing)";
-            coverage.push_back(entry);
-            continue;
-        }
-        std::vector<Entity> targets;
-        for (const AnimationPlayerClip& clip : player.clips) {
-            if (clip.layer != (int)l || clip.clip.empty()) continue;
-            std::shared_ptr<AnimationClipDocument> clipDocument = AnimationClipDocument::open(project, clip.clip, nullptr);
-            if (!clipDocument) continue;
-            for (const ClipTrackData& track : clipDocument->data().tracks) {
-                if (track.channel == ClipChannel::Property) continue;
-                const Entity target = track.path.empty() ? root : anim::resolvePath(engineScene, root, track.path);
-                if (target != NULL_ENTITY) targets.push_back(target);
-            }
-        }
-        const animlayersui::MaskCoverage result = animlayersui::maskCoverage(engineScene, root, *anim::AvatarMask::build(document->data()), targets);
-        entry["covered"] = result.covered;
-        entry["total"] = result.total;
-        Json warnings = warningsJson(document->loadWarnings());
-        if (result.humanoidWithoutRig) {
-            warnings.push_back({{"path", "humanoid"}, {"message", "the root has no humanoid rig (" + result.rigError + "): the body parts do not apply"}});
-        }
-        entry["warnings"] = warnings;
-        coverage.push_back(entry);
+        if (!layers[l].mask.empty()) coverage.push_back(maskCoverageEntry(project, engineScene, root, layers[l].name, layers[l].mask,
+                                                                          playedClips(project, player, (int)l)));
     }
     if (!coverage.empty()) item["mask_coverage"] = coverage;
 }
@@ -912,8 +1038,13 @@ void editAnimatorTool(const CallPtr& call) {
     std::error_code ec;
     const bool exists = fs::exists(full, ec);
     const bool create = args.contains("create") && !args["create"].is_null();
-    if (create && !args["create"].is_object()) {
-        call->fail("create must be {} (an empty controller with a Base Layer) or {from_entity} (one state per clip of that Animation Player).");
+    if (create && (!args["create"].is_object() || (!args["create"].empty() && (args["create"].size() > 1 || !args["create"].contains("from_entity"))))) {
+        std::string key;
+        for (auto it = args["create"].begin(); args["create"].is_object() && it != args["create"].end(); ++it) {
+            if (it.key() != "from_entity") key = it.key();
+        }
+        call->fail((key.empty() ? std::string() : "create." + key + ": unknown key (allowed: from_entity). ") +
+                   "create must be {} (an empty controller with a Base Layer) or {from_entity} (one state per clip of that Animation Player).");
         return;
     }
     if (create && exists) {
