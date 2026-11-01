@@ -501,4 +501,7 @@ Decisions taken while implementing (2026-10-31), where the spec was silent, ambi
   `WavStreamInstance` whose decoder did not open reports itself ended (vendored `hasEnded` patch) instead of
   playing silence for ever; a timed echo `delay` rebuilds the echo once, where the change ends. The wording of A11
   about protected voices is corrected (they are not stolen nor killed when SoLoud's slots run out; they can be
-  virtualised).
+  virtualised). Found by those tests: a group bus nothing had played through yet stopped every voice of the core
+  when it was removed (SoLoud's `BusInstance` destructor stops the voices whose bus handle is its own, which SoLoud
+  learns only on a first play: 0, the core's), so the bus is told its handle when it starts; and an echo made again
+  takes the delay heard now, not the asset's (it was rebuilt every frame after a timed delay change).

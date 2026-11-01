@@ -825,8 +825,11 @@ TEST_F(AudioMixerRuntimeTest, AnotherMixerWithAnotherMasterIdKeepsMastersVoices)
     ASSERT_NE(looseHandle, 0u);
     soloud().setPause(looseHandle, false);
 
+    const unsigned int busBefore = AudioMixer::getBusHandle("");
+    ASSERT_TRUE(soloud().isValidVoiceHandle(handle));
     loadMixer(R"({"format": "jasperengine.mixer", "groups": [{"id": "abcdef01", "name": "Master"},
         {"id": "abcdef02", "name": "Dialogue", "parent": "abcdef01"}]})");
+    EXPECT_EQ(AudioMixer::getBusHandle(""), busBefore) << "the same Master bus";
     run(0.1);
     EXPECT_TRUE(soloud().isValidVoiceHandle(handle)) << "the source on Master plays on";
     EXPECT_TRUE(soloud().isValidVoiceHandle(looseHandle)) << "so does a voice the engine does not track";

@@ -242,9 +242,11 @@ namespace {
 
     std::unique_ptr<SoLoud::Filter> makeFilter(const AudioMixerEffectDef& def, EffectState& effect) {
         state().filterBuilds++;
+        // the values heard now (a filter made again after a timed change starts where it is)
         auto param = [&def](const char* name) {
             const AudioEffectParamInfo* info = AudioEffects::findParam(def.type, name);
-            return info ? AudioMixerIO::effectParam(def, *info) : 0.0f;
+            if (!info) return 0.0f;
+            return paramValue(AudioMixerIO::paramTarget(def.id, info->name), AudioMixerIO::effectParam(def, *info));
         };
         switch (def.type) {
             case AudioEffectType::LowPass:
@@ -462,6 +464,10 @@ namespace {
             group.handle = soloud.play(*group.bus, 1.0f, 0.0f, false);
         }
         if (group.handle) {
+            // SoLoud learns a bus's own handle only when something plays through it; a bus stopped
+            // before that would stop every voice of the core (its instance stops the voices whose
+            // bus handle is its own, 0 = the core's), Master and all
+            group.bus->mChannelHandle = group.handle;
             soloud.setProtectVoice(group.handle, true);
             // a bus passes its stereo through at unity: SoLoud's centre pan (constant power, 0.707
             // per side) would take 3 dB off at every level of the tree
