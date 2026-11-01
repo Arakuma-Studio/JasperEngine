@@ -3015,34 +3015,61 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&AnimationPlayer::addLayer),
             luabridge::overload<const std::string&, float, const std::string&>(&AnimationPlayer::addLayer),
             luabridge::overload<const std::string&, float, const std::string&, const std::string&>(&AnimationPlayer::addLayer))
-        .addFunction("removeLayer",
-            luabridge::overload<int>(&AnimationPlayer::removeLayer),
-            luabridge::overload<const std::string&>(&AnimationPlayer::removeLayer))
-        .addFunction("setLayerWeight",
-            luabridge::overload<int, float>(&AnimationPlayer::setLayerWeight),
-            luabridge::overload<int, float, float>(&AnimationPlayer::setLayerWeight),
-            luabridge::overload<const std::string&, float>(&AnimationPlayer::setLayerWeight),
-            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::setLayerWeight))
-        .addFunction("getLayerWeight",
-            luabridge::constOverload<int>(&AnimationPlayer::getLayerWeight),
-            luabridge::constOverload<const std::string&>(&AnimationPlayer::getLayerWeight))
-        .addFunction("setLayerMask",
-            luabridge::overload<int, const std::string&>(&AnimationPlayer::setLayerMask),
-            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::setLayerMask))
-        .addFunction("getLayerMask",
-            luabridge::constOverload<int>(&AnimationPlayer::getLayerMask),
-            luabridge::constOverload<const std::string&>(&AnimationPlayer::getLayerMask))
-        .addFunction("setLayerBlendMode",
-            luabridge::overload<int, const std::string&>(&AnimationPlayer::setLayerBlendMode),
-            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::setLayerBlendMode))
-        .addFunction("getLayerBlendMode",
-            luabridge::constOverload<int>(&AnimationPlayer::getLayerBlendMode),
-            luabridge::constOverload<const std::string&>(&AnimationPlayer::getLayerBlendMode))
-        .addFunction("stopLayer",
-            luabridge::overload<int>(&AnimationPlayer::stopLayer),
-            luabridge::overload<int, float>(&AnimationPlayer::stopLayer),
-            luabridge::overload<const std::string&>(&AnimationPlayer::stopLayer),
-            luabridge::overload<const std::string&, float>(&AnimationPlayer::stopLayer))
+        // a layer by index or by name, dispatched by hand (LuaBridge's overload sets leak a failed
+        // attempt's error text: LeakSanitizer)
+        .addFunction("removeLayer", +[](AnimationPlayer* self, lua_State* L) -> bool {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->removeLayer(std::string(lua_tostring(L, 2)));
+            return self->removeLayer((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("setLayerWeight", +[](AnimationPlayer* self, lua_State* L) {
+            const float weight = (float)luaL_checknumber(L, 3);
+            const bool faded = lua_isnumber(L, 4);
+            const float fade = faded ? (float)lua_tonumber(L, 4) : 0.0f;
+            if (lua_type(L, 2) == LUA_TSTRING){
+                const std::string layer = lua_tostring(L, 2);
+                if (faded) self->setLayerWeight(layer, weight, fade);
+                else self->setLayerWeight(layer, weight);
+                return;
+            }
+            const int layer = (int)luaL_checkinteger(L, 2);
+            if (faded) self->setLayerWeight(layer, weight, fade);
+            else self->setLayerWeight(layer, weight);
+        })
+        .addFunction("getLayerWeight", +[](const AnimationPlayer* self, lua_State* L) -> float {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerWeight(std::string(lua_tostring(L, 2)));
+            return self->getLayerWeight((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("setLayerMask", +[](AnimationPlayer* self, lua_State* L) {
+            const std::string mask = luaL_checkstring(L, 3);
+            if (lua_type(L, 2) == LUA_TSTRING) self->setLayerMask(std::string(lua_tostring(L, 2)), mask);
+            else self->setLayerMask((int)lua_tointeger(L, 2), mask);
+        })
+        .addFunction("getLayerMask", +[](const AnimationPlayer* self, lua_State* L) -> std::string {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerMask(std::string(lua_tostring(L, 2)));
+            return self->getLayerMask((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("setLayerBlendMode", +[](AnimationPlayer* self, lua_State* L) {
+            const std::string mode = luaL_checkstring(L, 3);
+            if (lua_type(L, 2) == LUA_TSTRING) self->setLayerBlendMode(std::string(lua_tostring(L, 2)), mode);
+            else self->setLayerBlendMode((int)lua_tointeger(L, 2), mode);
+        })
+        .addFunction("getLayerBlendMode", +[](const AnimationPlayer* self, lua_State* L) -> std::string {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerBlendMode(std::string(lua_tostring(L, 2)));
+            return self->getLayerBlendMode((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("stopLayer", +[](AnimationPlayer* self, lua_State* L) {
+            const bool faded = lua_isnumber(L, 3);
+            const float fade = faded ? (float)lua_tonumber(L, 3) : 0.0f;
+            if (lua_type(L, 2) == LUA_TSTRING){
+                const std::string layer = lua_tostring(L, 2);
+                if (faded) self->stopLayer(layer, fade);
+                else self->stopLayer(layer);
+                return;
+            }
+            const int layer = (int)luaL_checkinteger(L, 2);
+            if (faded) self->stopLayer(layer, fade);
+            else self->stopLayer(layer);
+        })
         // upstream's Animator Controller calls: the GameObject's Animator (object/AnimationPlayer.h)
         .addProperty("controller", &AnimationPlayer::getController, &AnimationPlayer::setController)
         .addFunction("hasController", &AnimationPlayer::hasController)
