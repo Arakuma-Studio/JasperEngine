@@ -639,8 +639,10 @@ Code references are to the `gaps/anim-properties` branch.
   Renderer's clears its points when disabled, the Joint 2D's makes a broken joint fresh when
   enabled again, the Lattice's bumps its revision, the Rigidbody 2D's enables or disables a loaded
   body now; the others only set the flag. The On-Screen Stick, On-Screen Button and Touch Area
-  have their `enabled` rows (the editor test checks that every component with the Inspector's
-  checkbox has one, except the Animation Player).
+  have their `enabled` rows, and after the merge with anim-retarget's main the Camera Shaker,
+  Camera Follow, Video Player and Text Effect (whose setter also re-applies the effect) (the
+  editor test checks that every component with the Inspector's checkbox has one, except the
+  Animation Player: it found those four).
 - **Script bindings (P4).** A binding picks its script once (the first enabled one of the class,
   else the first) and keeps its index, so with two scripts of a class an `enabled = false` key
   disables the same one every frame; a rebind (a missing component's retry, a hierarchy change)
@@ -764,3 +766,16 @@ Code references are to the `gaps/anim-properties` branch.
   offset 0, puntaje on and record off; at 0.3 s 48 below its rest on screen; at 3.6 s every stat on
   and the events saw `score:true|record:true|coins:true`. Web: em++ syntax checks with physics 2D
   on and off (the Rigidbody 2D enabled row's body calls are guarded).
+- **Verification after the re-review and the merge with main d08d63b31** (anim-retarget,
+  video-mp4, native-bridge, xcode26-dav1d, asan-sweep; box 2202): humanoid and property tracks
+  side by side in `ClipTypes`, the IO, the layer evaluator, the validation, the Animation window
+  (`clipui::findRuntimeTrack` finds both) and `edit_animation`. 0 warnings; editor unit tests
+  1811 passed, 9 skipped, 0 failed; anim tests 229 passed, 1 skipped; pose tests 219 passed. The
+  timing tests skip themselves above the box's core count of load; at a load of 13 they ran and
+  `CanvasGroupTest.PerformanceBudgets` (414 vs 400 us), `PhysicsContactsTest.ContactProcessingCostIsSmall`
+  and `Layers.PerformanceBudget` (0.61 vs 0.6 ms, at its line before this branch too) missed by a
+  few percent. Full MCP suite (-j3): 950 passed, 22 skipped, 11 failed: the baseline
+  `test_animation_assets` x5 and `test_lattice_scene` x5, and `test_html_ui_tools::test_budget`
+  before `TOTAL_LIMIT` was set to the measured 114703 (155 tools; then 40 passed with test_docs).
+  The exported Linux player test passes. `tools/check-physics-off.sh`: 3d-off, 2d-off, both-off
+  pass with 0 warnings. The Xcode sync scripts pass `--check`.
