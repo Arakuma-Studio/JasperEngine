@@ -10,8 +10,8 @@
 #   visibility, warnings off), compiling the sources their CMakeLists.txt compile (read from
 #   them) with their defines and private search paths, and without a header map (USE_HEADERMAP =
 #   NO: Xcode's project header map resolved dav1d's "config.h" to thorvg's; the generated
-#   xcode/cpu_*.c stop the build when config.h is not dav1d's). dav1d's bit-depth templates are compiled
-#   twice by CMake (OBJECT libraries with BITDEPTH 8 and 16); Xcode compiles each file once per
+#   xcode/cpu_*.c stop the build when config.h is not dav1d's). dav1d's bit-depth templates are
+#   compiled twice by CMake (OBJECT libraries with BITDEPTH 8 and 16); Xcode compiles each file once per
 #   target, so the script writes one wrapper per template and depth,
 #   engine/libs/dav1d/bitdepth/<name>_<8|16>.c (#define BITDEPTH, #include the template);
 # - dav1d's asm (its CMakeLists.txt's DAV1D_ASM_AARCH64 and DAV1D_ASM_X86_64 lists): the arm64 .S
