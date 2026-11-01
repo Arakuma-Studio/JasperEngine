@@ -397,8 +397,10 @@ runs is larger than any difference). With functor userdata without a `__gc` meta
 from D6) `go:getWorldPosition()` took 317-408 ns and `go.position` 467-577 ns in every run,
 against 203-212 ns for both before.
 
-**M8. After** (this branch, the same tools and servers; the runtimes of `tools/build.sh players`
-with every release variant). Linux, the stripped player (MiB):
+**M8. After** (this branch at c404233e4, the same tools and servers; the runtimes of
+`tools/build.sh players` with every release variant; on the head after merging oe-port
+6a3fafdad every file is within 0.02 MiB of these: Linux glcore full 34.37, web st full 28.26
+(8.23), the arm64-v8a download 8.45, its APK 8.78). Linux, the stripped player (MiB):
 
 | Linux | full | ui | core | lite3d | lite2d |
 |---|---|---|---|---|---|
@@ -514,3 +516,33 @@ sample, not this scene on E's Mesa 23.
   payload check (and the player's own check) refused the build with `missing start scene
   scenes/0.jscn` (S30). The manifest now names the scene `game.json` starts with. The variants
   check of `tools/ci/test_player_cli.py` builds `tools/fixtures/physics-placement`, which has none.
+
+## Progress
+
+- 2026-11-01: measurements (M1-M7) on oe-port f92d8a732 and the spec (3cd8a4906); the modules,
+  variants, detection, manifest check, LuaBridge changes and GCC LTO built on top; the
+  `-Os`/`-Oz`/`-O3` and Lua binding benchmarks on E (M6, M7).
+- 2026-11-01, before the last oe-port merge (c404233e4 and its parents): one full
+  `MCP_SUITE=all JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 tools/build.sh mcp-tests -j 3` on F: 1137
+  passed, 0 failed, 0 skipped in 7,622 s. `WERROR=1 tools/build.sh unit-tests` on C: core 2,462
+  and editor 1,714 ran, 0 failed (6 editor tests disabled on oe-port); the Vulkan core suite
+  (`GRAPHIC_BACKEND=vulkan UNIT_SUITE=core`) on F: 2,460 ran, 0 failed. `tools/build.sh web`
+  (WERROR) and `web-gate` on C, `tools/build.sh android` on F: pass. Android players (full, core,
+  lite3d) on A and `tools/ci/android_size.sh --skip-players --skip-compiled`: the core variant
+  chosen, the x86_64 APK passes the emulator check with the relaunch (M8). GCC LTO against no LTO
+  on E (M9).
+- 2026-11-01: oe-port 6a3fafdad merged (43c21c533, no conflicts). On the merged head: `WERROR=1
+  tools/build.sh linux` (GL) and `GRAPHIC_BACKEND=vulkan WERROR=1 tools/build.sh linux` on B;
+  every release player rebuilt (Linux glcore in five variants, gles3 and vulkan full on B; web in
+  five variants on C; Android core on A); S30's `tools/ci/test_player_cli.py` passes (goldens on
+  glcore, gles3 and vulkan, components, the variants check with core, lite2d, lite3d and ui each
+  drawing the full player's frame pixel for pixel, web, fallback); `tools/smoke-test.sh` on
+  post-processing, ecs-collision and unified-lighting (prebuilt) pass; BF10's
+  `tools/ci/upgrade_from_main/check.sh` passes (the compiled, prebuilt and web transcripts
+  234/234 identical); every `tools/xcode_sync_*.py --check` passes; `WERROR=1 tools/build.sh unit-tests` on C: core
+  2,465 and editor 1,714 ran, 0 failed (the same 6 disabled); `tools/build.sh web` (WERROR)
+  and `web-gate` pass on C, `tools/build.sh android` on F; `android_size.sh` with the emulator
+  check and its relaunch passes on A. The MCP build, export and publish files (`-k test_build -k
+  _export -k test_publish`, slow builds) on F: 44 passed; the 7 failures were tests that depend on
+  an earlier test of their file which the filter left out, and those six files run whole pass
+  (92 passed, 0 failed).
