@@ -479,11 +479,10 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                 // taps', so the flat projection it would overwrite is not sampled (GPU campaign
                 // perf2: -2 %)
                 bool hexLayer = !stochastic && terrainLayers.slices[index].w >= 0.0;
-                HexTaps hexTaps;
                 vec3 hexWeights = vec3(1.0, 0.0, 0.0);
                 if (hexLayer){
-                    hexTaps = terrainHexTaps(scale, offset, terrainLayers.slices[index].w);
-                    color = getTerrainColorHex(terrainLayers.slices[index].x, scale, offset, hexTaps, hexWeights);
+                    color = getTerrainColorHex(terrainLayers.slices[index].x, scale, offset,
+                                               terrainHexTaps(scale, offset, terrainLayers.slices[index].w), hexWeights);
                 }else
             #endif
             if (stochastic){
@@ -511,7 +510,7 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                     vec4 orm = stochastic ? getTerrainSliceStochastic(surfaceSlice, ts, false)
                                           : getTerrainSlice(surfaceSlice, scale, offset);
                     #ifdef TERRAIN_HEX_TILING
-                        if (hexLayer) orm = getTerrainSliceHex(surfaceSlice, scale, offset, hexTaps, hexWeights);
+                        if (hexLayer) orm = getTerrainSliceHex(surfaceSlice, scale, offset, terrainHexTaps(scale, offset, terrainLayers.slices[index].w), hexWeights);
                     #endif
                     occlusion = mix(1.0, orm.r, terrainLayers.surface[index].w);
                     roughness *= orm.g;
@@ -527,7 +526,8 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                                                                  : getTerrainLayerNormal(normalSlice, scale, offset, strength));
                         #ifdef TERRAIN_HEX_TILING
                             if (hexLayer){
-                                normal = terrainShadingNormal(getTerrainLayerNormalHex(normalSlice, scale, offset, strength, hexTaps, hexWeights));
+                                normal = terrainShadingNormal(getTerrainLayerNormalHex(normalSlice, scale, offset, strength,
+                                                                                        terrainHexTaps(scale, offset, terrainLayers.slices[index].w), hexWeights));
                             }
                         #endif
                     }
