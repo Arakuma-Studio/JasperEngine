@@ -190,7 +190,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -255,7 +254,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -323,7 +321,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -392,7 +389,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -461,7 +457,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -532,7 +527,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -601,7 +595,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -671,7 +664,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -741,7 +733,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -811,7 +802,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -881,7 +871,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -951,7 +940,6 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
