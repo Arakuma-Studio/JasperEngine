@@ -16,6 +16,7 @@
 #include "Engine.h"
 #include "Input.h"
 #include "Log.h"
+#include "log/Logger.h"
 #include "debug/DebugOverlay.h"
 #include "debug/DebugStats.h"
 #include "harness/Readback.h"
@@ -31,15 +32,47 @@
 
 #include <array>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <utility>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
 
 namespace {
+
+    // The log is S09's Logger (docs/specs/S09-core-utilities.md "Upstream absorption"): a call
+    // site past 200 lines a second meets the rate limit, so floods log distinct texts through
+    // "%s" (keyed by text); and a flood past the Async sinks' queue would drop their lines and
+    // log a drop notice the console lists, so the Async sinks sit out the floods (the console's
+    // sink is Inline)
+    void printDistinct(const char* prefix, int i){
+        char text[96];
+        std::snprintf(text, sizeof(text), "%s %d", prefix, i);
+        Log::print("%s", text);
+    }
+
+    class QuietAsyncSinks {
+    public:
+        QuietAsyncSinks(){
+            for (const Logger::SinkInfo& info : Logger::sinkInfo()){
+                if (info.delivery != LogSink::Delivery::Async) continue;
+                levels.push_back({info.id, info.level});
+                Logger::setSinkLevel(info.id, LogLevel::Off);
+            }
+        }
+        ~QuietAsyncSinks(){
+            for (const auto& [id, level] : levels)
+                Logger::setSinkLevel(id, level);
+        }
+    private:
+        std::vector<std::pair<Logger::SinkId, LogLevel>> levels;
+    };
+
 
     const char* callbackTag = "htmlui-tests-debug-overlay";
 
@@ -559,6 +592,7 @@ TEST_F(DebugOverlayTest, TouchScaleFollowsTheDpi){
 // burst of lines updates the list at 10 Hz; a rebuild is quick; collapsed counts drop as lines
 // leave the buffer
 TEST_F(DebugOverlayTest, RowWindowThrottleAndTheBuffer){
+    QuietAsyncSinks quiet;
     ASSERT_TRUE(fixture->waitUntilLoaded());
     Engine::setFixedDeltatime(0.05);
     Log::setBufferSize(20000);
@@ -567,7 +601,7 @@ TEST_F(DebugOverlayTest, RowWindowThrottleAndTheBuffer){
     GpuEnvironment::drawFrames(2);
     Log::clearEntries();
     for (int i = 0; i < 12000; i++)
-        Log::print("line %d", i);
+        printDistinct("line", i);
     GpuEnvironment::drawFrames(4);
     ASSERT_EQ(rows(), 12000);
     Rml::Element* box = byId("list-rows");
@@ -625,7 +659,7 @@ TEST_F(DebugOverlayTest, RowWindowThrottleAndTheBuffer){
     Log::clearEntries();
     Log::setBufferSize(500);
     for (int i = 0; i < 500; i++)
-        Log::print("row %d", i);
+        printDistinct("row", i);
     GpuEnvironment::drawFrames(3);
     ASSERT_EQ(rows(), 500);
     byId("filter-warn")->Click();
@@ -1021,6 +1055,7 @@ TEST_F(DebugOverlayTest, StatsBelowTheConsoleInPortraitAndLandscape){
 // reading older lines while the buffer is full and a line comes every frame: the rows in view
 // stay (the trimmed rows above them move the scroll up by as much)
 TEST_F(DebugOverlayTest, ListStaysWhileReadingAFullBuffer){
+    QuietAsyncSinks quiet;
     ASSERT_TRUE(fixture->waitUntilLoaded());
     // the overlay's clock: a burst of lines waits 0.1 s of it
     Engine::setFixedDeltatime(0.05);
@@ -1030,7 +1065,7 @@ TEST_F(DebugOverlayTest, ListStaysWhileReadingAFullBuffer){
     GpuEnvironment::drawFrames(2);
     Log::clearEntries();
     for (int i = 0; i < 500; i++)
-        Log::print("line %d", i);
+        printDistinct("line", i);
     GpuEnvironment::drawFrames(4);
     ASSERT_EQ(rows(), 500);
     Rml::Element* list = byId("list");
@@ -1067,6 +1102,7 @@ TEST_F(DebugOverlayTest, ListStaysWhileReadingAFullBuffer){
 // collapse on, a full 100,000-line buffer of distinct lines: a line added costs little (the
 // rows that go are found at the front, no index rebuilt)
 TEST_F(DebugOverlayTest, CollapsedFullBufferLineCost){
+    QuietAsyncSinks quiet;
     ASSERT_TRUE(fixture->waitUntilLoaded());
     Engine::setFixedDeltatime(0.05);
     Log::setBufferSize(100000);
@@ -1076,7 +1112,7 @@ TEST_F(DebugOverlayTest, CollapsedFullBufferLineCost){
     click("collapse");
     Log::clearEntries();
     for (int i = 0; i < 100000; i++)
-        Log::print("distinct %d", i);
+        printDistinct("distinct", i);
     GpuEnvironment::drawFrames(4);
     ASSERT_EQ(rows(), 100000);
     double worst = 0.0, total = 0.0;
