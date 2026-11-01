@@ -107,7 +107,8 @@ TEST_F(CommandHistoryTests, TrimByCountAndBytes) {
     // bytes over both histories: the lowest id of any goes. (The limit counts every live
     // history: the headless projects other suites of this binary keep hold their newest steps,
     // which no trim takes; their bytes are added to the limit.)
-    const size_t others = CommandHistory::totalBytes() - 10 * 64;
+    const size_t others = CommandHistory::totalBytes() - a.bytes() - b.bytes();
+    EXPECT_EQ(a.bytes(), 10u * 64u);
     CommandHistory::maxEntries = 1000;
     CommandHistory::memoryLimit = others + 1000;
     state.deleted.clear();

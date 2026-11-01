@@ -49,6 +49,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 21, 0, 0, 1]
+  CanvasGroupComponent:
+    position: [80, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 80, 0, 0, 1]
   CharacterController2DComponent:
     position: [61, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -209,6 +214,16 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 67, 0, 0, 1]
+  OnScreenButtonComponent:
+    position: [82, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 82, 0, 0, 1]
+  OnScreenStickComponent:
+    position: [81, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 81, 0, 0, 1]
   PanelComponent:
     position: [31, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -249,6 +264,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 35, 0, 0, 1]
+  RagdollComponent:
+    position: [84, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 84, 0, 0, 1]
   RectTransformComponent:
     position: [10, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -354,6 +374,16 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 45, 0, 0, 1]
+  TouchAreaComponent:
+    position: [83, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 83, 0, 0, 1]
+  TrailRendererComponent:
+    position: [79, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 79, 0, 0, 1]
   Transform:
     position: [8.7, 3.8, 6.9]
     rotation: [0.7193398, 0, 0.6946584, 0]
