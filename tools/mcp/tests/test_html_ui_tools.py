@@ -126,7 +126,8 @@ LIMITS.update({"create_ragdoll": 900})
 # http): 151 tools measured 107680, the limit set to it
 TOTAL_LIMIT = 107680
 # ui-multitouch (spec 2026-10-31-ui-multitouch 10): create_ui's onscreen_stick / onscreen_button / touch_area
-# types and their mode / action / actions fields (+209); merged with main (shader-globals): 151 tools measured MEASURED
+# types and their mode / action / actions fields (+209); merged with main (shader-globals): 151 tools measured
+# 107889, the limit set to it
 TOTAL_LIMIT = 107889
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)

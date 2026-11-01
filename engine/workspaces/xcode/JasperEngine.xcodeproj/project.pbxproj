@@ -3306,17 +3306,6 @@
 		4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */; };
-		4A534E475F8922B71DF8823D /* ScriptEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */; };
-		4A534E476DADCD54579A8EF4 /* ScriptEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */; };
-		4A534E4704D5E059F83952E5 /* ScriptMessages.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47987B75C94CDCCD29 /* ScriptMessages.cpp */; };
-		4A534E47D0813BE461D92A94 /* ScriptMessages.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47987B75C94CDCCD29 /* ScriptMessages.cpp */; };
-		4A534E470CC4368392A0B2D2 /* ScriptRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */; };
-		4A534E47EA32FE1232B1C371 /* ScriptRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */; };
-		4A534E479BBB4CAB67E8BDD1 /* ScriptClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */; };
-		4A534E47981333F75668E2CF /* ScriptClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */; };
-		4A534E47A1EA29B71E34FD57 /* ScriptEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */; };
-		4A534E4708435C1C1D7160F0 /* ScriptMessages.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471CD7791994CB883E /* ScriptMessages.h */; };
-		4A534E47A18FD96145634463 /* ScriptRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4700754C227C4F1876 /* ScriptRuntime.h */; };
 		4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
 		4A534E47AC81945749605313 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
 		4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
@@ -3366,16 +3355,6 @@
 		4A534E47981333F75668E2CF /* ScriptClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */; };
 		4A534E47A1EA29B71E34FD57 /* ScriptEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */; };
 		4A534E47A18FD96145634463 /* ScriptRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4700754C227C4F1876 /* ScriptRuntime.h */; };
-		4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47884A25441D62340D /* OnScreenControls.cpp */; };
-		4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47884A25441D62340D /* OnScreenControls.cpp */; };
-		4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */; };
-		4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */; };
-		4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */; };
-		4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */; };
-		4A534E47A2DD8B4564147CDE /* OnScreenControlComponents.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E52435C695296268 /* OnScreenControlComponents.h */; };
-		4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A3734219166C9A6F /* OnScreenControls.h */; };
-		4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477650920F4D670D0F /* OnScreenControls.h */; };
-		4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD6F5BB381B88CCB /* PointerEventData.h */; };
 		4A534E47ECA800FD8B871567 /* AnimationCurve.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AB97E17551816126 /* AnimationCurve.cpp */; };
 		4A534E47C4CC2BA4600C539E /* AnimationCurve.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AB97E17551816126 /* AnimationCurve.cpp */; };
 		4A534E47699C0D6A66DBCB13 /* Gradient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CE6A27D093FF30CD /* Gradient.cpp */; };
@@ -3412,6 +3391,16 @@
 		4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */; };
 		4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C4CB6F074423D782 /* NetClassesLua.h */; };
 		4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4743499EE7BE02622E /* MainThreadQueue.h */; };
+		4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47884A25441D62340D /* OnScreenControls.cpp */; };
+		4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47884A25441D62340D /* OnScreenControls.cpp */; };
+		4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */; };
+		4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */; };
+		4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */; };
+		4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */; };
+		4A534E47A2DD8B4564147CDE /* OnScreenControlComponents.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E52435C695296268 /* OnScreenControlComponents.h */; };
+		4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A3734219166C9A6F /* OnScreenControls.h */; };
+		4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477650920F4D670D0F /* OnScreenControls.h */; };
+		4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD6F5BB381B88CCB /* PointerEventData.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6786,13 +6775,6 @@
 		4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimatorSystem.h; sourceTree = "<group>"; };
 		4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshBufferPool.cpp; sourceTree = "<group>"; };
 		4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshBufferPool.h; sourceTree = "<group>"; };
-		4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptEvent.cpp; sourceTree = "<group>"; };
-		4A534E47987B75C94CDCCD29 /* ScriptMessages.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptMessages.cpp; sourceTree = "<group>"; };
-		4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptRuntime.cpp; sourceTree = "<group>"; };
-		4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptClassesLua.cpp; sourceTree = "<group>"; };
-		4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptEvent.h; sourceTree = "<group>"; };
-		4A534E471CD7791994CB883E /* ScriptMessages.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptMessages.h; sourceTree = "<group>"; };
-		4A534E4700754C227C4F1876 /* ScriptRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptRuntime.h; sourceTree = "<group>"; };
 		4A534E4730DD301E6ACE24A9 /* InputActions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputActions.cpp; sourceTree = "<group>"; };
 		4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputControlNames.cpp; sourceTree = "<group>"; };
 		4A534E47DA77C1DF72E1D462 /* InputActions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputActions.h; sourceTree = "<group>"; };
@@ -6826,13 +6808,6 @@
 		4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptClassesLua.cpp; sourceTree = "<group>"; };
 		4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptEvent.h; sourceTree = "<group>"; };
 		4A534E4700754C227C4F1876 /* ScriptRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptRuntime.h; sourceTree = "<group>"; };
-		4A534E47884A25441D62340D /* OnScreenControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OnScreenControls.cpp; sourceTree = "<group>"; };
-		4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OnScreenControls.cpp; sourceTree = "<group>"; };
-		4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemPointer.cpp; sourceTree = "<group>"; };
-		4A534E47E52435C695296268 /* OnScreenControlComponents.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControlComponents.h; sourceTree = "<group>"; };
-		4A534E47A3734219166C9A6F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
-		4A534E477650920F4D670D0F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
-		4A534E47AD6F5BB381B88CCB /* PointerEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PointerEventData.h; sourceTree = "<group>"; };
 		4A534E47AB97E17551816126 /* AnimationCurve.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimationCurve.cpp; sourceTree = "<group>"; };
 		4A534E47CE6A27D093FF30CD /* Gradient.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Gradient.cpp; sourceTree = "<group>"; };
 		4A534E4759A335399714FD33 /* TrailRenderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TrailRenderer.cpp; sourceTree = "<group>"; };
@@ -6858,6 +6833,13 @@
 		4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AsyncOwner.h; sourceTree = "<group>"; };
 		4A534E47C4CB6F074423D782 /* NetClassesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NetClassesLua.h; sourceTree = "<group>"; };
 		4A534E4743499EE7BE02622E /* MainThreadQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MainThreadQueue.h; sourceTree = "<group>"; };
+		4A534E47884A25441D62340D /* OnScreenControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OnScreenControls.cpp; sourceTree = "<group>"; };
+		4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OnScreenControls.cpp; sourceTree = "<group>"; };
+		4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemPointer.cpp; sourceTree = "<group>"; };
+		4A534E47E52435C695296268 /* OnScreenControlComponents.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControlComponents.h; sourceTree = "<group>"; };
+		4A534E47A3734219166C9A6F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
+		4A534E477650920F4D670D0F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
+		4A534E47AD6F5BB381B88CCB /* PointerEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PointerEventData.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8397,9 +8379,9 @@
 				4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */,
 				4A534E4767131FC7FF95861B /* CanvasGroupComponent.h */,
 				4A534E47C782824D41EC527F /* PhysicsCommon.h */,
-				4A534E47E52435C695296268 /* OnScreenControlComponents.h */,
 				4A534E47ECB20D024971B61A /* RagdollComponent.h */,
 				4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */,
+				4A534E47E52435C695296268 /* OnScreenControlComponents.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8546,12 +8528,12 @@
 				4A534E47452204C1B7C473FF /* ActionSystemPlayers.cpp */,
 				4A534E470570E826DC760188 /* VertexAnimatorSystem.cpp */,
 				4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */,
-				4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */,
 				4A534E4735F8B0318B067911 /* PhysicsSystemJoints3D.cpp */,
 				4A534E479C0EFAD0789E9D38 /* PhysicsSystemRagdoll.cpp */,
 				4A534E4709DE150BBF04619D /* PhysicsSystemDebugDraw.cpp */,
 				4A534E47B38E42BA45359570 /* TrailSystem.cpp */,
 				4A534E47D89F43391B4A415F /* TrailSystem.h */,
+				4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -12196,11 +12178,6 @@
 				4A534E479AC9510B4A13D68A /* UIDrawColor.h in Headers */,
 				4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */,
 				4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */,
-				4A534E47A1EA29B71E34FD57 /* ScriptEvent.h in Headers */,
-				4A534E4708435C1C1D7160F0 /* ScriptMessages.h in Headers */,
-				4A534E47A18FD96145634463 /* ScriptRuntime.h in Headers */,
-				4A534E4749E3318561E17181 /* InputActions.h in Headers */,
-				4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */,
 				4A534E4749E3318561E17181 /* InputActions.h in Headers */,
 				4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */,
 				4A534E4732715B216DF79AF9 /* PhysicsCommon.h in Headers */,
@@ -12215,10 +12192,6 @@
 				4A534E47B455DB3E73FEC52F /* RagdollBuilder.h in Headers */,
 				4A534E47A1EA29B71E34FD57 /* ScriptEvent.h in Headers */,
 				4A534E47A18FD96145634463 /* ScriptRuntime.h in Headers */,
-				4A534E47A2DD8B4564147CDE /* OnScreenControlComponents.h in Headers */,
-				4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */,
-				4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */,
-				4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */,
 				4A534E477488C86519002423 /* TrailRendererComponent.h in Headers */,
 				4A534E47B22451FC6561CEF6 /* AnimationCurve.h in Headers */,
 				4A534E4764E472A26357C59D /* Gradient.h in Headers */,
@@ -12233,6 +12206,10 @@
 				4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */,
 				4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */,
 				4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */,
+				4A534E47A2DD8B4564147CDE /* OnScreenControlComponents.h in Headers */,
+				4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */,
+				4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */,
+				4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14282,12 +14259,6 @@
 				4A534E4759966A2ED417BECD /* CpuSkin.cpp in Sources */,
 				4A534E474B1E43D590AD23B0 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */,
-				4A534E475F8922B71DF8823D /* ScriptEvent.cpp in Sources */,
-				4A534E4704D5E059F83952E5 /* ScriptMessages.cpp in Sources */,
-				4A534E470CC4368392A0B2D2 /* ScriptRuntime.cpp in Sources */,
-				4A534E479BBB4CAB67E8BDD1 /* ScriptClassesLua.cpp in Sources */,
-				4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */,
-				4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */,
 				4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */,
 				4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */,
 				4A534E47FAB0AB03DCC4FB57 /* PhysicsMaterialPool.cpp in Sources */,
@@ -14303,9 +14274,6 @@
 				4A534E475F8922B71DF8823D /* ScriptEvent.cpp in Sources */,
 				4A534E470CC4368392A0B2D2 /* ScriptRuntime.cpp in Sources */,
 				4A534E479BBB4CAB67E8BDD1 /* ScriptClassesLua.cpp in Sources */,
-				4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */,
-				4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */,
-				4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */,
 				4A534E47ECA800FD8B871567 /* AnimationCurve.cpp in Sources */,
 				4A534E47699C0D6A66DBCB13 /* Gradient.cpp in Sources */,
 				4A534E47CB7C331EE90C2019 /* TrailRenderer.cpp in Sources */,
@@ -14317,6 +14285,9 @@
 				4A534E4765A452A70993BC50 /* NetClassesLua.cpp in Sources */,
 				4A534E47D5FBC9D2B84C3EF4 /* MainThreadQueue.cpp in Sources */,
 				4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */,
+				4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */,
+				4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */,
+				4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14745,12 +14716,6 @@
 				4A534E47641FBAF4D870EBAF /* CpuSkin.cpp in Sources */,
 				4A534E47A95FB7E661773FC4 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */,
-				4A534E476DADCD54579A8EF4 /* ScriptEvent.cpp in Sources */,
-				4A534E47D0813BE461D92A94 /* ScriptMessages.cpp in Sources */,
-				4A534E47EA32FE1232B1C371 /* ScriptRuntime.cpp in Sources */,
-				4A534E47981333F75668E2CF /* ScriptClassesLua.cpp in Sources */,
-				4A534E47AC81945749605313 /* InputActions.cpp in Sources */,
-				4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */,
 				4A534E47AC81945749605313 /* InputActions.cpp in Sources */,
 				4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */,
 				4A534E474B176E0554781362 /* PhysicsMaterialPool.cpp in Sources */,
@@ -14766,9 +14731,6 @@
 				4A534E476DADCD54579A8EF4 /* ScriptEvent.cpp in Sources */,
 				4A534E47EA32FE1232B1C371 /* ScriptRuntime.cpp in Sources */,
 				4A534E47981333F75668E2CF /* ScriptClassesLua.cpp in Sources */,
-				4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */,
-				4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */,
-				4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */,
 				4A534E47C4CC2BA4600C539E /* AnimationCurve.cpp in Sources */,
 				4A534E476CE65E40D89D6748 /* Gradient.cpp in Sources */,
 				4A534E47666B66B24871AAA0 /* TrailRenderer.cpp in Sources */,
@@ -14780,6 +14742,9 @@
 				4A534E4704BBC250AA4EB0AC /* NetClassesLua.cpp in Sources */,
 				4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */,
 				4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */,
+				4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */,
+				4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */,
+				4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
