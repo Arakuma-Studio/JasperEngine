@@ -568,3 +568,15 @@ spec was silent, ambiguous or did not fit the code:
 19. **Merge note:** `ComponentType::SafeAreaComponent` is appended last (prefab override masks use the
     ordinal): a branch appending another type at the same place conflicts there and in
     `AnimationClipContractTest`. (The ECS `Signature` limit of 64 types was raised to 128 on `main`.)
+20. **Verification** (tree merged with `main` at `dbd8a23f3`: platform-services, shader-globals and
+    everything before them), box 2203: editor and tests build with 0 warnings; unit suite 1438 passed,
+    9 skipped, 0 failed (`SafeArea*` 21 of them); full MCP suite 884 passed, 15 failed: the 10 baseline
+    failures (test_animation_assets x5, test_lattice_scene x5), `test_stochastic_tiling` resave (the
+    ui-canvas-group regression on `main`, LEDGER 2026-11-01), and four timing failures of the loaded box
+    that pass alone (test_pose_runtime, test_render_perf x2, test_shader_library's 30-minute matrix);
+    `test_safe_area.py` 5/5. HTML UI suite (`jasperengine-htmlui-tests`, standalone engine build) 3118
+    passed, `SafeArea*` 7/7, on the tree before the last main merges (no HTML UI source changed after it).
+    Android `assembleDebug` (arm64-v8a) and the web (emcc) objects of the changed sources compile on the
+    host; iOS (`ViewController.m`, `Renderer.mm`) was reviewed, not built. The web export's viewport-meta
+    CMake was run with `cmake -P` on the three page cases (meta without viewport-fit, none, one with it).
+    The tool budget is 108538 (TOTAL_LIMIT 108540); the agent guide is 16377 bytes.
