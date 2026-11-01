@@ -125,8 +125,8 @@ LIMITS.update({"create_ragdoll": 900})
 # shader reads and its global_bindings (+51); merged with main (persistence, ui-canvas-group, physics-3d,
 # http): 151 tools measured 107680, the limit set to it
 # physics-contacts: get_runtime_entity's physics contacts / callbacks paid by a shorter description
-# (edit_colliders' receiver is in the guide); merged with main (shader-globals): MEASURED
-TOTAL_LIMIT = 107680
+# (edit_colliders' receiver is in the guide); merged with main (shader-globals): 151 tools measured 107678
+TOTAL_LIMIT = 107678
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
