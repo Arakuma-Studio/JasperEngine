@@ -379,17 +379,42 @@ class CallResult:
 # ---------------------------------------------------------------------------
 # Wall-clock budgets
 
+# What one compile job of an engine source can take (cc1plus on the Lua bindings: 1.8 GB resident)
+COMPILE_JOB_BYTES = 2 << 30
+
+
+def _memory_available() -> int | None:
+    """Bytes this process can still allocate: the host's MemAvailable, and the container's
+    memory.max less its memory.current when it has a limit (None when neither is readable)."""
+    found = []
+    with contextlib.suppress(OSError, ValueError):
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                found.append(int(line.split()[1]) * 1024)
+    with contextlib.suppress(OSError, ValueError):
+        limit = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        if limit != "max":
+            found.append(int(limit) - int(Path("/sys/fs/cgroup/memory.current").read_text()))
+    return min(found) if found else None
+
+
 def build_jobs() -> int:
     """The parallel jobs a game build of a test uses: JOBS when set, else the CPUs this process may
     use, a container's CPU quota included (docker --cpus, which tools/build.sh sets from JOBS and
-    which is what shares a build server; nproc does not see the quota, cgroup cpu.max does)."""
+    which is what shares a build server; nproc does not see the quota, cgroup cpu.max does). Either
+    way at most one job per COMPILE_JOB_BYTES of the memory available now: on a loaded server (other
+    editors, another test's compile) a job per CPU ran out of memory and the kernel killed cc1plus."""
     if os.environ.get("JOBS", "").isdigit() and int(os.environ["JOBS"]) > 0:
-        return int(os.environ["JOBS"])
-    cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 2)
-    with contextlib.suppress(OSError, ValueError):
-        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
-        if quota != "max":
-            cpus = min(cpus, max(1, int(quota) // int(period)))
+        cpus = int(os.environ["JOBS"])
+    else:
+        cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 2)
+        with contextlib.suppress(OSError, ValueError):
+            quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+            if quota != "max":
+                cpus = min(cpus, max(1, int(quota) // int(period)))
+    available = _memory_available()
+    if available is not None:
+        cpus = min(cpus, available // COMPILE_JOB_BYTES)
     return max(1, cpus)
 
 

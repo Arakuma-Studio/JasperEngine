@@ -23,7 +23,7 @@ namespace {
                  .step = 0.5f, .format = "%.1f ms", .label = "Main Thread Budget (ms)",
                  .tooltip = "The render thread's time per frame for finishing creations; one always finishes."),
         JE_FIELD(ShaderCreationProjectSettings, glWarmDraws, .flags = OmitIfDefault, .label = "GL Warm Draws",
-                 .tooltip = "GL: a new shader and state is drawn once on the worker context first, so the driver's first-draw compile does not stall the frame. Off on software GL; not verified on GPU drivers."),
+                 .tooltip = "GL: a new shader and state is drawn once on the worker context first, so the driver's first-draw compile does not stall the frame. Desktop GL on a GPU (verified on NVIDIA); never on software GL; GLES not yet."),
         JE_FIELD(ShaderCreationProjectSettings, recordDuringPlay, .flags = OmitIfDefault, .label = "Record During Play",
                  .tooltip = "Play adds the shader variants and pipelines it creates to the warm-up list (ShaderWarmup.json)."),
         JE_FIELD(ShaderCreationProjectSettings, includeInBuilds, .flags = OmitIfDefault, .label = "Include in Builds",

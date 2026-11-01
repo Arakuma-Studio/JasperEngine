@@ -74,9 +74,12 @@ namespace {
                 return c.kind == kind && c.directory == directory;
             }));
         }
+        // The file names only: the temp folder's name is "je-watch-" and a random 64-bit number,
+        // which holds "4913" (vim's probe file) about one time in 600
         static bool names(const std::vector<FileChange>& list, const std::string& text) {
             return std::any_of(list.begin(), list.end(), [&](const FileChange& c) {
-                return c.path.generic_string().find(text) != std::string::npos || c.oldPath.generic_string().find(text) != std::string::npos;
+                return c.path.filename().generic_string().find(text) != std::string::npos ||
+                       c.oldPath.filename().generic_string().find(text) != std::string::npos;
             });
         }
     };

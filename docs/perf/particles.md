@@ -113,7 +113,10 @@ python3 tools/perf/check_web_particles.py build/test-results/web/particles.log b
 
 ### Not measured here
 
-- **Mobile (R21-R23)** and **GPU (R23)** rows: manual sign-off on the named reference devices
+- **GPU (R23), desktop:** measured in the GPU campaign (docs/perf/gpu-campaign.md): RTX 3080 Ti,
+  GL, 1080p, the reference stack at 92,344 live particles (3-10 px each): 0.245 ms of GPU in one
+  draw (≤ 1.5 ms for 100 k), `tools/perf/gpu_campaign.py particles`.
+- **Mobile (R21-R23)** and **GPU (R23) on mobile** rows: manual sign-off on the named reference devices
   with the `particles_perf` sample scene (Android GPU timings through the S15 pass timers). The
   CPU paths are the NEON instantiation of the same kernels; the Android emulator run
   (`ANDROID_PROJECT=particles`, `tools/test-projects/particles/android-expect.txt`) checks they

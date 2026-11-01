@@ -14,6 +14,7 @@ import tempfile
 import time
 from pathlib import Path
 
+import harness
 from harness import Editor
 
 CI = True
@@ -71,25 +72,47 @@ async def test_health_off_main():
 
         answer = await ed.call("debug_crash", mode="hang", hang_ms=6000)
         ed.check_eq(answer["mode"], "hang")
-        await asyncio.sleep(2.5)
-        start = time.monotonic()
-        health = await ed.call("get_editor_health", timeout=10)
-        elapsed = time.monotonic() - start
-        ed.check(elapsed < 0.5, f"get_editor_health answered in {elapsed:.2f} s while the main thread hangs")
+        # The hang starts on the main thread's next turn and shows once the main thread has been
+        # quiet past the threshold; on a loaded machine either can take longer than a fixed sleep
+        # allows for. So ask until it shows. An answer that says "not responsive, in the hang's
+        # phase" was given while the main thread hung: a main-thread answer comes after the hang.
+        latencies = []
+        deadline = time.monotonic() + 60
+        while True:
+            start = time.monotonic()
+            health = await ed.call("get_editor_health", timeout=10)
+            latencies.append(time.monotonic() - start)
+            in_hang = not health["responsive"] and health["phase"] == "debug_crash:hang"
+            if in_hang or time.monotonic() > deadline:
+                break
+            await asyncio.sleep(0.1)
         ed.check(not health["responsive"], f"responsive is false during the hang: {health}")
         ed.check(health["stalled_ms"] >= 1000, f"stalled_ms: {health}")
         ed.check_eq(health["phase"], "debug_crash:hang", "the hang's phase")
+        # how fast the off-main answers come is a budget (the benchmark run enforces it)
+        slow = harness.over_budget("get_editor_health while the main thread hangs", {"slowest answer": max(latencies)}, 0.5)
+        ed.check(not slow, f"get_editor_health answered in {max(latencies):.2f} s while the main thread hangs")
 
         # after the hang a normal (main-thread) call answers again, and the hang was reported
         reports = await ed.call("get_crash_reports", include_text=True, timeout=60)
         mine = [r for r in reports["reports"] if r["this_session"]]
         ed.check(mine and mine[0]["kind"] == "hang", f"this session's hang is listed: {reports}")
-        ed.check("hang-001.txt" in mine[0]["files"], f"hang-001.txt: {mine[0]['files']}")
-        ed.check("phase: debug_crash:hang" in mine[0].get("text", ""), "the report names the phase")
+        # a loaded machine's main thread also misses the 1 s threshold on its own, before or after the
+        # debug hang (each a hang-NNN.txt of its own; the text is the newest's): the debug hang's file
+        # is the one that names its phase
+        hangs = sorted(f for f in mine[0]["files"] if f.startswith("hang-") and f.endswith(".txt"))
+        ed.check(hangs and hangs[0] == "hang-001.txt", f"hang-001.txt: {mine[0]['files']}")
+        named = [f for f in hangs if "phase: debug_crash:hang" in (Path(mine[0]["folder"]) / f).read_text(errors="replace")]
+        ed.check(named, f"a report names the phase: {hangs}, {mine[0].get('text', '')[:600]}")
+        # (a loaded machine's slow frame can pass the 1 s threshold again: responsive is a state)
+        deadline = time.monotonic() + 30
         health = await ed.call("get_editor_health")
+        while not health["responsive"] and time.monotonic() < deadline:
+            await asyncio.sleep(0.2)
+            health = await ed.call("get_editor_health")
         ed.check(health["responsive"], f"responsive again: {health}")
         ed.check(health["hang_reports"] >= 1, f"hang_reports: {health}")
-        ed.check("JASPERENGINE HANG:" in ed.stderr_text(), "the stderr line")
+        ed.check("JASPERENGINE HANG:" in ed.stderr_text() and "phase: debug_crash:hang" in ed.stderr_text(), "the stderr line")
 
 
 async def test_runaway_lua():

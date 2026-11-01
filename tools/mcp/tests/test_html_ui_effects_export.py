@@ -37,9 +37,6 @@ EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 CI = True
 
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
-# the container's CPU allowance (harness.build_jobs: JOBS, else docker's --cpus quota): Docker's
-# cap is what shares the host, so the compile needs no cap of its own
-JOBS = build_jobs()
 
 S: dict = {}
 _copies: list[tempfile.TemporaryDirectory] = []
@@ -269,15 +266,28 @@ async def test_desktop_player_draws_the_effects(ed: Editor):
     # This build also clears additions left by the persistence test; no reset-only export is needed.
     # compiled from source: only a compiled game can be built without the runtime shader compiler
     # (every prebuilt runtime carries it), so only it shows the exported variants are all it needs
-    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30,
+    # the container's CPU allowance, and the memory free as the compile starts (harness.build_jobs):
+    # Docker's cap is what shares the host, so the compile needs no cap of its own
+    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=build_jobs(), timeout_seconds=30,
                       shaders={"reset": True}, method="compile")
     job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=15.0)
     ed.check_eq(job["status"], "succeeded", f"{job}")
     ed.check_eq(job["result"]["method_used"], "compile", f"{job}")
     ed.check((out / "licenses" / "shaders.com-LICENSE.txt").is_file(), "the player ships the notice")
-    raw = await ed.call_raw("run_build", {"seconds": 10, "screenshot_after_seconds": 8})
+    # the player's own frame, 120 frames of 1/60 s after the one that logs "Engine ready:" (its clocks
+    # start there), not a window capture a fixed number of seconds after the launch: how far a loaded
+    # machine's player has got by then is anyone's guess (3 fps under load on a build server)
+    raw = await ed.call_raw("run_build", {"after_ready": True, "fixed_fps": 60, "quit_after": 120})
     ed.check(not raw.is_error, raw.text)
     ed.check(not raw.value["crashed"], f"the player crashed: {raw.value}")
+    ed.check_eq(raw.value.get("exit_code"), 0, f"the player got ready and quit after its frames: {raw.value}")
+    ed.check(raw.images, f"the player's own screenshot: {raw.value}")
+    check_player_frame(ed, raw)
+
+
+def check_player_frame(ed: Editor, raw) -> None:
+    """What the player drew (run_build's screenshot) shows every exported effect, and its log no
+    missing variant."""
     png = raw.images[0][0]
     (ed.scratch.root / "html-ui-effects-player.png").write_bytes(png)
     # pixelate's cells: the gaps between them show the page (a plain red/green box has none)

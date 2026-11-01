@@ -23,6 +23,8 @@
 #if defined(_SOKOL_ANY_GL)
     #if defined(__EMSCRIPTEN__)
         #include <emscripten/html5.h>
+    #elif !defined(_WIN32)
+        #include <dlfcn.h>
     #endif
     #ifndef GL_COMPLETION_STATUS_KHR
         #define GL_COMPLETION_STATUS_KHR 0x91B1
@@ -43,6 +45,53 @@
 
 namespace {
     sgj_async_caps sgjCaps = {};
+
+#if defined(_SOKOL_ANY_GL) && !defined(__EMSCRIPTEN__)
+    // glMaxShaderCompilerThreadsKHR/ARB(0xFFFFFFFF): the driver's own compile threads. The
+    // extension says the initial count is implementation-defined, and NVIDIA's is none: until an
+    // application asks, glCompileShader/glLinkProgram return only once done and
+    // GL_COMPLETION_STATUS_KHR is always true (an RTX 3080 Ti, driver 595.99: a 2.1 s Lit lobe
+    // variant link stayed on the calling thread in `parallel` mode; docs/perf/gpu-campaign.md).
+    // Called in parallel mode only (see sgj_gl_enable_compile_threads).
+    using MaxShaderCompilerThreadsProc = void (*)(GLuint);
+    void* sgjGlProc(const char* name){
+    #if defined(_WIN32)
+        PROC proc = wglGetProcAddress(name);
+        return (proc == 0 || proc == (PROC)1 || proc == (PROC)2 || proc == (PROC)3 || proc == (PROC)-1) ? nullptr : (void*)proc;
+    #elif defined(__APPLE__)
+        (void)name;
+        return nullptr;  // macOS GL 4.1 has no parallel compile extension
+    #else
+        // GLX (desktop Linux) or EGL (Android, Linux GLES): whichever the process loaded
+        using GetProc = void* (*)(const char*);
+        static GetProc getProc = [](){
+            void* f = dlsym(RTLD_DEFAULT, "glXGetProcAddressARB");
+            if (!f) f = dlsym(RTLD_DEFAULT, "eglGetProcAddress");
+            return reinterpret_cast<GetProc>(f);
+        }();
+        void* proc = getProc ? getProc(name) : nullptr;
+        return proc ? proc : dlsym(RTLD_DEFAULT, name);
+    #endif
+    }
+#endif
+}
+
+extern "C" bool sgj_gl_enable_compile_threads(void){
+#if defined(_SOKOL_ANY_GL) && !defined(__EMSCRIPTEN__)
+    if (!sgjCaps.gl_parallel_compile)
+        return false;
+    auto set = reinterpret_cast<MaxShaderCompilerThreadsProc>(sgjGlProc("glMaxShaderCompilerThreadsKHR"));
+    if (!set)
+        set = reinterpret_cast<MaxShaderCompilerThreadsProc>(sgjGlProc("glMaxShaderCompilerThreadsARB"));
+    if (!set)
+        return false;
+    set(0xFFFFFFFFu);
+    while (glGetError() != GL_NO_ERROR) {}
+    return true;
+#else
+    // WebGL: the browser's compile is parallel once the extension is enabled
+    return sgjCaps.gl_parallel_compile;
+#endif
 }
 
 extern "C" void sgj_async_setup(void){

@@ -17,6 +17,16 @@ fi
 [[ $# -gt 0 ]] || { echo "usage: tools/with-xvfb.sh [--screen WxHxD] command..." >&2; exit 2; }
 TIMEOUT="${XVFB_TIMEOUT:-30}"
 
+# DOCKER_GPU=1 (tools/build.sh): the real GPU instead of Mesa. With tools/gpu/xorg-headless.sh's
+# headless NVIDIA X server running, the command runs on it and no Xvfb starts.
+if [[ "${DOCKER_GPU:-0}" == 1 ]]; then
+    # shellcheck source=gpu/env.sh
+    . "$(dirname "${BASH_SOURCE[0]}")/gpu/env.sh"
+    if [[ "${DISPLAY:-}" == ":${JE_GPU_DISPLAY:-97}" ]]; then
+        exec "$@"
+    fi
+fi
+
 dir="$(mktemp -d)"
 mkfifo "$dir/display"
 # read-write: the open does not wait for a writer, so a server that never starts cannot block it

@@ -22,11 +22,12 @@ the worker had linked them; our side's synchronisation was checked (see the spec
 the worker; they are verified in the GPU campaign.
 
 A *warm draw* draws the program once, with the state and texture formats of the object about to use
-it, into a 1x1 target on the worker. Some drivers (Mesa's llvmpipe among them) compile the program
-for that state at its first draw; the warm draw makes that compile happen on the worker. Warm draws
-are **off by default** (they need the worker, so never on a software GL). They are not verified
-on GPU drivers yet; without them a program's first draw with a new state compiles on the render
-thread where the driver compiles at draw time.
+it, into a 1x1 target on the worker. Drivers compile a program for its state at its first draw
+(Mesa's llvmpipe; NVIDIA: about 8 ms per Lit lobe variant on an RTX 3080 Ti); the warm draw makes
+that compile happen on the worker. Warm draws are **on by default on desktop GL** (verified on
+NVIDIA in the GPU campaign, `docs/perf/gpu-campaign.md`), **off on GLES** until an Adreno/Mali run
+verifies them (`JASPER_GL_WARM_DRAWS=1` allows them there), and never on a software GL (no worker
+there). Without them a program's first draw with a new state compiles on the render thread.
 
 The render thread finishes what the worker or the driver created within a per-frame budget
 (**Main Thread Budget**, 2 ms by default). At least one creation finishes every frame.

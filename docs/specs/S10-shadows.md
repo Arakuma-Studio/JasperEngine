@@ -339,7 +339,7 @@ static casters and 20 skinned dynamic casters.
 | Receiver GPU, full-screen sun, Soft | ≤ 1.0 ms | ≤ 1.5 ms | ≤ 0.6 ms | ≤ 1.2 ms |
 | Shadow pass GPU, static scene and camera, cached | ≤ 0.05 ms | ≤ 0.05 ms | ≤ 0.05 ms | ≤ 0.05 ms |
 | Shadow pass GPU, walking camera (5 m/s), cached + 20 dynamic | ≤ 1.5 ms | ≤ 2.0 ms | ≤ 1.0 ms | ≤ 1.5 ms |
-| Shadow memory (atlases + static cache) | ≤ 16 MB | ≤ 48 MB | ≤ 96 MB | ≤ 288 MB |
+| Shadow memory (atlases + static cache) | ≤ 16 MB | ≤ 48 MB | ≤ 192 MB (was 96, GPU campaign) | ≤ 576 MB (was 288, GPU campaign) |
 
 - **R26** CPU costs:
   - Cascade fit + key evaluation: ≤ 30 µs per camera.
@@ -626,6 +626,7 @@ llvmpipe and Vulkan on lavapipe.
 - **Fit freeze lowers texel density** by up to the guard band (6–12 %). Default: on for
   Low and Medium, off for High and Ultra, where VPs refit every frame and caching then
   helps only spot, point and still cameras. This can be changed per tier after AC14.
+  **Changed after AC14 (GPU campaign): on for every tier** (see Deviations).
 - **The dither transition on Low** is visible grain without TAA. Default: accepted, since
   it is world-locked and does not swim. If users object, Low can use the blend at 2x
   taps inside the band.
@@ -708,3 +709,9 @@ llvmpipe and Vulkan on lavapipe.
   remains) gives the bench no static layer and its 20 animated casters redraw the slots they
   cross in full. The memory rows or the default resolutions need revisiting with the device
   numbers.
+- **AC14 measured on a GPU (GPU campaign, RTX 3080 Ti, GL and Vulkan; `docs/rendering/shadow-budgets.md`).**
+  The desktop tiers missed the walking row (High 7.17 ms, Ultra 8.79 ms of shadow passes at 1440p)
+  for the reason above: no static layer fitted. As the risks allow after AC14, High and Ultra now
+  have the fit freeze on and memory rows of 192 / 576 MB (twice their D32 atlases): High 0.33 ms,
+  Ultra 0.53 ms. Every other cell is within budget on that card (receiver 0.06-0.23 ms, static
+  0.000 ms); the web and mobile reference devices are still to be measured.
