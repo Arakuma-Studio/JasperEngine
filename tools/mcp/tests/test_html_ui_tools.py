@@ -121,6 +121,13 @@ LIMITS.update({"create_ragdoll": 900})
 # http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
 # input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
 # merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
+# shader globals (spec 2026-10-31-shader-globals 6.7): no new tool; get_shader_uniforms names the globals a
+# shader reads and its global_bindings (+51); merged with main (persistence, ui-canvas-group, physics-3d,
+# http): 151 tools measured 107680, the limit set to it
+# platform services (spec 6.9): send_input's `app` events, configure_game_view's device,
+# orientation and language, get_play_state's platform (+468 on its branch); merged with main
+# (ui-canvas-group, physics-3d, http): 151 tools measured 108094 (tool_budget.py), the limit set to it
+# merged by the lead (shader-globals + platform-services): provisional sum, re-measured on the merged tree
 # native-bridge: the native_plugins tool (list / create a plugin for every platform with its Lua mock)
 # measured 1022; merged with main (after the lead's http/ui-canvas-group/physics-3d merge): 152 tools measured 108648, the limit set to it
 TOTAL_LIMIT = 108648

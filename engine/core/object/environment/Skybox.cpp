@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Skybox.h"
+#include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 
@@ -214,6 +215,21 @@ Vector4 Skybox::getShaderParam(const std::string& name) const{
     SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     return ShaderLibraryValues::getParam(sky.shaderUniforms, sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader, name);
+}
+
+bool Skybox::setShaderGlobalBinding(const std::string& member, const std::string& global){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
+
+    if (!ShaderGlobals::setBinding(sky.shaderGlobalBindings, member, global))
+        return false;
+    sky.needUpdateShaderUniforms = true;
+    return true;
+}
+
+std::string Skybox::getShaderGlobalBinding(const std::string& member) const{
+    const SkyboxComponent& sky = getComponent<SkyboxComponent>();
+
+    return ShaderGlobals::getBinding(sky.shaderGlobalBindings, member);
 }
 
 void Skybox::setShaderTexture(const std::string& name, const std::string& path){

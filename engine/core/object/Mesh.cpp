@@ -208,7 +208,8 @@ void Mesh::setMaterial(unsigned int submesh, const Material& material){
         for (size_t t = 0; !reload && t < pass.shaderTextures.size(); t++){
             reload = currentPass.shaderTextures[t].first != pass.shaderTextures[t].first;
         }
-        const bool paramsChanged = current.shaderParams != material.shaderParams || currentPass.shaderParams != pass.shaderParams;
+        const bool paramsChanged = current.shaderParams != material.shaderParams || currentPass.shaderParams != pass.shaderParams ||
+            current.shaderGlobalBindings != material.shaderGlobalBindings;
 
         mesh.submeshes[submesh].material = material;
         mesh.submeshes[submesh].needUpdateTexture = true;

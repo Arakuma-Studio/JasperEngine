@@ -286,16 +286,56 @@ namespace {
         return escapeXmlAttribute(out + '"');
     }
 
-    std::string androidOrientationManifestValue(editor::AndroidOrientation orientation) {
-        switch (orientation) {
-            case editor::AndroidOrientation::Portrait: return "portrait";
-            case editor::AndroidOrientation::Landscape: return "landscape";
-            case editor::AndroidOrientation::SensorPortrait: return "sensorPortrait";
-            case editor::AndroidOrientation::SensorLandscape: return "sensorLandscape";
-            case editor::AndroidOrientation::FullSensor: return "fullSensor";
-            case editor::AndroidOrientation::Unspecified:
-            default: return "";
+    // Platform services a project's scripts use that need an Android permission
+    // (System.vibrate: VIBRATE, System.getInternetReachability: ACCESS_NETWORK_STATE), found
+    // by name in its Lua and C++ sources; a mention in a comment adds a harmless permission
+    struct ScriptServiceUse {
+        bool vibrate = false;
+        bool reachability = false;
+        fs::path vibrateFile;
+        fs::path reachabilityFile;
+    };
+
+    ScriptServiceUse scanScriptServiceUse(const std::vector<fs::path>& roots) {
+        ScriptServiceUse use;
+        std::error_code ec;
+        std::set<fs::path> seen;
+        for (const fs::path& root : roots) {
+            if (!fs::is_directory(root, ec)) continue;
+            fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+            for (; !ec && it != end; it.increment(ec)) {
+                const fs::path& path = it->path();
+                const std::string name = path.filename().string();
+                std::error_code entryError;
+                if (it->is_directory(entryError)) {
+                    if (!name.empty() && name[0] == '.') it.disable_recursion_pending();
+                    continue;
+                }
+                std::string extension = path.extension().string();
+                for (char& c : extension) c = (char)std::tolower((unsigned char)c);
+                const bool lua = extension == ".lua";
+                const bool cpp = extension == ".cpp" || extension == ".cc" || extension == ".cxx" || extension == ".h" || extension == ".hpp";
+                if (!lua && !cpp) continue;
+                if (!seen.insert(fs::weakly_canonical(path, entryError)).second) continue;
+                const uintmax_t size = it->file_size(entryError);
+                if (entryError || size > 4 * 1024 * 1024) continue;
+                std::ifstream file(path, std::ios::binary);
+                const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+                auto mentions = [&](const char* luaName, const char* cppCall) {
+                    return lua ? text.find(luaName) != std::string::npos : text.find(cppCall) != std::string::npos;
+                };
+                if (!use.vibrate && (mentions("System.vibrate", "vibrate(") || mentions("System:vibrate", ".vibrate("))) {
+                    use.vibrate = true;
+                    use.vibrateFile = path;
+                }
+                if (!use.reachability && mentions("getInternetReachability", "getInternetReachability(")) {
+                    use.reachability = true;
+                    use.reachabilityFile = path;
+                }
+                if (use.vibrate && use.reachability) return use;
+            }
         }
+        return use;
     }
 
     const char* androidPermissionManifestName(const std::string& key) {
@@ -409,6 +449,36 @@ namespace {
         if (stringStart == std::string::npos || stringEnd == std::string::npos) return;
         stringStart += std::string("<string>").size();
         plist.replace(stringStart, stringEnd - stringStart, escapeXmlAttribute(value));
+    }
+
+    // Sets a top-level key to an array of strings, replacing its value or adding the key
+    void replacePlistStringArray(std::string& plist, const std::string& key, const std::vector<std::string>& values) {
+        std::string array = "\t<array>\n";
+        for (const std::string& value : values) array += "\t\t<string>" + escapeXmlAttribute(value) + "</string>\n";
+        array += "\t</array>";
+
+        const std::string keyTag = "\t<key>" + key + "</key>";
+        const size_t keyPos = plist.find(keyTag);
+        if (keyPos == std::string::npos) {
+            const size_t dictEnd = plist.rfind("</dict>");
+            if (dictEnd == std::string::npos) return;
+            plist.insert(dictEnd, keyTag + "\n" + array + "\n");
+            return;
+        }
+        const size_t valueStart = plist.find_first_not_of(" \t\r\n", keyPos + keyTag.size());
+        if (valueStart == std::string::npos) return;
+        size_t valueEnd = std::string::npos;
+        if (plist.compare(valueStart, 7, "<array>") == 0) {
+            valueEnd = plist.find("</array>", valueStart);
+            if (valueEnd != std::string::npos) valueEnd += std::string("</array>").size();
+        } else if (plist.compare(valueStart, 8, "<array/>") == 0) {
+            valueEnd = valueStart + 8;
+        }
+        if (valueEnd == std::string::npos) return;
+        // the value's own indentation is in `array`
+        const size_t lineStart = plist.rfind('\n', valueStart);
+        const size_t replaceStart = lineStart == std::string::npos ? valueStart : lineStart + 1;
+        plist.replace(replaceStart, valueEnd - replaceStart, array);
     }
 
     // Removes a top-level key holding a string, if present
@@ -3440,13 +3510,24 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         ? "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    xmlns:tools=\"http://schemas.android.com/tools\">\n\n"
         : "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n\n";
     bool wrotePermission = false;
+    // what the scripts' platform services need, on top of the chosen permissions
+    std::set<std::string> permissions = android.permissions;
+    const ScriptServiceUse serviceUse = scanScriptServiceUse(webSourceRoots(project));
+    if (serviceUse.vibrate && permissions.insert("vibrate").second) {
+        Out::info("Android: added the VIBRATE permission (System.vibrate in %s)", serviceUse.vibrateFile.filename().string().c_str());
+    }
+    // with INTERNET, ACCESS_NETWORK_STATE is written anyway (below)
+    if (serviceUse.reachability && !internet && permissions.insert("access_network_state").second) {
+        Out::info("Android: added the ACCESS_NETWORK_STATE permission (System.getInternetReachability in %s)",
+                  serviceUse.reachabilityFile.filename().string().c_str());
+    }
     if (internet) {
         manifest += "    <uses-permission android:name=\"android.permission.INTERNET\" />\n";
         // a normal permission (no prompt): lets Http tell "offline" from a DNS failure
         manifest += "    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />\n";
         wrotePermission = true;
     }
-    for (const std::string& permission : android.permissions) {
+    for (const std::string& permission : permissions) {
         // written above, once
         if (permission == "internet" || (internet && permission == "access_network_state")) continue;
         const char* manifestName = androidPermissionManifestName(permission);
@@ -3476,11 +3557,22 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     }
     manifest += "        <activity android:name=\".MainActivity\"\n";
     manifest += "            android:label=\"@string/app_name\"\n";
-    manifest += "            android:configChanges=\"orientation|keyboardHidden|keyboard|screenSize\"\n";
+    // rotations, locale and display changes reach the running game, which never restarts
+    manifest += "            android:configChanges=\"mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|"
+                "screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density\"\n";
     manifest += "            android:theme=\"@style/AppTheme\"\n";
-    const std::string orientation = androidOrientationManifestValue(android.orientation);
-    if (!orientation.empty()) {
-        manifest += "            android:screenOrientation=\"" + orientation + "\"\n";
+    // Player > Resolution and Presentation: the default orientation, or auto-rotation within the
+    // allowed ones (the user's rotation lock kept); scripts change it with Screen.orientation
+    {
+        const PresentationSettings& presentation = project->getPresentationSettings();
+        bool unsupported = false;
+        const int requested = PlatformRules::androidRequestedOrientation(presentation.defaultOrientation,
+            presentation.effectiveAllowedOrientations(), &unsupported);
+        if (unsupported) {
+            Out::warning("Android cannot restrict auto-rotation to the allowed orientations of Player settings; "
+                         "the export allows all four (fullUser)");
+        }
+        manifest += std::string("            android:screenOrientation=\"") + PlatformRules::androidManifestOrientation(requested) + "\"\n";
     }
     manifest += "            android:exported=\"true\">\n";
     manifest += "            <meta-data android:name=\"android.app.lib_name\" android:value=\"jasperengine-android\" />\n";
@@ -3534,9 +3626,8 @@ bool editor::Exporter::writeAndroidProjectSettings() {
 
     std::string activity;
     if (!readText(mainActivityPath, activity)) return false;
-    if ((!android.fullscreen && (activity.find("WindowCompat.setDecorFitsSystemWindows(getWindow(), false);") == std::string::npos
-            || activity.find("\t\thideSystemUI();\n") == std::string::npos))
-            || (android.keepScreenOn && activity.find("\t\tsuper.onCreate(savedInstanceState);") == std::string::npos)) {
+    if (!android.fullscreen && (activity.find("WindowCompat.setDecorFitsSystemWindows(getWindow(), false);") == std::string::npos
+            || activity.find("\t\thideSystemUI();\n") == std::string::npos)) {
         setError("Incompatible Android Activity export template");
         return false;
     }
@@ -3551,10 +3642,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
             "\t\tWindowCompat.setDecorFitsSystemWindows(getWindow(), true);");
         replaceAll(activity, "\t\thideSystemUI();\n", "");
     }
-    const std::string superOnCreate = "\t\tsuper.onCreate(savedInstanceState);";
-    if (android.keepScreenOn && activity.find("FLAG_KEEP_SCREEN_ON") == std::string::npos) {
-        replaceAll(activity, superOnCreate, "\t\tgetWindow().addFlags(LayoutParams.FLAG_KEEP_SCREEN_ON);\n\n" + superOnCreate);
-    }
+    // the screen stays on through Screen.sleepTimeout (Player > Keep Screen On), not a patch here
     FileUtils::writeIfChanged(mainActivityPath, activity);
 
     return true;
@@ -3843,6 +3931,23 @@ bool editor::Exporter::writeAppleProjectSettings() {
         replacePlistStringValue(iosPlist, "CFBundleVersion",
             Project::toAppleVersion(project->getApplicationBuild(ios.buildNumber)));
         replacePlistBoolValue(iosPlist, "UIStatusBarHidden", ios.hideStatusBar);
+        // Player > Resolution and Presentation: the allowed set, the default first (a fixed
+        // default alone); iPad multitasking ignores orientation locks unless the app is full screen
+        {
+            const PresentationSettings& presentation = project->getPresentationSettings();
+            const uint8_t allowed = presentation.effectiveAllowedOrientations();
+            const std::vector<std::string> orientations =
+                PlatformRules::iosPlistOrientations(presentation.defaultOrientation, allowed);
+            replacePlistStringArray(iosPlist, "UISupportedInterfaceOrientations", orientations);
+            replacePlistStringArray(iosPlist, "UISupportedInterfaceOrientations~ipad", orientations);
+            const bool allFour = !PlatformRules::isFixedOrientation(presentation.defaultOrientation) &&
+                allowed == PlatformRules::ALL_ORIENTATIONS;
+            replacePlistBoolValue(iosPlist, "UIRequiresFullScreen", !allFour);
+            if (!allFour) {
+                Out::info("iOS: UIRequiresFullScreen is on (iPad Split View would ignore the orientations of Player settings "
+                          "unless all four are allowed)");
+            }
+        }
         replacePlistBoolValue(iosPlist, "CADisableMinimumFrameDurationOnPhone", ios.supportsHighRefreshRate);
         writeAppTransportSecurity(iosPlist, project->getApplicationSettings().allowInsecureHttp);
         if (iosAdMob) {

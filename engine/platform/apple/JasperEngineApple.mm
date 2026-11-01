@@ -9,6 +9,17 @@
 #import "Renderer.h"
 #import <Foundation/Foundation.h>
 
+#include "util/PlatformRules.h"
+
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/sysctl.h>
+#include <sys/utsname.h>
+#include <cmath>
+#include <cstdlib>
+
 #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
@@ -20,6 +31,7 @@
 #if TARGET_OS_IPHONE
 #import <UIKit/UIKit.h>
 #import <MetalKit/MetalKit.h>
+#import <AudioToolbox/AudioToolbox.h>
 
 #import "ios/EngineView.h"
 
@@ -595,4 +607,315 @@ void JasperEngineApple::showInterstitialAd(){
 #elif TARGET_OS_IPHONE
     warnNoAdMob();
 #endif
+}
+
+// ------------------------------------------------------------------ platform services
+// The engine runs on the main thread (MTKView's draw callback, UIKit and AppKit notifications),
+// where every UIKit and AppKit call below belongs.
+
+namespace {
+
+NSString* appleString(const std::string& utf8){
+    return [[NSString alloc] initWithBytes:utf8.data() length:utf8.size() encoding:NSUTF8StringEncoding];
+}
+
+NSString* bundleValue(NSString* key){
+    id value = [[NSBundle mainBundle] objectForInfoDictionaryKey:key];
+    return [value isKindOfClass:[NSString class]] ? (NSString*)value : nil;
+}
+
+#if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
+// keeps the display awake while held
+id<NSObject> keepScreenOnActivity = nil;
+#endif
+
+// an address that is not link-local (fe80::/10, 169.254/16): the interface is on a network
+bool routableAddress(const sockaddr* address){
+    if (address->sa_family == AF_INET){
+        const uint32_t ip = ntohl(reinterpret_cast<const sockaddr_in*>(address)->sin_addr.s_addr);
+        return (ip >> 16) != 0xA9FE && ip != 0;
+    }
+    if (address->sa_family == AF_INET6){
+        const uint8_t* bytes = reinterpret_cast<const sockaddr_in6*>(address)->sin6_addr.s6_addr;
+        return !(bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80);
+    }
+    return false;
+}
+
+} // namespace
+
+bool JasperEngineApple::platformOpenURL(const std::string& url){
+    NSString* text = appleString(url);
+    NSURL* nsurl = text ? [NSURL URLWithString:text] : nil;
+    if (!nsurl){
+        jasperengine::Log::error("System.openURL: \"%s\" is not a URL", url.c_str());
+        return false;
+    }
+#if TARGET_OS_IPHONE
+    // true when the request was made: canOpenURL needs LSApplicationQueriesSchemes for other apps
+    [[UIApplication sharedApplication] openURL:nsurl options:@{} completionHandler:^(BOOL success){
+        if (!success) NSLog(@"System.openURL: nothing opened %@", nsurl);
+    }];
+    return true;
+#else
+    return [[NSWorkspace sharedWorkspace] openURL:nsurl];
+#endif
+}
+
+std::vector<std::string> JasperEngineApple::getPreferredLocales(){
+    std::vector<std::string> tags;
+    for (NSString* language in [NSLocale preferredLanguages]){
+        const std::string tag = jasperengine::LocaleRules::normalize(appleUtf8String(language));
+        if (!tag.empty()) tags.push_back(tag);
+    }
+    return tags.empty() ? System::getPreferredLocales() : tags;
+}
+
+std::string JasperEngineApple::getRegionOverride(){
+    NSLocale* locale = [NSLocale currentLocale];
+    NSString* region = nil;
+#if TARGET_OS_IPHONE
+    if (@available(iOS 17, *)){
+        region = locale.regionCode;
+    }else{
+        region = locale.countryCode;
+    }
+#else
+    if (@available(macOS 14, *)){
+        region = locale.regionCode;
+    }else{
+        region = locale.countryCode;
+    }
+#endif
+    return region ? appleUtf8String(region) : std::string();
+}
+
+std::string JasperEngineApple::getAppVersion(){
+    NSString* version = bundleValue(@"CFBundleShortVersionString");
+    return version ? appleUtf8String(version) : System::getAppVersion();
+}
+
+int64_t JasperEngineApple::getAppBuild(){
+    NSString* build = bundleValue(@"CFBundleVersion");
+    // "42" -> 42, "1.2" -> 1
+    return build ? jasperengine::OsRules::parseBuildNumber(appleUtf8String(build)) : System::getAppBuild();
+}
+
+std::string JasperEngineApple::getAppIdentifier(){
+    NSString* identifier = [[NSBundle mainBundle] bundleIdentifier];
+    return identifier ? appleUtf8String(identifier) : System::getAppIdentifier();
+}
+
+std::string JasperEngineApple::getAppName(){
+    NSString* name = bundleValue(@"CFBundleDisplayName") ?: bundleValue(@"CFBundleName");
+    return name ? appleUtf8String(name) : System::getAppName();
+}
+
+std::string JasperEngineApple::getOperatingSystem(){
+#if TARGET_OS_IPHONE
+    // Unity's format: "iOS 17.1" (iPadOS reports "iPadOS")
+    UIDevice* device = [UIDevice currentDevice];
+    return appleUtf8String(device.systemName) + " " + appleUtf8String(device.systemVersion);
+#else
+    return "Mac OS X " + getOperatingSystemVersion();
+#endif
+}
+
+std::string JasperEngineApple::getOperatingSystemVersion(){
+#if TARGET_OS_IPHONE
+    return appleUtf8String([UIDevice currentDevice].systemVersion);
+#else
+    const NSOperatingSystemVersion version = [[NSProcessInfo processInfo] operatingSystemVersion];
+    return std::to_string((long)version.majorVersion) + "." + std::to_string((long)version.minorVersion) + "." +
+           std::to_string((long)version.patchVersion);
+#endif
+}
+
+std::string JasperEngineApple::getDeviceModel(){
+#if TARGET_OS_IPHONE
+    // the simulator runs on the Mac's CPU and names the device it simulates
+    if (const char* simulated = std::getenv("SIMULATOR_MODEL_IDENTIFIER")){
+        if (simulated[0]) return simulated;
+    }
+    utsname name{};
+    if (uname(&name) == 0 && name.machine[0]) return name.machine;
+    return appleUtf8String([UIDevice currentDevice].model);
+#else
+    char model[256] = {0};
+    size_t size = sizeof(model);
+    if (sysctlbyname("hw.model", model, &size, nullptr, 0) == 0 && model[0]) return model;
+    return "Mac";
+#endif
+}
+
+jasperengine::DeviceType JasperEngineApple::getDeviceType(){
+#if TARGET_OS_IPHONE
+    return jasperengine::DeviceType::Handheld;
+#else
+    return jasperengine::DeviceType::Desktop;
+#endif
+}
+
+int JasperEngineApple::getSystemMemorySize(){
+    return (int)([[NSProcessInfo processInfo] physicalMemory] / (1024ULL * 1024ULL));
+}
+
+jasperengine::NetworkReachability JasperEngineApple::getInternetReachability(){
+    // a network interface that is up with a routable address: Wi-Fi or Ethernet (en*) is the
+    // local area network, pdp_ip* the carrier's data network (Unity's two kinds)
+    ifaddrs* addresses = nullptr;
+    if (getifaddrs(&addresses) != 0) return jasperengine::NetworkReachability::NotReachable;
+    bool lan = false;
+    bool carrier = false;
+    for (ifaddrs* it = addresses; it; it = it->ifa_next){
+        if (!it->ifa_addr || !it->ifa_name) continue;
+        const unsigned flags = it->ifa_flags;
+        if (!(flags & IFF_UP) || !(flags & IFF_RUNNING) || (flags & IFF_LOOPBACK)) continue;
+        if (!routableAddress(it->ifa_addr)) continue;
+        const std::string name = it->ifa_name;
+        if (name.compare(0, 6, "pdp_ip") == 0) carrier = true;
+        else if (name.compare(0, 2, "en") == 0 || name.compare(0, 6, "bridge") == 0) lan = true;
+#if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
+        // VPNs and other tunnels of a Mac still need a network under them
+        else if (name.compare(0, 4, "utun") != 0 && name.compare(0, 4, "ipsec") != 0) lan = true;
+#endif
+    }
+    freeifaddrs(addresses);
+    if (lan) return jasperengine::NetworkReachability::ReachableViaLocalAreaNetwork;
+    if (carrier) return jasperengine::NetworkReachability::ReachableViaCarrierDataNetwork;
+    return jasperengine::NetworkReachability::NotReachable;
+}
+
+bool JasperEngineApple::vibrate(int milliseconds){
+#if TARGET_OS_IPHONE
+    // iPads have no vibration motor; the length is fixed on iOS
+    if ([UIDevice currentDevice].userInterfaceIdiom != UIUserInterfaceIdiomPhone) return false;
+    AudioServicesPlaySystemSound(kSystemSoundID_Vibrate);
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool JasperEngineApple::hapticFeedback(jasperengine::HapticFeedback type){
+#if TARGET_OS_IPHONE
+    if ([UIDevice currentDevice].userInterfaceIdiom != UIUserInterfaceIdiomPhone) return false;
+    switch (type){
+        case jasperengine::HapticFeedback::Light:
+        case jasperengine::HapticFeedback::Medium:
+        case jasperengine::HapticFeedback::Heavy: {
+            const UIImpactFeedbackStyle style = type == jasperengine::HapticFeedback::Light ? UIImpactFeedbackStyleLight
+                : type == jasperengine::HapticFeedback::Medium ? UIImpactFeedbackStyleMedium : UIImpactFeedbackStyleHeavy;
+            UIImpactFeedbackGenerator* generator = [[UIImpactFeedbackGenerator alloc] initWithStyle:style];
+            [generator impactOccurred];
+            return true;
+        }
+        case jasperengine::HapticFeedback::Selection: {
+            UISelectionFeedbackGenerator* generator = [[UISelectionFeedbackGenerator alloc] init];
+            [generator selectionChanged];
+            return true;
+        }
+        default: {
+            const UINotificationFeedbackType notification = type == jasperengine::HapticFeedback::NotificationSuccess
+                ? UINotificationFeedbackTypeSuccess
+                : type == jasperengine::HapticFeedback::NotificationWarning ? UINotificationFeedbackTypeWarning : UINotificationFeedbackTypeError;
+            UINotificationFeedbackGenerator* generator = [[UINotificationFeedbackGenerator alloc] init];
+            [generator notificationOccurred:notification];
+            return true;
+        }
+    }
+#else
+    // Force Touch trackpads only
+    id<NSHapticFeedbackPerformer> performer = [NSHapticFeedbackManager defaultPerformer];
+    if (!performer) return false;
+    const NSHapticFeedbackPattern pattern = (type == jasperengine::HapticFeedback::Selection || type == jasperengine::HapticFeedback::Light)
+        ? NSHapticFeedbackPatternAlignment
+        : (type == jasperengine::HapticFeedback::NotificationSuccess || type == jasperengine::HapticFeedback::NotificationWarning ||
+           type == jasperengine::HapticFeedback::NotificationError) ? NSHapticFeedbackPatternLevelChange : NSHapticFeedbackPatternGeneric;
+    [performer performFeedbackPattern:pattern performanceTime:NSHapticFeedbackPerformanceTimeNow];
+    return true;
+#endif
+}
+
+float JasperEngineApple::getScreenDpi(){
+#if TARGET_OS_IPHONE
+    // UIKit tells no physical size: 163 points per inch on iPhones, 132 on iPads (an approximation)
+    const bool pad = [UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad;
+    return (float)([UIScreen mainScreen].scale * (pad ? 132.0 : 163.0));
+#else
+    NSScreen* screen = Renderer.view.window.screen ?: [NSScreen mainScreen];
+    NSNumber* number = screen.deviceDescription[@"NSScreenNumber"];
+    if (!number) return 0.0f;
+    const CGDirectDisplayID display = (CGDirectDisplayID)[number unsignedIntValue];
+    const CGSize millimeters = CGDisplayScreenSize(display);
+    CGDisplayModeRef mode = CGDisplayCopyDisplayMode(display);
+    if (!mode) return 0.0f;
+    const size_t pixels = CGDisplayModeGetPixelWidth(mode);
+    CGDisplayModeRelease(mode);
+    if (millimeters.width <= 0.0 || pixels == 0) return 0.0f;
+    return (float)((double)pixels * 25.4 / millimeters.width);
+#endif
+}
+
+float JasperEngineApple::getRefreshRate(){
+#if TARGET_OS_IPHONE
+    const NSInteger fps = [UIScreen mainScreen].maximumFramesPerSecond;
+#else
+    NSScreen* screen = Renderer.view.window.screen ?: [NSScreen mainScreen];
+    const NSInteger fps = screen ? screen.maximumFramesPerSecond : 0;
+#endif
+    return fps > 0 ? (float)fps : 60.0f;
+}
+
+void JasperEngineApple::setKeepScreenOn(bool keepOn){
+#if TARGET_OS_IPHONE
+    [UIApplication sharedApplication].idleTimerDisabled = keepOn ? YES : NO;
+#else
+    if (keepOn && !keepScreenOnActivity){
+        keepScreenOnActivity = [[NSProcessInfo processInfo]
+            beginActivityWithOptions:(NSActivityIdleDisplaySleepDisabled | NSActivityUserInitiatedAllowingIdleSystemSleep)
+                              reason:@"Screen.sleepTimeout = SleepTimeout.NeverSleep"];
+    }else if (!keepOn && keepScreenOnActivity){
+        [[NSProcessInfo processInfo] endActivity:keepScreenOnActivity];
+        keepScreenOnActivity = nil;
+    }
+#endif
+}
+
+void JasperEngineApple::applyOrientationPolicy(jasperengine::ScreenOrientation requested, uint8_t allowedMask){
+#if TARGET_OS_IPHONE
+    // the view controller reads Screen's policy (Renderer supportedInterfaceOrientations)
+    [[NSNotificationCenter defaultCenter] postNotificationName:JasperEngineOrientationPolicyNotification object:nil];
+#endif
+}
+
+jasperengine::ScreenOrientation JasperEngineApple::getScreenOrientation(){
+#if TARGET_OS_IPHONE
+    UIWindowScene* scene = Renderer.view.window.windowScene;
+    if (scene && scene.interfaceOrientation != UIInterfaceOrientationUnknown){
+        return jasperengine::PlatformRules::orientationFromIos((int)scene.interfaceOrientation);
+    }
+#endif
+    return System::getScreenOrientation();
+}
+
+jasperengine::DeviceOrientation JasperEngineApple::getDeviceOrientation(){
+#if TARGET_OS_IPHONE
+    // UIDeviceOrientation has Unity's values (FaceUp 5, FaceDown 6 included)
+    const UIDeviceOrientation orientation = [UIDevice currentDevice].orientation;
+    if (orientation >= UIDeviceOrientationPortrait && orientation <= UIDeviceOrientationFaceDown){
+        return (jasperengine::DeviceOrientation)orientation;
+    }
+    return jasperengine::DeviceOrientation::Unknown;
+#else
+    return jasperengine::DeviceOrientation::Unknown;
+#endif
+}
+
+void JasperEngineApple::applyFramePacing(const jasperengine::FramePacing& pacing){
+    [Renderer applyFramePacing];
+}
+
+bool JasperEngineApple::canDisableVSync(){
+    return false;
 }

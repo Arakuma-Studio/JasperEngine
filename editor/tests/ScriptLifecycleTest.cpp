@@ -294,11 +294,16 @@ TEST_F(ScriptLifecycleTest, PauseAndFocusMessages) {
     Engine::systemPause();
     EXPECT_EQ(takeLog(), "") << "not a running scene";
     Engine::systemResume();
+    Engine::systemFocus(true);
+    EXPECT_EQ(takeLog(), "");
     Engine::setScene(scene);
     Engine::systemPause();
-    EXPECT_EQ(takeLog(), "pausetrueX1") << "enabled or not, active objects only";
+    // platform-services: Unity's order, the focus is lost before the pause
+    EXPECT_EQ(takeLog(), "focusfalseX1 pausetrueX1") << "enabled or not, active objects only";
     Engine::systemResume();
     EXPECT_EQ(takeLog(), "pausefalseX1");
+    Engine::systemFocus(true);
+    EXPECT_EQ(takeLog(), "focustrueX1");
     Engine::systemFocus(false);
     Engine::systemFocus(false);
     EXPECT_EQ(takeLog(), "focusfalseX1") << "only changes";

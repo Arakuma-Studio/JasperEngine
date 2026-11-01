@@ -361,6 +361,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/JasperEngineWin.cpp
             ${PLATFORM_ROOT}/WindowWin.cpp
             ${PLATFORM_ROOT}/SystemWin.cpp
+            ${PLATFORM_ROOT}/HostServicesWin.cpp
             ${PLATFORM_ROOT}/WinInputRouter.cpp
             ${PLATFORM_ROOT}/GamepadWin.cpp
             ${PLATFORM_ROOT}/main.cpp
@@ -371,7 +372,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             gdi32
             shell32
             imm32 # IME composition for HTML UI text fields (WinInputRouter)
+            ole32 # INetworkListManager (System.getInternetReachability)
+            uuid
+            advapi32 # the BIOS product name (System.getDeviceModel)
         )
+
+        # HostServices.h, shared with the editor
+        include_directories(${JASPERENGINE_ROOT}/platform/common)
 
         if(GRAPHIC_BACKEND STREQUAL "vulkan")
             # Device and swapchain are shared with the other desktops
@@ -433,6 +440,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/JasperEngineLinux.cpp
             ${PLATFORM_ROOT}/WindowLinux.cpp
             ${PLATFORM_ROOT}/SystemLinux.cpp
+            ${PLATFORM_ROOT}/HostServicesLinux.cpp
             ${PLATFORM_ROOT}/LinuxInputRouter.cpp
             ${PLATFORM_ROOT}/GamepadLinux.cpp
             ${PLATFORM_ROOT}/GamepadDB.cpp
@@ -547,12 +555,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
             # Gamepads come from the same GameController code iOS and the editor use
             include_directories(${JASPERENGINE_ROOT}/platform/apple)
+            # HostServices.h, shared with the editor
+            include_directories(${JASPERENGINE_ROOT}/platform/common)
 
             list(APPEND PLATFORM_SOURCE
                 ${PLATFORM_ROOT}/JasperEngineMac.h
                 ${PLATFORM_ROOT}/JasperEngineMac.mm
                 ${PLATFORM_ROOT}/WindowMac.mm
                 ${PLATFORM_ROOT}/SystemMac.mm
+                ${PLATFORM_ROOT}/HostServicesMac.mm
                 ${PLATFORM_ROOT}/MacInputRouter.mm
                 ${PLATFORM_ROOT}/MacTextInputClient.mm
                 ${PLATFORM_ROOT}/main.mm
@@ -884,6 +895,7 @@ set(JASPERENGINE_SRCS
     core/Log.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
+    core/Screen.cpp
     core/System.cpp
     core/action/Action.cpp
     core/action/AlphaTween.cpp
@@ -1123,6 +1135,7 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderDataSerializer.cpp
     core/shader/ShaderManifest.cpp
     core/shader/ShaderUniforms.cpp
+    core/shader/ShaderGlobals.cpp
     core/shader/ShaderVariantCollection.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
@@ -1164,8 +1177,10 @@ set(JASPERENGINE_SRCS
     core/util/Color.cpp
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
+    core/util/FrameLimiter.cpp
     core/util/GlyphAtlas.cpp
     core/util/LunaSVGRuntime.cpp
+    core/util/PlatformRules.cpp
     core/util/NumberText.cpp
     core/util/PostColorLut.cpp
     core/util/STBText.cpp

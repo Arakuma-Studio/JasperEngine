@@ -11,7 +11,8 @@
 namespace jasperengine {
 
     struct D3D11ContextConfig {
-        bool vsync = true;
+        // Present's sync interval: 0 = no vsync, N = every Nth vblank (Engine.vSyncCount)
+        int swapInterval = 1;
     };
 
     // One window and one device per process, so the state is static like
@@ -28,6 +29,9 @@ namespace jasperengine {
         // and sokol skips the pass.
         static void beginFrame();
         static void endFrame();
+
+        // Engine.vSyncCount: 0..4, used from the next present
+        static void setSwapInterval(int interval);
 
         static sg_environment environment();
         static sg_swapchain swapchain();

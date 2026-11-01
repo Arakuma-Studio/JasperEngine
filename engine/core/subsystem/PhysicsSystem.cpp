@@ -284,7 +284,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     // Jolt globals are initialized once per process (see helper).
     JoltShapeBuilder::ensureJoltGlobalInit();
 
-    // the project setting physics3D at the time the scene is made (editor and exports alike)
+    // the project setting physics3DWorld at the time the scene is made (editor and exports alike)
     maxBodies3D = worldCapacity3D().maxBodies;
     maxBodyPairs3D = worldCapacity3D().maxBodyPairs;
     maxContactConstraints3D = worldCapacity3D().maxContactConstraints;
@@ -2668,7 +2668,7 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
         objectLayerTable3D->release(layer);
         if (!reportedBodyLimit3D){
             reportedBodyLimit3D = true;
-            Log::error("Cannot create the 3D body of '%s': the world holds %u bodies at most. Raise Project Settings > Physics > 3D World Capacity > Max Bodies (physics3D.maxBodies).",
+            Log::error("Cannot create the 3D body of '%s': the world holds %u bodies at most. Raise Project Settings > Physics > 3D World Capacity > Max Bodies (physics3DWorld.maxBodies).",
                        scene->getEntityName(entity).c_str(), maxBodies3D);
         }
         return false;
@@ -2992,7 +2992,7 @@ void PhysicsSystem::syncTriggerCompanion3D(Entity entity, RigidbodyComponent& bo
         objectLayerTable3D->release(layer);
         if (!reportedBodyLimit3D){
             reportedBodyLimit3D = true;
-            Log::error("Cannot create the trigger colliders' body of '%s': the world holds %u bodies at most. Raise Project Settings > Physics > 3D World Capacity > Max Bodies (physics3D.maxBodies).",
+            Log::error("Cannot create the trigger colliders' body of '%s': the world holds %u bodies at most. Raise Project Settings > Physics > 3D World Capacity > Max Bodies (physics3DWorld.maxBodies).",
                        scene->getEntityName(entity).c_str(), maxBodies3D);
         }
         return;
@@ -4292,15 +4292,15 @@ void PhysicsSystem::reportUpdateErrors3D(JPH::EPhysicsUpdateError errors){
     }
     reportedUpdateErrors3D |= bits;
     if (bits & (uint32_t)JPH::EPhysicsUpdateError::ManifoldCacheFull){
-        Log::error("3D physics: too many contacts, some were dropped (the contact cache holds %u). Raise Project Settings > Physics > 3D World Capacity > Max Contact Constraints (physics3D.maxContactConstraints).",
+        Log::error("3D physics: too many contacts, some were dropped (the contact cache holds %u). Raise Project Settings > Physics > 3D World Capacity > Max Contact Constraints (physics3DWorld.maxContactConstraints).",
                    maxContactConstraints3D);
     }
     if (bits & (uint32_t)JPH::EPhysicsUpdateError::BodyPairCacheFull){
-        Log::error("3D physics: too many touching body pairs, some contacts were dropped (the world holds %u pairs). Raise Project Settings > Physics > 3D World Capacity > Max Body Pairs (physics3D.maxBodyPairs).",
+        Log::error("3D physics: too many touching body pairs, some contacts were dropped (the world holds %u pairs). Raise Project Settings > Physics > 3D World Capacity > Max Body Pairs (physics3DWorld.maxBodyPairs).",
                    maxBodyPairs3D);
     }
     if (bits & (uint32_t)JPH::EPhysicsUpdateError::ContactConstraintsFull){
-        Log::error("3D physics: too many contact constraints, some contacts were dropped (the world holds %u). Raise Project Settings > Physics > 3D World Capacity > Max Contact Constraints (physics3D.maxContactConstraints).",
+        Log::error("3D physics: too many contact constraints, some contacts were dropped (the world holds %u). Raise Project Settings > Physics > 3D World Capacity > Max Contact Constraints (physics3DWorld.maxContactConstraints).",
                    maxContactConstraints3D);
     }
 }

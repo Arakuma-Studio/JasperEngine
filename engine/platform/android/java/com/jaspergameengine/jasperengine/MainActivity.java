@@ -83,6 +83,9 @@ public class MainActivity extends GameActivity {
 
 		super.onCreate(savedInstanceState);
 
+		// display rotation and device orientation listeners (Screen.orientation, Input.deviceOrientation)
+		JasperPlatform.onCreate(this);
+
 		// native plugins: their onJasperInit, then the lifecycle listeners (JasperNative)
 		JasperNative.dispatchInit(this, savedInstanceState);
 	}
@@ -99,11 +102,13 @@ public class MainActivity extends GameActivity {
 	protected void onResume() {
 		super.onResume();
 		hideSystemUI();
+		JasperPlatform.onResume(this);
 		JasperNative.dispatchResume();
 	}
 
 	@Override
 	protected void onPause() {
+		JasperPlatform.onPause(this);
 		super.onPause();
 		JasperNative.dispatchPause();
 	}
@@ -117,6 +122,7 @@ public class MainActivity extends GameActivity {
 	@Override
 	protected void onDestroy() {
 		JasperNative.dispatchDestroy(this);
+		JasperPlatform.onDestroy(this);
 		super.onDestroy();
 	}
 
