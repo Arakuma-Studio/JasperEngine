@@ -213,6 +213,21 @@ TEST(SoloudStreamSeek, WavFlacAndMp3LoopsWrapToTheirLoopPoint) {
     fs::remove(wav);
 }
 
+TEST(SoloudStreamSeek, AnOggLoopWrapsToItsLoopPoint) {
+    // The Ogg seek decoded the frame it sought for stb_vorbis_get_samples (which WavStream does
+    // not use), so the next getAudio dropped it, and kept the frame it had before the seek: the
+    // loop went on from the wrong place
+    const std::string path = fixture("spaceEngineLow_003.ogg");
+    jasperengine::EngineWavStream stream;
+    ASSERT_TRUE(stream.open(path));
+    SoLoud::Wav whole;
+    ASSERT_EQ(whole.load(path.c_str()), SoLoud::SO_NO_ERROR);
+    for (double point : {0.25, 1.0, 3.3}) {
+        SCOPED_TRACE(point);
+        expectLoopWrapsToItsPoint(stream, whole, point, 1e-4f);
+    }
+}
+
 // ---- S-3: the whole-clip loaders stay within the clip -------------------------------------------
 
 TEST(SoloudWavLoader, AnOggThatDecodesPastItsLastGranuleLoadsAtItsLength) {
