@@ -75,16 +75,23 @@ namespace jasperengine::anim{
     // one per morph target of the MeshComponent (MAX_MORPHTARGETS); latticeOffsets: the full cage
     // by flat index. Keyed by Entity: an entry is dropped when its entity is destroyed (a renamed
     // or reparented entity that fails the bind validation keeps it, R2).
-    // The rest of one property of an entity (anim-properties spec 5.8): the whole value in key
-    // space when first bound, the binding it was read through (what a preview restore writes
-    // back) and the row's snapshot (a sprite's texture rect, an anchor preset)
+    // The rest of one property of an entity (anim-properties spec 5.8): the whole value when
+    // first bound, in key space (what blends use) and as stored (what a preview restore writes
+    // back: exact, no key-space round trip), the binding it was read through and the row's
+    // snapshot (a sprite's texture rect, an anchor preset)
     struct JASPERENGINE_API PropertyRest{
         bool has = false;
         float value[4] = {0, 0, 0, 0};
+        float stored[4] = {0, 0, 0, 0};
         bool hasSnapshot = false;
         float snapshot[4] = {0, 0, 0, 0};
         PropertyBinding binding;
     };
+    // reads a bound property's rest now (stored, key space, the row's snapshot); false when it
+    // cannot be read (`rest` unchanged then). The binding is not copied
+    JASPERENGINE_API bool readPropertyRest(Scene* scene, Entity entity, const PropertyBinding& binding, PropertyRest& rest);
+    // writes a rest back exactly: its stored value through its binding, then the row's snapshot
+    JASPERENGINE_API bool restorePropertyRest(Scene* scene, Entity entity, const PropertyRest& rest);
 
     struct JASPERENGINE_API ChannelRest{
         bool hasTransform = false;
@@ -131,6 +138,9 @@ namespace jasperengine::anim{
         // that did not bind (missing components are looked for again like unresolved paths)
         std::vector<PropertyBinding> properties;
         size_t unboundProperties = 0;
+        // bound tracks on Lua script fields: their script instance is checked every update (a
+        // reload or a removed script binds again, spec P4)
+        size_t scriptProperties = 0;
     };
 
     // Legacy AnimationState.AddMixingTransform: the state animates only these paths

@@ -1427,13 +1427,23 @@ namespace {
     // the first enabled (else first) Lua script `className` of the GameObject and its declared
     // property `name`; false when either is missing
     bool findAnimatedScriptField(Scene* scene, Entity entity, const std::string& className, const std::string& name,
-                                 ScriptEntry*& entryOut, ScriptProperty*& propertyOut) {
+                                 ScriptEntry*& entryOut, ScriptProperty*& propertyOut, size_t index) {
         ScriptComponent* scripts = (scene && scene->isEntityCreated(entity)) ? scene->findComponent<ScriptComponent>(entity) : nullptr;
         if (!scripts) {
             return false;
         }
         ScriptEntry* chosen = nullptr;
+        if (index != SIZE_MAX) {
+            if (index >= scripts->scripts.size() || scripts->scripts[index].type != ScriptType::LUA ||
+                scripts->scripts[index].className != className) {
+                return false;
+            }
+            chosen = &scripts->scripts[index];
+        }
         for (ScriptEntry& entry : scripts->scripts) {
+            if (index != SIZE_MAX) {
+                break;
+            }
             if (entry.type != ScriptType::LUA || entry.className != className) {
                 continue;
             }
@@ -1536,10 +1546,10 @@ namespace {
 }
 
 bool LuaBinding::getLuaScriptProperty(Scene* scene, Entity entity, const std::string& className, const std::string& name,
-                                      ScriptPropertyType type, float* out) {
+                                      ScriptPropertyType type, float* out, size_t index) {
     ScriptEntry* entry = nullptr;
     ScriptProperty* property = nullptr;
-    if (!findAnimatedScriptField(scene, entity, className, name, entry, property)) {
+    if (!findAnimatedScriptField(scene, entity, className, name, entry, property, index)) {
         return false;
     }
     lua_State* L = luastate;
@@ -1561,10 +1571,10 @@ bool LuaBinding::getLuaScriptProperty(Scene* scene, Entity entity, const std::st
 }
 
 bool LuaBinding::setLuaScriptProperty(Scene* scene, Entity entity, const std::string& className, const std::string& name,
-                                      ScriptPropertyType type, const float* in) {
+                                      ScriptPropertyType type, const float* in, size_t index) {
     ScriptEntry* entry = nullptr;
     ScriptProperty* property = nullptr;
-    if (!findAnimatedScriptField(scene, entity, className, name, entry, property)) {
+    if (!findAnimatedScriptField(scene, entity, className, name, entry, property, index)) {
         return false;
     }
     // the stored value first (the Inspector shows it in play mode)

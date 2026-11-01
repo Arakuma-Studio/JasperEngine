@@ -56,7 +56,9 @@ namespace jasperengine::anim{
         // ("submeshes[N].material.baseColorFactor", "shaderUniforms.<member>")
         const char* property;
         const char* label;          // the Inspector's label ("Color", "Y FOV", "Anchored Position")
-        const char* unityName;      // the Unity binding name it ports ("m_Color", "m_IsActive"), "" when none
+        // the Unity binding name it ports ("m_Color", "m_IsActive"), "" when none, with the value
+        // conversion when there is one (the UI's layout space is y-down: "m_AnchorMax.y (1 - y)")
+        const char* unityName;
         PropertyKind kind;          // None: from the keys or the bound shader/script (members, fields)
         uint8_t width;              // floats of the whole value (0 with kind None)
         bool discrete;              // stepped, highest weight wins (bool, int, frame)
@@ -132,8 +134,21 @@ namespace jasperengine::anim{
         bool interpolateInt = false;
         PropertyDisplay display = PropertyDisplay::Identity;
         bool deferred = false;
+        // a script field: the script picked at bind (the first enabled one of the class, else
+        // the first) and its instance then (the bind stamp: another instance, a reload, binds
+        // again); reads and writes fail when that index holds another class
+        int16_t scriptIndex = -1;
+        const void* scriptInstance = nullptr;
         std::string message;                    // why it did not bind (one line)
     };
+    // keys of `keyWidth` values on this binding give it an opaque alpha: a whole Color4 keyed
+    // with RGB values ("#RRGGBB", 3 numbers; spec 5.4)
+    inline bool keysOpaqueAlpha(const PropertyBinding& binding, size_t keyWidth){
+        return binding.swizzle < 0 && binding.kind == PropertyKind::Color4 && keyWidth == 3;
+    }
+    // a script binding's script is not the instance it bound (reloaded, removed, reordered):
+    // the binding should be made again (spec P4). False for other bindings
+    JASPERENGINE_API bool scriptBindingStale(EntityRegistry* registry, Entity entity, const PropertyBinding& binding);
 
     // The parse of a property as bound on `entity`: the row's has(), a script's declared field
     // (its declared type wins over the keys': an Int rounds and steps, a Color keys sRGB), a

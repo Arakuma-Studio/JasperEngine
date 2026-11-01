@@ -19,17 +19,28 @@
 #include "animation/KeyframeSampling.h"
 #include "animation/PropertyBindings.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/TrailRendererComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/OnScreenControlComponents.h"
 #include "component/LightComponent.h"
 #include "component/MeshComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/UIComponent.h"
 #include "object/AnimationPlayer.h"
 #include "object/Light.h"
 #include "pool/AnimationClipPool.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptRuntime.h"
+#include "script/ScriptRuntime.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/UISystem.h"
 #include "util/Color.h"
 
 #include "lua.hpp"
@@ -37,6 +48,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <thread>
 
 using namespace jasperengine;
@@ -670,13 +682,271 @@ TEST_F(Properties, PreviewRestoresActiveAndColour){
     EXPECT_FLOAT_EQ(color(box).w, before.w);
 }
 
+// the preview puts back the stored value exactly (not a key-space round trip: with gamma 2.2
+// in float most linear values do not survive one), and a channel fade leaves the others' bits
+TEST_F(Properties, PreviewRestoreAndUnkeyedComponentsAreExact){
+    // linear values the sRGB round trip changes (found, not assumed)
+    std::vector<float> lossy;
+    for (int i = 1; i < 4000 && lossy.size() < 3; i++){
+        float v[4] = {(float)i / 4001.0f, 0, 0, 1};
+        const float original = v[0];
+        anim::storedToKey(PropertyKind::Color4, PropertyDisplay::SRGB, v, 4);
+        anim::keyToStored(PropertyKind::Color4, PropertyDisplay::SRGB, false, v, 4);
+        if (v[0] != original) lossy.push_back(original);
+    }
+    ASSERT_EQ(lossy.size(), 3u) << "values that do not round-trip exist";
+    Entity box = image(root, "Box", Vector4(1, 1, 1, 1));
+    scene.getComponent<UIComponent>(box).color = Vector4(lossy[0], lossy[1], lossy[2], 0.25f);
+    const Vector4 before = color(box);
+
+    ClipData data;
+    data.tracks.push_back(property("Box", "ui", "color", {key(0, {1, 0, 0, 1}), key(1, {0, 1, 0, 0.5f})}));
+    std::shared_ptr<const AnimationClip> clipObject = AnimationClip::build(data);
+    ActionSystem* actions = scene.getSystem<ActionSystem>().get();
+    anim::ClipPreviewSession session;
+    ActionSystem::PlayerPreview preview;
+    ActionSystem::PlayerPreviewState state;
+    state.clip = clipObject;
+    state.time = 0.5f;
+    preview.states = {state};
+    actions->previewPlayer(root, preview, session);
+    ASSERT_NE(color(box).x, before.x);
+    actions->restorePlayerPreview(session);
+    EXPECT_EQ(color(box).x, before.x) << "bit-exact";
+    EXPECT_EQ(color(box).y, before.y);
+    EXPECT_EQ(color(box).z, before.z);
+    EXPECT_EQ(color(box).w, before.w);
+
+    // an alpha fade in play: r, g, b never rewritten (not even 1 ULP)
+    ClipData fade;
+    fade.tracks.push_back(property("Box", "ui", "color.a", {key(0, {0}), key(1, {1})}));
+    AnimationPlayer object = player({{"fade", fade}});
+    object.play("fade");
+    step(0.0);
+    for (int i = 0; i < 5; i++){
+        step(0.1);
+        EXPECT_EQ(color(box).x, before.x);
+        EXPECT_EQ(color(box).y, before.y);
+        EXPECT_EQ(color(box).z, before.z);
+    }
+    EXPECT_NEAR(color(box).w, 0.5f, 1e-5f);
+}
+
+// RGB keys of a Color4 script field key an opaque alpha (spec 5.4)
+TEST_F(Properties, RgbKeysOfAColor4ScriptFieldAreOpaque){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_EQ(luaL_dostring(L, "tintInstance = {tint = Vector4(0, 0, 0, 0)}"), LUA_OK);
+    lua_getglobal(L, "tintInstance");
+    const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    ScriptComponent scripts;
+    ScriptEntry entry;
+    entry.type = ScriptType::LUA;
+    entry.enabled = true;
+    entry.className = "Tint";
+    entry.instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
+    ScriptProperty tint;
+    tint.name = "tint";
+    tint.type = ScriptPropertyType::Color4;
+    tint.value = Vector4(0, 0, 0, 0);
+    entry.properties = {tint};
+    scripts.scripts.push_back(entry);
+    scene.addComponent<ScriptComponent>(root, scripts);
+    // as a file has them: "#RRGGBB" keys (3 values)
+    anim::ClipParseResult parsed = anim::parseClip(clipText(
+        "    {\"path\": \"\", \"channel\": \"property\", \"component\": \"script:Tint\", \"property\": \"tint\", "
+        "\"keys\": [[0, \"#FF0000\"], [1, \"#FF0000\"]]}"));
+    ASSERT_TRUE(parsed.ok());
+    AnimationPlayer object = player({{"tint", *parsed.data}});
+    object.play("tint");
+    step(0.0);
+    step(0.5);
+    const Vector4 value = std::get<Vector4>(scene.getComponent<ScriptComponent>(root).scripts[0].properties[0].value);
+    EXPECT_NEAR(value.x, 1.0f, 1e-5f);
+    EXPECT_NEAR(value.w, 1.0f, 1e-6f) << "alpha 1, not the field's 0";
+    scene.getComponent<ScriptComponent>(root).scripts.clear();
+    luaL_unref(L, LUA_REGISTRYINDEX, ref);
+}
+
+// two scripts of one class: a binding keeps the script it picked (keying enabled = false does not
+// walk through the instances); a reload (another instance) binds again, its declared type too (P4)
+TEST_F(Properties, ScriptBindingsKeepTheirInstanceAndRebindOnReload){
+    lua_State* L = LuaBinding::getLuaState();
+    // (torchC's glow starts as a float: only an Int binding writes it as an integer)
+    ASSERT_EQ(luaL_dostring(L, "torchA = {glow = 0}; torchB = {glow = 0}; torchC = {glow = 0.25}"), LUA_OK);
+    auto refOf = [&](const char* name){
+        lua_getglobal(L, name);
+        return luaL_ref(L, LUA_REGISTRYINDEX);
+    };
+    const int a = refOf("torchA"), b = refOf("torchB"), c = refOf("torchC");
+    auto torch = [](int ref, ScriptPropertyType type){
+        ScriptEntry entry;
+        entry.type = ScriptType::LUA;
+        entry.enabled = true;
+        entry.className = "Torch";
+        entry.instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
+        ScriptProperty glow;
+        glow.name = "glow";
+        glow.type = type;
+        if (type == ScriptPropertyType::Int) glow.value = 0;
+        else glow.value = 0.0f;
+        entry.properties = {glow};
+        return entry;
+    };
+    ScriptComponent scripts;
+    scripts.scripts = {torch(a, ScriptPropertyType::Float), torch(b, ScriptPropertyType::Float)};
+    scene.addComponent<ScriptComponent>(root, scripts);
+    ClipData data;
+    data.wrap = ClipWrapMode::Loop;
+    data.length = 2.0f;
+    data.tracks.push_back(property("", "script:Torch", "enabled", {key(0, {0})}));
+    data.tracks.push_back(property("", "script:Torch", "glow", {key(0, {0}), key(1, {1})}));
+    AnimationPlayer object = player({{"torch", data}});
+    object.play("torch");
+    for (int i = 0; i < 4; i++) step(i == 0 ? 0.0 : 0.05);
+    const ScriptComponent& now = scene.getComponent<ScriptComponent>(root);
+    EXPECT_FALSE(now.scripts[0].enabled) << "the picked script";
+    EXPECT_TRUE(now.scripts[1].enabled) << "the other instance is never touched";
+    // a reload: the first script's instance is another (enabled, as a reloaded script starts),
+    // its glow now an Int; the stale binding would write 0.5 as a float into it
+    scene.getComponent<ScriptComponent>(root).scripts[0] = torch(c, ScriptPropertyType::Int);
+    object.getState("torch").setTime(0.5f);
+    step(0.0);
+    ASSERT_EQ(luaL_dostring(L, "torchResult = math.type(torchC.glow) .. '|' .. tostring(torchC.glow)"), LUA_OK);
+    lua_getglobal(L, "torchResult");
+    const std::string result = lua_tostring(L, -1) ? lua_tostring(L, -1) : "";
+    lua_pop(L, 1);
+    EXPECT_EQ(result, "integer|0") << "bound again to the new instance with its declared Int (steps)";
+    scene.getComponent<ScriptComponent>(root).scripts.clear();
+    for (int ref : {a, b, c}) luaL_unref(L, LUA_REGISTRYINDEX, ref);
+}
+
+// enabled writes do what the components' Lua setters do; every Catalog checkbox has a row
+TEST_F(Properties, EnabledWritesMirrorTheSetters){
+    auto write = [&](Entity entity, const char* component, float value){
+        anim::PropertyRef ref;
+        ASSERT_TRUE(anim::parsePropertyRef(component, "enabled", ref)) << component;
+        const anim::PropertyBinding binding = anim::bindProperty(&scene, entity, ref, 1);
+        ASSERT_EQ(binding.status, anim::PropertyBindStatus::Bound) << component;
+        ASSERT_TRUE(anim::writePropertyKeySpace(&scene, entity, binding, &value)) << component;
+    };
+    Entity trail = child(root, "Trail");
+    TrailRendererComponent trailComponent;
+    trailComponent.hasLastHeadPosition = true;
+    trailComponent.idleTime = 1.0f;
+    scene.addComponent<TrailRendererComponent>(trail, trailComponent);
+    write(trail, "trailrenderer", 0.0f);
+    EXPECT_FALSE(scene.getComponent<TrailRendererComponent>(trail).enabled);
+    EXPECT_FALSE(scene.getComponent<TrailRendererComponent>(trail).hasLastHeadPosition) << "cleared, as TrailRenderer::setEnabled(false)";
+    EXPECT_EQ(scene.getComponent<TrailRendererComponent>(trail).idleTime, 0.0f);
+
+    Entity joint = child(root, "Joint");
+    Joint2DComponent jointComponent;
+    jointComponent.enabled = false;
+    jointComponent.broken = true;
+    jointComponent.breakArmed = false;
+    jointComponent.needUpdateJoint = false;
+    scene.addComponent<Joint2DComponent>(joint, jointComponent);
+    write(joint, "joint2d", 1.0f);
+    const Joint2DComponent& j = scene.getComponent<Joint2DComponent>(joint);
+    EXPECT_TRUE(j.enabled);
+    EXPECT_FALSE(j.broken) << "a broken joint enabled again is a fresh joint";
+    EXPECT_TRUE(j.breakArmed);
+    EXPECT_TRUE(j.needUpdateJoint);
+
+    Entity cage = child(root, "Cage");
+    scene.addComponent<LatticeComponent>(cage, LatticeComponent());
+    const uint32_t revision = scene.getComponent<LatticeComponent>(cage).revision;
+    write(cage, "lattice", 0.0f);
+    EXPECT_EQ(scene.getComponent<LatticeComponent>(cage).revision, revision + 1) << "the deformation is rebuilt";
+
+    Entity controls = child(root, "Controls");
+    scene.addComponent<OnScreenStickComponent>(controls, OnScreenStickComponent());
+    scene.addComponent<OnScreenButtonComponent>(controls, OnScreenButtonComponent());
+    scene.addComponent<TouchAreaComponent>(controls, TouchAreaComponent());
+    write(controls, "onscreenstick", 0.0f);
+    write(controls, "onscreenbutton", 0.0f);
+    write(controls, "toucharea", 0.0f);
+    EXPECT_FALSE(scene.getComponent<OnScreenStickComponent>(controls).enabled);
+    EXPECT_FALSE(scene.getComponent<OnScreenButtonComponent>(controls).enabled);
+    EXPECT_FALSE(scene.getComponent<TouchAreaComponent>(controls).enabled);
+}
+
+// the writes that run callbacks (active) go in hierarchy order once the update's blend ended, so
+// an onEnable they run can sample a player
+namespace {
+    std::function<void()> probeSampleHook;
+    int probeSample(lua_State*){
+        if (probeSampleHook) probeSampleHook();
+        return 0;
+    }
+}
+
+TEST_F(Properties, DeferredActiveWritesRunInHierarchyOrderAndMaySample){
+    lua_State* L = LuaBinding::getLuaState();
+    lua_register(L, "probeSample", &probeSample);
+    ASSERT_EQ(luaL_dostring(L, "probeOrder = {}"), LUA_OK);
+    Entity a = child(root, "A");
+    Entity a1 = child(a, "A1");
+    Entity b = child(root, "B");
+    std::vector<int> refs;
+    for (const std::pair<Entity, std::string>& entry : std::vector<std::pair<Entity, std::string>>{{a, "A"}, {a1, "A1"}, {b, "B"}}){
+        const std::string code = "probe" + entry.second + " = {name = '" + entry.second + "', onEnable = function(self) "
+                                 "probeOrder[#probeOrder + 1] = self.name; if self.name == 'B' then probeSample() end end}";
+        ASSERT_EQ(luaL_dostring(L, code.c_str()), LUA_OK);
+        lua_getglobal(L, ("probe" + entry.second).c_str());
+        refs.push_back(luaL_ref(L, LUA_REGISTRYINDEX));
+        ScriptComponent scripts;
+        ScriptEntry script;
+        script.type = ScriptType::LUA;
+        script.enabled = true;
+        script.className = "Probe";
+        script.instance = reinterpret_cast<void*>(static_cast<intptr_t>(refs.back()));
+        scripts.scripts.push_back(script);
+        scene.addComponent<ScriptComponent>(entry.first, scripts);
+        scene.setEntityActive(entry.first, false);
+    }
+    Entity lamp = light(root, "Lamp", 1.0f);
+    ClipData glow;
+    glow.tracks.push_back(property("", "light", "intensity", {key(0, {7}), key(1, {7})}));
+    AnimationPlayer lampPlayer = player({{"glow", glow}}, lamp);
+    float sampled = -1.0f;
+    probeSampleHook = [&](){
+        lampPlayer.play("glow");
+        scene.getSystem<ActionSystem>()->samplePlayer(lamp);
+        sampled = scene.getComponent<LightComponent>(lamp).intensity;
+    };
+    ScriptRuntime::awakeScene(&scene);
+    // keyed in the reverse of the hierarchy (B, A1, A)
+    ClipData show;
+    show.tracks.push_back(property("B", "gameobject", "active", {key(0, {1})}));
+    show.tracks.push_back(property("A/A1", "gameobject", "active", {key(0, {1})}));
+    show.tracks.push_back(property("A", "gameobject", "active", {key(0, {1})}));
+    AnimationPlayer object = player({{"show", show}});
+    object.play("show");
+    step(0.0);
+    ASSERT_EQ(luaL_dostring(L, "probeResult = table.concat(probeOrder, ',')"), LUA_OK);
+    lua_getglobal(L, "probeResult");
+    const std::string order = lua_tostring(L, -1) ? lua_tostring(L, -1) : "";
+    lua_pop(L, 1);
+    EXPECT_EQ(order, "A,A1,B") << "parents first, siblings in their order";
+    EXPECT_FLOAT_EQ(sampled, 7.0f) << "sample() inside a clip's onEnable is not ignored";
+    probeSampleHook = nullptr;
+    ScriptRuntime::forgetScene(&scene);
+    for (Entity entity : {a, a1, b}) scene.getComponent<ScriptComponent>(entity).scripts.clear();
+    for (int ref : refs) luaL_unref(L, LUA_REGISTRYINDEX, ref);
+}
+
 // ---- the game's GameOverPanel (GameStatsShowing, GameOverMenu, go, EarnAnim, falling.anim) ----
 
 TEST_F(Properties, GameOverPanelPortPlaysLikeTheUnityClips){
     // the GameOverMenu prefab: SafeArea (3)/GameOVER/{puntaje, record, coins, DupCoins, Play, Exit}
     scene.setEntityName(root, "GameOverMenu");
     scene.addComponent<CanvasGroupComponent>(root, CanvasGroupComponent());
-    scene.addComponent<RectTransformComponent>(root, RectTransformComponent());
+    RectTransformComponent rootRect;
+    rootRect.usingAnchors = true;
+    rootRect.width = 400;
+    rootRect.height = 300;
+    scene.addComponent<RectTransformComponent>(root, rootRect);
     Entity safeArea = child(root, "SafeArea (3)");
     Entity over = child(safeArea, "GameOVER");
     std::vector<Entity> stats;
@@ -709,10 +979,11 @@ TEST_F(Properties, GameOverPanelPortPlaysLikeTheUnityClips){
         show.tracks.push_back(property(base + entry.first, "gameobject", "active", {key(0, {0}), key(entry.second, {1})}));
     }
     show.events = {event(0.5f, "CountThisGameScore"), event(1.333333f, "CheckHighscore"), event(2.166667f, "CountMoney")};
-    // GameOverMenu / go: the CanvasGroup m_Alpha 0 -> 1 -> 1 -> 0 and m_AnchoredPosition.y; EarnAnim's
-    // TMP colour; falling.anim's sprite swap
+    // GameOverMenu / go: the CanvasGroup m_Alpha 0 -> 1 -> 1 -> 0 and m_AnchoredPosition.y (Unity's
+    // y-up 150 -> -70 -> 0: from above, through below, to rest) in the y-down layout space,
+    // negated (docs: Porting Unity clips); EarnAnim's TMP colour; falling.anim's sprite swap
     show.tracks.push_back(property("", "canvasgroup", "alpha", {key(0, {0}), key(0.333333f, {1}), key(0.583333f, {1}), key(1.666667f, {0})}));
-    show.tracks.push_back(property("", "recttransform", "positionOffset.y", {key(0, {150}), key(0.333333f, {-70}), key(0.583333f, {0})}));
+    show.tracks.push_back(property("", "recttransform", "positionOffset.y", {key(0, {-150}), key(0.333333f, {70}), key(0.583333f, {0})}));
     show.tracks.push_back(property(base + "Money", "ui", "color", {key(0, {1, 1, 1, 1}), key(0.5f, {0, 1, 0, 1})}));
     show.tracks.push_back(property(base + "Skull", "sprite", "frame", {key(0, {0}), key(0.25f, {1})}));
     AnimationPlayer object = player({{"GameStatsShowing", show}});
@@ -722,10 +993,16 @@ TEST_F(Properties, GameOverPanelPortPlaysLikeTheUnityClips){
         for (Entity entity : stats) active += scene.isEntityActive(entity) ? 1 : 0;
         log.push_back(e.functionName + ":" + std::to_string(active));
     }));
+    // where the panel is drawn: the layout's y (y-down: smaller is higher on screen)
+    auto screenY = [&](){
+        scene.getSystem<UISystem>()->update(0.0);
+        return scene.getComponent<Transform>(root).position.y;
+    };
     object.play("GameStatsShowing");
     step(0.0);
     EXPECT_FLOAT_EQ(scene.getComponent<CanvasGroupComponent>(root).alpha, 0.0f);
-    EXPECT_NEAR(scene.getComponent<RectTransformComponent>(root).positionOffset.y, 150.0f, 1e-4f);
+    EXPECT_NEAR(scene.getComponent<RectTransformComponent>(root).positionOffset.y, -150.0f, 1e-4f);
+    const float startY = screenY();
     const double frame = 1.0 / 60.0;
     double t = 0.0;
     auto runTo = [&](double target){
@@ -737,6 +1014,8 @@ TEST_F(Properties, GameOverPanelPortPlaysLikeTheUnityClips){
     runTo(0.25);
     EXPECT_NEAR(scene.getComponent<CanvasGroupComponent>(root).alpha, 0.75f, 0.02f);
     EXPECT_FLOAT_EQ(scene.getComponent<MeshComponent>(skull).submeshes[0].textureRect.getX(), 0.5f) << "the sprite swap at 0.25 s";
+    runTo(1.0 / 3.0);
+    const float lowY = screenY();
     runTo(0.48);
     EXPECT_FALSE(scene.isEntityActive(stats[0]));
     runTo(0.5);
@@ -745,6 +1024,10 @@ TEST_F(Properties, GameOverPanelPortPlaysLikeTheUnityClips){
     EXPECT_NEAR(scene.getComponent<UIComponent>(money).color.x, 0.0f, 1e-5f);
     runTo(1.0);
     EXPECT_NEAR(scene.getComponent<RectTransformComponent>(root).positionOffset.y, 0.0f, 1e-4f);
+    const float restY = screenY();
+    // as in Unity: it comes in from 150 above its place, swings 70 below it, then settles
+    EXPECT_NEAR(restY - startY, 150.0f, 0.5f) << "starts above its rest on screen";
+    EXPECT_NEAR(lowY - restY, 70.0f, 0.5f) << "overshoots below its rest";
     runTo(1.35);
     EXPECT_TRUE(scene.isEntityActive(stats[1]));
     EXPECT_FALSE(scene.isEntityActive(stats[2]));

@@ -74,12 +74,7 @@ anim::PropertyRest* playerdetail::completePropertyRest(Scene* scene, Entity enti
     anim::PropertyRest& property = rest.properties[binding.key];
     // taken once (R2); again when the property now binds with another width (a script reload)
     if (!property.has || property.binding.width != binding.width){
-        float value[4] = {0, 0, 0, 0};
-        if (anim::readPropertyKeySpace(scene, entity, binding, value)){
-            property.has = true;
-            for (int k = 0; k < 4; k++) property.value[k] = value[k];
-            property.hasSnapshot = anim::snapshotProperty(scene, entity, binding, property.snapshot);
-        }
+        anim::readPropertyRest(scene, entity, binding, property);
     }
     property.binding = binding;
     return property.has ? &property : nullptr;
@@ -185,6 +180,16 @@ namespace {
         return binding;
     }
 
+    // a bound script field's script is not the instance it bound
+    bool scriptBindingsStale(Scene* scene, const anim::ClipBindings& bindings){
+        for (size_t i = 0; i < bindings.properties.size() && i < bindings.targets.size(); i++){
+            const anim::PropertyBinding& binding = bindings.properties[i];
+            if (binding.scriptIndex >= 0 && bindings.targets[i] != NULL_ENTITY &&
+                anim::scriptBindingStale(scene, bindings.targets[i], binding)) return true;
+        }
+        return false;
+    }
+
     // Every track of the bindings' clip resolved again from `root`; the rest of every newly bound
     // channel is taken now, before anything writes it
     void resolveBindings(Scene* scene, Entity root, anim::ClipBindings& bindings, anim::RestMap* rest){
@@ -195,6 +200,7 @@ namespace {
         bindings.cursors.assign(count, anim::KeyCursor());
         bindings.resolvedCount = 0;
         bindings.unboundProperties = 0;
+        bindings.scriptProperties = 0;
         std::vector<anim::PropertyBinding> previous;
         previous.swap(bindings.properties);
         if (bindings.clip->hasPropertyTracks()) bindings.properties.assign(count, anim::PropertyBinding());
@@ -212,6 +218,7 @@ namespace {
                 }
                 bindings.targets[i] = target;
                 bindings.resolvedCount++;
+                if (binding.scriptIndex >= 0) bindings.scriptProperties++;
                 if (rest) playerdetail::completePropertyRest(scene, target, (*rest)[target], binding);
                 continue;
             }
@@ -667,6 +674,11 @@ void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings&
                         accum.sums[k] += sample.weights[j] * weight;
                         accum.weights[k] += weight;
                     }
+                    // RGB keys ("#RRGGBB", 3 numbers) of a Color4 key an opaque alpha (spec 5.4)
+                    if (anim::keysOpaqueAlpha(binding, sample.weights.size()) && !(track.overridden & 8u)){
+                        accum.sums[3] += weight;
+                        accum.weights[3] += weight;
+                    }
                 }
                 if (writtenProperties){
                     std::pair<Entity, uint32_t> entry(target, binding.key);
@@ -835,6 +847,11 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
             // for again at most 4 times a second
             resolveBindings(scene, entity, bindings, &runtime.rest);
             bindings.nextUnresolvedRetry = runtime.clock + UNRESOLVED_RETRY_SECONDS;
+            resolvedAny = true;
+        }else if (bindings.scriptProperties > 0 && scriptBindingsStale(scene, bindings)){
+            // the bind stamp of script fields (spec P4): a reloaded, removed or reordered script
+            // binds again (its declared type may have changed)
+            resolveBindings(scene, entity, bindings, &runtime.rest);
             resolvedAny = true;
         }
         bindings.checkedFrame = playerFrame;
@@ -1362,6 +1379,7 @@ void ActionSystem::restorePlayerPreview(anim::ClipPreviewSession& session){
     // properties: the rest value, then what the write changed besides it (a sprite's texture
     // rect, an anchor preset); GameObject active last, parents first (it runs no game code in
     // edit mode, but it is what the flush does)
+    // the stored rests, exactly; the ones that run callbacks last, in hierarchy order
     std::vector<std::pair<size_t, std::pair<Entity, const anim::PropertyRest*>>> deferred;
     for (const std::pair<Entity, uint32_t>& entry : session.writtenProperties){
         auto it = session.rest.find(entry.first);
@@ -1370,22 +1388,15 @@ void ActionSystem::restorePlayerPreview(anim::ClipPreviewSession& session){
         if (property == it->second.properties.end() || !property->second.has) continue;
         const anim::PropertyRest& rest = property->second;
         if (rest.binding.deferred){
-            size_t depth = 0;
-            for (Entity parent = entry.first; depth < 1024; depth++){
-                Transform* transform = scene->findComponent<Transform>(parent);
-                if (!transform || transform->parent == NULL_ENTITY) break;
-                parent = transform->parent;
-            }
-            deferred.push_back({depth, {entry.first, &rest}});
+            deferred.push_back({hierarchyIndex(scene, entry.first), {entry.first, &rest}});
             continue;
         }
-        anim::writePropertyKeySpace(scene, entry.first, rest.binding, rest.value);
-        if (rest.hasSnapshot) anim::restoreProperty(scene, entry.first, rest.binding, rest.snapshot);
+        anim::restorePropertyRest(scene, entry.first, rest);
     }
     std::stable_sort(deferred.begin(), deferred.end(), [](const auto& a, const auto& b){ return a.first < b.first; });
     for (const auto& entry : deferred){
         if (!scene->isEntityCreated(entry.second.first)) continue;
-        anim::writePropertyKeySpace(scene, entry.second.first, entry.second.second->binding, entry.second.second->value);
+        anim::restorePropertyRest(scene, entry.second.first, *entry.second.second);
     }
     session.reset();
 }

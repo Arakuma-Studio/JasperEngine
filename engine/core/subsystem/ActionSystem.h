@@ -130,10 +130,10 @@ namespace jasperengine{
 			bool active = false;
 		};
 		// a write that runs user callbacks (GameObject active, a script's enabled): applied after
-		// every other write of the flush, parents first, each re-checked (spec decision 6)
+		// every other write of the flush and outside the update's pose blend, in hierarchy order
+		// (parents first, siblings in their order), each re-checked (spec decision 6)
 		struct DeferredPropertyWrite {
 			Entity target = NULL_ENTITY;
-			size_t depth = 0;
 			float value = 0.0f;			// key space
 			anim::PropertyBinding binding;
 		};
@@ -144,8 +144,18 @@ namespace jasperengine{
 		// the property accumulator of (target, key) for this frame (reset on its first touch)
 		PropertyBlendAccum& propertyAccum(Entity target, uint32_t key, const anim::PropertyRest* rest);
 		// writes the properties (the deferred ones are appended to `deferred`, applied by
-		// flushPoseBlend after everything else)
+		// applyDeferredPropertyWrites after everything else)
 		void flushPropertyBlend(std::vector<DeferredPropertyWrite>& deferred);
+		// the flushes' deferred writes not applied yet (update() applies them once its pose blend
+		// scope ended, so an onEnable they run can sample a player)
+		std::vector<DeferredPropertyWrite> deferredPropertyWrites;
+		void applyDeferredPropertyWrites();
+	public:
+		// an entity's place in hierarchy order (its Transform's index: parents before their
+		// children, siblings in order; SIZE_MAX without a Transform), the order deferred
+		// property writes are applied in
+		static size_t hierarchyIndex(Scene* scene, Entity entity);
+	private:
 
 		void clearPoseBlend();
 		void flushPoseBlend();

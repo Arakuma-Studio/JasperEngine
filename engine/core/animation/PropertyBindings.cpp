@@ -21,6 +21,7 @@
 #include "component/LightComponent.h"
 #include "component/LineRendererComponent.h"
 #include "component/MeshComponent.h"
+#include "component/OnScreenControlComponents.h"
 #include "component/ModelComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/PointsComponent.h"
@@ -42,6 +43,9 @@
 #include "component/VertexAnimatorComponent.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptRuntime.h"
+#ifdef JASPERENGINE_PHYSICS_2D
+#include "box2d/box2d.h"
+#endif
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderUniforms.h"
 #include "subsystem/MeshSystem.h"
@@ -189,11 +193,53 @@ namespace {
         out[0] = component->enabled ? 1.0f : 0.0f;
         return true;
     }
+    // what each component's Lua setter does besides the flag (audited against every
+    // setEnabled / Lua `enabled` setter: the others only set the flag)
+    template<typename C>
+    void setEnabledAsTheSetter(Scene*, Entity, C& component, bool enabled){
+        component.enabled = enabled;
+    }
+    // TrailRenderer::setEnabled: disabled, the trail is cleared now (no streak when re-enabled)
+    template<>
+    void setEnabledAsTheSetter<TrailRendererComponent>(Scene*, Entity, TrailRendererComponent& trail, bool enabled){
+        if (!enabled) trail.clearPoints();
+        trail.enabled = enabled;
+    }
+    // Joint2D::setEnabled: a joint broken with DISABLE and enabled again is a fresh joint
+    template<>
+    void setEnabledAsTheSetter<Joint2DComponent>(Scene*, Entity, Joint2DComponent& joint, bool enabled){
+        if (enabled && !joint.enabled && joint.broken){
+            joint.broken = false;
+            joint.breakArmed = true;
+            joint.needUpdateJoint = true;
+        }
+        joint.enabled = enabled;
+    }
+    // Lattice::setEnabled: the deformation is rebuilt (revision)
+    template<>
+    void setEnabledAsTheSetter<LatticeComponent>(Scene*, Entity, LatticeComponent& lattice, bool enabled){
+        if (lattice.enabled != enabled){
+            lattice.enabled = enabled;
+            lattice.revision++;
+        }
+    }
+    // Rigidbody2D::setEnabled: the loaded body leaves or joins the world now (an unloaded one
+    // is loaded by the physics step, which applies the flag)
+#ifdef JASPERENGINE_PHYSICS_2D
+    template<>
+    void setEnabledAsTheSetter<Rigidbody2DComponent>(Scene* scene, Entity entity, Rigidbody2DComponent& body, bool enabled){
+        body.enabled = enabled;
+        if (!b2Body_IsValid(body.body)) return;
+        if (enabled && scene->isEntityActiveInHierarchy(entity)) b2Body_Enable(body.body);
+        else b2Body_Disable(body.body);
+    }
+#endif
+
     template<typename C>
     bool writeEnabled(Scene* scene, Entity entity, const PropertyParams&, const float* in){
         C* component = scene ? scene->findComponent<C>(entity) : nullptr;
         if (!component) return false;
-        component->enabled = in[0] > 0.5f;
+        setEnabledAsTheSetter<C>(scene, entity, *component, in[0] > 0.5f);
         return true;
     }
 
@@ -435,18 +481,18 @@ namespace {
         rows.push_back(fieldRow<ButtonComponent, bool, &ButtonComponent::disabled, &buttonDirty>("button", "disabled", "Disabled", "m_Interactable", B));
 
         // Rect Transform (the RectTransform Lua setters)
-        rows.push_back(fieldRow<RectTransformComponent, Vector2, &RectTransformComponent::positionOffset>("recttransform", "positionOffset", "Anchored Position", "m_AnchoredPosition", V2));
+        rows.push_back(fieldRow<RectTransformComponent, Vector2, &RectTransformComponent::positionOffset>("recttransform", "positionOffset", "Anchored Position", "m_AnchoredPosition (y negated: layout space is y-down)", V2));
         rows.push_back(fieldRow<RectTransformComponent, unsigned int, &RectTransformComponent::width, &layoutSizesDirty>("recttransform", "width", "Width", "m_SizeDelta.x", I, ID, true));
         rows.push_back(fieldRow<RectTransformComponent, unsigned int, &RectTransformComponent::height, &layoutSizesDirty>("recttransform", "height", "Height", "m_SizeDelta.y", I, ID, true));
-        rows.push_back(fieldRow<RectTransformComponent, Vector2, &RectTransformComponent::pivot, &layoutPivotDirty>("recttransform", "pivot", "Pivot", "m_Pivot", V2));
+        rows.push_back(fieldRow<RectTransformComponent, Vector2, &RectTransformComponent::pivot, &layoutPivotDirty>("recttransform", "pivot", "Pivot", "m_Pivot (y: 1 - y)", V2));
         rows.push_back(anchorRow<RectTransformComponent, float, &RectTransformComponent::anchorPointLeft>("anchorPointLeft", "Anchor Left", "m_AnchorMin.x", F));
-        rows.push_back(anchorRow<RectTransformComponent, float, &RectTransformComponent::anchorPointTop>("anchorPointTop", "Anchor Top", "m_AnchorMax.y", F));
+        rows.push_back(anchorRow<RectTransformComponent, float, &RectTransformComponent::anchorPointTop>("anchorPointTop", "Anchor Top", "m_AnchorMax.y (1 - y)", F));
         rows.push_back(anchorRow<RectTransformComponent, float, &RectTransformComponent::anchorPointRight>("anchorPointRight", "Anchor Right", "m_AnchorMax.x", F));
-        rows.push_back(anchorRow<RectTransformComponent, float, &RectTransformComponent::anchorPointBottom>("anchorPointBottom", "Anchor Bottom", "m_AnchorMin.y", F));
+        rows.push_back(anchorRow<RectTransformComponent, float, &RectTransformComponent::anchorPointBottom>("anchorPointBottom", "Anchor Bottom", "m_AnchorMin.y (1 - y)", F));
         rows.push_back(anchorRow<RectTransformComponent, int, &RectTransformComponent::anchorOffsetLeft>("anchorOffsetLeft", "Offset Left", "m_OffsetMin.x", I, true));
-        rows.push_back(anchorRow<RectTransformComponent, int, &RectTransformComponent::anchorOffsetTop>("anchorOffsetTop", "Offset Top", "m_OffsetMax.y", I, true));
+        rows.push_back(anchorRow<RectTransformComponent, int, &RectTransformComponent::anchorOffsetTop>("anchorOffsetTop", "Offset Top", "m_OffsetMax.y (negated)", I, true));
         rows.push_back(anchorRow<RectTransformComponent, int, &RectTransformComponent::anchorOffsetRight>("anchorOffsetRight", "Offset Right", "m_OffsetMax.x", I, true));
-        rows.push_back(anchorRow<RectTransformComponent, int, &RectTransformComponent::anchorOffsetBottom>("anchorOffsetBottom", "Offset Bottom", "m_OffsetMin.y", I, true));
+        rows.push_back(anchorRow<RectTransformComponent, int, &RectTransformComponent::anchorOffsetBottom>("anchorOffsetBottom", "Offset Bottom", "m_OffsetMin.y (negated)", I, true));
 
         // Canvas Group (CanvasGroupTracks.h)
         size_t groupCount = 0;
@@ -540,6 +586,9 @@ namespace {
         rows.push_back(enabledRow<LatticeFollowerComponent>("latticefollower"));
         rows.push_back(enabledRow<VertexAnimatorComponent>("vertexanimator"));
         rows.push_back(enabledRow<ShadowCaster2DComponent>("shadowcaster2d"));
+        rows.push_back(enabledRow<OnScreenStickComponent>("onscreenstick"));
+        rows.push_back(enabledRow<OnScreenButtonComponent>("onscreenbutton"));
+        rows.push_back(enabledRow<TouchAreaComponent>("toucharea"));
 
         // the canvas group rows' functions (filled here: the table holds plain pointers)
         for (Row& row : rows){
@@ -687,6 +736,20 @@ namespace {
         if (first == SIZE_MAX) return nullptr;
         if (index) *index = first;
         return &scripts->scripts[first];
+    }
+
+    // the script a binding picked (its index, while it holds that class); a binding made
+    // without one (scriptIndex -1) picks as bindProperty does
+    size_t boundScriptIndex(const anim::PropertyBinding& binding){
+        return binding.scriptIndex >= 0 ? (size_t)binding.scriptIndex : SIZE_MAX;
+    }
+    const ScriptEntry* boundScriptEntry(EntityRegistry* registry, Entity entity, const std::string& className, const anim::PropertyBinding& binding){
+        if (binding.scriptIndex < 0) return findScriptEntry(registry, entity, className);
+        ScriptComponent* scripts = registry ? registry->findComponent<ScriptComponent>(entity) : nullptr;
+        if (!scripts || (size_t)binding.scriptIndex >= scripts->scripts.size()) return nullptr;
+        const ScriptEntry& entry = scripts->scripts[(size_t)binding.scriptIndex];
+        if (entry.type != ScriptType::LUA || entry.className != className) return nullptr;
+        return &entry;
     }
 
     // ---- interned keys ----
@@ -990,12 +1053,16 @@ anim::PropertyBinding anim::bindProperty(EntityRegistry* scene, Entity entity, c
     binding.deferred = ref.deferred;
 
     if (ref.script){
-        const ScriptEntry* entry = findScriptEntry(scene, entity, ref.params.scriptClass);
+        size_t scriptIndex = 0;
+        const ScriptEntry* entry = findScriptEntry(scene, entity, ref.params.scriptClass, &scriptIndex);
         if (!entry){
             binding.status = PropertyBindStatus::MissingComponent;
             binding.message = "no Lua script '" + ref.params.scriptClass + "' on the GameObject";
             return binding;
         }
+        // one instance for the binding's life (two scripts of a class: always the same one)
+        binding.scriptIndex = (int16_t)std::min<size_t>(scriptIndex, INT16_MAX);
+        binding.scriptInstance = entry->instance;
         if (ref.params.member != "enabled"){
             const ScriptProperty* declared = nullptr;
             for (const ScriptProperty& property : entry->properties){
@@ -1112,6 +1179,14 @@ const anim::PropertyKeyInfo* anim::propertyKeyInfo(uint32_t key){
     return &table.infos[key - 1];
 }
 
+bool anim::scriptBindingStale(EntityRegistry* registry, Entity entity, const PropertyBinding& binding){
+    if (binding.status != PropertyBindStatus::Bound || binding.scriptIndex < 0) return false;
+    const PropertyKeyInfo* info = propertyKeyInfo(binding.key);
+    if (!info || !info->ref.script) return false;
+    const ScriptEntry* entry = boundScriptEntry(registry, entity, info->ref.params.scriptClass, binding);
+    return !entry || entry->instance != binding.scriptInstance;
+}
+
 bool anim::readPropertyStored(Scene* scene, Entity entity, const PropertyBinding& binding, float* out){
     if (binding.status != PropertyBindStatus::Bound || !scene || !scene->isEntityCreated(entity)) return false;
     const PropertyKeyInfo* info = propertyKeyInfo(binding.key);
@@ -1120,13 +1195,13 @@ bool anim::readPropertyStored(Scene* scene, Entity entity, const PropertyBinding
     bool ok = false;
     if (info->ref.script){
         if (info->ref.params.member == "enabled"){
-            const ScriptEntry* entry = findScriptEntry(scene, entity, info->ref.params.scriptClass);
+            const ScriptEntry* entry = boundScriptEntry(scene, entity, info->ref.params.scriptClass, binding);
             if (!entry) return false;
             values[0] = entry->enabled ? 1.0f : 0.0f;
             ok = true;
         }else{
             ok = LuaBinding::getLuaScriptProperty(scene, entity, info->ref.params.scriptClass, info->ref.params.member,
-                                                  scriptTypeOfKind(binding.kind), values);
+                                                  scriptTypeOfKind(binding.kind), values, boundScriptIndex(binding));
         }
     }else if (binding.entry && binding.entry->read){
         ok = binding.entry->read(scene, entity, info->ref.params, values);
@@ -1152,15 +1227,14 @@ bool anim::writePropertyStored(Scene* scene, Entity entity, const PropertyBindin
     for (size_t i = 0; i < binding.width && i < 4; i++) values[i] = in[i];
     if (info->ref.script){
         if (info->ref.params.member == "enabled"){
-            size_t index = 0;
-            const ScriptEntry* entry = findScriptEntry(scene, entity, info->ref.params.scriptClass, &index);
+            const ScriptEntry* entry = boundScriptEntry(scene, entity, info->ref.params.scriptClass, binding);
             if (!entry) return false;
             const bool enabled = values[0] > 0.5f;
-            if (entry->enabled != enabled) ScriptRuntime::setScriptEnabled(scene, entity, index, enabled);
+            if (entry->enabled != enabled) ScriptRuntime::setScriptEnabled(scene, entity, boundScriptIndex(binding), enabled);
             return true;
         }
         return LuaBinding::setLuaScriptProperty(scene, entity, info->ref.params.scriptClass, info->ref.params.member,
-                                                scriptTypeOfKind(binding.kind), values);
+                                                scriptTypeOfKind(binding.kind), values, boundScriptIndex(binding));
     }
     return binding.entry && binding.entry->write && binding.entry->write(scene, entity, info->ref.params, values);
 }

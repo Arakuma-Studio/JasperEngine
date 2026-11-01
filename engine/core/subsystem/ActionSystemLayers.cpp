@@ -635,6 +635,10 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                             if (additive) value -= j < reference->weights.size() ? reference->weights[j] : 0.0f;
                             addScalar(touch(scratch, slot.first + (uint32_t)k), value, w);
                         }
+                        // RGB keys of a Color4 key an opaque alpha (no delta on additive layers)
+                        if (anim::keysOpaqueAlpha(binding, sample.weights.size()) && slot.width > 3 && !(track.overridden & 8u)){
+                            addScalar(touch(scratch, slot.first + 3u), additive ? 0.0f : 1.0f, w);
+                        }
                         break;
                     }
                 }
