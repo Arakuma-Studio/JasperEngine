@@ -68,6 +68,10 @@ namespace {
             case editor::ComponentType::ProgressbarComponent:
                 keep("fill");
                 break;
+            case editor::ComponentType::OnScreenStickComponent:
+                keep("background");
+                keep("handle");
+                break;
             case editor::ComponentType::PanelComponent:
                 keep("headerimage");
                 keep("headercontainer");

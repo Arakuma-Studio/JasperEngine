@@ -4,12 +4,14 @@
 #include "ScriptRuntime.h"
 #include "ScriptMessages.h"
 #include "LuaBinding.h"
+#include "ScriptScheduler.h"
 #include "Engine.h"
 #include "Scene.h"
 #include "Log.h"
 #include "manager/ObjectManager.h"
 #include "manager/SceneManager.h"
 #include "component/ScriptComponent.h"
+#include "component/Transform.h"
 
 #include "lua.hpp"
 
@@ -79,6 +81,47 @@ namespace {
                 return;
             }
             fn(*entry, i);
+        }
+    }
+
+    // Lua `start` runs as an engine coroutine (it may Coroutine.wait); false when the script
+    // has no Lua start (C++ scripts go through call)
+    bool startLuaCoroutine(Scene* scene, Entity entity, size_t index) {
+        ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
+        if (!scripts || index >= scripts->scripts.size()) {
+            return false;
+        }
+        const ScriptEntry& entry = scripts->scripts[index];
+        lua_State* L = LuaBinding::getLuaState();
+        if (entry.type != ScriptType::LUA || !entry.instance || !L) {
+            return false;
+        }
+        const int top = lua_gettop(L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry.instance)));
+        LuaBinding::protectedGetField(L, -1, "start");
+        if (lua_isfunction(L, -1)) {
+            lua_pushvalue(L, top + 1);   // self
+            // errors are logged as coroutine errors (with the coroutine's traceback)
+            ScriptScheduler::startCoroutine(L, top + 1, top + 2, 1, "start");
+        }
+        lua_settop(L, top);
+        return true;
+    }
+
+    // The coroutines and timers of the scripts of these GameObjects end (destroy, unload),
+    // after onDisable and before onDestroy, as Unity stops them
+    void cancelScheduled(Scene* scene, const std::vector<Entity>& entities) {
+        for (Entity entity : entities) {
+            ScriptComponent* scripts = scene->isEntityCreated(entity) ? scene->findComponent<ScriptComponent>(entity) : nullptr;
+            for (size_t i = 0; scripts && i < scripts->scripts.size(); i++) {
+                const ScriptEntry& entry = scripts->scripts[i];
+                const void* owner = entry.type == ScriptType::LUA ? entry.instance : static_cast<const void*>(entry.cppScript);
+                if (owner) {
+                    ScriptScheduler::cancelOwner(owner);
+                }
+                // a __close may have changed the component
+                scripts = scene->isEntityCreated(entity) ? scene->findComponent<ScriptComponent>(entity) : nullptr;
+            }
         }
     }
 
@@ -287,7 +330,8 @@ void ScriptRuntime::onActiveInHierarchyChanged(Scene* scene, const std::vector<E
         awake(scene, changed);
     } else {
         disableAll(scene, changed);
-        // (coroutines: ScriptScheduler::stopCoroutinesOf for the instances of `changed`)
+        // their coroutines stop (not their timers): Unity's SetActive(false)
+        ScriptScheduler::stopCoroutinesOfInactive(scene, changed.data(), changed.size());
     }
 }
 
@@ -340,9 +384,10 @@ void ScriptRuntime::flushStarts() {
             continue;
         }
         state.started = true;
-        // (coroutines: a Lua start runs as a coroutine through ScriptScheduler::startCoroutine,
-        // so it can wait; until then it is a plain call)
-        call(scene, entity, index, ScriptMessage::Start);
+        // a Lua start runs as a coroutine, so it can wait; C++ start is a plain call
+        if (!startLuaCoroutine(scene, entity, index)) {
+            call(scene, entity, index, ScriptMessage::Start);
+        }
     }
 }
 
@@ -352,7 +397,7 @@ void ScriptRuntime::destroyEntities(Scene* scene, const std::vector<Entity>& ent
     }
     markDestroying(scene, entities);
     disableAll(scene, entities);
-    // (coroutines: ScriptScheduler::cancelOwner for their instances)
+    cancelScheduled(scene, entities);
     destroyAll(scene, entities);
 }
 
@@ -372,6 +417,9 @@ void ScriptRuntime::unloadScenes(const std::vector<Scene*>& scenes) {
     }
     for (auto& [scene, entities] : unloading) {
         disableAll(scene, entities);
+    }
+    for (auto& [scene, entities] : unloading) {
+        cancelScheduled(scene, entities);
     }
     for (auto& [scene, entities] : unloading) {
         destroyAll(scene, entities);
@@ -409,6 +457,20 @@ void ScriptRuntime::broadcast(ScriptMessage m, const std::function<int(lua_State
             ScriptMessages::send(scene, entity, m, pushArgs, callCpp, DeliverRequireActive);
         }
     }
+}
+
+Entity ScriptRuntime::findHandler(Scene* scene, Entity entity, ScriptMessage m) {
+    if (!scene) {
+        return NULL_ENTITY;
+    }
+    for (Entity current = entity; current != NULL_ENTITY && scene->isEntityCreated(current);) {
+        if (scene->isEntityActiveInHierarchy(current) && ScriptMessages::defines(scene, current, m)) {
+            return current;
+        }
+        Transform* transform = scene->findComponent<Transform>(current);
+        current = transform ? transform->parent : NULL_ENTITY;
+    }
+    return NULL_ENTITY;
 }
 
 int ScriptRuntime::sendMessage(Scene* scene, Entity entity, ScriptMessage m,

@@ -3,6 +3,8 @@
 
 #include "AnimationClipIO.h"
 
+#include "animation/AnimJson.h"
+
 #include "Engine.h"
 #include "json.hpp"
 
@@ -805,6 +807,20 @@ namespace{
             warn(warnings, "source.kind", "expected model, entity or pose: source dropped");
             data.source = ClipSource();
         }
+
+        // the additive reference time (anim layers spec 6.1): in [0, length]
+        if (!std::isfinite(data.additiveReference)){
+            warn(warnings, "additive_reference", "not a number, using 0");
+            data.additiveReference = 0.0f;
+        }else{
+            const float length = data.effectiveLength();
+            const float clamped = std::min(std::max(data.additiveReference, 0.0f), length);
+            if (clamped != data.additiveReference){
+                warn(warnings, "additive_reference", shortNumber(data.additiveReference) + " is outside the clip (0.." +
+                                                     shortNumber(length) + "), using " + shortNumber(clamped));
+            }
+            data.additiveReference = quantizeTime(clamped);
+        }
     }
 
     // ---- parsing ----
@@ -1171,48 +1187,6 @@ namespace{
         }
     }
 
-    // line and column (1-based, in code points; a UTF-8 BOM is not a column) of the byte at
-    // `index` (0-based)
-    void textPosition(const std::string& text, size_t index, int& line, int& column){
-        if (index > text.size()) index = text.size();
-        line = 1;
-        size_t lineStart = text.compare(0, 3, "\xEF\xBB\xBF") == 0 ? std::min<size_t>(3, index) : 0;
-        for (size_t i = lineStart; i < index; i++){
-            if (text[i] == '\n'){
-                line++;
-                lineStart = i + 1;
-            }
-        }
-        column = 1;
-        for (size_t i = lineStart; i < index; i++){
-            // UTF-8 continuation bytes belong to the previous code point
-            if (((unsigned char)text[i] & 0xC0) != 0x80) column++;
-        }
-    }
-
-    // nlohmann's DOM builder, recording where and why the parse stopped: syntax errors and
-    // numbers outside the double range (out_of_range.406) alike, without exceptions
-    class ClipSaxParser : public nlohmann::detail::json_sax_dom_parser<OJson>{
-    public:
-        explicit ClipSaxParser(OJson& root): json_sax_dom_parser<OJson>(root, false){}
-
-        template<class Exception>
-        bool parse_error(std::size_t position, const std::string& lastToken, const Exception& ex){
-            failed = true;
-            errorPosition = position;
-            errorToken = lastToken;
-            message = ex.what();
-            overflow = std::is_same<Exception, nlohmann::detail::out_of_range>::value;
-            return json_sax_dom_parser<OJson>::parse_error(position, lastToken, ex);
-        }
-
-        bool failed = false;
-        bool overflow = false;
-        std::size_t errorPosition = 0;   // characters read when the parse stopped (1-based last one)
-        std::string errorToken;
-        std::string message;
-    };
-
     // ---- writing ----
 
     std::string quote(const std::string& text){
@@ -1318,8 +1292,8 @@ namespace{
         return text + "}";
     }
 
-    const char* const knownTopLevelKeys[] = {"format", "version", "guid", "frame_rate", "wrap", "length", "tracks",
-                                             "events", "preview", "source"};
+    const char* const knownTopLevelKeys[] = {"format", "version", "guid", "frame_rate", "wrap", "length", "additive_reference",
+                                             "tracks", "events", "preview", "source"};
 
     bool isKnownTopLevelKey(const std::string& name){
         for (const char* known : knownTopLevelKeys){
@@ -1357,21 +1331,7 @@ static anim::ClipParseResult parseClipText(const std::string& text){
     }
 
     OJson root;
-    ClipSaxParser sax(root);
-    OJson::sax_parse(text, &sax);
-    if (sax.failed){
-        std::string message = sax.message;
-        if (sax.overflow){
-            // at the start of the number token (the parse stopped after it)
-            size_t end = std::min(sax.errorPosition, text.size());
-            size_t start = sax.errorToken.empty() ? std::string::npos : text.rfind(sax.errorToken, end);
-            textPosition(text, start != std::string::npos ? start : (end > 0 ? end - 1 : 0), result.error.line, result.error.column);
-            result.error.message = "not valid JSON: the number " + sax.errorToken + " is out of range";
-        }else{
-            textPosition(text, sax.errorPosition > 0 ? sax.errorPosition - 1 : 0, result.error.line, result.error.column);
-            size_t at = message.find("syntax error");
-            result.error.message = "not valid JSON: " + (at != std::string::npos ? message.substr(at) : message);
-        }
+    if (!json::parseDocument(text, root, result.error)){
         return result;
     }
     if (!root.is_object()){
@@ -1434,6 +1394,13 @@ static anim::ClipParseResult parseClipText(const std::string& text){
                 length = -1.0f;
             }
             data.length = length;
+        }else if (name == "additive_reference"){
+            float reference = 0.0f;
+            if (!toFloat(value, reference) || reference < 0.0f){
+                warn(&warnings, "additive_reference", "expected seconds >= 0 (the time an additive layer measures from): using 0");
+                reference = 0.0f;
+            }
+            data.additiveReference = reference;
         }else if (name == "tracks"){
             if (!value.is_array()){
                 warn(&warnings, "tracks", "expected an array of tracks, ignored");
@@ -1546,6 +1513,7 @@ std::string anim::writeClip(const ClipData& input){
     text += "  \"frame_rate\": " + number(data.frameRate) + ",\n";
     text += std::string("  \"wrap\": ") + quote(wrapName(data.wrap)) + ",\n";
     if (data.hasExplicitLength()) text += "  \"length\": " + timeNumber(data.length) + ",\n";
+    if (data.additiveReference != 0.0f) text += "  \"additive_reference\": " + timeNumber(data.additiveReference) + ",\n";
 
     if (data.tracks.empty()){
         text += "  \"tracks\": [],\n";

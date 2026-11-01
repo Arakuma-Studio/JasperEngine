@@ -219,6 +219,9 @@ namespace jasperengine{
         // Collision Matrix lets their GameObject layers collide.
         uint16_t categoryBits = 1;
         uint16_t maskBits = 0xFFFF;
+        // the contact messages its scripts (and its colliders' receivers') define
+        // (PhysicsCallbacks bits), packed in the Jolt body's user data; runtime
+        uint16_t listenerMask = 0;
     };
 
 }

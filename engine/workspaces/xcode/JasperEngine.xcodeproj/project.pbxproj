@@ -1189,6 +1189,12 @@
 		5C53A5D162D9C346844CB8CB /* LuaJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */; };
 		71FCE4C028E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */; };
 		5C72896B6774821F58C7FFE8 /* LuaJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */; };
+		5C7722CA13C8F27169D0B74F /* ScriptScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */; };
+		5C3BEC6A230B027038CFB065 /* ScriptScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */; };
+		5C2971B8BC53558DD35F4A85 /* CoroutineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */; };
+		5CDD7FFB6F3FFF44D5F63680 /* CoroutineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */; };
+		5CC0078C861242152915F064 /* EngineTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */; };
+		5C96984210E9C63A8E91FC8B /* EngineTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */; };
 		71FCE4C128E0FA01003C5217 /* LuaFunctionBase.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */; };
 		71FCE4C228E0FA01003C5217 /* LuaBridgeAddon.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */; };
 		71FCE4C528E0FA31003C5217 /* LuaBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4C428E0FA31003C5217 /* LuaBridge.h */; };
@@ -1682,6 +1688,8 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C55B75762B8FB50E4A0 /* ContextPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */; };
+		524D4C55BAE4061CA1A51C86 /* ContextPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */; };
 		524D4C554044E87D2818FC4D /* LineClampEllipsis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */; };
 		524D4C556D598CE64B555B31 /* LineClampEllipsis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */; };
 		524D4C551FF1B7571B423E99 /* TextJustification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */; };
@@ -3399,6 +3407,77 @@
 		4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477A428FAA7908B6A0 /* EdgeInsets.h */; };
 		4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DB493E51DF771D1F /* FrameLimiter.h */; };
 		4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47778D99DE934432D4 /* PlatformRules.h */; };
+		4A534E47333DA2358C0F9F36 /* Collision.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A23CBF68A1C3D56F /* Collision.cpp */; };
+		4A534E47BFEFFBC47D55365D /* Collision.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A23CBF68A1C3D56F /* Collision.cpp */; };
+		4A534E47AB9CC6E5C6D9F2FB /* Collision2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CF04B7CA635BF1EA /* Collision2D.cpp */; };
+		4A534E470BBAB467919681F6 /* Collision2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CF04B7CA635BF1EA /* Collision2D.cpp */; };
+		4A534E4791F8F1B509D23D29 /* ContactTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470DE923DCD3B67E77 /* ContactTracker.cpp */; };
+		4A534E47A30D915728D13D43 /* ContactTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470DE923DCD3B67E77 /* ContactTracker.cpp */; };
+		4A534E476C5FB9A5FFF8B365 /* PhysicsSystemContacts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */; };
+		4A534E47298606EA1E9962DE /* PhysicsSystemContacts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */; };
+		4A534E474269687D105CA51D /* Collision.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4733724F6EEF14DB82 /* Collision.h */; };
+		4A534E471B213535798BF4BE /* Collision2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474FA579066E077C7A /* Collision2D.h */; };
+		4A534E474A7C68D81C25A4F3 /* ContactTracker.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E00F9DE4AB0805F0 /* ContactTracker.h */; };
+		4A534E47DCB3649B76DF662D /* MinMax.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */; };
+		4A534E473B31CA976C874AE9 /* MinMax.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */; };
+		4A534E470BB68EBC69A7983C /* ParticleFields.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DB3BE228C037C932 /* ParticleFields.cpp */; };
+		4A534E47FF513E8087E55C99 /* ParticleFields.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DB3BE228C037C932 /* ParticleFields.cpp */; };
+		4A534E47BF2A3508605C2AA6 /* ParticleModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47851D966449DCE973 /* ParticleModules.cpp */; };
+		4A534E47882646202CB563DB /* ParticleModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47851D966449DCE973 /* ParticleModules.cpp */; };
+		4A534E47BEFC2B7543B83919 /* ParticleNoise.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */; };
+		4A534E47676AFE1161B8D47F /* ParticleNoise.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */; };
+		4A534E47BB623145D4A66BBD /* ParticleShapes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */; };
+		4A534E47A342B7B089A7F257 /* ParticleShapes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */; };
+		4A534E47160DFF77DA91001C /* ParticleSimulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */; };
+		4A534E4748581C624395D4BB /* ParticleSimulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */; };
+		4A534E473F24882C1A62997B /* ParticleUpgrade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */; };
+		4A534E4715A1589DC34790B4 /* ParticleUpgrade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */; };
+		4A534E476DACC88BC9C47409 /* ParticleClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */; };
+		4A534E4738981FC54EBE9280 /* ParticleClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */; };
+		4A534E47BAC7D2CEF29CFFE6 /* ActionSystemParticles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */; };
+		4A534E4734884D6ECAFA0459 /* ActionSystemParticles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */; };
+		4A534E4757FF1BC3B82F464F /* ParticleSystemModule.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4725212AA03130A5CA /* ParticleSystemModule.h */; };
+		4A534E4791220744CF917054 /* MinMax.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475C7CE6EBA1324928 /* MinMax.h */; };
+		4A534E471D0E2F3B1D9AD1CA /* ParticleFields.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474699FAACECE71F31 /* ParticleFields.h */; };
+		4A534E473D0B6F9ADA26A270 /* ParticleModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D160C40D539EF9BF /* ParticleModules.h */; };
+		4A534E475F7D54762B94FFF7 /* ParticleNoise.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4796D6D84AD719B630 /* ParticleNoise.h */; };
+		4A534E47F6EA5152103D82BF /* ParticleRandom.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4710DB6BC9F6220645 /* ParticleRandom.h */; };
+		4A534E47F3B27EF73B48BF8A /* ParticleShapes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47030B69308A26E830 /* ParticleShapes.h */; };
+		4A534E47F8F6648CDEE6113A /* ParticleSimulation.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47336D59CB877901B4 /* ParticleSimulation.h */; };
+		4A534E4771B3412C33904150 /* ParticleUpgrade.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478AFD9A93AB71B6C7 /* ParticleUpgrade.h */; };
+		4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47884A25441D62340D /* OnScreenControls.cpp */; };
+		4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47884A25441D62340D /* OnScreenControls.cpp */; };
+		4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */; };
+		4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */; };
+		4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */; };
+		4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */; };
+		4A534E47A2DD8B4564147CDE /* OnScreenControlComponents.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E52435C695296268 /* OnScreenControlComponents.h */; };
+		4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A3734219166C9A6F /* OnScreenControls.h */; };
+		4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477650920F4D670D0F /* OnScreenControls.h */; };
+		4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD6F5BB381B88CCB /* PointerEventData.h */; };
+		4A534E47C2EB8733EFA6A703 /* AnimJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */; };
+		4A534E47B883AB58AE96516A /* AnimJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */; };
+		4A534E4762ADCF900A1EE759 /* AvatarMask.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47996AB1821448E1AE /* AvatarMask.cpp */; };
+		4A534E479157A9898502F849 /* AvatarMask.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47996AB1821448E1AE /* AvatarMask.cpp */; };
+		4A534E473B6F76E6926344CF /* AnimatorController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */; };
+		4A534E474769C0AF2E2ADF1C /* AnimatorController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */; };
+		4A534E473B7ADBFE51472A17 /* AnimatorControllerPlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */; };
+		4A534E473C3FBE3B58C8E61A /* AnimatorControllerPlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */; };
+		4A534E473471AEDD7E75E664 /* AvatarMaskPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */; };
+		4A534E479511A0CC70AEAA36 /* AvatarMaskPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */; };
+		4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */; };
+		4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */; };
+		4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */; };
+		4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */; };
+		4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */; };
+		4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */; };
+		4A534E4760E68158A46EE9E7 /* AnimJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D659E046BA39D1C5 /* AnimJson.h */; };
+		4A534E47F140524B37ABEF43 /* AnimatorController.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E8C82FBFE31A0756 /* AnimatorController.h */; };
+		4A534E477173DC4F901A839F /* AvatarMask.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4785CD3820E9AA2297 /* AvatarMask.h */; };
+		4A534E4780DBE4298C5B38E0 /* AnimatorControllerPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */; };
+		4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */; };
+		4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */; };
+		4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */; };
 		4A534E47616A59222953D876 /* SafeAreaComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */; };
 /* End PBXBuildFile section */
 
@@ -5354,6 +5433,12 @@
 		71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LuaFunctionBase.cpp; sourceTree = "<group>"; };
 		5CE4F17FDC667A00AD056E88 /* LuaJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaJson.h; sourceTree = "<group>"; };
 		5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LuaJson.cpp; sourceTree = "<group>"; };
+		5C601CE397BFD6A7D949A7FC /* ScriptScheduler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptScheduler.h; sourceTree = "<group>"; };
+		5C936A55C74F6B41E9BABBC8 /* Timer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Timer.h; sourceTree = "<group>"; };
+		5C829CB5345D82DBCEBD5506 /* EngineTime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EngineTime.h; sourceTree = "<group>"; };
+		5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptScheduler.cpp; sourceTree = "<group>"; };
+		5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CoroutineClassesLua.cpp; sourceTree = "<group>"; };
+		5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EngineTime.cpp; sourceTree = "<group>"; };
 		71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaFunctionBase.h; sourceTree = "<group>"; };
 		71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridgeAddon.h; sourceTree = "<group>"; };
 		71FCE4C428E0FA31003C5217 /* LuaBridge.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridge.h; sourceTree = "<group>"; };
@@ -5620,6 +5705,7 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContextPointer.cpp; sourceTree = "<group>"; };
 		524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LineClampEllipsis.cpp; sourceTree = "<group>"; };
 		524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextJustification.cpp; sourceTree = "<group>"; };
 		524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyIdSet.cpp; sourceTree = "<group>"; };
@@ -6838,6 +6924,53 @@
 		4A534E477A428FAA7908B6A0 /* EdgeInsets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EdgeInsets.h; sourceTree = "<group>"; };
 		4A534E47DB493E51DF771D1F /* FrameLimiter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameLimiter.h; sourceTree = "<group>"; };
 		4A534E47778D99DE934432D4 /* PlatformRules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlatformRules.h; sourceTree = "<group>"; };
+		4A534E47A23CBF68A1C3D56F /* Collision.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Collision.cpp; sourceTree = "<group>"; };
+		4A534E47CF04B7CA635BF1EA /* Collision2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Collision2D.cpp; sourceTree = "<group>"; };
+		4A534E470DE923DCD3B67E77 /* ContactTracker.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContactTracker.cpp; sourceTree = "<group>"; };
+		4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystemContacts.cpp; sourceTree = "<group>"; };
+		4A534E4733724F6EEF14DB82 /* Collision.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Collision.h; sourceTree = "<group>"; };
+		4A534E474FA579066E077C7A /* Collision2D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Collision2D.h; sourceTree = "<group>"; };
+		4A534E47E00F9DE4AB0805F0 /* ContactTracker.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContactTracker.h; sourceTree = "<group>"; };
+		4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MinMax.cpp; sourceTree = "<group>"; };
+		4A534E47DB3BE228C037C932 /* ParticleFields.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleFields.cpp; sourceTree = "<group>"; };
+		4A534E47851D966449DCE973 /* ParticleModules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleModules.cpp; sourceTree = "<group>"; };
+		4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleNoise.cpp; sourceTree = "<group>"; };
+		4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleShapes.cpp; sourceTree = "<group>"; };
+		4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleSimulation.cpp; sourceTree = "<group>"; };
+		4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleUpgrade.cpp; sourceTree = "<group>"; };
+		4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemParticles.cpp; sourceTree = "<group>"; };
+		4A534E4725212AA03130A5CA /* ParticleSystemModule.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSystemModule.h; sourceTree = "<group>"; };
+		4A534E475C7CE6EBA1324928 /* MinMax.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MinMax.h; sourceTree = "<group>"; };
+		4A534E474699FAACECE71F31 /* ParticleFields.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleFields.h; sourceTree = "<group>"; };
+		4A534E47D160C40D539EF9BF /* ParticleModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleModules.h; sourceTree = "<group>"; };
+		4A534E4796D6D84AD719B630 /* ParticleNoise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleNoise.h; sourceTree = "<group>"; };
+		4A534E4710DB6BC9F6220645 /* ParticleRandom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleRandom.h; sourceTree = "<group>"; };
+		4A534E47030B69308A26E830 /* ParticleShapes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleShapes.h; sourceTree = "<group>"; };
+		4A534E47336D59CB877901B4 /* ParticleSimulation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSimulation.h; sourceTree = "<group>"; };
+		4A534E478AFD9A93AB71B6C7 /* ParticleUpgrade.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleUpgrade.h; sourceTree = "<group>"; };
+		4A534E47884A25441D62340D /* OnScreenControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OnScreenControls.cpp; sourceTree = "<group>"; };
+		4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OnScreenControls.cpp; sourceTree = "<group>"; };
+		4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemPointer.cpp; sourceTree = "<group>"; };
+		4A534E47E52435C695296268 /* OnScreenControlComponents.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControlComponents.h; sourceTree = "<group>"; };
+		4A534E47A3734219166C9A6F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
+		4A534E477650920F4D670D0F /* OnScreenControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnScreenControls.h; sourceTree = "<group>"; };
+		4A534E47AD6F5BB381B88CCB /* PointerEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PointerEventData.h; sourceTree = "<group>"; };
+		4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimJson.cpp; sourceTree = "<group>"; };
+		4A534E47996AB1821448E1AE /* AvatarMask.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AvatarMask.cpp; sourceTree = "<group>"; };
+		4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorController.cpp; sourceTree = "<group>"; };
+		4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorControllerPlayback.cpp; sourceTree = "<group>"; };
+		4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AvatarMaskPool.cpp; sourceTree = "<group>"; };
+		4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorControllerPool.cpp; sourceTree = "<group>"; };
+		4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemLayers.cpp; sourceTree = "<group>"; };
+		4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemController.cpp; sourceTree = "<group>"; };
+		4A534E47D659E046BA39D1C5 /* AnimJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimJson.h; sourceTree = "<group>"; };
+		4A534E47E8C82FBFE31A0756 /* AnimatorController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorController.h; sourceTree = "<group>"; };
+		4A534E4785CD3820E9AA2297 /* AvatarMask.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMask.h; sourceTree = "<group>"; };
+		4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorControllerPool.h; sourceTree = "<group>"; };
+		4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AvatarMaskPool.h; sourceTree = "<group>"; };
+		4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JsonAssetPool.h; sourceTree = "<group>"; };
+		4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ActionSystemPlayersDetail.h; sourceTree = "<group>"; };
 		4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SafeAreaComponent.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -7252,10 +7385,12 @@
 				50314C550000000000000014 /* HtmlUIClassesLua.cpp */,
 				564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */,
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
+				5CF04AAFAFA2C7D98C3818A9 /* CoroutineClassesLua.cpp */,
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
 				4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */,
 				4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */,
 				4A534E47C4CB6F074423D782 /* NetClassesLua.h */,
+				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -7960,6 +8095,7 @@
 				71451BCD270CA17F00712643 /* SpriteAnimation.h */,
 				71451BC4270CA17F00712643 /* Tween.cpp */,
 				71451BD0270CA17F00712643 /* Tween.h */,
+				4A534E4725212AA03130A5CA /* ParticleSystemModule.h */,
 			);
 			path = action;
 			sourceTree = "<group>";
@@ -8102,6 +8238,8 @@
 				4A534E47B943DF5AE8C89137 /* JoltSurfaceMaterial.h */,
 				4A534E4732D16258C9BD3B20 /* PhysicsDebugLines.h */,
 				4A534E475211D61462BB9014 /* RagdollBuilder.h */,
+				4A534E470DE923DCD3B67E77 /* ContactTracker.cpp */,
+				4A534E47E00F9DE4AB0805F0 /* ContactTracker.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -8129,6 +8267,13 @@
 				4A534E47AD5E53AFFD11DDEA /* VertexAnimation.h */,
 				4A534E472C320572A975C725 /* VertexAnimatorRuntime.h */,
 				4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */,
+				4A534E4740DBAA4CDAA5F839 /* AnimJson.cpp */,
+				4A534E47996AB1821448E1AE /* AvatarMask.cpp */,
+				4A534E475C33BEC4EEB71F20 /* AnimatorController.cpp */,
+				4A534E47C840674BC8E739BE /* AnimatorControllerPlayback.cpp */,
+				4A534E47D659E046BA39D1C5 /* AnimJson.h */,
+				4A534E47E8C82FBFE31A0756 /* AnimatorController.h */,
+				4A534E4785CD3820E9AA2297 /* AvatarMask.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -8157,6 +8302,28 @@
 			path = net;
 			sourceTree = "<group>";
 		};
+		4A534E477B5E3DD34ED6FF19 /* particles */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */,
+				4A534E47DB3BE228C037C932 /* ParticleFields.cpp */,
+				4A534E47851D966449DCE973 /* ParticleModules.cpp */,
+				4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */,
+				4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */,
+				4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */,
+				4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */,
+				4A534E475C7CE6EBA1324928 /* MinMax.h */,
+				4A534E474699FAACECE71F31 /* ParticleFields.h */,
+				4A534E47D160C40D539EF9BF /* ParticleModules.h */,
+				4A534E4796D6D84AD719B630 /* ParticleNoise.h */,
+				4A534E4710DB6BC9F6220645 /* ParticleRandom.h */,
+				4A534E47030B69308A26E830 /* ParticleShapes.h */,
+				4A534E47336D59CB877901B4 /* ParticleSimulation.h */,
+				4A534E478AFD9A93AB71B6C7 /* ParticleUpgrade.h */,
+			);
+			path = particles;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -8168,6 +8335,8 @@
 				48544D4C0000000000000047 /* htmlui */,
 				7162FC2B25962A0E0075B97D /* Engine.h */,
 				7162FC7225962A0E0075B97D /* Engine.cpp */,
+				5C829CB5345D82DBCEBD5506 /* EngineTime.h */,
+				5C41FD19F3BE6E6C84520FC6 /* EngineTime.cpp */,
 				175DCCB9300FA22F008C19EC /* Export.h */,
 				F10B0B1E0000000000000005 /* fluid */,
 				7128D05D25BB02F800965B51 /* Input.h */,
@@ -8201,6 +8370,7 @@
 				4A534E47325562508AC85529 /* net */,
 				4A534E4730D9EC2E29E781C3 /* Screen.cpp */,
 				4A534E471F33544BB442A466 /* Screen.h */,
+				4A534E477B5E3DD34ED6FF19 /* particles */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -8386,6 +8556,7 @@
 				4A534E47C782824D41EC527F /* PhysicsCommon.h */,
 				4A534E47ECB20D024971B61A /* RagdollComponent.h */,
 				4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */,
+				4A534E47E52435C695296268 /* OnScreenControlComponents.h */,
 				4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */,
 			);
 			path = component;
@@ -8539,6 +8710,12 @@
 				4A534E4709DE150BBF04619D /* PhysicsSystemDebugDraw.cpp */,
 				4A534E47B38E42BA45359570 /* TrailSystem.cpp */,
 				4A534E47D89F43391B4A415F /* TrailSystem.h */,
+				4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */,
+				4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */,
+				4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */,
+				4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */,
+				4A534E4714F69319B4C8EADD /* ActionSystemController.cpp */,
+				4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -9567,6 +9744,9 @@
 				48544D4C00000000000002B4 /* UIElementInternal.h */,
 				48544D4C00000000000002B6 /* UIEvent.h */,
 				48544D4C00000000000002B8 /* UIValue.h */,
+				4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */,
+				4A534E477650920F4D670D0F /* OnScreenControls.h */,
+				4A534E47AD6F5BB381B88CCB /* PointerEventData.h */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -9671,6 +9851,9 @@
 				71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */,
 				5CE4F17FDC667A00AD056E88 /* LuaJson.h */,
 				5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */,
+				5C601CE397BFD6A7D949A7FC /* ScriptScheduler.h */,
+				5C8BD76A3FF7EF1E77D918F4 /* ScriptScheduler.cpp */,
+				5C936A55C74F6B41E9BABBC8 /* Timer.h */,
 				71BE623025B1DB9D006D6E02 /* LuaScript.h */,
 				71BE622F25B1DB9D006D6E02 /* LuaScript.cpp */,
 				71AD5E6D2E9F2B86004951AB /* ScriptBase.h */,
@@ -9716,6 +9899,11 @@
 				4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */,
 				4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */,
 				4A534E47366B4EA887EC0288 /* PhysicsMaterialPool.h */,
+				4A534E47FF975B0B4DF4353A /* AvatarMaskPool.cpp */,
+				4A534E470F6780B5E26BAA01 /* AnimatorControllerPool.cpp */,
+				4A534E476874CEB8B84CDC87 /* AnimatorControllerPool.h */,
+				4A534E4790D2A4064C75D5D8 /* AvatarMaskPool.h */,
+				4A534E47F16FDFAA4BB57656 /* JsonAssetPool.h */,
 			);
 			path = pool;
 			sourceTree = "<group>";
@@ -9913,6 +10101,10 @@
 				71651FE92AA804B4008D9BF5 /* Manifold2D.h */,
 				4A534E47DB3E31A582F73622 /* Ragdoll.cpp */,
 				4A534E47E115EBAE7A897293 /* Ragdoll.h */,
+				4A534E47A23CBF68A1C3D56F /* Collision.cpp */,
+				4A534E47CF04B7CA635BF1EA /* Collision2D.cpp */,
+				4A534E4733724F6EEF14DB82 /* Collision.h */,
+				4A534E474FA579066E077C7A /* Collision2D.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -10342,6 +10534,15 @@
 			path = media;
 			sourceTree = "<group>";
 		};
+		4A534E47535074DEA48446A6 /* controls */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47884A25441D62340D /* OnScreenControls.cpp */,
+				4A534E47A3734219166C9A6F /* OnScreenControls.h */,
+			);
+			path = controls;
+			sourceTree = "<group>";
+		};
 		48544D4C0000000000000047 /* htmlui */ = {
 			isa = PBXGroup;
 			children = (
@@ -10385,6 +10586,7 @@
 				434F4D50564A0EBD33D8D4B9 /* compat */,
 				434F4D50147CAC73EC41A50D /* effects */,
 				564944458116A96C5CD0F039 /* media */,
+				4A534E47535074DEA48446A6 /* controls */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -10573,6 +10775,7 @@
 				524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */,
 				524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */,
 				524D4C55D59A80B61DED31AC /* LineClampEllipsis.cpp */,
+				524D4C55BEB7B48B2B1B00F3 /* ContextPointer.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -12201,6 +12404,29 @@
 				4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */,
 				4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */,
 				4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */,
+				4A534E474269687D105CA51D /* Collision.h in Headers */,
+				4A534E471B213535798BF4BE /* Collision2D.h in Headers */,
+				4A534E474A7C68D81C25A4F3 /* ContactTracker.h in Headers */,
+				4A534E4757FF1BC3B82F464F /* ParticleSystemModule.h in Headers */,
+				4A534E4791220744CF917054 /* MinMax.h in Headers */,
+				4A534E471D0E2F3B1D9AD1CA /* ParticleFields.h in Headers */,
+				4A534E473D0B6F9ADA26A270 /* ParticleModules.h in Headers */,
+				4A534E475F7D54762B94FFF7 /* ParticleNoise.h in Headers */,
+				4A534E47F6EA5152103D82BF /* ParticleRandom.h in Headers */,
+				4A534E47F3B27EF73B48BF8A /* ParticleShapes.h in Headers */,
+				4A534E47F8F6648CDEE6113A /* ParticleSimulation.h in Headers */,
+				4A534E4771B3412C33904150 /* ParticleUpgrade.h in Headers */,
+				4A534E47A2DD8B4564147CDE /* OnScreenControlComponents.h in Headers */,
+				4A534E470DA75CBE9CCA66E2 /* OnScreenControls.h in Headers */,
+				4A534E471B6DA2DDED262F16 /* OnScreenControls.h in Headers */,
+				4A534E47786C4C82C1A31AFB /* PointerEventData.h in Headers */,
+				4A534E4760E68158A46EE9E7 /* AnimJson.h in Headers */,
+				4A534E47F140524B37ABEF43 /* AnimatorController.h in Headers */,
+				4A534E477173DC4F901A839F /* AvatarMask.h in Headers */,
+				4A534E4780DBE4298C5B38E0 /* AnimatorControllerPool.h in Headers */,
+				4A534E474B028A49F22E7413 /* AvatarMaskPool.h in Headers */,
+				4A534E4790F1AB4DDB5485FE /* JsonAssetPool.h in Headers */,
+				4A534E47658965B013EA1310 /* ActionSystemPlayersDetail.h in Headers */,
 				4A534E47616A59222953D876 /* SafeAreaComponent.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -13935,6 +14161,9 @@
 				713D829C259D307F00567F9F /* CameraRender.cpp in Sources */,
 				71FCE4C028E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
 				5C72896B6774821F58C7FFE8 /* LuaJson.cpp in Sources */,
+				5C3BEC6A230B027038CFB065 /* ScriptScheduler.cpp in Sources */,
+				5CDD7FFB6F3FFF44D5F63680 /* CoroutineClassesLua.cpp in Sources */,
+				5C96984210E9C63A8E91FC8B /* EngineTime.cpp in Sources */,
 				71451BE5270CA17F00712643 /* Action.cpp in Sources */,
 				71165BC0282981BE00CF79C1 /* Base64.cpp in Sources */,
 				713D829D259D307F00567F9F /* Vector4.cpp in Sources */,
@@ -14280,6 +14509,30 @@
 				4A534E478DC0E7CF8FAFBECF /* Screen.cpp in Sources */,
 				4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */,
 				4A534E471F031487F33960F3 /* PlatformRules.cpp in Sources */,
+				4A534E47333DA2358C0F9F36 /* Collision.cpp in Sources */,
+				4A534E47AB9CC6E5C6D9F2FB /* Collision2D.cpp in Sources */,
+				4A534E4791F8F1B509D23D29 /* ContactTracker.cpp in Sources */,
+				4A534E476C5FB9A5FFF8B365 /* PhysicsSystemContacts.cpp in Sources */,
+				4A534E47DCB3649B76DF662D /* MinMax.cpp in Sources */,
+				4A534E470BB68EBC69A7983C /* ParticleFields.cpp in Sources */,
+				4A534E47BF2A3508605C2AA6 /* ParticleModules.cpp in Sources */,
+				4A534E47BEFC2B7543B83919 /* ParticleNoise.cpp in Sources */,
+				4A534E47BB623145D4A66BBD /* ParticleShapes.cpp in Sources */,
+				4A534E47160DFF77DA91001C /* ParticleSimulation.cpp in Sources */,
+				4A534E473F24882C1A62997B /* ParticleUpgrade.cpp in Sources */,
+				4A534E476DACC88BC9C47409 /* ParticleClassesLua.cpp in Sources */,
+				4A534E47BAC7D2CEF29CFFE6 /* ActionSystemParticles.cpp in Sources */,
+				4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */,
+				4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */,
+				4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */,
+				4A534E47C2EB8733EFA6A703 /* AnimJson.cpp in Sources */,
+				4A534E4762ADCF900A1EE759 /* AvatarMask.cpp in Sources */,
+				4A534E473B6F76E6926344CF /* AnimatorController.cpp in Sources */,
+				4A534E473B7ADBFE51472A17 /* AnimatorControllerPlayback.cpp in Sources */,
+				4A534E473471AEDD7E75E664 /* AvatarMaskPool.cpp in Sources */,
+				4A534E4792CE3E8DF5963EC5 /* AnimatorControllerPool.cpp in Sources */,
+				4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */,
+				4A534E470D249A6CD7FD5DDC /* ActionSystemController.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14392,6 +14645,9 @@
 				7162FD2125963AE00075B97D /* ObjectRender.cpp in Sources */,
 				71FCE4BF28E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
 				5C53A5D162D9C346844CB8CB /* LuaJson.cpp in Sources */,
+				5C7722CA13C8F27169D0B74F /* ScriptScheduler.cpp in Sources */,
+				5C2971B8BC53558DD35F4A85 /* CoroutineClassesLua.cpp in Sources */,
+				5CC0078C861242152915F064 /* EngineTime.cpp in Sources */,
 				71451BE4270CA17F00712643 /* Action.cpp in Sources */,
 				71165BBF282981BE00CF79C1 /* Base64.cpp in Sources */,
 				7162FD2325963AE00075B97D /* TextureRender.cpp in Sources */,
@@ -14737,6 +14993,30 @@
 				4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */,
 				4A534E47B6B13162C6157931 /* FrameLimiter.cpp in Sources */,
 				4A534E474B3E5336B343B76E /* PlatformRules.cpp in Sources */,
+				4A534E47BFEFFBC47D55365D /* Collision.cpp in Sources */,
+				4A534E470BBAB467919681F6 /* Collision2D.cpp in Sources */,
+				4A534E47A30D915728D13D43 /* ContactTracker.cpp in Sources */,
+				4A534E47298606EA1E9962DE /* PhysicsSystemContacts.cpp in Sources */,
+				4A534E473B31CA976C874AE9 /* MinMax.cpp in Sources */,
+				4A534E47FF513E8087E55C99 /* ParticleFields.cpp in Sources */,
+				4A534E47882646202CB563DB /* ParticleModules.cpp in Sources */,
+				4A534E47676AFE1161B8D47F /* ParticleNoise.cpp in Sources */,
+				4A534E47A342B7B089A7F257 /* ParticleShapes.cpp in Sources */,
+				4A534E4748581C624395D4BB /* ParticleSimulation.cpp in Sources */,
+				4A534E4715A1589DC34790B4 /* ParticleUpgrade.cpp in Sources */,
+				4A534E4738981FC54EBE9280 /* ParticleClassesLua.cpp in Sources */,
+				4A534E4734884D6ECAFA0459 /* ActionSystemParticles.cpp in Sources */,
+				4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */,
+				4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */,
+				4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */,
+				4A534E47B883AB58AE96516A /* AnimJson.cpp in Sources */,
+				4A534E479157A9898502F849 /* AvatarMask.cpp in Sources */,
+				4A534E474769C0AF2E2ADF1C /* AnimatorController.cpp in Sources */,
+				4A534E473C3FBE3B58C8E61A /* AnimatorControllerPlayback.cpp in Sources */,
+				4A534E479511A0CC70AEAA36 /* AvatarMaskPool.cpp in Sources */,
+				4A534E4784007B7DE713386D /* AnimatorControllerPool.cpp in Sources */,
+				4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */,
+				4A534E4765A4B02E89DDFB2A /* ActionSystemController.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -15311,6 +15591,7 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C55B75762B8FB50E4A0 /* ContextPointer.cpp in Sources */,
 				524D4C554044E87D2818FC4D /* LineClampEllipsis.cpp in Sources */,
 				524D4C551FF1B7571B423E99 /* TextJustification.cpp in Sources */,
 				524D4C55280D970116FCD657 /* PropertyIdSet.cpp in Sources */,
@@ -15565,6 +15846,7 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C55BAE4061CA1A51C86 /* ContextPointer.cpp in Sources */,
 				524D4C556D598CE64B555B31 /* LineClampEllipsis.cpp in Sources */,
 				524D4C555F4819C5AB209F97 /* TextJustification.cpp in Sources */,
 				524D4C55D86EF33DDCE0322D /* PropertyIdSet.cpp in Sources */,

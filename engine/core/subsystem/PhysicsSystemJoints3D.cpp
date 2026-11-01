@@ -7,6 +7,9 @@
 // parameters, breaking (onJointBreak) and the read-outs.
 
 #include "PhysicsSystem.h"
+
+// 3D physics only (JASPERENGINE_PHYSICS_3D, from PhysicsSystem.h's includes)
+#ifdef JASPERENGINE_PHYSICS_3D
 #include "Scene.h"
 #include "object/physics/Joint3D.h"
 #include "script/ScriptMessages.h"
@@ -24,7 +27,6 @@
 
 using namespace jasperengine;
 
-#ifdef JASPERENGINE_PHYSICS_3D
 
 namespace {
 

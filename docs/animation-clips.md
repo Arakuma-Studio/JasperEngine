@@ -362,6 +362,174 @@ animation the Pose Animator plays, under the file's name), opens a menu:
   the same clip and keeps its GUID. One scene step.
 - **Bake into Scene** is the entity bake (an Animation of the character in this scene).
 
+## Layers and masks
+
+An Animation Player has **layers** (Unity's animation layers), listed in the Inspector's **Layers**
+table above the clips. **Base Layer** is layer 0. Each clip entry plays on one layer (its **Layer**
+combo), and each layer has:
+
+- **Weight** (0 to 1): how much of the layer shows over the layers below it. The base layer is always
+  1. `player:setLayerWeight("Holding", w, fade)` changes it at runtime (linear fades in the player's
+  scaled time); the Unity pattern `w + (target - w) * dt * 15` works as is.
+- **Blending**: **Override** replaces what the layers below produce, as much as the weight says.
+  **Additive** adds the clip's change from its first frame (or from the clip's
+  `additive_reference` time) to what is below: a nod, a breath, a hit reaction on top of any walk.
+  The base layer is always Override.
+- **Mask**: an **Avatar Mask** (`.mask`) that says which bones the layer animates. Without a mask, a
+  layer animates exactly the channels its clips have keys for, and everything else passes through
+  from below: an upper-body clip on layer 1 leaves the legs to the base layer.
+
+`play`, `crossFade` and `queue` work per layer. `play("Hold")` on layer 1 does not stop the walk on
+layer 0 (Unity's `PlayMode.StopSameLayer`); `play("Walk", 0, PlayMode.STOP_ALL)` stops every layer.
+A queue waits only for its own layer. Events fire only from layers whose weight is above 0 (the base
+layer always fires); a layer at weight 0 costs nothing but keeps its states' time going, so raising
+the weight later shows the right phase. `onFinish` still fires on a zero-weight layer.
+
+In play mode the **States** panel groups the states under their layers, with a live weight bar and
+a slider that drives the runtime weight (not saved). The **Bindings** report adds, per masked
+layer, how many bound bones its mask covers, and the mask's warnings.
+
+The farmer of the Garden game, in Lua:
+
+```lua
+function Farmer:init()
+    self.player = GameObject(self.scene, self.entity):getAnimationPlayer()
+    RegisterEngineEvent(self, "onUpdate")
+end
+function Farmer:onUpdate()
+    local speed = self.body.linearVelocity:length()
+    local want = speed > 0.01 and "Running" or "Idle"
+    if not self.player:isPlaying(want) then self.player:crossFade(want, 0.15) end
+    local w = self.player:getLayerWeight("Holding")
+    local target = self.holding and 1 or 0
+    self.player:setLayerWeight("Holding", w + (target - w) * math.min(1, Engine.deltatime * 15))
+end
+```
+
+### Avatar Masks
+
+**Assets > Create > Avatar Mask** makes `New Avatar Mask.mask`. Click it in the Project window to edit
+it in the Inspector (project undo steps):
+
+- **Default**: the weight of every bone no rule below covers. A new mask (and an empty one) passes
+  everything, as in Unity.
+- **Humanoid**: a figure with Unity's body parts (Root, Body, Head, the arms, legs and fingers).
+  Click a part to toggle it; green is 1, red is 0, a tint is a fraction (hover for its weight; the
+  slider under the figure sets a fraction for the part you clicked last). It
+  works on any model with a humanoid rig (the same rig detection as Pose Animation: Mixamo, VRM and
+  most naming schemes); "Not humanoid" shows when the preview model has none.
+- **Transforms**: the bones of the **Preview Model** (or of the selected GameObject: **Use
+  Selection**) as a tree. Tick a bone, set its weight, and choose whether it also covers its
+  children. Shift-click ticks a whole subtree.
+- **Users**: the players and layers (also of Animator Controllers) that use the mask.
+
+Each tree row also shows, as a coloured dot, the weight the bone gets from the whole mask (hover it
+for the rule: its transform entry, a body part, or Default).
+
+Which rule wins for a bone: its own transform entry, else its nearest ancestor's entry that covers
+children; else, when the mask has humanoid parts and the character is humanoid, the bone's body
+part (fingers are the bones below a hand, twist bones take their parent bone's part, and Root is
+the character and the nodes above the hips); else Default. Mask weights are not normalized: a bone at
+0.5 on an Override layer at weight 1 shows half the layer and half what is below.
+
+The fastest way to a mask: select the bones in the Hierarchy, right-click the layer in the
+Inspector and pick **Create Mask from Selection...** (it writes the mask and assigns it, as one undo
+step). A mask names paths, not scene objects, so one mask works on every character with the same
+rig. A layer whose mask is missing or still loading contributes nothing, and the Console says why
+once; undoing the delete of the file relinks it.
+
+In the Animation window, the clip menu groups states by layer (`Holding ▸ Hold`). For a state on a
+layer above the base, **Preview over** picks a base state: the preview then shows that base state
+at the playhead with the edited clip on its layer and mask, as in the game. Record still keys the
+edited clip only. Rows the layer's mask hides are dimmed.
+
+From Lua, a state can also be limited to some bones without a mask, like Unity's legacy
+`AddMixingTransform`: `player:getState("Wave"):addMixingTransform("Hips/Spine/RightArm")` (the path
+and, unless `recursive` is false, everything below it). Several mixing transforms add up; they
+multiply with the layer's mask.
+
+## Animator Controllers
+
+An **Animator Controller** (`.controller`, Unity's Animator Controller) is a state machine an
+Animation Player plays instead of its clip list: **parameters** (float, int, bool, trigger) and, per
+layer, **states** (a clip, a 1D **blend tree**, or empty), an **Any State**, and **transitions** with
+conditions. Set it in the player's **Controller** field. The player's own clips and layers are then
+ignored (the Inspector hides them and says so); the controller's layers, with their weights, blends
+and masks, are the player's. In Lua, `GameObject:getAnimator()` is the same as
+`getAnimationPlayer()`.
+
+**Assets > Create > Animator Controller** makes an empty controller with a Base Layer;
+**Create Controller from Clips** on a player makes one state per clip entry (the default clip as
+the default state, the entries' layers as controller layers) and assigns it. Double-click a
+controller, or press **Open** next to the field, to edit it in **Window > Animation > Animator**
+(`Ctrl+7`):
+
+- **Layers** and **Parameters** tabs on the left. In play mode the parameters show live values you
+  can change (not saved).
+- The graph: drag states, right-click empty space for **Create State** (Empty, From Clip..., From New
+  Blend Tree), right-click a state for **Make Transition** (then click the target), **Set as Layer
+  Default State** (orange), Copy and Delete. Drop clips on the canvas to make states. Pan with the
+  middle mouse or Alt+drag, zoom with the wheel, `F` frames the selection and `A` frames all.
+- Select a state, transition or blend tree to edit it in the window's right panel: a
+  transition's exit time, duration, offset, interruption and conditions, with a timeline of the
+  overlap; a blend tree's parameter, children and thresholds, with a scrubbable value that previews
+  in the Scene view.
+- The bottom strip lists the controller's problems; click one to select what it is about.
+- In play mode, the current state shows a progress bar and the active transition is highlighted.
+
+Edits are project undo steps (one drag is one step).
+
+How it runs (Unity's rules):
+- On the first update each layer enters its **default state**. `playAutomatically` does not apply:
+  an Animator always runs.
+- Each update, a layer checks its Any State transitions first, then the current state's, in list
+  order, and takes the first whose conditions all hold and, with **Has Exit Time**, whose source
+  just crossed its exit time (normalized: below 1 at every loop, from 1 once). A transition with no
+  conditions and no exit time fires at once (and is reported). A trigger stays set until a transition
+  that reads it fires, or `resetTrigger`.
+- A transition blends linearly over its **duration** (seconds with **Fixed Duration**, else a
+  fraction of the source's length); the destination starts at its **offset** (or the state's
+  **cycle offset**). While it runs, only its **interruption** source (`none`, `current_state`,
+  `next_state`) may start another one; the states playing then keep their weights and fade out
+  under the new one.
+- A **1D blend tree** mixes its children by a float or int parameter: linear between the two
+  thresholds around the value, the end child past either end. All children play in step (one
+  normalized time), and only the heaviest child fires events, so footsteps don't double.
+- `onStateEnter(layer, name)` and `onStateExit(layer, name)` are called after the frame's pose is
+  written: subscribers of the player's `onStateEnter` / `onStateExit`, then methods of those names
+  on the GameObject's Lua scripts (like clip events). C++ scripts subscribe to
+  `onStateEnter(int layer, const std::string& state)` with `REGISTER_COMPONENT_EVENT` (the script
+  editor's "Animation Player" event list).
+
+```lua
+function Farmer:init()
+    self.animator = GameObject(self.scene, self.entity):getAnimator()
+    RegisterEngineEvent(self, "onUpdate")
+end
+function Farmer:onUpdate()
+    self.animator:setFloat("Speed", self.body.linearVelocity:length())
+    self.animator:setLayerWeight("Holding", self.holding and 1 or 0, 0.1)
+end
+function Farmer:onStateEnter(layer, name)
+    if name == "Watering" then self.can:setActive(true) end
+end
+```
+
+`setFloat(name, v, dampTime)` eases the value with Unity's SmoothDamp. A call of the wrong type
+warns once and converts: `setBool` on a trigger sets it (the Garden game's `VictoryDance` bug is
+reported that way). `play(name)` jumps to a state (`"Layer.State"` or `"State"`),
+`crossFade(name, seconds)` blends to it, `playInLayer(name, layer[, normalizedTime])` and
+`crossFadeInLayer(name, seconds, layer)` are Unity's `Animator.Play` and `CrossFadeInFixedTime`,
+`getCurrentStateInfo([layer])` and
+`getNextStateInfo([layer])` describe the states, and `stop()` stops the controller until the next
+`play` or until the player is enabled again. `blend` and `queue` have no controller form.
+
+The editor, `check --anims` and MCP report a controller's problems: clips that do not load,
+parameters that are missing or of the wrong type for a condition, dead-end states (no transition
+leaves them and their clip does not loop), states no transition reaches, transitions that fire at
+once, and parameters nothing reads. Sub-state machines, 2D and direct blend trees, synced layers,
+IK, root motion and Animator Override Controllers are not in this version.
+
 ## Troubleshooting
 
 - **Yellow rows, "(Missing!)", "N of M missing".** The path doesn't resolve on the bound GameObject:
@@ -465,6 +633,7 @@ before every MCP call), and the open window, the Inspector and running players p
 | `frame_rate` | samples per second, 1 to 240 (default 30): the snapping grid only. Key times are seconds |
 | `wrap` | `once` (default), `loop`, `ping_pong`, `clamp_forever` |
 | `length` | optional, in seconds. Without it, the last key or event time. Longer holds the end pose, shorter cuts the tracks |
+| `additive_reference` | optional, in seconds (default 0, written only when not 0): on an Additive layer the clip adds its change from the pose at this time. Clamped to the clip |
 | `tracks[]` | `path`, `channel`, `keys`; optional `relative` (position, rotation, scale only) and `loop` (the track's keys repeat inside a longer clip) |
 | `events[]` | `time`, `function` (a Lua identifier, not a keyword), `args` (at most 8 numbers, strings, booleans) |
 | `preview.model` | editor only: the model or prefab (asset-relative) to preview on when no GameObject is bound |
@@ -512,7 +681,77 @@ animationplayer:
 ```
 
 `clip` paths are relative to the assets folder. `guid` is written for `.anim` files only (model
-clips are path-only), and `name`/`wrap` only when set.
+clips are path-only), and `name`/`wrap` only when set. With layers or a controller:
+
+```yaml
+animationplayer:
+  clips:
+    - {clip: models/garden/granjero.glb#Running, name: Running, wrap: loop}
+    - {clip: anim/holding.anim, guid: ..., name: Holding, wrap: loop, layer: 1}
+  layers:
+    - {name: Base Layer}
+    - {name: Holding, weight: 0, blend: override, mask: anim/arm.mask, maskGuid: ...}
+  controller: anim/granjero.controller
+  controllerGuid: ...
+```
+
+`layer` is written only when not 0, `layers` only when they differ from one Base Layer without a
+mask, a layer's `weight` only when not 1 and `blend` only when not override. Masks and controllers
+follow the clip GUID rules: a rename repairs the path, a deleted file shows Missing.
+
+### The .mask and .controller files
+
+Both are canonical, lenient JSON like `.anim` (bad entries are dropped with a warning naming their
+JSON path, unknown keys are kept). An Avatar Mask:
+
+```json
+{
+  "format": "jasperengine.mask",
+  "version": 1,
+  "guid": "3c1e...",
+  "default": 0,
+  "humanoid": {"right_arm": 1, "right_fingers": 1},
+  "transforms": [
+    {"path": "Granjero/mixamorig_Hips/mixamorig_Spine/mixamorig_Spine1/mixamorig_Spine2/mixamorig_RightShoulder/Can", "weight": 1, "children": true}
+  ],
+  "preview": {"model": "models/garden/granjero.glb"}
+}
+```
+
+Body parts are `root`, `body`, `head`, `left_leg`, `right_leg`, `left_arm`, `right_arm`,
+`left_fingers`, `right_fingers` (0 to 1; `true`/`false` read as 1/0); parts not listed take
+`default`. An Animator Controller:
+
+```json
+{
+  "format": "jasperengine.controller",
+  "version": 1,
+  "parameters": [
+    {"name": "Speed", "type": "float", "default": 0}
+  ],
+  "layers": [
+    {
+      "name": "Base Layer",
+      "default_state": "Idle",
+      "states": [
+        {"name": "Idle", "clip": "models/garden/granjero.glb#Happy Idle", "wrap": "loop", "position": [260, 120]},
+        {"name": "Move", "blend_tree": {"parameter": "Speed", "children": [{"clip": "anim/walk.anim", "threshold": 0}, {"clip": "anim/run.anim", "threshold": 4}]}}
+      ],
+      "transitions": [
+        {"from": "Idle", "to": "Move", "conditions": [{"parameter": "Speed", "mode": "greater", "threshold": 0.01}], "has_exit_time": false, "exit_time": 0.75, "duration": 0.15, "fixed_duration": true, "offset": 0},
+        {"from": "any", "to": "Idle", "conditions": [{"parameter": "Reset", "mode": "if"}], "has_exit_time": false, "exit_time": 0.75, "duration": 0.25, "fixed_duration": true, "offset": 0, "can_transition_to_self": false}
+      ]
+    }
+  ]
+}
+```
+
+Condition modes: `greater` and `less` (float, int), `equals` and `not_equal` (int), `if` and `if_not`
+(bool; a trigger uses `if`). New transitions take Unity's defaults (exit time 0.75, duration 0.25 s).
+A state may also have `speed`, `speed_parameter` (a float parameter multiplied in), `wrap`,
+`cycle_offset`, and the `mirror` / `foot_ik` / `retarget` flags kept for humanoid playback. Unity's
+YAML `.mask` and `.controller` files are refused with a message naming the menu that makes a
+JasperEngine one.
 
 ## Keyboard shortcuts
 
@@ -537,9 +776,11 @@ selected GameObject.
 
 ## Not in this version
 
-Animator state machines and controllers, humanoid (muscle) clips, curves of other component
-properties (light intensity, material colours: the format reserves `"channel": "property"`), root
-motion, additive layers and avatar masks. Also: sprite-swap, active and colour/alpha curves (2D
-games keep sprite animations and tweens), importer clip ranges and per-model-clip events, a
-preview pane in the clip asset Inspector, event object parameters, free tangent editing, and
-re-syncing an extracted clip from its model.
+Animator sub-state machines, 2D and direct blend trees, synced layers, IK in masks, Animator
+Override Controllers and importing Unity `.controller` / `.mask` files (they are refused with a
+message), humanoid (muscle) clips, curves of other component properties (light intensity, material
+colours: the format reserves `"channel": "property"`), root motion and animating layer weights from
+clips (use Lua). Also: sprite-swap, active and colour/alpha curves (2D games keep sprite animations
+and tweens), importer clip ranges and per-model-clip events, a preview pane in the clip asset
+Inspector, event object parameters, free tangent editing, and re-syncing an extracted clip from its
+model.

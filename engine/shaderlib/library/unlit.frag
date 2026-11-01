@@ -19,12 +19,13 @@
 // @property stochasticBlendSharpness range(0, 1) 0.4 "Blend Sharpness" feature=STOCHASTIC
 // @property stochasticContrast range(0, 1) 0.45 "Contrast" feature=STOCHASTIC
 // @property stochasticRotation range(0, 1) 0 "Rotation" feature=STOCHASTIC
-// @texture u_baseTexture white "Base map"
+// @texture u_baseTexture white "Base map" default[PARTICLE_TEXTURE]=particle
 // @feature VERTEX_COLOR "Vertex colour"
 // @feature ALPHA_CLIP "Alpha clip"
 // @feature SOFT "Soft intersections (fade where it meets geometry; reads the scene depth)"
 // @feature NEAR_FADE "Camera near fade"
 // @feature STOCHASTIC "Stochastic Tiling"
+// @feature PARTICLE_TEXTURE "Built-in soft particle texture (when no base map is set)"
 // @depth
 
 // SOFT fades the alpha by saturate((scene depth - fragment depth) / softness): a quad

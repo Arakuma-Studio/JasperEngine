@@ -861,3 +861,8 @@ script-lifecycle), where the spec was silent, ambiguous or contradicted what the
   `physics3D`, which already was the 3D physics on/off switch (a bool): sharing the key made one overwrite the
   other and a capacity map failed the bool read. Log messages name `physics3DWorld.maxBodies` etc.; MCP keys
   (`physics.max_*`) are unchanged. Test: editor/tests/ProjectPhysicsSettingsTest.cpp.
+32. **Builds without a physics backend.** `PhysicsSystemJoints3D.cpp` and `PhysicsSystemRagdoll.cpp`
+    included the 3D headers before their `#ifdef JASPERENGINE_PHYSICS_3D`, so an export of a project
+    without 3D physics (the Exporter writes the switch OFF) did not compile; their includes are now
+    inside the guard. `tools/check-physics-off.sh` builds the standalone engine and its sample with
+    3D off, 2D off and both off (build/physics-off-*), to run before merging physics changes.

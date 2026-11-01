@@ -613,7 +613,7 @@ void editor::GameWindow::drawToolbar() {
     ImGui::SameLine();
     const bool simulateTouch = project->isSimulateTouch();
     ImGui::BeginDisabled(project->isAnyScenePlaying());
-    if (toggleButton(touchLabel, simulateTouch, "Simulate touch: play as a touch device (the mouse acts as one finger)")) {
+    if (toggleButton(touchLabel, simulateTouch, "Simulate touch: play as a touch device (the mouse acts as one finger). Release the left button with Alt held to keep that finger down: the next drag is a second finger (release Alt to lift the first)")) {
         project->setSimulateTouch(!simulateTouch);
         project->saveWorkspaceFile();
     }

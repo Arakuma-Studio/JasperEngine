@@ -2041,6 +2041,24 @@ for _renderer, _what in (('LineRenderer', 'polyline point'), ('TrailRenderer', '
         'doc': [f'The {_what} at `index` (0-based); an index out of range is an error naming positionCount.'],
         'overloads': [([('index', 'integer')], 'Vector3')]}
 
+# Particle Systems of version 2 (particles spec 6.6, docs/mcp/guide/particles.md)
+OVERRIDES[('ParticleSystemModule', 'setBursts')] = {
+    'doc': ['ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01, probability = 1}, ...}): replaces',
+            'the bursts (count a number or a MinMaxCurve; cycles 0 repeats forever). Version 2 systems only.'],
+    'overloads': [([('bursts', '{time: number, count: MinMaxCurve|number, cycles?: integer, interval?: number, probability?: number}[]')], '')]}
+OVERRIDES[('ParticleSystemModule', 'getBurst')] = {
+    'doc': ['ps.emission:getBurst(index): the burst at `index` (0-based, as Unity\'s GetBurst) as a table.'],
+    'overloads': [([('index', 'integer')], '{time: number, count: MinMaxCurve, cycles: integer, interval: number, probability: number}')]}
+OVERRIDES[('ParticleSystemModule', 'setBurst')] = {
+    'doc': ['ps.emission:setBurst(index, burst): sets the burst at `index` (0-based; burstCount appends).'],
+    'overloads': [([('index', 'integer'), ('burst', '{time?: number, count?: MinMaxCurve|number, cycles?: integer, interval?: number, probability?: number}')], '')]}
+OVERRIDES[('ParticleSystem', 'upgrade')] = {
+    'doc': ['Converts a version 1 (legacy) system to the module model (version 2) and returns the report:',
+            '`{upgraded = true, items = {{field, status = "exact"|"approximated"|"dropped", message, maxError}, ...}}`.',
+            'A position modifier has no module equivalent: nothing changes unless `force` is true.'],
+    'overloads': [([], '{upgraded: boolean, items: {field: string, status: string, message: string, maxError: number}[]}'),
+                  ([('force', 'boolean')], '{upgraded: boolean, items: {field: string, status: string, message: string, maxError: number}[]}')]}
+
 OVERRIDES[('Gradient', 'setKeys')] = {
     'doc': ['Replaces the keys: colorKeys are {time, color} (Vector3 sRGB) or GradientColorKey, alphaKeys',
             '{time, alpha} or GradientAlphaKey; sorted, at most 8 of each.',
@@ -2073,6 +2091,15 @@ OVERRIDES.update({
     ('Input', 'addAxisDelta'): {
         'doc': ['Adds `delta` to the action for this frame only, unclamped (like mouse movement).'],
         'overloads': [([('name', 'string'), ('delta', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    ('UIComponent', 'getPointerEventData'): {
+        'doc': ['The PointerEventData of the legacy callback running now (`onPointerDown(x, y)`, `onClick`...):',
+                'its pointerId, button, positions; nil outside one.'],
+        'overloads': [([], 'PointerEventData?')]},
+    ('Input', 'isPointerOverUI'): {
+        'doc': ['Whether the pointer is over UI that takes it (Unity\'s EventSystem.IsPointerOverGameObject):',
+                'a component UI element that receives events, HTML content, or a press either holds.',
+                '`pointerId`: -1 the mouse, a finger\'s `Touch.fingerId`; none: the mouse or any finger.'],
+        'overloads': [([('pointerId?', 'integer')], 'boolean')]},
     ('Input', 'clearSimulated'): {
         'doc': ['Removes the simulated values of `source` (without one: of every script).'],
         'overloads': [([('source?', _INPUT_SOURCE)], '')]},
@@ -2266,6 +2293,76 @@ OVERRIDES.update({
         'overloads': [([('key', 'string'), ('value', 'string')], '')]},
 })
 
+# coroutines (binding/CoroutineClassesLua.cpp, lua_CFunctions of ScriptScheduler.cpp): the wait
+# helpers yield the running engine coroutine ('async': LuaLS ---@async, so calling one outside a
+# coroutine is flagged); TimerOptions is in engine/core/script/binding/stubs/Timer.lua
+_AWAITABLE = 'Coroutine|Timer|Action|AudioSource|AnimationPlayer|AnimeTimer|{isDone: fun(self): boolean}'
+OVERRIDES.update({
+    ('Coroutine', 'start'): {
+        'doc': ['Runs `fn(...)` in a new engine coroutine owned by no script (it survives scene loads and ends at',
+                'Play stop): for required modules and HTML UI document scripts; scripts use self:startCoroutine. The',
+                'code up to the first wait runs now. Errors are logged with the coroutine\'s traceback.'],
+        'overloads': [([('fn', 'async fun(...)'), ('...', 'any')], 'Coroutine')]},
+    ('Coroutine', 'running'): {
+        'doc': ['The engine coroutine running now, or nil (in onUpdate and other event handlers).'],
+        'overloads': [([], 'Coroutine?')]},
+    ('Coroutine', 'isInside'): {
+        'doc': ['True inside an engine coroutine (where the wait helpers work).'],
+        'overloads': [([], 'boolean')]},
+    ('Coroutine', 'wait'): {
+        'async': True,
+        'doc': ["Unity's WaitForSeconds: waits `seconds` of game time (scaled: never ends at Time.timeScale = 0;",
+                '<= 0 = the next frame). Returns the game seconds that passed.'],
+        'overloads': [([('seconds', 'number')], 'number')]},
+    ('Coroutine', 'waitRealtime'): {
+        'async': True,
+        'doc': ["Unity's WaitForSecondsRealtime: waits unscaled seconds (runs at time scale 0, stops while the app or",
+                "the editor's Play is paused). Returns the unscaled seconds that passed."],
+        'overloads': [([('seconds', 'number')], 'number')]},
+    ('Coroutine', 'nextFrame'): {
+        'async': True,
+        'doc': ["Unity's `yield return null`: resumes in the next frame, after onUpdate (as coroutine.yield())."],
+        'overloads': [([], '')]},
+    ('Coroutine', 'waitFrames'): {
+        'async': True,
+        'doc': ['Waits `n` (>= 1) frames.'],
+        'overloads': [([('n', 'integer')], '')]},
+    ('Coroutine', 'waitForFixedUpdate'): {
+        'async': True,
+        'doc': ["Unity's WaitForFixedUpdate: resumes after the next fixed step's physics (none at time scale 0)."],
+        'overloads': [([], '')]},
+    ('Coroutine', 'waitForEndOfFrame'): {
+        'async': True,
+        'doc': ["Unity's WaitForEndOfFrame: resumes after this frame's draw."],
+        'overloads': [([], '')]},
+    ('Coroutine', 'waitUntil'): {
+        'async': True,
+        'doc': ["Unity's WaitUntil: waits until `predicate()` is truthy (checked every frame after onUpdate; it must",
+                'not wait). With `timeout` seconds (unscaled when `unscaled`): false when it ran out, else true.'],
+        'overloads': [([('predicate', 'fun(): any'), ('timeout?', 'number'), ('unscaled?', 'boolean')], 'boolean')]},
+    ('Coroutine', 'waitWhile'): {
+        'async': True,
+        'doc': ["Unity's WaitWhile: waits while `predicate()` is truthy; `timeout` as in waitUntil."],
+        'overloads': [([('predicate', 'fun(): any'), ('timeout?', 'number'), ('unscaled?', 'boolean')], 'boolean')]},
+    ('Coroutine', 'waitFor'): {
+        'async': True,
+        'doc': ["`yield return StartCoroutine(...)` and friends: waits until `x` is done. A Coroutine: true and what",
+                'it returned, or false and its error ("stopped" when stopped; at once when it already ended); a Timer:',
+                'true when it fired, false when cancelled (not an endless every); a Tween/Action, AudioSource or',
+                'AnimationPlayer: true when stopped / not playing, false when its GameObject is gone; an anime',
+                'animation or timer: true completed, false cancelled; anything with isDone() (an HTTP request): true, x.'],
+        'overloads': [([('x', _AWAITABLE)], 'boolean, any')]},
+    ('Timer', 'after'): {
+        'doc': ['Calls `fn()` once after `delay` seconds (game time; `opts.unscaled` for real time), at the earliest',
+                'the next frame. Owned by no script unless `opts.owner = self` (then cancelled with it); in a script',
+                'self:invoke is shorter. For HTML UI animation timing anime.createTimer stays (milliseconds).'],
+        'overloads': [([('delay', 'number'), ('fn', 'fun()'), ('opts?', 'TimerOptions')], 'Timer')]},
+    ('Timer', 'every'): {
+        'doc': ['Calls `fn(timer)` every `interval` seconds (first after `opts.delay`, default the interval), at most',
+                'once a frame, `opts.count` times or until cancelled; `fn` returning false cancels it.'],
+        'overloads': [([('interval', 'number'), ('fn', 'fun(timer: Timer): boolean?'), ('opts?', 'TimerOptions')], 'Timer')]},
+})
+
 # http (NetClassesLua.cpp): the request functions are lua_CFunctions (positional options and
 # callback, either may be left out); HttpOptions / HttpRequestOptions are in
 # engine/core/script/binding/stubs/Http.lua
@@ -2334,8 +2431,23 @@ PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
     ('Mesh', 'material'): ('Material', True),
+    # the Particle System module views (binding/stubs/ParticleSystemModules.lua, from
+    # tools/gen_particle_stubs.py): live views, not copies
+    **{('ParticleSystem', _m): ('ParticleSystem' + _m[0].upper() + _m[1:] + 'Module', False) for _m in (
+        'main', 'emission', 'shape', 'velocityOverLifetime', 'limitVelocityOverLifetime', 'inheritVelocity',
+        'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
+        'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'renderer')},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
+    # ui-multitouch: the GameObjects of a PointerEventData (nil: none)
+    ('PointerEventData', 'pointerEnter'): ('GameObject?', False),
+    ('PointerEventData', 'pointerPress'): ('GameObject?', False),
+    ('PointerEventData', 'rawPointerPress'): ('GameObject?', False),
+    ('PointerEventData', 'pointerDrag'): ('GameObject?', False),
+    ('PointerEventData', 'target'): ('GameObject?', False),
+    # a coroutine's error (with its traceback) and the script instance that started it
+    ('Coroutine', 'error'): ('string?', False),
+    ('Coroutine', 'owner'): ('ScriptInstance?', False),
     ('HttpRequest', 'response'): ('HttpResponse|nil', False),
     ('HttpResponse', 'headers'): ('table<string, string>', True),
     ('HttpResponse', 'body'): ('string', False),
@@ -2350,6 +2462,32 @@ PROPERTY_OVERRIDES = {
     ('Joint3D', 'bodyB'): ('GameObject|nil', False),
     ('Joint3D', 'connectedBody'): ('GameObject|nil', False),
 }
+
+# physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are
+# std::optional lambdas (nil once gone), contacts builds a table, getContact is a lua_CFunction
+for _col, _body, _contact in (('Collider', 'Rigidbody', 'ContactPoint'), ('Collider2D', 'Rigidbody2D', 'ContactPoint2D')):
+    PROPERTY_OVERRIDES[(_col, 'gameObject')] = ('GameObject|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'rigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'attachedRigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_col, 'receiver')] = ('GameObject|nil', False)
+for _coll, _body, _contact in (('Collision', 'Rigidbody', 'ContactPoint'), ('Collision2D', 'Rigidbody2D', 'ContactPoint2D')):
+    PROPERTY_OVERRIDES[(_coll, 'gameObject')] = ('GameObject|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'rigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'thisRigidbody')] = (_body + '|nil', False)
+    PROPERTY_OVERRIDES[(_coll, 'contacts')] = (_contact + '[]', True)
+    OVERRIDES[(_coll, 'getContact')] = {
+        'doc': ['Contact point `index` (0-based, an error out of range). Allocates nothing, unlike `contacts`.'],
+        'overloads': [([('index', 'integer')], _contact)]}
+PROPERTY_OVERRIDES[('Collision2D', 'otherRigidbody')] = ('Rigidbody2D|nil', False)
+
+for _phys, _what in (('Physics', 'Rigidbody'), ('Physics2D', 'Rigidbody 2D')):
+    OVERRIDES[(_phys, 'ignoreCollision')] = {
+        'doc': [f'Makes the two bodies (GameObjects or bodies with a {_what}, one scene) collide or not, at run',
+                'time (Unity Physics.IgnoreCollision). `ignore` defaults to true; resting pairs are woken.'],
+        'overloads': [([('a', 'EntityHandle'), ('b', 'EntityHandle'), ('ignore?', 'boolean')], '')]}
+    OVERRIDES[(_phys, 'getIgnoreCollision')] = {
+        'doc': ['Whether ignoreCollision keeps the two bodies apart.'],
+        'overloads': [([('a', 'EntityHandle'), ('b', 'EntityHandle')], 'boolean')]}
 
 for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
     OVERRIDES[(_phys, 'ignoreLayerCollision')] = {
@@ -2475,12 +2613,24 @@ HTML_UI_FIELD_OVERRIDES = {
 HTML_UI_EVENT_TYPES = [
     ('click', 'a press and release on the element (Enter/Space on a focused button too)'),
     ('dblclick', 'a double click'),
-    ('mousedown', 'a pointer press (event.button: 0 left, 1 middle, 2 right)'),
+    ('mousedown', 'a pointer press (event.button: 0 left, 1 middle, 2 right; every finger too, event.pointerId)'),
     ('mouseup', 'a pointer release'),
     ('mousemove', 'the pointer moved over the element'),
     ('mouseover', 'the pointer entered the element or a child (bubbles)'),
     ('mouseout', 'the pointer left the element or a child (bubbles)'),
     ('wheel', 'the mouse wheel (event.deltaX/deltaY in steps, positive down/right)'),
+    ('pointerdown', 'a pointer pressed: the mouse (pointerId 1) or a finger (event.pointerType "touch", event.fingerId); each finger its own'),
+    ('pointermove', 'the pointer moved (to its capture when captured)'),
+    ('pointerup', 'the pointer released'),
+    ('pointercancel', 'the pointer ended without a release (a touch that started a pan, a cancelled touch)'),
+    ('pointerover', 'the pointer came over the element (bubbles)'),
+    ('pointerout', 'the pointer left the element (bubbles)'),
+    ('pointerenter', 'the pointer entered the element or a child (does not bubble)'),
+    ('pointerleave', 'the pointer left the element and its children (does not bubble)'),
+    ('gotpointercapture', 'the element captured the pointer (setPointerCapture, or a touch\'s pointerdown target)'),
+    ('lostpointercapture', 'the element lost the pointer\'s capture (release, up, cancel)'),
+    ('mouseenter', 'the pointer entered the element (does not bubble)'),
+    ('mouseleave', 'the pointer left the element (does not bubble)'),
     ('keydown', 'a key press on the focused element (event.key: "Enter", "Escape", "ArrowUp", "a"); gamepads too (event.code: "GamepadA", "GamepadDPadUp", ...)'),
     ('keyup', 'a key release (keyboard or gamepad)'),
     ('textinput', 'text typed into the focused element (event.data)'),
@@ -2828,6 +2978,7 @@ class Builder:
             ov = OVERRIDES[key]
             m.lua_sigs = [self.override_sig(o) for o in ov['overloads']]
             m.doc = m.call.doc + ov.get('doc', [])
+            m.is_async = ov.get('async', False)
             return
         sigs = []
         callables = m.call.args[1:]
@@ -3243,6 +3394,8 @@ class Emitter:
             L += doc_lines(doc)
             if any(d.lower().startswith('deprecated') for d in doc):
                 L.append('---@deprecated')   # a binding commented "deprecated: ..." (an old alias)
+            if getattr(m, 'is_async', False):
+                L.append('---@async')   # it yields: only inside an engine coroutine
             for u in m.unresolved:
                 L.append(f'-- unresolved: {c.name}.{m.name}: {u}')
             if not sigs:
@@ -3451,9 +3604,13 @@ class Emitter:
             '---  onDisable(self)         it stops being active and enabled; before onDestroy',
             '---  onDestroy(self)         once: destroy, scene unload, Play stop / quit (only if init ran)',
             '---  onApplicationPause(self, paused) / onApplicationFocus(self, focused) / onApplicationQuit(self)',
+            '---The component UI\'s pointer callbacks (Unity\'s IPointerDownHandler...), e: PointerEventData, sent to',
+            '---the element under the pointer or its first ancestor whose script defines them (lua-api.md 1.7):',
+            '---  onPointerDown / onPointerUp / onPointerClick / onPointerEnter / onPointerExit(self, e)',
+            '---  onInitializePotentialDrag / onBeginDrag / onDrag / onEndDrag / onDrop / onScroll(self, e)',
             '---Update methods (onUpdate, onFixedUpdate, onPostUpdate) run only once registered with',
             '---RegisterEngineEvent; they are skipped while the script is not active and enabled.',
-            '---@class ScriptInstance',
+            '---@class ScriptInstance : ScriptCallbacks',
             '---@field scene Scene # the scene of the GameObject the script is attached to',
             '---@field entity integer # the GameObject\'s entity; wrap it: `Sprite(self.scene, self.entity)`',
             '---@field __name string # the script class name (the file name)',
@@ -3463,6 +3620,76 @@ class Emitter:
             '---@field gameObject GameObject # (read-only) the script\'s GameObject',
             'local ScriptInstance = {}',
             '',
+            '---Unity\'s StartCoroutine: runs `fn(...)` (or the method `self:<name>(...)`) as an engine coroutine owned',
+            '---by this script, now until its first wait (Coroutine.wait, nextFrame, waitUntil, waitFor...). It stops',
+            '---when the GameObject is deactivated or destroyed (not when the script is disabled); an error is logged',
+            '---with its traceback and the handle gets status "error". Raises on an inactive GameObject.',
+            '---@param fnOrMethodName (async fun(...))|string',
+            '---@param ... any',
+            '---@return Coroutine',
+            'function ScriptInstance:startCoroutine(fnOrMethodName, ...) end',
+            '',
+            '---Unity\'s StopCoroutine: stops that coroutine (it must be this script\'s), or every coroutine of this',
+            '---script started with that method name. A running one (itself) stops at its next wait.',
+            '---@param coOrMethodName Coroutine|string',
+            'function ScriptInstance:stopCoroutine(coOrMethodName) end',
+            '',
+            '---Unity\'s StopAllCoroutines: every coroutine this script started (no other script\'s).',
+            'function ScriptInstance:stopAllCoroutines() end',
+            '',
+            '---Unity\'s Invoke: calls `fn()` (or `self:<name>()`, looked up when it fires) once after `delay` seconds,',
+            '---game time unless `unscaled`. It keeps running while the script is disabled or the GameObject inactive,',
+            '---and is cancelled when the GameObject is destroyed or its scene unloads.',
+            '---@param fnOrMethodName fun()|string',
+            '---@param delay number',
+            '---@param unscaled? boolean',
+            '---@return Timer',
+            'function ScriptInstance:invoke(fnOrMethodName, delay, unscaled) end',
+            '',
+            '---Unity\'s InvokeRepeating: first after `delay`, then every `interval` (> 0) seconds, at most once a frame.',
+            '---@param fnOrMethodName fun()|string',
+            '---@param delay number',
+            '---@param interval number',
+            '---@param unscaled? boolean',
+            '---@return Timer',
+            'function ScriptInstance:invokeRepeating(fnOrMethodName, delay, interval, unscaled) end',
+            '',
+            '---Unity\'s CancelInvoke: every timer of this script, those invoking a method name, or one Timer.',
+            '---@param timerOrMethodName? Timer|string',
+            'function ScriptInstance:cancelInvoke(timerOrMethodName) end',
+            '',
+            '---Unity\'s IsInvoking: a timer of this script (or of that method, or that Timer) is pending.',
+            '---@param timerOrMethodName? Timer|string',
+            '---@return boolean',
+            'function ScriptInstance:isInvoking(timerOrMethodName) end',
+            '',
+            '---The physics messages a script receives when it defines them (Unity OnCollisionEnter...): called',
+            '---on the main thread after the fixed step that caused them, enabled or not, while the GameObject',
+            '---is active (docs: jasper://docs/physics). The collision is seen from this side (`collision.collider`',
+            '---and `collision.gameObject` are the other\'s); triggers get the other collider.',
+            '---@class ScriptCallbacks',
+            'local ScriptCallbacks = {}',
+            '',
+        ]
+        for name, param, ptype, doc in (
+                ('onCollisionEnter', 'collision', 'Collision', 'started touching another collider (3D)'),
+                ('onCollisionStay', 'collision', 'Collision', 'still touching, once per fixed step (not while asleep)'),
+                ('onCollisionExit', 'collision', 'Collision', 'stopped touching (also when the other goes; no contacts then)'),
+                ('onTriggerEnter', 'other', 'Collider', 'a collider entered this trigger, or this entered a trigger (3D)'),
+                ('onTriggerStay', 'other', 'Collider', 'still overlapping, once per fixed step'),
+                ('onTriggerExit', 'other', 'Collider', 'stopped overlapping (also when the other goes)'),
+                ('onCollisionEnter2D', 'collision', 'Collision2D', 'started touching another collider (2D)'),
+                ('onCollisionStay2D', 'collision', 'Collision2D', 'still touching, once per fixed step while a body is awake'),
+                ('onCollisionExit2D', 'collision', 'Collision2D', 'stopped touching (also when the other goes)'),
+                ('onTriggerEnter2D', 'other', 'Collider2D', 'a collider entered this trigger, or this entered a trigger (2D)'),
+                ('onTriggerStay2D', 'other', 'Collider2D', 'still overlapping, once per fixed step'),
+                ('onTriggerExit2D', 'other', 'Collider2D', 'stopped overlapping (also when the other goes)'),
+                ('onJointBreak2D', 'joint', 'Joint2D', 'a 2D joint of this GameObject (or whose bodyA is it) broke')):
+            L.append('---' + doc[0].upper() + doc[1:] + '.')
+            L.append(f'---@param {param} {ptype}')
+            L.append(f'function ScriptCallbacks:{name}({param}) end')
+            L.append('')
+        L += [
         ]
         for name, doc in _GET_SCRIPT_DOCS.items():
             for line in doc:

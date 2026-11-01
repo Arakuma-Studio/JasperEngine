@@ -18,6 +18,7 @@
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
 #include "ecs/Signature.h"
+#include "subsystem/PhysicsSystem.h"
 #include "soloud.h"
 #include "soloud_wav.h"
 
@@ -26,6 +27,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <tuple>
 
 namespace jasperengine::editor{
 
@@ -33,6 +35,10 @@ namespace jasperengine::editor{
     class ForkShaderCmd;
     class MultiPropertyCmd;
     class AnimationClipDocument;
+    struct InspectorLayerState;
+    struct InspectorLayerStateDeleter{
+        void operator()(InspectorLayerState* state) const;
+    };
     struct InspectorClipState;
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
@@ -76,7 +82,10 @@ namespace jasperengine::editor{
         LayerMask,  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
         // Unity AnimationCurve / Gradient (widget/CurveField.h, widget/GradientField.h)
         Curve,
-        Gradient
+        Gradient,
+        // Unity's MinMaxCurve / MinMaxGradient (widget/MinMaxFields.h)
+        MinMaxCurve,
+        MinMaxGradient
     };
 
     struct EnumEntry {
@@ -102,6 +111,9 @@ namespace jasperengine::editor{
         bool indent = false;
         std::string help = "";
         const char *format = "%.2f";
+        // MinMaxCurve rows: what the numbers show is the stored value times this (57.29578:
+        // degrees of a value stored in radians)
+        float displayScale = 1.0f;
         bool showColors = true;
         std::vector<EnumEntry>* enumEntries = nullptr;
         std::vector<int>* sliderValues = nullptr;
@@ -118,6 +130,10 @@ namespace jasperengine::editor{
         // Texture rows: one more square button after the row's own (the Normal Texture's
         // Sprite Normal Map wand), drawn with the rows' button size
         std::function<void(const ImVec2&)> extraButton = nullptr;
+        // String rows: a dropdown of these values beside the field (free text still allowed),
+        // e.g. the project's Input actions
+        const std::vector<std::string>* stringSuggestions = nullptr;
+        const char* suggestionsEmpty = nullptr;   // shown in the dropdown when there are none
     };
 
     class InspectorWindow{
@@ -296,6 +312,25 @@ namespace jasperengine::editor{
         void drawModelClipRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<std::string>& shownInRows);
         std::vector<std::string> modelSubClipNames(const std::string& model);
         void drawAnimationClipButtons(SceneProject* sceneProject, Entity entity);
+
+        // ---- animation layers, masks and controllers (InspectorWindowAnimLayers.cpp; anim layers spec 9, 11.4) ----
+        std::unique_ptr<InspectorLayerState, InspectorLayerStateDeleter> layerStatePtr;
+        InspectorLayerState& layerState();
+        // the Controller field (Open, Create Controller from Clips; with one: what it ignores, its problems)
+        void drawAnimationPlayerController(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // the Layers table (one scene step per edit, PlayerLayerActions)
+        void drawAnimationPlayerLayers(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void setPlayerLayerMask(SceneProject* sceneProject, Entity entity, int layer, const std::string& mask);
+        // a clip entry's Layer combo
+        void drawPlayerClipLayerRow(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
+        // Bindings: "mask: N/M bound entities covered" per masked layer, the masks' warnings
+        void drawPlayerMaskCoverage(SceneProject* sceneProject, Entity entity);
+        // play mode: a layer's header in the States panel (live weight slider) and a controller's state
+        void drawPlayerLayerStatesHeader(SceneProject* sceneProject, Entity entity, int layer);
+        void drawControllerPlayState(SceneProject* sceneProject, Entity entity);
+        // the inspected .mask / .controller
+        void drawAvatarMaskAsset(const std::filesystem::path& asset);
+        void drawControllerAsset(const std::filesystem::path& asset);
 
         // ---- vertex animation (InspectorWindowVat.cpp; vertex animation spec 3.6, 5.2, 5.4) ----
         std::unique_ptr<InspectorVatState, InspectorVatStateDeleter> vatStatePtr;
@@ -486,6 +521,15 @@ namespace jasperengine::editor{
         void endTable();
         bool propertyHeader(std::string label, float secondColSize = -1, bool defChanged = false, bool child = false, bool indent = false);
         bool propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
+        // Play mode, under a Rigidbody (2D): the pairs it touches and the contact callbacks its
+        // scripts define (physics-contacts 6.3)
+        void drawPhysicsContacts(SceneProject* sceneProject, Entity entity, bool is2D);
+        struct PhysicsContactsView{
+            double readAt = -1.0;
+            std::vector<ContactSummary> contacts;
+            std::vector<std::string> callbacks;
+        };
+        std::map<std::tuple<uint32_t, Entity, bool>, PhysicsContactsView> physicsContactsViews;
         bool propertyRowWithAutoButton(RowPropertyType propType, ComponentType cpType, std::string id, std::string label, std::string autoId, std::string autoLabel, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
         void setParticleFrames(ComponentType cpType, const std::string& propertyId, SceneProject* sceneProject, Entity entity, const std::vector<int>& frames);
         void setParticleBursts(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<ParticleBurst>& bursts);
@@ -653,6 +697,9 @@ namespace jasperengine::editor{
         void drawScrollbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawProgressbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawOnScreenStickComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawOnScreenButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPanelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawRectTransformComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -678,6 +725,16 @@ namespace jasperengine::editor{
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSkyboxComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // Particle Systems (InspectorParticles.cpp): version 1 keeps its legacy rows under the
+        // Upgrade to modules banner; version 2 shows Unity's modules
+        void drawParticleSystemLegacy(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawParticleUpgradeBanner(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawParticleModules(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawParticleModuleRows(const std::string& module, ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                    const ParticleSystemComponent& first);
+        void drawParticleBursts(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // the upgrade popup's report and its force choice
+        bool particleUpgradeForce = false;
         void drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // Line and Trail Renderers (InspectorLinesTrails.cpp)
         void drawLineSegmentsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

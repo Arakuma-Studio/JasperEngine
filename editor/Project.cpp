@@ -4,6 +4,8 @@
 #include "Project.h"
 #include "subsystem/PhysicsSystem.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/AnimatorController.h"
+#include "pool/AnimatorControllerPool.h"
 #include "vat/VatDocument.h"
 #include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
@@ -61,6 +63,7 @@
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "script/ScriptScheduler.h"
 #include "net/Http.h"
 #include "thread/MainThreadQueue.h"
 #include "command/CommandHandle.h"
@@ -703,6 +706,18 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
                 playerChanged = true;
             }
         }
+        // layer masks and the controller: the path hint (the GUID stays); a deleted file keeps it
+        auto follow = [&](std::string& reference) {
+            std::string path = reference;
+            if (!reference.empty() && transform(path) && !path.empty() && path != reference) {
+                reference = path;
+                playerChanged = true;
+            }
+        };
+        for (AnimationPlayerLayer& layer : player.layers) {
+            follow(layer.mask);
+        }
+        follow(player.controller);
         if (playerChanged) {
             player.needsLoad = true;
             changed = true;
@@ -865,12 +880,37 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
     // Animation Player clips (AnimationClipPool); a model sub-clip is built once its model is
     // loaded, so the model is preloaded too
     visitComponents(registry->getComponentArray<AnimationPlayerComponent>(), [&](AnimationPlayerComponent& player) {
-        for (const AnimationPlayerClip& entry : player.clips) {
+        auto addClip = [&](const std::string& clip) {
             anim::SubClipReference reference;
-            if (anim::parseSubClipReference(entry.clip, reference)) {
+            if (anim::parseSubClipReference(clip, reference)) {
                 addFile(resources.models, reference.model);
             }
-            addFile(resources.clips, entry.clip);
+            addFile(resources.clips, clip);
+        };
+        if (!player.controller.empty()) {
+            // a controller owns the states: its clips and masks (anim layers spec 11.6)
+            addFile(resources.controllers, player.controller);
+            // (read through the engine's file API, as the build will: the pool caches it)
+            if (std::shared_ptr<const anim::AnimatorController> controller = AnimatorControllerPool::getOrLoad(player.controller)) {
+                {
+                    for (const anim::ControllerLayer& layer : controller->getData().layers) {
+                        addFile(resources.masks, layer.mask);
+                        for (const anim::ControllerState& state : layer.states) {
+                            if (!state.clip.empty()) addClip(state.clip);
+                            for (const anim::BlendTreeChild& child : state.blendTree.children) {
+                                if (!child.clip.empty()) addClip(child.clip);
+                            }
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        for (const AnimationPlayerClip& entry : player.clips) {
+            addClip(entry.clip);
+        }
+        for (const AnimationPlayerLayer& layer : player.layers) {
+            addFile(resources.masks, layer.mask);
         }
     });
 
@@ -8567,6 +8607,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         }
 
         cleanupPlaySession(session);
+        // what the scripts that ran started (Coroutine.start, Timer.after)
+        ScriptScheduler::clear();
         SceneManager::clearAll();
         PrefabManager::clearAll();
         ObjectManager::clearAll();
@@ -9499,6 +9541,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
             AnimEngine::instance().reset();
+            // every coroutine and timer of the play (unowned ones too), before the scripts go
+            ScriptScheduler::clear();
             // HTTP requests of the play end without their callbacks (nothing waits for a
             // transfer); what worker threads posted for the game is dropped
             Http::shutdown();
