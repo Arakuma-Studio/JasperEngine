@@ -30,6 +30,16 @@
     #define JASPERENGINE_API
 #endif
 
+// The optional modules a player variant or a Compile build may leave out (docs/specs/
+// S34-player-size.md R1): CMake defines each 0 or 1 for every target that links the engine; a
+// build that defines none of them (the Xcode workspace) has them all
+#ifndef JASPERENGINE_HTMLUI
+    #define JASPERENGINE_HTMLUI 1
+#endif
+#ifndef JASPERENGINE_VIDEO
+    #define JASPERENGINE_VIDEO JASPERENGINE_HTMLUI
+#endif
+
 // Kept out of the shared engine's dynamic symbol table: internal types built on third-party
 // C++ code, such as the RmlUi interfaces in core/htmlui (only the engine itself uses them)
 #if !defined(_WIN32) && (defined(__GNUC__) || defined(__clang__))

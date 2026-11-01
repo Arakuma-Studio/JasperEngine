@@ -35,6 +35,9 @@
 #include <unordered_set>
 #include <vector>
 
+// the HTML UI module (docs/specs/S34-player-size.md R1): the Lua API description reads this condition
+#if JASPERENGINE_HTMLUI
+
 using namespace jasperengine;
 
 namespace {
@@ -1341,3 +1344,5 @@ void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){
 
 #endif //DISABLE_LUA_BINDINGS
 }
+
+#endif // JASPERENGINE_HTMLUI

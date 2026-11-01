@@ -8,7 +8,9 @@
 #include "RmlFontEngine.h"
 #include "RmlSystem.h"
 #include "vector/UILottieElement.h"
+#if JASPERENGINE_VIDEO
 #include "media/UIVideoElement.h"
+#endif
 #include "compat/runtime/RuntimeRegistry.h"
 #include "widgets/WidgetsRuntime.h"
 #include "effects/EffectRegistry.h"
@@ -94,7 +96,9 @@ bool HtmlUI::acquire(){
     LunaSVGRuntime::ensureFonts();
     ThorVGRuntime::acquire();
     UILottieElement::registerInstancer();
+#if JASPERENGINE_VIDEO
     UIVideoElement::registerInstancer();
+#endif
     // the compat layer's runtime emulations (phase-2 hook H1), before any document loads
     htmlui::compat::registerRuntime();
     // the S17 widgets: virtual views, markdown, tooltips, drag and drop
@@ -135,7 +139,9 @@ void HtmlUI::release(){
 
     // after Rml::Shutdown: the documents (and their ThorVG animations) are gone
     UILottieElement::releaseInstancer();
+#if JASPERENGINE_VIDEO
     UIVideoElement::releaseInstancer();
+#endif
     htmlui::compat::releaseRuntime();
     htmlui::WidgetsRuntime::releaseAll();
     htmlui::EffectRegistry::get().shutdown();

@@ -2101,6 +2101,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
+        if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
 
         const DesktopExportSettings& desktop = project->getDesktopExportSettings();
         if (desktop.graphicBackendConfigured) {
@@ -2684,6 +2685,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             project->setBuildMethod(method == "prebuilt" || method == "compile" ? method : "auto");
         }
         project->setPackContent(exportNode["pack"] && exportNode["pack"].as<bool>());
+        project->setStripEngineCode(!exportNode["stripEngineCode"] || exportNode["stripEngineCode"].as<bool>());
 
         if (exportNode["desktop"] && exportNode["desktop"].IsMap()) {
             const YAML::Node& desktopNode = exportNode["desktop"];

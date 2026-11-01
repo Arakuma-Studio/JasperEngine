@@ -64,6 +64,43 @@ and `PLAYER_PLATFORM=android` for those), into `build/players/`; point the edito
 `JASPER_PLAYERS_DIR=build/players` or `--players-dir`. A runtime is locked to the editor version
 it was built with.
 
+## Player size: Strip Engine Code
+
+A game ships only the engine modules it can use (docs/specs/S34-player-size.md). The optional
+modules are the HTML UI (UI Documents, their Lua API, anime, widgets, effects, on-screen
+controls), its `<video>`, the runtime shader compiler, 3D physics (Jolt), 2D physics (Box2D) and
+navigation meshes. The build finds what the project reaches:
+
+- a UI Document, Rigidbody, joint, character controller or Buoyancy in a scene or prefab, or a
+  Spline Extrude with collision;
+- a Lua script naming a module's API (`UIDocument`, `anime`, `getRigidbody`, `Joint3DType`...),
+  in code or in a string; a member's name counts after `.` or `:` or in a string, not as a local
+  or a table key (`local volume`, `{duration = 2}`); comments do not count. In a project with
+  the HTML UI, a member named like the video API (`self.duration`, `"volume"`) keeps video;
+- a script property of one of their types;
+- a `<video>` element in a document, or a script naming video, with the HTML UI;
+- the runtime shader compiler: a script that can change what an object draws with (makes a mesh,
+  a material or a light, changes a camera's target, the post-processing...), beyond what the
+  build already cooks (moving, spawning prefabs, playing sounds and animations, physics, the
+  light capacity, shadow and lit quality are all cooked);
+- a dynamic access that can reach anything (`_G`, `_ENV`, `load`, `debug`, `package`, a
+  `require` of a computed name), or C++ scripts: every module.
+
+A prebuilt build then uses the smallest player variant with those modules: `full`, `ui` (no
+video), `core` (no HTML UI), `lite3d` (3D physics and navigation only) or `lite2d` (2D physics and
+navigation only); a release runtime's id ends with the variant (`linux-x64-glcore-release-lite3d`).
+When a variant of fewer modules than the one it uses would fit but is not installed, the build
+warns `W-PLAYER-VARIANT` with the id to download. A Compile build leaves the same modules out of
+what it compiles (a source export and a project with C++ scripts keep every module their settings
+allow). The player checks the modules its content needs when it starts (exit 5 when one is
+missing), and so does the build before it ships.
+
+The Console, the CLI (`modules:`, `left_out:`, `module:` lines) and `build_project`
+(`modules`, `module_reasons`) say what was kept and why. A script that builds an engine name at
+runtime from pieces (`obj["get" .. "Rigidbody"]`) is the one use the build cannot see: turn
+**Project Settings > Player > Strip Engine Code** off for such a project (every module its
+settings allow ships).
+
 ## Platforms
 
 - **Android** needs the Android SDK's build-tools (35 or newer: aapt2, zipalign, apksigner), the

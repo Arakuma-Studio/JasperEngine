@@ -15,6 +15,8 @@
 #                                      PLAYER_PLATFORM=linux (default; PLAYER_BACKENDS="glcore gles3 vulkan")
 #                                      or web (single-thread and pthreads) or android; PLAYER_FLAVOURS="release development";
 #                                      PLAYER_ZIP=1 also writes the archives into build/players/archives/;
+#                                      PLAYER_VARIANTS="full lite3d" the release variants (default: every one of
+#                                      engine/player/variants.json; the development flavour is the full player);
 #                                      android: PLAYER_ANDROID_ABIS=x86_64 builds only those ABIs (an emulator's)
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #   tools/build.sh exec <target> <command...>  that command in the image (e.g. exec linux tools/ci/check-presets.sh)
@@ -424,6 +426,15 @@ players)
     for flavour in $PLAYER_FLAVOURS; do
         [[ "$flavour" =~ ^(release|development)$ ]] || { echo "PLAYER_FLAVOURS lists release and development (got $flavour)" >&2; exit 1; }
     done
+    # the release variants (docs/specs/S34-player-size.md R4): name:suffix pairs
+    ALL_VARIANTS="$(python3 -c "import json; print(' '.join(v['name'] + ':' + v['suffix'] for v in json.load(open('$ROOT/engine/player/variants.json'))['variants']))")"
+    RELEASE_VARIANTS=""
+    for pair in $ALL_VARIANTS; do
+        if [[ -z "${PLAYER_VARIANTS:-}" || " $PLAYER_VARIANTS " == *" ${pair%%:*} "* ]]; then RELEASE_VARIANTS="$RELEASE_VARIANTS $pair"; fi
+    done
+    for name in ${PLAYER_VARIANTS:-}; do
+        [[ " $ALL_VARIANTS" == *" $name:"* ]] || { echo "PLAYER_VARIANTS: $name is not in engine/player/variants.json ($ALL_VARIANTS)" >&2; exit 1; }
+    done
     case "$PLAYER_PLATFORM" in
     linux)
         PLAYER_BACKENDS="${PLAYER_BACKENDS:-glcore gles3 vulkan}"
@@ -437,9 +448,13 @@ players)
         [[ "${KEEP_GOING:-0}" == 1 ]] && BUILD_PLAYER_FLAGS="$BUILD_PLAYER_FLAGS --keep-going"
         run bash -euo pipefail -c "
             for flavour in $PLAYER_FLAVOURS; do
-                for backend in $PLAYER_BACKENDS; do
-                    tools/players/build_linux_player.sh $BUILD_PLAYER_FLAGS $ZIP_FLAG \$backend \$flavour \
-                        build/players-build/linux-x64-\$backend-\$flavour $PLAYERS_OUT -- $OPTION_FLAGS $ENGINE_WARNING_FLAGS $CCACHE_FLAGS
+                variants='$RELEASE_VARIANTS'; [[ \$flavour == development ]] && variants='full:'
+                for pair in \$variants; do
+                    variant=\${pair%%:*} suffix=\${pair#*:}
+                    for backend in $PLAYER_BACKENDS; do
+                        tools/players/build_linux_player.sh $BUILD_PLAYER_FLAGS $ZIP_FLAG --variant \$variant \$backend \$flavour \
+                            build/players-build/linux-x64-\$backend-\$flavour\${suffix:+-\$suffix} $PLAYERS_OUT -- $OPTION_FLAGS $ENGINE_WARNING_FLAGS $CCACHE_FLAGS
+                    done
                 done
             done
         "
@@ -447,17 +462,22 @@ players)
     web)
         run bash -euo pipefail -c "
             for flavour in $PLAYER_FLAVOURS; do
-                id=web-wasm32-gles3-\$flavour
-                dev=OFF; bt=Release; [[ \$flavour == development ]] && { dev=ON; }
-                for threads in OFF ON; do
-                    tree=build/players-build/\$id-threads\$threads
-                    cmake --preset engine-web-release -S engine -B \$tree -DCMAKE_BUILD_TYPE=\$bt -DJASPERENGINE_PLAYER=ON \
-                        -DGRAPHIC_BACKEND=gles3 -DEMSCRIPTEN_THREAD_SUPPORT=\$threads -DJASPERENGINE_DEVELOPMENT_BUILD=\$dev \
-                        $OPTION_FLAGS $CCACHE_FLAGS
-                    cmake --build \$tree --target jasperengine-player $JOBS_FLAG
+                variants='$RELEASE_VARIANTS'; [[ \$flavour == development ]] && variants='full:'
+                for pair in \$variants; do
+                    variant=\${pair%%:*} suffix=\${pair#*:}
+                    id=web-wasm32-gles3-\$flavour\${suffix:+-\$suffix}
+                    dev=OFF; bt=Release; [[ \$flavour == development ]] && { dev=ON; }
+                    for threads in OFF ON; do
+                        tree=build/players-build/\$id-threads\$threads
+                        cmake --preset engine-web-release -S engine -B \$tree -DCMAKE_BUILD_TYPE=\$bt -DJASPERENGINE_PLAYER=ON \
+                            -DGRAPHIC_BACKEND=gles3 -DEMSCRIPTEN_THREAD_SUPPORT=\$threads -DJASPERENGINE_DEVELOPMENT_BUILD=\$dev \
+                            -DJASPERENGINE_PLAYER_VARIANT=\$variant $OPTION_FLAGS $CCACHE_FLAGS
+                        cmake --build \$tree --target jasperengine-player $JOBS_FLAG
+                    done
+                    python3 tools/players/package_player.py --platform web --arch wasm32 --backend gles3 --flavour \$flavour \
+                        --variant \$variant --build build/players-build/\$id-threadsOFF --build-mt build/players-build/\$id-threadsON \
+                        --out $PLAYERS_OUT $ZIP_FLAG
                 done
-                python3 tools/players/package_player.py --platform web --arch wasm32 --backend gles3 --flavour \$flavour \
-                    --build build/players-build/\$id-threadsOFF --build-mt build/players-build/\$id-threadsON --out $PLAYERS_OUT $ZIP_FLAG
             done
         "
         ;;
@@ -468,12 +488,16 @@ players)
         done
         run bash -euo pipefail -c "
             for flavour in $PLAYER_FLAVOURS; do
-                for backend in $PLAYER_BACKENDS; do
-                    dir=build/players-build/android-\$backend-\$flavour
-                    CMAKE_CXX_COMPILER_LAUNCHER=ccache JASPERENGINE_ANDROID_ABIS=${PLAYER_ANDROID_ABIS:-} \
-                        tools/players/android_player.sh \$flavour \$dir \$backend
-                    python3 tools/players/package_player.py --platform android --arch universal --backend \$backend --flavour \$flavour \
-                        --android-dir \$dir --symbols \$dir/symbols --out $PLAYERS_OUT $ZIP_FLAG
+                variants='$RELEASE_VARIANTS'; [[ \$flavour == development ]] && variants='full:'
+                for pair in \$variants; do
+                    variant=\${pair%%:*} suffix=\${pair#*:}
+                    for backend in $PLAYER_BACKENDS; do
+                        dir=build/players-build/android-\$backend-\$flavour\${suffix:+-\$suffix}
+                        CMAKE_CXX_COMPILER_LAUNCHER=ccache JASPERENGINE_ANDROID_ABIS=${PLAYER_ANDROID_ABIS:-} \
+                            tools/players/android_player.sh \$flavour \$dir \$backend \$variant
+                        python3 tools/players/package_player.py --platform android --arch universal --backend \$backend --flavour \$flavour \
+                            --variant \$variant --android-dir \$dir --symbols \$dir/symbols --out $PLAYERS_OUT $ZIP_FLAG
+                    done
                 done
             done
         "

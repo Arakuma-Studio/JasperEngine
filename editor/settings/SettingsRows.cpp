@@ -681,6 +681,9 @@ std::vector<Setting> mcpSettingsTable() {
                    [](Project& p, const std::string& v) { p.setBuildMethod(v); });
         add(boolSetting("player.pack_content", "Prebuilt builds keep their content in one content.jpak (the web always packs it).",
                         [](Project& p) { return p.isPackContent(); }, [](Project& p, bool v) { p.setPackContent(v); }));
+        add(boolSetting("player.strip_engine_code", "Builds leave out the engine modules nothing in the project reaches (HTML UI, video, the runtime "
+                        "shader compiler, 3D or 2D physics): a smaller player that behaves the same. Off: every module the settings allow.",
+                        [](Project& p) { return p.isStripEngineCode(); }, [](Project& p, bool v) { p.setStripEngineCode(v); }));
         nameChoice("android.package_format", "Android builds make an App Bundle (aab, for Google Play: one ABI per device), one APK per ABI "
                    "(apk-per-abi), or one universal APK of every selected ABI (apk).", {"aab", "apk-per-abi", "apk"},
                    [](Project& p) { return p.getAndroidProjectSettings().packageFormat; },
@@ -1887,6 +1890,7 @@ const Placement placements[] = {
     {"player.pack_native_resources", "Player", "Publishing Settings", "Native Resource Pack", "resources pak"},
     {"player.build_method", "Player", "Publishing Settings", "Build Method", "prebuilt compile player"},
     {"player.pack_content", "Player", "Publishing Settings", "Content Pack", "jpak pack"},
+    {"player.strip_engine_code", "Player", "Publishing Settings", "Strip Engine Code", "size modules variant smaller"},
     {"android.package_format", "Player", "Android", "Package Format", "android apk aab bundle abi universal split"},
     {"android.keystore_path", "Player", "Android", "Keystore", "android signing key"},
     {"android.keystore_alias", "Player", "Android", "Key Alias", "android signing key"},
