@@ -102,13 +102,14 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `splines` | S18 |
 | `terrain` | S31: `sculpt_terrain`, `set_terrain_maps`, `sample_terrain` (out of core to fit the budget) |
 | `navigation` | S19 |
-| `particles` | S20 |
+| `particles` | S20, upstream's `import_unity_particles` (out of core to fit the budget) |
 | `animation` | S21 |
 | `gameplay` | S22 |
+| `physics` | upstream's physics-3d: `create_ragdoll`, `edit_physics_material` (out of core to fit the budget) |
 | `editor_tools` | S27 |
 | `vcs` | S29 |
 | `html_ui` | S17 (`edit_ui_view`) |
-| `scripting` | S23 (`reload_scripts`, `get_script_status`, `set_script_settings`, `list_editor_menus`, `run_editor_menu`, `eval_expression`, the graph tools) |
+| `scripting` | S23 (`reload_scripts`, `get_script_status`, `set_script_settings`, `list_editor_menus`, `run_editor_menu`, `eval_expression`, the graph tools), upstream's `user_settings` (PlayerPrefs) |
 
 A spec may add a group: one row in `McpToolGroups.cpp` (name, one-line description), and a
 `budget.json` `groups` entry only if it needs other limits than the defaults. Registering a tool

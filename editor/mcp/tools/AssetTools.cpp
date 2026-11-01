@@ -4119,6 +4119,7 @@ void registerAssetTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "import_unity_particles";
         tool.title = "Import Unity Particles";
+        tool.group = "particles";   // out of core to fit the budget (S31)
         tool.description =
             "Import the ParticleSystems of a Unity .prefab/.unity (absolute path; the Unity project is only read) as "
             "engine prefabs with materials and textures. Returns the prefabs and a report (per module imported/"

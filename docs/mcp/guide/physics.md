@@ -177,7 +177,7 @@ sleeping).
 
 ## Ragdolls
 
-`create_ragdoll {entity}` (GameObject > 3D Object > Ragdoll..., or the Model's component menu) is
+`create_ragdoll {entity}` (the `physics` tool group; GameObject > 3D Object > Ragdoll..., or the Model's component menu) is
 Unity's Ragdoll Wizard on a character root: the bones from its humanoid map (or Mixamo, Unity and
 Blender names; override with `bones {pelvis, left_hips, left_knee, left_foot, right_hips, ...,
 middle_spine, head}`) get a Rigidbody, a capsule / box / sphere collider and a local swing-twist

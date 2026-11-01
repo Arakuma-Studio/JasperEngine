@@ -1224,10 +1224,10 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create with parent, name, local transform, components and initial values in one "
-            "step. empty = Transform only; bare = no components (root only); model needs model (a project "
-            "model); *_tween/*_tracks: animation actions. values {component: {property: value}} or changes "
-            "(set_properties).";
+            "GameObject > Create in one step: parent, name, local transform, components, values ({component: "
+            "{property: value}} or set_properties changes). empty: Transform only; bare: "
+            "no components (root only); model: a project .gltf/.glb/.obj/.fbx; lattice: fitted and bound to "
+            "targets; *_tween/*_tracks: animation actions.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"type", withDefault(stringEnum("", types), "empty")},
@@ -1236,8 +1236,8 @@ void registerEntityTools(McpRegistry& registry) {
             {"position", vec3("")},
             {"rotation", quat()},
             {"scale", vec3("")},
-            {"model", assetPath("type model: .gltf/.glb/.obj/.fbx.")},
-            {"targets", entities("type lattice: fitted, bound.")},
+            {"model", assetPath("")},
+            {"targets", entities()},
             {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Extra components."}}},
             {"values", anyObject("")},
             {"changes", array(anyObject(""), "")},

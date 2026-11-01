@@ -44,6 +44,11 @@
             "tools": 12,
             "spec": "S18 (within 6,000 characters)"
         },
+        "scripting": {
+            "chars": 15000,
+            "tools": 13,
+            "spec": "S23's 12 (hot reload, script status and settings, editor menus, expressions, the graph tools) and upstream's user_settings (PlayerPrefs, the scripts' saved data: no group fits it better; SYNC#4)"
+        },
         "editor_ux": {
             "chars": 24000,
             "tools": 20,

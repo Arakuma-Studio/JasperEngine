@@ -5826,6 +5826,8 @@ void registerWorldTools(McpRegistry& registry) {
         }),
         setJointTool, false, false);
 
+    // upstream's physics-3d tools: the physics group (out of core to fit the budget, S31)
+    group = "physics";
     add("edit_physics_material", "Edit Physics Material",
         "Create (create: 3d|2d preset) or edit a .physicsmaterial; combine modes average|geometric_mean|"
         "minimum|multiply|maximum.",
@@ -5852,6 +5854,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"flip_forward", boolean("")}
         }, {"entity"}),
         createRagdollTool, false, false);
+    group.clear();
 
     // ---------------------------------------------------------------- tilemap
     add("edit_tilemap", "Edit Tilemap",
@@ -6082,16 +6085,13 @@ void registerWorldTools(McpRegistry& registry) {
             {"parent", entityRef()},
             {"position", vec3("Local.")},
             {"emitter_entity", entityRef()},
-            {"renderer", stringEnum("", {"quads", "points"})},
             {"preset", stringEnum("", {"fire", "smoke", "sparks", "explosion", "snow", "rain", "magic", "none"})},
             {"scale", number("Default 1 (3D), 40 (2D).")},
             {"max_particles", integer("", 1, 100000)},
             {"rate", integer("", 0, 100000)},
             {"loop", boolean("")},
-            {"duration", number("")},
             {"life", any("Seconds or [min, max].")},
-            {"speed", any("Or [min, max].")},
-            {"emitter", anyObject("{shape, radius, angle, length, arc, min, max, ...}")},
+            {"emitter", anyObject("")},
             {"velocity", any("")},
             {"acceleration", any("")},
             {"size", any("Or [min, max].")},
@@ -6101,11 +6101,8 @@ void registerWorldTools(McpRegistry& registry) {
             {"gradient", array(arrayItem, "[[t, [r, g, b]], ...]")},
             {"bursts", array(anyObject(""), "")},
             {"texture", assetPath("")},
-            {"modules", anyObject("")},
             {"properties", anyObject("")},
-            {"autoplay", boolean("")},
-            {"upgrade", boolean("")},
-            {"force", boolean("")}
+            {"autoplay", boolean("")}
         }),
         createParticlesTool, false, false);
 
