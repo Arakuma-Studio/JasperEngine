@@ -670,7 +670,15 @@ ambiguous or in conflict with the code:
     framework's `Versions/Current`) stay links, others are left out with a warning. The CMake glob
     of an exported project skips `project/plugins/native/` (the platform folders' sources belong to
     Gradle/Xcode). A macOS CMake build defines `JASPERENGINE_MACOS_CMAKE`, so its "unavailable" list
-    leaves out Swift-only Apple plugins.
+    leaves out Swift-only Apple plugins. Every Apple export links the engine's own system frameworks
+    explicitly (iOS: AVFoundation, AudioToolbox, CoreGraphics, CoreMedia, CoreVideo, Foundation,
+    GameController, Metal, MetalKit, QuartzCore, UIKit; macOS: the same with AppKit and CoreAudio
+    instead of UIKit), appended to the template's Frameworks phase (what it links already, such as main's
+    APP_FRAMEWORKS, is kept and not repeated), merged with `ios.frameworks`/`macos.frameworks`
+    (one entry per name, strong wins): the engine's C++ and Objective-C++ files import no clang
+    modules, so nothing autolinks them, and an iOS export without AdMob linked AVFoundation (for
+    miniaudio's AVAudioSession) only through the AdMob SDK's module. Swift packages are
+    `upToNextMajorVersion` from the given version (1.1.0 resolves the newest 1.x).
 12. **CocoaPods.** When a pod has a custom `source`, the CocoaPods CDN is listed too (a `source` line
     hides the trunk otherwise). Swift packages need a version and at least one product.
 13. **Web.** The page stub defines `register` and `emit` (queueing them), not only `_pending`, since

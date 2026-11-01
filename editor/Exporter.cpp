@@ -4212,6 +4212,24 @@ bool editor::Exporter::addXcodeProjectSources(std::string& xcodeProject) {
 
 namespace {
 
+    // The system frameworks the engine's own code calls into, per app target: sokol and the
+    // renderer (Metal, MetalKit, QuartzCore), miniaudio (AVFoundation's AVAudioSession and
+    // AudioToolbox on iOS; CoreAudio and AudioToolbox on macOS, also loaded at run time),
+    // vibration (AudioToolbox), video decoding (AVFoundation, CoreMedia, CoreVideo), haptics and
+    // the view (UIKit / AppKit), the display (CoreGraphics), gamepads (GameController); the native
+    // bridge needs Foundation and UIKit / AppKit. What the template's phase links already is kept.
+    const std::vector<std::string>& appleEngineFrameworksIOS() {
+        static const std::vector<std::string> frameworks = {"AVFoundation", "AudioToolbox", "CoreGraphics", "CoreMedia", "CoreVideo", "Foundation",
+                                                            "GameController", "Metal", "MetalKit", "QuartzCore", "UIKit"};
+        return frameworks;
+    }
+
+    const std::vector<std::string>& appleEngineFrameworksMacOS() {
+        static const std::vector<std::string> frameworks = {"AVFoundation", "AppKit", "AudioToolbox", "CoreAudio", "CoreGraphics", "CoreMedia", "CoreVideo",
+                                                            "Foundation", "GameController", "Metal", "MetalKit", "QuartzCore"};
+        return frameworks;
+    }
+
     std::string lowerExtension(const fs::path& path) {
         std::string ext = path.extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -4347,7 +4365,6 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
         }
         std::sort(list.begin(), list.end());
     }
-    const bool hasNativeFiles = !folderFiles.empty();
 
     // ios.deployment_target (validated by the settings: at least 15.0)
     {
@@ -4362,9 +4379,6 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
         if (target != "15.0") replaceAll(xcodeProject, "IPHONEOS_DEPLOYMENT_TARGET = 15.0;", "IPHONEOS_DEPLOYMENT_TARGET = " + target + ";");
     }
 
-    const bool hasPackages = !ios.swiftPackages.empty();
-    const bool hasEntitlements = ios.entitlementsXml.find_first_not_of(" \t\r\n") != std::string::npos;
-    if (!hasNativeFiles && ios.frameworks.empty() && macOS.frameworks.empty() && !hasPackages && !hasEntitlements) return true;
 
     struct AppTarget {
         std::string name;
@@ -4499,9 +4513,16 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
         }
     }
 
-    // system frameworks: "StoreKit", "AppTrackingTransparency?" (weak)
+    // system frameworks: the engine's own (linked explicitly: its C++ and Objective-C++ files
+    // import no modules, so clang autolinks nothing for them; miniaudio's AVAudioSession symbols
+    // came only through the AdMob SDK's module, and an iOS export without AdMob failed to link),
+    // then ios.frameworks / macos.frameworks: "StoreKit", "AppTrackingTransparency?" (weak). One
+    // entry per name (strong wins), none for what the template's phase links already.
     std::vector<std::string> systemFrameworkRefs;
     for (AppTarget& target : targets) {
+        const bool iosTarget = &target == &targets[0];
+        std::vector<std::pair<std::string, bool>> wanted;
+        for (const std::string& framework : iosTarget ? appleEngineFrameworksIOS() : appleEngineFrameworksMacOS()) wanted.push_back({framework, false});
         for (std::string framework : *target.systemFrameworks) {
             framework.erase(0, framework.find_first_not_of(" \t"));
             framework.erase(framework.find_last_not_of(" \t") + 1);
@@ -4509,7 +4530,15 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             if (weak) framework.pop_back();
             if (framework.size() > 10 && framework.compare(framework.size() - 10, 10, ".framework") == 0) framework.resize(framework.size() - 10);
             if (framework.empty() || framework.find_first_of("/\"\\ ") != std::string::npos) continue;
+            auto same = std::find_if(wanted.begin(), wanted.end(), [&](const auto& w) { return w.first == framework; });
+            if (same == wanted.end()) wanted.push_back({framework, weak});
+            else same->second = same->second && weak;
+        }
+        const PbxRange phase = findPbxObject(xcodeProject, target.frameworksPhaseId);
+        const std::string phaseText = phase.found() ? xcodeProject.substr(phase.start, phase.end - phase.start) : std::string();
+        for (const auto& [framework, weak] : wanted) {
             const std::string name = framework + ".framework";
+            if (phaseText.find("/* " + name + " in Frameworks */") != std::string::npos) continue;
             const std::string sdk = target.name == "JasperEngine iOS" ? "ios" : "macos";
             const std::string fileId = addObject("system:" + sdk + ":" + name, fileReferences, [&](const std::string& id) {
                 return "\t\t" + id + " /* " + name + " */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = " + pbxString(name) +

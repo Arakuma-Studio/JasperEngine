@@ -127,7 +127,7 @@ async def test_native_settings_keys(ed: Editor):
         "ios.plist_entries": {"NSUserTrackingUsageDescription": "Ads", "ITSAppUsesNonExemptEncryption": False, "Count": 3,
                               "Ratio": 1.5, "UIBackgroundModes": ["fetch"], "Numeric": "15", "SKAdNetworkItems": ["replaced"]},
         "ios.plist_xml": "<key>SKAdNetworkItems</key><array><dict><key>SKAdNetworkIdentifier</key><string>x.skadnetwork</string></dict></array>",
-        "ios.frameworks": ["StoreKit", "AppTrackingTransparency?"],
+        "ios.frameworks": ["StoreKit", "AppTrackingTransparency?", "AudioToolbox?"],
         "ios.cocoapods": [{"name": "Alamofire", "version": "~> 5.9"}, {"name": "Custom", "source": "https://github.com/x/specs.git"}],
         "ios.swift_packages": [{"url": "https://github.com/RevenueCat/purchases-ios", "version": "4", "products": ["RevenueCat"]}],
         "ios.entitlements_xml": "<key>aps-environment</key><string>development</string>",
@@ -195,6 +195,40 @@ async def test_play_cpp_plugin_and_mock(ed: Editor):
             await ed.call("play", action="stop")
     errors = (await ed.call("read_console", since=cursor, types=["error"]))["entries"]
     ed.check(not errors, f"no errors: {errors}")
+
+
+# the system frameworks every Apple export links explicitly (Exporter appleEngineFrameworks*): an
+# iOS export without AdMob once linked AVFoundation only through the AdMob SDK's module. At least
+# the template's APP_FRAMEWORKS (tools/xcode_sync_engine.py on main), each linked once.
+APP_FRAMEWORKS = ["AVFoundation", "AudioToolbox", "CoreMedia", "CoreVideo"]
+IOS_ENGINE_FRAMEWORKS = APP_FRAMEWORKS + ["CoreGraphics", "Foundation", "GameController", "Metal", "MetalKit", "QuartzCore", "UIKit"]
+MACOS_ENGINE_FRAMEWORKS = APP_FRAMEWORKS + ["AppKit", "CoreAudio", "CoreGraphics", "Foundation", "GameController", "Metal", "MetalKit",
+                                            "QuartzCore"]
+
+
+def linked_frameworks(root: dict, target_name: str) -> dict[str, list[bool]]:
+    """System framework name -> one weak flag per Frameworks-phase entry of the app target."""
+    objects = root["objects"]
+    target = pbxproj.target(root, target_name)
+    result: dict[str, list[bool]] = {}
+    for phase_id in target["buildPhases"]:
+        if objects[phase_id]["isa"] != "PBXFrameworksBuildPhase":
+            continue
+        for build_id in objects[phase_id]["files"]:
+            build = objects[build_id]
+            ref = objects.get(build.get("fileRef", ""), {})
+            name = (ref.get("name") or ref.get("path") or "").rsplit("/", 1)[-1]
+            if name.endswith(".framework") and (ref.get("sourceTree") == "SDKROOT" or "System/Library" in ref.get("path", "")):
+                result.setdefault(name[:-len(".framework")], []).append("Weak" in json.dumps(build.get("settings", {})))
+    return result
+
+
+def check_engine_frameworks(ed: Editor, root: dict, what: str) -> None:
+    for target_name, wanted in (("JasperEngine iOS", IOS_ENGINE_FRAMEWORKS), ("JasperEngine macOS", MACOS_ENGINE_FRAMEWORKS)):
+        linked = linked_frameworks(root, target_name)
+        for framework in wanted:
+            ed.check_eq(linked.get(framework), [False], f"{what}: {target_name} links {framework} once, strongly")
+        ed.check_eq({k: v for k, v in linked.items() if len(v) != 1}, {}, f"{what}: {target_name} links each framework once")
 
 
 def write_stub_xcframework(root: Path, name: str, static: bool) -> None:
@@ -327,6 +361,10 @@ async def test_source_export(ed: Editor):
     for item in ("StaticSdk.xcframework", "DynamicSdk.xcframework", "System/Library/Frameworks/StoreKit.framework",
                  "System/Library/Frameworks/AppTrackingTransparency.framework", "product:RevenueCat"):
         ed.check_in(item, linked)
+    # the engine's own frameworks, explicit (not autolinked), each once: a project's "AudioToolbox?"
+    # joins the engine's strong one
+    check_engine_frameworks(ed, root, "with plugins")
+    ed.check_eq(linked_frameworks(root, "JasperEngine macOS").get("GameKit"), [False], "macos.frameworks")
     embed = [objects[p] for p in ios_target["buildPhases"] if objects[p]["isa"] == "PBXCopyFilesBuildPhase"]
     ed.check_eq(len(embed), 1, "one Embed Frameworks phase")
     embedded = [objects[objects[b]["fileRef"]]["path"] for b in embed[0]["files"]]
@@ -427,6 +465,9 @@ async def test_source_export(ed: Editor):
     ed.check(not (out / "project" / "plugins" / "native" / "android").exists(), "the copied plugins go too")
     root = pbxproj.parse((xcode / "JasperEngine.xcodeproj" / "project.pbxproj").read_text(encoding="utf-8"))
     ed.check("Device.m" not in pbxproj.target_sources(root, "JasperEngine iOS"), "no plugin source left")
+    # a project without plugins or frameworks links the engine's frameworks too
+    check_engine_frameworks(ed, root, "without plugins")
+    ed.check("StoreKit" not in linked_frameworks(root, "JasperEngine iOS"), "ios.frameworks emptied")
     # without plugins the app targets still find JasperNative.h (their own sources import it), and
     # CocoaPods' xcconfig values are inherited
     for name in ("JasperEngine iOS", "JasperEngine macOS"):

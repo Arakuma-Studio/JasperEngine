@@ -358,7 +358,7 @@ describe: true}` explains each):
 | `android.manifest_xml` / `android.manifest_application_xml` | raw XML inside `<manifest>` (before `<application>`) / inside `<application>`; `tools:` is declared when used |
 | `ios.plist_entries` / `macos.plist_entries` | Info.plist keys -> string, boolean, number or string list (replacing) |
 | `ios.plist_xml` | raw `<key>..</key><value>` pairs appended (dictionaries, `SKAdNetworkItems`) |
-| `ios.frameworks` / `macos.frameworks` | system frameworks linked (`"StoreKit"`; `"AppTrackingTransparency?"` = weak) |
+| `ios.frameworks` / `macos.frameworks` | system frameworks linked (`"StoreKit"`; `"AppTrackingTransparency?"` = weak), besides the engine's own, which every export links (AVFoundation, AudioToolbox, CoreMedia, CoreVideo, Metal, MetalKit, QuartzCore, UIKit/AppKit...) |
 | `ios.cocoapods` | `[{name, version, source}]`: `workspaces/xcode/Podfile` (static frameworks); run `pod install` there and open `JasperEngine.xcworkspace` (README-pods.txt says so) |
 | `ios.swift_packages` | `[{url, version, products}]`: package references (up to the next major version), products linked |
 | `ios.entitlements_xml` | the pairs of `ios/JasperEngine.entitlements` (`CODE_SIGN_ENTITLEMENTS`) |
