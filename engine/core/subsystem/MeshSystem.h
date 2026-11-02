@@ -303,6 +303,17 @@ namespace jasperengine{
         // Caps the resolution glTF images are decoded to on the CALLING thread (0 = full resolution).
         // Used by the thumbnail worker so previews don't decode/upload full-size 4K maps.
         static void setImageDecodeMaxDimension(int dimension);
+        // What a load on the calling thread adds to the ids of a model's embedded images: ""
+        // at full resolution, "|max<N>" for a load capped by setImageDecodeMaxDimension (a
+        // thumbnail's preview). The preview's pixels are another image than the scene's: under
+        // the scene's ids it shared (and freed) the scene's pooled pixels and took over the
+        // generator that makes them again, bound to the preview's model (BF15).
+        static std::string getImageKeySuffix();
+
+        // tests: JASPER_MESH_LOAD_HOLD_FILE=<path> holds the first load (RenderSystem::loadMesh)
+        // of the meshes of a scene that loaded a model in the background, while that file exists:
+        // what else loads the same model meanwhile (a Project window thumbnail) comes first
+        static bool isMeshLoadHeld(const Scene* scene);
 
         void createInstancedMesh(Entity entity);
         void removeInstancedMesh(Entity entity);

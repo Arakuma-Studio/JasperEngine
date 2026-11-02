@@ -3747,7 +3747,9 @@ bool RenderSystem::bindShaderTextures(const ShaderLibraryBindings& bindings, Obj
         TextureRender* textureRender = fallback;
         if (textureSlot.source >= 0 && textureSlot.source < (int)textures.size()){
             Texture& texture = textures[textureSlot.source].second;
-            if (!texture.empty()){
+            // (one naming a file that failed too: another load of it may have made its GPU
+            // texture, or a stand-in is noted for a later binding)
+            if (!texture.empty() || !texture.getId().empty()){
                 textureRender = texture.getRender(fallback);
                 if (!textureRender){
                     textureRender = fallback;
@@ -4733,6 +4735,37 @@ void RenderSystem::applyLitMaterialBlock(ObjectRender& render, int slot, const M
     render.applyUniformBlock(slot, size, prefix);
 }
 
+RenderSystem::TextureBindMark RenderSystem::markTextureBinding(){
+    return {Texture::getStandInCount(), TexturePool::getReadyEpoch()};
+}
+
+void RenderSystem::noteTextureBinding(Submesh& submesh, const TextureBindMark& mark){
+    // the epochs as they were before the binding: an image made during it is looked at again
+    submesh.textureStandInEpoch = Texture::getStandInCount() != mark.standIns ? mark.readyEpoch : 0;
+}
+
+bool RenderSystem::shaderTexturesRenderOutdated(const std::vector<std::pair<std::string, Texture>>& textures){
+    for (const auto& texture : textures){
+        if (texture.second.isRenderOutdated())
+            return true;
+    }
+    return false;
+}
+
+bool RenderSystem::materialRendersOutdated(const Submesh& submesh){
+    const Material& material = submesh.material;
+    if (material.baseColorTexture.isRenderOutdated() || material.metallicRoughnessTexture.isRenderOutdated() ||
+            material.occlusionTexture.isRenderOutdated() || material.emissiveTexture.isRenderOutdated() ||
+            material.normalTexture.isRenderOutdated() || shaderTexturesRenderOutdated(material.shaderTextures) ||
+            shaderTexturesRenderOutdated(material.extraPass->shaderTextures))
+        return true;
+    for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
+        if (submesh.pbrMaps[k] != PbrMap::COUNT && MaterialPbr::getMap(material.pbr.get(), submesh.pbrMaps[k]).isRenderOutdated())
+            return true;
+    }
+    return false;
+}
+
 bool RenderSystem::loadPbrExtTextures(Submesh& submesh, ShaderData& shaderData, ObjectRender& render){
     static const char* const slotNames[MaterialPbr::MAX_EXTENSION_MAPS] = {"u_pbrExtTexture0", "u_pbrExtTexture1", "u_pbrExtTexture2"};
     MaterialPbrExtensions* pbr = submesh.material.pbr.editIfSet();
@@ -5407,9 +5440,9 @@ bool RenderSystem::updateTerrainRenderTextures(Entity entity, TerrainComponent& 
     // a render target its maps show was made again (a fluid's output, a camera's after a view
     // loss): bound again, as meshes do (checkPBRFrabebufferUpdate)
     if (!terrain.needUpdateTexture){
-        bool outdated = terrain.heightMap.isFramebufferOutdated();
+        bool outdated = terrain.heightMap.isFramebufferOutdated() || terrain.heightMap.isRenderOutdated();
         for (const Texture& blendMap : terrain.blendMaps)
-            outdated = outdated || blendMap.isFramebufferOutdated();
+            outdated = outdated || blendMap.isFramebufferOutdated() || blendMap.isRenderOutdated();
         if (outdated)
             terrain.needUpdateTexture = true;
     }
@@ -5660,6 +5693,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         return false;
 
     if (terrain && !terrain->heightMapLoaded)
+        return false;
+
+    // tests: JASPER_MESH_LOAD_HOLD_FILE holds it (MeshSystem::isMeshLoadHeld)
+    if (MeshSystem::isMeshLoadHeld(scene))
         return false;
 
     // a Spline Extrude's Mesh is the template of its chunks (SplineSystem): never drawn itself
@@ -6166,6 +6203,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].customFSParams.resolve(shaderData, "u_fs_customParams");
         writeSubmeshCustomUniforms(mesh, mesh.submeshes[i]);
 
+        // what the binding below takes stand-ins for (noteTextureBinding)
+        const TextureBindMark bindMark = markTextureBinding();
         if (!loadPBRTextures(mesh.submeshes[i].material, shaderData, mesh.submeshes[i].render, mesh.receiveLights)){
             return false;
         }
@@ -6219,6 +6258,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].needUpdateTexture = false;
         mesh.submeshes[i].needUpdateDepthTexture = false;
         mesh.submeshes[i].needUpdateGBufferTexture = false;
+        noteTextureBinding(mesh.submeshes[i], bindMark);
 
         // render state: the material's, the manifest's @state, else the legacy state
         // (alpha blended materials go to the transparent queue and write no depth)
@@ -8272,10 +8312,12 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
             if (mesh.submeshes[i].needUpdateTexture || needUpdateFramebuffer){
                 ShaderData& shaderData = mesh.submeshes[i].shader.get()->shaderData;
+                const TextureBindMark bindMark = markTextureBinding();
                 if (loadPBRTextures(mesh.submeshes[i].material, shaderData, mesh.submeshes[i].render, mesh.receiveLights) &&
                         loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render) &&
                         bindShaderTextures(libraryBindings, render, mesh.submeshes[i].material.shaderTextures)){
                     mesh.submeshes[i].needUpdateTexture = false;
+                    noteTextureBinding(mesh.submeshes[i], bindMark);
                 }
             }
             // a FluidSimulation shown on this mesh (output MATERIAL): its image as submesh 0's
@@ -13119,6 +13161,11 @@ void RenderSystem::update(double dt){
     if (paused) {
         return;
     }
+
+    // a GPU texture went stale or was made again since the last update: whoever bound one looks
+    const uint32_t rebindEpoch = TexturePool::getRebindEpoch();
+    const bool rendersMayBeOutdated = rebindEpoch != rebindEpochSeen;
+    rebindEpochSeen = rebindEpoch;
     // the clock of the shadow caches (ShadowCache): one tick per update that samples the casters
     shadowFrame++;
 
@@ -13417,6 +13464,11 @@ void RenderSystem::update(double dt){
             }
         }
 
+        // its image has new pixels or a new view (TexturePool::getRebindEpoch)
+        if (rendersMayBeOutdated && (sky.texture.isRenderOutdated() || shaderTexturesRenderOutdated(sky.shaderTextures))){
+            sky.needUpdateTexture = true;
+        }
+
         if (sky.needUpdateTexture){
             if (sky.texture.empty()){
                 sky.needReload = true;
@@ -13587,6 +13639,17 @@ void RenderSystem::update(double dt){
                     }
                 }
 
+                // An image the material names that had no GPU texture when it was bound (it drew a
+                // stand-in) may be made now, and one it drew has new pixels or a new view: an image
+                // ready, or assigned, after the binding (BF15)
+                if (mesh.loaded && !mesh.needReload && !mesh.submeshes[s].needUpdateTexture){
+                    const uint32_t standIn = mesh.submeshes[s].textureStandInEpoch;
+                    if ((standIn != 0 && standIn != TexturePool::getReadyEpoch()) ||
+                            (rendersMayBeOutdated && materialRendersOutdated(mesh.submeshes[s]))){
+                        mesh.submeshes[s].needUpdateTexture = true;
+                    }
+                }
+
                 if (mesh.submeshes[s].needUpdateTexture){
                     if (terrain){
                         transform.needUpdate = true;
@@ -13732,6 +13795,10 @@ void RenderSystem::update(double dt){
                 isText = true;
             }
 
+            if (rendersMayBeOutdated && (ui.texture.isRenderOutdated() || shaderTexturesRenderOutdated(ui.shaderTextures))){
+                ui.needUpdateTexture = true;
+            }
+
             if (ui.needUpdateTexture){
                 // a text samples its atlas as 'Ftx', everything else its texture as 'Tex'
                 const uint64_t textureProperty = isText ? (1 << 1) : (1 << 0);
@@ -13759,6 +13826,10 @@ void RenderSystem::update(double dt){
             }
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
+
+            if (rendersMayBeOutdated && (points.texture.isRenderOutdated() || shaderTexturesRenderOutdated(points.shaderTextures))){
+                points.needUpdateTexture = true;
+            }
 
             if (points.needUpdateTexture){
                 if (!points.texture.empty()){
