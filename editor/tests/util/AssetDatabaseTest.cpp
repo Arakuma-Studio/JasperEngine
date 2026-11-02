@@ -247,6 +247,23 @@ TEST_F(AssetDatabaseTest, LegacyPrefabsGetTheirPathGuidWrittenIntoThem){
     EXPECT_EQ(AssetDatabase::readGuid(project.file("old.prefab")), expected);
 }
 
+TEST_F(AssetDatabaseTest, AWalkOlderThanADeletionBringsNothingBack){
+    // the walk (a Background job) saw a new file a later step took back, with the folder made for it:
+    // applying it must not write the file's meta, which would make the folder again
+    project.write("assets/keep.txt", "text\n");
+    database.open(project.path(), "assets");
+    project.write("assets/rbs/new/sheet.png", "png\n");
+    const AssetDatabase::DiskScan scan = database.scanDisk();
+    ASSERT_TRUE(scan.valid);
+    std::error_code ec;
+    std::filesystem::remove_all(project.file("assets/rbs"), ec);
+    ASSERT_FALSE(ec);
+    const std::vector<Change> changes = database.refresh(scan);
+    EXPECT_EQ(count(changes, Change::Type::Added), 0u);
+    EXPECT_TRUE(database.getGuid("assets/rbs/new/sheet.png").empty());
+    EXPECT_FALSE(std::filesystem::exists(project.file("assets/rbs"))) << "the meta made the folder again";
+}
+
 TEST_F(AssetDatabaseTest, AShaderForkIsFoundByItsAssetsRelativeSpelling){
     project.write("assets/shaders/fork.frag", "#version 450\n");
     database.open(project.path(), "assets");

@@ -2813,7 +2813,8 @@ std::string editor::Generator::inputSettingsInitSource(const std::string& action
 std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
     const DebugSettings defaults;
     std::string out;
-    out += "#if defined(JASPERENGINE_DEVELOPMENT_BUILD) || defined(DEBUG)\n";
+    // (by value, not defined(): the engine's CMake defines it for its users as 0 or 1)
+    out += "#if JASPERENGINE_DEVELOPMENT_BUILD || defined(DEBUG)\n";
     out += "    Engine::setDevelopmentBuild(true);\n";
     out += "#endif\n";
     if (debug.logBufferSize != defaults.logBufferSize)

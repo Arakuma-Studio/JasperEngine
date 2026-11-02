@@ -1689,6 +1689,10 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
         auto owner = identified ? byGuid.find(updated.guid) : byGuid.end();
         const bool copiedClipGuid = isClipFile(relative) && owner != byGuid.end() && owner->second != relativeKeyOf(relative) &&
                                     byPath.count(owner->second) && fileExists(byPath.at(owner->second).path);
+        // (a walk older than the file's deletion: the next one finds it gone)
+        if (!identified && !fileExists(relative)) {
+            continue;
+        }
         if (!identified || copiedClipGuid) {
             // Written again without its identity (another tool, or the meta deleted): it is
             // still the same asset
@@ -1756,6 +1760,12 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
 
     std::vector<std::string> withoutIdentity;
     for (const std::string& relative : fresh) {
+        // the walk is older than this file's deletion (a later step took it back, with the folder
+        // made for it): no asset, and writing its identity would make the meta and the folder again
+        if (!fileExists(relative)) {
+            present.erase(relativeKeyOf(relative));
+            continue;
+        }
         dirty = true;
         const AssetType type = AssetTypes::find(relative, assetsDir)->type;
         Entry entry;

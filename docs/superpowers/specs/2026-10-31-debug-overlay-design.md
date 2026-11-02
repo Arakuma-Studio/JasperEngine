@@ -463,7 +463,7 @@ the code:
     The Game view in Play is drawn by `Engine::systemDraw`, so the overlay shows there; the Scene
     view and the edit-mode Game preview (`drawView`) never show it (it exists only in Play).
 14. **Exports**: `Generator::debugInitSource` emits `Engine::setDevelopmentBuild(true)` under
-    `#if defined(JASPERENGINE_DEVELOPMENT_BUILD) || defined(DEBUG)`, the log settings and
+    `#if JASPERENGINE_DEVELOPMENT_BUILD || defined(DEBUG)`, the log settings and
     `DebugOverlay::configure` (development mode = `Engine::isDevelopmentBuild()` at run time).
     `engine/CMakeLists.txt` defines `JASPERENGINE_DEVELOPMENT_BUILD` for the Debug configuration of
     standalone builds (`$<CONFIG:Debug>`: single- and multi-config generators, Android's debug
