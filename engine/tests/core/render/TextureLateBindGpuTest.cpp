@@ -28,9 +28,11 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -223,6 +225,120 @@ TEST_P(TextureLateBindGpu, AnImageReadyAfterTheMaterialWasBoundIsBound){
         ASSERT_GT(meanDifference(standIn, reference), 4.0) << c.name << ": the stand-in draws as the image (the case shows nothing)";
         EXPECT_LT(meanDifference(after, reference), 1.0) << c.name << ": the mesh still draws the stand-in for its image";
     }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+namespace {
+    // what a hot reload, a cook swapped in and the rest of a progressive load do: the image's new
+    // pixels in the pool, its GPU texture stale (made again by the next getRender that asks)
+    void replaceImage(const std::string& id, const uint8_t rgba[4]){
+        registerImage(id, rgba);
+        const int size = 4 * 4 * 4;
+        unsigned char* pixels = static_cast<unsigned char*>(std::malloc(size));
+        ASSERT_NE(pixels, nullptr);
+        for (int i = 0; i < size; i += 4)
+            std::memcpy(pixels + i, rgba, 4);
+        auto faces = std::make_shared<std::array<TextureData, 6>>();
+        faces->at(0) = TextureData(4, 4, (unsigned int)size, ColorFormat::RGBA, 4, pixels);
+        faces->at(0).setDataOwned(true);
+        TextureDataPool::replace(id, faces);
+        TexturePool::invalidate(id);
+    }
+}
+
+// The mesh drew the image's old pixels (a real image, no stand-in): it must take the new ones
+TEST_P(TextureLateBindGpu, AnImageReplacedAfterTheMaterialWasBoundIsBound){
+    JASPER_REQUIRE_GPU();
+    const LateCase& c = GetParam();
+    static int serial = 0;
+    serial++;
+    const std::string readyId = std::string("bf15-final|") + c.name + "|" + std::to_string(serial);
+    const std::string replacedId = std::string("bf15-replaced|") + c.name + "|" + std::to_string(serial);
+
+    registerImage(readyId, c.rgba);
+    std::vector<uint8_t> reference;
+    {
+        Primitive plane(&scene);
+        reference = drawPlane(plane, caseMaterial(c.slot, readyId));
+    }
+
+    const uint8_t flatNormal[4] = {128, 128, 255, 255};
+    const uint8_t white[4] = {255, 255, 255, 255};
+    registerImage(replacedId, c.slot == Slot::Normal ? flatNormal : white);
+    Primitive plane(&scene);
+    const std::vector<uint8_t> before = drawPlane(plane, caseMaterial(c.slot, replacedId));
+    Texture replaced;
+    replaced.setId(replacedId);
+    const std::string renderId = replaced.getRenderId();
+    EXPECT_NE(TexturePool::get(renderId), nullptr) << c.name << ": the old image was made";
+
+    replaceImage(replacedId, c.rgba);
+    ASSERT_FALSE(HasFatalFailure());
+    Scene* current = &scene;
+    GpuEnvironment::runFrames([current, renderId](){
+        return current->getSystem<RenderSystem>()->isAllLoaded() && TexturePool::get(renderId) != nullptr;
+    }, 120);
+    GpuEnvironment::drawFrames(3);
+    const std::vector<uint8_t> after = readTarget();
+
+    EXPECT_NE(TexturePool::get(renderId), nullptr) << c.name << ": the mesh never asked for its image's new pixels";
+    if (c.visible){
+        ASSERT_GT(meanDifference(before, reference), 4.0) << c.name << ": the old image draws as the new one (the case shows nothing)";
+        EXPECT_LT(meanDifference(after, reference), 1.0) << c.name << ": the mesh still draws the old image";
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// A GPU texture made again in place takes its old view away from every binding holding it: all
+// the materials sharing it take the new one, not only the one whose getRender rebuilt it
+TEST(TextureRebuiltGpu, EveryMaterialHoldingAGpuTextureRebuiltInPlaceBindsItAgain){
+    JASPER_REQUIRE_GPU();
+    const uint8_t white[4] = {255, 255, 255, 255};
+    const uint8_t red[4] = {230, 40, 30, 255};
+    Scene scene;
+    Camera camera(&scene);
+    camera.setType(CameraType::CAMERA_PERSPECTIVE);
+    camera.setPosition(0.0f, 2.2f, 2.6f);
+    camera.setTarget(0.0f, 0.0f, 0.0f);
+    camera.activate();
+    Engine::setScene(&scene);
+    Scene* current = &scene;
+    auto loaded = [current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); };
+
+    auto draw = [&](const std::string& id){
+        Primitive left(&scene), right(&scene);
+        left.createPlane(1.2f, 1.2f);
+        right.createPlane(1.2f, 1.2f);
+        left.setPosition(-0.8f, 0.0f, 0.0f);
+        right.setPosition(0.8f, 0.0f, 0.0f);
+        left.setMaterial(caseMaterial(Slot::BaseColor, id));
+        right.setMaterial(caseMaterial(Slot::BaseColor, id));
+        EXPECT_TRUE(GpuEnvironment::runFrames(loaded));
+        GpuEnvironment::drawFrames(3);
+        return readTarget();
+    };
+    registerImage("bf15-shared-final", red);
+    const std::vector<uint8_t> reference = draw("bf15-shared-final");
+
+    registerImage("bf15-shared", white);
+    Primitive left(&scene), right(&scene);
+    left.createPlane(1.2f, 1.2f);
+    right.createPlane(1.2f, 1.2f);
+    left.setPosition(-0.8f, 0.0f, 0.0f);
+    right.setPosition(0.8f, 0.0f, 0.0f);
+    left.setMaterial(caseMaterial(Slot::BaseColor, "bf15-shared"));
+    right.setMaterial(caseMaterial(Slot::BaseColor, "bf15-shared"));
+    ASSERT_TRUE(GpuEnvironment::runFrames(loaded));
+    GpuEnvironment::drawFrames(3);
+
+    replaceImage("bf15-shared", red);
+    ASSERT_FALSE(HasFatalFailure());
+    GpuEnvironment::runFrames([current](){
+        return current->getSystem<RenderSystem>()->isAllLoaded() && TexturePool::get("bf15-shared") != nullptr;
+    }, 120);
+    GpuEnvironment::drawFrames(3);
+    EXPECT_LT(meanDifference(readTarget(), reference), 1.0) << "a plane draws the old image, or nothing";
+    Engine::removeScene(&scene);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
