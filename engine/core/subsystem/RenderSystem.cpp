@@ -4730,18 +4730,34 @@ void RenderSystem::applyLitMaterialBlock(ObjectRender& render, int slot, const M
 }
 
 RenderSystem::TextureBindMark RenderSystem::markTextureBinding(){
-    return {Texture::getStandInCount(), TexturePool::getReadyEpoch(), TexturePool::getRebuildEpoch()};
+    return {Texture::getStandInCount(), TexturePool::getReadyEpoch()};
 }
 
 void RenderSystem::noteTextureBinding(Submesh& submesh, const TextureBindMark& mark){
     // the epochs as they were before the binding: an image made during it is looked at again
     submesh.textureStandInEpoch = Texture::getStandInCount() != mark.standIns ? mark.readyEpoch : 0;
-    submesh.textureBindRebuildEpoch = mark.rebuildEpoch;
 }
 
-bool RenderSystem::textureBindingOutdated(const Submesh& submesh){
-    return (submesh.textureStandInEpoch != 0 && submesh.textureStandInEpoch != TexturePool::getReadyEpoch()) ||
-           (submesh.textureBindRebuildEpoch != 0 && submesh.textureBindRebuildEpoch != TexturePool::getRebuildEpoch());
+bool RenderSystem::shaderTexturesRenderOutdated(const std::vector<std::pair<std::string, Texture>>& textures){
+    for (const auto& texture : textures){
+        if (texture.second.isRenderOutdated())
+            return true;
+    }
+    return false;
+}
+
+bool RenderSystem::materialRendersOutdated(const Submesh& submesh){
+    const Material& material = submesh.material;
+    if (material.baseColorTexture.isRenderOutdated() || material.metallicRoughnessTexture.isRenderOutdated() ||
+            material.occlusionTexture.isRenderOutdated() || material.emissiveTexture.isRenderOutdated() ||
+            material.normalTexture.isRenderOutdated() || shaderTexturesRenderOutdated(material.shaderTextures) ||
+            shaderTexturesRenderOutdated(material.extraPass->shaderTextures))
+        return true;
+    for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
+        if (submesh.pbrMaps[k] != PbrMap::COUNT && MaterialPbr::getMap(material.pbr.get(), submesh.pbrMaps[k]).isRenderOutdated())
+            return true;
+    }
+    return false;
 }
 
 bool RenderSystem::loadPbrExtTextures(Submesh& submesh, ShaderData& shaderData, ObjectRender& render){
@@ -5418,9 +5434,9 @@ bool RenderSystem::updateTerrainRenderTextures(Entity entity, TerrainComponent& 
     // a render target its maps show was made again (a fluid's output, a camera's after a view
     // loss): bound again, as meshes do (checkPBRFrabebufferUpdate)
     if (!terrain.needUpdateTexture){
-        bool outdated = terrain.heightMap.isFramebufferOutdated();
+        bool outdated = terrain.heightMap.isFramebufferOutdated() || terrain.heightMap.isRenderOutdated();
         for (const Texture& blendMap : terrain.blendMaps)
-            outdated = outdated || blendMap.isFramebufferOutdated();
+            outdated = outdated || blendMap.isFramebufferOutdated() || blendMap.isRenderOutdated();
         if (outdated)
             terrain.needUpdateTexture = true;
     }
@@ -13139,6 +13155,11 @@ void RenderSystem::update(double dt){
     if (paused) {
         return;
     }
+
+    // a GPU texture went stale or was made again since the last update: whoever bound one looks
+    const uint32_t rebindEpoch = TexturePool::getRebindEpoch();
+    const bool rendersMayBeOutdated = rebindEpoch != rebindEpochSeen;
+    rebindEpochSeen = rebindEpoch;
     // the clock of the shadow caches (ShadowCache): one tick per update that samples the casters
     shadowFrame++;
 
@@ -13437,6 +13458,11 @@ void RenderSystem::update(double dt){
             }
         }
 
+        // its image has new pixels or a new view (TexturePool::getRebindEpoch)
+        if (rendersMayBeOutdated && (sky.texture.isRenderOutdated() || shaderTexturesRenderOutdated(sky.shaderTextures))){
+            sky.needUpdateTexture = true;
+        }
+
         if (sky.needUpdateTexture){
             if (sky.texture.empty()){
                 sky.needReload = true;
@@ -13604,10 +13630,14 @@ void RenderSystem::update(double dt){
                 }
 
                 // An image the material names that had no GPU texture when it was bound (it drew a
-                // stand-in) may be made now: an image ready, or assigned, after the binding
-                // (BF15). A GPU texture rebuilt in place left its old view in the binding.
-                if (mesh.loaded && !mesh.needReload && textureBindingOutdated(mesh.submeshes[s])){
-                    mesh.submeshes[s].needUpdateTexture = true;
+                // stand-in) may be made now, and one it drew has new pixels or a new view: an image
+                // ready, or assigned, after the binding (BF15)
+                if (mesh.loaded && !mesh.needReload && !mesh.submeshes[s].needUpdateTexture){
+                    const uint32_t standIn = mesh.submeshes[s].textureStandInEpoch;
+                    if ((standIn != 0 && standIn != TexturePool::getReadyEpoch()) ||
+                            (rendersMayBeOutdated && materialRendersOutdated(mesh.submeshes[s]))){
+                        mesh.submeshes[s].needUpdateTexture = true;
+                    }
                 }
 
                 if (mesh.submeshes[s].needUpdateTexture){
@@ -13755,6 +13785,10 @@ void RenderSystem::update(double dt){
                 isText = true;
             }
 
+            if (rendersMayBeOutdated && (ui.texture.isRenderOutdated() || shaderTexturesRenderOutdated(ui.shaderTextures))){
+                ui.needUpdateTexture = true;
+            }
+
             if (ui.needUpdateTexture){
                 // a text samples its atlas as 'Ftx', everything else its texture as 'Tex'
                 const uint64_t textureProperty = isText ? (1 << 1) : (1 << 0);
@@ -13782,6 +13816,10 @@ void RenderSystem::update(double dt){
             }
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
+
+            if (rendersMayBeOutdated && (points.texture.isRenderOutdated() || shaderTexturesRenderOutdated(points.shaderTextures))){
+                points.needUpdateTexture = true;
+            }
 
             if (points.needUpdateTexture){
                 if (!points.texture.empty()){

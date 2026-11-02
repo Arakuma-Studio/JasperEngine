@@ -23,6 +23,8 @@ namespace jasperengine{
             std::string buildPathTextureId() const;
 
             std::shared_ptr<TextureRender> render = NULL;
+            // the TextureRender::getRevision getRender last gave
+            uint32_t renderRevision = 0;
             Framebuffer* framebuffer;
             // keeps a shared framebuffer alive while this texture shows it (one made with
             // std::make_shared, see Framebuffer); empty for the others
@@ -115,6 +117,9 @@ namespace jasperengine{
             // calling thread. A renderer reads it around a material's binding: one that took a
             // stand-in binds again once an image can be made (TexturePool::getReadyEpoch).
             static uint32_t getStandInCount();
+            // Its GPU texture has new pixels to show (stale), or was made again in place since this
+            // Texture took it: a binding made of it is out of date (TexturePool::getRebindEpoch)
+            bool isRenderOutdated() const;
             static void setDestroyedFramebufferFallback(TextureRender* texture);
             std::string getPath(size_t index = 0) const;
             // The asset GUID of a source path: the editor resolves texture references by it

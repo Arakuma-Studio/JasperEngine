@@ -87,6 +87,7 @@ Texture::Texture(Framebuffer* framebuffer): Texture(){
 
 Texture::Texture(const Texture& rhs){
     render = rhs.render;
+    renderRevision = rhs.renderRevision;
     framebuffer = rhs.framebuffer;
     framebufferOwner = rhs.framebufferOwner;
     type = rhs.type;
@@ -114,6 +115,7 @@ Texture::Texture(const Texture& rhs){
 Texture& Texture::operator=(const Texture& rhs){
     if (this != &rhs) {
         render = rhs.render;
+        renderRevision = rhs.renderRevision;
         framebuffer = rhs.framebuffer;
         framebufferOwner = rhs.framebufferOwner;
         type = rhs.type;
@@ -588,6 +590,7 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     // Fast path: GPU texture already created and cached.
     render = TexturePool::get(getRenderId());
     if (render){
+        renderRevision = render->getRevision();
         return render.get();
     }
 
@@ -600,6 +603,12 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     if (texResult.state != ResourceLoadState::Finished || !hasTexturePixels(data, numFaces)){
         if (!id.empty())
             standInCount++;
+        // nothing newer to make it of: a stale GPU texture keeps drawing what it has
+        if (std::shared_ptr<TextureRender> kept = TexturePool::getKept(getRenderId())){
+            render = std::move(kept);
+            renderRevision = render->getRevision();
+            return render.get();
+        }
         return fallBackTexture;
     }
 
@@ -614,12 +623,17 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     }
 
     if (render){
+        renderRevision = render->getRevision();
         return render.get();
     }
 
     if (!id.empty())
         standInCount++;
     return fallBackTexture;
+}
+
+bool Texture::isRenderOutdated() const{
+    return render && (render->isStale() || render->getRevision() != renderRevision);
 }
 
 uint32_t Texture::getStandInCount(){

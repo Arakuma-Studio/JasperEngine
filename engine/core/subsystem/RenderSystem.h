@@ -1951,16 +1951,19 @@ namespace jasperengine{
 		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
 		// A material's binding takes a stand-in for an image it names that has no GPU texture yet
 		// (Texture::getStandInCount): taken around the binding, noted on the submesh, which binds
-		// again once an image could be made since (TexturePool::getReadyEpoch), or once a GPU
-		// texture was rebuilt in place (its old view gone from the binding)
+		// again once an image could be made since (TexturePool::getReadyEpoch)
 		struct TextureBindMark{
 			uint32_t standIns = 0;
 			uint32_t readyEpoch = 0;
-			uint32_t rebuildEpoch = 0;
 		};
 		static TextureBindMark markTextureBinding();
 		static void noteTextureBinding(Submesh& submesh, const TextureBindMark& mark);
-		static bool textureBindingOutdated(const Submesh& submesh);
+		// A material bound to an image whose pixels were replaced, or whose GPU texture was made
+		// again in place (Texture::isRenderOutdated), binds again: looked at when
+		// TexturePool::getRebindEpoch moved (rebindEpochSeen), never otherwise
+		static bool materialRendersOutdated(const Submesh& submesh);
+		static bool shaderTexturesRenderOutdated(const std::vector<std::pair<std::string, Texture>>& textures);
+		uint32_t rebindEpochSeen = 0;
 		// whether the loaded variant has the lobes, maps and hex tiling the material asks for now
 		bool pbrVariantMatches(const Submesh& submesh) const;
 		// LightComponent::resolvedColor and resolvedIntensity of every light (photometric units,

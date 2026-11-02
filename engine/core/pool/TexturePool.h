@@ -25,6 +25,8 @@ namespace jasperengine{
         static std::string getRenderId(const std::string& id, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
 
         static std::shared_ptr<TextureRender> get(const std::string& id);
+        // the entry as it is, stale too: what a Texture with nothing newer keeps drawing
+        static std::shared_ptr<TextureRender> getKept(const std::string& id);
         static std::shared_ptr<TextureRender> get(const std::string& id, TextureType type, const std::shared_ptr<std::array<TextureData,6>> &data, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
         static void add(const std::string& id, std::shared_ptr<TextureRender> render);
         // whether the pool's entry of the id is this render (created, stale or not)
@@ -39,9 +41,10 @@ namespace jasperengine{
         // ready, or assigned, after its material was bound reaches the GPU binding (BF15).
         static uint32_t getReadyEpoch();
         static void noteReady();
-        // Goes up when a stale GPU texture is made again in place (invalidate, then get with data):
-        // its old view is gone from every binding holding it, which binds again
-        static uint32_t getRebuildEpoch();
+        // Goes up when a GPU texture goes stale (invalidate: new pixels to show) or is made again in
+        // place (get with data: its old view is gone from every binding holding it). Whoever bound
+        // one looks at its textures then (Texture::isRenderOutdated) and binds the outdated again.
+        static uint32_t getRebindEpoch();
 
         // necessary for engine shutdown
         static void clear();

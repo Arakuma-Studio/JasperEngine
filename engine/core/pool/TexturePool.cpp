@@ -33,7 +33,7 @@ std::set<std::string>& TexturePool::getInvalidated(){
 namespace {
     // (0 is never an epoch: RenderSystem keeps 0 for "nothing stood in")
     std::atomic<uint32_t> readyEpoch{1};
-    std::atomic<uint32_t> rebuildEpoch{1};
+    std::atomic<uint32_t> rebindEpoch{1};
 
     void advance(std::atomic<uint32_t>& epoch){
         if (epoch.fetch_add(1, std::memory_order_acq_rel) + 1 == 0)
@@ -49,8 +49,14 @@ void TexturePool::noteReady(){
     advance(readyEpoch);
 }
 
-uint32_t TexturePool::getRebuildEpoch(){
-    return rebuildEpoch.load(std::memory_order_acquire);
+uint32_t TexturePool::getRebindEpoch(){
+    return rebindEpoch.load(std::memory_order_acquire);
+}
+
+std::shared_ptr<TextureRender> TexturePool::getKept(const std::string& id){
+	auto& map = getMap();
+	auto it = map.find(id);
+	return (it != map.end() && it->second && it->second->isCreated()) ? it->second : nullptr;
 }
 
 std::string TexturePool::getRenderId(const std::string& id, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
@@ -178,7 +184,7 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 	}
 
 	// Stale entry with fresh data: swap the backend texture now, inside a single call with
-	// no draw in between. The bindings that hold its view bind again (getRebuildEpoch).
+	// no draw in between. The bindings that hold its view bind again (getRebindEpoch).
 	const bool rebuilt = stale && shared->isCreated();
 	if (rebuilt){
 		shared->destroyTexture();
@@ -216,8 +222,11 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 
 	map[id] = shared;
 	getInvalidated().erase(id);
-	if (rebuilt)
-		advance(rebuildEpoch);
+	shared->setStale(false);
+	if (rebuilt){
+		shared->noteRebuilt();
+		advance(rebindEpoch);
+	}
 	advance(readyEpoch);
 
 	return shared;
@@ -283,6 +292,8 @@ void TexturePool::invalidate(const std::string& id){
 			map.erase(it);
 		}else{
 			getInvalidated().insert(key);
+			it->second->setStale(true);
+			advance(rebindEpoch);
 		}
 	}
 }
