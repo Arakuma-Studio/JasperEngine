@@ -15,7 +15,6 @@
 #include "object/Camera.h"
 #include "object/Light.h"
 #include "object/Model.h"
-#include "pool/EntityPool.h"
 #include "render/ObjectRender.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
