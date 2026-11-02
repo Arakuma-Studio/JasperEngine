@@ -286,19 +286,20 @@ class Mcp(unittest.TestCase):
         self.assertEqual(self.plan(["AGENTS.md"]).mcp_files, ["test_agent_docs.py"])
 
 
-def gcda(major: int, counters: list[int], zero_compact: bool = False) -> bytes:
-    """A minimal .gcda: header, a function record, an arc counter record."""
+def gcda(major: int, counters: list[int], zero_compact: bool = False, functions: dict[int, list[int]] | None = None) -> bytes:
+    """A minimal .gcda: header, then for each function a function record and an arc counter record."""
     first = chr(ord("A") + major - 10) if major >= 10 else chr(ord("0") + major)
     version = (ord(first) << 24) | (ord("0") << 16) | (ord("4") << 8) | ord("*")
     words = major < 12
     out = struct.pack("<III", coverage_map.GCDA_MAGIC, version, 1) + (b"" if words else struct.pack("<I", 0))
-    out += struct.pack("<Ii", coverage_map.TAG_FUNCTION, 3 if words else 12) + struct.pack("<III", 1, 2, 3)
-    if zero_compact:
-        out += struct.pack("<Ii", coverage_map.TAG_COUNTER_BASE, -len(counters))
-    else:
-        out += struct.pack("<Ii", coverage_map.TAG_COUNTER_BASE, len(counters) * (2 if words else 8))
-        for c in counters:
-            out += struct.pack("<II", c & 0xffffffff, c >> 32)
+    for ident, values in (functions or {1: counters}).items():
+        out += struct.pack("<Ii", coverage_map.TAG_FUNCTION, 3 if words else 12) + struct.pack("<III", ident, 2, 3)
+        if zero_compact:
+            out += struct.pack("<Ii", coverage_map.TAG_COUNTER_BASE, -len(values))
+        else:
+            out += struct.pack("<Ii", coverage_map.TAG_COUNTER_BASE, len(values) * (2 if words else 8))
+            for c in values:
+                out += struct.pack("<II", c & 0xffffffff, c >> 32)
     return out
 
 
@@ -309,24 +310,37 @@ class Coverage(unittest.TestCase):
             self.assertTrue(coverage_map.gcda_executed(gcda(major, [1 << 33])), major)
             self.assertFalse(coverage_map.gcda_executed(gcda(major, [0, 0])), major)
             self.assertFalse(coverage_map.gcda_executed(gcda(major, [0, 0], zero_compact=True)), major)
+            self.assertEqual(coverage_map.gcda_functions(gcda(major, [], functions={7: [0, 1], 8: [0], 9: [3]})), {7, 9})
         self.assertFalse(coverage_map.gcda_executed(b"nonsense"))
 
-    def test_collect(self):
+    def test_collect_leaves_out_what_every_editor_runs(self):
         tmp = Path(tempfile.mkdtemp(prefix="cc-cov-"))
+        old = coverage_map.MIN_EDITOR_FUNCTIONS
+        coverage_map.MIN_EDITOR_FUNCTIONS = 2
         try:
             tree = "/src/build/linux/editor-coverage"
             deps = cc.parse_ninja_deps(
                 "engine/CMakeFiles/jasperengine.dir/core/A.cpp.o: #deps 1\n    /src/engine/core/A.cpp\n\n"
-                "engine/CMakeFiles/jasperengine.dir/core/B.cpp.o: #deps 1\n    /src/engine/core/B.cpp\n",
+                "engine/CMakeFiles/jasperengine.dir/core/B.cpp.o: #deps 1\n    /src/engine/core/B.cpp\n\n"
+                "engine/CMakeFiles/jasperengine.dir/core/C.cpp.o: #deps 1\n    /src/engine/core/C.cpp\n",
                 Path(tree), Path("/nonexistent"))
-            for run, objs in (("test_x-0", {"A": [3], "B": [0]}), ("test_x-1", {"B": [1]}), ("test_y-2", {"A": [0]})):
-                for name, counts in objs.items():
+            # B's function 1 and C's function 1 run in every editor (registrations); A's in test_x's two chunks only
+            runs = {"test_x-0": {"A": {5: [3]}, "B": {1: [1]}, "C": {1: [1]}},
+                    "test_x-1": {"B": {1: [1], 2: [4]}, "C": {1: [1]}},
+                    "test_y-2": {"B": {1: [1]}, "C": {1: [1]}},
+                    "test_z-3": {"B": {1: [1]}, "C": {1: [1]}},
+                    "test_nothing-4": {}}
+            for run, objs in runs.items():
+                (tmp / run).mkdir()
+                for name, functions in objs.items():
                     p = tmp / run / tree.lstrip("/") / "engine/CMakeFiles/jasperengine.dir/core" / f"{name}.cpp.gcda"
                     p.parent.mkdir(parents=True, exist_ok=True)
-                    p.write_bytes(gcda(11, counts))
+                    p.write_bytes(gcda(11, [], functions=functions))
             files = coverage_map.collect(tmp, Path(tree), deps, tree)
-            self.assertEqual(files, {"test_x.py": ["engine/core/A.cpp", "engine/core/B.cpp"], "test_y.py": []})
+            self.assertEqual(files, {"test_nothing.py": [], "test_x.py": ["engine/core/A.cpp", "engine/core/B.cpp"],
+                                     "test_y.py": [], "test_z.py": []})
         finally:
+            coverage_map.MIN_EDITOR_FUNCTIONS = old
             shutil.rmtree(tmp, ignore_errors=True)
 
 

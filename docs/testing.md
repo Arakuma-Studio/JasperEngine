@@ -392,7 +392,9 @@ rb.sh A --img 'JASPER_EDITOR=/src/build/linux/editor-coverage-install/bin/jasper
 ```
 
 Each test file's (and chunk's) editors write their GCC counts under their own `GCOV_PREFIX`; a
-source counts when one of its objects has a counter above zero. The run leaves out the slow builds
+source counts for a file when the file executed a function of it that fewer than 80% of the files with
+an editor executed (start-up and static registrations say nothing of what a file tests; a source
+only those reach is unmapped: the CI suite). The run leaves out the slow builds
 (no `JASPER_SLOW_BUILD`): what a compile or a prebuilt game runs is not the editor's code, and the
 files that build games are selected by path (`GAME_BUILD_FILES`, `COMPILE_PATHS`). The server's
 `rb.sh` puts the map where check-changed looks; copy it to the other servers' `~/je/mcp-build-cache/`.
