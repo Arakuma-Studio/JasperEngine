@@ -286,6 +286,12 @@ fi
 # the UI effects' measuring switches (EffectPerfTest: JASPER_EFFECT_COST_ONLY, JASPER_EFFECT_PERF_*;
 # EffectFluidTest: JASPER_EFFECT_FLUID_PROFILE)
 for name in $(compgen -e | grep '^JASPER_EFFECT_' || true); do ENV_FLAGS+=(-e "$name=${!name}"); done
+# the MCP suite's switches (JASPER_MCP_CALL_LOG, JASPER_MCP_BUILD_JOBS, ...: tools/mcp/harness.py,
+# tools/mcp/build_cache.py) and ccache's own (CCACHE_STATSLOG, CCACHE_LOGFILE, ...; not CCACHE_DIR,
+# which names the shared cache's mount below)
+for name in $(compgen -e | grep -E '^(JASPER_MCP_|CCACHE_)' || true); do
+    [[ "$name" == CCACHE_DIR ]] || ENV_FLAGS+=(-e "$name=${!name}")
+done
 # A non-root uid has no entry in the image's /etc/passwd; dbus (dbus-run-session, used by the MCP
 # tests and tool docs) and getpwuid() callers then fail ("User ??? unknown"). Lend the host's tables
 # (whose home directory the container lacks: the Android Gradle plugin, which would take Java's

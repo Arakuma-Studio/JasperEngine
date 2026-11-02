@@ -135,6 +135,7 @@ async def _run_file(path: Path, filt: list[str], results_path: Path, url: str | 
 
     for name, fn in tests:
         full = f"{path.name}::{name}"
+        harness.current_test = full
         t0 = time.monotonic()
         status, detail = "pass", ""
         wants_ed = len(inspect.signature(fn).parameters) > 0
@@ -162,6 +163,7 @@ async def _run_file(path: Path, filt: list[str], results_path: Path, url: str | 
             if "editor stderr tail" not in detail:
                 detail += "\n" + ed._tail_block(30)
         dt = time.monotonic() - t0
+        harness._log_call(path.stem, "(test)", {"status": status}, dt, status == "fail")
         print(f"{status.upper():4} {full} ({dt:.1f}s){'  ' + detail if status == 'skip' else ''}", flush=True)
         if status == "fail":
             print("     " + detail.replace("\n", "\n     "), flush=True)

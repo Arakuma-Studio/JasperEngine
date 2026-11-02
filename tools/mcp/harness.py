@@ -35,6 +35,9 @@ Environment:
     JASPER_MCP_PERF_SLACK   the factor wall-clock budgets are enforced with (over_budget); unset
                      or 0: budgets are printed only (the benchmark run on server E sets it)
     JASPER_MCP_TOKEN bearer token for url mode (the editor's MCP window copies it)
+    JASPER_MCP_CALL_LOG  a directory: every tool call's tool, test, arguments (shortened) and
+                     seconds, one JSON line per call in <dir>/<file stem>.jsonl (where a slow
+                     test's time goes: tools/mcp/call_profile.py sums it up)
 """
 
 from __future__ import annotations
@@ -454,6 +457,23 @@ def _env_flag(name: str) -> bool:
 FRAME_TOOLS = frozenset({"wait", "send_input", "play"})
 FRAME_CALL_TIMEOUT = 3600.0
 
+# The test the runner is running (run_tests.py sets it), for JASPER_MCP_CALL_LOG
+current_test = ""
+
+
+def _log_call(label: str, tool: str, args: dict | None, seconds: float, error: bool) -> None:
+    """One line of JASPER_MCP_CALL_LOG (a profile of where the tests' time goes)."""
+    root = os.environ.get("JASPER_MCP_CALL_LOG")
+    if not root:
+        return
+    with contextlib.suppress(OSError, TypeError, ValueError):
+        text = json.dumps(args or {}, default=str, sort_keys=True)
+        line = json.dumps({"test": current_test, "editor": label, "tool": tool, "seconds": round(seconds, 3),
+                           "error": error, "args": text[:300], "t": round(time.time(), 3)})
+        Path(root).mkdir(parents=True, exist_ok=True)
+        with open(Path(root) / f"{(current_test.split('::')[0] or label).removesuffix('.py')}.jsonl", "a") as f:
+            f.write(line + "\n")
+
 
 class Editor:
     """One editor driven over MCP. Use as `async with Editor(...) as ed:`.
@@ -650,14 +670,17 @@ class Editor:
         if timeout is None:
             timeout = max(self.call_timeout, FRAME_CALL_TIMEOUT) if tool in FRAME_TOOLS else self.call_timeout
         self.in_flight += 1
+        started, error = time.monotonic(), True
         try:
             r = await self.session.call_tool(
                 tool, args or {}, read_timeout_seconds=timeout, progress_callback=progress)
+            error = bool(r.isError)
         except MCPError as e:
             raise ProtocolError(f"tools/call {tool}", e) from e
         finally:
             self.in_flight -= 1
             self.last_activity = time.monotonic()
+            _log_call(self.label, tool, args, self.last_activity - started, error)
         return CallResult.from_mcp(tool, r)
 
     def idle_seconds(self) -> float:
