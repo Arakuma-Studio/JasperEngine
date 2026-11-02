@@ -112,7 +112,7 @@ TEST(CameraTextureLink, AGameObjectWithASystemRangeIdIsBoundByAWholeSceneBindAnd
     mesh.numSubmeshes = 1;
     mesh.submeshes[0].material.baseColorTexture.setId(CameraTextureLink::makeId(lens));
     scene->addComponent<MeshComponent>(made, mesh);
-    YAML::Node node = Stream::encodeEntity(made, scene, project(), sceneProject);
+    YAML::Node node = Stream::encodeEntity(made, scene);
     scene->destroyEntity(made);
     const Entity screen = EntityManager::lastSystemEntity();
     ASSERT_FALSE(scene->isEntityCreated(screen));
