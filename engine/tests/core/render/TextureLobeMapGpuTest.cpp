@@ -243,6 +243,53 @@ TEST_P(TextureLobeMapGpu, AMaterialWithOnlyALobesMapBindsIt){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// An editor or a script gives a loaded mesh's material a lobe's map, then takes it away: the variant
+// that takes it is built while the loaded one draws (pbrVariantMatches), with its UVs and without
+TEST_P(TextureLobeMapGpu, AMapGivenToALoadedMaterialAndTakenAwayIsDrawnThenGone){
+    JASPER_REQUIRE_GPU();
+    const LobeCase& c = GetParam();
+    const std::string id = std::string("bf17-map-later|") + c.name;
+    registerSplitImage(id, c.changed, c.plain);
+    const std::vector<uint8_t> withMap = draw(lobeMaterial(c.lobe, id));
+    const std::vector<uint8_t> noMap = draw(lobeMaterial(c.lobe, ""));
+    ASSERT_GT(meanDifference(withMap, noMap), 0.5) << c.name << ": the map changes nothing (the case shows nothing)";
+
+    Primitive plane(&scene);
+    plane.createPlane(3.0f, 3.0f);
+    plane.setMaterial(lobeMaterial(c.lobe, ""));
+    Scene* current = &scene;
+    const auto settledFrame = [current](){
+        EXPECT_TRUE(GpuEnvironment::runFrames([current](){
+            return current->getSystem<RenderSystem>()->isAllLoaded();
+        })) << "the scene never finished loading";
+        GpuEnvironment::drawFrames(3);
+        return readTarget();
+    };
+    settledFrame();
+
+    Submesh& submesh = scene.getComponent<MeshComponent>(plane.getEntity()).submeshes[0];
+    const auto setMap = [&](const Texture& map){
+        MaterialPbrExtensions& pbr = submesh.material.pbr.edit();
+        switch (c.lobe){
+        case Lobe::Clearcoat: pbr.clearcoat.map = map; break;
+        case Lobe::ClearcoatNormal: pbr.clearcoat.normalMap = map; break;
+        case Lobe::Sheen: pbr.sheen.map = map; break;
+        case Lobe::SpecularFactor:
+        case Lobe::SpecularColor: pbr.specular.map = map; break;
+        case Lobe::Anisotropy: pbr.anisotropy.map = map; break;
+        case Lobe::Iridescence: pbr.iridescence.map = map; break;
+        case Lobe::Thickness:
+        case Lobe::Transmission: pbr.transmission.map = map; break;
+        }
+        submesh.needUpdateTexture = true;
+    };
+    setMap(namedTexture(id));
+    EXPECT_LT(meanDifference(settledFrame(), withMap), 0.25) << c.name << ": the map given to the loaded material is not drawn";
+    setMap(Texture());
+    EXPECT_LT(meanDifference(settledFrame(), noMap), 0.25) << c.name << ": the map taken away still draws";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 INSTANTIATE_TEST_SUITE_P(Lobes, TextureLobeMapGpu, ::testing::Values(
     // clear coat: R the factor, G the roughness
     LobeCase{"Clearcoat", Lobe::Clearcoat, {0, 255, 0, 255}, {255, 255, 0, 255}},
@@ -311,7 +358,18 @@ TEST(TextureLobeMapEnvironmentGpu, ALobesMapAloneIsBoundUnderImageBasedLightingA
     const std::vector<uint8_t> reference = draw(withWhite);
     const std::vector<uint8_t> noMap = draw(lobeMaterial(Lobe::Clearcoat, ""));
     const std::vector<uint8_t> mapAlone = draw(lobeMaterial(Lobe::Clearcoat, "bf17-map|ibl"));
+
+    // the white image changes nothing here either: the core maps' slots are bound under image
+    // based lighting alone too (they were under a scene light only)
+    Material plain;
+    plain.baseColorFactor = Vector4(0.5f, 0.5f, 0.55f, 1.0f);
+    plain.metallicFactor = 0.0f;
+    plain.roughnessFactor = 0.5f;
+    const std::vector<uint8_t> factors = draw(plain);
+    addWhiteBaseColor(plain);
+    const std::vector<uint8_t> withCoreMap = draw(plain);
     Engine::removeScene(&scene);
+    EXPECT_LT(meanDifference(withCoreMap, factors), 0.25) << "a white base colour image changes the surface under image based lighting alone";
 
     ASSERT_GT(meanDifference(reference, noMap), 0.5) << "the map changes nothing (the case shows nothing)";
     EXPECT_LT(meanDifference(mapAlone, reference), 0.25) << "the lobe's map alone does not draw as with a core map beside it";

@@ -47,9 +47,6 @@ namespace {
         const char* name;
         Slot slot;
         uint8_t rgba[4];
-        // whether the slot changes the image enough to compare it (the others: that the
-        // renderer made the image's GPU texture)
-        bool visible;
     };
 
     std::ostream& operator << (std::ostream& os, const LateCase& c){
@@ -127,13 +124,8 @@ namespace {
             material.normalTexture = texture;
             break;
         case Slot::SheenMap: {
-            // (a variant samples UVs for a core map only: a white base colour image, there from
-            // the start, gives it them)
-            static const uint8_t white[4] = {255, 255, 255, 255};
-            registerImage("bf15-white", white);
-            Texture base;
-            base.setId("bf15-white");
-            material.baseColorTexture = base;
+            // (dark: the sheen is what the image changes)
+            material.baseColorFactor = Vector4(0.1f, 0.1f, 0.1f, 1.0f);
             MaterialPbrExtensions& pbr = material.pbr.edit();
             pbr.sheen.enabled = true;
             pbr.sheen.color = Vector3(1.0f, 1.0f, 1.0f);
@@ -221,10 +213,8 @@ TEST_P(TextureLateBindGpu, AnImageReadyAfterTheMaterialWasBoundIsBound){
     const std::vector<uint8_t> after = readTarget();
 
     EXPECT_NE(TexturePool::get(renderId), nullptr) << c.name << ": the mesh never made the GPU texture of its image";
-    if (c.visible){
-        ASSERT_GT(meanDifference(standIn, reference), 4.0) << c.name << ": the stand-in draws as the image (the case shows nothing)";
-        EXPECT_LT(meanDifference(after, reference), 1.0) << c.name << ": the mesh still draws the stand-in for its image";
-    }
+    ASSERT_GT(meanDifference(standIn, reference), 4.0) << c.name << ": the stand-in draws as the image (the case shows nothing)";
+    EXPECT_LT(meanDifference(after, reference), 1.0) << c.name << ": the mesh still draws the stand-in for its image";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -282,10 +272,8 @@ TEST_P(TextureLateBindGpu, AnImageReplacedAfterTheMaterialWasBoundIsBound){
     const std::vector<uint8_t> after = readTarget();
 
     EXPECT_NE(TexturePool::get(renderId), nullptr) << c.name << ": the mesh never asked for its image's new pixels";
-    if (c.visible){
-        ASSERT_GT(meanDifference(before, reference), 4.0) << c.name << ": the old image draws as the new one (the case shows nothing)";
-        EXPECT_LT(meanDifference(after, reference), 1.0) << c.name << ": the mesh still draws the old image";
-    }
+    ASSERT_GT(meanDifference(before, reference), 4.0) << c.name << ": the old image draws as the new one (the case shows nothing)";
+    EXPECT_LT(meanDifference(after, reference), 1.0) << c.name << ": the mesh still draws the old image";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -343,11 +331,10 @@ TEST(TextureRebuiltGpu, EveryMaterialHoldingAGpuTextureRebuiltInPlaceBindsItAgai
 }
 
 INSTANTIATE_TEST_SUITE_P(Slots, TextureLateBindGpu, ::testing::Values(
-    LateCase{"BaseColor", Slot::BaseColor, {230, 40, 30, 255}, true},
-    LateCase{"MetallicRoughness", Slot::MetallicRoughness, {0, 140, 0, 255}, true},
-    LateCase{"Occlusion", Slot::Occlusion, {0, 0, 0, 255}, true},
-    LateCase{"Emissive", Slot::Emissive, {20, 220, 40, 255}, true},
-    // (a primitive has no tangents: its normal map changes nothing to compare)
-    LateCase{"Normal", Slot::Normal, {250, 128, 150, 255}, false},
-    LateCase{"SheenMap", Slot::SheenMap, {0, 0, 0, 255}, false}),
+    LateCase{"BaseColor", Slot::BaseColor, {230, 40, 30, 255}},
+    LateCase{"MetallicRoughness", Slot::MetallicRoughness, {0, 140, 0, 255}},
+    LateCase{"Occlusion", Slot::Occlusion, {0, 0, 0, 255}},
+    LateCase{"Emissive", Slot::Emissive, {20, 220, 40, 255}},
+    LateCase{"Normal", Slot::Normal, {255, 128, 90, 255}},
+    LateCase{"SheenMap", Slot::SheenMap, {0, 0, 0, 255}}),
     [](const ::testing::TestParamInfo<LateCase>& info){ return std::string(info.param.name); });
