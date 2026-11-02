@@ -767,9 +767,13 @@ namespace jasperengine{
 			// sampled instead of the capture once made
 			TextureRender filteredMap;
 			bool needFilter = false;
+			// the image the authored maps were made of, and its TextureDataPool::generation
+			std::string environmentId;
+			uint32_t environmentGeneration = 0;
 		};
 
 		std::unordered_map<Entity, std::unique_ptr<ReflectionProbeRuntime>> reflectionProbeRuntimes;
+		uint32_t probeImagesEpochSeen = 0;
 
 		// the prefilter of finished runtime captures (probe_filter.frag), shared by the probes
 		bool probeFilterLoaded = false;

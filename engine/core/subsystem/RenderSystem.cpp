@@ -2255,6 +2255,10 @@ void RenderSystem::destroyReflectionProbe(Entity entity, ReflectionProbeComponen
 
 void RenderSystem::updateReflectionProbes(double dt){
     auto probes = scene->getComponentArray<ReflectionProbeComponent>();
+    // (the pool's generations are looked at only after some image took new pixels)
+    const uint32_t replaceEpoch = TextureDataPool::getReplaceEpoch();
+    const bool imagesReplaced = replaceEpoch != probeImagesEpochSeen;
+    probeImagesEpochSeen = replaceEpoch;
     bool newHasReflectionProbes = probes->size() > 0;
     if (newHasReflectionProbes != hasReflectionProbes){
         hasReflectionProbes = newHasReflectionProbes;
@@ -2334,6 +2338,12 @@ void RenderSystem::updateReflectionProbes(double dt){
             if (hasAuthoredCubemap && runtime.ready)
                 runtime.capturedPosition = transform->worldPosition;
 
+            // its image has new pixels (a hot reload, a cook swapped in, the rest of a progressive
+            // load): nothing but its maps draws of the image, so no GPU texture of it goes stale
+            if (imagesReplaced && hasAuthoredCubemap && runtime.ready && runtime.environmentId == probe.texture.getId() &&
+                    runtime.environmentGeneration != TextureDataPool::generation(runtime.environmentId))
+                probe.needUpdate = true;
+
             if (!probe.needUpdate)
                 continue;
 
@@ -2358,20 +2368,44 @@ void RenderSystem::updateReflectionProbes(double dt){
             runtime.needFilter = false;
             runtime.resolution = 0;
             runtime.nextFace = 0;
-            runtime.ready = false;
-            releaseReflectionProbeMaps(runtime);
 
+            // the maps of the image's pixels as they are, as a sky's (updateSkyEnvironment). Those
+            // of its pixels before keep lighting the scene until these are made.
             const std::string textureId = probe.texture.getId();
-            const std::string irradianceId = textureId + "|probe|irradiance";
-            const std::string prefilteredId = textureId + "|probe|prefiltered";
+            const uint32_t imageGeneration = TextureDataPool::generation(textureId);
+            const auto environmentId = [&textureId](uint32_t generation, const char* map){
+                return textureId + "|probe|" + map + (generation > 0 ? "|" + std::to_string(generation) : std::string());
+            };
+            const std::string irradianceId = environmentId(imageGeneration, "irradiance");
+            const std::string prefilteredId = environmentId(imageGeneration, "prefiltered");
+            const bool hasMapsOfImage = runtime.ready && runtime.environmentId == textureId && runtime.irradianceMap && runtime.prefilteredMap;
+            if (!hasMapsOfImage){
+                runtime.ready = false;
+                releaseReflectionProbeMaps(runtime);
+            }
+            // the maps are this image's pixels' now: those of the pixels before go with their last holder
+            const auto takeMaps = [&](std::shared_ptr<TextureRender> irradiance, std::shared_ptr<TextureRender> prefiltered){
+                const uint32_t previousGeneration = runtime.environmentGeneration;
+                const bool otherPixels = hasMapsOfImage && previousGeneration != imageGeneration;
+                releaseReflectionProbeMaps(runtime);
+                if (otherPixels){
+                    TexturePool::remove(environmentId(previousGeneration, "irradiance"));
+                    TexturePool::remove(environmentId(previousGeneration, "prefiltered"));
+                }
+                runtime.irradianceMap = std::move(irradiance);
+                runtime.prefilteredMap = std::move(prefiltered);
+                runtime.environmentId = textureId;
+                runtime.environmentGeneration = imageGeneration;
+                runtime.ready = true;
+                runtime.capturedPosition = transform->worldPosition;
+                runtime.retryDelay = 0.0f;
+                probe.needUpdate = false;
+            };
             if (!textureId.empty()){
-                runtime.irradianceMap = TexturePool::get(irradianceId);
-                runtime.prefilteredMap = TexturePool::get(prefilteredId);
-                if (runtime.irradianceMap && runtime.prefilteredMap){
-                    runtime.ready = true;
-                    runtime.capturedPosition = transform->worldPosition;
-                    runtime.retryDelay = 0.0f;
-                    probe.needUpdate = false;
+                std::shared_ptr<TextureRender> irradiance = TexturePool::get(irradianceId);
+                std::shared_ptr<TextureRender> prefiltered = TexturePool::get(prefilteredId);
+                if (irradiance && prefiltered){
+                    takeMaps(std::move(irradiance), std::move(prefiltered));
                     continue;
                 }
             }
@@ -2385,19 +2419,22 @@ void RenderSystem::updateReflectionProbes(double dt){
                 continue;
 
             if (loadResult.state == ResourceLoadState::Finished && loadResult.data){
+                // a cook of six files swapped in: nothing the CPU can read (a cube's cook has its
+                // copy), and the same image as the source the maps were made of
+                if (hasMapsOfImage && !IBLEnvironment::canGenerate(*loadResult.data)){
+                    runtime.environmentGeneration = imageGeneration;
+                    runtime.retryDelay = 0.0f;
+                    probe.needUpdate = false;
+                    continue;
+                }
                 auto irradiance = std::make_shared<TextureRender>();
                 auto prefiltered = std::make_shared<TextureRender>();
                 if (IBLEnvironment::generate(textureId, *loadResult.data, *irradiance, *prefiltered)){
-                    runtime.irradianceMap = irradiance;
-                    runtime.prefilteredMap = prefiltered;
-                    runtime.ready = true;
-                    runtime.capturedPosition = transform->worldPosition;
-                    runtime.retryDelay = 0.0f;
-                    probe.needUpdate = false;
                     if (!textureId.empty()){
                         TexturePool::add(irradianceId, irradiance);
                         TexturePool::add(prefilteredId, prefiltered);
                     }
+                    takeMaps(irradiance, prefiltered);
                     continue;
                 }
             }
