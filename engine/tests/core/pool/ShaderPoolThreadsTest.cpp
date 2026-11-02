@@ -51,12 +51,17 @@ namespace {
     // (six images, embedded, and few enough submeshes for a preview's one mesh)
     const char* const PREVIEW_MODEL = JASPER_TEST_REPO_DIR "/engine/tests/render/assets/khronos/AnisotropyRotationTest/glTF-Binary/AnisotropyRotationTest.glb";
 
-    // the builder, for the run: every variant still building but one, whose build fails
+    // the builder, for the run: every variant still building, but one whose build fails, its
+    // every failEvery-th ask (its error is logged: few enough that the log's valve holds none back
+    // for a later test to find)
     struct BuilderScope {
+        std::atomic<int> failEvery{1};
+        std::atomic<int> asks{0};
         explicit BuilderScope(ShaderKey failing){
-            ShaderPool::setShaderBuilder([failing](ShaderKey key){
+            ShaderPool::setShaderBuilder([this, failing](ShaderKey key){
                 ShaderBuildResult result;
-                result.state = key == failing ? ResourceLoadState::Failed : ResourceLoadState::Loading;
+                const bool fails = key == failing && asks.fetch_add(1) % failEvery.load() == 0;
+                result.state = fails ? ResourceLoadState::Failed : ResourceLoadState::Loading;
                 return result;
             });
         }
@@ -74,6 +79,7 @@ TEST(ShaderPoolThreads, OneThreadAsksForVariantsWhileAnotherLetsThemGo){
     constexpr int rounds = 300;
     const ShaderKey failing = ShaderPool::getShaderKey(ShaderType::BLIT, BF18_PROPERTIES + variants - 1);
     BuilderScope builder(failing);
+    builder.failEvery = 32;
 
     std::atomic<bool> done{false};
     std::atomic<int> nulls{0};
@@ -116,6 +122,7 @@ TEST(ShaderPoolThreads, OneThreadAsksForVariantsWhileAnotherLetsThemGo){
     EXPECT_EQ(ShaderPool::getShaderState(ShaderPool::getShaderKey(ShaderType::BLIT, BF18_PROPERTIES)), ResourceLoadState::NotStarted);
 
     // the one that failed, until remove() forgets it
+    builder.failEvery = 1;
     (void)ShaderPool::get(ShaderType::BLIT, BF18_PROPERTIES + variants - 1);
     EXPECT_TRUE(ShaderPool::isShaderBuildFailed(ShaderType::BLIT, BF18_PROPERTIES + variants - 1));
     ShaderPool::remove(ShaderType::BLIT, BF18_PROPERTIES + variants - 1);
