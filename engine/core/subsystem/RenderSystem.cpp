@@ -2804,7 +2804,7 @@ bool RenderSystem::checkPBRFrabebufferUpdate(Material& material){
         material.emissiveTexture.isFramebufferOutdated() );
 }
 
-bool RenderSystem::checkPBRTextures(Material& material, bool receiveLights){
+bool RenderSystem::checkPBRTextures(Material& material, bool receiveLights, bool receiveIBL){
     SubmeshShaderInputs inputs;
     inputs.baseColorTexture = !material.baseColorTexture.empty();
     inputs.metallicRoughnessTexture = !material.metallicRoughnessTexture.empty();
@@ -2812,6 +2812,8 @@ bool RenderSystem::checkPBRTextures(Material& material, bool receiveLights){
     inputs.occlusionTexture = !material.occlusionTexture.empty();
     inputs.emissiveTexture = !material.emissiveTexture.empty();
     inputs.receiveLights = receiveLights;
+    inputs.receiveIBL = receiveIBL;
+    inputs.lighting = material.lighting;
 
     return checkPBRTextures(getMeshShaderEnvironment(), inputs);
 }
@@ -2828,7 +2830,9 @@ bool RenderSystem::supportsStochasticTiling(const std::string& shader){
 
 bool RenderSystem::checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs){
     bool hasOtherPBRTextures = false;
-    if (environment.lights && inputs.receiveLights) {
+    // the lit variants sample them: under a scene light, and under a sky or a reflection probe alone
+    const bool useIBL = (environment.ibl || environment.reflectionProbes) && inputs.receiveIBL && inputs.lighting != MaterialLighting::NONE;
+    if ((environment.lights || useIBL) && inputs.receiveLights) {
         hasOtherPBRTextures = inputs.metallicRoughnessTexture ||
                               inputs.normalTexture ||
                               inputs.occlusionTexture ||
@@ -13696,7 +13700,7 @@ void RenderSystem::update(double dt){
                     // a shader with a manifest takes its UV sets from @require, not the textures
                     if (mesh.submeshes[s].manifest){
                         // its custom textures are bound again by drawMesh
-                    }else if (checkPBRTextures(mesh.submeshes[s].material, mesh.receiveLights)){
+                    }else if (checkPBRTextures(mesh.submeshes[s].material, mesh.receiveLights, mesh.receiveIBL)){
                         if (!(mesh.submeshes[s].shaderProperties & (1 << 1)) && !(mesh.submeshes[s].shaderProperties & (1 << 2))){ // not 'Uv1' and not 'Uv2'
                             mesh.needReload = true;
                         }

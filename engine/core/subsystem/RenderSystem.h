@@ -1949,7 +1949,7 @@ namespace jasperengine{
 		TextureRender* getDefaultShaderTexture(int fallback, bool cube);
 
 		bool checkPBRFrabebufferUpdate(Material& material);
-		bool checkPBRTextures(Material& material, bool receiveLights);
+		bool checkPBRTextures(Material& material, bool receiveLights, bool receiveIBL);
 		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
 		// A material's binding takes a stand-in for an image it names that has no GPU texture yet
 		// (Texture::getStandInCount): taken around the binding, noted on the submesh, which binds
