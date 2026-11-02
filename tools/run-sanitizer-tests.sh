@@ -55,17 +55,17 @@ else
 fi
 
 if [ "${SAN_SERIAL:-0}" = 1 ] || [ $# -gt 0 ]; then
-    exec xvfb-run -a "$tests" "$@"
+    exec tools/with-xvfb.sh "$tests" "$@"
 fi
 
 logs=$root/$build/san-logs
 rm -rf "$logs"
 mkdir -p "$logs"
-# one process per suite (this script again, with --suite: xvfb-run's sh drops exported functions)
+# one process per suite (this script again, with --suite: exported functions may not reach xargs)
 export SAN_TESTS=$tests SAN_LOGS=$logs
 ASAN_OPTIONS=detect_leaks=0 "$tests" --gtest_list_tests 2>/dev/null | grep -E '^[A-Za-z_][A-Za-z0-9_/]*\.$' | tr -d . > "$logs/suites.txt"
 # one X server for every process
-xvfb-run -a \
+tools/with-xvfb.sh \
     xargs -P "$jobs" -I{} "$root/tools/run-sanitizer-tests.sh" --suite {} < "$logs/suites.txt" > "$logs/summary.txt"
 echo "$(grep -c '^PASS' "$logs/summary.txt") of $(wc -l < "$logs/suites.txt") suites passed"
 
