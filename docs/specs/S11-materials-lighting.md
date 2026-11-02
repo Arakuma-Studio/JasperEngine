@@ -660,7 +660,7 @@ with other streams:
    UV sets instead of `u_fs_texCoordSets`) are the last members of `u_fs_pbrParams` under
    `#ifdef PBR_EXT`. The `builtin_lit` matrix checks both limits on six backends.
 3. **13 Khronos models** (§6.7 as verified), goldens written by the MCP test's own scenes
-   (`test_khronos_models`), not by a `tools/fixtures/pbr-extended` scene per model: the fixture
+   (`test_khronos_<Model>`, a test per model since BF16), not by a `tools/fixtures/pbr-extended` scene per model: the fixture
    keeps the benchmark scenes and the export check. `JASPER_TEST_UPDATE_GOLDEN=1` (S02's name) and
    `JASPER_RENDER_UPDATE_GOLDEN=1` both write them.
 4. **AC8 furnace on direct light.** The environment split sum is already multiscatter

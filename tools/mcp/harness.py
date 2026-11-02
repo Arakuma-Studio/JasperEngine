@@ -336,6 +336,12 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
     threads = render_threads()
     if threads and "LP_NUM_THREADS" not in os.environ:
         env["LP_NUM_THREADS"] = str(threads)
+    # Mesa's own disk cache of the shaders llvmpipe and lavapipe compile to machine code (on for every
+    # Mesa user; its key is the shader and the driver's build): kept across editors and runs
+    # instead of in each scratch HOME, where every editor compiled every shader again
+    if "MESA_SHADER_CACHE_DIR" not in os.environ:
+        env["MESA_SHADER_CACHE_DIR"] = str(mesa_shader_cache())
+        env.setdefault("MESA_SHADER_CACHE_MAX_SIZE", "4G")
     # the engine's Lua state used off the main thread aborts the editor (LuaBinding::ThreadCheck)
     env.setdefault("JASPER_LUA_THREAD_CHECK", "abort")
     # test-only widget locator (editor/util/UIProbe.h): the editor writes the rectangles of the
@@ -481,6 +487,14 @@ def render_threads() -> int:
         return int(value)
     workers = int(os.environ["JASPER_MCP_WORKERS"]) if os.environ.get("JASPER_MCP_WORKERS", "").isdigit() else 1
     return max(1, min(RENDER_THREADS_MAX, cpu_allowance() // max(1, workers)))
+
+
+def mesa_shader_cache() -> Path:
+    """Where the editors' Mesa shader cache lives: the machine's shared MCP cache when there is one
+    (JASPER_MCP_SHARED_BUILD_CACHE, a build server's ~/je/mcp-build-cache: every worktree and run of
+    the machine), else the checkout's build/.cache/mesa-shader-cache."""
+    shared = os.environ.get("JASPER_MCP_SHARED_BUILD_CACHE", "")
+    return Path(shared) / "mesa-shader-cache" if shared else REPO / "build" / ".cache" / "mesa-shader-cache"
 
 
 def perf_slack() -> float:
