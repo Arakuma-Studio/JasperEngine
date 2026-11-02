@@ -18,7 +18,7 @@ import zipfile
 import zlib
 from pathlib import Path
 
-from harness import Editor
+from harness import Editor, record_built_player
 
 CI = True
 EDITOR = {"create": True, "name": "Build Method Test"}
@@ -146,6 +146,7 @@ async def test_run_build_player_options(ed: Editor):
                       f'[ -n "$shot" ] && echo "{png}" | base64 -d > "$shot"\n'
                       'echo "Engine ready: ok"\nexit 0\n')
     script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    record_built_player(ed.project, script)   # run_build runs only the recorded build (BuiltPlayers)
     raw = await ed.call_raw("run_build", {"path": str(script), "quit_after": 30, "fixed_fps": 60, "after_ready": True,
                                           "headless": True, "screenshot_frame": 10, "max_width": 160})
     ed.check(not raw.is_error, raw.text)

@@ -259,7 +259,9 @@ async def test_timeout_cancels(ed: Editor):
 
 async def test_wait_job(ed: Editor):
     cli: Cli = S["cli"]
-    out = cli.root / "shaders"
+    # generate_shaders writes only to the export folder, the default export location or a folder of the
+    # project (upstream's output_dir rule): a project folder
+    out = ed.project / "call-cli-shaders"
     p = await cli.arun("call", *ATTACH, "--json", "--wait-job", "generate_shaders", "--output-dir", str(out),
                        "--wait=false", timeout=900)
     env = envelopes(p)
@@ -268,7 +270,7 @@ async def test_wait_job(ed: Editor):
     ed.check("waiting for job" in p.stderr, "it waited for the job")
     # Ctrl-C while waiting: cancel_job, exit 3
     proc = await asyncio.create_subprocess_exec(
-        *harness.editor_command(), "call", *ATTACH, "--wait-job", "generate_shaders", "--output-dir", str(cli.root / "shaders2"),
+        *harness.editor_command(), "call", *ATTACH, "--wait-job", "generate_shaders", "--output-dir", str(ed.project / "call-cli-shaders2"),
         "--wait=false", "--backends", "all", cwd=str(cli.cwd), env=cli.env(),
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     seen = ""

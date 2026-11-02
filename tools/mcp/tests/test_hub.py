@@ -225,13 +225,18 @@ async def hub_showing(ed: Editor) -> bool:
 
 
 async def test_hub_conditions(ed: Editor):
-    root = Path(tempfile.mkdtemp(prefix="jasper-hub-"))
-    project = root / "Existing"
+    # create_project over MCP makes a project beside the current one or under the default export
+    # folder only (upstream's round 9): the projects go beside this editor's, and the GUI editors'
+    # folder is their default export folder (the hub's create_project, with no project open)
+    base = ed.project.parent
+    root = Path(tempfile.mkdtemp(prefix="jasper-hub-", dir=base))
+    project = base / f"{root.name}-Existing"
     await ed.call("create_project", path=str(project), name="Existing", template="empty", unsaved="discard")
     await ed.call("save_project")
     # this editor lets go of it (the project lock): the GUI editors below open it
-    await ed.call("create_project", path=str(root / "Elsewhere"), name="Elsewhere", template="empty", unsaved="discard")
-    last = {"last_project_path": str(project), "recent_projects": [{"path": str(project), "name": "Existing"}]}
+    await ed.call("create_project", path=str(base / f"{root.name}-Elsewhere"), name="Elsewhere", template="empty", unsaved="discard")
+    last = {"last_project_path": str(project), "recent_projects": [{"path": str(project), "name": "Existing"}],
+            "export": {"default_dir": str(root)}}
 
     async with GuiEditor(root, ["--hub"], last) as gui:
         gui.check(await hub_showing(gui), "--hub shows the hub")

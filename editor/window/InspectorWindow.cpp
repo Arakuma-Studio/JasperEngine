@@ -8312,9 +8312,14 @@ void editor::InspectorWindow::drawTextEffectComponent(ComponentType cpType, Scen
             int remove = -1;
             for (size_t s = 0; s < stops.size(); s++) {
                 ImGui::PushID((int)s);
-                ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);
-                if (ImGui::ColorEdit4("##stopColor", &stops[s].color.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)) changed = true;
-                finished |= ImGui::IsItemDeactivatedAfterEdit();
+                // the stop's colour through the Color window (sRGB, as stored)
+                ui::ColorFieldOptions stopOptions;
+                stopOptions.linearStorage = false;
+                stopOptions.label = "Gradient Color";
+                stopOptions.width = ImGui::GetFontSize() * 4.0f;
+                const ui::EditPhase stopPhase = ui::colorField("##stopColor", stops[s].color, stopOptions);
+                if (stopPhase == ui::EditPhase::Changing || stopPhase == ui::EditPhase::Cancelled || stopPhase == ui::EditPhase::Applied) changed = true;
+                if (stopPhase == ui::EditPhase::Committed || stopPhase == ui::EditPhase::Cancelled || stopPhase == ui::EditPhase::Applied) finished = true;
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
                 if (ImGui::SliderFloat("##stopPosition", &stops[s].position, 0.0f, 1.0f, "at %.2f")) changed = true;
@@ -12363,6 +12368,16 @@ void editor::InspectorWindow::show(){
         if (assetsLocked) ImGui::BeginDisabled(true);
         const bool drewAssets = textureImporter->draw(project->getInspectedAssets());
         if (assetsLocked) ImGui::EndDisabled();
+        // one image that is a generated sprite normal map or the source of one: upstream's asset
+        // view of it too (its recipe, stale line, Regenerate), below the import settings
+        const std::vector<std::filesystem::path>& inspectedFiles = project->getInspectedAssets();
+        const std::filesystem::path inspectedImage = inspectedFiles.size() == 1
+            ? (inspectedFiles[0].is_absolute() ? inspectedFiles[0] : project->getProjectPath() / inspectedFiles[0]).lexically_normal()
+            : std::filesystem::path();
+        if (drewAssets && !inspectedImage.empty() && Util::isImageFile(inspectedImage.string())) {
+            ImGui::Separator();
+            drawSpriteNormalsAsset(inspectedImage);
+        }
         if (drewAssets) {
             ImGui::End();
             return;

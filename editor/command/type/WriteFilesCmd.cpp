@@ -95,6 +95,13 @@ bool editor::WriteFilesCmd::restore(size_t i, std::string* why) {
         const bool ok = previous[i].existed ? safewrite::writeFileResolvedBeneath(beneathRoot, items[i].path, previous[i].content, error)
                                             : safewrite::removeFileResolvedBeneath(beneathRoot, items[i].path, error);
         if (!ok && why) *why = error;
+        // and the meta the asset database gave a file it created (S04), beneath the root too: a
+        // created file leaves no orphan behind (nor a folder kept by one)
+        if (ok && !previous[i].existed && !previous[i].metaExisted) {
+            const fs::path meta = AssetTypes::metaPathFor(items[i].path);
+            std::string ignored;
+            if (fs::is_regular_file(fs::symlink_status(meta, ec))) safewrite::removeFileResolvedBeneath(beneathRoot, meta, ignored);
+        }
         return ok;
     }
     if (previous[i].existed) return FileUtils::writeFileReplacing(items[i].path, previous[i].content);

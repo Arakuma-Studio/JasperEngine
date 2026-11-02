@@ -5829,6 +5829,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"max_particles", integer("", 1, 100000)},
             {"rate", integer("", 0, 100000)},
             {"loop", boolean("")},
+            {"duration", number("")},
             {"life", any("Seconds or [min, max].")},
             {"speed", any("Or [min, max].")},
             {"emitter", anyObject("")},
@@ -5841,6 +5842,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"gradient", array(arrayItem, "[[t, [r, g, b]], ...]")},
             {"bursts", array(anyObject(""), "")},
             {"texture", assetPath("")},
+            {"modules", anyObject("")},
             {"properties", anyObject("")},
             {"autoplay", boolean("")}
         }),

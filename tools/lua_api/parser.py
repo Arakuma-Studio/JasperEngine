@@ -2957,7 +2957,8 @@ HTML_UI_FIELD_OVERRIDES = {
 
 # HTML UI (phase 4, p4-guide): the event names of UIElement/UIDocument addEventListener
 # (engine/core/object/ui/HtmlUIEventListener.cpp, RmlUi's EventSpecification and the engine's
-# own elements). mouseenter, mouseleave, pointer*, touch*, contextmenu, beforeinput and
+# own elements, with the engine-gaps fork's Pointer Events and mouseenter / mouseleave). touch*,
+# contextmenu, beforeinput and
 # composition* never reach documents (addEventListener warns), so they are not listed.
 HTML_UI_EVENT_TYPES = [
     ('click', 'a press and release on the element (Enter/Space on a focused button too)'),

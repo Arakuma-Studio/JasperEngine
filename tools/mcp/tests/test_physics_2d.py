@@ -98,7 +98,8 @@ async def test_physics_material_tool(ed: Editor):
     ed.check(edited["created"] is False and edited["bounce_combine"] == "minimum", f"{edited}")
     text = (ed.project / "assets/physics/Tire.physicsmaterial").read_text()
     ed.check('"format": "jasperengine.physicsmaterial"' in text and '"friction": 2' in text, text)
-    ed.check_eq(edited["undo"], {"scope": "project"}, "a project undo step")
+    # oe-port's results name the undo step they made (S24: {id, name}); the undo below is the project's
+    ed.check("Tire.physicsmaterial" in str(edited["undo"].get("name", "")), f"a project undo step: {edited['undo']}")
     await ed.call("undo", scope="project")
     ed.check('"bounceCombine": "maximum"' in (ed.project / "assets/physics/Tire.physicsmaterial").read_text(), "undo restores the file")
     await ed.check_error("edit_physics_material", path="assets/physics/Missing.physicsmaterial", friction=1, contains="create")

@@ -312,6 +312,7 @@ namespace {
         // the shader library's: resolved when the UI loads its shader
         JE_FIELD(UIComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
+        JE_FIELD(UIComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(UIComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
@@ -325,7 +326,7 @@ namespace {
 
     constexpr const char* kUIExtraKeys[] = {"buffer", "indices", "minBufferCount", "minIndicesCount", "primitiveType", "vertexCount", "aabb",
         "worldAABB", "texture", "color", "automaticFlipY", "flipY", "pointerMoved", "focused", "customShader", "shaderUniforms", "shaderTextures",
-        "shaderFeatures", "blendMode", "depthWrite", "stencil", "colorWrite", "enabled"};
+        "shaderFeatures", "shaderGlobalBindings", "blendMode", "depthWrite", "stencil", "colorWrite", "enabled"};
 
 }
 

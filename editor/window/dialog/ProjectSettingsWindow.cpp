@@ -2114,16 +2114,18 @@ void ProjectSettingsWindow::drawPhysicsSettings() {
             if (beginSettingsTable("##WorldCapacityTable")) {
                 const Physics3DWorldSettings defaults;
                 const int maxIndex = 8388607;
-                auto capacityRow = [&](const char* label, const char* id, unsigned int& field, unsigned int defaultValue, const char* tooltip) {
+                auto capacityRow = [&](const char* key, const char* label, const char* id, unsigned int& field, unsigned int defaultValue, const char* tooltip) {
+                    // a registry row (physics.max_*: MCP and the settings search)
+                    if (!settingsui::beginRow(key)) return;
                     int value = (int)std::min<unsigned int>(field, (unsigned int)maxIndex);
                     drawIntSetting(label, id, value, (int)defaultValue, 16, tooltip);
                     field = (unsigned int)std::min(value, maxIndex);
                 };
-                capacityRow("Max Bodies", "##Physics3DMaxBodies", m_physics3DWorld.maxBodies, defaults.maxBodies,
+                capacityRow("physics.max_bodies", "Max Bodies", "##Physics3DMaxBodies", m_physics3DWorld.maxBodies, defaults.maxBodies,
                     "The most Rigidbodies a scene can have at once (Jolt's maxBodies).");
-                capacityRow("Max Body Pairs", "##Physics3DMaxBodyPairs", m_physics3DWorld.maxBodyPairs, defaults.maxBodyPairs,
+                capacityRow("physics.max_body_pairs", "Max Body Pairs", "##Physics3DMaxBodyPairs", m_physics3DWorld.maxBodyPairs, defaults.maxBodyPairs,
                     "The most pairs of bodies whose bounds overlap in one step (Jolt's maxBodyPairs).");
-                capacityRow("Max Contact Constraints", "##Physics3DMaxContacts", m_physics3DWorld.maxContactConstraints, defaults.maxContactConstraints,
+                capacityRow("physics.max_contact_constraints", "Max Contact Constraints", "##Physics3DMaxContacts", m_physics3DWorld.maxContactConstraints, defaults.maxContactConstraints,
                     "The most touching body pairs solved in one step (Jolt's maxContactConstraints).");
                 ImGui::EndTable();
             }
@@ -4618,12 +4620,13 @@ bool ProjectSettingsWindow::drawShaderGlobalValue(const char* id, ShaderGlobalTy
             break;
         }
         case ShaderGlobalType::Color: {
-            // edited as sRGB, stored linear (alpha as is)
-            const Vector4 srgb = Color::linearTosRGB(values[0]);
-            float color[4] = {srgb.x, srgb.y, srgb.z, values[0].w};
-            if (ImGui::ColorEdit4("##value", color, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)) {
-                const Vector4 linear = Color::sRGBToLinear(Vector4(color[0], color[1], color[2], color[3]));
-                values[0] = Vector4(linear.x, linear.y, linear.z, color[3]);
+            // edited as sRGB, stored linear (alpha as is): the Color window (ui::colorField)
+            ui::ColorFieldOptions colorOptions;
+            colorOptions.label = "Shader Global Color";
+            Vector4 color = values[0];
+            const ui::EditPhase phase = ui::colorField("##value", color, colorOptions);
+            if (phase == ui::EditPhase::Changing || phase == ui::EditPhase::Cancelled || phase == ui::EditPhase::Applied) {
+                values[0] = color;
                 changed = true;
             }
             break;

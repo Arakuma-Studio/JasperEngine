@@ -446,6 +446,7 @@ const FieldEntry kStruct_Material_fields[] = {
     JE_RF(Material, shaderParams, 0xd9d80749u, Custom),
     JE_RF(Material, shaderTextures, 0x234b0c73u, Custom),
     JE_RF(Material, shaderFeatures, 0xa354685cu, Custom),
+    JE_RF(Material, shaderGlobalBindings, 0xf2e1a5eeu, Custom),
     JE_RF(Material, blendMode, 0xe5aaad6eu, Enum),
     JE_RF(Material, cullMode, 0x468be231u, Enum),
     JE_RF(Material, depthWrite, 0xf0420936u, Enum),
@@ -866,6 +867,7 @@ const FieldEntry kBody_LineRendererComponent_fields[] = {
     JE_RF(LineRendererComponent, shaderUniforms, 0x8c21c9e2u, Custom),
     JE_RF(LineRendererComponent, shaderTextures, 0xa7f787fbu, Custom),
     JE_RF(LineRendererComponent, shaderFeatures, 0x31f1bf74u, Custom),
+    JE_RF(LineRendererComponent, shaderGlobalBindings, 0x969ae2f6u, Custom),
     JE_RF(LineRendererComponent, blendMode, 0xeedd88e6u, Enum),
     JE_RF(LineRendererComponent, depthWrite, 0x504f465eu, Enum),
     JE_RF(LineRendererComponent, stencil, 0xacd33d7eu, Struct),
@@ -952,6 +954,7 @@ const FieldEntry kBody_PointsComponent_fields[] = {
     JE_RF(PointsComponent, shaderUniforms, 0xedb724bcu, Custom),
     JE_RF(PointsComponent, shaderTextures, 0xc7fc0a91u, Custom),
     JE_RF(PointsComponent, shaderFeatures, 0xf463f106u, Custom),
+    JE_RF(PointsComponent, shaderGlobalBindings, 0xef0dae24u, Custom),
     JE_RF(PointsComponent, blendMode, 0x1a4963ecu, Enum),
     JE_RF(PointsComponent, depthWrite, 0x0b7b0e54u, Enum),
     JE_RF(PointsComponent, stencil, 0x6c14bd34u, Struct),
@@ -971,6 +974,7 @@ const FieldEntry kBody_SkyboxComponent_fields[] = {
     JE_RF(SkyboxComponent, shaderUniforms, 0x47e06e57u, Custom),
     JE_RF(SkyboxComponent, shaderTextures, 0x124d87f2u, Custom),
     JE_RF(SkyboxComponent, shaderFeatures, 0xc38d0d65u, Custom),
+    JE_RF(SkyboxComponent, shaderGlobalBindings, 0xc472d71bu, Custom),
 };
 const StructTable kBody_SkyboxComponent{"skybox", kBody_SkyboxComponent_fields, std::size(kBody_SkyboxComponent_fields)};
 
@@ -992,6 +996,7 @@ const FieldEntry kBody_UIComponent_fields[] = {
     JE_RF(UIComponent, shaderUniforms, 0x9ff7ce5fu, Custom),
     JE_RF(UIComponent, shaderTextures, 0x9e12374au, Custom),
     JE_RF(UIComponent, shaderFeatures, 0x099ae12du, Custom),
+    JE_RF(UIComponent, shaderGlobalBindings, 0x48ffeed3u, Custom),
     JE_RF(UIComponent, blendMode, 0xf37a20adu, Enum),
     JE_RF(UIComponent, depthWrite, 0xae5428f7u, Enum),
     JE_RF(UIComponent, stencil, 0x92dc0a45u, Struct),
@@ -2137,6 +2142,7 @@ const FieldEntry kBody_TrailRendererComponent_fields[] = {
     JE_RF(TrailRendererComponent, shaderUniforms, 0x04ea570eu, Custom),
     JE_RF(TrailRendererComponent, shaderTextures, 0x187d06d7u, Custom),
     JE_RF(TrailRendererComponent, shaderFeatures, 0x2a966cb0u, Custom),
+    JE_RF(TrailRendererComponent, shaderGlobalBindings, 0x7f31a70au, Custom),
     JE_RF(TrailRendererComponent, blendMode, 0x34832302u, Enum),
     JE_RF(TrailRendererComponent, depthWrite, 0x56f6d5d2u, Enum),
     JE_RF(TrailRendererComponent, stencil, 0x17742a5au, Struct),

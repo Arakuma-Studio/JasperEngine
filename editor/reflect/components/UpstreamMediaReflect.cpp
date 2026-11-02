@@ -7,7 +7,8 @@
 // (safe-area). Each keeps upstream's codec (Stream.cpp: the keys its files have) and its exported
 // code (Factory.cpp); the tables give the properties, schema, Inspector metadata and the cooked
 // scenes' fields. The Text Effect's layers (a fixed array of layer structs) stay its codec's: the
-// table lists its flat fields.
+// table lists its flat fields, and its extra properties the layers' "layers[N].<field>" (upstream's
+// Catalog paths, which set_properties and get_entity use).
 
 #include "reflect/Components.h"
 
@@ -124,17 +125,71 @@ namespace {
 
     // ---------------------------------------------------------------- Text Effect
 
+    // the update flags upstream's Catalog gave them: a range or layer edit re-applies the effect
+    constexpr uint64_t kTextEffectApply = UpdateFlags_TextEffect;
+
     constexpr FieldDesc kTextEffectFields[] = {
-        JE_FIELD(TextEffectComponent, enabled),
+        JE_FIELD(TextEffectComponent, enabled, .updateFlags = kTextEffectApply),
         JE_FIELD(TextEffectComponent, autoPlay),
         JE_FIELD(TextEffectComponent, loop),
         JE_FIELD(TextEffectComponent, useUnscaledTime),
-        JE_FIELD(TextEffectComponent, startIndex, .min = 0.0f),
-        JE_FIELD(TextEffectComponent, length, .min = -1.0f),
-        JE_FIELD(TextEffectComponent, forWords),
+        JE_FIELD(TextEffectComponent, startIndex, .updateFlags = kTextEffectApply, .min = 0.0f),
+        JE_FIELD(TextEffectComponent, length, .updateFlags = kTextEffectApply, .min = -1.0f),
+        JE_FIELD(TextEffectComponent, forWords, .updateFlags = kTextEffectApply),
     };
     const ComponentCodec kTextEffectCodec = JE_STREAM_CODEC(TextEffectComponent, encodeTextEffectComponent, decodeTextEffectComponent);
     constexpr const char* kTextEffectKnownKeys[] = {"autoPlay", "enabled", "forWords", "layers", "length", "loop", "startIndex", "useUnscaledTime"};
+
+    // The layers (a fixed std::array of layer structs, saved by the codec): "layers[N].<field>" as
+    // upstream's Catalog resolved and listed them (getTextEffectLayerPropertyFast); the enum names
+    // of type and mix are McpValues' ("layers[].type", "layers[].mix")
+    PropertyData textEffectLayerProperty(TextEffectLayer& layer, const std::string& field) {
+        static TextEffectLayer d;
+        const uint64_t flags = kTextEffectApply;
+        if (field == "type") return {PropertyType::Enum, flags, &d.type, &layer.type};
+        if (field == "enabled") return {PropertyType::Bool, flags, &d.enabled, &layer.enabled};
+        if (field == "amplitude") return {PropertyType::Float, flags, &d.amplitude, &layer.amplitude};
+        if (field == "duration") return {PropertyType::Float, flags, &d.duration, &layer.duration};
+        if (field == "spread") return {PropertyType::Float, flags, &d.spread, &layer.spread};
+        if (field == "phaseStep") return {PropertyType::Float, flags, &d.phaseStep, &layer.phaseStep};
+        if (field == "frequency") return {PropertyType::Float, flags, &d.frequency, &layer.frequency};
+        if (field == "charactersPerSecond") return {PropertyType::Float, flags, &d.charactersPerSecond, &layer.charactersPerSecond};
+        if (field == "fadeTime") return {PropertyType::Float, flags, &d.fadeTime, &layer.fadeTime};
+        if (field == "gradient") return {PropertyType::Custom, flags, &d.gradient, &layer.gradient};
+        if (field == "mix") return {PropertyType::Enum, flags, &d.mix, &layer.mix};
+        if (field == "saturation") return {PropertyType::Float, flags, &d.saturation, &layer.saturation};
+        if (field == "lightness") return {PropertyType::Float, flags, &d.lightness, &layer.lightness};
+        return PropertyData();
+    }
+
+    constexpr const char* kTextEffectLayerFields[] = {"type", "enabled", "amplitude", "duration", "spread", "phaseStep", "frequency",
+                                                      "charactersPerSecond", "fadeTime", "gradient", "mix", "saturation", "lightness"};
+
+    PropertyData textEffectExtraProperty(void* comp, const std::string& path) {
+        TextEffectComponent& effect = *static_cast<TextEffectComponent*>(comp);
+        constexpr size_t prefix = 7;  // "layers["
+        if (path.compare(0, prefix, "layers[") != 0) return PropertyData();
+        size_t pos = prefix;
+        size_t index = 0;
+        if (pos >= path.size() || path[pos] < '0' || path[pos] > '9') return PropertyData();
+        while (pos < path.size() && path[pos] >= '0' && path[pos] <= '9') index = index * 10 + static_cast<size_t>(path[pos++] - '0');
+        if (pos + 1 >= path.size() || path[pos] != ']' || path[pos + 1] != '.' || index >= effect.layers.size()) return PropertyData();
+        return textEffectLayerProperty(effect.layers[index], path.substr(pos + 2));
+    }
+
+    void textEffectExtraProperties(void* comp, std::map<std::string, PropertyData>& out) {
+        static TextEffectLayer defaultLayer;
+        TextEffectComponent* effect = static_cast<TextEffectComponent*>(comp);
+        for (size_t i = 0; i < static_cast<size_t>(MAX_TEXT_EFFECT_LAYERS); i++) {
+            const std::string prefix = "layers[" + std::to_string(i) + "].";
+            TextEffectLayer& layer = effect ? effect->layers[i] : defaultLayer;
+            for (const char* field : kTextEffectLayerFields) {
+                PropertyData property = textEffectLayerProperty(layer, field);
+                if (!effect) property.ref = nullptr;
+                out[prefix + field] = property;
+            }
+        }
+    }
 
     // ---------------------------------------------------------------- Video Player
 
@@ -215,6 +270,8 @@ const ComponentDesc kTextEffectDesc{
     .decodeApply = DecodeApply::MarkOnly,
     .codegen = JE_FACTORY_CODEGEN(createTextEffectComponent),
     .extraKeys = kTextEffectKnownKeys,
+    .extraProperty = &textEffectExtraProperty,
+    .extraProperties = &textEffectExtraProperties,
 };
 
 const ComponentDesc kVideoPlayerDesc{

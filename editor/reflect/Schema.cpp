@@ -99,6 +99,12 @@ Json reflect::detail::numberSchema(const FieldDesc& field) {
     return schema;
 }
 
+Json reflect::detail::numberOrNullSchema(const FieldDesc& field) {
+    Json schema = numberSchema(field);
+    schema["type"] = Json::array({"number", "null"});
+    return schema;
+}
+
 Json reflect::detail::vector2Schema(const FieldDesc&) { return numberArray(2); }
 Json reflect::detail::vector3Schema(const FieldDesc&) { return numberArray(3); }
 Json reflect::detail::vector4Schema(const FieldDesc&) { return numberArray(4); }
