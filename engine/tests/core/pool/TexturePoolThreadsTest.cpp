@@ -300,12 +300,16 @@ TEST(TextureDataPoolThreadsGpu, TheRenderQueuesCleanupsComeFromAnotherThreadDuri
     std::atomic<int> ran{0};
     std::atomic<bool> done{false};
     std::thread strand([&ran, &done](){
-        Engine::AsyncThreadScope scope;
-        for (int batch = 0; batch < 200; batch++){
-            for (int i = 0; i < 32; i++)
-                SystemRender::scheduleCleanup([](void* counter){ static_cast<std::atomic<int>*>(counter)->fetch_add(1); }, &ran);
-            Engine::commitThreadQueue();
+        {
+            Engine::AsyncThreadScope scope;
+            for (int batch = 0; batch < 200; batch++){
+                for (int i = 0; i < 32; i++)
+                    SystemRender::scheduleCleanup([](void* counter){ static_cast<std::atomic<int>*>(counter)->fetch_add(1); }, &ran);
+                Engine::commitThreadQueue();
+            }
         }
+        // (the scope's end commits once more, and waits for the batch before: the main thread
+        // executes them until here)
         done.store(true);
     });
     while (!done.load())
@@ -313,7 +317,6 @@ TEST(TextureDataPoolThreadsGpu, TheRenderQueuesCleanupsComeFromAnotherThreadDuri
     strand.join();
     for (int frame = 0; frame < 8; frame++)
         SystemRender::executeQueue();
-    // (scope's end committed one more batch)
     EXPECT_GT(ran.load(), 0);
     EXPECT_NO_ENGINE_ERRORS();
 }
