@@ -49,6 +49,10 @@ namespace jasperengine { namespace particles {
 
         // the old emission cycle: maxParticles / rate, and the latest burst
         static float cycleDuration(const LegacyParticleSystem& legacy);
+        // how long the old step emitted (the converted duration): a looping system its cycle; one
+        // that does not loop until each of its maxParticles slots was used once (bursts take
+        // slots, their mean count), or its latest burst
+        static float emissionDuration(const LegacyParticleSystem& legacy);
         // an ease over [0, 1] as a curve of 16 keys (slopes from the function, steps kept)
         static Curve sampleEase(const Ease& ease);
     };

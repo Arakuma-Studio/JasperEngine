@@ -177,6 +177,34 @@ TEST(ParticleMigration, CycleDurationIsTheOldOne){
     EXPECT_FLOAT_EQ(LegacyParticleConverter::cycleDuration(p), 3.0f);
 }
 
+// A system that does not loop emitted, in the old step, until each of its maxParticles slots had
+// been used once (ActionSystem::findUnusedParticle never reuses one without loop): its bursts'
+// particles take slots from the rate's. The upgrade-from-main fixture's pickup sparks (300, 80 a
+// second, a burst of 24) stopped emitting after 3.45 s, not maxParticles / rate's 3.75 s
+TEST(ParticleMigration, NonLoopingSystemsEmitUntilTheirSlotsAreUsed){
+    LegacyParticleSystem p;
+    p.maxParticles = 300;
+    p.rate = 80;
+    p.loop = false;
+    p.bursts = {{0.0f, 24, 24}};
+    EXPECT_FLOAT_EQ(LegacyParticleConverter::emissionDuration(p), 3.45f);
+    ParticleEffectDocument d;
+    LegacyParticleConverter::apply(p, d);
+    EXPECT_FLOAT_EQ(d.duration, 3.45f);
+    // a burst later than that: the burst's time
+    p.bursts = {{5.0f, 24, 24}};
+    EXPECT_FLOAT_EQ(LegacyParticleConverter::emissionDuration(p), 5.0f);
+    // a looping system's cycle is the old one (its slots are reused)
+    p.loop = true;
+    p.bursts = {{0.0f, 24, 24}};
+    EXPECT_FLOAT_EQ(LegacyParticleConverter::emissionDuration(p), 3.75f);
+    // bursts only: the old cycle (the longest life)
+    p.loop = false;
+    p.rate = 0;
+    p.lifeInitializer.maxLife = 0.8f;
+    EXPECT_FLOAT_EQ(LegacyParticleConverter::emissionDuration(p), 0.8f);
+}
+
 TEST(ParticleMigration, EasesSampleToSixteenKeys){
     for (EaseType type : {EaseType::QUAD_IN, EaseType::CUBIC_IN_OUT, EaseType::SINE_IN, EaseType::QUAD_OUT}){
         Ease ease(type);

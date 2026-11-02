@@ -142,7 +142,10 @@ bool editor::Stream::decodeShaderKey(const YAML::Node& keyNode, ShaderKey& key) 
 // were registered in this session), so a second save writes the same list.
 YAML::Node editor::Stream::encodeShaderKeys(const std::set<ShaderKey>& shaderKeys) {
     YAML::Node node(YAML::NodeType::Sequence);
-    std::vector<std::pair<std::string, YAML::Node>> custom;
+    // YAML::Node assignment writes through to the node it refers to: the entries stay put and
+    // only their order (names and indices) is sorted
+    std::vector<YAML::Node> customEntries;
+    std::vector<std::pair<std::string, size_t>> customOrder;
     for (ShaderKey rawKey : shaderKeys) {
         const ShaderKey key = ShaderPool::normalizeKey(rawKey);
         YAML::Node entry = encodeShaderKey(key);
@@ -152,11 +155,12 @@ YAML::Node editor::Stream::encodeShaderKeys(const std::set<ShaderKey>& shaderKey
             continue;
         }
         const std::string name = entry["customShader"] && entry["customShader"].IsScalar() ? entry["customShader"].Scalar() : std::string();
-        custom.emplace_back(name, entry);
+        customOrder.emplace_back(name, customEntries.size());
+        customEntries.push_back(entry);
     }
     // stable: one shader's variants keep their (type, properties) order
-    std::stable_sort(custom.begin(), custom.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-    for (const auto& item : custom) node.push_back(item.second);
+    std::stable_sort(customOrder.begin(), customOrder.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (const auto& item : customOrder) node.push_back(customEntries[item.second]);
     return node;
 }
 
