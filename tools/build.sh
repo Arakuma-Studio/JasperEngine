@@ -168,7 +168,16 @@ image_hash() {
         done
     } | sha256sum | cut -c1-12
 }
-if [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
+# Already inside the Linux build image (rb.sh --img, tools/check-changed there): no Docker; the
+# targets of that image run here directly, with the same environment (IN_IMAGE=1)
+IN_IMAGE=0
+if [[ -f /.dockerenv ]] && ! command -v docker >/dev/null 2>&1; then
+    IN_IMAGE=1
+    [[ "$IMAGE_TARGET" == linux ]] || { echo "tools/build.sh $TARGET needs the $IMAGE_TARGET image: run it on the host (this is the linux image)" >&2; exit 3; }
+fi
+if [[ $IN_IMAGE == 1 ]]; then
+    IMAGE_ID=""
+elif [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
     IMAGE_ID="$JASPER_DOCKER_IMAGE"
 else
     IMAGE_ID="$(docker build -q -t "$IMAGE:$(image_hash "$IMAGE_TARGET")" -t "$IMAGE:latest" \
@@ -211,6 +220,13 @@ if [[ ",${SANITIZE:-}," == *,thread,* ]]; then
 fi
 UNITY_SUFFIX=""
 [[ "${UNITY:-0}" == 1 ]] && UNITY_SUFFIX="-unity"
+# COVERAGE=1 (linux): GCC's --coverage, next to the default tree (build/linux/editor-coverage): the
+# MCP suite's coverage map (tools/mcp/coverage_map.py) is recorded with it
+COVERAGE_SUFFIX=""
+if [[ "${COVERAGE:-0}" == 1 ]]; then
+    [[ "$TARGET" == linux ]] || { echo "COVERAGE=1 is for linux" >&2; exit 1; }
+    COVERAGE_SUFFIX="-coverage"
+fi
 WERROR_VALUE=OFF
 [[ "${WERROR:-0}" == 1 ]] && WERROR_VALUE=ON
 # what every CMake configure of a build gets on top of its preset
@@ -219,7 +235,8 @@ OPTION_FLAGS="-DJASPERENGINE_SANITIZE='$SANITIZE_LIST'"
 # (WERROR needs WARNINGS, which the standalone engine tree has off by default)
 ENGINE_WARNING_FLAGS="-DJASPERENGINE_WERROR=$WERROR_VALUE"
 [[ "$WERROR_VALUE" == ON ]] && ENGINE_WARNING_FLAGS="$ENGINE_WARNING_FLAGS -DJASPERENGINE_WARNINGS=ON"
-VARIANT="$SANITIZE_SUFFIX$UNITY_SUFFIX"
+VARIANT="$SANITIZE_SUFFIX$UNITY_SUFFIX$COVERAGE_SUFFIX"
+[[ -n "$COVERAGE_SUFFIX" ]] && OPTION_FLAGS="$OPTION_FLAGS -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage"
 
 # What --clean removes: the whole output of the target, or only this test build
 CLEAN_DIR="$OUT"
@@ -229,9 +246,11 @@ CLEAN_DIR="$OUT"
 
 if [[ $CLEAN -eq 1 ]]; then
     # Files inside may belong to the container user; remove them from inside.
-    docker run --rm -v "$ROOT:/src" -w /src "$IMAGE_ID" bash -c "rm -rf $CLEAN_DIR"
+    if [[ $IN_IMAGE == 1 ]]; then (cd "$ROOT" && rm -rf $CLEAN_DIR)
+    else docker run --rm -v "$ROOT:/src" -w /src "$IMAGE_ID" bash -c "rm -rf $CLEAN_DIR"; fi
 fi
-mkdir -p "$ROOT/$OUT" "$ROOT/$RESULTS" "$ROOT/$CACHE/home" "$MAIN/$CACHE/ccache"
+mkdir -p "$ROOT/$OUT" "$ROOT/$RESULTS"
+[[ $IN_IMAGE == 1 ]] || mkdir -p "$ROOT/$CACHE/home" "$MAIN/$CACHE/ccache"
 
 TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
@@ -310,6 +329,16 @@ if [[ "$(uname -s)" == Linux && "$(id -u)" != 0 && -r /etc/passwd && -r /etc/gro
 fi
 
 run() {
+    if [[ $IN_IMAGE == 1 ]]; then
+        # the container's own mounts and HOME/CCACHE_DIR (jimg's); the run's -e variables as docker would set them
+        local assignments=() i=0
+        while [[ $i -lt ${#ENV_FLAGS[@]} ]]; do
+            [[ "${ENV_FLAGS[$i]}" == -e ]] && assignments+=("${ENV_FLAGS[$((i + 1))]}") && i=$((i + 2)) && continue
+            i=$((i + 1))
+        done
+        (cd "$ROOT" && env ${assignments[@]+"${assignments[@]}"} "$@")
+        return $?
+    fi
     # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)
     docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         --user "$(id -u):$(id -g)" \

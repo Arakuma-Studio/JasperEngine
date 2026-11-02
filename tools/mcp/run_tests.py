@@ -481,10 +481,15 @@ def main() -> int:
         if args.url:
             cmd += ["--url", args.url]
         env = None
+        # JASPER_MCP_COVERAGE_DIR (tools/mcp/coverage_map.py): a coverage-instrumented editor's counts,
+        # per file and chunk (GCOV_PREFIX: <dir>/<file stem>-<n>/<the objects' own paths>)
+        if os.environ.get("JASPER_MCP_COVERAGE_DIR"):
+            env = dict(os.environ, GCOV_PREFIX=str(Path(os.environ["JASPER_MCP_COVERAGE_DIR"]) / f"{f.stem}-{index}"),
+                       GCOV_PREFIX_STRIP="0")
         if gpu_env:
             # the lane's editors on the NVIDIA GPU, every other one on llvmpipe as anywhere: each
             # editor checks it renders where its chunk says (harness.Editor._check_device)
-            env = {k: v for k, v in os.environ.items() if k not in gpu_env}
+            env = {k: v for k, v in (env or os.environ).items() if k not in gpu_env}
             env["JASPER_MCP_EXPECT_DEVICE"] = "llvmpipe"
             if chunk.lane == "gpu":
                 env.update(gpu_env, JASPER_XVFB="none", DISPLAY=display or gpu_env.get("DISPLAY", ""),
