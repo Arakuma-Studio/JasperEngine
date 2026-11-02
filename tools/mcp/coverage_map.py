@@ -17,14 +17,13 @@ object's .gcno says where each function is written: its file (a header's for an 
 lines, which is what lets check-changed go from a diff's hunks to the functions they touch.
 
 The map: {"version": 2, "commit", "created", "tests": [names], "editor_tests": N (those that started an
-editor), "seconds": {test: s}, "sources": {file: {"blob": its git blob id, "functions": [[first line,
-last line, hex mask of the tests that executed it], ...]}}}.
+editor), "seconds": {test: s}, "sources": {file: {"functions": [[first line, last line, hex mask of the
+tests that executed it], ...]}}}.
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import struct
@@ -130,16 +129,7 @@ def repo_relative(path: str, tree: Path) -> str | None:
     return None if relative.startswith("/") or relative.startswith("build/") else relative
 
 
-def git_blob(path: Path) -> str | None:
-    """A file's git blob id, to tell whether a diff's lines are the lines the map knows."""
-    try:
-        data = path.read_bytes()
-    except OSError:
-        return None
-    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
-
-
-def collect(runs: Path, tree: Path, root: Path, read_gcno=None) -> dict:
+def collect(runs: Path, tree: Path, read_gcno=None) -> dict:
     """runs/<file stem>-<n>/<the tree's path>/<object>.gcda and the tree's <object>.gcno -> the map."""
     if read_gcno is None:
         read_gcno = lambda relative: (tree / relative).read_bytes()   # noqa: E731
@@ -183,7 +173,7 @@ def collect(runs: Path, tree: Path, root: Path, read_gcno=None) -> dict:
                 executed[index[run.name.rsplit("-", 1)[0] + ".py"]] += len(idents)
     sources: dict[str, dict] = {}
     for (file, first, last), mask in sorted(masks.items()):
-        entry = sources.setdefault(file, {"blob": git_blob(root / file), "functions": []})
+        entry = sources.setdefault(file, {"functions": []})
         entry["functions"].append([first, last, format(mask, "x")])
     return {"version": 2, "tests": tests, "editor_tests": sum(1 for n in executed if n >= MIN_EDITOR_FUNCTIONS),
             "sources": sources}
@@ -197,11 +187,10 @@ def main(argv: list[str]) -> int:
     c.add_argument("tree", type=Path, help="the instrumented editor's build tree (build/linux/editor-coverage)")
     c.add_argument("--commit", required=True)
     c.add_argument("--results", type=Path, help="the run's --json results: each test file's time (the map's seconds)")
-    c.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent.parent, help="the checkout")
     c.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
     tree = args.tree.resolve()
-    data = collect(args.runs, tree, args.root)
+    data = collect(args.runs, tree)
     if not data["editor_tests"]:
         print(f"coverage_map: no test file executed anything under {args.runs}", file=sys.stderr)
         return 1

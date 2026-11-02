@@ -222,9 +222,9 @@ SRC = {
     "test_other.py": "y\n",
 }
 def mapfile(sources, tests=("test_render.py", "test_other.py"), editor_tests=None, seconds=None):
-    """A coverage map: sources: {file: (blob, [(first, last, [test indexes])])}."""
+    """A coverage map: sources: {file: (unused, [(first, last, [test indexes])])}."""
     return {"version": 2, "commit": "abc", "created": 0.0, "tests": list(tests), "editor_tests": editor_tests or len(tests),
-            "seconds": seconds or {}, "sources": {f: {"blob": blob, "functions": [
+            "seconds": seconds or {}, "sources": {f: {"functions": [
                 [a, b, format(sum(1 << i for i in who), "x")] for a, b, who in functions]}
                 for f, (blob, functions) in sources.items()}}
 
@@ -244,10 +244,10 @@ class Mcp(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
         cc.use_root(REAL_ROOT)
 
-    def plan(self, files, cmap=MAP, staleness=None, deleted=(), hunks=None, blobs=None):
+    def plan(self, files, cmap=MAP, staleness=None, deleted=(), hunks=None, map_diff=None, map_commit="abc"):
         p = cc.Plan()
-        cc.plan_mcp(cc.Changes("b", "x", list(files), list(deleted), hunks=hunks or {}, base_blobs=blobs or {}),
-                    p, cmap, SRC, staleness)
+        cc.plan_mcp(cc.Changes("b", "x", list(files), list(deleted), hunks=hunks or {}, map_commit=map_commit,
+                               map_diff=map_diff or {}), p, cmap, SRC, staleness)
         return p
 
     def test_map_intersection(self):
@@ -265,21 +265,40 @@ class Mcp(unittest.TestCase):
         self.assertEqual(self.plan(["engine/core/Inline.h"], cmap=cmap).mcp_files[0], "test_render.py")
 
     def test_functions_from_hunks(self):
-        cmap = mapfile({"editor/A.cpp": ("blob", [(10, 20, [0]), (30, 40, [1]), (50, 60, [])])})
-        def selected(hunks, blob="blob"):
-            return self.plan(["editor/A.cpp"], cmap=cmap, hunks={"editor/A.cpp": hunks}, blobs={"editor/A.cpp": blob})
-        self.assertEqual(selected([[12, 2]]).mcp_files, ["test_render.py"])     # inside the first function
-        self.assertEqual(selected([[35, 1]]).mcp_files, ["test_other.py"])      # inside the second
-        self.assertEqual(selected([[20, 0]]).mcp_files, ["test_render.py"])     # an insertion after its last line
-        self.assertEqual(sorted(selected([[12, 1], [35, 1]]).mcp_files), ["test_other.py", "test_render.py"])
-        # a line outside every function (a declaration): the whole file
-        self.assertEqual(sorted(selected([[25, 1]]).mcp_files), ["test_other.py", "test_render.py"])
-        # not the map's lines: the whole file
-        self.assertEqual(sorted(selected([[12, 1]], blob="other").mcp_files), ["test_other.py", "test_render.py"])
+        cmap = mapfile({"editor/A.cpp": ("", [(10, 20, [0]), (30, 40, [1]), (50, 60, [])])})
+        def selected(hunks, map_commit="abc", map_diff=None):
+            return self.plan(["editor/A.cpp"], cmap=cmap, hunks={"editor/A.cpp": hunks}, map_commit=map_commit,
+                             map_diff={"editor/A.cpp": map_diff or []})
+        self.assertEqual(selected([[12, 2, 12, 2]]).mcp_files, ["test_render.py"])     # inside the first function
+        self.assertEqual(selected([[35, 1, 35, 1]]).mcp_files, ["test_other.py"])      # inside the second
+        self.assertEqual(selected([[15, 0, 16, 3]]).mcp_files, ["test_render.py"])     # new lines inside it
+        self.assertEqual(selected([[12, 1, 12, 0]]).mcp_files, ["test_render.py"])     # a deletion inside it
+        self.assertEqual(sorted(selected([[12, 1, 12, 1], [35, 1, 35, 1]]).mcp_files), ["test_other.py", "test_render.py"])
+        # a changed line outside every function (a declaration): the whole file
+        self.assertEqual(sorted(selected([[25, 1, 25, 1]]).mcp_files), ["test_other.py", "test_render.py"])
+        # only new lines outside them (a new function): nothing old is touched, its callers' changes select
+        p = selected([[25, 0, 26, 4]])
+        self.assertEqual((p.mcp_files, p.mcp_ci), ([], False))
+        # not this tree's map: the whole file
+        self.assertEqual(sorted(selected([[12, 1, 12, 1]], map_commit="other").mcp_files), ["test_other.py", "test_render.py"])
         # a function no test executes selects nothing, and says so; the CI suite is for what the map does not know
-        p = selected([[55, 1]])
+        p = selected([[55, 1, 55, 1]])
         self.assertEqual((p.mcp_files, p.mcp_ci), ([], False))
         self.assertTrue(any("no MCP test executes" in n for n in p.mcp_notes))
+        # the tree's lines moved since the map's commit (5 lines added above): still the second function
+        self.assertEqual(selected([[40, 1, 40, 1]], map_diff=[[1, 0, 2, 5]]).mcp_files, ["test_other.py"])
+
+    def test_to_map_lines(self):
+        # no diff to the map: as they are
+        self.assertEqual(cc.to_map_lines([[3, 2, 3, 2]], []), [(3, 4, False)])
+        # 5 lines added at the top since the map's commit
+        self.assertEqual(cc.to_map_lines([[10, 1, 15, 1]], [[1, 0, 2, 5]]), [(10, 10, False)])
+        # 2 lines removed at the top
+        self.assertEqual(cc.to_map_lines([[10, 1, 8, 1]], [[1, 2, 0, 0]]), [(10, 10, False)])
+        # a line that differs from the map: the map's lines of that hunk
+        self.assertEqual(cc.to_map_lines([[10, 1, 10, 1]], [[9, 3, 9, 4]]), [(9, 11, False)])
+        # only new lines
+        self.assertEqual(cc.to_map_lines([[10, 0, 11, 2]], []), [(11, 12, True)])
 
     def test_a_function_every_editor_runs_selects_the_quickest(self):
         tests = [f"test_{c}.py" for c in "abcdefghijklmnopqrst"]
@@ -287,14 +306,14 @@ class Mcp(unittest.TestCase):
         cmap = mapfile({"editor/A.cpp": ("blob", [(1, 9, list(range(20)))])}, tests=tests,
                        seconds={t: 100 - i for i, t in enumerate(tests)})
         p = cc.Plan()
-        cc.plan_mcp(cc.Changes("b", "x", ["editor/A.cpp"], hunks={"editor/A.cpp": [[2, 1]]}, base_blobs={"editor/A.cpp": "blob"}),
+        cc.plan_mcp(cc.Changes("b", "x", ["editor/A.cpp"], hunks={"editor/A.cpp": [[2, 1, 2, 1]]}, map_commit="abc"),
                     p, cmap, src, None)
         self.assertEqual(sorted(p.mcp_files), sorted(tests[-cc.COMMON_SAMPLE:]))
 
     def test_hunks_of_a_diff(self):
         diff = ("diff --git a/x.cpp b/x.cpp\n--- a/x.cpp\n+++ b/x.cpp\n@@ -3,2 +3 @@ void f()\n-a\n-b\n+c\n@@ -9 +8,2 @@\n-d\n+e\n+f\n@@ -20,0 +21 @@\n+g\n"
                 "diff --git a/new.cpp b/new.cpp\n--- /dev/null\n+++ b/new.cpp\n@@ -0,0 +1 @@\n+h\n")
-        self.assertEqual(cc.parse_hunks(diff), {"x.cpp": [[3, 2], [9, 1], [20, 0]]})
+        self.assertEqual(cc.parse_hunks(diff), {"x.cpp": [[3, 2, 3, 1], [9, 1, 8, 2], [20, 0, 21, 1]], "new.cpp": [[0, 0, 1, 1]]})
 
     def test_fallbacks(self):
         self.assertTrue(self.plan(["editor/App.cpp"], cmap=None).mcp_ci)                    # no map
@@ -398,14 +417,13 @@ class Coverage(unittest.TestCase):
                     p = runs_dir / run / str(tree).lstrip("/") / f"{name}.gcda"
                     p.parent.mkdir(parents=True, exist_ok=True)
                     p.write_bytes(gcda(11, [], functions=functions))
-            data = coverage_map.collect(runs_dir, tree, root, lambda rel: gcno(objs[rel[:-len(".gcno")]]))
+            data = coverage_map.collect(runs_dir, tree, lambda rel: gcno(objs[rel[:-len(".gcno")]]))
             self.assertEqual(data["tests"], ["test_nothing.py", "test_x.py", "test_y.py"])
             self.assertEqual(data["editor_tests"], 2)
             self.assertEqual(data["sources"]["engine/core/A.cpp"]["functions"], [[1, 2, "6"], [3, 4, "2"]])
             self.assertEqual(data["sources"]["engine/core/B.cpp"]["functions"], [[1, 2, "6"], [3, 4, "2"], [5, 6, "0"]])
             self.assertEqual(data["sources"]["engine/core/Inl.h"]["functions"], [[5, 6, "2"]])
             self.assertNotIn("/usr/include/x.h", data["sources"])
-            self.assertEqual(data["sources"]["engine/core/A.cpp"]["blob"], "%s" % __import__("hashlib").sha1(b"blob 7\0int a;\n").hexdigest())
         finally:
             coverage_map.MIN_EDITOR_FUNCTIONS = old
             shutil.rmtree(tmp, ignore_errors=True)

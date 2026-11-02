@@ -126,8 +126,11 @@ class Changes:
     deleted: list[str] = field(default_factory=list)
     untracked: list[str] = field(default_factory=list)
     source: str = "git"            # git | rb.sh (build/.rb-changes.json)
-    hunks: dict[str, list[list[int]]] = field(default_factory=dict)   # file -> [first base line, lines]
-    base_blobs: dict[str, str] = field(default_factory=dict)          # file -> its git blob id in the base
+    # `git diff -U0` of the change, and of the coverage map's commit to this tree: file -> [[first line,
+    # lines in the old, first line, lines in the new], ...]
+    hunks: dict[str, list[list[int]]] = field(default_factory=dict)
+    map_commit: str = ""
+    map_diff: dict[str, list[list[int]]] = field(default_factory=dict)
 
 
 def find_base(explicit: str | None, cwd: Path = ROOT) -> tuple[str, str]:
@@ -151,17 +154,12 @@ def git_changes(explicit_base: str | None, cwd: Path = ROOT) -> Changes:
         if kind.startswith("D"):
             deleted.append(path)
     untracked = [p for p in git("ls-files", "--others", "--exclude-standard", cwd=cwd).splitlines() if p]
-    blobs = {}
-    for line in git("ls-tree", "-r", base, cwd=cwd).splitlines():
-        meta, _, path = line.partition("\t")
-        if path in files:
-            blobs[path] = meta.split()[2]
     return Changes(base, how, sorted(set(files + untracked)), sorted(deleted), sorted(untracked), "git",
-                   parse_hunks(git("diff", "-U0", "--no-renames", base, cwd=cwd)), blobs)
+                   parse_hunks(git("diff", "-U0", "--no-renames", base, cwd=cwd)))
 
 
 def parse_hunks(diff: str) -> dict[str, list[list[int]]]:
-    """`git diff -U0`: file -> [first line in the base, lines in the base], the changed lines."""
+    """`git diff -U0`: file -> [[first line, lines in the old side, first line, lines in the new side], ...]."""
     hunks: dict[str, list[list[int]]] = {}
     current = None
     for line in diff.splitlines():
@@ -169,13 +167,36 @@ def parse_hunks(diff: str) -> dict[str, list[list[int]]]:
             current = None
         elif line.startswith("--- a/"):
             current = line[6:]
-        elif line.startswith("--- /dev/null"):
-            current = None
+        elif line.startswith("+++ b/") and current is None:
+            current = line[6:]
         elif line.startswith("@@ ") and current:
-            m = re.match(r"@@ -(\d+)(?:,(\d+))? ", line)
+            m = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? ", line + " ")
             if m:
-                hunks.setdefault(current, []).append([int(m.group(1)), int(m.group(2) or 1)])
+                hunks.setdefault(current, []).append([int(m.group(1)), int(m.group(2) or 1), int(m.group(3)), int(m.group(4) or 1)])
     return hunks
+
+
+def to_map_lines(hunks: list[list[int]], map_diff: list[list[int]]) -> list[tuple[int, int, bool]]:
+    """The change's lines in the coverage map's lines: (first, last, only new lines). The change's new
+    side is this tree; the map's diff takes this tree's lines to the map's commit: a line outside its
+    hunks moves by their offset, one inside is that hunk's old lines. A deletion is the place it was."""
+    def back(line: int) -> tuple[int, int]:
+        offset = 0
+        for old, old_count, new, new_count in map_diff:
+            first_new = new if new_count else new + 1   # (no new lines: it sits after that line)
+            if line < first_new:
+                break
+            if new_count and line < new + new_count:
+                return (old, old + max(old_count - 1, 0)) if old_count else (old, old + 1)
+            offset = (old + old_count - 1 if old_count else old) - (new + new_count - 1 if new_count else new)
+        return line + offset, line + offset
+    ranges = []
+    for old, old_count, new, new_count in hunks:
+        pure_addition = old_count == 0
+        lines = range(new, new + new_count) if new_count else range(new, new + 2)
+        points = [back(line) for line in (lines[0], lines[-1])]
+        ranges.append((min(p[0] for p in points), max(p[1] for p in points), pure_addition))
+    return ranges
 
 
 def read_changes(explicit_base: str | None, cwd: Path = ROOT, rb_file: Path = RB_CHANGES) -> Changes:
@@ -190,7 +211,7 @@ def read_changes(explicit_base: str | None, cwd: Path = ROOT, rb_file: Path = RB
                 raise LookupError(f"--base {explicit_base}: the diff rb.sh sent is the {data.get('base_ref')}")
             return Changes(data["base"], data.get("base_ref", "rb.sh"), sorted(set(data["files"])),
                            sorted(data.get("deleted", [])), sorted(data.get("untracked", [])), "rb.sh",
-                           data.get("hunks", {}), data.get("base_blobs", {}))
+                           data.get("hunks", {}), data.get("map_commit", ""), data.get("map_diff", {}))
         try:
             return git_changes(explicit_base, cwd)
         except (LookupError, RuntimeError):
@@ -513,8 +534,8 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
     # exactly which functions the change touches and who runs them
     for f in files:
         entry = (cmap or {}).get("sources", {}).get(f)
-        exact = entry and changes.base_blobs.get(f) == entry.get("blob") and \
-            not touched_functions(entry, changes.hunks.get(f), True)[1]
+        exact = entry and changes.map_commit == cmap.get("commit") and changes.hunks.get(f) and \
+            not touched_functions(entry, to_map_lines(changes.hunks[f], changes.map_diff.get(f, [])))[1]
         if f.startswith("editor/mcp/") and f.endswith(CXX) and (ROOT / f).is_file() and not exact:
             tools = set(TOOL_NAME.findall((ROOT / f).read_text(errors="replace")))
             for test, text in sources.items():
@@ -572,26 +593,21 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
                 plan.add_mcp(t, f"runs a game of the engine ({engine_runtime[0]} changed)")
 
 
-def touched_functions(entry: dict, hunks: list[list[int]] | None, exact: bool) -> tuple[list[list], bool]:
-    """The map's functions of a file a diff touches, and whether that is the whole file: its lines are
-    not the map's (exact False: the file differs from the map's commit), or a hunk has a line outside
-    every function the map knows (a declaration, a type, a macro: anything may depend on it)."""
+def touched_functions(entry: dict, ranges: list[tuple[int, int, bool]] | None) -> tuple[list[list], bool]:
+    """The map's functions of a file a diff touches, and whether that is the whole file: no lines
+    (the map's commit is not this tree's history), or a changed line outside every function the map
+    knows (a declaration, a type, a macro: anything may depend on it). Only new lines outside the
+    functions touch nothing old: a new function counts through its callers' changes."""
     functions = entry["functions"]
-    if not exact or not hunks:
+    if not ranges:
         return functions, True
     touched = []
-    for first, count in hunks:
-        # (no lines: an insertion after that line)
-        lines = range(first, first + count) if count else range(first, first + 2)
-        for line in lines:
-            hit = [f for f in functions if f[0] <= line <= f[1]]
-            if not hit:
-                if count:
-                    return functions, True
-                continue
-            touched += hit
-    if not touched:
-        return functions, True
+    for first, last, only_new in ranges:
+        hit = [f for f in functions if f[0] <= last and first <= f[1]]
+        inside = all(any(f[0] <= line <= f[1] for f in hit) for line in (first, last))
+        if not inside and not only_new:
+            return functions, True
+        touched += hit
     return touched, False
 
 
@@ -618,11 +634,15 @@ def select_by_map(changes: Changes, code: list[str], cmap: dict, sources: dict[s
         groups = []
         whole = True
         if entry:
-            exact = bool(entry.get("blob")) and changes.base_blobs.get(f) == entry.get("blob")
-            functions, whole = touched_functions(entry, changes.hunks.get(f), exact)
+            ranges = None
+            if changes.map_commit and changes.map_commit == cmap.get("commit") and changes.hunks.get(f):
+                ranges = to_map_lines(changes.hunks[f], changes.map_diff.get(f, []))
+            functions, whole = touched_functions(entry, ranges)
             groups.append((f, functions))
         if sibling and (whole or not entry):
             groups.append((f, sibling["functions"]))
+        if not whole and not any(functions for _, functions in groups):
+            continue   # (only new code: its callers' changes select)
         hit, common = 0, 0
         for _, functions in groups:
             for _first, _last, mask in functions:
@@ -812,6 +832,12 @@ def main(argv: list[str], root: Path | None = None) -> int:
     cmap = load_map(cpath)
     cmap_info = f"map {cpath} of {cmap.get('commit', '?')[:12]}" if cmap else f"no map at {cpath}"
     cmap_version = f"{cmap.get('commit', '')}:{cmap.get('created', '')}" if cmap else "none"
+    if cmap and changes.source == "git" and cmap.get("commit"):
+        # (a checkout with the history: the map's lines from git; through rb.sh, it sends them)
+        r = subprocess.run(["git", "diff", "-U0", "--no-renames", cmap["commit"], "--", *changes.files], cwd=str(ROOT),
+                           capture_output=True, text=True, errors="replace")
+        if r.returncode == 0:
+            changes.map_commit, changes.map_diff = cmap["commit"], parse_hunks(r.stdout)
     options = f"{args.base}"
     key = inputs_hash(changes, cmap_version, options, ROOT)
     if not args.no_cache and not args.dry_run:
