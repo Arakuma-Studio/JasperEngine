@@ -445,7 +445,14 @@ as anywhere. Each editor checks it renders where its chunk says (`JASPER_MCP_EXP
 NVIDIA, or llvmpipe), so a lane test never runs on llvmpipe unnoticed and no golden test runs on
 the GPU. `tools/mcp/gpu_lane.json` classes every graphics test file:
 
-GPU_LANE_TABLE
+| Class | Files | What |
+|---|---|---|
+| (a) `gpu` | 34 | relative or structural checks (a change between two renders, no black or NaN pixels, values, undo, saved files); each passed twice on the RTX; together 7,259 s of test time on llvmpipe under load, 1,223 s on the RTX: `animation_clip`, `animation_inspector`, `animation_record`, `animation_window`, `animator`, `async_shaders`, `atmosphere`, `atmosphere_editor`, `autosync`, `bake_vertex_animation`, `buoyancy`, `core_utilities`, `ecs`, `ecs_collision`, `fluid_agent`, `fluid_fixed`, `hot_reload`, `html_ui_docs`, `html_ui_tools`, `html_ui_video`, `html_ui_widgets`, `play`, `play_stop_gizmos`, `pose_animation`, `pose_runtime`, `post_fx_settings`, `scene_view_ui`, `shader_library_phase2_review`, `shadows_ui`, `stochastic_tiling`, `undo_ui`, `vat_baker_window`, `vat_inspector`, `water` |
+| (b) `llvmpipe` | 8 | compare with goldens drawn by llvmpipe, and the MCP suite has no per-renderer goldens (the unit tests' `isReferenceRenderer` and `hardwareTolerance` are C++ only), so they stay the reference: `html_ui_examples`, `lattice`, `materials_pbr`, `navigation`, `particles_tools`, `post_fx_golden`, `scene_view`, `shadows` |
+| (c) `other`, failed on the RTX | 9 | `fluid_inspector`, `fluid_effect`, `html_ui_effects`, `pose_render`, `upgrade_from_main`, `pose_window` (2/2), `reflection`, `place_with_physics`, `lattice_bake` (1/2): absolute thresholds, frame races, or real GPU differences not yet looked at; each file's reason is in `gpu_lane.json` |
+| (c) `other`, not on the lane | 77 | budgets or frame times of the software renderer, game builds, no renderer in use, or under a minute with nothing to gain (not validated) |
+
+Lane files run on one display per chunk, two at a time; a file holding one test that is not GPU-OK stays on llvmpipe whole, because its tests share an editor. Files not listed render nothing that matters and stay on llvmpipe.
 
 ## Where a test goes
 

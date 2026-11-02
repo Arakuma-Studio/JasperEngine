@@ -1,53 +1,518 @@
 {
- "about": "provisional: candidates under validation",
+ "about": "The MCP suite's graphics test files on the real-GPU lane (docs/testing.md, 'The real-GPU lane'). gpu: runs on the lane's GPU. llvmpipe: compares with goldens drawn by llvmpipe; the MCP suite has no per-renderer goldens. other: stays on llvmpipe, for the reason given. A file not listed renders nothing that matters and stays on llvmpipe.",
+ "validated": "run twice on H (RTX 3080 Ti, 1600x900 headless Xorg), BF16 2026-11-02",
  "tests": {
-  "test_stochastic_tiling.py": {
+  "test_animation_clip.py": {
    "class": "gpu",
-   "why": "candidate"
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
-  "test_fluid_effect.py": {
+  "test_animation_inspector.py": {
    "class": "gpu",
-   "why": "candidate"
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
-  "test_html_ui_effects.py": {
+  "test_animation_record.py": {
    "class": "gpu",
-   "why": "candidate"
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
-  "test_html_ui_docs.py": {
+  "test_animation_window.py": {
    "class": "gpu",
-   "why": "candidate"
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_animator.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_asset_identity_ui.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_assets.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_async_shaders.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_atmosphere.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
   "test_atmosphere_editor.py": {
    "class": "gpu",
-   "why": "candidate"
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
-  "test_buoyancy.py": {
+  "test_autosync.py": {
    "class": "gpu",
-   "why": "candidate"
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
   "test_bake_vertex_animation.py": {
    "class": "gpu",
-   "why": "candidate"
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_build.py": {
+   "class": "other",
+   "why": "not on the lane: builds games (the pinned shard); its time is the build"
+  },
+  "test_build_method.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_buoyancy.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_call_cli.py": {
+   "class": "other",
+   "why": "not on the lane: builds games (the pinned shard); its time is the build"
+  },
+  "test_character_controller.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_character_controller_2d.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_color_tools.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_console_locations.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_core_utilities.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_cpp_reload.py": {
+   "class": "other",
+   "why": "not on the lane: its time is a C++ compile, not rendering"
+  },
+  "test_crash.py": {
+   "class": "other",
+   "why": "not on the lane: hang and watchdog timing"
+  },
+  "test_dynamic_resolution.py": {
+   "class": "other",
+   "why": "not on the lane: driven by frame times"
+  },
+  "test_ecs.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_ecs_collision.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_engine_fixes_p2.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
   },
   "test_fluid_agent.py": {
    "class": "gpu",
-   "why": "candidate"
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_fluid_effect.py": {
+   "class": "other",
+   "why": "fails on the RTX 2/2: test_pinned_burst, the start burst's peak 13 against >= 150 (and the tests after it)"
   },
   "test_fluid_fixed.py": {
    "class": "gpu",
-   "why": "candidate"
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_fluid_inspector.py": {
+   "class": "other",
+   "why": "fails on the RTX 2/2: test_paint_dye_brush's dye amount, an absolute threshold measured on llvmpipe (3.6 against > 4)"
+  },
+  "test_hot_reload.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_html_ui_basic.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_html_ui_docs.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_html_ui_editor.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_html_ui_effects.py": {
+   "class": "other",
+   "why": "fails on the RTX 2/2: test_stateful_effects, the fog's standard deviation 0.0 against >= 4"
+  },
+  "test_html_ui_effects_export.py": {
+   "class": "other",
+   "why": "not on the lane: builds games (the pinned shard); its time is the build"
+  },
+  "test_html_ui_examples.py": {
+   "class": "llvmpipe",
+   "why": "each example against its golden (engine/tests/htmlui/golden/examples), drawn by llvmpipe"
+  },
+  "test_html_ui_export.py": {
+   "class": "other",
+   "why": "not on the lane: builds games (the pinned shard); its time is the build"
+  },
+  "test_html_ui_gamepad.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_html_ui_input.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_html_ui_integration.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_html_ui_lua.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_html_ui_phase2.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_html_ui_reload.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_html_ui_tools.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_html_ui_video.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_html_ui_video_export.py": {
+   "class": "other",
+   "why": "not on the lane: builds games (the pinned shard); its time is the build"
+  },
+  "test_html_ui_widgets.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_hub.py": {
+   "class": "other",
+   "why": "not on the lane: builds games (the pinned shard); its time is the build"
+  },
+  "test_input.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_input_actions.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_jobs_memory.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_jobs_memory_ui.py": {
+   "class": "other",
+   "why": "not on the lane: frame budget measured on the software renderer"
+  },
+  "test_lattice.py": {
+   "class": "llvmpipe",
+   "why": "golden/lattice_show_all.png, drawn by llvmpipe"
+  },
+  "test_lattice_anim.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_lattice_bake.py": {
+   "class": "other",
+   "why": "fails on the RTX 1/2: test_ball_bake, baked against live render 1.9% of the pixels apart"
+  },
+  "test_lattice_lua.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_lattice_review.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_lattice_review_editor.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_lattice_scene.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_lattice_ux.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_logging_ui.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_lua_threads.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_material_link_tint.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_materials_pbr.py": {
+   "class": "llvmpipe",
+   "why": "the Khronos models' goldens, drawn by llvmpipe"
+  },
+  "test_mesh_raycast.py": {
+   "class": "other",
+   "why": "not on the lane: its latency gate runs in headless Chrome"
+  },
+  "test_model_texture_paths.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_navigation.py": {
+   "class": "llvmpipe",
+   "why": "golden/navigation_overlay.png, drawn by llvmpipe"
+  },
+  "test_particles_editor.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_particles_lua.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_particles_tools.py": {
+   "class": "llvmpipe",
+   "why": "golden/particles, drawn by llvmpipe"
+  },
+  "test_physics_contacts_lua.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_place_with_physics.py": {
+   "class": "other",
+   "why": "fails on the RTX 1/2: test_screenshot and test_job_progress_and_cancel, which race a job against frames"
+  },
+  "test_play.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_play_startup_scenes.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_play_stop_gizmos.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_play_stop_overlays.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_playctl.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_pose_animation.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_pose_render.py": {
+   "class": "other",
+   "why": "fails on the RTX 2/2: test_poses_without_overlay, the model is not drawn"
+  },
+  "test_pose_runtime.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_pose_window.py": {
+   "class": "other",
+   "why": "fails on the RTX 2/2: test_save_while_previewing_writes_rest (at frame rates llvmpipe never reaches)"
+  },
+  "test_post_fx_golden.py": {
+   "class": "llvmpipe",
+   "why": "golden/post_fx, drawn by llvmpipe"
+  },
+  "test_post_fx_inspector_ui.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_post_fx_settings.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_post_process_inspector.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_post_processing_review_fixes.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_post_processing_two_views.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_post_processing_views.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_profiler.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_profiler_gpu_off.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_project_save.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_protocol.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_recorder.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_reflection.py": {
+   "class": "other",
+   "why": "fails on the RTX 1/2: test_codegen_golden, the generated C++ differs from the goldens"
+  },
+  "test_render_perf.py": {
+   "class": "other",
+   "why": "not on the lane: its budgets and measures are those of the software renderer"
+  },
+  "test_runtime_regressions.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_scene_inputs_editor.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_scene_view.py": {
+   "class": "llvmpipe",
+   "why": "golden/scene_view, drawn by llvmpipe"
+  },
+  "test_scene_view_ui.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_screenshot_waits.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_script_reload.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_search_organisation.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_shader_library.py": {
+   "class": "other",
+   "why": "not on the lane: the compile matrix uses no renderer"
+  },
+  "test_shader_library_editor.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_shader_library_phase2_editor.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_shader_library_phase2_inspector.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_shader_library_phase2_review.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_shadows.py": {
+   "class": "llvmpipe",
+   "why": "tools/fixtures/shadows/golden, drawn by llvmpipe"
+  },
+  "test_shadows_ui.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_splines.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_stochastic_tiling.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_stress.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_synthesize_texture.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_synthesize_texture_tool.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_texture_importer_ui.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_tool_conventions.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_trial_fixes.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_ui_anchors.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_ui_render_stats.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
+  },
+  "test_undo_ui.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_upgrade_from_main.py": {
+   "class": "other",
+   "why": "fails on the RTX 2/2: one upgrade check against the old editor's transcripts"
+  },
+  "test_vat_baker_window.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_vat_inspector.py": {
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
+  },
+  "test_vcs.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
   },
   "test_water.py": {
    "class": "gpu",
-   "why": "candidate"
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
-  "test_pose_render.py": {
-   "class": "gpu",
-   "why": "candidate"
-  },
-  "test_fluid_inspector.py": {
-   "class": "gpu",
-   "why": "candidate"
+  "test_world.py": {
+   "class": "other",
+   "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
   }
  }
 }
