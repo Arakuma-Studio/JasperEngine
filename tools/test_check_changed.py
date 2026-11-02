@@ -512,6 +512,16 @@ class Runs(unittest.TestCase):
         self.assertIn("FAILED", out)
         self.assertFalse((self.root / "build/.cache/check-changed.json").exists())
 
+    def test_keep_going_runs_the_tests_after_a_failure(self):
+        (self.root / "editor/App.cpp").write_text("int app = 7;\n")
+        os.environ["FAIL_TARGET"] = "linux"
+        code, out = self.run_main()
+        self.assertEqual(code, 1, out)
+        self.assertFalse([c for c in self.calls() if c.startswith("mcp-tests")])
+        code, out = self.run_main("--keep-going", "--no-cache")
+        self.assertEqual(code, 1, out)
+        self.assertTrue([c for c in self.calls() if c.startswith("mcp-tests")])
+
     def test_pass_is_cached_and_invalidated(self):
         (self.root / "editor/App.cpp").write_text("int app = 4;\n")
         code, out = self.run_main()

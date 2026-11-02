@@ -812,6 +812,7 @@ def main(argv: list[str], root: Path | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="print the plan only")
     ap.add_argument("--no-cache", action="store_true", help="run even when the same inputs passed before")
     ap.add_argument("-j", type=int, default=0, help="MCP editors at once (default: the CPUs / 2, at least 2)")
+    ap.add_argument("--keep-going", action="store_true", help="run the tests after a failed step (the exit code stays 1)")
     ap.add_argument("--list-mcp", type=Path, help="write the selected MCP test files here (one per line)")
     ap.add_argument("--root", type=Path, help="check this checkout instead of the one holding this script "
                     "(e.g. an older branch's worktree, with this check-changed)")
@@ -880,7 +881,7 @@ def main(argv: list[str], root: Path | None = None) -> int:
         env = dict(build_env, SKIP_ENGINE="1") if b == "linux" else dict(build_env)
         runner.run(f"build {b}", ["tools/build.sh", b], env)
     # 3. unit tests
-    if not runner.failed and "unit-tests" in plan.builds:
+    if (args.keep_going or not runner.failed) and "unit-tests" in plan.builds:
         if plan.unit_all:
             runner.run("unit tests (all)", ["tools/build.sh", "unit-tests"], build_env)
         else:
@@ -888,14 +889,14 @@ def main(argv: list[str], root: Path | None = None) -> int:
                 if names:
                     runner.run(f"unit tests ({suite}: {len(names)} suite(s))", ["tools/build.sh", "unit-tests"],
                                dict(build_env, UNIT_SUITE=suite, UNIT_TEST_ARGS=f"--gtest_filter={suite_filter(names)}"))
-    if not runner.failed and "htmlui-tests" in plan.builds:
+    if (args.keep_going or not runner.failed) and "htmlui-tests" in plan.builds:
         if plan.htmlui_all:
             runner.run("HTML UI tests (all)", ["tools/build.sh", "htmlui-tests"], build_env)
         elif plan.unit_htmlui:
             runner.run(f"HTML UI tests ({len(plan.unit_htmlui)} suite(s))", ["tools/build.sh", "htmlui-tests"],
                        dict(build_env, HTMLUI_TEST_ARGS=f"--gtest_filter={suite_filter(plan.unit_htmlui)}"))
     # 4. MCP tests
-    if not runner.failed and (plan.mcp_all or plan.mcp_ci or plan.mcp_files):
+    if (args.keep_going or not runner.failed) and (plan.mcp_all or plan.mcp_ci or plan.mcp_files):
         if "linux" not in plan.builds and not (ROOT / "build/linux/editor-install/bin/jasperengine-editor").exists():
             runner.run("build linux (the MCP tests' editor)", ["tools/build.sh", "linux"], dict(build_env, SKIP_ENGINE="1"))
         # (the container's CPUs, rb.sh's JOBS, for two each: LP_NUM_THREADS 2, docs/testing.md)
