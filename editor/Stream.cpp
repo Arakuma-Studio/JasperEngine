@@ -137,12 +137,26 @@ bool editor::Stream::decodeShaderKey(const YAML::Node& keyNode, ShaderKey& key) 
 }
 
 // Both directions normalize, keeping a since-retired property bit out of the file.
+// Built-in variants keep the set's order (type, then properties); variants of custom shaders
+// follow, ordered by the shader's name, not by its session-local customId (the order shaders
+// were registered in this session), so a second save writes the same list.
 YAML::Node editor::Stream::encodeShaderKeys(const std::set<ShaderKey>& shaderKeys) {
     YAML::Node node(YAML::NodeType::Sequence);
+    std::vector<std::pair<std::string, YAML::Node>> custom;
     for (ShaderKey rawKey : shaderKeys) {
-        YAML::Node entry = encodeShaderKey(ShaderPool::normalizeKey(rawKey));
-        if (entry.IsMap()) node.push_back(entry);
+        const ShaderKey key = ShaderPool::normalizeKey(rawKey);
+        YAML::Node entry = encodeShaderKey(key);
+        if (!entry.IsMap()) continue;
+        if (key.customId == 0) {
+            node.push_back(entry);
+            continue;
+        }
+        const std::string name = entry["customShader"] && entry["customShader"].IsScalar() ? entry["customShader"].Scalar() : std::string();
+        custom.emplace_back(name, entry);
     }
+    // stable: one shader's variants keep their (type, properties) order
+    std::stable_sort(custom.begin(), custom.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (const auto& item : custom) node.push_back(item.second);
     return node;
 }
 
