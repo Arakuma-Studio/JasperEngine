@@ -140,9 +140,9 @@ window badges queued, cooking and failed textures.
 - **Threads**: a model may load off the main thread next to the frames (the thumbnail strand, a
   game's `Engine.startAsyncThread`). `TextureDataPool` and `TexturePool` keep their maps under a lock
   of their own, held around the containers' operations alone; it costs nothing a frame reaches: a
-  steady frame makes no lookup in either, a binding a handful (`TextureDataPoolBench.Lookup`: 283-305 ns
-  a lookup without a lock, 298-303 ns with one uncontended; 100 meshes of 3 images each make 103 lookups
-  in a frame replacing one image they share). The GPU objects stay the frame's: that thread makes them
+  steady frame makes no lookup in either, a binding a handful (`TextureDataPoolBench.Lookup`, 2000 ids: 159-163 ns
+  a lookup without a lock, 164-174 ns with one uncontended; 100 meshes of 3 images each make 103 lookups
+  in a frame replacing one image). The GPU objects stay the frame's: that thread makes them
   only inside `Engine::executeSceneOnce`, under the frames' semaphore.
 
 ## Command line
