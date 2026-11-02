@@ -3109,11 +3109,14 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         }
     }
 
-    // The scene's own GameObjects only: the Scene view makes its icons (Sprites of one submesh),
-    // grid and gizmos in the scene's registry as system entities when it draws, so a save would
-    // otherwise depend on whether the scene was drawn
-    auto own = [](auto& array, size_t i) {
-        return array->getEntity(i) > EntityManager::lastSystemEntity();
+    // The scene's own GameObjects only (user ids, and a GameObject an old file gave a system id):
+    // the Scene view makes its icons (Sprites of one submesh), grid and gizmos in the scene's
+    // registry as system entities when it draws, so a save would otherwise depend on whether the
+    // scene was drawn
+    const std::unordered_set<Entity> tracked(sceneProject->entities.begin(), sceneProject->entities.end());
+    auto own = [&tracked](auto& array, size_t i) {
+        const Entity entity = array->getEntity(i);
+        return entity > EntityManager::lastSystemEntity() || tracked.count(entity) > 0;
     };
 
     auto meshes = sceneProject->scene->getComponentArray<MeshComponent>();
