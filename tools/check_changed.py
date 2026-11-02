@@ -34,7 +34,8 @@ unit and MCP tests that can see it; the full suite stays the gate of batch landi
 5. A pass is cached (build/.cache/check-changed.json) by a hash of the base, the diff, the
    untracked files, the build images' Dockerfiles, the map's version and this script; the same
    inputs reprint the last summary. A run during which the files changed caches nothing.
-6. Exit 1 when a step failed or a selected test could not run.
+6. Exit 1 when a step failed or a selected test could not run. Inside the Linux image the web and
+   Android builds are left out, and said to be (their images are the host's to run).
 """
 
 from __future__ import annotations
@@ -590,6 +591,7 @@ class Runner:
         self.steps: list[tuple[str, str, float]] = []
         self.failed = False
         self.unrunnable: list[str] = []
+        self.partial = False
 
     def mcp_results(self, label: str) -> None:
         """A selected MCP test that skipped could not run: a failure of the step (the full suite
@@ -749,8 +751,9 @@ def main(argv: list[str], root: Path | None = None) -> int:
         if b in ("unit-tests", "htmlui-tests"):
             continue
         if b in ("web", "android") and in_image():
-            runner.steps.append((f"build {b}", "CANNOT RUN (needs the host's Docker: run tools/check-changed there)", 0.0))
-            runner.failed = True
+            # (their images are not this one: the check goes on, its pass is not cached, and the summary says so)
+            runner.steps.append((f"build {b}", "SKIP (not in the Linux image: rb.sh <server> tools/check-changed builds it)", 0.0))
+            runner.partial = True
             continue
         env = dict(build_env, SKIP_ENGINE="1") if b == "linux" else dict(build_env)
         runner.run(f"build {b}", ["tools/build.sh", b], env)
@@ -798,6 +801,12 @@ def main(argv: list[str], root: Path | None = None) -> int:
             if files:
                 if "test_mesh_raycast.py" not in files:
                     mcp_env["MCP_SKIP_WEB_BUILD"] = "1"
+                elif in_image():
+                    # (its latency gate loads a web build, which this image cannot make)
+                    runner.unrunnable.append("test_mesh_raycast.py: needs the web image: run on the host")
+                    runner.failed = True
+                    files = [f for f in files if f != "test_mesh_raycast.py"]
+                    mcp_env["MCP_SKIP_WEB_BUILD"] = "1"
                 if len(files) > LARGE_SELECTION:
                     print(f"[check-changed] {len(files)} files: je-remote/mcp-shard.sh --select <--list-mcp's file> runs them "
                           "across servers (from the machine that has rb.sh)", flush=True)
@@ -815,7 +824,9 @@ def main(argv: list[str], root: Path | None = None) -> int:
     lines.append(GAP)
     summary = "\n".join(lines)
     print(summary, flush=True)
-    if not runner.failed:
+    if runner.partial:
+        print("[check-changed] a build was left out (above): the pass is not cached", flush=True)
+    elif not runner.failed:
         if inputs_hash(changes, cmap_version, options, ROOT) == key and \
                 read_changes(args.base, ROOT, RB_CHANGES).files == changes.files:
             store(key, summary, CACHE_FILE)

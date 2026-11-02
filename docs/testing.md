@@ -370,8 +370,8 @@ rb.sh A --img tools/check-changed        # inside the Linux image (no web or And
   everything).
 - Inside the Linux image `tools/build.sh` has no Docker to call and runs the image's own targets
   directly, with the same environment (`rb.sh <S> --img 'tools/build.sh ...'`, and so `rb.sh L --img`
-  on this host); a target of another image (web, Android) exits 3 and check-changed reports it as
-  a step that could not run.
+  on this host); a target of another image (web, Android) exits 3; check-changed there leaves those
+  builds out, says so in its summary and caches no pass.
 - Its tests: `python3 -I tools/test_check_changed.py` (the diff and its fallbacks, the build plan,
   the suites from a synthetic `ninja -t deps`, the MCP selection from a synthetic map, the gcda
   reader, the cache and its invalidation, the exit codes).

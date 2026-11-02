@@ -386,6 +386,21 @@ class Runs(unittest.TestCase):
         self.assertIn("builds: linux", out)
         self.assertEqual(self.calls(), [])
 
+    def test_in_the_image_web_is_left_out_and_said_to_be(self):
+        (self.root / "engine/core/Foo.cpp").write_text("int foo() { return 9; }\n")
+        real = cc.in_image
+        cc.in_image = lambda: True
+        try:
+            code, out = self.run_main()
+        finally:
+            cc.in_image = real
+        self.assertEqual(code, 0, out)
+        self.assertIn("SKIP (not in the Linux image", out)
+        self.assertIn("the pass is not cached", out)
+        self.assertFalse((self.root / "build/.cache/check-changed.json").exists())
+        self.assertFalse([c for c in self.calls() if c.startswith("web")])
+        self.assertTrue([c for c in self.calls() if c.startswith("linux")])
+
     def test_failure_exits_1_and_is_not_cached(self):
         (self.root / "editor/App.cpp").write_text("int app = 3;\n")
         os.environ["FAIL_TARGET"] = "linux"
