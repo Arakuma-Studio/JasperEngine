@@ -4,6 +4,7 @@
 #include "ShaderGlobals.h"
 
 #include "Log.h"
+#include "pool/TextureDataPool.h"
 #include "render/TextureRender.h"
 #include "texture/Framebuffer.h"
 #include "util/Color.h"
@@ -28,6 +29,10 @@ namespace {
         // the GPU texture `texture` resolved to (file textures: once per value, cached), or a
         // load that failed (the fallback binds until the value changes; warned once)
         TextureRender* resolved = nullptr;
+        // the texture pool's replace epoch `resolved` was read at: a progressive load's full
+        // resolution (oe-port's cooked textures, S14), a budget reload or a hot reload swaps the
+        // pool entry, whose GPU texture is another one; resolved again then
+        uint32_t resolvedEpoch = 0;
         bool textureFailed = false;
         // logged once per global: a refused setter, a truncated array
         bool warnedKind = false;
@@ -581,8 +586,9 @@ TextureRender* ShaderGlobals::getTextureRender(int id, bool cube, TextureRender*
     }
     if (entry->textureFailed)
         return fallback;
-    if (entry->resolved)
+    if (entry->resolved && entry->resolvedEpoch == TextureDataPool::getReplaceEpoch())
         return entry->resolved->isCreated() ? entry->resolved : fallback;
+    entry->resolved = nullptr;
     // resolved once per value: loading, then the pool's texture (or a failure, remembered)
     const TextureLoadResult result = entry->texture.load();
     if (result.state == ResourceLoadState::Loading)
@@ -597,6 +603,7 @@ TextureRender* ShaderGlobals::getTextureRender(int id, bool cube, TextureRender*
     if (!render)
         return fallback;
     entry->resolved = render;
+    entry->resolvedEpoch = TextureDataPool::getReplaceEpoch();
     return render->isCreated() ? render : fallback;
 }
 

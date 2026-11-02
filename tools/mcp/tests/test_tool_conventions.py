@@ -85,6 +85,10 @@ PREDATING_NAMES = {
     "update_material", "update_script_entry", "view_asset", "wait", "write_file",
 }
 
+# Upstream's tools (origin/main, absorbed by SYNC#4) keep upstream's names: its scripts, docs and
+# tests call them so (audio-mixer, native-bridge, PlayerPrefs)
+UPSTREAM_NAMES = {"audio_mixer", "native_plugins", "user_settings"}
+
 
 def schema_problems(schema, path: str, top: bool = False) -> list[str]:
     out: list[str] = []
@@ -132,7 +136,7 @@ def tool_problems(tool, known_groups: set[str]) -> list[str]:
     out: list[str] = []
     if not SNAKE.fullmatch(name):
         out.append(f"{name}: tool names are snake_case")
-    elif name not in PREDATING_NAMES and name.split("_")[0] not in VERBS:
+    elif name not in PREDATING_NAMES and name not in UPSTREAM_NAMES and name.split("_")[0] not in VERBS:
         out.append(f"{name}: a new tool's name is verb_noun (get_, list_, set_, create_, delete_, edit_...)")
     if not (tool.description or "").strip():
         out.append(f"{name}: no description")

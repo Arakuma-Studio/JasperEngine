@@ -84,6 +84,11 @@ namespace jasperengine::editor::reflect {
             ops.skip = skip;
             return ops;
         }
+        // the same ops with another JSON Schema
+        constexpr TypeOps withSchema(TypeOps ops, Json (*schema)(const FieldDesc&)) {
+            ops.schema = schema;
+            return ops;
+        }
         constexpr TypeOps withStatements(TypeOps ops, void (*statements)(const FieldDesc&, const void*, const std::string&,
                                                                          const CodegenContext&, std::string&)) {
             ops.cppStatements = statements;
@@ -180,6 +185,7 @@ namespace jasperengine::editor::reflect {
         Json colorWriteSchema(const FieldDesc&);
         Json uintSchema(const FieldDesc&);
         Json numberSchema(const FieldDesc&);
+        Json numberOrNullSchema(const FieldDesc&);
         Json vector2Schema(const FieldDesc&);
         Json vector3Schema(const FieldDesc&);
         Json vector4Schema(const FieldDesc&);
@@ -207,6 +213,9 @@ namespace jasperengine::editor::reflect {
         bool shaderTexturesFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         YAML::Node shaderFeaturesToYaml(const FieldDesc&, const void*, const EncodeContext&);
         bool shaderFeaturesFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
+        YAML::Node shaderGlobalBindingsToYaml(const FieldDesc&, const void*, const EncodeContext&);
+        bool shaderGlobalBindingsFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
+        bool skipEmptyShaderGlobalBindings(const FieldDesc&, const void* value);
         std::string charScalar(const FieldDesc&, const void*);
         bool charFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         std::string charLiteral(const FieldDesc&, const void*, const CodegenContext&);
@@ -247,6 +256,9 @@ namespace jasperengine::editor::reflect {
             &detail::construct<float>, &detail::destroy<float>, &detail::copy<float>, &detail::equalFloat,
             &detail::floatToYaml, &detail::floatFromYaml, nullptr, nullptr, nullptr, false, &detail::floatLiteral, &detail::numberSchema,
             &detail::finiteFloat}, &detail::floatScalar);
+        // a float whose infinity is a value (a joint's break force and torque, a drive's force limits:
+        // none): MCP reads an infinite one as null, which its schema takes too
+        inline constexpr TypeOps FloatOrInfinity = detail::withSchema(Float, &detail::numberOrNullSchema);
         // written only when finite (Stream::encodeFinite); a non-finite or unreadable value keeps
         // the base (made finite: Stream::decodeFinite)
         inline constexpr TypeOps FiniteFloat = detail::withScalar(TypeOps{"float", Kind::Float, PropertyType::Float, sizeof(float),
@@ -400,6 +412,13 @@ namespace jasperengine::editor::reflect {
             &detail::construct<std::vector<std::string>>, &detail::destroy<std::vector<std::string>>, &detail::copy<std::vector<std::string>>,
             &detail::equalByOperator<std::vector<std::string>>, &detail::shaderFeaturesToYaml, &detail::shaderFeaturesFromYaml,
             nullptr, nullptr, nullptr, false, nullptr, &detail::customSchema};
+        // shaderGlobalBindings: {member: global} (shader globals), written only when it binds one
+        inline constexpr TypeOps ShaderGlobalBindings{"ShaderGlobalBindings", Kind::Custom, PropertyType::Custom,
+            sizeof(jasperengine::ShaderGlobalBindings), &detail::construct<jasperengine::ShaderGlobalBindings>,
+            &detail::destroy<jasperengine::ShaderGlobalBindings>, &detail::copy<jasperengine::ShaderGlobalBindings>,
+            &detail::equalByOperator<jasperengine::ShaderGlobalBindings>, &detail::shaderGlobalBindingsToYaml,
+            &detail::shaderGlobalBindingsFromYaml, nullptr, nullptr, &detail::skipEmptyShaderGlobalBindings, false, nullptr,
+            &detail::customSchema};
 
         template<typename E>
         inline constexpr TypeOps Enum = detail::withScalar(TypeOps{"enum", Kind::Enum, PropertyType::Enum, sizeof(E),

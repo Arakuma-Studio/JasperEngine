@@ -94,8 +94,11 @@ class Ui:
 
     async def project_file(self, name: str, folders=("assets", "physics")):
         await self.ed.call("focus_window", window="project")
-        for _ in range(12):
+        # by the clock: frames can run far ahead of the window's first listing of its folder
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
             await self.frames(4)
+            await asyncio.sleep(0.1)
             items = self.ed.ui_items()
             rect = items.get("project.file." + name)
             if rect:

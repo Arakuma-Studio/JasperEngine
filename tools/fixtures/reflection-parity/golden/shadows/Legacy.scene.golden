@@ -1,4 +1,4 @@
-formatVersion: 6
+formatVersion: 7
 guid: b4603f423740bf430d1fe579010f6fd8
 id: 2
 name: Legacy
@@ -40,11 +40,6 @@ maxValues:
   maxExternalBuffers: 0
   maxSpriteFrames: 0
   maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: blit
   - type: shadowcache

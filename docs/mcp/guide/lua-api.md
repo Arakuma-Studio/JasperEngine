@@ -849,6 +849,9 @@ script that requires it:
 ```lua
 -- lua/data/items.lua
 return { sword = { damage = 12, price = 30 }, shield = { armor = 5, price = 25 } }
+```
+
+```lua
 -- in a script
 local Items = require("data.items")
 local price = Items.sword.price
@@ -1265,7 +1268,7 @@ local co = Timer.run(function()              -- a coroutine the scheduler drives
     Timer.waitFixedStep()                    -- one fixed update
     Timer.waitUntil(function() return self.ready end)   -- checked once per frame
 end, { owner = self })
-h:cancel(); h:isActive(); h:isDone(); h.remaining; h.interval; h.unscaled; h.id
+local _ = h:cancel(), h:isActive(), h:isDone(), h.remaining, h.interval, h.unscaled, h.id
 co:cancel(); co:isActive(); Timer.cancelAll(self)
 ```
 
@@ -1992,7 +1995,7 @@ self.player:crossFade("Hit", 0.05)          -- on an additive layer: over whatev
 local animator = GameObject(self.scene, self.entity):getAnimator()
 animator:setFloat("Speed", speed)
 animator:setTrigger("Jump")
-if animator:getCurrentStateInfo(0).name == "Land" then ... end
+if animator:getCurrentStateInfo(0).name == "Land" then --[[ ... ]] end
 function Hero:onStateEnter(layer, name) print("entered", layer, name) end
 ```
 

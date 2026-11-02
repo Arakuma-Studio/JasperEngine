@@ -22,6 +22,7 @@
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
 #include "DebugSettings.h"
+#include "Generator.h"
 #include "audio/AudioMixer.h"
 #include "util/ShaderGlobalsJson.h"
 #include "reflect/Reflect.h"
@@ -1753,6 +1754,32 @@ std::vector<Setting> mcpSettingsTable() {
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
                         [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));
         add(layerCollisionSetting("physics.layer_collision_matrix", true));
+        // the 3D world capacity (worlds made from now on: the next Play, exported builds): upstream's
+        // physics-3d keys (Project Settings > Physics > 3D World Capacity)
+        struct CapacityKey { const char* key; const char* description; unsigned int Physics3DWorldSettings::* field; };
+        static const CapacityKey capacityKeys[] = {
+            {"physics.max_bodies", "Bodies a 3D world holds (default 8192); past it new bodies are refused with an error naming this setting.", &Physics3DWorldSettings::maxBodies},
+            {"physics.max_body_pairs", "Touching body pairs a 3D world tracks (default 8192); past it contacts are dropped and reported once.", &Physics3DWorldSettings::maxBodyPairs},
+            {"physics.max_contact_constraints", "Contact constraints of a 3D world (default 8192); past it contacts are dropped and reported once.", &Physics3DWorldSettings::maxContactConstraints}};
+        for (const CapacityKey& capacity : capacityKeys) {
+            Setting s;
+            s.key = capacity.key;
+            s.type = "int";
+            s.description = capacity.description;
+            unsigned int Physics3DWorldSettings::* field = capacity.field;
+            s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getPhysics3DWorldSettings().*field); };
+            s.set = [field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 16, 8388607, v, error)) return false;
+                if (apply) {
+                    Physics3DWorldSettings world = ctx.project()->getPhysics3DWorldSettings();
+                    world.*field = static_cast<unsigned int>(v);
+                    ctx.project()->setPhysics3DWorldSettings(world);
+                }
+                return true;
+            };
+            add(s);
+        }
         add(boolSetting("physics2d.enabled", "2D physics (Box2D). Off leaves Rigidbody2Ds and joints out of builds.",
                         [](Project& p) { return p.isPhysics2DEnabled(); }, [](Project& p, bool v) { p.setPhysics2DEnabled(v); }));
         add(layerCollisionSetting("physics2d.layer_collision_matrix", false));
@@ -2079,10 +2106,23 @@ std::vector<Setting> mcpSettingsTable() {
                 Project* p = ctx.project();
                 std::string text;
                 if (!readString(value, text, error)) return false;
+                // a plain project-relative folder: no absolute path, no ".." (even one that comes
+                // back in), no hidden or editor-owned folder (upstream's round 9 checks)
+                if (const std::string why = mcp::McpRefs::rootValueRefusal(text); !why.empty()) {
+                    error = why + ": an asset root is a folder of the project, given project-relative without '..'";
+                    return false;
+                }
                 fs::path dir = text.empty() ? fs::path(".") : FileUtils::pathFromUtf8(text).lexically_normal();
                 if (dir != ".") {
                     fs::path absolute;
+                    // the referenced files are moved there, and it becomes a trusted root: inside the
+                    // project directory itself once links are resolved (never via the current
+                    // assets directory's link)
                     if (!mcp::McpRefs::resolveProjectPath(p, text, absolute, error)) return false;
+                    if (const std::string escape = mcp::McpRefs::projectOnlyEscape(p, absolute); !escape.empty()) {
+                        error = escape;
+                        return false;
+                    }
                 }
                 if (ctx.isPlaying()) {
                     error = "cannot change asset roots during Play";
@@ -2090,7 +2130,7 @@ std::vector<Setting> mcpSettingsTable() {
                 }
                 if (apply) {
                     std::error_code ec;
-                    fs::create_directories(p->getProjectPath() / dir, ec);
+                    FileUtils::createDirectories(p->getProjectPath() / dir, ec);
                     if (lua) p->changeAssetRoots(p->getAssetsDir(), dir);
                     else p->changeAssetRoots(dir, p->getLuaDir());
                 }
@@ -2529,6 +2569,12 @@ std::vector<Setting> mcpSettingsTable() {
             s.set = [member](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                 std::string text;
                 if (!readString(value, text, error)) return false;
+                // the generator is a name CMake must recognise (it drives the build command): an
+                // arbitrary string is refused, never stored (upstream's round 9)
+                if (member == &LocalBuildSettings::generator && !text.empty() && !Generator::isKnownGenerator(text)) {
+                    error = "not a CMake generator name (e.g. \"Ninja\", \"Unix Makefiles\", \"Visual Studio 17 2022\")";
+                    return false;
+                }
                 if (apply) {
                     const fs::path file = ctx.project()->getProjectPath() / "project.yaml";
                     LocalBuildSettings build = AppSettings::getBuildSettings(file);
@@ -2695,6 +2741,9 @@ const Placement placements[] = {
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
     {"physics.enabled", "Physics", "", "3D Physics", "jolt rigidbody"},
     {"physics.layer_collision_matrix", "Physics", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
+    {"physics.max_bodies", "Physics", "3D World Capacity", "Max Bodies", "jolt capacity limit rigidbodies"},
+    {"physics.max_body_pairs", "Physics", "3D World Capacity", "Max Body Pairs", "jolt capacity limit contacts"},
+    {"physics.max_contact_constraints", "Physics", "3D World Capacity", "Max Contact Constraints", "jolt capacity limit contacts"},
     {"physics2d.enabled", "Physics 2D", "", "2D Physics", "box2d rigidbody 2d"},
     {"physics2d.layer_collision_matrix", "Physics 2D", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"navigation.include_in_builds", "Navigation", "", "Include in Builds", "navmesh recast detour strip export"},

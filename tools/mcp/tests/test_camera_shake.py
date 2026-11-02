@@ -58,10 +58,11 @@ async def test_a_shaker_and_its_validation(ed: Editor):
     got = await ed.call("get_entity", scene=s["scene"], entity=s["camera"], components=["camerashaker"])
     shaker = got["components"]["camerashaker"]
     ed.check_eq((shaker["global"], shaker["mode"], shaker["traumaPower"]), (True, "auto", 2.0), f"defaults: {shaker}")
+    # the ranges are the S08 table's (oe-port's range text: "in 1..4", "at least 0")
     await ed.check_error("set_properties", scene=s["scene"], entity=s["camera"],
-                         values={"camerashaker": {"traumaPower": 9}}, contains="1 to 4")
+                         values={"camerashaker": {"traumaPower": 9}}, contains="1..4")
     await ed.check_error("set_properties", scene=s["scene"], entity=s["camera"],
-                         values={"camerashaker": {"positionScale": -1}}, contains="0 or more")
+                         values={"camerashaker": {"positionScale": -1}}, contains="at least 0")
     await ed.check_error("set_properties", scene=s["scene"], entity=s["camera"],
                          values={"camerashaker": {"startPreset": "kaboom"}}, contains="built-in")
     await ed.check_error("set_properties", scene=s["scene"], entity=s["camera"],

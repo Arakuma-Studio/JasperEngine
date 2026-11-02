@@ -120,9 +120,9 @@ def main() -> int:
         if proxy == "emission":
             lines.append("---@field burstCount integer")
         lines.append("")
-    lines.append("---@class ParticleSystem")
-    for proxy, _ in PROXIES:
-        lines.append(f"---@field {proxy} {class_name(proxy)}")
+    # the ParticleSystem class's module fields are its binding stub's (ParticleSystem.lua: the lua_api
+    # parser's PROPERTY_OVERRIDES type them as these classes); declared here too, LuaLS reports
+    # every one as a duplicate-doc-field
     text = "\n".join(lines).rstrip("\n") + "\n"
     if "--check" in sys.argv:
         current = OUT.read_text(encoding="utf-8") if OUT.exists() else ""

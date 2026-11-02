@@ -270,6 +270,7 @@ namespace {
         JE_FIELD(PointsComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(PointsComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
+        JE_FIELD(PointsComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(PointsComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
@@ -286,6 +287,7 @@ namespace {
         JE_FIELD(LineRendererComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(LineRendererComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
+        JE_FIELD(LineRendererComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(LineRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
@@ -401,7 +403,8 @@ namespace {
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::customSchema};
 
     constexpr FieldDesc kScriptFields[] = {
-        JE_FIELD(ScriptComponent, scripts, .ops = &kScriptEntriesOps, .flags = NoDefault | Hidden),
+        // an enabled change runs onEnable / onDisable in Play (Catalog::updateEntity: UpdateFlags_Script_Enabled, as upstream's Catalog)
+        JE_FIELD(ScriptComponent, scripts, .ops = &kScriptEntriesOps, .flags = NoDefault | Hidden, .updateFlags = UpdateFlags_Script_Enabled),
     };
 
     // A script property's value and its default (the script's declared one)
@@ -445,7 +448,7 @@ namespace {
         if (pos + 1 >= path.size() || path[pos] != ']' || path[pos + 1] != '.' || index >= script.scripts.size()) return PropertyData();
         ScriptEntry& entry = script.scripts[index];
         const std::string field = path.substr(pos + 2);
-        if (field == "enabled") return {PropertyType::Bool, UpdateFlags_None, nullptr, &entry.enabled};
+        if (field == "enabled") return {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, &entry.enabled};
         for (ScriptProperty& prop : entry.properties) {
             if (prop.name == field) return scriptProperty(prop);
             if (prop.type == ScriptPropertyType::EntityReference && field == prop.name + ".sceneId") return sceneIdProperty(prop);
@@ -459,7 +462,7 @@ namespace {
         for (size_t i = 0; i < script.scripts.size(); i++) {
             ScriptEntry& entry = script.scripts[i];
             const std::string prefix = "scripts[" + std::to_string(i) + "].";
-            out[prefix + "enabled"] = {PropertyType::Bool, UpdateFlags_None, nullptr, &entry.enabled};
+            out[prefix + "enabled"] = {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, &entry.enabled};
             for (ScriptProperty& prop : entry.properties) {
                 out[prefix + prop.name] = scriptProperty(prop);
                 if (prop.type == ScriptPropertyType::EntityReference) out[prefix + prop.name + ".sceneId"] = sceneIdProperty(prop);
@@ -528,7 +531,7 @@ const ComponentDesc kModelDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kPointsKnownKeys[] = {"autoTransparency", "blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "framesRect", "maxPoints", "points", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil", "texture", "transparent"};
+    constexpr const char* kPointsKnownKeys[] = {"autoTransparency", "blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "framesRect", "maxPoints", "points", "shaderFeatures", "shaderGlobalBindings", "shaderTextures", "shaderUniforms", "stencil", "texture", "transparent"};
 
 }
 

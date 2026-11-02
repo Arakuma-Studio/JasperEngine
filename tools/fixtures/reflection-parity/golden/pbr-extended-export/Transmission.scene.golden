@@ -1,4 +1,4 @@
-formatVersion: 6
+formatVersion: 7
 guid: 33f66ffad68db21b96d301737b305bed
 id: 1966622498
 name: Transmission
@@ -60,17 +60,17 @@ shaderKeys:
   - type: blit
   - type: shadowcache
   - type: mesh
-    properties: 1114
-    customShader: builtin:lit#USE_LIT_QUALITY
-  - type: mesh
-    properties: 8589935706
-    customShader: builtin:lit#USE_LIT_QUALITY
-  - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
   - type: mesh
     properties: 8589935704
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
+    properties: 1114
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 8589935706
+    customShader: builtin:lit#USE_LIT_QUALITY
 entities:
   - type: Entity
     entity: 1001

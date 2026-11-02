@@ -820,6 +820,9 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"body_type", &tableOptions(reflect::enums::kBodyType)},
         {"collider2d_type", &tableOptions(reflect::enums::kCollider2DType)},
         {"collider3d_type", &tableOptions(reflect::enums::kCollider3DType)},
+        {"rigidbody_interpolation", &tableOptions(reflect::enums::kRigidbodyInterpolation)},
+        {"joint_motion", &tableOptions(reflect::enums::kJointMotion)},
+        {"swing_type", &tableOptions(reflect::enums::kJointSwingType)},
         {"light_type", &tableOptions(reflect::enums::kLightType)},
         {"camera_type", &tableOptions(reflect::enums::kCameraType)},
         {"camera_shake_mode", &cameraShakeModeOptions()},
@@ -3650,7 +3653,10 @@ std::string McpValues::propertyNamesText(SceneProject* scene, Entity entity, Com
     size_t count = 0;
     if (!scene || !scene->scene) return text;
     unsigned int usedSubmeshes = 0;
-    if (MeshComponent* mesh = scene->scene->findComponent<MeshComponent>(entity)) usedSubmeshes = mesh->numSubmeshes;
+    // (a Sprite's first submesh exists before its first update sets the count)
+    if (MeshComponent* mesh = scene->scene->findComponent<MeshComponent>(entity)) {
+        usedSubmeshes = std::max(mesh->numSubmeshes, scene->scene->findComponent<SpriteComponent>(entity) ? 1u : 0u);
+    }
     for (const auto& [name, property] : Catalog::findEntityProperties(scene->scene, entity, component)) {
         if (component == ComponentType::MeshComponent && name.compare(0, 10, "submeshes[") == 0 &&
             std::strtoul(name.c_str() + 10, nullptr, 10) >= usedSubmeshes) {

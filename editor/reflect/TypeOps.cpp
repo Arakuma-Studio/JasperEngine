@@ -602,6 +602,23 @@ bool reflect::detail::shaderFeaturesFromYaml(const FieldDesc&, const YAML::Node&
     }
 }
 
+YAML::Node reflect::detail::shaderGlobalBindingsToYaml(const FieldDesc&, const void* value, const EncodeContext&) {
+    return Stream::encodeShaderGlobalBindings(*static_cast<const jasperengine::ShaderGlobalBindings*>(value));
+}
+
+bool reflect::detail::shaderGlobalBindingsFromYaml(const FieldDesc&, const YAML::Node& node, void* value, const DecodeContext&, std::string& reason) {
+    try {
+        *static_cast<jasperengine::ShaderGlobalBindings*>(value) = Stream::decodeShaderGlobalBindings(node);
+        return true;
+    } catch (const YAML::Exception& e) {
+        return unreadable(node, e.msg, reason);
+    }
+}
+
+bool reflect::detail::skipEmptyShaderGlobalBindings(const FieldDesc&, const void* value) {
+    return static_cast<const jasperengine::ShaderGlobalBindings*>(value)->empty();
+}
+
 std::string reflect::detail::charScalar(const FieldDesc&, const void* value) {
     return std::string(1, *static_cast<const char*>(value));
 }

@@ -308,16 +308,7 @@ bool hasUnsaved(const Json& state) {
 // scripting.lua_dir): "" when it is a plain project-relative folder, else why it isn't (absolute,
 // a drive, or a ".." step: a root out of the project folder is one only the user sets)
 std::string rootValueRefusal(const std::string& text) {
-    const fs::path value = FileUtils::pathFromUtf8(text);
-    if (value.is_absolute() || value.has_root_name() || value.has_root_directory()) return "\"" + text + "\" is absolute";
-    for (const fs::path& part : value) {
-        if (part == "..") return "\"" + text + "\" has a '..' step";
-        // an editor-owned or hidden folder (.jasperengine, .trash, .git ...) is never an asset root
-        const std::string name = safewrite::comparableName(part);
-        if (!name.empty() && name[0] == '.' && name != ".") return "\"" + text + "\" goes through the hidden folder " + FileUtils::pathToUtf8(part);
-        if (safewrite::isProjectFileName(part) || name == "cmakelists.txt") return "\"" + text + "\" names a file the editor owns";
-    }
-    return std::string();
+    return McpRefs::rootValueRefusal(text);
 }
 
 // A project opened or created over MCP whose project.yaml points its assets or Lua folder out of

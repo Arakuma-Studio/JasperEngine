@@ -110,7 +110,8 @@ def pixel(path: Path, x: int, y: int) -> tuple[int, int, int, int]:
 
 
 def files_under(project: Path) -> set[str]:
-    return {p.relative_to(project).as_posix() for p in (project / "assets").rglob("*") if p.is_file()}
+    # (the assets' S04 .meta sidecars aside: the asset database writes them for every file)
+    return {p.relative_to(project).as_posix() for p in (project / "assets").rglob("*") if p.is_file() and p.suffix != ".meta"}
 
 
 async def gen(ed: Editor, **args):

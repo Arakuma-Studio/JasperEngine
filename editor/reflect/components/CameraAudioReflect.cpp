@@ -126,19 +126,28 @@ namespace {
         // the loaded clip's: read only
         // upstream (audio-mixer): written only when not their default; the priority and the voice
         // limit read clamped into their range (upstream's decode)
-        JE_FIELD(AudioSourceComponent, outputGroup, .flags = OmitIfDefault, .updateFlags = kAudio, .label = "Output"),
-        JE_FIELD(AudioSourceComponent, outputGroupName, .flags = OmitIfDefault | Hidden, .updateFlags = kAudio),
-        JE_FIELD(AudioSourceComponent, loadType, .enumDesc = &kAudioLoadType, .flags = OmitIfDefault, .updateFlags = kAudio),
-        JE_FIELD(AudioSourceComponent, priority, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault, .updateFlags = kAudio, .min = 0.0f, .max = 256.0f),
-        JE_FIELD(AudioSourceComponent, maxVoices, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault, .updateFlags = kAudio, .min = 1.0f, .max = 64.0f),
-        JE_FIELD(AudioSourceComponent, ignoreListenerPause, .flags = OmitIfDefault, .updateFlags = kAudio),
+        // the group: the "outputGroup" property is its name (upstream's Catalog and the Inspector's
+        // Output row set it, "" = Master); the update resolves the id (Catalog::updateEntity), saved
+        // as upstream's "outputGroup" key and reached as outputGroupId
+        JE_FIELD_NAMED(AudioSourceComponent, outputGroup, "outputGroupId", .yamlKey = "outputGroup",
+                       .flags = OmitIfDefault | Hidden | NotListed | CodegenIfChanged, .updateFlags = kAudio),
+        JE_FIELD_NAMED(AudioSourceComponent, outputGroupName, "outputGroup", .yamlKey = "outputGroupName",
+                       .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio, .label = "Output"),
+        JE_FIELD(AudioSourceComponent, loadType, .enumDesc = &kAudioLoadType, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio),
+        JE_FIELD(AudioSourceComponent, priority, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio,
+                 .min = 0.0f, .max = 256.0f),
+        JE_FIELD(AudioSourceComponent, maxVoices, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio,
+                 .min = 1.0f, .max = 64.0f),
+        JE_FIELD(AudioSourceComponent, ignoreListenerPause, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio),
         JE_FIELD(AudioSourceComponent, length, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),
         JE_FIELD(AudioSourceComponent, playingTime, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),
     };
 
     constexpr const char* kAudioSourceCodegenOrder[] = {
         "state", "filename", "enableClocked", "volume", "speed", "pan", "looping", "loopingPoint", "protectVoice", "inaudibleBehaviorMustTick",
-        "inaudibleBehaviorKill", "minDistance", "maxDistance", "attenuationModel", "attenuationRolloffFactor", "dopplerFactor"
+        "inaudibleBehaviorKill", "minDistance", "maxDistance", "attenuationModel", "attenuationRolloffFactor", "dopplerFactor",
+        // upstream's audio-mixer fields, only when not their default (upstream's Factory)
+        "outputGroupId", "outputGroup", "loadType", "priority", "maxVoices", "ignoreListenerPause"
     };
 
     void audioSourceCodegen(const void* comp, const CodegenContext& ctx, std::string& out) {

@@ -603,6 +603,10 @@ namespace jasperengine::editor::spritenormals {
             const std::string fix = "give a Sprite, Polygon or Tilemap GameObject of the scene (path or unique name) and its --scene";
             // reading changes no project file
             project.getAssetDatabase().setReadOnly(true);
+            // nor does it take the one-editor lock (R10): it reads the scene and writes only the
+            // normal map images, which an editor that has the project open imports as any other
+            // new file (the CLI runs beside it, as `check` does)
+            project.setSkipProjectLock(true);
             if (!project.loadProject(o.project, false)) return state.fail(2, "usage", "the project could not be loaded: " + jasperengine::editor::FileUtils::pathToUtf8(o.project), "give a project directory or its project.yaml");
             ::jasperengine::Engine::setAsyncLoading(false);
             SceneProject* found = nullptr;

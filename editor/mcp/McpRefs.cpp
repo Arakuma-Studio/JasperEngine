@@ -532,6 +532,19 @@ std::string McpRefs::projectOnlyEscape(Project* project, const fs::path& absolut
     return escape + " An asset root must be a folder of the project itself.";
 }
 
+std::string McpRefs::rootValueRefusal(const std::string& text) {
+    const fs::path value = FileUtils::pathFromUtf8(text);
+    if (value.is_absolute() || value.has_root_name() || value.has_root_directory()) return "\"" + text + "\" is absolute";
+    for (const fs::path& part : value) {
+        if (part == "..") return "\"" + text + "\" has a '..' step";
+        // an editor-owned or hidden folder (.jasperengine, .trash, .git ...) is never an asset root
+        const std::string name = safewrite::comparableName(part);
+        if (!name.empty() && name[0] == '.' && name != ".") return "\"" + text + "\" goes through the hidden folder " + FileUtils::pathToUtf8(part);
+        if (safewrite::isProjectFileName(part) || name == "cmakelists.txt") return "\"" + text + "\" names a file the editor owns";
+    }
+    return std::string();
+}
+
 std::string McpRefs::trustedRootTouched(Project* project, const fs::path& absolute, bool destination) {
     if (!project) return std::string();
     const fs::path normal = absolute.lexically_normal();

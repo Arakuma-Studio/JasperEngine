@@ -1099,6 +1099,9 @@ async def test_guide_names_exist(ed: Editor):
               # mask's humanoid parts and the clip / controller file keys
               "humanoid_rig", "coverage_total", "mask_coverage", "live_weight", "normalized_time", "additive_reference",
               "automate_thresholds", "left_arm", "right_arm", "left_leg", "right_leg", "left_fingers", "right_fingers",
+              # the Animator absorption's mask: the hands' body parts, a coverage rule (body_part:<part>) and
+              # an upstream version 1 mask's read_as (AnimatorTools, AnimatorAssetIO, AvatarMaskWeights)
+              "left_hand", "right_hand", "body_part", "read_as", "upstream_v1",
               # property tracks (test_animation_properties): a status, the tangent key member and
               # preview_animation's count of previewed properties
               "unknown_property", "tangent_mode", "properties_total",

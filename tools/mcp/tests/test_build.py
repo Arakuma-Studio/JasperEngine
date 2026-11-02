@@ -325,7 +325,13 @@ async def test_platform_services_export(ed: Editor):
     ed.check_in('android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|'
                 'screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"', m)
     ed.check("android.permission.VIBRATE" not in m, "no VIBRATE without System.vibrate")
-    ed.check("FLAG_KEEP_SCREEN_ON" not in activity.read_text(), "no keep-screen-on patch: Screen.sleepTimeout does it")
+    # oe-port's MainActivity keeps one guarded line for S30's prebuilt Android player (its manifest's
+    # jasperengine.keepScreenOn meta-data, applied before the engine starts); a source export has no
+    # such meta-data, so nothing keeps the screen on but Screen.sleepTimeout
+    patched = [line for line in activity.read_text().splitlines()
+               if "FLAG_KEEP_SCREEN_ON" in line and 'metaFlag("jasperengine.keepScreenOn", false)' not in line]
+    ed.check(not patched and "jasperengine.keepScreenOn" not in m,
+             f"no keep-screen-on patch: Screen.sleepTimeout does it: {patched}")
     portrait_first = ("<key>UISupportedInterfaceOrientations</key>\n\t<array>\n"
                       "\t\t<string>UIInterfaceOrientationPortrait</string>\n"
                       "\t\t<string>UIInterfaceOrientationLandscapeRight</string>\n"
@@ -678,6 +684,7 @@ async def test_run_build_crash_report(ed: Editor):
                          'echo "Engine ready"\n'
                          f'echo "JASPERENGINE CRASH: SIGSEGV (invalid memory access) report={folder}" >&2\n'
                          'kill -SEGV $$\n')
+    record_built_player(ed.project, player)   # run_build runs only the recorded build (BuiltPlayers)
     r = await ed.call("run_build", path=str(player), seconds=5, screenshot=False)
     ed.check(r["crashed"], f"the crash is detected: {r}")
     ed.check_eq(r.get("signal"), 11, "died from SIGSEGV")
@@ -685,6 +692,7 @@ async def test_run_build_crash_report(ed: Editor):
     ed.check(any("JASPERENGINE CRASH:" in line for line in r["fatal_lines"]), f"a fatal line: {r['fatal_lines']}")
 
     calm = make_script(bin_dir / "calm-player", 'echo "JASPERENGINE HANG: main thread recovered after 3.1 s (Loading)" >&2\nexit 0\n')
+    record_built_player(ed.project, calm)
     r = await ed.call("run_build", path=str(calm), seconds=5, screenshot=False)
     ed.check(not r["crashed"], f"a hang line is a warning, not a crash: {r}")
     ed.check("crash_report" not in r, "no crash_report without a crash line")

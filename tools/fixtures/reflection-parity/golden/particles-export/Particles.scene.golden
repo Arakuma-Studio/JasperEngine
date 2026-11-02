@@ -1,4 +1,4 @@
-formatVersion: 6
+formatVersion: 7
 guid: 7c734271a1338c26e76b34070c83450a
 id: 1
 name: Particles
@@ -40,11 +40,6 @@ maxValues:
   maxExternalBuffers: 0
   maxSpriteFrames: 0
   maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: blit
   - type: particles
@@ -55,16 +50,16 @@ shaderKeys:
   - type: particles
     properties: 520
   - type: particles
-    customShader: library:particles#BLEND_ALPHA
-  - type: particles
-    properties: 512
-    customShader: library:particles#BLEND_ALPHA
-  - type: particles
     properties: 8
     customShader: library:particles#BLEND_ADDITIVE
   - type: particles
     properties: 520
     customShader: library:particles#BLEND_ADDITIVE
+  - type: particles
+    customShader: library:particles#BLEND_ALPHA
+  - type: particles
+    properties: 512
+    customShader: library:particles#BLEND_ALPHA
 entities:
   - type: Entity
     entity: 1000

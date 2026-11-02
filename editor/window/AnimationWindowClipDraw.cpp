@@ -36,6 +36,7 @@
 #include "util/UIProbe.h"
 #include "util/Util.h"
 #include "shortcuts/CommandCatalog.h"
+#include "widget/ColorField.h"
 
 #include <chrono>
 #include <functional>
@@ -846,14 +847,19 @@ void AnimationWindowClip::drawPropertyValueField(const Row& row, ImVec2 pos, flo
         if (changed && !setPropertyValue((size_t)row.track, {(float)v}, ImGui::IsItemActivated(), &error)) setNotice(error, true);
     }else if (colour && track.swizzle < 0 && value.size() >= 3){
         // the Inspector's colour widget, in sRGB (the keys' space)
-        float rgba[4] = {value[0], value[1], value[2], value.size() > 3 ? value[3] : 1.0f};
-        ImGui::SetNextItemWidth(m.valueWidth - 4.0f * m.s);
-        const ImGuiColorEditFlags flags = ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf;
-        const bool changed = kind == PropertyKind::Color4 ? ImGui::ColorEdit4("##value", rgba, flags) : ImGui::ColorEdit3("##value", rgba, flags);
-        if (ImGui::IsItemActivated()) valueMergeKey.clear();
-        if (changed){
-            std::vector<float> next(rgba, rgba + (kind == PropertyKind::Color4 ? 4 : 3));
-            if (!setPropertyValue((size_t)row.track, next, ImGui::IsItemActivated(), &error)) setNotice(error, true);
+        Vector4 rgba(value[0], value[1], value[2], value.size() > 3 ? value[3] : 1.0f);
+        ui::ColorFieldOptions options;
+        options.alpha = kind == PropertyKind::Color4;
+        options.linearStorage = false;
+        options.label = "Key Color";
+        options.width = m.valueWidth - 4.0f * m.s;
+        const ui::EditPhase phase = ui::colorField("##value", rgba, options);
+        // the Color window's session is one merged value edit (a cancel puts the original back)
+        if (phase == ui::EditPhase::Begin) valueMergeKey.clear();
+        if (phase == ui::EditPhase::Changing || phase == ui::EditPhase::Cancelled || phase == ui::EditPhase::Applied){
+            const float channels[4] = {rgba.x, rgba.y, rgba.z, rgba.w};
+            std::vector<float> next(channels, channels + (kind == PropertyKind::Color4 ? 4 : 3));
+            if (!setPropertyValue((size_t)row.track, next, false, &error)) setNotice(error, true);
         }
     }else if (value.size() == 1){
         float v = value[0];

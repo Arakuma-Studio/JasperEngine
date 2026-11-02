@@ -16,6 +16,7 @@ extern "C" void initScripts(jasperengine::Scene* scene);
 extern "C" void cleanupScripts(jasperengine::Scene* scene);
 extern "C" void initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 extern "C" void cleanupEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
+extern "C" void moveEntityScripts(jasperengine::Scene* from, jasperengine::Scene* to, const jasperengine::Entity* oldEntities, const jasperengine::Entity* newEntities, size_t count);
 
 static Scene* _scene_Main_Scene_1 = nullptr;
 
@@ -102,10 +103,36 @@ JASPERENGINE_INIT void init() {
     Engine::setTextureDefaults({0, 0, false}, {0, 512, false}, {0, 384, true});
     UIDocumentSystem::setPreferredSampleCount(4);
     UIDocumentSystem::setHtmlUiRenderOptions(0, true, true);
+    Http::setInsecureHttpAllowed(false);
+    Engine::setVSyncCount(1);
+    Engine::setTargetFrameRate(-1);
+    Screen::initialize(ScreenOrientation::AutoRotation, 0x1A, true);
+#if defined(_WIN32)
+    System::setApplicationInfo({"Splines", "com.yourcompany.project", "1.0", 1});
+#elif defined(__EMSCRIPTEN__)
+    System::setApplicationInfo({"Splines", "com.yourcompany.project", "1.0", 1});
+#elif defined(__APPLE__)
+    System::setApplicationInfo({"Splines", "com.yourcompany.project", "1.0", 1});
+#else
+    System::setApplicationInfo({"Splines", "com.yourcompany.project", "1.0", 1});
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+    PhysicsSystem::setWorldCapacity3D(8192, 8192, 8192);
+#endif
+#if defined(JASPERENGINE_DEVELOPMENT_BUILD) || defined(DEBUG)
+    Engine::setDevelopmentBuild(true);
+#endif
+    {
+        DebugOverlaySettings debugOverlay;
+        debugOverlay.enabled = Engine::isDevelopmentBuild();
+        debugOverlay.allowLua = Engine::isDevelopmentBuild();
+        DebugOverlay::configure(debugOverlay);
+    }
 
     SceneManager::registerScene(1, "Main Scene", load_scene_Main_Scene_1, add_scene_Main_Scene_1, {1}, resources_scene_Main_Scene_1);
 
     ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);
+    ObjectManager::setCppScriptMoveHook(moveEntityScripts);
 
     SceneManager::loadScene("Main Scene");
 }

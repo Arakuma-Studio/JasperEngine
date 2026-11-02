@@ -406,6 +406,14 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     reload::reloadTextures(ctx, textures);
     reload::reloadModels(ctx, files(external, "model"));
     reload::reloadAudio(ctx, files(external, "audio"));
+    // the project's audio mixer is heard as its file now says, in Edit mode and Play alike: the
+    // editor's own writes (audio_mixer edit, the Audio Mixer window, their undo) and another
+    // program's (upstream's ProjectFileWrites::refresh did it; the MCP sync comes here instead)
+    {
+        std::vector<fs::path> paths;
+        for (const FileChange& change : changes) paths.push_back(change.path);
+        project->audioFilesChanged(paths);
+    }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
     reload::reloadFonts(ctx, files(external, "font"));
     reload::reloadAnimations(ctx, both("animation"), files(external, "model"), options.full);

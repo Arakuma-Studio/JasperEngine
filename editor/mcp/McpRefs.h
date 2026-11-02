@@ -101,6 +101,10 @@ namespace jasperengine::editor::mcp {
         // writeEscape against the project directory alone: for a path that becomes a trusted root
         // (an asset root setting), so an agent can't make a folder outside the project trusted
         static std::string projectOnlyEscape(Project* project, const std::filesystem::path& absolute);
+        // An asset or Lua root value (assetsDir / luaDir in project.yaml, editor.assets_dir /
+        // scripting.lua_dir): "" when it is a plain project-relative folder, else why it isn't
+        // (absolute, a drive, a ".." step, a hidden or editor-owned folder, a file the editor owns)
+        static std::string rootValueRefusal(const std::string& text);
         // writeEscape of every editor-owned folder a build, Play or a script compile writes or
         // sweeps (the internal folder, its build tree and hot-reload staging, the engine API
         // snapshot and Lua stubs, the generated sources, the logs, the external build, the

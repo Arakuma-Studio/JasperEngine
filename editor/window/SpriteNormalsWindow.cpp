@@ -30,6 +30,7 @@
 #include "util/UIUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
+#include "widget/ColorField.h"
 #include "window/Widgets.h"
 
 #include "imgui_internal.h"
@@ -3206,29 +3207,34 @@ void SpriteNormalsWindow::drawRegions() {
         UIProbe::item("spriteNormals.region." + std::to_string(i) + ".pick");
         tooltip("Pick colours from the preview: click pixels to add their colour; Esc or a second click ends picking");
         ImGui::SameLine();
-        if (ImGui::Button("+##add")) {
-            addColourValue = region.colors.empty() ? 0xffffff : region.colors.back();
-            ImGui::OpenPopup("##addColour");
-        }
-        tooltip("Add a colour by value");
-        if (ImGui::BeginPopup("##addColour")) {
-            float rgb[3] = {((addColourValue >> 16) & 0xff) / 255.0f, ((addColourValue >> 8) & 0xff) / 255.0f, (addColourValue & 0xff) / 255.0f};
-            if (ImGui::ColorPicker3("##addPicker", rgb, ImGuiColorEditFlags_DisplayHex | ImGuiColorEditFlags_InputRGB)) {
+        // the colour "+" adds, chosen in the Color window (S27: every colour field is ui::colorField;
+        // sRGB as the region stores it). A swatch beside the button, not a popup: the Color window
+        // taking focus would close a popup and lose the choice
+        {
+            Vector3 rgb(((addColourValue >> 16) & 0xff) / 255.0f, ((addColourValue >> 8) & 0xff) / 255.0f, (addColourValue & 0xff) / 255.0f);
+            ui::ColorFieldOptions addOptions;
+            addOptions.alpha = false;
+            addOptions.linearStorage = false;
+            addOptions.label = "Region Colour";
+            addOptions.width = ImGui::GetFrameHeight() * 1.5f;
+            const ui::EditPhase phase = ui::colorField("##addColour", rgb, addOptions);
+            if (phase == ui::EditPhase::Changing || phase == ui::EditPhase::Cancelled || phase == ui::EditPhase::Applied) {
                 auto byte = [](float v) { return static_cast<uint32_t>(std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f)); };
-                addColourValue = (byte(rgb[0]) << 16) | (byte(rgb[1]) << 8) | byte(rgb[2]);
+                addColourValue = (byte(rgb.x) << 16) | (byte(rgb.y) << 8) | byte(rgb.z);
             }
-            if (ImGui::Button("Add", ImVec2(-FLT_MIN, 0))) {
-                if (static_cast<int>(region.colors.size()) >= MAX_REGION_COLOURS) {
-                    setStatus("At most 16 colours per region.", false);
-                } else if (std::find(region.colors.begin(), region.colors.end(), addColourValue) == region.colors.end()) {
-                    region.colors.push_back(addColourValue);
-                    lastEditedRegion = static_cast<int>(i);
-                    changed = true;
-                }
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
+            tooltip("The colour + adds (click to choose it)");
         }
+        ImGui::SameLine();
+        if (ImGui::Button("+##add")) {
+            if (static_cast<int>(region.colors.size()) >= MAX_REGION_COLOURS) {
+                setStatus("At most 16 colours per region.", false);
+            } else if (std::find(region.colors.begin(), region.colors.end(), addColourValue) == region.colors.end()) {
+                region.colors.push_back(addColourValue);
+                lastEditedRegion = static_cast<int>(i);
+                changed = true;
+            }
+        }
+        tooltip("Add the colour beside it by value");
         ImGui::SameLine();
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight()));
         if (Widgets::iconButton("##remove", ICON_FA_TRASH, ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()))) removeAt = static_cast<int>(i);
@@ -3590,8 +3596,17 @@ void SpriteNormalsWindow::drawToolbar() {
         next(ImGui::GetFrameHeight() + ImGui::CalcTextSize("Colour").x + style.ItemSpacing.x);
         ImGui::TextUnformatted("Colour");
         ImGui::SameLine();
-        float c[3] = {light.colour.x, light.colour.y, light.colour.z};
-        if (ImGui::ColorEdit3("##lightColour", c, ImGuiColorEditFlags_NoInputs)) setLightColour(Vector3(c[0], c[1], c[2]));
+        {
+            // the preview light's colour as shown (ui::colorField: the Color window)
+            Vector3 c = light.colour;
+            ui::ColorFieldOptions lightOptions;
+            lightOptions.alpha = false;
+            lightOptions.linearStorage = false;
+            lightOptions.label = "Light Colour";
+            lightOptions.width = ImGui::GetFrameHeight();
+            const ui::EditPhase phase = ui::colorField("##lightColour", c, lightOptions);
+            if (phase == ui::EditPhase::Changing || phase == ui::EditPhase::Cancelled || phase == ui::EditPhase::Applied) setLightColour(c);
+        }
         tooltip("The light's colour");
         next(field + ImGui::CalcTextSize("Ambient").x + style.ItemSpacing.x);
         ImGui::TextUnformatted("Ambient");

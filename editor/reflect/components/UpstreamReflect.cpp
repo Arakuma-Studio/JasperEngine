@@ -50,6 +50,7 @@ namespace {
         JE_FIELD(TrailRendererComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(TrailRendererComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kTrailShader),
+        JE_FIELD(TrailRendererComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(TrailRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, stencil, .flags = ListWhole, .updateFlags = kTrailShader),
@@ -72,7 +73,8 @@ namespace {
 
     constexpr FieldDesc kCanvasGroupFields[] = {
         JE_FIELD(CanvasGroupComponent, enabled, .updateFlags = kCanvasGroup),
-        JE_FIELD(CanvasGroupComponent, alpha, .updateFlags = kCanvasGroup, .min = 0.0f, .max = 1.0f),
+        // writes are clamped into 0..1 (upstream: Catalog::updateEntity clamps it), not refused
+        JE_FIELD(CanvasGroupComponent, alpha, .flags = Clamped, .updateFlags = kCanvasGroup, .min = 0.0f, .max = 1.0f),
         JE_FIELD(CanvasGroupComponent, interactable, .updateFlags = kCanvasGroup),
         JE_FIELD(CanvasGroupComponent, blocksRaycasts, .updateFlags = kCanvasGroup),
         JE_FIELD(CanvasGroupComponent, ignoreParentGroups, .updateFlags = kCanvasGroup),

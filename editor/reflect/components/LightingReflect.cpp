@@ -282,6 +282,7 @@ namespace {
         JE_FIELD(SkyboxComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(SkyboxComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = UpdateFlags_Shader_Reload),
         JE_FIELD(SkyboxComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = UpdateFlags_Shader_Reload),
+        JE_FIELD(SkyboxComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
     };
 
     const ComponentCodec kSkyboxCodec = JE_STREAM_CODEC(SkyboxComponent, encodeSkyboxComponent, decodeSkyboxComponent);
@@ -362,7 +363,7 @@ const ComponentDesc kReflectionProbeDesc{
 };
 
 // the keys its codec reads
-constexpr const char* kSkyboxExtraKeys[] = {"blendMode", "color", "customShader", "depthWrite", "rotation", "shaderFeatures", "shaderTextures",
+constexpr const char* kSkyboxExtraKeys[] = {"blendMode", "color", "customShader", "depthWrite", "rotation", "shaderFeatures", "shaderGlobalBindings", "shaderTextures",
     "shaderUniforms", "texture", "useDefaultTexture", "visible"};
 
 const ComponentDesc kSkyboxDesc{
