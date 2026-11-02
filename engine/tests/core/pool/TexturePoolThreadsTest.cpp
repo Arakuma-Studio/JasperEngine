@@ -17,6 +17,7 @@
 #include "object/Light.h"
 #include "object/Model.h"
 #include "object/Primitive.h"
+#include "pool/ShaderPool.h"
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
 #include "render/SystemRender.h"
@@ -192,6 +193,13 @@ TEST(TextureDataPoolThreads, AModelLoadingOnItsThreadSharesThePoolsWithTheMainTh
 // work, what the main thread frees outside a frame is another matter.)
 TEST(TextureDataPoolThreadsGpu, APreviewOnItsStrandSharesThePoolsWithTheFrames){
     JASPER_REQUIRE_GPU();
+    // (what the frames leave made goes with them below: the suites after this one make their own)
+    struct LeavesNoShaders {
+        ~LeavesNoShaders(){
+            GpuEnvironment::drawFrames(2);
+            ShaderPool::clearUnused();
+        }
+    } leavesNoShaders;
     Scene scene;
     Camera camera(&scene);
     camera.setType(CameraType::CAMERA_PERSPECTIVE);
