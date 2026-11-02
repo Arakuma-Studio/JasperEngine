@@ -72,6 +72,11 @@
 # tools/build.sh web first; WEB_THREADS=1 gates its pthreads build, build/web-threads-<name>);
 # GATE_ARGS goes to browser_gate.py. Screenshot and transcript in build/test-results/web/.
 # From a git worktree, the main checkout's ccache and .git are shared.
+# Inside the Linux build image (rb.sh <server> --img 'tools/build.sh ...'; no docker there) the targets
+# of that image run directly with the same environment; another image's target exits 3.
+# COVERAGE=1 (linux): GCC's --coverage, in build/linux/editor-coverage (tools/mcp/coverage_map.py).
+# MCP_SKIP_WEB_BUILD=1 (mcp-tests): no mesh-raycast web build, for a run without test_mesh_raycast.py.
+# DOCKER_GPU=1 (mcp-tests): the real-GPU lane, for a plan's chunks of the lane gpu (docs/testing.md).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -85,7 +90,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,70p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,75p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -145,7 +150,8 @@ JOBS_FLAG=""
 # mesh-raycast test project for Emscripten, in the web image), built once and kept up to date
 # (ninja, ccache). Before the Linux image is picked below: while it builds, another worktree's
 # image build may retag the shared name and its old image be pruned.
-if [[ "$TARGET" == mcp-tests && "${MCP_SUITE:-ci}" == all && $SHELL_MODE -eq 0 && $EXEC_MODE -eq 0 ]]; then
+# (MCP_SKIP_WEB_BUILD=1: a shard of the suite without test_mesh_raycast.py, tools/mcp/shard.py)
+if [[ "$TARGET" == mcp-tests && "${MCP_SUITE:-ci}" == all && "${MCP_SKIP_WEB_BUILD:-0}" != 1 && $SHELL_MODE -eq 0 && $EXEC_MODE -eq 0 ]]; then
     env -u WEB_THREADS -u WASM_SIMD -u CXX_STANDARD -u SANITIZE -u JASPER_DOCKER_IMAGE WEB_PROJECT=mesh-raycast "$ROOT/tools/build.sh" web \
         || { echo "mcp-tests: the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
 fi
@@ -167,7 +173,16 @@ image_hash() {
         done
     } | sha256sum | cut -c1-12
 }
-if [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
+# Already inside the Linux build image (rb.sh --img, tools/check-changed there): no Docker; the
+# targets of that image run here directly, with the same environment (IN_IMAGE=1)
+IN_IMAGE=0
+if [[ -f /.dockerenv ]] && ! command -v docker >/dev/null 2>&1; then
+    IN_IMAGE=1
+    [[ "$IMAGE_TARGET" == linux ]] || { echo "tools/build.sh $TARGET needs the $IMAGE_TARGET image: run it on the host (this is the linux image)" >&2; exit 3; }
+fi
+if [[ $IN_IMAGE == 1 ]]; then
+    IMAGE_ID=""
+elif [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
     IMAGE_ID="$JASPER_DOCKER_IMAGE"
 else
     IMAGE_ID="$(docker build -q -t "$IMAGE:$(image_hash "$IMAGE_TARGET")" -t "$IMAGE:latest" \
@@ -210,6 +225,13 @@ if [[ ",${SANITIZE:-}," == *,thread,* ]]; then
 fi
 UNITY_SUFFIX=""
 [[ "${UNITY:-0}" == 1 ]] && UNITY_SUFFIX="-unity"
+# COVERAGE=1 (linux): GCC's --coverage, next to the default tree (build/linux/editor-coverage): the
+# MCP suite's coverage map (tools/mcp/coverage_map.py) is recorded with it
+COVERAGE_SUFFIX=""
+if [[ "${COVERAGE:-0}" == 1 ]]; then
+    [[ "$TARGET" == linux ]] || { echo "COVERAGE=1 is for linux" >&2; exit 1; }
+    COVERAGE_SUFFIX="-coverage"
+fi
 WERROR_VALUE=OFF
 [[ "${WERROR:-0}" == 1 ]] && WERROR_VALUE=ON
 # what every CMake configure of a build gets on top of its preset
@@ -218,7 +240,8 @@ OPTION_FLAGS="-DJASPERENGINE_SANITIZE='$SANITIZE_LIST'"
 # (WERROR needs WARNINGS, which the standalone engine tree has off by default)
 ENGINE_WARNING_FLAGS="-DJASPERENGINE_WERROR=$WERROR_VALUE"
 [[ "$WERROR_VALUE" == ON ]] && ENGINE_WARNING_FLAGS="$ENGINE_WARNING_FLAGS -DJASPERENGINE_WARNINGS=ON"
-VARIANT="$SANITIZE_SUFFIX$UNITY_SUFFIX"
+VARIANT="$SANITIZE_SUFFIX$UNITY_SUFFIX$COVERAGE_SUFFIX"
+[[ -n "$COVERAGE_SUFFIX" ]] && OPTION_FLAGS="$OPTION_FLAGS -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage"
 
 # What --clean removes: the whole output of the target, or only this test build
 CLEAN_DIR="$OUT"
@@ -228,9 +251,11 @@ CLEAN_DIR="$OUT"
 
 if [[ $CLEAN -eq 1 ]]; then
     # Files inside may belong to the container user; remove them from inside.
-    docker run --rm -v "$ROOT:/src" -w /src "$IMAGE_ID" bash -c "rm -rf $CLEAN_DIR"
+    if [[ $IN_IMAGE == 1 ]]; then (cd "$ROOT" && rm -rf $CLEAN_DIR)
+    else docker run --rm -v "$ROOT:/src" -w /src "$IMAGE_ID" bash -c "rm -rf $CLEAN_DIR"; fi
 fi
-mkdir -p "$ROOT/$OUT" "$ROOT/$RESULTS" "$ROOT/$CACHE/home" "$MAIN/$CACHE/ccache"
+mkdir -p "$ROOT/$OUT" "$ROOT/$RESULTS"
+[[ $IN_IMAGE == 1 ]] || mkdir -p "$ROOT/$CACHE/home" "$MAIN/$CACHE/ccache"
 
 TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
@@ -286,6 +311,20 @@ fi
 # the UI effects' measuring switches (EffectPerfTest: JASPER_EFFECT_COST_ONLY, JASPER_EFFECT_PERF_*;
 # EffectFluidTest: JASPER_EFFECT_FLUID_PROFILE)
 for name in $(compgen -e | grep '^JASPER_EFFECT_' || true); do ENV_FLAGS+=(-e "$name=${!name}"); done
+# the MCP suite's switches (JASPER_MCP_CALL_LOG, JASPER_MCP_BUILD_JOBS, ...: tools/mcp/harness.py,
+# tools/mcp/build_cache.py) and ccache's own (CCACHE_STATSLOG, CCACHE_LOGFILE, ...; not CCACHE_DIR,
+# which names the shared cache's mount below)
+for name in $(compgen -e | grep -E '^(JASPER_MCP_|CCACHE_)' || true); do
+    [[ "$name" == CCACHE_DIR || "$name" == JASPER_MCP_SHARED_BUILD_CACHE ]] || ENV_FLAGS+=(-e "$name=${!name}")
+done
+# JASPER_MCP_SHARED_BUILD_CACHE=<host dir> (mcp-tests): the machine's shared cache of the MCP suite's
+# prebuilt player runtimes (tools/mcp/build_cache.py), mounted at /mcp-build-cache: every worktree
+# and run of the machine reuses a runtime of its content key instead of building its own (the
+# build servers' rb.sh sets ~/je/mcp-build-cache)
+if [[ "$TARGET" == mcp-tests && -n "${JASPER_MCP_SHARED_BUILD_CACHE:-}" ]]; then
+    mkdir -p "$JASPER_MCP_SHARED_BUILD_CACHE"
+    MOUNT_FLAGS+=(-v "$(cd "$JASPER_MCP_SHARED_BUILD_CACHE" && pwd):/mcp-build-cache" -e JASPER_MCP_SHARED_BUILD_CACHE=/mcp-build-cache)
+fi
 # A non-root uid has no entry in the image's /etc/passwd; dbus (dbus-run-session, used by the MCP
 # tests and tool docs) and getpwuid() callers then fail ("User ??? unknown"). Lend the host's tables
 # (whose home directory the container lacks: the Android Gradle plugin, which would take Java's
@@ -295,6 +334,16 @@ if [[ "$(uname -s)" == Linux && "$(id -u)" != 0 && -r /etc/passwd && -r /etc/gro
 fi
 
 run() {
+    if [[ $IN_IMAGE == 1 ]]; then
+        # the container's own mounts and HOME/CCACHE_DIR (jimg's); the run's -e variables as docker would set them
+        local assignments=() i=0
+        while [[ $i -lt ${#ENV_FLAGS[@]} ]]; do
+            [[ "${ENV_FLAGS[$i]}" == -e ]] && assignments+=("${ENV_FLAGS[$((i + 1))]}") && i=$((i + 2)) && continue
+            i=$((i + 1))
+        done
+        (cd "$ROOT" && env ${assignments[@]+"${assignments[@]}"} "$@")
+        return $?
+    fi
     # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)
     docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         --user "$(id -u):$(id -g)" \
@@ -612,9 +661,14 @@ mcp-tests)
     [[ "$SUITE" == all ]] && SUITE_FLAGS=""
     # (each argument quoted once more: the command runs through bash -c)
     ARGS="$(printf '%q ' ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}) ${MCP_TEST_ARGS:-}"
+    # DOCKER_GPU=1: the real-GPU lane (docs/testing.md): the chunks a plan puts on the lane "gpu" run
+    # on the host's NVIDIA GPU through tools/gpu/env.sh's headless X server(s) (JE_GPU_DISPLAY,
+    # JASPER_MCP_GPU_DISPLAYS); every other test of the run on llvmpipe, as everywhere
+    GPU_LANE=""
+    [[ "${DOCKER_GPU:-0}" == 1 ]] && GPU_LANE=". tools/gpu/env.sh && export JASPER_MCP_GPU_LANE=1 &&"
     run bash -euo pipefail -c "
         rm -f $RESULTS/mcp.json
-        dbus-run-session -- tools/mcp/run-tests.sh $SUITE_FLAGS --json $RESULTS/mcp.json $ARGS
+        $GPU_LANE dbus-run-session -- tools/mcp/run-tests.sh $SUITE_FLAGS --json $RESULTS/mcp.json $ARGS
     "
     ;;
 web-gate)

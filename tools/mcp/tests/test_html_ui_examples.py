@@ -29,6 +29,10 @@ import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 CI_EXCLUDED = ("long-running (about an hour: each example's play golden drawn by the software renderer); "
                "in the full suite (MCP_SUITE=all) on the build servers")
+# each test sets up what it needs in the editor it gets (ensure_scene: its own scene, made in that
+# editor; the LuaLS test overwrites the scripts it copies; the copy test opens projects of its own):
+# the runner may give the tests editors of their own (run_tests.py --split-seconds, tools/mcp/shard.py)
+TESTS_INDEPENDENT = "each example's play golden owns its scene; the library tests own their projects"
 
 TIMEOUT = 900
 
