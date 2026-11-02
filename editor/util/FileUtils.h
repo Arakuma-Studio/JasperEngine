@@ -116,6 +116,11 @@ public:
         if (fs::exists(bundled, ec)) {
             return bundled;
         }
+        // a test binary sits beside the bundle in the build tree, and exeDir/engine there is only CMake's output
+        const fs::path beside = exeDir / "JasperEngine.app" / "Contents" / "Resources" / "engine";
+        if (fs::exists(beside, ec)) {
+            return beside;
+        }
 #endif
         return exeDir / "engine";
     }
