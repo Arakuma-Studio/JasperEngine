@@ -10,6 +10,7 @@ dirty server, and that no Xvfb is left behind.
 """
 
 import asyncio
+import json
 import os
 import socket
 import subprocess
@@ -182,6 +183,35 @@ async def test_parallel():
         r = subprocess.run(suite, capture_output=True, text=True)
         ok(r.returncode == 2 and "test_ci_default_fixture.py: CI = True" in r.stderr,
            "runner: --suite ci exits 2 on a CI = True file that relies on the default fixture")
+        # chunks: a plan's tests, each chunk its own worker process; a planned test the file does not
+        # have fails; --split-seconds splits a TESTS_INDEPENDENT file by the earlier test times
+        chunked = Path(root) / "chunks"
+        chunked.mkdir()
+        (chunked / "test_free.py").write_text(
+            'import os\nfrom pathlib import Path\nTESTS_INDEPENDENT = "each its own"\n'
+            + "".join(f'\nasync def test_{n}():\n    print("PID", os.getpid())\n' for n in "abc"))
+        plan = Path(root) / "plan.json"
+        plan.write_text(json.dumps({"chunks": [{"file": "test_free.py", "tests": ["test_a", "test_c"], "seconds": 2},
+                                               {"file": "test_free.py", "tests": ["test_b"], "seconds": 1}]}))
+        planned = runner + ["--tests-dir", str(chunked), "--plan", str(plan), "-j", "2", "--json", str(Path(root) / "plan-results.json")]
+        r = subprocess.run(planned, capture_output=True, text=True)
+        pids = {line.split()[1] for line in r.stdout.splitlines() if line.startswith("PID")}
+        ok(r.returncode == 0 and "3 passed, 0 failed, 0 skipped" in r.stdout and len(pids) == 2 and "[chunk" in r.stdout,
+           f"runner: --plan runs each chunk's tests in a process of its own: {r.stdout[-300:]}")
+        results = json.loads((Path(root) / "plan-results.json").read_text())
+        ok(sorted(x["name"] for x in results["results"]) == [f"test_free.py::test_{n}" for n in "abc"],
+           "runner: --plan's results name every planned test once")
+        plan.write_text(json.dumps({"chunks": [{"file": "test_free.py", "tests": ["test_a", "test_gone"], "seconds": 2}]}))
+        r = subprocess.run(planned, capture_output=True, text=True)
+        ok(r.returncode == 1 and "FAIL test_free.py::test_gone" in r.stdout and "PASS test_free.py::test_b" not in r.stdout,
+           "runner: a planned test the file does not have fails, and an unplanned one does not run")
+        seconds = Path(root) / "test-seconds.json"
+        seconds.write_text(json.dumps({f"test_free.py::test_{n}": 100.0 for n in "abc"}))
+        env = dict(os.environ, JASPER_MCP_TEST_SECONDS=str(seconds))
+        r = subprocess.run(runner + ["--split-seconds", "150", "-j", "2", str(chunked / "test_free.py")],
+                           capture_output=True, text=True, env=env)
+        ok(r.returncode == 0 and "3 passed, 0 failed, 0 skipped" in r.stdout and "[chunk 3/3]" in r.stdout,
+           f"runner: --split-seconds splits a TESTS_INDEPENDENT file: {r.stdout[-300:]}")
     r = subprocess.run(run + ["-k", "test_protocol.py::test_initialize"], capture_output=True, text=True)
     ok(r.returncode == 0 and "1 passed, 0 failed, 0 skipped" in r.stdout, "runner: -k filters")
     env = dict(os.environ, FAKE_DIRTY_STDOUT="1")

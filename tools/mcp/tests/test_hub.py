@@ -29,7 +29,8 @@ import yaml
 from harness import Editor, free_port, wait_for_port
 
 CI = True
-EDITOR = {"create": True, "name": "Hub"}
+# the 3D template's Desktop compile: a fixed compile-tree path and ccache (harness.compile_env)
+EDITOR = {"create": True, "name": "Hub", "env": harness.compile_env("test_hub")}
 TIMEOUT = 1800
 
 TEMPLATES = ("empty", "3d", "2d", "ui")

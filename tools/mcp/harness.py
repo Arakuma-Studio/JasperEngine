@@ -33,8 +33,11 @@ Environment:
     JASPER_KEEP_SCRATCH=1   keep scratch directories
     JASPER_MCP_URL   when set, Editor() with no project/url attaches to this URL instead
     JASPER_MCP_PERF_SLACK   the factor wall-clock budgets are enforced with (over_budget); unset
-                     or 0: budgets are printed only (the benchmark run on server E sets it)
+                     or 0: budgets are printed only (the benchmark run sets it, docs/testing.md)
     JASPER_MCP_TOKEN bearer token for url mode (the editor's MCP window copies it)
+    JASPER_MCP_CALL_LOG  a directory: every tool call's tool, test, arguments (shortened) and
+                     seconds, one JSON line per call in <dir>/<file stem>.jsonl (where a slow
+                     test's time goes: tools/mcp/call_profile.py sums it up)
 """
 
 from __future__ import annotations
@@ -207,6 +210,12 @@ class Xvfb:
         self.display: str | None = None
 
     def start(self, timeout: float = 15.0) -> str:
+        # the real-GPU lane (run_tests.py): the chunk's own headless NVIDIA X display, the same size,
+        # instead of a Mesa Xvfb (an editor of the chunk renders on the GPU, and xdotool input still
+        # goes to that chunk's display only)
+        if os.environ.get("JASPER_MCP_GPU_DISPLAY"):
+            self.display = os.environ["JASPER_MCP_GPU_DISPLAY"]
+            return self.display
         if not shutil.which("Xvfb"):
             raise HarnessError("Xvfb is not installed")
         r, w = os.pipe()
@@ -322,6 +331,17 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
         env["DISPLAY"] = display
     env["HOME"] = str(scratch.home)
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+    # llvmpipe's and lavapipe's rasterizer threads (Mesa: one per CPU it sees, the host's, not the
+    # container's quota): render_threads()
+    threads = render_threads()
+    if threads and "LP_NUM_THREADS" not in os.environ:
+        env["LP_NUM_THREADS"] = str(threads)
+    # Mesa's own disk cache of the shaders llvmpipe and lavapipe compile to machine code (on for every
+    # Mesa user; its key is the shader and the driver's build): kept across editors and runs
+    # instead of in each scratch HOME, where every editor compiled every shader again
+    if "MESA_SHADER_CACHE_DIR" not in os.environ:
+        env["MESA_SHADER_CACHE_DIR"] = str(mesa_shader_cache())
+        env.setdefault("MESA_SHADER_CACHE_MAX_SIZE", "4G")
     # the engine's Lua state used off the main thread aborts the editor (LuaBinding::ThreadCheck)
     env.setdefault("JASPER_LUA_THREAD_CHECK", "abort")
     # test-only widget locator (editor/util/UIProbe.h): the editor writes the rectangles of the
@@ -418,10 +438,74 @@ def build_jobs() -> int:
     return max(1, cpus)
 
 
+def compile_env(name: str, lto: bool = False) -> dict[str, str]:
+    """The environment of an editor whose tests compile games (build_project method "compile"):
+    the user cache (XDG_CACHE_HOME, where the kit's compile tree goes) at a fixed path,
+    build/mcp-compile-home/<name> of the checkout (/src/... in the Linux image whatever the
+    worktree), emptied now, and ccache as the compiler launcher (CMAKE_<LANG>_COMPILER_LAUNCHER,
+    which CMake takes from the environment) when the run has one (CCACHE_DIR, as tools/build.sh's
+    containers do). Every run still compiles from an empty tree, its configure, every compile
+    command and the link: an object comes from ccache only when its preprocessed source, compiler,
+    flags and directory are those it was compiled with. Without ccache a run compiles as before.
+    lto=False: the release game links without GCC's link-time optimisation (JASPERENGINE_RELEASE_LTO=OFF,
+    engine/CMakeLists.txt), which costs a quarter of an hour of link and changes nothing the test
+    checks; the suite's LTO check is test_build.py's compiled game (lto=True, docs/testing.md)."""
+    home = REPO / "build" / "mcp-compile-home" / name
+    shutil.rmtree(home, ignore_errors=True)
+    home.mkdir(parents=True, exist_ok=True)
+    env = {"XDG_CACHE_HOME": str(home)}
+    if not lto:
+        env["JASPERENGINE_RELEASE_LTO"] = "OFF"
+    if shutil.which("ccache") and os.environ.get("CCACHE_DIR"):
+        # (its hits and misses: <home>/ccache-stats.log, ccache's stats_log)
+        env.update({"CMAKE_C_COMPILER_LAUNCHER": "ccache", "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+                    "CCACHE_STATSLOG": str(home / "ccache-stats.log")})
+    return env
+
+
+# llvmpipe threads per editor when nothing says otherwise (docs/testing.md, "Caches and CPU caps";
+# the same four files at -j 4 on 8 CPUs: Mesa's default 2,009 s, median load 21, peak 53; 4 threads 1,772 s,
+# median load 12, peak 23; 2 threads 2,517 s and a screenshot timeout)
+RENDER_THREADS_MAX = 4
+RENDER_THREADS_MIN = 2
+
+
+def cpu_allowance() -> int:
+    """The CPUs this process may use: its affinity, and a container's quota (cgroup cpu.max)."""
+    cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 2)
+    with contextlib.suppress(OSError, ValueError):
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        if quota != "max":
+            cpus = min(cpus, max(1, int(quota) // int(period)))
+    return max(1, cpus)
+
+
+def render_threads() -> int:
+    """LP_NUM_THREADS for an editor (and the players it runs): JASPER_MCP_RENDER_THREADS when set
+    (0: Mesa's own default, a thread per CPU of the host), else 4, or fewer down to 2 when the run's
+    CPU allowance gives its editors (JASPER_MCP_WORKERS, the runner's -j) less than half a CPU per
+    thread. Mesa's default gives every editor of a -j run as many threads as the host has CPUs, all
+    inside the container's quota: the quota throttles them all at once, the editors' main threads
+    included (seconds-long stalls on a loaded server). LP_NUM_THREADS in the run's environment wins."""
+    value = os.environ.get("JASPER_MCP_RENDER_THREADS", "")
+    if value.isdigit():
+        return int(value)
+    workers = int(os.environ["JASPER_MCP_WORKERS"]) if os.environ.get("JASPER_MCP_WORKERS", "").isdigit() else 1
+    return max(RENDER_THREADS_MIN, min(RENDER_THREADS_MAX, 2 * cpu_allowance() // max(1, workers)))
+
+
+def mesa_shader_cache() -> Path:
+    """Where the editors' Mesa shader cache lives: the machine's shared MCP cache when there is one
+    (JASPER_MCP_SHARED_BUILD_CACHE, a build server's ~/je/mcp-build-cache: every worktree and run of
+    the machine), else the checkout's build/.cache/mesa-shader-cache."""
+    shared = os.environ.get("JASPER_MCP_SHARED_BUILD_CACHE", "")
+    return Path(shared) / "mesa-shader-cache" if shared else REPO / "build" / ".cache" / "mesa-shader-cache"
+
+
 def perf_slack() -> float:
     """The factor wall-clock budgets are enforced with: JASPER_MCP_PERF_SLACK, 0 (not enforced)
     unless set. A shared build server's load alone misses them, so a functional run asserts the
-    behaviour and prints the times; the benchmark run on the benchmark-only server E enforces them."""
+    behaviour and prints the times; the benchmark run on a quiet server enforces them."""
     try:
         return max(0.0, float(os.environ.get("JASPER_MCP_PERF_SLACK", "") or 0))
     except ValueError:
@@ -453,6 +537,23 @@ def _env_flag(name: str) -> bool:
 # advancing, so the client only guards against a hung editor (Editor.call_raw)
 FRAME_TOOLS = frozenset({"wait", "send_input", "play"})
 FRAME_CALL_TIMEOUT = 3600.0
+
+# The test the runner is running (run_tests.py sets it), for JASPER_MCP_CALL_LOG
+current_test = ""
+
+
+def _log_call(label: str, tool: str, args: dict | None, seconds: float, error: bool) -> None:
+    """One line of JASPER_MCP_CALL_LOG (a profile of where the tests' time goes)."""
+    root = os.environ.get("JASPER_MCP_CALL_LOG")
+    if not root:
+        return
+    with contextlib.suppress(OSError, TypeError, ValueError):
+        text = json.dumps(args or {}, default=str, sort_keys=True)
+        line = json.dumps({"test": current_test, "editor": label, "tool": tool, "seconds": round(seconds, 3),
+                           "error": error, "args": text[:300], "t": round(time.time(), 3)})
+        Path(root).mkdir(parents=True, exist_ok=True)
+        with open(Path(root) / f"{(current_test.split('::')[0] or label).removesuffix('.py')}.jsonl", "a") as f:
+            f.write(line + "\n")
 
 
 class Editor:
@@ -577,6 +678,25 @@ class Editor:
             raise HarnessError(f"initialize failed: {e!r}\n" + self._tail_block()) from e
         self.instructions = self.session.instructions or ""
         await self.tools()
+        await self._check_device()
+
+    async def _check_device(self) -> None:
+        """JASPER_MCP_EXPECT_DEVICE (the runner sets it on the GPU lane's server: "NVIDIA" for a GPU
+        chunk's editors, "llvmpipe" for the others): the editor renders on that device, or it does
+        not start (a test of the lane never runs on llvmpipe unnoticed, nor a golden on the GPU)."""
+        expected = os.environ.get("JASPER_MCP_EXPECT_DEVICE", "")
+        if not expected or self.url or not self.has_tool("get_render_stats"):
+            return
+        device = ""
+        for _ in range(3):
+            stats = await self.call("get_render_stats")
+            device = str((stats.get("gpu") or {}).get("device") or "")
+            if device:
+                break
+            await self.call("wait", frames=2)
+        if expected.lower() not in device.lower():
+            raise HarnessError(f"the editor renders on {device or 'an unnamed device'!r}, not on {expected!r} "
+                               "(JASPER_MCP_EXPECT_DEVICE)\n" + self._tail_block())
 
     async def close(self) -> None:
         if self._stack:
@@ -650,14 +770,17 @@ class Editor:
         if timeout is None:
             timeout = max(self.call_timeout, FRAME_CALL_TIMEOUT) if tool in FRAME_TOOLS else self.call_timeout
         self.in_flight += 1
+        started, error = time.monotonic(), True
         try:
             r = await self.session.call_tool(
                 tool, args or {}, read_timeout_seconds=timeout, progress_callback=progress)
+            error = bool(getattr(r, "is_error", False))
         except MCPError as e:
             raise ProtocolError(f"tools/call {tool}", e) from e
         finally:
             self.in_flight -= 1
             self.last_activity = time.monotonic()
+            _log_call(self.label, tool, args, self.last_activity - started, error)
         return CallResult.from_mcp(tool, r)
 
     def idle_seconds(self) -> float:

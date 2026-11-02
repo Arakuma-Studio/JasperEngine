@@ -979,8 +979,15 @@ if(jasperengineShippedGame AND NOT JASPERENGINE_DEVELOPMENT_BUILD)
 endif()
 option(JASPERENGINE_RELEASE_LINK "A release game's size-optimised link (sections, hidden visibility, ThinLTO and ICF with lld)"
     ${JASPERENGINE_RELEASE_LINK_DEFAULT})
-# GCC's link-time optimisation in that link (Linux release games; Android's Clang has ThinLTO)
-option(JASPERENGINE_RELEASE_LTO "The release link of a GCC Linux game with link-time optimisation" ON)
+# GCC's link-time optimisation in that link (Linux release games; Android's Clang has ThinLTO).
+# A first configure takes its default from the environment when JASPERENGINE_RELEASE_LTO is set there
+# (OFF: a game built for a test, e.g. the MCP suite's compiled games but the one that checks LTO,
+# docs/testing.md; the link then takes a minute instead of a quarter of an hour)
+set(jasperengineReleaseLtoDefault ON)
+if(DEFINED ENV{JASPERENGINE_RELEASE_LTO})
+    set(jasperengineReleaseLtoDefault "$ENV{JASPERENGINE_RELEASE_LTO}")
+endif()
+option(JASPERENGINE_RELEASE_LTO "The release link of a GCC Linux game with link-time optimisation" ${jasperengineReleaseLtoDefault})
 # A shipped game (a prebuilt player or a Compile build, release or Development) ships stripped:
 # it is built with debug information, which the link's post-build step moves into the build
 # tree's symbols/ (desktop: <exe>.debug with a debug link, <exe>.dSYM, the PDB). Publish prepare
