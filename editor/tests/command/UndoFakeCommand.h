@@ -77,6 +77,7 @@ namespace jasperengine::editor::test {
             CommandHistory::deferReleases = false;
             CommandHistory::selectionHooks = CommandHistory::SelectionHooks();
             CommandHistory::onSceneModified = nullptr;
+            CommandHistory::onUndoPastSave = nullptr;
             UndoTimeline::setProjectHistory(nullptr);
             UndoTimeline::selectedScene = nullptr;
             UndoTimeline::historyName = nullptr;

@@ -11,6 +11,15 @@ goes wrong, and the rules code that writes files or adds serialized data follows
   to the disk, then renamed over the original. A crash, a power cut or a full disk leaves the old
   file or the new one, never half of one. If the save fails, the scene stays modified and the
   editor says `Couldn't save "<path>": <reason>. Your changes are still in the editor.`
+- **A save never leaves a GameObject out.** The encode records every GameObject it writes; one
+  of the scene (or of a Prefab Mode stage) it would leave out refuses the save before anything is
+  written: `Couldn't save "<path>": N GameObject(s) of scene 'X' would be left out ('Name' id,
+  ...) ... (an editor fault: please report it); nothing was written. Your changes are still in
+  the editor.` Every writer refuses the same way: Save, Save All, the background save of Ctrl+S,
+  Auto Save (the backup is skipped), Play's snapshot (Play does not start), an export (it stops),
+  and `scene-dump`'s `save` op and `--save` (exit 1). A complete file whose Transform order splits
+  a branch is written with a console warning. Members of a prefab instance whose root is written
+  are in the prefab file, not the scene's.
 - **Read-only files are not written over.** Git LFS and Perforce lock files by making them
   read-only; the save fails with "the file is read-only (is it locked by version control?)".
 - **One editor per project.** Opening a project another editor has open shows
@@ -174,5 +183,6 @@ unknown data for free; `Stream::encodeComponentsLive` encodes only the live valu
 ScopedFileLock, OrphanSweep, UserSettings, AtomicFileBench) and `jasperengine-editor-tests`
 (`editor/tests/data_safety`: Preservation, SaveGate, Migrations, StreamSchema, Compat,
 SceneBackup, AppSettings, benchmarks). `tools/mcp/tests/test_data_safety.py` covers the lock,
-crash recovery and degraded saves in a running editor. `python3 tools/check_raw_writes.py`
+crash recovery and degraded saves in a running editor; `test_save_completeness.py` the saves
+that would leave a GameObject out (and the prefab refreshes, moves and imports that once did). `python3 tools/check_raw_writes.py`
 (and `--self-test`) and `python3 tools/check_stream_keys.py` are the static checks.

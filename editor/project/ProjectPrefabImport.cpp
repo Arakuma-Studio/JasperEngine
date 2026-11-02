@@ -784,6 +784,7 @@ editor::Prefab* editor::Project::loadPrefabAsset(const std::filesystem::path& fi
     }
     Prefab loaded;
     if (!readPrefabFile(filepath, loaded)) {
+        forgetGonePrefabFile(filepath);
         return nullptr;
     }
     if (it != prefabAssets.end()) {
@@ -1436,6 +1437,16 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
 
     // ---- GameObjects added to this instance (and the nested ones) in the scene ----
     if (instanceData) {
+        // They are the scene's, not the prefab's: an instance of this prefab among them (one
+        // placed below a GameObject of this instance) is no cycle. With this import's path still
+        // held it was taken for one and loaded as a Missing Prefab, its GameObjects lost when the
+        // scene opened. They import as the scene's own instances do (put back on a throw too).
+        struct OuterImports {
+            std::unordered_set<std::string>& paths;
+            std::unordered_set<std::string> held;
+            explicit OuterImports(std::unordered_set<std::string>& paths) : paths(paths) { held.swap(paths); }
+            ~OuterImports() { paths.swap(held); }
+        } outerImports{loadingPaths};
         decodeSceneAddedGameObjects(sceneProject, entities, rootEntity, *instanceData, entityRemap, allResult, 0, filepath);
     }
 

@@ -160,6 +160,9 @@ namespace jasperengine::editor::reflect {
         bool assignExisting = false;
         // the variables of the GameObjects an Entity field may name (Factory::formatEntity)
         const std::unordered_map<Entity, std::string>* entityVarNames = nullptr;
+        // fields left out of the exported code: values the game derives itself (a Default
+        // Camera's canvas size)
+        std::span<const char* const> omit = {};
     };
 
     // How a field's values are stored, compared, written and read. Deduced from the member type

@@ -56,6 +56,41 @@ editor::RemoveComponentCmd::RemoveComponentCmd(Project* project, size_t sceneId,
 
 editor::RemoveComponentCmd::~RemoveComponentCmd() = default;
 
+void editor::RemoveComponentCmd::recordTransformPlace(Scene* scene, RemoveComponentData& entityData) {
+    // the parent read before the index queries, which settle the array
+    entityData.transformParent = scene->getComponent<Transform>(entityData.entity).parent;
+    auto transforms = scene->getComponentArray<Transform>();
+    entityData.transformIndex = transforms->getIndex(entityData.entity);
+    entityData.transformChildren.clear();
+    const size_t last = scene->findBranchLastIndex(entityData.entity);
+    for (size_t i = entityData.transformIndex + 1; i <= last; i++) {
+        if (transforms->getComponentFromIndex(i).parent == entityData.entity) {
+            entityData.transformChildren.push_back(transforms->getEntity(i));
+        }
+    }
+}
+
+void editor::RemoveComponentCmd::restoreTransformPlace(Scene* scene, const RemoveComponentData& entityData) {
+    // Put back as the removal left the rest: below its parent, before the children it had
+    // (they went to its parent, keeping their local values, and their places)
+    const Entity parent = entityData.transformParent;
+    if (parent != NULL_ENTITY && scene->isEntityCreated(parent) && scene->findComponent<Transform>(parent)) {
+        scene->addEntityChild(parent, entityData.entity, false);
+    }
+    scene->moveChildToIndex(entityData.entity, entityData.transformIndex);
+    for (Entity child : entityData.transformChildren) {
+        Transform* transform = scene->isEntityCreated(child) ? scene->findComponent<Transform>(child) : nullptr;
+        if (transform && transform->parent == parent) {
+            transform->parent = entityData.entity;
+            transform->needUpdate = true;
+            transform->needUpdateChildVisibility = true;
+        }
+    }
+    if (!entityData.transformChildren.empty()) {
+        scene->hierarchyChanged();
+    }
+}
+
 bool editor::RemoveComponentCmd::execute() {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (sceneProject) {
@@ -98,6 +133,9 @@ bool editor::RemoveComponentCmd::execute() {
             ownedDelete->execute();
         }
 
+        if (componentType == ComponentType::Transform) {
+            trackedBefore = sceneProject->entities;
+        }
         for (RemoveComponentData& entityData : entities){
             entityData.removed = false;
             if (!scene->isEntityCreated(entityData.entity)) {
@@ -107,6 +145,9 @@ bool editor::RemoveComponentCmd::execute() {
             if (componentType == ComponentType::Transform && project->findPrefabObject(sceneId, entityData.entity, ref)){
                 Out::error("Cannot remove Transform component from prefab entity '%s' in scene '%s'", scene->getEntityName(entityData.entity).c_str(), sceneProject->name.c_str());
                 continue;
+            }
+            if (componentType == ComponentType::Transform && scene->findComponent<Transform>(entityData.entity)) {
+                recordTransformPlace(scene, entityData);
             }
 
             prefabUndo.capture(project, sceneId, entityData.entity);
@@ -136,7 +177,14 @@ void editor::RemoveComponentCmd::undo() {
         for (RemoveComponentData& entityData : entities){
             if (entityData.removed && scene->isEntityCreated(entityData.entity)){
                 ProjectUtils::addEntityComponent(scene, entityData.entity, componentType, sceneProject->entities, entityData.oldComponent);
+                if (componentType == ComponentType::Transform) {
+                    restoreTransformPlace(scene, entityData);
+                }
             }
+        }
+        if (componentType == ComponentType::Transform) {
+            ProjectUtils::sortEntitiesByTransformOrder(scene, sceneProject->entities);
+            ProjectUtils::keepUntransformedPlaces(scene, trackedBefore, sceneProject->entities);
         }
         prefabUndo.restore(project, sceneId);
 
@@ -177,6 +225,8 @@ bool editor::RemoveComponentCmd::mergeWith(Command* otherCommand){
                 entities.push_back(otherEntityData);
             }
             prefabUndo.mergeOlder(otherCmd->prefabUndo);
+            // the older step's list is the one from before both
+            trackedBefore = otherCmd->trackedBefore;
 
             wasModified = wasModified && otherCmd->wasModified;
 

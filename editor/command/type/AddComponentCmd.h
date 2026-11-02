@@ -20,6 +20,9 @@ namespace jasperengine::editor {
         ComponentType componentType;
 
         bool wasModified;
+        // A Transform added: the tracked list before it, so the undo puts the GameObjects
+        // without a Transform back where they were (the one that had none among them)
+        std::vector<Entity> trackedBefore;
         // the components the added one requires that the GameObject lacked (a Spline Extrude's
         // Spline and Mesh, Unity's RequireComponent): added with it, removed with its undo
         std::vector<std::pair<Entity, ComponentType>> required;

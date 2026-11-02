@@ -290,6 +290,8 @@ namespace jasperengine::editor {
         bool removeResourcePack(const fs::path& packPath);
         bool writeNativeResourcePack(const fs::path& outputPath, bool& created);
         bool clearGenerated();
+        // Test hook (JASPER_TEST_EXPORT_HOLD=<path>): waits after the clear while <path> exists
+        void holdForTest();
         bool loadAndSaveAllScenes();
         // runs checkHtmlUIReferences(...) on htmlUIDocuments; setError on a broken reference
         bool checkHtmlUIReferences();

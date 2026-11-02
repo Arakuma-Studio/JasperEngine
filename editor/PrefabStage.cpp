@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <stdexcept>
 #include <unordered_set>
 
 using namespace jasperengine;
@@ -647,8 +648,16 @@ YAML::Node editor::Project::encodePrefabStage(PrefabStage& stage) {
     topLevel.insert(topLevel.begin(), stage.root);
 
     YAML::Node membersNode(YAML::NodeType::Sequence);
-    for (Entity entity : topLevel) {
-        membersNode.push_back(Stream::encodeEntity(entity, scene, this, &sceneProject));
+    {
+        // Every GameObject of the stage in the asset, or no save (savePrefabStage)
+        Stream::SavedEntitiesCheck check(&sceneProject);
+        for (Entity entity : topLevel) {
+            membersNode.push_back(Stream::encodeEntity(entity, scene, this, &sceneProject));
+        }
+        const std::vector<Entity> left = check.leftOut(this);
+        if (!left.empty()) {
+            throw Stream::IncompleteSave(check.describe(left, "the stage") + " (an editor fault: please report it); nothing was written");
+        }
     }
     stripSceneOnlyKeys(membersNode, false);
 
@@ -677,10 +686,20 @@ YAML::Node editor::Project::encodePrefabStage(PrefabStage& stage) {
 }
 
 YAML::Node editor::Project::encodeDocument(uint32_t sceneId) {
-    if (PrefabStage* stage = getPrefabStage(sceneId)) return encodePrefabStage(*stage);
+    // a document whose encode would leave a GameObject out has no encoding (the save says why)
+    try {
+        if (PrefabStage* stage = getPrefabStage(sceneId)) return encodePrefabStage(*stage);
+    } catch (const std::exception&) {
+        return YAML::Node(YAML::NodeType::Undefined);
+    }
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return YAML::Node(YAML::NodeType::Undefined);
-    YAML::Node root = Stream::encodeSceneProject(this, sceneProject);
+    YAML::Node root;
+    try {
+        root = Stream::encodeSceneProject(this, sceneProject);
+    } catch (const std::exception&) {
+        return YAML::Node(YAML::NodeType::Undefined);
+    }
     StreamMigrations::stampCurrentVersion(DocumentKind::Scene, root);
     // the identity keys a save puts in (guid, formerGuids, labels)
     if (!sceneProject->filepath.empty()) prepareDocumentIdentity(root, sceneProject->filepath);
@@ -728,7 +747,13 @@ bool editor::Project::savePrefabStage(uint32_t sceneId, DegradedSavePolicy polic
     }
     stage->changePending = false;
 
-    const YAML::Node node = encodePrefabStage(*stage);
+    YAML::Node node;
+    try {
+        node = encodePrefabStage(*stage);
+    } catch (const std::exception& e) {
+        Out::error("Prefab %s not saved: %s", path.generic_string().c_str(), e.what());
+        return false;
+    }
     if (!node || !node.IsMap()) {
         Out::error("Prefab %s not saved: a prefab needs its root GameObject", path.generic_string().c_str());
         return false;
@@ -782,7 +807,7 @@ bool editor::Project::savePrefabStage(uint32_t sceneId, DegradedSavePolicy polic
         prefabsSavedWhilePlaying.insert(nestedChanged.begin(), nestedChanged.end());
     }
 
-    sceneProject.isModified = false;
+    markSceneSaved(&sceneProject);
     stage->outsideChangeWarned = false;
     if (Prefab* saved = getPrefab(path)) {
         (void)saved;

@@ -380,18 +380,9 @@ bool editor::PasteEntitiesCmd::execute(){
             transforms->moveEntityRangeToIndex(transforms->getEntity(tailStart), transforms->getEntity(tailEnd - 1), destination);
             scene->sortComponentsByTransform(blockSignature);
 
-            // Tracked list back in Hierarchy order: flat GameObjects first (their order
-            // kept), then Transform order. Appended at the end it already was.
-            std::unordered_map<Entity, size_t> order;
-            order.reserve(transforms->size());
-            for (size_t i = 0; i < transforms->size(); i++) {
-                order[transforms->getEntity(i)] = i + 1;
-            }
-            std::stable_sort(sceneProject->entities.begin(), sceneProject->entities.end(), [&order](Entity a, Entity b) {
-                auto ia = order.find(a);
-                auto ib = order.find(b);
-                return (ia != order.end() ? ia->second : 0) < (ib != order.end() ? ib->second : 0);
-            });
+            // Tracked list back in Transform order, the GameObjects without one where they
+            // were. Appended at the end it already was.
+            ProjectUtils::sortEntitiesByTransformOrder(scene, sceneProject->entities);
         }
     }
 

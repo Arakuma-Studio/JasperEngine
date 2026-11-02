@@ -126,6 +126,8 @@ namespace jasperengine::editor{
         static std::string formatScriptPropertyValue(const ScriptPropertyValue& value, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
 
         static std::string formatTexture(int indentSpaces, const Texture& texture, const std::string& variableName, const fs::path& projectPath);
+        // a Text's font atlas: its sampler settings as Stream::encodeAtlasSampler writes them
+        static std::string formatAtlasSampler(int indentSpaces, const Texture& texture, const std::string& variableName);
         // shader library: the statements filling `target` (a shaderTextures vector) and the
         // initializer of a shaderFeatures list
         static std::string formatShaderTextures(int indentSpaces, const std::vector<std::pair<std::string, Texture>>& textures, const std::string& target, const fs::path& projectPath);
@@ -171,8 +173,10 @@ namespace jasperengine::editor{
         // scene_scripts.cpp, a prefab or another scene, even ignoring case
         static std::string sceneToFileName(uint32_t sceneId, const std::string& sceneName);
 
-        static std::string createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
-        static std::string createAllComponents(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        // defaultCamera: the scene's Default Camera (not one of its GameObjects), whose canvas size
+        // the game sets itself
+        static std::string createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr, bool defaultCamera = false);
+        static std::string createAllComponents(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", const std::unordered_map<Entity, std::string>* entityVarNames = nullptr, bool defaultCamera = false);
         // First line of a generated scene source. Its number follows the source's shape, so an
         // older source counts as missing and is written again.
         static const char* const sceneSourceHeader;

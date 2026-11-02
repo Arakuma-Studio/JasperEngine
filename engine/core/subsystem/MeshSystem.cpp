@@ -1642,6 +1642,14 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
     return result;
 }
 
+namespace {
+    std::atomic<int> modelLoadTestDelayMs{0};
+}
+
+void MeshSystem::setModelLoadDelayForTest(int milliseconds){
+    modelLoadTestDelayMs.store(std::max(0, milliseconds));
+}
+
 std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncModelLoad(const Scene* scene, const std::string& filename, bool obj){
     const std::string key = getAsyncModelLoadKey(scene, filename);
     const uint64_t buildId = std::hash<std::string>{}(key);
@@ -1665,6 +1673,9 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncMo
             };
             pendingModelLoads[key] = AssetIOService::instance().submitRead(request,
                 [filename, obj, buildId](std::vector<uint8_t>&& bytes) {
+                    if (const int delay = modelLoadTestDelayMs.load(); delay > 0){
+                        std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+                    }
                     return MeshSystem::loadModelFileOnWorker(filename, obj, buildId, bytes);
                 }
             );
