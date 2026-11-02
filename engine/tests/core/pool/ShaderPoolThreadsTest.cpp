@@ -187,9 +187,11 @@ TEST(ShaderPoolBenchGpu, GetOfAMadeVariant){
 #else
     constexpr int lookups = 2000000;
 #endif
+    // (asked for again until it is made: a variant compiled at runtime is created by the get()
+    // after its compile ended)
     std::shared_ptr<ShaderRender> held = ShaderPool::get(ShaderType::BLIT, 0);
     ASSERT_TRUE(held);
-    ASSERT_TRUE(GpuEnvironment::runFrames([&held]{ return held->isCreated(); }, 600));
+    ASSERT_TRUE(GpuEnvironment::runFrames([]{ return ShaderPool::get(ShaderType::BLIT, 0)->isCreated(); }, 600));
     for (int run = 0; run < 3; run++){
         const auto start = std::chrono::steady_clock::now();
         int found = 0;
