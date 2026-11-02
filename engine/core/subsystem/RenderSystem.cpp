@@ -14209,7 +14209,7 @@ void RenderSystem::draw(){
     // reported once, and what draws with it is left out (its load fails, see
     // ShaderPool::get) while everything else keeps rendering.
     static size_t reportedMissingShaders = 0;
-    const std::vector<std::string>& missingShaders = ShaderPool::getMissingShaders();
+    const std::vector<std::string> missingShaders = ShaderPool::getMissingShaders();
     for (; reportedMissingShaders < missingShaders.size(); reportedMissingShaders++){
         const std::string& shaderStr = missingShaders[reportedMissingShaders];
 
