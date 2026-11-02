@@ -98,7 +98,8 @@ On this software renderer the 200-sphere scenes are bound by the vertex work (23
 196 draws), which hides most fragment cost: Lobes Off is within 0.1% of Lit Baseline, the lobes
 within 1%, High within 0-3.4% of Standard. Transmission costs 2.4x: every transmissive sphere
 draws in the transparent queue over the scene-colour copy. Absolute and fragment-bound
-numbers (the R13 ratios, hex terrain against the 1.35x bound) come from the GPU campaign.
+numbers (the R13 ratios, hex terrain against its bound: 1.35x then, ≤ 1.75x GL / ≤ 1.4x Vulkan
+at 4K since 2026-11-02) come from the GPU campaign.
 
 ### AC11 on a GPU (GPU campaign: RTX 3080 Ti, GL, 3840x2160, S15 GPU pass timers, 5 runs)
 

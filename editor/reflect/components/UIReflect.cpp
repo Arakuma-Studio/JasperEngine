@@ -281,11 +281,13 @@ namespace {
     YAML::Node encodeUI(const void* comp, const EncodeContext& ctx) {
         const bool isText = ctx.registry && ctx.signature.test(ctx.registry->getComponentId<TextComponent>());
         const bool isGenerated = ctx.registry && Stream::isGeneratedUI(ctx.registry, ctx.signature);
-        return Stream::encodeUIComponent(*static_cast<const UIComponent*>(comp), !isGenerated, !isText);
+        return Stream::encodeUIComponent(*static_cast<const UIComponent*>(comp), !isGenerated, !isText, isText);
     }
 
     void decodeUI(const YAML::Node& node, void* comp, const DecodeContext& ctx) {
-        *static_cast<UIComponent*>(comp) = Stream::decodeUIComponent(node, static_cast<const UIComponent*>(ctx.old));
+        // a Text decoded over a live one keeps the atlas it shows (a new one publishes its own)
+        const bool isText = ctx.registry && ctx.entity != NULL_ENTITY && ctx.registry->findComponent<TextComponent>(ctx.entity);
+        *static_cast<UIComponent*>(comp) = Stream::decodeUIComponent(node, static_cast<const UIComponent*>(ctx.old), isText);
     }
 
     const ComponentCodec kUICodec{&encodeUI, &decodeUI};

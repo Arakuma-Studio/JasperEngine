@@ -6,6 +6,8 @@
 
 #include "texture/Material.h"
 #include "texture/MaterialPbr.h"
+#include "component/TerrainComponent.h"
+#include "subsystem/RenderSystem.h"
 
 #include <gtest/gtest.h>
 
@@ -280,6 +282,50 @@ TEST(PbrVariant, BasenameIsShort){
     EXPECT_EQ(MaterialPbr::getVariantBasename({"PBR_CLEARCOAT"}), "lit_Cc");
 }
 
+// A hex tiled Terrain's variant carries the Stochastic Tiling path only when a layer takes it
+// (TERRAIN_HEX_STOCHASTIC): without one the path is compiled out of the hex variant, which
+// otherwise holds the lattices' registers for nothing (docs/perf/gpu-campaign.md, S11 perf3)
+TEST(PbrVariant, TerrainHexLeavesStochasticOut){
+    MeshShaderEnvironment environment;
+    environment.lights = true;
+    SubmeshShaderInputs inputs;
+    inputs.normal = true;
+    inputs.baseColorTexture = true;
+    inputs.terrain = true;
+    inputs.terrainBlendMaps = true;
+    inputs.terrainSurface = true;
+    inputs.terrainHex = true;
+    const auto has = [](const std::vector<std::string>& defines, const char* define){
+        return std::find(defines.begin(), defines.end(), define) != defines.end();
+    };
+    const SubmeshShaderVariant hex = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+    EXPECT_TRUE(has(hex.litDefines, MaterialPbr::TERRAIN_HEX_DEFINE));
+    EXPECT_FALSE(has(hex.litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
+
+    inputs.terrainHexStochastic = true;
+    const SubmeshShaderVariant both = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+    EXPECT_TRUE(has(both.litDefines, MaterialPbr::TERRAIN_HEX_DEFINE));
+    EXPECT_TRUE(has(both.litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
+    EXPECT_EQ(MaterialPbr::getVariantBasename(both.litDefines), "lit_ThTs");
+    std::vector<std::string> parsed;
+    ASSERT_TRUE(MaterialPbr::parseVariantBasename("lit_ThTs", parsed));
+    EXPECT_EQ(parsed, both.litDefines);
+    EXPECT_TRUE(MaterialPbr::isBuiltinLitDefine(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
+
+    // without a hex layer the define never comes (the plain surface path keeps Stochastic Tiling)
+    inputs.terrainHex = false;
+    EXPECT_FALSE(has(RenderSystem::getSubmeshShaderVariant(environment, inputs).litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
+
+    // what the render system asks the Terrain
+    TerrainComponent terrain;
+    terrain.surfaceLayers.resize(2);
+    terrain.surfaceLayers[0].hexTiling = true;
+    EXPECT_TRUE(hasTerrainHexLayers(terrain));
+    EXPECT_FALSE(hasTerrainStochasticLayers(terrain));
+    terrain.surfaceLayers[1].stochasticTiling = true;
+    EXPECT_TRUE(hasTerrainStochasticLayers(terrain));
+}
+
 TEST(PbrVariant, UniformBlockLayout){
     MaterialPbrExtensions pbr;
     pbr.clearcoat.factor = 0.5f;
@@ -297,4 +343,18 @@ TEST(PbrVariant, UniformBlockLayout){
     pbr.specular.ior = 1.33f;
     MaterialPbr::getUniformBlock(pbr, block);
     EXPECT_EQ(block[28], 1.33f);
+
+    // the lobe's dielectric f0, made once a draw in the vec4s' free floats (includes/pbr_ext.glsl)
+    const float ratio = (1.33f - 1.0f) / (1.33f + 1.0f);
+    EXPECT_EQ(block[23], ratio * ratio);                        // attenuation.w: the IOR's term
+    pbr.specular.color = Vector3(1.0f, 0.5f, 100.0f);
+    MaterialPbr::getUniformBlock(pbr, block);
+    EXPECT_EQ(block[3], ratio * ratio * 0.25f);                 // clearcoat.w: f0.r
+    EXPECT_EQ(block[11], (ratio * ratio * 0.5f) * 0.25f);       // anisotropy.w: f0.g
+    EXPECT_EQ(block[19], 0.25f);                                // transmission.w: f0.b, at most the factor
+    // an IOR under 1 (glTF's 0): a full mirror
+    pbr.specular.ior = 0.0f;
+    MaterialPbr::getUniformBlock(pbr, block);
+    EXPECT_EQ(block[23], 1.0f);
+    EXPECT_EQ(block[3], 0.25f);
 }

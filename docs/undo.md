@@ -18,6 +18,9 @@ text field you are typing in and the Code editor keep their own undo.
   one part is under newer edits of its history, it stays, and the Console says so ("Batch step
   partly undone: Scene 'Level2' has newer edits").
 - Closing a scene frees its steps.
+- Undoing a step that is in the saved file (done before the last save) leaves the scene modified,
+  and an applied prefab with unsaved changes: the next save writes the undone state. A save also
+  ends the step before it, so the next edit is a step of its own.
 
 ## Drags
 

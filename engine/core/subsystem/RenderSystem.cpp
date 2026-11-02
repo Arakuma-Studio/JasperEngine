@@ -2916,6 +2916,7 @@ SubmeshShaderInputs RenderSystem::getExtraPassShaderInputs(const SubmeshShaderIn
     inputs.material = nullptr;
     inputs.pbrTransmission = false;
     inputs.terrainHex = false;
+    inputs.terrainHexStochastic = false;
     return inputs;
 }
 
@@ -2972,7 +2973,8 @@ PbrVariant RenderSystem::getLoadedPbrVariant(const Submesh& submesh, PbrTier tie
 
 bool RenderSystem::pbrVariantMatches(const Submesh& submesh) const{
     const PbrVariant expected = getLoadedPbrVariant(submesh, loadedPbrTier);
-    const uint32_t environmentBits = MaterialPbr::getDefineBit(MaterialPbr::LIT_QUALITY_DEFINE) | MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE);
+    const uint32_t environmentBits = MaterialPbr::getDefineBit(MaterialPbr::LIT_QUALITY_DEFINE) | MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE) |
+                                     MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE);
     if (MaterialPbr::getDefineBits(expected.defines) != (submesh.litDefineBits & ~environmentBits))
         return false;
     for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
@@ -3335,6 +3337,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
         inputs.pbrTransmission = !terrain && submesh.material.pbr->transmission.enabled;
     }
     inputs.terrainHex = terrain && hasTerrainHexLayers(*terrain);
+    inputs.terrainHexStochastic = inputs.terrainHex && hasTerrainStochasticLayers(*terrain);
 
     return inputs;
 }
@@ -3575,8 +3578,11 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             variant.pbr = MaterialPbr::getPbrVariant(*inputs.material, pbrLighting, inputs.terrain, environment.pbrTier, p_shadows2d ? 1 : 0);
             variant.litDefines = variant.pbr.defines;
         }
-        if (p_terrainSurface && inputs.terrainHex)
+        if (p_terrainSurface && inputs.terrainHex){
             variant.litDefines.push_back(MaterialPbr::TERRAIN_HEX_DEFINE);
+            if (inputs.terrainHexStochastic)
+                variant.litDefines.push_back(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE);
+        }
         if (environment.litQualityHigh && !p_unlit)
             variant.litDefines.push_back(MaterialPbr::LIT_QUALITY_DEFINE);
         std::sort(variant.litDefines.begin(), variant.litDefines.end());
@@ -13623,7 +13629,11 @@ void RenderSystem::update(double dt){
                         // so can a layer's hex tiling, a define of the built-in Lit's variant
                         // (as asked for: the plain variant standing in for it reloads on its own)
                         const bool shaderHex = (mesh.submeshes[s].litDefineBits & MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE)) != 0;
-                        if (shaderHex != hasTerrainHexLayers(*terrain)){
+                        // and whether that variant carries Stochastic Tiling beside it
+                        const bool shaderHexStochastic = (mesh.submeshes[s].litDefineBits &
+                                                          MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE)) != 0;
+                        const bool hex = hasTerrainHexLayers(*terrain);
+                        if (shaderHex != hex || shaderHexStochastic != (hex && hasTerrainStochasticLayers(*terrain))){
                             mesh.needVariantReload = true;
                         }
                     }

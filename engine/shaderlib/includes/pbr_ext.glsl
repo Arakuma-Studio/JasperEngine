@@ -174,14 +174,20 @@ float pbrCharlieL(float x, float alphaG){
     return a / (1.0 + b * pow(x, c)) + d * x + e;
 }
 
-float pbrCharlieLambda(float cosTheta, float alphaG){
-    return abs(cosTheta) < 0.5 ? exp(pbrCharlieL(cosTheta, alphaG))
-                               : exp(2.0 * pbrCharlieL(0.5, alphaG) - pbrCharlieL(1.0 - cosTheta, alphaG));
+// The reference's abs(x) < 0.5 ? exp(L(x)) : exp(2 L(0.5) - L(1 - x)) with L taken at one
+// argument (x, or 1 - x from 0.5 on) and L(0.5) given (l05: per draw without a sheen map): two
+// L a light instead of five, and a select instead of a branch per lambda, each side of which
+// held its own L, pow and exp (GPU campaign perf3)
+float pbrCharlieLambda(float cosTheta, float alphaG, float l05){
+    bool near = abs(cosTheta) < 0.5;
+    float l = pbrCharlieL(near ? cosTheta : 1.0 - cosTheta, alphaG);
+    return exp(near ? l : 2.0 * l05 - l);
 }
 
-float pbrVSheen(float NdotL, float NdotV, float sheenRoughness){
+// l05: pbrCharlieL(0.5) at the roughness's alphaG (PbrExtInfo::sheenL05)
+float pbrVSheen(float NdotL, float NdotV, float sheenRoughness, float l05){
     float alphaG = max(sheenRoughness * sheenRoughness, 0.000001);
-    return clamp(1.0 / ((1.0 + pbrCharlieLambda(NdotV, alphaG) + pbrCharlieLambda(NdotL, alphaG)) * (4.0 * NdotV * NdotL)), 0.0, 1.0);
+    return clamp(1.0 / ((1.0 + pbrCharlieLambda(NdotV, alphaG, l05) + pbrCharlieLambda(NdotL, alphaG, l05)) * (4.0 * NdotV * NdotL)), 0.0, 1.0);
 }
 
 // the share of a uniform environment the sheen lobe reflects toward the viewer (OpenEngine's
@@ -214,6 +220,8 @@ struct PbrExtInfo{
 
     vec3 sheenColor;
     float sheenRoughness;
+    float sheenL05;              // pbrCharlieL(0.5) of the roughness: per draw without a map
+    float sheenAlbedo;           // pbrSheenAlbedo at the view, set by pbrExtView
     float sheenScaling;          // 1 - max(sheenColor) * albedo, set by pbrExtView
 
     float anisotropyStrength;
@@ -245,18 +253,20 @@ MaterialInfo pbrExtSurface(MaterialInfo info, NormalInfo normalInfo){
     pbrExtInfo.f0Dielectric = vec3(0.04);
 
     #ifdef PBR_SPECULAR
-        // f0 = min(((ior - 1) / (ior + 1))^2 * specularColor, 1) * specular, f90 = specular
+        // f0 = min(((ior - 1) / (ior + 1))^2 * specularColor, 1) * specular, f90 = specular; the
+        // IOR's term and, without a map, f0 come made once a draw (MaterialPbr::getUniformBlock)
         float specularFactor = pbrExt.specular.w;
-        vec3 specularColor = pbrExt.specular.rgb;
+        pbrExtInfo.specularWeight = specularFactor;
         #ifdef pbrSpecularMap
+            vec3 specularColor = pbrExt.specular.rgb;
             vec4 specularSample = pbrSpecularMap();
             specularFactor *= specularSample.a;
             specularColor *= sRGBToLinear(specularSample.rgb);
+            pbrExtInfo.specularWeight = specularFactor;
+            pbrExtInfo.f0Dielectric = min(pbrExt.attenuation.w * specularColor, vec3(1.0)) * specularFactor;
+        #else
+            pbrExtInfo.f0Dielectric = vec3(pbrExt.clearcoat.w, pbrExt.anisotropy.w, pbrExt.transmission.w);
         #endif
-        // IOR 0 (glTF): no dielectric falloff, a full mirror
-        float iorF0 = pbrExtInfo.ior < 1.0 ? 1.0 : pow((pbrExtInfo.ior - 1.0) / (pbrExtInfo.ior + 1.0), 2.0);
-        pbrExtInfo.specularWeight = specularFactor;
-        pbrExtInfo.f0Dielectric = min(iorF0 * specularColor, vec3(1.0)) * specularFactor;
         info.albedoColor = mix(info.baseColor.rgb * (vec3(1.0) - pbrExtInfo.f0Dielectric), vec3(0.0), info.metallic);
         info.f0 = mix(pbrExtInfo.f0Dielectric, info.baseColor.rgb, info.metallic);
     #endif
@@ -288,6 +298,13 @@ MaterialInfo pbrExtSurface(MaterialInfo info, NormalInfo normalInfo){
             pbrExtInfo.sheenRoughness *= sheenSample.a;
         #endif
         pbrExtInfo.sheenRoughness = clamp(pbrExtInfo.sheenRoughness, 0.0, 1.0);
+        // the visibility's L(0.5): a function of the roughness alone, made once a draw without a
+        // map (iorHex.w, MaterialPbr::getUniformBlock)
+        #ifdef pbrSheenMap
+            pbrExtInfo.sheenL05 = pbrCharlieL(0.5, max(pbrExtInfo.sheenRoughness * pbrExtInfo.sheenRoughness, 0.000001));
+        #else
+            pbrExtInfo.sheenL05 = pbrExt.iorHex.w;
+        #endif
     #endif
 
     #ifdef PBR_ANISOTROPY
@@ -364,7 +381,9 @@ void pbrExtView(MaterialInfo info, vec3 v){
         pbrExtInfo.clearcoatFresnel = F_Schlick(vec3(0.04), vec3(1.0), clampedDot(pbrExtInfo.clearcoatNormal, v)).x;
     #endif
     #ifdef PBR_SHEEN
-        pbrExtInfo.sheenScaling = 1.0 - pbrMax3(pbrExtInfo.sheenColor) * pbrSheenAlbedo(NdotV, pbrExtInfo.sheenRoughness);
+        // once: the environment's sheen takes it too (the same NdotV)
+        pbrExtInfo.sheenAlbedo = pbrSheenAlbedo(NdotV, pbrExtInfo.sheenRoughness);
+        pbrExtInfo.sheenScaling = 1.0 - pbrMax3(pbrExtInfo.sheenColor) * pbrExtInfo.sheenAlbedo;
     #endif
     #ifdef PBR_IRIDESCENCE
         pbrExtInfo.iridescenceFresnel = iridescenceFresnel(NdotV, pbrExtInfo.iridescenceIor, pbrExtInfo.iridescenceThickness, info.f0);
@@ -434,7 +453,7 @@ void pbrExtDirect(MaterialInfo info, vec3 intensity, vec3 pointToLight, vec3 n, 
 
     #ifdef PBR_SHEEN
         pbrExtSheenLight += intensity * NdotL * pbrExtInfo.sheenColor * pbrDCharlie(pbrExtInfo.sheenRoughness, NdotH) *
-                            pbrVSheen(NdotL, NdotV, pbrExtInfo.sheenRoughness);
+                            pbrVSheen(NdotL, NdotV, pbrExtInfo.sheenRoughness, pbrExtInfo.sheenL05);
     #endif
 
     #ifdef PBR_CLEARCOAT
@@ -515,7 +534,7 @@ void pbrExtEnvironment(MaterialInfo info, vec3 n, vec3 v, vec3 envLight, inout v
         #else
             vec3 sheenRadiance = envLight;
         #endif
-        pbrExtSheenLight += sheenRadiance * pbrExtInfo.sheenColor * pbrSheenAlbedo(NdotV, pbrExtInfo.sheenRoughness);
+        pbrExtSheenLight += sheenRadiance * pbrExtInfo.sheenColor * pbrExtInfo.sheenAlbedo;
     #endif
 
     #ifdef PBR_CLEARCOAT

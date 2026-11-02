@@ -557,6 +557,75 @@ YAML::Node editor::Project::changeEntitiesNode(Entity& firstEntity, YAML::Node n
     return node;
 }
 
+bool editor::Project::canAddToPrefab(uint32_t sceneId, Entity entity, const std::filesystem::path& target, std::string* reason) {
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene || target.empty() || !sceneProject->scene->isEntityCreated(entity)) {
+        return true;
+    }
+    Scene* scene = sceneProject->scene;
+    const std::string forbidden = target.lexically_normal().generic_string();
+    // Whether the prefab at path is target or holds it: its nested instances' prefabs and, for a
+    // variant, its bases, at any depth
+    std::unordered_set<std::string> visited;
+    std::function<bool(const std::filesystem::path&)> holds = [&](const std::filesystem::path& path) -> bool {
+        const std::string key = path.lexically_normal().generic_string();
+        if (key == forbidden) {
+            return true;
+        }
+        if (!visited.insert(key).second) {
+            return false;
+        }
+        const std::vector<std::filesystem::path> chain = getPrefabVariantChain(path);
+        for (size_t i = 1; i < chain.size(); i++) {
+            if (holds(chain[i])) {
+                return true;
+            }
+        }
+        Prefab* prefab = loadPrefabAsset(path);
+        if (!prefab || !prefab->registry) {
+            return false;
+        }
+        auto components = prefab->registry->getComponentArray<PrefabComponent>();
+        std::vector<std::filesystem::path> nested;
+        for (size_t i = 0; i < components->size(); i++) {
+            nested.push_back(components->getComponentFromIndex(i).path);
+        }
+        for (const std::filesystem::path& nestedPath : nested) {
+            if (!nestedPath.empty() && holds(nestedPath)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    // The branch: the GameObject and every one below it (one run of the Transform array)
+    std::vector<Entity> branch{entity};
+    if (scene->findComponent<Transform>(entity)) {
+        auto transforms = scene->getComponentArray<Transform>();
+        const size_t first = transforms->getIndex(entity);
+        const size_t last = scene->findBranchLastIndex(entity);
+        for (size_t i = first + 1; i <= last; i++) {
+            branch.push_back(transforms->getEntity(i));
+        }
+    }
+    for (Entity current : branch) {
+        const PrefabComponent* component = scene->findComponent<PrefabComponent>(current);
+        if (!component || component->path.empty()) {
+            continue;
+        }
+        const std::string path = component->path;
+        if (holds(path)) {
+            if (reason) {
+                *reason = "'" + scene->getEntityName(entity) + "' cannot go into " + target.generic_string() + ": '" +
+                    scene->getEntityName(current) + "' in it is an instance of " + path +
+                    (std::filesystem::path(path).lexically_normal().generic_string() == forbidden ? "" : ", which holds " + target.generic_string()) +
+                    ", so the prefab would contain itself";
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
 bool editor::Project::addEntityToPrefab(uint32_t sceneId, Entity entity, Entity parent, bool createItself, const std::filesystem::path& target){
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject || !sceneProject->scene){
@@ -617,6 +686,10 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, Entity entity, Entity 
 
     Prefab* prefab = getPrefab(filepath);
     if (!prefab) {
+        return false;
+    }
+    if (std::string reason; !canAddToPrefab(sceneId, entity, filepath, &reason)) {
+        Out::error("%s", reason.c_str());
         return false;
     }
     uint32_t instanceId = prefab->getInstanceId(sceneId, parent);
@@ -1393,6 +1466,10 @@ bool editor::Project::addEntityToOuterPrefab(uint32_t sceneId, Entity entity, En
         return false;
     }
     Scene* scene = sceneProject->scene;
+    if (std::string reason; !canAddToPrefab(sceneId, entity, target, &reason)) {
+        Out::error("%s", reason.c_str());
+        return false;
+    }
 
     // The instance of `target` holding parent, and its nested root parent is below (at any
     // depth): the GameObject becomes one `target` adds to that nested instance

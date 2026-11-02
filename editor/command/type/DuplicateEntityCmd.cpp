@@ -133,8 +133,14 @@ bool editor::DuplicateEntityCmd::execute(){
     for (size_t i = 0; i < pairs; i++) {
         Entity duplicated = createdTopLevel[i];
 
-        if (sourceParents[i] != NULL_ENTITY)
+        if (sourceParents[i] != NULL_ENTITY) {
             scene->addEntityChild(sourceParents[i], duplicated, false);
+        } else if (scene->findComponent<Transform>(duplicated) && scene->findComponent<Transform>(topLevel[i])) {
+            // A copy at the root goes right after its source's branch in the Transform order too,
+            // where the tracked list (below) and so the file put it: decoded at the end of the
+            // array, the Hierarchy showed it last and the scene opened again with it after its source
+            scene->moveChildToIndex(duplicated, scene->findBranchLastIndex(topLevel[i]) + 1);
+        }
 
         scene->setEntityName(duplicated, uniqueNames.make(scene->getEntityName(topLevel[i])));
         // Distinct copies of top-level sources: none holds another, so none drops out of

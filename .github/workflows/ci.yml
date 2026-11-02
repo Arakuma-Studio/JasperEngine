@@ -81,6 +81,7 @@ jobs:
       - name: Gate and notice checker self-tests
         run: |
           python3 tools/ci/test_gtest_gate.py
+          python3 tools/ci/test_smoke_jit_hangs.py
           python3 tools/ci/test_check_notices.py
 
       # editor keys are bound in the command catalog, not polled by hand (S25 R4, AC3)

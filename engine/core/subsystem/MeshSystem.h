@@ -342,6 +342,9 @@ namespace jasperengine{
         static float sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ);
 
         bool hasPendingAsyncModelLoads() const;
+        // Test hook: each asynchronous parse of a model file waits this long first, so a load is still
+        // running when a test acts (0, the default: none)
+        static void setModelLoadDelayForTest(int milliseconds);
         void cancelAsyncModelLoads();
         static void cancelAllAsyncModelLoads();
         bool isAsyncModelLoadPending(Entity entity, const std::string& filename) const;

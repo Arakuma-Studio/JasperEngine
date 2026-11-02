@@ -128,19 +128,29 @@ vec2 hexTapUV(vec2 uv, ivec2 v, vec2 cs){
     return hexRotate(uv - center, cs) + center + hexOffset(v);
 }
 
-// The blend weights of three taps: the barycentrics to HEX_WEIGHT_EXPONENT, each scaled by
-// its tap's luminance as far as contrast (0..1) says (a bright tap wins over a dark one, which
-// keeps the texture's contrast where they cross), normalized
-vec3 hexWeights(vec3 barycentrics, vec3 luminance, float contrast){
-    vec3 b = vec3(pow(max(barycentrics.x, 0.0f), HEX_WEIGHT_EXPONENT),
-                  pow(max(barycentrics.y, 0.0f), HEX_WEIGHT_EXPONENT),
-                  pow(max(barycentrics.z, 0.0f), HEX_WEIGHT_EXPONENT));
+// The barycentrics to HEX_WEIGHT_EXPONENT: what hexWeights scales by luminance (a function of
+// the taps alone, so the maps and layers that share the taps share it)
+vec3 hexWeightPowers(vec3 barycentrics){
+    return vec3(pow(max(barycentrics.x, 0.0f), HEX_WEIGHT_EXPONENT),
+                pow(max(barycentrics.y, 0.0f), HEX_WEIGHT_EXPONENT),
+                pow(max(barycentrics.z, 0.0f), HEX_WEIGHT_EXPONENT));
+}
+
+// hexWeights with the barycentrics' powers given (hexWeightPowers of the same barycentrics)
+vec3 hexWeightsOfPowers(vec3 barycentrics, vec3 b, vec3 luminance, float contrast){
     vec3 l = vec3(1.0f - contrast + contrast * luminance.x,
                   1.0f - contrast + contrast * luminance.y,
                   1.0f - contrast + contrast * luminance.z);
     vec3 w = vec3(b.x * l.x, b.y * l.y, b.z * l.z);
     float sum = w.x + w.y + w.z;
     return sum > 1e-20f ? w * (1.0f / sum) : barycentrics;
+}
+
+// The blend weights of three taps: the barycentrics to HEX_WEIGHT_EXPONENT, each scaled by
+// its tap's luminance as far as contrast (0..1) says (a bright tap wins over a dark one, which
+// keeps the texture's contrast where they cross), normalized
+vec3 hexWeights(vec3 barycentrics, vec3 luminance, float contrast){
+    return hexWeightsOfPowers(barycentrics, hexWeightPowers(barycentrics), luminance, contrast);
 }
 // HEX_LATTICE_END
 

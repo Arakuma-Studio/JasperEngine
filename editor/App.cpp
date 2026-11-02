@@ -2965,6 +2965,13 @@ void editor::App::engineInit(int argc, char** argv) {
         // a prefab stage's Auto Save writes after its changes
         project.notePrefabStageChange((uint32_t)sceneId);
     };
+    // An undo puts back the modified flag of before its step; a save since wrote the step to
+    // the file, so the scene now differs from it (and the next save writes the undone state)
+    CommandHistory::onUndoPastSave = [this](size_t sceneId){
+        if (SceneProject* sceneProject = project.getScene((uint32_t)sceneId)){
+            sceneProject->isModified = true;
+        }
+    };
     // A drag on a widget is one undo step (S24 R11): its first command opens the edit; a
     // command the history drops waits until no widget may still point at it
     CommandHistory::deferReleases = true;
@@ -3014,6 +3021,13 @@ void editor::App::engineInit(int argc, char** argv) {
     });
 
     Engine::setAsyncLoading(true);
+
+    // Test hook: the harness holds model parses back on their worker, so a save while a load still
+    // runs is not left to timing (test_save_determinism.py)
+    if (const char* delay = std::getenv("JASPER_TEST_MODEL_LOAD_DELAY_MS")) {
+        const long ms = std::strtol(delay, nullptr, 10);
+        if (ms > 0) MeshSystem::setModelLoadDelayForTest(static_cast<int>(std::min(ms, 60000L)));
+    }
 
     // Before the project loads, so an MCP client's initialize is answered at once;
     // its tool calls wait in the main-thread queue until the project is ready.

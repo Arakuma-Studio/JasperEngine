@@ -240,12 +240,12 @@ namespace jasperengine{
         static void getUniformBlock(const MaterialPbrExtensions& pbr, float out[UNIFORM_FLOATS]);
 
         // "lit_" + two letters per define of a builtin:lit reference (Cc Cm Cn Sh Sm An Am Ir Im
-        // Tr Tm Vo Sp Sq Hx Th Lq), the basename its compiled shaders are stored under
+        // Tr Tm Vo Sp Sq Hx Th Lq Ts), the basename its compiled shaders are stored under
         static std::string getVariantBasename(const std::vector<std::string>& defines);
         // the defines of a basename made by getVariantBasename (false: not one)
         static bool parseVariantBasename(const std::string& basename, std::vector<std::string>& defines);
         // whether a define is one a builtin:lit reference takes (PBR_*, TERRAIN_HEX_TILING,
-        // USE_LIT_QUALITY)
+        // TERRAIN_HEX_STOCHASTIC, USE_LIT_QUALITY)
         static bool isBuiltinLitDefine(const std::string& define);
         // those defines as bits (one per define, in the basename's order) and back, sorted
         static uint32_t getDefineBits(const std::vector<std::string>& defines);
@@ -256,6 +256,9 @@ namespace jasperengine{
         static const char* const LIT_QUALITY_DEFINE;   // USE_LIT_QUALITY
         // a Terrain with a hex tiled layer (TerrainSurfaceLayer::hexTiling)
         static const char* const TERRAIN_HEX_DEFINE;   // TERRAIN_HEX_TILING
+        // and a layer of it (or another) takes Stochastic Tiling: without it, the hex variant
+        // leaves that path out (its registers would halve the variant's occupancy)
+        static const char* const TERRAIN_HEX_STOCHASTIC_DEFINE;   // TERRAIN_HEX_STOCHASTIC
         static const char* const TRANSMISSION_DEFINE;  // PBR_TRANSMISSION
     };
 
