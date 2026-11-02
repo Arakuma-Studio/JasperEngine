@@ -2159,10 +2159,24 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
         return;
     }
 
-    // generation is expensive (cosine + GGX convolution), reuse cached maps
+    // generation is expensive (cosine + GGX convolution), reuse cached maps; those of the image's
+    // pixels as they are: a hot reload's new pixels light the scene otherwise
     const std::string texId = sky.texture.getId();
-    const std::string irradianceId = texId + "|ibl|irradiance";
-    const std::string prefilteredId = texId + "|ibl|prefiltered";
+    const uint32_t imageGeneration = TextureDataPool::generation(texId);
+    const auto environmentId = [&texId](uint32_t generation, const char* map){
+        return texId + "|ibl|" + map + (generation > 0 ? "|" + std::to_string(generation) : std::string());
+    };
+    const std::string irradianceId = environmentId(imageGeneration, "irradiance");
+    const std::string prefilteredId = environmentId(imageGeneration, "prefiltered");
+    // the maps are this image's pixels' now: those of the pixels before go with their last holder
+    const auto noteMapsMade = [&](){
+        if (sky.environmentId == texId && sky.environmentGeneration != imageGeneration){
+            TexturePool::remove(environmentId(sky.environmentGeneration, "irradiance"));
+            TexturePool::remove(environmentId(sky.environmentGeneration, "prefiltered"));
+        }
+        sky.environmentId = texId;
+        sky.environmentGeneration = imageGeneration;
+    };
 
     if (!texId.empty()){
         std::shared_ptr<TextureRender> irradiance = TexturePool::get(irradianceId);
@@ -2176,6 +2190,7 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
                 sky.envMapsLoaded = true;
                 needReloadMeshes();
             }
+            noteMapsMade();
             sky.needUpdateEnvironment = false;
             return;
         }
@@ -2188,6 +2203,13 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
     }
 
     if (texResult.state == ResourceLoadState::Finished && texResult.data){
+        // a cook of six files swapped in: nothing the CPU can read (a cube's cook has its copy), and
+        // the same image as the source the maps were made of
+        if (sky.envMapsLoaded && sky.environmentId == texId && !IBLEnvironment::canGenerate(*(texResult.data))){
+            sky.needUpdateEnvironment = false;
+            return;
+        }
+
         releaseSkyEnvironment(sky);
 
         std::shared_ptr<TextureRender> irradiance = std::make_shared<TextureRender>();
@@ -2201,6 +2223,7 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
             sky.envMapsLoaded = true;
             TexturePool::add(irradianceId, irradiance);
             TexturePool::add(prefilteredId, prefiltered);
+            noteMapsMade();
             needReloadMeshes();
         }
     }
@@ -3486,6 +3509,19 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         }
     }
 
+    // the built-in Lit's lobes and hex tiling (a fork's of it too, which has no manifest). Lobes
+    // are lighting: an unlit variant keeps hex tiling only. A 2D shadow atlas takes one extension
+    // map slot (16 fragment textures at most). A lobe's map samples the mesh's UVs as the core maps
+    // do, and has no slot without them (includes/pbr_ext_slots.glsl).
+    if (!manifest && inputs.material){
+        const MaterialLighting pbrLighting = p_unlit ? MaterialLighting::NONE : lighting;
+        variant.pbr = MaterialPbr::getPbrVariant(*inputs.material, pbrLighting, inputs.terrain, environment.pbrTier, p_shadows2d ? 1 : 0);
+        if (!variant.pbr.maps.empty() && inputs.texCoord1){
+            p_hasTexture1 = true;
+            p_hasTexture2 = inputs.texCoord2;
+        }
+    }
+
     // Shader library (section 7.3): a manifest's @require forces the inputs it names when
     // the mesh has them, whatever the lights and textures, and only those (the varyings
     // surface_vs.glsl writes follow @require). A lit mode adds the normals the lights need
@@ -3570,14 +3606,9 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
 
     // the built-in Lit's defines beyond the property bits (and a fork's of it, which has no
     // manifest): the material's lobes and hex tiling, the Terrain's hex tiled layers, the High
-    // Lit Quality. Lobes are lighting: an unlit variant keeps hex tiling only. A 2D shadow
-    // atlas takes one extension map slot (16 fragment textures at most).
+    // Lit Quality
     if (!manifest){
-        if (inputs.material){
-            const MaterialLighting pbrLighting = p_unlit ? MaterialLighting::NONE : lighting;
-            variant.pbr = MaterialPbr::getPbrVariant(*inputs.material, pbrLighting, inputs.terrain, environment.pbrTier, p_shadows2d ? 1 : 0);
-            variant.litDefines = variant.pbr.defines;
-        }
+        variant.litDefines = variant.pbr.defines;
         if (p_terrainSurface && inputs.terrainHex){
             variant.litDefines.push_back(MaterialPbr::TERRAIN_HEX_DEFINE);
             if (inputs.terrainHexStochastic)
@@ -4800,7 +4831,9 @@ bool RenderSystem::loadPBRTextures(Material& material, ShaderData& shaderData, O
         render.addTexture(slotTex, ShaderStageType::FRAGMENT, &emptyWhite);
     }
 
-    if (hasLights && receiveLights){
+    // (a lit variant with UVs samples them under image based lighting alone too: addTexture
+    // no-ops when the compiled variant has no slot)
+    if ((hasLights || hasIBL || hasReflectionProbes) && receiveLights){
         textureRender = material.metallicRoughnessTexture.getRender(&emptyWhite);
         slotTex = shaderData.getTextureIndex(TextureShaderType::METALLICROUGHNESS);
         if (textureRender){
@@ -13667,7 +13700,9 @@ void RenderSystem::update(double dt){
                         if (!(mesh.submeshes[s].shaderProperties & (1 << 1)) && !(mesh.submeshes[s].shaderProperties & (1 << 2))){ // not 'Uv1' and not 'Uv2'
                             mesh.needReload = true;
                         }
-                    }else{
+                    }else if (mesh.submeshes[s].pbrMaps[0] == PbrMap::COUNT){
+                        // (a lobe's map the variant binds asked for its UVs: when it goes or
+                        // another comes, pbrVariantMatches below builds the variant it takes)
                         if ((mesh.submeshes[s].shaderProperties & (1 << 1)) || (mesh.submeshes[s].shaderProperties & (1 << 2))){ // 'Uv1' or 'Uv2'
                             mesh.needReload = true;
                         }

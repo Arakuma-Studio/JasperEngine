@@ -113,6 +113,7 @@ namespace jasperengine{
         static texturesdata_t& getMap();
         static std::unordered_map<std::string, uint32_t>& getGenerations();
         static std::unordered_map<std::string, TextureSource>& getSources();
+        static void setEntry(const std::string& id, std::shared_ptr<std::array<TextureData,6>> data);
         static std::atomic<uint32_t> replaceEpoch;
 
         static std::unordered_map<std::string, PendingTexture> pendingBuilds;
@@ -152,6 +153,11 @@ namespace jasperengine{
     public:
         static std::shared_ptr<std::array<TextureData,6>> get(const std::string& id);
         static std::shared_ptr<std::array<TextureData,6>> get(const std::string& id, std::array<TextureData,6> data);
+        // Whether the id's entry holds pixels of at least `size` bytes now; any thread
+        static bool hasPixelsOfSize(const std::string& id, size_t size);
+        // Frees the pixels of a face (the cleanup after a GPU upload, on the main thread) from under
+        // whoever asks an entry for them on another thread
+        static void releasePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t face);
         // Inserts an already-built face array without copying it (used to hand pre-decoded model
         // textures to the pool). No-op if the id is already cached with pixels. Main-thread only.
         static void put(const std::string& id, std::shared_ptr<std::array<TextureData,6>> data);

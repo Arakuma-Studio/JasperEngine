@@ -29,6 +29,8 @@ namespace jasperengine{
         typedef std::array<Vector3, HORIZON_AZIMUTHS> HorizonRing;
 
         // faces follow the cubemap convention: 0=+X, 1=-X, 2=+Y, 3=-Y, 4=+Z, 5=-Z
+        // whether generate can read the faces on the CPU (a cook has no pixels but its CPU copy)
+        static bool canGenerate(std::array<TextureData,6>& faces);
         static bool generate(const std::string& label, std::array<TextureData,6>& faces, TextureRender& irradianceMap, TextureRender& prefilteredMap,
                              HorizonRing* horizonRing = nullptr);
     };

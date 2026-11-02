@@ -11,10 +11,22 @@
 
 #include <atomic>
 #include <cstring>
+#include <mutex>
 
 #include <vector>
 
 using namespace jasperengine;
+
+namespace {
+    // The map and the invalidated ids: the frames use them, and so does a model loading off the
+    // main thread (the thumbnail strand, a game's loading thread: Texture::setData, setId,
+    // setPath). Taken around the containers' own operations alone: never while a GPU texture is
+    // made or destroyed (TextureDataPool's entriesMutex, and its measurement, is the same).
+    std::mutex& entriesMutex(){
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
+    }
+}
 
 textures_t& TexturePool::getMap(){
     //To prevent similar problem of static init fiasco but on deinitialization
@@ -54,6 +66,7 @@ uint32_t TexturePool::getRebindEpoch(){
 }
 
 std::shared_ptr<TextureRender> TexturePool::getKept(const std::string& id){
+	std::lock_guard<std::mutex> lock(entriesMutex());
 	auto& map = getMap();
 	auto it = map.find(id);
 	return (it != map.end() && it->second && it->second->isCreated()) ? it->second : nullptr;
@@ -69,6 +82,7 @@ std::string TexturePool::getRenderId(const std::string& id, TextureFilter minFil
 }
 
 std::shared_ptr<TextureRender> TexturePool::get(const std::string& id){
+	std::lock_guard<std::mutex> lock(entriesMutex());
 	auto& map = getMap();
 	auto it = map.find(id);
 
@@ -80,11 +94,17 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id){
 }
 
 std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureType type, const std::shared_ptr<std::array<TextureData,6>> &data, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
-	auto& map = getMap();
-	auto it = map.find(id);
-	std::shared_ptr<TextureRender> shared = (it != map.end()) ? it->second : nullptr;
-
-	bool stale = getInvalidated().count(id) > 0;
+	std::shared_ptr<TextureRender> shared;
+	bool stale = false;
+	{
+		std::lock_guard<std::mutex> lock(entriesMutex());
+		auto& map = getMap();
+		auto it = map.find(id);
+		if (it != map.end()){
+			shared = it->second;
+		}
+		stale = getInvalidated().count(id) > 0;
+	}
 
 	if (shared && shared->isCreated() && !stale){
 		return shared;
@@ -207,9 +227,8 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 	SystemRender::scheduleCleanup([](void* buffers){ delete static_cast<std::vector<std::vector<uint8_t>>*>(buffers); }, owned);
 	if (!created){
 		shared->destroyTexture();
-		if (it != map.end()){
-			map.erase(it);
-		}
+		std::lock_guard<std::mutex> lock(entriesMutex());
+		getMap().erase(id);
 		return NULL;
 	}
 
@@ -220,8 +239,11 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 	}
 	shared->setTransparent(transparent);
 
-	map[id] = shared;
-	getInvalidated().erase(id);
+	{
+		std::lock_guard<std::mutex> lock(entriesMutex());
+		getMap()[id] = shared;
+		getInvalidated().erase(id);
+	}
 	shared->setStale(false);
 	if (rebuilt){
 		shared->noteRebuilt();
@@ -233,6 +255,7 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 }
 
 bool TexturePool::holds(const std::string& id, const std::shared_ptr<TextureRender>& render){
+	std::lock_guard<std::mutex> lock(entriesMutex());
 	auto& map = getMap();
 	auto it = map.find(id);
 	return render && it != map.end() && it->second == render;
@@ -240,20 +263,28 @@ bool TexturePool::holds(const std::string& id, const std::shared_ptr<TextureRend
 
 void TexturePool::add(const std::string& id, std::shared_ptr<TextureRender> render){
 	if (!id.empty() && render){
-		getMap()[id] = render;
+		std::lock_guard<std::mutex> lock(entriesMutex());
+		getMap()[id].swap(render);
 	}
 }
 
 void TexturePool::remove(const std::string& id){
-	auto& map = getMap();
-	auto it = map.find(id);
-	if (it != map.end()){
-		if (!it->second || it->second.use_count() <= 1){
-			if (it->second){
-				it->second->destroyTexture();
-			}
+	bool found = false;
+	std::shared_ptr<TextureRender> gone;
+	{
+		std::lock_guard<std::mutex> lock(entriesMutex());
+		auto& map = getMap();
+		auto it = map.find(id);
+		found = it != map.end();
+		if (found && (!it->second || it->second.use_count() <= 1)){
+			gone.swap(it->second);
 			map.erase(it);
 			getInvalidated().erase(id);
+		}
+	}
+	if (found){
+		if (gone){
+			gone->destroyTexture();
 		}
 	}else{
 		if (Engine::isViewLoaded()){
@@ -271,47 +302,61 @@ void TexturePool::remove(const std::string& id){
 // entries are destroyed and erased immediately, like remove(). The id's sampler variants
 // (getRenderId) hold the same image, so they are invalidated with it.
 void TexturePool::invalidate(const std::string& id){
-	auto& map = getMap();
+	std::vector<std::shared_ptr<TextureRender>> gone;
+	{
+		std::lock_guard<std::mutex> lock(entriesMutex());
+		auto& map = getMap();
 
-	std::vector<std::string> keys = {id};
-	const std::string prefix = id + "|sampler=";
-	for (auto it = map.lower_bound(prefix); it != map.end() && it->first.compare(0, prefix.size(), prefix) == 0; ++it){
-		keys.push_back(it->first);
-	}
-
-	for (const std::string& key : keys){
-		auto it = map.find(key);
-		if (it == map.end()){
-			continue;
+		std::vector<std::string> keys = {id};
+		const std::string prefix = id + "|sampler=";
+		for (auto it = map.lower_bound(prefix); it != map.end() && it->first.compare(0, prefix.size(), prefix) == 0; ++it){
+			keys.push_back(it->first);
 		}
 
-		if (!it->second || it->second.use_count() <= 1){
-			if (it->second){
-				it->second->destroyTexture();
+		for (const std::string& key : keys){
+			auto it = map.find(key);
+			if (it == map.end()){
+				continue;
 			}
-			map.erase(it);
-		}else{
-			getInvalidated().insert(key);
-			it->second->setStale(true);
-			advance(rebindEpoch);
+
+			if (!it->second || it->second.use_count() <= 1){
+				if (it->second){
+					gone.push_back(std::move(it->second));
+				}
+				map.erase(it);
+			}else{
+				getInvalidated().insert(key);
+				it->second->setStale(true);
+				advance(rebindEpoch);
+			}
 		}
+	}
+	for (const std::shared_ptr<TextureRender>& render : gone){
+		render->destroyTexture();
 	}
 }
 
 void TexturePool::clear(){
-	for (auto& it: getMap()) {
+	textures_t entries;
+	{
+		std::lock_guard<std::mutex> lock(entriesMutex());
+		entries.swap(getMap());
+		getInvalidated().clear();
+	}
+	for (auto& it: entries) {
 		if (it.second)
 			it.second->destroyTexture();
 	}
-	getMap().clear();
-	getInvalidated().clear();
 }
 
 void TexturePool::clearUnused(){
 	std::vector<std::string> ids;
-	ids.reserve(getMap().size());
-	for (const auto& [id, _] : getMap()) {
-		ids.push_back(id);
+	{
+		std::lock_guard<std::mutex> lock(entriesMutex());
+		ids.reserve(getMap().size());
+		for (const auto& [id, _] : getMap()) {
+			ids.push_back(id);
+		}
 	}
 	for (const auto& id : ids) {
 		remove(id);

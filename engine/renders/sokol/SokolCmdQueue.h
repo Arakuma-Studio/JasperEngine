@@ -221,13 +221,14 @@ namespace jasperengine {
 		static int32_t m_pending_commands_index;
 		static int32_t m_commit_commands_index;
 		static std::vector<SokolRenderCleanup> m_cleanups;
+		static std::mutex m_cleanups_mutex;
 
 		static Semaphore m_update_semaphore;
 		static Semaphore m_render_semaphore;
 		static std::atomic<bool> m_flushing;
 		static std::atomic<bool> m_commited;
 		static std::mutex m_execute_mutex;
-		static int32_t m_frame_index;
+		static std::atomic<int32_t> m_frame_index;
 	};
 
 // ----------------------------------------------------------------------------------------------------

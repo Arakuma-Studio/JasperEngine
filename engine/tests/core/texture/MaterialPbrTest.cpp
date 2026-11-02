@@ -282,6 +282,55 @@ TEST(PbrVariant, BasenameIsShort){
     EXPECT_EQ(MaterialPbr::getVariantBasename({"PBR_CLEARCOAT"}), "lit_Cc");
 }
 
+// A lobe's map samples the mesh's UVs as the core maps do (includes/pbr_ext_slots.glsl has no slot
+// for it without them), whichever lobe and whatever else the material has; a lobe's map the variant
+// leaves out (an unlit variant) asks for none (BF17)
+TEST(PbrVariant, ALobesMapAsksForTheMeshsUVs){
+    const uint64_t uv1 = 1u << 1, uv2 = 1u << 2;
+    MeshShaderEnvironment lit;
+    lit.lights = true;
+    MeshShaderEnvironment unlit;
+    Texture map;
+    map.setId("bf17-lobe-map");
+
+    for (int m = 0; m < (int)PbrMap::COUNT; m++){
+        const PbrMap kind = (PbrMap)m;
+        Material material;
+        MaterialPbrExtensions& pbr = material.pbr.edit();
+        pbr.clearcoat.enabled = kind == PbrMap::CLEARCOAT || kind == PbrMap::CLEARCOAT_NORMAL;
+        pbr.specular.enabled = kind == PbrMap::SPECULAR;
+        pbr.transmission.enabled = kind == PbrMap::TRANSMISSION;
+        pbr.sheen.enabled = kind == PbrMap::SHEEN;
+        pbr.anisotropy.enabled = kind == PbrMap::ANISOTROPY;
+        pbr.iridescence.enabled = kind == PbrMap::IRIDESCENCE;
+        MaterialPbr::getMap(pbr, kind) = map;
+
+        SubmeshShaderInputs inputs;
+        inputs.normal = true;
+        inputs.receiveLights = true;
+        inputs.material = &material;
+        inputs.texCoord1 = true;
+        const char* name = MaterialPbr::getMapName(kind);
+        EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lit, inputs).properties & (uv1 | uv2), uv1) << name;
+        inputs.texCoord2 = true;
+        EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lit, inputs).properties & (uv1 | uv2), uv1 | uv2) << name;
+        EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(unlit, inputs).properties & (uv1 | uv2), 0u) << name;
+        // a mesh without UVs has none to give
+        inputs.texCoord1 = inputs.texCoord2 = false;
+        EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lit, inputs).properties & (uv1 | uv2), 0u) << name;
+    }
+
+    // a lobe without a map keeps the program it always was
+    Material factors;
+    factors.pbr.edit().sheen.enabled = true;
+    SubmeshShaderInputs inputs;
+    inputs.normal = true;
+    inputs.receiveLights = true;
+    inputs.material = &factors;
+    inputs.texCoord1 = true;
+    EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lit, inputs).properties & (uv1 | uv2), 0u);
+}
+
 // A hex tiled Terrain's variant carries the Stochastic Tiling path only when a layer takes it
 // (TERRAIN_HEX_STOCHASTIC): without one the path is compiled out of the hex variant, which
 // otherwise holds the lattices' registers for nothing (docs/perf/gpu-campaign.md, S11 perf3)
