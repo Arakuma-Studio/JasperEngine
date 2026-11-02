@@ -358,8 +358,8 @@ rb.sh A --img tools/check-changed        # inside the Linux image (no web or And
   change, in `jasperengine-core-tests` and `jasperengine-editor-tests` (`--gtest_filter`, through
   `tools/build.sh unit-tests` and its no-silent-green gate); a changed test file always runs; a
   CMake change, or test trees not built yet, run them all.
-- MCP tests: the files whose editors executed a changed source in the coverage map (headers
-  through the editor tree's dependency database), the changed test files, the files that call a
+- MCP tests: the files whose editors executed a function written in a changed source in the coverage
+  map (a header also counts through its `.cpp`), the changed test files, the files that call a
   changed MCP tool (by its tool names), that load a changed fixture, test project, Lua script,
   shader, HTML, scene or material (by path), and, for an engine change, the files that run a prebuilt
   game (`GAME_BUILD_FILES`: it runs engine code no editor coverage sees), and those that compile a
@@ -397,9 +397,10 @@ rb.sh A --img 'JASPER_EDITOR=/src/build/linux/editor-coverage-install/bin/jasper
 ```
 
 Each test file's (and chunk's) editors write their GCC counts under their own `GCOV_PREFIX`; a
-source counts for a file when the file executed a function of it that fewer than 80% of the files with
-an editor executed (start-up and static registrations say nothing of what a file tests; a source
-only those reach is unmapped: the CI suite). The run leaves out the slow builds
+source file counts for a test file when it executed a function written in it (the object's `.gcno`
+names that file, a header's for an inline function) that fewer than 80% of the files with an editor
+executed: start-up and static registrations say nothing of what a file tests, and a source only
+those reach is unmapped (the CI suite). The run leaves out the slow builds
 (no `JASPER_SLOW_BUILD`): what a compile or a prebuilt game runs is not the editor's code, and the
 files that build games are selected by path (`GAME_BUILD_FILES`, `COMPILE_PATHS`). The server's
 `rb.sh` puts the map where check-changed looks; copy it to the other servers' `~/je/mcp-build-cache/`.

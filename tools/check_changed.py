@@ -22,9 +22,9 @@ unit and MCP tests that can see it; the full suite stays the gate of batch landi
    include it; their gtest suites run (--gtest_filter), in the core and the editor binary. A
    changed test file always runs. A change the database cannot see (CMake, no tree yet) runs all;
    a shader runs the core tests' *Gpu suites.
-4. MCP tests, from a coverage map (tools/mcp/coverage_map.py: which sources each test file's editors
-   executed, recorded by a full run of a coverage-instrumented editor): the files whose sources
-   intersect the change (headers through the editor tree's dependency database), the changed test
+4. MCP tests, from a coverage map (tools/mcp/coverage_map.py: which source files, headers included,
+   each test file's editors executed a function of, recorded by a full run of a coverage-instrumented
+   editor): the files whose sources intersect the change (a header also through its .cpp), the changed test
    files, the tests of a changed MCP tool (by its tool names), of a changed fixture, Lua, shader or
    asset (by path; a shader also test_shader_library.py and the CI suite), the files that run a
    prebuilt game when the engine changes, and those that compile a game when what the compile
@@ -451,8 +451,8 @@ def test_files(tests_dir: Path = MCP_TESTS) -> dict[str, str]:
 
 
 def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str, str],
-             header_units=None, staleness: str | None = None) -> None:
-    """sources: test file -> its text. header_units(header) -> the editor tree's units including it."""
+             staleness: str | None = None) -> None:
+    """sources: test file -> its text."""
     if plan.mcp_all:
         return
     files = changes.files
@@ -533,11 +533,10 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
     known = set().union(*covered.values()) if covered else set()
     unmapped = []
     for f in code:
+        # the file itself; a header also through its source (what its declarations are of)
         targets = {f}
-        if f.endswith(HEADER) and header_units is not None:
-            targets |= set(header_units(f))
-        if f.endswith(CXX) and not f.endswith(HEADER):
-            targets |= set(siblings(f))
+        if f.endswith(HEADER):
+            targets |= {os.path.splitext(f)[0] + ext for ext in (".cpp", ".cc", ".mm")}
         # (a file the map names that the checkout no longer has is no test to run)
         hit = [t for t, srcs in covered.items() if srcs & targets and t in sources]
         for t in hit:
@@ -734,14 +733,9 @@ def main(argv: list[str], root: Path | None = None) -> int:
     if "htmlui-tests" in plan.builds and not args.dry_run:
         runner.run("build the HTML UI tests", ["tools/build.sh", "htmlui-tests"], dict(build_env, RUN="0"))
     staleness = map_staleness(cmap, time.time(), commits_since(ROOT)) if cmap else None
-    editor_deps = parse_ninja_deps(ninja_deps(EDITOR_TREE) or "", EDITOR_TREE) if not plan.mcp_all else {}
-
-    def header_units(header: str) -> list[str]:
-        return [paths[0] for paths in editor_deps.values() if paths and header in paths]
-
     plan_units(changes, plan, ninja_deps(CORE_TREE), ninja_deps(EDITOR_TEST_TREE),
                ninja_deps(HTMLUI_TREE) if "htmlui-tests" in plan.builds else None)
-    plan_mcp(changes, plan, cmap, test_files(MCP_TESTS), header_units, staleness)
+    plan_mcp(changes, plan, cmap, test_files(MCP_TESTS), staleness)
     text = describe(changes, plan, cmap_info)
     print(text, flush=True)
     if args.list_mcp:

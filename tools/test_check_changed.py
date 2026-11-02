@@ -236,9 +236,9 @@ class Mcp(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
         cc.use_root(REAL_ROOT)
 
-    def plan(self, files, cmap=MAP, staleness=None, header_units=None, deleted=()):
+    def plan(self, files, cmap=MAP, staleness=None, deleted=()):
         p = cc.Plan()
-        cc.plan_mcp(cc.Changes("b", "x", list(files), list(deleted)), p, cmap, SRC, header_units, staleness)
+        cc.plan_mcp(cc.Changes("b", "x", list(files), list(deleted)), p, cmap, SRC, staleness)
         return p
 
     def test_map_intersection(self):
@@ -250,9 +250,10 @@ class Mcp(unittest.TestCase):
         p = self.plan(["engine/project/main.cpp"])
         self.assertIn("test_build.py", p.mcp_files)
         self.assertIn("test_build.py", self.plan(["editor/Exporter.cpp"]).mcp_files)
-        # a header through the units that include it
-        p = self.plan(["editor/Other.h"], header_units=lambda h: ["editor/Other.cpp"])
-        self.assertEqual(p.mcp_files, ["test_other.py"])
+        # a header through its source; or itself, when an inline function of it ran
+        self.assertEqual(self.plan(["editor/Other.h"]).mcp_files, ["test_other.py"])
+        cmap = {"files": {"test_render.py": ["engine/core/Inline.h"]}}
+        self.assertEqual(self.plan(["engine/core/Inline.h"], cmap=cmap).mcp_files[0], "test_render.py")
 
     def test_fallbacks(self):
         self.assertTrue(self.plan(["editor/App.cpp"], cmap=None).mcp_ci)                    # no map
@@ -303,6 +304,20 @@ def gcda(major: int, counters: list[int], zero_compact: bool = False, functions:
     return out
 
 
+def gcno(functions: dict[int, tuple[str, str]], cwd: str = "/src/build/x") -> bytes:
+    """A minimal GCC 11 .gcno: header, current directory, a flag, function records and a block record."""
+    def string(text: str) -> bytes:
+        raw = text.encode() + b"\0"
+        raw += b"\0" * (-len(raw) % 4)
+        return struct.pack("<I", len(raw) // 4) + raw
+    out = struct.pack("<III", coverage_map.GCNO_MAGIC, 0x4230342a, 1) + string(cwd) + struct.pack("<I", 1)
+    for ident, (name, file) in functions.items():
+        body = struct.pack("<III", ident, 2, 3) + string(name) + struct.pack("<I", 0) + string(file) + struct.pack("<IIII", 1, 1, 2, 2)
+        out += struct.pack("<Ii", coverage_map.TAG_FUNCTION, len(body) // 4) + body
+        out += struct.pack("<II", coverage_map.GCNO_NO_PAYLOAD[0], 7)   # the blocks: a count, no words
+    return out
+
+
 class Coverage(unittest.TestCase):
     def test_gcda(self):
         for major in (11, 12):
@@ -313,31 +328,37 @@ class Coverage(unittest.TestCase):
             self.assertEqual(coverage_map.gcda_functions(gcda(major, [], functions={7: [0, 1], 8: [0], 9: [3]})), {7, 9})
         self.assertFalse(coverage_map.gcda_executed(b"nonsense"))
 
+    def test_gcno(self):
+        data = gcno({1: ("_Z3foov", "/src/engine/core/A.cpp"), 2: ("_ZN3Bar3getEv", "../engine/core/Bar.h")})
+        self.assertEqual(coverage_map.gcno_functions(data),
+                         {1: ("_Z3foov", "/src/engine/core/A.cpp"), 2: ("_ZN3Bar3getEv", "/src/build/x/../engine/core/Bar.h")})
+        self.assertEqual(coverage_map.gcno_functions(b"nonsense"), {})
+
     def test_collect_leaves_out_what_every_editor_runs(self):
         tmp = Path(tempfile.mkdtemp(prefix="cc-cov-"))
         old = coverage_map.MIN_EDITOR_FUNCTIONS
         coverage_map.MIN_EDITOR_FUNCTIONS = 2
         try:
-            tree = "/src/build/linux/editor-coverage"
-            deps = cc.parse_ninja_deps(
-                "engine/CMakeFiles/jasperengine.dir/core/A.cpp.o: #deps 1\n    /src/engine/core/A.cpp\n\n"
-                "engine/CMakeFiles/jasperengine.dir/core/B.cpp.o: #deps 1\n    /src/engine/core/B.cpp\n\n"
-                "engine/CMakeFiles/jasperengine.dir/core/C.cpp.o: #deps 1\n    /src/engine/core/C.cpp\n",
-                Path(tree), Path("/nonexistent"))
-            # B's function 1 and C's function 1 run in every editor (registrations); A's in test_x's two chunks only
-            runs = {"test_x-0": {"A": {5: [3]}, "B": {1: [1]}, "C": {1: [1]}},
-                    "test_x-1": {"B": {1: [1], 2: [4]}, "C": {1: [1]}},
-                    "test_y-2": {"B": {1: [1]}, "C": {1: [1]}},
-                    "test_z-3": {"B": {1: [1]}, "C": {1: [1]}},
+            tree = Path("/src/build/linux/editor-coverage")
+            # function 1 of each object runs in every editor (registrations); 5 and 2 only in test_x's chunks;
+            # 3 is an inline function of a header, 4 of a system header
+            objs = {"o/A.cpp": {1: ("a1", "/src/engine/core/A.cpp"), 5: ("a5", "/src/engine/core/A.cpp"),
+                                3: ("inl", "/src/engine/core/Inl.h"), 4: ("sys", "/usr/include/x.h")},
+                    "o/B.cpp": {1: ("b1", "/src/engine/core/B.cpp"), 2: ("b2", "/src/engine/core/B.cpp")}}
+            runs = {"test_x-0": {"o/A.cpp": {1: [1], 5: [3], 3: [1], 4: [1]}, "o/B.cpp": {1: [1]}},
+                    "test_x-1": {"o/A.cpp": {1: [1]}, "o/B.cpp": {1: [1], 2: [4]}},
+                    "test_y-2": {"o/A.cpp": {1: [1]}, "o/B.cpp": {1: [1]}},
+                    "test_z-3": {"o/A.cpp": {1: [1]}, "o/B.cpp": {1: [1]}},
                     "test_nothing-4": {}}
-            for run, objs in runs.items():
+            for run, gcdas in runs.items():
                 (tmp / run).mkdir()
-                for name, functions in objs.items():
-                    p = tmp / run / tree.lstrip("/") / "engine/CMakeFiles/jasperengine.dir/core" / f"{name}.cpp.gcda"
+                for name, functions in gcdas.items():
+                    p = tmp / run / str(tree).lstrip("/") / f"{name}.gcda"
                     p.parent.mkdir(parents=True, exist_ok=True)
                     p.write_bytes(gcda(11, [], functions=functions))
-            files = coverage_map.collect(tmp, Path(tree), deps, tree)
-            self.assertEqual(files, {"test_nothing.py": [], "test_x.py": ["engine/core/A.cpp", "engine/core/B.cpp"],
+            files = coverage_map.collect(tmp, tree, lambda rel: gcno(objs[rel[:-len(".gcno")]]))
+            self.assertEqual(files, {"test_nothing.py": [],
+                                     "test_x.py": ["engine/core/A.cpp", "engine/core/B.cpp", "engine/core/Inl.h"],
                                      "test_y.py": [], "test_z.py": []})
         finally:
             coverage_map.MIN_EDITOR_FUNCTIONS = old

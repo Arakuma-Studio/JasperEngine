@@ -11,11 +11,11 @@ landing's run, a quiet server):
     python3 tools/mcp/coverage_map.py collect build/coverage/runs build/linux/editor-coverage \\
       --commit $(git rev-parse HEAD) --out build/coverage/coverage-map.json
 
-A source counts for a file when the file's editors executed a function of it (a counter above zero in
-its object's .gcda) that fewer than 80% of the files with an editor executed: start-up and static
+A source file counts for a test file when its editors executed a function written in it (a counter
+above zero in the object's .gcda; the object's .gcno says which file each function is in, a header's for
+an inline function) that fewer than 80% of the files with an editor executed: start-up and static
 registrations run in every editor and say nothing. A source only those reach is in no list, so
-check-changed takes it as unmapped and adds the CI suite. Headers go through the editor tree's
-dependency database.
+check-changed takes it as unmapped and adds the CI suite.
 The map: {"commit", "created", "tests": N, "files": {"test_x.py": ["engine/core/Foo.cpp", ...]}}.
 """
 
@@ -34,6 +34,8 @@ from pathlib import Path
 GCDA_MAGIC = 0x67636461            # "gcda"
 TAG_FUNCTION = 0x01000000
 TAG_COUNTER_BASE = 0x01a10000      # the arc counters
+GCNO_MAGIC = 0x67636e6f            # "gcno"
+GCNO_NO_PAYLOAD = (0x01410000,)    # the blocks record: a count, no words
 COMMON_SHARE = 0.8                 # of the files with an editor: a function that many execute is any editor's
 MIN_EDITOR_FUNCTIONS = 1000        # a file that executed fewer started no editor
 
@@ -82,6 +84,43 @@ def gcda_executed(data: bytes) -> bool:
     return bool(gcda_functions(data))
 
 
+def gcno_functions(data: bytes) -> dict[int, tuple[str, str]]:
+    """A .gcno (what GCC knows of one object's functions): ident -> (name, source file), the file
+    the function is written in, a header's for an inline function. GCC 8 to 11's layout: header,
+    current directory, a flag, then records; strings are a length in words and their bytes."""
+    if len(data) < 16:
+        return {}
+    for order in ("<", ">"):
+        if struct.unpack_from(order + "I", data, 0)[0] == GCNO_MAGIC:
+            break
+    else:
+        return {}
+
+    def string(at: int) -> tuple[str, int]:
+        words, = struct.unpack_from(order + "I", data, at)
+        at += 4
+        raw = data[at:at + words * 4]
+        return raw.split(b"\0", 1)[0].decode("utf-8", "replace"), at + words * 4
+
+    pos = 12
+    cwd, pos = string(pos)
+    pos += 4   # (support_unexecuted_blocks)
+    found: dict[int, tuple[str, str]] = {}
+    while pos + 8 <= len(data):
+        tag, length = struct.unpack_from(order + "Ii", data, pos)
+        pos += 8
+        if tag == 0:
+            break
+        size = abs(length) * 4 if tag not in GCNO_NO_PAYLOAD else 0
+        if tag == TAG_FUNCTION:
+            ident, = struct.unpack_from(order + "I", data, pos)
+            name, at = string(pos + 12)
+            file, _ = string(at + 4)   # (past "artificial")
+            found[ident] = (name, file if file.startswith("/") else os.path.join(cwd, file))
+        pos += size
+    return found
+
+
 def object_sources(tree: Path, deps_text: str | None = None) -> dict[str, list[str]]:
     """object (relative to the tree) -> its source and headers, repository-relative (ninja -t deps)."""
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -91,35 +130,61 @@ def object_sources(tree: Path, deps_text: str | None = None) -> dict[str, list[s
     return check_changed.parse_ninja_deps(deps_text, tree)
 
 
-def collect(runs: Path, tree: Path, deps: dict[str, list[str]], prefix_in_run: str) -> dict[str, list[str]]:
-    """runs/<file stem>-<n>/<prefix_in_run>/<object>.gcda -> {test file: [executed sources]}. What
-    every editor runs (start-up, static registrations: a function at least COMMON_SHARE of the files
-    with an editor executed) tells nothing of what a file tests: a source counts for a file through
-    a function that is not that common. A source only such functions reach is in no file's list:
-    check-changed takes it as unmapped, and adds the CI suite."""
-    executed: dict[str, set[tuple[str, int]]] = {}
+def repo_relative(path: str, tree: Path) -> str | None:
+    """A source's path in the repository, or None for one outside it (a system header)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    import check_changed
+    relative = check_changed.normalize(path, tree)
+    return None if relative.startswith("/") or relative.startswith("build/") else relative
+
+
+def collect(runs: Path, tree: Path, read_gcno=None) -> dict[str, list[str]]:
+    """runs/<file stem>-<n>/<the tree's path>/<object>.gcda and the tree's <object>.gcno ->
+    {test file: [source files it executed]}, headers included, for an inline function runs in the
+    file it is written in. What every editor runs (start-up, static registrations: a function at
+    least COMMON_SHARE of the files with an editor executed) tells nothing of what a file tests, and
+    counts for no file: a source only those reach is unmapped, and check-changed adds the CI suite."""
+    if read_gcno is None:
+        read_gcno = lambda relative: (tree / relative).read_bytes()   # noqa: E731
+    functions: dict[str, dict[int, tuple[str, str]]] = {}
+    executed: dict[str, set[tuple[str, str]]] = {}
+    prefix = str(tree).lstrip("/")
     for run in sorted(p for p in runs.iterdir() if p.is_dir()):
         test = run.name.rsplit("-", 1)[0] + ".py"
         hits = executed.setdefault(test, set())
-        base = run / prefix_in_run.lstrip("/")
+        base = run / prefix
         for directory, _, names in os.walk(base):
             for name in names:
                 if not name.endswith(".gcda"):
                     continue
                 path = Path(directory) / name
+                relative = str(path.relative_to(base))[:-len(".gcda")]
+                if relative not in functions:
+                    try:
+                        functions[relative] = gcno_functions(read_gcno(relative + ".gcno"))
+                    except OSError:
+                        functions[relative] = {}
                 try:
-                    functions = gcda_functions(path.read_bytes())
+                    idents = gcda_functions(path.read_bytes())
                 except OSError:
                     continue
-                obj = str(path.relative_to(base))[:-len(".gcda")] + ".o"
-                sources = deps.get(obj)
-                if sources:
-                    hits.update((sources[0], f) for f in functions)
+                known = functions[relative]
+                hits.update(known[i] for i in idents if i in known)
     with_editor = [hits for hits in executed.values() if len(hits) >= MIN_EDITOR_FUNCTIONS]
     counts = collections.Counter(item for hits in with_editor for item in hits)
     limit = max(2, COMMON_SHARE * len(with_editor))
     common = {item for item, n in counts.items() if n >= limit}
-    return {test: sorted({source for source, f in hits - common}) for test, hits in sorted(executed.items())}
+    result: dict[str, list[str]] = {}
+    relative: dict[str, str | None] = {}
+    for test, hits in sorted(executed.items()):
+        files = set()
+        for _, file in hits - common:
+            if file not in relative:
+                relative[file] = repo_relative(file, tree)
+            if relative[file]:
+                files.add(relative[file])
+        result[test] = sorted(files)
+    return result
 
 
 def main(argv: list[str]) -> int:
@@ -132,11 +197,7 @@ def main(argv: list[str]) -> int:
     c.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
     tree = args.tree.resolve()
-    deps = object_sources(tree)
-    if not deps:
-        print(f"coverage_map: no dependency database in {tree}", file=sys.stderr)
-        return 1
-    files = collect(args.runs, tree, deps, str(tree))
+    files = collect(args.runs, tree)
     if not files or not any(files.values()):
         print(f"coverage_map: no executed source under {args.runs}", file=sys.stderr)
         return 1
