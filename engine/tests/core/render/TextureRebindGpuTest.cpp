@@ -469,6 +469,39 @@ TEST_F(TextureRebindGpu, ATerrainsBlendMapBindsANewImage){
     });
 }
 
+// A layer's image is read from its file into the terrain's array: the editor's file pick-up asks for
+// the array again (reload::reloadTextures; the file's watcher and the broken file: test_hot_reload.py)
+TEST_F(TextureRebindGpu, ATerrainsLayerImageBindsANewImage){
+    JASPER_REQUIRE_GPU();
+    const std::string heightMap = png("terrain-layer-height", BLACK);
+    const std::string blendMap = png("terrain-layer-blend", Rgba{255, 0, 0, 255});
+    const std::string blue = png("terrain-layer-blue", BLUE);
+    const auto draw = [&](const std::string& layer, const std::function<void(Scene&, Entity)>& then){
+        Stage stage;
+        scene = &stage.scene;
+        auto terrain = makeTerrain(stage, heightMap, blendMap, layer, blue);
+        EXPECT_TRUE(settled());
+        if (then){
+            then(stage.scene, terrain->getEntity());
+            EXPECT_TRUE(settled());
+        }
+        return readTarget();
+    };
+    const std::string finalImage = png("terrain-layer-final", BLUE);
+    const std::vector<uint8_t> reference = draw(finalImage, nullptr);
+
+    const std::string layer = png("terrain-layer-first", RED);
+    std::vector<uint8_t> before;
+    const std::vector<uint8_t> after = draw(layer, [&](Scene& stageScene, Entity entity){
+        before = readTarget();
+        ASSERT_GT(meanDifference(before, reference), 1.0) << "the two images draw alike (the case shows nothing)";
+        writePng(layer, BLUE);
+        stageScene.getSystem<RenderSystem>()->invalidateTerrainDetailArray(entity);
+    });
+    EXPECT_LT(meanDifference(after, reference), 1.0) << "it still draws the old image (mean difference to the old one " << meanDifference(after, before) << ")";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 namespace {
     // a cook of `size` px and its whole chain, as the raw writer stores it: the levels of at most
     // 64 px (the tail a progressive load reads first) one colour, the rest another

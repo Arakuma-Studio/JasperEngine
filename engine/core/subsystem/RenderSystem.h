@@ -2584,6 +2584,9 @@ namespace jasperengine{
 		void needUpdatePostProcessUniforms();
 		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)
 		void needUpdatePostProcessing();
+		// an image of a terrain's painted layers changed on disk (the editor's file pick-up): the
+		// array read from the files is built again
+		void invalidateTerrainDetailArray(Entity entity);
 		// the images post-processing reads changed on disk (the editor's file pick-up): the LUT
 		// strip (read by path, cached while the path stays) is read again and the user chain
 		// reloads, taking its pass textures again from the scene

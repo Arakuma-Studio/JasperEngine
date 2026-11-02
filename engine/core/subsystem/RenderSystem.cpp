@@ -5150,7 +5150,8 @@ namespace {
 }
 
 // Read here rather than through Texture, which would upload a 2D image per layer on top
-// of the array. Rebuilt only when the set of source files changes.
+// of the array. Rebuilt when the set of source files changes, and when a file of it does
+// (invalidateTerrainDetailArray: the editor's file pick-up).
 RenderSystem::TerrainDetailArray* RenderSystem::getTerrainDetailArray(Entity entity, TerrainComponent& terrain){
     // The shader reaches all three layers of any bound blend map, so colors come in threes
     const size_t layerCount = std::min(terrain.surfaceLayers.size(), (size_t)MAX_TERRAIN_LAYERS);
@@ -5403,6 +5404,21 @@ void RenderSystem::destroyTerrainDetailArray(Entity entity){
     if (it != terrainDetailArrays.end()){
         it->second.render.destroyTexture();
         terrainDetailArrays.erase(it);
+    }
+}
+
+void RenderSystem::invalidateTerrainDetailArray(Entity entity){
+    auto it = terrainDetailArrays.find(entity);
+    if (it == terrainDetailArrays.end()){
+        return;
+    }
+    // not the set it was built from anymore: the array is built again when the textures bind (and
+    // the old one draws until then)
+    it->second.sliceKeys.clear();
+    if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+        for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
+            mesh->submeshes[s].needUpdateTexture = true;
+        }
     }
 }
 
