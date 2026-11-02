@@ -20,6 +20,7 @@
 #include "object/Points.h"
 #include "object/Primitive.h"
 #include "object/Terrain.h"
+#include "object/environment/ReflectionProbe.h"
 #include "object/environment/Skybox.h"
 #include "object/ui/Image.h"
 #include "pool/TextureDataPool.h"
@@ -308,6 +309,127 @@ TEST_F(TextureRebindGpu, ASkysLightingStaysWhenACookComesInThatTheCpuCannotRead)
     }
     EXPECT_LT(surface / (16.0 * 16.0), 1.0) << "the surface lost its lighting with the cook";
     EXPECT_NE(stage.scene.getComponent<MeshComponent>(plane.getEntity()).submeshes[0].shaderProperties & (1u << 19), 0u) << "the sky does not light the surface anymore";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+namespace {
+    // a static reflection probe of six files of one image around a plane it lights, nothing else lighting it
+    std::shared_ptr<ReflectionProbe> makeProbe(Stage& stage, const std::string& path){
+        auto probe = std::make_shared<ReflectionProbe>(&stage.scene);
+        probe->setMode(ReflectionProbeMode::STATIC);
+        probe->setBoxSize(20.0f, 20.0f, 20.0f);
+        probe->setTextures(path, path, path, path, path, path);
+        return probe;
+    }
+
+    std::shared_ptr<Primitive> makeProbeSurface(Stage& stage, Entity* entity = nullptr){
+        auto plane = std::make_shared<Primitive>(&stage.scene);
+        plane->createPlane(3.0f, 3.0f);
+        Material material;
+        material.baseColorFactor = Vector4(0.9f, 0.9f, 0.9f, 1.0f);
+        material.metallicFactor = 1.0f;
+        material.roughnessFactor = 0.3f;
+        plane->setMaterial(material);
+        stage.scene.getComponent<MeshComponent>(plane->getEntity()).receiveIBL = true;
+        if (entity)
+            *entity = plane->getEntity();
+        return plane;
+    }
+
+    // the same image as a cook's (TextureCookQueue::collectSwaps): BC1 blocks of the one colour, nothing plain to read
+    void swapInACookOf(const std::string& path, Rgba color){
+        std::vector<std::string> ids = TextureDataPool::findIdsUsingFile(FileData::getSystemPath(path));
+        ASSERT_FALSE(ids.empty());
+        const uint16_t color565 = (uint16_t)(((color.r >> 3) << 11) | ((color.g >> 2) << 5) | (color.b >> 3));
+        std::vector<uint8_t> blocks(4 * 4 * 8, 0);
+        for (size_t b = 0; b < blocks.size(); b += 8){
+            blocks[b] = blocks[b + 2] = (uint8_t)(color565 & 0xFF);
+            blocks[b + 1] = blocks[b + 3] = (uint8_t)(color565 >> 8);
+        }
+        auto faces = std::make_shared<std::array<TextureData, 6>>();
+        for (int f = 0; f < 6; f++)
+            faces->at(f).setLevels(GpuTextureFormat::BC1, true, 1, 16, 16, {blocks});
+        TextureDataPool::replace(ids[0], faces);
+        TexturePool::invalidate(ids[0]);
+    }
+}
+
+// A probe's maps are its image's as a sky's are (ASkysLightingTakesANewImage): nothing but its maps
+// draws of the image, so no GPU texture of it goes stale to tell anything
+TEST_F(TextureRebindGpu, AReflectionProbesLightingTakesANewImage){
+    JASPER_REQUIRE_GPU();
+    Entity surface = NULL_ENTITY;
+    expectRebinds("probe-lighting", GREY_DARK, GREY_BRIGHT, [&surface](Stage& stage, const std::string& path, Rgba color, Keep& keep){
+        writePng(path, color);
+        keep.push_back(makeProbe(stage, path));
+        keep.push_back(makeProbeSurface(stage, &surface));
+    }, [&surface](Scene& scene){
+        // (ShaderPool::getMeshProperties: 'Ibl')
+        EXPECT_NE(scene.getComponent<MeshComponent>(surface).submeshes[0].shaderProperties & (1u << 19), 0u) << "the probe does not light the surface: the case shows nothing";
+    });
+}
+
+// Two probes of one image: the maps of the old pixels go with their last holder, the new ones are shared
+TEST_F(TextureRebindGpu, TwoReflectionProbesOfAnImageBothTakeItsNewPixels){
+    JASPER_REQUIRE_GPU();
+    expectRebinds("probe-shared", GREY_DARK, GREY_BRIGHT, [](Stage& stage, const std::string& path, Rgba color, Keep& keep){
+        writePng(path, color);
+        // (the one the surface takes, the nearer of the two, is made after the other)
+        auto far = makeProbe(stage, path);
+        far->setPosition(0.0f, 0.0f, 3.0f);
+        keep.push_back(far);
+        keep.push_back(makeProbe(stage, path));
+        keep.push_back(makeProbeSurface(stage));
+    });
+}
+
+// A probe that names no new image keeps what it made: no scene change makes its environment maps
+// again (they are the costly part of a load)
+TEST_F(TextureRebindGpu, AReflectionProbeKeepsItsMapsWhenAnotherImageTakesNewPixels){
+    JASPER_REQUIRE_GPU();
+    Stage stage;
+    scene = &stage.scene;
+    const std::string path = png("probe-kept", GREY_BRIGHT);
+    const std::string other = png("probe-kept-other", RED);
+    auto probe = makeProbe(stage, path);
+    auto surface = makeProbeSurface(stage);
+    Primitive unrelated(&stage.scene);
+    unrelated.createPlane(0.2f, 0.2f);
+    unrelated.setPosition(0.0f, -5.0f, 0.0f);
+    Material material;
+    material.baseColorTexture = Texture(other);
+    unrelated.setMaterial(material);
+    ASSERT_TRUE(settled());
+    const std::string prefilteredId = stage.scene.getComponent<ReflectionProbeComponent>(probe->getEntity()).texture.getId() + "|probe|prefiltered";
+    const std::shared_ptr<TextureRender> before = TexturePool::get(prefilteredId);
+    ASSERT_TRUE(before && before->isCreated()) << prefilteredId;
+
+    ASSERT_TRUE(reloadFile(other, BLUE));
+    ASSERT_TRUE(settled());
+    EXPECT_EQ(TexturePool::get(prefilteredId), before) << "another image's new pixels made the probe's maps again";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// A cook of six files swapped in, as for a sky: the same image, nothing the CPU reads; the maps made
+// of its source keep lighting the surface
+TEST_F(TextureRebindGpu, AReflectionProbesLightingStaysWhenACookComesInThatTheCpuCannotRead){
+    JASPER_REQUIRE_GPU();
+    if (!SystemRender::getTextureFormatSupport()(GpuTextureFormat::BC1))
+        GTEST_SKIP() << "the device samples no BC1";
+    const std::string path = png("probe-cook", GREY_BRIGHT);
+    Stage stage;
+    scene = &stage.scene;
+    auto probe = makeProbe(stage, path);
+    Entity surface = NULL_ENTITY;
+    auto plane = makeProbeSurface(stage, &surface);
+    ASSERT_TRUE(settled());
+    const std::vector<uint8_t> before = readTarget();
+
+    swapInACookOf(path, GREY_BRIGHT);
+    ASSERT_FALSE(HasFatalFailure());
+    ASSERT_TRUE(settled());
+    EXPECT_LT(meanDifference(readTarget(), before), 1.0) << "the surface lost its lighting with the cook";
+    EXPECT_NE(stage.scene.getComponent<MeshComponent>(surface).submeshes[0].shaderProperties & (1u << 19), 0u) << "the probe does not light the surface anymore";
     EXPECT_NO_ENGINE_ERRORS();
 }
 

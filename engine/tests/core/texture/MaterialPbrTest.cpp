@@ -331,6 +331,33 @@ TEST(PbrVariant, ALobesMapAsksForTheMeshsUVs){
     EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lit, inputs).properties & (uv1 | uv2), 0u);
 }
 
+// A core map other than the base colour asks for the UVs under whatever lights the surface: a scene
+// light, a sky or a reflection probe. A mesh the environment does not light (its receiveIBL) draws
+// none of them, as a mesh that takes no lights.
+TEST(PbrVariant, ACoreMapAsksForTheMeshsUVsUnderImageBasedLighting){
+    const uint64_t uv1 = 1u << 1;
+    MeshShaderEnvironment sky;
+    sky.ibl = true;
+    MeshShaderEnvironment probes;
+    probes.reflectionProbes = true;
+    const auto properties = [](const MeshShaderEnvironment& environment, bool SubmeshShaderInputs::*map, bool receiveIBL, bool receiveLights){
+        SubmeshShaderInputs inputs;
+        inputs.normal = true;
+        inputs.texCoord1 = true;
+        inputs.receiveLights = receiveLights;
+        inputs.receiveIBL = receiveIBL;
+        inputs.*map = true;
+        return RenderSystem::getSubmeshShaderVariant(environment, inputs).properties;
+    };
+    for (bool SubmeshShaderInputs::*map : {&SubmeshShaderInputs::metallicRoughnessTexture, &SubmeshShaderInputs::normalTexture,
+                                           &SubmeshShaderInputs::occlusionTexture, &SubmeshShaderInputs::emissiveTexture}){
+        EXPECT_NE(properties(sky, map, true, true) & uv1, 0u);
+        EXPECT_NE(properties(probes, map, true, true) & uv1, 0u);
+        EXPECT_EQ(properties(sky, map, false, true) & uv1, 0u);
+        EXPECT_EQ(properties(sky, map, true, false) & uv1, 0u);
+    }
+}
+
 // A hex tiled Terrain's variant carries the Stochastic Tiling path only when a layer takes it
 // (TERRAIN_HEX_STOCHASTIC): without one the path is compiled out of the hex variant, which
 // otherwise holds the lattices' registers for nothing (docs/perf/gpu-campaign.md, S11 perf3)
