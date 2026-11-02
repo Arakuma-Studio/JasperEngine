@@ -1061,16 +1061,16 @@ on A at load 15 to 24) and the mesh-raycast web build (1,482) all missed. ccache
 already works: every worktree is `/src` in the image, so `base_dir` is not needed. An editor build of
 oe-port in a new worktree: 2,144 direct hits of 2,150 compiles, 158 s.
 
-What the slow tests spent:
+What the slow tests spent ("now": the coverage run below, or the warm run of the files that build games):
 
 | Test | Before | Now | What it was |
 |---|---|---|---|
 | `test_html_ui_effects_export::test_desktop_player_draws_the_effects` | 3,977 s | 302 s | a compile without ccache and an LTO link; ccache 1,237 hits, 8 misses, no LTO |
 | `test_build::test_desktop_build_and_run` | 2,476 s | 929 s | a compile without ccache; now 601 hits, 8 misses; keeps LTO (the suite's LTO check) |
 | `test_hub::test_create_from_templates` | 1,542 s | 177 s | a compile at 3 jobs; now 593 hits, 6 misses, no LTO |
-| `test_materials_pbr::test_khronos_models` | 2,310 s | 13 tests of 2 to 5 min | polling every mesh, each call a frame; now a test per model, each in its own chunk |
-| `test_shader_library::test_cli_library_matrix_all_backends` | 1,639 s | 419 s | one process compiling one variant at a time; now a process per backend |
-| `test_fluid_inspector::test_preview_bar_on_a_play_created_fluid` | 1,815 s | 841 s (instrumented) | 3 to 5 s frames: a software-rendered fluid in the Inspector |
+| `test_materials_pbr::test_khronos_models` | 2,310 s | 13 tests, 19 to 491 s | polling every mesh, each call a frame; now a test per model, in chunks of their own |
+| `test_shader_library::test_cli_library_matrix_all_backends` | 1,639 s | 249 s | one process compiling one variant at a time; now a process per backend |
+| `test_fluid_inspector::test_preview_bar_on_a_play_created_fluid` | 1,815 s | 642 s | 3 to 5 s frames: a software-rendered fluid in the Inspector |
 
 The seven files that build games, warm, `-j 4` in an 8-CPU container on A: 1,038 s, 42 passed, both
 runtimes reused from the shared cache. The same files with a new runtime key: 5,284 s, of which 3,744
@@ -1078,7 +1078,8 @@ and 4,223 s of runtime builds at nice 15 (172 and 254 misses). The prebuild does
 turn: when only files that need a runtime are left, a worker builds the second one at once.
 
 The coverage run (the suite without the slow builds, an instrumented editor, `-j 4` in an 8-CPU
-container, H at load 30 to 37): 4,822 s, 1,181 passed, 1 failed (below), 7 skipped by design.
+container, H at load 30 to 37): 4,822 s, 5.2 test-hours, longest test 642 s, 1,181 passed, 1 failed (below),
+7 skipped by design (the slow builds; the web latency gate).
 
 Editors on the RTX 3080 Ti: the 34 lane files, 7,259 s of test time on llvmpipe under load, take
 1,223 s, two at a time. `test_fluid_inspector.py`'s 2,296 s took 53 s there, and one absolute dye
