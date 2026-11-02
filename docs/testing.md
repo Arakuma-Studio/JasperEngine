@@ -435,9 +435,19 @@ Khronos models of `test_materials_pbr.py` (`test_khronos_<Model>`) declare it.
 - **`LP_NUM_THREADS`**: Mesa's llvmpipe gives every editor a rasterizer thread per CPU of the host,
   not of the container's quota; at `-j N` that is N times the host's CPUs inside the quota, which
   throttles them all at once, main threads included (the 3-13 s stalls on A). The harness gives
-  each editor (and the players it runs) the run's CPU allowance shared by its editors
-  (`harness.render_threads()`: the cgroup quota / `-j`, 1 to 4; `JASPER_MCP_RENDER_THREADS`, or
-  `LP_NUM_THREADS` in the run's environment, overrides).
+  each editor (and the players it runs) 4 threads (`harness.render_threads()`: fewer, down to 2,
+  only at under half a CPU per thread; `JASPER_MCP_RENDER_THREADS`, or `LP_NUM_THREADS` in the
+  run's environment, overrides). Measured on A, the same 36 tests at `-j 4` in an 8-CPU container
+  (the host shared with other jobs; the last run's host was the busiest):
+
+  | `LP_NUM_THREADS` | Wall | Median s per frame | Host load, median / peak | Result |
+  |---|---|---|---|---|
+  | Mesa's default (16) | 2,009 s | 1.63 | 21 / 53 | 36 passed |
+  | 4 | 1,772 s | 1.46 | 12 / 23 | 36 passed |
+  | 2 | 2,517 s | 2.22 | not sampled | 35 passed, a screenshot timed out |
+
+  An editor averages about 2 CPUs and holds 1 to 2.4 GB (seven at once: 6.8 GB), so memory does not
+  bound `-j`: CPUs do, at about one editor per 2 CPUs of quota (`-j 4` on 8, `-j 7` on 16).
 - **Slots**: rb.sh's per-server slot locks are its heavy-job cap; a slot is `DEFJOBS` CPUs of
   container quota (`JOBS`). An MCP shard takes the slots its editors need (`RB_SLOTS`).
 

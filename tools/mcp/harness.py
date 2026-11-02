@@ -463,8 +463,11 @@ def compile_env(name: str, lto: bool = False) -> dict[str, str]:
     return env
 
 
-# llvmpipe threads per editor when nothing says otherwise (docs/testing.md, "CPU caps")
+# llvmpipe threads per editor when nothing says otherwise (docs/testing.md, "Caches and CPU caps";
+# the same four files at -j 4 on 8 CPUs: Mesa's default 2,009 s, median load 21, peak 53; 4 threads 1,772 s,
+# median load 12, peak 23; 2 threads 2,517 s and a screenshot timeout)
 RENDER_THREADS_MAX = 4
+RENDER_THREADS_MIN = 2
 
 
 def cpu_allowance() -> int:
@@ -479,16 +482,16 @@ def cpu_allowance() -> int:
 
 def render_threads() -> int:
     """LP_NUM_THREADS for an editor (and the players it runs): JASPER_MCP_RENDER_THREADS when set
-    (0: Mesa's own default, a thread per CPU of the host), else the run's CPU allowance shared by
-    its editors (JASPER_MCP_WORKERS, the runner's -j), between 1 and RENDER_THREADS_MAX. Mesa's
-    default gives every editor of a -j run as many threads as the host has CPUs, all inside the
-    container's quota: the quota throttles them all at once, the editors' main threads included
-    (seconds-long stalls on a loaded server). LP_NUM_THREADS in the run's environment wins."""
+    (0: Mesa's own default, a thread per CPU of the host), else 4, or fewer down to 2 when the run's
+    CPU allowance gives its editors (JASPER_MCP_WORKERS, the runner's -j) less than half a CPU per
+    thread. Mesa's default gives every editor of a -j run as many threads as the host has CPUs, all
+    inside the container's quota: the quota throttles them all at once, the editors' main threads
+    included (seconds-long stalls on a loaded server). LP_NUM_THREADS in the run's environment wins."""
     value = os.environ.get("JASPER_MCP_RENDER_THREADS", "")
     if value.isdigit():
         return int(value)
     workers = int(os.environ["JASPER_MCP_WORKERS"]) if os.environ.get("JASPER_MCP_WORKERS", "").isdigit() else 1
-    return max(1, min(RENDER_THREADS_MAX, cpu_allowance() // max(1, workers)))
+    return max(RENDER_THREADS_MIN, min(RENDER_THREADS_MAX, 2 * cpu_allowance() // max(1, workers)))
 
 
 def mesa_shader_cache() -> Path:
