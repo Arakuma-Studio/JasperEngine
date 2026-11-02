@@ -358,14 +358,17 @@ rb.sh A --img tools/check-changed        # inside the Linux image (no web or And
   change, in `jasperengine-core-tests` and `jasperengine-editor-tests` (`--gtest_filter`, through
   `tools/build.sh unit-tests` and its no-silent-green gate); a changed test file always runs; a
   CMake change, or test trees not built yet, run them all.
-- MCP tests: the files whose editors executed a function written in a changed source in the coverage
-  map (a header also counts through its `.cpp`), the changed test files, the files that call a
+- MCP tests: the files that executed the functions the diff's hunks touch (coverage map: the whole
+  file when a hunk has a line outside every function, a declaration or a type, or when the file
+  differs from the map's commit; a header also through its `.cpp`; a function nearly every editor runs
+  selects the 10 quickest files that run it), the changed test files, the files that call a
   changed MCP tool (by its tool names), that load a changed fixture, test project, Lua script,
   shader, HTML, scene or material (by path), and, for an engine change, the files that run a prebuilt
   game (`GAME_BUILD_FILES`: it runs engine code no editor coverage sees), and those that compile a
   game when what the compile path reads changes (`COMPILE_PATHS`).
-  No map, a map older than 14 days or 400 commits, or a changed source no test file executed (new
-  code, or code no MCP test reaches) adds the CI suite (`--suite ci`). A selected test that skips
+  No map, a map older than 14 days or 400 commits, or a changed source the map does not know (new
+  code), or a file no test names adds the CI suite; code the map knows that no test executes
+  selects nothing, and the summary says so. A selected test that skips
   could not run: that fails the check.
 - A pass is cached in `build/.cache/check-changed.json`, keyed by the base, the content of every
   changed and untracked file, the images' Dockerfiles, the coverage map's version and the script
@@ -397,10 +400,9 @@ rb.sh A --img 'JASPER_EDITOR=/src/build/linux/editor-coverage-install/bin/jasper
 ```
 
 Each test file's (and chunk's) editors write their GCC counts under their own `GCOV_PREFIX`; a
-source file counts for a test file when it executed a function written in it (the object's `.gcno`
-names that file, a header's for an inline function) that fewer than 80% of the files with an editor
-executed: start-up and static registrations say nothing of what a file tests, and a source only
-those reach is unmapped (the CI suite). The run leaves out the slow builds
+function counts for a test file when a counter of it is above zero; the object's `.gcno` says which file
+and lines it is written in (a header's for an inline function), which takes check-changed from a
+diff's hunks to functions. The run leaves out the slow builds
 (no `JASPER_SLOW_BUILD`): what a compile or a prebuilt game runs is not the editor's code, and the
 files that build games are selected by path (`GAME_BUILD_FILES`, `COMPILE_PATHS`). The server's
 `rb.sh` puts the map where check-changed looks; copy it to the other servers' `~/je/mcp-build-cache/`.

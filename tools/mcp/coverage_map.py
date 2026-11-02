@@ -1,5 +1,5 @@
-"""The MCP suite's coverage map: for each test file, the engine and editor sources its editors executed
-(what tools/check-changed selects MCP tests by).
+"""The MCP suite's coverage map: which test files' editors executed each function of the engine and the
+editor (what tools/check-changed selects MCP tests by).
 
 Recorded by a full run of a coverage-instrumented editor, off the gate's critical path (a batch
 landing's run, a quiet server):
@@ -7,22 +7,24 @@ landing's run, a quiet server):
     COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux             # build/linux/editor-coverage(-install)
     # each test file's (or chunk's) editors write their .gcda under <dir>/<file>-<n>/ (GCOV_PREFIX):
     JASPER_EDITOR=build/linux/editor-coverage-install/bin/jasperengine-editor \\
-      JASPER_MCP_COVERAGE_DIR=build/coverage/runs JASPER_SLOW_TESTS=1 tools/mcp/run-tests.sh -j 4 --split-seconds 900
+      JASPER_MCP_COVERAGE_DIR=build/coverage/runs JASPER_SLOW_TESTS=1 tools/mcp/run-tests.sh -j 4 --split-seconds 900 \\
+      --json build/coverage/mcp.json
     python3 tools/mcp/coverage_map.py collect build/coverage/runs build/linux/editor-coverage \\
-      --commit $(git rev-parse HEAD) --out build/coverage/coverage-map.json
+      --commit $(git rev-parse HEAD) --results build/coverage/mcp.json --out build/coverage/coverage-map.json
 
-A source file counts for a test file when its editors executed a function written in it (a counter
-above zero in the object's .gcda; the object's .gcno says which file each function is in, a header's for
-an inline function) that fewer than 80% of the files with an editor executed: start-up and static
-registrations run in every editor and say nothing. A source only those reach is in no list, so
-check-changed takes it as unmapped and adds the CI suite.
-The map: {"commit", "created", "tests": N, "files": {"test_x.py": ["engine/core/Foo.cpp", ...]}}.
+A function counts for a test file when one of its objects' .gcda has a counter above zero in it. The
+object's .gcno says where each function is written: its file (a header's for an inline function) and
+lines, which is what lets check-changed go from a diff's hunks to the functions they touch.
+
+The map: {"version": 2, "commit", "created", "tests": [names], "editor_tests": N (those that started an
+editor), "seconds": {test: s}, "sources": {file: {"blob": its git blob id, "functions": [[first line,
+last line, hex mask of the tests that executed it], ...]}}}.
 """
 
 from __future__ import annotations
 
 import argparse
-import collections
+import hashlib
 import json
 import os
 import struct
@@ -35,7 +37,6 @@ GCDA_MAGIC = 0x67636461            # "gcda"
 TAG_FUNCTION = 0x01000000
 TAG_COUNTER_BASE = 0x01a10000      # the arc counters
 GCNO_MAGIC = 0x67636e6f            # "gcno"
-COMMON_SHARE = 0.8                 # of the files with an editor: a function that many execute is any editor's
 MIN_EDITOR_FUNCTIONS = 1000        # a file that executed fewer started no editor
 
 
@@ -83,10 +84,11 @@ def gcda_executed(data: bytes) -> bool:
     return bool(gcda_functions(data))
 
 
-def gcno_functions(data: bytes) -> dict[int, tuple[str, str]]:
-    """A .gcno (what GCC knows of one object's functions): ident -> (name, source file), the file
-    the function is written in, a header's for an inline function. GCC 11's layout (the Linux
-    image's): header, current directory, a flag, then records; lengths and strings in 4-byte words."""
+def gcno_functions(data: bytes) -> dict[int, tuple[str, int, int]]:
+    """A .gcno (what GCC knows of one object's functions): ident -> (source file, first line, last
+    line), the file the function is written in, a header's for an inline function. GCC 11's layout
+    (the Linux image's): header, current directory, a flag, then records; lengths and strings in
+    4-byte words."""
     if len(data) < 16:
         return {}
     for order in ("<", ">"):
@@ -104,29 +106,20 @@ def gcno_functions(data: bytes) -> dict[int, tuple[str, str]]:
     pos = 12
     cwd, pos = string(pos)
     pos += 4   # (support_unexecuted_blocks)
-    found: dict[int, tuple[str, str]] = {}
+    found: dict[int, tuple[str, int, int]] = {}
     while pos + 8 <= len(data):
         tag, length = struct.unpack_from(order + "Ii", data, pos)
         pos += 8
         if tag == 0:
             break
-        size = abs(length) * 4
         if tag == TAG_FUNCTION:
             ident, = struct.unpack_from(order + "I", data, pos)
-            name, at = string(pos + 12)
-            file, _ = string(at + 4)   # (past "artificial")
-            found[ident] = (name, file if file.startswith("/") else os.path.join(cwd, file))
-        pos += size
+            _, at = string(pos + 12)   # (past its checksums: the name)
+            file, at = string(at + 4)  # (past "artificial")
+            first, _, last, _ = struct.unpack_from(order + "IIII", data, at)
+            found[ident] = (file if file.startswith("/") else os.path.join(cwd, file), first, last)
+        pos += abs(length) * 4
     return found
-
-
-def object_sources(tree: Path, deps_text: str | None = None) -> dict[str, list[str]]:
-    """object (relative to the tree) -> its source and headers, repository-relative (ninja -t deps)."""
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    import check_changed   # (its ninja deps parser)
-    if deps_text is None:
-        deps_text = subprocess.run(["ninja", "-C", str(tree), "-t", "deps"], capture_output=True, text=True).stdout
-    return check_changed.parse_ninja_deps(deps_text, tree)
 
 
 def repo_relative(path: str, tree: Path) -> str | None:
@@ -137,20 +130,28 @@ def repo_relative(path: str, tree: Path) -> str | None:
     return None if relative.startswith("/") or relative.startswith("build/") else relative
 
 
-def collect(runs: Path, tree: Path, read_gcno=None) -> dict[str, list[str]]:
-    """runs/<file stem>-<n>/<the tree's path>/<object>.gcda and the tree's <object>.gcno ->
-    {test file: [source files it executed]}, headers included, for an inline function runs in the
-    file it is written in. What every editor runs (start-up, static registrations: a function at
-    least COMMON_SHARE of the files with an editor executed) tells nothing of what a file tests, and
-    counts for no file: a source only those reach is unmapped, and check-changed adds the CI suite."""
+def git_blob(path: Path) -> str | None:
+    """A file's git blob id, to tell whether a diff's lines are the lines the map knows."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def collect(runs: Path, tree: Path, root: Path, read_gcno=None) -> dict:
+    """runs/<file stem>-<n>/<the tree's path>/<object>.gcda and the tree's <object>.gcno -> the map."""
     if read_gcno is None:
         read_gcno = lambda relative: (tree / relative).read_bytes()   # noqa: E731
-    functions: dict[str, dict[int, tuple[str, str]]] = {}
-    executed: dict[str, set[tuple[str, str]]] = {}
+    functions: dict[str, dict[int, tuple[str, int, int]]] = {}
+    tests = sorted({p.name.rsplit("-", 1)[0] + ".py" for p in runs.iterdir() if p.is_dir()})
+    index = {t: i for i, t in enumerate(tests)}
+    masks: dict[tuple[str, int, int], int] = {}
+    executed = [0] * len(tests)
+    files: dict[str, str | None] = {}
     prefix = str(tree).lstrip("/")
     for run in sorted(p for p in runs.iterdir() if p.is_dir()):
-        test = run.name.rsplit("-", 1)[0] + ".py"
-        hits = executed.setdefault(test, set())
+        bit = 1 << index[run.name.rsplit("-", 1)[0] + ".py"]
         base = run / prefix
         for directory, _, names in os.walk(base):
             for name in names:
@@ -160,30 +161,32 @@ def collect(runs: Path, tree: Path, read_gcno=None) -> dict[str, list[str]]:
                 relative = str(path.relative_to(base))[:-len(".gcda")]
                 if relative not in functions:
                     try:
-                        functions[relative] = gcno_functions(read_gcno(relative + ".gcno"))
+                        known = gcno_functions(read_gcno(relative + ".gcno"))
                     except OSError:
-                        functions[relative] = {}
+                        known = {}
+                    functions[relative] = {}
+                    for ident, (file, first, last) in known.items():   # every function, executed or not
+                        if file not in files:
+                            files[file] = repo_relative(file, tree)
+                        if files[file]:
+                            key = (files[file], first, last)
+                            functions[relative][ident] = key
+                            masks.setdefault(key, 0)
                 try:
                     idents = gcda_functions(path.read_bytes())
                 except OSError:
                     continue
-                known = functions[relative]
-                hits.update(known[i] for i in idents if i in known)
-    with_editor = [hits for hits in executed.values() if len(hits) >= MIN_EDITOR_FUNCTIONS]
-    counts = collections.Counter(item for hits in with_editor for item in hits)
-    limit = max(2, COMMON_SHARE * len(with_editor))
-    common = {item for item, n in counts.items() if n >= limit}
-    result: dict[str, list[str]] = {}
-    relative: dict[str, str | None] = {}
-    for test, hits in sorted(executed.items()):
-        files = set()
-        for _, file in hits - common:
-            if file not in relative:
-                relative[file] = repo_relative(file, tree)
-            if relative[file]:
-                files.add(relative[file])
-        result[test] = sorted(files)
-    return result
+                keys = functions[relative]
+                for ident in idents:
+                    if ident in keys:
+                        masks[keys[ident]] |= bit
+                executed[index[run.name.rsplit("-", 1)[0] + ".py"]] += len(idents)
+    sources: dict[str, dict] = {}
+    for (file, first, last), mask in sorted(masks.items()):
+        entry = sources.setdefault(file, {"blob": git_blob(root / file), "functions": []})
+        entry["functions"].append([first, last, format(mask, "x")])
+    return {"version": 2, "tests": tests, "editor_tests": sum(1 for n in executed if n >= MIN_EDITOR_FUNCTIONS),
+            "sources": sources}
 
 
 def main(argv: list[str]) -> int:
@@ -193,19 +196,27 @@ def main(argv: list[str]) -> int:
     c.add_argument("runs", type=Path, help="JASPER_MCP_COVERAGE_DIR of the run")
     c.add_argument("tree", type=Path, help="the instrumented editor's build tree (build/linux/editor-coverage)")
     c.add_argument("--commit", required=True)
+    c.add_argument("--results", type=Path, help="the run's --json results: each test file's time (the map's seconds)")
+    c.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent.parent, help="the checkout")
     c.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
     tree = args.tree.resolve()
-    files = collect(args.runs, tree)
-    if not files or not any(files.values()):
-        print(f"coverage_map: no executed source under {args.runs}", file=sys.stderr)
+    data = collect(args.runs, tree, args.root)
+    if not data["editor_tests"]:
+        print(f"coverage_map: no test file executed anything under {args.runs}", file=sys.stderr)
         return 1
-    data = {"commit": args.commit, "created": time.time(), "tree": str(tree), "tests": len(files), "files": files}
+    data.update(commit=args.commit, created=time.time(), seconds={})
+    if args.results and args.results.is_file():
+        for r in json.loads(args.results.read_text()).get("results", []):
+            file = r["name"].split("::")[0]
+            data["seconds"][file] = round(data["seconds"].get(file, 0.0) + r["seconds"], 1)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     tmp = args.out.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=1))
+    tmp.write_text(json.dumps(data))
     os.replace(tmp, args.out)
-    print(f"coverage map: {len(files)} test files, {len(set().union(*map(set, files.values())))} sources executed; {args.out}")
+    n = sum(len(e["functions"]) for e in data["sources"].values())
+    print(f"coverage map: {len(data['tests'])} test files, {data['editor_tests']} with an editor, {len(data['sources'])} "
+          f"sources, {n} functions, {args.out.stat().st_size // 1024} KiB; {args.out}")
     return 0
 
 

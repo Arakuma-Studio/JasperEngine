@@ -24,13 +24,15 @@ unit and MCP tests that can see it; the full suite stays the gate of batch landi
    a shader runs the core tests' *Gpu suites.
 4. MCP tests, from a coverage map (tools/mcp/coverage_map.py: which source files, headers included,
    each test file's editors executed a function of, recorded by a full run of a coverage-instrumented
-   editor): the files whose sources intersect the change (a header also through its .cpp), the changed test
+   editor): the files that executed the functions the diff's hunks touch (the whole file when a hunk
+   is outside every function, or the file differs from the map's commit; a header also through its .cpp;
+   a function nearly every editor runs, the 10 quickest files that run it), the changed test
    files, the tests of a changed MCP tool (by its tool names), of a changed fixture, Lua, shader or
    asset (by path; a shader also test_shader_library.py and the CI suite), the files that run a
    prebuilt game when the engine changes, and those that compile a game when what the compile
    path reads changes (COMPILE_PATHS). Fallbacks: no map, a
    map older than MAP_MAX_AGE_DAYS or MAP_MAX_COMMITS, or a changed source the map does not know
-   (new, or no test file ran it) or file no test names add the CI suite; a harness change runs the whole suite.
+   (new) or file no test names add the CI suite; a harness change runs the whole suite.
 5. A pass is cached (build/.cache/check-changed.json) by a hash of the base, the diff, the
    untracked files, the build images' Dockerfiles, the map's version and this script; the same
    inputs reprint the last summary. A run during which the files changed caches nothing.
@@ -63,6 +65,8 @@ EDITOR_TEST_TREE = ROOT / "build" / "linux" / "editor-tests"
 EDITOR_TREE = ROOT / "build" / "linux" / "editor"
 HTMLUI_TREE = ROOT / "build" / "linux" / "htmlui-tests-glcore"
 LARGE_SELECTION = 40
+COMMON_SHARE = 0.8      # of the files with an editor: a function that many execute is any editor's
+COMMON_SAMPLE = 10      # the quickest of those that a change of such a function selects
 MAP_MAX_AGE_DAYS = 14
 MAP_MAX_COMMITS = 400
 GAP = ("coverage gap: this is the change's own selection; the full gate is still the full suite "
@@ -122,6 +126,8 @@ class Changes:
     deleted: list[str] = field(default_factory=list)
     untracked: list[str] = field(default_factory=list)
     source: str = "git"            # git | rb.sh (build/.rb-changes.json)
+    hunks: dict[str, list[list[int]]] = field(default_factory=dict)   # file -> [first base line, lines]
+    base_blobs: dict[str, str] = field(default_factory=dict)          # file -> its git blob id in the base
 
 
 def find_base(explicit: str | None, cwd: Path = ROOT) -> tuple[str, str]:
@@ -145,7 +151,31 @@ def git_changes(explicit_base: str | None, cwd: Path = ROOT) -> Changes:
         if kind.startswith("D"):
             deleted.append(path)
     untracked = [p for p in git("ls-files", "--others", "--exclude-standard", cwd=cwd).splitlines() if p]
-    return Changes(base, how, sorted(set(files + untracked)), sorted(deleted), sorted(untracked))
+    blobs = {}
+    for line in git("ls-tree", "-r", base, cwd=cwd).splitlines():
+        meta, _, path = line.partition("\t")
+        if path in files:
+            blobs[path] = meta.split()[2]
+    return Changes(base, how, sorted(set(files + untracked)), sorted(deleted), sorted(untracked), "git",
+                   parse_hunks(git("diff", "-U0", "--no-renames", base, cwd=cwd)), blobs)
+
+
+def parse_hunks(diff: str) -> dict[str, list[list[int]]]:
+    """`git diff -U0`: file -> [first line in the base, lines in the base], the changed lines."""
+    hunks: dict[str, list[list[int]]] = {}
+    current = None
+    for line in diff.splitlines():
+        if line.startswith("diff --git "):
+            current = None
+        elif line.startswith("--- a/"):
+            current = line[6:]
+        elif line.startswith("--- /dev/null"):
+            current = None
+        elif line.startswith("@@ ") and current:
+            m = re.match(r"@@ -(\d+)(?:,(\d+))? ", line)
+            if m:
+                hunks.setdefault(current, []).append([int(m.group(1)), int(m.group(2) or 1)])
+    return hunks
 
 
 def read_changes(explicit_base: str | None, cwd: Path = ROOT, rb_file: Path = RB_CHANGES) -> Changes:
@@ -159,7 +189,8 @@ def read_changes(explicit_base: str | None, cwd: Path = ROOT, rb_file: Path = RB
             if explicit_base and explicit_base not in data.get("base_ref", "") and explicit_base != data.get("base"):
                 raise LookupError(f"--base {explicit_base}: the diff rb.sh sent is the {data.get('base_ref')}")
             return Changes(data["base"], data.get("base_ref", "rb.sh"), sorted(set(data["files"])),
-                           sorted(data.get("deleted", [])), sorted(data.get("untracked", [])), "rb.sh")
+                           sorted(data.get("deleted", [])), sorted(data.get("untracked", [])), "rb.sh",
+                           data.get("hunks", {}), data.get("base_blobs", {}))
         try:
             return git_changes(explicit_base, cwd)
         except (LookupError, RuntimeError):
@@ -478,9 +509,13 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
     agent_docs = [f for f in files if f in ("AGENTS.md", "CLAUDE.md") or f.startswith(".claude/rules/")]
     if agent_docs and "test_agent_docs.py" in sources:
         plan.add_mcp("test_agent_docs.py", f"checks {agent_docs[0]}")
-    # the tools a changed MCP tool source defines: the files that call them
+    # the tools a changed MCP tool source defines: the files that call them, unless the map says
+    # exactly which functions the change touches and who runs them
     for f in files:
-        if f.startswith("editor/mcp/") and f.endswith(CXX) and (ROOT / f).is_file():
+        entry = (cmap or {}).get("sources", {}).get(f)
+        exact = entry and changes.base_blobs.get(f) == entry.get("blob") and \
+            not touched_functions(entry, changes.hunks.get(f), True)[1]
+        if f.startswith("editor/mcp/") and f.endswith(CXX) and (ROOT / f).is_file() and not exact:
             tools = set(TOOL_NAME.findall((ROOT / f).read_text(errors="replace")))
             for test, text in sources.items():
                 hit = sorted(t for t in tools if re.search(rf"[\"']{t}[\"']", text))
@@ -522,36 +557,97 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
             and not f.startswith(("engine/tests/", "editor/tests/"))]
     if not code:
         return
-    if cmap is None:
+    if cmap is None or "sources" not in cmap:
         plan.mcp_ci = True
         plan.mcp_notes.append("no coverage map (tools/mcp/coverage_map.py): the CI suite for the C++ change")
         return
     if staleness:
         plan.mcp_ci = True
         plan.mcp_notes.append(f"{staleness}: the CI suite as well")
-    covered: dict[str, set[str]] = {k: set(v) for k, v in cmap.get("files", {}).items()}
-    known = set().union(*covered.values()) if covered else set()
-    unmapped = []
-    for f in code:
-        # the file itself; a header also through its source (what its declarations are of)
-        targets = {f}
-        if f.endswith(HEADER):
-            targets |= {os.path.splitext(f)[0] + ext for ext in (".cpp", ".cc", ".mm")}
-        # (a file the map names that the checkout no longer has is no test to run)
-        hit = [t for t, srcs in covered.items() if srcs & targets and t in sources]
-        for t in hit:
-            plan.add_mcp(t, f"runs {f}" if f in covered[t] else f"runs code that includes {f}")
-        if not hit:
-            unmapped.append(f)
-    if unmapped:
-        plan.mcp_ci = True
-        plan.mcp_notes.append(f"{len(unmapped)} changed source(s) the map does not know (new, or no test runs them; "
-                              f"e.g. {unmapped[0]}): the CI suite as well")
-    engine_runtime = [f for f in code if f.startswith("engine/") and not f.startswith("engine/tests/")]
+    select_by_map(changes, code, cmap, sources, plan)
+    engine_runtime = [f for f in code if f.startswith("engine/")]
     if engine_runtime:
         for t in GAME_BUILD_FILES:
             if t in sources:
                 plan.add_mcp(t, f"runs a game of the engine ({engine_runtime[0]} changed)")
+
+
+def touched_functions(entry: dict, hunks: list[list[int]] | None, exact: bool) -> tuple[list[list], bool]:
+    """The map's functions of a file a diff touches, and whether that is the whole file: its lines are
+    not the map's (exact False: the file differs from the map's commit), or a hunk has a line outside
+    every function the map knows (a declaration, a type, a macro: anything may depend on it)."""
+    functions = entry["functions"]
+    if not exact or not hunks:
+        return functions, True
+    touched = []
+    for first, count in hunks:
+        # (no lines: an insertion after that line)
+        lines = range(first, first + count) if count else range(first, first + 2)
+        for line in lines:
+            hit = [f for f in functions if f[0] <= line <= f[1]]
+            if not hit:
+                if count:
+                    return functions, True
+                continue
+            touched += hit
+    if not touched:
+        return functions, True
+    return touched, False
+
+
+def select_by_map(changes: Changes, code: list[str], cmap: dict, sources: dict[str, str], plan: Plan) -> None:
+    """The test files that executed what the change touches. A function nearly every editor runs
+    (COMMON_SHARE of the files with an editor: start-up, the frame, registrations) selects the
+    COMMON_SAMPLE quickest files that run it, not all of them: that is the full gate's to cover.
+    Code no test executes selects nothing, and is said to; a file the map does not know, the CI suite."""
+    tests = cmap["tests"]
+    seconds = cmap.get("seconds", {})
+    limit = max(2, COMMON_SHARE * cmap.get("editor_tests", len(tests)))
+    known = cmap["sources"]
+    unmapped, unrun = [], []
+    for f in code:
+        entry = known.get(f)
+        if f in changes.deleted and not entry:
+            continue
+        sibling = None
+        if f.endswith(HEADER):
+            sibling = next((known[c] for c in (os.path.splitext(f)[0] + e for e in (".cpp", ".cc", ".mm")) if c in known), None)
+        if not entry and not sibling:
+            unmapped.append(f)
+            continue
+        groups = []
+        whole = True
+        if entry:
+            exact = bool(entry.get("blob")) and changes.base_blobs.get(f) == entry.get("blob")
+            functions, whole = touched_functions(entry, changes.hunks.get(f), exact)
+            groups.append((f, functions))
+        if sibling and (whole or not entry):
+            groups.append((f, sibling["functions"]))
+        hit, common = 0, 0
+        for _, functions in groups:
+            for _first, _last, mask in functions:
+                value = int(mask, 16)
+                if value and bin(value).count("1") >= limit:
+                    common |= value
+                else:
+                    hit |= value
+        names = [t for i, t in enumerate(tests) if hit >> i & 1 and t in sources]
+        how = "the whole file" if whole else "the changed functions"
+        for t in names:
+            plan.add_mcp(t, f"runs {f} ({how})")
+        if common:
+            rest = sorted((t for i, t in enumerate(tests) if common >> i & 1 and t in sources),
+                          key=lambda t: (seconds.get(t, 1e9), t))
+            for t in rest[:COMMON_SAMPLE]:
+                plan.add_mcp(t, f"a quick file that runs {f}'s common code")
+            plan.mcp_notes.append(f"{f}: code nearly every editor runs: the {COMMON_SAMPLE} quickest files of those that run it")
+        if not names and not common:
+            unrun.append(f)
+    if unmapped:
+        plan.mcp_ci = True
+        plan.mcp_notes.append(f"{len(unmapped)} changed source(s) the map does not know (new; e.g. {unmapped[0]}): the CI suite as well")
+    if unrun:
+        plan.mcp_notes.append(f"{len(unrun)} changed source(s) no MCP test executes (e.g. {unrun[0]}): the unit tests' to cover")
 
 
 # ---------------------------------------------------------------------------------------- 5. cache

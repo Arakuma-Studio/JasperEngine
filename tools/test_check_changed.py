@@ -221,8 +221,16 @@ SRC = {
     "test_call_cli.py": "x\n",
     "test_other.py": "y\n",
 }
-MAP = {"commit": "abc", "created": 0.0, "files": {"test_render.py": ["engine/core/Render.cpp", "editor/App.cpp"],
-                                                  "test_other.py": ["editor/Other.cpp"]}}
+def mapfile(sources, tests=("test_render.py", "test_other.py"), editor_tests=None, seconds=None):
+    """A coverage map: sources: {file: (blob, [(first, last, [test indexes])])}."""
+    return {"version": 2, "commit": "abc", "created": 0.0, "tests": list(tests), "editor_tests": editor_tests or len(tests),
+            "seconds": seconds or {}, "sources": {f: {"blob": blob, "functions": [
+                [a, b, format(sum(1 << i for i in who), "x")] for a, b, who in functions]}
+                for f, (blob, functions) in sources.items()}}
+
+
+MAP = mapfile({"engine/core/Render.cpp": ("b1", [(1, 9, [0])]), "editor/App.cpp": ("b2", [(1, 9, [0])]),
+               "editor/Other.cpp": ("b3", [(1, 9, [1])])})
 
 
 class Mcp(unittest.TestCase):
@@ -236,9 +244,10 @@ class Mcp(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
         cc.use_root(REAL_ROOT)
 
-    def plan(self, files, cmap=MAP, staleness=None, deleted=()):
+    def plan(self, files, cmap=MAP, staleness=None, deleted=(), hunks=None, blobs=None):
         p = cc.Plan()
-        cc.plan_mcp(cc.Changes("b", "x", list(files), list(deleted)), p, cmap, SRC, staleness)
+        cc.plan_mcp(cc.Changes("b", "x", list(files), list(deleted), hunks=hunks or {}, base_blobs=blobs or {}),
+                    p, cmap, SRC, staleness)
         return p
 
     def test_map_intersection(self):
@@ -252,8 +261,40 @@ class Mcp(unittest.TestCase):
         self.assertIn("test_build.py", self.plan(["editor/Exporter.cpp"]).mcp_files)
         # a header through its source; or itself, when an inline function of it ran
         self.assertEqual(self.plan(["editor/Other.h"]).mcp_files, ["test_other.py"])
-        cmap = {"files": {"test_render.py": ["engine/core/Inline.h"]}}
+        cmap = mapfile({"engine/core/Inline.h": ("b", [(1, 2, [0])])})
         self.assertEqual(self.plan(["engine/core/Inline.h"], cmap=cmap).mcp_files[0], "test_render.py")
+
+    def test_functions_from_hunks(self):
+        cmap = mapfile({"editor/A.cpp": ("blob", [(10, 20, [0]), (30, 40, [1]), (50, 60, [])])})
+        def selected(hunks, blob="blob"):
+            return self.plan(["editor/A.cpp"], cmap=cmap, hunks={"editor/A.cpp": hunks}, blobs={"editor/A.cpp": blob})
+        self.assertEqual(selected([[12, 2]]).mcp_files, ["test_render.py"])     # inside the first function
+        self.assertEqual(selected([[35, 1]]).mcp_files, ["test_other.py"])      # inside the second
+        self.assertEqual(selected([[20, 0]]).mcp_files, ["test_render.py"])     # an insertion after its last line
+        self.assertEqual(sorted(selected([[12, 1], [35, 1]]).mcp_files), ["test_other.py", "test_render.py"])
+        # a line outside every function (a declaration): the whole file
+        self.assertEqual(sorted(selected([[25, 1]]).mcp_files), ["test_other.py", "test_render.py"])
+        # not the map's lines: the whole file
+        self.assertEqual(sorted(selected([[12, 1]], blob="other").mcp_files), ["test_other.py", "test_render.py"])
+        # a function no test executes selects nothing, and says so; the CI suite is for what the map does not know
+        p = selected([[55, 1]])
+        self.assertEqual((p.mcp_files, p.mcp_ci), ([], False))
+        self.assertTrue(any("no MCP test executes" in n for n in p.mcp_notes))
+
+    def test_a_function_every_editor_runs_selects_the_quickest(self):
+        tests = [f"test_{c}.py" for c in "abcdefghijklmnopqrst"]
+        src = {t: "x\n" for t in tests}
+        cmap = mapfile({"editor/A.cpp": ("blob", [(1, 9, list(range(20)))])}, tests=tests,
+                       seconds={t: 100 - i for i, t in enumerate(tests)})
+        p = cc.Plan()
+        cc.plan_mcp(cc.Changes("b", "x", ["editor/A.cpp"], hunks={"editor/A.cpp": [[2, 1]]}, base_blobs={"editor/A.cpp": "blob"}),
+                    p, cmap, src, None)
+        self.assertEqual(sorted(p.mcp_files), sorted(tests[-cc.COMMON_SAMPLE:]))
+
+    def test_hunks_of_a_diff(self):
+        diff = ("diff --git a/x.cpp b/x.cpp\n--- a/x.cpp\n+++ b/x.cpp\n@@ -3,2 +3 @@ void f()\n-a\n-b\n+c\n@@ -9 +8,2 @@\n-d\n+e\n+f\n@@ -20,0 +21 @@\n+g\n"
+                "diff --git a/new.cpp b/new.cpp\n--- /dev/null\n+++ b/new.cpp\n@@ -0,0 +1 @@\n+h\n")
+        self.assertEqual(cc.parse_hunks(diff), {"x.cpp": [[3, 2], [9, 1], [20, 0]]})
 
     def test_fallbacks(self):
         self.assertTrue(self.plan(["editor/App.cpp"], cmap=None).mcp_ci)                    # no map
@@ -272,7 +313,7 @@ class Mcp(unittest.TestCase):
     def test_test_files_tools_fixtures(self):
         self.assertEqual(self.plan(["tools/mcp/tests/test_other.py"]).mcp_files, ["test_other.py"])
         self.assertEqual(self.plan(["tools/mcp/tests/test_other.py"], deleted=["tools/mcp/tests/test_other.py"]).mcp_files, [])
-        self.assertEqual(self.plan(["editor/mcp/tools/AssetTools.cpp"], cmap={"files": {}}).mcp_files, ["test_tool.py"])
+        self.assertEqual(self.plan(["editor/mcp/tools/AssetTools.cpp"], cmap=mapfile({})).mcp_files, ["test_tool.py"])
         self.assertEqual(self.plan(["tools/fixtures/water/scenes/Main.scene"]).mcp_files, ["test_fixture.py"])
         # a file no test names: the CI suite
         p = self.plan(["tools/fixtures/nobody/scenes/Main.scene"])
@@ -304,15 +345,15 @@ def gcda(major: int, counters: list[int], zero_compact: bool = False, functions:
     return out
 
 
-def gcno(functions: dict[int, tuple[str, str]], cwd: str = "/src/build/x") -> bytes:
+def gcno(functions: dict[int, tuple[str, int, int]], cwd: str = "/src/build/x") -> bytes:
     """A minimal GCC 11 .gcno: header, current directory, a flag, function records and a block record."""
     def string(text: str) -> bytes:
         raw = text.encode() + b"\0"
         raw += b"\0" * (-len(raw) % 4)
         return struct.pack("<I", len(raw) // 4) + raw
     out = struct.pack("<III", coverage_map.GCNO_MAGIC, 0x4230342a, 1) + string(cwd) + struct.pack("<I", 1)
-    for ident, (name, file) in functions.items():
-        body = struct.pack("<III", ident, 2, 3) + string(name) + struct.pack("<I", 0) + string(file) + struct.pack("<IIII", 1, 1, 2, 2)
+    for ident, (file, first, last) in functions.items():
+        body = struct.pack("<III", ident, 2, 3) + string(f"f{ident}") + struct.pack("<I", 0) + string(file) + struct.pack("<IIII", first, 1, last, 2)
         out += struct.pack("<Ii", coverage_map.TAG_FUNCTION, len(body) // 4) + body
         out += struct.pack("<III", 0x01410000, 1, 7)   # the blocks: a word, their count
     return out
@@ -329,37 +370,42 @@ class Coverage(unittest.TestCase):
         self.assertFalse(coverage_map.gcda_executed(b"nonsense"))
 
     def test_gcno(self):
-        data = gcno({1: ("_Z3foov", "/src/engine/core/A.cpp"), 2: ("_ZN3Bar3getEv", "../engine/core/Bar.h")})
+        data = gcno({1: ("/src/engine/core/A.cpp", 3, 5), 2: ("../engine/core/Bar.h", 7, 9)})
         self.assertEqual(coverage_map.gcno_functions(data),
-                         {1: ("_Z3foov", "/src/engine/core/A.cpp"), 2: ("_ZN3Bar3getEv", "/src/build/x/../engine/core/Bar.h")})
+                         {1: ("/src/engine/core/A.cpp", 3, 5), 2: ("/src/build/x/../engine/core/Bar.h", 7, 9)})
         self.assertEqual(coverage_map.gcno_functions(b"nonsense"), {})
 
-    def test_collect_leaves_out_what_every_editor_runs(self):
+    def test_collect(self):
         tmp = Path(tempfile.mkdtemp(prefix="cc-cov-"))
         old = coverage_map.MIN_EDITOR_FUNCTIONS
         coverage_map.MIN_EDITOR_FUNCTIONS = 2
         try:
             tree = Path("/src/build/linux/editor-coverage")
-            # function 1 of each object runs in every editor (registrations); 5 and 2 only in test_x's chunks;
-            # 3 is an inline function of a header, 4 of a system header
-            objs = {"o/A.cpp": {1: ("a1", "/src/engine/core/A.cpp"), 5: ("a5", "/src/engine/core/A.cpp"),
-                                3: ("inl", "/src/engine/core/Inl.h"), 4: ("sys", "/usr/include/x.h")},
-                    "o/B.cpp": {1: ("b1", "/src/engine/core/B.cpp"), 2: ("b2", "/src/engine/core/B.cpp")}}
+            root = tmp / "root"
+            (root / "engine/core").mkdir(parents=True)
+            (root / "engine/core/A.cpp").write_bytes(b"int a;\n")
+            objs = {"o/A.cpp": {1: ("/src/engine/core/A.cpp", 1, 2), 5: ("/src/engine/core/A.cpp", 3, 4),
+                                3: ("/src/engine/core/Inl.h", 5, 6), 4: ("/usr/include/x.h", 7, 8)},
+                    "o/B.cpp": {1: ("/src/engine/core/B.cpp", 1, 2), 2: ("/src/engine/core/B.cpp", 3, 4), 9: ("/src/engine/core/B.cpp", 5, 6)}}
             runs = {"test_x-0": {"o/A.cpp": {1: [1], 5: [3], 3: [1], 4: [1]}, "o/B.cpp": {1: [1]}},
                     "test_x-1": {"o/A.cpp": {1: [1]}, "o/B.cpp": {1: [1], 2: [4]}},
                     "test_y-2": {"o/A.cpp": {1: [1]}, "o/B.cpp": {1: [1]}},
-                    "test_z-3": {"o/A.cpp": {1: [1]}, "o/B.cpp": {1: [1]}},
-                    "test_nothing-4": {}}
+                    "test_nothing-3": {}}
+            runs_dir = tmp / "runs"
             for run, gcdas in runs.items():
-                (tmp / run).mkdir()
+                (runs_dir / run).mkdir(parents=True)
                 for name, functions in gcdas.items():
-                    p = tmp / run / str(tree).lstrip("/") / f"{name}.gcda"
+                    p = runs_dir / run / str(tree).lstrip("/") / f"{name}.gcda"
                     p.parent.mkdir(parents=True, exist_ok=True)
                     p.write_bytes(gcda(11, [], functions=functions))
-            files = coverage_map.collect(tmp, tree, lambda rel: gcno(objs[rel[:-len(".gcno")]]))
-            self.assertEqual(files, {"test_nothing.py": [],
-                                     "test_x.py": ["engine/core/A.cpp", "engine/core/B.cpp", "engine/core/Inl.h"],
-                                     "test_y.py": [], "test_z.py": []})
+            data = coverage_map.collect(runs_dir, tree, root, lambda rel: gcno(objs[rel[:-len(".gcno")]]))
+            self.assertEqual(data["tests"], ["test_nothing.py", "test_x.py", "test_y.py"])
+            self.assertEqual(data["editor_tests"], 2)
+            self.assertEqual(data["sources"]["engine/core/A.cpp"]["functions"], [[1, 2, "6"], [3, 4, "2"]])
+            self.assertEqual(data["sources"]["engine/core/B.cpp"]["functions"], [[1, 2, "6"], [3, 4, "2"], [5, 6, "0"]])
+            self.assertEqual(data["sources"]["engine/core/Inl.h"]["functions"], [[5, 6, "2"]])
+            self.assertNotIn("/usr/include/x.h", data["sources"])
+            self.assertEqual(data["sources"]["engine/core/A.cpp"]["blob"], "%s" % __import__("hashlib").sha1(b"blob 7\0int a;\n").hexdigest())
         finally:
             coverage_map.MIN_EDITOR_FUNCTIONS = old
             shutil.rmtree(tmp, ignore_errors=True)
@@ -479,8 +525,8 @@ class Runs(unittest.TestCase):
         self.assertIn("could not run", out)
         # a map that names a test file the checkout no longer has: not selected
         sha = sh(self.root, "git", "rev-parse", "HEAD").strip()
-        (self.tmp / "map.json").write_text(json.dumps({"commit": sha, "created": time.time(),
-                                                       "files": {"test_old.py": ["editor/App.cpp"]}}))
+        (self.tmp / "map.json").write_text(json.dumps(dict(mapfile({"editor/App.cpp": ("b", [(1, 9, [0])])}, tests=["test_old.py"]),
+                                                           commit=sha, created=time.time())))
         os.environ["JASPER_MCP_COVERAGE_MAP"] = str(self.tmp / "map.json")
         os.environ["MCP_SKIPS"] = "0"
         code, out = self.run_main("--dry-run")
