@@ -72,6 +72,11 @@
 # tools/build.sh web first; WEB_THREADS=1 gates its pthreads build, build/web-threads-<name>);
 # GATE_ARGS goes to browser_gate.py. Screenshot and transcript in build/test-results/web/.
 # From a git worktree, the main checkout's ccache and .git are shared.
+# Inside the Linux build image (rb.sh <server> --img 'tools/build.sh ...'; no docker there) the targets
+# of that image run directly with the same environment; another image's target exits 3.
+# COVERAGE=1 (linux): GCC's --coverage, in build/linux/editor-coverage (tools/mcp/coverage_map.py).
+# MCP_SKIP_WEB_BUILD=1 (mcp-tests): no mesh-raycast web build, for a run without test_mesh_raycast.py.
+# DOCKER_GPU=1 (mcp-tests): the real-GPU lane, for a plan's chunks of the lane gpu (docs/testing.md).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -85,7 +90,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,70p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,75p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 

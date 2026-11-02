@@ -367,6 +367,10 @@ rb.sh A --img tools/check-changed        # inside the Linux image (no web or And
   the files changed caches nothing. Exit 1 when a step fails or a selected test cannot run.
 - Output: the plan, then each step's result; a failed step's output (`CHECK_CHANGED_VERBOSE=1`:
   everything).
+- Inside the Linux image `tools/build.sh` has no Docker to call and runs the image's own targets
+  directly, with the same environment (`rb.sh <S> --img 'tools/build.sh ...'`, and so `rb.sh L --img`
+  on this host); a target of another image (web, Android) exits 3 and check-changed reports it as
+  a step that could not run.
 - Its tests: `python3 -I tools/test_check_changed.py` (the diff and its fallbacks, the build plan,
   the suites from a synthetic `ninja -t deps`, the MCP selection from a synthetic map, the gcda
   reader, the cache and its invalidation, the exit codes).
@@ -380,14 +384,17 @@ critical path (a batch landing's run, a quiet server); it is stored with its com
 ```sh
 rb.sh A env COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux          # build/linux/editor-coverage-install
 rb.sh A --img 'JASPER_EDITOR=/src/build/linux/editor-coverage-install/bin/jasperengine-editor \
-  JASPER_MCP_COVERAGE_DIR=/src/build/coverage/runs JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 \
-  dbus-run-session -- tools/mcp/run-tests.sh -j 6 --split-seconds 600; \
+  JASPER_MCP_COVERAGE_DIR=/src/build/coverage/runs JASPER_SLOW_TESTS=1 \
+  dbus-run-session -- tools/mcp/run-tests.sh -j 4 --split-seconds 900; \
   python3 tools/mcp/coverage_map.py collect build/coverage/runs build/linux/editor-coverage \
-  --commit $(git rev-parse HEAD) --out /mcp-build-cache/coverage-map.json'
+  --commit <the commit> --out /mcp-build-cache/coverage-map.json'
 ```
 
 Each test file's (and chunk's) editors write their GCC counts under their own `GCOV_PREFIX`; a
-source counts when one of its objects has a counter above zero.
+source counts when one of its objects has a counter above zero. The run leaves out the slow builds
+(no `JASPER_SLOW_BUILD`): what a compile or a prebuilt game runs is not the editor's code, and the
+files that build games are selected for every engine change anyway, by `GAME_BUILD_FILES`. The server's
+`rb.sh` puts the map where check-changed looks; copy it to the other servers' `~/je/mcp-build-cache/`.
 
 ### The full suite across servers: `je-remote/mcp-shard.sh`
 

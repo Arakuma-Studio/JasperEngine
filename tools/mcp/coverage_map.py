@@ -7,7 +7,7 @@ landing's run, a quiet server):
     COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux             # build/linux/editor-coverage(-install)
     # each test file's (or chunk's) editors write their .gcda under <dir>/<file>-<n>/ (GCOV_PREFIX):
     JASPER_EDITOR=build/linux/editor-coverage-install/bin/jasperengine-editor \\
-      JASPER_MCP_COVERAGE_DIR=build/coverage/runs tools/mcp/run-tests.sh -j 6 --split-seconds 600
+      JASPER_MCP_COVERAGE_DIR=build/coverage/runs JASPER_SLOW_TESTS=1 tools/mcp/run-tests.sh -j 4 --split-seconds 900
     python3 tools/mcp/coverage_map.py collect build/coverage/runs build/linux/editor-coverage \\
       --commit $(git rev-parse HEAD) --out build/coverage/coverage-map.json
 
