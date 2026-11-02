@@ -2775,9 +2775,7 @@ bool MeshSystem::loadGLTFTexture(int textureIndex, ModelComponent& model, Textur
             return TextureData(decoded.width, decoded.height, (unsigned int)size, colorFormat, decoded.component, pixels);
         });
 
-        auto existingData = TextureDataPool::get(id);
-        const bool canReuse = existingData && existingData->at(0).getData() && existingData->at(0).getSize() >= imageSize;
-        if (canReuse) {
+        if (TextureDataPool::hasPixelsOfSize(id, imageSize)) {
             texture.setId(id);
         } else {
             unsigned char* imageCopy = static_cast<unsigned char*>(std::malloc(imageSize));

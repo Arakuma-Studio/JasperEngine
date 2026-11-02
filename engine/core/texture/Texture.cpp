@@ -17,7 +17,7 @@ namespace {
 
     void cleanupTextureFace(void* cleanupData){
         TextureFaceCleanup* cleanup = static_cast<TextureFaceCleanup*>(cleanupData);
-        TextureData::cleanupTexture(&cleanup->data->at(cleanup->face));
+        TextureDataPool::releasePixels(cleanup->data, cleanup->face);
         delete cleanup;
     }
 

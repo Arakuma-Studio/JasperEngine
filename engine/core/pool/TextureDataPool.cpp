@@ -127,6 +127,18 @@ namespace {
         static std::mutex* mutex = new std::mutex();
         return *mutex;
     }
+
+    // The map, the generations and the sources: the frames use them, and so does a model loading
+    // off the main thread (the thumbnail strand, a game's loading thread: loadGLTFTexture,
+    // Texture::setData, Texture::setId). Taken around the containers' own operations alone: never
+    // while loading, never while calling out, and nothing is destroyed under it (an entry's last
+    // reference runs shareDecoded's deleter); cacheMutex may be held, never taken, under it. It
+    // also keeps a pixels' release (the cleanup after a GPU upload, on the main thread) from
+    // the lookups that ask whether an entry has them.
+    std::mutex& entriesMutex(){
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
+    }
 }
 
 bool TextureDataPool::loadCookedBytes(const std::string& id, const CookedTextureEntry& entry, const std::vector<uint8_t>& bytes, uint32_t firstLevel,
@@ -233,19 +245,24 @@ void TextureDataPool::replace(const std::string& id, std::shared_ptr<std::array<
     if (!data){
         return;
     }
-    getMap()[id] = std::move(data);
-    getGenerations()[id]++;
+    {
+        std::lock_guard<std::mutex> lock(entriesMutex());
+        getMap()[id].swap(data);
+        getGenerations()[id]++;
+    }
     replaceEpoch.fetch_add(1, std::memory_order_acq_rel);
     TexturePool::noteReady();
 }
 
 uint32_t TextureDataPool::generation(const std::string& id){
+    std::lock_guard<std::mutex> lock(entriesMutex());
     auto& generations = getGenerations();
     auto it = generations.find(id);
     return it == generations.end() ? 0 : it->second;
 }
 
 bool TextureDataPool::getSource(const std::string& id, TextureSource& out){
+    std::lock_guard<std::mutex> lock(entriesMutex());
     auto& sources = getSources();
     auto it = sources.find(id);
     if (it == sources.end()){
@@ -258,7 +275,12 @@ bool TextureDataPool::getSource(const std::string& id, TextureSource& out){
 std::vector<std::string> TextureDataPool::findIdsUsingFile(const std::string& systemPath){
     const std::string wanted = std::filesystem::path(systemPath).lexically_normal().generic_string();
     std::vector<std::string> ids;
-    for (const auto& [id, source] : getSources()){
+    std::unordered_map<std::string, TextureSource> sources;
+    {
+        std::lock_guard<std::mutex> lock(entriesMutex());
+        sources = getSources();
+    }
+    for (const auto& [id, source] : sources){
         for (size_t f = 0; f < 6; f++){
             if (source.paths[f].empty()){
                 continue;
@@ -327,6 +349,7 @@ size_t TextureDataPool::getTextureFaces(std::array<TextureData,6>& data) {
 }
 
 std::shared_ptr<std::array<TextureData,6>> TextureDataPool::get(const std::string& id){
+    std::lock_guard<std::mutex> lock(entriesMutex());
     auto& map = getMap();
     auto it = map.find(id);
 
@@ -337,33 +360,62 @@ std::shared_ptr<std::array<TextureData,6>> TextureDataPool::get(const std::strin
     return nullptr;
 }
 
+bool TextureDataPool::hasPixelsOfSize(const std::string& id, size_t size){
+    std::lock_guard<std::mutex> lock(entriesMutex());
+    auto& map = getMap();
+    auto it = map.find(id);
+    return it != map.end() && it->second && it->second->at(0).getData() && it->second->at(0).getSize() >= size;
+}
+
+void TextureDataPool::releasePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t face){
+    std::lock_guard<std::mutex> lock(entriesMutex());
+    TextureData::cleanupTexture(&data->at(face));
+}
+
+void TextureDataPool::setEntry(const std::string& id, std::shared_ptr<std::array<TextureData,6>> data){
+    std::lock_guard<std::mutex> lock(entriesMutex());
+    getMap()[id].swap(data);
+}
+
 void TextureDataPool::put(const std::string& id, std::shared_ptr<std::array<TextureData,6>> data){
     if (!data){
         return;
     }
 
-    auto& map = getMap();
-    auto it = map.find(id);
-    if (it != map.end() && hasTexturePixels(it->second, getTextureFaces(*it->second))){
-        return; // already cached with pixels; keep the existing entry
+    {
+        std::lock_guard<std::mutex> lock(entriesMutex());
+        std::shared_ptr<std::array<TextureData,6>>& entry = getMap()[id];
+        if (entry && hasTexturePixels(entry, getTextureFaces(*entry))){
+            return; // already cached with pixels; keep the existing entry
+        }
+        entry.swap(data);
     }
-
-    map[id] = std::move(data);
     TexturePool::noteReady();
 }
 
 std::shared_ptr<std::array<TextureData,6>> TextureDataPool::get(const std::string& id, std::array<TextureData,6> data){
-    auto& map = getMap();
-    auto it = map.find(id);
-    std::shared_ptr<std::array<TextureData,6>> shared = (it != map.end()) ? it->second : nullptr;
     size_t numFaces = getTextureFaces(data);
+    {
+        std::lock_guard<std::mutex> lock(entriesMutex());
+        auto& map = getMap();
+        auto it = map.find(id);
+        if (it != map.end() && hasTexturePixels(it->second, numFaces)){
+            return it->second;
+        }
+    }
 
-    if (shared && hasTexturePixels(shared, numFaces)){
-		return shared;
-	}
-
-	shared = std::make_shared<std::array<TextureData,6>>(data);
-    map[id] = shared;
+    // (made outside the lock; another load of the id that came first keeps its entry)
+    std::shared_ptr<std::array<TextureData,6>> shared = std::make_shared<std::array<TextureData,6>>(data);
+    std::shared_ptr<std::array<TextureData,6>> previous;
+    {
+        std::lock_guard<std::mutex> lock(entriesMutex());
+        std::shared_ptr<std::array<TextureData,6>>& entry = getMap()[id];
+        if (hasTexturePixels(entry, numFaces)){
+            return entry;
+        }
+        previous = entry;
+        entry = shared;
+    }
     TexturePool::noteReady();
 
 	return shared;
@@ -486,15 +538,21 @@ void TextureDataPool::prepareLevels(std::array<TextureData,6>& data, size_t numF
 }
 
 TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder) {
-    auto& shared = getMap()[id];
+    std::shared_ptr<std::array<TextureData,6>> shared;
 
     TextureLoadResult result;
     result.id = id;
 
-    // what a hot reload decodes again
-    getSources()[id] = TextureSource{paths, numFaces, fixAlphaBorder};
+    bool hasPixels = false;
+    {
+        std::lock_guard<std::mutex> lock(entriesMutex());
+        shared = getMap()[id];
+        // what a hot reload decodes again
+        getSources()[id] = TextureSource{paths, numFaces, fixAlphaBorder};
+        hasPixels = shared && hasTexturePixels(shared, numFaces);
+    }
 
-    if (shared.use_count() > 0 && hasTexturePixels(shared, numFaces)) {
+    if (hasPixels) {
         result.state = ResourceLoadState::Finished;
         result.data = shared;
         return result;
@@ -537,12 +595,14 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
                         return result;
                     }
                     shared = shareDecoded(tail);
+                    setEntry(id, shared);
                     noteResident(id, *shared, true);
                     result.state = ResourceLoadState::Finished;
                     result.data = shared;
                     return result;
                 }
                 shared = shareDecoded(std::move(loaded.data));
+                setEntry(id, shared);
                 noteResident(id, *shared, loaded.cooked);
 
                 result.state = ResourceLoadState::Finished;
@@ -570,6 +630,7 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
     } else {
         try {
             shared = shareDecoded(loadTextureInternal(id, paths, numFaces, fixAlphaBorder, false));
+            setEntry(id, shared);
             std::vector<CookedTextureEntry> entries;
             noteResident(id, *shared, findCooked(paths, numFaces, entries));
 
@@ -604,8 +665,14 @@ TextureLoadResult TextureDataPool::loadGenerated(const std::string& id) {
     if (generator == generators.end())
         return result;
 
-    auto& shared = getMap()[id];
-    if (shared.use_count() > 0 && hasTexturePixels(shared, 1)) {
+    std::shared_ptr<std::array<TextureData,6>> shared;
+    bool hasPixels = false;
+    {
+        std::lock_guard<std::mutex> lock(entriesMutex());
+        shared = getMap()[id];
+        hasPixels = shared && hasTexturePixels(shared, 1);
+    }
+    if (hasPixels) {
         result.state = ResourceLoadState::Finished;
         result.data = shared;
         return result;
@@ -644,6 +711,7 @@ TextureLoadResult TextureDataPool::loadGenerated(const std::string& id) {
         shared = std::make_shared<std::array<TextureData, 6>>(faces);
         // the pool's copy owns the pixels the generator handed over
         shared->at(0).setDataOwned(true);
+        setEntry(id, shared);
         TexturePool::noteReady();
         result.state = ResourceLoadState::Finished;
         result.data = shared;
@@ -1239,11 +1307,16 @@ void TextureDataPool::rebalanceBudget(){
 
 void TextureDataPool::adopt(const std::string& id, LoadResult& result, bool replacing){
     auto shared = shareDecoded(result.data);
-    if (replacing || getMap().count(id)){
+    bool pooled = false;
+    {
+        std::lock_guard<std::mutex> lock(entriesMutex());
+        pooled = getMap().count(id) > 0;
+    }
+    if (replacing || pooled){
         replace(id, shared);
         TexturePool::invalidate(id);
     }else{
-        getMap()[id] = shared;
+        setEntry(id, shared);
         TexturePool::noteReady();
     }
     noteResident(id, *shared, result.cooked);
@@ -1497,14 +1570,24 @@ void TextureDataPool::remove(const std::string& id){
         poolPlannedReloads.erase(id);
     }
 
-    auto& map = getMap();
-    auto it = map.find(id);
-    if (it != map.end()){
+    bool found = false, erased = false;
+    std::shared_ptr<std::array<TextureData,6>> entry;
+    {
+        std::lock_guard<std::mutex> lock(entriesMutex());
+        auto& map = getMap();
+        auto it = map.find(id);
+        found = it != map.end();
         // The generator stays: a Texture naming the id may still be about (its pixels freed
         // after its GPU upload, it holds no data) and needs it to make its pixels again; one
         // whose source is gone fails its load (setGenerator replaces it on the next load)
-        if (!it->second || it->second.use_count() <= 1){
+        if (found && (!it->second || it->second.use_count() <= 1)){
+            entry.swap(it->second);
             map.erase(it);
+            erased = true;
+        }
+    }
+    if (found){
+        if (erased){
             forgetResident(id);
         }
 	}else if (!removedPending){
@@ -1528,7 +1611,14 @@ void TextureDataPool::invalidate(const std::string& id){
             pendingBuilds.erase(pendingIt);
         }
     }
-    getMap().erase(id);
+    std::shared_ptr<std::array<TextureData,6>> entry;
+    std::lock_guard<std::mutex> lock(entriesMutex());
+    auto& map = getMap();
+    auto it = map.find(id);
+    if (it != map.end()){
+        entry.swap(it->second);
+        map.erase(it);
+    }
 }
 
 void TextureDataPool::clear(){
@@ -1537,7 +1627,12 @@ void TextureDataPool::clear(){
 		quiescePending(false);
 		generators.clear();
 	}
-	getMap().clear();
+    texturesdata_t entries;
+    {
+        std::lock_guard<std::mutex> lock(entriesMutex());
+        entries.swap(getMap());
+    }
+    entries.clear();
     {
         std::lock_guard<std::mutex> lock(residentsMutex());
         getResidents().clear();
@@ -1556,9 +1651,12 @@ void TextureDataPool::clearUnused(){
 	}
 
 	std::vector<std::string> ids;
-	ids.reserve(getMap().size());
-	for (const auto& [id, _] : getMap()) {
-		ids.push_back(id);
+	{
+		std::lock_guard<std::mutex> lock(entriesMutex());
+		ids.reserve(getMap().size());
+		for (const auto& [id, _] : getMap()) {
+			ids.push_back(id);
+		}
 	}
 	for (const auto& id : ids) {
 		remove(id);

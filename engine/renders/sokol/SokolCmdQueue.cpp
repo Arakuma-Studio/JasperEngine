@@ -20,12 +20,13 @@ std::vector<SokolRenderCommand> SokolCmdQueue::m_commands[2];
 int32_t SokolCmdQueue::m_pending_commands_index = 0;
 int32_t SokolCmdQueue::m_commit_commands_index = 1;
 std::vector<SokolRenderCleanup> SokolCmdQueue::m_cleanups;
+std::mutex SokolCmdQueue::m_cleanups_mutex;
 Semaphore SokolCmdQueue::m_update_semaphore;
 Semaphore SokolCmdQueue::m_render_semaphore;
 std::atomic<bool> SokolCmdQueue::m_flushing = false;
 std::atomic<bool> SokolCmdQueue::m_commited = false;
 std::mutex SokolCmdQueue::m_execute_mutex;
-int32_t SokolCmdQueue::m_frame_index = 0;
+std::atomic<int32_t> SokolCmdQueue::m_frame_index = 0;
 
 constexpr int32_t INITIAL_NUMBER_OF_COMMANDS = 256;
 constexpr int32_t INITIAL_NUMBER_OF_CLEANUPS = 64;
@@ -362,6 +363,8 @@ void SokolCmdQueue::add_command_custom(void (*custom_cb)(void* custom_data), voi
 
 void SokolCmdQueue::schedule_cleanup(void (*cleanup_cb)(void* cleanup_data), void* cleanup_data, int32_t number_of_frames_to_defer)
 {
+	std::scoped_lock<std::mutex> lock(m_cleanups_mutex);
+
 	SokolRenderCleanup& cleanup = m_cleanups.emplace_back(cleanup_cb, cleanup_data);
 	
 	cleanup.frame_index = m_frame_index + 1 + number_of_frames_to_defer;
@@ -395,15 +398,19 @@ void SokolCmdQueue::flush_commands()
 
 void SokolCmdQueue::process_cleanups(int32_t frame_index)
 {
-	for (auto& cleanup : m_cleanups)
+	// the ones due, taken out: a thread queues its cleanups while this one runs them (a thread
+	// under Engine::AsyncThreadScope goes on after its commit), and one may queue another
+	std::vector<SokolRenderCleanup> due;
 	{
-		if ((cleanup.frame_index < frame_index || frame_index < 0) && cleanup.cleanup_cb)
-		{
-			cleanup.cleanup_cb(cleanup.cleanup_data);
-			
-			cleanup.cleanup_cb = nullptr;
-		}
+		std::scoped_lock<std::mutex> lock(m_cleanups_mutex);
+
+		const auto first_kept = std::stable_partition(m_cleanups.begin(), m_cleanups.end(), [frame_index](const auto& cleanup) { return cleanup.frame_index < frame_index || frame_index < 0; });
+		due.assign(m_cleanups.begin(), first_kept);
+		m_cleanups.erase(m_cleanups.begin(), first_kept);
 	}
-	
-	m_cleanups.erase(std::remove_if(m_cleanups.begin(), m_cleanups.end(), [](const auto& cleanup) { return !cleanup.cleanup_cb; }), m_cleanups.end());
+
+	for (const auto& cleanup : due)
+	{
+		cleanup.cleanup_cb(cleanup.cleanup_data);
+	}
 }

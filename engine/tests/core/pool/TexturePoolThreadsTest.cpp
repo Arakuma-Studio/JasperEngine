@@ -12,12 +12,14 @@
 
 #include "Engine.h"
 #include "Scene.h"
+#include "component/MeshComponent.h"
 #include "object/Camera.h"
 #include "object/Light.h"
 #include "object/Model.h"
 #include "object/Primitive.h"
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
+#include "render/SystemRender.h"
 #include "render/TextureRender.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -112,21 +114,61 @@ TEST(TextureDataPoolThreads, TwoThreadsLoadImagesAtOnce){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// the GPU textures' pool, on ids of each thread's own (no GPU texture is made: only the entries)
+TEST(TextureDataPoolThreads, TwoThreadsAskForGpuTexturesAtOnce){
+    const auto calls = [](const std::string& prefix){
+        for (int i = 0; i < 4000; i++){
+            const std::string id = prefix + std::to_string(i % 16);
+            TexturePool::add(id, std::make_shared<TextureRender>());
+            (void)TexturePool::get(id);
+            (void)TexturePool::getKept(id);
+            (void)TexturePool::holds(id, nullptr);
+            TexturePool::invalidate(id);
+            TexturePool::remove(id);
+        }
+    };
+    std::thread other(calls, "bf17-other-gpu-");
+    calls("bf17-main-gpu-");
+    other.join();
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 // What a thumbnail's model load asks the pools off the main thread (MeshSystem::loadGLTFTexture,
 // Texture::setData, Texture::setId), next to the main thread's own
 TEST(TextureDataPoolThreads, AModelLoadingOnItsThreadSharesThePoolsWithTheMainThread){
     std::atomic<bool> done{false};
-    std::thread strand([&done](){
+    std::mutex uploadedMutex;
+    std::vector<std::shared_ptr<std::array<TextureData, 6>>> uploaded;
+    std::thread strand([&done, &uploadedMutex, &uploaded](){
         for (int i = 0; i < 3; i++){
             Scene preview(EntityPool::System);
             Model model(&preview);
             MeshSystem::setImageDecodeMaxDimension(256);
             EXPECT_TRUE(preview.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), PREVIEW_MODEL, false, false, false));
             MeshSystem::setImageDecodeMaxDimension(0);
+            // this preview's images, as its GPU upload holds them: their cleanups come next to
+            // the next preview's load, which finds the same ones in the pool
+            auto meshes = preview.getComponentArray<MeshComponent>();
+            std::lock_guard<std::mutex> lock(uploadedMutex);
+            for (size_t m = 0; m < meshes->size(); m++){
+                MeshComponent& mesh = meshes->getComponentFromIndex(m);
+                for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+                    const std::string& id = mesh.submeshes[s].material.baseColorTexture.getId();
+                    if (std::shared_ptr<std::array<TextureData, 6>> pooled = id.empty() ? nullptr : TextureDataPool::get(id))
+                        uploaded.push_back(pooled);
+                }
+            }
         }
         done.store(true);
     });
     for (int i = 0; !done.load(); i++){
+        // what the cleanup after a preview's GPU upload does on the main thread (Texture::getRender)
+        {
+            std::lock_guard<std::mutex> lock(uploadedMutex);
+            for (const std::shared_ptr<std::array<TextureData, 6>>& images : uploaded)
+                TextureDataPool::releasePixels(images, 0);
+            uploaded.clear();
+        }
         const std::string id = "bf17-main-" + std::to_string(i % 16);
         TextureDataPool::replace(id, onePixelImage((uint8_t)i));
         EXPECT_NE(TextureDataPool::get(id), nullptr);
@@ -237,6 +279,34 @@ TEST(TextureDataPoolThreadsGpu, APreviewOnItsStrandSharesThePoolsWithTheFrames){
     }
     GpuEnvironment::drawFrames(2);
     Engine::removeScene(&scene);
+    // (no look at the engine's errors: a preview off the main thread bakes its nodes into one mesh,
+    // and this model's nodes are over that mesh's limit of external buffers: the images are what
+    // this run is about)
+}
+
+// The cleanups of the render queue: a thread working under Engine::AsyncThreadScope queues them (the
+// release of an upload's pixels, an entry's last reference on the strand: shareDecoded's deleter)
+// while the main thread runs the batch it committed (SokolCmdQueue::process_cleanups)
+TEST(TextureDataPoolThreadsGpu, TheRenderQueuesCleanupsComeFromAnotherThreadDuringItsExecution){
+    JASPER_REQUIRE_GPU();
+    std::atomic<int> ran{0};
+    std::atomic<bool> done{false};
+    std::thread strand([&ran, &done](){
+        Engine::AsyncThreadScope scope;
+        for (int batch = 0; batch < 200; batch++){
+            for (int i = 0; i < 32; i++)
+                SystemRender::scheduleCleanup([](void* counter){ static_cast<std::atomic<int>*>(counter)->fetch_add(1); }, &ran);
+            Engine::commitThreadQueue();
+        }
+        done.store(true);
+    });
+    while (!done.load())
+        SystemRender::executeQueue();
+    strand.join();
+    for (int frame = 0; frame < 8; frame++)
+        SystemRender::executeQueue();
+    // (scope's end committed one more batch)
+    EXPECT_GT(ran.load(), 0);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
