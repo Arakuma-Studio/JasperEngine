@@ -87,7 +87,18 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1077);
     scene->recreateEntity(1078);
     scene->recreateEntity(1079);
-    scene->setLastEntity(1079);
+    scene->recreateEntity(1080);
+    scene->recreateEntity(1081);
+    scene->recreateEntity(1082);
+    scene->recreateEntity(1083);
+    scene->recreateEntity(1084);
+    scene->recreateEntity(1085);
+    scene->recreateEntity(1086);
+    scene->recreateEntity(1087);
+    scene->recreateEntity(1088);
+    scene->recreateEntity(1089);
+    scene->recreateEntity(1090);
+    scene->setLastEntity(1090);
 
     {
         // Entity 1001 (Transform)
@@ -583,7 +594,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         rigidbody2d.needReloadBody = false;
         rigidbody2d.needUpdateColliders = false;
         rigidbody2d.newBody = true;
-        rigidbody2d.numColliders = 0;
         rigidbody2d.enabled = false;
         scene->addComponent<Rigidbody2DComponent>(1017, rigidbody2d);
 #endif // JASPERENGINE_PHYSICS_2D
@@ -625,7 +635,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         rigidbody.overrideMassProperties = false;
         rigidbody.solidBoxSize = Vector3(0.000000f, 0.000000f, 0.000000f);
         rigidbody.solidBoxDensity = 0.000000f;
-        rigidbody.numColliders = 0;
         rigidbody.enabled = false;
         scene->addComponent<RigidbodyComponent>(1018, std::move(*rigidbodyStorage));
 #endif // JASPERENGINE_PHYSICS_3D
@@ -922,6 +931,37 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         joint2d.target = Vector2(2.200000f, 8.300000f);
         joint2d.autoAnchors = false;
         joint2d.rope = true;
+        joint2d.anchorSpace = JointAnchorSpace::WORLD;
+        joint2d.enableCollision = false;
+        joint2d.breakForce = 0.000000f;
+        joint2d.breakTorque = 0.000000f;
+        joint2d.breakAction = JointBreakAction::DESTROY;
+        joint2d.useLimits = false;
+        joint2d.lowerAngle = 0.000000f;
+        joint2d.upperAngle = 0.000000f;
+        joint2d.lowerTranslation = 0.000000f;
+        joint2d.upperTranslation = 0.000000f;
+        joint2d.useMotor = false;
+        joint2d.motorSpeed = 0.000000f;
+        joint2d.maxMotorTorque = 0.000000f;
+        joint2d.maxMotorForce = 0.000000f;
+        joint2d.enableSpring = false;
+        joint2d.frequency = 0.000000f;
+        joint2d.dampingRatio = 0.000000f;
+        joint2d.length = 0.000000f;
+        joint2d.autoLength = true;
+        joint2d.minLength = 0.000000f;
+        joint2d.maxLength = 0.000000f;
+        joint2d.linearFrequency = 0.000000f;
+        joint2d.angularFrequency = 0.000000f;
+        joint2d.linearDampingRatio = 0.000000f;
+        joint2d.angularDampingRatio = 0.000000f;
+        joint2d.linearOffset = Vector2(0.000000f, 0.000000f);
+        joint2d.angularOffset = 0.000000f;
+        joint2d.autoOffset = false;
+        joint2d.maxForce = 1.000000f;
+        joint2d.maxTorque = 1.000000f;
+        joint2d.correctionFactor = 0.300000f;
         joint2d.needUpdateJoint = true;
         joint2d.enabled = false;
         scene->addComponent<Joint2DComponent>(1027, joint2d);
@@ -980,6 +1020,50 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         joint3d.pathPosition = Vector3(1.900000f, 4.400000f, 8.400000f);
         joint3d.isLooping = true;
         joint3d.autoAnchors = false;
+        joint3d.anchorSpace = JointAnchorSpace::WORLD;
+        joint3d.enableCollision = true;
+        joint3d.breakForce = 0.000000f;
+        joint3d.breakTorque = 0.000000f;
+        joint3d.breakAction = JointBreakAction::DESTROY;
+        joint3d.useLimits = false;
+        joint3d.limitsSpringFrequency = 0.000000f;
+        joint3d.limitsSpringDamping = 0.000000f;
+        joint3d.useMotor = false;
+        joint3d.motorTargetVelocity = 0.000000f;
+        joint3d.motorMaxForce = 1000.000000f;
+        joint3d.useSpring = false;
+        joint3d.springStiffness = 0.000000f;
+        joint3d.springDamper = 0.000000f;
+        joint3d.springTargetPosition = 0.000000f;
+        joint3d.maxFriction = 0.000000f;
+        joint3d.minDistance = -1.000000f;
+        joint3d.maxDistance = -1.000000f;
+        joint3d.coneHalfAngle = 45.000000f;
+        joint3d.swingType = JointSwingType::CONE;
+        joint3d.motorTargetRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        joint3d.motorSpringFrequency = 20.000000f;
+        joint3d.motorSpringDamping = 1.000000f;
+        joint3d.xMotion = JointMotion::FREE;
+        joint3d.yMotion = JointMotion::FREE;
+        joint3d.zMotion = JointMotion::FREE;
+        joint3d.angularXMotion = JointMotion::FREE;
+        joint3d.angularYMotion = JointMotion::FREE;
+        joint3d.angularZMotion = JointMotion::FREE;
+        joint3d.linearLimitMin = Vector3(0.000000f, 0.000000f, 0.000000f);
+        joint3d.linearLimitMax = Vector3(0.000000f, 0.000000f, 0.000000f);
+        joint3d.angularLimitMin = Vector3(0.000000f, 0.000000f, 0.000000f);
+        joint3d.angularLimitMax = Vector3(0.000000f, 0.000000f, 0.000000f);
+        joint3d.useDrive = false;
+        joint3d.driveStiffness = 0.000000f;
+        joint3d.driveDamping = 0.000000f;
+        joint3d.angularDriveStiffness = 0.000000f;
+        joint3d.angularDriveDamping = 0.000000f;
+        joint3d.driveMaxForce = 0.000000f;
+        joint3d.driveMaxTorque = 0.000000f;
+        joint3d.targetPosition = Vector3(0.000000f, 0.000000f, 0.000000f);
+        joint3d.targetRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        joint3d.targetVelocity = Vector3(0.000000f, 0.000000f, 0.000000f);
+        joint3d.targetAngularVelocity = Vector3(0.000000f, 0.000000f, 0.000000f);
         joint3d.needUpdateJoint = true;
         joint3d.enabled = false;
         scene->addComponent<Joint3DComponent>(1028, joint3d);
@@ -1395,6 +1479,14 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         text.fixedHeight = true;
         text.pivotBaseline = true;
         text.pivotCentered = true;
+        text.outlineWidth = 0.000000f;
+        text.outlineColor = Vector4(0.000000f, 0.000000f, 0.000000f, 1.000000f);
+        text.shadowEnabled = false;
+        text.shadowColor = Vector4(0.000000f, 0.000000f, 0.000000f, 0.500000f);
+        text.shadowOffset = Vector2(2.000000f, 2.000000f);
+        text.shadowSoftness = 0.000000f;
+        text.shadowDilate = 0.000000f;
+        text.visibleCharacters = -1;
         scene->addComponent<TextComponent>(1044, text);
 
         Transform transform;
@@ -2590,6 +2682,350 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         scene->addComponent<Transform>(1079, transform);
     }
 
+    {
+        // Entity 1080 (TrailRendererComponent)
+        scene->setEntityName(1080, "TrailRendererComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(79.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1080, transform);
+
+        TrailRendererComponent trailcomp;
+        trailcomp.time = 6.800000f;
+        trailcomp.minVertexDistance = 7.900000f;
+        trailcomp.emitting = false;
+        trailcomp.autodestruct = true;
+        trailcomp.widthMultiplier = 7.800000f;
+        trailcomp.widthUnit = LineWidthUnit::Pixels;
+        trailcomp.numCornerVertices = 5;
+        trailcomp.numCapVertices = 2;
+        trailcomp.alignment = LineAlignment::TransformZ;
+        trailcomp.textureMode = LineTextureMode::RepeatPerSegment;
+        trailcomp.textureScale = Vector2(6.800000f, 3.000000f);
+        trailcomp.blendMode = MaterialBlendMode::MULTIPLY;
+        trailcomp.depthWrite = MaterialDepthWrite::DISABLED;
+        trailcomp.enabled = false;
+        scene->addComponent<TrailRendererComponent>(1080, trailcomp);
+    }
+
+    {
+        // Entity 1081 (CanvasGroupComponent)
+        scene->setEntityName(1081, "CanvasGroupComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(80.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1081, transform);
+
+        CanvasGroupComponent canvasgroup;
+        canvasgroup.enabled = false;
+        canvasgroup.alpha = 0.500000f;
+        canvasgroup.interactable = false;
+        canvasgroup.blocksRaycasts = false;
+        canvasgroup.ignoreParentGroups = true;
+        canvasgroup.renderMode = CanvasGroupRenderMode::FLATTEN;
+        scene->addComponent<CanvasGroupComponent>(1081, canvasgroup);
+    }
+
+    {
+        // Entity 1082 (OnScreenStickComponent)
+        scene->setEntityName(1082, "OnScreenStickComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(81.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1082, transform);
+
+        OnScreenStickComponent stick;
+        stick.enabled = false;
+        stick.mode = OnScreenStickMode::DYNAMIC;
+        stick.background = NULL_ENTITY;
+        stick.handle = NULL_ENTITY;
+        stick.handleRange = 2.200000f;
+        stick.deadZone = 1.000000f;
+        stick.moveThreshold = 8.400000f;
+        stick.axes = OnScreenStickAxes::VERTICAL;
+        stick.snapX = true;
+        stick.snapY = true;
+        stick.hideWhenReleased = false;
+        stick.clampToArea = false;
+        stick.horizontalAction = "Reflection parity";
+        stick.verticalAction = "text: [1, 2]";
+        stick.visibility = OnScreenVisibility::TOUCH_DEVICES_ONLY;
+        scene->addComponent<OnScreenStickComponent>(1082, stick);
+    }
+
+    {
+        // Entity 1083 (OnScreenButtonComponent)
+        scene->setEntityName(1083, "OnScreenButtonComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(82.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1083, transform);
+
+        OnScreenButtonComponent button;
+        button.enabled = false;
+        button.action = "Reflection parity";
+        button.value = 1.000000f;
+        button.pressWhenPointerEnters = true;
+        button.releaseWhenPointerLeaves = true;
+        button.visibility = OnScreenVisibility::TOUCH_DEVICES_ONLY;
+        scene->addComponent<OnScreenButtonComponent>(1083, button);
+    }
+
+    {
+        // Entity 1084 (TouchAreaComponent)
+        scene->setEntityName(1084, "TouchAreaComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(83.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1084, transform);
+
+        TouchAreaComponent touchArea;
+        touchArea.enabled = false;
+        touchArea.horizontalAction = "text: [1, 2]";
+        touchArea.verticalAction = "text: [1, 2]";
+        touchArea.sensitivity = 8.900000f;
+        touchArea.invertX = true;
+        touchArea.invertY = true;
+        touchArea.visibility = OnScreenVisibility::TOUCH_DEVICES_ONLY;
+        scene->addComponent<TouchAreaComponent>(1084, touchArea);
+    }
+
+    {
+        // Entity 1085 (RagdollComponent)
+        scene->setEntityName(1085, "RagdollComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(84.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1085, transform);
+
+#ifdef JASPERENGINE_PHYSICS_3D
+        RagdollComponent ragdoll;
+        ragdoll.enabled = false;
+        ragdoll.simulated = true;
+        ragdoll.root = NULL_ENTITY;
+        ragdoll.animator = NULL_ENTITY;
+        ragdoll.inheritVelocity = false;
+        ragdoll.selfCollision = false;
+        ragdoll.totalMass = 8.100000f;
+        scene->addComponent<RagdollComponent>(1085, ragdoll);
+#endif // JASPERENGINE_PHYSICS_3D
+    }
+
+    {
+        // Entity 1086 (CameraShakerComponent)
+        scene->setEntityName(1086, "CameraShakerComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(85.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1086, transform);
+
+        CameraShakerComponent camerashaker;
+        camerashaker.enabled = false;
+        camerashaker.global = false;
+        camerashaker.unscaledTime = true;
+        camerashaker.mode = CameraShakeMode::Mode2D;
+        camerashaker.positionScale = 6.700000f;
+        camerashaker.rotationScale = 3.600000f;
+        camerashaker.startPreset = "text: [1, 2]";
+        camerashaker.traumaDecay = 2.500000f;
+        camerashaker.traumaPower = 4.000000f;
+        camerashaker.traumaMaxOffset = Vector3(7.900000f, 6.100000f, 5.400000f);
+        camerashaker.traumaMaxAngle = Vector3(4.900000f, 4.900000f, 7.000000f);
+        camerashaker.traumaFrequency = 1.600000f;
+        scene->addComponent<CameraShakerComponent>(1086, camerashaker);
+    }
+
+    {
+        // Entity 1087 (CameraFollowComponent)
+        scene->setEntityName(1087, "CameraFollowComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(86.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1087, transform);
+
+        CameraFollowComponent camerafollow;
+        camerafollow.enabled = false;
+        camerafollow.target = NULL_ENTITY;
+        camerafollow.offset = Vector3(2.600000f, 3.700000f, 6.400000f);
+        camerafollow.offsetSpace = FollowOffsetSpace::TargetYaw;
+        camerafollow.damping = Vector3(0.300000f, 5.800000f, 3.300000f);
+        camerafollow.maxSpeed = 7.500000f;
+        camerafollow.lookAt = false;
+        camerafollow.lookAtOffset = Vector3(2.800000f, 5.700000f, 0.700000f);
+        camerafollow.rotationDamping = 5.800000f;
+        camerafollow.deadZone = Vector2(0.700000f, 4.100000f);
+        camerafollow.useBounds = true;
+        camerafollow.boundsMin = Vector3(9.000000f, 5.000000f, 6.900000f);
+        camerafollow.boundsMax = Vector3(9.000000f, 6.100000f, 2.400000f);
+        camerafollow.unscaledTime = true;
+        scene->addComponent<CameraFollowComponent>(1087, camerafollow);
+    }
+
+    {
+        // Entity 1088 (TextEffectComponent)
+        scene->setEntityName(1088, "TextEffectComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(87.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1088, transform);
+
+        TextEffectComponent textEffect;
+        textEffect.enabled = false;
+        textEffect.autoPlay = false;
+        textEffect.loop = false;
+        textEffect.useUnscaledTime = false;
+        textEffect.startIndex = 4;
+        textEffect.forWords = "text: [1, 2]";
+        scene->addComponent<TextEffectComponent>(1088, textEffect);
+    }
+
+    {
+        // Entity 1089 (VideoPlayerComponent)
+        scene->setEntityName(1089, "VideoPlayerComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(88.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1089, transform);
+
+        VideoPlayerComponent player;
+        player.enabled = false;
+        player.source = VideoPlayerSource(1);
+        player.clip = "text: [1, 2]";
+        player.url = "Reflection parity";
+        player.playOnAwake = false;
+        player.waitForFirstFrame = false;
+        player.isLooping = true;
+        player.skipOnDrop = false;
+        player.playbackSpeed = 8.300000f;
+        player.timeUpdateMode = VideoTimeUpdateMode(1);
+        player.renderMode = VideoRenderMode(4);
+        player.targetCameraAlpha = 0.500000f;
+        player.aspectRatio = VideoAspectRatio(5);
+        player.targetMaterialProperty = "Reflection parity";
+        player.targetSubmesh = 3;
+        player.renderTextureWidth = 6u;
+        player.renderTextureHeight = 7u;
+        player.directMute = true;
+        scene->addComponent<VideoPlayerComponent>(1089, player);
+    }
+
+    {
+        // Entity 1090 (SafeAreaComponent)
+        scene->setEntityName(1090, "SafeAreaComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(89.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1090, transform);
+
+        SafeAreaComponent safearea;
+        safearea.enabled = false;
+        safearea.left = false;
+        safearea.top = false;
+        safearea.right = false;
+        safearea.bottom = false;
+        safearea.includeExtraInsets = false;
+        scene->addComponent<SafeAreaComponent>(1090, safearea);
+    }
+
     // Default Camera 1
     Entity cameraEntity = scene->createSystemEntity();
 
@@ -2681,5 +3117,6 @@ SceneResources resources_scene_AllComponents_2026080800(){
     resources.clips.push_back("animations/parity.anim");
     resources.clips.push_back("models/parity.gltf#Run");
     resources.vats.push_back("Reflection parity");
+    resources.controllers.push_back("animations/parity.controller");
     return resources;
 }

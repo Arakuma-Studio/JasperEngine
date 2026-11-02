@@ -1,4 +1,4 @@
-formatVersion: 6
+formatVersion: 7
 guid: 9881b90d074c33a513001465bb7d3d23
 id: 1
 name: Prefab Scene
@@ -40,11 +40,6 @@ maxValues:
   maxExternalBuffers: 0
   maxSpriteFrames: 0
   maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: mesh
     properties: 3073
@@ -77,7 +72,7 @@ entities:
         path: prefabs/Rock.prefab
         guid: be6090bd331dae57064d1f63cc9ada05
     prefabInstance:
-      version: 7
+      version: 8
       memberIds:
         - [1001, 1103]
         - [1002, 1002]
@@ -149,7 +144,7 @@ entities:
                     count: 4
                     normalized: true
                     perInstance: false
-                data: AACgwQAAAIAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIC/AACAPwAAgD8AAIA/AACAPwAAoEEAAACAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAACAvwAAgD8AAIA/AACAPwAAgD8AAKBBAAC0QgAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AACgwQAAtEIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIC/AACAPwAAgD8AAIA/AACAPw==
+                data: AACgwQAAAIAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AACAPwAAoEEAAACAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAACAPwAAgD8AAIA/AACAPwAAgD8AAKBBAAC0QgAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AACgwQAAtEIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AACAPw==
                 vertexSize: 64
               indices:
                 type: index_buffer
@@ -328,7 +323,7 @@ entities:
         path: prefabs/Rock.prefab
         guid: be6090bd331dae57064d1f63cc9ada05
     prefabInstance:
-      version: 7
+      version: 8
       memberIds:
         - [1001, 1104]
         - [1002, 1105]
@@ -359,7 +354,7 @@ entities:
         path: prefabs/Tower.prefab
         guid: a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1
     prefabInstance:
-      version: 7
+      version: 8
       memberIds:
         - [1001, 1106]
         - [1002, 1107]
@@ -442,7 +437,7 @@ entities:
                         count: 4
                         normalized: true
                         perInstance: false
-                    data: AACgwQAAAIAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIC/AACAPwAAgD8AAIA/AACAPwAAoEEAAACAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAACAvwAAgD8AAIA/AACAPwAAgD8AAKBBAAC0QgAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AACgwQAAtEIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIC/AACAPwAAgD8AAIA/AACAPw==
+                    data: AACgwQAAAIAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AACAPwAAoEEAAACAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAACAPwAAgD8AAIA/AACAPwAAgD8AAKBBAAC0QgAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AACgwQAAtEIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AACAPw==
                     vertexSize: 64
                   indices:
                     type: index_buffer
@@ -619,7 +614,7 @@ entities:
         path: prefabs/Castle.prefab
         guid: b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
     prefabInstance:
-      version: 7
+      version: 8
       memberIds:
         - [1001, 1111]
         - [1002, 1112]
@@ -656,7 +651,7 @@ entities:
         path: prefabs/Gem.prefab
         guid: 6a121bc13079cc89021cde9df07e3778
     prefabInstance:
-      version: 7
+      version: 8
       memberIds:
         - [1050, 1118]
   - type: Entity

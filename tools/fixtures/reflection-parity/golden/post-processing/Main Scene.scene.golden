@@ -1,4 +1,4 @@
-formatVersion: 6
+formatVersion: 7
 guid: 2385f1a5e2877b94bc16d5309fb19aca
 id: 1
 name: Main Scene
@@ -40,11 +40,6 @@ maxValues:
   maxExternalBuffers: 0
   maxSpriteFrames: 0
   maxBones: 0
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: blit
   - type: blit

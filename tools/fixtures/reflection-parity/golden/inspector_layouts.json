@@ -57,6 +57,14 @@
    "read_only": false
   },
   {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Unscaled Time",
+   "path": "useUnscaledTime",
+   "read_only": false
+  },
+  {
    "component": "alphatween",
    "group": "",
    "kind": "Float",
@@ -152,7 +160,7 @@
    "component": "audiosource",
    "group": "Playback",
    "kind": "FloatPositive",
-   "label": "Speed",
+   "label": "Pitch",
    "path": "speed",
    "read_only": false
   },
@@ -210,6 +218,38 @@
    "kind": "Bool",
    "label": "Inaudible Kill",
    "path": "inaudibleBehaviorKill",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Priority",
+   "path": "priority",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Max Voices",
+   "path": "maxVoices",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Ignore Listener Pause",
+   "path": "ignoreListenerPause",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Enum",
+   "label": "Load Type",
+   "path": "loadType",
    "read_only": false
   }
  ],
@@ -274,7 +314,7 @@
    "component": "audiosource",
    "group": "Playback",
    "kind": "FloatPositive",
-   "label": "Speed",
+   "label": "Pitch",
    "path": "speed",
    "read_only": false
   },
@@ -332,6 +372,38 @@
    "kind": "Bool",
    "label": "Inaudible Kill",
    "path": "inaudibleBehaviorKill",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Priority",
+   "path": "priority",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Max Voices",
+   "path": "maxVoices",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Ignore Listener Pause",
+   "path": "ignoreListenerPause",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Enum",
+   "label": "Load Type",
+   "path": "loadType",
    "read_only": false
   },
   {
@@ -436,7 +508,7 @@
    "component": "audiosource",
    "group": "Playback",
    "kind": "FloatPositive",
-   "label": "Speed",
+   "label": "Pitch",
    "path": "speed",
    "read_only": false
   },
@@ -494,6 +566,38 @@
    "kind": "Bool",
    "label": "Inaudible Kill",
    "path": "inaudibleBehaviorKill",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Priority",
+   "path": "priority",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Max Voices",
+   "path": "maxVoices",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Ignore Listener Pause",
+   "path": "ignoreListenerPause",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Enum",
+   "label": "Load Type",
+   "path": "loadType",
    "read_only": false
   },
   {
@@ -1280,6 +1384,14 @@
    "kind": "Ease",
    "label": "Ease",
    "path": "function",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Unscaled Time",
+   "path": "useUnscaledTime",
    "read_only": false
   },
   {
@@ -2603,11 +2715,43 @@
  ],
  "joint2d#0": [
   {
-   "component": "joint2d",
+   "component": "transform",
    "group": "",
-   "kind": "Enum",
-   "label": "Joint Type",
-   "path": "type",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
    "read_only": false
   },
   {
@@ -2622,34 +2766,130 @@
    "component": "joint2d",
    "group": "",
    "kind": "LocalEntity",
-   "label": "Rigidbody B",
+   "label": "Connected Body",
    "path": "bodyB",
    "read_only": false
   },
   {
    "component": "joint2d",
-   "group": "Joint settings",
-   "kind": "Bool",
-   "label": "Auto Anchors",
-   "path": "autoAnchors",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
    "read_only": false
   },
   {
    "component": "joint2d",
-   "group": "Joint settings",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Anchor",
+   "path": "anchorA",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Connected Anchor",
+   "path": "anchorB",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
    "kind": "Bool",
-   "label": "Rope",
+   "label": "Enable Collision",
+   "path": "enableCollision",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Spring",
+   "path": "enableSpring",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Length",
+   "path": "length",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Max Distance Only",
    "path": "rope",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Limits",
+   "path": "useLimits",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Motor",
+   "path": "useMotor",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Break Action",
+   "path": "breakAction",
    "read_only": false
   }
  ],
  "joint2d#1": [
   {
-   "component": "joint2d",
+   "component": "transform",
    "group": "",
-   "kind": "Enum",
-   "label": "Joint Type",
-   "path": "type",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
    "read_only": false
   },
   {
@@ -2664,26 +2904,114 @@
    "component": "joint2d",
    "group": "",
    "kind": "LocalEntity",
-   "label": "Rigidbody B",
+   "label": "Connected Body",
    "path": "bodyB",
    "read_only": false
   },
   {
    "component": "joint2d",
-   "group": "Joint settings",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
    "kind": "Vector2",
    "label": "Anchor",
    "path": "anchorA",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Connected Anchor",
+   "path": "anchorB",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Collision",
+   "path": "enableCollision",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Spring",
+   "path": "enableSpring",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Limits",
+   "path": "useLimits",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Motor",
+   "path": "useMotor",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Break Action",
+   "path": "breakAction",
    "read_only": false
   }
  ],
  "joint2d#2": [
   {
-   "component": "joint2d",
+   "component": "transform",
    "group": "",
-   "kind": "Enum",
-   "label": "Joint Type",
-   "path": "type",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
    "read_only": false
   },
   {
@@ -2698,13 +3026,21 @@
    "component": "joint2d",
    "group": "",
    "kind": "LocalEntity",
-   "label": "Rigidbody B",
+   "label": "Connected Body",
    "path": "bodyB",
    "read_only": false
   },
   {
    "component": "joint2d",
-   "group": "Joint settings",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
    "kind": "Vector2",
    "label": "Anchor",
    "path": "anchorA",
@@ -2712,15 +3048,103 @@
   },
   {
    "component": "joint2d",
-   "group": "Joint settings",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Connected Anchor",
+   "path": "anchorB",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
    "kind": "Vector2",
    "label": "Axis",
    "path": "axis",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Collision",
+   "path": "enableCollision",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Spring",
+   "path": "enableSpring",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Limits",
+   "path": "useLimits",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Motor",
+   "path": "useMotor",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Break Action",
+   "path": "breakAction",
    "read_only": false
   }
  ],
  "joint3d#0": [
   {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
    "component": "joint3d",
    "group": "",
    "kind": "Enum",
@@ -2740,13 +3164,101 @@
    "component": "joint3d",
    "group": "",
    "kind": "LocalEntity",
-   "label": "Rigidbody B",
+   "label": "Connected Body",
    "path": "bodyB",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Anchor",
+   "path": "anchor",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Auto Configure Connected",
+   "path": "autoAnchors",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Collision",
+   "path": "enableCollision",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Force",
+   "path": "breakForce",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Torque",
+   "path": "breakTorque",
    "read_only": false
   }
  ],
  "joint3d#1": [
   {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
    "component": "joint3d",
    "group": "",
    "kind": "Enum",
@@ -2766,16 +3278,40 @@
    "component": "joint3d",
    "group": "",
    "kind": "LocalEntity",
-   "label": "Rigidbody B",
+   "label": "Connected Body",
    "path": "bodyB",
    "read_only": false
   },
   {
    "component": "joint3d",
-   "group": "Joint settings",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
    "kind": "Vector3",
    "label": "Anchor",
    "path": "anchor",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Auto Configure Connected",
+   "path": "autoAnchors",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Collision",
+   "path": "enableCollision",
    "read_only": false
   },
   {
@@ -2790,12 +3326,100 @@
    "component": "joint3d",
    "group": "Joint settings",
    "kind": "Vector3",
-   "label": "Normal",
+   "label": "Secondary Axis",
    "path": "normal",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Limits",
+   "kind": "Bool",
+   "label": "Use Limits",
+   "path": "useLimits",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Spring",
+   "kind": "Bool",
+   "label": "Use Spring",
+   "path": "useSpring",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Motor",
+   "kind": "Bool",
+   "label": "Use Motor",
+   "path": "useMotor",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Motor",
+   "kind": "FloatPositive",
+   "label": "Max Friction",
+   "path": "maxFriction",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Force",
+   "path": "breakForce",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Torque",
+   "path": "breakTorque",
    "read_only": false
   }
  ],
  "joint3d#2": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
   {
    "component": "joint3d",
    "group": "",
@@ -2816,16 +3440,40 @@
    "component": "joint3d",
    "group": "",
    "kind": "LocalEntity",
-   "label": "Rigidbody B",
+   "label": "Connected Body",
    "path": "bodyB",
    "read_only": false
   },
   {
    "component": "joint3d",
-   "group": "Joint settings",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
    "kind": "Vector3",
    "label": "Anchor",
    "path": "anchor",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Auto Configure Connected",
+   "path": "autoAnchors",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Collision",
+   "path": "enableCollision",
    "read_only": false
   },
   {
@@ -2834,6 +3482,30 @@
    "kind": "Vector3",
    "label": "Twist Axis",
    "path": "twistAxis",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Joint settings",
+   "kind": "Float",
+   "label": "Cone Half Angle",
+   "path": "coneHalfAngle",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Force",
+   "path": "breakForce",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Torque",
+   "path": "breakTorque",
    "read_only": false
   }
  ],
@@ -3223,9 +3895,105 @@
   {
    "component": "linerenderer",
    "group": "",
+   "kind": "Enum",
+   "label": "Mode",
+   "path": "mode",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use World Space",
+   "path": "useWorldSpace",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Width",
+   "path": "widthMultiplier",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Curve",
+   "label": "Width Curve",
+   "path": "widthCurve",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Enum",
+   "label": "Width Unit",
+   "path": "widthUnit",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Gradient",
+   "label": "Color",
+   "path": "colorGradient",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
    "kind": "UInt",
-   "label": "Max Lines",
-   "path": "maxLines",
+   "label": "Corner Vertices",
+   "path": "numCornerVertices",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "UInt",
+   "label": "End Cap Vertices",
+   "path": "numCapVertices",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Enum",
+   "label": "Alignment",
+   "path": "alignment",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Enum",
+   "label": "Texture Mode",
+   "path": "textureMode",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Texture Scale",
+   "path": "textureScale",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Int",
+   "label": "Sort Priority",
+   "path": "sortPriority",
    "read_only": false
   },
   {
@@ -3242,6 +4010,22 @@
    "kind": "Enum",
    "label": "Depth Write",
    "path": "depthWrite",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Element 0",
+   "path": "positions[0]",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Element 1",
+   "path": "positions[1]",
    "read_only": false
   }
  ],
@@ -4481,6 +5265,14 @@
    "read_only": false
   },
   {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Unscaled Time",
+   "path": "useUnscaledTime",
+   "read_only": false
+  },
+  {
    "component": "positiontween",
    "group": "",
    "kind": "Vector3",
@@ -5059,57 +5851,9 @@
   {
    "component": "rigidbody",
    "group": "",
-   "kind": "Enum",
-   "label": "Motion Quality",
-   "path": "motionQuality",
-   "read_only": false
-  },
-  {
-   "component": "rigidbody",
-   "group": "",
-   "kind": "Bool",
-   "label": "Sensor",
-   "path": "sensor",
-   "read_only": false
-  },
-  {
-   "component": "rigidbody",
-   "group": "",
-   "kind": "Float",
-   "label": "Gravity Factor",
-   "path": "gravityFactor",
-   "read_only": false
-  },
-  {
-   "component": "rigidbody",
-   "group": "",
-   "kind": "Float",
-   "label": "Friction",
-   "path": "friction",
-   "read_only": false
-  },
-  {
-   "component": "rigidbody",
-   "group": "",
-   "kind": "Float",
-   "label": "Restitution",
-   "path": "restitution",
-   "read_only": false
-  },
-  {
-   "component": "rigidbody",
-   "group": "",
    "kind": "Float",
    "label": "Buoyancy",
    "path": "buoyancy",
-   "read_only": false
-  },
-  {
-   "component": "rigidbody",
-   "group": "",
-   "kind": "Bool",
-   "label": "Override Mass",
-   "path": "overrideMassProperties",
    "read_only": false
   }
  ],
@@ -5279,6 +6023,14 @@
    "read_only": false
   },
   {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Unscaled Time",
+   "path": "useUnscaledTime",
+   "read_only": false
+  },
+  {
    "component": "rotationtween",
    "group": "",
    "kind": "Quat",
@@ -5424,6 +6176,14 @@
    "kind": "Ease",
    "label": "Ease",
    "path": "function",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Unscaled Time",
+   "path": "useUnscaledTime",
    "read_only": false
   },
   {
@@ -6567,6 +7327,14 @@
   {
    "component": "text",
    "group": "",
+   "kind": "Int",
+   "label": "Visible Characters",
+   "path": "visibleCharacters",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "",
    "kind": "Font",
    "label": "Font",
    "path": "font",
@@ -6618,6 +7386,62 @@
    "kind": "Bool",
    "label": "Center",
    "path": "pivotCentered",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Outline",
+   "kind": "FloatPositive",
+   "label": "Outline Width",
+   "path": "outlineWidth",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Outline",
+   "kind": "Color4L",
+   "label": "Outline Color",
+   "path": "outlineColor",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Shadow",
+   "kind": "Bool",
+   "label": "Shadow",
+   "path": "shadowEnabled",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Shadow",
+   "kind": "Color4L",
+   "label": "Shadow Color",
+   "path": "shadowColor",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Shadow",
+   "kind": "Vector2",
+   "label": "Shadow Offset",
+   "path": "shadowOffset",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Shadow",
+   "kind": "FloatPositive",
+   "label": "Shadow Softness",
+   "path": "shadowSoftness",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Shadow",
+   "kind": "FloatPositive",
+   "label": "Shadow Dilate",
+   "path": "shadowDilate",
    "read_only": false
   },
   {

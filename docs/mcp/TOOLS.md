@@ -2945,6 +2945,7 @@ Create a Particle System GameObject from a preset, or reconfigure one (entity). 
 | `autoplay` | boolean |  |  |
 | `bursts` | array of object |  |  |
 | `color` |  |  |  |
+| `duration` | number |  |  |
 | `emitter` | object |  |  |
 | `emitter_entity` | integer or string |  |  |
 | `entity` | integer or string |  |  |
@@ -2952,6 +2953,7 @@ Create a Particle System GameObject from a preset, or reconfigure one (entity). 
 | `life` |  |  | Seconds or [min, max]. |
 | `loop` | boolean |  |  |
 | `max_particles` | integer (1..100000) |  |  |
+| `modules` | object |  |  |
 | `name` | string |  |  |
 | `parent` | integer or string |  |  |
 | `position` | array[3] of number |  | Local. |

@@ -22,10 +22,10 @@ export:
     - type: depth
     - type: mesh
       properties: 3
-      customShader: shaders/no_shadow#BLEND_NONE
+      customShader: assets/shaders/no_shadow#BLEND_ADDITIVE,GLOW
     - type: mesh
       properties: 3
-      customShader: assets/shaders/no_shadow#BLEND_ADDITIVE,GLOW
+      customShader: shaders/no_shadow#BLEND_NONE
 startSceneId: 1
 scenes:
   - filepath: Main Scene.scene

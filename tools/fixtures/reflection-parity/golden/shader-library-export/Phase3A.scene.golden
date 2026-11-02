@@ -1,4 +1,4 @@
-formatVersion: 6
+formatVersion: 7
 guid: c2ba539b03625bda4dcfb084de9d6862
 id: 1212407318
 name: Phase3A
@@ -68,66 +68,66 @@ shaderKeys:
     properties: 6144
   - type: blit
   - type: mesh
-    properties: 1027
-    customShader: library:unlit#BLEND_NONE
+    properties: 1091
+    customShader: library:depth_fade#BLEND_ADDITIVE,EDGE_FADE,FADE_BLEND_ADDITIVE,MASK,SOFT
   - type: mesh
-    properties: 33555459
-    customShader: library:unlit#BLEND_NONE
+    properties: 1027
+    customShader: library:depth_fade#BLEND_ALPHA,FADE_BLEND_ALPHA,MASK
+  - type: mesh
+    properties: 1027
+    customShader: library:depth_fade#BLEND_ALPHA,FADE_BLEND_ALPHA,MASK,SCROLL,SOFT
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_ALPHA
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_ALPHA
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_ALPHA
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_ALPHA,NEAR_FADE,SOFT
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_ALPHA,NEAR_FADE,SOFT
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_ALPHA,NEAR_FADE,SOFT
+  - type: mesh
+    properties: 33555457
+    customShader: library:projected_decal#ANGLE_FADE,BLEND_ALPHA,DECAL_BLEND_ALPHA
+  - type: mesh
+    properties: 33555457
+    customShader: library:projected_decal#ANGLE_FADE,BLEND_MULTIPLY,DECAL_BLEND_MULTIPLY
+  - type: mesh
+    properties: 33555457
+    customShader: library:projected_decal#BLEND_ALPHA,DECAL_BLEND_ALPHA
+  - type: mesh
+    properties: 33554497
+    customShader: library:rim#BLEND_ADDITIVE,INTERSECTION
   - type: depth
     customShader: library:unlit
   - type: depth
     properties: 6144
     customShader: library:unlit
-  - type: points
-    properties: 4
-    customShader: library:particle#BLEND_ALPHA
-  - type: points
-    properties: 5
-    customShader: library:particle#BLEND_ALPHA
-  - type: points
-    properties: 13
-    customShader: library:particle#BLEND_ALPHA
-  - type: points
-    properties: 4
-    customShader: library:particle#BLEND_ALPHA,NEAR_FADE,SOFT
-  - type: points
-    properties: 5
-    customShader: library:particle#BLEND_ALPHA,NEAR_FADE,SOFT
-  - type: points
-    properties: 13
-    customShader: library:particle#BLEND_ALPHA,NEAR_FADE,SOFT
   - type: mesh
     properties: 1027
     customShader: library:unlit#BLEND_ADDITIVE
   - type: mesh
     properties: 1027
     customShader: library:unlit#BLEND_ADDITIVE,SOFT
+  - type: mesh
+    properties: 1027
+    customShader: library:unlit#BLEND_NONE
+  - type: mesh
+    properties: 33555459
+    customShader: library:unlit#BLEND_NONE
   - type: depth
     customShader: library:unlit#SOFT
   - type: depth
     properties: 6144
     customShader: library:unlit#SOFT
-  - type: mesh
-    properties: 33554497
-    customShader: library:rim#BLEND_ADDITIVE,INTERSECTION
-  - type: mesh
-    properties: 33555457
-    customShader: library:projected_decal#ANGLE_FADE,BLEND_ALPHA,DECAL_BLEND_ALPHA
-  - type: mesh
-    properties: 33555457
-    customShader: library:projected_decal#BLEND_ALPHA,DECAL_BLEND_ALPHA
-  - type: mesh
-    properties: 33555457
-    customShader: library:projected_decal#ANGLE_FADE,BLEND_MULTIPLY,DECAL_BLEND_MULTIPLY
-  - type: mesh
-    properties: 1027
-    customShader: library:depth_fade#BLEND_ALPHA,FADE_BLEND_ALPHA,MASK,SCROLL,SOFT
-  - type: mesh
-    properties: 1027
-    customShader: library:depth_fade#BLEND_ALPHA,FADE_BLEND_ALPHA,MASK
-  - type: mesh
-    properties: 1091
-    customShader: library:depth_fade#BLEND_ADDITIVE,EDGE_FADE,FADE_BLEND_ADDITIVE,MASK,SOFT
 entities:
   - type: Entity
     entity: 1001

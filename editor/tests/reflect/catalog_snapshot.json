@@ -125,14 +125,14 @@
    "properties_of_default": {
     "scripts": [
      15,
-     0,
+     562949953421312,
      false
     ]
    },
    "properties_without_component": {
     "scripts": [
      15,
-     0,
+     562949953421312,
      false
     ]
    },
@@ -11388,6 +11388,11 @@
      8,
      true
     ],
+    "submeshes[0].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[0].material.shaderParams": [
      15,
      68719476736,
@@ -11921,6 +11926,11 @@
     "submeshes[10].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[10].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[10].material.shaderParams": [
@@ -12458,6 +12468,11 @@
      8,
      true
     ],
+    "submeshes[11].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[11].material.shaderParams": [
      15,
      68719476736,
@@ -12991,6 +13006,11 @@
     "submeshes[12].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[12].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[12].material.shaderParams": [
@@ -13528,6 +13548,11 @@
      8,
      true
     ],
+    "submeshes[13].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[13].material.shaderParams": [
      15,
      68719476736,
@@ -14061,6 +14086,11 @@
     "submeshes[14].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[14].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[14].material.shaderParams": [
@@ -14598,6 +14628,11 @@
      8,
      true
     ],
+    "submeshes[15].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[15].material.shaderParams": [
      15,
      68719476736,
@@ -15131,6 +15166,11 @@
     "submeshes[1].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[1].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[1].material.shaderParams": [
@@ -15668,6 +15708,11 @@
      8,
      true
     ],
+    "submeshes[2].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[2].material.shaderParams": [
      15,
      68719476736,
@@ -16201,6 +16246,11 @@
     "submeshes[3].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[3].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[3].material.shaderParams": [
@@ -16738,6 +16788,11 @@
      8,
      true
     ],
+    "submeshes[4].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[4].material.shaderParams": [
      15,
      68719476736,
@@ -17271,6 +17326,11 @@
     "submeshes[5].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[5].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[5].material.shaderParams": [
@@ -17808,6 +17868,11 @@
      8,
      true
     ],
+    "submeshes[6].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[6].material.shaderParams": [
      15,
      68719476736,
@@ -18341,6 +18406,11 @@
     "submeshes[7].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[7].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[7].material.shaderParams": [
@@ -18878,6 +18948,11 @@
      8,
      true
     ],
+    "submeshes[8].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[8].material.shaderParams": [
      15,
      68719476736,
@@ -19411,6 +19486,11 @@
     "submeshes[9].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[9].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[9].material.shaderParams": [
@@ -20035,6 +20115,11 @@
      8,
      true
     ],
+    "submeshes[].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[].material.shaderParams": [
      15,
      68719476736,
@@ -20538,6 +20623,11 @@
      2147483648,
      true
     ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "shaderTextures": [
      15,
      2147483648,
@@ -20698,6 +20788,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -21851,6 +21946,7 @@
     "maxPoints",
     "points",
     "shaderFeatures",
+    "shaderGlobalBindings",
     "shaderTextures",
     "shaderUniforms",
     "stencil",
@@ -21907,6 +22003,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -22014,6 +22115,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -22095,6 +22201,7 @@
     "depthWrite",
     "rotation",
     "shaderFeatures",
+    "shaderGlobalBindings",
     "shaderTextures",
     "shaderUniforms",
     "texture",
@@ -22121,6 +22228,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -22163,6 +22275,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -22531,6 +22648,7 @@
     "pointerMoved",
     "primitiveType",
     "shaderFeatures",
+    "shaderGlobalBindings",
     "shaderTextures",
     "shaderUniforms",
     "stencil",
@@ -22573,6 +22691,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -22665,6 +22788,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -23489,11 +23617,6 @@
      134217728,
      true
     ],
-    "outputGroupName": [
-     1,
-     134217728,
-     true
-    ],
     "pan": [
      2,
      134217728,
@@ -23612,11 +23735,6 @@
      true
     ],
     "outputGroup": [
-     1,
-     134217728,
-     true
-    ],
-    "outputGroupName": [
      1,
      134217728,
      true
@@ -36848,6 +36966,11 @@
      2147483648,
      true
     ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "shaderTextures": [
      15,
      2147483648,
@@ -36998,6 +37121,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -38078,7 +38206,304 @@
   },
   {
    "display_name": "Text Effect",
-   "enum_options": {},
+   "enum_options": {
+    "layers[0].mix": [
+     [
+      0,
+      "multiply",
+      "Multiply"
+     ],
+     [
+      1,
+      "add",
+      "Add"
+     ],
+     [
+      2,
+      "replace",
+      "Replace"
+     ]
+    ],
+    "layers[0].type": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "wave",
+      "Wave"
+     ],
+     [
+      2,
+      "bounce",
+      "Bounce"
+     ],
+     [
+      3,
+      "shake",
+      "Shake"
+     ],
+     [
+      4,
+      "pulse",
+      "Pulse"
+     ],
+     [
+      5,
+      "typewriter",
+      "Typewriter"
+     ],
+     [
+      6,
+      "fade_in",
+      "Fade In"
+     ],
+     [
+      7,
+      "grow",
+      "Grow"
+     ],
+     [
+      8,
+      "unfold",
+      "Unfold"
+     ],
+     [
+      9,
+      "rainbow",
+      "Rainbow"
+     ],
+     [
+      10,
+      "gradient",
+      "Gradient"
+     ]
+    ],
+    "layers[1].mix": [
+     [
+      0,
+      "multiply",
+      "Multiply"
+     ],
+     [
+      1,
+      "add",
+      "Add"
+     ],
+     [
+      2,
+      "replace",
+      "Replace"
+     ]
+    ],
+    "layers[1].type": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "wave",
+      "Wave"
+     ],
+     [
+      2,
+      "bounce",
+      "Bounce"
+     ],
+     [
+      3,
+      "shake",
+      "Shake"
+     ],
+     [
+      4,
+      "pulse",
+      "Pulse"
+     ],
+     [
+      5,
+      "typewriter",
+      "Typewriter"
+     ],
+     [
+      6,
+      "fade_in",
+      "Fade In"
+     ],
+     [
+      7,
+      "grow",
+      "Grow"
+     ],
+     [
+      8,
+      "unfold",
+      "Unfold"
+     ],
+     [
+      9,
+      "rainbow",
+      "Rainbow"
+     ],
+     [
+      10,
+      "gradient",
+      "Gradient"
+     ]
+    ],
+    "layers[2].mix": [
+     [
+      0,
+      "multiply",
+      "Multiply"
+     ],
+     [
+      1,
+      "add",
+      "Add"
+     ],
+     [
+      2,
+      "replace",
+      "Replace"
+     ]
+    ],
+    "layers[2].type": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "wave",
+      "Wave"
+     ],
+     [
+      2,
+      "bounce",
+      "Bounce"
+     ],
+     [
+      3,
+      "shake",
+      "Shake"
+     ],
+     [
+      4,
+      "pulse",
+      "Pulse"
+     ],
+     [
+      5,
+      "typewriter",
+      "Typewriter"
+     ],
+     [
+      6,
+      "fade_in",
+      "Fade In"
+     ],
+     [
+      7,
+      "grow",
+      "Grow"
+     ],
+     [
+      8,
+      "unfold",
+      "Unfold"
+     ],
+     [
+      9,
+      "rainbow",
+      "Rainbow"
+     ],
+     [
+      10,
+      "gradient",
+      "Gradient"
+     ]
+    ],
+    "layers[3].mix": [
+     [
+      0,
+      "multiply",
+      "Multiply"
+     ],
+     [
+      1,
+      "add",
+      "Add"
+     ],
+     [
+      2,
+      "replace",
+      "Replace"
+     ]
+    ],
+    "layers[3].type": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "wave",
+      "Wave"
+     ],
+     [
+      2,
+      "bounce",
+      "Bounce"
+     ],
+     [
+      3,
+      "shake",
+      "Shake"
+     ],
+     [
+      4,
+      "pulse",
+      "Pulse"
+     ],
+     [
+      5,
+      "typewriter",
+      "Typewriter"
+     ],
+     [
+      6,
+      "fade_in",
+      "Fade In"
+     ],
+     [
+      7,
+      "grow",
+      "Grow"
+     ],
+     [
+      8,
+      "unfold",
+      "Unfold"
+     ],
+     [
+      9,
+      "rainbow",
+      "Rainbow"
+     ],
+     [
+      10,
+      "gradient",
+      "Gradient"
+     ]
+    ]
+   },
    "has_enabled": true,
    "icon": "ee8b8a",
    "key": "texteffect",
@@ -38101,17 +38526,277 @@
     ],
     "enabled": [
      0,
-     0,
+     36028797018963968,
      true
     ],
     "forWords": [
      1,
+     36028797018963968,
+     true
+    ],
+    "layers[0].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].enabled": [
      0,
+     36028797018963968,
+     true
+    ],
+    "layers[0].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[0].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[0].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[1].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[1].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[1].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[1].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[2].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[2].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[2].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[2].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[3].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[3].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[3].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[3].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].type": [
+     13,
+     36028797018963968,
      true
     ],
     "length": [
      8,
-     0,
+     36028797018963968,
      true
     ],
     "loop": [
@@ -38121,7 +38806,7 @@
     ],
     "startIndex": [
      8,
-     0,
+     36028797018963968,
      true
     ],
     "useUnscaledTime": [
@@ -38138,17 +38823,277 @@
     ],
     "enabled": [
      0,
-     0,
+     36028797018963968,
      true
     ],
     "forWords": [
      1,
+     36028797018963968,
+     true
+    ],
+    "layers[0].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].enabled": [
      0,
+     36028797018963968,
+     true
+    ],
+    "layers[0].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[0].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[0].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[1].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[1].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[1].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[1].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[2].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[2].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[2].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[2].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[3].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[3].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[3].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[3].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].type": [
+     13,
+     36028797018963968,
      true
     ],
     "length": [
      8,
-     0,
+     36028797018963968,
      true
     ],
     "loop": [
@@ -38158,7 +39103,7 @@
     ],
     "startIndex": [
      8,
-     0,
+     36028797018963968,
      true
     ],
     "useUnscaledTime": [
@@ -39239,11 +40184,6 @@
     true
    ],
    "outputGroup": [
-    1,
-    134217728,
-    true
-   ],
-   "outputGroupName": [
     1,
     134217728,
     true
@@ -41452,6 +42392,11 @@
     2147483648,
     true
    ],
+   "shaderGlobalBindings": [
+    15,
+    68719476736,
+    true
+   ],
    "shaderTextures": [
     15,
     2147483648,
@@ -42104,6 +43049,11 @@
    "submeshes[N].material.shaderFeatures": [
     15,
     8,
+    true
+   ],
+   "submeshes[N].material.shaderGlobalBindings": [
+    15,
+    68719476736,
     true
    ],
    "submeshes[N].material.shaderParams": [
@@ -43351,6 +44301,11 @@
     2147483648,
     true
    ],
+   "shaderGlobalBindings": [
+    15,
+    68719476736,
+    true
+   ],
    "shaderTextures": [
     15,
     2147483648,
@@ -44040,7 +44995,7 @@
   "ScriptComponent": {
    "scripts": [
     15,
-    0,
+    562949953421312,
     false
    ],
    "scripts[N].body": [
@@ -44065,7 +45020,7 @@
    ],
    "scripts[N].enabled": [
     0,
-    0,
+    562949953421312,
     false
    ],
    "scripts[N].enemyPrefab": [
@@ -44177,6 +45132,11 @@
    "shaderFeatures": [
     15,
     2147483648,
+    true
+   ],
+   "shaderGlobalBindings": [
+    15,
+    68719476736,
     true
    ],
    "shaderTextures": [
@@ -45119,17 +46079,82 @@
    ],
    "enabled": [
     0,
-    0,
+    36028797018963968,
     true
    ],
    "forWords": [
     1,
+    36028797018963968,
+    true
+   ],
+   "layers[N].amplitude": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].charactersPerSecond": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].duration": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].enabled": [
     0,
+    36028797018963968,
+    true
+   ],
+   "layers[N].fadeTime": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].frequency": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].gradient": [
+    15,
+    36028797018963968,
+    true
+   ],
+   "layers[N].lightness": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].mix": [
+    13,
+    36028797018963968,
+    true
+   ],
+   "layers[N].phaseStep": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].saturation": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].spread": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].type": [
+    13,
+    36028797018963968,
     true
    ],
    "length": [
     8,
-    0,
+    36028797018963968,
     true
    ],
    "loop": [
@@ -45139,7 +46164,7 @@
    ],
    "startIndex": [
     8,
-    0,
+    36028797018963968,
     true
    ],
    "useUnscaledTime": [
@@ -45296,6 +46321,11 @@
    "shaderFeatures": [
     15,
     2147483648,
+    true
+   ],
+   "shaderGlobalBindings": [
+    15,
+    68719476736,
     true
    ],
    "shaderTextures": [
@@ -45509,6 +46539,11 @@
    "shaderFeatures": [
     15,
     2147483648,
+    true
+   ],
+   "shaderGlobalBindings": [
+    15,
+    68719476736,
     true
    ],
    "shaderTextures": [

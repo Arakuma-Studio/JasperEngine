@@ -28,6 +28,7 @@ extern "C" void initScripts(jasperengine::Scene* scene);
 extern "C" void cleanupScripts(jasperengine::Scene* scene);
 extern "C" void initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 extern "C" void cleanupEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
+extern "C" void moveEntityScripts(jasperengine::Scene* from, jasperengine::Scene* to, const jasperengine::Entity* oldEntities, const jasperengine::Entity* newEntities, size_t count);
 
 static Scene* _scene_TableCrate_2685538481 = nullptr;
 static Scene* _scene_RingPeg_1698906752 = nullptr;
@@ -654,6 +655,31 @@ JASPERENGINE_INIT void init() {
     Engine::setTextureDefaults({0, 0, false}, {0, 512, false}, {0, 384, true});
     UIDocumentSystem::setPreferredSampleCount(4);
     UIDocumentSystem::setHtmlUiRenderOptions(0, true, true);
+    Http::setInsecureHttpAllowed(false);
+    Engine::setVSyncCount(1);
+    Engine::setTargetFrameRate(-1);
+    Screen::initialize(ScreenOrientation::AutoRotation, 0x1A, true);
+#if defined(_WIN32)
+    System::setApplicationInfo({"PhysicsPlacement", "com.yourcompany.project", "1.0", 1});
+#elif defined(__EMSCRIPTEN__)
+    System::setApplicationInfo({"PhysicsPlacement", "com.yourcompany.project", "1.0", 1});
+#elif defined(__APPLE__)
+    System::setApplicationInfo({"PhysicsPlacement", "com.yourcompany.project", "1.0", 1});
+#else
+    System::setApplicationInfo({"PhysicsPlacement", "com.yourcompany.project", "1.0", 1});
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+    PhysicsSystem::setWorldCapacity3D(8192, 8192, 8192);
+#endif
+#if defined(JASPERENGINE_DEVELOPMENT_BUILD) || defined(DEBUG)
+    Engine::setDevelopmentBuild(true);
+#endif
+    {
+        DebugOverlaySettings debugOverlay;
+        debugOverlay.enabled = Engine::isDevelopmentBuild();
+        debugOverlay.allowLua = Engine::isDevelopmentBuild();
+        DebugOverlay::configure(debugOverlay);
+    }
 
     SceneManager::registerScene(2685538481, "TableCrate", load_scene_TableCrate_2685538481, add_scene_TableCrate_2685538481, {2685538481}, resources_scene_TableCrate_2685538481);
     SceneManager::registerScene(1698906752, "RingPeg", load_scene_RingPeg_1698906752, add_scene_RingPeg_1698906752, {1698906752}, resources_scene_RingPeg_1698906752);
@@ -664,6 +690,7 @@ JASPERENGINE_INIT void init() {
     SceneManager::registerScene(1099496347, "Room", load_scene_Room_1099496347, add_scene_Room_1099496347, {1099496347}, resources_scene_Room_1099496347);
 
     ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);
+    ObjectManager::setCppScriptMoveHook(moveEntityScripts);
 
     SceneManager::loadScene("TableCrate");
 }
