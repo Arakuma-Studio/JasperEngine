@@ -16,7 +16,7 @@
 using namespace jasperengine;
 
 Scene scene;
-Camera camera(&scene);
+Camera sceneCamera(&scene);
 Light sun(&scene);
 Fog fog(&scene);
 VolumetricClouds clouds(&scene);
@@ -57,11 +57,11 @@ JASPERENGINE_INIT void init(){
     clouds.setPreset(CloudsPreset::CLOUDY);
     clouds.setWindSpeed(0.0f);
 
-    camera.setType(CameraType::CAMERA_PERSPECTIVE);
-    camera.setPosition(0.0f, 8.0f, 30.0f);
-    camera.setTarget(0.0f, 4.0f, -100.0f);
-    camera.setFarClip(3000.0f);
-    camera.activate();
+    sceneCamera.setType(CameraType::CAMERA_PERSPECTIVE);
+    sceneCamera.setPosition(0.0f, 8.0f, 30.0f);
+    sceneCamera.setTarget(0.0f, 4.0f, -100.0f);
+    sceneCamera.setFarClip(3000.0f);
+    sceneCamera.activate();
 
     Engine::setScene(&scene);
     Log::print("[gate] atmosphere quality %s", AtmosphereTiers::getName(Engine::getAtmosphereQuality()));

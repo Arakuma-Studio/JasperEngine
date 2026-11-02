@@ -19,7 +19,7 @@
 using namespace jasperengine;
 
 Scene scene;
-Camera camera(&scene);
+Camera sceneCamera(&scene);
 Light sun(&scene);
 Model hero(&scene);
 Model robot(&scene);
@@ -49,10 +49,10 @@ JASPERENGINE_INIT void init(){
         animator.setSpeed(0.0f);
     }
 
-    camera.setType(CameraType::CAMERA_PERSPECTIVE);
-    camera.setPosition(0.0f, 1.0f, 4.0f);
-    camera.setTarget(0.0f, 0.9f, 0.0f);
-    camera.activate();
+    sceneCamera.setType(CameraType::CAMERA_PERSPECTIVE);
+    sceneCamera.setPosition(0.0f, 1.0f, 4.0f);
+    sceneCamera.setTarget(0.0f, 0.9f, 0.0f);
+    sceneCamera.activate();
     Engine::setScene(&scene);
     Log::print("[gate] animator pose kernels: %s", anim::poseNativeBackendName());
 

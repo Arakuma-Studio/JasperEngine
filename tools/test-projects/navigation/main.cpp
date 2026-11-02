@@ -26,7 +26,7 @@
 using namespace jasperengine;
 
 Scene scene;
-Camera camera(&scene);
+Camera sceneCamera(&scene);
 // (the screen golden's: a light and colours, which the bake does not read)
 Light sun(&scene);
 
@@ -198,10 +198,10 @@ namespace {
 
 JASPERENGINE_INIT void init(){
     Engine::setCanvasSize(640, 360);
-    camera.setType(CameraType::CAMERA_PERSPECTIVE);
-    camera.setPosition(0, 60, 60);
-    camera.setTarget(0, 0, 0);
-    scene.setCamera(&camera);
+    sceneCamera.setType(CameraType::CAMERA_PERSPECTIVE);
+    sceneCamera.setPosition(0, 60, 60);
+    sceneCamera.setTarget(0, 0, 0);
+    scene.setCamera(&sceneCamera);
     scene.setBackgroundColor(0.45f, 0.62f, 0.85f);
     sun.setType(LightType::DIRECTIONAL);
     sun.setDirection(-0.5f, -1.0f, -0.4f);
