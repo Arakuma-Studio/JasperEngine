@@ -11,21 +11,25 @@ unit and MCP tests that can see it; the full suite stays the gate of batch landi
 1. The changed files: committed (since the merge base), staged, unstaged and untracked. Through
    rb.sh the server's worktree has no history of the stream: rb.sh writes the local diff to
    build/.rb-changes.json, which this reads when its own git cannot name the base.
-2. The builds: the Linux editor (SKIP_ENGINE=1 tools/build.sh linux) and the unit test binaries for
-   C++ under engine/ or editor/; web for engine/ (and its CMake), Android for its own platform code;
-   everything for the root CMake, docker/, tools/build.sh, the test harness, the toolchain and the
-   lockfiles (ALL_TRIGGERS); nothing for a change that builds nothing (docs).
+2. The builds: the Linux editor (SKIP_ENGINE=1 tools/build.sh linux) for engine/, editor/ and what
+   the editor embeds (EDITOR_INPUTS), the unit test binaries for their C++ and shaders, the HTML UI
+   tests for its code, web for engine/ code and its CMake, Android for its own platform code;
+   everything for the root CMake, docker/, tools/build.sh, the toolchain and the lockfiles
+   (ALL_TRIGGERS); nothing for a change that builds nothing (docs). This tool's and the harness's
+   own Python run their self-tests (SELF_TESTS).
 3. Unit tests, exactly: Ninja's dependency database of the test trees (`ninja -t deps`) maps every
    changed file (a changed Foo.cpp through its Foo.h too) to the test translation units that
    include it; their gtest suites run (--gtest_filter), in the core and the editor binary. A
-   changed test file always runs. A change the database cannot see (CMake, a new file) runs all.
+   changed test file always runs. A change the database cannot see (CMake, no tree yet) runs all;
+   a shader runs the core tests' *Gpu suites.
 4. MCP tests, from a coverage map (tools/mcp/coverage_map.py: which sources each test file's editors
    executed, recorded by a full run of a coverage-instrumented editor): the files whose sources
    intersect the change (headers through the editor tree's dependency database), the changed test
    files, the tests of a changed MCP tool (by its tool names), of a changed fixture, Lua, shader or
-   asset (by path), and the files that build games when the engine changes. Fallbacks: no map, a
+   asset (by path; a shader also test_shader_library.py and the CI suite), and the files that
+   build games when the engine changes. Fallbacks: no map, a
    map older than MAP_MAX_AGE_DAYS or MAP_MAX_COMMITS, or a changed source the map does not know
-   (new, or no test file ran it) add the CI suite; a harness change runs the whole suite.
+   (new, or no test file ran it) or file no test names add the CI suite; a harness change runs the whole suite.
 5. A pass is cached (build/.cache/check-changed.json) by a hash of the base, the diff, the
    untracked files, the build images' Dockerfiles, the map's version and this script; the same
    inputs reprint the last summary. A run during which the files changed caches nothing.
@@ -55,6 +59,8 @@ MCP_TESTS = ROOT / "tools" / "mcp" / "tests"
 CORE_TREE = ROOT / "build" / "linux" / "core-tests"
 EDITOR_TEST_TREE = ROOT / "build" / "linux" / "editor-tests"
 EDITOR_TREE = ROOT / "build" / "linux" / "editor"
+HTMLUI_TREE = ROOT / "build" / "linux" / "htmlui-tests-glcore"
+LARGE_SELECTION = 40
 MAP_MAX_AGE_DAYS = 14
 MAP_MAX_COMMITS = 400
 GAP = ("coverage gap: this is the change's own selection; the full gate is still the full suite "
@@ -63,15 +69,23 @@ GAP = ("coverage gap: this is the change's own selection; the full gate is still
 # a change here builds and runs everything
 ALL_TRIGGERS = ("CMakeLists.txt", "CMakePresets.json", "CopyEditorEngine.cmake", "docker/*", "tools/build.sh",
                 "tools/with-xvfb.sh", "tools/ci/gtest-gate.py", "tools/mcp/requirements.txt", "engine/cmake/*",
-                "*.lock", "uv.lock", "package-lock.json", "pnpm-lock.yaml", "tools/check_changed.py",
-                "tools/check-changed")
+                "*.lock", "uv.lock", "package-lock.json", "pnpm-lock.yaml")
 # a change here runs the whole MCP suite (the harness every test goes through)
 MCP_ALL_TRIGGERS = ("tools/mcp/harness.py", "tools/mcp/run_tests.py", "tools/mcp/run-tests.sh",
                     "tools/mcp/build_cache.py", "tools/mcp/requirements.txt")
+# the test harness's and this tool's own Python: their self-tests (python3 -I <test>, no image)
+SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/check-changed": "tools/test_check_changed.py",
+              "tools/test_check_changed.py": "tools/test_check_changed.py", "tools/mcp/coverage_map.py": "tools/test_check_changed.py",
+              "tools/mcp/shard.py": "tools/mcp/test_shard.py", "tools/mcp/test_shard.py": "tools/mcp/test_shard.py",
+              "tools/mcp/build_cache.py": "tools/mcp/test_build_cache.py", "tools/mcp/test_build_cache.py": "tools/mcp/test_build_cache.py"}
 # C/C++ and what the engine's builds read
 CXX = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".mm", ".m")
 HEADER = (".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp")
 BUILDS_NOTHING = ("docs/*", "*.md", "LICENSE", "NOTICE.md", ".claude/*", ".github/*")
+# outside engine/ and editor/, compiled into the editor or embedded in it (CMakeLists.txt): the
+# vendored libraries, the MCP guide and the HTML UI example library, the Lua API tools
+EDITOR_INPUTS = ("libs/*", "docs/mcp/guide/*", "docs/unity-glossary.md", "tools/lua_api/*")
+HTMLUI_PATHS = ("engine/tests/htmlui/*", "engine/core/htmlui/*", "engine/libs/rmlui/*", "engine/libs/lexbor/*")
 WEB_DIRS = ("engine/platform/web/*", "engine/platform/emscripten/*", "tools/web/*")
 ANDROID_DIRS = ("engine/platform/android/*", "engine/project/android/*", "tools/android-*", "tools/ci/android_*")
 # the MCP files that build games (a prebuilt player or a compile): the engine's runtime code runs in
@@ -158,6 +172,9 @@ class Plan:
     unit_all: bool = False
     unit_core: list[str] = field(default_factory=list)       # gtest suites
     unit_editor: list[str] = field(default_factory=list)
+    unit_htmlui: list[str] = field(default_factory=list)
+    htmlui_all: bool = False
+    self_tests: list[str] = field(default_factory=list)      # tools' own Python tests
     unit_notes: list[str] = field(default_factory=list)
     mcp_all: bool = False
     mcp_ci: bool = False
@@ -177,6 +194,10 @@ class Plan:
 
 
 def plan_builds(files: list[str], plan: Plan) -> None:
+    for f in files:
+        test = SELF_TESTS.get(f)
+        if test and test not in plan.self_tests:
+            plan.self_tests.append(test)
     everything = [f for f in files if match(f, ALL_TRIGGERS)]
     if everything:
         for b in ("linux", "unit-tests", "web", "android"):
@@ -185,20 +206,30 @@ def plan_builds(files: list[str], plan: Plan) -> None:
         plan.mcp_all = True
         plan.mcp_notes.append(f"{everything[0]} changed: the whole MCP suite")
         return
-    cxx = [f for f in files if f.startswith(("engine/", "editor/")) and (f.endswith(CXX) or "CMakeLists" in f
-                                                                        or f.endswith(".cmake"))]
-    shaders = [f for f in files if f.startswith(("engine/shaders/", "engine/shaderlib/"))]
-    engine = [f for f in files if f.startswith("engine/") and not match(f, BUILDS_NOTHING)]
-    if cxx or shaders or [f for f in files if f.startswith(("editor/", "engine/"))]:
-        what = (cxx or shaders or engine or [f for f in files if f.startswith("editor/")])[0]
-        plan.add_build("linux", f"{what} changed")
-    if cxx:
-        plan.add_build("unit-tests", f"{cxx[0]} changed")
-    web = [f for f in files if match(f, WEB_DIRS)] or [f for f in engine if f.endswith(CXX) or "CMakeLists" in f
-                                                       or f.endswith(".cmake")]
-    if web and not [f for f in web if match(f, ANDROID_DIRS)] == web:
-        plan.add_build("web", f"{web[0]} changed (the engine's web build)")
+    cxx = [f for f in files if f.startswith(("engine/", "editor/", "libs/")) and (f.endswith(CXX) or "CMakeLists" in f
+                                                                                 or f.endswith(".cmake"))]
+    engine = [f for f in files if f.startswith("engine/")]
+    editor = [f for f in files if f.startswith("editor/") or match(f, EDITOR_INPUTS)]
+    if engine or editor:
+        plan.add_build("linux", f"{(cxx or engine or editor)[0]} changed")
+    shaders = [f for f in engine if f.startswith(("engine/shaders/", "engine/shaderlib/"))]
+    # (a test's data: a golden, a fixture; no dependency database sees it)
+    test_data = [f for f in files if f.startswith(("engine/tests/", "editor/tests/")) and not f.endswith(CXX)
+                 and not f.startswith("engine/tests/htmlui/")]
+    if cxx or shaders or test_data:
+        plan.add_build("unit-tests", f"{(cxx or shaders or test_data)[0]} changed")
+    if test_data:
+        plan.unit_all = True
+        plan.unit_notes.append(f"{test_data[0]} changed (a unit test's data): every unit test")
+    if [f for f in files if match(f, HTMLUI_PATHS) and f.endswith(CXX)] or \
+            [f for f in files if f.startswith("engine/tests/htmlui/")]:
+        plan.add_build("htmlui-tests", f"{[f for f in files if match(f, HTMLUI_PATHS)][0]} changed")
     android = [f for f in files if match(f, ANDROID_DIRS)]
+    web = [f for f in files if match(f, WEB_DIRS)] + \
+        [f for f in engine if f not in android and (f.endswith(CXX) or "CMakeLists" in f or f.endswith(".cmake"))
+         and not f.startswith("engine/tests/")]
+    if web:
+        plan.add_build("web", f"{web[0]} changed (the engine's web build)")
     if android:
         plan.add_build("android", f"{android[0]} changed (Android's own code)")
 
@@ -275,17 +306,38 @@ def select_units(changed: list[str], deps: dict[str, list[str]], read=lambda p: 
     return sorted(set(units)), sorted(suites)
 
 
+def in_image() -> bool:
+    return Path("/.dockerenv").is_file() and not shutil.which("docker")
+
+
 def ninja_deps(tree: Path) -> str | None:
-    if not (tree / "build.ninja").is_file() or not shutil.which("ninja"):
+    """`ninja -t deps` of a tree, by the image's ninja: another version of it (a host's) would
+    delete the tree's dependency log as unreadable."""
+    if not (tree / "build.ninja").is_file():
         return None
-    r = subprocess.run(["ninja", "-C", str(tree), "-t", "deps"], capture_output=True, text=True)
+    rel = os.path.relpath(tree, ROOT)
+    command = ["ninja", "-C", rel, "-t", "deps"]
+    if not in_image():
+        command = ["tools/build.sh", "exec", "linux"] + command
+    r = subprocess.run(command, cwd=str(ROOT), capture_output=True, text=True, errors="replace")
     return r.stdout if r.returncode == 0 and r.stdout.strip() else None
 
 
-def plan_units(changes: Changes, plan: Plan, deps_core: str | None, deps_editor: str | None) -> None:
+def plan_units(changes: Changes, plan: Plan, deps_core: str | None, deps_editor: str | None,
+               deps_htmlui: str | None = None) -> None:
+    if "htmlui-tests" in plan.builds:
+        if deps_htmlui is None or [f for f in changes.files if match(f, HTMLUI_PATHS) and
+                                   (f.endswith(("CMakeLists.txt", ".cmake")) or
+                                    (f.startswith("engine/tests/htmlui/") and not f.endswith(CXX)))]:
+            plan.htmlui_all = True
+            plan.unit_notes.append("HTML UI tests: all (no dependency database of their tree yet, their CMake or a test's data changed)")
+        else:
+            units, suites = select_units(_code(changes.files), parse_ninja_deps(deps_htmlui, HTMLUI_TREE))
+            plan.unit_htmlui.extend(suites)
+            plan.unit_notes.append(f"htmlui: {len(units)} test unit(s) see the change")
     if plan.unit_all or "unit-tests" not in plan.builds:
         return
-    cxx = [f for f in changes.files if f.startswith(("engine/", "editor/"))]
+    cxx = _code(changes.files)
     unseen = [f for f in cxx if f.endswith(("CMakeLists.txt", ".cmake"))]
     if unseen:
         plan.unit_all = True
@@ -301,7 +353,7 @@ def plan_units(changes: Changes, plan: Plan, deps_core: str | None, deps_editor:
         units, suites = select_units(cxx, deps)
         # a new test source no database has yet: its suites run anyway
         for f in changes.files:
-            if is_test_source(f) and f not in known and (ROOT / f).is_file() and \
+            if is_test_source(f) and f not in known and (ROOT / f).is_file() and not f.startswith("engine/tests/htmlui/") and \
                     f.startswith("engine/tests/" if name == "core" else "editor/tests/"):
                 units.append(f)
                 suites = sorted(set(suites) | set(gtest_suites((ROOT / f).read_text(errors="replace"))))
@@ -309,11 +361,30 @@ def plan_units(changes: Changes, plan: Plan, deps_core: str | None, deps_editor:
         if units:
             plan.unit_notes.append(f"{name}: {len(units)} test unit(s) see the change: {', '.join(units[:6])}"
                                    f"{' ...' if len(units) > 6 else ''}")
+    # a shader is compiled when the test runs, no C++ unit includes it: the suites that draw
+    if [f for f in changes.files if f.startswith(("engine/shaders/", "engine/shaderlib/"))]:
+        drawing = gpu_suites(ROOT / "engine" / "tests" / "core")
+        plan.unit_core = sorted(set(plan.unit_core) | set(drawing))
+        plan.unit_notes.append(f"a shader changed: the {len(drawing)} *Gpu suites of the core tests")
     new = [f for f in cxx if f.endswith(CXX) and not f.startswith(("engine/tests/", "editor/tests/"))
            and f not in changes.deleted and not any(f in p for p in (deps_core, deps_editor))]
     if new:
         plan.unit_notes.append(f"{len(new)} changed source(s) no test tree compiles or includes (e.g. {new[0]}): "
                                "their behaviour is the MCP tests' to cover")
+
+
+def _code(files: list[str]) -> list[str]:
+    return [f for f in files if f.startswith(("engine/", "editor/", "libs/"))]
+
+
+def gpu_suites(tests: Path) -> list[str]:
+    """The core tests' suites that render into a device (their name says it: docs/testing.md)."""
+    found: set[str] = set()
+    for directory, _, names in os.walk(tests):
+        for name in names:
+            if name.endswith(".cpp"):
+                found.update(s for s in gtest_suites((Path(directory) / name).read_text(errors="replace")) if "Gpu" in s)
+    return sorted(found)
 
 
 # ---------------------------------------------------------------------------------------- 4. MCP tests
@@ -348,6 +419,28 @@ def map_staleness(cmap: dict, now: float, commits_since=None) -> str | None:
     return None
 
 
+SHADER_DIRS = ("engine/shaders/", "engine/shaderlib/")
+GENERIC_NAMES = {"assets", "scenes", "scripts", "shaders", "images", "textures", "golden", "tests", "core", "project",
+                 "models", "ui", "data", "fixtures", "guide", "mcp", "lua", "engine", "editor", "tools", "docs", "includes"}
+
+
+def path_mapped(f: str) -> bool:
+    """A file tests load, not one they execute or one that is only prose or code of another kind."""
+    if f.endswith(CXX + (".py", ".sh", ".md", ".cmake", ".txt", ".json")) and not f.startswith(("tools/fixtures/", "tools/test-projects/", "docs/mcp/guide/")):
+        return False
+    return f.startswith(("engine/", "editor/", "tools/fixtures/", "tools/test-projects/", "docs/mcp/guide/", "tools/mcp/tests/golden/"))
+
+
+def path_keys(f: str) -> set[str]:
+    parts = Path(f).parts
+    keys = {Path(f).name, Path(f).stem}
+    if f.startswith(("tools/fixtures/", "tools/test-projects/")) and len(parts) > 2:
+        keys.add(parts[2])
+    elif len(parts) > 1:
+        keys.add(parts[-2])
+    return {k for k in keys if k.lower() not in GENERIC_NAMES and len(k) > 2}
+
+
 def test_files(tests_dir: Path = MCP_TESTS) -> dict[str, str]:
     return {p.name: p.read_text(errors="replace") for p in sorted(tests_dir.glob("test_*.py"))}
 
@@ -368,6 +461,8 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
         if f.startswith("tools/mcp/tests/") and name.startswith("test_") and name.endswith(".py"):
             if f not in changes.deleted:
                 plan.add_mcp(name, "the test file changed")
+        elif f.startswith("tools/mcp/tests/golden/"):
+            pass   # (by path, below)
         elif f.startswith("tools/mcp/tests/") or (f.startswith("tools/mcp/") and f.endswith(".py")):
             # a helper module or test data: the files that import or name it
             stem = Path(f).stem
@@ -382,22 +477,34 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
                 hit = sorted(t for t in tools if re.search(rf"[\"']{t}[\"']", text))
                 if hit:
                     plan.add_mcp(test, f"calls {hit[0]} ({f})")
-    # fixtures, Lua, shaders, assets: by path (the file's or its folder's name in a test file)
+    # everything else a test can load (fixtures, test projects, the guide, Lua, shaders, HTML, images,
+    # scenes...): by path, the file's, stem's, folder's or fixture's name in a test file; a file
+    # no test names is unmapped: the CI suite
+    unmapped_paths = []
     for f in files:
-        if f.startswith(("tools/fixtures/", "tools/test-projects/", "docs/mcp/guide/")) or \
-                f.endswith((".lua", ".glsl", ".vert", ".frag", ".comp", ".html", ".css", ".scene", ".prefab", ".material")):
-            parts = Path(f).parts
-            keys = {Path(f).name}
-            if f.startswith(("tools/fixtures/", "tools/test-projects/")) and len(parts) > 2:
-                keys.add(parts[2])
-            if f.startswith("docs/mcp/guide/") and len(parts) > 3:
-                keys.add(parts[3])
-            for test, text in sources.items():
-                if any(re.search(rf"[\"'/]{re.escape(k)}[\"'/]", text) for k in keys):
-                    plan.add_mcp(test, f"loads {f}")
+        if not path_mapped(f) or f in changes.deleted:
+            continue
+        keys = path_keys(f)
+        hit = False
+        for test, text in sources.items():
+            if any(re.search(rf"[\"'/\s]{re.escape(k)}[\"'/.\s]", text) for k in keys):
+                plan.add_mcp(test, f"loads {f}")
+                hit = True
+        if f.startswith("docs/mcp/guide/") and "test_docs.py" in sources:
+            plan.add_mcp("test_docs.py", f"the guide changed ({f})")
+            hit = True
+        if f.startswith(SHADER_DIRS) and "test_shader_library.py" in sources:
+            # any shader: its compile matrix, and the CI suite for what draws with it
+            plan.add_mcp("test_shader_library.py", f"compiles {f}")
+            plan.mcp_ci = True
+            hit = True
+        if not hit:
+            unmapped_paths.append(f)
+    if unmapped_paths:
+        plan.mcp_ci = True
+        plan.mcp_notes.append(f"{len(unmapped_paths)} changed file(s) no test file names (e.g. {unmapped_paths[0]}): the CI suite as well")
     # the engine's and the editor's C++ (and shaders): the coverage map
-    code = [f for f in files if f.startswith(("engine/", "editor/")) and (f.endswith(CXX) or
-                                                                         f.startswith(("engine/shaders/", "engine/shaderlib/")))]
+    code = [f for f in files if f.startswith(("engine/", "editor/", "libs/")) and f.endswith(CXX)]
     if not code:
         return
     if cmap is None:
@@ -416,9 +523,6 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
             targets |= set(header_units(f))
         if f.endswith(CXX) and not f.endswith(HEADER):
             targets |= set(siblings(f))
-        if f.startswith(("engine/shaders/", "engine/shaderlib/")):
-            # shaders are built into the editor's sources; any test that renders may draw them
-            targets |= {s for s in known if "shader" in s.lower()}
         # (a file the map names that the checkout no longer has is no test to run)
         hit = [t for t, srcs in covered.items() if srcs & targets and t in sources]
         for t in hit:
@@ -533,6 +637,10 @@ def describe(changes: Changes, plan: Plan, cmap_info: str) -> str:
     else:
         lines.append("unit tests: none see the change")
     lines += [f"  {n}" for n in plan.unit_notes if not plan.unit_all]
+    if plan.self_tests:
+        lines.append("tool tests: " + ", ".join(plan.self_tests))
+    if plan.htmlui_all or plan.unit_htmlui:
+        lines.append("HTML UI tests: " + ("all" if plan.htmlui_all else f"suites {plan.unit_htmlui}"))
     if plan.mcp_all:
         lines.append("MCP tests: the whole suite")
     else:
@@ -554,7 +662,7 @@ def commits_since(root: Path):
 
 def use_root(root: Path) -> None:
     """The checkout the run works in (tools/test_check_changed.py points it at a scratch repository)."""
-    global ROOT, CACHE_FILE, RB_CHANGES, MCP_TESTS, CORE_TREE, EDITOR_TEST_TREE, EDITOR_TREE
+    global ROOT, CACHE_FILE, RB_CHANGES, MCP_TESTS, CORE_TREE, EDITOR_TEST_TREE, EDITOR_TREE, HTMLUI_TREE
     ROOT = root
     CACHE_FILE = root / "build" / ".cache" / "check-changed.json"
     RB_CHANGES = root / "build" / ".rb-changes.json"
@@ -562,6 +670,7 @@ def use_root(root: Path) -> None:
     CORE_TREE = root / "build" / "linux" / "core-tests"
     EDITOR_TEST_TREE = root / "build" / "linux" / "editor-tests"
     EDITOR_TREE = root / "build" / "linux" / "editor"
+    HTMLUI_TREE = root / "build" / "linux" / "htmlui-tests-glcore"
 
 
 def main(argv: list[str], root: Path | None = None) -> int:
@@ -601,19 +710,21 @@ def main(argv: list[str], root: Path | None = None) -> int:
             print(f"[check-changed] the same inputs passed before (build/.cache/check-changed.json); --no-cache runs again")
             return 0
 
-    in_image = Path("/.dockerenv").is_file() and not shutil.which("docker")
     runner = Runner(verbose, args.j)
     build_env = {"WERROR": "1"}
     # 2. builds (the unit test trees first: their dependency database picks the suites)
     if "unit-tests" in plan.builds and not args.dry_run:
         runner.run("build the unit tests", ["tools/build.sh", "unit-tests"], dict(build_env, RUN="0"))
+    if "htmlui-tests" in plan.builds and not args.dry_run:
+        runner.run("build the HTML UI tests", ["tools/build.sh", "htmlui-tests"], dict(build_env, RUN="0"))
     staleness = map_staleness(cmap, time.time(), commits_since(ROOT)) if cmap else None
     editor_deps = parse_ninja_deps(ninja_deps(EDITOR_TREE) or "", EDITOR_TREE) if not plan.mcp_all else {}
 
     def header_units(header: str) -> list[str]:
         return [paths[0] for paths in editor_deps.values() if paths and header in paths]
 
-    plan_units(changes, plan, ninja_deps(CORE_TREE), ninja_deps(EDITOR_TEST_TREE))
+    plan_units(changes, plan, ninja_deps(CORE_TREE), ninja_deps(EDITOR_TEST_TREE),
+               ninja_deps(HTMLUI_TREE) if "htmlui-tests" in plan.builds else None)
     plan_mcp(changes, plan, cmap, test_files(MCP_TESTS), header_units, staleness)
     text = describe(changes, plan, cmap_info)
     print(text, flush=True)
@@ -623,10 +734,13 @@ def main(argv: list[str], root: Path | None = None) -> int:
         print(GAP)
         return 0
 
+    for test in plan.self_tests:
+        if (ROOT / test).is_file():
+            runner.run(f"tool tests ({test})", [sys.executable, "-I", test])
     for b in plan.builds:
-        if b == "unit-tests":
+        if b in ("unit-tests", "htmlui-tests"):
             continue
-        if b in ("web", "android") and in_image:
+        if b in ("web", "android") and in_image():
             runner.steps.append((f"build {b}", "CANNOT RUN (needs the host's Docker: run tools/check-changed there)", 0.0))
             runner.failed = True
             continue
@@ -641,13 +755,22 @@ def main(argv: list[str], root: Path | None = None) -> int:
                 if names:
                     runner.run(f"unit tests ({suite}: {len(names)} suite(s))", ["tools/build.sh", "unit-tests"],
                                dict(build_env, UNIT_SUITE=suite, UNIT_TEST_ARGS=f"--gtest_filter={suite_filter(names)}"))
+    if not runner.failed and "htmlui-tests" in plan.builds:
+        if plan.htmlui_all:
+            runner.run("HTML UI tests (all)", ["tools/build.sh", "htmlui-tests"], build_env)
+        elif plan.unit_htmlui:
+            runner.run(f"HTML UI tests ({len(plan.unit_htmlui)} suite(s))", ["tools/build.sh", "htmlui-tests"],
+                       dict(build_env, HTMLUI_TEST_ARGS=f"--gtest_filter={suite_filter(plan.unit_htmlui)}"))
     # 4. MCP tests
     if not runner.failed and (plan.mcp_all or plan.mcp_ci or plan.mcp_files):
         if "linux" not in plan.builds and not (ROOT / "build/linux/editor-install/bin/jasperengine-editor").exists():
             runner.run("build linux (the MCP tests' editor)", ["tools/build.sh", "linux"], dict(build_env, SKIP_ENGINE="1"))
-        jobs = args.j or max(2, (os.cpu_count() or 4) // 2)
+        # (the container's CPUs, rb.sh's JOBS, for two each: LP_NUM_THREADS 2, docs/testing.md)
+        cpus = int(os.environ["JOBS"]) if os.environ.get("JOBS", "").isdigit() else (os.cpu_count() or 4)
+        jobs = args.j or max(2, cpus // 2)
         # (a runner without --split-seconds: an older checkout's, --root)
-        split = ["--split-seconds", "600"] if "--split-seconds" in (ROOT / "tools/mcp/run_tests.py").read_text() else []
+        runner_source = ROOT / "tools/mcp/run_tests.py"
+        split = ["--split-seconds", "600"] if runner_source.is_file() and "--split-seconds" in runner_source.read_text() else []
         mcp_env = {"JASPER_SLOW_BUILD": "1", "JASPER_SLOW_TESTS": "1", "MCP_SUITE": "all"}
         if plan.mcp_all:
             runner.run("MCP tests (the whole suite)", ["tools/build.sh", "mcp-tests", "-j", str(jobs), *split], mcp_env)
@@ -655,16 +778,21 @@ def main(argv: list[str], root: Path | None = None) -> int:
         else:
             if plan.mcp_ci:
                 runner.run("MCP tests (the CI suite)", ["tools/build.sh", "mcp-tests", "-j", str(jobs)],
-                           {"MCP_SUITE": "ci", "JASPER_SLOW_BUILD": "1"})
+                           {"MCP_SUITE": "ci", "JASPER_SLOW_BUILD": "1", "JASPER_SLOW_TESTS": "1"})
                 runner.mcp_results("MCP tests (the CI suite)")
             files = [f for f in plan.mcp_files if (MCP_TESTS / f).is_file()]
             missing = [f for f in plan.mcp_files if f not in files]
+            if plan.mcp_ci:   # (the CI suite above ran those)
+                files = [f for f in files if not re.search(r"^CI = True", (MCP_TESTS / f).read_text(errors="replace"), re.M)]
             if missing:
                 runner.steps.append(("MCP tests", f"CANNOT RUN: {missing} (selected, not in the checkout)", 0.0))
                 runner.failed = True
             if files:
                 if "test_mesh_raycast.py" not in files:
                     mcp_env["MCP_SKIP_WEB_BUILD"] = "1"
+                if len(files) > LARGE_SELECTION:
+                    print(f"[check-changed] {len(files)} files: je-remote/mcp-shard.sh --select <--list-mcp's file> runs them "
+                          "across servers (from the machine that has rb.sh)", flush=True)
                 runner.run(f"MCP tests ({len(files)} file(s))", ["tools/build.sh", "mcp-tests", "-j", str(jobs),
                            *split, *[f"tools/mcp/tests/{f}" for f in files]], mcp_env)
                 runner.mcp_results(f"MCP tests ({len(files)} file(s))")

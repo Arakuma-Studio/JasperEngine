@@ -124,6 +124,15 @@ class Builds(unittest.TestCase):
         self.assertEqual(self.plan("engine/core/Foo.cpp").builds, ["linux", "unit-tests", "web"])
         self.assertIn("android", self.plan("engine/platform/android/Main.cpp").builds)
         self.assertEqual(self.plan("tools/web/serve.py").builds, ["web"])
+        self.assertEqual(self.plan("libs/imgui/imgui.cpp").builds, ["linux", "unit-tests"])
+        self.assertEqual(self.plan("docs/mcp/guide/shaders.md").builds, ["linux"])
+        self.assertEqual(self.plan("engine/shaders/mesh.frag").builds, ["linux", "unit-tests"])
+        self.assertIn("htmlui-tests", self.plan("engine/core/htmlui/Doc.cpp").builds)
+        self.assertEqual(self.plan("engine/tests/core/FooTest.cpp").builds, ["linux", "unit-tests"])
+        # the tool's own Python: its tests, nothing built
+        p = self.plan("tools/check_changed.py")
+        self.assertEqual((p.builds, p.self_tests, p.mcp_all), ([], ["tools/test_check_changed.py"], False))
+        self.assertEqual(self.plan("tools/mcp/shard.py").self_tests, ["tools/mcp/test_shard.py"])
         for trigger in ("CMakeLists.txt", "docker/linux.Dockerfile", "tools/build.sh", "engine/cmake/JasperPch.cmake",
                         "tools/mcp/requirements.txt"):
             p = self.plan(trigger)
@@ -169,6 +178,28 @@ class Units(unittest.TestCase):
         self.assertEqual(cc.select_units(["engine/core/Bar.h"], self.deps, SOURCES.__getitem__)[1], ["Bar"])
         self.assertEqual(cc.select_units(["engine/tests/core/BarTest.cpp"], self.deps, SOURCES.__getitem__)[1], ["Bar"])
         self.assertEqual(cc.select_units(["engine/core/Other.cpp"], self.deps, SOURCES.__getitem__), ([], []))
+
+    def test_a_new_test_file_and_a_shader(self):
+        tmp = Path(tempfile.mkdtemp(prefix="cc-units-"))
+        try:
+            cc.use_root(tmp)
+            new = tmp / "engine/tests/core/NewTest.cpp"
+            new.parent.mkdir(parents=True)
+            new.write_text("TEST(Brand, New) {}\n")
+            (tmp / "engine/tests/core/DrawTest.cpp").write_text("TEST(DrawGpu, A) {}\nTEST(Draw, B) {}\n")
+            p = cc.Plan()
+            files = ["engine/tests/core/NewTest.cpp"]
+            cc.plan_builds(files, p)
+            cc.plan_units(cc.Changes("b", "x", files), p, DEPS, DEPS)
+            self.assertEqual(p.unit_core, ["Brand"])
+            p = cc.Plan()
+            files = ["engine/shaders/mesh.frag"]
+            cc.plan_builds(files, p)
+            cc.plan_units(cc.Changes("b", "x", files), p, DEPS, DEPS)
+            self.assertEqual(p.unit_core, ["DrawGpu"])
+        finally:
+            cc.use_root(REAL_ROOT)
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_filter(self):
         self.assertEqual(cc.suite_filter(["Foo"]), "Foo.*:*/Foo.*:Foo/*.*")
@@ -235,6 +266,15 @@ class Mcp(unittest.TestCase):
         self.assertEqual(self.plan(["tools/mcp/tests/test_other.py"], deleted=["tools/mcp/tests/test_other.py"]).mcp_files, [])
         self.assertEqual(self.plan(["editor/mcp/tools/AssetTools.cpp"], cmap={"files": {}}).mcp_files, ["test_tool.py"])
         self.assertEqual(self.plan(["tools/fixtures/water/scenes/Main.scene"]).mcp_files, ["test_fixture.py"])
+        # a file no test names: the CI suite
+        p = self.plan(["tools/fixtures/nobody/scenes/Main.scene"])
+        self.assertTrue(p.mcp_ci and not p.mcp_files)
+        # a shader: the suites that draw, by the CI suite; a C++ file is not mapped by path
+        p = self.plan(["engine/shaders/mesh.frag"])
+        self.assertTrue(p.mcp_ci)
+        self.assertFalse(cc.path_mapped("engine/core/Foo.cpp"))
+        self.assertTrue(cc.path_mapped("tools/mcp/tests/golden/x/a.png"))
+        self.assertFalse(cc.path_mapped("tools/ci/check.py"))
         self.assertEqual(self.plan(["docs/testing.md"]).mcp_files, [])
 
 

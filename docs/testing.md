@@ -89,8 +89,8 @@ then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screen
 - An MCP test asserts behaviour; a wall-clock budget (a CLI start in 300 ms, a reload frame under
   16 ms, ...) goes through `harness.over_budget(what, measures, budget)`, which prints a `[bench]`
   line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
-  misses those budgets. The benchmark run enforces them on the benchmark-only server E:
-  `rb.sh E --img 'JASPER_MCP_PERF_SLACK=1 dbus-run-session -- tools/mcp/run-tests.sh
+  misses those budgets. The benchmark run enforces them on a quiet server, with the box to itself (C, `RB_SLOTS=2`):
+  `RB_SLOTS=2 rb.sh C --img 'JASPER_MCP_PERF_SLACK=1 dbus-run-session -- tools/mcp/run-tests.sh
   tools/mcp/tests/test_call_cli.py tools/mcp/tests/test_hot_reload.py tools/mcp/tests/test_checks.py'`.
 - Compiled and prebuilt game builds: see the next section.
 - With `-j N` the runner starts the longest files first. It orders them by each file's wall time
@@ -392,7 +392,7 @@ source counts when one of its objects has a counter above zero.
 ### The full suite across servers: `je-remote/mcp-shard.sh`
 
 ```sh
-cd <worktree> && ../../je-remote/mcp-shard.sh --pin-builds A A:7:2 H:8:2:gpu G:3 F:3
+cd <worktree> && ../../je-remote/mcp-shard.sh --pin-builds A A:7:2 H:8:2:gpu B:6:2 C:3
 ```
 
 It builds each server's editor at once (`WERROR=1 SKIP_ENGINE=1 tools/build.sh linux`), lists the
@@ -500,7 +500,7 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   budgets are only printed. `*Bench` suites (`LoggerBench`, `SchedulerBench`, `SignalBench`, S10's
   `ShadowBench`), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
   their budgets that way and print `[bench]` lines (S34's `LuaBindingBench` prints the cost of a call
-  through the Lua bindings, with no budget: builds are compared with it on E); the
+  through the Lua bindings, with no budget: builds are compared with it on the benchmark server); the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),
   `AutosaveEncodeBench` (S03), `VcsBench` (S29: status poll, snapshot swap, scene diff; the
   main-thread encode is reported) and `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
@@ -510,11 +510,11 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   E's 4 vCPU measure a storm p95 of 1.7x the idle frame against the 1.5x budget, so it runs there
   only with a slack above that. A
   shared build server's load alone misses them (10k timers in 20 ms instead of 2), so an ordinary
-  unit test run never fails on wall-clock time; the benchmark run enforces them on the
-  benchmark-only server E, which runs one job at a time:
+  unit test run never fails on wall-clock time; the benchmark run enforces them on a
+  quiet server, with the box to itself (C, `RB_SLOTS=2`):
 
   ```bash
-  rb.sh E env JASPER_TEST_PERF_SLACK=1 \
+  RB_SLOTS=2 rb.sh C env JASPER_TEST_PERF_SLACK=1 \
       UNIT_TEST_ARGS='--gtest_filter=*Bench*:SchedulerTest.Process10kUnder2ms:AtmosphereNoise.*' tools/build.sh unit-tests
   ```
 
@@ -604,16 +604,16 @@ hides real regressions behind re-runs. So (BF12):
 - **Keep random parts out of assertions.** Match file names, not full paths under a random temp
   folder (`FileWatcherTests`: `je-watch-<random>` holds "4913", vim's probe name, one time in 600).
 - **A budget is a benchmark.** MCP tests report wall-clock budgets with `harness.over_budget`,
-  units with `perfSlack()` (`JASPER_TEST_PERF_SLACK`); both are enforced by the benchmark run on
-  server E. The HTML UI gates take the least of several CPU-time measurements of the calling
+  units with `perfSlack()` (`JASPER_TEST_PERF_SLACK`); both are enforced by the benchmark run
+  (C, `RB_SLOTS=2`). The HTML UI gates take the least of several CPU-time measurements of the calling
   thread (`PerfFixtures.h`: `gatedCpuMs`); one whose budget is near the step's cost on a build
-  server (`MarkdownHtml.Perf20KB`: 1.3 ms of 2 there, 0.27 ms on E) is enforced only when
+  server (`MarkdownHtml.Perf20KB`: 1.3 ms of 2 there, 0.27 ms on a quiet one) is enforced only when
   `JASPER_HTMLUI_PERF_SLACK` is set (`benchmarkPerfSlack()`):
-  `rb.sh E env JASPER_HTMLUI_PERF_SLACK=1 HTMLUI_TEST_ARGS='--gtest_filter=MarkdownHtml.Perf20KB' tools/build.sh htmlui-tests`.
+  `RB_SLOTS=2 rb.sh C env JASPER_HTMLUI_PERF_SLACK=1 HTMLUI_TEST_ARGS='--gtest_filter=MarkdownHtml.Perf20KB' tools/build.sh htmlui-tests`.
   Scaling a timeout with a load factor is the last resort, and a test never asserts less to pass.
 - **Prove it under load.** Run the test where it failed, under deliberate load, before and after:
   `--gtest_repeat=50` for a unit test, 20 runs for an MCP test, in parallel lanes next to busy
-  loops in the image (`rb.sh G --img '...'`; the container's `--cpus` keeps the load off the
+  loops in the image (`rb.sh A --img '...'`; the container's `--cpus` keeps the load off the
   other jobs) or next to a full build. The run on the unchanged branch is the red control.
 
 ## How a spec adds tests

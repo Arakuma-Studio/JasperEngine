@@ -33,7 +33,7 @@ Environment:
     JASPER_KEEP_SCRATCH=1   keep scratch directories
     JASPER_MCP_URL   when set, Editor() with no project/url attaches to this URL instead
     JASPER_MCP_PERF_SLACK   the factor wall-clock budgets are enforced with (over_budget); unset
-                     or 0: budgets are printed only (the benchmark run on server E sets it)
+                     or 0: budgets are printed only (the benchmark run sets it, docs/testing.md)
     JASPER_MCP_TOKEN bearer token for url mode (the editor's MCP window copies it)
     JASPER_MCP_CALL_LOG  a directory: every tool call's tool, test, arguments (shortened) and
                      seconds, one JSON line per call in <dir>/<file stem>.jsonl (where a slow
@@ -502,7 +502,7 @@ def mesa_shader_cache() -> Path:
 def perf_slack() -> float:
     """The factor wall-clock budgets are enforced with: JASPER_MCP_PERF_SLACK, 0 (not enforced)
     unless set. A shared build server's load alone misses them, so a functional run asserts the
-    behaviour and prints the times; the benchmark run on the benchmark-only server E enforces them."""
+    behaviour and prints the times; the benchmark run on a quiet server enforces them."""
     try:
         return max(0.0, float(os.environ.get("JASPER_MCP_PERF_SLACK", "") or 0))
     except ValueError:

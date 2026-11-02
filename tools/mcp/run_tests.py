@@ -411,7 +411,7 @@ def main() -> int:
     with contextlib.suppress(OSError, ValueError, AttributeError):
         test_seconds = {str(k): float(v) for k, v in json.loads(TEST_SECONDS.read_text()).items()}
     if not chunks:
-        if args.split_seconds > 0 and not (args.k or args.fake or args.url):
+        if args.split_seconds > 0 and not (args.k or args.url):
             import shard
             for f in files:
                 if not shard.independent(f):

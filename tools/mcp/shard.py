@@ -10,7 +10,7 @@ examples) from being the whole run's wall time.
     # the chunks of one server's run (run_tests.py --split-seconds 600 does this itself)
     # the shards of a run across servers (je-remote/mcp-shard.sh drives it):
     python3 tools/mcp/shard.py plan --tests all-tests.txt --timings LOG_OR_JSON... \\
-        --shard A:6 --shard H:8:gpu --shard F:4 --pin-builds A --out DIR
+        --shard A:7 --shard H:8:gpu --shard B:6 --pin-builds A --out DIR
     python3 tools/mcp/shard.py check --tests all-tests.txt DIR/plan.json      # the union check
     python3 tools/mcp/shard.py merge --plan DIR/plan.json DIR/mcp-*.json      # one report, exit code
 
