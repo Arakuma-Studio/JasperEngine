@@ -634,7 +634,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         rigidbody.newBody = true;
         rigidbody.overrideMassProperties = false;
         rigidbody.solidBoxSize = Vector3(0.000000f, 0.000000f, 0.000000f);
-        rigidbody.solidBoxDensity = 0.000000f;
+        rigidbody.solidBoxDensity = 1000.000000f;
         rigidbody.enabled = false;
         scene->addComponent<RigidbodyComponent>(1018, std::move(*rigidbodyStorage));
 #endif // JASPERENGINE_PHYSICS_3D
