@@ -1049,3 +1049,52 @@ because Docker's cap is what shares the host. Re-run alone on D, at `-j 2` and l
 The compile path's missing executable is fixed: the Compile fallback holds its finish until the
 content manifest and the executable are set. S30 made the same fix (9d854d51e, `holdFinish`),
 which this branch now uses.
+
+### BF16 (test speed, tools/check-changed)
+
+The baseline is `int-mcp-a6701ba45` on A: 5.2 h of tests at `-j 2` in an 8-CPU container (10.3
+test-hours, A at load 30 to 52), after 2.2 h of builds.
+
+Where the 2.2 h went: S34's merge changed flags and widely included headers on a server that had not
+compiled them, so the editor (2,238 steps), the sample project (1,646, a 19-minute LTO link, 976 s
+on A at load 15 to 24) and the mesh-raycast web build (1,482) all missed. ccache across worktrees
+already works: every worktree is `/src` in the image, so `base_dir` is not needed. An editor build of
+oe-port in a new worktree: 2,144 direct hits of 2,150 compiles, 158 s.
+
+What the slow tests spent:
+
+| Test | Before | Now | What it was |
+|---|---|---|---|
+| `test_html_ui_effects_export::test_desktop_player_draws_the_effects` | 3,977 s | 302 s | a compile without ccache and an LTO link; ccache 1,237 hits, 8 misses, no LTO |
+| `test_build::test_desktop_build_and_run` | 2,476 s | 929 s | a compile without ccache; now 601 hits, 8 misses; keeps LTO (the suite's LTO check) |
+| `test_hub::test_create_from_templates` | 1,542 s | 177 s | a compile at 3 jobs; now 593 hits, 6 misses, no LTO |
+| `test_materials_pbr::test_khronos_models` | 2,310 s | 13 tests of 2 to 5 min | polling every mesh, each call a frame; now a test per model, each in its own chunk |
+| `test_shader_library::test_cli_library_matrix_all_backends` | 1,639 s | 419 s | one process compiling one variant at a time; now a process per backend |
+| `test_fluid_inspector::test_preview_bar_on_a_play_created_fluid` | 1,815 s | 841 s (instrumented) | 3 to 5 s frames: a software-rendered fluid in the Inspector |
+
+The seven files that build games, warm, `-j 4` in an 8-CPU container on A: 1,038 s, 42 passed, both
+runtimes reused from the shared cache. The same files with a new runtime key: 5,284 s, of which 3,744
+and 4,223 s of runtime builds at nice 15 (172 and 254 misses). The prebuild does not wait for its
+turn: when only files that need a runtime are left, a worker builds the second one at once.
+
+The coverage run (the suite without the slow builds, an instrumented editor, `-j 4` in an 8-CPU
+container, H at load 30 to 37): 4,822 s, 1,181 passed, 1 failed (below), 7 skipped by design.
+
+Editors on the RTX 3080 Ti: the 34 lane files, 7,259 s of test time on llvmpipe under load, take
+1,223 s, two at a time. `test_fluid_inspector.py`'s 2,296 s took 53 s there, and one absolute dye
+threshold keeps it on llvmpipe.
+
+Found on the way:
+
+- `test_reflection.py::test_codegen_golden` is flaky on oe-port, on llvmpipe and on the RTX:
+  `RigidbodyComponent::solidBoxDensity` has no initialiser, so the generated C++ prints garbage
+  (`-95312802931886636396528534812354412544.000000f`). BF14 gives it one.
+- The same test failed once on the RTX on `clouds.weatherMap.setPath(...)`: whether a generated scene
+  sets a texture's path depends on when its load finished.
+- The nine files that fail on the RTX (`gpu_lane.json`) may hide real GPU differences:
+  `test_pose_render.py`'s model does not draw, `test_html_ui_effects.py`'s fog has no variation,
+  `test_fluid_effect.py`'s burst peaks at 13 of 255. Nobody has looked at them yet.
+- `tools/build.sh linux`'s LTO link prints 11 `-Wodr` warnings about `spv::` enums, the two vendored
+  copies of `spirv.hpp` (glslang, spirv-cross), since S34. No warning from our own targets.
+- A killed local `rb.sh` does not stop its job: ssh has no tty, so the remote shell, its
+  container, or a job still waiting for its slot goes on. Stop the remote process too.
