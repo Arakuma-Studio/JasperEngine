@@ -31,6 +31,7 @@
 #include "math/CurveJson.h"
 #include "particles/ParticleEffectCodec.h"
 #include "recorder/RecorderSession.h"
+#include "pool/TextureDataPool.h"
 #include "render/SystemRender.h"
 #include "stream/CurveCodec.h"
 #include "util/FileUtils.h"
@@ -133,16 +134,28 @@ void recordGameTool(const CallPtr& call) {
 
 void sampleViewColorNow(const CallPtr& call);
 
-// the pixel of a frame drawn with every shader and pipeline created (S32): it waits for pending
-// creations as screenshot does (up to 30 s), then reads what is there
+// the pixel of a frame drawn with every shader and pipeline created (S32) and every texture
+// loaded: it waits for them as screenshot does (up to 30 s), then fails naming them
 void sampleViewColorTool(const CallPtr& call) {
-    if (SystemRender::isGpuCreationIdle()) {
+    auto idle = []() { return SystemRender::isGpuCreationIdle() && TextureDataPool::getLoadingCount() == 0; };
+    if (idle()) {
         sampleViewColorNow(call);
         return;
     }
-    // idle, then one more frame drawn with them
-    call->waitUntil([]() { return SystemRender::isGpuCreationIdle(); }, 30000,
-                    [call](bool) { call->afterFrames(1, [call]() { sampleViewColorNow(call); }); });
+    // idle, then two more frames drawn with them (the first draw adopts a finished texture)
+    call->waitUntil(idle, 30000, [call](bool timedOut) {
+        if (timedOut) {
+            std::string pending = SystemRender::isGpuCreationIdle() ? "" : "shaders or pipelines being made";
+            if (const size_t textures = TextureDataPool::getLoadingCount()) {
+                std::string list;
+                for (const std::string& id : TextureDataPool::getLoadingIds(8)) list += (list.empty() ? "" : ", ") + id;
+                pending += (pending.empty() ? "" : "; ") + std::to_string(textures) + " texture load(s): " + list;
+            }
+            call->fail("No colour sampled: still loading after 30 s (a stand-in is never sampled): " + pending + ". Retry.");
+            return;
+        }
+        call->afterFrames(2, [call]() { sampleViewColorNow(call); });
+    });
 }
 
 void sampleViewColorNow(const CallPtr& call) {
