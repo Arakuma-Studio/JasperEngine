@@ -13,6 +13,7 @@
 #include "Factory.h"
 #include "Platform.h"
 #include "Project.h"
+#include "ScriptDataTestSupport.h"
 #include "Scene.h"
 #include "Stream.h"
 #include "camera/ShakePreset.h"
@@ -201,14 +202,17 @@ namespace {
             AppSettings::initialize();
             out.project.reset(new Project());
             out.platform.reset(new editor::Platform(out.project.get()));
-            static char arg0[] = "jasperengine-editor-tests";
-            static char* argv[] = {arg0, nullptr};
-            Engine::systemInit(1, argv, out.platform.get());
+            // the editor's Platform as System::instance() for this suite's tests (the binary's engine
+            // is TestMain's: a second Engine::systemInit would restart its jobs and logger)
+            headlesssystem::use(out.platform.get());
             Engine::pauseGameEvents(true);
             Engine::setAsyncLoading(false);
             out.ready = out.project->loadProject(out.dir, false);
+            Engine::setAsyncLoading(false);
             return out;
         }();
+        // another test file's project may have taken the engine's Platform since
+        headlesssystem::use(h.platform.get());
         return h;
     }
 
@@ -220,7 +224,8 @@ namespace {
 }
 
 TEST(CameraShakeComponents, RegistrationAndCatalog){
-    EXPECT_EQ(static_cast<int>(ComponentType::CameraShakerComponent), static_cast<int>(ComponentType::TouchAreaComponent) + 1);
+    // appended after the Touch Area (oe-port keeps the Ragdoll between them: its ordinals stay)
+    EXPECT_GT(static_cast<int>(ComponentType::CameraShakerComponent), static_cast<int>(ComponentType::TouchAreaComponent));
     EXPECT_EQ(static_cast<int>(ComponentType::CameraFollowComponent), static_cast<int>(ComponentType::CameraShakerComponent) + 1);
     // appended after the older types (prefab override masks use the ordinal); later features append after them
     EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::CameraFollowComponent));

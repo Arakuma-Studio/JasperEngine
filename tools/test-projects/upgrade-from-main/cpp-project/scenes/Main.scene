@@ -1,4 +1,4 @@
-id: 852801960
+id: 2235557585
 name: Main
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -38,11 +38,6 @@ maxValues:
   maxExternalBuffers: 0
   maxSpriteFrames: 0
   maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: mesh
     properties: 1112

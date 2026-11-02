@@ -64,7 +64,7 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     // current: nothing to do
     const MigrationResult again = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_FALSE(again.migrated());
-    EXPECT_EQ(again.versionRead, 6);
+    EXPECT_EQ(again.versionRead, 7);
 }
 
 TEST(StreamMigrations, NewerIsLeftUntouched){

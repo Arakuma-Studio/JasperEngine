@@ -17,7 +17,7 @@ function Title:init()
     self.clicks = 0
     self.onPlay = function(event)
         self.clicks = self.clicks + 1
-        self:start("click")
+        self:begin("click")
     end
     RegisterEvent(self, self.doc.onLoad, "bind")
     self:bind()
@@ -30,7 +30,7 @@ function Title:bind()
     if play then play:addEventListener("click", self.onPlay) end
 end
 
-function Title:start(how)
+function Title:begin(how)
     if self.startAt >= 0 then return end
     self.startAt = T.frame + self.startDelay
     local status = self.doc:getElementById("status")
@@ -42,7 +42,7 @@ function Title:start(how)
 end
 
 function Title:onUpdate()
-    if T.pressed(Input.KEY_ENTER) then self:start("enter") end
+    if T.pressed(Input.KEY_ENTER) then self:begin("enter") end
     local ticks = self.doc:getElementById("ticks")
     if ticks then ticks.textContent = "frame " .. T.frame end
     if self.startAt >= 0 and T.frame == self.startAt then

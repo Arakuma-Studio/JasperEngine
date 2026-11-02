@@ -630,6 +630,8 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::SkyboxComponent, "texture"}, {C::SkyboxComponent, "customShader"}, {C::SkyboxComponent, "shaderTextures{}"},
         {C::PointsComponent, "texture"}, {C::PointsComponent, "customShader"}, {C::PointsComponent, "shaderTextures{}"},
         {C::LineRendererComponent, "customShader"}, {C::LineRendererComponent, "shaderTextures{}"},
+        // upstream's Trail Renderer: its custom shader and the shader's textures, as the Line Renderer's
+        {C::TrailRendererComponent, "customShader"}, {C::TrailRendererComponent, "shaderTextures{}"},
         {C::ModelComponent, "filename"}, {C::AudioSourceComponent, "filename"}, {C::UIDocumentComponent, "filename"},
         {C::ScriptComponent, "scripts[].path"}, {C::ScriptComponent, "scripts[].headerPath"}, {C::ScriptComponent, "scripts[].properties[]"},
         // the effect asset, and the asset paths an inline effect's modules hold (S20)

@@ -96,6 +96,9 @@ namespace {
         std::vector<Frame> frames;
         memory::Arena arena("LegacyParticlePresetsTest");
         for (int frame = 1; frame <= 120; frame++){
+            // a camera sees it every frame (the render marks it; nothing renders here): S20's
+            // culling does not pause it when the binary's frame counter is past its first frames
+            subsystem->markVisible(system.getEntity());
             subsystem->update(1.0 / 60.0);
             if (frame != 30 && frame != 60 && frame != 120) continue;
             Frame f;

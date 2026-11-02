@@ -1,6 +1,6 @@
 type: Prefab
 version: 3
-guid: af9ae8e1e6dc41081e33ca4b5bd0c558
+guid: c47849b1febd095765309f78c0a22381
 nextEntity: 1003
 root: 1001
 members:
@@ -107,7 +107,7 @@ members:
             vertexCount: 3456
             faceCulling: true
             textureShadow: false
-            overrideFields: 2147454975
+            overrideFields: 4294938623
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -186,14 +186,187 @@ members:
             billboard: false
             fakeBillboard: false
             cylindricalBillboard: false
-          points:
+          mesh:
             enabled: true
-            maxPoints: 100
-            transparent: false
+            buffer:
+              type: vertex_buffer
+              usage: immutable
+              stride: 48
+              size: 192
+              count: 4
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: position
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 0
+                  count: 4
+                  normalized: true
+                  perInstance: false
+                - type: texcoord1
+                  dataType: float
+                  bufferName: ""
+                  elements: 2
+                  offset: 12
+                  count: 4
+                  normalized: true
+                  perInstance: false
+                - type: normal
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 20
+                  count: 4
+                  normalized: true
+                  perInstance: false
+                - type: color
+                  dataType: float
+                  bufferName: ""
+                  elements: 4
+                  offset: 32
+                  count: 4
+                  normalized: true
+                  perInstance: false
+              data: AAAAvwAAAL8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAAAAACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/
+              vertexSize: 48
+            indices:
+              type: index_buffer
+              usage: immutable
+              stride: 2
+              size: 12
+              count: 6
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: index
+                  dataType: unsigned_short
+                  bufferName: ""
+                  elements: 1
+                  offset: 0
+                  count: 6
+                  normalized: true
+                  perInstance: false
+              data: AAABAAIAAAACAAMA
+            eBuffers: ~
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: Default-Particle
+                  shader: library:unlit
+                  shaderFeatures: [PARTICLE_TEXTURE]
+                  blendMode: ADDITIVE
+                  cullMode: OFF
+                  depthWrite: DISABLED
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 6
+                faceCulling: true
+                textureShadow: false
+                overrideFields: 1048576
+                hasTexCoord1: true
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: true
+                hasTextureRect: false
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            bonesMatrix:
+              []
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            aabb:
+              min: [-0.5, -0.5, 0]
+              max: [0.5, 0.5, 0]
+            verticesAABB:
+              min: [-0.5, -0.5, 0]
+              max: [0.5, 0.5, 0]
+            worldAABB:
+              min: [0, 0, 0]
+              max: [0, 0, 0]
+            receiveLights: true
+            receiveIBL: false
+            castShadows: false
+            receiveShadows: false
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: true
             autoTransparency: true
-            texture: ~
-            points: ~
+            cullingMode: back
+            windingOrder: ccw
+          action:
+            state: Stopped
+            speed: 1
+            target: 1002
+            ownedTarget: false
+          particlesystem:
+            enabled: true
+            version: 2
+            main:
+              startLifetime: {mode: two_constants, min: 1, max: 2}
+              startSpeed: {mode: two_constants, min: 0.2, max: 0.8}
+              startSize: {mode: two_constants, min: 0.08, max: 0.15}
+              maxParticles: 64
+            emission:
+              rateOverTime: 12
+            shape:
+              shapeType: Sphere
+              radius: 0.5
+            colorOverLifetime:
+              enabled: true
+              color:
+                mode: gradient
+                gradient:
+                  mode: blend
+                  colors:
+                    - [0, [0.13320851, 0.79311013, 1]]
+                    - [1, [0.45626342, 0.07074028, 1]]
+                  alphas:
+                    - [0, 1]
+                    - [1, 0]
+            sizeOverLifetime:
+              enabled: true
+              size:
+                mode: curve
+                multiplier: 1
+                curve:
+                  keys:
+                    - [0, 1, -1, -1]
+                    - [1, 0, -1, -1]
+            noise:
+              enabled: true
+              strength: 0.5
+              frequency: 1
+          instancedmesh:
+            enabled: true
+            maxInstances: 1000
+            cullInstances: false
+            distanceFade: false
+            cullDistance: 0
+            fadeStart: 0
+            fadeEnd: 0
+            instancedBillboard: false
+            instancedCylindricalBillboard: false
+            instances: ~
           prefab:
             name: Sparkle
             path: prefabs/Sparkle.prefab
-            guid: 5f12c9623caac413ef5174f0e9c3f6b0
+            guid: c608ca374bdefe3ff4da7fbb7951d4d0

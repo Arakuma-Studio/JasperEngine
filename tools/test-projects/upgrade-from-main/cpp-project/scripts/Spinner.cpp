@@ -1,3 +1,6 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
 #include "Spinner.h"
 #include "GameObject.h"
 #include "Log.h"
