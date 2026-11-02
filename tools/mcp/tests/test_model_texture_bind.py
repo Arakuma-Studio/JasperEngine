@@ -131,3 +131,21 @@ async def test_a_preview_of_the_model_leaves_the_scene_its_images(ed: Editor):
                  f"(white label plates: the scene's mesh bound a stand-in for its base colour)")
     errors = [line for line in await ed.console_since("last", limit=1000) if line.get("level") == "error"]
     ed.check(not errors, f"errors: {errors[:3]}")
+
+
+async def test_a_many_node_models_thumbnail_is_drawn_with_no_error(ed: Editor):
+    """Off the main thread a model's nodes bake into one mesh, and these models' nodes are over what
+    a build without the editor gives one mesh (ModelCapacityGpuTest). The editor's arrays grow: the
+    thumbnail shows the model, and the Console has no error of it."""
+    await ed.console_since("last", limit=1000)  # (moves the cursor past what came before)
+    for name in ("AnisotropyRotationTest", "AnisotropyStrengthTest"):
+        source = model_file(name)
+        shutil.copytree(source.parent, ed.project / "models" / name, dirs_exist_ok=True)
+        await ed.call("sync_files")
+        rel = f"models/{name}/{source.name}"
+        await make_thumbnail(ed, rel)
+        r = await ed.call_raw("view_asset", {"path": rel}, timeout=300)
+        ed.check(not r.is_error and r.images, f"the thumbnail of {name}: {r.text[:300]}")
+        ed.check(not pngdiff.flat(pngdiff.decode(r.images[0][0])), f"the thumbnail of {name} shows the model")
+    errors = [line for line in await ed.console_since("last", limit=1000) if line.get("level") == "error"]
+    ed.check(not errors, f"errors: {errors[:3]}")
