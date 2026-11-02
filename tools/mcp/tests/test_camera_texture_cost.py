@@ -114,11 +114,14 @@ async def test_camera_commands_do_not_walk_the_scene_view_lines(ed: Editor):
 
 
 async def test_prefab_apply_costs_about_an_instantiation_per_instance(ed: Editor):
-    """300 instances of the scene-inputs figure model (a model prefab, 3 submeshes). A castShadows
-    override of one instance applied to the prefab reimports every instance. Main-thread CPU of the
-    apply and of its undo against instantiating the same 300 instances (instantiate_prefab binds the
-    new branch only): both ratios under 3. Undo and redo give back the instances and the scene byte
-    for byte (and redo the prefab), and every instance follows the prefab"""
+    """Instances of the scene-inputs figure model (a model prefab, 3 submeshes). A castShadows
+    override of one instance applied to the prefab reimports every instance; before, each reimport
+    bound the camera textures of the whole scene, so the apply grew with the square of the
+    instances (300: 191 s on oe-port, x93 their instantiation). Main-thread CPU: the apply and its
+    undo at 300 instances cost under 10 times instantiating them (a reimport encodes, unimports and
+    imports each one), and 3 times the instances cost under 5 times the apply of a third of them
+    (linear: 3, quadratic: 9). Undo and redo give back the instances and the scene byte for byte
+    (and redo the prefab), and every instance follows the prefab"""
     if not sys.platform.startswith("linux") or ed.scratch is None:
         skip("needs /proc and a stdio editor")
     hz = os.sysconf("SC_CLK_TCK")
@@ -127,16 +130,21 @@ async def test_prefab_apply_costs_about_an_instantiation_per_instance(ed: Editor
     await ed.call("create_entity", scene=sid, type="model", name="Fig", model="assets/models/figure.gltf", select=False)
     await ed.call("create_prefab", scene=sid, entity="Fig", path=prefab_rel)
     await ed.call("screenshot", view="scene", scene=sid, max_width=320)
-    n = 300
+    made = 1
+    instantiated = 0.0   # main-thread CPU of every instantiation so far
 
-    _, before = main_thread_ticks(ed.scratch.root)
-    calls = [{"tool": "instantiate_prefab", "arguments": {"scene": sid, "prefab": prefab_rel, "position": [i % 20, 0, i // 20], "name": f"F{i}"}}
-             for i in range(1, n)]
-    for k in range(0, len(calls), 100):
-        r = await ed.call("batch", calls=calls[k:k + 100], timeout=1800)
-        ed.check_eq(r.get("failed"), 0, f"batch: {str(r)[:300]}")
-    _, after = main_thread_ticks(ed.scratch.root)
-    instantiate = (after - before) / hz
+    async def grow(to: int) -> float:
+        nonlocal made, instantiated
+        _, before = main_thread_ticks(ed.scratch.root)
+        calls = [{"tool": "instantiate_prefab", "arguments": {"scene": sid, "prefab": prefab_rel, "position": [i % 20, 0, i // 20], "name": f"F{i}"}}
+                 for i in range(made, to)]
+        for k in range(0, len(calls), 100):
+            r = await ed.call("batch", calls=calls[k:k + 100], timeout=1800)
+            ed.check_eq(r.get("failed"), 0, f"batch: {str(r)[:300]}")
+        _, after = main_thread_ticks(ed.scratch.root)
+        made = to
+        instantiated += (after - before) / hz
+        return instantiated
 
     def files() -> tuple:
         return (ed.project / rel).read_bytes(), (ed.project / prefab_rel).read_bytes()
@@ -156,24 +164,34 @@ async def test_prefab_apply_costs_about_an_instantiation_per_instance(ed: Editor
         return [(await ed.call("get_entity", scene=sid, entity=name, components=["mesh"], properties=["castShadows"]))["components"]["mesh"].get("castShadows")
                 for name in names]
 
-    names = ["F1", f"F{n - 1}", "Fig"]
-    await ed.call("set_properties", scene=sid, entity="F1", values={"Mesh": {"castShadows": False}})
-    start = await saved()
-    ed.check_eq(await mesh_shadows(names), [False, True, True], "only F1 overrides castShadows before the apply")
-    apply = await cpu("prefab_overrides", action="apply", scene=sid, entity="F1", component="mesh", properties=["castShadows"])
-    ed.check_eq(await mesh_shadows(names), [False] * 3, "the instances follow the prefab")
-    applied = await saved()
-    ed.check(b"castShadows: false" in applied[1], "the override went into the prefab")
-    undo = await cpu("undo", scene=sid)
-    print(f"[apply] {n} instances: apply {apply:.2f} s, undo {undo:.2f} s, instantiating them {instantiate:.2f} s main-thread CPU")
+    async def measure(n: int) -> tuple:
+        instantiate = await grow(n)
+        names = ["F1", f"F{n - 1}", "Fig"]
+        await ed.call("set_properties", scene=sid, entity="F1", values={"Mesh": {"castShadows": False}})
+        start = await saved()
+        ed.check_eq(await mesh_shadows(names), [False, True, True], f"{n}: only F1 overrides castShadows before the apply")
+        apply = await cpu("prefab_overrides", action="apply", scene=sid, entity="F1", component="mesh", properties=["castShadows"])
+        ed.check_eq(await mesh_shadows(names), [False] * 3, f"{n}: the instances follow the prefab")
+        applied = await saved()
+        ed.check(b"castShadows: false" in applied[1], f"{n}: the override went into the prefab")
+        undo = await cpu("undo", scene=sid)
+        print(f"[apply] {n} instances: apply {apply:.2f} s, undo {undo:.2f} s, instantiating them {instantiate:.2f} s main-thread CPU")
+        ed.check_eq(await mesh_shadows(names), [False, True, True], f"{n}: undo: the override and the prefab back")
+        undone = await saved()
+        ed.check(undone[0] == start[0], f"{n}: undo gives back the scene byte for byte: {first_difference(start[0], undone[0])}")
+        await cpu("redo", scene=sid)
+        ed.check_eq(await mesh_shadows(names), [False] * 3, f"{n}: redo")
+        redone = await saved()
+        ed.check(redone == applied, f"{n}: redo gives back the applied scene and prefab byte for byte: "
+                                    f"{first_difference(applied[0], redone[0])}\n{first_difference(applied[1], redone[1])}")
+        await cpu("undo", scene=sid)
+        await ed.call("prefab_overrides", action="revert", scene=sid, entity="F1", component="mesh", properties=["castShadows"])
+        return apply, undo, instantiate
+
+    small, _, _ = await measure(100)
+    apply, undo, instantiate = await measure(300)
     ratios = [round(apply / max(instantiate, 1 / hz), 2), round(undo / max(instantiate, 1 / hz), 2)]
-    print(f"[apply] against instantiating the instances: apply x{ratios[0]}, undo x{ratios[1]}")
-    ed.check(max(ratios) < 3.0, f"the apply and its undo cost about as much as instantiating the instances: {ratios}")
-    ed.check_eq(await mesh_shadows(names), [False, True, True], "undo: the override and the prefab back")
-    undone = await saved()
-    ed.check(undone[0] == start[0], f"undo gives back the scene byte for byte: {first_difference(start[0], undone[0])}")
-    await cpu("redo", scene=sid)
-    ed.check_eq(await mesh_shadows(names), [False] * 3, "redo")
-    redone = await saved()
-    ed.check(redone == applied, f"redo gives back the applied scene and prefab byte for byte: "
-                                f"{first_difference(applied[0], redone[0])}\n{first_difference(applied[1], redone[1])}")
+    growth = round(apply / max(small, 1 / hz), 2)
+    print(f"[apply] 300 instances against instantiating them: apply x{ratios[0]}, undo x{ratios[1]}; against the apply of 100: x{growth}")
+    ed.check(max(ratios) < 10.0, f"the apply and its undo cost about as much as instantiating the instances: {ratios}")
+    ed.check(growth < 5.0, f"the apply grows with the instances, not their square: x{growth} for three times as many")
