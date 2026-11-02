@@ -731,6 +731,24 @@ public:
 
 ## Progress (implementation notes, keep updated)
 
+- **The first frame of a many-variant scene, measured (2026-11-02; `tools/fixtures/pbr-extended-export`,
+  24 mesh variants, the smoke's editor stage).** The stall is the first draws' compile, in `SokolObject::draw` on
+  the render thread, all in one frame's opaque draw loop (reports at frame 2, the same call site).
+  | | First open (main thread stall) | With the driver's disk cache warm |
+  |---|---|---|
+  | llvmpipe (Mesa 25.2.8), `parallel`, host load 2-9 | 7.0-8.0 s (8 runs) | no hang (9 opens) |
+  | the same, host load 15-30 | 7.8-9.5 s (4 runs) | |
+  | llvmpipe, Mesa cache off | 7.0 s (link, `sgj_gl_issue`, frame 0), then 22.8 s (JIT) | |
+  | RTX 3080 Ti GL, `worker`, driver cache on, empty | no hang (worst frame 1.1 s) | no hang (worst frame 170 ms) |
+  | RTX 3080 Ti GL, `worker`, driver cache off | three stalls of 4.8-7.0 s | |
+
+  So it is the work, not the load (the JIT runs on the render thread, whatever the other cores do). This is
+  deviation 6 as designed, not a missed path: a software GL has no worker context, because llvmpipe crashed
+  reusing what a worker's draw had made. On NVIDIA the worker's warm draw reaches the render thread through the
+  driver's disk cache, on by default; with it off the recompile at the first draw (Progress, perf2) lands on
+  the render thread, in one frame for every program of the scene. The smoke takes the llvmpipe case
+  (`tools/ci/smoke_jit_hangs.py`, `docs/testing.md`). Not measured: Mesa's hardware drivers and Vulkan's editor here.
+
 - **GPU campaign perf2 (2026-11-01; RTX 3080 Ti, driver 595.99.02; branch
   `feat/perf2-gpu-budgets`).** R22 re-measured over every frame (§7 AC13's perf2 method), medians of 5:
 
