@@ -190,6 +190,9 @@ namespace jasperengine {
         bool recreateEntity(Entity entity); // for internal editor use only
 
         bool isEntityCreated(Entity entity) const;
+        // made by createSystemEntity (the engine's and the editor's own: the Default Camera, the
+        // Scene view's helpers), not a GameObject a file recreated with an id in the system range
+        bool isPooledSystemEntity(Entity entity) const;
 
         // O(1) whatever the number of entities (a component removed from the middle of its
         // array leaves a hole, closed once at the next index observation or compactComponents(),

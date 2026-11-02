@@ -35,6 +35,9 @@ bool editor::AddComponentCmd::execute() {
         }
 
         required.clear();
+        if (componentType == ComponentType::Transform){
+            trackedBefore = sceneProject->entities;
+        }
         for (Entity& entity : entities){
             prefabUndo.capture(project, sceneId, entity);
             // a spline consumer reads its GameObject's Spline; an extrude draws with its Mesh
@@ -113,6 +116,9 @@ void editor::AddComponentCmd::undo() {
         prefabUndo.restore(project, sceneId);
 
         ProjectUtils::reconcileTrackedEntities(scene, sceneProject->entities, project, sceneId);
+        if (componentType == ComponentType::Transform){
+            ProjectUtils::keepUntransformedPlaces(scene, trackedBefore, sceneProject->entities);
+        }
 
         if (componentType == ComponentType::CameraComponent || componentType == ComponentType::FluidSimulationComponent){
             CameraTextureLink::resolve(scene);
@@ -131,6 +137,8 @@ bool editor::AddComponentCmd::mergeWith(Command* otherCommand){
                 entities.push_back(otherEntity);
             }
             prefabUndo.mergeOlder(otherCmd->prefabUndo);
+            // the older step's list is the one from before both
+            trackedBefore = otherCmd->trackedBefore;
             // the older command's reloads ran first
             PlayerModelLayout::Reloads reloads = std::move(otherCmd->layoutReloads);
             for (auto& reload : layoutReloads) reloads.push_back(std::move(reload));

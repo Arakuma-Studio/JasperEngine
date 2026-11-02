@@ -122,14 +122,16 @@ uniform u_fs_pbrParams {
     #ifdef PBR_EXT
         // std140 vec4s (MaterialPbr::getUniformBlock), after the material's (and Stochastic
         // Tiling's vec4: the upload reads the lobes' offset, RenderSystem pbrExtOffset)
-        vec4 clearcoat;     // factor, roughness, normal scale, -
+        // (the w of clearcoat, anisotropy and transmission: the Specular & IOR lobe's dielectric
+        // f0 without a map; of attenuation, the IOR's term of it: MaterialPbr::getUniformBlock)
+        vec4 clearcoat;     // factor, roughness, normal scale, f0.r
         vec4 sheen;         // rgb colour (linear), roughness
-        vec4 anisotropy;    // strength, cos(rotation), sin(rotation), -
+        vec4 anisotropy;    // strength, cos(rotation), sin(rotation), f0.g
         vec4 iridescence;   // factor, ior, thickness min (nm), thickness max (nm)
-        vec4 transmission;  // factor, volume thickness, attenuation distance (0: none), -
-        vec4 attenuation;   // rgb attenuation colour (linear), -
+        vec4 transmission;  // factor, volume thickness, attenuation distance (0: none), f0.b
+        vec4 attenuation;   // rgb attenuation colour (linear), ((ior - 1) / (ior + 1))^2 (1 under 1)
         vec4 specular;      // rgb colour (linear), factor
-        vec4 iorHex;        // ior, hex rotation, hex contrast, -
+        vec4 iorHex;        // ior, hex rotation, hex contrast, the sheen visibility's L(0.5)
         #ifdef HAS_UV_SET2
             // the UV set of each texture (includes/pbr.glsl u_fs_texCoordSets), as floats
             vec4 set0;

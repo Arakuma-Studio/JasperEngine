@@ -590,6 +590,9 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         MeshShaderEnvironment high = worst;
         high.litQualityHigh = true;
         add("terrain hex tiling, high quality", RenderSystem::getSubmeshShaderVariant(high, terrain));
+        // with Stochastic Tiling layers beside the hex ones (TERRAIN_HEX_STOCHASTIC)
+        terrain.terrainHexStochastic = true;
+        add("terrain hex tiling and stochastic tiling, pixel", RenderSystem::getSubmeshShaderVariant(worst, terrain));
     }
 
     // the High Lit Quality on the base variants (with lobes too)

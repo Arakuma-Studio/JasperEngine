@@ -134,7 +134,7 @@ async def shadows_run(args: argparse.Namespace, run: int) -> tuple[dict, dict]:
     return out, dev
 
 
-def shadows_report(results: dict) -> list[str]:
+def shadows_report(results: dict, dev: dict | None = None) -> list[str]:
     rows = ["| Tier | Resolution | Receiver, sun soft (ms) | Budget | Static, cached (ms) | Budget | Walking + 20 dynamic (ms) | Budget |",
             "|---|---|---|---|---|---|---|---|"]
     mark = lambda v, b: "-" if v is None else f"{v:.3f}" + ("" if v <= b else " **over**")  # noqa: E731
@@ -176,7 +176,17 @@ async def pbr_run(args: argparse.Namespace, run: int) -> tuple[dict, dict]:
     return out, dev
 
 
-def pbr_report(results: dict) -> list[str]:
+# R13's 4-layer hex terrain over the Terrain Baseline at 4K, by backend (S11 R13, approved by the
+# user 2026-11-02): the ratio less one, as LOBE_BUDGETS
+HEX_TERRAIN_BUDGETS = {"vulkan": 0.40, "gl": 0.75}
+
+
+def hex_terrain_budget(dev: dict | None) -> float:
+    backend = (dev or {}).get("backend", "").lower()
+    return HEX_TERRAIN_BUDGETS["vulkan" if "vulkan" in backend else "gl"]
+
+
+def pbr_report(results: dict, dev: dict | None = None) -> list[str]:
     rows = ["| Scene | GPU frame, Standard (ms) | vs Lit Baseline | Budget | GPU frame, High (ms) | High / Standard |", "|---|---|---|---|---|---|"]
     base = results.get("standard/Lit Baseline", {}).get("_frame", 0.0)
     terrain = results.get("standard/Terrain Baseline", {}).get("_frame", 0.0)
@@ -186,7 +196,7 @@ def pbr_report(results: dict) -> list[str]:
         high = results.get(f"high/{scene}", {}).get("_frame", 0.0)
         ref = terrain if scene == "Hex Terrain" else base
         ratio = std / ref - 1.0 if ref > 0 else 0.0
-        budget = LOBE_BUDGETS.get(scene, 0.35 if scene == "Hex Terrain" else None)
+        budget = LOBE_BUDGETS.get(scene, hex_terrain_budget(dev) if scene == "Hex Terrain" else None)
         verdict = "" if budget is None or ratio <= budget else " **over**"
         rows.append(f"| {scene} | {std:.3f} | {ratio * 100:+.1f}%{verdict} | {'' if budget is None else f'+{budget * 100:.0f}%'} | "
                     f"{high:.3f} | {(high / std if std else 0):.3f} |")
@@ -211,7 +221,7 @@ async def post_run(args: argparse.Namespace, run: int) -> tuple[dict, dict]:
     return out, dev
 
 
-def post_report(results: dict) -> list[str]:
+def post_report(results: dict, dev: dict | None = None) -> list[str]:
     rows = ["| Preset | GPU frame (ms) | Over `mobile` (ms) | R14 phone budget over `mobile` |", "|---|---|---|---|"]
     mobile = results["mobile"]["_frame"]
     for preset in POST_PRESETS:
@@ -262,7 +272,7 @@ PARTICLE_PATCH = json.dumps({
     }})
 
 
-def particles_report(results: dict) -> list[str]:
+def particles_report(results: dict, dev: dict | None = None) -> list[str]:
     cost = sum(ms for label, ms in results["ref_100k"].items() if not label.startswith("_")) - \
         sum(ms for label, ms in results["empty"].items() if not label.startswith("_"))
     live = results["ref_100k"].get("_live", 0)
@@ -282,7 +292,7 @@ async def main_async(args: argparse.Namespace) -> int:
         runs.append(got)
     results = merge(runs)
     print(f"\ndevice: {dev}, {args.runs} runs, {args.frames} frames each, medians")
-    rows = report(results)
+    rows = report(results, dev)
     print("\n".join(rows))
     if args.json:
         Path(args.json).write_text(json.dumps({"case": args.case, "device": dev, "runs": args.runs, "frames": args.frames,
