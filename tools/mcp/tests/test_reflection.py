@@ -141,17 +141,19 @@ def masked_view_code(text: str) -> str:
     return "".join(out)
 
 
-MAX_SUBMESHES_LINE = re.compile(r"(?m)^(  maxSubmeshes: )(\d+)$")
+# what one Scene view icon (a Sprite: one submesh, a Mesh's MAX_BONES bone matrices) gives
+ICON_MAX_VALUES = {"maxSubmeshes": "1", "maxBones": "128"}
 
 
 def max_values_as_now(golden: str, actual: str) -> str:
-    """A golden scene's maxSubmeshes as this editor counts it: the editor that captured the goldens
-    counted the Scene view's icons (a light's, a camera's: Sprites of one submesh, made when the
-    view draws), this one only the scene's own GameObjects, so a golden 1 is an actual 0"""
-    now = MAX_SUBMESHES_LINE.search(actual)
-    was = MAX_SUBMESHES_LINE.search(golden)
-    if now and was and now.group(2) == "0" and was.group(2) == "1":
-        return MAX_SUBMESHES_LINE.sub(lambda m: m.group(1) + "0", golden, count=1)
+    """A golden scene's maxValues as this editor counts them: the editor that captured the goldens
+    counted the Scene view's icons (a light's, a camera's: Sprites made when the view draws), this
+    one only the scene's own GameObjects, so a golden icon's value is an actual 0"""
+    for key, icon in ICON_MAX_VALUES.items():
+        line = re.compile(r"(?m)^(  " + key + r": )(\d+)$")
+        now, was = line.search(actual), line.search(golden)
+        if now and was and now.group(2) == "0" and was.group(2) == icon:
+            golden = line.sub(lambda m: m.group(1) + "0", golden, count=1)
     return golden
 
 
