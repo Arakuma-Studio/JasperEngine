@@ -513,7 +513,9 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
         if t in sources:
             plan.add_mcp(t, f"compiles a game ({compile_path[0]} changed)")
     # the engine's and the editor's C++: the coverage map
-    code = [f for f in files if f.startswith(("engine/", "editor/", "libs/")) and f.endswith(CXX)]
+    # (the unit tests' own sources are no editor code: nothing an MCP test could run)
+    code = [f for f in files if f.startswith(("engine/", "editor/", "libs/")) and f.endswith(CXX)
+            and not f.startswith(("engine/tests/", "editor/tests/"))]
     if not code:
         return
     if cmap is None:

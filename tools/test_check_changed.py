@@ -259,6 +259,8 @@ class Mcp(unittest.TestCase):
         p = self.plan(["editor/Brand.cpp"])                                                   # unmapped / new
         self.assertTrue(p.mcp_ci and not p.mcp_files)
         self.assertTrue(self.plan(["tools/mcp/harness.py"]).mcp_all)                         # the harness
+        p = self.plan(["editor/tests/FooTest.cpp", "engine/tests/core/BarTest.cpp"])          # unit tests: no MCP
+        self.assertTrue(not p.mcp_ci and not p.mcp_files)
         self.assertTrue(self.plan(["tools/mcp/build_cache.py"]).mcp_all)
         self.assertIn("days old", cc.map_staleness({"created": time.time() - 30 * 86400}, time.time()))
         self.assertIn("commits behind", cc.map_staleness({"created": time.time(), "commit": "x"}, time.time(),
