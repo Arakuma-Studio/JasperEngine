@@ -1162,7 +1162,7 @@ TEST(GeneratorAudioTest, InitConfiguresTheVoicesAndLoadsTheMixer) {
 }
 
 // ================================================================== BF14: audio and engine bug fixes
-// (the comparison with the snd/sound-layer branch, je-evidence/sound-layer-analysis-engine.md)
+// (found comparing the unmerged snd/sound-layer branch with this engine)
 
 namespace jasperengine {
     // the voice parameters a needUpdate applies, without the frame's 3D pass after them
