@@ -457,7 +457,9 @@ def compile_env(name: str, lto: bool = False) -> dict[str, str]:
     if not lto:
         env["JASPERENGINE_RELEASE_LTO"] = "OFF"
     if shutil.which("ccache") and os.environ.get("CCACHE_DIR"):
-        env.update({"CMAKE_C_COMPILER_LAUNCHER": "ccache", "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"})
+        # (its hits and misses: <home>/ccache-stats.log, ccache's stats_log)
+        env.update({"CMAKE_C_COMPILER_LAUNCHER": "ccache", "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+                    "CCACHE_STATSLOG": str(home / "ccache-stats.log")})
     return env
 
 
