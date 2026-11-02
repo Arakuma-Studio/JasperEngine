@@ -2159,10 +2159,24 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
         return;
     }
 
-    // generation is expensive (cosine + GGX convolution), reuse cached maps
+    // generation is expensive (cosine + GGX convolution), reuse cached maps; those of the image's
+    // pixels as they are: a hot reload's new pixels light the scene otherwise
     const std::string texId = sky.texture.getId();
-    const std::string irradianceId = texId + "|ibl|irradiance";
-    const std::string prefilteredId = texId + "|ibl|prefiltered";
+    const uint32_t imageGeneration = TextureDataPool::generation(texId);
+    const auto environmentId = [&texId](uint32_t generation, const char* map){
+        return texId + "|ibl|" + map + (generation > 0 ? "|" + std::to_string(generation) : std::string());
+    };
+    const std::string irradianceId = environmentId(imageGeneration, "irradiance");
+    const std::string prefilteredId = environmentId(imageGeneration, "prefiltered");
+    // the maps are this image's pixels' now: those of the pixels before go with their last holder
+    const auto noteMapsMade = [&](){
+        if (sky.environmentId == texId && sky.environmentGeneration != imageGeneration){
+            TexturePool::remove(environmentId(sky.environmentGeneration, "irradiance"));
+            TexturePool::remove(environmentId(sky.environmentGeneration, "prefiltered"));
+        }
+        sky.environmentId = texId;
+        sky.environmentGeneration = imageGeneration;
+    };
 
     if (!texId.empty()){
         std::shared_ptr<TextureRender> irradiance = TexturePool::get(irradianceId);
@@ -2176,6 +2190,7 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
                 sky.envMapsLoaded = true;
                 needReloadMeshes();
             }
+            noteMapsMade();
             sky.needUpdateEnvironment = false;
             return;
         }
@@ -2188,6 +2203,13 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
     }
 
     if (texResult.state == ResourceLoadState::Finished && texResult.data){
+        // a cook of six files swapped in: nothing the CPU can read (a cube's cook has its copy), and
+        // the same image as the source the maps were made of
+        if (sky.envMapsLoaded && sky.environmentId == texId && !IBLEnvironment::canGenerate(*(texResult.data))){
+            sky.needUpdateEnvironment = false;
+            return;
+        }
+
         releaseSkyEnvironment(sky);
 
         std::shared_ptr<TextureRender> irradiance = std::make_shared<TextureRender>();
@@ -2201,6 +2223,7 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
             sky.envMapsLoaded = true;
             TexturePool::add(irradianceId, irradiance);
             TexturePool::add(prefilteredId, prefiltered);
+            noteMapsMade();
             needReloadMeshes();
         }
     }

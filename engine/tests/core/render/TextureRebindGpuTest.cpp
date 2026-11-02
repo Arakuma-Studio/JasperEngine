@@ -24,6 +24,7 @@
 #include "object/ui/Image.h"
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
+#include "render/SystemRender.h"
 #include "render/TextureRender.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/CookedTextures.h"
@@ -256,6 +257,58 @@ TEST_F(TextureRebindGpu, ASkysLightingTakesANewImage){
         // (ShaderPool::getMeshProperties: 'Ibl')
         EXPECT_NE(scene.getComponent<MeshComponent>(surface).submeshes[0].shaderProperties & (1u << 19), 0u) << "the sky does not light the surface: the case shows nothing";
     });
+}
+
+// A cook of six files swapped in (TextureCookQueue::collectSwaps): the same image, the GPU's format,
+// nothing the CPU reads. The sky draws it; the maps made of its source keep lighting the surface.
+TEST_F(TextureRebindGpu, ASkysLightingStaysWhenACookComesInThatTheCpuCannotRead){
+    JASPER_REQUIRE_GPU();
+    const std::string path = dir.file("sky-cook.png").generic_string();
+    writePng(path, GREY_BRIGHT);
+    Stage stage;
+    scene = &stage.scene;
+    Skybox sky(&stage.scene);
+    sky.setTextures(path, path, path, path, path, path);
+    Primitive plane(&stage.scene);
+    plane.createPlane(3.0f, 3.0f);
+    Material material;
+    material.baseColorFactor = Vector4(0.9f, 0.9f, 0.9f, 1.0f);
+    material.metallicFactor = 0.0f;
+    material.roughnessFactor = 0.8f;
+    plane.setMaterial(material);
+    stage.scene.getComponent<MeshComponent>(plane.getEntity()).receiveIBL = true;
+    ASSERT_TRUE(settled());
+    const std::vector<uint8_t> before = readTarget();
+
+    // the same pixels as a cook's: BC1 blocks of the one colour, nothing plain to read
+    if (!SystemRender::getTextureFormatSupport()(GpuTextureFormat::BC1))
+        GTEST_SKIP() << "the device samples no BC1";
+    std::vector<std::string> ids = TextureDataPool::findIdsUsingFile(FileData::getSystemPath(path));
+    ASSERT_FALSE(ids.empty());
+    const uint16_t grey565 = (uint16_t)(((GREY_BRIGHT.r >> 3) << 11) | ((GREY_BRIGHT.g >> 2) << 5) | (GREY_BRIGHT.b >> 3));
+    std::vector<uint8_t> blocks(4 * 4 * 8, 0);
+    for (size_t b = 0; b < blocks.size(); b += 8){
+        blocks[b] = blocks[b + 2] = (uint8_t)(grey565 & 0xFF);
+        blocks[b + 1] = blocks[b + 3] = (uint8_t)(grey565 >> 8);
+    }
+    auto faces = std::make_shared<std::array<TextureData, 6>>();
+    for (int f = 0; f < 6; f++)
+        faces->at(f).setLevels(GpuTextureFormat::BC1, true, 1, 16, 16, {blocks});
+    TextureDataPool::replace(ids[0], faces);
+    TexturePool::invalidate(ids[0]);
+    ASSERT_TRUE(settled());
+    // (the sky's own pixels are BC1's rounding of the colour: the surface's are what is compared, its middle)
+    const std::vector<uint8_t> after = readTarget();
+    const int width = (int)GpuEnvironment::target().getWidth();
+    const int height = (int)GpuEnvironment::target().getHeight();
+    double surface = 0.0;
+    for (int y = height / 2 - 8; y < height / 2 + 8; y++){
+        for (int x = width / 2 - 8; x < width / 2 + 8; x++)
+            surface += std::abs((int)after[(size_t)(y * width + x) * 4] - (int)before[(size_t)(y * width + x) * 4]);
+    }
+    EXPECT_LT(surface / (16.0 * 16.0), 1.0) << "the surface lost its lighting with the cook";
+    EXPECT_NE(stage.scene.getComponent<MeshComponent>(plane.getEntity()).submeshes[0].shaderProperties & (1u << 19), 0u) << "the sky does not light the surface anymore";
+    EXPECT_NO_ENGINE_ERRORS();
 }
 
 namespace {
