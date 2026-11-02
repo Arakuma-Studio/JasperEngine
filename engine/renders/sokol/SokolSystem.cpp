@@ -472,6 +472,10 @@ void SokolSystem::executeQueue(){
 }
 
 void SokolSystem::commit(){
+    // no device (a headless frame: tests running Engine::systemUpdate without graphics): nothing
+    // to commit (sokol asserts on it in debug builds)
+    if (!sg_isvalid())
+        return;
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     // what the frame took of Vulkan's descriptor buffer (sokol's own count: every draw's sets),
     // read before sg_commit submits it

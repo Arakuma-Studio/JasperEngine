@@ -209,7 +209,10 @@ namespace {
             std::fprintf(stderr, "%s:%d: %s\n", r.file_name() ? r.file_name() : "?", r.line_number(), r.message());
         }
         std::fflush(stderr);
-        std::exit(failures ? 1 : 0);
+        std::fflush(stdout);
+        // the forked editor ends without its static destructors: its jobs (thumbnails, imports)
+        // may still read the App while it would be destroyed
+        std::_Exit(failures ? 1 : 0);
     }
 
 #define IN_EDITOR(name, ...)                                                    \

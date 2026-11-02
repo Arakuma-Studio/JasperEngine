@@ -206,8 +206,10 @@ float HostServices::refreshRate(){
     if (!display) return 60.0f;
     cached = 60.0f;
 
-    // XRandR is loaded when there, so a game does not need it to start
-    void* library = dlopen("libXrandr.so.2", RTLD_LAZY | RTLD_LOCAL);
+    // XRandR is loaded when there, so a game does not need it to start. It stays loaded: its first
+    // call registers an extension on the display whose close hook XCloseDisplay calls at exit
+    // (unloaded, that hook pointed at unmapped code: every player crashed on quit)
+    static void* library = dlopen("libXrandr.so.2", RTLD_LAZY | RTLD_LOCAL);
     if (!library) return cached;
     using GetScreenInfo = void* (*)(Display*, Window);
     using CurrentRate = short (*)(void*);
@@ -222,7 +224,6 @@ float HostServices::refreshRate(){
             freeInfo(info);
         }
     }
-    dlclose(library);
     return cached;
 }
 
