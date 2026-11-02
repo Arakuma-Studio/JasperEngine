@@ -421,6 +421,24 @@ def build_jobs() -> int:
     return max(1, cpus)
 
 
+def compile_env(name: str) -> dict[str, str]:
+    """The environment of an editor whose tests compile games (build_project method "compile"):
+    the user cache (XDG_CACHE_HOME, where the kit's compile tree goes) at a fixed path,
+    build/mcp-compile-home/<name> of the checkout (/src/... in the Linux image whatever the
+    worktree), emptied now, and ccache as the compiler launcher (CMAKE_<LANG>_COMPILER_LAUNCHER,
+    which CMake takes from the environment) when the run has one (CCACHE_DIR, as tools/build.sh's
+    containers do). Every run still compiles from an empty tree, its configure, every compile
+    command and the link: an object comes from ccache only when its preprocessed source, compiler,
+    flags and directory are those it was compiled with. Without ccache a run compiles as before."""
+    home = REPO / "build" / "mcp-compile-home" / name
+    shutil.rmtree(home, ignore_errors=True)
+    home.mkdir(parents=True, exist_ok=True)
+    env = {"XDG_CACHE_HOME": str(home)}
+    if shutil.which("ccache") and os.environ.get("CCACHE_DIR"):
+        env.update({"CMAKE_C_COMPILER_LAUNCHER": "ccache", "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"})
+    return env
+
+
 def perf_slack() -> float:
     """The factor wall-clock budgets are enforced with: JASPER_MCP_PERF_SLACK, 0 (not enforced)
     unless set. A shared build server's load alone misses them, so a functional run asserts the
@@ -674,7 +692,7 @@ class Editor:
         try:
             r = await self.session.call_tool(
                 tool, args or {}, read_timeout_seconds=timeout, progress_callback=progress)
-            error = bool(r.isError)
+            error = bool(getattr(r, "is_error", False))
         except MCPError as e:
             raise ProtocolError(f"tools/call {tool}", e) from e
         finally:

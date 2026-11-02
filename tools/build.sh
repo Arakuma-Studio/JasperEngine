@@ -145,7 +145,8 @@ JOBS_FLAG=""
 # mesh-raycast test project for Emscripten, in the web image), built once and kept up to date
 # (ninja, ccache). Before the Linux image is picked below: while it builds, another worktree's
 # image build may retag the shared name and its old image be pruned.
-if [[ "$TARGET" == mcp-tests && "${MCP_SUITE:-ci}" == all && $SHELL_MODE -eq 0 && $EXEC_MODE -eq 0 ]]; then
+# (MCP_SKIP_WEB_BUILD=1: a shard of the suite without test_mesh_raycast.py, tools/mcp/shard.py)
+if [[ "$TARGET" == mcp-tests && "${MCP_SUITE:-ci}" == all && "${MCP_SKIP_WEB_BUILD:-0}" != 1 && $SHELL_MODE -eq 0 && $EXEC_MODE -eq 0 ]]; then
     env -u WEB_THREADS -u WASM_SIMD -u CXX_STANDARD -u SANITIZE -u JASPER_DOCKER_IMAGE WEB_PROJECT=mesh-raycast "$ROOT/tools/build.sh" web \
         || { echo "mcp-tests: the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
 fi
@@ -290,8 +291,16 @@ for name in $(compgen -e | grep '^JASPER_EFFECT_' || true); do ENV_FLAGS+=(-e "$
 # tools/mcp/build_cache.py) and ccache's own (CCACHE_STATSLOG, CCACHE_LOGFILE, ...; not CCACHE_DIR,
 # which names the shared cache's mount below)
 for name in $(compgen -e | grep -E '^(JASPER_MCP_|CCACHE_)' || true); do
-    [[ "$name" == CCACHE_DIR ]] || ENV_FLAGS+=(-e "$name=${!name}")
+    [[ "$name" == CCACHE_DIR || "$name" == JASPER_MCP_SHARED_BUILD_CACHE ]] || ENV_FLAGS+=(-e "$name=${!name}")
 done
+# JASPER_MCP_SHARED_BUILD_CACHE=<host dir> (mcp-tests): the machine's shared cache of the MCP suite's
+# prebuilt player runtimes (tools/mcp/build_cache.py), mounted at /mcp-build-cache: every worktree
+# and run of the machine reuses a runtime of its content key instead of building its own (the
+# build servers' rb.sh sets ~/je/mcp-build-cache)
+if [[ "$TARGET" == mcp-tests && -n "${JASPER_MCP_SHARED_BUILD_CACHE:-}" ]]; then
+    mkdir -p "$JASPER_MCP_SHARED_BUILD_CACHE"
+    MOUNT_FLAGS+=(-v "$(cd "$JASPER_MCP_SHARED_BUILD_CACHE" && pwd):/mcp-build-cache" -e JASPER_MCP_SHARED_BUILD_CACHE=/mcp-build-cache)
+fi
 # A non-root uid has no entry in the image's /etc/passwd; dbus (dbus-run-session, used by the MCP
 # tests and tool docs) and getpwuid() callers then fail ("User ??? unknown"). Lend the host's tables
 # (whose home directory the container lacks: the Android Gradle plugin, which would take Java's
@@ -618,9 +627,14 @@ mcp-tests)
     [[ "$SUITE" == all ]] && SUITE_FLAGS=""
     # (each argument quoted once more: the command runs through bash -c)
     ARGS="$(printf '%q ' ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}) ${MCP_TEST_ARGS:-}"
+    # DOCKER_GPU=1: the real-GPU lane (docs/testing.md): the chunks a plan puts on the lane "gpu" run
+    # on the host's NVIDIA GPU through tools/gpu/env.sh's headless X server(s) (JE_GPU_DISPLAY,
+    # JASPER_MCP_GPU_DISPLAYS); every other test of the run on llvmpipe, as everywhere
+    GPU_LANE=""
+    [[ "${DOCKER_GPU:-0}" == 1 ]] && GPU_LANE=". tools/gpu/env.sh && export JASPER_MCP_GPU_LANE=1 &&"
     run bash -euo pipefail -c "
         rm -f $RESULTS/mcp.json
-        dbus-run-session -- tools/mcp/run-tests.sh $SUITE_FLAGS --json $RESULTS/mcp.json $ARGS
+        $GPU_LANE dbus-run-session -- tools/mcp/run-tests.sh $SUITE_FLAGS --json $RESULTS/mcp.json $ARGS
     "
     ;;
 web-gate)

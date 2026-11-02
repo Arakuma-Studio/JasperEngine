@@ -21,11 +21,13 @@ import time
 from pathlib import Path
 
 import build_cache
+import harness
 import pbxproj
 from harness import Editor, build_jobs, skip
 
 CI = True
-EDITOR = {"create": True, "name": "Build Test"}
+# its compiles: a fixed compile-tree path and ccache (harness.compile_env)
+EDITOR = {"create": True, "name": "Build Test", "env": harness.compile_env("test_build")}
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 # the container's CPU allowance (harness.build_jobs: JOBS, else docker's --cpus quota): Docker's
 # cap is what shares the host, so the compile needs no cap of its own

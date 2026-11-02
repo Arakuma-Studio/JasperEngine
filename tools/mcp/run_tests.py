@@ -44,7 +44,6 @@ from __future__ import annotations
 import argparse
 import ast
 import asyncio
-import concurrent.futures
 import contextlib
 import importlib.util
 import inspect
@@ -63,6 +62,8 @@ HERE = Path(__file__).resolve().parent
 TESTS = HERE / "tests"
 # each file's wall time in the last unfiltered run: -j N starts the longest files first
 FILE_SECONDS = Path(os.environ.get("JASPER_MCP_FILE_SECONDS") or HERE.parent.parent / "build" / "test-results" / "mcp-file-seconds.json")
+# each test's own time in the runs so far (--split-seconds splits independent files by it)
+TEST_SECONDS = Path(os.environ.get("JASPER_MCP_TEST_SECONDS") or HERE.parent.parent / "build" / "test-results" / "mcp-test-seconds.json")
 sys.path.insert(0, str(HERE))
 
 
@@ -70,7 +71,7 @@ sys.path.insert(0, str(HERE))
 # Worker: runs one file
 
 
-def _collect(path: Path, filt: list[str]):
+def _collect(path: Path, filt: list[str], only: list[str] | None = None):
     spec = importlib.util.spec_from_file_location(path.stem, path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[path.stem] = mod
@@ -80,6 +81,8 @@ def _collect(path: Path, filt: list[str]):
         if name.startswith("test_") and inspect.iscoroutinefunction(fn) and fn.__module__ == mod.__name__:
             full = f"{path.name}::{name}"
             if filt and not any(f.lower() in full.lower() for f in filt):
+                continue
+            if only is not None and name not in only:
                 continue
             tests.append((inspect.getsourcelines(fn)[1], name, fn))
     tests.sort(key=lambda t: t[0])
@@ -104,10 +107,11 @@ async def _run_guarded(coro, ed, timeout: float) -> None:
             raise asyncio.TimeoutError()
 
 
-async def _run_file(path: Path, filt: list[str], results_path: Path, url: str | None = None) -> None:
+async def _run_file(path: Path, filt: list[str], results_path: Path, url: str | None = None,
+                    only: list[str] | None = None) -> None:
     import harness
 
-    mod, tests = _collect(path, filt)
+    mod, tests = _collect(path, filt, only)
     opts = dict(getattr(mod, "EDITOR", {}) or {})
     if url is not None:
         opts["url"] = url
@@ -178,6 +182,11 @@ async def _run_file(path: Path, filt: list[str], results_path: Path, url: str | 
                 ed = None
     if ed is not None:
         await ed.close()
+    # a chunk's test that the file no longer has: reported, never silently dropped
+    for name in [n for n in (only or []) if n not in {t for t, _ in tests}]:
+        detail = f"the plan names {path.name}::{name}, which the file does not have"
+        print(f"FAIL {path.name}::{name} (0.0s)\n     {detail}", flush=True)
+        results.append({"name": f"{path.name}::{name}", "status": "fail", "detail": detail, "seconds": 0.0})
     results_path.write_text(json.dumps(results))
 
 
@@ -186,7 +195,8 @@ def worker_main(args) -> int:
                  ("JASPER_KEEP_SCRATCH", "1" if args.keep else None), ("JASPER_MCP_URL", args.url)):
         if v:
             os.environ[k] = v
-    asyncio.run(_run_file(Path(args.worker), args.k or [], Path(args.results), args.url))
+    only = json.loads(Path(args.only).read_text()) if args.only else None
+    asyncio.run(_run_file(Path(args.worker), args.k or [], Path(args.results), args.url, only))
     return 0
 
 
@@ -304,11 +314,29 @@ def ci_files(tests: Path = TESTS) -> tuple[list[Path], list[str], list[tuple[str
 # Driver
 
 
+class Chunk:
+    """What one worker process runs with one editor: a file, or some of an independent file's tests."""
+
+    def __init__(self, file: Path, tests: list[str] | None = None, seconds: float | None = None, lane: str = "",
+                 label: str = ""):
+        self.file, self.tests, self.seconds, self.lane = file, tests, seconds, lane
+        self.label = label or file.name
+
+
+def _gpu_env() -> dict[str, str]:
+    """JASPER_MCP_GPU_LANE=1 (a run under tools/gpu/env.sh on the GPU server): the variables that
+    put an editor on the NVIDIA GPU, which only the chunks of the lane "gpu" get."""
+    if os.environ.get("JASPER_MCP_GPU_LANE") != "1":
+        return {}
+    return {k: os.environ[k] for k in ("DISPLAY", "VK_ICD_FILENAMES", "__EGL_VENDOR_LIBRARY_FILENAMES",
+                                       "__GL_SYNC_TO_VBLANK", "vblank_mode") if k in os.environ}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("files", nargs="*", help="test files (default: tools/mcp/tests/test_*.py)")
     ap.add_argument("-k", action="append", help="only tests whose file::name contains this (repeatable)")
-    ap.add_argument("-j", type=int, default=1, help="test files to run in parallel")
+    ap.add_argument("-j", type=int, default=1, help="test files (chunks) to run in parallel")
     ap.add_argument("--fake", action="store_true", help="use tools/mcp/fake_server.py instead of the editor")
     ap.add_argument("--xvfb", choices=["editor", "harness", "none"], help="who provides the X display")
     ap.add_argument("--url", help="attach to a running editor over Streamable HTTP")
@@ -317,16 +345,35 @@ def main() -> int:
     ap.add_argument("--suite", choices=["ci", "all"], default="all",
                     help="ci: only the files that declare CI = True (default: all, or the given files)")
     ap.add_argument("--json", type=Path, help="write every test result (name, status, detail, seconds) here")
+    ap.add_argument("--plan", type=Path, help="run these chunks (tools/mcp/shard.py plan's plan-<shard>.json) "
+                    "instead of whole files")
+    ap.add_argument("--split-seconds", type=float, default=0.0,
+                    help="split the files that declare TESTS_INDEPENDENT into chunks of about this many seconds "
+                    "(by the earlier runs' test times), each with an editor of its own")
     ap.add_argument("--tests-dir", type=Path, default=TESTS, help=argparse.SUPPRESS)  # selftest.py
     ap.add_argument("--worker", help=argparse.SUPPRESS)
     ap.add_argument("--results", help=argparse.SUPPRESS)
+    ap.add_argument("--only", help=argparse.SUPPRESS)
     args = ap.parse_args()
 
     if args.worker:
         return worker_main(args)
 
     excluded: list[tuple[str, str]] = []
-    if args.suite == "ci":
+    chunks: list[Chunk] = []
+    if args.plan:
+        if args.files or args.k or args.suite == "ci":
+            print("run_tests: --plan names the tests itself (no files, -k or --suite ci with it)", file=sys.stderr)
+            return 2
+        plan = json.loads(args.plan.read_text())
+        for c in plan["chunks"]:
+            chunks.append(Chunk(args.tests_dir / c["file"], list(c["tests"]), float(c.get("seconds") or 0.0),
+                                c.get("lane", ""), f"{c['file']} [chunk {c.get('chunk', '1/1')}"
+                                f"{', GPU' if c.get('lane') == 'gpu' else ''}]"))
+        files = list(dict.fromkeys(c.file for c in chunks))
+        print(f"run_tests: plan {args.plan}: {len(chunks)} chunk(s) of {len(files)} file(s), "
+              f"{sum(len(c.tests or []) for c in chunks)} test(s)", flush=True)
+    elif args.suite == "ci":
         files, problems, excluded = ci_files(args.tests_dir)
         if args.files:
             wanted = {Path(f).resolve() for f in args.files}
@@ -357,12 +404,34 @@ def main() -> int:
     # in their order), so no long file starts last and alone. Each file runs in a process and
     # scratch directory of its own: the order changes nothing a test sees.
     seconds: dict[str, float] = {}
-    record_seconds = not (args.fake or args.url or args.k)
+    record_seconds = not (args.fake or args.url or args.k or args.plan or args.split_seconds)
     with contextlib.suppress(OSError, ValueError, AttributeError):
         seconds = {str(k): float(v) for k, v in json.loads(FILE_SECONDS.read_text()).items()}
-    if args.j > 1 and seconds:
-        files.sort(key=lambda f: -seconds.get(f.name, float("inf")))
-        print(f"run_tests: the longest files first, by the last run's times ({FILE_SECONDS})", flush=True)
+    test_seconds: dict[str, float] = {}
+    with contextlib.suppress(OSError, ValueError, AttributeError):
+        test_seconds = {str(k): float(v) for k, v in json.loads(TEST_SECONDS.read_text()).items()}
+    if not chunks:
+        if args.split_seconds > 0 and not (args.k or args.fake or args.url):
+            import shard
+            for f in files:
+                if not shard.independent(f):
+                    chunks.append(Chunk(f))
+                    continue
+                names = [f"{f.name}::{n}" for n, _ in _collect_names(f)]
+                for c in shard.make_chunks(names, test_seconds, args.split_seconds, f.parent):
+                    chunks.append(Chunk(f, c.tests if c.of > 1 else None, c.seconds, "",
+                                        f"{c.file} [chunk {c.index + 1}/{c.of}]" if c.of > 1 else c.file))
+            print(f"run_tests: {len(chunks)} chunk(s) of {len(files)} file(s) (--split-seconds {args.split_seconds:.0f}: "
+                  "the TESTS_INDEPENDENT files split by the earlier runs' test times)", flush=True)
+        else:
+            chunks = [Chunk(f) for f in files]
+    if args.j > 1 and (seconds or any(c.seconds for c in chunks)):
+        def length(c: Chunk) -> float:
+            if c.seconds:
+                return c.seconds
+            return seconds.get(c.file.name, float("inf"))
+        chunks.sort(key=lambda c: -length(c))
+        print(f"run_tests: the longest first, by the earlier runs' times ({FILE_SECONDS})", flush=True)
 
     # One build of each prebuilt player runtime per run (tools/mcp/build_cache.py), shared by every
     # worker: started now, and a file that needs one starts once it is built (the others run
@@ -375,21 +444,33 @@ def main() -> int:
         if wanted:
             import build_cache
             print(f"run_tests: building the prebuilt player runtime(s) {', '.join(wanted)} as the run starts "
-                  f"(tools/mcp/build_cache.py, {build_cache.cache_root()})", flush=True)
+                  f"(tools/mcp/build_cache.py, {build_cache.shared_root() or build_cache.cache_root()})", flush=True)
             ready = {name: threading.Event() for name in wanted}
             prewarm = threading.Thread(target=build_cache.prewarm, args=(wanted, ready), daemon=True)
             prewarm.start()
 
     tmp = Path(tempfile.mkdtemp(prefix="jasper-mcp-results-"))
+    gpu_env = _gpu_env()
+    if any(c.lane == "gpu" for c in chunks) and not gpu_env:
+        print("run_tests: the plan has GPU chunks, but this run is not on the GPU lane (JASPER_MCP_GPU_LANE=1 "
+              "under tools/gpu/env.sh); they run on llvmpipe", flush=True)
+    # one X display of the GPU's per GPU chunk at a time (JASPER_MCP_GPU_DISPLAYS=":96,:95"): editors
+    # that share a display could take each other's input
+    gpu_displays = [d for d in os.environ.get("JASPER_MCP_GPU_DISPLAYS", gpu_env.get("DISPLAY", "")).split(",") if d]
 
     file_seconds: dict[str, float] = {}
 
-    def run(f: Path) -> tuple[Path, int, str, list]:
+    def run(chunk: Chunk, index: int, display: str = "") -> tuple[Chunk, int, str, list]:
+        f = chunk.file
         started = time.monotonic()
-        res = tmp / (f.stem + ".json")
+        res = tmp / f"{index:04d}-{f.stem}.json"
         cmd = [sys.executable, str(Path(__file__).resolve()), "--worker", str(f), "--results", str(res)]
         for k in args.k or []:
             cmd += ["-k", k]
+        if chunk.tests is not None:
+            only = tmp / f"{index:04d}-{f.stem}.only.json"
+            only.write_text(json.dumps(chunk.tests))
+            cmd += ["--only", str(only)]
         for flag, val in (("--fake", args.fake), ("--keep", args.keep)):
             if val:
                 cmd.append(flag)
@@ -397,39 +478,62 @@ def main() -> int:
             cmd += ["--xvfb", args.xvfb]
         if args.url:
             cmd += ["--url", args.url]
+        env = None
+        if gpu_env:
+            env = {k: v for k, v in os.environ.items() if k not in gpu_env}
+            if chunk.lane == "gpu":
+                env.update(gpu_env, JASPER_XVFB="none", DISPLAY=display or gpu_env.get("DISPLAY", ""))
         if args.j <= 1:
-            p = subprocess.run(cmd)
+            p = subprocess.run(cmd, env=env)
             out = ""
         else:
-            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
             out = p.stdout
         results = json.loads(res.read_text()) if res.exists() else []
-        file_seconds[f.name] = round(time.monotonic() - started, 1)
-        return f, p.returncode, out, results
+        if chunk.tests is None:
+            file_seconds[f.name] = round(time.monotonic() - started, 1)
+        return chunk, p.returncode, out, results
 
-    # -j N: each worker takes the first file whose runtimes are built (or, when only files that
-    # wait for one are left, the first of those)
-    needs = {f: [n for n in prebuilt_players([f]) if n in ready] for f in files} if ready else {}
-    queue = list(files)
+    # -j N: each worker takes the first chunk whose runtimes are built (or, when only chunks that
+    # wait for one are left, the first of those); a GPU chunk when one of the GPU's displays is free
+    needs = {c.file: [n for n in prebuilt_players([c.file]) if n in ready] for c in chunks} if ready else {}
+    queue = list(enumerate(chunks))
     queue_lock = threading.Lock()
+    free_displays = list(gpu_displays)
 
-    def next_file() -> Path | None:
-        with queue_lock:
-            for i, f in enumerate(queue):
-                if all(ready[n].is_set() for n in needs.get(f, ())):
-                    return queue.pop(i)
-            return queue.pop(0) if queue else None
+    def next_chunk() -> tuple[int, Chunk, str] | None:
+        while True:
+            with queue_lock:
+                if not queue:
+                    return None
+                eligible = [(i, item) for i, item in enumerate(queue)
+                            if not (gpu_env and item[1].lane == "gpu" and gpu_displays and not free_displays)]
+                for i, (index, c) in eligible:
+                    if all(ready[n].is_set() for n in needs.get(c.file, ())):
+                        break
+                else:
+                    i, (index, c) = eligible[0] if eligible else (None, (None, None))
+                if c is not None:
+                    queue.pop(i)
+                    display = free_displays.pop(0) if gpu_env and c.lane == "gpu" and gpu_displays else ""
+                    return index, c, display
+            time.sleep(1.0)   # only GPU chunks left, every display taken: one comes free
 
     def parallel():
         done: list = []
         cond = threading.Condition()
 
         def worker():
-            while (f := next_file()) is not None:
+            while (picked := next_chunk()) is not None:
+                index, c, display = picked
                 try:
-                    item = run(f)
+                    item = run(c, index, display)
                 except Exception:  # noqa: BLE001  (a crashed worker, reported as one)
-                    item = (f, 1, traceback.format_exc(), [])
+                    item = (c, 1, traceback.format_exc(), [])
+                finally:
+                    if display:
+                        with queue_lock:
+                            free_displays.append(display)
                 with cond:
                     done.append(item)
                     cond.notify()
@@ -437,22 +541,25 @@ def main() -> int:
         threads = [threading.Thread(target=worker, daemon=True) for _ in range(max(1, args.j))]
         for t in threads:
             t.start()
-        for _ in range(len(files)):
+        for _ in range(len(chunks)):
             with cond:
                 cond.wait_for(lambda: done)
                 item = done.pop(0)
             yield item
 
+    def serial():
+        for index, c in enumerate(chunks):
+            yield run(c, index, gpu_displays[0] if gpu_env and c.lane == "gpu" and gpu_displays else "")
+
     all_results = []
     crashed = []
     t0 = time.monotonic()
-    with concurrent.futures.ThreadPoolExecutor(1) as pool:
-        for f, rc, out, results in pool.map(run, files) if args.j <= 1 else parallel():
-            if out:
-                print(f"== {f.name}\n{out.rstrip()}", flush=True)
-            if rc != 0:
-                crashed.append(f"{f.name} (worker exit {rc})")
-            all_results += results
+    for chunk, rc, out, results in serial() if args.j <= 1 else parallel():
+        if out:
+            print(f"== {chunk.label}\n{out.rstrip()}", flush=True)
+        if rc != 0:
+            crashed.append(f"{chunk.label} (worker exit {rc})")
+        all_results += results
 
     if prewarm is not None:
         prewarm.join()
@@ -460,6 +567,12 @@ def main() -> int:
         with contextlib.suppress(OSError):
             FILE_SECONDS.parent.mkdir(parents=True, exist_ok=True)
             FILE_SECONDS.write_text(json.dumps({**seconds, **file_seconds}, indent=1, sort_keys=True))
+    # every test's own time, whatever the run's filter (what --split-seconds and shard.py plan with)
+    if all_results and not (args.fake or args.url):
+        with contextlib.suppress(OSError):
+            TEST_SECONDS.parent.mkdir(parents=True, exist_ok=True)
+            TEST_SECONDS.write_text(json.dumps({**test_seconds, **{r["name"]: r["seconds"] for r in all_results}},
+                                               indent=1, sort_keys=True))
     shutil.rmtree(tmp, ignore_errors=True)
     n = {s: sum(1 for r in all_results if r["status"] == s) for s in ("pass", "fail", "skip")}
     print("\n== summary")
@@ -475,7 +588,8 @@ def main() -> int:
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps({
-            "suite": args.suite, "files": [f.name for f in files],
+            "suite": args.suite, "files": [f.name for f in files], "chunks": len(chunks),
+            "plan": str(args.plan) if args.plan else None,
             "left_out": [{"file": name, "reason": why} for name, why in excluded], "passed": n["pass"], "failed": n["fail"],
             "skipped": n["skip"], "crashed": crashed, "seconds": round(elapsed, 1), "results": all_results,
         }, indent=1))
@@ -483,6 +597,11 @@ def main() -> int:
         print("run_tests: no test ran", file=sys.stderr)
         return 1
     return 1 if n["fail"] or crashed else 0
+
+
+def _collect_names(path: Path) -> list[tuple[str, object]]:
+    """A file's tests in run order, without running anything (an import of the file)."""
+    return _collect(path, [])[1]
 
 
 if __name__ == "__main__":
