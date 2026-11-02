@@ -244,7 +244,10 @@ void getEntityTool(const CallPtr& call) {
     size_t elided = 0;
     // a mesh's submesh array is fixed-size: only the used submeshes are its properties
     unsigned int usedSubmeshes = 0;
-    if (MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)) usedSubmeshes = mesh->numSubmeshes;
+    // (a Sprite's first submesh exists before its first update sets the count)
+    if (MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)) {
+        usedSubmeshes = std::max(mesh->numSubmeshes, registry->findComponent<SpriteComponent>(entity) ? 1u : 0u);
+    }
     auto unusedSubmesh = [usedSubmeshes](ComponentType type, const std::string& name) {
         if (type != ComponentType::MeshComponent || name.compare(0, 10, "submeshes[") != 0) return false;
         return std::strtoul(name.c_str() + 10, nullptr, 10) >= usedSubmeshes;

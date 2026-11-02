@@ -262,9 +262,11 @@ int main(int argc, char* argv[]) {
         editor::Out::stopLogging();
         return 2;
     }
-    // the profiler's options go to the engine, whatever the mode; benchmark parses its own
+    // the profiler's options go to the engine, whatever the mode; benchmark parses its own, and
+    // generate-sprite-normals has a --profile of its own (the height profile: --profile rounded)
     const bool benchmark = args.size() >= 2 && std::strcmp(args[1], "benchmark") == 0;
-    if (!benchmark && !editor::CommandLine::takeProfilerFlags(args)) {
+    const bool spriteNormals = args.size() >= 2 && std::strcmp(args[1], "generate-sprite-normals") == 0;
+    if (!benchmark && !spriteNormals && !editor::CommandLine::takeProfilerFlags(args)) {
         editor::Out::stopLogging();
         return 2;
     }

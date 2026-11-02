@@ -4,6 +4,7 @@
 #include "SafeWrite.h"
 
 #include "util/FileUtils.h"
+#include "io/watch/FileWatchService.h"
 
 #include <algorithm>
 #include <atomic>
@@ -972,6 +973,10 @@ namespace jasperengine::editor::safewrite {
         if (!prepare(root, target, realRoot, rel, error)) return false;
         const fs::path name = rel.filename();
         const fs::path full = realRoot / rel;
+        // the editor's own write (S05 R10): announced, what another program left there delivered
+        // first, reported once there, so the file watcher knows it for what it is
+        ScopedExpectedWrite expected(full);
+        FileWatchService::get().reportEditorReplacing(full);
         std::vector<fs::path> made;
         bool ok = false;
 #ifdef _WIN32
@@ -1141,6 +1146,8 @@ namespace jasperengine::editor::safewrite {
             errno = code;
             return false;
         }
+        for (const fs::path& dir : made) expected.reported(dir);
+        expected.reported();
         if (createdDirs) createdDirs->insert(createdDirs->end(), made.begin(), made.end());
         return true;
     }
@@ -1154,11 +1161,15 @@ namespace jasperengine::editor::safewrite {
             bool missing = false;
             Walk walk;
             if (!walkTo(realRoot, rel.parent_path(), false, walk, error, nullptr, &missing)) return missing;
+            // the editor's own removal (S05 R10), as a write is
+            ScopedExpectedWrite expected(realRoot / rel, tree);
 #ifdef _WIN32
-            return removeChild(walk.last(), rel.filename().wstring(), realRoot / rel, tree, error);
+            const bool removed = removeChild(walk.last(), rel.filename().wstring(), realRoot / rel, tree, error);
 #else
-            return removeChild(walk.last(), rel.filename().c_str(), realRoot / rel, tree, error);
+            const bool removed = removeChild(walk.last(), rel.filename().c_str(), realRoot / rel, tree, error);
 #endif
+            if (removed) expected.reportedRemoved(realRoot / rel);
+            return removed;
         }
     }
 
@@ -1170,7 +1181,7 @@ namespace jasperengine::editor::safewrite {
         return removeBeneath(root, target, true, error);
     }
 
-    bool removeEmptyDirBeneath(const fs::path& root, const fs::path& target, std::string& error) {
+    static bool removeEmptyDirBeneathUnreported(const fs::path& root, const fs::path& target, std::string& error) {
         fs::path realRoot, rel;
         if (!prepare(root, target, realRoot, rel, error)) return false;
         bool missing = false;
@@ -1202,7 +1213,15 @@ namespace jasperengine::editor::safewrite {
 #endif
     }
 
-    bool createDirBeneath(const fs::path& root, const fs::path& target, std::string& error) {
+    bool removeEmptyDirBeneath(const fs::path& root, const fs::path& target, std::string& error) {
+        const fs::path full = absoluteIn(root, target);
+        ScopedExpectedWrite expected(full);
+        const bool removed = removeEmptyDirBeneathUnreported(root, target, error);
+        if (removed) expected.reportedRemoved(full);
+        return removed;
+    }
+
+    static bool createDirBeneathUnreported(const fs::path& root, const fs::path& target, std::string& error) {
         if (std::string refusal = protectedPlaceRefusal(absoluteIn(root, target), false); !refusal.empty()) {
             error = std::move(refusal);
             return false;
@@ -1232,6 +1251,14 @@ namespace jasperengine::editor::safewrite {
 #endif
     }
 
+    bool createDirBeneath(const fs::path& root, const fs::path& target, std::string& error) {
+        const fs::path full = absoluteIn(root, target);
+        ScopedExpectedWrite expected(full);
+        const bool made = createDirBeneathUnreported(root, target, error);
+        if (made) expected.reported();
+        return made;
+    }
+
     bool createDirectoriesBeneath(const fs::path& root, const fs::path& target, std::string& error, std::vector<fs::path>* createdDirs) {
         std::error_code existing;
         const bool alreadyDir = fs::is_directory(fs::symlink_status(absoluteIn(root, target), existing)) && !existing;
@@ -1252,11 +1279,22 @@ namespace jasperengine::editor::safewrite {
             removeMade(realRoot, made);
             return false;
         }
+        for (const fs::path& dir : made) ScopedExpectedWrite::notePublished(dir);
         if (createdDirs) createdDirs->insert(createdDirs->end(), made.begin(), made.end());
         return true;
     }
 
+    static bool renameBeneathUnreported(const fs::path& root, const fs::path& from, const fs::path& to, std::string& error, bool replace);
+
     bool renameBeneath(const fs::path& root, const fs::path& from, const fs::path& to, std::string& error, bool replace) {
+        const fs::path fullFrom = absoluteIn(root, from), fullTo = absoluteIn(root, to);
+        ScopedExpectedWrite expected(fullTo);
+        const bool moved = renameBeneathUnreported(root, from, to, error, replace);
+        if (moved) expected.reportedMoved(fullFrom, fullTo);
+        return moved;
+    }
+
+    static bool renameBeneathUnreported(const fs::path& root, const fs::path& from, const fs::path& to, std::string& error, bool replace) {
         // renamed to project.yaml (one moved as it is, to the trash and back, is not a new one)
         if (!isProjectFileName(from)) {
             if (std::string refusal = protectedPlaceRefusal(absoluteIn(root, to), true); !refusal.empty()) {

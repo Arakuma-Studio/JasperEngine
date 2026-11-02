@@ -571,6 +571,9 @@ async def test_exported_games_ship_pngs_without_the_recipe():
         check(r.returncode == 0, f"generate: {r.stdout} {r.stderr}")
         source = (project / "assets" / "textures" / "hero_normal.png").read_bytes()
         check(source.count(b"jasper.spritenormals") == 2, "the project's map has its recipe and paint layer")
+        # S14: a cooked texture ships as its cooks only; shipSource keeps this source PNG in the export
+        (project / "assets" / "textures" / "hero_normal.png.meta").write_text(
+            "metaVersion: 1\nguid: 5e1f2a6e98d71059023406ee04f3df66\nimport:\n  textureImporter:\n    version: 1\n    shipSource: true\n")
         out = Path(tmp) / "out"
         r = subprocess.run(harness.editor_command() + ["export", "--project", str(project), "--out", str(out), "--backend", "opengl"],
                            cwd=str(project), capture_output=True, text=True, timeout=600)

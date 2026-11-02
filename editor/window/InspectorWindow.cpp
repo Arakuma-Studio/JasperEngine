@@ -12366,18 +12366,17 @@ void editor::InspectorWindow::show(){
         if (!textureImporter) textureImporter = std::make_unique<TextureImporterView>(project);
         const bool assetsLocked = drawVcsLockBanner(project->getInspectedAssets());
         if (assetsLocked) ImGui::BeginDisabled(true);
-        const bool drewAssets = textureImporter->draw(project->getInspectedAssets());
-        if (assetsLocked) ImGui::EndDisabled();
         // one image that is a generated sprite normal map or the source of one: upstream's asset
-        // view of it too (its recipe, stale line, Regenerate), below the import settings
+        // view of it (its recipe, stale line, Regenerate), above the import settings
         const std::vector<std::filesystem::path>& inspectedFiles = project->getInspectedAssets();
         const std::filesystem::path inspectedImage = inspectedFiles.size() == 1
             ? (inspectedFiles[0].is_absolute() ? inspectedFiles[0] : project->getProjectPath() / inspectedFiles[0]).lexically_normal()
             : std::filesystem::path();
-        if (drewAssets && !inspectedImage.empty() && Util::isImageFile(inspectedImage.string())) {
+        if (!inspectedImage.empty() && Util::isImageFile(inspectedImage.string()) && drawSpriteNormalsAsset(inspectedImage)) {
             ImGui::Separator();
-            drawSpriteNormalsAsset(inspectedImage);
         }
+        const bool drewAssets = textureImporter->draw(project->getInspectedAssets());
+        if (assetsLocked) ImGui::EndDisabled();
         if (drewAssets) {
             ImGui::End();
             return;

@@ -11,7 +11,8 @@ every frame by scripts/VertexLightsUpdater.lua, the port of VertexLightsUpdater.
 - Play: Lua Shader.setGlobalColor turns it blue, the getters and ids, Stop restores the default;
 - a library:unlit material whose baseColor is bound to FogTint follows it (get_shader_uniforms
   lists the binding and the globals), unbinding gives its own colour back;
-- a texture global (a 2x2 checker), unset (white), set from Lua;
+- a texture global (a 4x4 checker of 2x2 cells: S14 R6 rescales what is no multiple of 4 for block
+  compression, which would blur it), unset (white), set from Lua;
 - the vertex lights: the lit side follows the light the updater pushes (left/right halves);
 - check_shader: global-undeclared, global-type-mismatch, globals-block-too-large;
 - JASPER_SLOW_BUILD=1: a Desktop export shows the default colour (the generated main declares
@@ -245,7 +246,7 @@ async def test_texture_global(ed: Editor):
         if found[0] > 20 and found[1] > 20:
             break
         await ed.call("wait", frames=10)
-    ed.check(found[0] > 20 and found[1] > 20, f"the 2x2 checker default: red and blue {found}")
+    ed.check(found[0] > 20 and found[1] > 20, f"the checker default: red and blue {found}")
     # no default: the white fallback
     await ed.call("set_project_settings", values={"graphics.shader_globals._CheckerTex": {"default": ""}})
     for _ in range(10):

@@ -14,6 +14,7 @@
 // removed: the entry itself).
 #pragma once
 
+#include "asset/AssetTypes.h"
 #include "util/SafeWrite.h"
 
 #include <cstdint>
@@ -46,6 +47,7 @@ namespace jasperengine::editor::mcp {
             base = root;
             target = path;
             existed = fs::is_regular_file(path, ec);
+            metaExisted = fs::exists(fs::symlink_status(AssetTypes::metaPathFor(path), ec));
             if (existed) {
                 std::ifstream in(path, std::ios::binary);
                 previous.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
@@ -77,6 +79,13 @@ namespace jasperengine::editor::mcp {
                 if (!ok && warning) *warning = "the sheet replaced " + jasperengine::editor::FileUtils::pathToGenericUtf8(target) + " and its previous version could not be written back (" + why + ")";
             } else if (touched) {
                 safewrite::removeFileResolvedBeneath(base, target, why);
+                // and the meta the asset database gave the new file meanwhile (S04): no orphan
+                // behind, nor a folder kept by one
+                std::error_code ec;
+                const std::filesystem::path meta = AssetTypes::metaPathFor(target);
+                if (!metaExisted && std::filesystem::is_regular_file(std::filesystem::symlink_status(meta, ec))) {
+                    safewrite::removeFileResolvedBeneath(base, meta, why);
+                }
             }
             // only empty folders go, deepest first
             for (auto it = created.rbegin(); it != created.rend(); ++it) safewrite::removeEmptyDirResolvedBeneath(base, *it, why);
@@ -90,6 +99,7 @@ namespace jasperengine::editor::mcp {
         std::filesystem::path base;
         std::filesystem::path target;
         bool existed = false;
+        bool metaExisted = false;
         bool touched = false;
         std::string previous;
         std::vector<std::filesystem::path> created;
