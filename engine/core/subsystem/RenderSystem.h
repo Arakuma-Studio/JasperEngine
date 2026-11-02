@@ -526,6 +526,8 @@ namespace jasperengine{
 		bool pbrTransmission = false;
 		// a painted layer of the Terrain hex tiles (TERRAIN_HEX_TILING)
 		bool terrainHex = false;
+		// and a layer takes Stochastic Tiling (TERRAIN_HEX_STOCHASTIC, with terrainHex only)
+		bool terrainHexStochastic = false;
 	};
 
 	// The shaders one submesh draws with
