@@ -1087,6 +1087,9 @@ runtimes reused from the shared cache. The same files with a new runtime key: 5,
 and 4,223 s of runtime builds at nice 15 (172 and 254 misses). The prebuild does not wait for its
 turn: when only files that need a runtime are left, a worker builds the second one at once.
 
+A runtime build with an empty ccache, no LTO, both at once at nice 15 in an 8-CPU container: 2,414 s
+(Development) and 2,388 s (release), against 6,624 s and 4,816 s (with LTO) in the baseline.
+
 The coverage run (the suite without the slow builds, an instrumented editor, `-j 4` in an 8-CPU
 container, H at load 30 to 37): 4,822 s, 5.2 test-hours, longest test 642 s, 1,181 passed, 1 failed (below),
 7 skipped by design (the slow builds; the web latency gate).
@@ -1094,6 +1097,20 @@ container, H at load 30 to 37): 4,822 s, 5.2 test-hours, longest test 642 s, 1,1
 Editors on the RTX 3080 Ti: the 34 lane files, 7,259 s of test time on llvmpipe under load, take
 1,223 s, two at a time. `test_fluid_inspector.py`'s 2,296 s took 53 s there, and one absolute dye
 threshold keeps it on llvmpipe.
+
+`tools/check-changed` on past streams, each its own tree and diff, with this tool (`--root`), in 8-CPU
+containers. The trees predate the caps and the caches, so their MCP times are not this branch's.
+
+| Stream | Changed | Selected | Result |
+|---|---|---|---|
+| fix/mac-test-engine-dir | 1 header | 10 of 188 MCP files, 16 tests; 19 editor suites | passed: units 25 s, MCP 164 s (of which the web build 148 s) |
+| BF12 fix/screenshot-texture-wait | 15 files | 160 files, 1,055 tests; 113 core and 211 editor suites | units passed; MCP 8,986 s, 1,048 passed, 7 failed: frame or preview timeouts and a 4.5 s hang report at high load, no Mesa thread cap in that tree. Its red test (`test_screenshot_waits.py`) and `GltfTexturePixels` were selected and passed |
+| BF13 fix/bf13-editor-dataloss | 63 files | 187 files, 1,174 tests; 72 core and 211 editor suites | MCP 8,055 s, 1,173 passed, 1 failed (a 3.7 s hang report at load 40 to 54). The tests that failed in its logs (`test_camera_texture_cost.py`) were selected and passed. `NavAgentTest` failed: below |
+| S34 feat/s34-player-size (dry run) | 75 files | everything: the root `CMakeLists.txt` | not run |
+
+So a narrow change selects few tests and a stream that touches `create_entity`, `screenshot` or the
+frame selects most of the suite (of 1,189 tests, the CI suite alone is 1,131, so its fallback is
+nearly the full suite too).
 
 Found on the way:
 
