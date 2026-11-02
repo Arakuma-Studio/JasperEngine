@@ -38,7 +38,7 @@ jobs=${SAN_JOBS:-5}
 san='-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined'
 
 if [ "${SAN_NO_BUILD:-0}" != 1 ]; then
-    cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DJASPERENGINE_EDITOR_TESTS=ON \
+    cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DJASPERENGINE_TESTS=ON \
         -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DCMAKE_C_FLAGS="$san" -DCMAKE_CXX_FLAGS="$san" \
         -DCMAKE_EXE_LINKER_FLAGS="$san" -DCMAKE_SHARED_LINKER_FLAGS="$san" -DCMAKE_MODULE_LINKER_FLAGS="$san" >/dev/null
