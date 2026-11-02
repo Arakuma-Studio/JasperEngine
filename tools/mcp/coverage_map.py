@@ -35,7 +35,6 @@ GCDA_MAGIC = 0x67636461            # "gcda"
 TAG_FUNCTION = 0x01000000
 TAG_COUNTER_BASE = 0x01a10000      # the arc counters
 GCNO_MAGIC = 0x67636e6f            # "gcno"
-GCNO_NO_PAYLOAD = (0x01410000,)    # the blocks record: a count, no words
 COMMON_SHARE = 0.8                 # of the files with an editor: a function that many execute is any editor's
 MIN_EDITOR_FUNCTIONS = 1000        # a file that executed fewer started no editor
 
@@ -86,8 +85,8 @@ def gcda_executed(data: bytes) -> bool:
 
 def gcno_functions(data: bytes) -> dict[int, tuple[str, str]]:
     """A .gcno (what GCC knows of one object's functions): ident -> (name, source file), the file
-    the function is written in, a header's for an inline function. GCC 8 to 11's layout: header,
-    current directory, a flag, then records; strings are a length in words and their bytes."""
+    the function is written in, a header's for an inline function. GCC 11's layout (the Linux
+    image's): header, current directory, a flag, then records; lengths and strings in 4-byte words."""
     if len(data) < 16:
         return {}
     for order in ("<", ">"):
@@ -111,7 +110,7 @@ def gcno_functions(data: bytes) -> dict[int, tuple[str, str]]:
         pos += 8
         if tag == 0:
             break
-        size = abs(length) * 4 if tag not in GCNO_NO_PAYLOAD else 0
+        size = abs(length) * 4
         if tag == TAG_FUNCTION:
             ident, = struct.unpack_from(order + "I", data, pos)
             name, at = string(pos + 12)

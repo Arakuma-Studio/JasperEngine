@@ -314,7 +314,7 @@ def gcno(functions: dict[int, tuple[str, str]], cwd: str = "/src/build/x") -> by
     for ident, (name, file) in functions.items():
         body = struct.pack("<III", ident, 2, 3) + string(name) + struct.pack("<I", 0) + string(file) + struct.pack("<IIII", 1, 1, 2, 2)
         out += struct.pack("<Ii", coverage_map.TAG_FUNCTION, len(body) // 4) + body
-        out += struct.pack("<II", coverage_map.GCNO_NO_PAYLOAD[0], 7)   # the blocks: a count, no words
+        out += struct.pack("<III", 0x01410000, 1, 7)   # the blocks: a word, their count
     return out
 
 
