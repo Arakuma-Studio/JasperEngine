@@ -30,6 +30,7 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -96,9 +97,8 @@ TEST(CameraTextureLink, AGameObjectWithASystemRangeIdIsBoundByAWholeSceneBindAnd
     Transform lensTransform;
     lensTransform.parent = eye;
     scene->addComponent<Transform>(lens, lensTransform);
-    CameraComponent camera;
-    camera.renderToTexture = true;
-    scene->addComponent<CameraComponent>(lens, camera);
+    // (no render target made: the link binds the camera's framebuffer object, drawn or not)
+    scene->addComponent<CameraComponent>(lens, CameraComponent());
     sceneProject->entities.push_back(lens);
     CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(project(), sceneId, fs::path("camera_link") / "Eye.prefab",
         Stream::encodeEntity(eye, scene, project(), sceneProject)));
@@ -117,7 +117,10 @@ TEST(CameraTextureLink, AGameObjectWithASystemRangeIdIsBoundByAWholeSceneBindAnd
     const Entity screen = EntityManager::lastSystemEntity();
     ASSERT_FALSE(scene->isEntityCreated(screen));
     node["entity"] = screen;
-    ASSERT_EQ(Stream::decodeEntity(node, scene, &sceneProject->entities, project(), sceneProject).front(), screen);
+    const std::vector<Entity> decoded = Stream::decodeEntity(node, scene, &sceneProject->entities, project(), sceneProject);
+    ASSERT_FALSE(decoded.empty());
+    ASSERT_EQ(decoded.front(), screen);
+    ASSERT_TRUE(scene->findComponent<MeshComponent>(screen));
     ASSERT_EQ(CameraTextureLink::parse(screenTexture(scene, screen).getId()), lens);
 
     CameraTextureLink::resolve(scene);
