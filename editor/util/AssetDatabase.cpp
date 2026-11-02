@@ -1984,6 +1984,11 @@ editor::AssetDatabase::Resolution editor::AssetDatabase::resolve(const Guid& gui
     return atHint;
 }
 
+editor::AssetDatabase::Resolution editor::AssetDatabase::resolveInAssetsDir(const std::string& hint) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    return hint.empty() || assetsDir.empty() ? Resolution() : lookupPath((assetsDir / FileUtils::pathFromUtf8(hint)).generic_string());
+}
+
 std::vector<editor::AssetDatabase::OrphanMeta> editor::AssetDatabase::getOrphanMetas() const {
     std::lock_guard<std::recursive_mutex> lock(mutex);
     std::vector<OrphanMeta> list;

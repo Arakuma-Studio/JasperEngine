@@ -43,7 +43,8 @@ FIRST_PARTY = {
 # vendored for the tests only (not linked into anything shipped, not installed)
 TESTS_ONLY = {"libs/googletest"}
 
-LICENCE_FILE = re.compile(r"^(licen[cs]e|copying|unlicense)(-[\w-]+)?(\.(txt|md|rst))?$", re.IGNORECASE)
+# (the extension may name the licence and its version, as FFmpeg's COPYING.LGPLv2.1 does)
+LICENCE_FILE = re.compile(r"^(licen[cs]e|copying|unlicense)(-[\w-]+)?(\.(txt|md|rst|[al]?gplv\d(\.\d)?))?$", re.IGNORECASE)
 PRIMARY_LICENCE = re.compile(r"^(licen[cs]e|copying)(\.(txt|md))?$", re.IGNORECASE)
 NOTICE_FILE = re.compile(r"^notice(\.(txt|md))?$", re.IGNORECASE)
 

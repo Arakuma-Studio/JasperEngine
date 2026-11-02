@@ -128,7 +128,7 @@ namespace jasperengine{
 
         bool overrideMassProperties = false;
         Vector3 solidBoxSize;
-        float solidBoxDensity;
+        float solidBoxDensity = 1000.0f;
         
         BodyType type = BodyType::STATIC;
         RigidbodyMotionQuality motionQuality = RigidbodyMotionQuality::DISCRETE;

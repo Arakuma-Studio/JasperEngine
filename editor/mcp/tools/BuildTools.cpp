@@ -652,6 +652,8 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
             for (const std::string& note : report.notes) message += " " + note + ".";
             if (r.config.platform == hostBuildPlatform() && !report.executable.empty()) {
                 message += " Try it with run_build.";
+                // its full identity, as the Desktop mode's below: run_build runs only this file, unchanged
+                builtplayers::record(r.projectPath / ".jasperengine", report.executable, modeName(ExportMode::Desktop));
                 std::lock_guard<std::mutex> lock(manager().mutex);
                 manager().lastExecutable = report.executable;
             }

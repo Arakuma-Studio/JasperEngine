@@ -15,6 +15,7 @@
         "bcdec": {"dir": "engine/libs/bcdec", "when": "always"},
         "box2d": {"dir": "engine/libs/box2d", "when": "physics2d"},
         "dav1d": {"dir": "engine/libs/dav1d", "when": "always"},
+        "ffmpeg-headers": {"dir": "engine/libs/ffmpeg-headers", "when": "always"},
         "glslang": {"dir": "engine/libs/shadercompiler/libs/glslang", "when": "runtimeshaders"},
         "harfbuzz": {"dir": "engine/libs/harfbuzz", "when": "always"},
         "joltphysics": {"dir": "engine/libs/joltphysics", "when": "physics3d"},

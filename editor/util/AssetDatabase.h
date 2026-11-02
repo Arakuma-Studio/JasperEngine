@@ -189,6 +189,8 @@ namespace jasperengine::editor {
         Resolution resolve(const Guid& guid, const std::string& projectRelativeHint, AssetType expected,
                            bool allowPathFallback, bool preferHint = false) const;
         // The live asset (or "<container>#<key>" sub-asset) at a path
+        // A path under the assets directory (a shader fork's assets-relative spelling)
+        Resolution resolveInAssetsDir(const std::string& assetsRelativePath) const;
         Resolution lookupPath(const std::string& projectRelativePath) const;
 
         std::vector<OrphanMeta> getOrphanMetas() const;

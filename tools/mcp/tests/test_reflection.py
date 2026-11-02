@@ -189,7 +189,8 @@ def compare_or_update(path: Path, actual: str, what: str, mismatches: list[str],
 
 
 def fixture_projects() -> list[Path]:
-    projects = sorted(p.parent for p in FIXTURES.glob("*/project.yaml"))
+    # (a project without a scene has nothing to re-save: opening it makes one, with a new id and GUID every time)
+    projects = sorted(p.parent for p in FIXTURES.glob("*/project.yaml") if any(p.parent.rglob("*.scene")))
     parity = PARITY / "project.yaml"
     if parity.exists() and PARITY not in projects:
         projects.append(PARITY)

@@ -247,6 +247,18 @@ TEST_F(AssetDatabaseTest, LegacyPrefabsGetTheirPathGuidWrittenIntoThem){
     EXPECT_EQ(AssetDatabase::readGuid(project.file("old.prefab")), expected);
 }
 
+TEST_F(AssetDatabaseTest, AShaderForkIsFoundByItsAssetsRelativeSpelling){
+    project.write("assets/shaders/fork.frag", "#version 450\n");
+    database.open(project.path(), "assets");
+    const AssetDatabase::Resolution fork = database.resolveInAssetsDir("shaders/fork.frag");
+    ASSERT_TRUE(fork.found());
+    EXPECT_EQ(fork.path, "assets/shaders/fork.frag");
+    EXPECT_FALSE(database.resolveInAssetsDir("shaders/none.frag").found());
+    EXPECT_FALSE(database.resolveInAssetsDir("").found());
+    // not through resolve(): a load would rewrite the reference to the project-relative spelling
+    EXPECT_FALSE(database.resolve(Guid(), "shaders/fork.frag", AssetType::Shader, false).found());
+}
+
 TEST_F(AssetDatabaseTest, AReadOnlyOpenWritesNothing){
     // the CLI's check next to an open editor: the identities stay in memory, the same ones an
     // editor upgrading the project writes (R3)

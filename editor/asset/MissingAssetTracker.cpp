@@ -64,6 +64,12 @@ void MissingAssetTracker::update(const AssetDatabase& database, const AssetIndex
         if (resolution.found()) {
             return;
         }
+        // a shader fork's assets-relative spelling ("shaders/x" for "assets/shaders/x") is not missing:
+        // the editor, exports and games all find it (the rule of Project::findShaderFile). What it
+        // resolves to stays out of resolve(), or every load would rewrite the reference.
+        if (edge.expected == AssetType::Shader && database.resolveInAssetsDir(edge.targetPath).found()) {
+            return;
+        }
         // a reference written before GUIDs names its asset by path: the GUID that asset got when
         // the project was upgraded is its legacy GUID (R10 step 4), so it joins the references
         // that hold that GUID (and a redirect of it resolves it too)
