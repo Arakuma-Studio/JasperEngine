@@ -26,8 +26,9 @@ unit and MCP tests that can see it; the full suite stays the gate of batch landi
    executed, recorded by a full run of a coverage-instrumented editor): the files whose sources
    intersect the change (headers through the editor tree's dependency database), the changed test
    files, the tests of a changed MCP tool (by its tool names), of a changed fixture, Lua, shader or
-   asset (by path; a shader also test_shader_library.py and the CI suite), and the files that
-   build games when the engine changes. Fallbacks: no map, a
+   asset (by path; a shader also test_shader_library.py and the CI suite), the files that run a
+   prebuilt game when the engine changes, and those that compile a game when what the compile
+   path reads changes (COMPILE_PATHS). Fallbacks: no map, a
    map older than MAP_MAX_AGE_DAYS or MAP_MAX_COMMITS, or a changed source the map does not know
    (new, or no test file ran it) or file no test names add the CI suite; a harness change runs the whole suite.
 5. A pass is cached (build/.cache/check-changed.json) by a hash of the base, the diff, the
@@ -88,10 +89,13 @@ EDITOR_INPUTS = ("libs/*", "docs/mcp/guide/*", "docs/unity-glossary.md", "tools/
 HTMLUI_PATHS = ("engine/tests/htmlui/*", "engine/core/htmlui/*", "engine/libs/rmlui/*", "engine/libs/lexbor/*")
 WEB_DIRS = ("engine/platform/web/*", "engine/platform/emscripten/*", "tools/web/*")
 ANDROID_DIRS = ("engine/platform/android/*", "engine/project/android/*", "tools/android-*", "tools/ci/android_*")
-# the MCP files that build games (a prebuilt player or a compile): the engine's runtime code runs in
-# the games they build, which no editor coverage sees
-GAME_BUILD_FILES = ("test_build.py", "test_html_ui_effects_export.py", "test_hub.py", "test_busy.py",
-                    "test_html_ui_export.py", "test_html_ui_video_export.py", "test_call_cli.py")
+# the MCP files that run a game built with a prebuilt player: the engine's runtime code runs in the
+# game, which no editor coverage sees; and those that compile one, for what the compile path reads
+# (the full gate compiles for every change)
+GAME_BUILD_FILES = ("test_html_ui_export.py", "test_html_ui_video_export.py", "test_call_cli.py")
+COMPILE_FILES = ("test_build.py", "test_html_ui_effects_export.py", "test_hub.py", "test_busy.py")
+COMPILE_PATHS = ("engine/CMakeLists.txt", "engine/project/*", "engine/player/*", "engine/platform/*", "engine/core/player/*",
+                 "engine/core/diag/*", "editor/Exporter*", "editor/Generator*", "editor/players/*", "tools/players/*")
 TEST_DEF = re.compile(r"^\s*(TEST|TEST_F|TEST_P|TYPED_TEST|TYPED_TEST_P)\s*\(\s*(\w+)\s*,", re.M)
 TOOL_NAME = re.compile(r"\b\w+\.name\s*=\s*\"([a-z][a-z0-9_]*)\"")
 
@@ -503,7 +507,11 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
     if unmapped_paths:
         plan.mcp_ci = True
         plan.mcp_notes.append(f"{len(unmapped_paths)} changed file(s) no test file names (e.g. {unmapped_paths[0]}): the CI suite as well")
-    # the engine's and the editor's C++ (and shaders): the coverage map
+    compile_path = [f for f in files if match(f, COMPILE_PATHS)]
+    for t in COMPILE_FILES if compile_path else ():
+        if t in sources:
+            plan.add_mcp(t, f"compiles a game ({compile_path[0]} changed)")
+    # the engine's and the editor's C++: the coverage map
     code = [f for f in files if f.startswith(("engine/", "editor/", "libs/")) and f.endswith(CXX)]
     if not code:
         return
@@ -537,7 +545,7 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
     if engine_runtime:
         for t in GAME_BUILD_FILES:
             if t in sources:
-                plan.add_mcp(t, f"builds a game with the engine ({engine_runtime[0]} changed)")
+                plan.add_mcp(t, f"runs a game of the engine ({engine_runtime[0]} changed)")
 
 
 # ---------------------------------------------------------------------------------------- 5. cache

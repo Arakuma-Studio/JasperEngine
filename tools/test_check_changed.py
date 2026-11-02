@@ -217,6 +217,7 @@ SRC = {
     "test_tool.py": "await ed.call(\"resolve_asset\", asset='x')\n",
     "test_fixture.py": "EDITOR = {'project': REPO / 'tools' / 'fixtures' / 'water'}\n",
     "test_build.py": "x\n",
+    "test_call_cli.py": "x\n",
     "test_other.py": "y\n",
 }
 MAP = {"commit": "abc", "created": 0.0, "files": {"test_render.py": ["engine/core/Render.cpp", "editor/App.cpp"],
@@ -242,9 +243,12 @@ class Mcp(unittest.TestCase):
     def test_map_intersection(self):
         p = self.plan(["editor/App.cpp"])
         self.assertEqual((p.mcp_files, p.mcp_ci, p.mcp_all), (["test_render.py"], False, False))
-        # an engine change: also the files that build games with the engine
+        # an engine change: also the files that run a prebuilt game; what the compile path reads: the compiled games
         p = self.plan(["engine/core/Render.cpp"])
-        self.assertEqual(p.mcp_files, ["test_render.py", "test_build.py"])
+        self.assertEqual(p.mcp_files, ["test_render.py", "test_call_cli.py"])
+        p = self.plan(["engine/project/main.cpp"])
+        self.assertIn("test_build.py", p.mcp_files)
+        self.assertIn("test_build.py", self.plan(["editor/Exporter.cpp"]).mcp_files)
         # a header through the units that include it
         p = self.plan(["editor/Other.h"], header_units=lambda h: ["editor/Other.cpp"])
         self.assertEqual(p.mcp_files, ["test_other.py"])

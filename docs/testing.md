@@ -356,8 +356,9 @@ rb.sh A --img tools/check-changed        # inside the Linux image (no web or And
 - MCP tests: the files whose editors executed a changed source in the coverage map (headers
   through the editor tree's dependency database), the changed test files, the files that call a
   changed MCP tool (by its tool names), that load a changed fixture, test project, Lua script,
-  shader, HTML, scene or material (by path), and, for an engine change, the files that build games
-  (`GAME_BUILD_FILES`: the player and the compiled game run engine code no editor coverage sees).
+  shader, HTML, scene or material (by path), and, for an engine change, the files that run a prebuilt
+  game (`GAME_BUILD_FILES`: it runs engine code no editor coverage sees), and those that compile a
+  game when what the compile path reads changes (`COMPILE_PATHS`).
   No map, a map older than 14 days or 400 commits, or a changed source no test file executed (new
   code, or code no MCP test reaches) adds the CI suite (`--suite ci`). A selected test that skips
   could not run: that fails the check.
@@ -393,7 +394,7 @@ rb.sh A --img 'JASPER_EDITOR=/src/build/linux/editor-coverage-install/bin/jasper
 Each test file's (and chunk's) editors write their GCC counts under their own `GCOV_PREFIX`; a
 source counts when one of its objects has a counter above zero. The run leaves out the slow builds
 (no `JASPER_SLOW_BUILD`): what a compile or a prebuilt game runs is not the editor's code, and the
-files that build games are selected for every engine change anyway, by `GAME_BUILD_FILES`. The server's
+files that build games are selected by path (`GAME_BUILD_FILES`, `COMPILE_PATHS`). The server's
 `rb.sh` puts the map where check-changed looks; copy it to the other servers' `~/je/mcp-build-cache/`.
 
 ### The full suite across servers: `je-remote/mcp-shard.sh`
