@@ -178,6 +178,14 @@ TEST(SokolPatchMarkers, AsyncCreationHooks){
     EXPECT_NE(readRepoFile("libs/sokol/PATCHES.md").find("## Asynchronous creation (spec S32)"), std::string::npos);
 }
 
+// (one on the lock's own definition, 6 + 6 + 2 where it is taken, 6 asserts of sg_destroy_* gone)
+TEST(SokolPatchMarkers, PoolLock){
+    const std::string header = readRepoFile("libs/sokol/sokol_gfx.h");
+    ASSERT_FALSE(header.empty());
+    EXPECT_EQ(countOf(header, "JasperEngine: pool lock"), 21u);
+    EXPECT_NE(readRepoFile("libs/sokol/PATCHES.md").find("## A lock on the resource pools"), std::string::npos);
+}
+
 TEST(PipelineIntern, EveryFieldChangesTheDescription){
     const sg_pipeline_desc base = sampleDesc();
     EXPECT_TRUE(SokolPipelineCache::descEqual(base, base));
