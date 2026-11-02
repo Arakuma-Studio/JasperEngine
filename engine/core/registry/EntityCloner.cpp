@@ -158,6 +158,8 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
         submesh.needUpdateTexture = false;
         submesh.needUpdateDepthTexture = false;
         submesh.needUpdateGBufferTexture = false;
+        submesh.textureStandInEpoch = 0;
+        submesh.textureBindRebuildEpoch = 0;
         remapMaterialTextures(submesh.material, ctx);
     }
     mesh.bonesBuffer = BufferRender();

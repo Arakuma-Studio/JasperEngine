@@ -3741,7 +3741,9 @@ bool RenderSystem::bindShaderTextures(const ShaderLibraryBindings& bindings, Obj
         TextureRender* textureRender = fallback;
         if (textureSlot.source >= 0 && textureSlot.source < (int)textures.size()){
             Texture& texture = textures[textureSlot.source].second;
-            if (!texture.empty()){
+            // (one naming a file that failed too: another load of it may have made its GPU
+            // texture, or a stand-in is noted for a later binding)
+            if (!texture.empty() || !texture.getId().empty()){
                 textureRender = texture.getRender(fallback);
                 if (!textureRender){
                     textureRender = fallback;
@@ -4725,6 +4727,21 @@ void RenderSystem::applyLitMaterialBlock(ObjectRender& render, int slot, const M
     for (int c = 8; c < 11; c++)
         prefix[c] *= material.emissiveStrength;
     render.applyUniformBlock(slot, size, prefix);
+}
+
+RenderSystem::TextureBindMark RenderSystem::markTextureBinding(){
+    return {Texture::getStandInCount(), TexturePool::getReadyEpoch(), TexturePool::getRebuildEpoch()};
+}
+
+void RenderSystem::noteTextureBinding(Submesh& submesh, const TextureBindMark& mark){
+    // the epochs as they were before the binding: an image made during it is looked at again
+    submesh.textureStandInEpoch = Texture::getStandInCount() != mark.standIns ? mark.readyEpoch : 0;
+    submesh.textureBindRebuildEpoch = mark.rebuildEpoch;
+}
+
+bool RenderSystem::textureBindingOutdated(const Submesh& submesh){
+    return (submesh.textureStandInEpoch != 0 && submesh.textureStandInEpoch != TexturePool::getReadyEpoch()) ||
+           (submesh.textureBindRebuildEpoch != 0 && submesh.textureBindRebuildEpoch != TexturePool::getRebuildEpoch());
 }
 
 bool RenderSystem::loadPbrExtTextures(Submesh& submesh, ShaderData& shaderData, ObjectRender& render){
@@ -6164,6 +6181,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].customFSParams.resolve(shaderData, "u_fs_customParams");
         writeSubmeshCustomUniforms(mesh, mesh.submeshes[i]);
 
+        // what the binding below takes stand-ins for (noteTextureBinding)
+        const TextureBindMark bindMark = markTextureBinding();
         if (!loadPBRTextures(mesh.submeshes[i].material, shaderData, mesh.submeshes[i].render, mesh.receiveLights)){
             return false;
         }
@@ -6217,6 +6236,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].needUpdateTexture = false;
         mesh.submeshes[i].needUpdateDepthTexture = false;
         mesh.submeshes[i].needUpdateGBufferTexture = false;
+        noteTextureBinding(mesh.submeshes[i], bindMark);
 
         // render state: the material's, the manifest's @state, else the legacy state
         // (alpha blended materials go to the transparent queue and write no depth)
@@ -8270,10 +8290,12 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
             if (mesh.submeshes[i].needUpdateTexture || needUpdateFramebuffer){
                 ShaderData& shaderData = mesh.submeshes[i].shader.get()->shaderData;
+                const TextureBindMark bindMark = markTextureBinding();
                 if (loadPBRTextures(mesh.submeshes[i].material, shaderData, mesh.submeshes[i].render, mesh.receiveLights) &&
                         loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render) &&
                         bindShaderTextures(libraryBindings, render, mesh.submeshes[i].material.shaderTextures)){
                     mesh.submeshes[i].needUpdateTexture = false;
+                    noteTextureBinding(mesh.submeshes[i], bindMark);
                 }
             }
             // a FluidSimulation shown on this mesh (output MATERIAL): its image as submesh 0's
@@ -13579,6 +13601,13 @@ void RenderSystem::update(double dt){
                             mesh.needVariantReload = true;
                         }
                     }
+                }
+
+                // An image the material names that had no GPU texture when it was bound (it drew a
+                // stand-in) may be made now: an image ready, or assigned, after the binding
+                // (BF15). A GPU texture rebuilt in place left its old view in the binding.
+                if (mesh.loaded && !mesh.needReload && textureBindingOutdated(mesh.submeshes[s])){
+                    mesh.submeshes[s].needUpdateTexture = true;
                 }
 
                 if (mesh.submeshes[s].needUpdateTexture){

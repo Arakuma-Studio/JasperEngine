@@ -326,6 +326,11 @@ namespace jasperengine{
         bool needUpdateTexture = false;
         bool needUpdateDepthTexture = false;
         bool needUpdateGBufferTexture = false;
+        // runtime (RenderSystem): TexturePool::getReadyEpoch when the material was bound with a
+        // stand-in for an image it names (0: every image bound is its own), and the
+        // TexturePool::getRebuildEpoch it was bound at. When either moves on, it binds again.
+        uint32_t textureStandInEpoch = 0;
+        uint32_t textureBindRebuildEpoch = 0;
 
         bool generated = false;
 

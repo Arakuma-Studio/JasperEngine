@@ -409,6 +409,10 @@ void MeshSystem::setImageDecodeMaxDimension(int dimension){
     g_imageDecodeMaxDimension = dimension;
 }
 
+std::string MeshSystem::getImageKeySuffix(){
+    return g_imageDecodeMaxDimension > 0 ? "|max" + std::to_string(g_imageDecodeMaxDimension) : std::string();
+}
+
 void MeshSystem::applyDefaultObjMaterial(Submesh& submesh) {
     submesh.attributes.clear();
     submesh.material = Material();
@@ -2729,17 +2733,23 @@ bool MeshSystem::loadGLTFTexture(int textureIndex, ModelComponent& model, Textur
             return true;
         }
 
-        std::string id = gltfTextureDedupKey(getModelTextureKey(model.filename), *model.gltfModel, textureIndex);
+        // a preview's images (decoded smaller) are keyed apart from the model's (getImageKeySuffix)
+        const std::string imageKeySuffix = getImageKeySuffix();
+        std::string id = gltfTextureDedupKey(getModelTextureKey(model.filename), *model.gltfModel, textureIndex) + imageKeySuffix;
 
         // The pooled CPU copy goes once a GPU texture is made of it (setReleaseDataAfterLoad
         // below), and a Texture of this image that makes its own GPU texture later (another
         // sampler, or one remade after its GPU copy went) found no pixels and drew white. It
         // makes them again from the model's decoded image (ModelPool keeps the model while it is
-        // used), as the packed lobe maps do (loadGLTFLobeMap).
+        // used), as the packed lobe maps do (loadGLTFLobeMap). A full-resolution image whose
+        // parse went (a reload replaced it) makes them from the pooled parse of the file.
         std::weak_ptr<tinygltf::Model> source = model.gltfModel;
         const int imageIndex = tex.source;
-        TextureDataPool::setGenerator(id, [source, imageIndex, colorFormat]() -> TextureData {
+        const std::string poolKey = imageKeySuffix.empty() ? getModelFilenameKey(model.filename) : std::string();
+        TextureDataPool::setGenerator(id, [source, poolKey, imageIndex, colorFormat]() -> TextureData {
             std::shared_ptr<tinygltf::Model> gltf = source.lock();
+            if (!gltf && !poolKey.empty())
+                gltf = ModelPool::getGLTF(poolKey);
             if (!gltf || imageIndex < 0 || (size_t)imageIndex >= gltf->images.size())
                 return TextureData();
             const tinygltf::Image& decoded = gltf->images[imageIndex];

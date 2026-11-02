@@ -8,6 +8,7 @@
 // values come in two textures gets one map packed from them on a job (TexturePack).
 
 #include "MeshSystem.h"
+#include "pool/ModelPool.h"
 
 #include "Log.h"
 #include "pool/TextureDataPool.h"
@@ -161,15 +162,22 @@ bool MeshSystem::loadGLTFLobeMap(ModelComponent& model, const GltfLobeMap& lobeM
 
     // two (or one in another channel): packed into the lobe's layout on a job
     const tinygltf::Model& gltf = *model.gltfModel;
-    const std::string modelKey = getModelFilenameKey(model.filename);
+    // (a preview's images, decoded smaller, keyed apart: MeshSystem::getImageKeySuffix)
+    const std::string imageKeySuffix = getImageKeySuffix();
+    const std::string poolKey = getModelFilenameKey(model.filename);
+    const std::string modelKey = poolKey + imageKeySuffix;
     const std::string id = TexturePack::makeId(imageKey(modelKey, gltf, first), imageKey(modelKey, gltf, second), *lobeMap.layout);
     map.setGenerated(id);
-    // the model's decoded images stay in ModelPool while it is used; once it is gone the map
+    // the model's decoded images stay in ModelPool while it is used (a full-resolution map
+    // whose parse a reload replaced takes the pooled one); once the model is gone the map
     // fails to load and its factors draw alone
     std::weak_ptr<tinygltf::Model> source = model.gltfModel;
+    const std::string fallbackKey = imageKeySuffix.empty() ? poolKey : std::string();
     const TexturePack::Layout* layout = lobeMap.layout;
-    TextureDataPool::setGenerator(id, [source, first, second, layout]() -> TextureData {
+    TextureDataPool::setGenerator(id, [source, fallbackKey, first, second, layout]() -> TextureData {
         std::shared_ptr<tinygltf::Model> gltfModel = source.lock();
+        if (!gltfModel && !fallbackKey.empty())
+            gltfModel = ModelPool::getGLTF(fallbackKey);
         if (!gltfModel)
             return TextureData();
         TexturePack::Source a, b;

@@ -236,6 +236,7 @@ void TextureDataPool::replace(const std::string& id, std::shared_ptr<std::array<
     getMap()[id] = std::move(data);
     getGenerations()[id]++;
     replaceEpoch.fetch_add(1, std::memory_order_acq_rel);
+    TexturePool::noteReady();
 }
 
 uint32_t TextureDataPool::generation(const std::string& id){
@@ -348,6 +349,7 @@ void TextureDataPool::put(const std::string& id, std::shared_ptr<std::array<Text
     }
 
     map[id] = std::move(data);
+    TexturePool::noteReady();
 }
 
 std::shared_ptr<std::array<TextureData,6>> TextureDataPool::get(const std::string& id, std::array<TextureData,6> data){
@@ -362,6 +364,7 @@ std::shared_ptr<std::array<TextureData,6>> TextureDataPool::get(const std::strin
 
 	shared = std::make_shared<std::array<TextureData,6>>(data);
     map[id] = shared;
+    TexturePool::noteReady();
 
 	return shared;
 }
@@ -585,8 +588,11 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
 }
 
 void TextureDataPool::setGenerator(const std::string& id, std::function<TextureData()> generator) {
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    generators[id] = std::move(generator);
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        generators[id] = std::move(generator);
+    }
+    TexturePool::noteReady();
 }
 
 TextureLoadResult TextureDataPool::loadGenerated(const std::string& id) {
@@ -638,6 +644,7 @@ TextureLoadResult TextureDataPool::loadGenerated(const std::string& id) {
         shared = std::make_shared<std::array<TextureData, 6>>(faces);
         // the pool's copy owns the pixels the generator handed over
         shared->at(0).setDataOwned(true);
+        TexturePool::noteReady();
         result.state = ResourceLoadState::Finished;
         result.data = shared;
     } catch (const std::exception& e) {
@@ -1237,6 +1244,7 @@ void TextureDataPool::adopt(const std::string& id, LoadResult& result, bool repl
         TexturePool::invalidate(id);
     }else{
         getMap()[id] = shared;
+        TexturePool::noteReady();
     }
     noteResident(id, *shared, result.cooked);
 }
@@ -1492,11 +1500,12 @@ void TextureDataPool::remove(const std::string& id){
     auto& map = getMap();
     auto it = map.find(id);
     if (it != map.end()){
+        // The generator stays: a Texture naming the id may still be about (its pixels freed
+        // after its GPU upload, it holds no data) and needs it to make its pixels again; one
+        // whose source is gone fails its load (setGenerator replaces it on the next load)
         if (!it->second || it->second.use_count() <= 1){
             map.erase(it);
             forgetResident(id);
-            std::lock_guard<std::mutex> lock(cacheMutex);
-            generators.erase(id);
         }
 	}else if (!removedPending){
 		if (Engine::isViewLoaded()){

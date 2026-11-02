@@ -67,6 +67,8 @@ Texture::Texture(const std::string& id, TextureData data): Texture(){
 
 namespace {
     TextureRender* destroyedFramebufferFallback = nullptr;
+    // getRender's stand-ins on this thread (getStandInCount)
+    thread_local uint32_t standInCount = 0;
 
     // a framebuffer owned by a std::shared_ptr is shared with the textures showing it
     std::shared_ptr<Framebuffer> ownerOf(Framebuffer* framebuffer){
@@ -596,6 +598,8 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     }
 
     if (texResult.state != ResourceLoadState::Finished || !hasTexturePixels(data, numFaces)){
+        if (!id.empty())
+            standInCount++;
         return fallBackTexture;
     }
 
@@ -613,7 +617,13 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
         return render.get();
     }
 
+    if (!id.empty())
+        standInCount++;
     return fallBackTexture;
+}
+
+uint32_t Texture::getStandInCount(){
+    return standInCount;
 }
 
 std::string Texture::getPath(size_t index) const{
@@ -757,7 +767,9 @@ void Texture::releaseData(){
 }
 
 bool Texture::empty() const{
-    if (!needLoad && !data && !render && !framebuffer)
+    // an id that is not a file path names a pooled or generated image (setId, setData,
+    // setGenerated): it is there while its pixels and GPU texture come and go
+    if (!needLoad && !data && !render && !framebuffer && (id.empty() || loadFromPath))
         return true;
 
     return false;

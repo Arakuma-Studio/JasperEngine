@@ -33,6 +33,16 @@ namespace jasperengine{
         // also the id's sampler variants
         static void invalidate(const std::string& id);
 
+        // Goes up when an image can be made where it could not before: a GPU texture made, pixels
+        // pooled or replaced, a generator registered (TextureDataPool). A material that bound a
+        // stand-in (Texture::getStandInCount) binds again when it moved on (RenderSystem): an image
+        // ready, or assigned, after its material was bound reaches the GPU binding (BF15).
+        static uint32_t getReadyEpoch();
+        static void noteReady();
+        // Goes up when a stale GPU texture is made again in place (invalidate, then get with data):
+        // its old view is gone from every binding holding it, which binds again
+        static uint32_t getRebuildEpoch();
+
         // necessary for engine shutdown
         static void clear();
         // destroys only entries no one else references (safe while other scenes are alive)

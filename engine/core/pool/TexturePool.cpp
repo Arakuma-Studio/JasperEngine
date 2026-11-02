@@ -9,6 +9,7 @@
 #include "render/SystemRender.h"
 #include "texture/TexturePrepare.h"
 
+#include <atomic>
 #include <cstring>
 
 #include <vector>
@@ -28,6 +29,29 @@ std::set<std::string>& TexturePool::getInvalidated(){
     static std::set<std::string>* invalidated = new std::set<std::string>();
     return *invalidated;
 };
+
+namespace {
+    // (0 is never an epoch: RenderSystem keeps 0 for "nothing stood in")
+    std::atomic<uint32_t> readyEpoch{1};
+    std::atomic<uint32_t> rebuildEpoch{1};
+
+    void advance(std::atomic<uint32_t>& epoch){
+        if (epoch.fetch_add(1, std::memory_order_acq_rel) + 1 == 0)
+            epoch.fetch_add(1, std::memory_order_acq_rel);
+    }
+}
+
+uint32_t TexturePool::getReadyEpoch(){
+    return readyEpoch.load(std::memory_order_acquire);
+}
+
+void TexturePool::noteReady(){
+    advance(readyEpoch);
+}
+
+uint32_t TexturePool::getRebuildEpoch(){
+    return rebuildEpoch.load(std::memory_order_acquire);
+}
 
 std::string TexturePool::getRenderId(const std::string& id, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
 	if (id.empty() || (minFilter == TextureFilter::LINEAR && magFilter == TextureFilter::LINEAR &&
@@ -154,8 +178,9 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 	}
 
 	// Stale entry with fresh data: swap the backend texture now, inside a single call with
-	// no draw in between, so holders never bind a destroyed texture.
-	if (stale && shared->isCreated()){
+	// no draw in between. The bindings that hold its view bind again (getRebuildEpoch).
+	const bool rebuilt = stale && shared->isCreated();
+	if (rebuilt){
 		shared->destroyTexture();
 	}
 
@@ -191,6 +216,9 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 
 	map[id] = shared;
 	getInvalidated().erase(id);
+	if (rebuilt)
+		advance(rebuildEpoch);
+	advance(readyEpoch);
 
 	return shared;
 }

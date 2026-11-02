@@ -110,6 +110,11 @@ namespace jasperengine{
             // (setDestroyedFramebufferFallback: RenderSystem's transparent black), else
             // fallBackTexture; with no fallBackTexture, its texture as it is
             TextureRender* getRender(TextureRender* fallBackTexture = NULL);
+            // How many times getRender gave its fallback for a Texture that names an image (a
+            // stand-in: no pixels to make its GPU texture of yet, nothing loading them) on the
+            // calling thread. A renderer reads it around a material's binding: one that took a
+            // stand-in binds again once an image can be made (TexturePool::getReadyEpoch).
+            static uint32_t getStandInCount();
             static void setDestroyedFramebufferFallback(TextureRender* texture);
             std::string getPath(size_t index = 0) const;
             // The asset GUID of a source path: the editor resolves texture references by it
@@ -146,6 +151,10 @@ namespace jasperengine{
 
             void releaseData();
 
+            // Names no image. A Texture of a file whose load failed is empty; one naming a pooled
+            // or generated image by id (a model's embedded image) is not, with or without its
+            // pixels or GPU texture at the moment: a variant chosen while they were away
+            // samples it once they are back.
             bool empty() const;
             Framebuffer* getFramebuffer() const;
             bool isFramebuffer() const;

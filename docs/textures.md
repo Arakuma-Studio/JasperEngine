@@ -124,6 +124,14 @@ window badges queued, cooking and failed textures.
 - **Sizes**: `Texture.width` / `height` stay the source's (layout never moves);
   `getStoredWidth()` / `getStoredHeight()` are the GPU image's.
 - **CPU data**: `Texture:getData()` of a compressed texture is empty and logs once.
+- **Late images**: a material whose image has no GPU texture yet and nothing loading it (no pixels
+  pooled, no generator) binds a stand-in (white, a flat normal) and binds again once an image can
+  be made (pixels pooled or replaced, a generator registered, a GPU texture made:
+  `TexturePool::getReadyEpoch`), in every slot (the five core maps, the extension lobe maps, a
+  shader's own textures); a GPU texture rebuilt in place (a hot reload) is bound again by every
+  material holding it. A model's embedded images are made again from the model once their pixels
+  were freed after the upload; a preview's (a thumbnail's 256 px load) are keyed apart
+  (`|max256`) and never share or replace the scene's.
 
 ## Command line
 
