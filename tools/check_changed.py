@@ -474,6 +474,10 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
             for test, text in sources.items():
                 if re.search(rf"\b{re.escape(stem)}\b", text):
                     plan.add_mcp(test, f"uses {f}")
+    # the contributor docs have a drift check of their own
+    agent_docs = [f for f in files if f in ("AGENTS.md", "CLAUDE.md") or f.startswith(".claude/rules/")]
+    if agent_docs and "test_agent_docs.py" in sources:
+        plan.add_mcp("test_agent_docs.py", f"checks {agent_docs[0]}")
     # the tools a changed MCP tool source defines: the files that call them
     for f in files:
         if f.startswith("editor/mcp/") and f.endswith(CXX) and (ROOT / f).is_file():

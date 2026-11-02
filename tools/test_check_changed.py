@@ -213,6 +213,7 @@ class Units(unittest.TestCase):
 
 
 SRC = {
+    "test_agent_docs.py": "x\n",
     "test_render.py": "await ed.call('set_properties')\n",
     "test_tool.py": "await ed.call(\"resolve_asset\", asset='x')\n",
     "test_fixture.py": "EDITOR = {'project': REPO / 'tools' / 'fixtures' / 'water'}\n",
@@ -282,6 +283,7 @@ class Mcp(unittest.TestCase):
         self.assertTrue(cc.path_mapped("tools/mcp/tests/golden/x/a.png"))
         self.assertFalse(cc.path_mapped("tools/ci/check.py"))
         self.assertEqual(self.plan(["docs/testing.md"]).mcp_files, [])
+        self.assertEqual(self.plan(["AGENTS.md"]).mcp_files, ["test_agent_docs.py"])
 
 
 def gcda(major: int, counters: list[int], zero_compact: bool = False) -> bytes:
