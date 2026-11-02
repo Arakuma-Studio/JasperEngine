@@ -352,10 +352,10 @@ async def test_external_terrain_layer_edit_reloads(ed: Editor):
     await console_mark(ed)
     safe_save(ed.project / layer, png_bytes(RED))
     time.sleep(1.5)   # no MCP call: only the watcher can reload it
-    entries = await ed.console_since(contains="[Hot Reload] Reloaded " + layer)
-    ed.check(entries, "no [Hot Reload] line for the layer image")
     got = await wait_surface(is_red)
     ed.check(is_red(got), f"the terrain draws the layer's new image: {got}")
+    entries = await ed.console_since(contains="[Hot Reload] Reloaded " + layer)
+    ed.check(entries, "no [Hot Reload] line for the layer image")
 
     # the broken file: its reload fails, the terrain keeps the image it draws
     await console_mark(ed)
