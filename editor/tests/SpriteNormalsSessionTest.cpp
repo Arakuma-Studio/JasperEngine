@@ -42,6 +42,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -948,7 +949,10 @@ namespace {
             if (fs::exists(f.absolute)) std::exit(9);
         }
         if (!history->redo() || readAll(files[1].absolute) != files[1].bytes) std::exit(10);
-        std::exit(0);
+        std::fflush(stdout);
+        // the forked editor ends without its static destructors: its jobs (thumbnails, imports)
+        // may still read the App while it would be destroyed
+        std::_Exit(0);
     }
 
 }
@@ -1021,7 +1025,10 @@ namespace {
             if (!indexed) usleep(5000);
         }
         if (!indexed || watcher->dormant()) std::exit(15);
-        std::exit(0);
+        std::fflush(stdout);
+        // the forked editor ends without its static destructors: its jobs (thumbnails, imports)
+        // may still read the App while it would be destroyed
+        std::_Exit(0);
     }
 
 }
