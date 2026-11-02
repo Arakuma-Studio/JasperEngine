@@ -24,9 +24,9 @@ unit and MCP tests that can see it; the full suite stays the gate of batch landi
    a shader runs the core tests' *Gpu suites.
 4. MCP tests, from a coverage map (tools/mcp/coverage_map.py: which source files, headers included,
    each test file's editors executed a function of, recorded by a full run of a coverage-instrumented
-   editor): the files that executed the functions the diff's hunks touch (the whole file when a hunk
-   is outside every function, or the file differs from the map's commit; a header also through its .cpp;
-   a function nearly every editor runs, the 10 quickest files that run it), the changed test
+   editor): the files that executed the functions the diff's hunks touch (the whole file when a changed
+   line is outside every function, a header then also through its .cpp; only new lines outside them
+   touch nothing old; a function nearly every editor runs, the 10 quickest files that run it), the changed test
    files, the tests of a changed MCP tool (by its tool names), of a changed fixture, Lua, shader or
    asset (by path; a shader also test_shader_library.py and the CI suite), the files that run a
    prebuilt game when the engine changes, and those that compile a game when what the compile

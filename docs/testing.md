@@ -359,9 +359,10 @@ rb.sh A --img tools/check-changed        # inside the Linux image (no web or And
   `tools/build.sh unit-tests` and its no-silent-green gate); a changed test file always runs; a
   CMake change, or test trees not built yet, run them all.
 - MCP tests: the files that executed the functions the diff's hunks touch (coverage map: the whole
-  file when a hunk has a line outside every function, a declaration or a type, or when the file
-  differs from the map's commit; a header also through its `.cpp`; a function nearly every editor runs
-  selects the 10 quickest files that run it), the changed test files, the files that call a
+  file when a changed line is outside every function, a declaration or a type; a header then also
+  through its `.cpp`; only new lines outside the functions touch nothing old, a new function counts
+  through its callers' changes; the lines reach the map's through the diff from its commit; a
+  function nearly every editor runs selects the 10 quickest files that run it), the changed test files, the files that call a
   changed MCP tool (by its tool names), that load a changed fixture, test project, Lua script,
   shader, HTML, scene or material (by path), and, for an engine change, the files that run a prebuilt
   game (`GAME_BUILD_FILES`: it runs engine code no editor coverage sees), and those that compile a
@@ -370,6 +371,9 @@ rb.sh A --img tools/check-changed        # inside the Linux image (no web or And
   code), or a file no test names adds the CI suite; code the map knows that no test executes
   selects nothing, and the summary says so. A selected test that skips
   could not run: that fails the check.
+- The diff is the stream's, so a long or wide stream selects most of the suite (a tool like
+  `create_entity` or the frame reaches most test files). `--base HEAD~1` checks one commit, when the
+  one before it passed.
 - A pass is cached in `build/.cache/check-changed.json`, keyed by the base, the content of every
   changed and untracked file, the images' Dockerfiles, the coverage map's version and the script
   itself: the same inputs reprint the last summary (`--no-cache` runs again); a run during which
