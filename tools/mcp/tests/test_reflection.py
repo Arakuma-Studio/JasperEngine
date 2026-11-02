@@ -225,6 +225,10 @@ def compare_or_update(path: Path, actual: str, what: str, mismatches: list[str],
         expected = golden_filter(expected)
     if expected != actual:
         mismatches.append(f"{what} differs from {path.relative_to(harness.REPO)}: {first_difference(actual, expected)}")
+        # what this editor wrote, beside the test results, for a look at the whole difference
+        kept = harness.REPO / "build" / "test-results" / "reflection-actual" / path.relative_to(GOLDEN)
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        kept.write_text(actual, encoding="utf-8", newline="")
 
 
 def fixture_projects() -> list[Path]:
