@@ -450,6 +450,8 @@ def main() -> int:
             prewarm.start()
 
     tmp = Path(tempfile.mkdtemp(prefix="jasper-mcp-results-"))
+    # the editors at once, for their share of the CPUs (harness.render_threads)
+    os.environ.setdefault("JASPER_MCP_WORKERS", str(max(1, args.j)))
     gpu_env = _gpu_env()
     if any(c.lane == "gpu" for c in chunks) and not gpu_env:
         print("run_tests: the plan has GPU chunks, but this run is not on the GPU lane (JASPER_MCP_GPU_LANE=1 "

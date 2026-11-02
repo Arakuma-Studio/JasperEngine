@@ -2,8 +2,9 @@
 
 A file's tests share one editor and run in source order, so a file is one piece of work, unless it
 declares TESTS_INDEPENDENT = "why" (each of its tests sets up what it needs and runs correctly in
-an editor of its own, in any order): then its tests may be split into chunks, each run by its own
-worker process and editor. That is what keeps one long file (an hour of software-rendered
+an editor of its own, in any order), or TESTS_INDEPENDENT = ("why", ["test_x_*"]) for some of its
+tests: then those may be split into chunks, each run by its own worker process and editor (the
+file's other tests stay together, in order, in a chunk of their own). That is what keeps one long file (an hour of software-rendered
 examples) from being the whole run's wall time.
 
     # the chunks of one server's run (run_tests.py --split-seconds 600 does this itself)
@@ -31,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import fnmatch
 import json
 import re
 import sys
@@ -61,9 +63,22 @@ def module_value(path: Path, name: str):
     return None
 
 
-def independent(path: Path) -> bool:
+def independent_patterns(path: Path) -> list[str]:
+    """The tests of a file that may run in editors of their own (TESTS_INDEPENDENT): ["*"] for a
+    file that declares TESTS_INDEPENDENT = "why", the patterns of TESTS_INDEPENDENT = ("why",
+    ["test_x_*", ...]) (those tests use nothing the file's other tests leave, nor do the others use
+    theirs), [] for a file without it."""
     value = module_value(path, "TESTS_INDEPENDENT")
-    return isinstance(value, str) and bool(value.strip())
+    if isinstance(value, str) and value.strip():
+        return ["*"]
+    if isinstance(value, (tuple, list)) and len(value) == 2 and isinstance(value[0], str) and value[0].strip() \
+            and isinstance(value[1], (tuple, list)) and all(isinstance(p, str) for p in value[1]):
+        return list(value[1])
+    return []
+
+
+def independent(path: Path) -> bool:
+    return bool(independent_patterns(path))
 
 
 def builds_games(path: Path) -> bool:
@@ -144,10 +159,17 @@ def make_chunks(tests: list[str], times: dict[str, float], chunk_seconds: float,
         seconds = [times.get(f"{file}::{t}", DEFAULT_SECONDS) for t in names]
         pin = pin_builds if pin_builds and path.is_file() and builds_games(path) else ""
         groups: list[list[int]] = []
-        if path.is_file() and independent(path) and sum(seconds) > chunk_seconds:
+        patterns = independent_patterns(path) if path.is_file() else []
+        free = [i for i, t in enumerate(names) if any(fnmatch.fnmatchcase(t, p) for p in patterns)]
+        if free and sum(seconds) > chunk_seconds:
+            # the tests that depend on each other: one chunk, in order; the independent ones in
+            # consecutive groups of about chunk_seconds (a longer test alone)
+            rest = [i for i in range(len(names)) if i not in free]
+            if rest:
+                groups.append(rest)
             current: list[int] = []
-            for i, s in enumerate(seconds):
-                if current and sum(seconds[j] for j in current) + s > chunk_seconds:
+            for i in free:
+                if current and sum(seconds[j] for j in current) + seconds[i] > chunk_seconds:
                     groups.append(current)
                     current = []
                 current.append(i)

@@ -325,6 +325,11 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
         env["DISPLAY"] = display
     env["HOME"] = str(scratch.home)
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+    # llvmpipe's and lavapipe's rasterizer threads (Mesa: one per CPU it sees, the host's, not the
+    # container's quota): render_threads()
+    threads = render_threads()
+    if threads and "LP_NUM_THREADS" not in os.environ:
+        env["LP_NUM_THREADS"] = str(threads)
     # the engine's Lua state used off the main thread aborts the editor (LuaBinding::ThreadCheck)
     env.setdefault("JASPER_LUA_THREAD_CHECK", "abort")
     # test-only widget locator (editor/util/UIProbe.h): the editor writes the rectangles of the
@@ -421,7 +426,7 @@ def build_jobs() -> int:
     return max(1, cpus)
 
 
-def compile_env(name: str) -> dict[str, str]:
+def compile_env(name: str, lto: bool = False) -> dict[str, str]:
     """The environment of an editor whose tests compile games (build_project method "compile"):
     the user cache (XDG_CACHE_HOME, where the kit's compile tree goes) at a fixed path,
     build/mcp-compile-home/<name> of the checkout (/src/... in the Linux image whatever the
@@ -429,14 +434,47 @@ def compile_env(name: str) -> dict[str, str]:
     which CMake takes from the environment) when the run has one (CCACHE_DIR, as tools/build.sh's
     containers do). Every run still compiles from an empty tree, its configure, every compile
     command and the link: an object comes from ccache only when its preprocessed source, compiler,
-    flags and directory are those it was compiled with. Without ccache a run compiles as before."""
+    flags and directory are those it was compiled with. Without ccache a run compiles as before.
+    lto=False: the release game links without GCC's link-time optimisation (JASPERENGINE_RELEASE_LTO=OFF,
+    engine/CMakeLists.txt), which costs a quarter of an hour of link and changes nothing the test
+    checks; the suite's LTO check is test_build.py's compiled game (lto=True, docs/testing.md)."""
     home = REPO / "build" / "mcp-compile-home" / name
     shutil.rmtree(home, ignore_errors=True)
     home.mkdir(parents=True, exist_ok=True)
     env = {"XDG_CACHE_HOME": str(home)}
+    if not lto:
+        env["JASPERENGINE_RELEASE_LTO"] = "OFF"
     if shutil.which("ccache") and os.environ.get("CCACHE_DIR"):
         env.update({"CMAKE_C_COMPILER_LAUNCHER": "ccache", "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"})
     return env
+
+
+# llvmpipe threads per editor when nothing says otherwise (docs/testing.md, "CPU caps")
+RENDER_THREADS_MAX = 4
+
+
+def cpu_allowance() -> int:
+    """The CPUs this process may use: its affinity, and a container's quota (cgroup cpu.max)."""
+    cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 2)
+    with contextlib.suppress(OSError, ValueError):
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        if quota != "max":
+            cpus = min(cpus, max(1, int(quota) // int(period)))
+    return max(1, cpus)
+
+
+def render_threads() -> int:
+    """LP_NUM_THREADS for an editor (and the players it runs): JASPER_MCP_RENDER_THREADS when set
+    (0: Mesa's own default, a thread per CPU of the host), else the run's CPU allowance shared by
+    its editors (JASPER_MCP_WORKERS, the runner's -j), between 1 and RENDER_THREADS_MAX. Mesa's
+    default gives every editor of a -j run as many threads as the host has CPUs, all inside the
+    container's quota: the quota throttles them all at once, the editors' main threads included
+    (seconds-long stalls on a loaded server). LP_NUM_THREADS in the run's environment wins."""
+    value = os.environ.get("JASPER_MCP_RENDER_THREADS", "")
+    if value.isdigit():
+        return int(value)
+    workers = int(os.environ["JASPER_MCP_WORKERS"]) if os.environ.get("JASPER_MCP_WORKERS", "").isdigit() else 1
+    return max(1, min(RENDER_THREADS_MAX, cpu_allowance() // max(1, workers)))
 
 
 def perf_slack() -> float:

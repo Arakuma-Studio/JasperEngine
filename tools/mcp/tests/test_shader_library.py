@@ -4,7 +4,9 @@ references, and manifest validation of a project fork."""
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -91,12 +93,35 @@ def run_check_json(project: Path, *args: str) -> tuple[int, dict]:
 # ---------------------------------------------------------------------------- CLI: compile matrix
 
 
+# what `--backend all` names (ShaderPool::getShaderBackends)
+MATRIX_BACKENDS = ("opengl", "opengles", "d3d11", "metal", "metalios", "vulkan")
+MATRIX_LINE = re.compile(r"^(\S+): (\d+) variants x (\d+) backends, (\d+) compiled, (\d+) failed (OK|FAILED)$")
+
+
 async def test_cli_library_matrix_all_backends():
     r = run_editor("shaders", "--library", "no_such_shader", "--backend", "opengl")
     check_eq(r.returncode, 1, f"an unknown library shader fails: {r.stdout}{r.stderr}")
     check("no_such_shader" in r.stderr and "unknown library shader" in r.stderr, f"says why: {r.stderr}")
-    r = run_editor("shaders", "--library", "all", "--backend", "all", timeout=1800)
-    check_eq(r.returncode, 0, f"every library shader on every backend: {r.stdout[-3000:]}{r.stderr[-3000:]}")
+    # --backend all is these backends
+    r = run_editor("shaders", "--library", "unlit", "--backend", "all", timeout=1800)
+    check_eq(r.returncode, 0, f"library:unlit on every backend: {r.stdout[-3000:]}{r.stderr[-3000:]}")
+    rows = [m for m in map(MATRIX_LINE.match, r.stdout.splitlines()) if m]
+    check(rows and all(int(m.group(3)) == len(MATRIX_BACKENDS) for m in rows),
+          f"--backend all compiles for the {len(MATRIX_BACKENDS)} backends {MATRIX_BACKENDS}: {r.stdout[-2000:]}")
+    # every library shader (--library all) on every backend: the matrix of each backend in a process
+    # of its own, the backends at once (one process compiles one variant at a time)
+    with concurrent.futures.ThreadPoolExecutor(len(MATRIX_BACKENDS)) as pool:
+        runs = list(pool.map(lambda b: run_editor("shaders", "--library", "all", "--backend", b, timeout=1800),
+                             MATRIX_BACKENDS))
+    matrices = {}
+    for backend, r in zip(MATRIX_BACKENDS, runs):
+        check_eq(r.returncode, 0, f"every library shader on {backend}: {r.stdout[-3000:]}{r.stderr[-3000:]}")
+        matrices[backend] = {m.group(1): int(m.group(2)) for m in map(MATRIX_LINE.match, r.stdout.splitlines()) if m}
+        check(matrices[backend] and all(m.group(6) == "OK" for m in map(MATRIX_LINE.match, r.stdout.splitlines()) if m),
+              f"{backend}: {r.stdout[-2000:]}")
+    first = matrices[MATRIX_BACKENDS[0]]
+    for backend, matrix in matrices.items():
+        check_eq(matrix, first, f"{backend} compiles the same shaders and variants as {MATRIX_BACKENDS[0]}")
 
 
 # ---------------------------------------------------------------------------- MCP and project checks
