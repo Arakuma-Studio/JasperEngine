@@ -1,10 +1,6 @@
 {
  "about": "provisional: candidates under validation",
  "tests": {
-  "test_fluid_inspector.py": {
-   "class": "gpu",
-   "why": "candidate"
-  },
   "test_stochastic_tiling.py": {
    "class": "gpu",
    "why": "candidate"
@@ -46,6 +42,10 @@
    "why": "candidate"
   },
   "test_pose_render.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_fluid_inspector.py": {
    "class": "gpu",
    "why": "candidate"
   }

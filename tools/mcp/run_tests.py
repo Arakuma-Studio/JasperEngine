@@ -488,6 +488,7 @@ def main() -> int:
             env["JASPER_MCP_EXPECT_DEVICE"] = "llvmpipe"
             if chunk.lane == "gpu":
                 env.update(gpu_env, JASPER_XVFB="none", DISPLAY=display or gpu_env.get("DISPLAY", ""),
+                           JASPER_MCP_GPU_DISPLAY=display or gpu_env.get("DISPLAY", ""),
                            JASPER_MCP_EXPECT_DEVICE="NVIDIA")
         if args.j <= 1:
             p = subprocess.run(cmd, env=env)

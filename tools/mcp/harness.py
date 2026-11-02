@@ -210,6 +210,12 @@ class Xvfb:
         self.display: str | None = None
 
     def start(self, timeout: float = 15.0) -> str:
+        # the real-GPU lane (run_tests.py): the chunk's own headless NVIDIA X display, the same size,
+        # instead of a Mesa Xvfb (an editor of the chunk renders on the GPU, and xdotool input still
+        # goes to that chunk's display only)
+        if os.environ.get("JASPER_MCP_GPU_DISPLAY"):
+            self.display = os.environ["JASPER_MCP_GPU_DISPLAY"]
+            return self.display
         if not shutil.which("Xvfb"):
             raise HarnessError("Xvfb is not installed")
         r, w = os.pipe()
