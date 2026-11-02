@@ -1107,5 +1107,10 @@ Found on the way:
   `test_fluid_effect.py`'s burst peaks at 13 of 255. Nobody has looked at them yet.
 - `tools/build.sh linux`'s LTO link prints 11 `-Wodr` warnings about `spv::` enums, the two vendored
   copies of `spirv.hpp` (glslang, spirv-cross), since S34. No warning from our own targets.
+- `NavAgentTest.CharacterControllerDriver` depended on the order of the tests: `NavSceneTest::step()` ran
+  outside the fixed phase, where a CharacterController moves by `Engine::getDeltatime()`, the last frame
+  of whatever earlier test ran one. A selection (with `AnimatorGpu.ThreeControllerPosesAndARetargetedWalk`)
+  failed it every time, alone it passed. The fixture now steps in the fixed phase. A filtered run can
+  show such a test up; a full run's order hides it.
 - A killed local `rb.sh` does not stop its job: ssh has no tty, so the remote shell, its
   container, or a job still waiting for its slot goes on. Stop the remote process too.
