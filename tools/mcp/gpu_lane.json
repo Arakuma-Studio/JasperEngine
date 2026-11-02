@@ -1,0 +1,53 @@
+{
+ "about": "provisional: candidates under validation",
+ "tests": {
+  "test_fluid_inspector.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_stochastic_tiling.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_fluid_effect.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_html_ui_effects.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_html_ui_docs.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_atmosphere_editor.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_buoyancy.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_bake_vertex_animation.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_fluid_agent.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_fluid_fixed.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_water.py": {
+   "class": "gpu",
+   "why": "candidate"
+  },
+  "test_pose_render.py": {
+   "class": "gpu",
+   "why": "candidate"
+  }
+ }
+}

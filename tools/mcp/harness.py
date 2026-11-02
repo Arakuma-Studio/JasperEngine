@@ -653,6 +653,25 @@ class Editor:
             raise HarnessError(f"initialize failed: {e!r}\n" + self._tail_block()) from e
         self.instructions = self.session.instructions or ""
         await self.tools()
+        await self._check_device()
+
+    async def _check_device(self) -> None:
+        """JASPER_MCP_EXPECT_DEVICE (the runner sets it on the GPU lane's server: "NVIDIA" for a GPU
+        chunk's editors, "llvmpipe" for the others): the editor renders on that device, or it does
+        not start (a test of the lane never runs on llvmpipe unnoticed, nor a golden on the GPU)."""
+        expected = os.environ.get("JASPER_MCP_EXPECT_DEVICE", "")
+        if not expected or self.url or not self.has_tool("get_render_stats"):
+            return
+        device = ""
+        for _ in range(3):
+            stats = await self.call("get_render_stats")
+            device = str((stats.get("gpu") or {}).get("device") or "")
+            if device:
+                break
+            await self.call("wait", frames=2)
+        if expected.lower() not in device.lower():
+            raise HarnessError(f"the editor renders on {device or 'an unnamed device'!r}, not on {expected!r} "
+                               "(JASPER_MCP_EXPECT_DEVICE)\n" + self._tail_block())
 
     async def close(self) -> None:
         if self._stack:
