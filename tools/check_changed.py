@@ -573,7 +573,11 @@ def main(argv: list[str], root: Path | None = None) -> int:
     ap.add_argument("--no-cache", action="store_true", help="run even when the same inputs passed before")
     ap.add_argument("-j", type=int, default=0, help="MCP editors at once (default: the CPUs / 2, at least 2)")
     ap.add_argument("--list-mcp", type=Path, help="write the selected MCP test files here (one per line)")
+    ap.add_argument("--root", type=Path, help="check this checkout instead of the one holding this script "
+                    "(e.g. an older branch's worktree, with this check-changed)")
     args = ap.parse_args(argv)
+    if args.root is not None:
+        use_root(args.root.resolve())
     verbose = os.environ.get("CHECK_CHANGED_VERBOSE", "") not in ("", "0")
     t0 = time.monotonic()
 
@@ -642,9 +646,11 @@ def main(argv: list[str], root: Path | None = None) -> int:
         if "linux" not in plan.builds and not (ROOT / "build/linux/editor-install/bin/jasperengine-editor").exists():
             runner.run("build linux (the MCP tests' editor)", ["tools/build.sh", "linux"], dict(build_env, SKIP_ENGINE="1"))
         jobs = args.j or max(2, (os.cpu_count() or 4) // 2)
+        # (a runner without --split-seconds: an older checkout's, --root)
+        split = ["--split-seconds", "600"] if "--split-seconds" in (ROOT / "tools/mcp/run_tests.py").read_text() else []
         mcp_env = {"JASPER_SLOW_BUILD": "1", "JASPER_SLOW_TESTS": "1", "MCP_SUITE": "all"}
         if plan.mcp_all:
-            runner.run("MCP tests (the whole suite)", ["tools/build.sh", "mcp-tests", "-j", str(jobs), "--split-seconds", "600"], mcp_env)
+            runner.run("MCP tests (the whole suite)", ["tools/build.sh", "mcp-tests", "-j", str(jobs), *split], mcp_env)
             runner.mcp_results("MCP tests (the whole suite)")
         else:
             if plan.mcp_ci:
@@ -660,7 +666,7 @@ def main(argv: list[str], root: Path | None = None) -> int:
                 if "test_mesh_raycast.py" not in files:
                     mcp_env["MCP_SKIP_WEB_BUILD"] = "1"
                 runner.run(f"MCP tests ({len(files)} file(s))", ["tools/build.sh", "mcp-tests", "-j", str(jobs),
-                           "--split-seconds", "600", *[f"tools/mcp/tests/{f}" for f in files]], mcp_env)
+                           *split, *[f"tools/mcp/tests/{f}" for f in files]], mcp_env)
                 runner.mcp_results(f"MCP tests ({len(files)} file(s))")
     wall = time.monotonic() - t0
     lines = ["", "== check-changed summary", text]

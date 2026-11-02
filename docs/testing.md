@@ -155,20 +155,48 @@ The cache cannot hide a bug:
 
 - Its key covers everything a runtime is built from. That is the content (not the commit or the
   file times) of every file under `engine/`, `tools/players/` and `tools/performance/`, plus
-  `tools/ci/check-notices.py`, `NOTICE.md`, `LICENSE` and the cache's own source. It also covers
-  the exact CMake arguments, the compiler, linker, CMake and Ninja versions, the compiler
-  environment (`CC`, `CXX`, `CFLAGS`, ...), and the editor version the runtime is locked to.
-  `python3 tools/mcp/build_cache.py key glcore release` prints it.
-- It lives under the run's build directory, next to the editor under test:
-  `build/linux/mcp-build-cache/<runtime id>/` (`players/`, `key.json`, `build.log`).
-  `JASPER_MCP_BUILD_CACHE` moves it.
-- An entry whose key differs from the current one is deleted before anything is built. So a
-  runtime of other sources (another commit, an uncommitted edit) is never reused.
-- Each build starts from an empty CMake tree, through `tools/players/build_linux_player.sh`
-  (what `tools/build.sh players` runs). Below it, ccache (`CCACHE_DIR`, as for the editor itself)
-  keys each object on its preprocessed source, compiler and flags.
+  `tools/ci/check-notices.py`, `NOTICE.md`, `LICENSE`, the Linux image's `docker/linux.Dockerfile`
+  and the cache's own source. It also covers the exact CMake arguments, the compiler, linker,
+  CMake and Ninja versions, the compiler environment (`CC`, `CXX`, `CFLAGS`, ...), and the editor
+  version the runtime is locked to. `python3 tools/mcp/build_cache.py key glcore release` prints it.
+- The runtimes are a test's: no GCC link-time optimisation (`-DJASPERENGINE_RELEASE_LTO=OFF`, in
+  the key); the rest of the release link (sections, hidden visibility, split symbols) is as
+  shipped. LTO was most of a release runtime's build (its link alone a quarter of an hour on a
+  loaded server) and changes nothing a test of the game checks. The suite keeps one LTO check:
+  `test_build.py::test_desktop_build_and_run` compiles a shipped game's release link with LTO, runs
+  the player and checks its compile tree was configured with `JASPERENGINE_RELEASE_LINK` and
+  `JASPERENGINE_RELEASE_LTO` on; CI's `tools/build.sh players` and `tools/build.sh linux`'s sample
+  project (the gate's WERROR build) link with LTO too.
+- **Shared per machine** (`JASPER_MCP_SHARED_BUILD_CACHE=<dir>`; the build servers' rb.sh sets
+  `~/je/mcp-build-cache`, which `tools/build.sh mcp-tests` and `jimg` mount at `/mcp-build-cache`):
+  one entry per runtime and key, `<dir>/v1/<runtime id>/<key>/`, used by every worktree, stream and
+  run of the machine. One process builds a key (an exclusive lock), every other one that needs it
+  waits for that build; the build goes to a staging directory renamed into place complete, so no
+  reader sees half an entry. A run holds a shared lock on each entry it uses for as long as it
+  runs; the size limit (`JASPER_MCP_BUILD_CACHE_MAX_GB`, default 15) evicts the least recently
+  used entries nobody holds, and the staging directories of builds that died.
+  `python3 tools/mcp/build_cache.py list` (or `evict`) shows them; `status` says whether this
+  checkout's runtimes are built. The run's `build/linux/mcp-build-cache/<runtime id>/players` is a
+  link to its entry's.
+- Without a shared cache it lives under the run's build directory, next to the editor under test:
+  `build/linux/mcp-build-cache/<runtime id>/` (`players/`, `key.json`, `build.log`;
+  `JASPER_MCP_BUILD_CACHE` moves it), and an entry whose key differs from the current one is
+  deleted before anything is built.
+- Either way a runtime of other sources (another commit, an uncommitted edit) is never reused.
+- Each build starts from an empty CMake tree at a fixed path (`build/linux/mcp-build-cache/<runtime
+  id>/tree`, `/src/...` in the image whatever the worktree), through
+  `tools/players/build_linux_player.sh` (what `tools/build.sh players` runs). Below it, ccache
+  (`CCACHE_DIR`, as for the editor itself) keys each object on its preprocessed source, compiler,
+  flags and directory; the build's hits and misses go in its `key.json` and in the run's output.
 - A failed build fails every test that needs it, with its log, for the rest of the run. The next
   run tries again.
+- The compiled games (`method="compile"`) build through ccache too: their editors get
+  `harness.compile_env(name)`, a user cache (where the kit's compile tree goes) at the fixed path
+  `build/mcp-compile-home/<file>/`, emptied as the file starts, and ccache as CMake's compiler
+  launcher. Each run still configures and compiles a fresh tree and links; an object comes from
+  ccache only when its preprocessed source, flags and directory are those it was made from. They
+  link without LTO (`JASPERENGINE_RELEASE_LTO=OFF` in the editor's environment, which an exported
+  game's first configure takes as the option's default) except `test_build.py`'s (`lto=True`).
 
 A new test that needs a game that runs builds it prebuilt. One that needs what only a compiled
 game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, AdMob, no runtime
@@ -293,6 +321,131 @@ then `tools/android-emulator-test.sh build/android-crash-diagnostics/app-debug.a
 The opt-in flag requires the engine report **and** a matching debuggerd tombstone, saves both
 under the emulator result directory, and accepts that deliberate crash. Ordinary emulator tests
 continue to fail on any native crash.
+
+## Gates: per commit, batch landings, main
+
+- **Per commit of a stream: `tools/check-changed`** (on a build server: `rb.sh <S>
+  tools/check-changed`). It builds and runs what the change can affect: the Linux editor and the
+  unit test binaries for C++ under `engine/` or `editor/` (web for the engine, Android for its own
+  code), the gtest suites whose test units include a changed file (Ninja's dependency database:
+  a changed `Foo.cpp` counts through `Foo.h` and everything that includes it), and the MCP test
+  files the coverage map ties to the change (below). Everything for the root CMake, `docker/`,
+  `tools/build.sh`, the toolchain and the lockfiles; the whole MCP suite for a change of its harness
+  (`harness.py`, `run_tests.py`, `build_cache.py`); nothing for docs.
+- **Batch landings, and before main: the full suite** (`MCP_SUITE=all JASPER_SLOW_BUILD=1
+  JASPER_SLOW_TESTS=1`), sharded across servers by `je-remote/mcp-shard.sh`, plus the WERROR Linux
+  build (with the engine sample project's LTO link) and every unit test. check-changed is a
+  selection; it never replaces this gate, and says so in every summary.
+
+### `tools/check-changed`
+
+```sh
+rb.sh A tools/check-changed              # build and test what the change touches
+rb.sh A tools/check-changed --dry-run    # the plan only
+rb.sh A tools/check-changed --base main  # another base (default: the merge base with oe-port, else main, origin/main)
+rb.sh A --img tools/check-changed        # inside the Linux image (no web or Android build there)
+```
+
+- The change: committed since the base, staged, unstaged and untracked files. A server's worktree
+  has no history of the stream, so rb.sh sends the stream's diff (`build/.rb-changes.json`, with
+  every file's sha256: a diff that does not match the synced files is refused).
+- Unit tests: the gtest suites (`TEST`, `TEST_F`, `TEST_P`, typed) of the test units that see the
+  change, in `jasperengine-core-tests` and `jasperengine-editor-tests` (`--gtest_filter`, through
+  `tools/build.sh unit-tests` and its no-silent-green gate); a changed test file always runs; a
+  CMake change, or test trees not built yet, run them all.
+- MCP tests: the files whose editors executed a changed source in the coverage map (headers
+  through the editor tree's dependency database), the changed test files, the files that call a
+  changed MCP tool (by its tool names), that load a changed fixture, test project, Lua script,
+  shader, HTML, scene or material (by path), and, for an engine change, the files that build games
+  (`GAME_BUILD_FILES`: the player and the compiled game run engine code no editor coverage sees).
+  No map, a map older than 14 days or 400 commits, or a changed source no test file executed (new
+  code, or code no MCP test reaches) adds the CI suite (`--suite ci`). A selected test that skips
+  could not run: that fails the check.
+- A pass is cached in `build/.cache/check-changed.json`, keyed by the base, the content of every
+  changed and untracked file, the images' Dockerfiles, the coverage map's version and the script
+  itself: the same inputs reprint the last summary (`--no-cache` runs again); a run during which
+  the files changed caches nothing. Exit 1 when a step fails or a selected test cannot run.
+- Output: the plan, then each step's result; a failed step's output (`CHECK_CHANGED_VERBOSE=1`:
+  everything).
+- Its tests: `python3 -I tools/test_check_changed.py` (the diff and its fallbacks, the build plan,
+  the suites from a synthetic `ninja -t deps`, the MCP selection from a synthetic map, the gcda
+  reader, the cache and its invalidation, the exit codes).
+
+**The coverage map** (`tools/mcp/coverage_map.py`): for each MCP test file, the engine and editor
+sources its editors executed. A full run of a coverage-instrumented editor records it, off the
+critical path (a batch landing's run, a quiet server); it is stored with its commit in the server's
+`~/je/mcp-build-cache/coverage-map.json` (check-changed finds it there, or
+`JASPER_MCP_COVERAGE_MAP`):
+
+```sh
+rb.sh A env COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux          # build/linux/editor-coverage-install
+rb.sh A --img 'JASPER_EDITOR=/src/build/linux/editor-coverage-install/bin/jasperengine-editor \
+  JASPER_MCP_COVERAGE_DIR=/src/build/coverage/runs JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 \
+  dbus-run-session -- tools/mcp/run-tests.sh -j 6 --split-seconds 600; \
+  python3 tools/mcp/coverage_map.py collect build/coverage/runs build/linux/editor-coverage \
+  --commit $(git rev-parse HEAD) --out /mcp-build-cache/coverage-map.json'
+```
+
+Each test file's (and chunk's) editors write their GCC counts under their own `GCOV_PREFIX`; a
+source counts when one of its objects has a counter above zero.
+
+### The full suite across servers: `je-remote/mcp-shard.sh`
+
+```sh
+cd <worktree> && ../../je-remote/mcp-shard.sh --pin-builds A A:7:2 H:8:2:gpu G:3 F:3
+```
+
+It builds each server's editor at once (`WERROR=1 SKIP_ENGINE=1 tools/build.sh linux`), lists the
+suite as `MCP_SUITE=all` collects it (`run_tests.py --list`), plans the shards
+(`tools/mcp/shard.py plan`: longest processing time first by the earlier runs' test times, the
+files that build games on `--pin-builds`, where the shared player cache and ccache are warm),
+checks the union (every listed test in exactly one chunk of one shard), runs the shards at once
+(`tools/build.sh mcp-tests --plan`), fetches their results and merges them into one report in the
+runner's format (`shard.py merge`: every planned test reported exactly once, nothing else). It
+exits non-zero on a failure, a crash, an unexpected skip (`--allow-skip`) or a broken union.
+`SERVER:WORKERS:SLOTS` takes `SLOTS` rb.sh slots (`RB_SLOTS`), whose CPUs the shard's editors share.
+
+A file's tests share an editor and run in order, so a file is one piece of work, unless it declares
+`TESTS_INDEPENDENT = "why"` (each test sets up what it needs and runs in an editor of its own, in
+any order) or `TESTS_INDEPENDENT = ("why", ["test_x_*"])` for some of its tests (those use nothing
+the file's other tests leave, nor do the others use theirs): their tests may be split into chunks,
+each with its own worker process and editor (`run_tests.py --split-seconds N` on one server,
+`--chunk-seconds` across servers). `test_html_ui_examples.py` (each example's golden) and the
+Khronos models of `test_materials_pbr.py` (`test_khronos_<Model>`) declare it.
+
+### Caches and CPU caps
+
+- **ccache** is shared by every worktree of a server (`<main checkout>/build/.cache/ccache`), and
+  every worktree is `/src` in the image, so a tree another worktree built is a hit:
+  an editor build of oe-port in a new worktree on A, 2,144 direct hits of 2,150 compiles, 158 s.
+  What a merge changes is compiled once per server.
+- **The prebuilt player runtimes**: once per content key per server (above).
+- **Mesa's shader cache**: llvmpipe and lavapipe compile every shader to machine code; the editors
+  keep that cache (`MESA_SHADER_CACHE_DIR`) in the server's shared MCP cache (or the checkout's
+  `build/.cache/mesa-shader-cache`) instead of a fresh one in every scratch HOME. It is Mesa's own
+  cache, keyed by the shader and the driver build, on by default for every Mesa user.
+- **`LP_NUM_THREADS`**: Mesa's llvmpipe gives every editor a rasterizer thread per CPU of the host,
+  not of the container's quota; at `-j N` that is N times the host's CPUs inside the quota, which
+  throttles them all at once, main threads included (the 3-13 s stalls on A). The harness gives
+  each editor (and the players it runs) the run's CPU allowance shared by its editors
+  (`harness.render_threads()`: the cgroup quota / `-j`, 1 to 4; `JASPER_MCP_RENDER_THREADS`, or
+  `LP_NUM_THREADS` in the run's environment, overrides).
+- **Slots**: rb.sh's per-server slot locks are its heavy-job cap; a slot is `DEFJOBS` CPUs of
+  container quota (`JOBS`). An MCP shard takes the slots its editors need (`RB_SLOTS`).
+
+### The real-GPU lane (server H)
+
+The GPU lane runs the tests whose checks hold on any renderer on H's RTX 3080 Ti, through headless
+NVIDIA X servers in their own containers (`tools/gpu/xorg-headless.sh`, `JE_GPU_SCREEN=1600x900`,
+the size of an editor's own Xvfb; the desktop session is never touched): `DOCKER_GPU=1
+tools/build.sh mcp-tests --plan ...` sources `tools/gpu/env.sh`, and the runner gives a chunk of
+the lane `gpu` the NVIDIA display (one display per chunk at a time, `JASPER_MCP_GPU_DISPLAYS`; the
+harness's own X server is that display too, for the xdotool tests) and every other chunk llvmpipe
+as anywhere. Each editor checks it renders where its chunk says (`JASPER_MCP_EXPECT_DEVICE`:
+NVIDIA, or llvmpipe), so a lane test never runs on llvmpipe unnoticed and no golden test runs on
+the GPU. `tools/mcp/gpu_lane.json` classes every graphics test file:
+
+GPU_LANE_TABLE
 
 ## Where a test goes
 
