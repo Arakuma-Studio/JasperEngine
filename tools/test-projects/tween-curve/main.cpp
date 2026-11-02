@@ -20,7 +20,7 @@
 using namespace jasperengine;
 
 Scene scene;
-Camera camera(&scene);
+Camera sceneCamera(&scene);
 Primitive box(&scene);
 PositionTween tween(&scene);
 
@@ -44,10 +44,10 @@ JASPERENGINE_INIT void init(){
     Engine::setCanvasSize(1000, 480);
     Engine::setScene(&scene);
 
-    camera.setType(CameraType::CAMERA_PERSPECTIVE);
-    camera.setPosition(5, 2, 14);
-    camera.setTarget(5, 0, 0);
-    camera.activate();
+    sceneCamera.setType(CameraType::CAMERA_PERSPECTIVE);
+    sceneCamera.setPosition(5, 2, 14);
+    sceneCamera.setTarget(5, 0, 0);
+    sceneCamera.activate();
     box.createBox(1, 1, 1);
     box.setColor(0.9f, 0.3f, 0.2f, 1.0f);
 

@@ -48,7 +48,7 @@ EM_JS(int, particlesBenchRequested, (), {
 using namespace jasperengine;
 
 Scene scene;
-Camera camera(&scene);
+Camera sceneCamera(&scene);
 ParticleSystem fire(&scene);
 ParticleSystem ribbon(&scene);
 
@@ -191,10 +191,10 @@ JASPERENGINE_INIT void init(){
     ribbon.setPlayOnAwake(false);
     ribbon.setInlineEffect(kRibbon);
 
-    camera.setType(CameraType::CAMERA_PERSPECTIVE);
-    camera.setPosition(0.0f, 1.5f, 8.0f);
-    camera.setTarget(0.0f, 1.5f, 0.0f);
-    camera.activate();
+    sceneCamera.setType(CameraType::CAMERA_PERSPECTIVE);
+    sceneCamera.setPosition(0.0f, 1.5f, 8.0f);
+    sceneCamera.setTarget(0.0f, 1.5f, 0.0f);
+    sceneCamera.activate();
 
     // the state at 2 s, held: every frame draws the same particles
     fire.seek(2.0f);

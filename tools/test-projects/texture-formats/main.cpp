@@ -46,7 +46,7 @@ EM_JS(int, transcodeBenchRequested, (), {
 using namespace jasperengine;
 
 Scene scene;
-Camera camera(&scene);
+Camera sceneCamera(&scene);
 Primitive solid(&scene);
 std::vector<std::unique_ptr<Primitive>> tiles;
 bool reported = false;
@@ -207,12 +207,12 @@ JASPERENGINE_INIT void init(){
         tiles.back()->setReceiveLights(false);
     }
 
-    camera.setType(CameraType::CAMERA_ORTHO);
-    camera.setOrtho(-2.0f, 2.0f, -1.5f, 1.5f, 0.1f, 100.0f);
-    camera.setPosition(0.0f, 10.0f, 0.0f);
-    camera.setTarget(0.0f, 0.0f, 0.0f);
-    camera.setUp(0.0f, 0.0f, -1.0f);
-    camera.activate();
+    sceneCamera.setType(CameraType::CAMERA_ORTHO);
+    sceneCamera.setOrtho(-2.0f, 2.0f, -1.5f, 1.5f, 0.1f, 100.0f);
+    sceneCamera.setPosition(0.0f, 10.0f, 0.0f);
+    sceneCamera.setTarget(0.0f, 0.0f, 0.0f);
+    sceneCamera.setUp(0.0f, 0.0f, -1.0f);
+    sceneCamera.activate();
 
     Engine::setScene(&scene);
     Engine::onUpdate.add("textureFormatsTest", [](){
