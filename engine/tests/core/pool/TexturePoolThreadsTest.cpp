@@ -287,9 +287,7 @@ TEST(TextureDataPoolThreadsGpu, APreviewOnItsStrandSharesThePoolsWithTheFrames){
     }
     GpuEnvironment::drawFrames(2);
     Engine::removeScene(&scene);
-    // (no look at the engine's errors: a preview off the main thread bakes its nodes into one mesh,
-    // and this model's nodes are over that mesh's limit of external buffers: the images are what
-    // this run is about)
+    EXPECT_NO_ENGINE_ERRORS();
 }
 
 // The cleanups of the render queue: a thread working under Engine::AsyncThreadScope queues them (the
