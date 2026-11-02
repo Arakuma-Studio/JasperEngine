@@ -25,6 +25,11 @@ With -j N the longest files start first, by each file's wall time in the last un
 (build/test-results/mcp-file-seconds.json, JASPER_MCP_FILE_SECONDS; files it has no time for go
 first, in their order): a long file never starts last and alone.
 
+A file that declares TESTS_INDEPENDENT = "why" (each test runs in an editor of its own, in any order),
+or TESTS_INDEPENDENT = ("why", ["test_x_*"]) for some of its tests, can be split: --split-seconds N
+gives chunks of about N seconds, by the earlier runs' test times, a worker and editor each. --plan
+FILE runs the chunks tools/mcp/shard.py planned for one server of a run across servers.
+
 A file joins the CI suite (--suite ci, the CI workflow's e2e job) by declaring CI = True at module
 level. A file that is not CI = True is left out for a reason the run prints: it needs the default
 fixture (below), or it declares CI_EXCLUDED = "why" (e.g. long-running, in the nightly full suite);
