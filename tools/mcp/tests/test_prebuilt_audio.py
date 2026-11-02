@@ -16,10 +16,13 @@ import math
 import os
 import re
 import struct
+import subprocess
+from pathlib import Path
 
 import build_cache
 from harness import Editor, skip
 
+REPO = Path(__file__).resolve().parents[3]
 CI = True
 PREBUILT_PLAYERS = ["glcore-release"]
 EDITOR = {"create": True, "name": "Prebuilt Audio", "env": build_cache.player_env("glcore", "release")}
@@ -30,6 +33,7 @@ function Probe:start()
     sound.outputGroup = "Music"
     sound:play()
     self.frames = 0
+    RegisterEngineEvent(self, 'onUpdate')
 end
 function Probe:onUpdate(dt)
     self.frames = self.frames + 1
@@ -82,15 +86,17 @@ async def test_a_prebuilt_headless_player_hears_as_play_does(ed: Editor):
     await ed.call("play", action="start", auto_pause=False, fixed_fps=60)
     try:
         heard = None
-        for _ in range(60):
-            await asyncio.sleep(0.25)
-            heard = probe_of(e["message"] for e in await ed.console_since())
+        console: list[str] = []
+        for _ in range(40):
+            await ed.call("wait", seconds=0.25)
+            console += [e["message"] for e in await ed.console_since()]
+            heard = probe_of(console)
             if heard:
                 break
     finally:
         await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
     print(f"[audio] Play: {heard}")
-    ed.check(heard, "Play reports its audio")
+    ed.check(heard, f"Play reports its audio: {console[-20:]}")
     ed.check_eq(heard[0], "Master,Music", "Play's groups")
     ed.check_eq(heard[1], "true", "it plays in Play")
     ed.check(heard[3] > -40, f"Music is heard in Play: {heard}")
@@ -106,13 +112,17 @@ async def test_a_prebuilt_headless_player_hears_as_play_does(ed: Editor):
     audio = json.loads((out / "game.json").read_text())["audio"]
     ed.check_eq((audio["maxRealVoices"], audio["maxVoices"], audio["sampleRate"]), (20, 100, 48000), "Project Settings > Audio")
 
-    raw = await ed.call_raw("run_build", {"after_ready": True, "fixed_fps": 60, "quit_after": 120, "headless": True})
-    ed.check(not raw.is_error, raw.text[:2000])
-    ed.check(not raw.value["crashed"], f"the player crashed: {raw.value}")
-    log = raw.value["log"]
-    played = probe_of(log if isinstance(log, list) else str(log).splitlines())
+    # the player itself, as a person runs it (run_build refuses a prebuilt player: build_project
+    # records only what a compile produced)
+    run = await asyncio.to_thread(
+        subprocess.run, [str(REPO / "tools" / "with-xvfb.sh"), job["result"]["executable"], "--headless", "--fixed-fps", "60",
+                         "--after-ready", "--quit-after", "120"],
+        cwd=out, capture_output=True, text=True, timeout=600)
+    log = run.stdout + run.stderr
+    ed.check_eq(run.returncode, 0, f"the player quits after its frames: {log[-2000:]}")
+    played = probe_of(log.splitlines())
     print(f"[audio] player: {played}")
-    ed.check(played, f"the player reports its audio: {str(log)[-2000:]}")
+    ed.check(played, f"the player reports its audio: {log[-2000:]}")
     ed.check_eq(played[:3], heard[:3], "the groups, the clip playing and its output group, as in Play")
     # the same tone through the same fader; a meter reads the last blocks' peak
     ed.check(abs(played[3] - heard[3]) <= 3.0, f"the Music meter, as in Play: {played[3]} against {heard[3]}")
