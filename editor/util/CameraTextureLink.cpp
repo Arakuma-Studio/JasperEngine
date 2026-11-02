@@ -102,7 +102,7 @@ bool editor::CameraTextureLink::isLinkSourceType(ComponentType type){
 
 bool editor::CameraTextureLink::isCameraUsed(EntityRegistry* registry, Entity cameraEntity){
     for (Entity entity : registry->getEntityList()){
-        if (entity <= EntityManager::lastSystemEntity()){
+        if (registry->isPooledSystemEntity(entity)){
             continue;
         }
         for (ComponentType cpType : Catalog::findComponents(registry, entity)){
@@ -131,8 +131,9 @@ bool editor::CameraTextureLink::resolve(EntityRegistry* registry){
 
     for (Entity entity : registry->getEntityList()){
         // the editor's own (the Scene view's grid, gizmos and icons) name no camera: their
-        // property maps were most of a whole-scene resolve
-        if (entity <= EntityManager::lastSystemEntity()){
+        // property maps were most of a whole-scene resolve. A GameObject an older file saved
+        // with a system-range id is the scene's, and is bound
+        if (registry->isPooledSystemEntity(entity)){
             continue;
         }
         changed |= resolveEntity(registry, entity);
