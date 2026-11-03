@@ -6399,6 +6399,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // undefined on Vulkan, and not created on Metal)
         if (missingBuffer){
             mesh.loadCalled = true;
+            mesh.loadMissingBuffer = true;
             return false;
         }
 
@@ -12138,7 +12139,7 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
                                    mesh.numExternalBuffers == 0 && (!model || !model->needUpdateModel);
         // a mesh drawing its previous variant while the new one builds is still loading; one
         // whose load found a GPU pool full has failed (not drawn, nothing to wait for)
-        visit((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
+        visit((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || mesh.loadMissingBuffer || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
               nothingToLoad || scene->findComponent<SplineExtrudeComponent>(entity) != nullptr, entity, "mesh");
     }
 
@@ -13776,6 +13777,12 @@ void RenderSystem::update(double dt){
             if (mesh.loadFailed && SystemRender::hasResourcePoolRoom()){
                 mesh.loadFailed = false;
                 mesh.loadCalled = false;
+            }
+            // (never loaded, destroyMesh above did not see it)
+            if (mesh.loadMissingBuffer && mesh.needReload){
+                mesh.loadMissingBuffer = false;
+                mesh.loadCalled = false;
+                mesh.needReload = false;
             }
             if (!mesh.loadCalled){
                 static const bool timing = std::getenv("JASPER_SHADER_TIMING") != nullptr;
