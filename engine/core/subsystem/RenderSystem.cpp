@@ -5239,10 +5239,10 @@ bool RenderSystem::loadPBRTextures(Material& material, ShaderData& shaderData, O
         }
     }
 
-    // normal map is sampled by both the 3D lit path and the 2D light path (which
-    // otherwise keeps the unlit shader); addTexture no-ops when the compiled
-    // variant has no u_normalTexture slot
-    if ((hasLights || hasLights2D) && receiveLights){
+    // normal map is sampled by both the 3D lit path (under image based lighting alone too) and
+    // the 2D light path (which otherwise keeps the unlit shader); addTexture no-ops when the
+    // compiled variant has no u_normalTexture slot
+    if ((hasLights || hasLights2D || hasIBL || hasReflectionProbes) && receiveLights){
         textureRender = material.normalTexture.getRender(&emptyNormal);
         slotTex = shaderData.getTextureIndex(TextureShaderType::NORMAL);
         if (textureRender){
