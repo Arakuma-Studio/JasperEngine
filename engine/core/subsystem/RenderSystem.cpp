@@ -569,6 +569,15 @@ std::mutex RenderSystem::zeroVertexBuffersMutex;
 bool RenderSystem::emptyTexturesCreated = false;
 int RenderSystem::emptyTextureUsers = 0;
 
+namespace {
+    // Who uses the static textures below, and their making. Never waits for another thread: a
+    // creation off the main thread is queued, one on it is the driver's.
+    std::mutex& emptyTexturesMutex(){
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
+    }
+}
+
 TextureRender* RenderSystem::frameBlurredScene = nullptr;
 blurred_scene_t RenderSystem::frameBlurredSceneBlock;
 
@@ -675,10 +684,14 @@ void RenderSystem::load(){
     hasShadows2D = false;
     numLights2D = 0;
 
-    createEmptyTextures();
-    if (!usesEmptyTextures){
-        usesEmptyTextures = true;
-        emptyTextureUsers++;
+    {
+        // (scenes of two threads may load at once: a preview off the main thread's)
+        std::lock_guard<std::mutex> lock(emptyTexturesMutex());
+        createEmptyTextures();
+        if (!usesEmptyTextures){
+            usesEmptyTextures = true;
+            emptyTextureUsers++;
+        }
     }
 
     update(0); // first update
@@ -697,12 +710,15 @@ void RenderSystem::destroy(){
     // handles: a scene going while others draw keeps them. With the view (every scene reloads)
     // or the last RenderSystem they are destroyed, and the next load makes them again (before,
     // only the flag was reset and the next load made new images over the old handles).
-    if (usesEmptyTextures){
-        usesEmptyTextures = false;
-        emptyTextureUsers--;
-    }
-    if (reloadView || emptyTextureUsers <= 0){
-        destroyEmptyTextures();
+    {
+        std::lock_guard<std::mutex> lock(emptyTexturesMutex());
+        if (usesEmptyTextures){
+            usesEmptyTextures = false;
+            emptyTextureUsers--;
+        }
+        if (reloadView || emptyTextureUsers <= 0){
+            destroyEmptyTextures();
+        }
     }
 
 #ifdef JASPERENGINE_EDITOR
@@ -6363,6 +6379,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             }
         }
 
+        bool missingBuffer = false;
         for (auto const& attr : mesh.submeshes[i].attributes){
             if (bufferNameToRender.count(attr.second.getBufferName())){
                 if (attr.first == AttributeType::INDEX){
@@ -6374,7 +6391,16 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 }
             }else{
                 Log::error("Cannot load submesh attribute from buffer name: %s", attr.second.getBufferName().c_str());
+                missingBuffer = true;
             }
+        }
+        // nothing to draw it with (a flattened model past the mesh's limit of external buffers): not
+        // drawn, not tried every frame (a pipeline that leaves a vertex input without a buffer is
+        // undefined on Vulkan, and not created on Metal)
+        if (missingBuffer){
+            mesh.loadCalled = true;
+            mesh.loadMissingBuffer = true;
+            return false;
         }
 
         if (instmesh){
@@ -12113,7 +12139,7 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
                                    mesh.numExternalBuffers == 0 && (!model || !model->needUpdateModel);
         // a mesh drawing its previous variant while the new one builds is still loading; one
         // whose load found a GPU pool full has failed (not drawn, nothing to wait for)
-        visit((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
+        visit((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || mesh.loadMissingBuffer || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
               nothingToLoad || scene->findComponent<SplineExtrudeComponent>(entity) != nullptr, entity, "mesh");
     }
 
@@ -13751,6 +13777,12 @@ void RenderSystem::update(double dt){
             if (mesh.loadFailed && SystemRender::hasResourcePoolRoom()){
                 mesh.loadFailed = false;
                 mesh.loadCalled = false;
+            }
+            // (never loaded, destroyMesh above did not see it)
+            if (mesh.loadMissingBuffer && mesh.needReload){
+                mesh.loadMissingBuffer = false;
+                mesh.loadCalled = false;
+                mesh.needReload = false;
             }
             if (!mesh.loadCalled){
                 static const bool timing = std::getenv("JASPER_SHADER_TIMING") != nullptr;
