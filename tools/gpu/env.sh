@@ -19,7 +19,14 @@ if [ "$_je_gpu_disp" != none ]; then
   _je_gpu_sock="$(cd "$(dirname "${BASH_SOURCE[0]:-tools/gpu/env.sh}")/../.." && pwd)/build/.x11"
   if [ -S "$_je_gpu_sock/X$_je_gpu_disp" ]; then
     # Xlib looks in /tmp/.X11-unix; the image's /tmp is private to this container
-    if [ ! -e /tmp/.X11-unix ] || [ -L /tmp/.X11-unix ]; then ln -sfn "$_je_gpu_sock" /tmp/.X11-unix; fi
+    # (a real directory holding links to its sockets: Xvfb can't make its own socket under a symlink,
+    # and this run's other tests are on llvmpipe through their own Xvfb)
+    [ -L /tmp/.X11-unix ] && rm -f /tmp/.X11-unix
+    mkdir -p /tmp/.X11-unix
+    chmod 1777 /tmp/.X11-unix 2>/dev/null || true
+    for _je_gpu_x in "$_je_gpu_sock"/X*; do
+      [ -S "$_je_gpu_x" ] && ln -sf "$_je_gpu_x" "/tmp/.X11-unix/$(basename "$_je_gpu_x")"
+    done
     export DISPLAY=":$_je_gpu_disp"
     # benches must not throttle on a vsync of a display that does not exist
     export __GL_SYNC_TO_VBLANK=0 vblank_mode=0
