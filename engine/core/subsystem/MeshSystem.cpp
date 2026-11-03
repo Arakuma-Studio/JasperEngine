@@ -5559,6 +5559,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             mesh.submeshes[i].material = Material();
 
             mesh.submeshes[i].overrideFields = 0; // the slot may carry an edit from a past load
+            mesh.submeshes[i].vertexCount = 0;
 
             const tinygltf::Primitive& primitive = gltfmesh.primitives[p];
 
@@ -5572,6 +5573,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 Log::error("GLTF primitive %u has no valid index buffer view: %s", i, filename.c_str());
                 continue;
             }
+            // what RenderSystem::loadMesh will compute, here at once: a scene saved before it runs
+            // (a new shader variant holds it for seconds on a GPU's compile threads) writes this
+            // primitive's count, not the count of the slot's past load (the reverse below moves them)
+            mesh.submeshes[i].vertexCount = static_cast<unsigned int>(indexAccessor.count);
 
             const tinygltf::Material* mat = nullptr;
             if (primitive.material >= 0) {

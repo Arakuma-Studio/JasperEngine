@@ -7,6 +7,7 @@
 #include "component/BoneComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
+#include "render/ObjectRender.h"
 #include "render/RenderUtil.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -691,7 +692,14 @@ bool editor::PoseRender::tryRender(const RenderState& state, PoseImage& out){
     if (!isSceneReady()){
         return false;
     }
+    // what is loaded may still wait for its pipelines (spec S32, a GPU's compile threads: seconds)
+    // and draws nothing meanwhile: an image without the model is never read back
+    const uint32_t waitingBefore = ObjectRender::getWaitingDrawCount();
     draw(state.width, state.height);
+    drawsWaiting = ObjectRender::getWaitingDrawCount() != waitingBefore;
+    if (drawsWaiting){
+        return false;
+    }
     return readBack(state.width, state.height, state.style.opaque, out);
 }
 
@@ -738,9 +746,15 @@ bool editor::PoseRender::serveQueue(double frameStart, bool& ranOne){
         }
         Request& front = pending.front();
         PoseImage image;
+        drawsWaiting = false;
         const bool ok = tryRender(front.state, image);
         setState(callerState);
-        if (!ok && ++front.frames < RENDER_TIMEOUT_FRAMES && Engine::isViewLoaded()){
+        if (front.firstTry == 0.0){
+            front.firstTry = nowSeconds();
+        }
+        // (frames go fast past a GPU's pipelines: those are waited for by the clock)
+        const bool waitOn = drawsWaiting ? nowSeconds() - front.firstTry < RENDER_TIMEOUT_SECONDS : ++front.frames < RENDER_TIMEOUT_FRAMES;
+        if (!ok && waitOn && Engine::isViewLoaded()){
             break;  // still loading: next frame
         }
         ranOne = true;

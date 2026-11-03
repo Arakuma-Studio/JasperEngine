@@ -459,6 +459,11 @@ async def frames(ed, n=20):
     await ed.call("wait", frames=n)
 
 
+async def shot(ed, name):
+    # past the first shots a loaded machine's shaders can take more than the screenshot's 30 s default
+    return await ed.screenshot("game", path=str(ed.scratch.root / name), max_width=0, timeout_seconds=100)
+
+
 # -- tests ------------------------------------------------------------------------------------------
 
 BALL_AT = (-0.7, 0.0, 0.0)
@@ -497,12 +502,12 @@ async def test_ball_bake(ed: Editor):
     S.update(ball=ball, squash=squash, shear=shear)
     await frames(ed, 30)
 
-    live = await ed.screenshot("game", path=str(ed.scratch.root / "ball-live.png"), max_width=0)
+    live = await shot(ed, "ball-live.png")
     ed.check(not pngdiff.flat(pngdiff.decode(live)), "the live view shows something")
     # the comparison below means something: the same view without the lattices differs
     await set_props(ed, ball, {"latticemodifier": {"enabled": False}})
     await frames(ed, 20)
-    rest = await ed.screenshot("game", path=str(ed.scratch.root / "ball-rest.png"), max_width=0)
+    rest = await shot(ed, "ball-rest.png")
     ok, fraction, _ = pngdiff.compare(pngdiff.decode(live), pngdiff.decode(rest), channel_tolerance=16, max_fraction=0.003)
     ed.check(not ok, f"the lattices visibly deform the ball ({fraction:.4%} of the pixels change)")
     await ed.call("undo")
@@ -587,7 +592,7 @@ async def test_ball_bake(ed: Editor):
 
     # ---- the render: the baked model without bindings draws what the live deformation drew
     await frames(ed, 30)
-    baked = await ed.screenshot("game", path=str(ed.scratch.root / "ball-baked.png"), max_width=0)
+    baked = await shot(ed, "ball-baked.png")
     ok, fraction, diff = pngdiff.compare(pngdiff.decode(live), pngdiff.decode(baked), channel_tolerance=16, max_fraction=0.003)
     (ed.scratch.root / "ball-diff.png").write_bytes(diff)
     ed.check(ok, f"baked render differs from the live one on {fraction:.4%} of the pixels (ball-diff.png)")
@@ -598,7 +603,7 @@ async def test_ball_bake(ed: Editor):
     ed.check_eq(await model_file(ed, ball), f"{MODELS}/ball.gltf", "undo restores the model file")
     ed.check_eq(await bindings_of(ed, ball), [(squash, "after_skinning", -1), (shear, "after_skinning", 1)], "undo restores the bindings")
     ed.check(baked_path.is_file(), "the baked file stays after undo")
-    undone = await ed.screenshot("game", path=str(ed.scratch.root / "ball-undone.png"), max_width=0)
+    undone = await shot(ed, "ball-undone.png")
     ok, fraction, _ = pngdiff.compare(pngdiff.decode(live), pngdiff.decode(undone), channel_tolerance=4, max_fraction=0.0005)
     ed.check(ok, f"after undo the live deformation draws again ({fraction:.4%} differ)")
     await ed.call("redo")
@@ -636,10 +641,10 @@ async def test_skinned_bake(ed: Editor):
     await set_props(ed, column, {"latticemodifier": {"bindings": [{"lattice": head, "stage": "before_skinning"},
                                                                  {"lattice": feet, "stage": "after_skinning"}]}})
     await frames(ed, 30)
-    live = await ed.screenshot("game", path=str(ed.scratch.root / "column-live.png"), max_width=0)
+    live = await shot(ed, "column-live.png")
     await set_props(ed, column, {"latticemodifier": {"enabled": False}})
     await frames(ed, 20)
-    rest = await ed.screenshot("game", path=str(ed.scratch.root / "column-rest.png"), max_width=0)
+    rest = await shot(ed, "column-rest.png")
     ok, fraction, _ = pngdiff.compare(pngdiff.decode(live), pngdiff.decode(rest), channel_tolerance=16, max_fraction=0.003)
     ed.check(not ok, f"the lattices visibly deform the column ({fraction:.4%} of the pixels change)")
     await ed.call("undo")
@@ -669,7 +674,7 @@ async def test_skinned_bake(ed: Editor):
     ed.check(near(pos["max"], [max(p[i] for p in after) for i in range(3)], 1e-6), "POSITION max updated")
 
     await frames(ed, 30)
-    baked = await ed.screenshot("game", path=str(ed.scratch.root / "column-baked.png"), max_width=0)
+    baked = await shot(ed, "column-baked.png")
     ok, fraction, diff = pngdiff.compare(pngdiff.decode(live), pngdiff.decode(baked), channel_tolerance=16, max_fraction=0.003)
     (ed.scratch.root / "column-diff.png").write_bytes(diff)
     ed.check(ok, f"the baked column renders as the live one ({fraction:.4%} differ, column-diff.png)")
