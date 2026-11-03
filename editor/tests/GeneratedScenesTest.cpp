@@ -9,6 +9,9 @@
 
 #include "Factory.h"
 #include "Generator.h"
+#include "Scene.h"
+#include "component/MeshComponent.h"
+#include "object/Terrain.h"
 #include "texture/Texture.h"
 
 #include <unistd.h>
@@ -139,6 +142,31 @@ TEST(GeneratedScenes, ATexturePathStaysWhenItsLoadFailed) {
     }
     ASSERT_TRUE(texture.empty());
     EXPECT_EQ(Factory::formatTexture(8, texture, "clouds.weatherMap", fs::path()), before);
+}
+
+// A terrain makes its geometry when it runs, so its mesh's vertices are not generated. It asked its
+// height map's empty(), which turns true once a load failed: the scene's code took the vertices of
+// the last load as bytes, whether or not a frame had tried the file before the save.
+TEST(GeneratedScenes, ATerrainWhoseHeightMapFailedToLoadGeneratesNoVertices) {
+    Scene scene;
+    Terrain terrain(&scene);
+    terrain.setHeightMap("no-such-height-map.png");
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(terrain.getEntity());
+    const float vertices[3] = {1.0f, 2.0f, 3.0f};
+    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+    mesh.buffer.importData(vertices, sizeof(vertices));
+    ASSERT_GT(mesh.buffer.getSize(), 0u);
+
+    const std::string before = Factory::createMeshComponent(8, &scene, terrain.getEntity(), fs::path());
+    EXPECT_EQ(before.find("mesh.buffer.importData"), std::string::npos) << before;
+
+    Texture& heightMap = scene.getComponent<TerrainComponent>(terrain.getEntity()).heightMap;
+    for (int attempt = 0; attempt < 2000 && !heightMap.empty(); attempt++) {
+        heightMap.load();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    ASSERT_TRUE(heightMap.empty());
+    EXPECT_EQ(Factory::createMeshComponent(8, &scene, terrain.getEntity(), fs::path()), before);
 }
 
 // A Lua script's string property is generated as an assignment to a ScriptPropertyValue. Since

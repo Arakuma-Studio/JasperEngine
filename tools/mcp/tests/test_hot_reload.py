@@ -310,6 +310,66 @@ async def test_external_lut_edit_reloads(ed: Editor):
         await ed.call("set_scene_settings", scene=STATE["scene"], settings={"post_processing.color_grading_enabled": False})
 
 
+async def test_external_terrain_layer_edit_reloads(ed: Editor):
+    """A terrain's painted layer is read from its file into the terrain's array, not through the
+    texture pools: a safe-save of the image reaches the array with no MCP call in between, and a
+    broken file leaves what it draws."""
+    layer = "assets/hr/terrain-layer.png"
+    safe_save(ed.project / layer, png_bytes(BLUE))
+    scene = (await ed.call("create_scene", name="TerrainLayer", type="3d"))["scene"]["id"]
+
+    async def surface() -> tuple:
+        await ed.call("wait", frames=4)
+        r = await ed.call_raw("screenshot", {"view": "scene", "scene": scene, "max_width": 128}, timeout=300)
+        ed.check(not r.is_error and r.images, f"no scene screenshot: {r.text[:300]}")
+        _, _, rgba = pngdiff.decode(r.images[0][0])
+        # (the median: the Scene view's grid and the selection's gizmo draw over the terrain)
+        return tuple(sorted(rgba[c::4])[len(rgba) // 8] for c in range(3))
+
+    def is_blue(rgb) -> bool:
+        return rgb[2] > rgb[0] + 20
+
+    def is_red(rgb) -> bool:
+        return rgb[0] > rgb[2] + 20
+
+    async def wait_surface(wanted, seconds: float = 30.0) -> tuple:
+        deadline = time.monotonic() + seconds
+        got = await surface()
+        while not wanted(got) and time.monotonic() < deadline:
+            got = await surface()
+        return got
+
+    terrain = (await ed.call("create_entity", scene=scene, name="Ground", type="terrain",
+                             values={"terrain": {"terrainSize": 64, "maxHeight": 4, "resolution": 8, "rootGridSize": 1, "levels": 1}}))["entity_id"]
+    await ed.call("set_terrain_maps", scene=scene, entity=terrain,
+                  heightmap={"generate": "flat", "base_height": 0.0, "resolution": 16},
+                  blendmap={"color": [1, 0, 0], "resolution": 4},
+                  layers=[{"index": 0, "color": layer}])
+    await ed.call("set_scene_camera", scene=scene, position=[0, 12, 6], target=[0, 0, 0])
+    got = await wait_surface(is_blue)
+    ed.check(is_blue(got), f"the terrain draws its blue layer: {got}")
+
+    await console_mark(ed)
+    safe_save(ed.project / layer, png_bytes(RED))
+    time.sleep(1.5)   # no MCP call: only the watcher can reload it
+    got = await wait_surface(is_red)
+    ed.check(is_red(got), f"the terrain draws the layer's new image: {got}")
+    entries = await ed.console_since(contains="[Hot Reload] Reloaded " + layer)
+    ed.check(entries, "no [Hot Reload] line for the layer image")
+
+    # the broken file: its reload fails, the terrain keeps the image it draws
+    await console_mark(ed)
+    safe_save(ed.project / layer, b"this is not a png at all" * 10)
+    await status(ed)
+    errors = await ed.console_since(contains="[Hot Reload] " + layer, types=["error"])
+    ed.check(errors, "an error line in the Console")
+    got = await surface()
+    ed.check(is_red(got), f"a broken file leaves what the terrain draws: {got}")
+    safe_save(ed.project / layer, png_bytes(BLUE))
+    got = await wait_surface(is_blue)
+    ed.check(is_blue(got), f"the terrain draws the file once it is good again: {got}")
+
+
 async def test_reload_hitch(ed: Editor):
     """AC19: a 2048x2048 PNG reloaded 20 times at 200 ms intervals while the view redraws
     continuously (the scene plays): the reload adds no frame more than 16 ms over the run's

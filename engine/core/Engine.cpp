@@ -2387,6 +2387,9 @@ void Engine::runFrame(bool draw){
     if (DebugOverlay::needsUpdate())
         DebugOverlay::update(paused ? 0.0 : frameTime);
 
+    // what is still being created off the render thread (spec S32) does not draw this frame
+    const bool gpuCreationIdleForDraw = SystemRender::isGpuCreationIdle();
+
     if (draw){
         Engine::onDraw.call();
 
@@ -2418,8 +2421,9 @@ void Engine::runFrame(bool draw){
     frameCpuTime = stm_sec(stm_since(frameStart));
     FrameTimes::setDrawCalls(currentFrameStats.drawCalls);
 
-    // a one-shot stays until a frame draws it
-    if (draw){
+    // a one-shot stays until a frame draws it: loaded means its objects are made or asked for, and
+    // one whose program or pipeline was still being made draws nothing (a thumbnail, blank on Vulkan)
+    if (draw && gpuCreationIdleForDraw){
         std::lock_guard<std::mutex> lock(sceneListMutex);
 
         // Retire one-shots that finished loading: they got the frame they asked for.

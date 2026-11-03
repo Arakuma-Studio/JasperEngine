@@ -2485,6 +2485,10 @@ void RenderSystem::destroyReflectionProbe(Entity entity, ReflectionProbeComponen
 
 void RenderSystem::updateReflectionProbes(double dt){
     auto probes = scene->getComponentArray<ReflectionProbeComponent>();
+    // (the pool's generations are looked at only after some image took new pixels)
+    const uint32_t replaceEpoch = TextureDataPool::getReplaceEpoch();
+    const bool imagesReplaced = replaceEpoch != probeImagesEpochSeen;
+    probeImagesEpochSeen = replaceEpoch;
     bool newHasReflectionProbes = probes->size() > 0;
     if (newHasReflectionProbes != hasReflectionProbes){
         hasReflectionProbes = newHasReflectionProbes;
@@ -2564,6 +2568,12 @@ void RenderSystem::updateReflectionProbes(double dt){
             if (hasAuthoredCubemap && runtime.ready)
                 runtime.capturedPosition = transform->worldPosition;
 
+            // its image has new pixels (a hot reload, a cook swapped in, the rest of a progressive
+            // load): nothing but its maps draws of the image, so no GPU texture of it goes stale
+            if (imagesReplaced && hasAuthoredCubemap && runtime.ready && runtime.environmentId == probe.texture.getId() &&
+                    runtime.environmentGeneration != TextureDataPool::generation(runtime.environmentId))
+                probe.needUpdate = true;
+
             if (!probe.needUpdate)
                 continue;
 
@@ -2588,20 +2598,44 @@ void RenderSystem::updateReflectionProbes(double dt){
             runtime.needFilter = false;
             runtime.resolution = 0;
             runtime.nextFace = 0;
-            runtime.ready = false;
-            releaseReflectionProbeMaps(runtime);
 
+            // the maps of the image's pixels as they are, as a sky's (updateSkyEnvironment). Those
+            // of its pixels before keep lighting the scene until these are made.
             const std::string textureId = probe.texture.getId();
-            const std::string irradianceId = textureId + "|probe|irradiance";
-            const std::string prefilteredId = textureId + "|probe|prefiltered";
+            const uint32_t imageGeneration = TextureDataPool::generation(textureId);
+            const auto environmentId = [&textureId](uint32_t generation, const char* map){
+                return textureId + "|probe|" + map + (generation > 0 ? "|" + std::to_string(generation) : std::string());
+            };
+            const std::string irradianceId = environmentId(imageGeneration, "irradiance");
+            const std::string prefilteredId = environmentId(imageGeneration, "prefiltered");
+            const bool hasMapsOfImage = runtime.ready && runtime.environmentId == textureId && runtime.irradianceMap && runtime.prefilteredMap;
+            if (!hasMapsOfImage){
+                runtime.ready = false;
+                releaseReflectionProbeMaps(runtime);
+            }
+            // the maps are this image's pixels' now: those of the pixels before go with their last holder
+            const auto takeMaps = [&](std::shared_ptr<TextureRender> irradiance, std::shared_ptr<TextureRender> prefiltered){
+                const uint32_t previousGeneration = runtime.environmentGeneration;
+                const bool otherPixels = hasMapsOfImage && previousGeneration != imageGeneration;
+                releaseReflectionProbeMaps(runtime);
+                if (otherPixels){
+                    TexturePool::remove(environmentId(previousGeneration, "irradiance"));
+                    TexturePool::remove(environmentId(previousGeneration, "prefiltered"));
+                }
+                runtime.irradianceMap = std::move(irradiance);
+                runtime.prefilteredMap = std::move(prefiltered);
+                runtime.environmentId = textureId;
+                runtime.environmentGeneration = imageGeneration;
+                runtime.ready = true;
+                runtime.capturedPosition = transform->worldPosition;
+                runtime.retryDelay = 0.0f;
+                probe.needUpdate = false;
+            };
             if (!textureId.empty()){
-                runtime.irradianceMap = TexturePool::get(irradianceId);
-                runtime.prefilteredMap = TexturePool::get(prefilteredId);
-                if (runtime.irradianceMap && runtime.prefilteredMap){
-                    runtime.ready = true;
-                    runtime.capturedPosition = transform->worldPosition;
-                    runtime.retryDelay = 0.0f;
-                    probe.needUpdate = false;
+                std::shared_ptr<TextureRender> irradiance = TexturePool::get(irradianceId);
+                std::shared_ptr<TextureRender> prefiltered = TexturePool::get(prefilteredId);
+                if (irradiance && prefiltered){
+                    takeMaps(std::move(irradiance), std::move(prefiltered));
                     continue;
                 }
             }
@@ -2615,19 +2649,22 @@ void RenderSystem::updateReflectionProbes(double dt){
                 continue;
 
             if (loadResult.state == ResourceLoadState::Finished && loadResult.data){
+                // a cook of six files swapped in: nothing the CPU can read (a cube's cook has its
+                // copy), and the same image as the source the maps were made of
+                if (hasMapsOfImage && !IBLEnvironment::canGenerate(*loadResult.data)){
+                    runtime.environmentGeneration = imageGeneration;
+                    runtime.retryDelay = 0.0f;
+                    probe.needUpdate = false;
+                    continue;
+                }
                 auto irradiance = std::make_shared<TextureRender>();
                 auto prefiltered = std::make_shared<TextureRender>();
                 if (IBLEnvironment::generate(textureId, *loadResult.data, *irradiance, *prefiltered)){
-                    runtime.irradianceMap = irradiance;
-                    runtime.prefilteredMap = prefiltered;
-                    runtime.ready = true;
-                    runtime.capturedPosition = transform->worldPosition;
-                    runtime.retryDelay = 0.0f;
-                    probe.needUpdate = false;
                     if (!textureId.empty()){
                         TexturePool::add(irradianceId, irradiance);
                         TexturePool::add(prefilteredId, prefiltered);
                     }
+                    takeMaps(irradiance, prefiltered);
                     continue;
                 }
             }
@@ -3034,7 +3071,7 @@ bool RenderSystem::checkPBRFrabebufferUpdate(Material& material){
         material.emissiveTexture.isFramebufferOutdated() );
 }
 
-bool RenderSystem::checkPBRTextures(Material& material, bool receiveLights){
+bool RenderSystem::checkPBRTextures(Material& material, bool receiveLights, bool receiveIBL){
     SubmeshShaderInputs inputs;
     inputs.baseColorTexture = !material.baseColorTexture.empty();
     inputs.metallicRoughnessTexture = !material.metallicRoughnessTexture.empty();
@@ -3042,6 +3079,8 @@ bool RenderSystem::checkPBRTextures(Material& material, bool receiveLights){
     inputs.occlusionTexture = !material.occlusionTexture.empty();
     inputs.emissiveTexture = !material.emissiveTexture.empty();
     inputs.receiveLights = receiveLights;
+    inputs.receiveIBL = receiveIBL;
+    inputs.lighting = material.lighting;
 
     return checkPBRTextures(getMeshShaderEnvironment(), inputs);
 }
@@ -3058,7 +3097,9 @@ bool RenderSystem::supportsStochasticTiling(const std::string& shader){
 
 bool RenderSystem::checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs){
     bool hasOtherPBRTextures = false;
-    if (environment.lights && inputs.receiveLights) {
+    // the lit variants sample them: under a scene light, and under a sky or a reflection probe alone
+    const bool useIBL = (environment.ibl || environment.reflectionProbes) && inputs.receiveIBL && inputs.lighting != MaterialLighting::NONE;
+    if ((environment.lights || useIBL) && inputs.receiveLights) {
         hasOtherPBRTextures = inputs.metallicRoughnessTexture ||
                               inputs.normalTexture ||
                               inputs.occlusionTexture ||
@@ -5435,7 +5476,8 @@ namespace {
 }
 
 // Read here rather than through Texture, which would upload a 2D image per layer on top
-// of the array. Rebuilt only when the set of source files changes.
+// of the array. Rebuilt when the set of source files changes, and when a file of it does
+// (invalidateTerrainDetailArray: the editor's file pick-up).
 RenderSystem::TerrainDetailArray* RenderSystem::getTerrainDetailArray(Entity entity, TerrainComponent& terrain){
     // The shader reaches all three layers of any bound blend map, so colors come in threes
     const size_t layerCount = std::min(terrain.surfaceLayers.size(), (size_t)MAX_TERRAIN_LAYERS);
@@ -5688,6 +5730,21 @@ void RenderSystem::destroyTerrainDetailArray(Entity entity){
     if (it != terrainDetailArrays.end()){
         it->second.render.destroyTexture();
         terrainDetailArrays.erase(it);
+    }
+}
+
+void RenderSystem::invalidateTerrainDetailArray(Entity entity){
+    auto it = terrainDetailArrays.find(entity);
+    if (it == terrainDetailArrays.end()){
+        return;
+    }
+    // not the set it was built from anymore: the array is built again when the textures bind (and
+    // the old one draws until then)
+    it->second.sliceKeys.clear();
+    if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+        for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
+            mesh->submeshes[s].needUpdateTexture = true;
+        }
     }
 }
 
@@ -14797,7 +14854,7 @@ void RenderSystem::update(double dt){
                     // a shader with a manifest takes its UV sets from @require, not the textures
                     if (mesh.submeshes[s].manifest){
                         // its custom textures are bound again by drawMesh
-                    }else if (checkPBRTextures(mesh.submeshes[s].material, mesh.receiveLights)){
+                    }else if (checkPBRTextures(mesh.submeshes[s].material, mesh.receiveLights, mesh.receiveIBL)){
                         if (!(mesh.submeshes[s].shaderProperties & (1 << 1)) && !(mesh.submeshes[s].shaderProperties & (1 << 2))){ // not 'Uv1' and not 'Uv2'
                             mesh.needReload = true;
                         }

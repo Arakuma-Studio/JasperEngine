@@ -13,6 +13,10 @@
 #include <gtest/gtest.h>
 #include <yaml-cpp/yaml.h>
 
+#include <chrono>
+#include <string>
+#include <thread>
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -132,4 +136,50 @@ TEST(StreamMaterialPbr, TerrainHexRoundTrips){
     const TerrainSurfaceLayer read = Stream::decodeTerrainSurfaceLayer(reread(Stream::encodeTerrainSurfaceLayer(layer)));
     EXPECT_TRUE(read.hexTiling);
     EXPECT_FLOAT_EQ(read.hexRotation, 0.35f);
+}
+
+// A map whose file is missing right now (its load failed) is empty() but keeps its path: a save, a
+// copy or an undo snapshot writes the reference, and a saved file does not depend on what was loaded
+// (S04 R15). A terrain layer's maps and a lobe's map wrote nothing then, and the file lost them.
+namespace {
+    void failLoadOf(Texture& texture){
+        TextureLoadResult result = texture.load();
+        for (int i = 0; i < 2000 && result.state == ResourceLoadState::Loading; i++){
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            result = texture.load();
+        }
+        ASSERT_EQ(result.state, ResourceLoadState::Failed);
+        ASSERT_TRUE(texture.empty());
+    }
+}
+
+TEST(StreamMaterialPbr, ATerrainLayersMapThatFailedToLoadKeepsItsFile){
+    const std::string missing = "assets/bf19-does-not-exist/layer.png";
+    TerrainSurfaceLayer layer;
+    layer.pbr = true;
+    forEachTerrainLayerTexture(layer, [&](Texture& texture){ texture.setPath(missing); });
+    const std::string before = YAML::Dump(Stream::encodeTerrainSurfaceLayer(layer));
+
+    forEachTerrainLayerTexture(layer, [&](Texture& texture){ failLoadOf(texture); });
+    ASSERT_FALSE(HasFatalFailure());
+    EXPECT_EQ(YAML::Dump(Stream::encodeTerrainSurfaceLayer(layer)), before);
+
+    TerrainSurfaceLayer read = Stream::decodeTerrainSurfaceLayer(reread(Stream::encodeTerrainSurfaceLayer(layer)));
+    forEachTerrainLayerTexture(read, [&](Texture& texture){ EXPECT_EQ(texture.getPath(), missing); });
+}
+
+TEST(StreamMaterialPbr, ALobesMapThatFailedToLoadKeepsItsFile){
+    const std::string missing = "assets/bf19-does-not-exist/coat.png";
+    Material material;
+    MaterialPbrExtensions& pbr = material.pbr.edit();
+    pbr.clearcoat.enabled = true;
+    pbr.clearcoat.map.setPath(missing);
+    const std::string before = YAML::Dump(Stream::encodeMaterial(material));
+
+    failLoadOf(material.pbr.edit().clearcoat.map);
+    ASSERT_FALSE(HasFatalFailure());
+    EXPECT_EQ(YAML::Dump(Stream::encodeMaterial(material)), before);
+
+    const Material read = Stream::decodeMaterial(reread(Stream::encodeMaterial(material)));
+    EXPECT_EQ(read.pbr.get().clearcoat.map.getPath(), missing);
 }
