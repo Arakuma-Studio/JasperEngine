@@ -3,6 +3,8 @@
 
 #include "LogCapture.h"
 
+#include "log/Logger.h"
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -21,6 +23,9 @@ LogCapture LogCapture::sinceTestStart(){
 }
 
 void LogCapture::markTestStart(){
+    // what the log's rate limit held back of an earlier test: reported now, its summary is not this
+    // test's (it would come when the second is over, in whichever test runs by then)
+    Logger::flushSummaries();
     testStart = TestSystem::get().getLogSequence();
 }
 

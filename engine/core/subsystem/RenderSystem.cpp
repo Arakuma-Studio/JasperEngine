@@ -6379,6 +6379,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             }
         }
 
+        bool missingBuffer = false;
         for (auto const& attr : mesh.submeshes[i].attributes){
             if (bufferNameToRender.count(attr.second.getBufferName())){
                 if (attr.first == AttributeType::INDEX){
@@ -6390,7 +6391,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 }
             }else{
                 Log::error("Cannot load submesh attribute from buffer name: %s", attr.second.getBufferName().c_str());
+                missingBuffer = true;
             }
+        }
+        // nothing to draw it with (a flattened model past the mesh's limit of external buffers): not
+        // drawn, not tried every frame (a pipeline that leaves a vertex input without a buffer is
+        // undefined on Vulkan, and not created on Metal)
+        if (missingBuffer){
+            mesh.loadCalled = true;
+            return false;
         }
 
         if (instmesh){

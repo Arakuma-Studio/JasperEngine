@@ -92,7 +92,7 @@ TEST(LoggerTest, ASummaryOfAnEarlierTestIsNotInTheNextTestsCapture) {
     burst();
     Logger::flush();
     EXPECT_EQ(capture.count(D_LOG_ERROR, "an earlier test's burst"), 1u);
-    // (what was logged on purpose is not this test's failure)
+    // (what was logged on purpose is not this test's failure, nor a later one's)
     LogCapture::markTestStart();
 }
 
