@@ -149,7 +149,9 @@ unsigned int Data::open(const char *aFilename) {
     dataPtr = new unsigned char[dataLength];
     if (dataPtr == NULL)
         return FileErrors::OUT_OF_MEMORY;
-    df.read(dataPtr, dataLength);
+    // what the read gave: a file rewritten since its length was asked is shorter, and the rest of
+    // this memory is not its content
+    dataLength = df.read(dataPtr, dataLength);
     dataOwned = true;
     return FileErrors::FILEDATA_OK;
 }
@@ -164,7 +166,8 @@ unsigned int Data::open(File *aFile) {
     dataPtr = new unsigned char[dataLength];
     if (dataPtr == NULL)
         return FileErrors::OUT_OF_MEMORY;
-    aFile->read(dataPtr, dataLength);
+    // (what the read gave, as above)
+    dataLength = aFile->read(dataPtr, dataLength);
     dataOwned = true;
     return FileErrors::FILEDATA_OK;
 }

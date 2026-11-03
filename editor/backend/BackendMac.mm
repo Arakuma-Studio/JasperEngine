@@ -1055,8 +1055,7 @@ int editor::Backend::init(int argc, char* argv[]) {
                     FrameTimes::beginFrame();
                     JE_PROFILE_FRAME();
                     Engine::latchShaderTime();
-                    SystemRender::updateGpuCreation();
-                    ShaderWarmup::update();
+                    Engine::updateGpuCreation();
                 }
 
                 backend->frameInProgress = true;

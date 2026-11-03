@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "VideoStream.h"
+#include "jobs/detail/TimedWait.h"
 #include "thread/ThreadUtil.h"
 
 #include "Log.h"
@@ -79,7 +80,7 @@ void VideoStream::threadMain(){
             return;
         // the mixer drains the audio ring without telling: look again soon while there is audio
         if (ring && !audioEnd)
-            workerWake.wait_for(lock, std::chrono::milliseconds(10), [this]{ return quit || hasWorkLocked(); });
+            jobs::detail::timedWait(workerWake, lock, std::chrono::milliseconds(10), [this]{ return quit || hasWorkLocked(); });
         else
             workerWake.wait(lock, [this]{ return quit || hasWorkLocked(); });
         if (quit)
@@ -456,7 +457,7 @@ VideoStream::State VideoStream::waitOpen(){
         return state;
     }
     std::unique_lock<std::mutex> lock(mutex);
-    frameReady.wait_for(lock, WAIT_LIMIT, [this]{ return state != State::OPENING || quit; });
+    jobs::detail::timedWait(frameReady, lock, WAIT_LIMIT, [this]{ return state != State::OPENING || quit; });
     return state;
 }
 
@@ -598,7 +599,8 @@ VideoStream::FrameResult VideoStream::acquireFrame(int iteration, double seconds
 
         if (threaded){
             workerWake.notify_all();
-            if (frameReady.wait_until(lock, deadline) == std::cv_status::timeout){
+            jobs::detail::timedWait(frameReady, lock, deadline - std::chrono::steady_clock::now());
+            if (std::chrono::steady_clock::now() >= deadline){
                 Log::error("[HTML UI] <video src=\"%s\">: frame %lld was not decoded in time", path.c_str(), (long long)target);
                 return FrameResult::NOT_READY;
             }
@@ -634,7 +636,7 @@ void VideoStream::waitAudioSync(){
     }
     std::unique_lock<std::mutex> lock(mutex);
     workerWake.notify_all();
-    frameReady.wait_for(lock, WAIT_LIMIT, [this]{ return pendingAudioSync < 0 || quit || state != State::READY; });
+    jobs::detail::timedWait(frameReady, lock, WAIT_LIMIT, [this]{ return pendingAudioSync < 0 || quit || state != State::READY; });
 }
 
 std::shared_ptr<VideoAudioRing> VideoStream::getAudioRing() const{

@@ -7539,6 +7539,12 @@ _SOKOL_PRIVATE void _sg_strcpy(_sg_str_t* dst, const char* src) {
 // ██       ██████   ██████  ███████
 //
 // >>pool
+// JasperEngine: pool lock (PATCHES.md): a free list's and a slot's hands change on one lock: the
+// thread with a queue of its own allocates its GPU objects' handles (sg_alloc_*), next to the
+// main thread's sg_make_* and sg_destroy_*. Taken for these few writes alone, never by a draw.
+static std::mutex _sgj_pool_mutex;
+#define _SGJ_POOL_LOCK() std::lock_guard<std::mutex> _sgj_pool_lock(_sgj_pool_mutex)
+
 _SOKOL_PRIVATE void _sg_pool_init(_sg_pool_t* pool, int num) {
     SOKOL_ASSERT(pool && (num >= 1));
     // slot 0 is reserved for the 'invalid id', so bump the pool size by 1
@@ -8085,6 +8091,7 @@ _SOKOL_PRIVATE void _sg_update_alive_free_resource_stats(sg_total_resource_stats
 }
 
 _SOKOL_PRIVATE void _sg_update_stats(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock (the frame's allocations)
     _sg.stats.cur_frame.frame_index = _sg.frame_index;
     _sg.stats.prev_frame = _sg.stats.cur_frame;
     _sg_clear(&_sg.stats.cur_frame, sizeof(_sg.stats.cur_frame));
@@ -24539,6 +24546,7 @@ _SOKOL_PRIVATE sg_view_desc _sg_view_desc_defaults(const sg_view_desc* desc) {
 }
 
 _SOKOL_PRIVATE sg_buffer _sg_alloc_buffer(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_buffer res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.buffer_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24552,6 +24560,7 @@ _SOKOL_PRIVATE sg_buffer _sg_alloc_buffer(void) {
 }
 
 _SOKOL_PRIVATE sg_image _sg_alloc_image(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_image res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.image_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24565,6 +24574,7 @@ _SOKOL_PRIVATE sg_image _sg_alloc_image(void) {
 }
 
 _SOKOL_PRIVATE sg_sampler _sg_alloc_sampler(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_sampler res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.sampler_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24578,6 +24588,7 @@ _SOKOL_PRIVATE sg_sampler _sg_alloc_sampler(void) {
 }
 
 _SOKOL_PRIVATE sg_shader _sg_alloc_shader(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_shader res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.shader_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24591,6 +24602,7 @@ _SOKOL_PRIVATE sg_shader _sg_alloc_shader(void) {
 }
 
 _SOKOL_PRIVATE sg_pipeline _sg_alloc_pipeline(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_pipeline res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.pipeline_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24604,6 +24616,7 @@ _SOKOL_PRIVATE sg_pipeline _sg_alloc_pipeline(void) {
 }
 
 _SOKOL_PRIVATE sg_view _sg_alloc_view(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_view res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.view_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24617,6 +24630,7 @@ _SOKOL_PRIVATE sg_view _sg_alloc_view(void) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_buffer(_sg_buffer_t* buf) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(buf && (buf->slot.state == SG_RESOURCESTATE_ALLOC) && (buf->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.buffer_pool, _sg_slot_index(buf->slot.id));
     _sg_slot_reset(&buf->slot);
@@ -24624,6 +24638,7 @@ _SOKOL_PRIVATE void _sg_dealloc_buffer(_sg_buffer_t* buf) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_image(_sg_image_t* img) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(img && (img->slot.state == SG_RESOURCESTATE_ALLOC) && (img->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.image_pool, _sg_slot_index(img->slot.id));
     _sg_slot_reset(&img->slot);
@@ -24631,6 +24646,7 @@ _SOKOL_PRIVATE void _sg_dealloc_image(_sg_image_t* img) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_sampler(_sg_sampler_t* smp) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(smp && (smp->slot.state == SG_RESOURCESTATE_ALLOC) && (smp->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.sampler_pool, _sg_slot_index(smp->slot.id));
     _sg_slot_reset(&smp->slot);
@@ -24638,6 +24654,7 @@ _SOKOL_PRIVATE void _sg_dealloc_sampler(_sg_sampler_t* smp) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_shader(_sg_shader_t* shd) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(shd && (shd->slot.state == SG_RESOURCESTATE_ALLOC) && (shd->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.shader_pool, _sg_slot_index(shd->slot.id));
     _sg_slot_reset(&shd->slot);
@@ -24645,6 +24662,7 @@ _SOKOL_PRIVATE void _sg_dealloc_shader(_sg_shader_t* shd) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_pipeline(_sg_pipeline_t* pip) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(pip && (pip->slot.state == SG_RESOURCESTATE_ALLOC) && (pip->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.pipeline_pool, _sg_slot_index(pip->slot.id));
     _sg_slot_reset(&pip->slot);
@@ -24652,6 +24670,7 @@ _SOKOL_PRIVATE void _sg_dealloc_pipeline(_sg_pipeline_t* pip) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_view(_sg_view_t* view) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(view && (view->slot.state == SG_RESOURCESTATE_ALLOC) && (view->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.view_pool, _sg_slot_index(view->slot.id));
     _sg_slot_reset(&view->slot);
@@ -25079,6 +25098,7 @@ SOKOL_API_IMPL int sg_query_surface_pitch(sg_pixel_format fmt, int width, int he
 
 SOKOL_API_IMPL sg_stats sg_query_stats(void) {
     SOKOL_ASSERT(_sg.valid);
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock (the free lists' tops, the allocations)
     _sg_update_alive_free_resource_stats(&_sg.stats.total.buffers, &_sg.pools.buffer_pool);
     _sg_update_alive_free_resource_stats(&_sg.stats.total.images, &_sg.pools.image_pool);
     _sg_update_alive_free_resource_stats(&_sg.stats.total.views, &_sg.pools.view_pool);
@@ -25618,8 +25638,7 @@ SOKOL_API_IMPL void sg_destroy_buffer(sg_buffer buf_id) {
             SOKOL_ASSERT(buf->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (buf->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_buffer(buf);
-            SOKOL_ASSERT(buf->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_buffer(buf);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }
@@ -25634,8 +25653,7 @@ SOKOL_API_IMPL void sg_destroy_image(sg_image img_id) {
             SOKOL_ASSERT(img->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (img->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_image(img);
-            SOKOL_ASSERT(img->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_image(img);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }
@@ -25650,8 +25668,7 @@ SOKOL_API_IMPL void sg_destroy_sampler(sg_sampler smp_id) {
             SOKOL_ASSERT(smp->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (smp->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_sampler(smp);
-            SOKOL_ASSERT(smp->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_sampler(smp);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }
@@ -25666,8 +25683,7 @@ SOKOL_API_IMPL void sg_destroy_shader(sg_shader shd_id) {
             SOKOL_ASSERT(shd->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (shd->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_shader(shd);
-            SOKOL_ASSERT(shd->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_shader(shd);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }
@@ -25682,8 +25698,7 @@ SOKOL_API_IMPL void sg_destroy_pipeline(sg_pipeline pip_id) {
             SOKOL_ASSERT(pip->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (pip->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_pipeline(pip);
-            SOKOL_ASSERT(pip->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_pipeline(pip);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }
@@ -25698,8 +25713,7 @@ SOKOL_API_IMPL void sg_destroy_view(sg_view view_id) {
             SOKOL_ASSERT(view->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (view->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_view(view);
-            SOKOL_ASSERT(view->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_view(view);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }

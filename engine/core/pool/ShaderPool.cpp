@@ -192,6 +192,18 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
     return false;
 }
 
+namespace {
+    // The map and the key sets below it: the frames use them, and so does a model loading off the
+    // main thread (the thumbnail strand, a game's loading thread: RenderSystem::loadMesh under
+    // Engine::executeSceneOnce), next to what the main thread lets go outside a frame. Taken around
+    // the containers' own operations alone: never while a builder runs or a GPU shader is made or
+    // destroyed (TexturePool's entriesMutex, and docs/rendering/async-shaders.md, Threads).
+    std::mutex& shaderEntriesMutex(){
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
+    }
+}
+
 shaders_t& ShaderPool::getMap(){
     //To prevent similar problem of static init fiasco but on deinitialization
     //https://isocpp.org/wiki/faq/ctors#static-init-order-on-first-use
@@ -199,9 +211,14 @@ shaders_t& ShaderPool::getMap(){
     return *map;
 };
 
-std::vector<std::string>& ShaderPool::getMissingShaders(){
+static std::vector<std::string>& missingShaderNames(){
     static std::vector<std::string>* missingshaders = new std::vector<std::string>();
     return *missingshaders;
+};
+
+std::vector<std::string> ShaderPool::getMissingShaders(){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    return missingShaderNames();
 };
 
 // Keys whose last build or backend resource creation failed. The editor pool stops
@@ -218,6 +235,38 @@ static std::set<ShaderKey>& notPrecompiledShaders(){
     static std::set<ShaderKey>* set = new std::set<ShaderKey>();
     return *set;
 };
+
+static bool isFailedShader(ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    return failedShaders().count(key) > 0;
+}
+
+static void markFailedShader(ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    failedShaders().insert(key);
+}
+
+static void clearFailedShader(ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    failedShaders().erase(key);
+}
+
+static bool isNotPrecompiledShader(ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    return notPrecompiledShaders().count(key) > 0;
+}
+
+static void markNotPrecompiledShader(ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    notPrecompiledShaders().insert(key);
+}
+
+// the entry of the key, if it has one, held: remove() leaves what someone holds
+static std::shared_ptr<ShaderRender> findEntry(shaders_t& map, ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    auto it = map.find(key);
+    return it != map.end() ? it->second : nullptr;
+}
 
 // Custom shader registry: index = customId-1, value = project-relative base path.
 // Bumped whenever the registry is reset (clear/clearUnused): ids held elsewhere are stale.
@@ -937,7 +986,8 @@ bool ShaderPool::parseShaderKeyText(const std::string& text, ShaderKey& key) {
 }
 
 void ShaderPool::addMissingShader(const std::string& shaderStr) {
-    auto& missingShaders = getMissingShaders();
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    auto& missingShaders = missingShaderNames();
     if (std::find(missingShaders.begin(), missingShaders.end(), shaderStr) == missingShaders.end()) {
         missingShaders.push_back(shaderStr);
     }
@@ -945,34 +995,40 @@ void ShaderPool::addMissingShader(const std::string& shaderStr) {
 
 std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint64_t properties, uint16_t customId){
     ShaderKey shaderKey = getShaderKey(shaderType, properties, customId);
-    auto& shared = getMap()[shaderKey];
+    // its entry, held: the lock is not kept while the variant is looked at or made, and remove()
+    // leaves what someone holds
+    std::shared_ptr<ShaderRender> shared;
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        std::shared_ptr<ShaderRender>& entry = getMap()[shaderKey];
+        if (!entry) {
+            entry = std::make_shared<ShaderRender>();
+        }
+        shared = entry;
+    }
 
-    if (shared && shared->isCreated()){
+    if (shared->isCreated()){
         return shared;
     }
     // its GPU object is being created off the render thread (spec S32): nothing to do until then
-    if (shared && shared->isPending()){
+    if (shared->isPending()){
         return shared;
     }
 
     // The build can succeed and the backend still reject the shader (Metal compiles
     // the native library here). Retire the handle so its pool slot is released.
-    if (shared && shared->isFailed()) {
+    if (shared->isFailed()) {
         shared->destroyShader();
-        failedShaders().insert(shaderKey);
+        markFailedShader(shaderKey);
         Log::error("Shader resource creation failed: %s",
                    getShaderStr(shaderType, properties, customId).c_str());
         return shared;
     }
 
-    if (!shared) {
-        shared = std::make_shared<ShaderRender>();
-    }
-
     if (!shared->isCreated()) {
         // A previous attempt failed: don't retry every frame (it recompiles and spams
         // errors). Retried once remove()/destroyCustomShaders() clears the failure.
-        if (failedShaders().count(shaderKey)) {
+        if (isFailedShader(shaderKey)) {
             return shared;
         }
         if (shaderBuilderFn) {
@@ -989,22 +1045,22 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint64_t pr
                 if (timing)
                     Log::print("[shader-timing] create %s: %.1f ms", getShaderStr(shaderType, properties, customId).c_str(),
                               std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - c0).count());
-                failedShaders().erase(shaderKey);
+                clearFailedShader(shaderKey);
             } else if (result.state == ResourceLoadState::Loading) {
                 // Shader is still building, do nothing
             } else if (result.state == ResourceLoadState::Failed) {
-                failedShaders().insert(shaderKey);
+                markFailedShader(shaderKey);
                 Log::error("Shader build failed: %s", getShaderStr(shaderType, properties, customId).c_str());
             }
         } else {
             const std::string shaderStr = getShaderStr(shaderType, properties, customId);
 
             ShaderData precompiled;
-            if (!notPrecompiledShaders().count(shaderKey) && loadPrecompiledShader(shaderKey, shaderStr, precompiled)){
+            if (!isNotPrecompiledShader(shaderKey) && loadPrecompiledShader(shaderKey, shaderStr, precompiled)){
                 shared->createShader(precompiled);
             } else {
                 // looked for once: what the build ships does not change
-                notPrecompiledShaders().insert(shaderKey);
+                markNotPrecompiledShader(shaderKey);
 
                 if (RuntimeShaderCompiler::isEnabled()){
                     // Built in the background: Loading leaves whatever draws with it out
@@ -1013,7 +1069,7 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint64_t pr
                     if (result.state == ResourceLoadState::Finished){
                         shared->createShader(result.data);
                     } else if (result.state == ResourceLoadState::Failed){
-                        failedShaders().insert(shaderKey);
+                        markFailedShader(shaderKey);
                         Log::error("Shader %s (%s) failed to compile at runtime: %s",
                                    shaderStr.c_str(), getShaderLangStr().c_str(),
                                    RuntimeShaderCompiler::getError(shaderKey).c_str());
@@ -1039,7 +1095,7 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint64_t pr
                         // Not in this build: reported once (RenderSystem::draw), and not looked
                         // for again every frame by whatever needs it
                         addMissingShader(shaderStr);
-                        failedShaders().insert(shaderKey);
+                        markFailedShader(shaderKey);
                     }
                 }
             }
@@ -1123,21 +1179,19 @@ bool ShaderPool::warmUp(ShaderKey shaderKey){
 }
 
 bool ShaderPool::isShaderReady(ShaderType shaderType, uint64_t properties, uint16_t customId){
-    auto& map = getMap();
-    auto it = map.find(getShaderKey(shaderType, properties, customId));
-    return it != map.end() && it->second && it->second->isCreated();
+    const std::shared_ptr<ShaderRender> entry = findEntry(getMap(), getShaderKey(shaderType, properties, customId));
+    return entry && entry->isCreated();
 }
 
 ResourceLoadState ShaderPool::getShaderState(ShaderKey shaderKey){
-    if (failedShaders().count(shaderKey))
+    if (isFailedShader(shaderKey))
         return ResourceLoadState::Failed;
-    auto& map = getMap();
-    auto it = map.find(shaderKey);
-    if (it == map.end() || !it->second)
+    const std::shared_ptr<ShaderRender> entry = findEntry(getMap(), shaderKey);
+    if (!entry)
         return ResourceLoadState::NotStarted;
-    if (it->second->isCreated())
+    if (entry->isCreated())
         return ResourceLoadState::Finished;
-    if (it->second->isFailed())
+    if (entry->isFailed())
         return ResourceLoadState::Failed;
     return ResourceLoadState::Loading;
 }
@@ -1183,7 +1237,7 @@ size_t ShaderPool::warmUpAllShaders(){
 
     size_t notReady = 0;
     for (ShaderKey key : keys){
-        if (!warmUp(key) && !failedShaders().count(key))
+        if (!warmUp(key) && !isFailedShader(key))
             notReady++;
     }
     return notReady;
@@ -1192,6 +1246,7 @@ size_t ShaderPool::warmUpAllShaders(){
 bool ShaderPool::findKeyOfHandle(uint32_t handleId, ShaderKey& key){
     if (handleId == 0)
         return false;
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
     for (const auto& entry : getMap()){
         if (entry.second && entry.second->backend.get().id == handleId){
             key = entry.first;
@@ -1542,25 +1597,31 @@ std::string ShaderPool::getUiEffectName(const std::string& customShader){
 }
 
 bool ShaderPool::isShaderBuildFailed(ShaderType shaderType, uint64_t properties, uint16_t customId){
-    return failedShaders().count(getShaderKey(shaderType, properties, customId)) > 0;
+    return isFailedShader(getShaderKey(shaderType, properties, customId));
 }
 
 void ShaderPool::remove(ShaderType shaderType, uint64_t properties, uint16_t customId){
     ShaderKey shaderKey = getShaderKey(shaderType, properties, customId);
-    failedShaders().erase(shaderKey);
-    auto& map = getMap();
-    auto it = map.find(shaderKey);
-    if (it != map.end()){
-        if (!it->second || it->second.use_count() <= 1){
-            if (it->second){
-                it->second->destroyShader();
+    bool found = false;
+    std::shared_ptr<ShaderRender> unused;
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        failedShaders().erase(shaderKey);
+        auto& map = getMap();
+        auto it = map.find(shaderKey);
+        if (it != map.end()){
+            found = true;
+            if (!it->second || it->second.use_count() <= 1){
+                unused = std::move(it->second);
+                map.erase(it);
             }
-            map.erase(it);
         }
-    }else{
-        if (Engine::isViewLoaded()){
-            Log::debug("Trying to destroy a non existent shader");
-        }
+    }
+    if (unused){
+        unused->destroyShader();
+    }
+    if (!found && Engine::isViewLoaded()){
+        Log::debug("Trying to destroy a non existent shader");
     }
 }
 
@@ -1578,17 +1639,23 @@ void ShaderPool::destroyCustomShaders(const std::function<bool(const std::string
         const std::string name = getCustomShaderName(customId);
         return name.compare(0, 8, "library:") != 0 && !isLibraryCustomShader(customId) && which(name);
     };
-    for (auto& entry : getMap()){
+    // (what `which` asks and the GPU shaders' end are outside the lock: copies of the entries)
+    std::vector<std::pair<ShaderKey, std::shared_ptr<ShaderRender>>> entries;
+    std::vector<ShaderKey> failed;
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        entries.assign(getMap().begin(), getMap().end());
+        failed.assign(failedShaders().begin(), failedShaders().end());
+    }
+    for (auto& entry : entries){
         if (isFork(entry.first) && entry.second && entry.second->isCreated()){
             entry.second->destroyShader();
         }
     }
     // Forget custom-shader build failures so an edited source is retried on the next get().
-    for (auto it = failedShaders().begin(); it != failedShaders().end();){
-        if (isFork(*it)){
-            it = failedShaders().erase(it);
-        } else {
-            ++it;
+    for (ShaderKey key : failed){
+        if (isFork(key)){
+            clearFailedShader(key);
         }
     }
 }
@@ -1821,14 +1888,18 @@ uint64_t ShaderPool::getLinesProperties(bool vertexColorVec3, bool vertexColorVe
 }
 
 void ShaderPool::clear(){
-    for (auto& it: getMap()) {
+    shaders_t entries;
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        entries.swap(getMap());
+        missingShaderNames().clear();
+        failedShaders().clear();
+        notPrecompiledShaders().clear();
+    }
+    for (auto& it: entries) {
         if (it.second)
             it.second->destroyShader();
     }
-    getMap().clear();
-    getMissingShaders().clear();
-    failedShaders().clear();
-    notPrecompiledShaders().clear();
     // stops a compile in flight; what it compiled is in the disk cache for next time
     RuntimeShaderCompiler::shutdown();
 
@@ -1839,18 +1910,24 @@ void ShaderPool::clear(){
 
 void ShaderPool::clearUnused(){
     std::vector<ShaderKey> keys;
-    keys.reserve(getMap().size());
-    for (const auto& entry : getMap()) {
-        keys.push_back(entry.first);
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        keys.reserve(getMap().size());
+        for (const auto& entry : getMap()) {
+            keys.push_back(entry.first);
+        }
     }
     for (ShaderKey key : keys) {
         remove(getShaderTypeFromKey(key), getPropertiesFromKey(key), getCustomIdFromKey(key));
     }
     // Per-project bookkeeping: always reset so the next project does not inherit
     // missing/failed entries or custom-shader name registrations.
-    getMissingShaders().clear();
-    failedShaders().clear();
-    notPrecompiledShaders().clear();
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        missingShaderNames().clear();
+        failedShaders().clear();
+        notPrecompiledShaders().clear();
+    }
     // its variants are keyed by the custom shader ids reset below
     RuntimeShaderCompiler::shutdown();
     std::lock_guard<std::mutex> lock(customShaderMutex());

@@ -1094,6 +1094,14 @@ bool Engine::isAsyncLoading(){
     return asyncLoading;
 }
 
+void Engine::updateGpuCreation(){
+    // under the frames' semaphore: a thread loading a scene asks for the states this publishes
+    drawSemaphore.acquire();
+    SystemRender::updateGpuCreation();
+    ShaderWarmup::update();
+    drawSemaphore.release();
+}
+
 void Engine::startAsyncThread(){
     #ifndef NO_THREAD_SUPPORT
         getAsyncThreadDepthStorage()++;
@@ -2121,8 +2129,7 @@ void Engine::runFrame(bool draw){
         latchShaderTime();
         // the shaders and pipelines created off the render thread that are ready, and a step of
         // the warm-up list (spec S32)
-        SystemRender::updateGpuCreation();
-        ShaderWarmup::update();
+        updateGpuCreation();
     }
     JE_PROFILE_SCOPE("Frame");
     SystemRender::setViewTag(SystemRender::FRAME_STATS_FRAME);

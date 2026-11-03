@@ -723,6 +723,10 @@ namespace jasperengine {
         static void setAsyncLoading(bool enable);
         static bool isAsyncLoading();
 
+        // At a frame's start: the shaders and pipelines created off the render thread that are
+        // ready, and a step of the shader warm-up list
+        static void updateGpuCreation();
+
         static void startAsyncThread();
         static void commitThreadQueue();
         static void endAsyncThread();

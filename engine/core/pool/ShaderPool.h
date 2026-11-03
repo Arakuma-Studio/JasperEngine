@@ -241,7 +241,8 @@ namespace jasperengine{
         static std::string getSuggestedCliBackend();
         static std::string getMissingShadersCliArgs();
         static std::string getMissingShadersDisplayList();
-        static std::vector<std::string>& getMissingShaders();
+        // (a copy: a model loading off the main thread may add to them)
+        static std::vector<std::string> getMissingShaders();
 
         // the builder of the variants (the editor's), and how many it is still building
         static void setShaderBuilder(ShaderBuilderFn fn, ShaderBuildsPendingFn pending = nullptr);
