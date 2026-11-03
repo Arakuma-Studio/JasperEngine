@@ -1655,10 +1655,47 @@ namespace SoLoud
 					}
 				}												
 
+				// JasperEngine local patch: a bus never reads ahead. A voice reads its source in 512-frame
+				// blocks and keeps what a call does not take for the next call; for a bus, whose
+				// source is the mix of its children, that delayed every voice started into it to the
+				// bus's next block (up to 511 frames late with calls that are not whole blocks: the
+				// engine's 512 + 288 frame at 60 fps, a device period) and ended it up to a block
+				// before its last sample was heard. A voice at step 1 with autostop off (the engine
+				// sets that on its buses only; a bus never ends) under the point or linear resampler
+				// reads, at each new block, only the frames this call still needs: its filters run on
+				// those, all of them are written now (no leftover), and each channel's last frame goes
+				// to index 511, where the linear resampler takes the previous sample from at the next
+				// block. Its children are then mixed at this call's size, so a voice queued before a
+				// call is first mixed in that call at every level. Clip voices, resampled voices,
+				// Catmull-Rom and the inaudible-tick branch keep upstream's path.
+				const bool readsPerCall = step_fixed == FIXPOINT_FRAC_MUL &&
+				                          (voice->mFlags & AudioSourceInstance::DISABLE_AUTOSTOP) &&
+				                          (aResampler == RESAMPLER_POINT || aResampler == RESAMPLER_LINEAR);
+
 				while (step_fixed != 0 && outofs < aSamplesToRead)
 				{
+					// frames of the block read below (read-ahead patch: what the call still needs)
+					unsigned int blockFrames = SAMPLE_GRANULARITY;
+					if (readsPerCall && voice->mLeftoverSamples == 0 && aSamplesToRead - outofs < SAMPLE_GRANULARITY)
+					{
+						blockFrames = aSamplesToRead - outofs;
+					}
+
 					if (voice->mLeftoverSamples == 0)
 					{
+						// JasperEngine local patch: a voice that stops at its end stops once its last block
+						// is written: here the rest of the call is silence, and below it stops only
+						// with no samples left over. Upstream stopped it at the end of the call that
+						// read the last block and dropped what that block still held whenever the call
+						// ended inside it (up to 511 frames, more when resampled).
+						if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded())
+						{
+							unsigned int k;
+							for (k = 0; k < voice->mChannels; k++)
+								memset(aScratch + k * aBufferSize + outofs, 0, sizeof(float) * (aSamplesToRead - outofs));
+							break;
+						}
+
 						// Swap resample buffers (ping-pong)
 						float * t = voice->mResampleData[0];
 						voice->mResampleData[0] = voice->mResampleData[1];
@@ -1669,15 +1706,15 @@ namespace SoLoud
 						int readcount = 0;
 						if (!voice->hasEnded() || voice->mFlags & AudioSourceInstance::LOOPING)
 						{
-							readcount = voice->getAudio(voice->mResampleData[0], SAMPLE_GRANULARITY, SAMPLE_GRANULARITY);
-							if (readcount < SAMPLE_GRANULARITY)
+							readcount = voice->getAudio(voice->mResampleData[0], blockFrames, SAMPLE_GRANULARITY);
+							if (readcount < (int)blockFrames)
 							{
 								if (voice->mFlags & AudioSourceInstance::LOOPING)
 								{
-									while (readcount < SAMPLE_GRANULARITY && voice->seek(voice->mLoopPoint, mScratch.mData, mScratchSize) == SO_NO_ERROR)
+									while (readcount < (int)blockFrames && voice->seek(voice->mLoopPoint, mScratch.mData, mScratchSize) == SO_NO_ERROR)
 									{
 										voice->mLoopCount++;
-										int inc = voice->getAudio(voice->mResampleData[0] + readcount, SAMPLE_GRANULARITY - readcount, SAMPLE_GRANULARITY);
+										int inc = voice->getAudio(voice->mResampleData[0] + readcount, blockFrames - readcount, SAMPLE_GRANULARITY);
 										readcount += inc;
 										if (inc == 0) break;
 									}
@@ -1713,7 +1750,7 @@ namespace SoLoud
 							{
 								voice->mFilter[j]->filter(
 									voice->mResampleData[0],
-									SAMPLE_GRANULARITY,
+									blockFrames,
 									SAMPLE_GRANULARITY,
 									voice->mChannels,
 									voice->mSamplerate,
@@ -1740,6 +1777,12 @@ namespace SoLoud
 							writesamples--;
 					}
 
+
+					// a short block (read-ahead patch: step 1) gives exactly its frames
+					if (blockFrames < SAMPLE_GRANULARITY && writesamples > blockFrames)
+					{
+						writesamples = blockFrames;
+					}
 
 					// If this is too much for our output buffer, don't write that many:
 					if (writesamples + outofs > aSamplesToRead)
@@ -1795,13 +1838,27 @@ namespace SoLoud
 
 					// Move source pointer onwards (writesamples may be zero)
 					voice->mSrcOffset += writesamples * step_fixed;
+
+					// A short block (read-ahead patch) is used up: the next call reads a new one. Its
+					// last frame is where the linear resampler looks for the sample before the next
+					// block, and the source pointer is where a whole block would have left it.
+					if (blockFrames < SAMPLE_GRANULARITY)
+					{
+						for (j = 0; j < voice->mChannels; j++)
+						{
+							voice->mResampleData[0][SAMPLE_GRANULARITY * j + SAMPLE_GRANULARITY - 1] =
+								voice->mResampleData[0][SAMPLE_GRANULARITY * j + blockFrames - 1];
+						}
+						voice->mSrcOffset = SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL;
+						voice->mLeftoverSamples = 0;
+					}
 				}
 				
 				// Handle panning and channel expansion (and/or shrinking)
 				panAndExpand(voice, aBuffer, aSamplesToRead, aBufferSize, aScratch, aChannels);
 
-				// clear voice if the sound is over
-				if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded())
+				// clear voice if the sound is over (and its last block written, the patch above)
+				if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mLeftoverSamples == 0)
 				{
 					stopVoice_internal(mActiveVoice[i]);
 				}

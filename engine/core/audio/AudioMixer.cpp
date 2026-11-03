@@ -97,8 +97,13 @@ namespace {
         std::map<std::string, ParamState> params;
         std::string currentSnapshot;
         bool built = false;
+        // the game's (AudioSystem.pauseAll) and the platform's (an app in the background): the
+        // Master bus holds while either does, and neither lifts the other's
         bool masterPaused = false;
+        bool platformPaused = false;
         double frameUnscaled = 0.0;
+        // the unscaled time of every frame so far: the clock clocked voices start on
+        double clock = 0.0;
         unsigned int voiceLimitChanges = 0;
         unsigned int filterBuilds = 0;
         float sampleRate = 44100.0f;
@@ -451,6 +456,10 @@ namespace {
         if (!group.meter) group.meter = std::make_unique<MeterFilter>();
         group.meter->reset();
         group.bus->setVisualizationEnable(true);
+        // a bus never ends by itself; and the vendored mixer reads a bus without autostop only for
+        // the frames of the mix call (no read-ahead: a voice started into it is heard in the next
+        // call, not up to 511 frames later; SoLoud's local patch in mixBus_internal)
+        group.bus->setAutoStop(false);
         group.bus->mBaseSamplerate = state().sampleRate;
         group.bus->setFilter(METER_SLOT, group.meter.get());
         for (SoLoud::Filter*& slot : group.slots) slot = nullptr;
@@ -635,7 +644,7 @@ namespace {
 
         updateVoiceLimit();
         if (GroupState* root = masterState()) {
-            if (root->handle) soloud.setPause(root->handle, s.masterPaused);
+            if (root->handle) soloud.setPause(root->handle, s.masterPaused || s.platformPaused);
         }
         applyAll(0.0);
     }
@@ -1106,6 +1115,7 @@ void AudioMixer::update(double scaledDt, double unscaledDt){
     ensureInitialized();
     State& s = state();
     s.frameUnscaled = unscaledDt;
+    if (unscaledDt > 0.0) s.clock += unscaledDt;
     advance(scaledDt, unscaledDt);
     applyAll(unscaledDt);
 
@@ -1128,6 +1138,10 @@ void AudioMixer::update(double scaledDt, double unscaledDt){
 
 double AudioMixer::getFrameUnscaledDelta(){
     return state().frameUnscaled;
+}
+
+double AudioMixer::getClockTime(){
+    return state().clock;
 }
 
 float AudioMixer::dbToLinear(float db){
@@ -1231,14 +1245,32 @@ bool AudioMixer::isBusHandle(unsigned int handle){
     return false;
 }
 
+namespace {
+
+    void applyMasterPause() {
+        State& s = state();
+        if (!AudioSystem::isInited()) return;
+        if (GroupState* master = masterState()) {
+            if (master->handle) AudioSystem::getSoloud().setPause(master->handle, s.masterPaused || s.platformPaused);
+        }
+    }
+
+}
+
 void AudioMixer::setMasterPaused(bool paused){
     ensureInitialized();
-    State& s = state();
-    s.masterPaused = paused;
-    if (!AudioSystem::isInited()) return;
-    if (GroupState* master = masterState()) {
-        if (master->handle) AudioSystem::getSoloud().setPause(master->handle, paused);
-    }
+    state().masterPaused = paused;
+    applyMasterPause();
+}
+
+void AudioMixer::setPlatformPaused(bool paused){
+    ensureInitialized();
+    state().platformPaused = paused;
+    applyMasterPause();
+}
+
+bool AudioMixer::isPlatformPaused(){
+    return state().platformPaused;
 }
 
 void AudioMixer::getDebugCounters(unsigned int& voiceLimitChanges, unsigned int& filterBuilds){

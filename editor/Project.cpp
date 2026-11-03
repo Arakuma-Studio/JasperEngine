@@ -3060,6 +3060,9 @@ void editor::Project::audioFilesChanged(const std::vector<std::filesystem::path>
 
 void editor::Project::resetPlayAudio(bool starting) const{
     AudioSystem::setListenerPaused(false);
+    // AudioListener.volume / AudioSystem.globalVolume: SoLoud's global volume, which the editor's
+    // preview and the next Play hear too
+    AudioSystem::setGlobalVolume(1.0f);
     AudioMixer::setMasterPaused(false);
     AudioMixer::resetRuntime(starting);
     if (starting) AudioMixer::loadRemembered();

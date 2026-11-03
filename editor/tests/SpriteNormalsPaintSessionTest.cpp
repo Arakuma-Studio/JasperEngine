@@ -28,6 +28,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -481,7 +483,10 @@ namespace {
         if (readAll(v1.absolute) != v1.bytes) std::exit(9);
         if (sn::readPaint(v1.absolute).value_or(sn::PaintOverlay()).paintedCount() != 36) std::exit(10);
         if (!history->redo() || readAll(v2.absolute) != v2.bytes) std::exit(11);
-        std::exit(0);
+        std::fflush(stdout);
+        // the forked editor ends without its static destructors: its jobs (thumbnails, imports)
+        // may still read the App while it would be destroyed
+        std::_Exit(0);
     }
 
 }

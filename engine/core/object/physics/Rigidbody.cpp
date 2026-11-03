@@ -698,16 +698,14 @@ std::string Rigidbody::getMaterialPath() const{
     return getComponent<RigidbodyComponent>().material;
 }
 
+// Kept in the component, so a body made later is made with it, and given at once to a live one
+// (its mass properties are reshaped, as for setMass)
 void Rigidbody::setOverrideMassAndInertia(Vector3 solidBoxSize, float solidBoxDensity){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
-
-    if (!body.body.IsInvalid()){
-        body.solidBoxSize = solidBoxSize;
-        body.solidBoxDensity = solidBoxDensity;
-        body.overrideMassProperties = true;
-    }else{
-        Log::error("Cannot override mass and inertia of loaded body");
-    }
+    body.solidBoxSize = solidBoxSize;
+    body.solidBoxDensity = solidBoxDensity;
+    body.overrideMassProperties = true;
+    massChanged();
 }
 
 float Rigidbody::getGravityFactor() const{

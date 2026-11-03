@@ -8,6 +8,7 @@
 
 #include "component/AudioSourceComponent.h"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -40,6 +41,8 @@ namespace jasperengine{
 	enum class AudioBackend { Auto, NoSound, Null };
 
 	class JASPERENGINE_API AudioSystem : public SubSystem {
+		// the unit tests reach a voice's parameters without the frame's 3D pass after them
+		friend struct AudioSystemTestAccess;
 
     private:
 		static bool inited;
@@ -52,8 +55,15 @@ namespace jasperengine{
 
 		static float globalVolume;
 
+		// where the listener heard from last frame (the camera that heard), and its velocity this frame
 		Vector3 cameraLastPosition;
-		// the 3D listener at that scene's camera (the persistent scene's system, every frame)
+		bool listenerTracked = false;
+		Scene* listenerTrackedScene = nullptr;
+		Entity listenerTrackedCamera = NULL_ENTITY;
+		Vector3 listenerVelocity;
+		// the sources' and the listener's last positions are last frame's (false after the system held)
+		bool motionFresh = false;
+		// the 3D listener at that scene's camera (the main scene's, for every scene's system)
 		void placeListener(Scene& listenerScene);
 		bool outputRequested = false;
 		// off while the scheduler skips the system (Systems window): its sounds hold too
@@ -61,8 +71,8 @@ namespace jasperengine{
 
 		// the scene's sounds paused or resumed as setPaused, the scheduler and the listener say
 		void applySoundPause();
-		// 3D voices are placed against this scene's camera (the persistent scene of feature
-		// persistence leaves the listener to the main scene: setListenerEnabled(false))
+		// this system places the 3D listener (always the main scene's camera) when it plays 3D voices;
+		// off, it leaves that to the others (setListenerEnabled(false))
 		bool listenerEnabled = true;
 
 		// AudioSource.playClipAtPoint voices: they belong to this scene and stop with it
@@ -96,7 +106,8 @@ namespace jasperengine{
 		void applyPause(AudioSourceComponent& audio);
 		const std::string& resolveGroup(AudioSourceComponent& audio, Entity entity);
 		void startPendingOneShots(AudioSourceComponent& audio, bool use3D, const Vector3& position, double unscaledDt);
-		void updatePointVoices(double unscaledDt);
+		// hasListener: 3D against the frame's listener; heard: where it hears a world position
+		void updatePointVoices(double unscaledDt, bool hasListener, const std::function<Vector3(const Vector3&)>& heard);
 		void updateFade(AudioSourceComponent& audio, double scaledDt, double unscaledDt, std::vector<std::pair<Entity, int>>& events, Entity entity);
 
 	public:
@@ -118,13 +129,18 @@ namespace jasperengine{
 		static AudioBackend getBackend();
 		// "MiniAudio", "NoSound", "null driver", "" before init
 		static std::string getBackendName();
-		// the Null backend: `seconds` of audio mixed now (AudioMixer::update does it each frame)
+		// the Null backend: `seconds` of audio mixed now (AudioMixer::update does it each frame);
+		// nothing during an offline capture, whose caller mixes (mixOffline)
 		static void mixManually(double seconds);
 
 		static void stopAll();
-		// app pause / resume: the Master bus (every routed voice holds; the sources keep their own pause)
+		// the game's pause of everything (Lua AudioSystem.pauseAll / resumeAll): the Master bus (every
+		// routed voice holds; the sources keep their own pause)
 		static void pauseAll();
 		static void resumeAll();
+		// the platform's (Engine::applyPause: the app in the background): the Master bus too, on its
+		// own flag, so returning from the background leaves the game's pauseAll in place
+		static void setPlatformPaused(bool paused);
 		static void checkActive();
 
 		// AudioListener.volume (SoLoud's global volume, outside the mixer)

@@ -13,6 +13,7 @@
 #include "soloud_wav.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <set>
@@ -42,6 +43,11 @@ namespace {
     }
 
     uint64_t nextSerial = 1;
+    // the Null backend's pump: the frames it mixed and the time it was given since the audio opened.
+    // Each frame mixes up to round(time x rate), so no rounding piles up (144 fps at 44.1 kHz is
+    // 306.25 frames a frame: rounded each time, 48 ms a minute behind the game)
+    double pumpSeconds = 0.0;
+    uint64_t pumpFrames = 0;
     AudioConfig config;
     AudioBackend backend = AudioBackend::Auto;
     bool backendFromEnvironment = false;
@@ -57,6 +63,69 @@ namespace {
     constexpr double oneShotLoadWait = 0.25;
 
     enum EventKind { EventStart, EventPause, EventStop };
+
+    // Where a scene's camera hears from, in its own world: its position (a perspective camera), or
+    // the centre of its view (an orthographic or UI camera, whose view spans [leftClip, rightClip]
+    // x [bottomClip, topClip] from its position: 0 to the canvas by default, so a sound at the
+    // centre of the screen is centred). forward / right / up: the camera's basis, unshaken
+    // (steadyWorldUp: a Camera Shaker never turns what the player hears)
+    struct CameraPose {
+        bool valid = false;
+        bool perspective = false;
+        Vector3 position;
+        Vector3 view;
+        Vector3 worldUp;
+        Vector3 forward = Vector3(0, 0, -1);
+        Vector3 right = Vector3(1, 0, 0);
+        Vector3 up = Vector3(0, 1, 0);
+    };
+
+    CameraPose cameraPose(Scene& scene) {
+        CameraPose pose;
+        const Entity entity = scene.getCamera();
+        const CameraComponent* camera = scene.findComponent<CameraComponent>(entity);
+        const Transform* transform = scene.findComponent<Transform>(entity);
+        if (!camera || !transform) return pose;
+        pose.valid = true;
+        pose.perspective = camera->type == CameraType::CAMERA_PERSPECTIVE;
+        pose.position = transform->worldPosition;
+        pose.view = camera->worldTarget - pose.position;
+        pose.worldUp = camera->steadyWorldUp;
+        const Vector3 side = pose.view.crossProduct(pose.worldUp);
+        if (pose.view.squaredLength() > 1e-12f && side.squaredLength() > 1e-12f) {
+            pose.forward = pose.view.normalized();
+            pose.right = side.normalized();
+            pose.up = pose.right.crossProduct(pose.forward);
+        }
+        if (!pose.perspective) {
+            pose.position += pose.right * ((camera->leftClip + camera->rightClip) * 0.5f) +
+                             pose.up * ((camera->bottomClip + camera->topClip) * 0.5f);
+        }
+        return pose;
+    }
+
+    // SoLoud's velocity of what went from `from` to `to` in `seconds`: units a second, the other way
+    // round (SoLoud's Doppler takes its velocities negated). None for a move faster than sound (a
+    // teleport, a camera cut), and at most half the speed of sound over the Doppler factor, below
+    // which SoLoud's Doppler never divides by zero.
+    Vector3 dopplerVelocity(const Vector3& from, const Vector3& to, double seconds, float factor) {
+        if (!(seconds > 0.0)) return Vector3(0, 0, 0);
+        Vector3 velocity = (from - to) / (float)seconds;
+        const float sound = AudioSystem::getSoloud().get3dSoundSpeed();
+        const float speed = velocity.length();
+        if (!(speed < sound)) return Vector3(0, 0, 0);
+        const float limit = 0.5f * sound / std::max(1.0f, factor);
+        if (speed > limit) velocity *= limit / speed;
+        return velocity;
+    }
+
+    // x' = p_L + B_L B_S^T (x - p_S), B = [right up forward]: a point of a scene seen by its camera
+    // S as the listener camera L would see it at the same place in its view
+    Vector3 mapToListener(const Vector3& position, const CameraPose& own, const CameraPose& listener) {
+        const Vector3 offset = position - own.position;
+        return listener.position + listener.right * own.right.dotProduct(offset) +
+               listener.up * own.up.dotProduct(offset) + listener.forward * own.forward.dotProduct(offset);
+    }
 
     // 0 for a voice that could not start
     void registerVoice(unsigned int handle, Scene* owner, const std::string& groupId, int priority, bool isProtected) {
@@ -124,12 +193,6 @@ bool AudioSystem::init(){
         if (outputUnavailable) {
             return false;
         }
-        // --headless and --silent-audio open no device (docs/specs/S30-shipping.md R17)
-        if (platformConfig().silentAudio) {
-            outputUnavailable = true;
-            Log::print("Audio output off (--silent-audio or --headless): sounds are muted");
-            return false;
-        }
 
         if (!backendFromEnvironment) {
             backendFromEnvironment = true;
@@ -139,19 +202,29 @@ bool AudioSystem::init(){
             }
         }
 
+        // --headless and --silent-audio open no device but mix as a device would, on the null
+        // driver pumped by the frames' unscaled time (docs/specs/S30-shipping.md R17): sounds play,
+        // end and fire their events, so the game's logic is that of a normal run
+        AudioBackend opened = backend;
+        if (platformConfig().silentAudio && opened == AudioBackend::Auto) {
+            opened = AudioBackend::Null;
+            Log::print("Audio output off (--silent-audio or --headless): mixing without output");
+        }
+
         SoLoud::Soloud& soloud = getSoloud();
         const unsigned int flags = SoLoud::Soloud::CLIP_ROUNDOFF;
         const unsigned int rate = config.sampleRate > 0 ? (unsigned int)config.sampleRate : (unsigned int)SoLoud::Soloud::AUTO;
         SoLoud::result result = SoLoud::SO_NO_ERROR + 1;
 
-        if (backend == AudioBackend::Auto) {
+        outputAvailable = false;
+        if (opened == AudioBackend::Auto) {
             result = soloud.init(flags, SoLoud::Soloud::MINIAUDIO, rate);
             outputAvailable = result == SoLoud::SO_NO_ERROR;
             if (!outputAvailable) {
                 Log::warn("No audio output available (%s): mixing without output", soloud.getErrorString(result));
             }
         }
-        if (result != SoLoud::SO_NO_ERROR && backend != AudioBackend::Null) {
+        if (result != SoLoud::SO_NO_ERROR && opened != AudioBackend::Null) {
             result = soloud.init(flags, SoLoud::Soloud::NOSOUND, rate == SoLoud::Soloud::AUTO ? 44100 : rate);
         }
         if (result != SoLoud::SO_NO_ERROR) {
@@ -176,7 +249,7 @@ bool AudioSystem::init(){
 }
 
 bool AudioSystem::isOutputAvailable(){
-    return inited ? outputAvailable : (!outputUnavailable && backend == AudioBackend::Auto);
+    return inited ? outputAvailable : (!outputUnavailable && backend == AudioBackend::Auto && !platformConfig().silentAudio);
 }
 
 bool AudioSystem::isInited(){
@@ -184,15 +257,19 @@ bool AudioSystem::isInited(){
 }
 
 void AudioSystem::mixManually(double seconds){
-    if (!inited || getSoloud().getBackendId() != SoLoud::Soloud::NULLDRIVER || !(seconds > 0.0)) return;
+    // a Recorder capture holds the null driver and mixes it itself (mixOffline), once a frame
+    if (!inited || offlineCapture || getSoloud().getBackendId() != SoLoud::Soloud::NULLDRIVER || !(seconds > 0.0)) return;
     SoLoud::Soloud& soloud = getSoloud();
     const unsigned int channels = std::max(1u, soloud.getBackendChannels());
-    unsigned int samples = (unsigned int)(seconds * soloud.getBackendSamplerate() + 0.5);
+    pumpSeconds += seconds;
+    const uint64_t due = (uint64_t)std::llround(pumpSeconds * soloud.getBackendSamplerate());
+    uint64_t samples = due > pumpFrames ? due - pumpFrames : 0;
+    pumpFrames += samples;
     static std::vector<float> buffer;
     constexpr unsigned int chunk = 1024;
     buffer.resize(chunk * channels);
     while (samples > 0) {
-        const unsigned int now = std::min(samples, chunk);
+        const unsigned int now = (unsigned int)std::min<uint64_t>(samples, chunk);
         soloud.mix(buffer.data(), now);
         samples -= now;
     }
@@ -226,6 +303,8 @@ bool AudioSystem::beginOfflineCapture(unsigned int sampleRate, unsigned int chan
     getSoloud().setGlobalVolume(globalVolume);
     inited = true;
     offlineCapture = true;
+    // the mixer's buses, as init() makes them: the capture hears the groups, their effects and mutes
+    AudioMixer::onAudioInit();
     return true;
 }
 
@@ -245,6 +324,8 @@ void AudioSystem::mixOffline(float* out, unsigned int frames){
 }
 
 void AudioSystem::deInit(){
+    pumpSeconds = 0.0;
+    pumpFrames = 0;
     if (inited){
         AudioMixer::onAudioShutdown();
         getSoloud().deinit();
@@ -311,6 +392,8 @@ void AudioSystem::moveSourceVoices(Scene* from, AudioSourceComponent& source, Sc
     target.state = source.state;
     target.playingTime = source.playingTime;
     target.lastPosition = source.lastPosition;
+    target.positionTracked = source.positionTracked;
+    target.lastVelocity = source.lastVelocity;
     target.oneShots = source.oneShots;
     target.pendingOneShots = source.pendingOneShots;
     target.fade = source.fade;
@@ -579,6 +662,10 @@ void AudioSystem::resumeAll(){
     AudioMixer::setMasterPaused(false);
 }
 
+void AudioSystem::setPlatformPaused(bool paused){
+    AudioMixer::setPlatformPaused(paused);
+}
+
 void AudioSystem::checkActive(){
     if (inited) {
         // the mixer's own buses do not keep the audio open
@@ -644,14 +731,17 @@ void AudioSystem::apply3dParameters(AudioSourceComponent& audio, unsigned int ha
 void AudioSystem::applyVoiceParameters(AudioSourceComponent& audio, unsigned int handle, bool mainVoice, bool use3D){
     SoLoud::Soloud& soloud = getSoloud();
     soloud.setRelativePlaySpeed(handle, audio.speed > 0.0f ? audio.speed : 0.0001f);
-    soloud.setPan(handle, audio.pan);
+    // a 3D voice's pan is SoLoud's (play3d, update3dAudio): a 2D pan here would centre its channel
+    // volumes until the frame's 3D pass, and a block mixed in between ramps it toward the centre
+    if (!use3D) {
+        soloud.setPan(handle, audio.pan);
+    }
     if (mainVoice) {
         soloud.setLooping(handle, audio.looping);
         soloud.setLoopPoint(handle, audio.loopingPoint);
     }
     soloud.setProtectVoice(handle, audio.protectVoice);
     soloud.setInaudibleBehavior(handle, audio.inaudibleBehaviorMustTick, audio.inaudibleBehaviorKill);
-    (void)use3D;
 }
 
 unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioSource& sample, float volume, bool use3D,
@@ -679,7 +769,8 @@ unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioS
     }
 
     const bool clocked = mainVoice && audio.enableClocked;
-    unsigned int handle = AudioMixer::play(audio.resolvedGroup, sample, use3D, position, volume, clocked, Engine::getDeltatime());
+    // the game time it was played at: SoLoud delays it from the first clocked start of the buffer
+    unsigned int handle = AudioMixer::play(audio.resolvedGroup, sample, use3D, position, volume, clocked, AudioMixer::getClockTime());
     if (handle == 0) return 0;
 
     applyVoiceParameters(audio, handle, mainVoice, use3D);
@@ -768,7 +859,7 @@ void AudioSystem::playClipAtPoint(const std::string& filename, const Vector3& po
     pendingPointVoices.push_back(pending);
 }
 
-void AudioSystem::updatePointVoices(double unscaledDt){
+void AudioSystem::updatePointVoices(double unscaledDt, bool hasListener, const std::function<Vector3(const Vector3&)>& heard){
     if (inited) {
         for (size_t i = 0; i < pointVoices.size();) {
             if (!getSoloud().isValidVoiceHandle(pointVoices[i].handle)) {
@@ -785,8 +876,6 @@ void AudioSystem::updatePointVoices(double unscaledDt){
         }
     }
 
-    const bool hasListener = listenerEnabled && scene->findComponent<CameraComponent>(scene->getCamera()) &&
-                             scene->findComponent<Transform>(scene->getCamera());
     for (size_t i = 0; i < pendingPointVoices.size();) {
         PendingPointVoice& pending = pendingPointVoices[i];
         SoundLoadResult result = SoundPool::loadClip(pending.filename, AudioLoadType::Auto);
@@ -814,13 +903,14 @@ void AudioSystem::updatePointVoices(double unscaledDt){
         }
         // Unity's PlayClipAtPoint: a 3D source with a logarithmic rolloff
         defaults.attenuationModel = AudioSourceAttenuation::INVERSE_DISTANCE;
-        const unsigned int handle = startVoice(defaults, *result.data, shot.volume, hasListener, shot.position, false);
+        const Vector3 position = heard(shot.position);
+        const unsigned int handle = startVoice(defaults, *result.data, shot.volume, hasListener, position, false);
         if (handle == 0) continue;
         PointVoice voice;
         voice.handle = handle;
         voice.sample = result.data;
         voice.is3D = hasListener;
-        voice.position = shot.position;
+        voice.position = position;
         voice.paused = paused || listenerPaused;
         if (voice.paused) getSoloud().setPause(handle, true);
         pointVoices.push_back(voice);
@@ -935,6 +1025,9 @@ void AudioSystem::update(double dt){
     preloadSoundAssets();
 
     if (paused) {
+        // what moves while it holds is not a speed
+        motionFresh = false;
+        listenerTracked = false;
         return;
     }
 
@@ -948,19 +1041,60 @@ void AudioSystem::update(double dt){
         init();
     }
 
-    // 3D sources are placed against the main camera, so without one they play in 2D. The
-    // persistent scene's (DontDestroyOnLoad) are heard by the loaded main scene's camera: their
-    // positions are world positions too
+    // nothing to place: the next frame's speeds start afresh
+    if (audios->size() == 0 && pendingPointVoices.empty() && pointVoices.empty()) {
+        motionFresh = false;
+        listenerTracked = false;
+        return;
+    }
+
+    // One listener, the main scene's camera, hears every scene's 3D sources, so without a camera
+    // they play in 2D. The persistent scene's (DontDestroyOnLoad) positions are world positions
+    // of the main scene. A layer scene (a HUD, a scene drawn over another) is seen through its own
+    // camera: its sources are heard where they are in that camera's view, mapped into the main
+    // camera's (a layer without the main scene, or over a main scene without a camera, hears
+    // through its own)
     const bool persistent = scene == SceneManager::getPersistentScene();
-    Scene* listenerScene = persistent ? Engine::getMainScene() : scene;
-    const bool hasListener = listenerScene && listenerScene->findComponent<CameraComponent>(listenerScene->getCamera()) &&
-                             listenerScene->findComponent<Transform>(listenerScene->getCamera());
+    Scene* mainScene = Engine::getMainScene();
+    Scene* listenerScene = scene;
+    if (persistent) {
+        listenerScene = mainScene;
+    } else if (mainScene && mainScene != scene && cameraPose(*mainScene).valid) {
+        listenerScene = mainScene;
+    }
+    const bool mapped = !persistent && listenerScene != scene;
+    const CameraPose listenerPose = listenerScene ? cameraPose(*listenerScene) : CameraPose();
+    const CameraPose ownPose = mapped ? cameraPose(*scene) : listenerPose;
+    const bool hasListener = listenerPose.valid && ownPose.valid;
+    auto heard = [&](const Vector3& position) {
+        return mapped ? mapToListener(position, ownPose, listenerPose) : position;
+    };
+    // Doppler under perspective cameras only: 2D and UI scenes move in pixels, where everyday
+    // speeds are near the speed of sound (343.3 units a second)
+    const bool doppler = hasListener && listenerPose.perspective && ownPose.perspective;
     bool any3D = false;
 
-    // The persistent scene's 3D sounds are heard by the loaded main scene's camera every frame
+    // the listener's velocity: where it heard from last frame to where it hears now, in units a
+    // second (none for its first frame, another camera, or a frame after the system held)
+    listenerVelocity = Vector3(0, 0, 0);
+    if (hasListener) {
+        const Vector3 position = listenerPose.position;
+        const Entity cameraEntity = listenerScene->getCamera();
+        if (doppler && motionFresh && listenerTracked && listenerTrackedScene == listenerScene && listenerTrackedCamera == cameraEntity) {
+            listenerVelocity = dopplerVelocity(cameraLastPosition, position, unscaledDt, 1.0f);
+        }
+        cameraLastPosition = position;
+        listenerTracked = true;
+        listenerTrackedScene = listenerScene;
+        listenerTrackedCamera = cameraEntity;
+    } else {
+        listenerTracked = false;
+    }
+
+    // The persistent and layer scenes' 3D sounds are heard by the main scene's camera every frame
     // (the main scene's own system places it only when it plays 3D voices), before they are
     // placed against it
-    if (persistent && hasListener && listenerEnabled){
+    if (listenerScene != scene && hasListener && listenerEnabled){
         bool playing3D = false;
         for (int i = 0; i < audios->size() && !playing3D; i++){
             const AudioSourceComponent& audio = audios->getComponentFromIndex(i);
@@ -982,11 +1116,12 @@ void AudioSystem::update(double dt){
         Signature signature = scene->getSignature(entity);
         bool use3DAudio = hasListener && signature.test(scene->getComponentId<Transform>());
 
+        // where the listener hears it (its world position, or mapped from a layer's camera)
         Vector3 worldPosition = Vector3(0, 0, 0);
         if (use3DAudio){
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            worldPosition = transform.worldPosition;
+            worldPosition = heard(transform.worldPosition);
         }
 
         // no clip: nothing of its own plays (its one-shots still do, Unity's PlayOneShot needs no clip)
@@ -1017,7 +1152,23 @@ void AudioSystem::update(double dt){
             audio.stopTrigger = false;
             if (audio.fade.active && audio.fade.restore) audio.volume = audio.fade.restoreVolume;
             audio.fade = AudioFade();
+            audio.positionTracked = false;
             continue;
+        }
+
+        // its velocity (units a second) from where it was last frame, tracked while it is silent
+        // too: a one-shot or a play of a moving source starts at its speed
+        Vector3 velocity(0, 0, 0);
+        bool moved = false;
+        if (use3DAudio) {
+            if (doppler && motionFresh && audio.positionTracked) {
+                velocity = dopplerVelocity(audio.lastPosition, worldPosition, unscaledDt, audio.dopplerFactor);
+            }
+            moved = !audio.positionTracked || audio.lastPosition != worldPosition;
+            audio.lastPosition = worldPosition;
+            audio.positionTracked = true;
+        } else {
+            audio.positionTracked = false;
         }
 
         const std::string groupBefore = audio.resolvedGroup;
@@ -1124,9 +1275,6 @@ void AudioSystem::update(double dt){
                         audio.lastVolumeApplied = audio.volume;
                         audio.needUpdate = true;
                         events.push_back({entity, EventStart});
-                        if (use3DAudio) {
-                            audio.lastPosition = worldPosition;
-                        }
                     }
                 }
             }
@@ -1156,6 +1304,8 @@ void AudioSystem::update(double dt){
         const bool hasVoices = audio.handle != 0 || !audio.oneShots.empty();
         if (!hasVoices) {
             audio.needUpdate = false;
+            // a new voice starts without a velocity
+            audio.lastVelocity = Vector3(0, 0, 0);
             continue;
         }
 
@@ -1182,20 +1332,23 @@ void AudioSystem::update(double dt){
         }
 
         // 3D voices follow the source (its one-shots too, Unity)
-        if (use3DAudio && (audio.needUpdate || audio.lastPosition != worldPosition)) {
-            const Vector3 velocity = audio.lastPosition - worldPosition;
+        // and when it stops, a velocity of none (its pitch comes back)
+        if (use3DAudio && (audio.needUpdate || moved || velocity != audio.lastVelocity)) {
             if (audio.handle != 0) apply3dParameters(audio, audio.handle, worldPosition, velocity);
             for (const AudioOneShot& shot : audio.oneShots) apply3dParameters(audio, shot.handle, worldPosition, velocity);
-            audio.lastPosition = worldPosition;
-            any3D = true;
-        } else if (use3DAudio) {
+            audio.lastVelocity = velocity;
+        }
+        if (use3DAudio) {
             any3D = true;
         }
 
         audio.needUpdate = false;
     }
 
-    updatePointVoices(unscaledDt);
+    // the next frame's velocities measure from this one's positions
+    motionFresh = true;
+
+    updatePointVoices(unscaledDt, hasListener, heard);
     for (const PointVoice& voice : pointVoices) any3D = any3D || voice.is3D;
 
     // the listener at the camera, once a frame while a 3D voice plays (the persistent scene's
@@ -1216,18 +1369,16 @@ void AudioSystem::update(double dt){
 }
 
 void AudioSystem::placeListener(Scene& listenerScene){
-    const CameraComponent& camera = listenerScene.getComponent<CameraComponent>(listenerScene.getCamera());
-    const Transform& cameraTransform = listenerScene.getComponent<Transform>(listenerScene.getCamera());
-    const Vector3 position = cameraTransform.worldPosition;
-    const Vector3 view = camera.worldTarget - position;
-    const Vector3 up = camera.steadyWorldUp;  // unshaken (Camera Shaker)
-    const Vector3 velocity = cameraLastPosition - position;
+    const CameraPose pose = cameraPose(listenerScene);
+    const Vector3& position = pose.position;
+    const Vector3& view = pose.view;
+    const Vector3& up = pose.worldUp;
+    const Vector3& velocity = listenerVelocity;
     getSoloud().set3dListenerParameters(position.x, position.y, position.z, view.x, view.y, view.z,
                                         up.x, up.y, up.z, velocity.x, velocity.y, velocity.z);
     if (inited){
         getSoloud().update3dAudio();
     }
-    cameraLastPosition = position;
 }
 
 void AudioSystem::draw(){

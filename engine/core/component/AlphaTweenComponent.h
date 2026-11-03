@@ -17,8 +17,8 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API AlphaTweenComponent{
-        float endAlpha;
-        float startAlpha;
+        float endAlpha = 0;
+        float startAlpha = 0;
         AlphaTweenTarget alphaTarget = AlphaTweenTarget::AUTO;
     };
 

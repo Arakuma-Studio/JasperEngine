@@ -11,6 +11,7 @@
 
 #include "io/File.h"
 #include "io/ResourcePack.h"
+#include "audio/AudioFileCheck.h"
 #include "audio/SoloudEngineFile.h"
 
 #include "soloud.h"
@@ -230,9 +231,13 @@ std::shared_ptr<SoLoud::AudioSource> SoundPool::loadSoundInternal(const std::str
     if (loadType == AudioLoadType::Streaming) {
         // each voice reads the file through the engine File (APK assets on Android)
         auto stream = std::make_shared<EngineWavStream>();
-        if (!stream->open(filename, &res)) {
+        std::string problem;
+        if (!stream->open(filename, &res, &problem)) {
             if (res == SoLoud::FILE_NOT_FOUND) {
                 failBuild("Sound file not found: " + filename);
+            }
+            if (!problem.empty()) {
+                failBuild("Sound file '" + filename + "' cannot be played: " + problem);
             }
         }
         sound = stream;
@@ -288,6 +293,15 @@ std::shared_ptr<SoLoud::AudioSource> SoundPool::decodeSound(const std::string& i
     if (trackProgress) {
         checkShutdown();
         ResourceProgress::updateProgress(buildId, 0.7f);
+    }
+
+    // what SoLoud's decoders would trust and must not (AudioFileCheck): refused with the reason;
+    // a WAV's sizes become the bytes it holds (written to a pipe they say 0xFFFFFFFF)
+    AudioFileFormat format;
+    std::string problem;
+    const AudioDecode decode = loadType == AudioLoadType::CompressedInMemory ? AudioDecode::Stream : AudioDecode::Whole;
+    if (!AudioFileCheck::prepare(data, size, decode, format, problem)) {
+        failBuild("Sound file '" + filename + "' cannot be played: " + problem);
     }
 
     std::shared_ptr<SoLoud::AudioSource> sound;

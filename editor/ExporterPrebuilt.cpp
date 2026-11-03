@@ -631,6 +631,13 @@ bool editor::Exporter::writeGameConfig() {
     game.hangWatchdog = crash.hangWatchdog;
     game.hangMs = crash.hangSeconds * 1000;
     game.crashWebOverlay = crash.webCrashOverlay;
+    // Project Settings > Audio, as Play applies them (Project::setAudioSettings) and a Compile
+    // build's init (Generator::audioInitSource): the mixer by its asset-relative path, which ships
+    const AudioSettings& audio = project->getAudioSettings();
+    game.audioMixer = audio.mixer;
+    game.audioMaxRealVoices = audio.maxRealVoices;
+    game.audioMaxVoices = audio.maxVoices;
+    game.audioSampleRate = audio.sampleRate;
 
     // the project icon, at the content root: the window and taskbar icon of every platform
     fs::path icon = project->getWindowIcon();

@@ -1123,8 +1123,8 @@ Entities are plain integers (`0` = none).
 `createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`
 (partial).
 
-`AudioSystem` (static): `AudioSystem.stopAll()`, `pauseAll()` / `resumeAll()` (the app pause: the
-mixer's Master bus holds; a source a script paused stays paused), `AudioSystem.globalVolume` (rw,
+`AudioSystem` (static): `AudioSystem.stopAll()`, `pauseAll()` / `resumeAll()` (the mixer's Master
+bus holds, as in the app pause but apart from it; a source a script paused stays paused), `AudioSystem.globalVolume` (rw,
 = `AudioListener.volume`), `preload(path [, loadType])` (decode or open a clip ahead),
 `isOutputAvailable()` (false without an audio device: sounds still mix, meters still read),
 `getVoiceCount()`.

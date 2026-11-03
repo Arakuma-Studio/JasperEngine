@@ -102,6 +102,13 @@ namespace jasperengine::player {
         int hangMs = 5000;
         bool crashWebOverlay = true;
 
+        // Project Settings > Audio (a Compile build's generated AudioSystem::configure and
+        // AudioMixer::load): the defaults are AudioConfig's, the mixer asset-relative ("" = none)
+        std::string audioMixer;
+        int audioMaxRealVoices = 32;
+        int audioMaxVoices = 256;
+        int audioSampleRate = 0;
+
         PlayerConfig();
 
         nlohmann::json toJson() const;
@@ -112,5 +119,9 @@ namespace jasperengine::player {
         const GameScene* findScene(uint32_t id) const;
         const GameScene* findScene(const std::string& nameOrId) const;
     };
+
+    // The player's audio as Play and a Compile build have it: the voices and sample rate, then the
+    // project's mixer (before the first scene loads)
+    JASPERENGINE_API void applyAudio(const PlayerConfig& game);
 
 }

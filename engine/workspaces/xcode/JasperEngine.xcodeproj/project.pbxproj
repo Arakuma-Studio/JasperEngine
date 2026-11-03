@@ -526,13 +526,11 @@
 		7108CB7D28F8F2B600FF7AC6 /* tinyxml2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7108CB7A28F8F2B600FF7AC6 /* tinyxml2.cpp */; };
 		7108CB7E28F8F2B600FF7AC6 /* tinyxml2.h in Headers */ = {isa = PBXBuildFile; fileRef = 7108CB7B28F8F2B600FF7AC6 /* tinyxml2.h */; };
 		7108CB8028F8F4AF00FF7AC6 /* tinyxml2.h in Headers */ = {isa = PBXBuildFile; fileRef = 7108CB7B28F8F2B600FF7AC6 /* tinyxml2.h */; };
-		710AD6D425B6053400A7B12F /* stb_vorbis.h in Headers */ = {isa = PBXBuildFile; fileRef = 71BE61C425B1DA3E006D6E02 /* stb_vorbis.h */; };
 		710AD6D525B6053400A7B12F /* stb_image_write.h in Headers */ = {isa = PBXBuildFile; fileRef = 71BE61BD25B1DA3E006D6E02 /* stb_image_write.h */; };
 		710AD6D625B6053400A7B12F /* stb_rect_pack.h in Headers */ = {isa = PBXBuildFile; fileRef = 71BE61BE25B1DA3E006D6E02 /* stb_rect_pack.h */; };
 		710AD6D725B6053400A7B12F /* stb_truetype.h in Headers */ = {isa = PBXBuildFile; fileRef = 71BE61C125B1DA3E006D6E02 /* stb_truetype.h */; };
 		710AD6D825B6053400A7B12F /* stb_image.h in Headers */ = {isa = PBXBuildFile; fileRef = 71BE61C025B1DA3E006D6E02 /* stb_image.h */; };
 		710AD6DA25B6053400A7B12F /* stb_rect_pack.c in Sources */ = {isa = PBXBuildFile; fileRef = 71BE61C325B1DA3E006D6E02 /* stb_rect_pack.c */; };
-		710AD6DB25B6053400A7B12F /* stb_vorbis.c in Sources */ = {isa = PBXBuildFile; fileRef = 71BE61BF25B1DA3E006D6E02 /* stb_vorbis.c */; };
 		710AD6DC25B6053400A7B12F /* stb_truetype.c in Sources */ = {isa = PBXBuildFile; fileRef = 71BE61BA25B1DA3E006D6E02 /* stb_truetype.c */; };
 		710AD6DD25B6053400A7B12F /* stb_image.c in Sources */ = {isa = PBXBuildFile; fileRef = 71BE61BB25B1DA3E006D6E02 /* stb_image.c */; };
 		710AD6DE25B6053400A7B12F /* stb_image_write.c in Sources */ = {isa = PBXBuildFile; fileRef = 71BE61C225B1DA3E006D6E02 /* stb_image_write.c */; };
@@ -1219,12 +1217,10 @@
 		71BE61C625B1DA3E006D6E02 /* stb_image.c in Sources */ = {isa = PBXBuildFile; fileRef = 71BE61BB25B1DA3E006D6E02 /* stb_image.c */; };
 		71BE61C725B1DA3E006D6E02 /* stb_image_write.h in Headers */ = {isa = PBXBuildFile; fileRef = 71BE61BD25B1DA3E006D6E02 /* stb_image_write.h */; };
 		71BE61C825B1DA3E006D6E02 /* stb_rect_pack.h in Headers */ = {isa = PBXBuildFile; fileRef = 71BE61BE25B1DA3E006D6E02 /* stb_rect_pack.h */; };
-		71BE61C925B1DA3E006D6E02 /* stb_vorbis.c in Sources */ = {isa = PBXBuildFile; fileRef = 71BE61BF25B1DA3E006D6E02 /* stb_vorbis.c */; };
 		71BE61CA25B1DA3E006D6E02 /* stb_image.h in Headers */ = {isa = PBXBuildFile; fileRef = 71BE61C025B1DA3E006D6E02 /* stb_image.h */; };
 		71BE61CB25B1DA3E006D6E02 /* stb_truetype.h in Headers */ = {isa = PBXBuildFile; fileRef = 71BE61C125B1DA3E006D6E02 /* stb_truetype.h */; };
 		71BE61CC25B1DA3E006D6E02 /* stb_image_write.c in Sources */ = {isa = PBXBuildFile; fileRef = 71BE61C225B1DA3E006D6E02 /* stb_image_write.c */; };
 		71BE61CD25B1DA3E006D6E02 /* stb_rect_pack.c in Sources */ = {isa = PBXBuildFile; fileRef = 71BE61C325B1DA3E006D6E02 /* stb_rect_pack.c */; };
-		71BE61CE25B1DA3E006D6E02 /* stb_vorbis.h in Headers */ = {isa = PBXBuildFile; fileRef = 71BE61C425B1DA3E006D6E02 /* stb_vorbis.h */; };
 		71BE620025B1DB22006D6E02 /* System.h in Headers */ = {isa = PBXBuildFile; fileRef = 71BE61FE25B1DB22006D6E02 /* System.h */; };
 		71BE620125B1DB22006D6E02 /* System.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71BE61FF25B1DB22006D6E02 /* System.cpp */; };
 		71BE620225B1DB22006D6E02 /* System.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71BE61FF25B1DB22006D6E02 /* System.cpp */; };
@@ -4367,6 +4363,11 @@
 		4A534E4700C2B06C425C31F7 /* DebugOverlay.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470614F67155D9E9FC /* DebugOverlay.h */; };
 		4A534E47EBF20FD2B6EA0602 /* DebugOverlayResources.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */; };
 		4A534E47CA764B3433135B26 /* DebugStats.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FC23B0CE0C82B758 /* DebugStats.h */; };
+		4A534E4717686508ED60F26E /* stb_vorbis.c in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47957C5B63CD85BC46 /* stb_vorbis.c */; };
+		4A534E4756E99FCB5680B71F /* stb_vorbis.c in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47957C5B63CD85BC46 /* stb_vorbis.c */; };
+		4A534E47C9D7644B70C96ACD /* AudioFileCheck.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E1B079449B612515 /* AudioFileCheck.cpp */; };
+		4A534E4787F0A52BE790720B /* AudioFileCheck.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E1B079449B612515 /* AudioFileCheck.cpp */; };
+		4A534E47DCCC477D777CF233 /* AudioFileCheck.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478C2A964FA571E181 /* AudioFileCheck.h */; };
 		4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */; };
 		4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */; };
 		4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A4609FEFF72DC9EF /* PlayerModules.h */; };
@@ -6366,12 +6367,10 @@
 		71BE61BB25B1DA3E006D6E02 /* stb_image.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = stb_image.c; sourceTree = "<group>"; };
 		71BE61BD25B1DA3E006D6E02 /* stb_image_write.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = stb_image_write.h; sourceTree = "<group>"; };
 		71BE61BE25B1DA3E006D6E02 /* stb_rect_pack.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = stb_rect_pack.h; sourceTree = "<group>"; };
-		71BE61BF25B1DA3E006D6E02 /* stb_vorbis.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = stb_vorbis.c; sourceTree = "<group>"; };
 		71BE61C025B1DA3E006D6E02 /* stb_image.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = stb_image.h; sourceTree = "<group>"; };
 		71BE61C125B1DA3E006D6E02 /* stb_truetype.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = stb_truetype.h; sourceTree = "<group>"; };
 		71BE61C225B1DA3E006D6E02 /* stb_image_write.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = stb_image_write.c; sourceTree = "<group>"; };
 		71BE61C325B1DA3E006D6E02 /* stb_rect_pack.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = stb_rect_pack.c; sourceTree = "<group>"; };
-		71BE61C425B1DA3E006D6E02 /* stb_vorbis.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = stb_vorbis.h; sourceTree = "<group>"; };
 		71BE61FE25B1DB22006D6E02 /* System.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = System.h; sourceTree = "<group>"; };
 		71BE61FF25B1DB22006D6E02 /* System.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = System.cpp; sourceTree = "<group>"; };
 		71BE620D25B1DB37006D6E02 /* FunctionSubscribe.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FunctionSubscribe.h; sourceTree = "<group>"; };
@@ -8568,6 +8567,9 @@
 		4A534E470614F67155D9E9FC /* DebugOverlay.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DebugOverlay.h; sourceTree = "<group>"; };
 		4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DebugOverlayResources.h; sourceTree = "<group>"; };
 		4A534E47FC23B0CE0C82B758 /* DebugStats.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DebugStats.h; sourceTree = "<group>"; };
+		4A534E47957C5B63CD85BC46 /* stb_vorbis.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = stb_vorbis.c; sourceTree = "<group>"; };
+		4A534E47E1B079449B612515 /* AudioFileCheck.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioFileCheck.cpp; sourceTree = "<group>"; };
+		4A534E478C2A964FA571E181 /* AudioFileCheck.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioFileCheck.h; sourceTree = "<group>"; };
 		4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlayerModules.cpp; sourceTree = "<group>"; };
 		4A534E47A4609FEFF72DC9EF /* PlayerModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerModules.h; sourceTree = "<group>"; };
 		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
@@ -10054,6 +10056,8 @@
 				4A534E47221DD7C3FB4713BD /* AudioMixer.h */,
 				4A534E478A9FB7B8585D977C /* AudioMixerIO.h */,
 				4A534E47797D7C3F52743130 /* SoloudEngineFile.h */,
+				4A534E47E1B079449B612515 /* AudioFileCheck.cpp */,
+				4A534E478C2A964FA571E181 /* AudioFileCheck.h */,
 			);
 			path = audio;
 			sourceTree = "<group>";
@@ -11386,6 +11390,7 @@
 				717AD847290B5DF3007D7DB5 /* dr_impl.cpp */,
 				717AD848290B5DF3007D7DB5 /* soloud_wav.cpp */,
 				4A534E47C23749B19343EA34 /* soloud_wavstream.cpp */,
+				4A534E47957C5B63CD85BC46 /* stb_vorbis.c */,
 			);
 			path = wav;
 			sourceTree = "<group>";
@@ -12181,8 +12186,6 @@
 				71BE61BE25B1DA3E006D6E02 /* stb_rect_pack.h */,
 				71BE61BA25B1DA3E006D6E02 /* stb_truetype.c */,
 				71BE61C125B1DA3E006D6E02 /* stb_truetype.h */,
-				71BE61BF25B1DA3E006D6E02 /* stb_vorbis.c */,
-				71BE61C425B1DA3E006D6E02 /* stb_vorbis.h */,
 			);
 			path = stb;
 			sourceTree = "<group>";
@@ -14571,7 +14574,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				71D9B63729B563B500F00B88 /* stb_image_resize2.h in Headers */,
-				710AD6D425B6053400A7B12F /* stb_vorbis.h in Headers */,
 				710AD6D525B6053400A7B12F /* stb_image_write.h in Headers */,
 				710AD6D625B6053400A7B12F /* stb_rect_pack.h in Headers */,
 				710AD6D725B6053400A7B12F /* stb_truetype.h in Headers */,
@@ -15235,6 +15237,7 @@
 				4A534E4700C2B06C425C31F7 /* DebugOverlay.h in Headers */,
 				4A534E47EBF20FD2B6EA0602 /* DebugOverlayResources.h in Headers */,
 				4A534E47CA764B3433135B26 /* DebugStats.h in Headers */,
+				4A534E47DCCC477D777CF233 /* AudioFileCheck.h in Headers */,
 				4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */,
 				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
@@ -15370,7 +15373,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				71D9B63629B563B500F00B88 /* stb_image_resize2.h in Headers */,
-				71BE61CE25B1DA3E006D6E02 /* stb_vorbis.h in Headers */,
 				71BE61C725B1DA3E006D6E02 /* stb_image_write.h in Headers */,
 				71BE61C825B1DA3E006D6E02 /* stb_rect_pack.h in Headers */,
 				71BE61CB25B1DA3E006D6E02 /* stb_truetype.h in Headers */,
@@ -16968,7 +16970,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				710AD6DA25B6053400A7B12F /* stb_rect_pack.c in Sources */,
-				710AD6DB25B6053400A7B12F /* stb_vorbis.c in Sources */,
 				710AD6DC25B6053400A7B12F /* stb_truetype.c in Sources */,
 				710AD6DD25B6053400A7B12F /* stb_image.c in Sources */,
 				710AD6DE25B6053400A7B12F /* stb_image_write.c in Sources */,
@@ -17735,6 +17736,7 @@
 				4A534E47363D69401D2B349E /* DebugOverlayResources.cpp in Sources */,
 				4A534E4775EA0FE24B50FD95 /* DebugStats.cpp in Sources */,
 				4A534E47A6F7345580E0D892 /* ProcessMemory.cpp in Sources */,
+				4A534E47C9D7644B70C96ACD /* AudioFileCheck.cpp in Sources */,
 				4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -18525,6 +18527,7 @@
 				4A534E47880AD33FCC731DA0 /* DebugOverlayResources.cpp in Sources */,
 				4A534E470E64957D3C296FB5 /* DebugStats.cpp in Sources */,
 				4A534E4702E0F1BB649CA319 /* ProcessMemory.cpp in Sources */,
+				4A534E4787F0A52BE790720B /* AudioFileCheck.cpp in Sources */,
 				4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -18579,6 +18582,7 @@
 				4A534E47DD568C29371CDC9D /* soloud_lofifilter.cpp in Sources */,
 				4A534E47D651242F6B82E786 /* soloud_robotizefilter.cpp in Sources */,
 				4A534E47FDEBC9A378326DE3 /* soloud_waveshaperfilter.cpp in Sources */,
+				4A534E4717686508ED60F26E /* stb_vorbis.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18624,6 +18628,7 @@
 				4A534E474C305472C1AE3161 /* soloud_lofifilter.cpp in Sources */,
 				4A534E47766E97E690F9992C /* soloud_robotizefilter.cpp in Sources */,
 				4A534E47EA536909FC636853 /* soloud_waveshaperfilter.cpp in Sources */,
+				4A534E4756E99FCB5680B71F /* stb_vorbis.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18705,7 +18710,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				71BE61CD25B1DA3E006D6E02 /* stb_rect_pack.c in Sources */,
-				71BE61C925B1DA3E006D6E02 /* stb_vorbis.c in Sources */,
 				71BE61C525B1DA3E006D6E02 /* stb_truetype.c in Sources */,
 				71BE61C625B1DA3E006D6E02 /* stb_image.c in Sources */,
 				71BE61CC25B1DA3E006D6E02 /* stb_image_write.c in Sources */,

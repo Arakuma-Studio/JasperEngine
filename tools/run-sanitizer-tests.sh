@@ -38,7 +38,7 @@ jobs=${SAN_JOBS:-5}
 san='-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined'
 
 if [ "${SAN_NO_BUILD:-0}" != 1 ]; then
-    cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DJASPERENGINE_EDITOR_TESTS=ON \
+    cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DJASPERENGINE_TESTS=ON \
         -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DCMAKE_C_FLAGS="$san" -DCMAKE_CXX_FLAGS="$san" \
         -DCMAKE_EXE_LINKER_FLAGS="$san" -DCMAKE_SHARED_LINKER_FLAGS="$san" -DCMAKE_MODULE_LINKER_FLAGS="$san" >/dev/null
@@ -55,17 +55,17 @@ else
 fi
 
 if [ "${SAN_SERIAL:-0}" = 1 ] || [ $# -gt 0 ]; then
-    exec xvfb-run -a "$tests" "$@"
+    exec tools/with-xvfb.sh "$tests" "$@"
 fi
 
 logs=$root/$build/san-logs
 rm -rf "$logs"
 mkdir -p "$logs"
-# one process per suite (this script again, with --suite: xvfb-run's sh drops exported functions)
+# one process per suite (this script again, with --suite: exported functions may not reach xargs)
 export SAN_TESTS=$tests SAN_LOGS=$logs
 ASAN_OPTIONS=detect_leaks=0 "$tests" --gtest_list_tests 2>/dev/null | grep -E '^[A-Za-z_][A-Za-z0-9_/]*\.$' | tr -d . > "$logs/suites.txt"
 # one X server for every process
-xvfb-run -a \
+tools/with-xvfb.sh \
     xargs -P "$jobs" -I{} "$root/tools/run-sanitizer-tests.sh" --suite {} < "$logs/suites.txt" > "$logs/summary.txt"
 echo "$(grep -c '^PASS' "$logs/summary.txt") of $(wc -l < "$logs/suites.txt") suites passed"
 

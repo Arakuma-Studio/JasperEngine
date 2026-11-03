@@ -109,6 +109,37 @@ async def test_prebuilt_linux_build(ed: Editor):
     await ed.check_error("build_project", mode="player", platform="linux", output_dir=str(out), method="fast", contains="method")
 
 
+async def test_prebuilt_build_hears_the_projects_mixer_and_audio_settings(ed: Editor):
+    """A prebuilt game sounds as Play does: Play applies Project Settings > Audio and the project's
+    mixer, a Compile build's generated init does the same; game.json carries both to the player
+    (the mixer by its asset-relative path, which the build ships)."""
+    r = await ed.call_raw("audio_mixer", {"action": "edit", "ops": [
+        {"op": "add_group", "name": "Music"},
+        {"op": "add_effect", "group": "Music", "type": "lowpass", "params": {"cutoff": 800}},
+    ]})
+    ed.check(not r.is_error, f"the project's mixer: {r.text[:300]}")
+    await ed.call("set_project_settings", values={"audio.max_real_voices": 20, "audio.max_voices": 100, "audio.sample_rate": 48000})
+    await ed.call("save_project", untitled_scene_dir="scenes")
+    played = (await ed.call("get_project_settings", keys=["audio.mixer", "audio.max_real_voices", "audio.max_voices",
+                                                           "audio.sample_rate"]))["settings"]
+    print(f"[audio] Play's settings: {played}")
+
+    out = ed.scratch.root / "game-linux-audio"
+    r = await ed.call("build_project", mode="player", platform="linux", output_dir=str(out), timeout_seconds=600)
+    ed.check_eq(r["status"], "succeeded", f"{r}")
+    ed.check_eq(r["result"]["method_used"], "prebuilt")
+    game = json.loads((out / "game.json").read_text())
+    audio = game.get("audio")
+    print(f"[audio] game.json audio: {audio}")
+    ed.check(isinstance(audio, dict), f"game.json has the audio settings: {sorted(game)}")
+    ed.check_eq((audio["maxRealVoices"], audio["maxVoices"], audio["sampleRate"]),
+                (played["audio.max_real_voices"], played["audio.max_voices"], 48000), "Project Settings > Audio, as Play has them")
+    ed.check(played["audio.mixer"].endswith(audio["mixer"]), f"the mixer Play loads ({played['audio.mixer']}): {audio['mixer']}")
+    shipped = out / "assets" / audio["mixer"]
+    ed.check(shipped.is_file(), f"the mixer ships at {shipped}")
+    ed.check_eq(shipped.read_text(), (ed.project / played["audio.mixer"]).read_text(), "the project's mixer, as Play reads it")
+
+
 async def test_native_code_compiles(ed: Editor):
     """AC3 through MCP: C++ scripts make Auto compile, and --method prebuilt lists why it cannot."""
     (ed.project / "cpp").mkdir(exist_ok=True)

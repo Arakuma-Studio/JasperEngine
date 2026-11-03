@@ -126,6 +126,31 @@ TEST(Physics3DBody, LowCenterOfMassSelfRights) {
     EXPECT_LT(up(other.rb(twin).getRotation()).dotProduct(Vector3(0, 1, 0)), 0.5f) << "falls to its side";
 }
 
+// The legacy solid-box override (Rigidbody.setOverrideMassAndInertia): set before the body is made
+// it is the mass the body is made with, set on a live body it takes effect at once. Its test was
+// inverted: it set the fields only on a live body (where nothing applied them) and refused the rest
+// with "Cannot override mass and inertia of loaded body".
+TEST(Physics3DBody, OverrideMassAndInertiaTakesEffectBeforeAndAfterTheBodyIsMade) {
+    World3D world(Vector3(0, 0, 0));
+    const Entity early = world.box(Vector3(-5, 0, 0), Vector3(1, 1, 1), BodyType::DYNAMIC);
+    const Entity live = world.box(Vector3(5, 0, 0), Vector3(1, 1, 1), BodyType::DYNAMIC);
+    // a 2 x 1 x 1 m box of 250 kg/m3: 500 kg, where the 1 m collider alone gives 1000 kg
+    world.rb(early).setOverrideMassAndInertia(Vector3(2, 1, 1), 250.0f);
+    EXPECT_TRUE(world.component(early).overrideMassProperties);
+    world.load();
+    EXPECT_NEAR(world.rb(early).getMass(), 500.0f, 1e-2f);
+    world.rb(early).applyImpulse(Vector3(500, 0, 0));
+    world.step();
+    EXPECT_NEAR(world.rb(early).getLinearVelocity().x, 1.0f, 0.01f) << "the body is made with the box's mass";
+
+    // 2000 kg on the live body
+    world.rb(live).setOverrideMassAndInertia(Vector3(1, 1, 1), 2000.0f);
+    EXPECT_NEAR(world.rb(live).getMass(), 2000.0f, 1e-2f);
+    world.rb(live).applyImpulse(Vector3(2000, 0, 0));
+    world.step();
+    EXPECT_NEAR(world.rb(live).getLinearVelocity().x, 1.0f, 0.01f) << "the live body takes it at once";
+}
+
 TEST(Physics3DBody, InertiaTensorResistsSpin) {
     World3D world(Vector3(0, 0, 0));
     const Entity a = world.box(Vector3(-5, 0, 0), Vector3(1, 1, 1), BodyType::DYNAMIC);

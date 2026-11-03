@@ -3,6 +3,9 @@
 
 #include "PlayerConfig.h"
 
+#include "audio/AudioMixer.h"
+#include "subsystem/AudioSystem.h"
+
 #include <algorithm>
 
 using namespace jasperengine;
@@ -104,6 +107,8 @@ json PlayerConfig::toJson() const {
     out["logging"] = {{"level", logLevel}, {"file", logFile}, {"backtrace", logBacktrace}};
     out["crash"] = {{"handler", crashHandler}, {"logTail", crashLogTail}, {"dumpWithHeap", crashDumpWithHeap},
                     {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay}};
+    out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
+                    {"sampleRate", audioSampleRate}};
     return out;
 }
 
@@ -245,6 +250,13 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.hangMs = crash->value("hangMs", config.hangMs);
             config.crashWebOverlay = crash->value("webOverlay", config.crashWebOverlay);
         }
+        // absent (a game.json of an older editor): no mixer, the default voices
+        if (const auto audio = in.find("audio"); audio != in.end()) {
+            config.audioMixer = audio->value("mixer", "");
+            config.audioMaxRealVoices = audio->value("maxRealVoices", config.audioMaxRealVoices);
+            config.audioMaxVoices = audio->value("maxVoices", config.audioMaxVoices);
+            config.audioSampleRate = audio->value("sampleRate", config.audioSampleRate);
+        }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;
         out = std::move(config);
@@ -262,6 +274,17 @@ bool PlayerConfig::parse(const std::string& text, PlayerConfig& out, std::string
         return false;
     }
     return fromJson(parsed, out, error);
+}
+
+void jasperengine::player::applyAudio(const PlayerConfig& game) {
+    const AudioConfig defaults;
+    if (game.audioMaxRealVoices != defaults.maxRealVoices || game.audioMaxVoices != defaults.maxVoices ||
+        game.audioSampleRate != defaults.sampleRate) {
+        AudioSystem::configure({game.audioMaxRealVoices, game.audioMaxVoices, game.audioSampleRate});
+    }
+    if (!game.audioMixer.empty()) {
+        AudioMixer::load(game.audioMixer);
+    }
 }
 
 const GameScene* PlayerConfig::findScene(uint32_t id) const {

@@ -11,7 +11,7 @@ namespace jasperengine{
     struct JASPERENGINE_API BoneComponent{
         Entity model = NULL_ENTITY;
 
-        int index;
+        int index = 0;
 
         Vector3 bindPosition;
         Quaternion bindRotation;
