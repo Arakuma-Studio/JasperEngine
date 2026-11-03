@@ -631,8 +631,10 @@ namespace {
         });
 
         eachComponent<TrailRendererComponent>(registry, only, visit, C::TrailRendererComponent, [&](TrailRendererComponent& trail) {
-            if (visit.shader(trail.customShader, componentRow(C::TrailRendererComponent, "customShader"), "customShader") |
-                visit.textureMap(trail.shaderTextures, componentRow(C::TrailRendererComponent, "shaderTextures{}"), "shaderTextures.")) {
+            // both visits run, whatever the first returns
+            const bool shaderChanged = visit.shader(trail.customShader, componentRow(C::TrailRendererComponent, "customShader"), "customShader");
+            const bool texturesChanged = visit.textureMap(trail.shaderTextures, componentRow(C::TrailRendererComponent, "shaderTextures{}"), "shaderTextures.");
+            if (shaderChanged || texturesChanged) {
                 trail.needReload = true;
             }
         });

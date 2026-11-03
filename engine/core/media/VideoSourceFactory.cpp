@@ -121,7 +121,9 @@ namespace {
         return std::make_unique<FailedSource>(std::move(error));
     }
 
+#if !JASPERENGINE_VIDEO
     const char* const kNoVideoModule = "this build has no video (the export left the video module out)";
+#endif
 
     // WebM AV1/Opus in software: the part of the pipeline the video module brings (S34)
     std::unique_ptr<IVideoSource> softwareSource(const std::string& path, const VideoSourceFactory::Options& options){

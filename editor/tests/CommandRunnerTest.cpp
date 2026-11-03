@@ -269,8 +269,14 @@ TEST(CommandRunner, LaunchDetachedReportsExecFailureLeavesNoChildAndInheritsNoDe
 
     const fs::path out = base / "fds.txt";
     const fs::path player = dir / "player";
+#if defined(__APPLE__)
+    // no /proc, and /dev/fd's entries name no file: the descriptors looked for by their numbers
+    std::ofstream(player, std::ios::binary) << "#!/bin/sh\npwd > '" << (base / "pwd.txt").string() << "'\n"
+                                            << "for n in 0 1 2 " << held << "; do [ -e /dev/fd/$n ] && echo \"fd $n\"; done > '" << out.string() << "'\n";
+#else
     std::ofstream(player, std::ios::binary) << "#!/bin/sh\npwd > '" << (base / "pwd.txt").string() << "'\n"
                                             << "for f in /proc/$$/fd/*; do readlink \"$f\"; done > '" << out.string() << "'\n";
+#endif
     fs::permissions(player, fs::perms::owner_all, fs::perm_options::replace);
 
     std::string error;
@@ -283,7 +289,11 @@ TEST(CommandRunner, LaunchDetachedReportsExecFailureLeavesNoChildAndInheritsNoDe
     std::ifstream fds(out);
     const std::string listed((std::istreambuf_iterator<char>(fds)), std::istreambuf_iterator<char>());
     EXPECT_FALSE(listed.empty());
+#if defined(__APPLE__)
+    EXPECT_EQ(listed.find("fd " + std::to_string(held) + "\n"), std::string::npos) << listed;
+#else
     EXPECT_EQ(listed.find("inherited-probe"), std::string::npos) << listed;
+#endif
     std::ifstream pwd(base / "pwd.txt");
     std::string where;
     std::getline(pwd, where);
@@ -311,7 +321,13 @@ TEST(CommandRunner, CloexecPipesAreNotInheritedBySpawnedPrograms) {
     // a program run meanwhile doesn't hold the write end: closing ours gives end-of-file at once
     CommandRunner runner;
     std::vector<std::string> lines;
-    ASSERT_TRUE(runner.run({"/bin/sh", "-c", "ls /proc/$$/fd"}, fs::path(), [&lines](const std::string& line) { lines.push_back(line); }));
+#if defined(__APPLE__)
+    // no /proc: the pipe's two descriptors looked for by their numbers
+    const std::string listing = "for n in " + std::to_string(fds[0]) + " " + std::to_string(fds[1]) + "; do [ -e /dev/fd/$n ] && echo $n; done; true";
+#else
+    const std::string listing = "ls /proc/$$/fd";
+#endif
+    ASSERT_TRUE(runner.run({"/bin/sh", "-c", listing}, fs::path(), [&lines](const std::string& line) { lines.push_back(line); }));
     for (const std::string& line : lines) {
         EXPECT_NE(line, std::to_string(fds[0]));
         EXPECT_NE(line, std::to_string(fds[1]));

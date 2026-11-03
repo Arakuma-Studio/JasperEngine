@@ -534,6 +534,7 @@ TEST(VideoPlayerComponent, AndroidInternetForScriptsSettingAUrl){
 
 TEST(VideoPlayerComponent, AnImageOutlivesItsPlayer){
     // the ad flow: image:setTexture(player:getFramebuffer()), then the player's GameObject goes
+    const int liveConverters = VideoTextureConverter::getLiveCount();
     Scene scene;
     const Entity player = scene.createUserEntity();
     scene.addComponent<Transform>(player, {});
@@ -544,8 +545,9 @@ TEST(VideoPlayerComponent, AnImageOutlivesItsPlayer){
     Texture shown(component.output->getFramebuffer());
     std::weak_ptr<Framebuffer> owner = component.output->getFramebuffer()->weak_from_this();
     ASSERT_FALSE(owner.expired()) << "the render texture is shared (Texture keeps its owner)";
+    // (the component and its output go now: `component` is not to be touched after this)
     scene.destroyEntity(player);
-    component.output.reset();
+    EXPECT_EQ(VideoTextureConverter::getLiveCount(), liveConverters) << "the player's converter went with it";
     EXPECT_FALSE(owner.expired()) << "the Image's texture keeps the object alive";
     ASSERT_NE(shown.getFramebuffer(), nullptr);
     EXPECT_FALSE(shown.getFramebuffer()->isCreated()) << "its GPU side is gone: the texture draws its fallback";

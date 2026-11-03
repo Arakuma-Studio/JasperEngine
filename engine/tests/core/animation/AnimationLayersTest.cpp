@@ -226,7 +226,11 @@ TEST_F(Layers, DefaultLayeringIsTheV1FastPath){
         }
     }
     EXPECT_TRUE(anim::isDefaultLayering(scene.getComponent<AnimationPlayerComponent>(root)));
+#if defined(__linux__) && defined(__x86_64__)
     EXPECT_EQ(hash, 0x79e15195f729cd77ull) << std::hex << hash;
+#else
+    GTEST_SKIP() << "the pinned hash is of Linux x86-64's floats and one ULP changes it (on arm64 macOS, turning FMA contraction off changes it by itself)";
+#endif
 }
 
 // Test 2: an Override layer with a transform mask on the arm

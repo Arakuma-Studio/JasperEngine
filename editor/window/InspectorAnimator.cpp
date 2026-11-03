@@ -341,8 +341,10 @@ void editor::InspectorWindow::drawControllerAsset(const std::shared_ptr<Animator
         if (clipDocument) info.loops = clipDocument->data().wrap == ClipWrapMode::Loop || clipDocument->data().wrap == ClipWrapMode::PingPong;
         return info;
     });
-    if (!problems.empty()){
-        ImGui::SeparatorText("Problems");
+    ImGui::SeparatorText("Problems");
+    if (problems.empty()){
+        ImGui::TextColored(ImVec4(0.45f, 0.85f, 0.45f, 1.0f), ICON_FA_CHECK " None");
+    }else{
         UIProbe::item("asset.controller.problems");
         for (const ClipWarning& warning : problems) warningText(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
     }

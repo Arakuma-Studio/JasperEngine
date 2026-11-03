@@ -1801,10 +1801,14 @@ namespace jasperengine::editor::safewrite {
             // CMakeLists.txt only at the project directory
             for (size_t i = 0; i < strict->roots.size(); i++) {
                 const fs::path& root = strict->roots[i];
-                for (const fs::path& loc : {absolute, where}) {
-                    if (loc.empty() || !isAtOrBelow(loc, root)) continue;
-                    if (std::string why = ownedRelReason(loc.lexically_relative(root), i == 0); !why.empty()) {
-                        return shown(absolute) + ": " + why + ".";
+                // the root as named and where it resolves: a project reached through a link (macOS's
+                // /var is one) has `where` below the latter only
+                for (const fs::path& base : {root, resolvedPath(root)}) {
+                    for (const fs::path& loc : {absolute, where}) {
+                        if (base.empty() || loc.empty() || !isAtOrBelow(loc, base)) continue;
+                        if (std::string why = ownedRelReason(loc.lexically_relative(base), i == 0); !why.empty()) {
+                            return shown(absolute) + ": " + why + ".";
+                        }
                     }
                 }
             }

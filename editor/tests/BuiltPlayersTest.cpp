@@ -70,7 +70,11 @@ TEST(BuiltPlayers, RecordedPlayerVerifies) {
     EXPECT_EQ(e["dev"].as<std::uint64_t>(), static_cast<std::uint64_t>(st.st_dev));
     EXPECT_EQ(e["ino"].as<std::uint64_t>(), static_cast<std::uint64_t>(st.st_ino));
     EXPECT_EQ(e["size"].as<std::uint64_t>(), static_cast<std::uint64_t>(st.st_size));
+#if defined(__APPLE__)
+    EXPECT_EQ(e["mtime"].as<std::int64_t>(), static_cast<std::int64_t>(st.st_mtimespec.tv_sec) * 1000000000LL + st.st_mtimespec.tv_nsec);
+#else
     EXPECT_EQ(e["mtime"].as<std::int64_t>(), static_cast<std::int64_t>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec);
+#endif
     const std::string sha = e["sha256"].as<std::string>();
     EXPECT_EQ(sha.size(), 64u);
     EXPECT_EQ(sha.find_first_not_of("0123456789abcdef"), std::string::npos);
