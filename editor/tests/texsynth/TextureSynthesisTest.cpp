@@ -460,6 +460,9 @@ namespace {
         if (!texture.hasData()) std::exit(13);
         // a replacing Save: released for the new pixels
         if (!window.save(true, written, error) || texture.hasData()) std::exit(14);
+        // (the child's own folders: an exec'd death test runs the test's body again)
+        fs::remove_all(dir);
+        fs::remove_all(config);
         std::exit(0);
     }
 
@@ -469,7 +472,8 @@ TEST(TextureSynthesisWindowDeathTest, SaveNeedsNoMcpServer) {
     const fs::path dir = tempProject("window-save");
     const fs::path config = dir.parent_path() / (dir.filename().string() + "-config");
     fs::create_directories(config);
-    EXPECT_EXIT(windowSaveWithoutTheServer(dir, config), ::testing::ExitedWithCode(0), "");
+    // (exec'd: the Objective-C runtime refuses a forked child of a process with threads)
+    GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(windowSaveWithoutTheServer(dir, config), ::testing::ExitedWithCode(0), "");
     fs::remove_all(dir);
     fs::remove_all(config);
 }

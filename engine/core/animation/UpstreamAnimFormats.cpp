@@ -95,11 +95,6 @@ namespace{
 
     using namespace jasperengine::anim::json;
 
-    const char* const typeNames[] = {"float", "int", "bool", "trigger"};
-    const char* const modeNames[] = {"if", "if_not", "greater", "less", "equals", "not_equal"};
-    const char* const interruptionNames[] = {"none", "current_state", "next_state"};
-
-    const char* const topKeys[] = {"format", "version", "guid", "parameters", "layers"};
     const char* const layerKeys[] = {"name", "weight", "blend", "mask", "mask_guid", "default_state", "any_state", "states", "transitions"};
     const char* const stateKeys[] = {"name", "clip", "clip_guid", "blend_tree", "speed", "speed_parameter", "wrap", "cycle_offset",
                                      "mirror", "foot_ik", "retarget", "position"};
