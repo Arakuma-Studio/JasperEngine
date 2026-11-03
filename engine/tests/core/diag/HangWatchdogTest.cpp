@@ -7,6 +7,7 @@
 
 #include "diag/HangWatchdog.h"
 #include "jobs/JobSystem.h"
+#include "jobs/detail/TimedWait.h"
 
 #include <gtest/gtest.h>
 
@@ -122,7 +123,7 @@ TEST(HangWatchdog, InjectedStallReports) {
         std::unique_lock<std::mutex> lock(mutex);
         // Scheduling under a concurrent native build can exceed a fixed 100 ms
         // sleep. Wait for the observed recovery, with a bounded failure deadline.
-        recovered.wait_for(lock, std::chrono::seconds(1), [&] { return recoveries != 0; });
+        jobs::detail::timedWait(recovered, lock, std::chrono::seconds(1), [&] { return recoveries != 0; });
     }
     watchdog::stop();
 

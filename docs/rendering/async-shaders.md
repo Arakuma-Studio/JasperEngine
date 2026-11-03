@@ -51,6 +51,29 @@ The render thread finishes what the worker or the driver created within a per-fr
 - The scenes count as loaded (the READY signal, a game's loading screen, the editor's loading state)
   only once nothing is being created.
 
+## Threads
+
+A model may load off the main thread (the editor's thumbnail strand, a game's
+`Engine.startAsyncThread`). Its GPU objects are the frames' to make (`SokolCmdQueue`, executed on the
+main thread), and `Engine::executeSceneOnce` keeps that thread off the frames with their semaphore.
+It does not keep it off what the main thread does outside a frame, so two things take a lock of
+their own, around their containers' operations alone:
+
+- `ShaderPool`'s map and key sets: never while a builder runs or a GPU shader is made or destroyed.
+  `get()` holds its entry for what it does next, and `remove()` leaves what someone holds.
+  A steady frame of 100 meshes asks for none, and a variant asked for again costs 18 ns where it
+  cost 10.5 (`ShaderPoolBenchGpu.GetOfAMadeVariant`; 108 ns against 91 among 2000 variants still
+  building, `ShaderPoolBench.Get`).
+- sokol's resource pools (`engine/libs/sokol/PATCHES.md`): the free lists and a slot's hands, which
+  `sg_alloc_*` on that thread and `sg_make_*` and `sg_destroy_*` on the main one share. A draw takes
+  no lock, a steady frame allocates no slot, and a slot allocated and freed costs 18 ns where it
+  cost 7.5 (`SokolPoolBenchGpu.AllocAndFree`).
+
+`Engine::updateGpuCreation` publishes what was created off the render thread under the frames'
+semaphore, since that thread asks for those states inside it. Not covered: the main thread making
+a variant outside a frame (a scene it loads there) while that thread makes the same new one, which
+both may do at once in `ShaderRender::createShader`.
+
 ## The shader warm-up list
 
 **Project Settings > Graphics > Shader Warm-up**:
