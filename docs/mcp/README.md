@@ -9,6 +9,9 @@ editor, doing what you would do by hand:
 - build HTML/CSS game UI (menus, HUDs) and check its layout
 - synthesize textures from example images (seamless tiling, inpainting, PBR sets), as Window >
   Texture Synthesis does for you ([guide/texture-synthesis.md](guide/texture-synthesis.md))
+- generate normal maps for sprites, sheets, GIF/APNG animations and tilesets so 2D lights give them volume, with a
+  lit preview before writing and paint corrections kept on regeneration, as Window > Sprite Normal Map does for you
+  ([guide/sprite-normals.md](guide/sprite-normals.md), `generate_sprite_normals`, `check --normals`)
 - place objects with physics in edit mode: drop them onto what is below, push overlapping ones
   apart, slide them against walls, snap them onto surfaces, with a preview before the commit
   ([guide/physics.md](guide/physics.md), `place_with_physics`)
@@ -17,6 +20,12 @@ editor, doing what you would do by hand:
   ([guide/vertex-animation.md](guide/vertex-animation.md), `bake_vertex_animation`)
 - play the game, send keyboard, mouse and touch input, inspect runtime state, and take
   screenshots of the Scene and Game views
+- simulate a phone in the Game view (model, dpi, rotation), another system language, and the
+  app's focus, pause and low-memory events, and see the URLs the game opened
+  ([guide/platform-services.md](guide/platform-services.md), `send_input` `app` events, `configure_game_view`)
+- see the phone's notch, rounded corners and safe area over the game (and in screenshots), and
+  check UI against `Screen.safeArea` ([guide/safe-area.md](guide/safe-area.md), `configure_game_view`
+  `device`, `screenshot` `safe_area_in_image`)
 - read the Console, then export and build the game
 
 Every edit goes through the editor's command system. You can undo it with Ctrl+Z, and if you

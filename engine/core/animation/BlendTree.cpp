@@ -190,7 +190,7 @@ size_t anim::motionLeaves(const CompiledController& controller, const CompiledMo
                           float weight, MotionLeaf* out, size_t count, size_t capacity){
     if (!(weight > 0.0f)) return count;
     if (motion.kind == CompiledMotion::Kind::Clip){
-        if (count < capacity) out[count++] = {motion.index, weight, 1.0f};
+        if (count < capacity) out[count++] = {motion.index, weight, 1.0f, false};
         return count;
     }
     if (motion.kind != CompiledMotion::Kind::Tree) return count;
@@ -202,7 +202,10 @@ size_t anim::motionLeaves(const CompiledController& controller, const CompiledMo
         const CompiledTreeChild& child = controller.children[tree.childBegin + c];
         const size_t first = count;
         count = motionLeaves(controller, child.motion, parameters, weight * weights[c], out, count, capacity);
-        for (size_t l = first; l < count; l++) out[l].timeScale *= child.timeScale;
+        for (size_t l = first; l < count; l++){
+            out[l].timeScale *= child.timeScale;
+            out[l].mirror = out[l].mirror != child.mirror;
+        }
     }
     return count;
 }

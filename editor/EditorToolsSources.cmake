@@ -13,6 +13,7 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/widget/SwatchLibrary.cpp
     ${EDITOR_DIR}/widget/ColorPickerWindow.cpp
     ${EDITOR_DIR}/widget/CurveEditorOps.cpp
+    ${EDITOR_DIR}/widget/GradientEditorOps.cpp
     ${EDITOR_DIR}/widget/CurveEditor.cpp
     ${EDITOR_DIR}/widget/CurvePresets.cpp
     ${EDITOR_DIR}/widget/CurveField.cpp

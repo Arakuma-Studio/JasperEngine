@@ -175,8 +175,9 @@ TEST(ReflectParity, TransformDocumentEncodeLeavesOutDerivedValues) {
     }
     EXPECT_EQ(YAML::Dump(written), YAML::Dump(legacy));
 }
-PARITY_COMPONENT(Joint2D)
-PARITY_COMPONENT(Joint3D)
+// (Joint2D and Joint3D: upstream's joint codecs since SYNC#4, a key a file leaves out decoding to
+// the legacy joint's value, editor/reflect/components/TransformPhysicsReflect.cpp kJoint2DCodec /
+// kJoint3DCodec; their round trips: CookedScene, ReflectFixtures.AllComponentsScene)
 PARITY_COMPONENT(Action)
 PARITY_COMPONENT(Tween)
 PARITY_COMPONENT(PositionTween)

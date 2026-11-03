@@ -65,9 +65,9 @@ TEST(BuoyancyBench, HundredBodiesFourColumns){
             transform.needUpdate = true;
             RigidbodyComponent rigidbody;
             rigidbody.type = BodyType::DYNAMIC;
+            rigidbody.colliders.resize(1);
             rigidbody.colliders[0].type = Collider3DType::BOX;
             rigidbody.colliders[0].density = 500.0f;
-            rigidbody.numColliders = 1;
             scene->addComponent<RigidbodyComponent>(entity, rigidbody);
             scene->addComponent<BuoyancyComponent>(entity, BuoyancyComponent{});
         }

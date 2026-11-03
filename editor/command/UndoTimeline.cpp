@@ -52,7 +52,7 @@ namespace {
     }
 
     std::string refusal(const char* fallback){
-        const std::string& why = editor::CommandHistory::lastRefusal();
+        const std::string& why = editor::CommandHistory::lastBusyRefusal();
         return why.empty() ? std::string(fallback) : "Busy: " + why;
     }
 

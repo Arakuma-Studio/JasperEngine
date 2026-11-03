@@ -101,6 +101,12 @@ int runEditor(int argc, char* argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "bake-vat") == 0) {
         return editor::CommandLine::runBakeVatCommand(argc - 1, argv + 1, argv[0]);
     }
+    if (argc >= 2 && std::strcmp(argv[1], "import-unity-particles") == 0) {
+        return editor::CommandLine::runImportUnityParticlesCommand(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "generate-sprite-normals") == 0) {
+        return editor::CommandLine::runGenerateSpriteNormalsCommand(argc - 1, argv + 1, argv[0]);
+    }
     if (argc >= 2 && std::strcmp(argv[1], "benchmark") == 0) {
         if (argc >= 3 && (std::strcmp(argv[2], "-h") == 0 || std::strcmp(argv[2], "--help") == 0 || std::strcmp(argv[2], "help") == 0)) {
             return editor::CommandLine::runBenchmarkHelp(argv[0]);
@@ -256,9 +262,11 @@ int main(int argc, char* argv[]) {
         editor::Out::stopLogging();
         return 2;
     }
-    // the profiler's options go to the engine, whatever the mode; benchmark parses its own
+    // the profiler's options go to the engine, whatever the mode; benchmark parses its own, and
+    // generate-sprite-normals has a --profile of its own (the height profile: --profile rounded)
     const bool benchmark = args.size() >= 2 && std::strcmp(args[1], "benchmark") == 0;
-    if (!benchmark && !editor::CommandLine::takeProfilerFlags(args)) {
+    const bool spriteNormals = args.size() >= 2 && std::strcmp(args[1], "generate-sprite-normals") == 0;
+    if (!benchmark && !spriteNormals && !editor::CommandLine::takeProfilerFlags(args)) {
         editor::Out::stopLogging();
         return 2;
     }

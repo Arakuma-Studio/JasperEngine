@@ -96,6 +96,7 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode VirtualViewTemplate{DiagArea::HTML, 30};      // S17
         inline constexpr DiagCode LargeDataFor{DiagArea::HTML, 31};             // S17: runtime
         inline constexpr DiagCode MarkdownRawHtml{DiagArea::HTML, 32};          // S17
+        inline constexpr DiagCode ParticleSystemSource{DiagArea::HTML, 33};     // ui-scaling-text (29 upstream; oe-port's S17 took 29-32)
         // CSS
         inline constexpr DiagCode UnknownProperty{DiagArea::CSS, 1};
         inline constexpr DiagCode UnsupportedProperty{DiagArea::CSS, 2};

@@ -56,10 +56,12 @@ jasperengine_skip_unity_build(
     REASON "file-local fixtures or helpers named as in another test source"
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorHumanoidTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorRetargetTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorStateMachineTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorSystemTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/ClipIOTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/HumanoidModelTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/KeyframeSamplingTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/SubClipPoolTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/ecs/SignatureTest.cpp
@@ -72,6 +74,8 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleRenderTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleSeekTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleSubEmittersTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleUpstreamBehaviourTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleUpstreamModulesTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterController2DTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterControllerBenchTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterControllerTest.cpp

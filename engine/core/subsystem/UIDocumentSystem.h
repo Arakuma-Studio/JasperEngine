@@ -31,6 +31,7 @@ typedef struct lua_State lua_State;
 
 // RmlUi stays out of the engine API (swappable core): forward declarations only
 namespace Rml {
+    class Context;
     class Element;
     class ElementDocument;
 }
@@ -96,6 +97,18 @@ namespace jasperengine{
         // (mirrors UISystem::setAnchorReferenceSize)
         void setReferenceSize(int width, int height);
         void clearReferenceSize();
+        // where the editor lays a scaled document out at the UI size: the world size it covers
+        // (0 = from the layout size, getFrameSize)
+        void setFrameSize(float width, float height);
+
+        // the scene of an RmlUi context a document system made (nullptr: none): the elements
+        // that need their scene (<particle-system>) find it this way
+        static Scene* sceneOfContext(const Rml::Context* context);
+        // runtime entities a document made (a <particle-system>'s prefab): the editor does
+        // not list them (nor their children) with what the game made
+        void addRuntimeEntity(Entity entity);
+        void removeRuntimeEntity(Entity entity);
+        bool isRuntimeEntity(Entity entity) const;
 
         bool loadDocumentNow(Entity entity);           // UIDocument::load, getters in init: synchronous, also before the view loads
         bool isDocumentLoaded(Entity entity) const;
@@ -138,6 +151,11 @@ namespace jasperengine{
         bool eventOnPointerUp(int pointer, int button, float x, float y, int mods, bool touch, bool world = true);
         bool eventOnPointerMove(int pointer, float x, float y, int mods, bool touch, bool world = true);
         bool eventOnTouchCancel(int pointer);
+        // ui-multitouch D6: a mouse button released outside the canvas. The mouse pointer ends
+        // without a click or drop (pointercancel; every held button: one DOM pointer)
+        bool eventOnMouseCancel(int button);
+        // D6: every finger and the mouse end without a click (pause, focus loss)
+        void cancelAllPointers();
         bool eventOnWheel(float dx, float dy, int mods);
         void eventOnMouseLeave();
         bool eventOnKeyDown(int key, bool repeat, int mods);
@@ -148,6 +166,10 @@ namespace jasperengine{
         bool hasFocusedTextInput() const;
         // a document took this pointer's down (touch: pointer id; mouse: button) and keeps it until the up
         bool hasPointerCapture(int pointer, int button, bool touch) const;
+        // Input.isPointerOverUI (ui-multitouch D15), native pointer ids: -1 / -2 / -3 the mouse,
+        // >= 0 a finger, INT_MIN the mouse or any finger. Over shown document content, or held
+        // by a document since its press.
+        bool isPointerOverUI(int pointerId) const;
         // the CSS cursor of the element under the pointer, ARROW when the pointer is not over content
         CursorType getPointerCursor() const;
         // p4-input: a gamepad key (Engine's routing turns buttons, the left stick and the triggers into
@@ -254,8 +276,14 @@ namespace jasperengine{
         bool ensureContext();
         // unloads every document, then drops the GPU objects, the RmlUi context and RmlUi
         void destroyContext();
-        // context dimensions: the reference size where set, else the canvas
+        // context dimensions: the reference size where set, else the Canvas Scaler's UI size
+        // (Scene::isDocumentScaled), else the canvas
         void getLayoutSize(int& width, int& height) const;
+        // the world rectangle (0,0)-(w,h) a screen document covers under a UI or 2D camera: the
+        // frame size where set, else the UI size (UI camera) or the game canvas (2D camera) of a
+        // scaled scene, else the layout size
+        void getFrameSize(float& width, float& height) const;
+        static std::unordered_map<const Rml::Context*, Scene*>& contextScenes();
         // load/unload, z-index and visibility of one component's document
         void applyComponent(Entity entity, UIDocumentComponent& document);
         void unloadEntityDocument(Entity entity);
@@ -270,7 +298,21 @@ namespace jasperengine{
         std::unordered_map<Entity, Rml::ElementDocument*> documents;
         bool acquired = false;
         int referenceWidth = 0, referenceHeight = 0;
+        float frameWidth = 0.0f, frameHeight = 0.0f;
+        std::vector<Entity> runtimeEntities;
         bool debuggerVisible = false;   // asked before the context existed
+
+        // safe-area spec 6.4: env(safe-area-inset-*) reads the --jasper-safe-area-inset-* custom
+        // properties set on each document root; what each document got last
+        struct SafeAreaApplied {
+            Rml::ElementDocument* document = nullptr;
+            uint64_t revision = 0;
+            int width = 0, height = 0;
+        };
+        std::unordered_map<Entity, SafeAreaApplied> safeAreaApplied;
+        // sets them on the documents whose values are out of date (a load, a reload, a change of
+        // Screen's safe area or of the layout size)
+        void updateSafeAreaProperties();
 
         // ---- phase 1: per-package state and private helpers (each package adds its own in its block) ----
         // shared_ptr: the deleter is bound where the state is created, so ~UIDocumentSystem
@@ -343,6 +385,7 @@ namespace jasperengine{
         bool isWorldPointerCaptured(int pointer, int button, bool touch) const;   // button < 0: any mouse button
         bool dispatchWorldWheel(float dx, float dy, int mods);   // the hovered texture document
         void textureMouseLeave();
+        void textureCancelAll();   // ui-multitouch D6: pause, focus loss
 
         // --- p2-html ---
         std::shared_ptr<HtmlUICompatState> compatState;

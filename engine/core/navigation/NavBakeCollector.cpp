@@ -61,6 +61,7 @@ namespace {
         std::vector<uint32_t> indices;
     };
 
+#ifdef JASPERENGINE_PHYSICS_3D
     void addBox(Mesh& mesh, const Vector3& half) {
         const uint32_t base = (uint32_t)mesh.vertices.size();
         for (int i = 0; i < 8; i++)
@@ -80,8 +81,10 @@ namespace {
             mesh.indices.push_back(base + f[2]);
         }
     }
+#endif
 
     // a closed surface of revolution about y: rings from bottom to top (radius, y)
+#ifdef JASPERENGINE_PHYSICS_3D
     void addRevolution(Mesh& mesh, const std::vector<std::pair<float, float>>& profile) {
         const uint32_t base = (uint32_t)mesh.vertices.size();
         const int rings = (int)profile.size();
@@ -115,7 +118,9 @@ namespace {
             mesh.indices.insert(mesh.indices.end(), {top, d, c});
         }
     }
+#endif
 
+#ifdef JASPERENGINE_PHYSICS_3D
     void addSphere(Mesh& mesh, float radius) {
         std::vector<std::pair<float, float>> profile;
         for (int r = 1; r < ROUND_RINGS; r++) {
@@ -124,8 +129,10 @@ namespace {
         }
         addRevolution(mesh, profile);
     }
+#endif
 
     // two half spheres (radii bottom and top) joined over 2 * halfHeight
+#ifdef JASPERENGINE_PHYSICS_3D
     void addCapsule(Mesh& mesh, float halfHeight, float bottomRadius, float topRadius) {
         std::vector<std::pair<float, float>> profile;
         const int half = ROUND_RINGS / 2;
@@ -139,12 +146,16 @@ namespace {
         }
         addRevolution(mesh, profile);
     }
+#endif
 
+#ifdef JASPERENGINE_PHYSICS_3D
     void addCylinder(Mesh& mesh, float halfHeight, float radius) {
         addRevolution(mesh, {{radius, -halfHeight}, {radius, halfHeight}});
     }
+#endif
 
     // ---- a 3D convex hull (QuickHull) of a point cloud, its faces wound outwards
+#ifdef JASPERENGINE_PHYSICS_3D
     Mesh convexHull(const std::vector<Vector3>& points) {
         Mesh hull;
         if (points.size() < 4)
@@ -312,6 +323,7 @@ namespace {
         }
         return hull;
     }
+#endif
 
     // ---- a 2D convex hull (Andrew's monotone chain), counter-clockwise
     std::vector<Vector2> convexHull2D(std::vector<Vector2> points) {
@@ -338,6 +350,7 @@ namespace {
     }
 
     // a convex polygon pushed out by `offset` (mitred corners)
+#ifdef JASPERENGINE_PHYSICS_2D
     std::vector<Vector2> offsetPolygon(const std::vector<Vector2>& polygon, float offset) {
         if (offset <= 0.0f || polygon.size() < 3)
             return polygon;
@@ -362,6 +375,7 @@ namespace {
         }
         return out;
     }
+#endif
 
     // a component's area (an int) as an area index
     uint8_t areaIndex(int area) {
@@ -424,7 +438,9 @@ namespace {
         void collectVolumes();
         void collectLinks();
         void addVolume(const Matrix4& worldOf, const Vector3& center, const Vector3& size, uint8_t recastArea);
+#ifdef JASPERENGINE_PHYSICS_2D
         void addFootprint(const std::vector<Vector2>& worldPolygon, uint8_t recastArea);
+#endif
     };
 
     bool Collector::isDescendant(Entity entity, Entity ancestor) const {
@@ -697,7 +713,7 @@ namespace {
             const Vector3 scale = transform->worldScale;
             const Vector3 absScale(std::fabs(scale.x), std::fabs(scale.y), std::fabs(scale.z));
             const Matrix4 bodyWorld = Matrix4::translateMatrix(transform->worldPosition) * transform->worldRotation.getRotationMatrix();
-            for (size_t c = 0; c < body.numColliders; c++) {
+            for (size_t c = 0; c < body.colliders.size(); c++) {
                 const Collider3D& collider = body.colliders[c];
                 const Matrix4 colliderWorld = bodyWorld * Matrix4::translateMatrix(collider.position * scale) * collider.rotation.getRotationMatrix();
                 Mesh mesh;
@@ -727,9 +743,9 @@ namespace {
                         const bool raw = collider.source == Collider3DSource::RAW_VERTICES || collider.source == Collider3DSource::RAW_MESH;
                         Mesh source;
                         if (raw) {
-                            for (size_t v = 0; v < collider.numVertices; v++)
+                            for (size_t v = 0; v < collider.vertices.size(); v++)
                                 source.vertices.push_back(collider.vertices[v] * scale);
-                            for (size_t i = 0; i + 2 < collider.numIndices; i += 3) {
+                            for (size_t i = 0; i + 2 < collider.indices.size(); i += 3) {
                                 source.indices.push_back(collider.indices[i]);
                                 source.indices.push_back(collider.indices[i + 1]);
                                 source.indices.push_back(collider.indices[i + 2]);
@@ -780,6 +796,7 @@ namespace {
 #endif
     }
 
+#ifdef JASPERENGINE_PHYSICS_2D
     void Collector::addFootprint(const std::vector<Vector2>& worldPolygon, uint8_t recastArea) {
         if (worldPolygon.size() < 3)
             return;
@@ -802,6 +819,7 @@ namespace {
         volume.recastArea = recastArea;
         input->volumes.push_back(std::move(volume));
     }
+#endif
 
     void Collector::collectColliders2D() {
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -826,7 +844,7 @@ namespace {
                 const Vector3 rotated = transform->worldRotation * Vector3(local.x * scale.x, local.y * scale.y, 0.0f);
                 return Vector2(transform->worldPosition.x + rotated.x, transform->worldPosition.y + rotated.y);
             };
-            for (size_t c = 0; c < body.numColliders; c++) {
+            for (size_t c = 0; c < body.colliders.size(); c++) {
                 const Collider2D& collider = body.colliders[c];
                 if (collider.sensor)
                     continue;
@@ -835,9 +853,9 @@ namespace {
                 switch (collider.type) {
                     case Collider2DType::POLYGON: {
                         std::vector<Vector2> points;
-                        if (collider.numVertices >= 3) {
-                            for (size_t v = 0; v < collider.numVertices; v++)
-                                points.push_back(collider.vertices[v]);
+                        if (collider.points.size() >= 3) {
+                            for (size_t v = 0; v < collider.points.size(); v++)
+                                points.push_back(collider.points[v]);
                         } else {
                             points = {collider.pointA, Vector2(collider.pointB.x, collider.pointA.y), collider.pointB,
                                       Vector2(collider.pointA.x, collider.pointB.y)};
@@ -879,8 +897,8 @@ namespace {
                         if (collider.type == Collider2DType::SEGMENT) {
                             points = {toWorld(collider.pointA), toWorld(collider.pointB)};
                         } else {
-                            for (size_t v = 0; v < collider.numVertices; v++)
-                                points.push_back(toWorld(collider.vertices[v]));
+                            for (size_t v = 0; v < collider.points.size(); v++)
+                                points.push_back(toWorld(collider.points[v]));
                             if (collider.loop && points.size() > 2)
                                 points.push_back(points.front());
                         }

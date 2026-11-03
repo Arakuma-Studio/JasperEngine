@@ -4,19 +4,29 @@
 
 ---Options of the Timer functions
 ---@class TimerOptions
----@field owner? any # cancelled when this goes away (pass self: the timer dies with the script)
----@field clock? "game"|"unscaled"|"real" # default "game" (scaled by Engine.timeScale, stopped while paused)
----@field count? integer # Timer.every: how many times (default: until cancelled)
+---@field owner? table # a script instance (self): the timer is cancelled when that script goes away
+---@field clock? "game"|"unscaled"|"real" # default "game" (scaled by Time.timeScale, stopped while paused)
+---@field unscaled? boolean # the same as clock = "unscaled"
+---@field count? integer # Timer.every: how many calls (default: until cancelled)
+---@field delay? number # Timer.every: the first call's delay (default: the interval)
 ---@field catchUp? boolean # Timer.every: after a stall, up to 8 missed periods at once
 
----A pending call (Timer.after, every, nextFrame, afterFrames, afterFixedSteps)
+---A pending call (Timer.after, every, nextFrame, afterFrames, afterFixedSteps); tostring gives
+---"Timer(5, 0.75 s left, every 0.50 s)". Coroutine.waitFor(timer) waits for it.
 ---@class TimerHandle
+---@field id integer # read-only
+---@field remaining number # read-only: seconds to the next call (0 when done)
+---@field interval number # read-only: seconds between calls (0 for a one-shot)
+---@field unscaled boolean # read-only: it counts unscaled seconds
 local TimerHandle = {}
 ---Cancels it (a repeating one stops); false when it already ran or was cancelled
 ---@return boolean
 function TimerHandle:cancel() end
 ---@return boolean
 function TimerHandle:isActive() end
+---It will not be called again (it ran out, returned false or was cancelled)
+---@return boolean
+function TimerHandle:isDone() end
 
 ---A coroutine started by Timer.run
 ---@class TimerCoroutine
@@ -33,14 +43,14 @@ Timer = {}
 
 ---Calls fn once, delay seconds from now
 ---@param delay number
----@param fn fun()
+---@param fn fun(timer: TimerHandle)
 ---@param opts? TimerOptions
 ---@return TimerHandle
 function Timer.after(delay, fn, opts) end
 
----Calls fn every period seconds
+---Calls fn every period seconds (fn returning false stops it)
 ---@param period number
----@param fn fun()
+---@param fn fun(timer: TimerHandle): boolean?
 ---@param opts? TimerOptions
 ---@return TimerHandle
 function Timer.every(period, fn, opts) end

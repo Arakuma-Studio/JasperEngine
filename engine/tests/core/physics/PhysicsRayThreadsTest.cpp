@@ -36,11 +36,11 @@ TEST(PhysicsRayThreads, RaysFromJobsShareNothingOutsideTheStep){
     scene.getSystem<RenderSystem>()->updateTransform(transform, entity);
     RigidbodyComponent rigidbody;
     rigidbody.type = BodyType::STATIC;
+    rigidbody.colliders.resize(1);
     rigidbody.colliders[0].type = Collider3DType::BOX;
     rigidbody.colliders[0].width = 100.0f;
     rigidbody.colliders[0].height = 1.0f;
     rigidbody.colliders[0].depth = 100.0f;
-    rigidbody.numColliders = 1;
     scene.addComponent<RigidbodyComponent>(entity, rigidbody);
     scene.fixedUpdate(1.0f / 60.0f);
 

@@ -30,7 +30,14 @@ namespace jasperengine{
     public:
         static std::shared_ptr<STBText> get(const std::string& id);
         static std::shared_ptr<STBText> get(const std::string& id, const std::string& fontpath, const std::vector<std::string>& fallbackPaths, unsigned int fontSize);
+        // an atlas of a raster scale or an SDF (the id must name them: UISystem::getFontId)
+        static std::shared_ptr<STBText> get(const std::string& id, const std::string& fontpath, const std::vector<std::string>& fallbackPaths, unsigned int fontSize,
+                                            const STBTextOptions& options);
         static void remove(const std::string& id);
+        // drops `text` (reset) and its pool entry when no one else uses that atlas
+        static void release(std::shared_ptr<STBText>& text);
+        // an atlas of that id is pooled
+        static bool contains(const std::string& id);
 
         // Hot reload (S05 R13): the entry becomes `font`, its generation goes up; the texts
         // using it rebuild their atlas when flagged (needReloadAtlas). Main thread.

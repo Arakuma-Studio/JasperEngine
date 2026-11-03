@@ -51,10 +51,12 @@ function Bad:init()
     Engine.useDegrees = 1
     Input.KEY_SPACE = {}
     AudioSystem.globalVolume = true
+    AudioMixer.setFloat("MusicVolume", "loud")
     Vector3.UNIT_X = 5
     SceneManager.currentSceneName = 3
     Engine.scene = "main"
     Engine["fixedDeltatime"] = false
+    Http.maxConcurrentRequests = "many"
 end
 
 return Bad
@@ -76,10 +78,12 @@ BAD_LUA_EXPECTED = {
     20: "assign-type-mismatch",  # boolean <- integer
     21: "assign-type-mismatch",  # integer constant <- table
     22: "assign-type-mismatch",  # number <- boolean
-    23: "assign-type-mismatch",  # Vector3 constant <- integer
-    24: "assign-type-mismatch",  # string <- integer
-    25: "assign-type-mismatch",  # Scene <- string
-    26: "assign-type-mismatch",  # number <- boolean, indexed with a string
+    23: "param-type-mismatch",   # AudioMixer.setFloat: a string where the value (number) goes
+    24: "assign-type-mismatch",  # Vector3 constant <- integer
+    25: "assign-type-mismatch",  # string <- integer
+    26: "assign-type-mismatch",  # Scene <- string
+    27: "assign-type-mismatch",  # number <- boolean, indexed with a string
+    28: "assign-type-mismatch",  # integer <- string (Http)
 }
 
 # A script without engine fields assigned: the plugin leaves the checks driven by the doc
@@ -127,6 +131,74 @@ function Good:init()
     GameState = { level = 1 }  -- the game's own global table
     GameState.level = "boss"
     Log.print("frames " .. tostring(Engine.frameCount) .. " " .. tostring(Engine.gameTime))
+    -- coroutines, timers and Time (the wait helpers are async: fine inside the coroutine's function)
+    local co = self:startCoroutine(function()
+        local elapsed = Coroutine.wait(0.5) + Coroutine.waitRealtime(0.1)
+        Coroutine.nextFrame()
+        Coroutine.waitFrames(2)
+        local ok = Coroutine.waitUntil(function() return self.counter > 3 end, 2.0, true)
+        local done, value = Coroutine.waitFor(Timer.after(1, function() end))
+        Coroutine.waitForFixedUpdate()
+        Coroutine.waitForEndOfFrame()
+        print(elapsed, ok, done, value, Time.deltaTime, Time.unscaledDeltaTime, Time.fixedDeltaTime)
+    end)
+    print(co.status, co:isDone(), co.error, co.owner, co.id)
+    self:startCoroutine("onUpdate")
+    self:stopCoroutine(co)
+    self:stopAllCoroutines()
+    self:invokeRepeating("onUpdate", 1, 0.5)
+    local timer = self:invoke(function() print("later") end, 2, true)
+    print(timer.remaining, timer.interval, timer.unscaled, timer:isDone(), self:isInvoking(timer), self:isInvoking())
+    self:cancelInvoke("onUpdate")
+    Timer.every(0.5, function(t) return t.remaining > 0 end, {count = 3, unscaled = true, owner = self, delay = 0})
+    Coroutine.start(function() Coroutine.wait(1) end)
+    Time.timeScale = 0.5
+    Time.captureDeltaTime = 0
+    print(Engine.unscaledDeltatime, Engine.unscaledTime, Engine.maxDeltatime, Coroutine.running(), Coroutine.isInside())
+    -- the audio mixer (audio-mixer): option tables, nil results, the group and effect handles
+    local muted = AudioMixer.setFloat("MusicVolume", -80, 0.5, {unscaled = true})
+    local cutoff = AudioMixer.getFloat("lowPassCutoff") or 22000
+    AudioMixer.transitionTo("Gameplay", 0.65)
+    AudioMixer.transitionToSnapshots({"Menu", "Gameplay"}, {0.5, 0.5}, 1)
+    local music = AudioMixer.getGroup("Music")
+    if music then
+        music.volume = AudioMixer.linearToDb(0.5)
+        music.mute = not muted
+        local lowpass = music:getEffect(1) or music:getEffect("lowpass")
+        if lowpass then lowpass:setParameter("cutoff", cutoff * 0.5, 0.9) end
+        print(music:getMeter(), music:getEffectCount(), #AudioMixer.getGroupNames())
+    end
+    AudioListener.pause = false
+    AudioListener.volume = 0.8
+    local sound = AudioSource(self.scene, self.entity)
+    sound.outputGroup = "SFX"
+    sound.loadType = AudioLoadType.DecompressOnLoad
+    sound.pitch = 1.2
+    sound.priority = 64
+    sound:playOneShot("sfx/coin.wav", 0.7)
+    sound:fadeOut(1.5, {pause = true})
+    sound:fadeTo(0.5, 2)
+    AudioSource.playClipAtPoint(self.scene, "sfx/boom.wav", Vector3(0, 0, 0), 1, "SFX")
+    AudioSystem.preload("music/theme.ogg", AudioLoadType.Streaming)
+    -- the Video Player: fields, enums, events, methods and statics (video-mp4)
+    local vp = self.go:getVideoPlayer()
+    if vp and self.go:hasVideoPlayer() then
+        vp.source = VideoPlayerSource.URL
+        vp.url = System.getUserDataPath() .. "/ads/ad1.mp4"
+        vp.timeUpdateMode = VideoTimeUpdateMode.UNSCALED_GAME_TIME
+        vp.renderMode = VideoRenderMode.RENDER_TEXTURE
+        vp.aspectRatio = VideoAspectRatio.FIT_INSIDE
+        vp.audioOutputMode = VideoAudioOutputMode.DIRECT
+        vp.isLooping = false
+        vp.playbackSpeed = 1.5
+        vp.targetCamera = nil
+        vp.onPrepareCompleted = function(p) p:play() end
+        vp.onErrorReceived = function(p, message) Log.print(message) end
+        vp:prepare()
+        local framebuffer = vp:getFramebuffer()
+        print(framebuffer, vp.isPrepared, vp.frameCount, vp.length, vp.time, vp.frame, vp.backend, vp.texture)
+        print(VideoPlayer.canPlay("ads/ad1.mp4"), VideoPlayer.clearCache(), VideoPlayer.clearCache("https://cdn.example.com/a.mp4"))
+    end
 end
 
 function Good:onContact(bodyA, shapeA, bodyB, shapeB)
@@ -162,6 +234,58 @@ function Good:onUpdate()
     ---@type integer
     local pending = ShaderPool.getPendingShaderCount()
     print(ready, pending, ShaderPool.isShaderReady("mesh:Ult,Vc3"))
+    -- script data: PlayerPrefs, Json, File (the hand-written signatures and option classes)
+    PlayerPrefs.setInt("coins", PlayerPrefs.getInt("coins", 0) + 1)
+    if PlayerPrefs.hasKey("name") then print(PlayerPrefs.getString("name", "")) end
+    PlayerPrefs.setFloat("volume", PlayerPrefs.getFloat("volume") * 0.5)
+    PlayerPrefs.save()
+    local text = Json.encode({coins = 1, list = Json.array(), none = Json.null}, {pretty = true, emptyTable = "object"})
+    local value, err = Json.tryDecode(text, {null = "nil", allowComments = true})
+    if not value then print(err) end
+    print(Json.isNull(Json.null), Json.decode(text), Json.object({}))
+    local ok, werr = Json.writeFile("data://save.json", {coins = 1})
+    local saved, rerr = Json.readFile("data://save.json")
+    local body, ferr = File.readText("data://save.json")
+    print(ok, werr, saved, rerr, body, ferr, File.exists("save.json"), File.list("data://"))
+    print(File.writeText("data://a.txt", "x"), File.appendText("a.txt", "y"), File.remove("a.txt"), File.makeDirs("data://d"))
+    print(UserSettings.hasKey("coins"), System.syncFileSystem(), System.isUserDataLoaded())
+    UserSettings.deleteKey("coins")
+    UserSettings.deleteAll()
+    -- http: the hand-written signatures and option classes
+    local req = Http.get("https://example.com/data.json", {timeout = 10, responseType = "json", owner = self}, function(res)
+        if res.ok then
+            print(res.status, res.data, res.body, res.headers["content-type"], res:header("etag"), res.url, res.redirected)
+        else
+            print(res.errorCode, res.error, res.elapsed)
+        end
+    end)
+    Http.post("https://example.com/api", {score = 3}, function(res) print(res.ok, res:json()) end)
+    Http.post("https://example.com/raw", "a=1", {headers = {["Content-Type"] = "text/plain"}})
+    Http.request{url = "https://example.com/x", method = "PUT", json = {a = 1}, onComplete = function(res) print(res.method) end}
+    Http.download("https://example.com/a.mp4", "data://ads/a.mp4", {resume = true, onProgress = function(r, got, total)
+        print(r.progress, r.bytesReceived, got, total)
+    end})
+    Http.getTexture("https://example.com/i.png", function(res) if res.textureData then print(res.textureData:getWidth()) end end)
+    Http.head("https://example.com", {redirects = false, query = {a = 1, b = "x"}})
+    print(req.state == HttpState.Done, req:isDone(), req.bytesTotal, req.response, Http.maxConcurrentRequests, Http.encodeUrl("a b"))
+    Http.timeout = 20
+    Http.logFailures = true
+    req:cancel()
+    -- native-bridge: the hand-written signatures and option classes
+    local code, err, errCode = Native.call("Device", "getCode", 1, "two", {three = 3})
+    print(code, err, errCode == "not_found")
+    local call = Native.callAsync("Ads", "show", {"unit"}, function(result, message, c)
+        print(result, message, c)
+    end, {owner = self, thread = "background", timeout = 5})
+    Native.callAsync("Ads", "load", function(result) print(result) end)
+    print(call.id, call.result, call.errorCode, call.errorMessage, call.plugin, call.method, call:isDone())
+    call:cancel()
+    local id = Native.on("Ads", "paid", function(payload) print(payload) end, self)
+    Native.off(id)
+    print(Native.has("Ads"), Native.has("Ads", "show"))
+    Native.setMock("Ads", {show = function() return Native.pending() end})
+    Native.emitMock("Ads", "paid", {value = 1})
+    Native.clearMock("Ads")
 end
 
 return Good
@@ -491,7 +615,8 @@ async def test_clangd_cpp_templates_parse(ed: Editor):
     await wait_tooling(ed)
     await ed.call("set_project_settings", values={"scripting.cxx_standard": 20})
     # Tooling is regenerated on project open/build, rather than on each settings edit.
-    with tempfile.TemporaryDirectory(prefix="jasper-tooling-reopen-") as other:
+    # beside the current project: create_project over MCP makes a project there, not in an unrelated folder
+    with tempfile.TemporaryDirectory(prefix="jasper-tooling-reopen-", dir=ed.scratch.root) as other:
         await ed.call("create_project", path=str(Path(other) / "Other"), name="ToolingReload", unsaved="discard")
         await ed.call("open_project", path=str(ed.project), unsaved="discard")
     await wait_tooling(ed)

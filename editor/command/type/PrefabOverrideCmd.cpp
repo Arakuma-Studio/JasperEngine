@@ -46,6 +46,7 @@ bool editor::PrefabOverrideCmd::execute(){
     if (!project->getScene(sceneId)){
         return false;
     }
+    writtenTargets = targets;
     before = project->capturePrefabUndoState(sceneId, entity, targets);
 
     switch (operation){
@@ -88,4 +89,13 @@ std::string editor::PrefabOverrideCmd::describe() const{
         case Operation::ApplyRemovedComponent: verb = "Apply Removed Component " + CommandNames::component(componentType); break;
     }
     return verb + " (" + CommandNames::entity(project, sceneId, entity) + ")";
+}
+
+std::vector<editor::Command::Touched> editor::PrefabOverrideCmd::touchedPaths(bool) const{
+    // an apply writes its prefab (and its undo writes it back)
+    std::vector<Touched> out;
+    for (const std::filesystem::path& file : writtenTargets){
+        out.push_back({file.is_absolute() ? file : project->getProjectPath() / file, false});
+    }
+    return out;
 }

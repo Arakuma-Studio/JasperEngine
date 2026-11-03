@@ -3,14 +3,29 @@
 
 // The editor side of the texture synthesis (texsynth/SynthesisSession, the recipe check of
 // util/ProjectChecks): what the core tests (editor/texsynth/tests) can't reach. File names that
-// are not UTF-8 and garbled recipes are reported, never thrown.
+// are not UTF-8 and garbled recipes are reported, never thrown. The window's Save writes without
+// the MCP server (ProjectFileWrites).
 
 #include <gtest/gtest.h>
 
+#include "App.h"
+#include "AppSettings.h"
+#include "Backend.h"
+#include "JasperEngine.h"
+#include "Platform.h"
+#include "Project.h"
+#include "command/CommandHandle.h"
+#include "command/CommandHistory.h"
+#include "command/type/CreateEntityCmd.h"
+#include "component/MeshComponent.h"
+#include "mcp/McpServer.h"
 #include "mcp/tools/W4Shared.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/ProjectChecks.h"
+#include "window/TextureSynthesisWindow.h"
+
+#include "imgui.h"
 
 #include "json.hpp"
 
@@ -28,6 +43,7 @@
 #include <thread>
 #include <vector>
 
+using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace ts = jasperengine::editor::texsynth;
 namespace fs = std::filesystem;
@@ -370,4 +386,90 @@ TEST(TextureSynthesisRun, FinishesCallsBackAndCancels) {
 
 TEST(TextureSynthesisRunDeathTest, ShutdownCancelsWaitsAndCallsNothingBack) {
     EXPECT_EXIT(shutdownWhileRunning(), ::testing::ExitedWithCode(0), "");
+}
+
+// ---- the window's Save without the MCP server
+
+namespace {
+
+    // In a child process (the editor's App, Platform and project set up for good; no MCP server):
+    // the Texture Synthesis window's Save is one project undo step (ProjectFileWrites), its undo
+    // and redo work, and a scene texture reading the output is released each time so it loads the
+    // new pixels
+    void windowSaveWithoutTheServer(const fs::path& dir, const fs::path& config) {
+        setenv("XDG_CONFIG_HOME", config.c_str(), 1);
+        AppSettings::initialize();
+        App& app = Backend::getApp();
+        Project* p = app.getProject();
+        static editor::Platform* platform = nullptr;
+        platform = new editor::Platform(p);
+        static char arg0[] = "jasperengine-editor-tests";
+        static char* argv[] = {arg0, nullptr};
+        Engine::systemInit(1, argv, platform);
+        Engine::pauseGameEvents(true);
+        Engine::setAsyncLoading(false);
+        if (!p->loadProject(dir, false)) std::exit(2);
+        Engine::setAsyncLoading(false);
+        if (mcp::McpServer::get().isStarted()) std::exit(3);
+        std::vector<uint8_t> png;
+        if (!ts::encodePng(smallImage(32, 3), png)) std::exit(4);
+        writeBytes(dir / "assets" / "rock.png", png);
+
+        // a Sprite drawing the output (as a scene would once it is assigned)
+        p->createNewScene("Synth", SceneType::SCENE_2D);
+        const uint32_t sceneId = p->getSelectedSceneId();
+        auto* create = new CreateEntityCmd(p, sceneId, "Rock", EntityCreationType::SPRITE);
+        create->setQuiet(true);
+        CommandHandle::get(sceneId)->addCommandNoMerge(create);
+        Texture& texture = p->getScene(sceneId)->scene->getComponent<MeshComponent>(create->getEntity()).submeshes[0].material.baseColorTexture;
+        texture = Texture("assets/rock_tile.png");
+
+        // the window reads ImGui's clock (a headless context, no frame drawn)
+        ImGui::CreateContext();
+        TextureSynthesisWindow window(p);
+        ts::SynthesisSpec spec;
+        spec.mode = ts::Mode::Tileable;
+        spec.examples.push_back({"assets/rock.png"});
+        spec.width = spec.height = 48;
+        spec.quality = ts::Quality::Draft;
+        spec.output = "assets/rock_tile.png";
+        window.setSpec(spec);
+        std::string error;
+        if (!window.generate(error)) {
+            std::fprintf(stderr, "generate: %s\n", error.c_str());
+            std::exit(5);
+        }
+        for (int i = 0; i < 2000 && !(window.currentRun() && window.currentRun()->finished()); i++) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if (!window.hasResult()) std::exit(6);
+        CommandHistory* history = p->getProjectCommandHistory();
+        const size_t before = history->position();
+        std::vector<std::string> written;
+        if (!window.save(false, written, error)) {
+            std::fprintf(stderr, "save: %s\n", error.c_str());
+            std::exit(7);
+        }
+        const fs::path out = dir / "assets" / "rock_tile.png";
+        if (written != std::vector<std::string>{"assets/rock_tile.png"} || !fs::is_regular_file(out)) std::exit(8);
+        if (history->position() != before + 1) std::exit(9);
+        texture.load();
+        if (!texture.hasData()) std::exit(10);
+        // undo: gone, the texture released; redo: back, released again
+        if (!history->undo() || fs::exists(out) || texture.hasData()) std::exit(11);
+        if (!history->redo() || !fs::is_regular_file(out)) std::exit(12);
+        texture.load();
+        if (!texture.hasData()) std::exit(13);
+        // a replacing Save: released for the new pixels
+        if (!window.save(true, written, error) || texture.hasData()) std::exit(14);
+        std::exit(0);
+    }
+
+}
+
+TEST(TextureSynthesisWindowDeathTest, SaveNeedsNoMcpServer) {
+    const fs::path dir = tempProject("window-save");
+    const fs::path config = dir.parent_path() / (dir.filename().string() + "-config");
+    fs::create_directories(config);
+    EXPECT_EXIT(windowSaveWithoutTheServer(dir, config), ::testing::ExitedWithCode(0), "");
+    fs::remove_all(dir);
+    fs::remove_all(config);
 }

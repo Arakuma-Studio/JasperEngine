@@ -44,6 +44,14 @@ namespace jasperengine::editor{
         bool renameFile(const fs::path& source, const fs::path& destination);
 
     public:
+        // Every file operation of this command (execute, undo, redo) stays beneath `root` when it
+        // happens (util/SafeWrite.h: resolved inside it first, no link planted on the way since
+        // followed; Command::writeRoot, which a command made in an MCP call's write scope has
+        // already). Its undo and redo are refused while a path it acts on resolves outside the
+        // root (touchedPaths). Without a root: the std::filesystem calls as before (in an active
+        // write scope, beneath its root).
+        void writeBeneath(fs::path root) { setWriteRoot(std::move(root)); }
+        std::vector<Touched> touchedPaths(bool undo) const override;
         RenameFileCmd(Project* project, std::string oldName, std::string newName, std::string directory);
 
         bool execute() override;

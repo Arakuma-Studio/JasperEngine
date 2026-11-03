@@ -8,6 +8,9 @@
 
 #include "System.h"
 
+#include <string>
+#include <vector>
+
 #define JASPERENGINE_WEB_MAX_GAMEPADS 16
 
 class JasperEngineWeb: public jasperengine::System{
@@ -26,6 +29,9 @@ private:
     static int syncWaitTime;
     static bool enabledIDB;
     static bool loadedIDB;
+    // the project waits for the IndexedDB restore (at most 3 s from startTime, ms)
+    static bool projectStarted;
+    static double startTime;
 
     static int screenWidth;
     static int screenHeight;
@@ -37,6 +43,18 @@ private:
 
     static bool quitRequested;
 
+    // pause sources (Engine::systemPause while any is on): the page hidden, a CrazyGames ad,
+    // the WebGL context lost
+    static bool pageHidden;
+    static bool adPlaying;
+    static bool contextLost;
+    // the window's focus (applied once the project has started)
+    static bool windowFocused;
+    // requestAnimationFrame intervals of the first frames (Screen.refreshRate)
+    static double lastFrameTime;
+    static std::vector<double> frameIntervals;
+    static float measuredRefreshRate;
+
     static GamepadState gamepads[JASPERENGINE_WEB_MAX_GAMEPADS];
 
     static EM_BOOL key_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData);
@@ -45,6 +63,7 @@ private:
     static EM_BOOL touch_callback(int emsc_type, const EmscriptenTouchEvent* emsc_event, void* user_data);
 
     static EM_BOOL canvas_resize(int eventType, const void *reserved, void *userData);
+    static EM_BOOL visibility_callback(int eventType, const EmscriptenVisibilityChangeEvent* e, void* userData);
     static EM_BOOL webgl_context_callback(int emsc_type, const void* reserved, void* user_data);
     static EM_BOOL pointerlock_callback(int eventType, const EmscriptenPointerlockChangeEvent* e, void* userData);
     static EM_BOOL focus_callback(int eventType, const EmscriptenFocusEvent* e, void* userData);
@@ -68,9 +87,14 @@ public:
     JasperEngineWeb();
 
     static void setEnabledIDB(bool enabledIDB);
+    static bool hasProjectStarted() { return projectStarted; }
 
     static int init(int argc, char **argv);
     static void changeCanvasSize(int width, int height);
+    // a pause source turned on or off (CrazyGames ads, the WebGL context)
+    static void setAdPlaying(bool playing);
+    static void setContextLost(bool lost);
+    static void updatePause();
 
     virtual int getScreenWidth() override;
     virtual int getScreenHeight() override;
@@ -106,11 +130,31 @@ public:
     virtual std::string getCrashReportPath() override;
 
     virtual bool syncFileSystem() override;
+    virtual bool flushFileSystem() override;
     virtual bool isUserDataLoaded() override;
 
     virtual std::string getStringForKey(const char *key, const std::string& defaultValue) override;
     virtual void setStringForKey(const char* key, const std::string& value) override;
     virtual void removeKey(const char *key) override;
+    virtual bool hasKey(const char *key) override;
+    virtual void removeAllKeys() override;
+    virtual void saveUserSettings() override;
+
+    // platform services (navigator, screen.orientation, the wake lock)
+    virtual std::vector<std::string> getPreferredLocales() override;
+    virtual std::string getOperatingSystem() override;
+    virtual std::string getOperatingSystemVersion() override;
+    virtual std::string getDeviceModel() override;
+    virtual jasperengine::DeviceType getDeviceType() override;
+    virtual int getSystemMemorySize() override;
+    virtual jasperengine::NetworkReachability getInternetReachability() override;
+    virtual bool vibrate(int milliseconds) override;
+    virtual bool hapticFeedback(jasperengine::HapticFeedback type) override;
+    virtual float getScreenDpi() override;
+    virtual float getRefreshRate() override;
+    virtual void setKeepScreenOn(bool keepOn) override;
+    virtual void applyOrientationPolicy(jasperengine::ScreenOrientation requested, uint8_t allowedMask) override;
+    virtual jasperengine::ScreenOrientation getScreenOrientation() override;
 
     virtual void initializeCrazyGamesSDK() override;
     virtual void showCrazyGamesAd(const std::string& type) override;
@@ -120,6 +164,8 @@ public:
     virtual void loadingStartCrazyGames() override;
     virtual void loadingStopCrazyGames() override;
 
+protected:
+    virtual bool platformOpenURL(const std::string& url) override;
 };
 
 

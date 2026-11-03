@@ -83,6 +83,19 @@ Information (not budgeted): `ref_10k` 0.25 ms per tick and 0.16 ms prep (2 threa
 The scalar kernels are the correctness reference (and the build without SIMD on the web): they
 emulate four lanes element by element, which is why they are so far behind.
 
+**After the upstream absorption** (S20 section 11: arc and radius modes, Align to Direction, offset
+curves, Limit Velocity's separate axes, Current inherit, 3D Rotation by Speed, the noise scroll,
+burst count curves, mesh alignment and the rest), on E on 2026-11-01, the same build and flags,
+three runs (median, range): the reference stack 3.50 ms on 1 thread (3.49-3.52, budget 4.0),
+0.65 ms projected for 8 workers (budget 1.0), without Noise 0.81 ms (0.81-0.81, budget 1.5) and
+0.15 ms projected (budget 0.5), parallel efficiency 0.82, SIMD 64 x and the Noise kernel 78 x,
+render prep 1.35 ms (sorted, 1 thread: 2.96 ms), `trails_10k` 0.47 ms, `collision_world_10k`
+0.23 ms, `many_small_1000x100` 1.33 ms, no allocation in the steady state: every budget holds
+(`check_bench.py`), the new fields cost nothing when they are off. Rerun after the total-velocity
+stretch channels (ChAnimVel*) went in: 3.49 ms on 1 thread, 0.65 ms projected, without Noise
+0.81 ms, SIMD 66 x, Noise 81 x, prep 1.41 ms, `many_small_1000x100` 1.44 ms, no allocation: every
+budget holds.
+
 ### Web
 
 The web rows of R21, R22 and R24, measured by the particles test project

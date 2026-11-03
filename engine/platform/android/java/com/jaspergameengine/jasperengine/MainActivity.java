@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
+import android.content.res.Configuration;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
@@ -16,6 +18,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.google.androidgamesdk.GameActivity;
+import com.jaspergameengine.bridge.JasperNative;
 
 public class MainActivity extends GameActivity {
 
@@ -89,21 +92,98 @@ public class MainActivity extends GameActivity {
 		admobWrapper = createOptionalWrapper("com.jaspergameengine.jasperengine.AdMobWrapper");
 		clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
 
-		// Games get Back as Escape. A callback, since Android 16 no longer sends it as a key
+		// Games get Back as Escape. A callback, since Android 16 no longer sends it as a key.
+		// A native plugin's listener may consume it first (an ad closing itself).
 		getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
 			@Override
 			public void handleOnBackPressed() {
-				onBackPressedNative();
+				if (!JasperNative.dispatchBackPressed()) onBackPressedNative();
 			}
 		});
 
 		super.onCreate(savedInstanceState);
+
+		// display rotation and device orientation listeners (Screen.orientation, Input.deviceOrientation)
+		JasperPlatform.onCreate(this);
+
+		// native plugins: their onJasperInit, then the lifecycle listeners (JasperNative)
+		JasperNative.dispatchInit(this, savedInstanceState);
+	}
+
+	// The lifecycle reaches native plugins' listeners after the activity's own handling
+
+	@Override
+	protected void onStart() {
+		super.onStart();
+		JasperNative.dispatchStart();
 	}
 
 	@Override
 	protected void onResume() {
 		super.onResume();
 		hideSystemUI();
+		JasperPlatform.onResume(this);
+		JasperNative.dispatchResume();
+	}
+
+	@Override
+	protected void onPause() {
+		JasperPlatform.onPause(this);
+		super.onPause();
+		JasperNative.dispatchPause();
+	}
+
+	@Override
+	protected void onStop() {
+		super.onStop();
+		JasperNative.dispatchStop();
+	}
+
+	@Override
+	protected void onDestroy() {
+		JasperNative.dispatchDestroy(this);
+		JasperPlatform.onDestroy(this);
+		super.onDestroy();
+	}
+
+	// deprecated in ComponentActivity, still what most SDKs need forwarded
+	@SuppressWarnings("deprecation")
+	@Override
+	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+		super.onActivityResult(requestCode, resultCode, data);
+		JasperNative.dispatchActivityResult(requestCode, resultCode, data);
+	}
+
+	@SuppressWarnings("deprecation")
+	@Override
+	public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+		super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+		JasperNative.dispatchRequestPermissionsResult(requestCode, permissions, grantResults);
+	}
+
+	@Override
+	protected void onNewIntent(Intent intent) {
+		super.onNewIntent(intent);
+		JasperNative.dispatchNewIntent(intent);
+	}
+
+	@Override
+	public void onWindowFocusChanged(boolean hasFocus) {
+		super.onWindowFocusChanged(hasFocus);
+		JasperNative.dispatchWindowFocusChanged(hasFocus);
+	}
+
+	@Override
+	public void onConfigurationChanged(Configuration newConfig) {
+		super.onConfigurationChanged(newConfig);
+		JasperNative.dispatchConfigurationChanged(newConfig);
+	}
+
+	// Player > Android > Fullscreen (android.fullscreen): the export writes false here for a game
+	// that shows the system bars; its safe area then keeps clear of them too (safe-area spec 6.5).
+	// Read once by the native side.
+	public boolean isFullscreenGame() {
+		return true;
 	}
 
 	public UserSettings getUserSettings() {

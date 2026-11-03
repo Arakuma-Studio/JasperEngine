@@ -7,6 +7,8 @@
 #include "SceneManager.h"
 #include "Catalog.h"
 #include "action/Ease.h"
+#include "math/Curve.h"
+#include "shader/ShaderGlobals.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -103,6 +105,7 @@ namespace jasperengine::editor{
         static std::string formatShadowQuality(ShadowQuality quality);
         static std::string formatSceneColorScale(SceneColorScale scale);
         static std::string formatPostProcessing(int indentSpaces, const PostProcessingSettings& settings, const std::string& variableName);
+        static std::string formatAudioLoadType(AudioLoadType loadType);
         static std::string formatUIEventState(UIEventState state);
         static std::string formatScriptType(ScriptType type);
         static std::string formatQuaternion(const Quaternion& q);
@@ -156,6 +159,8 @@ namespace jasperengine::editor{
         static std::string guardPhysicsCode(const std::string& code, const char* backendMacro);
 
     public:
+        // a CanvasScalerSettings expression with its non-default fields (generated code)
+        static std::string formatCanvasScaler(const CanvasScalerSettings& settings);
         // Registry members in build_prefab_* order (the prefab's root GameObject left out: it is
         // the root build_prefab_* is given). A nested root's children are GameObjects the prefab
         // adds to that nested instance: members like any other.
@@ -165,6 +170,13 @@ namespace jasperengine::editor{
         // C++ string literal of the value, quotes included
         static std::string formatString(const std::string& value);
         static std::string formatFloat(float value);
+        // Curve / Gradient literals (the Line and Trail Renderers' width curve and colour
+        // gradient): stream/CurveCodec's C++ forms
+        static std::string formatCurve(const Curve& curve);
+        static std::string formatGradient(const Gradient& gradient);
+        // {{"member", "global"}, ...} and a ShaderGlobalDecl{...} literal (shader globals spec 6.5)
+        static std::string formatShaderGlobalBindings(const ShaderGlobalBindings& bindings);
+        static std::string formatShaderGlobalDecl(const ShaderGlobalDecl& decl);
 
         static std::string prefabToFunctionName(const std::filesystem::path& prefabPath);
         static std::string prefabToBuildFunctionName(const std::filesystem::path& prefabPath);
@@ -199,9 +211,14 @@ namespace jasperengine::editor{
         static std::string createUIComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createPolygonComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createMeshPolygonComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createSafeAreaComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createTextEffectComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createSpriteComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createTilemapComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createTerrainComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createCameraShakerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createCameraFollowComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createVideoPlayerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createFluidSimulationComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createScriptComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createSkyboxComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
@@ -237,6 +254,7 @@ namespace jasperengine::editor{
         static std::string createCharacterControllerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false);
         static std::string createCharacterController2DComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false);
         static std::string createLineRendererComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createTrailRendererComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createPointsComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createInstancedMeshComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
     };

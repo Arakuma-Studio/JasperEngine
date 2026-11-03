@@ -4,11 +4,18 @@
 // W4: assets, import, materials, shaders, text files, placeholder art
 #include "asset/AssetOps.h"
 #include "asset/AssetTypes.h"
+#include "camera/ShakePreset.h"
+#include "camera/ShakeInstance.h"
+#include "media/VideoFormats.h"
+#include "media/VideoSourceFactory.h"
 #include "McpTools.h"
 #include "mcp/McpDataSafety.h"
 #include "DocumentFile.h"
+#include "util/ShaderGlobalsJson.h"
+#include "shader/ShaderGlobals.h"
 #include "W4Shared.h"
 #include "AnimationClipTools.h"
+#include "AnimatorTools.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -56,6 +63,7 @@
 #include "util/AssetDatabase.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
@@ -64,6 +72,7 @@
 #include "window/ProjectWindow.h"
 
 #include "stb_image.h"
+#include "unity/UnityParticleImport.h"
 #include "stb_image_resize2.h"
 #include "stb_image_write.h"
 #include "yaml-cpp/yaml.h"
@@ -159,14 +168,23 @@ namespace importers = jasperengine::editor::htmlui;
 
 // ------------------------------------------------------------------ helpers
 
-bool resolveExisting(const CallPtr& call, const std::string& key, fs::path& out, bool mustExist = true) {
+// What a path argument is for: read (links followed, wherever they lead), or written / created
+// (Write) or deleted / moved (Entry): then it must stay inside the project once links are resolved
+// (McpRefs::resolveProjectWritePath)
+enum class PathFor { Read, Write, Entry };
+
+bool resolveExisting(const CallPtr& call, const std::string& key, fs::path& out, bool mustExist = true, PathFor use = PathFor::Read) {
     const Json& args = call->args();
     if (!args.contains(key) || !args[key].is_string() || args[key].get<std::string>().empty()) {
         call->fail(key + " is required (a project-relative path).");
         return false;
     }
     std::string error;
-    if (!McpRefs::resolveProjectPath(call->ctx().project(), args[key].get<std::string>(), out, error, mustExist)) {
+    const bool ok = use == PathFor::Read
+        ? McpRefs::resolveProjectPath(call->ctx().project(), args[key].get<std::string>(), out, error, mustExist)
+        : McpRefs::resolveProjectWritePath(call->ctx().project(), args[key].get<std::string>(), out, error, mustExist,
+                                           use == PathFor::Entry ? McpRefs::WriteUse::Entry : McpRefs::WriteUse::Write);
+    if (!ok) {
         call->fail(error);
         return false;
     }
@@ -261,7 +279,7 @@ bool resolveShaderComponent(const CallPtr& call, Target& target, ShaderType& sha
         return true;
     }
     for (ComponentType candidate : {ComponentType::MeshComponent, ComponentType::UIComponent, ComponentType::PointsComponent,
-                                    ComponentType::LineRendererComponent, ComponentType::SkyboxComponent}) {
+                                    ComponentType::LineRendererComponent, ComponentType::TrailRendererComponent, ComponentType::SkyboxComponent}) {
         if (McpRefs::hasComponent(target.scene, target.entity, candidate)) {
             target.component = candidate;
             target.hasComponent = true;
@@ -270,7 +288,7 @@ bool resolveShaderComponent(const CallPtr& call, Target& target, ShaderType& sha
         }
     }
     (void)scene;
-    call->fail("The GameObject has no shader-capable component (mesh, ui, points, linerenderer, skybox).");
+    call->fail("The GameObject has no shader-capable component (mesh, ui, points, linerenderer, trailrenderer, skybox).");
     return false;
 }
 
@@ -890,6 +908,16 @@ void getAssetInfoTool(const CallPtr& call) {
                 text.pop_back();
             }
         }
+        if (extensionOf(file) != ".svg") {
+            // a sprite normal map: its recipe, whether its source changed, the regenerate arguments;
+            // a plain image: its normal map by the default names
+            const Json normals = spriteNormalsAssetInfo(project, file, true);
+            if (normals.is_object()) {
+                for (auto it = normals.begin(); it != normals.end(); ++it) data[it.key()] = it.value();
+                text += "." + spriteNormalsAssetText(normals);
+                text.pop_back();
+            }
+        }
     } else if (kind == "model") {
         std::string error;
         Json info;
@@ -919,6 +947,18 @@ void getAssetInfoTool(const CallPtr& call) {
                 text += ", " + std::to_string(info["meshes"].size()) + " mesh(es), " + std::to_string(info["materials"].size()) +
                         " material(s), " + std::to_string(info["animations"].size()) + " animation(s)";
             }
+            // the Avatar of a skinned model (anim-retarget): its humanoid map and Animation Type
+            if (info.contains("skins") && info["skins"].get<size_t>() > 0) {
+                const Json avatar = clip_tools::avatarJson(project, file);
+                if (!avatar.is_null() && !avatar.contains("humanoid")) {
+                    data["avatar"] = avatar;
+                    text += ", avatar: " + avatar["error"].get<std::string>();
+                } else if (!avatar.is_null()) {
+                    data["avatar"] = avatar;
+                    text += std::string(", ") + (avatar["humanoid"].get<bool>() ? "humanoid" : "not a humanoid") + " (Animation Type " +
+                            avatar["animation_type"].get<std::string>() + ")";
+                }
+            }
         }
     } else if (kind == "audio") {
         if (extensionOf(file) == ".wav") {
@@ -928,6 +968,35 @@ void getAssetInfoTool(const CallPtr& call) {
                 if (info.contains("duration_seconds")) text += ", " + std::to_string(info["duration_seconds"].get<double>()) + " s";
             }
         }
+    } else if (kind == "video") {
+        // the probe (header boxes only) and where it plays (video-mp4 spec 6.10)
+        const VideoProbe probe = VideoFormats::probeFile(file.string());
+        Json video = {{"container", probe.container}, {"readable", probe.readable}, {"width", probe.width}, {"height", probe.height},
+                      {"duration", std::round(probe.duration * 1000.0) / 1000.0}};
+        if (!probe.videoCodec.empty()) video["video_codec"] = {{"id", probe.videoCodecString.empty() ? probe.videoCodec : probe.videoCodecString},
+                                                               {"name", VideoFormats::codecName(probe.videoCodec)}};
+        if (!probe.audioCodec.empty()) video["audio_codec"] = {{"id", probe.audioCodecString.empty() ? probe.audioCodec : probe.audioCodecString},
+                                                               {"name", VideoFormats::codecName(probe.audioCodec)}, {"channels", probe.audioChannels}};
+        if (probe.frameRate > 0.0) video["frame_rate"] = std::round(probe.frameRate * 1000.0) / 1000.0;
+        if (probe.rotation != 0) video["rotation"] = probe.rotation;
+        const bool mp4 = probe.container == "mp4" || probe.container == "mov" || probe.container == "3gp";
+        if (mp4) video["fast_start"] = probe.fastStart;
+        if (probe.encrypted) video["encrypted"] = true;
+        Json playable = Json::object();
+        for (int p = 0; p < VideoSourceFactory::PLATFORM_COUNT; p++) {
+            const auto platform = (VideoSourceFactory::Platform)p;
+            playable[VideoSourceFactory::platformId(platform)] = VideoSourceFactory::playableOn(platform, probe);
+        }
+        video["playable_on"] = playable;
+        // here, in this editor (Play)
+        video["plays_here"] = probe.playable;
+        video["backend_here"] = probe.backend;
+        if (!probe.playable && probe.error) video["error"] = probe.error.message;
+        data["video"] = video;
+        if (mp4) data["fast_start"] = probe.fastStart;
+        data["playable_on"] = playable;
+        text += ", " + probe.container + " " + VideoFormats::codecName(probe.videoCodec) + " " + std::to_string(probe.width) + "x" +
+                std::to_string(probe.height) + ", playable_on " + playable.dump();
     } else if (kind == "material") {
         Material material;
         std::string error;
@@ -963,6 +1032,32 @@ void getAssetInfoTool(const CallPtr& call) {
     } else if (kind == "vertex_animation") {
         // a .vat: mode, clips, layout, stats, staleness against its recipe, the Vertex Animators using it
         vatAssetInfo(project, file, data, text);
+    } else if (kind == "shake") {
+        // a .shake: its values and the peaks of its graph (the Inspector's: 60 Hz, seed 0)
+        std::string source;
+        ProjectChecks::readFile(file, source);
+        const camera::ShakeParseResult parsed = camera::parseShakePreset(source);
+        if (!parsed.ok()) {
+            data["error"] = parsed.errorText();
+            text += "; not a valid shake preset: " + parsed.errorText();
+        } else {
+            const camera::ShakePreset& preset = parsed.file->preset;
+            const float duration = camera::shakePreviewDuration(preset);
+            const camera::ShakeOffset peaks = camera::shakeOffsetPeaks(camera::sampleShakePreset(preset, duration, 60.0f, 0));
+            data["shake"] = {{"type", camera::shakeTypeName(preset.type)}, {"strength", McpValues::number(preset.strength)},
+                             {"roughness", McpValues::number(preset.roughness)}, {"fade_in", McpValues::number(preset.fadeIn)},
+                             {"fade_out", McpValues::number(preset.fadeOut)},
+                             {"position_influence", McpValues::toJson(preset.positionInfluence)},
+                             {"rotation_influence", McpValues::toJson(preset.rotationInfluence)}};
+            data["peak"] = {{"position", McpValues::toJson(peaks.position)}, {"rotation", McpValues::toJson(peaks.rotation)},
+                            {"duration", McpValues::number(duration)}};
+            if (!parsed.warnings.empty()) data["warnings"] = parsed.warnings;
+            char summary[160];
+            std::snprintf(summary, sizeof(summary), "; %s shake, strength %g, roughness %g; peak rotation %.2f deg",
+                          camera::shakeTypeName(preset.type), preset.strength, preset.roughness,
+                          std::max(peaks.rotation.x, std::max(peaks.rotation.y, peaks.rotation.z)));
+            text += summary;
+        }
     }
     if (kind == "model" && rel.size() > 8 && Util::isVertexAnimationFile(rel.substr(0, rel.size() - 4))) {
         // "<stem>.vat.glb": the baked mesh and payload of the .vat next to it
@@ -978,7 +1073,8 @@ void getAssetInfoTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ view_asset
 
-void replyImage(const CallPtr& call, const fs::path& image, const std::string& label, int maxSize, const Json& synthesis = Json()) {
+void replyImage(const CallPtr& call, const fs::path& image, const std::string& label, int maxSize, const Json& synthesis = Json(),
+                const Json& normals = Json()) {
     int w = 0, h = 0, c = 0;
     unsigned char* pixels = stbi_load(image.string().c_str(), &w, &h, &c, 4);
     if (!pixels) {
@@ -995,9 +1091,12 @@ void replyImage(const CallPtr& call, const fs::path& image, const std::string& l
     }
     Json data = {{"width", w}, {"height", h}, {"preview_width", outW}, {"preview_height", outH}};
     if (!synthesis.is_null()) data["synthesis"] = synthesis;
+    if (normals.is_object()) {
+        for (auto it = normals.begin(); it != normals.end(); ++it) data[it.key()] = it.value();
+    }
     ToolResult result = ToolResult::success(label + " (" + std::to_string(w) + "x" + std::to_string(h) +
                                                 (outW != w ? ", shown at " + std::to_string(outW) + "x" + std::to_string(outH) : std::string()) + ")." +
-                                                synthesisAssetText(synthesis),
+                                                synthesisAssetText(synthesis) + spriteNormalsAssetText(normals),
                                             data);
     result.images.push_back({base64, "image/png"});
     call->reply(std::move(result));
@@ -1010,7 +1109,8 @@ void viewAssetTool(const CallPtr& call) {
     const std::string rel = projectRelative(project, file);
     const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
-        replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json());
+        replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json(),
+                   spriteNormalsAssetInfo(project, file, false));
         return;
     }
     if (Util::isVertexAnimationFile(rel)) {
@@ -1144,7 +1244,7 @@ void writeFileTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     fs::path file;
-    if (!resolveExisting(call, "path", file, false)) return;
+    if (!resolveExisting(call, "path", file, false, PathFor::Write)) return;
     const std::string rel = projectRelative(project, file);
     std::string why;
     if (isEditorOwnedFile(project, file, why)) {
@@ -1210,6 +1310,30 @@ void writeFileTool(const CallPtr& call) {
             return;
         }
     }
+    // Avatar Masks and Animator Controllers must stay loadable (layers and players read them): content problems
+    // (and a controller's validation) are warnings
+    std::vector<std::string> animWarnings;
+    if (Util::isAvatarMaskFile(rel) || Util::isAnimatorControllerFile(rel)) {
+        std::string why;
+        const bool mask = Util::isAvatarMaskFile(rel);
+        if (mask ? !animator_tools::checkMaskText(content, animWarnings, why) : !animator_tools::checkControllerText(project, content, animWarnings, why)) {
+            call->fail(std::string(mask ? "Not a valid Avatar Mask: " : "Not a valid Animator Controller: ") + why +
+                       (mask ? ". The format: jasper://docs/animator (Avatar Masks); or edit_avatar_mask." : ". Prefer edit_animator_controller (jasper://docs/animator)."));
+            return;
+        }
+    }
+    // Shake Presets must stay readable (the shakers load them): content problems are warnings
+    std::vector<std::string> shakeWarnings;
+    if (Util::isShakePresetFile(rel)) {
+        const camera::ShakeParseResult parsed = camera::parseShakePreset(content);
+        if (!parsed.ok()) {
+            call->fail("Not a valid shake preset: " + parsed.errorText() + ". The format: {\"format\": \"jasperengine.shake\", "
+                       "\"version\": 1, \"type\", \"strength\", \"roughness\", \"fade_in\", \"fade_out\", \"position_influence\", "
+                       "\"rotation_influence\"} (jasper://docs/camera).");
+            return;
+        }
+        shakeWarnings = parsed.warnings;
+    }
     // Vertex Animations must stay loadable: generated fields are the baker's (rebake), the rest are warnings
     std::vector<std::string> vatWarnings;
     if (Util::isVertexAnimationFile(rel)) {
@@ -1243,6 +1367,17 @@ void writeFileTool(const CallPtr& call) {
         text += vatWarnings.empty() ? std::string(" Valid Vertex Animation (its animators reload).")
                                     : " Vertex Animation loads with " + std::to_string(vatWarnings.size()) + " warning(s) (the bad parts are dropped):";
         for (size_t i = 0; i < vatWarnings.size() && i < 8; i++) text += "\n" + vatWarnings[i];
+    } else if (Util::isAvatarMaskFile(rel) || Util::isAnimatorControllerFile(rel)) {
+        data["warnings"] = animWarnings;
+        const char* kind = Util::isAvatarMaskFile(rel) ? "Avatar Mask" : "Animator Controller";
+        text += animWarnings.empty() ? std::string(" Valid ") + kind + " (its players reload)."
+                                     : std::string(" ") + kind + " loads with " + std::to_string(animWarnings.size()) + " warning(s):";
+        for (size_t i = 0; i < animWarnings.size() && i < 8; i++) text += "\n" + animWarnings[i];
+    } else if (Util::isShakePresetFile(rel)) {
+        data["warnings"] = shakeWarnings;
+        text += shakeWarnings.empty() ? std::string(" Valid shake preset.") : " Shake preset loads with " + std::to_string(shakeWarnings.size()) +
+                                                                            " warning(s) (bad values repaired):";
+        for (size_t i = 0; i < shakeWarnings.size() && i < 8; i++) text += "\n" + shakeWarnings[i];
     } else if (Util::isAnimationClipFile(rel)) {
         data["warnings"] = clipWarnings;
         text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";
@@ -1287,7 +1422,7 @@ void writeFileTool(const CallPtr& call) {
 
 void createFolderTool(const CallPtr& call) {
     fs::path dir;
-    if (!resolveExisting(call, "path", dir, false)) return;
+    if (!resolveExisting(call, "path", dir, false, PathFor::Write)) return;
     Project* project = call->ctx().project();
     std::error_code ec;
     if (fs::exists(dir, ec)) {
@@ -1298,7 +1433,10 @@ void createFolderTool(const CallPtr& call) {
         call->fail("The parent folder " + projectRelative(project, dir.parent_path()) + " does not exist; create it first.");
         return;
     }
-    if (!addProjectCommand(call->ctx(), new CreateDirCmd(dir.filename().string(), dir.parent_path().string()))) {
+    // made beneath the project: no link planted on the way since the check is followed
+    auto* create = new CreateDirCmd(dir.filename().string(), dir.parent_path().string());
+    create->setWriteRoots(McpRefs::trustedRoots(project));
+    if (!addProjectCommand(call->ctx(), create)) {
         call->fail("Couldn't create the folder.");
         return;
     }
@@ -1339,6 +1477,13 @@ class CopyAsCmd : public Command {
 public:
     CopyAsCmd(Project* project, fs::path from, fs::path to, std::shared_ptr<AssetOps::Result> report)
         : project(project), from(std::move(from)), to(std::move(to)), report(std::move(report)) {}
+
+    std::vector<Touched> touchedPaths(bool) const override {
+        std::vector<Touched> out = {{to, true}};
+        if (!pairTo.empty()) out.push_back({pairTo, true});
+        return out;
+    }
+
     bool execute() override {
         *report = AssetOps::copy(*project, from, to, &copyGuids);
         if (!report->ok) return false;
@@ -1453,6 +1598,15 @@ public:
         return CommandNames::clip("Move " + CommandNames::file(from));
     }
     const char* typeName() const override { return "MoveAsCmd"; }
+    // both entries renamed (and the other file of a Vertex Animation pair), each way
+    std::vector<Touched> touchedPaths(bool) const override {
+        std::vector<Touched> out = {{from, true}, {to, true}};
+        if (!pairTo.empty()) {
+            out.push_back({pairFrom, true});
+            out.push_back({pairTo, true});
+        }
+        return out;
+    }
 
 private:
     Project* project;
@@ -1475,16 +1629,105 @@ Json textReferencesJson(const std::vector<AssetOps::TextReference>& references) 
     return list;
 }
 
+// The project root, its project.yaml or something under a top-level hidden folder (.jasperengine,
+// .trash, .git ...): as named and where the entry resolves (a link inside the project to its root
+// or its .jasperengine is no way in); names compared as the file system may (letter case, Windows
+// aliases). What a tool never moves away or deletes.
+bool isProjectEntry(Project* project, const fs::path& absolute) {
+    // any hidden ('.'-named) component, anywhere in the path (assets/lib/.git too)
+    auto spelled = [](const fs::path& rel) {
+        if (rel.empty() || rel == ".") return true;
+        if (*rel.begin() == "..") return false;
+        for (const fs::path& part : rel) {
+            const std::string name = safewrite::comparableName(part);
+            if (!name.empty() && name[0] == '.' && name != "." && name != "..") return true;
+        }
+        return std::distance(rel.begin(), rel.end()) == 1 && safewrite::isProjectFileName(rel);
+    };
+    const fs::path normal = absolute.lexically_normal();
+    if (spelled(normal.lexically_relative(project->getProjectPath().lexically_normal()))) return true;
+    const fs::path where = safewrite::entryLocation(normal);
+    // as the entry resolves, against every trusted root (an assets or Lua root outside the project too)
+    for (const fs::path& root : McpRefs::trustedRoots(project)) {
+        if (!where.empty() && safewrite::isAtOrBelow(where, root) && spelled(where.lexically_relative(root))) {
+            // the root itself is not "an entry of the project"; trustedRootTouched handles roots
+            if (where.lexically_relative(root) == ".") continue;
+            return true;
+        }
+    }
+    return false;
+}
+
 void moveAssetTool(const CallPtr& call) {
     fs::path from, to;
-    if (!resolveExisting(call, "path", from)) return;
-    if (!resolveExisting(call, "to", to, false)) return;
+    // a copy only reads its source (a copy out of a linked-in library is fine); a move moves the entry
+    const bool copying = call->args().value("copy", false);
+    if (!resolveExisting(call, "path", from, true, copying ? PathFor::Read : PathFor::Entry)) return;
+    if (!resolveExisting(call, "to", to, false, PathFor::Write)) return;
     Project* project = call->ctx().project();
     const std::string fromRel = projectRelative(project, from), toRel = projectRelative(project, to);
     std::string why;
-    if (fromRel.empty() || fromRel == "project.yaml" || fromRel[0] == '.') {
-        call->fail("Can't move " + (fromRel.empty() ? std::string("the project root") : fromRel) + ".");
+    // not the project root, its project.yaml or a hidden folder's contents, nor a file named
+    // project.yaml anywhere (as named or where it resolves)
+    if (isProjectEntry(project, from) || !McpRefs::protectedPlace(project, from, copying ? McpRefs::WriteUse::Write : McpRefs::WriteUse::Entry).empty()) {
+        call->fail("Can't " + std::string(copying ? "copy " : "move ") + (fromRel.empty() ? std::string("the project root") : fromRel) +
+                   ": it is the project root, a project.yaml, or under a hidden folder (or leads there through a link).");
         return;
+    }
+    // never into a hidden or editor-owned place (.jasperengine, .trash, .git ...; project.yaml,
+    // scenes' generated files): a link moved there would let a build or an export write through it.
+    // Checked as named and where it resolves (a user link to .jasperengine is no way in)
+    {
+        std::string owned;
+        if (isEditorOwnedFile(project, to, owned)) {
+            call->fail("Can't move to " + toRel + ": " + owned + " Pick a folder of the project's assets.");
+            return;
+        }
+    }
+    // a trusted root (the assets or Lua folder, or a folder holding one) is not moved away, nor
+    // anything moved into its place
+    if (const std::string touched = McpRefs::trustedRootTouched(project, from, false); !touched.empty() && !copying) {
+        call->fail(touched);
+        return;
+    }
+    if (const std::string touched = McpRefs::trustedRootTouched(project, to, true); !touched.empty()) {
+        call->fail(touched);
+        return;
+    }
+    // moving a link that leads out of the project's trusted roots (or a folder holding one, at
+    // any depth) would relocate an escape hatch
+    {
+        std::error_code linkError;
+        const fs::file_status status = fs::symlink_status(from, linkError);
+        if (!copying && fs::is_symlink(status)) {
+            if (const std::string escape = McpRefs::writeEscape(project, from); !escape.empty()) {
+                call->fail("Can't move " + fromRel + ": it is a link leading out of the project (" + escape +
+                           ") — moving the link would take that elsewhere. Copy what it holds instead (move_asset copy: true), or move it yourself.");
+                return;
+            }
+        } else if (!copying && fs::is_directory(status)) {
+            if (const std::string escape = McpRefs::linkOutInside(project, from); !escape.empty()) {
+                call->fail("Can't move " + fromRel + ": it holds a link leading out of the project (" + escape +
+                           ") — moving the folder would take that link elsewhere. Remove the link first, or move the folder yourself.");
+                return;
+            }
+        }
+    }
+    // a copy makes no second project.yaml (the copy of a folder holding one: refused up front; the
+    // writers refuse it too)
+    if (copying) {
+        std::error_code scanError;
+        size_t entries = 0;
+        if (fs::is_directory(from, scanError)) {
+            for (fs::recursive_directory_iterator it(from, fs::directory_options::none, scanError), end; !scanError && it != end && entries < 200000;
+                 it.increment(scanError), entries++) {
+                if (!safewrite::isProjectFileName(it->path())) continue;
+                call->fail("Can't copy " + fromRel + ": it holds " + projectRelative(project, it->path()) +
+                           ", and tools make no file named project.yaml (another one would be a project to open). "
+                           "Copy the folder without it, or in the editor.");
+                return;
+            }
+        }
     }
     std::error_code ec;
     if (fs::exists(to, ec)) {
@@ -1515,6 +1758,8 @@ void moveAssetTool(const CallPtr& call) {
     auto report = std::make_shared<AssetOps::Result>();
     Command* cmd = copy ? static_cast<Command*>(new CopyAsCmd(project, from, to, report))
                         : static_cast<Command*>(new MoveAsCmd(project, from, to, report));
+    // made beneath the project's trusted roots: its undo and redo stay there too (util/SafeWrite.h)
+    cmd->setWriteRoots(McpRefs::trustedRoots(project));
     if (!addProjectCommand(call->ctx(), cmd)) {
         call->fail("Couldn't " + std::string(copy ? "copy " : "move ") + fromRel + " to " + toRel +
                    (report->error.empty() ? "." : ": " + report->error));
@@ -1555,13 +1800,19 @@ void deleteAssetTool(const CallPtr& call) {
     for (const Json& item : args["paths"]) {
         fs::path file;
         std::string error;
-        if (!item.is_string() || !McpRefs::resolveProjectPath(project, item.get<std::string>(), file, error, true)) {
+        // the entry itself goes to the trash: a link there is moved, never followed
+        if (!item.is_string() || !McpRefs::resolveProjectWritePath(project, item.get<std::string>(), file, error, true, McpRefs::WriteUse::Entry)) {
             call->fail(error.empty() ? "paths must be strings." : error);
             return;
         }
         const std::string rel = projectRelative(project, file.lexically_normal());
-        if (rel.empty() || rel == "project.yaml" || rel[0] == '.') {
+        if (isProjectEntry(project, file)) {
             call->fail("Refusing to delete " + (rel.empty() ? std::string("the project root") : rel) + ".");
+            return;
+        }
+        // a trusted root (the assets or Lua folder, or a folder holding one): never deleted by a tool
+        if (const std::string touched = McpRefs::trustedRootTouched(project, file, false); !touched.empty()) {
+            call->fail(touched);
             return;
         }
         for (SceneProject* scene : project->getScenesAndPrefabStages()) {
@@ -1602,6 +1853,8 @@ void deleteAssetTool(const CallPtr& call) {
         if (Util::isAnimationClipFile(rel)) clipUsers += findClipUsers(project, rel).size();
     }
     auto* deleteCmd = new DeleteFileCmd(project, files, project->getProjectPath());
+    // moved to the trash beneath the project: no link planted on the way since the check is followed
+    deleteCmd->setWriteRoots(McpRefs::trustedRoots(project));
     if (!addProjectCommand(call->ctx(), deleteCmd)) {
         call->fail("Couldn't delete the files.");
         return;
@@ -1628,6 +1881,7 @@ void deleteAssetTool(const CallPtr& call) {
 // worker thread; the main thread then rewrites the document and makes the editor notice the files.
 struct RemoteImport {
     fs::path projectRoot;
+    std::vector<fs::path> writeRoots;     // the project's trusted roots, for the worker's write scope
     std::string destDir;                  // project-relative, inside the assets
     std::vector<std::string> urls, fonts, icons;
     std::string document;                 // from_document, project-relative ("" = none)
@@ -1675,7 +1929,7 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
         return false;
     }
     fs::path target;
-    if (!resolveExisting(call, "to_dir", target, false)) return false;
+    if (!resolveExisting(call, "to_dir", target, false, PathFor::Write)) return false;
     std::error_code ec;
     std::vector<std::string> sources;
     Json imported = Json::array();
@@ -1685,11 +1939,27 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
             call->fail(item + " must be an existing absolute path (or an http(s) URL).");
             return false;
         }
-        if (Util::isInsidePath(source, project->getProjectPath())) {
+        // "already in the project" checked where it resolves, not just as spelled: /proc/self/root,
+        // a \\?\ prefix, a symbolic link or a case variant all land inside the project
+        const fs::path sourceReal = safewrite::resolvedPath(source);
+        const fs::path projectReal = safewrite::resolvedPath(project->getProjectPath());
+        if (Util::isInsidePath(source, project->getProjectPath()) ||
+            (!sourceReal.empty() && !projectReal.empty() && safewrite::isAtOrBelow(sourceReal, projectReal))) {
             call->fail(item + " is already in the project; use move_asset (copy: true) instead.");
             return false;
         }
         const fs::path dest = target / source.filename();
+        // never into an editor-owned or hidden place (.jasperengine, .git, .trash, project.yaml,
+        // CMakeLists.txt), as named or where it resolves
+        if (const std::string owned = McpRefs::protectedPlace(project, dest); !owned.empty()) {
+            call->fail("Can't import to " + projectRelative(project, dest) + ": " + owned);
+            return false;
+        }
+        // a link at the destination name leading out of the project: the copy would follow it
+        if (const std::string escape = McpRefs::writeEscape(project, dest); !escape.empty()) {
+            call->fail(escape);
+            return false;
+        }
         if (fs::exists(dest, ec) && !args.value("overwrite", false)) {
             call->fail(projectRelative(project, dest) + " already exists; pass overwrite: true to replace it.");
             return false;
@@ -1698,7 +1968,7 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
         imported.push_back(projectRelative(project, dest));
     }
     if (!fs::exists(target, ec)) {
-        fs::create_directories(target, ec);
+        FileUtils::createDirectories(target, ec);   // beneath the project (the call's write scope)
         if (ec) {
             call->fail("Can't create " + projectRelative(project, target) + ": " + ec.message());
             return false;
@@ -1927,6 +2197,7 @@ void importFilesTool(const CallPtr& call) {
 
     auto state = std::make_shared<RemoteImport>();
     state->projectRoot = project->getProjectPath();
+    state->writeRoots = McpWriteScope::projectRoots();
     // videos the engine does not play are converted (FFmpeg, on the worker) instead of copied (phase 6)
     std::vector<std::string> plainFiles;
     for (const std::string& item : local) {
@@ -1941,13 +2212,22 @@ void importFilesTool(const CallPtr& call) {
     }
     if (!state->videos.empty()) {
         fs::path target;
-        if (!resolveExisting(call, "to_dir", target, false)) return;
+        if (!resolveExisting(call, "to_dir", target, false, PathFor::Write)) return;
         state->videoTarget = target;
         state->overwrite = args.value("overwrite", false);
         for (const fs::path& video : state->videos) {
             fs::path output = target / video.filename();
             output.replace_extension(".webm");
             std::error_code ec;
+            // the converted file, its fallback name and the unconverted copy are written by the
+            // importer and FFmpeg: every name inside the project once links are resolved
+            // (named as the importer names them: its pathString is UTF-8)
+            for (const fs::path& name : {output, target / (FileUtils::pathToUtf8(video.stem()) + ".av1.webm"), target / video.filename()}) {
+                if (const std::string escape = McpRefs::writeEscape(project, name); !escape.empty()) {
+                    call->fail(escape);
+                    return;
+                }
+            }
             if (fs::exists(output, ec) && !state->overwrite) {
                 call->fail(projectRelative(project, output) + " already exists; pass overwrite: true to replace it.");
                 return;
@@ -1962,7 +2242,7 @@ void importFilesTool(const CallPtr& call) {
         const std::string assetsRel = projectRelative(project, project->getAssetsPath());
         const std::string destArg = args.contains("to_dir") && args["to_dir"].is_string() ? args["to_dir"].get<std::string>()
                                                                                             : (assetsRel.empty() ? "" : assetsRel + "/") + "ui/imported";
-        if (!McpRefs::resolveProjectPath(project, destArg, dest, error, false)) {
+        if (!McpRefs::resolveProjectWritePath(project, destArg, dest, error, false)) {
             call->fail(error);
             return;
         }
@@ -2006,6 +2286,8 @@ void importFilesTool(const CallPtr& call) {
     jobs::SubmitOptions options;
     options.name = "mcp-import";
     jobs::system().processChannel().submit([state]() {
+        // the importers' files beneath the project, as on the main thread (the scope is per thread)
+        McpWriteScope writeScope(state->writeRoots);
         for (const fs::path& video : state->videos)
             state->videoResults.push_back(importers::VideoImporter::importFile(video, state->videoTarget, state->overwrite));
         const std::string dest = state->destDir;
@@ -2031,7 +2313,7 @@ void createMaterialTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     fs::path file;
-    if (!resolveExisting(call, "path", file, false)) return;
+    if (!resolveExisting(call, "path", file, false, PathFor::Write)) return;
     if (extensionOf(file) != ".material") file += ".material";
     const std::string rel = projectRelative(project, file);
     std::error_code ec;
@@ -2095,7 +2377,7 @@ void updateMaterialTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     fs::path file;
-    if (!resolveExisting(call, "path", file)) return;
+    if (!resolveExisting(call, "path", file, true, PathFor::Write)) return;
     const std::string rel = projectRelative(project, file);
     if (extensionOf(file) != ".material") {
         call->fail(rel + " is not a .material file.");
@@ -2239,7 +2521,7 @@ void applyMaterialPresetTool(const CallPtr& call) {
             return;
         }
         fs::path file;
-        if (!resolveExisting(call, "path", file)) return;
+        if (!resolveExisting(call, "path", file, true, PathFor::Write)) return;
         const std::string rel = projectRelative(project, file);
         if (extensionOf(file) != ".material") {
             call->fail(rel + " is not a .material file.");
@@ -2344,6 +2626,12 @@ void forkShaderTool(const CallPtr& call) {
     const fs::path directory = FileUtils::pathFromUtf8(args.value("directory", FileUtils::pathToGenericUtf8(ProjectUtils::defaultShaderForkDir()))).lexically_normal();
     if (directory != "." && !Util::isSafeRelativePath(directory)) {
         call->fail("directory must be project-relative.");
+        return;
+    }
+    // the fork's files are written there: inside the project once links are resolved
+    if (const std::string escape = McpRefs::writeEscape(project, directory == "." ? project->getProjectPath() : project->getProjectPath() / directory);
+        !escape.empty()) {
+        call->fail("directory: " + escape);
         return;
     }
     const bool forkIncludes = args.value("fork_includes", false);
@@ -2539,6 +2827,79 @@ std::string uniformSetNote(const Json& members, const std::string& name, bool& d
            "the value is kept and applies once declared.";
 }
 
+// ---- global shader values (ShaderGlobals): what a shader's globals blocks and texture
+// uniforms read, and the members bound to globals
+
+const char* globalsMemberGlsl(ShaderUniformType type) {
+    return type == ShaderUniformType::MAT4 ? "mat4" : type == ShaderUniformType::MAT3 ? "mat3" : uniformTypeName(type);
+}
+
+void addGlobalMember(Json& list, const std::string& member, const char* stage, const std::string& glsl) {
+    for (const Json& entry : list) {
+        if (entry.value("member", "") == member && entry.value("stage", "") == stage) return;
+    }
+    ShaderGlobalValue value;
+    const bool exists = ShaderGlobals::get(ShaderGlobals::findID(member), value);
+    Json entry = {{"member", member}, {"stage", stage}, {"global", member}, {"glsl", glsl}, {"declared", exists && value.declared}};
+    if (!exists) {
+        entry["type"] = nullptr;
+        entry["value"] = nullptr;
+    } else {
+        entry["type"] = ShaderGlobals::getTypeName(value.type);
+        if (ShaderGlobals::isTexture(value.type))
+            entry["value"] = value.texture.isFramebuffer() ? std::string("<render target>") : value.texture.getPath(0);
+        else
+            entry["value"] = ShaderGlobalsJson::valueToJson(value.type, value.arraySize, value.values);
+    }
+    list.push_back(entry);
+}
+
+void appendGlobalMembers(Json& list, const ShaderLibraryBindings& bindings) {
+    auto block = [&list](const std::shared_ptr<GlobalsBlockLayout>& layout, const char* stage) {
+        if (!layout) return;
+        for (const GlobalsBlockLayout::Member& member : layout->members) {
+            std::string glsl = globalsMemberGlsl(member.type);
+            if (member.arrayCount > 1) glsl += "[" + std::to_string(member.arrayCount) + "]";
+            addGlobalMember(list, member.name, stage, glsl);
+        }
+    };
+    block(bindings.vsGlobals, "vertex");
+    block(bindings.fsGlobals, "fragment");
+    for (const GlobalTextureSlot& texture : bindings.globalTextures)
+        addGlobalMember(list, ShaderGlobals::nameOf(texture.globalId), "texture", texture.cube ? "textureCube" : "texture2D");
+}
+
+// the globals the loaded shaders of the entity's component read (a mesh: every submesh, or one)
+Json componentGlobalMembers(Scene* scene, Entity entity, ComponentType component, int submesh) {
+    Json list = Json::array();
+    if (component == ComponentType::MeshComponent) {
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {
+            for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                if (submesh >= 0 && (int)s != submesh) continue;
+                appendGlobalMembers(list, mesh->submeshes[s].libraryBindings);
+                appendGlobalMembers(list, mesh->submeshes[s].depthLibraryBindings);
+            }
+        }
+    } else if (UIComponent* ui = component == ComponentType::UIComponent ? scene->findComponent<UIComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, ui->libraryBindings);
+    } else if (PointsComponent* points = component == ComponentType::PointsComponent ? scene->findComponent<PointsComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, points->libraryBindings);
+    } else if (LineRendererComponent* lines = component == ComponentType::LineRendererComponent ? scene->findComponent<LineRendererComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, lines->libraryBindings);
+    } else if (SkyboxComponent* sky = component == ComponentType::SkyboxComponent ? scene->findComponent<SkyboxComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, sky->libraryBindings);
+    } else if (TrailRendererComponent* trail = component == ComponentType::TrailRendererComponent ? scene->findComponent<TrailRendererComponent>(entity) : nullptr) {
+        appendGlobalMembers(list, trail->libraryBindings);
+    }
+    return list;
+}
+
+Json globalBindingsJson(const ShaderGlobalBindings& bindings) {
+    Json json = Json::object();
+    for (const auto& binding : bindings) json[binding.first] = binding.second;
+    return json;
+}
+
 bool passIndexArg(const CallPtr& call, const std::vector<PostProcessPass>& passes, int& index) {
     const Json& value = call->args()["pass_index"];
     index = value.is_number_integer() ? value.get<int>() : -1;
@@ -2607,9 +2968,19 @@ void getShaderUniformsTool(const CallPtr& call) {
         const PostProcessPass& p = passes[index];
         bool buildFailed = false;
         passUniformMembers(members, warnings, p, buildFailed);
+        // the globals the pass's shader reads, from its reflection
+        Json globals = Json::array();
+        std::shared_ptr<ShaderRender> passShader = ShaderPool::get(ShaderType::POSTPROCESS, 0, ShaderPool::registerCustomShader(p.shader));
+        if (!buildFailed && passShader && passShader->isCreated()) {
+            ShaderLibraryBindings bindings;
+            bindings.vsGlobals = ShaderGlobals::acquireLayout(passShader->shaderData, ShaderGlobals::VERTEX_BLOCK);
+            bindings.fsGlobals = ShaderGlobals::acquireLayout(passShader->shaderData, ShaderGlobals::FRAGMENT_BLOCK);
+            appendGlobalMembers(globals, bindings);
+        }
         call->ok("Post-process pass " + std::to_string(index) + " (" + p.shader + "): " + std::to_string(members.size()) + " member(s).",
                  Json{{"pass_index", index}, {"shader", p.shader}, {"enabled", p.enabled}, {"build_failed", buildFailed},
-                      {"members", members}, {"warnings", warnings}, {"values", uniformValuesJson(p.uniforms)}});
+                      {"members", members}, {"warnings", warnings}, {"values", uniformValuesJson(p.uniforms)},
+                      {"globals", globals}, {"global_bindings", globalBindingsJson(p.shaderGlobalBindings)}});
         return;
     }
     ShaderType shaderType;
@@ -2634,7 +3005,9 @@ void getShaderUniformsTool(const CallPtr& call) {
                      {"build_failed", Catalog::isCustomShaderBuildFailed(scene, where.entity, where.component)},
                      {"members", members},
                      {"warnings", Catalog::getShaderUniformWarnings(blocks)},
-                     {"values", uniformValuesJson(sub.material.shaderParams)}};
+                     {"values", uniformValuesJson(sub.material.shaderParams)},
+                     {"globals", componentGlobalMembers(scene, where.entity, where.component, submesh)},
+                     {"global_bindings", globalBindingsJson(sub.material.shaderGlobalBindings)}};
         if (manifest) data["parameters"] = manifestParameters(manifest.get(), sub.material.shaderParams);
         // what this variant reads of the scene (phase 3) and the cost
         if (const uint32_t reads = Catalog::getMaterialSceneInputs(scene, where.entity, submesh, false)) {
@@ -2659,7 +3032,10 @@ void getShaderUniformsTool(const CallPtr& call) {
                  {"build_failed", Catalog::isCustomShaderBuildFailed(scene, where.entity, where.component)},
                  {"members", members},
                  {"warnings", warnings},
-                 {"values", uniformValuesJson(*values)}};
+                 {"values", uniformValuesJson(*values)},
+                 {"globals", componentGlobalMembers(scene, where.entity, where.component, -1)}};
+    if (const ShaderGlobalBindings* bindings = Catalog::getPropertyRef<ShaderGlobalBindings>(scene, where.entity, where.component, "shaderGlobalBindings"))
+        data["global_bindings"] = globalBindingsJson(*bindings);
     // a mesh's depth fork declares blocks of its own, listed in the same members
     if (std::string* depth = Catalog::getPropertyRef<std::string>(scene, where.entity, where.component, "customDepthShader")) {
         data["custom_depth_shader"] = *depth;
@@ -2910,7 +3286,20 @@ void checkShaderTool(const CallPtr& call) {
         // every fork in use
         forks = ProjectChecks::shaderForksUsingFiles(project, {"x.glsl"});
         if (forks.empty()) {
-            call->ok("No custom shader is used by the loaded scenes.", Json{{"results", Json::array()}, {"failed", 0}, {"findings", Json::array()}});
+            // no shader to compile: the scenes' own findings still apply (Stochastic Tiling,
+            // Line and Trail Renderers)
+            std::vector<ProjectChecks::Finding> sceneFindings = ProjectChecks::stochasticTilingFindings(project);
+            const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
+            sceneFindings.insert(sceneFindings.end(), lines.begin(), lines.end());
+            const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(project);
+            sceneFindings.insert(sceneFindings.end(), particleChecks.begin(), particleChecks.end());
+            std::string text = "No custom shader is used by the loaded scenes.";
+            Json findings = Json::array();
+            for (const ProjectChecks::Finding& finding : sceneFindings) {
+                findings.push_back(ProjectChecks::toJson(finding));
+                text += "\n" + finding.severity + ": " + finding.message;
+            }
+            call->ok(text, Json{{"results", Json::array()}, {"failed", 0}, {"findings", findings}});
             return;
         }
     }
@@ -2921,6 +3310,12 @@ void checkShaderTool(const CallPtr& call) {
     if (!args.contains("shader")) {
         const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(project);
         stateFindings.insert(stateFindings.end(), stochastic.begin(), stochastic.end());
+        // Line and Trail Renderers: a hairline sampling a texture, a trail with Time 0
+        const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
+        stateFindings.insert(stateFindings.end(), lines.begin(), lines.end());
+        // Particle Systems: legacy ones, points with a render mode, the mobile budget
+        const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(project);
+        stateFindings.insert(stateFindings.end(), particleChecks.begin(), particleChecks.end());
     }
     checkShadersWithFindings(call, forks, [call, stateFindings](Json results, Json findings) {
         for (const ProjectChecks::Finding& finding : stateFindings) findings.push_back(ProjectChecks::toJson(finding));
@@ -3035,7 +3430,7 @@ void placeholderArtTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     fs::path file;
-    if (!resolveExisting(call, "path", file, false)) return;
+    if (!resolveExisting(call, "path", file, false, PathFor::Write)) return;
     if (extensionOf(file) != ".png") file += ".png";
     const std::string rel = projectRelative(project, file);
     // project-relative like the paths of set_properties / create_entity, which only take assets
@@ -3173,6 +3568,51 @@ void placeholderArtTool(const CallPtr& call) {
 // ------------------------------------------------------------------ search_files
 
 // Searches the project's text files (what read_file reads): literal or ECMAScript regex, per line
+// import_unity_particles: a Unity .prefab / .unity (absolute path) as engine prefabs (particles spec 6.10)
+void importUnityParticlesTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    if (!args.contains("path") || !args["path"].is_string() || args["path"].get<std::string>().empty()) {
+        call->fail("path is required: the absolute path of a .prefab or .unity file inside a Unity project.");
+        return;
+    }
+    unity::ImportOptions options;
+    options.file = fs::u8path(args["path"].get<std::string>()).lexically_normal();
+    if (!options.file.is_absolute()) {
+        call->fail("path must be absolute (the Unity project is outside the engine project).");
+        return;
+    }
+    if (args.contains("object") && args["object"].is_string()) options.object = args["object"].get<std::string>();
+    if (args.contains("dest") && args["dest"].is_string()) options.dest = args["dest"].get<std::string>();
+    if (args.contains("unity_project") && args["unity_project"].is_string()) {
+        options.unityProject = fs::u8path(args["unity_project"].get<std::string>()).lexically_normal();
+    }
+    options.dryRun = args.value("dry_run", false);
+    options.overwrite = args.value("overwrite", false);
+    // the output folder: inside the project once links are resolved
+    fs::path dest;
+    std::string error;
+    if (!McpRefs::resolveProjectWritePath(project, options.dest, dest, error, false)) {
+        call->fail(error);
+        return;
+    }
+    const unity::ImportResult result = unity::importParticlesIntoProject(project, options);
+    if (!result.ok) {
+        call->fail(result.error);
+        return;
+    }
+    int notes = 0;
+    for (const Json& system : result.report["systems"]) notes += (int)system["notes"].size();
+    notes += (int)result.report["warnings"].size();
+    std::string message = std::string(options.dryRun ? "Would import " : "Imported ") + std::to_string(result.report["systems"].size()) +
+                          " particle system(s) into " + std::to_string(result.prefabs.size()) + " prefab(s)";
+    message += notes ? " with " + std::to_string(notes) + " note(s) (see report)." : ".";
+    if (!options.dryRun) message += " Instantiate a prefab with instantiate_prefab; undo removes the files.";
+    Json data = {{"prefabs", result.prefabs}, {"report", result.report}};
+    if (!result.reportFile.empty()) data["report_file"] = result.reportFile;
+    call->ok(message, data);
+}
+
 void searchFilesTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -3327,7 +3767,7 @@ void searchFilesTool(const CallPtr& call) {
 void registerAssetTools(McpRegistry& registry) {
     using namespace schema;
 
-    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "vertex_animation", "folder", "other"};
+    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "vertex_animation", "shake", "folder", "other"};
 
     {
         ToolDef tool;
@@ -3627,8 +4067,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Get Shader Uniforms";
         tool.description =
             "A custom or library shader's parameters (u_vs/u_fs_customParams, a pass's u_fs_postParams): GLSL type, "
-            "engine-written (time, resolution), value; library shaders add label, kind, default. entity (+ "
-            "component, + submesh) or pass_index; known once compiled.";
+            "engine-written (time, resolution), value; library shaders add label, kind, default; globals read "
+            "(u_vs/u_fs_globals) and global_bindings. entity (+ component, + submesh) or pass_index; known once compiled.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -3753,6 +4193,29 @@ void registerAssetTools(McpRegistry& registry) {
             {"overwrite", withDefault(boolean(""), false)}
         }, {"path"});
         tool.handler = placeholderArtTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "import_unity_particles";
+        tool.title = "Import Unity Particles";
+        tool.group = "particles";   // out of core to fit the budget (S31)
+        tool.description =
+            "Import the ParticleSystems of a Unity .prefab/.unity (absolute path; the Unity project is only read) as "
+            "engine prefabs (S20 systems: each renderer's material in its Renderer module) and textures. Returns the prefabs and a report (per module imported/"
+            "approximated/unsupported, notes). jasper://docs/particles";
+        tool.inputSchema = object({
+            {"path", string("Absolute .prefab or .unity path.")},
+            {"object", string("GameObject path, e.g. \"Player/Camera/EndParticles\".")},
+            {"dest", withDefault(assetPath(""), "assets/fx")},
+            {"unity_project", string("Default: found from path.")},
+            {"dry_run", withDefault(boolean(""), false)},
+            {"overwrite", withDefault(boolean(""), false)}
+        }, {"path"});
+        tool.annotations.openWorld = true;
+        tool.group = "particles";  // S31 tool groups: listed once enabled, callable always
+        tool.handler = importUnityParticlesTool;
         registry.addTool(std::move(tool));
     }
 

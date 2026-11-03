@@ -25,6 +25,7 @@
 #include "component/PoseAnimatorComponent.h"
 #include "pose/HumanBones.h"
 #include "pose/HumanoidMapIO.h"
+#include "pose/ModelRig.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseBaker.h"
 #include "pose/PoseMetrics.h"
@@ -41,7 +42,9 @@
 #include "pose/PoseTypes.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/ProjectChecks.h"
+#include "util/ProjectFileWrites.h"
 #include "util/Util.h"
 
 #include <algorithm>
@@ -522,7 +525,7 @@ const std::map<std::string, std::vector<std::string>>& opArguments() {
         {"apply_preset", {"op", "name", "clear_custom"}},
         {"auto_timing", {"op"}},
         {"set_preview_model", {"op", "model"}},
-        {"set_humanoid", {"op", "model", "bones"}},
+        {"set_humanoid", {"op", "model", "bones", "animation_type", "extra_bones", "twist"}},
         // templates (phase 6)
         {"apply_template", {"op", "name", "mode"}},
         {"save_template", {"op", "name", "description", "category"}},
@@ -866,13 +869,13 @@ std::string nearestBone(const std::string& name, const std::vector<std::string>&
 }
 
 bool setHumanoid(EditState& state, const Json& op, const std::string& path, std::string& error) {
-    if (!op.contains("model") || !op.contains("bones")) {
-        error = path + ": model and bones are required";
+    if (!op.contains("model") || !(op.contains("bones") || op.contains("animation_type") || op.contains("extra_bones") || op.contains("twist"))) {
+        error = path + ": model and at least one of bones, animation_type, extra_bones, twist are required";
         return false;
     }
     fs::path model;
     if (!readModelPath(state.project, op["model"], path + ".model", model, error)) return false;
-    const Json& bones = op["bones"];
+    const Json bones = op.contains("bones") ? op["bones"] : Json::object();
     if (!readObject(bones, path + ".bones", error)) return false;
     SidecarEdit* edit = nullptr;
     if (!sidecarFor(state, model, edit, path, error)) return false;
@@ -905,6 +908,89 @@ bool setHumanoid(EditState& state, const Json& op, const std::string& path, std:
         } else {
             error = path + ".bones." + it.key() + " must be a bone name, \"\" (unmapped) or null (auto-detect)";
             return false;
+        }
+    }
+    // the Avatar (anim-retarget 6.2): Animation Type, fingers / eyes / jaw, twist corrections
+    if (op.contains("animation_type")) {
+        AnimationType type = AnimationType::Generic;
+        if (!op["animation_type"].is_string() || !animationTypeFromName(op["animation_type"].get<std::string>(), type)) {
+            error = path + ".animation_type must be \"generic\" or \"humanoid\" (humanoid: the model's clips play as humanoid clips on any humanoid)";
+            return false;
+        }
+        // generic is the default: not written (the sidecar keeps its version 1 form)
+        if (type == AnimationType::Humanoid) edit->overrides.animationType = type;
+        else edit->overrides.animationType.reset();
+        set.push_back(std::string("animation_type ") + animationTypeName(type));
+    }
+    if (op.contains("extra_bones")) {
+        const Json& extra = op["extra_bones"];
+        if (!readObject(extra, path + ".extra_bones", error)) return false;
+        std::vector<std::string> extraNames;
+        for (int x = 0; x < HUMAN_EXTRA_BONE_COUNT; x++) extraNames.push_back(humanExtraBoneName(extraAt(x)));
+        for (auto it = extra.begin(); it != extra.end(); ++it) {
+            HumanExtraBone bone;
+            if (!humanExtraBoneFromName(it.key(), bone)) {
+                const std::string close = nearest(it.key(), extraNames);
+                error = path + ".extra_bones: unknown bone '" + it.key() + "'" + (close.empty() ? std::string(" (fingers <side>_<thumb|index|middle|ring|little>_"
+                        "<proximal|intermediate|distal>, left_eye, right_eye, jaw)") : " (did you mean '" + close + "'?)");
+                return false;
+            }
+            if (it.value().is_null()) {
+                edit->overrides.extraBones[(size_t)extraIndex(bone)].reset();
+                set.push_back(it.key() + " auto");
+            } else if (it.value().is_string()) {
+                const std::string name = it.value().get<std::string>();
+                if (!name.empty() && !info->boneNames.empty() &&
+                    std::find(info->boneNames.begin(), info->boneNames.end(), name) == info->boneNames.end()) {
+                    const std::string close = nearestBone(name, info->boneNames);
+                    error = path + ".extra_bones." + it.key() + ": the model has no bone '" + name + "'" +
+                            (close.empty() ? "" : " (did you mean '" + close + "'?)");
+                    return false;
+                }
+                edit->overrides.extraBones[(size_t)extraIndex(bone)] = name;
+                set.push_back(it.key() + (name.empty() ? " unmapped" : " = " + name));
+            } else {
+                error = path + ".extra_bones." + it.key() + " must be a bone name, \"\" (unmapped) or null (auto-detect)";
+                return false;
+            }
+        }
+    }
+    if (op.contains("twist")) {
+        const Json& twist = op["twist"];
+        if (!readObject(twist, path + ".twist", error)) return false;
+        for (auto it = twist.begin(); it != twist.end(); ++it) {
+            HumanBone bone;
+            if (!humanBoneFromName(it.key(), bone)) {
+                error = unknownSlotError(path + ".twist", it.key());
+                return false;
+            }
+            if (it.value().is_null()) {
+                edit->overrides.twist[(size_t)boneIndex(bone)].reset();
+                set.push_back("twist " + it.key() + " none");
+            } else if (it.value().is_number() && std::isfinite(it.value().get<double>()) && std::fabs(it.value().get<double>()) <= HUMANOID_MAX_TWIST) {
+                const float degrees = it.value().get<float>();
+                if (degrees == 0.0f) edit->overrides.twist[(size_t)boneIndex(bone)].reset();
+                else edit->overrides.twist[(size_t)boneIndex(bone)] = degrees;
+                set.push_back("twist " + it.key() + " " + fmt(degrees));
+            } else {
+                error = path + ".twist." + it.key() + " must be degrees from -180 to 180 (about the slot's neutral direction), or null";
+                return false;
+            }
+        }
+    }
+    // the hands and head as they will resolve: an override the runtime would drop (a bone that
+    // is a body slot's, a finger outside its hand) is refused here, not silently auto-detected
+    if ((op.contains("extra_bones") || op.contains("bones")) && !info->skeleton.bones.empty()) {
+        HumanoidMap body;
+        std::string bodyError;
+        if (pose::resolveHumanoid(info->skeleton, edit->overrides, body, &bodyError, nullptr)) {
+            HumanExtraMap extra;
+            std::string problem;
+            if (!pose::resolveExtraBones(info->skeleton, body, edit->overrides.extraBones, extra, &problem, nullptr)) {
+                error = path + ".extra_bones: " + problem + " (a finger goes under its hand's bone, eyes and jaw under the head; "
+                        "\"\" unmaps, null is auto-detect; get_asset_info's avatar lists the mapped bones)";
+                return false;
+            }
         }
     }
     std::string list;
@@ -1198,7 +1284,8 @@ Json clampJson(const std::vector<ClampReport>& reports) {
     return out;
 }
 
-bool resolveAnimationPath(Project* project, const Json& args, std::string& relative, fs::path& absolute, std::string& error) {
+// `write`: the tool writes the file (edit_pose_animation): inside the project once links are resolved
+bool resolveAnimationPath(Project* project, const Json& args, std::string& relative, fs::path& absolute, std::string& error, bool write = false) {
     if (!args.contains("path") || !args["path"].is_string()) {
         error = "path is required: the project-relative .poseanim file (e.g. assets/anim/walk.poseanim).";
         return false;
@@ -1208,7 +1295,10 @@ bool resolveAnimationPath(Project* project, const Json& args, std::string& relat
         error = "path: '" + relative + "' must end in .poseanim";
         return false;
     }
-    if (!McpRefs::resolveProjectPath(project, relative, absolute, error, false)) return false;
+    if (write ? !McpRefs::resolveProjectWritePath(project, relative, absolute, error, false)
+              : !McpRefs::resolveProjectPath(project, relative, absolute, error, false)) {
+        return false;
+    }
     absolute = absolute.lexically_normal();
     relative = projectRel(project, absolute);
     return true;
@@ -1341,7 +1431,7 @@ bool readBakeClip(Project* project, const Json& bake, bool& toClip, std::string&
         return false;
     }
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, bake["clip"].get<std::string>(), absolute, error, false)) {
+    if (!McpRefs::resolveProjectWritePath(project, bake["clip"].get<std::string>(), absolute, error, false)) {
         error = "bake.clip: " + error;
         return false;
     }
@@ -1421,6 +1511,56 @@ void bakeAnimatorTool(const CallPtr& call) {
     call->ok(PoseBaker::bakeStatusLine(source, result) + " (scene undo step)", out);
 }
 
+// edit_pose_animation without a path, only set_humanoid ops (anim-retarget 10): the models'
+// Avatars (.humanoid sidecars) as one project undo step; the clips of those models play again
+void avatarOnlyTool(const CallPtr& call) {
+    const Json& args = call->args();
+    EditState state;
+    state.project = call->ctx().project();
+    std::string error;
+    const Json& ops = args["ops"];
+    for (size_t i = 0; i < ops.size(); i++) {
+        const std::string path = "ops[" + std::to_string(i) + "]";
+        if (!checkKeys(ops[i], path, {"op", "model", "bones", "animation_type", "extra_bones", "twist"}, error) ||
+            !setHumanoid(state, ops[i], path, error)) {
+            call->fail(error + (ops.size() > 1 ? " (nothing was changed: ops are all or nothing)" : ""));
+            return;
+        }
+    }
+    std::vector<WriteFilesCmd::Item> items;
+    Json sidecars = Json::array();
+    for (const auto& [key, sidecar] : state.sidecars) {
+        const std::string text = writeHumanoidOverrides(sidecar.overrides);
+        std::string existing;
+        std::error_code ec;
+        if (fs::is_regular_file(sidecar.path, ec) && ProjectChecks::readFile(sidecar.path, existing) && existing == text) continue;
+        items.push_back({sidecar.path, text});
+        sidecars.push_back(projectRel(state.project, sidecar.path));
+    }
+    if (!items.empty() && !ProjectFileWrites::writeUndoable(state.project, items, error)) {
+        call->fail(error);
+        return;
+    }
+    // what the rigs are now
+    Json avatars = Json::array();
+    for (const auto& [key, sidecar] : state.sidecars) {
+        fs::path model = sidecar.path;
+        model.replace_extension();
+        const std::shared_ptr<const PoseRigInfo> info = PoseRigProvider::forModelFile(state.project, model);
+        Json avatar = {{"model", sidecar.model}, {"animation_type", animationTypeName(sidecar.overrides.animationType.value_or(AnimationType::Generic))},
+                       {"humanoid", info->rig != nullptr}};
+        if (!info->rig) avatar["error"] = info->error;
+        avatars.push_back(avatar);
+    }
+    std::string text = items.empty() ? std::string("no change: the sidecars already say this") :
+                       "wrote " + std::to_string(items.size()) + " sidecar(s) (one project undo step; the models' clips reload)";
+    for (const std::string& change : state.changes) text += "\n" + change;
+    for (const Json& avatar : avatars) {
+        if (avatar.contains("error")) text += "\nwarning: " + avatar["model"].get<std::string>() + " is no valid humanoid now: " + avatar["error"].get<std::string>();
+    }
+    call->ok(text, {{"changes", state.changes}, {"sidecars", sidecars}, {"avatars", avatars}, {"warnings", state.warnings}});
+}
+
 void editPoseAnimationTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -1428,9 +1568,16 @@ void editPoseAnimationTool(const CallPtr& call) {
         bakeAnimatorTool(call);
         return;
     }
+    if (!args.contains("path") && !args.contains("create") && args.contains("ops") && args["ops"].is_array() && !args["ops"].empty() &&
+        std::all_of(args["ops"].begin(), args["ops"].end(), [](const Json& op) {
+            return op.is_object() && op.contains("op") && op["op"] == "set_humanoid";
+        })) {
+        avatarOnlyTool(call);
+        return;
+    }
     std::string relative, error;
     fs::path absolute;
-    if (!resolveAnimationPath(project, args, relative, absolute, error)) {
+    if (!resolveAnimationPath(project, args, relative, absolute, error, true)) {
         call->fail(error);
         return;
     }
@@ -1946,7 +2093,7 @@ void renderPoseAnimationTool(const CallPtr& call) {
             call->fail("save_path must be a project-relative .png path.");
             return;
         }
-        if (!McpRefs::resolveProjectPath(project, savePath, saveTarget, error, false)) {
+        if (!McpRefs::resolveProjectWritePath(project, savePath, saveTarget, error, false)) {
             call->fail("save_path: " + error);
             return;
         }
@@ -2093,10 +2240,10 @@ void renderPoseAnimationTool(const CallPtr& call) {
                 created = created.parent_path();
             }
             ScopedExpectedWrite expected(created, created != saveTarget);
-            if (saveTarget.has_parent_path()) fs::create_directories(saveTarget.parent_path(), ec);
-            // atomic (S03): a failed write leaves an existing file whole
-            if (!io::writeFileAtomic(saveTarget, std::string_view(reinterpret_cast<const char*>(png.data()), png.size())).ok()) {
-                call->fail("Could not write the PNG to " + projectRel(project, saveTarget) + ".");
+            // beneath the project: no link planted on the way since the check is followed
+            std::string why;
+            if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, saveTarget), saveTarget, std::string(png.begin(), png.end()), why)) {
+                call->fail("Could not write the PNG to " + projectRel(project, saveTarget) + ": " + why);
                 return;
             }
             for (fs::path dir = saveTarget.parent_path(); created != saveTarget; dir = dir.parent_path()) {
@@ -2190,7 +2337,7 @@ void registerPoseTools(McpRegistry& registry) {
             "each op's fields: jasper://docs/pose-animation (Ops). angles: absolute degrees per DOF, add_angles: added; "
             "clamped values are echoed in clamped. create makes the file (template: from one); bake writes an Animation "
             "on a scene model (scene undo; without path: its Pose Animator's; clip: a shared .anim instead). Returns "
-            "changes and the touched poses with metrics.";
+            "changes and the touched poses with metrics. Without path, only set_humanoid ops: a model's Avatar.";
         // each op's fields: docs/mcp/guide/pose-animation.md (applyOp checks every op's keys and values)
         tool.inputSchema = object({
             {"path", assetPath("")},

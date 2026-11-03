@@ -26,6 +26,8 @@
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 #include "animation/VertexAnimation.h"
+#include "camera/ShakePreset.h"
+#include "pool/ShakePresetPool.h"
 #include "vat/VatBakeSession.h"
 #include "vat/VatDocument.h"
 
@@ -57,21 +59,35 @@ namespace {
 
 }
 
-// What fails to load in a changed .anim, .poseanim, Animator asset or .vat, then its warnings: the same reading
-// the documents and the players do
+// What fails to load in a changed .anim, .poseanim, Animator asset, .vat or .shake, then its warnings: the same
+// reading the documents and the players do
 void reload::addAnimationFileProblems(Project& project, const fs::path& path, Json& problems) {
     const std::string pathText = path.string();
     const bool clip = Util::isAnimationClipFile(pathText);
     const bool vertexAnimation = Util::isVertexAnimationFile(pathText);
     const bool animatorAsset = Util::isAnimatorAssetFile(pathText);
-    if (!clip && !vertexAnimation && !animatorAsset && !Util::isPoseAnimationFile(pathText)) return;
+    const bool shake = Util::isShakePresetFile(pathText);
+    if (!clip && !vertexAnimation && !animatorAsset && !shake && !Util::isPoseAnimationFile(pathText)) return;
     std::error_code ec;
     std::string text;
     if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, text)) return;
     const std::string relative = reload::rel(project, path);
 
     std::vector<std::string> warnings;
-    if (vertexAnimation) {
+    if (shake) {
+        // a .shake (camera shake spec 6): a shake naming it plays nothing until it reads again
+        const camera::ShakeParseResult parsed = camera::parseShakePreset(text);
+        if (!parsed.ok()) {
+            Json problem = {{"path", relative}, {"message", "Not a valid shake preset: " + parsed.error + " (nothing shakes with it)."}};
+            if (parsed.line > 0) {
+                problem["line"] = parsed.line;
+                problem["col"] = parsed.column;
+            }
+            problems.push_back(problem);
+            return;
+        }
+        warnings = parsed.warnings;
+    } else if (vertexAnimation) {
         // a .vat (vertex animation spec 2.1): the parser's error ("line:col: message" for JSON)
         const jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(text);
         if (!parsed.ok()) {
@@ -178,9 +194,12 @@ void reload::reloadAnimations(Context& ctx, const std::vector<fs::path>& files, 
         const std::string text = path.string();
         if (Util::isAnimatorAssetFile(text)) AnimatorAssetPool::invalidate(text);
         if (path.extension() == ".humanoid") humanoidChanged = true;
+        // Shake Presets are read again at their next use, whichever path names them (a save in
+        // the same timestamp tick too: the pool's own check is by stamp)
+        if (Util::isShakePresetFile(text)) ShakePresetPool::clear();
     }
     if (!files.empty()) AnimatorAssetDocument::filesChanged(files);
-    if (humanoidChanged) anim::clearRetargetSources();
+    if (humanoidChanged) anim::dropRetargetSources();
     if (all) {
         PoseAnimationDocument::checkDiskChanges();
         AnimationClipDocument::checkDiskChanges(project);

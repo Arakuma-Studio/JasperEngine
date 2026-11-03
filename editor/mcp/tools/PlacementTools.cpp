@@ -773,6 +773,8 @@ using PlacementCapturePtr = std::shared_ptr<PlacementCapture>;
 // dropped); the job must still end and the preview poses still go back
 void watchCapture(const PlacementCapturePtr& capture) {
     getEditorHost().enqueueMainThreadTask([capture]() {
+        // a continuation writes beneath the project, as the tool's run did
+        McpWriteScope writeScope;
         if (capture->finished) return;
         const CallPtr& call = capture->state->call;
         if (call->completed() || call->cancelled()) {
@@ -1017,6 +1019,8 @@ void tick(const PlacementCallPtr& state) {
 void scheduleTick(const PlacementCallPtr& state) {
     state->ctx->app().requestRedraw();
     getEditorHost().enqueueMainThreadTask([state]() {
+        // a continuation writes beneath the project, as the tool's run did
+        McpWriteScope writeScope;
         // whatever goes wrong, the job ends (the main-thread loop would swallow an exception and
         // leave it running forever)
         try {
@@ -1127,11 +1131,10 @@ void registerPlacementTools(McpRegistry& registry) {
     tool.name = "place_with_physics";
     tool.title = "Place With Physics";
     tool.description =
-        "Edit-time physics placement (the scene's own physics never runs): drop GameObjects onto what is under them, separate "
-        "overlapping ones, move them toward a target until they hit something, snap them onto the surface a ray hits, gather or "
-        "distribute them; then they settle. Generated colliders, nothing added to the scene. Preview by default (nothing "
-        "changes); the same arguments with apply: true commit exactly the preview (same state_hash, one undo step). Read hint "
-        "and warnings. Guide: jasper://docs/physics.";
+        "Edit-time physics placement (the scene's own physics never runs): drop, separate, move, snap, gather or distribute "
+        "GameObjects, then they settle (generated colliders, nothing added). Preview by default; the same arguments with "
+        "apply: true commit exactly the preview (same state_hash, one undo step). Read hint and warnings. "
+        "Guide: jasper://docs/physics.";
 
     // what each argument does: docs/mcp/guide/physics.md (Placing objects with physics)
     Json context;

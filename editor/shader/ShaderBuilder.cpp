@@ -4,6 +4,7 @@
 #include "ShaderBuilder.h"
 #include "diag/HangWatchdog.h"
 #include "io/AtomicFile.h"
+#include "shader/ShaderGlobals.h"
 
 #include "ShaderDataSerializer.h"
 #include "App.h"
@@ -372,6 +373,13 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
         "Shader %s (%s) generated successfully",
         getShaderDisplayName(shaderKey).c_str(),
         ShaderPool::getShaderLangStr(backend).c_str());
+    // what a fork reads of the global shader values that Project Settings does not declare as
+    // such (once: for the editor's own backend)
+    if (ShaderPool::getCustomIdFromKey(shaderKey) != 0 && backend == ShaderPool::getShaderBackend()) {
+        for (const ShaderGlobalDiagnostic& d : ShaderGlobals::checkShader(shaderData, ShaderGlobals::getDeclarationsSnapshot())) {
+            Out::warning("Shader %s: %s: %s", getShaderDisplayName(shaderKey).c_str(), d.code.c_str(), d.message.c_str());
+        }
+    }
     // a variant over the per-stage budget may not bind on some devices (GLES3: 16 texture units)
     const std::string over = ShaderVariantCompiler::checkResourceBudget(shaderData);
     if (!over.empty()){

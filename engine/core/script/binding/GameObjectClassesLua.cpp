@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "component/ActionComponent.h"
 
 #include "lua.hpp"
 
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
+#include "LuaFunction.h"
 #include "Scene.h"
 #include "subsystem/RenderSystem.h"
 
@@ -34,26 +36,45 @@
 #include "Model.h"
 #include "PoseAnimator.h"
 #include "AnimationPlayer.h"
+#include <cstdio>
+
+#include "Log.h"
+
 #include "VertexAnimator.h"
 #include "Animator.h"
+#include "CameraShaker.h"
+#include "CameraFollow.h"
+#include "camera/CameraShake.h"
+#include "camera/ShakePreset.h"
+#include "VideoPlayer.h"
 #include "animation/AnimationEvent.h"
 #include "MeshPolygon.h"
 #include "Points.h"
 #include "ParticleSystem.h"
 #include "LineRenderer.h"
+#include "TrailRenderer.h"
 #include "Sprite.h"
 #include "object/ui/Text.h"   // by path: lexbor has a dom/interfaces/text.h (Xcode header maps ignore case)
+#include "object/ui/TextEffect.h"
 #include "Image.h"
 #include "Button.h"
 #include "Panel.h"
 #include "Scrollbar.h"
 #include "Progressbar.h"
 #include "InputField.h"
+#include "object/ui/OnScreenControls.h"
+
+#include <algorithm>
+#include <cmath>
 #include "LayoutGroup.h"
+#include "object/ui/CanvasGroup.h"
 #include "AudioSource.h"
 #include "Engine.h"
 #include "ObjectManager.h"
 #include "PrefabAsset.h"
+#include "physics/PhysicsMaterial.h"
+#include "component/PhysicsCommon.h"
+#include <optional>
 #include "WaterVolume.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
@@ -61,6 +82,7 @@
 #include "Joint2D.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
+#include "Collision2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Rigidbody.h"
@@ -68,11 +90,75 @@
 #include "CharacterController.h"
 #include "ControllerColliderHit.h"
 #include "Joint3D.h"
+#include "Ragdoll.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
+#include "Collision.h"
+#include <stdexcept>
 #endif
 
 using namespace jasperengine;
+
+namespace{
+
+    // upstream's state info (Animator:getCurrentStateInfo, upstream's name) from S21's
+    jasperengine::ControllerStateInfo toControllerStateInfo(const jasperengine::AnimatorStateInfo& info){
+        jasperengine::ControllerStateInfo out;
+        out.isValid = info.valid;
+        out.name = info.name;
+        out.fullName = info.fullPath;
+        out.normalizedTime = info.normalizedTime;
+        out.length = info.length;
+        out.speed = info.speed;
+        out.loop = info.loop;
+        return out;
+    }
+
+}
+
+// The contact callbacks' values (physics-contacts): what they name may be gone since (nil then)
+namespace {
+
+    template<typename Ref>
+    std::optional<GameObject> luaColliderGameObject(const Ref& ref){
+        return ref.hasGameObject() ? std::optional<GameObject>(ref.getGameObject()) : std::nullopt;
+    }
+
+    template<typename Ref>
+    std::optional<GameObject> luaColliderReceiver(const Ref& ref){
+        const Entity receiver = ref.getReceiver();
+        return receiver != NULL_ENTITY ? std::optional<GameObject>(GameObject(ref.scene, receiver)) : std::nullopt;
+    }
+
+    // a new 1-based table of the contact points
+    template<typename CollisionT>
+    luabridge::LuaRef luaContactsTable(const CollisionT* self, lua_State* L){
+        luabridge::LuaRef table = luabridge::newTable(L);
+        for (size_t i = 0; i < self->contacts.size(); i++){
+            table[(int)i + 1] = self->contacts[i];
+        }
+        return table;
+    }
+
+    // getContact(i): 0-based, an error out of range (Unity throws)
+    template<typename CollisionT>
+    int luaGetContact(lua_State* L){
+        auto self = luabridge::get<const CollisionT*>(L, 1);
+        if (!self || !self.value()){
+            return luaL_error(L, "getContact: call it on a collision (collision:getContact(i))");
+        }
+        const lua_Integer index = luaL_checkinteger(L, 2);
+        const CollisionT* collision = self.value();
+        if (index < 0 || (size_t)index >= collision->contacts.size()){
+            return luaL_error(L, "getContact(%d): index out of range, the collision has %d contacts (0-based)", (int)index, (int)collision->contacts.size());
+        }
+        if (!luabridge::push(L, collision->contacts[(size_t)index])){
+            lua_pushnil(L);
+        }
+        return 1;
+    }
+
+}
 
 // Layer masks read as Unity's int (Everything is -1) and take any integer, keeping its
 // low 32 bits, so both -1 and ~LayerMask.getMask("UI") work
@@ -89,7 +175,109 @@ static void setLuaCullingMask(T* self, lua_Integer mask){
 
 // ---- GameObject.instantiate / destroy / destroyImmediate (Unity's Object.Instantiate...) ----
 
+// AudioSource (audio-mixer spec 8): the calls with option tables read the Lua stack themselves
 namespace {
+
+    AudioSource* luaAudioSelf(lua_State* L){
+        AudioSource* self = luabridge::detail::Userdata::get<AudioSource>(L, 1, false);
+        if (!self) luaL_error(L, "AudioSource: call with ':' on an AudioSource");
+        return self;
+    }
+
+    bool luaAudioOpt(lua_State* L, int index, const char* field){
+        if (!lua_istable(L, index)) return false;
+        lua_getfield(L, index, field);
+        const bool value = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        return value;
+    }
+
+    // sound:playOneShot(path [, volumeScale])
+    int luaAudioPlayOneShot(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->playOneShot(luaL_checkstring(L, 2), (float)luaL_optnumber(L, 3, 1.0));
+        return 0;
+    }
+
+    // sound:fadeIn(seconds [, opts])
+    int luaAudioFadeIn(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->fadeIn(luaL_checknumber(L, 2), luaAudioOpt(L, 3, "unscaled"));
+        return 0;
+    }
+
+    // sound:fadeOut(seconds [, opts]): opts.pause pauses instead of stopping
+    int luaAudioFadeOut(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->fadeOut(luaL_checknumber(L, 2), luaAudioOpt(L, 3, "pause"), luaAudioOpt(L, 3, "unscaled"));
+        return 0;
+    }
+
+    // sound:fadeTo(volume, seconds [, opts])
+    int luaAudioFadeTo(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        self->fadeTo(luaL_checknumber(L, 2), luaL_checknumber(L, 3), luaAudioOpt(L, 4, "unscaled"));
+        return 0;
+    }
+
+    // AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])
+    int luaAudioPlayClipAtPoint(lua_State* L){
+        Scene* scene = nullptr;
+        if (luabridge::isInstance<Scene*>(L, 1)){
+            auto result = luabridge::get<Scene*>(L, 1);
+            if (result) scene = result.value();
+        }
+        if (!scene) return luaL_error(L, "AudioSource.playClipAtPoint: argument 1 must be a Scene");
+        const std::string path = luaL_checkstring(L, 2);
+        auto position = luabridge::get<Vector3>(L, 3);
+        if (!position) return luaL_error(L, "AudioSource.playClipAtPoint: argument 3 must be a Vector3");
+        const float volume = (float)luaL_optnumber(L, 4, 1.0);
+        const std::string group = lua_isstring(L, 5) ? lua_tostring(L, 5) : "";
+        AudioSource::playClipAtPoint(scene, path, position.value(), volume, group);
+        return 0;
+    }
+
+}
+
+namespace {
+    // a binding's global argument: a name, or nil to unbind (anything else is an error)
+    std::string luaBindingGlobal(const luabridge::LuaRef& global, const char* function){
+        if (global.isNil())
+            return std::string();
+        if (global.isString())
+            return global.unsafe_cast<std::string>();
+        throw std::runtime_error(std::string(function) + ": the global is a name (a string), or nil to unbind");
+    }
+
+
+bool luaObjectArg(lua_State* L, int index, Scene*& scene, Entity& entity, std::string* scriptClass);
+
+// An entity field of a component shown to Lua (the Video Player's targets): a GameObject, nil
+// for none
+std::optional<GameObject> gameObjectOrNil(Scene* scene, Entity entity){
+    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity))
+        return std::nullopt;
+    return GameObject(scene, entity);
+}
+
+// ... set from a GameObject (any handle, a script instance), an entity number or nil
+Entity entityOf(const luabridge::LuaRef& value, const char* field){
+    if (value.isNil())
+        return NULL_ENTITY;
+    if (value.isNumber())
+        return (Entity)value.unsafe_cast<lua_Integer>();
+    lua_State* L = value.state();
+    value.push(L);
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    const bool ok = luaObjectArg(L, -1, scene, entity, nullptr);
+    lua_pop(L, 1);
+    if (!ok){
+        Log::error("VideoPlayer.%s takes a GameObject or nil", field);
+        return NULL_ENTITY;
+    }
+    return entity;
+}
 
 // A GameObject argument: any GameObject handle (EntityHandle and what derives from it), or
 // a Lua script instance (its self: a table with scene and entity), whose class is returned
@@ -147,6 +335,66 @@ bool luaValueArg(lua_State* L, int index, T& value){
 //   (position, rotation [, parent])          world values
 //   (scene [, position, rotation])           a prefab in that scene
 // Returns the new GameObject (for a script, the copy's script of the same class), or nil.
+// LineRenderer / TrailRenderer :setPosition(index, position) and :getPosition(index): 0-based
+// like Unity; an index out of range raises an error naming the count
+template<typename T>
+int luaRendererSetPosition(lua_State* L, const char* className){
+    auto self = luabridge::get<T*>(L, 1);
+    if (!self || !*self){
+        return luaL_error(L, "%s.setPosition: call it on a %s (renderer:setPosition(index, position))", className, className);
+    }
+    if (!luabridge::isInstance<Vector3>(L, 3)){
+        // GameObject's setPosition(x, y[, z]) (the object's own position) keeps working
+        if (lua_isnumber(L, 2) && lua_isnumber(L, 3)){
+            if (lua_isnumber(L, 4)){
+                (*self)->GameObject::setPosition((float)lua_tonumber(L, 2), (float)lua_tonumber(L, 3), (float)lua_tonumber(L, 4));
+            }else{
+                (*self)->GameObject::setPosition((float)lua_tonumber(L, 2), (float)lua_tonumber(L, 3));
+            }
+            return 0;
+        }
+        return luaL_error(L, "%s.setPosition: expected (index, Vector3), or the GameObject's (x, y[, z])", className);
+    }
+    if (!lua_isinteger(L, 2)){
+        return luaL_error(L, "%s.setPosition: the index must be an integer (0-based)", className);
+    }
+    const lua_Integer index = lua_tointeger(L, 2);
+    auto position = luabridge::get<Vector3>(L, 3);
+    const int count = (*self)->getPositionCount();
+    if (index < 0 || index >= count || !position){
+        return luaL_error(L, "%s.setPosition: index %d is out of range: positionCount is %d (indices 0..%d)",
+                          className, (int)index, count, count - 1);
+    }
+    (*self)->setPosition((int)index, *position);
+    return 0;
+}
+
+template<typename T>
+int luaRendererGetPosition(lua_State* L, const char* className){
+    auto self = luabridge::get<T*>(L, 1);
+    if (!self || !*self){
+        return luaL_error(L, "%s.getPosition: call it on a %s (renderer:getPosition(index))", className, className);
+    }
+    if (!lua_isinteger(L, 2)){
+        return luaL_error(L, "%s.getPosition: expected (index)", className);
+    }
+    const lua_Integer index = lua_tointeger(L, 2);
+    const int count = (*self)->getPositionCount();
+    if (index < 0 || index >= count){
+        return luaL_error(L, "%s.getPosition: index %d is out of range: positionCount is %d (indices 0..%d)",
+                          className, (int)index, count, count - 1);
+    }
+    if (!luabridge::push(L, (*self)->getPosition((int)index))){
+        return luaL_error(L, "%s.getPosition: out of Lua stack", className);
+    }
+    return 1;
+}
+
+int luaLineSetPosition(lua_State* L){ return luaRendererSetPosition<LineRenderer>(L, "LineRenderer"); }
+int luaLineGetPosition(lua_State* L){ return luaRendererGetPosition<LineRenderer>(L, "LineRenderer"); }
+int luaTrailSetPosition(lua_State* L){ return luaRendererSetPosition<TrailRenderer>(L, "TrailRenderer"); }
+int luaTrailGetPosition(lua_State* L){ return luaRendererGetPosition<TrailRenderer>(L, "TrailRenderer"); }
+
 int luaInstantiate(lua_State* L){
     const int argc = lua_gettop(L);
 
@@ -259,6 +507,136 @@ int luaDestroyImmediate(lua_State* L){
 
 }
 
+// ---- 2D physics: bodies given to joints, materials given to bodies and colliders ----
+
+namespace {
+
+    // a material argument: a .physicsmaterial path, a PhysicsMaterial or nil (none)
+    bool luaMaterialArg(const luabridge::LuaRef& value, PhysicsMaterial& material, std::string& path){
+        material = PhysicsMaterial();
+        path.clear();
+        if (value.isNil()){
+            return true;
+        }
+        if (value.isString()){
+            path = value.tostring();
+            return true;
+        }
+        if (value.isInstance<PhysicsMaterial>()){
+            material = value.cast<PhysicsMaterial>().value();
+            return true;
+        }
+        return false;
+    }
+
+    std::optional<PhysicsMaterial> luaMaterialResult(const PhysicsMaterial& material){
+        if (!material.valid()){
+            return std::nullopt;
+        }
+        return material;
+    }
+
+    PhysicsMaterialCombine luaCombineArg(const luabridge::LuaRef& value, PhysicsMaterialCombine fallback){
+        if (value.isNumber()){
+            const int mode = value.unsafe_cast<int>();
+            if (mode >= (int)PhysicsMaterialCombine::AVERAGE && mode <= (int)PhysicsMaterialCombine::MAXIMUM){
+                return (PhysicsMaterialCombine)mode;
+            }
+        }
+        if (value.isString()){
+            PhysicsMaterialCombine mode;
+            if (physicsmaterial::combineFromName(value.tostring(), mode)){
+                return mode;
+            }
+        }
+        return fallback;
+    }
+
+#ifdef JASPERENGINE_PHYSICS_2D
+    // a joint body argument: a GameObject (or any handle, a script) with a Rigidbody 2D, or nil
+    Entity luaJointBodyArg(Joint2D* self, const luabridge::LuaRef& value, lua_State* L, const char* property){
+        if (value.isNil()){
+            return NULL_ENTITY;
+        }
+        Scene* scene = nullptr;
+        Entity entity = NULL_ENTITY;
+        const int top = lua_gettop(L);
+        value.push(L);
+        const bool isObject = luaObjectArg(L, lua_gettop(L), scene, entity);
+        lua_settop(L, top);
+        if (!isObject){
+            // an exception (LuaBridge turns it into a Lua error): luaL_error would longjmp past
+            // the C++ objects alive here
+            throw std::runtime_error(std::string("Joint2D.") + property + ": a GameObject or Rigidbody2D with a Rigidbody 2D, or nil");
+        }
+        if (scene != self->getScene() || !scene->isEntityCreated(entity) || !scene->findComponent<Rigidbody2DComponent>(entity)){
+            throw std::runtime_error(std::string("Joint2D.") + property + ": \"" + (scene ? scene->getEntityName(entity) : std::string("?")) +
+                                     "\" has no Rigidbody 2D (in the joint's scene)");
+        }
+        return entity;
+    }
+
+    std::optional<GameObject> luaJointBody(const Joint2D* self, Entity body){
+        Scene* scene = self->getScene();
+        if (body == NULL_ENTITY || !scene || !scene->isEntityCreated(body)){
+            return std::nullopt;
+        }
+        return GameObject(scene, body);
+    }
+#endif
+
+}
+
+#ifdef JASPERENGINE_PHYSICS_3D
+namespace {
+    // a 3D joint body argument: a GameObject (or any handle, a script) with a Rigidbody, or nil
+    Entity luaJoint3DBodyArg(Joint3D* self, const luabridge::LuaRef& value, lua_State* L, const char* property){
+        if (value.isNil()){
+            return NULL_ENTITY;
+        }
+        Scene* scene = nullptr;
+        Entity entity = NULL_ENTITY;
+        const int top = lua_gettop(L);
+        value.push(L);
+        const bool isObject = luaObjectArg(L, lua_gettop(L), scene, entity);
+        lua_settop(L, top);
+        if (!isObject){
+            throw std::runtime_error(std::string("Joint3D.") + property + ": a GameObject or Rigidbody with a Rigidbody, or nil");
+        }
+        if (scene != self->getScene() || !scene->isEntityCreated(entity) || !scene->findComponent<RigidbodyComponent>(entity)){
+            throw std::runtime_error(std::string("Joint3D.") + property + ": \"" + (scene ? scene->getEntityName(entity) : std::string("?")) +
+                                     "\" has no Rigidbody (in the joint's scene)");
+        }
+        return entity;
+    }
+
+    std::optional<GameObject> luaJoint3DBody(const Joint3D* self, Entity body){
+        Scene* scene = self->getScene();
+        if (body == NULL_ENTITY || !scene || !scene->isEntityCreated(body)){
+            return std::nullopt;
+        }
+        return GameObject(scene, body);
+    }
+
+    // a Ragdoll entity argument: a GameObject (or handle) or nil
+    Entity luaEntityArg(Scene* expected, const luabridge::LuaRef& value, lua_State* L, const char* what){
+        if (value.isNil()){
+            return NULL_ENTITY;
+        }
+        Scene* scene = nullptr;
+        Entity entity = NULL_ENTITY;
+        const int top = lua_gettop(L);
+        value.push(L);
+        const bool isObject = luaObjectArg(L, lua_gettop(L), scene, entity);
+        lua_settop(L, top);
+        if (!isObject || scene != expected){
+            throw std::runtime_error(std::string(what) + ": a GameObject of the same scene, or nil");
+        }
+        return entity;
+    }
+}
+#endif
+
 namespace {
     // the shader a component draws with: its customShader, else the scene's default
     template <class T>
@@ -268,6 +646,190 @@ namespace {
         return (shader.empty() && scene) ? scene->getDefaultCustomShader(type) : shader;
     }
 }
+
+// ---- Camera Shake (camera shake spec 8): preset and options arguments ----
+
+namespace {
+
+// The error of a camera shake argument, formatted for luaL_error once the C++ objects are gone
+struct ShakeArgError{
+    char text[320] = {0};
+
+    bool set(const char* function, const char* format, const char* detail = ""){
+        char what[256];
+        std::snprintf(what, sizeof(what), format, detail);
+        std::snprintf(text, sizeof(text), "%s: %s", function, what);
+        return false;
+    }
+};
+
+// a number field of the table at `index`: absent (nil) leaves `out` and returns true; another
+// type is an error
+bool luaShakeNumberField(lua_State* L, int index, const char* key, float& out, const char* function, ShakeArgError& error){
+    lua_getfield(L, index, key);
+    const int type = lua_type(L, -1);
+    bool ok = true;
+    if (type == LUA_TNUMBER){
+        out = (float)lua_tonumber(L, -1);
+    }else if (type != LUA_TNIL){
+        ok = error.set(function, "%s must be a number", key);
+    }
+    lua_pop(L, 1);
+    return ok;
+}
+
+bool luaShakeVectorField(lua_State* L, int index, const char* key, Vector3& out, const char* function, ShakeArgError& error){
+    lua_getfield(L, index, key);
+    bool ok = true;
+    if (!lua_isnil(L, -1) && !luaValueArg<Vector3>(L, -1, out)){
+        ok = error.set(function, "%s must be a Vector3", key);
+    }
+    lua_pop(L, 1);
+    return ok;
+}
+
+// preset: a built-in name or a .shake path, or a table {type = "one_shot"|"sustained", strength,
+// roughness, fadeIn, fadeOut, positionInfluence = Vector3, rotationInfluence = Vector3} whose
+// missing keys take the .shake defaults
+bool luaShakeSourceArg(lua_State* L, int index, ShakeSource& out, const char* function, ShakeArgError& error){
+    index = lua_absindex(L, index);
+    if (lua_type(L, index) == LUA_TSTRING){
+        out = ShakeSource(std::string(lua_tostring(L, index)));
+        return true;
+    }
+    if (!lua_istable(L, index)){
+        return error.set(function, "the preset must be a built-in name, a .shake path or a table, got %s", luaL_typename(L, index));
+    }
+    camera::ShakePreset preset;
+    lua_getfield(L, index, "type");
+    if (lua_type(L, -1) == LUA_TSTRING){
+        if (!camera::shakeTypeFromName(lua_tostring(L, -1), preset.type)){
+            lua_pop(L, 1);
+            return error.set(function, "preset type must be \"one_shot\" or \"sustained\"");
+        }
+    }else if (!lua_isnil(L, -1)){
+        lua_pop(L, 1);
+        return error.set(function, "preset type must be \"one_shot\" or \"sustained\"");
+    }
+    lua_pop(L, 1);
+    if (!luaShakeNumberField(L, index, "strength", preset.strength, function, error) ||
+        !luaShakeNumberField(L, index, "roughness", preset.roughness, function, error) ||
+        !luaShakeNumberField(L, index, "fadeIn", preset.fadeIn, function, error) ||
+        !luaShakeNumberField(L, index, "fadeOut", preset.fadeOut, function, error) ||
+        !luaShakeVectorField(L, index, "positionInfluence", preset.positionInfluence, function, error) ||
+        !luaShakeVectorField(L, index, "rotationInfluence", preset.rotationInfluence, function, error)){
+        return false;
+    }
+    out = ShakeSource(preset);
+    return true;
+}
+
+// options: nil or {strength, roughness, seed, unscaled, fadeIn, fadeOut}
+bool luaShakeOptionsArg(lua_State* L, int index, ShakeOptions& out, const char* function, ShakeArgError& error){
+    index = lua_absindex(L, index);
+    if (lua_isnoneornil(L, index)) return true;
+    if (!lua_istable(L, index)){
+        return error.set(function, "options must be a table, got %s", luaL_typename(L, index));
+    }
+    if (!luaShakeNumberField(L, index, "strength", out.strength, function, error) ||
+        !luaShakeNumberField(L, index, "roughness", out.roughness, function, error) ||
+        !luaShakeNumberField(L, index, "fadeIn", out.fadeIn, function, error) ||
+        !luaShakeNumberField(L, index, "fadeOut", out.fadeOut, function, error)){
+        return false;
+    }
+    lua_getfield(L, index, "seed");
+    if (lua_isinteger(L, -1)){
+        out.hasSeed = true;
+        out.seed = (int)lua_tointeger(L, -1);
+    }else if (!lua_isnil(L, -1)){
+        lua_pop(L, 1);
+        return error.set(function, "seed must be an integer");
+    }
+    lua_pop(L, 1);
+    lua_getfield(L, index, "unscaled");
+    if (lua_isboolean(L, -1)){
+        out.unscaled = lua_toboolean(L, -1) ? 1 : 0;
+    }else if (!lua_isnil(L, -1)){
+        lua_pop(L, 1);
+        return error.set(function, "unscaled must be a boolean");
+    }
+    lua_pop(L, 1);
+    return true;
+}
+
+void luaPushShakeInstance(lua_State* L, const ShakeInstanceHandle& handle){
+    if (!luabridge::push(L, handle)){
+        lua_pushnil(L);
+    }
+}
+
+// shake(preset [, options]) / shakeAt(position, radius, preset [, options]), on every global
+// shaker (`shaker` null) or on one; `first` is the stack index of the first argument
+int luaShakeCall(lua_State* L, CameraShaker* shaker, int first, bool fromPoint, const char* function){
+    ShakeArgError error;
+    const bool ok = [&]() -> bool {
+        Vector3 position;
+        float radius = 0.0f;
+        int next = first;
+        if (fromPoint){
+            if (!luaValueArg<Vector3>(L, next, position)){
+                return error.set(function, "position must be a Vector3");
+            }
+            if (lua_type(L, next + 1) != LUA_TNUMBER){
+                return error.set(function, "radius must be a number");
+            }
+            radius = (float)lua_tonumber(L, next + 1);
+            next += 2;
+        }
+        ShakeSource source;
+        ShakeOptions options;
+        if (!luaShakeSourceArg(L, next, source, function, error) || !luaShakeOptionsArg(L, next + 1, options, function, error)){
+            return false;
+        }
+        ShakeInstanceHandle handle;
+        if (shaker){
+            handle = fromPoint ? shaker->shakeAt(position, radius, source, options) : shaker->shake(source, options);
+        }else{
+            handle = fromPoint ? CameraShake::shakeAt(position, radius, source, options) : CameraShake::shake(source, options);
+        }
+        luaPushShakeInstance(L, handle);
+        return true;
+    }();
+    if (!ok){
+        return luaL_error(L, "%s", error.text);
+    }
+    return 1;
+}
+
+// the CameraShaker of a method call (argument 1), null when it is not one
+CameraShaker* luaShakerSelf(lua_State* L){
+    if (!luabridge::isInstance<CameraShaker>(L, 1)) return nullptr;
+    auto self = luabridge::get<CameraShaker*>(L, 1);
+    return self ? self.value() : nullptr;
+}
+
+int luaCameraShakeShake(lua_State* L){
+    return luaShakeCall(L, nullptr, 1, false, "CameraShake.shake");
+}
+
+int luaCameraShakeShakeAt(lua_State* L){
+    return luaShakeCall(L, nullptr, 1, true, "CameraShake.shakeAt");
+}
+
+int luaCameraShakerShake(lua_State* L){
+    CameraShaker* self = luaShakerSelf(L);
+    if (!self) return luaL_error(L, "CameraShaker.shake: call it with a colon on a CameraShaker (shaker:shake(preset))");
+    return luaShakeCall(L, self, 2, false, "CameraShaker.shake");
+}
+
+int luaCameraShakerShakeAt(lua_State* L){
+    CameraShaker* self = luaShakerSelf(L);
+    if (!self) return luaL_error(L, "CameraShaker.shakeAt: call it with a colon on a CameraShaker (shaker:shakeAt(position, radius, preset))");
+    return luaShakeCall(L, self, 2, true, "CameraShaker.shakeAt");
+}
+
+}
+
 
 void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
@@ -379,7 +941,60 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addVariable("WELD", Joint2DType::WELD)
         .addVariable("MOTOR", Joint2DType::MOTOR)
         .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("JointLimitState2D")
+        .addVariable("INACTIVE", JointLimitState2D::INACTIVE)
+        .addVariable("LOWER", JointLimitState2D::LOWER)
+        .addVariable("UPPER", JointLimitState2D::UPPER)
+        .addVariable("EQUAL", JointLimitState2D::EQUAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CollisionDetectionMode2D")
+        .addVariable("DISCRETE", CollisionDetectionMode2D::DISCRETE)
+        .addVariable("CONTINUOUS", CollisionDetectionMode2D::CONTINUOUS)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("RigidbodySleepMode2D")
+        .addVariable("NEVER_SLEEP", RigidbodySleepMode2D::NEVER_SLEEP)
+        .addVariable("START_AWAKE", RigidbodySleepMode2D::START_AWAKE)
+        .addVariable("START_ASLEEP", RigidbodySleepMode2D::START_ASLEEP)
+        .endNamespace();
 #endif
+
+    // shared by 2D and 3D joints and materials (component/PhysicsCommon.h)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("JointAnchorSpace")
+        .addVariable("WORLD", JointAnchorSpace::WORLD)
+        .addVariable("LOCAL", JointAnchorSpace::LOCAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("JointBreakAction")
+        .addVariable("IGNORE", JointBreakAction::IGNORE)
+        .addVariable("CALLBACK_ONLY", JointBreakAction::CALLBACK_ONLY)
+        .addVariable("DISABLE", JointBreakAction::DISABLE)
+        .addVariable("DESTROY", JointBreakAction::DESTROY)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("RigidbodyInterpolation")
+        .addVariable("SCENE", RigidbodyInterpolation::SCENE)
+        .addVariable("NONE", RigidbodyInterpolation::NONE)
+        .addVariable("INTERPOLATE", RigidbodyInterpolation::INTERPOLATE)
+        .addVariable("EXTRAPOLATE", RigidbodyInterpolation::EXTRAPOLATE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PhysicsMaterialCombine")
+        .addVariable("AVERAGE", PhysicsMaterialCombine::AVERAGE)
+        .addVariable("GEOMETRIC_MEAN", PhysicsMaterialCombine::GEOMETRIC_MEAN)
+        .addVariable("MINIMUM", PhysicsMaterialCombine::MINIMUM)
+        .addVariable("MULTIPLY", PhysicsMaterialCombine::MULTIPLY)
+        .addVariable("MAXIMUM", PhysicsMaterialCombine::MAXIMUM)
+        .endNamespace();
 
 #ifdef JASPERENGINE_PHYSICS_3D
     luabridge::getGlobalNamespace(L)
@@ -396,6 +1011,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addVariable("GEAR", Joint3DType::GEAR)
         .addVariable("RACKANDPINON", Joint3DType::RACKANDPINON)
         .addVariable("PULLEY", Joint3DType::PULLEY)
+        .endNamespace();
+
+    // a SIXDOF axis (Unity ConfigurableJointMotion)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("JointMotion")
+        .addVariable("LOCKED", JointMotion::LOCKED)
+        .addVariable("LIMITED", JointMotion::LIMITED)
+        .addVariable("FREE", JointMotion::FREE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SwingType")
+        .addVariable("CONE", JointSwingType::CONE)
+        .addVariable("PYRAMID", JointSwingType::PYRAMID)
         .endNamespace();
 #endif
 
@@ -414,6 +1043,12 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("tag", &EntityHandle::getTag, &EntityHandle::setTag)
         .addFunction("compareTag", &EntityHandle::compareTag)
         .addProperty("layer", &EntityHandle::getLayer, &EntityHandle::setLayer)
+        // Unity's GetComponent<Script>() family: the Lua script instances of this GameObject
+        .addFunction("getScript", &LuaBinding::luaGetScript)
+        .addFunction("getScripts", &LuaBinding::luaGetScripts)
+        .addFunction("getScriptInChildren", &LuaBinding::luaGetScriptInChildren)
+        .addFunction("getScriptsInChildren", &LuaBinding::luaGetScriptsInChildren)
+        .addFunction("getScriptInParent", &LuaBinding::luaGetScriptInParent)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -553,6 +1188,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&Skybox::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Skybox::setShaderUniform))
         .addFunction("getShaderParam", &Skybox::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](Skybox* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "Skybox.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Skybox* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &Skybox::removeShaderUniform)
         .addFunction("setShaderTexture", &Skybox::setShaderTexture)
         .addFunction("getShaderTexture", &Skybox::getShaderTexture)
@@ -566,6 +1209,16 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addStaticFunction("instantiate", &luaInstantiate)
         .addStaticFunction("destroy", &luaDestroy)
         .addStaticFunction("destroyImmediate", &luaDestroyImmediate)
+        // scene-wide lookups (Unity's GameObject.Find, FindWithTag, FindObjectOfType...)
+        .addStaticFunction("find", &LuaBinding::luaFind)
+        .addStaticFunction("findWithTag", &LuaBinding::luaFindWithTag)
+        .addStaticFunction("findGameObjectsWithTag", &LuaBinding::luaFindGameObjectsWithTag)
+        .addStaticFunction("findObjectOfType", &LuaBinding::luaFindObjectOfType)
+        .addStaticFunction("findObjectsOfType", &LuaBinding::luaFindObjectsOfType)
+        // persistent objects (Unity's DontDestroyOnLoad, also a global function)
+        .addStaticFunction("dontDestroyOnLoad", &LuaBinding::luaDontDestroyOnLoad)
+        .addStaticFunction("isPersistent", &LuaBinding::luaIsPersistent)
+        .addStaticFunction("persistSingleton", &LuaBinding::luaPersistSingleton)
         .addFunction("addChild", 
             luabridge::overload<GameObject*>(&GameObject::addChild),
             luabridge::overload<Entity>(&GameObject::addChild))
@@ -605,6 +1258,15 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("removeRigidbody2D", &GameObject::removeRigidbody2D)
         .addFunction("getCharacterController2D", &GameObject::getCharacterController2D)
         .addFunction("removeCharacterController2D", &GameObject::removeCharacterController2D)
+        // the Joint 2D of the GameObject, nil when it has none
+        .addFunction("getJoint2D", +[](GameObject* self) -> std::optional<Joint2D> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<Joint2DComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return Joint2D(scene, self->getEntity());
+        })
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         .addFunction("getRigidbody", &GameObject::getRigidbody)
@@ -612,6 +1274,24 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getCharacterController", &GameObject::getCharacterController)
         .addFunction("removeCharacterController", &GameObject::removeCharacterController)
         .addFunction("getBuoyancy", &GameObject::getBuoyancy)
+        // the Joint 3D of the GameObject, nil when it has none
+        .addFunction("getJoint3D", +[](GameObject* self) -> std::optional<Joint3D> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<Joint3DComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return Joint3D(scene, self->getEntity());
+        })
+        // the Ragdoll of the GameObject, nil when it has none
+        .addFunction("getRagdoll", +[](GameObject* self) -> std::optional<Ragdoll> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<RagdollComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return Ragdoll(scene, self->getEntity());
+        })
 #endif
         .addFunction("getWaterVolume", &GameObject::getWaterVolume)
         .addFunction("getSpline", &GameObject::getSpline)
@@ -647,19 +1327,143 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<VertexAnimatorComponent>(self->getEntity()) != nullptr;
         })
-        // the Animator of the GameObject, nil when it has none (Animator(scene, entity) adds one)
-        .addFunction("getAnimator", +[](GameObject* self) -> std::optional<Animator> {
+        // the Animator of the GameObject; without one its Animation Player (upstream's
+        // getAnimator, an alias of getAnimationPlayer: players with layers keep working); nil when
+        // it has neither (Animator(scene, entity) adds one)
+        .addFunction("getAnimator", +[](GameObject* self, lua_State* L) -> luabridge::LuaRef {
             Scene* scene = self->getScene();
-            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
-                !scene->findComponent<AnimatorComponent>(self->getEntity())){
-                return std::nullopt;
-            }
-            return Animator(scene, self->getEntity());
+            if (!scene || !scene->isEntityCreated(self->getEntity())) return luabridge::LuaRef(L);
+            if (scene->findComponent<AnimatorComponent>(self->getEntity())) return luabridge::LuaRef(L, Animator(scene, self->getEntity()));
+            if (scene->findComponent<AnimationPlayerComponent>(self->getEntity())) return luabridge::LuaRef(L, AnimationPlayer(scene, self->getEntity()));
+            return luabridge::LuaRef(L);
         })
         .addFunction("hasAnimator", +[](GameObject* self) -> bool {
             Scene* scene = self->getScene();
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<AnimatorComponent>(self->getEntity()) != nullptr;
+        })
+        // the Trail Renderer of the GameObject, nil when it has none
+        .addFunction("getTrailRenderer", +[](GameObject* self) -> std::optional<TrailRenderer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<TrailRendererComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return TrailRenderer(scene, self->getEntity());
+        })
+        .addFunction("hasTrailRenderer", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<TrailRendererComponent>(self->getEntity()) != nullptr;
+        })
+        // Unity's GetComponent<ParticleSystem>: the GameObject's Particle System, nil when it has
+        // none (an old controller action whose target has one: that target's)
+        .addFunction("getParticleSystem", +[](GameObject* self) -> std::optional<ParticleSystem> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()))
+                return std::nullopt;
+            if (scene->findComponent<ParticleSystemComponent>(self->getEntity()))
+                return ParticleSystem(scene, self->getEntity());
+            const ActionComponent* action = scene->findComponent<ActionComponent>(self->getEntity());
+            if (action && action->target != NULL_ENTITY && scene->isEntityCreated(action->target) &&
+                scene->findComponent<ParticleSystemComponent>(action->target))
+                return ParticleSystem(scene, action->target);
+            return std::nullopt;
+        })
+        // Unity's GetComponentsInChildren<ParticleSystem>: its own and every one below it, in
+        // hierarchy order (a 1-based table)
+        .addFunction("getParticleSystemsInChildren", +[](GameObject* self, lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef list = luabridge::newTable(L);
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()))
+                return list;
+            int n = 0;
+            auto add = [&](Entity e){
+                if (scene->findComponent<ParticleSystemComponent>(e)) list[++n] = ParticleSystem(scene, e);
+            };
+            add(self->getEntity());
+            auto transforms = scene->getComponentArray<Transform>();
+            if (transforms->hasEntity(self->getEntity())){
+                const size_t start = transforms->getIndex(self->getEntity());
+                const size_t last = scene->findBranchLastIndex(self->getEntity());
+                for (size_t i = start + 1; i <= last && i < transforms->size(); i++) add(transforms->getEntity(i));
+            }
+            return list;
+        })
+        // Unity's AddComponent<TrailRenderer>(): its Trail Renderer, added when it has none
+        .addFunction("addTrailRenderer", +[](GameObject* self) -> std::optional<TrailRenderer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity())){
+                return std::nullopt;
+            }
+            return TrailRenderer::addTo(scene, self->getEntity());
+        })
+        // the Canvas Group of the GameObject, nil when it has none (Unity's GetComponent)
+        .addFunction("getCanvasGroup", +[](GameObject* self) -> std::optional<CanvasGroup> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<CanvasGroupComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return CanvasGroup(scene, self->getEntity());
+        })
+        .addFunction("hasCanvasGroup", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<CanvasGroupComponent>(self->getEntity()) != nullptr;
+        })
+        // adds one when the GameObject has none (Unity AddComponent<CanvasGroup>)
+        .addFunction("addCanvasGroup", +[](GameObject* self) -> CanvasGroup {
+            return CanvasGroup(self->getScene(), self->getEntity());
+        })
+        .addFunction("removeCanvasGroup", +[](GameObject* self) {
+            Scene* scene = self->getScene();
+            if (scene && scene->isEntityCreated(self->getEntity()) &&
+                scene->findComponent<CanvasGroupComponent>(self->getEntity())){
+                scene->removeComponent<CanvasGroupComponent>(self->getEntity());
+            }
+        })
+        // the Camera Shaker of the GameObject (MilkShake's Shaker), nil when it has none
+        .addFunction("getCameraShaker", +[](GameObject* self) -> std::optional<CameraShaker> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<CameraShakerComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return CameraShaker(scene, self->getEntity());
+        })
+        .addFunction("hasCameraShaker", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<CameraShakerComponent>(self->getEntity()) != nullptr;
+        })
+        // the Camera Follow of the GameObject, nil when it has none
+        .addFunction("getCameraFollow", +[](GameObject* self) -> std::optional<CameraFollow> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<CameraFollowComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return CameraFollow(scene, self->getEntity());
+        })
+        .addFunction("hasCameraFollow", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<CameraFollowComponent>(self->getEntity()) != nullptr;
+        })
+        // the Video Player of the GameObject, nil when it has none (Unity's GetComponent<VideoPlayer>)
+        .addFunction("getVideoPlayer", +[](GameObject* self) -> std::optional<VideoPlayer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<VideoPlayerComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return VideoPlayer(scene, self->getEntity());
+        })
+        .addFunction("hasVideoPlayer", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<VideoPlayerComponent>(self->getEntity()) != nullptr;
         })
         .endClass();
 
@@ -973,6 +1777,17 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&>(&Mesh::setTexture),
             luabridge::overload<const std::string&,TextureData>(&Mesh::setTexture),
             luabridge::overload<Framebuffer*>(&Mesh::setTexture))
+        // the normal map (tangent-space, OpenGL green up; answers Light 2Ds with height > 0) of
+        // submesh 0 or of a submesh; "" removes it
+        .addFunction("setNormalTexture",
+            luabridge::overload<const std::string&>(&Mesh::setNormalTexture),
+            luabridge::overload<unsigned int, const std::string&>(&Mesh::setNormalTexture),
+            luabridge::overload<const std::string&, TextureData>(&Mesh::setNormalTexture))
+        .addFunction("getNormalTexture",
+            luabridge::overload<>(&Mesh::getNormalTexture),
+            luabridge::overload<unsigned int>(&Mesh::getNormalTexture))
+        .addProperty("normalTexture", (std::string(Mesh::*)()const)&Mesh::getNormalTexture,
+                     (void(Mesh::*)(const std::string&))&Mesh::setNormalTexture)
         .addProperty("color", &Mesh::getColor, (void(Mesh::*)(Vector4))&Mesh::setColor)
         .addFunction("setColor", 
             luabridge::overload<const float, const float, const float>(&Mesh::setColor),
@@ -1363,6 +2178,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&Model::setMorphWeight))
         .addFunction("resetToBindPose", &Model::resetToBindPose)
         .addFunction("getPoseAnimator", &Model::getPoseAnimator)
+        .addFunction("getHumanoidInfo", +[](const Model* self, lua_State* L) -> luabridge::LuaRef {
+            const ModelHumanoidInfo info = self->getHumanoidInfo();
+            if (!info.valid) return luabridge::LuaRef(L);
+            luabridge::LuaRef table = luabridge::newTable(L);
+            table["humanoid"] = info.humanoid;
+            table["animationType"] = info.animationType;
+            table["humanScale"] = info.humanScale;
+            luabridge::LuaRef missing = luabridge::newTable(L);
+            for (size_t i = 0; i < info.missing.size(); i++) missing[(int)i + 1] = info.missing[i];
+            table["missing"] = missing;
+            table["extraMapped"] = info.extraMapped;
+            if (!info.error.empty()) table["error"] = info.error;
+            return table;
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1395,12 +2224,28 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<ParticleSystem, GameObject>("ParticleSystem")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        // ParticleSystem(scene, true): origin/main's "a version 2 system on its own GameObject",
+        // which every new S20 system is (false gave its legacy model: an S20 one too)
+        .addConstructor(
+            [](void* memory, Scene* scene) { return new (memory) ParticleSystem(scene); },
+            [](void* memory, Scene* scene, Entity entity) { return new (memory) ParticleSystem(scene, entity); },
+            [](void* memory, Scene* scene, bool) { return new (memory) ParticleSystem(scene); })
         .addProperty("enabled", &ParticleSystem::isEnabled, &ParticleSystem::setEnabled)
-        .addFunction("play", &ParticleSystem::play)
-        .addFunction("pause", &ParticleSystem::pause)
+        // Unity's Play / Pause (withChildren = true): the Particle Systems below it too
+        .addFunction("play", +[](ParticleSystem* self, lua_State* L) {
+            self->play(lua_gettop(L) < 2 || lua_isnil(L, 2) || lua_toboolean(L, 2) != 0);
+        })
+        .addFunction("pause", +[](ParticleSystem* self, lua_State* L) {
+            self->pause(lua_gettop(L) < 2 || lua_isnil(L, 2) || lua_toboolean(L, 2) != 0);
+        })
+        // stop(clear?) stops emitting (clear: the particles go too); Unity's stop(withChildren,
+        // ParticleSystemStopBehavior) the same with its children chosen
         .addFunction("stop", +[](ParticleSystem* self, lua_State* L) {
-            self->stop(lua_gettop(L) >= 2 && lua_toboolean(L, 2) != 0);
+            if (lua_gettop(L) >= 3 && !lua_isnil(L, 3)){
+                self->stop(lua_toboolean(L, 2) != 0, lua_tointeger(L, 3) == 0);
+                return;
+            }
+            self->stop(true, lua_gettop(L) >= 2 && lua_toboolean(L, 2) != 0);
         })
         .addFunction("restart", &ParticleSystem::restart)
         // emit(count [, {position = Vector3, velocity = Vector3, size = n, color = Vector4, lifetime = n}])
@@ -1456,6 +2301,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("time", &ParticleSystem::getTime)
         .addProperty("playOnAwake", &ParticleSystem::isPlayOnAwake, &ParticleSystem::setPlayOnAwake)
         .addProperty("playbackSpeed", &ParticleSystem::getPlaybackSpeed, &ParticleSystem::setPlaybackSpeed)
+        // (ui-scaling-text) the GameObject's Unscaled Time: it plays at Engine.timeScale 0
+        .addProperty("useUnscaledTime", &ParticleSystem::isUseUnscaledTime, &ParticleSystem::setUseUnscaledTime)
         .addProperty("seed", &ParticleSystem::getSeed, &ParticleSystem::setSeed)
         .addProperty("effect", &ParticleSystem::getEffect, &ParticleSystem::setEffect)
         .addFunction("setInlineEffect", &ParticleSystem::setInlineEffect)
@@ -1662,6 +2509,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&Points::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Points::setShaderUniform))
         .addFunction("getShaderParam", &Points::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](Points* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "Points.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Points* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &Points::removeShaderUniform)
         .addFunction("setShaderTexture", &Points::setShaderTexture)
         .addFunction("getShaderTexture", &Points::getShaderTexture)
@@ -1696,6 +2551,29 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("updateLines", &LineRenderer::updateLines)
         .addFunction("getNumLines", &LineRenderer::getNumLines)
         .addFunction("clearLines", &LineRenderer::clearLines)
+        .addProperty("mode", &LineRenderer::getMode, &LineRenderer::setMode)
+        .addProperty("positionCount", &LineRenderer::getPositionCount, &LineRenderer::setPositionCount)
+        .addFunction("setPosition", &luaLineSetPosition)
+        .addFunction("getPosition", &luaLineGetPosition)
+        .addFunction("setPositions", &LineRenderer::setPositions)
+        .addFunction("getPositions", &LineRenderer::getPositions)
+        .addProperty("loop", &LineRenderer::getLoop, &LineRenderer::setLoop)
+        .addProperty("useWorldSpace", &LineRenderer::getUseWorldSpace, &LineRenderer::setUseWorldSpace)
+        .addProperty("widthMultiplier", &LineRenderer::getWidthMultiplier, &LineRenderer::setWidthMultiplier)
+        .addProperty("startWidth", &LineRenderer::getStartWidth, &LineRenderer::setStartWidth)
+        .addProperty("endWidth", &LineRenderer::getEndWidth, &LineRenderer::setEndWidth)
+        .addProperty("widthCurve", &LineRenderer::getWidthCurve, &LineRenderer::setWidthCurve)
+        .addProperty("widthUnit", &LineRenderer::getWidthUnit, &LineRenderer::setWidthUnit)
+        .addProperty("colorGradient", &LineRenderer::getColorGradient, &LineRenderer::setColorGradient)
+        .addProperty("startColor", &LineRenderer::getStartColor, &LineRenderer::setStartColor)
+        .addProperty("endColor", &LineRenderer::getEndColor, &LineRenderer::setEndColor)
+        .addProperty("numCornerVertices", &LineRenderer::getNumCornerVertices, &LineRenderer::setNumCornerVertices)
+        .addProperty("numCapVertices", &LineRenderer::getNumCapVertices, &LineRenderer::setNumCapVertices)
+        .addProperty("alignment", &LineRenderer::getAlignment, &LineRenderer::setAlignment)
+        .addProperty("textureMode", &LineRenderer::getTextureMode, &LineRenderer::setTextureMode)
+        .addProperty("textureScale", &LineRenderer::getTextureScale, &LineRenderer::setTextureScale)
+        .addProperty("texture", &LineRenderer::getTexture, &LineRenderer::setTexture)
+        .addProperty("sortPriority", &LineRenderer::getSortPriority, &LineRenderer::setSortPriority)
         .addProperty("customShader", &LineRenderer::getCustomShader, &LineRenderer::setCustomShader)
         .addFunction("setShaderUniform",
             luabridge::overload<const std::string&, const Vector4&>(&LineRenderer::setShaderUniform),
@@ -1715,6 +2593,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&LineRenderer::setShaderUniform),
             luabridge::overload<const std::string&, float>(&LineRenderer::setShaderUniform))
         .addFunction("getShaderParam", &LineRenderer::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](LineRenderer* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "LineRenderer.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const LineRenderer* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &LineRenderer::removeShaderUniform)
         .addFunction("setShaderTexture", &LineRenderer::setShaderTexture)
         .addFunction("getShaderTexture", &LineRenderer::getShaderTexture)
@@ -1724,6 +2610,102 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("depthWrite", &LineRenderer::getDepthWrite, &LineRenderer::setDepthWrite)
         .addProperty("stencil", &LineRenderer::getStencil, &LineRenderer::setStencil)
         .addProperty("colorWrite", &LineRenderer::getColorWrite, &LineRenderer::setColorWrite)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineRendererMode")
+        .addVariable("Segments", LineRendererMode::Segments)
+        .addVariable("Polyline", LineRendererMode::Polyline)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineWidthUnit")
+        .addVariable("World", LineWidthUnit::World)
+        .addVariable("Pixels", LineWidthUnit::Pixels)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineAlignment")
+        .addVariable("View", LineAlignment::View)
+        .addVariable("TransformZ", LineAlignment::TransformZ)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LineTextureMode")
+        .addVariable("Stretch", LineTextureMode::Stretch)
+        .addVariable("Tile", LineTextureMode::Tile)
+        .addVariable("DistributePerSegment", LineTextureMode::DistributePerSegment)
+        .addVariable("RepeatPerSegment", LineTextureMode::RepeatPerSegment)
+        .endNamespace();
+
+    // Unity's TrailRenderer: TrailRenderer(scene) is a new GameObject with one,
+    // object:addTrailRenderer() adds one to a GameObject (or returns its own), and
+    // object:getTrailRenderer() / TrailRenderer(scene, entity) are handles to an existing one (nil
+    // / nothing added without one). Positions are the stored points, oldest first
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<TrailRenderer, GameObject>("TrailRenderer")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &TrailRenderer::isEnabled, &TrailRenderer::setEnabled)
+        .addProperty("time", &TrailRenderer::getTime, &TrailRenderer::setTime)
+        .addProperty("minVertexDistance", &TrailRenderer::getMinVertexDistance, &TrailRenderer::setMinVertexDistance)
+        .addProperty("emitting", &TrailRenderer::isEmitting, &TrailRenderer::setEmitting)
+        .addProperty("autodestruct", &TrailRenderer::isAutodestruct, &TrailRenderer::setAutodestruct)
+        .addFunction("clear", &TrailRenderer::clear)
+        .addProperty("positionCount", &TrailRenderer::getPositionCount)
+        .addFunction("getPosition", &luaTrailGetPosition)
+        .addFunction("setPosition", &luaTrailSetPosition)
+        .addFunction("getPositions", &TrailRenderer::getPositions)
+        .addFunction("addPosition", &TrailRenderer::addPosition)
+        .addFunction("addPositions", &TrailRenderer::addPositions)
+        .addProperty("widthMultiplier", &TrailRenderer::getWidthMultiplier, &TrailRenderer::setWidthMultiplier)
+        .addProperty("startWidth", &TrailRenderer::getStartWidth, &TrailRenderer::setStartWidth)
+        .addProperty("endWidth", &TrailRenderer::getEndWidth, &TrailRenderer::setEndWidth)
+        .addProperty("widthCurve", &TrailRenderer::getWidthCurve, &TrailRenderer::setWidthCurve)
+        .addProperty("widthUnit", &TrailRenderer::getWidthUnit, &TrailRenderer::setWidthUnit)
+        .addProperty("colorGradient", &TrailRenderer::getColorGradient, &TrailRenderer::setColorGradient)
+        .addProperty("startColor", &TrailRenderer::getStartColor, &TrailRenderer::setStartColor)
+        .addProperty("endColor", &TrailRenderer::getEndColor, &TrailRenderer::setEndColor)
+        .addProperty("numCornerVertices", &TrailRenderer::getNumCornerVertices, &TrailRenderer::setNumCornerVertices)
+        .addProperty("numCapVertices", &TrailRenderer::getNumCapVertices, &TrailRenderer::setNumCapVertices)
+        .addProperty("alignment", &TrailRenderer::getAlignment, &TrailRenderer::setAlignment)
+        .addProperty("textureMode", &TrailRenderer::getTextureMode, &TrailRenderer::setTextureMode)
+        .addProperty("textureScale", &TrailRenderer::getTextureScale, &TrailRenderer::setTextureScale)
+        .addProperty("texture", &TrailRenderer::getTexture, &TrailRenderer::setTexture)
+        .addProperty("sortPriority", &TrailRenderer::getSortPriority, &TrailRenderer::setSortPriority)
+        .addProperty("customShader", &TrailRenderer::getCustomShader, &TrailRenderer::setCustomShader)
+        .addFunction("setShaderUniform",
+            luabridge::overload<const std::string&, const Vector4&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector3&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector2&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&TrailRenderer::setShaderUniform))
+        .addFunction("getShaderUniform", &TrailRenderer::getShaderUniform)
+        .addFunction("removeShaderUniform", &TrailRenderer::removeShaderUniform)
+        .addFunction("setShaderParam",
+            luabridge::overload<const std::string&, const Vector4&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<TrailRenderer*, const std::string&, const Vector3&>(+[](TrailRenderer* self, const std::string& name, const Vector3& value) {
+                // a colour given as (r, g, b) is opaque
+                self->setShaderUniform(name, LuaBinding::getShaderParamValue(componentShader(self, ShaderType::LINES), name, value));
+            }),
+            luabridge::overload<const std::string&, const Vector2&>(&TrailRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&TrailRenderer::setShaderUniform))
+        .addFunction("getShaderParam", &TrailRenderer::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](TrailRenderer* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "TrailRenderer.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const TrailRenderer* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
+        .addFunction("removeShaderParam", &TrailRenderer::removeShaderUniform)
+        .addFunction("setShaderTexture", &TrailRenderer::setShaderTexture)
+        .addFunction("getShaderTexture", &TrailRenderer::getShaderTexture)
+        .addFunction("setShaderFeature", &TrailRenderer::setShaderFeature)
+        .addFunction("isShaderFeatureEnabled", &TrailRenderer::isShaderFeatureEnabled)
+        .addProperty("blendMode", &TrailRenderer::getBlendMode, &TrailRenderer::setBlendMode)
+        .addProperty("depthWrite", &TrailRenderer::getDepthWrite, &TrailRenderer::setDepthWrite)
+        .addProperty("stencil", &TrailRenderer::getStencil, &TrailRenderer::setStencil)
+        .addProperty("colorWrite", &TrailRenderer::getColorWrite, &TrailRenderer::setColorWrite)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1784,7 +2766,75 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("anchorPreset", &RectTransform::getAnchorPreset, &RectTransform::setAnchorPreset)
         .addProperty("usingAnchors", &RectTransform::isUsingAnchors, &RectTransform::setUsingAnchors)
         .addProperty("ignoreScissor", &RectTransform::isIgnoreScissor, &RectTransform::setIgnoreScissor)
+        .addFunction("getInheritedAlpha", &RectTransform::getInheritedAlpha)
+        .addFunction("getGroupsAllowInteraction", &RectTransform::getGroupsAllowInteraction)
+        .addFunction("getGroupsBlockRaycasts", &RectTransform::getGroupsBlockRaycasts)
+        .addFunction("isInteractable", &RectTransform::isInteractable)
         .addFunction("getRectTransformComponent", &RectTransform::getComponent<RectTransformComponent>)
+        // the Safe Area component driving this RectTransform, nil when it has none
+        .addFunction("getSafeAreaComponent", [] (RectTransform* self) -> SafeAreaComponent* {
+            return self->getScene()->findComponent<SafeAreaComponent>(self->getEntity());
+        })
+        .endClass();
+
+    // Unity's CanvasGroup: fades, disables or makes click-through a UI subtree. The fade options
+    // table: {ease = EaseType.*, unscaled = false, deactivate = false, onComplete = function}
+    static auto fadeOptions = +[](const std::optional<luabridge::LuaRef>& optionsArg, lua_State* L) -> CanvasGroupFadeOptions {
+        CanvasGroupFadeOptions result;
+        if (!optionsArg || optionsArg->isNil()){
+            return result;
+        }
+        const luabridge::LuaRef& options = *optionsArg;
+        if (!options.isTable()){
+            luaL_error(L, "CanvasGroup fade options must be a table {ease, unscaled, deactivate, onComplete}");
+            return result;
+        }
+        const luabridge::LuaRef ease = options["ease"];
+        if (ease.isNumber()){
+            result.ease = static_cast<EaseType>(ease.unsafe_cast<int>());
+        }
+        const luabridge::LuaRef unscaled = options["unscaled"];
+        if (!unscaled.isNil()){
+            result.unscaled = unscaled.unsafe_cast<bool>();
+        }
+        const luabridge::LuaRef deactivate = options["deactivate"];
+        if (!deactivate.isNil()){
+            result.deactivate = deactivate.unsafe_cast<bool>();
+        }
+        const luabridge::LuaRef onComplete = options["onComplete"];
+        if (onComplete.isFunction()){
+            onComplete.push(L);
+            result.onComplete = LuaFunction<void>(L);
+        }else if (!onComplete.isNil()){
+            luaL_error(L, "CanvasGroup fade option onComplete must be a function");
+        }
+        return result;
+    };
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CanvasGroup, EntityHandle>("CanvasGroup")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &CanvasGroup::isEnabled, &CanvasGroup::setEnabled)
+        .addProperty("alpha", &CanvasGroup::getAlpha, &CanvasGroup::setAlpha)
+        .addProperty("interactable", &CanvasGroup::isInteractable, &CanvasGroup::setInteractable)
+        .addProperty("blocksRaycasts", &CanvasGroup::isBlocksRaycasts, &CanvasGroup::setBlocksRaycasts)
+        .addProperty("ignoreParentGroups", &CanvasGroup::isIgnoreParentGroups, &CanvasGroup::setIgnoreParentGroups)
+        .addProperty("renderMode", &CanvasGroup::getRenderMode, &CanvasGroup::setRenderMode)
+        .addFunction("fadeTo", +[](CanvasGroup* self, float alpha, float duration, std::optional<luabridge::LuaRef> options, lua_State* L) -> AlphaTween {
+            return self->fadeTo(alpha, duration, fadeOptions(options, L));
+        })
+        .addFunction("fadeIn", +[](CanvasGroup* self, float duration, std::optional<luabridge::LuaRef> options, lua_State* L) -> AlphaTween {
+            return self->fadeIn(duration, fadeOptions(options, L));
+        })
+        .addFunction("fadeOut", +[](CanvasGroup* self, float duration, std::optional<luabridge::LuaRef> options, lua_State* L) -> AlphaTween {
+            return self->fadeOut(duration, fadeOptions(options, L));
+        })
+        .addFunction("stopFade", +[](CanvasGroup* self, std::optional<bool> jumpToEnd) {
+            self->stopFade(jumpToEnd.value_or(false));
+        })
+        .addFunction("isFading", &CanvasGroup::isFading)
+        .addFunction("getGameObject", &CanvasGroup::getGameObject)
+        .addFunction("getCanvasGroupComponent", &CanvasGroup::getComponent<CanvasGroupComponent>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1840,6 +2890,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&Polygon::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Polygon::setShaderUniform))
         .addFunction("getShaderParam", &Polygon::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](Polygon* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "Polygon.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Polygon* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &Polygon::removeShaderUniform)
         .addFunction("setShaderTexture", &Polygon::setShaderTexture)
         .addFunction("getShaderTexture", &Polygon::getShaderTexture)
@@ -1900,6 +2958,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&Text::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Text::setShaderUniform))
         .addFunction("getShaderParam", &Text::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](Text* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "Text.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Text* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &Text::removeShaderUniform)
         .addFunction("setShaderTexture", &Text::setShaderTexture)
         .addFunction("getShaderTexture", &Text::getShaderTexture)
@@ -1911,8 +2977,156 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("colorWrite", &Text::getColorWrite, &Text::setColorWrite)
         .addProperty("pivotBaseline", &Text::isPivotBaseline, &Text::setPivotBaseline)
         .addProperty("pivotCentered", &Text::isPivotCentered, &Text::setPivotCentered)
+        .addProperty("outlineWidth", &Text::getOutlineWidth, &Text::setOutlineWidth)
+        .addProperty("outlineColor", &Text::getOutlineColor, &Text::setOutlineColor)
+        .addProperty("shadowEnabled", &Text::isShadowEnabled, &Text::setShadowEnabled)
+        .addProperty("shadowColor", &Text::getShadowColor, &Text::setShadowColor)
+        .addProperty("shadowOffset", &Text::getShadowOffset, &Text::setShadowOffset)
+        .addProperty("shadowSoftness", &Text::getShadowSoftness, &Text::setShadowSoftness)
+        .addProperty("shadowDilate", &Text::getShadowDilate, &Text::setShadowDilate)
+        .addProperty("visibleCharacters", &Text::getVisibleCharacters, &Text::setVisibleCharacters)
         .addFunction("getAABB", &Text::getAABB)
         .addFunction("getWorldAABB", &Text::getWorldAABB)
+        .endClass();
+
+    // Text Effect (per-character animation of a Text): enums, a layer's values, the component's
+    // script interface
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextEffectType")
+        .addVariable("None", TextEffectType::None)
+        .addVariable("Wave", TextEffectType::Wave)
+        .addVariable("Bounce", TextEffectType::Bounce)
+        .addVariable("Shake", TextEffectType::Shake)
+        .addVariable("Pulse", TextEffectType::Pulse)
+        .addVariable("Typewriter", TextEffectType::Typewriter)
+        .addVariable("FadeIn", TextEffectType::FadeIn)
+        .addVariable("Grow", TextEffectType::Grow)
+        .addVariable("Unfold", TextEffectType::Unfold)
+        .addVariable("Rainbow", TextEffectType::Rainbow)
+        .addVariable("Gradient", TextEffectType::Gradient)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextEffectMix")
+        .addVariable("Multiply", TextEffectMix::Multiply)
+        .addVariable("Add", TextEffectMix::Add)
+        .addVariable("Replace", TextEffectMix::Replace)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffectGradientStop>("TextEffectGradientStop")
+        .addConstructor<void(*)()>()
+        .addProperty("color", &TextEffectGradientStop::color, &TextEffectGradientStop::color)
+        .addProperty("position", &TextEffectGradientStop::position, &TextEffectGradientStop::position)
+        .endClass();
+
+    // a layer as values (TextEffectLayer(), then textEffect:setLayer(i, layer))
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffectLayer>("TextEffectLayer")
+        .addConstructor<void(*)()>()
+        // (a type's default amplitude follows: 1 for Grow and Unfold)
+        .addProperty("type", [] (const TextEffectLayer* self) -> TextEffectType { return self->type; },
+                             [] (TextEffectLayer* self, TextEffectType type) { TextEffects::setType(*self, type); })
+        .addProperty("enabled", &TextEffectLayer::enabled, &TextEffectLayer::enabled)
+        .addProperty("amplitude", &TextEffectLayer::amplitude, &TextEffectLayer::amplitude)
+        .addProperty("duration", &TextEffectLayer::duration, &TextEffectLayer::duration)
+        .addProperty("spread", &TextEffectLayer::spread, &TextEffectLayer::spread)
+        .addProperty("phaseStep", &TextEffectLayer::phaseStep, &TextEffectLayer::phaseStep)
+        .addProperty("frequency", &TextEffectLayer::frequency, &TextEffectLayer::frequency)
+        .addProperty("charactersPerSecond", &TextEffectLayer::charactersPerSecond, &TextEffectLayer::charactersPerSecond)
+        .addProperty("fadeTime", &TextEffectLayer::fadeTime, &TextEffectLayer::fadeTime)
+        .addProperty("gradient", &TextEffectLayer::gradient, &TextEffectLayer::gradient)
+        .addProperty("mix", &TextEffectLayer::mix, &TextEffectLayer::mix)
+        .addProperty("saturation", &TextEffectLayer::saturation, &TextEffectLayer::saturation)
+        .addProperty("lightness", &TextEffectLayer::lightness, &TextEffectLayer::lightness)
+        .endClass();
+
+    // a running effect's layer (textEffect:getLayer(i)): writes change the effect
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffectLayerRef>("TextEffectLayerRef")
+        .addProperty("type", &TextEffectLayerRef::getType, &TextEffectLayerRef::setType)
+        .addProperty("enabled", &TextEffectLayerRef::isEnabled, &TextEffectLayerRef::setEnabled)
+        .addProperty("amplitude", &TextEffectLayerRef::getAmplitude, &TextEffectLayerRef::setAmplitude)
+        .addProperty("duration", &TextEffectLayerRef::getDuration, &TextEffectLayerRef::setDuration)
+        .addProperty("spread", &TextEffectLayerRef::getSpread, &TextEffectLayerRef::setSpread)
+        .addProperty("phaseStep", &TextEffectLayerRef::getPhaseStep, &TextEffectLayerRef::setPhaseStep)
+        .addProperty("frequency", &TextEffectLayerRef::getFrequency, &TextEffectLayerRef::setFrequency)
+        .addProperty("charactersPerSecond", &TextEffectLayerRef::getCharactersPerSecond, &TextEffectLayerRef::setCharactersPerSecond)
+        .addProperty("fadeTime", &TextEffectLayerRef::getFadeTime, &TextEffectLayerRef::setFadeTime)
+        .addProperty("gradient", &TextEffectLayerRef::getGradient, &TextEffectLayerRef::setGradient)
+        .addProperty("mix", &TextEffectLayerRef::getMix, &TextEffectLayerRef::setMix)
+        .addProperty("saturation", &TextEffectLayerRef::getSaturation, &TextEffectLayerRef::setSaturation)
+        .addProperty("lightness", &TextEffectLayerRef::getLightness, &TextEffectLayerRef::setLightness)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TextEffect>("TextEffect")
+        .addConstructor<void(*)(Scene*, Entity)>()
+        .addProperty("enabled", &TextEffect::isEnabled, &TextEffect::setEnabled)
+        .addProperty("autoPlay", &TextEffect::isAutoPlay, &TextEffect::setAutoPlay)
+        .addProperty("loop", &TextEffect::isLoop, &TextEffect::setLoop)
+        .addProperty("useUnscaledTime", &TextEffect::isUseUnscaledTime, &TextEffect::setUseUnscaledTime)
+        .addProperty("startIndex", &TextEffect::getStartIndex, &TextEffect::setStartIndex)
+        .addProperty("length", &TextEffect::getLength, &TextEffect::setLength)
+        .addProperty("forWords", &TextEffect::getForWords, &TextEffect::setForWords)
+        .addProperty("entity", &TextEffect::getEntity)
+        .addFunction("getLayer", &TextEffect::getLayer)
+        // a TextEffectLayer, or a table of its fields ({type = TextEffectType.Wave, amplitude = 0.12})
+        .addFunction("setLayer", [] (TextEffect* self, int index, luabridge::LuaRef value) {
+            TextEffectLayer layer;
+            if (value.isInstance<TextEffectLayer>()){
+                layer = value.cast<TextEffectLayer>().value();
+            }else if (value.isTable()){
+                auto number = [&](const char* key, float& target){
+                    luabridge::LuaRef field = value[key];
+                    if (field.isNumber()) target = field.unsafe_cast<float>();
+                };
+                luabridge::LuaRef type = value["type"];
+                // (a type's default amplitude: 1 for Grow and Unfold)
+                if (type.isNumber()) TextEffects::setType(layer, (TextEffectType)type.unsafe_cast<int>());
+                luabridge::LuaRef enabled = value["enabled"];
+                if (enabled.isBool()) layer.enabled = enabled.unsafe_cast<bool>();
+                number("amplitude", layer.amplitude);
+                number("duration", layer.duration);
+                number("spread", layer.spread);
+                number("phaseStep", layer.phaseStep);
+                number("frequency", layer.frequency);
+                number("charactersPerSecond", layer.charactersPerSecond);
+                number("fadeTime", layer.fadeTime);
+                number("saturation", layer.saturation);
+                number("lightness", layer.lightness);
+                luabridge::LuaRef mix = value["mix"];
+                if (mix.isNumber()) layer.mix = (TextEffectMix)mix.unsafe_cast<int>();
+                luabridge::LuaRef gradient = value["gradient"];
+                if (gradient.isTable()){
+                    for (int i = 1; i <= gradient.length(); i++){
+                        luabridge::LuaRef stop = gradient[i];
+                        if (stop.isInstance<TextEffectGradientStop>()){
+                            layer.gradient.push_back(stop.cast<TextEffectGradientStop>().value());
+                        }else if (stop.isTable()){
+                            TextEffectGradientStop entry;
+                            luabridge::LuaRef color = stop["color"];
+                            if (color.isInstance<Vector4>()) entry.color = color.cast<Vector4>().value();
+                            luabridge::LuaRef position = stop["position"];
+                            if (position.isNumber()) entry.position = position.unsafe_cast<float>();
+                            layer.gradient.push_back(entry);
+                        }
+                    }
+                }
+            }else{
+                Log::warn("TextEffect.setLayer: expects a TextEffectLayer or a table of its fields");
+                return;
+            }
+            self->setLayer(index, layer);
+        })
+        .addFunction("play", &TextEffect::play)
+        .addFunction("stop", &TextEffect::stop)
+        .addFunction("finish", &TextEffect::finish)
+        .addFunction("restart", &TextEffect::restart)
+        .addFunction("isFinished", &TextEffect::isFinished)
+        .addFunction("isPlaying", &TextEffect::isPlaying)
+        .addProperty("onComplete", [] (TextEffect* self, lua_State*) { return &self->getOnComplete(); }, [] (TextEffect* self, lua_State* L) { self->getOnComplete() = L; })
+        .addProperty("onCharacterRevealed", [] (TextEffect* self, lua_State*) { return &self->getOnCharacterRevealed(); }, [] (TextEffect* self, lua_State* L) { self->getOnCharacterRevealed() = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1958,6 +3172,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector2&>(&Image::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Image::setShaderUniform))
         .addFunction("getShaderParam", &Image::getShaderParam)
+        // a custom-block member that follows a global shader value (Shader.setGlobal*); nil unbinds
+        .addFunction("setShaderGlobalBinding", +[](Image* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setShaderGlobalBinding(member, luaBindingGlobal(global, "Image.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Image* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getShaderGlobalBinding(member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("removeShaderParam", &Image::removeShaderUniform)
         .addFunction("setShaderTexture", &Image::setShaderTexture)
         .addFunction("getShaderTexture", &Image::getShaderTexture)
@@ -2118,6 +3340,66 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getInputFieldComponent", &InputField::getComponent<InputFieldComponent>)
         .endClass();
 
+    // ui-multitouch: the on-screen controls (input sources feeding Input actions)
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<OnScreenStick, Image>("OnScreenStick")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", [] (const OnScreenStick* self) -> bool { return self->getStick().enabled; }, [] (OnScreenStick* self, bool value) { self->getStick().enabled = value; })
+        .addProperty("mode", [] (const OnScreenStick* self) -> OnScreenStickMode { return self->getStick().mode; }, [] (OnScreenStick* self, OnScreenStickMode value) { self->getStick().mode = value; })
+        .addProperty("background", [] (const OnScreenStick* self) -> Entity { return self->getStick().background; }, [] (OnScreenStick* self, Entity value) { self->getStick().background = value; })
+        .addProperty("handle", [] (const OnScreenStick* self) -> Entity { return self->getStick().handle; }, [] (OnScreenStick* self, Entity value) { self->getStick().handle = value; })
+        .addProperty("handleRange", [] (const OnScreenStick* self) -> float { return self->getStick().handleRange; }, [] (OnScreenStick* self, float value) { self->getStick().handleRange = std::max(0.0f, value); })
+        .addProperty("deadZone", [] (const OnScreenStick* self) -> float { return self->getStick().deadZone; }, [] (OnScreenStick* self, float value) { self->getStick().deadZone = std::max(0.0f, std::min(1.0f, value)); })
+        .addProperty("moveThreshold", [] (const OnScreenStick* self) -> float { return self->getStick().moveThreshold; }, [] (OnScreenStick* self, float value) { self->getStick().moveThreshold = std::max(0.0f, value); })
+        .addProperty("axes", [] (const OnScreenStick* self) -> OnScreenStickAxes { return self->getStick().axes; }, [] (OnScreenStick* self, OnScreenStickAxes value) { self->getStick().axes = value; })
+        .addProperty("snapX", [] (const OnScreenStick* self) -> bool { return self->getStick().snapX; }, [] (OnScreenStick* self, bool value) { self->getStick().snapX = value; })
+        .addProperty("snapY", [] (const OnScreenStick* self) -> bool { return self->getStick().snapY; }, [] (OnScreenStick* self, bool value) { self->getStick().snapY = value; })
+        .addProperty("hideWhenReleased", [] (const OnScreenStick* self) -> bool { return self->getStick().hideWhenReleased; }, [] (OnScreenStick* self, bool value) { self->getStick().hideWhenReleased = value; })
+        .addProperty("clampToArea", [] (const OnScreenStick* self) -> bool { return self->getStick().clampToArea; }, [] (OnScreenStick* self, bool value) { self->getStick().clampToArea = value; })
+        .addProperty("horizontalAction", [] (const OnScreenStick* self) -> std::string { return self->getStick().horizontalAction; }, [] (OnScreenStick* self, std::string value) { self->getStick().horizontalAction = value; })
+        .addProperty("verticalAction", [] (const OnScreenStick* self) -> std::string { return self->getStick().verticalAction; }, [] (OnScreenStick* self, std::string value) { self->getStick().verticalAction = value; })
+        .addProperty("visibility", [] (const OnScreenStick* self) -> OnScreenVisibility { return self->getStick().visibility; }, [] (OnScreenStick* self, OnScreenVisibility value) { self->getStick().visibility = value; })
+        .addProperty("value", [] (const OnScreenStick* self) -> Vector2 { return self->getStick().value; })
+        .addProperty("pressed", [] (const OnScreenStick* self) -> bool { return self->getStick().pressed; })
+        .addProperty("pointerId", [] (const OnScreenStick* self) -> int { return self->getStick().pointerId; })
+        .addProperty("onValueChanged", [] (OnScreenStick* self, lua_State* L) { return &self->getStick().onValueChanged; }, [] (OnScreenStick* self, lua_State* L) { self->getStick().onValueChanged = L; })
+        .addProperty("onPress", [] (OnScreenStick* self, lua_State* L) { return &self->getStick().onPress; }, [] (OnScreenStick* self, lua_State* L) { self->getStick().onPress = L; })
+        .addProperty("onRelease", [] (OnScreenStick* self, lua_State* L) { return &self->getStick().onRelease; }, [] (OnScreenStick* self, lua_State* L) { self->getStick().onRelease = L; })
+        .addFunction("getOnScreenStickComponent", &OnScreenStick::getComponent<OnScreenStickComponent>)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<OnScreenButton, Image>("OnScreenButton")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", [] (const OnScreenButton* self) -> bool { return self->getControl().enabled; }, [] (OnScreenButton* self, bool value) { self->getControl().enabled = value; })
+        .addProperty("action", [] (const OnScreenButton* self) -> std::string { return self->getControl().action; }, [] (OnScreenButton* self, std::string value) { self->getControl().action = value; })
+        .addProperty("value", [] (const OnScreenButton* self) -> float { return self->getControl().value; }, [] (OnScreenButton* self, float value) { self->getControl().value = std::max(-1.0f, std::min(1.0f, value)); })
+        .addProperty("pressWhenPointerEnters", [] (const OnScreenButton* self) -> bool { return self->getControl().pressWhenPointerEnters; }, [] (OnScreenButton* self, bool value) { self->getControl().pressWhenPointerEnters = value; })
+        .addProperty("releaseWhenPointerLeaves", [] (const OnScreenButton* self) -> bool { return self->getControl().releaseWhenPointerLeaves; }, [] (OnScreenButton* self, bool value) { self->getControl().releaseWhenPointerLeaves = value; })
+        .addProperty("visibility", [] (const OnScreenButton* self) -> OnScreenVisibility { return self->getControl().visibility; }, [] (OnScreenButton* self, OnScreenVisibility value) { self->getControl().visibility = value; })
+        .addProperty("pressed", [] (const OnScreenButton* self) -> bool { return self->getControl().pressed; })
+        .addProperty("onPress", [] (OnScreenButton* self, lua_State* L) { return &self->getControl().onPress; }, [] (OnScreenButton* self, lua_State* L) { self->getControl().onPress = L; })
+        .addProperty("onRelease", [] (OnScreenButton* self, lua_State* L) { return &self->getControl().onRelease; }, [] (OnScreenButton* self, lua_State* L) { self->getControl().onRelease = L; })
+        .addFunction("getOnScreenButtonComponent", &OnScreenButton::getComponent<OnScreenButtonComponent>)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<TouchArea, Image>("TouchArea")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", [] (const TouchArea* self) -> bool { return self->getArea().enabled; }, [] (TouchArea* self, bool value) { self->getArea().enabled = value; })
+        .addProperty("horizontalAction", [] (const TouchArea* self) -> std::string { return self->getArea().horizontalAction; }, [] (TouchArea* self, std::string value) { self->getArea().horizontalAction = value; })
+        .addProperty("verticalAction", [] (const TouchArea* self) -> std::string { return self->getArea().verticalAction; }, [] (TouchArea* self, std::string value) { self->getArea().verticalAction = value; })
+        .addProperty("sensitivity", [] (const TouchArea* self) -> float { return self->getArea().sensitivity; }, [] (TouchArea* self, float value) { self->getArea().sensitivity = value; })
+        .addProperty("invertX", [] (const TouchArea* self) -> bool { return self->getArea().invertX; }, [] (TouchArea* self, bool value) { self->getArea().invertX = value; })
+        .addProperty("invertY", [] (const TouchArea* self) -> bool { return self->getArea().invertY; }, [] (TouchArea* self, bool value) { self->getArea().invertY = value; })
+        .addProperty("visibility", [] (const TouchArea* self) -> OnScreenVisibility { return self->getArea().visibility; }, [] (TouchArea* self, OnScreenVisibility value) { self->getArea().visibility = value; })
+        .addProperty("delta", [] (const TouchArea* self) -> Vector2 { return self->getArea().delta; })
+        .addProperty("pressed", [] (const TouchArea* self) -> bool { return self->getArea().pressed; })
+        .addProperty("pointerId", [] (const TouchArea* self) -> int { return self->getArea().pointerId; })
+        .addProperty("onDrag", [] (TouchArea* self, lua_State* L) { return &self->getArea().onDrag; }, [] (TouchArea* self, lua_State* L) { self->getArea().onDrag = L; })
+        .addFunction("getTouchAreaComponent", &TouchArea::getComponent<TouchAreaComponent>)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .deriveClass<PoseAnimator, EntityHandle>("PoseAnimator")
         .addConstructor <void (*) (Scene*, Entity)> ()
@@ -2193,7 +3475,45 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("length", &AnimationState::getLength)
         .addProperty("wrap", &AnimationState::getWrap, &AnimationState::setWrap)
         .addProperty("enabled", &AnimationState::isEnabled, &AnimationState::setEnabled)
+        // the layer the state plays on (a runtime move: it keeps its time and weight)
+        .addProperty("layer", &AnimationState::getLayer, &AnimationState::setLayer)
+        // Unity AddMixingTransform: the state then animates only these paths (recursive: and below)
+        .addFunction("addMixingTransform",
+            luabridge::overload<const std::string&>(&AnimationState::addMixingTransform),
+            luabridge::overload<const std::string&, bool>(&AnimationState::addMixingTransform))
+        .addFunction("removeMixingTransform", &AnimationState::removeMixingTransform)
+        .addFunction("clearMixingTransforms", &AnimationState::clearMixingTransforms)
+        // humanoid clips: plays left and right swapped (overrides the entry's Mirror; resetMirror() goes back)
+        .addProperty("mirror", &AnimationState::getMirror, &AnimationState::setMirror)
+        // humanoid clips: the legs reach the clip's foot goals (overrides the entry's Foot IK; resetFootIK() goes back)
+        .addProperty("footIK", &AnimationState::getFootIK, &AnimationState::setFootIK)
+        // mirror back to the entry's (or the controller state's) Mirror
+        .addFunction("resetMirror", &AnimationState::resetMirror)
+        // footIK back to the entry's (or the controller state's) Foot IK
+        .addFunction("resetFootIK", &AnimationState::resetFootIK)
+        // a humanoid clip, or a generic clip being retargeted
+        .addProperty("isHumanoid", &AnimationState::isHumanoid)
         .endClass();
+
+    // upstream's AnimatorStateInfo of the Animation Player (AnimationPlayer:getCurrentStateInfo):
+    // ControllerStateInfo here, AnimatorStateInfo is the Animator's (registered below)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ControllerStateInfo>("ControllerStateInfo")
+        .addProperty("isValid", &ControllerStateInfo::isValid)
+        .addProperty("name", &ControllerStateInfo::name)
+        .addProperty("fullName", &ControllerStateInfo::fullName)
+        .addProperty("normalizedTime", &ControllerStateInfo::normalizedTime)
+        .addProperty("length", &ControllerStateInfo::length)
+        .addProperty("speed", &ControllerStateInfo::speed)
+        .addProperty("loop", &ControllerStateInfo::loop)
+        .endClass();
+
+    // Unity's PlayMode: what play / crossFade stop
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PlayMode")
+        .addVariable("STOP_SAME_LAYER", PlayMode::StopSameLayer)
+        .addVariable("STOP_ALL", PlayMode::StopAll)
+        .endNamespace();
 
     // Unity's legacy Animation component: clips played with fades, blends and queues
     luabridge::getGlobalNamespace(L)
@@ -2201,10 +3521,17 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addConstructor <void (*) (Scene*, Entity)> ()
         .addFunction("play",
             luabridge::overload<const std::string&>(&AnimationPlayer::play),
-            luabridge::overload<const std::string&, float>(&AnimationPlayer::play))
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::play),
+            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::play))
         .addFunction("crossFade",
             luabridge::overload<const std::string&>(&AnimationPlayer::crossFade),
-            luabridge::overload<const std::string&, float>(&AnimationPlayer::crossFade))
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::crossFade),
+            luabridge::overload<const std::string&, float, PlayMode>(&AnimationPlayer::crossFade))
+        // Unity's Animator.Play(name, layer, normalizedTime) / CrossFadeInFixedTime(name, seconds, layer)
+        .addFunction("playInLayer",
+            luabridge::overload<const std::string&, int>(&AnimationPlayer::playInLayer),
+            luabridge::overload<const std::string&, int, float>(&AnimationPlayer::playInLayer))
+        .addFunction("crossFadeInLayer", &AnimationPlayer::crossFadeInLayer)
         .addFunction("blend",
             luabridge::overload<const std::string&, float>(&AnimationPlayer::blend),
             luabridge::overload<const std::string&, float, float>(&AnimationPlayer::blend))
@@ -2222,9 +3549,49 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::constOverload<>(&AnimationPlayer::isPlaying),
             luabridge::constOverload<const std::string&>(&AnimationPlayer::isPlaying))
         .addFunction("getState", &AnimationPlayer::getState)
+        .addFunction("getAnimatedProperties", &AnimationPlayer::getAnimatedProperties)
         .addFunction("addClip",
             luabridge::overload<const std::string&>(&AnimationPlayer::addClip),
-            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip))
+            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip),
+            // addClip(path, name | nil, {retarget, mirror, footIK, layer})
+            luabridge::overload<AnimationPlayer*, const std::string&, const luabridge::LuaRef&, const luabridge::LuaRef&>(
+                +[](AnimationPlayer* self, const std::string& path, const luabridge::LuaRef& name, const luabridge::LuaRef& options){
+                    AnimationClipOptions values;
+                    if (!name.isNil() && !name.isString()){
+                        throw std::runtime_error("AnimationPlayer:addClip: the name is a string, or nil for the clip's own");
+                    }
+                    if (!options.isNil() && !options.isTable()){
+                        throw std::runtime_error("AnimationPlayer:addClip: the options are a table {retarget, mirror, footIK, layer}");
+                    }
+                    if (options.isTable()){
+                        for (luabridge::Iterator it(options); !it.isNil(); ++it){
+                            const luabridge::LuaRef key = it.key();
+                            const std::string field = key.isString() ? key.unsafe_cast<std::string>() : std::string();
+                            if (field != "retarget" && field != "mirror" && field != "footIK" && field != "layer"){
+                                throw std::runtime_error("AnimationPlayer:addClip: unknown option '" + (field.empty() ? key.tostring() : field) +
+                                                         "' (options are retarget, mirror, footIK, layer)");
+                            }
+                        }
+                        auto flag = [&](const char* field, bool& out){
+                            const luabridge::LuaRef value = options[field];
+                            if (value.isNil()) return;
+                            if (!value.isBool()) throw std::runtime_error(std::string("AnimationPlayer:addClip: ") + field + " is true or false");
+                            out = value.unsafe_cast<bool>();
+                        };
+                        flag("retarget", values.retarget);
+                        flag("mirror", values.mirror);
+                        flag("footIK", values.footIK);
+                        const luabridge::LuaRef layer = options["layer"];
+                        if (!layer.isNil()){
+                            const double index = layer.isNumber() ? layer.unsafe_cast<double>() : -1.0;
+                            if (!layer.isNumber() || index != std::floor(index) || index < 0.0 || index > 1e6){
+                                throw std::runtime_error("AnimationPlayer:addClip: layer is a layer index, a whole number (0 is the base layer)");
+                            }
+                            values.layer = (int)index;
+                        }
+                    }
+                    return self->addClip(path, name.isString() ? name.unsafe_cast<std::string>() : std::string(), values);
+                }))
         .addFunction("removeClip", &AnimationPlayer::removeClip)
         .addFunction("getClipCount", &AnimationPlayer::getClipCount)
         .addFunction("getClipName", &AnimationPlayer::getClipName)
@@ -2234,6 +3601,102 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("playAutomatically", &AnimationPlayer::isPlayAutomatically, &AnimationPlayer::setPlayAutomatically)
         .addProperty("enabled", &AnimationPlayer::isEnabled, &AnimationPlayer::setEnabled)
         .addFunction("isLoaded", &AnimationPlayer::isLoaded)
+        // layers (index 0 is the base layer; a layer is an index or a name)
+        .addFunction("getLayerCount", &AnimationPlayer::getLayerCount)
+        .addFunction("getLayerName", &AnimationPlayer::getLayerName)
+        .addFunction("getLayerIndex", &AnimationPlayer::getLayerIndex)
+        .addFunction("addLayer",
+            luabridge::overload<const std::string&>(&AnimationPlayer::addLayer),
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::addLayer),
+            luabridge::overload<const std::string&, float, const std::string&>(&AnimationPlayer::addLayer),
+            luabridge::overload<const std::string&, float, const std::string&, const std::string&>(&AnimationPlayer::addLayer))
+        // a layer by index or by name, dispatched by hand (LuaBridge's overload sets leak a failed
+        // attempt's error text: LeakSanitizer)
+        .addFunction("removeLayer", +[](AnimationPlayer* self, lua_State* L) -> bool {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->removeLayer(std::string(lua_tostring(L, 2)));
+            return self->removeLayer((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("setLayerWeight", +[](AnimationPlayer* self, lua_State* L) {
+            const float weight = (float)luaL_checknumber(L, 3);
+            const bool faded = lua_isnumber(L, 4);
+            const float fade = faded ? (float)lua_tonumber(L, 4) : 0.0f;
+            if (lua_type(L, 2) == LUA_TSTRING){
+                const std::string layer = lua_tostring(L, 2);
+                if (faded) self->setLayerWeight(layer, weight, fade);
+                else self->setLayerWeight(layer, weight);
+                return;
+            }
+            const int layer = (int)luaL_checkinteger(L, 2);
+            if (faded) self->setLayerWeight(layer, weight, fade);
+            else self->setLayerWeight(layer, weight);
+        })
+        .addFunction("getLayerWeight", +[](const AnimationPlayer* self, lua_State* L) -> float {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerWeight(std::string(lua_tostring(L, 2)));
+            return self->getLayerWeight((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("setLayerMask", +[](AnimationPlayer* self, lua_State* L) {
+            const std::string mask = luaL_checkstring(L, 3);
+            if (lua_type(L, 2) == LUA_TSTRING) self->setLayerMask(std::string(lua_tostring(L, 2)), mask);
+            else self->setLayerMask((int)lua_tointeger(L, 2), mask);
+        })
+        .addFunction("getLayerMask", +[](const AnimationPlayer* self, lua_State* L) -> std::string {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerMask(std::string(lua_tostring(L, 2)));
+            return self->getLayerMask((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("setLayerBlendMode", +[](AnimationPlayer* self, lua_State* L) {
+            const std::string mode = luaL_checkstring(L, 3);
+            if (lua_type(L, 2) == LUA_TSTRING) self->setLayerBlendMode(std::string(lua_tostring(L, 2)), mode);
+            else self->setLayerBlendMode((int)lua_tointeger(L, 2), mode);
+        })
+        .addFunction("getLayerBlendMode", +[](const AnimationPlayer* self, lua_State* L) -> std::string {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerBlendMode(std::string(lua_tostring(L, 2)));
+            return self->getLayerBlendMode((int)luaL_checkinteger(L, 2));
+        })
+        .addFunction("stopLayer", +[](AnimationPlayer* self, lua_State* L) {
+            const bool faded = lua_isnumber(L, 3);
+            const float fade = faded ? (float)lua_tonumber(L, 3) : 0.0f;
+            if (lua_type(L, 2) == LUA_TSTRING){
+                const std::string layer = lua_tostring(L, 2);
+                if (faded) self->stopLayer(layer, fade);
+                else self->stopLayer(layer);
+                return;
+            }
+            const int layer = (int)luaL_checkinteger(L, 2);
+            if (faded) self->stopLayer(layer, fade);
+            else self->stopLayer(layer);
+        })
+        // upstream's Animator Controller calls: the GameObject's Animator (object/AnimationPlayer.h)
+        .addProperty("controller", &AnimationPlayer::getController, &AnimationPlayer::setController)
+        .addFunction("hasController", &AnimationPlayer::hasController)
+        .addFunction("setFloat",
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::setFloat),
+            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::setFloat))
+        .addFunction("getFloat", &AnimationPlayer::getFloat)
+        .addFunction("setInteger", &AnimationPlayer::setInteger)
+        .addFunction("getInteger", &AnimationPlayer::getInteger)
+        .addFunction("setBool", &AnimationPlayer::setBool)
+        .addFunction("getBool", &AnimationPlayer::getBool)
+        .addFunction("setTrigger", &AnimationPlayer::setTrigger)
+        .addFunction("resetTrigger", &AnimationPlayer::resetTrigger)
+        .addFunction("hasParameter", &AnimationPlayer::hasParameter)
+        .addFunction("getParameterType", &AnimationPlayer::getParameterType)
+        // an optional layer read by hand (LuaBridge's overload resolution of () / (int) leaks the
+        // failed attempt's error text: LeakSanitizer)
+        .addFunction("getCurrentStateName", +[](const AnimationPlayer* self, lua_State* L) -> std::string {
+            return lua_isnumber(L, 2) ? self->getCurrentStateName((int)lua_tointeger(L, 2)) : self->getCurrentStateName();
+        })
+        .addFunction("getCurrentStateInfo", +[](const AnimationPlayer* self, lua_State* L) -> ControllerStateInfo {
+            return lua_isnumber(L, 2) ? self->getCurrentStateInfo((int)lua_tointeger(L, 2)) : self->getCurrentStateInfo();
+        })
+        .addFunction("getNextStateInfo", +[](const AnimationPlayer* self, lua_State* L) -> ControllerStateInfo {
+            return lua_isnumber(L, 2) ? self->getNextStateInfo((int)lua_tointeger(L, 2)) : self->getNextStateInfo();
+        })
+        .addFunction("isInTransition", +[](const AnimationPlayer* self, lua_State* L) -> bool {
+            return lua_isnumber(L, 2) ? self->isInTransition((int)lua_tointeger(L, 2)) : self->isInTransition();
+        })
+        // functions called with (layer, state name) when a controller state is entered / exited
+        .addProperty("onStateEnter", [] (AnimationPlayer* self, lua_State*) { return &self->getOnStateEnter(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnStateEnter() = L; })
+        .addProperty("onStateExit", [] (AnimationPlayer* self, lua_State*) { return &self->getOnStateExit(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnStateExit() = L; })
         // a function called with an AnimationEvent when a clip event fires
         .addProperty("onEvent", [] (AnimationPlayer* self, lua_State*) { return &self->getOnEvent(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnEvent() = L; })
         // a function called with the state name when a once state ends (or a clamp_forever one first reaches its end)
@@ -2336,6 +3799,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("normalizedTime", &AnimatorStateInfo::normalizedTime)
         .addProperty("length", &AnimatorStateInfo::length)
         .addProperty("loop", &AnimatorStateInfo::loop)
+        .addProperty("speed", &AnimatorStateInfo::speed)
+        // the state's humanoid playback: left and right swapped / the legs reach the foot goals
+        .addProperty("mirror", &AnimatorStateInfo::mirror)
+        .addProperty("footIK", &AnimatorStateInfo::footIK)
         .endClass();
 
     // Unity's Animator: an Animator Controller's parameters, states, layers, montages, IK and root motion
@@ -2371,12 +3838,44 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float, int, float>(&Animator::crossFadeInFixedTime))
         .addFunction("getCurrentState", &Animator::getCurrentState)
         .addFunction("getNextState", &Animator::getNextState)
-        .addFunction("isInTransition", &Animator::isInTransition)
+        // the layer is optional (0: the base layer), as upstream's controller calls had it
+        .addFunction("isInTransition", +[](const Animator* self, lua_State* L) -> bool {
+            return self->isInTransition(lua_isnumber(L, 2) ? (int)lua_tointeger(L, 2) : 0);
+        })
+        // upstream's controller calls (its getAnimator returned the Animation Player that played
+        // the controller; getAnimator now returns this Animator): kept so its scripts run as
+        // they were written (docs/specs/S21-animation.md "Upstream absorption")
+        .addFunction("getCurrentStateName", +[](const Animator* self, lua_State* L) -> std::string {
+            return self->getCurrentState(lua_isnumber(L, 2) ? (int)lua_tointeger(L, 2) : 0).name;
+        })
+        .addFunction("getCurrentStateInfo", +[](const Animator* self, lua_State* L) -> ControllerStateInfo {
+            return toControllerStateInfo(self->getCurrentState(lua_isnumber(L, 2) ? (int)lua_tointeger(L, 2) : 0));
+        })
+        .addFunction("getNextStateInfo", +[](const Animator* self, lua_State* L) -> ControllerStateInfo {
+            return toControllerStateInfo(self->getNextState(lua_isnumber(L, 2) ? (int)lua_tointeger(L, 2) : 0));
+        })
+        .addFunction("playInLayer", +[](Animator* self, const std::string& name, int layer, lua_State* L) {
+            if (lua_isnumber(L, 4)) self->play(name, layer, (float)lua_tonumber(L, 4));
+            else self->play(name, layer);
+        })
+        .addFunction("crossFadeInLayer", +[](Animator* self, const std::string& name, float seconds, int layer) { self->crossFade(name, seconds, layer); })
+        .addFunction("hasController", +[](const Animator* self) -> bool { return !self->getController().empty(); })
+        .addFunction("hasParameter", +[](const Animator* self, const std::string& name) -> bool { return self->getParameterIndex(name) >= 0; })
         .addFunction("getLayerCount", &Animator::getLayerCount)
         .addFunction("getLayerName", &Animator::getLayerName)
         .addFunction("getLayerIndex", &Animator::getLayerIndex)
-        .addFunction("setLayerWeight", &Animator::setLayerWeight)
-        .addFunction("getLayerWeight", &Animator::getLayerWeight)
+        // a layer by index or by name (upstream's player-controller scripts name it), an optional
+        // fade in seconds
+        .addFunction("setLayerWeight", +[](Animator* self, lua_State* L) {
+            const int layer = lua_type(L, 2) == LUA_TSTRING ? self->getLayerIndex(lua_tostring(L, 2)) : (int)luaL_checkinteger(L, 2);
+            const float weight = (float)luaL_checknumber(L, 3);
+            if (lua_isnumber(L, 4)) self->setLayerWeight(layer, weight, (float)lua_tonumber(L, 4));
+            else self->setLayerWeight(layer, weight);
+        })
+        .addFunction("getLayerWeight", +[](const Animator* self, lua_State* L) -> float {
+            const int layer = lua_type(L, 2) == LUA_TSTRING ? self->getLayerIndex(lua_tostring(L, 2)) : (int)luaL_checkinteger(L, 2);
+            return self->getLayerWeight(layer);
+        })
         .addFunction("playMontage",
             luabridge::overload<const std::string&>(&Animator::playMontage),
             luabridge::overload<const std::string&, float>(&Animator::playMontage),
@@ -2417,6 +3916,255 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getAnimatorComponent", &Animator::getComponent<AnimatorComponent>)
         .endClass();
 
+    // The instances one shake call started (MilkShake's ShakeInstance): one per shaker it reached.
+    // Gone instances drop out; with none left it is invalid and its calls do nothing
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ShakeInstanceHandle>("ShakeInstance")
+        // Fades out over `fade` seconds (default: the preset's fade_out; 0: now)
+        .addFunction("stop",
+            luabridge::overload<>(&ShakeInstanceHandle::stop),
+            luabridge::overload<float>(&ShakeInstanceHandle::stop))
+        // The noise slows to a stop over `fade` seconds (default 0: at once)
+        .addFunction("pause",
+            luabridge::overload<>(&ShakeInstanceHandle::pause),
+            luabridge::overload<float>(&ShakeInstanceHandle::pause))
+        .addFunction("resume",
+            luabridge::overload<>(&ShakeInstanceHandle::resume),
+            luabridge::overload<float>(&ShakeInstanceHandle::resume))
+        .addFunction("isPaused", &ShakeInstanceHandle::isPaused)
+        // Nothing of it plays any more (finished, or its shakers are gone)
+        .addFunction("isFinished", &ShakeInstanceHandle::isFinished)
+        .addFunction("isValid", &ShakeInstanceHandle::isValid)
+        // Multiplies the strength (on every shaker it reached)
+        .addProperty("strengthScale", &ShakeInstanceHandle::getStrengthScale, &ShakeInstanceHandle::setStrengthScale)
+        // Multiplies the noise speed
+        .addProperty("roughnessScale", &ShakeInstanceHandle::getRoughnessScale, &ShakeInstanceHandle::setRoughnessScale)
+        // "fading_in", "sustained", "fading_out", "paused" or "stopped"
+        .addProperty("state", &ShakeInstanceHandle::getState)
+        // The live instances (one per shaker)
+        .addProperty("count", &ShakeInstanceHandle::getCount)
+        .addFunction("__tostring", &ShakeInstanceHandle::toString)
+        .endClass();
+
+    // Shakes every global Camera Shaker (MilkShake's Shaker.ShakeAll): enabled, active, Global on,
+    // in every running scene. Presets: CameraShake.getPresetNames(), a .shake path or a table
+    luabridge::getGlobalNamespace(L)
+        .beginClass<CameraShake>("CameraShake")
+        .addStaticFunction("shake", &luaCameraShakeShake)
+        .addStaticFunction("shakeAt", &luaCameraShakeShakeAt)
+        // Adds trauma (0..1, clamped) to every global shaker: shake = trauma^power, decaying linearly
+        .addStaticFunction("addTrauma", &CameraShake::addTrauma)
+        .addStaticFunction("stopAll",
+            luabridge::overload<>(&CameraShake::stopAll),
+            luabridge::overload<float>(&CameraShake::stopAll))
+        // The built-in preset names
+        .addStaticFunction("getPresetNames", &CameraShake::getPresetNames)
+        .endClass();
+
+    // Shakes its GameObject (MilkShake's Shaker): a camera through a view offset (its Transform is
+    // never written), any other GameObject additively through its Transform
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CameraShaker, EntityHandle>("CameraShaker")
+        .addConstructor <void (*) (Scene*, Entity)> ()
+        .addFunction("shake", &luaCameraShakerShake)
+        .addFunction("shakeAt", &luaCameraShakerShakeAt)
+        // Adds trauma (0..1, clamped): shake = trauma^power, decaying traumaDecay per second
+        .addFunction("addTrauma", &CameraShaker::addTrauma)
+        .addFunction("stopAll",
+            luabridge::overload<>(&CameraShaker::stopAll),
+            luabridge::overload<float>(&CameraShaker::stopAll))
+        .addFunction("getInstanceCount", &CameraShaker::getInstanceCount)
+        // 0..1
+        .addProperty("trauma", &CameraShaker::getTrauma, &CameraShaker::setTrauma)
+        .addProperty("enabled", &CameraShaker::isEnabled, &CameraShaker::setEnabled)
+        // Receives the CameraShake.* calls
+        .addProperty("global", &CameraShaker::isGlobal, &CameraShaker::setGlobal)
+        .addProperty("unscaledTime", &CameraShaker::isUnscaledTime, &CameraShaker::setUnscaledTime)
+        .addProperty("mode", &CameraShaker::getMode, &CameraShaker::setMode)
+        .addProperty("positionScale", &CameraShaker::getPositionScale, &CameraShaker::setPositionScale)
+        .addProperty("rotationScale", &CameraShaker::getRotationScale, &CameraShaker::setRotationScale)
+        // A built-in name or a .shake path played on each enable ("" = none)
+        .addProperty("startPreset", &CameraShaker::getStartPreset, &CameraShaker::setStartPreset)
+        .addProperty("traumaDecay", &CameraShaker::getTraumaDecay, &CameraShaker::setTraumaDecay)
+        .addProperty("traumaPower", &CameraShaker::getTraumaPower, &CameraShaker::setTraumaPower)
+        .addProperty("traumaMaxOffset", &CameraShaker::getTraumaMaxOffset, &CameraShaker::setTraumaMaxOffset)
+        // degrees
+        .addProperty("traumaMaxAngle", &CameraShaker::getTraumaMaxAngle, &CameraShaker::setTraumaMaxAngle)
+        .addProperty("traumaFrequency", &CameraShaker::getTraumaFrequency, &CameraShaker::setTraumaFrequency)
+        // The position offset applied this frame
+        .addProperty("offsetPosition", &CameraShaker::getOffsetPosition)
+        // The rotation offset applied this frame (Euler degrees)
+        .addProperty("offsetRotation", &CameraShaker::getOffsetRotation)
+        .endClass();
+
+    // Keeps its GameObject at an offset from a target with Unity's SmoothDamp, aiming at it; owns
+    // the Transform while enabled
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CameraFollow, EntityHandle>("CameraFollow")
+        .addConstructor <void (*) (Scene*, Entity)> ()
+        // Places it on the next update without damping
+        .addFunction("snap", &CameraFollow::snap)
+        // The GameObject followed (this scene's, or a persistent DontDestroyOnLoad one), or nil
+        .addProperty("target",
+            +[](const CameraFollow* self, lua_State* L) -> luabridge::LuaRef {
+                Scene* scene = self->getTargetScene();
+                const Entity target = self->getTarget();
+                if (!scene || target == NULL_ENTITY || !scene->isEntityCreated(target)){
+                    return luabridge::LuaRef(L);
+                }
+                return luabridge::LuaRef(L, GameObject(scene, target));
+            },
+            +[](CameraFollow* self, lua_State* L){
+                // the assigned value is on the top of the stack
+                const int index = lua_gettop(L);
+                if (lua_isnil(L, index)){
+                    self->setTarget(NULL_ENTITY);
+                    return;
+                }
+                Scene* scene = nullptr;
+                Entity entity = NULL_ENTITY;
+                if (!luaObjectArg(L, index, scene, entity)){
+                    Log::warn("CameraFollow.target: a GameObject (of this scene or the persistent one), or nil");
+                    return;
+                }
+                self->setTarget(scene, entity);
+            })
+        .addProperty("offset", &CameraFollow::getOffset, &CameraFollow::setOffset)
+        .addProperty("offsetSpace", &CameraFollow::getOffsetSpace, &CameraFollow::setOffsetSpace)
+        // SmoothDamp smooth time per world axis, seconds (0 = rigid)
+        .addProperty("damping", &CameraFollow::getDamping, &CameraFollow::setDamping)
+        // Units per second (0 = unlimited)
+        .addProperty("maxSpeed", &CameraFollow::getMaxSpeed, &CameraFollow::setMaxSpeed)
+        .addProperty("lookAt", &CameraFollow::isLookAt, &CameraFollow::setLookAt)
+        .addProperty("lookAtOffset", &CameraFollow::getLookAtOffset, &CameraFollow::setLookAtOffset)
+        // Seconds to cover 99% of a turn (0 = rigid)
+        .addProperty("rotationDamping", &CameraFollow::getRotationDamping, &CameraFollow::setRotationDamping)
+        // Width and height (world x / y) where target moves don't move an orthographic camera
+        .addProperty("deadZone", &CameraFollow::getDeadZone, &CameraFollow::setDeadZone)
+        .addProperty("useBounds", &CameraFollow::isUseBounds, &CameraFollow::setUseBounds)
+        .addProperty("boundsMin", &CameraFollow::getBoundsMin, &CameraFollow::setBoundsMin)
+        .addProperty("boundsMax", &CameraFollow::getBoundsMax, &CameraFollow::setBoundsMax)
+        .addProperty("unscaledTime", &CameraFollow::isUnscaledTime, &CameraFollow::setUnscaledTime)
+        .addProperty("enabled", &CameraFollow::isEnabled, &CameraFollow::setEnabled)
+        .endClass();
+
+    // Unity's VideoPlayer enums (docs/mcp/guide/video.md)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("VideoPlayerSource")
+        .addVariable("CLIP", VideoPlayerSource::CLIP)
+        .addVariable("URL", VideoPlayerSource::URL)
+        .endNamespace()
+        .beginNamespace("VideoTimeUpdateMode")
+        .addVariable("GAME_TIME", VideoTimeUpdateMode::GAME_TIME)
+        .addVariable("UNSCALED_GAME_TIME", VideoTimeUpdateMode::UNSCALED_GAME_TIME)
+        .endNamespace()
+        .beginNamespace("VideoRenderMode")
+        .addVariable("CAMERA_FAR_PLANE", VideoRenderMode::CAMERA_FAR_PLANE)
+        .addVariable("CAMERA_NEAR_PLANE", VideoRenderMode::CAMERA_NEAR_PLANE)
+        .addVariable("RENDER_TEXTURE", VideoRenderMode::RENDER_TEXTURE)
+        .addVariable("MATERIAL_OVERRIDE", VideoRenderMode::MATERIAL_OVERRIDE)
+        .addVariable("API_ONLY", VideoRenderMode::API_ONLY)
+        .endNamespace()
+        .beginNamespace("VideoAspectRatio")
+        .addVariable("NO_SCALING", VideoAspectRatio::NO_SCALING)
+        .addVariable("FIT_VERTICALLY", VideoAspectRatio::FIT_VERTICALLY)
+        .addVariable("FIT_HORIZONTALLY", VideoAspectRatio::FIT_HORIZONTALLY)
+        .addVariable("FIT_INSIDE", VideoAspectRatio::FIT_INSIDE)
+        .addVariable("FIT_OUTSIDE", VideoAspectRatio::FIT_OUTSIDE)
+        .addVariable("STRETCH", VideoAspectRatio::STRETCH)
+        .endNamespace()
+        .beginNamespace("VideoAudioOutputMode")
+        .addVariable("NONE", VideoAudioOutputMode::NONE)
+        .addVariable("AUDIO_SOURCE", VideoAudioOutputMode::AUDIO_SOURCE)
+        .addVariable("DIRECT", VideoAudioOutputMode::DIRECT)
+        .endNamespace();
+
+    // Unity's VideoPlayer: plays a clip or a URL into its render texture, a material, a camera
+    // plane or nowhere (API only); its sound directly or through an AudioSource
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<VideoPlayer, EntityHandle>("VideoPlayer")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &VideoPlayer::isEnabled, &VideoPlayer::setEnabled)
+        .addProperty("source", &VideoPlayer::getSource, &VideoPlayer::setSource)
+        .addProperty("clip", &VideoPlayer::getClip, &VideoPlayer::setClip)
+        .addProperty("url", &VideoPlayer::getUrl, &VideoPlayer::setUrl)
+        .addProperty("playOnAwake", &VideoPlayer::isPlayOnAwake, &VideoPlayer::setPlayOnAwake)
+        .addProperty("waitForFirstFrame", &VideoPlayer::isWaitForFirstFrame, &VideoPlayer::setWaitForFirstFrame)
+        .addProperty("isLooping", &VideoPlayer::isLooping, &VideoPlayer::setLooping)
+        .addProperty("skipOnDrop", &VideoPlayer::isSkipOnDrop, &VideoPlayer::setSkipOnDrop)
+        .addProperty("playbackSpeed", &VideoPlayer::getPlaybackSpeed, &VideoPlayer::setPlaybackSpeed)
+        .addProperty("timeUpdateMode", &VideoPlayer::getTimeUpdateMode, &VideoPlayer::setTimeUpdateMode)
+        .addProperty("renderMode", &VideoPlayer::getRenderMode, &VideoPlayer::setRenderMode)
+        // a GameObject with a Camera, nil: the main camera
+        .addProperty("targetCamera",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetCamera()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetCamera(entityOf(value, "targetCamera")); })
+        .addProperty("targetCameraAlpha", &VideoPlayer::getTargetCameraAlpha, &VideoPlayer::setTargetCameraAlpha)
+        .addProperty("aspectRatio", &VideoPlayer::getAspectRatio, &VideoPlayer::setAspectRatio)
+        // a GameObject with a Mesh, Sprite or Image, nil: this one
+        .addProperty("targetMaterialRenderer",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetMaterialRenderer()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetMaterialRenderer(entityOf(value, "targetMaterialRenderer")); })
+        // "baseColorTexture" (default), "emissiveTexture", ... or a shader @texture uniform
+        .addProperty("targetMaterialProperty", &VideoPlayer::getTargetMaterialProperty, &VideoPlayer::setTargetMaterialProperty)
+        // -1: every submesh
+        .addProperty("targetSubmesh", &VideoPlayer::getTargetSubmesh, &VideoPlayer::setTargetSubmesh)
+        .addProperty("renderTextureWidth", &VideoPlayer::getRenderTextureWidth, &VideoPlayer::setRenderTextureWidth)
+        .addProperty("renderTextureHeight", &VideoPlayer::getRenderTextureHeight, &VideoPlayer::setRenderTextureHeight)
+        .addProperty("audioOutputMode", &VideoPlayer::getAudioOutputMode, &VideoPlayer::setAudioOutputMode)
+        .addProperty("directVolume", &VideoPlayer::getDirectVolume, &VideoPlayer::setDirectVolume)
+        .addProperty("directMute", &VideoPlayer::isDirectMute, &VideoPlayer::setDirectMute)
+        // a GameObject with an AudioSource, nil: this one
+        .addProperty("targetAudioSource",
+            [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetAudioSource()); },
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetAudioSource(entityOf(value, "targetAudioSource")); })
+        .addProperty("time", &VideoPlayer::getTime, &VideoPlayer::setTime)
+        .addProperty("canSetTime", &VideoPlayer::canSetTime)
+        .addProperty("frame", &VideoPlayer::getFrame, &VideoPlayer::setFrame)
+        .addProperty("frameCount", &VideoPlayer::getFrameCount)
+        .addProperty("frameRate", &VideoPlayer::getFrameRate)
+        // seconds
+        .addProperty("length", &VideoPlayer::getLength)
+        .addProperty("width", &VideoPlayer::getWidth)
+        .addProperty("height", &VideoPlayer::getHeight)
+        .addProperty("isPrepared", &VideoPlayer::isPrepared)
+        .addProperty("isPlaying", &VideoPlayer::isPlaying)
+        .addProperty("isPaused", &VideoPlayer::isPaused)
+        // 0..1: the download of a URL, then the opening
+        .addProperty("prepareProgress", &VideoPlayer::getPrepareProgress)
+        .addProperty("texture", &VideoPlayer::getTexture)
+        .addProperty("backend", &VideoPlayer::getBackend)
+        .addProperty("videoCodec", &VideoPlayer::getVideoCodec)
+        .addProperty("audioCodec", &VideoPlayer::getAudioCodec)
+        // the last error ("" when none)
+        .addProperty("error", &VideoPlayer::getError)
+        .addFunction("prepare", &VideoPlayer::prepare)
+        .addFunction("play", &VideoPlayer::play)
+        .addFunction("pause", &VideoPlayer::pause)
+        .addFunction("stop", &VideoPlayer::stop)
+        // paused: the next frame
+        .addFunction("stepForward", &VideoPlayer::stepForward)
+        .addFunction("getFramebuffer", &VideoPlayer::getFramebuffer)
+        .addStaticFunction("canPlay", &VideoPlayer::canPlay)
+        // deletes the media cache's files (of one URL, or all); the number removed
+        .addStaticFunction("clearCache",
+            luabridge::overload<>(+[]() -> int { return VideoPlayer::clearCache(); }),
+            luabridge::overload<const std::string&>(+[](const std::string& url) -> int { return VideoPlayer::clearCache(url); }))
+        // function(player) when it can play
+        .addProperty("onPrepareCompleted", [] (VideoPlayer* self, lua_State*) { return &self->getOnPrepareCompleted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnPrepareCompleted() = L; })
+        // function(player) when the first frame of a play shows
+        .addProperty("onStarted", [] (VideoPlayer* self, lua_State*) { return &self->getOnStarted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnStarted() = L; })
+        // function(player) at each loop and at the end of a play that does not loop
+        .addProperty("onLoopPointReached", [] (VideoPlayer* self, lua_State*) { return &self->getOnLoopPointReached(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnLoopPointReached() = L; })
+        // function(player, message)
+        .addProperty("onErrorReceived", [] (VideoPlayer* self, lua_State*) { return &self->getOnErrorReceived(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnErrorReceived() = L; })
+        // function(player) when a seek's frame shows
+        .addProperty("onSeekCompleted", [] (VideoPlayer* self, lua_State*) { return &self->getOnSeekCompleted(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnSeekCompleted() = L; })
+        // function(player, frameIndex) each frame shown (a call per frame: set it only when needed)
+        .addProperty("onFrameReady", [] (VideoPlayer* self, lua_State*) { return &self->getOnFrameReady(); }, [] (VideoPlayer* self, lua_State* L) { self->getOnFrameReady() = L; })
+        .addFunction("getVideoPlayerComponent", (VideoPlayerComponent&(VideoPlayer::*)() const)&VideoPlayer::getComponent)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .deriveClass<AudioSource, EntityHandle>("AudioSource")
         .addProperty("enabled", &AudioSource::isEnabled, &AudioSource::setEnabled)
@@ -2449,6 +4197,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("attenuationModel", &AudioSource::getAttenuationModel, &AudioSource::setAttenuationModel)
         .addProperty("attenuationRolloffFactor", &AudioSource::getAttenuationRolloffFactor, &AudioSource::setAttenuationRolloffFactor)
         .addProperty("dopplerFactor", &AudioSource::getDopplerFactor, &AudioSource::setDopplerFactor)
+        .addProperty("outputGroup", &AudioSource::getOutputGroup, &AudioSource::setOutputGroup)
+        .addProperty("loadType", &AudioSource::getLoadType, &AudioSource::setLoadType)
+        .addFunction("getResolvedLoadType", &AudioSource::getResolvedLoadType)
+        .addProperty("priority", &AudioSource::getPriority, &AudioSource::setPriority)
+        .addProperty("maxVoices", &AudioSource::getMaxVoices, &AudioSource::setMaxVoices)
+        .addProperty("ignoreListenerPause", &AudioSource::isIgnoreListenerPause, &AudioSource::setIgnoreListenerPause)
+        .addProperty("pitch", &AudioSource::getPitch, &AudioSource::setPitch)
+        .addFunction("playOneShot", &luaAudioPlayOneShot)
+        .addFunction("fadeIn", &luaAudioFadeIn)
+        .addFunction("fadeOut", &luaAudioFadeOut)
+        .addFunction("fadeTo", &luaAudioFadeTo)
+        .addFunction("isFading", &AudioSource::isFading)
+        .addFunction("getVoiceCount", &AudioSource::getVoiceCount)
+        .addStaticFunction("playClipAtPoint", &luaAudioPlayClipAtPoint)
         .addFunction("getAudioSourceComponent", &AudioSource::getComponent<AudioSourceComponent>)
         .endClass();
 
@@ -2565,6 +4327,35 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("groundVelocity", &CharacterController2D::getGroundVelocity)
         .endClass();
 #endif
+
+    // a runtime physics material: PhysicsMaterial.load(path) is the asset's copy shared by every
+    // collider naming it, PhysicsMaterial.new{...} a material of the script's own
+    luabridge::getGlobalNamespace(L)
+        .beginClass<PhysicsMaterial>("PhysicsMaterial")
+        .addStaticFunction("load", +[](const std::string& path) -> std::optional<PhysicsMaterial> {
+            return luaMaterialResult(PhysicsMaterial::load(path));
+        })
+        .addStaticFunction("new", +[](luabridge::LuaRef params) -> PhysicsMaterial {
+            PhysicsMaterialData defaults;
+            float friction = defaults.friction;
+            float bounciness = defaults.bounciness;
+            PhysicsMaterialCombine frictionCombine = PhysicsMaterialCombine::AVERAGE;
+            PhysicsMaterialCombine bounceCombine = PhysicsMaterialCombine::AVERAGE;
+            if (params.isTable()){
+                if (params["friction"].isNumber()) friction = params["friction"].unsafe_cast<float>();
+                if (params["bounciness"].isNumber()) bounciness = params["bounciness"].unsafe_cast<float>();
+                frictionCombine = luaCombineArg(params["frictionCombine"], frictionCombine);
+                bounceCombine = luaCombineArg(params["bounceCombine"], bounceCombine);
+            }
+            return PhysicsMaterial::create(friction, bounciness, frictionCombine, bounceCombine);
+        })
+        .addProperty("path", &PhysicsMaterial::getPath)
+        .addProperty("friction", &PhysicsMaterial::getFriction, &PhysicsMaterial::setFriction)
+        .addProperty("bounciness", &PhysicsMaterial::getBounciness, &PhysicsMaterial::setBounciness)
+        .addProperty("frictionCombine", &PhysicsMaterial::getFrictionCombine, &PhysicsMaterial::setFrictionCombine)
+        .addProperty("bounceCombine", &PhysicsMaterial::getBounceCombine, &PhysicsMaterial::setBounceCombine)
+        .addFunction("__eq", +[](const PhysicsMaterial* self, const PhysicsMaterial* other) -> bool { return other && *self == *other; })
+        .endClass();
 
 #ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
@@ -2684,6 +4475,53 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getMass", &Rigidbody2D::getMass)
         .addFunction("getRotationalInertia", &Rigidbody2D::getRotationalInertia)
         .addFunction("applyMassFromColliders", &Rigidbody2D::applyMassFromColliders)
+        // Unity's mass fields: setting mass, centerOfMass or inertia turns its Auto off
+        .addProperty("mass", &Rigidbody2D::getMass, &Rigidbody2D::setMass)
+        .addProperty("useAutoMass", &Rigidbody2D::isUseAutoMass, &Rigidbody2D::setUseAutoMass)
+        .addProperty("centerOfMass", &Rigidbody2D::getCenterOfMass, &Rigidbody2D::setCenterOfMass)
+        .addProperty("autoCenterOfMass", &Rigidbody2D::isAutoCenterOfMass, &Rigidbody2D::setAutoCenterOfMass)
+        .addProperty("inertia", &Rigidbody2D::getInertia, &Rigidbody2D::setInertia)
+        .addProperty("autoInertia", &Rigidbody2D::isAutoInertia, &Rigidbody2D::setAutoInertia)
+        .addProperty("collisionDetection", &Rigidbody2D::getCollisionDetection, &Rigidbody2D::setCollisionDetection)
+        .addProperty("sleepingMode", &Rigidbody2D::getSleepingMode, &Rigidbody2D::setSleepingMode)
+        // the default material of the colliders without one: a path, a PhysicsMaterial or nil
+        .addProperty("material",
+            +[](const Rigidbody2D* self) -> std::optional<PhysicsMaterial> { return luaMaterialResult(self->getMaterial()); },
+            +[](Rigidbody2D* self, luabridge::LuaRef value) {
+                PhysicsMaterial material;
+                std::string path;
+                if (!luaMaterialArg(value, material, path)){
+                    throw std::runtime_error("Rigidbody2D.material: a .physicsmaterial path, a PhysicsMaterial or nil");
+                }
+                if (material.valid()) self->setMaterial(material);
+                else self->setMaterial(path);
+            })
+        // collider edits: that collider only is made again (index from 0; out of range: an error)
+        .addFunction("removeCollider", &Rigidbody2D::removeCollider)
+        .addFunction("setColliderPoints", &Rigidbody2D::setColliderPoints)
+        .addFunction("getColliderPoints", &Rigidbody2D::getColliderPoints)
+        .addFunction("setColliderLoop", &Rigidbody2D::setColliderLoop)
+        .addFunction("isColliderLoop", &Rigidbody2D::isColliderLoop)
+        .addFunction("setColliderRadius", &Rigidbody2D::setColliderRadius)
+        .addFunction("getColliderRadius", &Rigidbody2D::getColliderRadius)
+        .addFunction("setColliderCenter", &Rigidbody2D::setColliderCenter)
+        .addFunction("getColliderCenter", &Rigidbody2D::getColliderCenter)
+        .addFunction("setColliderSegment", &Rigidbody2D::setColliderSegment)
+        .addFunction("setColliderMaterial", +[](Rigidbody2D* self, size_t index, luabridge::LuaRef value) {
+            PhysicsMaterial material;
+            std::string path;
+            if (!luaMaterialArg(value, material, path)){
+                throw std::runtime_error("Rigidbody2D:setColliderMaterial: a .physicsmaterial path, a PhysicsMaterial or nil");
+            }
+            if (material.valid()) self->setColliderMaterial(index, material);
+            else self->setColliderMaterial(index, path);
+        })
+        .addFunction("getColliderMaterial", +[](const Rigidbody2D* self, size_t index) -> std::optional<PhysicsMaterial> {
+            return luaMaterialResult(self->getColliderMaterial(index));
+        })
+        .addFunction("setColliderTrigger", &Rigidbody2D::setColliderTrigger)
+        .addFunction("isColliderTrigger", &Rigidbody2D::isColliderTrigger)
+        .addFunction("getColliderPieceCount", &Rigidbody2D::getColliderPieceCount)
         .addFunction("applyForce", &Rigidbody2D::applyForce)
         .addFunction("applyForceToCenter", &Rigidbody2D::applyForceToCenter)
         .addFunction("applyTorque", &Rigidbody2D::applyTorque)
@@ -2693,8 +4531,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<Joint2D>("Joint2D")
+        .deriveClass<Joint2D, EntityHandle>("Joint2D")
         .addConstructor <void (Scene*), void (Scene*, Entity)> ()
+        // as before local anchors: world points, the other fields as Box2D had them
         .addFunction("setDistanceJoint",
             luabridge::overload<Entity, Entity>(&Joint2D::setDistanceJoint),
             luabridge::overload<Entity, Entity, Vector2, Vector2, bool>(&Joint2D::setDistanceJoint))
@@ -2705,6 +4544,71 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setWeldJoint", &Joint2D::setWeldJoint)
         .addFunction("setMotorJoint", &Joint2D::setMotorJoint)
         .addFunction("getType", &Joint2D::getType)
+        .addProperty("type", &Joint2D::getType, &Joint2D::setType)
+        .addProperty("enabled", &Joint2D::isEnabled, &Joint2D::setEnabled)
+        // the body the joint is on (Unity: the joint's Rigidbody 2D) and the connected one;
+        // set with a GameObject, a Rigidbody2D or nil (the world)
+        .addProperty("bodyA",
+            +[](const Joint2D* self) { return luaJointBody(self, self->getBodyA()); },
+            +[](Joint2D* self, luabridge::LuaRef value) { self->setBodyA(luaJointBodyArg(self, value, value.state(), "bodyA")); })
+        .addProperty("bodyB",
+            +[](const Joint2D* self) { return luaJointBody(self, self->getBodyB()); },
+            +[](Joint2D* self, luabridge::LuaRef value) { self->setBodyB(luaJointBodyArg(self, value, value.state(), "bodyB")); })
+        .addProperty("connectedBody",
+            +[](const Joint2D* self) { return luaJointBody(self, self->getBodyB()); },
+            +[](Joint2D* self, luabridge::LuaRef value) { self->setBodyB(luaJointBodyArg(self, value, value.state(), "connectedBody")); })
+        .addProperty("anchorSpace", &Joint2D::getAnchorSpace, &Joint2D::setAnchorSpace)
+        .addProperty("anchorA", &Joint2D::getAnchorA, &Joint2D::setAnchorA)
+        .addProperty("anchorB", &Joint2D::getAnchorB, &Joint2D::setAnchorB)
+        .addProperty("anchor", &Joint2D::getAnchorA, &Joint2D::setAnchorA)
+        .addProperty("connectedAnchor", &Joint2D::getAnchorB, &Joint2D::setAnchorB)
+        .addProperty("autoAnchors", &Joint2D::isAutoAnchors, &Joint2D::setAutoAnchors)
+        .addProperty("axis", &Joint2D::getAxis, &Joint2D::setAxis)
+        .addProperty("enableCollision", &Joint2D::isEnableCollision, &Joint2D::setEnableCollision)
+        .addProperty("breakForce", &Joint2D::getBreakForce, &Joint2D::setBreakForce)
+        .addProperty("breakTorque", &Joint2D::getBreakTorque, &Joint2D::setBreakTorque)
+        .addProperty("breakAction", &Joint2D::getBreakAction, &Joint2D::setBreakAction)
+        .addProperty("useLimits", &Joint2D::isUseLimits, &Joint2D::setUseLimits)
+        .addProperty("lowerAngle", &Joint2D::getLowerAngle, &Joint2D::setLowerAngle)
+        .addProperty("upperAngle", &Joint2D::getUpperAngle, &Joint2D::setUpperAngle)
+        .addProperty("lowerTranslation", &Joint2D::getLowerTranslation, &Joint2D::setLowerTranslation)
+        .addProperty("upperTranslation", &Joint2D::getUpperTranslation, &Joint2D::setUpperTranslation)
+        .addProperty("useMotor", &Joint2D::isUseMotor, &Joint2D::setUseMotor)
+        .addProperty("motorSpeed", &Joint2D::getMotorSpeed, &Joint2D::setMotorSpeed)
+        .addProperty("maxMotorTorque", &Joint2D::getMaxMotorTorque, &Joint2D::setMaxMotorTorque)
+        .addProperty("maxMotorForce", &Joint2D::getMaxMotorForce, &Joint2D::setMaxMotorForce)
+        .addProperty("enableSpring", &Joint2D::isEnableSpring, &Joint2D::setEnableSpring)
+        .addProperty("frequency", &Joint2D::getFrequency, &Joint2D::setFrequency)
+        .addProperty("dampingRatio", &Joint2D::getDampingRatio, &Joint2D::setDampingRatio)
+        .addProperty("length", &Joint2D::getLength, &Joint2D::setLength)
+        .addProperty("autoLength", &Joint2D::isAutoLength, &Joint2D::setAutoLength)
+        .addProperty("minLength", &Joint2D::getMinLength, &Joint2D::setMinLength)
+        .addProperty("maxLength", &Joint2D::getMaxLength, &Joint2D::setMaxLength)
+        .addProperty("rope", &Joint2D::isRope, &Joint2D::setRope)
+        .addProperty("linearFrequency", &Joint2D::getLinearFrequency, &Joint2D::setLinearFrequency)
+        .addProperty("angularFrequency", &Joint2D::getAngularFrequency, &Joint2D::setAngularFrequency)
+        .addProperty("linearDampingRatio", &Joint2D::getLinearDampingRatio, &Joint2D::setLinearDampingRatio)
+        .addProperty("angularDampingRatio", &Joint2D::getAngularDampingRatio, &Joint2D::setAngularDampingRatio)
+        .addProperty("linearOffset", &Joint2D::getLinearOffset, &Joint2D::setLinearOffset)
+        .addProperty("angularOffset", &Joint2D::getAngularOffset, &Joint2D::setAngularOffset)
+        .addProperty("autoOffset", &Joint2D::isAutoOffset, &Joint2D::setAutoOffset)
+        .addProperty("maxForce", &Joint2D::getMaxForce, &Joint2D::setMaxForce)
+        .addProperty("maxTorque", &Joint2D::getMaxTorque, &Joint2D::setMaxTorque)
+        .addProperty("correctionFactor", &Joint2D::getCorrectionFactor, &Joint2D::setCorrectionFactor)
+        .addProperty("target", &Joint2D::getTarget, &Joint2D::setTarget)
+        // read-outs of the live joint (0 without one)
+        .addProperty("reactionForce", &Joint2D::getReactionForce)
+        .addProperty("reactionTorque", &Joint2D::getReactionTorque)
+        .addProperty("jointAngle", &Joint2D::getJointAngle)
+        .addProperty("jointSpeed", &Joint2D::getJointSpeed)
+        .addProperty("jointTranslation", &Joint2D::getJointTranslation)
+        .addProperty("jointLinearSpeed", &Joint2D::getJointLinearSpeed)
+        .addProperty("motorTorque", &Joint2D::getMotorTorque)
+        .addProperty("motorForce", &Joint2D::getMotorForce)
+        .addProperty("currentLength", &Joint2D::getCurrentLength)
+        .addProperty("limitState", &Joint2D::getLimitState)
+        .addProperty("referenceAngle", &Joint2D::getReferenceAngle)
+        .addProperty("broken", &Joint2D::isBroken)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -2730,6 +4634,51 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getBodyEntityB", &Contact2D::getBodyEntityB)
         .addFunction("getBodyB", &Contact2D::getBodyB)
         .addFunction("getColliderIndexB", &Contact2D::getColliderIndexB)
+        .endClass();
+    // physics-contacts: what onCollisionEnter2D / onTriggerEnter2D... get. Unity's Collision2D
+    // names the other side collider / rigidbody and this side otherCollider / otherRigidbody;
+    // thisCollider / thisRigidbody say it plainly.
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ColliderRef2D>("Collider2D")
+        .addProperty("gameObject", [] (const ColliderRef2D* self) -> std::optional<GameObject> { return luaColliderGameObject(*self); })
+        .addProperty("rigidbody", [] (const ColliderRef2D* self) -> std::optional<Rigidbody2D> { return self->hasRigidbody() ? std::optional<Rigidbody2D>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("attachedRigidbody", [] (const ColliderRef2D* self) -> std::optional<Rigidbody2D> { return self->hasRigidbody() ? std::optional<Rigidbody2D>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("index", &ColliderRef2D::getIndex)
+        .addProperty("type", &ColliderRef2D::getType)
+        .addProperty("isTrigger", &ColliderRef2D::isTrigger)
+        .addProperty("tag", &ColliderRef2D::getTag)
+        .addFunction("compareTag", &ColliderRef2D::compareTag)
+        .addProperty("receiver", [] (const ColliderRef2D* self) -> std::optional<GameObject> { return luaColliderReceiver(*self); })
+        .addFunction("isValid", &ColliderRef2D::isValid)
+        .addFunction("__eq", [] (const ColliderRef2D* self, const ColliderRef2D* other) { return other && *self == *other; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ContactPoint2D>("ContactPoint2D")
+        .addProperty("point", &ContactPoint2D::getPoint)
+        .addProperty("normal", &ContactPoint2D::getNormal)
+        .addProperty("separation", &ContactPoint2D::getSeparation)
+        .addProperty("normalImpulse", &ContactPoint2D::getNormalImpulse)
+        .addProperty("tangentImpulse", &ContactPoint2D::getTangentImpulse)
+        .addProperty("relativeVelocity", &ContactPoint2D::getRelativeVelocity)
+        .addProperty("thisCollider", &ContactPoint2D::getThisCollider)
+        .addProperty("otherCollider", &ContactPoint2D::getOtherCollider)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Collision2D>("Collision2D")
+        .addProperty("gameObject", [] (const Collision2D* self) -> std::optional<GameObject> { return luaColliderGameObject(self->otherCollider); })
+        .addProperty("collider", &Collision2D::getCollider)
+        .addProperty("rigidbody", [] (const Collision2D* self) -> std::optional<Rigidbody2D> { return self->otherCollider.hasRigidbody() ? std::optional<Rigidbody2D>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("otherCollider", &Collision2D::getThisCollider)
+        .addProperty("otherRigidbody", [] (const Collision2D* self) -> std::optional<Rigidbody2D> { return self->thisCollider.hasRigidbody() ? std::optional<Rigidbody2D>(self->getThisRigidbody()) : std::nullopt; })
+        .addProperty("thisCollider", &Collision2D::getThisCollider)
+        .addProperty("thisRigidbody", [] (const Collision2D* self) -> std::optional<Rigidbody2D> { return self->thisCollider.hasRigidbody() ? std::optional<Rigidbody2D>(self->getThisRigidbody()) : std::nullopt; })
+        .addProperty("relativeVelocity", &Collision2D::getRelativeVelocity)
+        .addProperty("enabled", &Collision2D::isEnabled)
+        .addProperty("contactCount", &Collision2D::getContactCount)
+        .addFunction("getContact", &luaGetContact<Collision2D>)
+        .addProperty("contacts", [] (const Collision2D* self, lua_State* L) -> luabridge::LuaRef { return luaContactsTable(self, L); })
         .endClass();
 #endif
 
@@ -2762,13 +4711,52 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<Vector3, Quaternion, std::vector<Vector3>>(&Rigidbody::createConvexHullCollider))
         .addFunction("createMeshCollider", 
             luabridge::overload<>(&Rigidbody::createMeshCollider),
-            luabridge::overload<std::vector<Vector3>, std::vector<uint16_t>>(&Rigidbody::createMeshCollider),
-            luabridge::overload<Vector3, Quaternion, std::vector<Vector3>, std::vector<uint16_t>>(&Rigidbody::createMeshCollider))
+            luabridge::overload<std::vector<Vector3>, std::vector<uint32_t>>(&Rigidbody::createMeshCollider),
+            luabridge::overload<Vector3, Quaternion, std::vector<Vector3>, std::vector<uint32_t>>(&Rigidbody::createMeshCollider))
         .addFunction("createHeightFieldCollider", 
             luabridge::overload<>(&Rigidbody::createHeightFieldCollider),
             luabridge::overload<unsigned int>(&Rigidbody::createHeightFieldCollider))
         .addFunction("getNumColliders", &Rigidbody::getNumColliders)
+        .addFunction("getColliderCount", &Rigidbody::getColliderCount)
         .addFunction("getColliderType", &Rigidbody::getColliderType)
+        // collider edits: that collider's shape is made again and swapped in (index from 0; out
+        // of range: an error)
+        .addFunction("removeCollider", &Rigidbody::removeCollider)
+        .addFunction("removeAllColliders", &Rigidbody::removeAllColliders)
+        .addFunction("setColliderPosition", &Rigidbody::setColliderPosition)
+        .addFunction("getColliderPosition", &Rigidbody::getColliderPosition)
+        .addFunction("setColliderRotation", &Rigidbody::setColliderRotation)
+        .addFunction("getColliderRotation", &Rigidbody::getColliderRotation)
+        .addFunction("setColliderBoxSize", &Rigidbody::setColliderBoxSize)
+        .addFunction("getColliderBoxSize", &Rigidbody::getColliderBoxSize)
+        .addFunction("setColliderRadius", &Rigidbody::setColliderRadius)
+        .addFunction("getColliderRadius", &Rigidbody::getColliderRadius)
+        .addFunction("setColliderHalfHeight", &Rigidbody::setColliderHalfHeight)
+        .addFunction("getColliderHalfHeight", &Rigidbody::getColliderHalfHeight)
+        .addFunction("setColliderTaperedRadii", &Rigidbody::setColliderTaperedRadii)
+        .addFunction("setColliderVertices",
+            luabridge::overload<size_t, std::vector<Vector3>>(&Rigidbody::setColliderVertices),
+            luabridge::overload<size_t, std::vector<Vector3>, std::vector<uint32_t>>(&Rigidbody::setColliderVertices))
+        .addFunction("getColliderVertices", &Rigidbody::getColliderVertices)
+        .addFunction("getColliderIndices", &Rigidbody::getColliderIndices)
+        .addFunction("setColliderTrigger", &Rigidbody::setColliderTrigger)
+        .addFunction("isColliderTrigger", &Rigidbody::isColliderTrigger)
+        .addFunction("setColliderMaterial", +[](Rigidbody* self, size_t index, luabridge::LuaRef value) {
+            PhysicsMaterial material;
+            std::string path;
+            if (!luaMaterialArg(value, material, path)){
+                throw std::runtime_error("Rigidbody:setColliderMaterial: a .physicsmaterial path, a PhysicsMaterial or nil");
+            }
+            if (material.valid()) self->setColliderMaterial(index, material);
+            else self->setColliderMaterial(index, path);
+        })
+        .addFunction("getColliderMaterial", +[](const Rigidbody* self, size_t index) -> std::optional<PhysicsMaterial> {
+            return luaMaterialResult(self->getColliderMaterial(index));
+        })
+        .addFunction("setColliderFriction", &Rigidbody::setColliderFriction)
+        .addFunction("setColliderBounciness", &Rigidbody::setColliderBounciness)
+        .addFunction("getColliderFriction", &Rigidbody::getColliderFriction)
+        .addFunction("getColliderBounciness", &Rigidbody::getColliderBounciness)
         .addProperty("shapeDensity", (float(Rigidbody::*)()const)&Rigidbody::getColliderDensity, (void(Rigidbody::*)(float))&Rigidbody::setColliderDensity)
         .addFunction("setColliderDensity", 
             luabridge::overload<float>(&Rigidbody::setColliderDensity),
@@ -2776,7 +4764,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getColliderDensity", 
             luabridge::overload<>(&Rigidbody::getColliderDensity),
             luabridge::overload<size_t>(&Rigidbody::getColliderDensity))
-        .addProperty("type", &Rigidbody::getType, &Rigidbody::setType)
+        // a switch a static-only collider refuses logs an error and keeps the type
+        .addProperty("type", &Rigidbody::getType, +[](Rigidbody* self, BodyType type) { self->setType(type); })
+        .addFunction("setType", &Rigidbody::setType)
+        .addProperty("isKinematic", &Rigidbody::isKinematic, &Rigidbody::setKinematic)
         .addProperty("motionQuality", &Rigidbody::getMotionQuality, &Rigidbody::setMotionQuality)
         .addFunction("canBeKinematicOrDynamic", &Rigidbody::canBeKinematicOrDynamic)
         .addFunction("activate", &Rigidbody::activate)
@@ -2786,7 +4777,36 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setAllowedDOFsAll", &Rigidbody::setAllowedDOFsAll)
         .addFunction("setAllowedDOFs2DPlane", &Rigidbody::setAllowedDOFs2DPlane)
         .addFunction("setAllowedDOFs", &Rigidbody::setAllowedDOFs)
+        // Unity's mass fields: setting mass, centerOfMass or inertiaTensor turns its automatic off
         .addProperty("mass", &Rigidbody::getMass, &Rigidbody::setMass)
+        .addProperty("automaticMass", &Rigidbody::isAutomaticMass, &Rigidbody::setAutomaticMass)
+        .addProperty("centerOfMass", &Rigidbody::getCenterOfMass, &Rigidbody::setCenterOfMass)
+        .addProperty("automaticCenterOfMass", &Rigidbody::isAutomaticCenterOfMass, &Rigidbody::setAutomaticCenterOfMass)
+        .addFunction("resetCenterOfMass", &Rigidbody::resetCenterOfMass)
+        .addProperty("inertiaTensor", &Rigidbody::getInertiaTensor, &Rigidbody::setInertiaTensor)
+        .addProperty("inertiaTensorRotation", &Rigidbody::getInertiaTensorRotation, &Rigidbody::setInertiaTensorRotation)
+        .addProperty("automaticInertiaTensor", &Rigidbody::isAutomaticInertiaTensor, &Rigidbody::setAutomaticInertiaTensor)
+        .addFunction("resetInertiaTensor", &Rigidbody::resetInertiaTensor)
+        .addProperty("linearDamping", &Rigidbody::getLinearDamping, &Rigidbody::setLinearDamping)
+        .addProperty("angularDamping", &Rigidbody::getAngularDamping, &Rigidbody::setAngularDamping)
+        .addProperty("maxLinearVelocity", &Rigidbody::getMaxLinearVelocity, &Rigidbody::setMaxLinearVelocity)
+        .addProperty("maxAngularVelocity", &Rigidbody::getMaxAngularVelocity, &Rigidbody::setMaxAngularVelocity)
+        .addProperty("interpolation", &Rigidbody::getInterpolation, &Rigidbody::setInterpolation)
+        .addFunction("isSleeping", &Rigidbody::isSleeping)
+        .addFunction("sleep", &Rigidbody::sleep)
+        .addFunction("wakeUp", &Rigidbody::wakeUp)
+        // the default material of the colliders without one: a path, a PhysicsMaterial or nil
+        .addProperty("material",
+            +[](const Rigidbody* self) -> std::optional<PhysicsMaterial> { return luaMaterialResult(self->getMaterial()); },
+            +[](Rigidbody* self, luabridge::LuaRef value) {
+                PhysicsMaterial material;
+                std::string path;
+                if (!luaMaterialArg(value, material, path)){
+                    throw std::runtime_error("Rigidbody.material: a .physicsmaterial path, a PhysicsMaterial or nil");
+                }
+                if (material.valid()) self->setMaterial(material);
+                else self->setMaterial(path);
+            })
         .addFunction("setOverrideMassAndInertia", &Rigidbody::setOverrideMassAndInertia)
         .addProperty("gravityFactor", &Rigidbody::getGravityFactor, &Rigidbody::setGravityFactor)
         .addProperty("collisionGroupID", &Rigidbody::getCollisionGroupID, &Rigidbody::setCollisionGroupID)
@@ -2823,8 +4843,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<Joint3D>("Joint3D")
+        .deriveClass<Joint3D, EntityHandle>("Joint3D")
         .addConstructor <void (Scene*), void (Scene*, Entity)> ()
+        // as before local anchors: world points and axes, the other fields as Jolt had them
         .addFunction("setFixedJoint", &Joint3D::setFixedJoint)
         .addFunction("setDistanceJoint",
             luabridge::overload<Entity, Entity>(&Joint3D::setDistanceJoint),
@@ -2840,6 +4861,131 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setRackAndPinionJoint", &Joint3D::setRackAndPinionJoint)
         .addFunction("setPulleyJoint", &Joint3D::setPulleyJoint)
         .addFunction("getType", &Joint3D::getType)
+        .addProperty("enabled", &Joint3D::isEnabled, &Joint3D::setEnabled)
+        // the body the joint is on (Unity: the joint's Rigidbody) and the connected one; set with
+        // a GameObject, a Rigidbody or nil (bodyB nil: held to the world, LOCAL joints)
+        .addProperty("bodyA",
+            +[](const Joint3D* self) { return luaJoint3DBody(self, self->getBodyA()); },
+            +[](Joint3D* self, luabridge::LuaRef value) { self->setBodyA(luaJoint3DBodyArg(self, value, value.state(), "bodyA")); })
+        .addProperty("bodyB",
+            +[](const Joint3D* self) { return luaJoint3DBody(self, self->getBodyB()); },
+            +[](Joint3D* self, luabridge::LuaRef value) { self->setBodyB(luaJoint3DBodyArg(self, value, value.state(), "bodyB")); })
+        .addProperty("connectedBody",
+            +[](const Joint3D* self) { return luaJoint3DBody(self, self->getBodyB()); },
+            +[](Joint3D* self, luabridge::LuaRef value) { self->setBodyB(luaJoint3DBodyArg(self, value, value.state(), "connectedBody")); })
+        .addProperty("type", &Joint3D::getType, &Joint3D::setType)
+        .addProperty("anchorSpace", &Joint3D::getAnchorSpace, &Joint3D::setAnchorSpace)
+        .addProperty("anchor", &Joint3D::getAnchor, &Joint3D::setAnchor)
+        .addProperty("anchorA", &Joint3D::getAnchorA, &Joint3D::setAnchorA)
+        .addProperty("anchorB", &Joint3D::getAnchorB, &Joint3D::setAnchorB)
+        .addProperty("connectedAnchor", &Joint3D::getAnchorB, &Joint3D::setAnchorB)
+        .addProperty("autoAnchors", &Joint3D::isAutoAnchors, &Joint3D::setAutoAnchors)
+        .addProperty("autoConfigureConnectedAnchor", &Joint3D::isAutoAnchors, &Joint3D::setAutoAnchors)
+        .addProperty("axis", &Joint3D::getAxis, &Joint3D::setAxis)
+        .addProperty("normal", &Joint3D::getNormal, &Joint3D::setNormal)
+        .addProperty("secondaryAxis", &Joint3D::getNormal, &Joint3D::setNormal)
+        .addProperty("twistAxis", &Joint3D::getTwistAxis, &Joint3D::setTwistAxis)
+        .addProperty("planeAxis", &Joint3D::getPlaneAxis, &Joint3D::setPlaneAxis)
+        .addProperty("swingAxis", &Joint3D::getPlaneAxis, &Joint3D::setPlaneAxis)
+        .addProperty("axisX", &Joint3D::getAxisX, &Joint3D::setAxisX)
+        .addProperty("axisY", &Joint3D::getAxisY, &Joint3D::setAxisY)
+        .addProperty("swingType", &Joint3D::getSwingType, &Joint3D::setSwingType)
+        .addProperty("xMotion", &Joint3D::getXMotion, &Joint3D::setXMotion)
+        .addProperty("yMotion", &Joint3D::getYMotion, &Joint3D::setYMotion)
+        .addProperty("zMotion", &Joint3D::getZMotion, &Joint3D::setZMotion)
+        .addProperty("angularXMotion", &Joint3D::getAngularXMotion, &Joint3D::setAngularXMotion)
+        .addProperty("angularYMotion", &Joint3D::getAngularYMotion, &Joint3D::setAngularYMotion)
+        .addProperty("angularZMotion", &Joint3D::getAngularZMotion, &Joint3D::setAngularZMotion)
+        .addProperty("linearLimitMin", &Joint3D::getLinearLimitMin, &Joint3D::setLinearLimitMin)
+        .addProperty("linearLimitMax", &Joint3D::getLinearLimitMax, &Joint3D::setLinearLimitMax)
+        .addProperty("angularLimitMin", &Joint3D::getAngularLimitMin, &Joint3D::setAngularLimitMin)
+        .addProperty("angularLimitMax", &Joint3D::getAngularLimitMax, &Joint3D::setAngularLimitMax)
+        .addProperty("enableCollision", &Joint3D::isEnableCollision, &Joint3D::setEnableCollision)
+        .addProperty("breakForce", &Joint3D::getBreakForce, &Joint3D::setBreakForce)
+        .addProperty("breakTorque", &Joint3D::getBreakTorque, &Joint3D::setBreakTorque)
+        .addProperty("breakAction", &Joint3D::getBreakAction, &Joint3D::setBreakAction)
+        .addProperty("useLimits", &Joint3D::isUseLimits, &Joint3D::setUseLimits)
+        .addProperty("limitsMin", &Joint3D::getLimitsMin, &Joint3D::setLimitsMin)
+        .addProperty("limitsMax", &Joint3D::getLimitsMax, &Joint3D::setLimitsMax)
+        .addProperty("limitsSpringFrequency", &Joint3D::getLimitsSpringFrequency, &Joint3D::setLimitsSpringFrequency)
+        .addProperty("limitsSpringDamping", &Joint3D::getLimitsSpringDamping, &Joint3D::setLimitsSpringDamping)
+        .addProperty("useMotor", &Joint3D::isUseMotor, &Joint3D::setUseMotor)
+        .addProperty("motorTargetVelocity", &Joint3D::getMotorTargetVelocity, &Joint3D::setMotorTargetVelocity)
+        .addProperty("motorMaxForce", &Joint3D::getMotorMaxForce, &Joint3D::setMotorMaxForce)
+        .addProperty("useSpring", &Joint3D::isUseSpring, &Joint3D::setUseSpring)
+        .addProperty("springStiffness", &Joint3D::getSpringStiffness, &Joint3D::setSpringStiffness)
+        .addProperty("springDamper", &Joint3D::getSpringDamper, &Joint3D::setSpringDamper)
+        .addProperty("springTargetPosition", &Joint3D::getSpringTargetPosition, &Joint3D::setSpringTargetPosition)
+        .addProperty("maxFriction", &Joint3D::getMaxFriction, &Joint3D::setMaxFriction)
+        .addProperty("minDistance", &Joint3D::getMinDistance, &Joint3D::setMinDistance)
+        .addProperty("maxDistance", &Joint3D::getMaxDistance, &Joint3D::setMaxDistance)
+        .addProperty("coneHalfAngle", &Joint3D::getConeHalfAngle, &Joint3D::setConeHalfAngle)
+        .addProperty("normalHalfConeAngle", &Joint3D::getNormalHalfConeAngle, &Joint3D::setNormalHalfConeAngle)
+        // Unity swing1Limit turns about the swing axis (planeAxis): Jolt's normal half cone
+        .addProperty("swing1Limit", &Joint3D::getNormalHalfConeAngle, &Joint3D::setNormalHalfConeAngle)
+        .addProperty("planeHalfConeAngle", &Joint3D::getPlaneHalfConeAngle, &Joint3D::setPlaneHalfConeAngle)
+        .addProperty("swing2Limit", &Joint3D::getPlaneHalfConeAngle, &Joint3D::setPlaneHalfConeAngle)
+        .addProperty("twistMinAngle", &Joint3D::getTwistMinAngle, &Joint3D::setTwistMinAngle)
+        .addProperty("lowTwistLimit", &Joint3D::getTwistMinAngle, &Joint3D::setTwistMinAngle)
+        .addProperty("twistMaxAngle", &Joint3D::getTwistMaxAngle, &Joint3D::setTwistMaxAngle)
+        .addProperty("highTwistLimit", &Joint3D::getTwistMaxAngle, &Joint3D::setTwistMaxAngle)
+        .addProperty("motorTargetRotation", &Joint3D::getMotorTargetRotation, &Joint3D::setMotorTargetRotation)
+        .addProperty("motorSpringFrequency", &Joint3D::getMotorSpringFrequency, &Joint3D::setMotorSpringFrequency)
+        .addProperty("motorSpringDamping", &Joint3D::getMotorSpringDamping, &Joint3D::setMotorSpringDamping)
+        .addProperty("useDrive", &Joint3D::isUseDrive, &Joint3D::setUseDrive)
+        .addProperty("driveStiffness", &Joint3D::getDriveStiffness, &Joint3D::setDriveStiffness)
+        .addProperty("driveDamping", &Joint3D::getDriveDamping, &Joint3D::setDriveDamping)
+        .addProperty("angularDriveStiffness", &Joint3D::getAngularDriveStiffness, &Joint3D::setAngularDriveStiffness)
+        .addProperty("angularDriveDamping", &Joint3D::getAngularDriveDamping, &Joint3D::setAngularDriveDamping)
+        .addProperty("driveMaxForce", &Joint3D::getDriveMaxForce, &Joint3D::setDriveMaxForce)
+        .addProperty("driveMaxTorque", &Joint3D::getDriveMaxTorque, &Joint3D::setDriveMaxTorque)
+        .addProperty("targetPosition", &Joint3D::getTargetPosition, &Joint3D::setTargetPosition)
+        .addProperty("targetRotation", &Joint3D::getTargetRotation, &Joint3D::setTargetRotation)
+        .addProperty("targetVelocity", &Joint3D::getTargetVelocity, &Joint3D::setTargetVelocity)
+        .addProperty("targetAngularVelocity", &Joint3D::getTargetAngularVelocity, &Joint3D::setTargetAngularVelocity)
+        // read-outs of the live joint (0 without one): N, N m, angles in the engine's unit
+        .addProperty("currentForce", &Joint3D::getCurrentForce)
+        .addProperty("currentTorque", &Joint3D::getCurrentTorque)
+        .addProperty("angle", &Joint3D::getAngle)
+        .addProperty("velocity", &Joint3D::getVelocity)
+        .addProperty("position", &Joint3D::getPosition)
+        .addProperty("speed", &Joint3D::getSpeed)
+        .addProperty("currentLength", &Joint3D::getCurrentLength)
+        .addProperty("broken", &Joint3D::isBroken)
+        .addProperty("live", &Joint3D::isLive)
+        .endClass();
+
+    // a character's ragdoll: animated (kinematic parts following the bones) or simulated
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<Ragdoll, EntityHandle>("Ragdoll")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("enabled", &Ragdoll::isEnabled, &Ragdoll::setEnabled)
+        .addProperty("simulated", &Ragdoll::isSimulated, &Ragdoll::setSimulated)
+        .addFunction("setSimulated", &Ragdoll::setSimulated)
+        .addProperty("inheritVelocity", &Ragdoll::isInheritVelocity, &Ragdoll::setInheritVelocity)
+        .addProperty("selfCollision", &Ragdoll::isSelfCollision, &Ragdoll::setSelfCollision)
+        .addProperty("totalMass", &Ragdoll::getTotalMass, &Ragdoll::setTotalMass)
+        .addProperty("root",
+            +[](const Ragdoll* self) -> std::optional<GameObject> {
+                Entity root = self->getRoot();
+                if (root == NULL_ENTITY || !self->getScene()->isEntityCreated(root)) return std::nullopt;
+                return GameObject(self->getScene(), root);
+            },
+            +[](Ragdoll* self, luabridge::LuaRef value) { self->setRoot(luaEntityArg(self->getScene(), value, value.state(), "Ragdoll.root")); })
+        .addProperty("animator",
+            +[](const Ragdoll* self) -> std::optional<GameObject> {
+                Entity animator = self->getAnimator();
+                if (animator == NULL_ENTITY || !self->getScene()->isEntityCreated(animator)) return std::nullopt;
+                return GameObject(self->getScene(), animator);
+            },
+            +[](Ragdoll* self, luabridge::LuaRef value) { self->setAnimator(luaEntityArg(self->getScene(), value, value.state(), "Ragdoll.animator")); })
+        .addProperty("partCount", &Ragdoll::getPartCount)
+        .addFunction("getParts", &Ragdoll::getParts)
+        .addFunction("applyImpulse", &Ragdoll::applyImpulse)
+        .addFunction("applyForce", &Ragdoll::applyForce)
+        // RegisterEvent(self, ragdoll.onBeforeAnimatedRestore, "fn"): fn(entity) before a ragdoll
+        // of the scene goes back to animated
+        .addProperty("onBeforeAnimatedRestore", [] (Ragdoll* self, lua_State* L) { return &self->onBeforeAnimatedRestore(); }, [] (Ragdoll* self, lua_State* L) { self->onBeforeAnimatedRestore() = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -2855,6 +5001,50 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("combinedFriction", &Contact3D::getCombinedFriction, &Contact3D::setCombinedFriction)
         .addProperty("combinedRestitution", &Contact3D::getCombinedRestitution, &Contact3D::setCombinedRestitution)
         .addProperty("sensor", &Contact3D::isSensor, &Contact3D::setIsSensor)
+        // the points of getRelativeContactPointsOnA / OnB
+        .addProperty("numContactPoints", &Contact3D::getNumContactPoints)
+        // delivered after the step (setters do nothing then)
+        .addProperty("snapshot", &Contact3D::isSnapshot)
+        .endClass();
+
+    // physics-contacts: what onCollisionEnter / onTriggerEnter... get
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ColliderRef>("Collider")
+        .addProperty("gameObject", [] (const ColliderRef* self) -> std::optional<GameObject> { return luaColliderGameObject(*self); })
+        .addProperty("rigidbody", [] (const ColliderRef* self) -> std::optional<Rigidbody> { return self->hasRigidbody() ? std::optional<Rigidbody>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("attachedRigidbody", [] (const ColliderRef* self) -> std::optional<Rigidbody> { return self->hasRigidbody() ? std::optional<Rigidbody>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("index", &ColliderRef::getIndex)
+        .addProperty("type", &ColliderRef::getType)
+        .addProperty("isTrigger", &ColliderRef::isTrigger)
+        .addProperty("tag", &ColliderRef::getTag)
+        .addFunction("compareTag", &ColliderRef::compareTag)
+        .addProperty("receiver", [] (const ColliderRef* self) -> std::optional<GameObject> { return luaColliderReceiver(*self); })
+        .addFunction("isValid", &ColliderRef::isValid)
+        .addFunction("__eq", [] (const ColliderRef* self, const ColliderRef* other) { return other && *self == *other; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ContactPoint>("ContactPoint")
+        .addProperty("point", &ContactPoint::getPoint)
+        .addProperty("normal", &ContactPoint::getNormal)
+        .addProperty("separation", &ContactPoint::getSeparation)
+        .addProperty("impulse", &ContactPoint::getImpulse)
+        .addProperty("thisCollider", &ContactPoint::getThisCollider)
+        .addProperty("otherCollider", &ContactPoint::getOtherCollider)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Collision>("Collision")
+        .addProperty("gameObject", [] (const Collision* self) -> std::optional<GameObject> { return luaColliderGameObject(self->otherCollider); })
+        .addProperty("collider", &Collision::getCollider)
+        .addProperty("rigidbody", [] (const Collision* self) -> std::optional<Rigidbody> { return self->otherCollider.hasRigidbody() ? std::optional<Rigidbody>(self->getRigidbody()) : std::nullopt; })
+        .addProperty("thisCollider", &Collision::getThisCollider)
+        .addProperty("thisRigidbody", [] (const Collision* self) -> std::optional<Rigidbody> { return self->thisCollider.hasRigidbody() ? std::optional<Rigidbody>(self->getThisRigidbody()) : std::nullopt; })
+        .addProperty("impulse", &Collision::getImpulse)
+        .addProperty("relativeVelocity", &Collision::getRelativeVelocity)
+        .addProperty("contactCount", &Collision::getContactCount)
+        .addFunction("getContact", &luaGetContact<Collision>)
+        .addProperty("contacts", [] (const Collision* self, lua_State* L) -> luabridge::LuaRef { return luaContactsTable(self, L); })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

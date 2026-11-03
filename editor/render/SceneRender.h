@@ -134,6 +134,9 @@ namespace jasperengine::editor{
         // Lines endpoint sub-selection (index = lineIndex * 2 + endpoint, 0 = A, 1 = B)
         Entity selectedLinePointEntity = 0;  // NULL_ENTITY
         int selectedLinePointIndex = -1;
+        // the line's mode when the point was picked (the index is a polyline position or a segment end)
+        LineRendererMode selectedLinePointMode = LineRendererMode::Segments;
+        bool linePointEditing = false;
 
         // Polygon / MeshPolygon vertex sub-selection (both store std::vector<PolygonPoint>;
         // isMesh picks which component, avoiding a ComponentType dependency in this header)
@@ -146,11 +149,20 @@ namespace jasperengine::editor{
         Entity selectedTrackPointEntity = 0;  // NULL_ENTITY
         int selectedTrackPointIndex = -1;
 
+        // Joint 2D anchor handle sub-selection: 0 anchor A, 1 anchor B (or a mouse joint's target)
+        Entity selectedJointAnchorEntity = 0;  // NULL_ENTITY
+        int selectedJointAnchorIndex = -1;
+
         // world position of vertex pointIndex of the selected entity's Polygon/MeshPolygon
         // points (nullptr list / bad index -> false)
         bool getPolygonPointWorld(Entity entity, bool isMesh, int pointIndex, Vector3& worldPoint);
 
         bool getTrackPointWorld(Entity entity, int pointIndex, Vector3& worldPoint);
+
+        // world position of handle `index` of a Joint 2D (false when the joint has none there)
+        bool getJointAnchorWorld(Entity entity, int index, Vector3& worldPoint);
+        // the Joint 2D property a handle drag writes ("anchorA", "anchorB", "target")
+        std::string getJointAnchorProperty(Entity entity, int index);
 
         // Bounds of an entity of target: this scene, or the edit layer's scene
         AABB getAABB(Scene* target, Entity entity, bool local);
@@ -328,6 +340,13 @@ namespace jasperengine::editor{
 
         float overlayPx(float logicalPixels) const { return logicalPixels * overlayScale; }
         void ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity);
+
+        // the wire of a selected version 2 Particle System's Shape module (particles spec 6.8):
+        // `entity` noted in `current`; the wires of systems not in it are dropped by
+        // dropParticleShapeLines after the entity loop
+        void updateParticleShapeLines(Entity entity, bool selected, std::set<Entity>& current);
+        void dropParticleShapeLines(const std::set<Entity>& current);
+        std::map<Entity, LineRenderer*> particleShapeLines;
 
         // Marks an editor gizmo or icon created in the scene it annotates: only the
         // Scene view draws it, never the game or a camera image
@@ -604,6 +623,23 @@ namespace jasperengine::editor{
         OBB getOccluderPointOBB(Entity entity, int pointIndex);
 
         // Lines endpoint sub-selection (index = lineIndex * 2 + endpoint, 0 = A, 1 = B)
+        // A Line Renderer's point handles by index: a polyline's positions, or each segment's
+        // A and B (lineIndex * 2 + end). Their world positions, the property that stores one and
+        // a world position in that property's space
+        static std::vector<Vector3> getLinePointWorldPositions(const LineRendererComponent& lines, const Transform& transform);
+        static std::string getLinePointProperty(const LineRendererComponent& lines, int pointIndex);
+        static Vector3 toLinePointSpace(const LineRendererComponent& lines, const Transform& transform, const Vector3& world);
+        // the line's points (either mode) in the GameObject's local space, merged into aabb
+        static void mergeLineLocalPoints(AABB& aabb, const LineRendererComponent& lines, const Transform& transform);
+        // Inspector > Line Renderer > Edit Points: Ctrl+click on a selected polyline inserts a
+        // point there (insertLinePointAt)
+        bool isLinePointEditing() const { return linePointEditing; }
+        void setLinePointEditing(bool editing) { linePointEditing = editing; }
+        // a point on the selected polyline under (x, y), inserted (one undo step) and selected:
+        // its index, -1 when the click is not on the line
+        int insertLinePointAt(Project* project, uint32_t commandSceneId, Entity entity, float x, float y);
+        // the selected point of a polyline removed (one undo step): false without one
+        bool removeSelectedLinePoint(Project* project, uint32_t commandSceneId);
         int getSelectedLinePointIndex() const { return selectedLinePointIndex; }
         Entity getSelectedLinePointEntity() const { return selectedLinePointEntity; }
         void selectLinePoint(Entity entity, int pointIndex);
@@ -650,6 +686,14 @@ namespace jasperengine::editor{
         void clearPolygonPointSelection();
         int hitTestPolygonPoint(Entity entity, bool isMesh, float x, float y);
         OBB getPolygonPointOBB(Entity entity, bool isMesh, int pointIndex);
+
+        // Joint 2D anchor handles (the Move tool drags them)
+        int getSelectedJointAnchorIndex() const { return selectedJointAnchorIndex; }
+        Entity getSelectedJointAnchorEntity() const { return selectedJointAnchorEntity; }
+        void selectJointAnchor(Entity entity, int index);
+        void clearJointAnchorSelection();
+        int hitTestJointAnchor(Entity entity, float x, float y);
+        OBB getJointAnchorOBB(Entity entity, int index);
 
         // TranslateTracks keyframe point sub-selection
         int getSelectedTrackPointIndex() const { return selectedTrackPointIndex; }

@@ -4,6 +4,7 @@
 #import "ViewController.h"
 #import "Renderer.h"
 #import "EngineView.h"
+#import "JasperNative.h"
 
 @implementation ViewController
 {
@@ -29,6 +30,9 @@
         return;
     }
 
+    // native plugins' +jasperInit (SDK setup) before the engine and its Lua start
+    [JasperNative dispatchInit];
+
     _renderer = [[Renderer alloc] initWithMetalKitView:_view withArgs:args];
 
     [_renderer mtkView:_view drawableSizeWillChange:_view.drawableSize];
@@ -45,6 +49,26 @@
                                              selector:@selector(updateFrameRate)
                                                  name:NSWindowDidChangeScreenNotification
                                                object:nil];
+
+    // Unity's OnApplicationFocus: the game window is the key window
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(windowBecameKey:)
+                                                 name:NSWindowDidBecomeKeyNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(windowResignedKey:)
+                                                 name:NSWindowDidResignKeyNotification
+                                               object:nil];
+}
+
+- (void)windowBecameKey:(NSNotification *)notification
+{
+    if (notification.object == self.view.window) [Renderer focusGame:YES];
+}
+
+- (void)windowResignedKey:(NSNotification *)notification
+{
+    if (notification.object == self.view.window) [Renderer focusGame:NO];
 }
 
 - (void)viewDidAppear
@@ -58,11 +82,11 @@
     [_renderer destroyView];
 }
 
-// MTKView's default of 60 runs a 75 Hz display at 37.5
+// MTKView's default of 60 runs a 75 Hz display at 37.5: the screen's rate, or what
+// Engine.targetFrameRate / vSyncCount ask for
 - (void)updateFrameRate
 {
-    NSScreen *screen = self.view.window.screen ?: NSScreen.mainScreen;
-    _view.preferredFramesPerSecond = screen.maximumFramesPerSecond;
+    [Renderer applyFramePacing];
 }
 
 @end

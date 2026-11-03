@@ -48,6 +48,12 @@
 //   model reload, R13). For a changed model file editors call one of those, not
 //   invalidate/invalidateModel alone: the builders prefer the pooled parse, which only they drop
 //   (invalidateModelParse when the entities using the model are not reloaded: their images stay).
+// - Humanoid clips (anim-retarget 7.4): a sub-clip of a model whose .humanoid sidecar says
+//   animation_type humanoid is converted (anim::convertToHumanoid, the model's rig from
+//   anim::retargetSource) after it is built; its key is unchanged. invalidateModel (a model or
+//   sidecar edit: the editor's sidecar writers call it) drops it with the model's other clips.
+//   A Retarget entry or an Animator retargeting a generic clip loads the clip as it is: the one
+//   retarget path (animation/AnimatorRetarget.h) reads it through its source model at play time.
 
 #ifndef ANIMATION_CLIP_POOL_H
 #define ANIMATION_CLIP_POOL_H
@@ -108,6 +114,7 @@ namespace jasperengine{
         static void releaseUnused(const std::string& path);
 
         static size_t size();
+
     };
 
 }

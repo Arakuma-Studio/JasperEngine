@@ -138,7 +138,7 @@ namespace jasperengine::test::compat {
             return "rgba(" + std::to_string(number(0, 255)) + "," + std::to_string(number(0, 255)) + "," + std::to_string(number(0, 255)) + "," + alpha() + ")";
         };
         static const char* const colorVars[] = {"--accent", "--panel", "--text", "--muted", "--danger", "--ok", "--border"};
-        static const char* const sizeVars[] = {"--pad", "--gap", "--radius", "--bar"};
+        [[maybe_unused]] static const char* const sizeVars[] = {"--pad", "--gap", "--radius", "--bar"};
         auto colorVar = [&](){ return std::string("var(") + colorVars[pick(7)] + ")"; };
 
         struct Property {

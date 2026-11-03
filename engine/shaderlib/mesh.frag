@@ -226,6 +226,11 @@ const float M_PI = 3.141592653589793;
     #include "includes/pbr_ext.glsl"
 #endif
 #ifdef USE_LIGHT2D
+    // the lit path shades 2D lights with its real normals (N.L at the light's height); the
+    // unlit one answers the height only where it samples a normal map
+    #ifndef MATERIAL_UNLIT
+        #define LIGHT2D_SURFACE_NORMALS
+    #endif
     // declares the 2D lights block and shadow atlas (shared with library shaders)
     #include "includes/lighting2d.glsl"
 #endif

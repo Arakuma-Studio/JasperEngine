@@ -25,6 +25,12 @@
 #include "Project.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimatorAssetDocument.h"
+#include "animation/AnimatorAssetUsers.h"
+#include "animation/AnimationClipDocument.h"
+#include "animation/AvatarMaskWeights.h"
+#include "AnimatorTools.h"
+#include "mcp/McpValues.h"
+#include "window/InspectorAnimLayers.h"
 #include "animation/AnimatorAssetIO.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ClipBinding.h"
@@ -45,6 +51,7 @@
 #include <algorithm>
 #include <cmath>
 #include <set>
+#include <tuple>
 
 namespace jasperengine::editor::mcp {
 
@@ -343,6 +350,13 @@ bool readTree(Project* project, const ControllerDef& def, const Json& value, Ble
             }
             child.timeScale = c.value("time_scale", 1.0f);
             child.directParameter = c.value("direct_parameter", std::string());
+            if (c.contains("mirror")) {
+                if (!c["mirror"].is_boolean()) {
+                    error = "a child's \"mirror\" must be a boolean";
+                    return false;
+                }
+                child.mirror = c["mirror"].get<bool>();
+            }
             tree.children.push_back(std::move(child));
         }
     }
@@ -373,6 +387,7 @@ Json motionJson(const MotionDef& motion) {
             else if (tree.type == BlendTreeType::Direct) c["direct_parameter"] = child.directParameter;
             else c["position"] = {child.position.x, child.position.y};
             if (child.timeScale != 1.0f) c["time_scale"] = child.timeScale;
+            if (child.mirror) c["mirror"] = true;
             children.push_back(c);
         }
         Json out = {{"type", blendTreeTypeName(tree.type)}, {"parameter", tree.parameter}, {"children", children}};
@@ -407,13 +422,17 @@ Json transitionsJson(const std::vector<TransitionDef>& list) {
 Json machineJson(const StateMachineDef& machine) {
     Json states = Json::array();
     for (const StateDef& s : machine.states) {
-        Json state = {{"name", s.name}, {"motion", motionJson(s.motion)}, {"transitions", transitionsJson(s.transitions)}};
+        Json state = {{"name", s.name}, {"motion", motionJson(s.motion)}, {"transitions", transitionsJson(s.transitions)},
+                      {"position", {s.position.x, s.position.y}}};
         if (s.speed != 1.0f) state["speed"] = s.speed;
         if (!s.speedParameter.empty()) state["speed_parameter"] = s.speedParameter;
         if (!s.timeParameter.empty()) state["time_parameter"] = s.timeParameter;
         if (s.loop != AnimatorStateLoop::Inherit) state["loop"] = stateLoopName(s.loop);
         if (!s.tag.empty()) state["tag"] = s.tag;
         if (s.cycleOffset != 0.0f) state["cycle_offset"] = s.cycleOffset;
+        if (s.mirror) state["mirror"] = true;
+        if (s.footIK) state["foot_ik"] = true;
+        if (s.retarget) state["retarget"] = true;
         states.push_back(state);
     }
     Json subs = Json::array();
@@ -448,6 +467,25 @@ Json controllerJson(const ControllerDef& def) {
         layers.push_back(l);
     }
     return Json{{"parameters", parameters}, {"layers", layers}};
+}
+
+// ------------------------------------------------------------------ masks
+
+Json maskJson(Project* project, const AnimatorAssetDocument& document) {
+    const AvatarMaskDef& mask = document.mask();
+    Json parts = Json::object();
+    for (int i = 0; i < AVATAR_BODY_PART_COUNT; i++) {
+        if (mask.bodyParts[i]) parts[bodyPartName((AvatarBodyPart)i)] = *mask.bodyParts[i];
+    }
+    Json paths = Json::array();
+    for (const MaskPathDef& entry : mask.paths) paths.push_back({{"path", entry.path}, {"weight", entry.weight}, {"children", entry.children}});
+    Json out = {{"path", document.projectPath()}, {"default", mask.defaultWeight}, {"body_parts", parts}, {"root_hierarchy", mask.rootHierarchy},
+                {"paths", paths}};
+    if (!mask.guid.empty()) out["guid"] = mask.guid;
+    if (!mask.previewModel.empty()) out["preview_model"] = McpValues::assetPathToJson(project, mask.previewModel);
+    if (document.converted()) out["read_as"] = animatorFileDialectName(document.dialect());
+    if (!document.warnings().empty()) out["warnings"] = warningsJson(document.warnings());
+    return out;
 }
 
 // ------------------------------------------------------------------ Animator targets
@@ -615,15 +653,8 @@ void getAnimatorTool(const CallPtr& call) {
             call->fail(error + ". Create one with edit_animator_controller {path, create: true}.");
             return;
         }
-        std::shared_ptr<const CompiledController> compiled = compileController(document->controller());
-        Json out = controllerJson(document->controller());
-        out["path"] = document->projectPath();
-        out["diagnostics"] = warningsJson(compiled->diagnostics);
-        if (!document->warnings().empty()) out["load_warnings"] = warningsJson(document->warnings());
-        size_t states = compiled->states.size();
-        call->ok(document->projectPath() + ": " + std::to_string(document->controller().parameters.size()) + " parameter(s), " +
-                 std::to_string(document->controller().layers.size()) + " layer(s), " + std::to_string(states) + " state(s), " +
-                 std::to_string(compiled->diagnostics.size()) + " diagnostic(s).", out);
+        Json out = animator_tools::controllerSummary(project, *document);
+        call->ok(animator_tools::controllerSummaryText(*document, out), out);
         return;
     }
     if (!args.contains("entity")) {
@@ -714,18 +745,22 @@ bool applyStateFields(Project* project, const ControllerDef& def, const Json& op
     if (op.contains("loop")) {
         const std::string loop = op["loop"].get<std::string>();
         if (!stateLoopFromName(loop, s.loop)) {
-            error = "loop \"" + loop + "\": inherit, loop or once";
+            error = "loop \"" + loop + "\": inherit, loop, once, ping_pong, clamp_forever or repeat";
             return false;
         }
     }
     if (op.contains("additive_reference")) {
         const std::string reference = op["additive_reference"].get<std::string>();
         if (!additiveReferenceFromName(reference, s.additiveReference)) {
-            error = "additive_reference \"" + reference + "\": first_frame, rest or time";
+            error = "additive_reference \"" + reference + "\": first_frame, rest, time or clip";
             return false;
         }
     }
     if (op.contains("additive_time")) s.additiveTime = op["additive_time"].get<float>();
+    // humanoid playback (the one retarget path)
+    if (op.contains("mirror")) s.mirror = op["mirror"].get<bool>();
+    if (op.contains("foot_ik")) s.footIK = op["foot_ik"].get<bool>();
+    if (op.contains("retarget")) s.retarget = op["retarget"].get<bool>();
     return true;
 }
 
@@ -777,7 +812,7 @@ bool checkOpFields(const Json& op, std::string& error) {
         {"loop", Str}, {"tag", Str}, {"additive_reference", Str}, {"additive_time", Num}, {"from", Str}, {"to", Str},
         {"index", Num}, {"conditions", Arr}, {"has_exit_time", Bool}, {"exit_time", Num}, {"fixed_duration", Bool},
         {"duration", Num}, {"offset", Num}, {"interruption_source", Str}, {"ordered_interruption", Bool},
-        {"can_transition_to_self", Bool}, {"mute", Bool}, {"motion", Obj}};
+        {"can_transition_to_self", Bool}, {"mute", Bool}, {"motion", Obj}, {"mirror", Bool}, {"foot_ik", Bool}, {"retarget", Bool}};
     for (auto it = op.begin(); it != op.end(); ++it) {
         auto found = std::find_if(fields.begin(), fields.end(), [&](const auto& f) { return it.key() == f.first; });
         if (found == fields.end()) {
@@ -802,6 +837,22 @@ bool checkOpFields(const Json& op, std::string& error) {
         error = "\"position\" must be [x, y]";
         return false;
     }
+    // numbers out of their range are refused (upstream's rule: never silently clamped)
+    static const std::vector<std::tuple<const char*, float, float>> ranges = {
+        {"weight", 0.0f, 1.0f}, {"offset", 0.0f, 1.0f}, {"cycle_offset", 0.0f, 1.0f}, {"duration", 0.0f, 1e9f}, {"exit_time", 0.0f, 1e9f},
+        {"additive_time", 0.0f, 1e9f}};
+    for (const auto& [key, lo, hi] : ranges) {
+        if (!op.contains(key)) continue;
+        const double v = op[key].get<double>();
+        if (!std::isfinite(v) || v < lo || v > hi) {
+            error = std::string("\"") + key + "\" must be " + (hi > 1e8f ? std::string("0 or more") : std::string("from 0 to 1"));
+            return false;
+        }
+    }
+    if (op.contains("speed") && !std::isfinite(op["speed"].get<double>())) {
+        error = "\"speed\" must be a finite number";
+        return false;
+    }
     return true;
 }
 
@@ -822,6 +873,10 @@ bool applyOp(Project* project, ControllerDef& def, const Json& op, std::vector<s
             return false;
         }
         if (op.contains("default")) p.defaultValue = op["default"].is_boolean() ? (op["default"].get<bool>() ? 1.0f : 0.0f) : op["default"].get<float>();
+        if (p.type == AnimatorParameterType::Int && p.defaultValue != std::round(p.defaultValue)) {
+            error = "\"default\" of an int parameter must be a whole number";
+            return false;
+        }
         def.parameters.push_back(p);
         changes.push_back("add_parameter " + name);
         return true;
@@ -834,6 +889,8 @@ bool applyOp(Project* project, ControllerDef& def, const Json& op, std::vector<s
         }
         if (kind == "remove_parameter") {
             def.parameters.erase(def.parameters.begin() + index);
+            // its conditions go, the trees and state parameters reading it are cleared
+            removeParameterReferences(def, name);
         } else if (kind == "rename_parameter") {
             const std::string to = op.value("new_name", std::string());
             if (to.empty() || def.findParameter(to) >= 0) {
@@ -869,6 +926,10 @@ bool applyOp(Project* project, ControllerDef& def, const Json& op, std::vector<s
         LayerDef* layer = findLayerArg(def, op.contains("layer") ? op["layer"] : Json(), error);
         if (!layer) return false;
         if (kind == "remove_layer") {
+            if (def.layers.size() <= 1) {
+                error = "a controller keeps one layer (\"" + layer->name + "\" is its last)";
+                return false;
+            }
             changes.push_back("remove_layer " + layer->name);
             def.layers.erase(def.layers.begin() + (layer - def.layers.data()));
             return true;
@@ -944,8 +1005,18 @@ bool applyOp(Project* project, ControllerDef& def, const Json& op, std::vector<s
         StateLocation location;
         if (!findState(def, op.value("state", name), location, error)) return false;
         if (kind == "remove_state") {
-            changes.push_back("remove_state " + location.state->name);
-            location.machine->states.erase(location.machine->states.begin() + (long)location.index);
+            const std::string gone = location.state->name;
+            changes.push_back("remove_state " + gone);
+            StateMachineDef& machine = *location.machine;
+            machine.states.erase(machine.states.begin() + (long)location.index);
+            // the transitions into it go with it (the Animator window's rule), the default moves on
+            auto into = [&](const TransitionDef& t) { return t.to == gone; };
+            auto prune = [&](std::vector<TransitionDef>& list) { list.erase(std::remove_if(list.begin(), list.end(), into), list.end()); };
+            prune(machine.entry);
+            prune(machine.anyState);
+            for (StateDef& other : machine.states) prune(other.transitions);
+            for (StateMachineDef& sub : machine.subMachines) prune(sub.exitTransitions);
+            if (machine.defaultState == gone) machine.defaultState = machine.states.empty() ? std::string() : machine.states.front().name;
             return true;
         }
         if (op.contains("new_name")) location.state->name = op["new_name"].get<std::string>();
@@ -1027,6 +1098,8 @@ void editAnimatorControllerTool(const CallPtr& call) {
     ControllerDef def;
     std::shared_ptr<AnimatorAssetDocument> document;
     std::vector<std::string> changes;
+    SceneProject* playerScene = nullptr;
+    Entity playerEntity = NULL_ENTITY;
     if (args.value("create", false) && !exists) {
         LayerDef layer;
         layer.name = "Base Layer";
@@ -1059,16 +1132,63 @@ void editAnimatorControllerTool(const CallPtr& call) {
         }
         appendPlayerStates(def, *player);
         changes.push_back("from_player: " + std::to_string(player->clips.size()) + " state(s)");
+        playerScene = target.scene;
+        playerEntity = entity;
     }
     if (args.contains("ops")) {
+        // a transition to a state that does not exist is refused (the op names it), not left to
+        // the diagnostics: the transitions the file had before are not this call's
+        auto missingTargets = [](const ControllerDef& d, std::string* first) {
+            size_t n = 0;
+            // (held: a range-for over a member of the temporary would read a freed controller)
+            const std::shared_ptr<const CompiledController> compiled = compileController(d);
+            for (const ClipWarning& w : compiled->diagnostics) {
+                if (w.message.rfind("no state or state machine named", 0) != 0) continue;
+                if (first && first->empty()) *first = w.message;
+                n++;
+            }
+            return n;
+        };
+        size_t missing = missingTargets(def, nullptr);
         for (size_t i = 0; i < args["ops"].size(); i++) {
-            if (!applyOp(project, def, args["ops"][i], changes, error)) {
+            const Json& op = args["ops"][i];
+            if (!applyOp(project, def, op, changes, error)) {
                 call->fail("ops[" + std::to_string(i) + "]: " + error + " (nothing was written).");
                 return;
+            }
+            const std::string kind = op.is_object() ? op.value("op", std::string()) : std::string();
+            if (kind == "add_transition" || kind == "set_transition") {
+                std::string message;
+                const size_t now = missingTargets(def, &message);
+                if (now > missing) {
+                    call->fail("ops[" + std::to_string(i) + "].to: \"" + op.value("to", std::string()) + "\": " + message +
+                               " (nothing was written).");
+                    return;
+                }
+                missing = now;
             }
         }
     }
     normalizeController(def);
+    bool assigned = false;
+    if (!document && playerEntity != NULL_ENTITY && !playerScene->scene->findComponent<AnimatorComponent>(playerEntity)) {
+        // a new controller from a player without an Animator (upstream's create.from_entity, the
+        // Inspector's Create Animator Controller from Clips): an Animator plays it and the player
+        // hands over to it (disabled), one scene undo step with the new file
+        const std::string relative = fs::relative(absolute, project->getProjectPath()).generic_string();
+        if (!animlayersui::createControllerFile(project, playerScene->id, playerEntity, relative, def, error)) {
+            call->fail(error);
+            return;
+        }
+        document = AnimatorAssetDocument::open(project, absolute.string(), &error);
+        if (!document) {
+            call->fail(error);
+            return;
+        }
+        changes.insert(changes.begin(), "created");
+        changes.push_back("an Animator on \"" + playerScene->scene->getEntityName(playerEntity) + "\" plays it; its player hands over (disabled)");
+        assigned = true;
+    }
     if (!document) {
         document = AnimatorAssetDocument::create(project, absolute.string(), AnimatorAssetDocument::Kind::Controller,
                                                  "Create Animator Controller " + absolute.filename().string(), &error);
@@ -1078,15 +1198,24 @@ void editAnimatorControllerTool(const CallPtr& call) {
         }
         changes.insert(changes.begin(), "created");
     }
-    if (!document->commit(def, "Edit Animator Controller " + absolute.filename().string(), std::string(), &error)) {
+    if (!assigned && !document->commit(def, "Edit Animator Controller " + absolute.filename().string(), std::string(), &error)) {
         call->fail(error);
         return;
     }
     std::shared_ptr<const CompiledController> compiled = compileController(document->controller());
+    const std::vector<ClipWarning> problems = animator_tools::controllerWarnings(project, document->controller());
     Json out = {{"path", document->projectPath()}, {"changes", changes}, {"diagnostics", warningsJson(compiled->diagnostics)},
+                {"warnings", warningsJson(problems)}, {"users", animator_tools::controllerUsers(project, document->projectPath())},
                 {"controller", controllerJson(document->controller())}};
-    call->ok(document->projectPath() + ": " + std::to_string(changes.size()) + " change(s), " + std::to_string(compiled->diagnostics.size()) +
-             " diagnostic(s).", out);
+    std::string text = document->projectPath() + ": " + std::to_string(changes.size()) + " change(s), " + std::to_string(compiled->diagnostics.size()) +
+                       " diagnostic(s), " + std::to_string(problems.size()) + " warning(s); " +
+                       (assigned ? "one scene undo step (the file with the Animator)." : "one project undo step.");
+    size_t shown = 0;
+    for (const ClipWarning& warning : problems) {
+        if (shown++ >= 8) break;
+        text += "\nwarning: " + warning.path + ": " + warning.message;
+    }
+    call->ok(text, out);
 }
 
 // ------------------------------------------------------------------ control_animator
@@ -1247,14 +1376,39 @@ void editAvatarMaskTool(const CallPtr& call) {
         }
     }
     AvatarMaskDef mask = document ? document->mask() : AvatarMaskDef();
+    if (args.contains("default")) {
+        if (!args["default"].is_number() && !args["default"].is_boolean()) {
+            call->fail("default: a weight from 0 to 1 (what no path or set body part covers).");
+            return;
+        }
+        mask.defaultWeight = std::clamp(args["default"].is_boolean() ? (args["default"].get<bool>() ? 1.0f : 0.0f) : args["default"].get<float>(), 0.0f, 1.0f);
+    }
+    if (args.contains("root_hierarchy")) {
+        if (!args["root_hierarchy"].is_boolean()) {
+            call->fail("root_hierarchy: true (the root part also covers the GameObject and the transforms above the hips) or false.");
+            return;
+        }
+        mask.rootHierarchy = args["root_hierarchy"].get<bool>();
+    }
     if (args.contains("body_parts")) {
+        if (!args["body_parts"].is_object()) {
+            call->fail("body_parts: {part: weight 0..1 | true | false | null (unset: the default)}.");
+            return;
+        }
         for (auto it = args["body_parts"].begin(); it != args["body_parts"].end(); ++it) {
             AvatarBodyPart part;
             if (!bodyPartFromName(it.key(), part)) {
-                call->fail("body part \"" + it.key() + "\": root, body, head, left_arm, right_arm, left_hand, right_hand, left_leg, right_leg");
+                call->fail("body part \"" + it.key() + "\": root, body, head, left_arm, right_arm, left_hand, right_hand, left_leg, right_leg, "
+                           "left_fingers, right_fingers");
                 return;
             }
-            mask.bodyParts[(int)part] = it.value().get<bool>();
+            if (it.value().is_null()) mask.bodyParts[(int)part].reset();
+            else if (it.value().is_boolean()) mask.bodyParts[(int)part] = it.value().get<bool>() ? 1.0f : 0.0f;
+            else if (it.value().is_number()) mask.bodyParts[(int)part] = std::clamp(it.value().get<float>(), 0.0f, 1.0f);
+            else {
+                call->fail("body_parts." + it.key() + ": a weight 0..1, true, false or null.");
+                return;
+            }
         }
     }
     if (args.contains("from_model")) {
@@ -1271,20 +1425,49 @@ void editAvatarMaskTool(const CallPtr& call) {
             if (path.empty()) continue;
             bool listed = false;
             for (const MaskPathDef& entry : mask.paths) listed = listed || entry.path == path;
-            if (!listed) mask.paths.push_back({path, weight});
+            if (!listed) mask.paths.push_back({path, weight, false});
         }
     }
     if (args.contains("paths")) {
+        // {path: weight | {weight, children} | null}
         for (auto it = args["paths"].begin(); it != args["paths"].end(); ++it) {
             auto found = std::find_if(mask.paths.begin(), mask.paths.end(), [&](const MaskPathDef& e){ return e.path == it.key(); });
             if (it.value().is_null()) {
                 if (found != mask.paths.end()) mask.paths.erase(found);
-            } else if (found != mask.paths.end()) {
-                found->weight = it.value().get<float>();
-            } else {
-                mask.paths.push_back({it.key(), it.value().get<float>()});
+                continue;
             }
+            MaskPathDef entry = found != mask.paths.end() ? *found : MaskPathDef{it.key(), 1.0f, false};
+            if (it.value().is_number()) {
+                entry.weight = it.value().get<float>();
+            } else if (it.value().is_object()) {
+                for (auto field = it.value().begin(); field != it.value().end(); ++field) {
+                    if (field.key() == "weight" && field.value().is_number()) entry.weight = field.value().get<float>();
+                    else if (field.key() == "children" && field.value().is_boolean()) entry.children = field.value().get<bool>();
+                    else {
+                        call->fail("paths." + it.key() + "." + field.key() + ": {weight: 0..1, children: bool}.");
+                        return;
+                    }
+                }
+            } else {
+                call->fail("paths." + it.key() + ": a weight, {weight, children} or null.");
+                return;
+            }
+            if (found != mask.paths.end()) *found = entry;
+            else mask.paths.push_back(entry);
         }
+    }
+    if (args.contains("preview_model")) {
+        if (!args["preview_model"].is_string()) {
+            call->fail("preview_model: a project-relative model or prefab (\"\" clears it).");
+            return;
+        }
+        std::string model;
+        const std::string given = args["preview_model"].get<std::string>();
+        if (!given.empty() && !McpValues::assetPathFromJson(project, given, model, error)) {
+            call->fail("preview_model: " + error);
+            return;
+        }
+        mask.previewModel = model;
     }
     if (!document) {
         document = AnimatorAssetDocument::create(project, absolute.string(), AnimatorAssetDocument::Kind::Mask,
@@ -1298,12 +1481,7 @@ void editAvatarMaskTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
-    Json parts = Json::object();
-    for (int i = 0; i < AVATAR_BODY_PART_COUNT; i++) parts[bodyPartName((AvatarBodyPart)i)] = document->mask().bodyParts[i];
-    Json paths = Json::object();
-    for (const MaskPathDef& entry : document->mask().paths) paths[entry.path] = entry.weight;
-    call->ok(document->projectPath() + ": " + std::to_string(document->mask().paths.size()) + " path(s).",
-             Json{{"path", document->projectPath()}, {"body_parts", parts}, {"paths", paths}});
+    call->ok(document->projectPath() + ": " + std::to_string(document->mask().paths.size()) + " path(s).", maskJson(project, *document));
 }
 
 void editMontageTool(const CallPtr& call) {
@@ -1562,11 +1740,13 @@ void registerAnimatorTools(McpRegistry& registry) {
         tool.name = "edit_avatar_mask";
         tool.title = "Edit Avatar Mask";
         tool.description =
-            "Edit (create: true makes) a .mask: body_parts {root, body, head, left_arm, right_arm, left_hand, right_hand, left_leg, "
-            "right_leg: bool}, paths {\"Hero/Hips/Spine\": weight 0..1 | null removes} relative to the Animator's GameObject, "
-            "from_model: list every path under a GameObject (from_model_weight). One project undo step.";
-        tool.inputSchema = object({{"path", assetPath("")}, {"create", boolean("")}, {"body_parts", anyObject("")}, {"paths", anyObject("")},
-                                   {"from_model", entityRef()}, {"from_model_weight", number("", 0, 1)}, {"scene", sceneRef()}}, {"path"});
+            "Edit (create: true makes) a .mask (version 2): default (what nothing covers, 0..1), body_parts {root, body, head, "
+            "left_/right_ arm, hand, fingers, leg: 0..1 | bool | null unsets}, root_hierarchy, paths {\"Hips/Spine\": weight | "
+            "{weight, children} | null removes} from the masked GameObject, from_model (every path under a GameObject, "
+            "from_model_weight), preview_model. Rules: jasper://docs/animator. One project undo step.";
+        tool.inputSchema = object({{"path", assetPath("")}, {"create", boolean("")}, {"default", number("", 0, 1)}, {"body_parts", anyObject("")},
+                                   {"root_hierarchy", boolean("")}, {"paths", anyObject("")}, {"from_model", entityRef()},
+                                   {"from_model_weight", number("", 0, 1)}, {"preview_model", string("")}, {"scene", sceneRef()}}, {"path"});
         tool.annotations.readOnly = false;
         tool.annotations.idempotent = false;
         tool.attributesUndo = true;
@@ -1617,3 +1797,355 @@ void stopAnimatorPreviews(Project* project) {
 }
 
 }
+
+// ------------------------------------------------------------------ upstream's reads (get_animation, write_file)
+
+namespace jasperengine::editor::mcp::animator_tools {
+
+using namespace ::jasperengine::anim;
+namespace fs = std::filesystem;
+
+namespace {
+
+constexpr size_t MAX_COVERAGE = 200;
+
+std::string assetJson(Project* project, const std::string& stored) {
+    return stored.empty() ? std::string() : McpValues::assetPathToJson(project, stored);
+}
+
+// a controller's clip as validation sees it (through its document: .anim or a model clip)
+ControllerClipInfo clipInfo(Project* project, const std::string& clip) {
+    ControllerClipInfo info;
+    std::string error;
+    std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project, clip, &error);
+    info.loads = document != nullptr;
+    info.error = error;
+    if (document) info.loops = document->data().wrap == ClipWrapMode::Loop || document->data().wrap == ClipWrapMode::PingPong;
+    return info;
+}
+
+std::vector<ClipWarning> validate(Project* project, const ControllerDef& def) {
+    return validateController(def, [project](const std::string& clip) { return clipInfo(project, clip); });
+}
+
+Json usersJson(Project* project, const std::vector<AnimatorAssetUser>& users) {
+    Json out = Json::array();
+    for (const AnimatorAssetUser& user : users) {
+        Json item = Json::object();
+        if (!user.controllerFile.empty()) {
+            item["controller"] = user.controllerFile;
+        } else if (user.prefabAsset) {
+            item["prefab"] = user.prefabPath;
+        } else if (SceneProject* scene = project->getScene(user.sceneId)) {
+            item["scene"] = scene->id;
+            if (scene->scene && scene->scene->isEntityCreated(user.entity)) item["entity"] = McpRefs::entityJson(scene, user.entity);
+        }
+        if (user.layer >= 0) item["layer"] = user.layer;
+        out.push_back(item);
+    }
+    return out;
+}
+
+// the clips an Animation Player layer plays (its entries; -1: every layer)
+std::vector<std::string> playerClips(const AnimationPlayerComponent& player, int layer) {
+    std::vector<std::string> clips;
+    for (const AnimationPlayerClip& entry : player.clips) {
+        if ((layer < 0 || entry.layer == layer) && !entry.clip.empty()) clips.push_back(entry.clip);
+    }
+    return clips;
+}
+
+// the clips an Animator's controller layer plays (-1: every layer)
+std::vector<std::string> animatorClips(Project* project, const AnimatorComponent& animator, int layer) {
+    std::vector<std::string> clips;
+    if (animator.controller.path.empty()) return clips;
+    std::shared_ptr<AnimatorAssetDocument> document = AnimatorAssetDocument::open(project, animator.controller.path, nullptr);
+    if (!document || !document->loadError().empty()) return clips;
+    ControllerDef def = document->controller();
+    for (size_t l = 0; l < def.layers.size(); l++) {
+        if (layer >= 0 && (int)l != layer) continue;
+        ControllerDef one;
+        one.layers.push_back(def.layers[l]);
+        visitControllerRefs(one, [&](AnimatorAssetRef& ref, const std::string& field) {
+            if (field.find(".mask") == std::string::npos && !ref.path.empty()) clips.push_back(ref.path);
+        });
+    }
+    return clips;
+}
+
+// the entities those clips' tracks bind below `root`, once per path
+std::vector<std::pair<std::string, Entity>> boundTargets(Project* project, Scene* scene, Entity root, const std::vector<std::string>& clips) {
+    std::vector<std::pair<std::string, Entity>> targets;
+    std::set<std::string> seen;
+    for (const std::string& clip : clips) {
+        std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project, clip, nullptr);
+        if (!document) continue;
+        for (const ClipTrackData& track : document->data().tracks) {
+            if (track.channel == ClipChannel::Property || !seen.insert(track.path).second) continue;
+            const Entity target = track.path.empty() ? root : resolvePath(scene, root, track.path);
+            if (target != NULL_ENTITY) targets.push_back({track.path, target});
+        }
+    }
+    return targets;
+}
+
+// a masked layer's coverage of what its clips animate (the Inspector's Bindings line)
+Json maskCoverageEntry(Project* project, Scene* scene, Entity root, const std::string& layer, const std::string& mask,
+                       const std::vector<std::string>& clips) {
+    Json entry = {{"layer", layer}};
+    std::string error;
+    std::shared_ptr<AnimatorAssetDocument> document = AnimatorAssetDocument::open(project, mask, &error);
+    if (document && !document->loadError().empty()) {
+        error = document->loadError();
+        document.reset();
+    }
+    if (!document) {
+        entry["error"] = error + " (the layer contributes nothing)";
+        return entry;
+    }
+    std::vector<Entity> targets;
+    for (const std::pair<std::string, Entity>& target : boundTargets(project, scene, root, clips)) targets.push_back(target.second);
+    const animlayersui::MaskCoverage result = animlayersui::maskCoverage(scene, root, document->mask(), targets);
+    entry["covered"] = result.covered;
+    entry["total"] = result.total;
+    Json warnings = warningsJson(document->warnings());
+    if (result.humanoidWithoutRig) {
+        warnings.push_back({{"path", "body_parts"}, {"message", "the root has no humanoid rig (" + result.rigError + "): the body parts do not apply"}});
+    }
+    entry["warnings"] = warnings;
+    return entry;
+}
+
+double r6(float value) {
+    return std::round((double)value * 1e6) / 1e6;
+}
+
+} // namespace
+
+Json controllerSummary(Project* project, const AnimatorAssetDocument& document) {
+    const ControllerDef& def = document.controller();
+    std::shared_ptr<const CompiledController> compiled = compileController(def);
+    Json out = controllerJson(def);
+    out["path"] = document.projectPath();
+    if (!def.guid.empty()) out["guid"] = def.guid;
+    if (document.converted()) out["read_as"] = animatorFileDialectName(document.dialect());
+    out["diagnostics"] = warningsJson(compiled->diagnostics);
+    out["warnings"] = warningsJson(validate(project, def));
+    if (!document.warnings().empty()) out["load_warnings"] = warningsJson(document.warnings());
+    out["users"] = usersJson(project, findControllerUsers(project, document.projectPath()));
+    return out;
+}
+
+std::string controllerSummaryText(const AnimatorAssetDocument& document, const Json& summary) {
+    const ControllerDef& def = document.controller();
+    size_t states = 0;
+    std::function<void(const StateMachineDef&)> count = [&](const StateMachineDef& m) {
+        states += m.states.size();
+        for (const StateMachineDef& sub : m.subMachines) count(sub);
+    };
+    for (const LayerDef& layer : def.layers) count(layer.machine);
+    std::string text = document.projectPath() + ": " + std::to_string(def.parameters.size()) + " parameter(s), " +
+                       std::to_string(def.layers.size()) + " layer(s), " + std::to_string(states) + " state(s), " +
+                       std::to_string(summary["warnings"].size()) + " warning(s), " + std::to_string(summary["users"].size()) + " user(s)";
+    if (document.converted()) text += " (read converted from " + std::string(animatorFileDialectName(document.dialect())) + ": saved as version 2 on the next edit)";
+    size_t shown = 0;
+    for (const Json& warning : summary["warnings"]) {
+        if (shown++ >= 12) break;
+        text += "\nwarning: " + warning["path"].get<std::string>() + ": " + warning["message"].get<std::string>();
+    }
+    return text;
+}
+
+void getController(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    std::string error, stored;
+    fs::path absolute;
+    if (!args["controller"].is_string() ||
+        !assetFilePath(project, args["controller"].get<std::string>(), "an Animator Controller (.controller)", &Util::isAnimatorControllerFile,
+                       stored, absolute, error)) {
+        call->fail(error.empty() ? std::string("controller: a project-relative .controller path, e.g. assets/anim/hero.controller.") : error);
+        return;
+    }
+    std::error_code existsError;
+    if (!fs::exists(absolute, existsError)) {
+        call->fail("controller: '" + args["controller"].get<std::string>() +
+                   "' does not exist (create one with edit_animator_controller {path, create: true}).");
+        return;
+    }
+    std::shared_ptr<AnimatorAssetDocument> document = AnimatorAssetDocument::open(project, absolute.string(), &error);
+    if (!document) {
+        call->fail("controller: " + error + " (create one with edit_animator_controller {path, create: true}).");
+        return;
+    }
+    const Json out = controllerSummary(project, *document);
+    call->ok(controllerSummaryText(*document, out), out);
+}
+
+void getMask(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    std::string error, stored;
+    fs::path absolute;
+    if (!args["mask"].is_string() ||
+        !assetFilePath(project, args["mask"].get<std::string>(), "an Avatar Mask (.mask)", &Util::isAvatarMaskFile, stored, absolute, error)) {
+        call->fail(error.empty() ? std::string("mask: a project-relative .mask path, e.g. assets/anim/arm.mask.") : error);
+        return;
+    }
+    std::error_code existsError;
+    if (!fs::exists(absolute, existsError)) {
+        call->fail("mask: '" + args["mask"].get<std::string>() + "' does not exist (create one with edit_avatar_mask {path, create: true}).");
+        return;
+    }
+    std::shared_ptr<AnimatorAssetDocument> document = AnimatorAssetDocument::open(project, absolute.string(), &error);
+    if (!document) {
+        call->fail("mask: " + error + " (create one with edit_avatar_mask {path, create: true}).");
+        return;
+    }
+    const AvatarMaskDef& mask = document->mask();
+    Json out = maskJson(project, *document);
+    out["users"] = usersJson(project, findMaskUsers(project, document->projectPath()));
+    char defaultText[32];
+    std::snprintf(defaultText, sizeof(defaultText), "%g", r6(mask.defaultWeight));
+    std::string text = document->projectPath() + ": default " + defaultText + ", " + std::to_string(out["body_parts"].size()) + " body part(s), " +
+                       std::to_string(mask.paths.size()) + " path(s), " + std::to_string(out["users"].size()) + " user(s)";
+    if (document->converted()) text += " (read converted from " + std::string(animatorFileDialectName(document->dialect())) + ")";
+
+    if (args.contains("root") && !args["root"].is_null()) {
+        std::string sceneError;
+        SceneProject* scene = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(nullptr), sceneError);
+        if (!scene) {
+            call->fail(sceneError);
+            return;
+        }
+        const Entity root = McpRefs::resolveEntity(scene, args["root"], sceneError);
+        if (root == NULL_ENTITY) {
+            call->fail("root: " + sceneError);
+            return;
+        }
+        Scene* engineScene = scene->scene;
+        HumanoidSlots slots;
+        if (mask.usesHumanoid()) slots = resolveHumanoidSlots(engineScene, root);
+        const std::vector<Entity> entries = bindMaskPaths(mask, engineScene, root);
+        // the entities the root's player or Animator binds; without either every descendant
+        std::vector<std::string> clips;
+        if (const AnimationPlayerComponent* player = engineScene->findComponent<AnimationPlayerComponent>(root)) clips = playerClips(*player, -1);
+        if (const AnimatorComponent* animator = engineScene->findComponent<AnimatorComponent>(root)) {
+            for (const std::string& clip : animatorClips(project, *animator, -1)) clips.push_back(clip);
+        }
+        std::vector<std::pair<std::string, Entity>> entities = boundTargets(project, engineScene, root, clips);
+        if (entities.empty()) entities = descendantPaths(engineScene, root);
+        Json coverage = Json::array();
+        size_t covered = 0;
+        for (const std::pair<std::string, Entity>& entity : entities) {
+            const MaskWeight weight = maskWeightOf(mask, engineScene, root, entity.second, entries, slots.valid ? &slots : nullptr);
+            if (weight.weight > 0.0f) covered++;
+            if (coverage.size() < MAX_COVERAGE) coverage.push_back({{"path", entity.first}, {"weight", r6(weight.weight)}, {"rule", weight.ruleName()}});
+        }
+        out["root"] = McpRefs::entityJson(scene, root);
+        out["coverage"] = coverage;
+        out["coverage_total"] = entities.size();
+        out["covered"] = covered;
+        if (mask.usesHumanoid()) {
+            out["humanoid_rig"] = slots.valid;
+            if (!slots.valid) out["humanoid_rig_error"] = slots.error;
+        }
+        text += "; on \"" + engineScene->getEntityName(root) + "\": " + std::to_string(covered) + "/" + std::to_string(entities.size()) +
+                " entities covered" + (mask.usesHumanoid() && !slots.valid ? " (no humanoid rig: the body parts do not apply)" : "");
+    }
+    if (out.contains("warnings")) {
+        for (const Json& warning : out["warnings"]) text += "\nwarning: " + warning["path"].get<std::string>() + ": " + warning["message"].get<std::string>();
+    }
+    call->ok(text, out);
+}
+
+void addPlayerLayers(Project* project, SceneProject* scene, Entity root, Json& item) {
+    Scene* engineScene = scene->scene;
+    const AnimationPlayerComponent* found = engineScene->findComponent<AnimationPlayerComponent>(root);
+    if (!found) return;
+    const AnimationPlayerComponent& player = *found;
+    const bool playing = scene->playState != ScenePlayState::STOPPED && player.runtime;
+    const std::vector<std::string> names = playerStateNames(player.clips);
+
+    // upstream's controller players: a disabled player beside an Animator hands over to it
+    if (const AnimatorComponent* animator = engineScene->findComponent<AnimatorComponent>(root)) {
+        if (!player.enabled) {
+            item["animator"] = {{"hands_over", true}, {"controller", assetJson(project, animator->controller.path)},
+                                {"note", "this disabled player's play / crossFade / parameter calls go to the Animator (get_animator {entity})"}};
+        }
+    }
+
+    // layers (the effective list) and their states; play mode: live weights and queues
+    const std::vector<AnimationPlayerLayer> layers = playerLayers(player);
+    Json layersJson = Json::array();
+    for (size_t l = 0; l < layers.size(); l++) {
+        Json states = Json::array();
+        for (size_t i = 0; i < player.clips.size() && i < names.size(); i++) {
+            const int layer = player.clips[i].layer >= 0 && (size_t)player.clips[i].layer < layers.size() ? player.clips[i].layer : 0;
+            if ((size_t)layer == l) states.push_back(names[i]);
+        }
+        Json layer = {{"index", l}, {"name", layers[l].name}, {"weight", r6(l == 0 ? 1.0f : layers[l].weight)},
+                      {"blend", layerBlendName(l == 0 ? AnimationLayerBlend::Override : layers[l].blend)},
+                      {"mask", assetJson(project, layers[l].mask)}, {"states", states}};
+        if (playing && l < player.runtime->layers.size()) {
+            const LayerRuntime& runtime = player.runtime->layers[l];
+            layer["live_weight"] = r6(player.runtime->layerWeight((int)l));
+            if (runtime.maskPath != layers[l].mask) layer["live_mask"] = assetJson(project, runtime.maskPath);
+            if (runtime.blend != layers[l].blend && l > 0) layer["live_blend"] = layerBlendName(runtime.blend);
+            Json queue = Json::array();
+            for (const QueuedState& queued : runtime.queue) {
+                if (queued.state < player.runtime->states.size()) queue.push_back(player.runtime->states[queued.state].name);
+            }
+            layer["queue"] = queue;
+        }
+        layersJson.push_back(layer);
+    }
+    item["layers"] = layersJson;
+
+    // the masked layers' coverage (the Inspector's Bindings lines)
+    Json coverage = Json::array();
+    for (size_t l = 0; l < layers.size(); l++) {
+        if (!layers[l].mask.empty()) coverage.push_back(maskCoverageEntry(project, engineScene, root, layers[l].name, layers[l].mask,
+                                                                          playerClips(player, (int)l)));
+    }
+    if (!coverage.empty()) item["mask_coverage"] = coverage;
+}
+
+bool checkMaskText(const std::string& text, std::vector<std::string>& warnings, std::string& error) {
+    const MaskParseResult parsed = parseMask(text);
+    if (!parsed.ok) {
+        error = parsed.error.toString();
+        return false;
+    }
+    if (parsed.converted()) {
+        warnings.push_back(std::string("version 1 (") + animatorFileDialectName(parsed.dialect) +
+                           "): read converted; the editor saves it as version 2 (write version 2: jasper://docs/animator)");
+    }
+    for (const ClipWarning& warning : parsed.warnings) warnings.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
+    return true;
+}
+
+bool checkControllerText(Project* project, const std::string& text, std::vector<std::string>& warnings, std::string& error) {
+    const ControllerParseResult parsed = parseController(text);
+    if (!parsed.ok) {
+        error = parsed.error.toString();
+        return false;
+    }
+    if (parsed.converted()) {
+        warnings.push_back(std::string("version 1 (") + animatorFileDialectName(parsed.dialect) +
+                           "): read converted; the editor saves it as version 2 (prefer edit_animator_controller)");
+    }
+    for (const ClipWarning& warning : parsed.warnings) warnings.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
+    for (const ClipWarning& warning : validate(project, parsed.data)) warnings.push_back(warning.path + ": " + warning.message);
+    return true;
+}
+
+std::vector<ClipWarning> controllerWarnings(Project* project, const ControllerDef& def) {
+    return validate(project, def);
+}
+
+Json controllerUsers(Project* project, const std::string& controllerPath) {
+    return usersJson(project, findControllerUsers(project, controllerPath));
+}
+
+} // namespace jasperengine::editor::mcp::animator_tools

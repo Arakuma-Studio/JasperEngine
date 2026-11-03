@@ -379,6 +379,8 @@ class Emitter:
             L += doc_lines(doc)
             if any(d.lower().startswith('deprecated') for d in doc):
                 L.append('---@deprecated')   # a binding commented "deprecated: ..." (an old alias)
+            if m.get('async'):
+                L.append('---@async')   # it yields: only inside an engine coroutine
             for u in m['unresolved']:
                 L.append(f'-- unresolved: {c["name"]}.{m["name"]}: {u}')
             if not sigs:
@@ -462,9 +464,33 @@ class Emitter:
             '---@param tag? string',
             'function RegisterEvent(self, event, methodName, tag) end',
             '',
+            '---Unity\'s DontDestroyOnLoad (same as GameObject.dontDestroyOnLoad): the root GameObject of `obj`, with',
+            '---its children, scripts\' state, sounds and bodies, survives every SceneManager.loadScene in the',
+            '---persistent scene ("DontDestroyOnLoad"). Root GameObjects only (else a warning and false); nil is ignored.',
+            '---@param obj EntityHandle|ScriptInstance|nil # a script instance (`self`) or a GameObject',
+            '---@return boolean',
+            'function DontDestroyOnLoad(obj) end',
+            '',
+            '---Removes what `RegisterEngineEvent(self, methodName [, tag])` subscribed (same tag); true if it was',
+            '---subscribed. Unity\'s `-=` for an engine event, typically in onDisable.',
+            '---@param self table # the script instance (`self`)',
+            '---@param methodName EngineEventName',
+            '---@param tag? string',
+            '---@return boolean',
+            'function UnregisterEngineEvent(self, methodName, tag) end',
+            '',
+            '---Removes what `RegisterEvent(self, event, methodName [, tag])` subscribed (same tag); true if it was',
+            '---subscribed.',
+            '---@param self table # the script instance (`self`)',
+            '---@param event FunctionSubscribe|Event',
+            '---@param methodName string',
+            '---@param tag? string',
+            '---@return boolean',
+            'function UnregisterEvent(self, event, methodName, tag) end',
+            '',
             '---An event object (the `FunctionSubscribe_*` classes): functions subscribed to it are called when',
             '---the event fires. Subscribe a script method with RegisterEvent / RegisterEngineEvent, or any',
-            '---function with `event:add(tag, fn)`.',
+            '---function with `event:add(tag, fn)`; `event:remove(tag)` and `event:has(tag)` by tag.',
             '---@class FunctionSubscribe',
             '',
             '---What Input.getTouches() returns for each touch (a plain table, not a class).',
@@ -534,19 +560,118 @@ class Emitter:
             '---@field changedProperties string[] # properties of another type now (converted, else the default)',
             '---@field droppedCallbacks integer # anonymous callbacks and timers of the old code, no longer called',
             '',
-            '---A Lua script instance (`self` in a script\'s methods). `init(self)` is called once after every',
-            '---instance of the scene exists; `onDestroy(self)` when its GameObject is destroyed at runtime;',
-            '---`onReload(self, info)` after the script\'s file changed while the game plays (init does not run',
-            '---again; re-create anonymous callbacks there). Other methods run only when registered',
-            '---(RegisterEngineEvent / RegisterEvent: those follow a reload by themselves).',
-            '---@class ScriptInstance',
+            '---A Lua script instance (`self` in a script\'s methods), Unity\'s MonoBehaviour. Every Script component',
+            '---entry has one, enabled or not. The engine calls these methods by name when the script defines',
+            '---them (lua-api.md 1.1):',
+            '---  init(self)              once, when the GameObject is first active in hierarchy, enabled or not (Awake)',
+            '---  onEnable(self)          it becomes active and enabled (after init)',
+            '---  start(self)             once, at the start of the frame after the first onEnable (Start)',
+            '---  onDisable(self)         it stops being active and enabled; before onDestroy',
+            '---  onDestroy(self)         once: destroy, scene unload, Play stop / quit (only if init ran)',
+            '---  onApplicationPause(self, paused) / onApplicationFocus(self, focused) / onApplicationQuit(self)',
+            '---  onReload(self, info)    after the script\'s file changed while the game plays (init does not run',
+            '---                          again; re-create anonymous callbacks there)',
+            '---The component UI\'s pointer callbacks (Unity\'s IPointerDownHandler...), e: PointerEventData, sent to',
+            '---the element under the pointer or its first ancestor whose script defines them (lua-api.md 1.7):',
+            '---  onPointerDown / onPointerUp / onPointerClick / onPointerEnter / onPointerExit(self, e)',
+            '---  onInitializePotentialDrag / onBeginDrag / onDrag / onEndDrag / onDrop / onScroll(self, e)',
+            '---Update methods (onUpdate, onFixedUpdate, onPostUpdate) run only once registered with',
+            '---RegisterEngineEvent (those follow a reload by themselves); they are skipped while the script is',
+            '---not active and enabled.',
+            '---@class ScriptInstance : ScriptCallbacks',
             '---@field scene Scene # the scene of the GameObject the script is attached to',
             '---@field entity integer # the GameObject\'s entity; wrap it: `Sprite(self.scene, self.entity)`',
             '---@field __name string # the script class name (the file name)',
             '---@field properties? ScriptPropertyDef[] # the properties the Inspector shows',
             '---@field onReload? fun(self: ScriptInstance, info: ScriptReloadInfo) # after a hot reload during Play',
+            '---@field enabled boolean # Unity\'s enabled: assigning calls onEnable / onDisable (and start on the next frame)',
+            '---@field isActiveAndEnabled boolean # (read-only) the GameObject is active in hierarchy and the script enabled',
+            '---@field gameObject GameObject # (read-only) the script\'s GameObject',
+            'local ScriptInstance = {}',
+            '',
+            '---Unity\'s StartCoroutine: runs `fn(...)` (or the method `self:<name>(...)`) as an engine coroutine owned',
+            '---by this script, now until its first wait (Coroutine.wait, nextFrame, waitUntil, waitFor...). It stops',
+            '---when the GameObject is deactivated or destroyed (not when the script is disabled); an error is logged',
+            '---with its traceback and the handle gets status "error". Raises on an inactive GameObject.',
+            '---@param fnOrMethodName (async fun(...))|string',
+            '---@param ... any',
+            '---@return Coroutine',
+            'function ScriptInstance:startCoroutine(fnOrMethodName, ...) end',
+            '',
+            '---Unity\'s StopCoroutine: stops that coroutine (it must be this script\'s), or every coroutine of this',
+            '---script started with that method name. A running one (itself) stops at its next wait.',
+            '---@param coOrMethodName Coroutine|string',
+            'function ScriptInstance:stopCoroutine(coOrMethodName) end',
+            '',
+            '---Unity\'s StopAllCoroutines: every coroutine this script started (no other script\'s).',
+            'function ScriptInstance:stopAllCoroutines() end',
+            '',
+            '---Unity\'s Invoke: calls `fn()` (or `self:<name>()`, looked up when it fires) once after `delay` seconds,',
+            '---game time unless `unscaled`. It keeps running while the script is disabled or the GameObject inactive,',
+            '---and is cancelled when the GameObject is destroyed or its scene unloads. (Timer.after with',
+            '---{owner = self} is the same timer on the global Timer.)',
+            '---@param fnOrMethodName fun()|string',
+            '---@param delay number',
+            '---@param unscaled? boolean',
+            '---@return ScriptTimer',
+            'function ScriptInstance:invoke(fnOrMethodName, delay, unscaled) end',
+            '',
+            '---Unity\'s InvokeRepeating: first after `delay`, then every `interval` (> 0) seconds, at most once a frame.',
+            '---@param fnOrMethodName fun()|string',
+            '---@param delay number',
+            '---@param interval number',
+            '---@param unscaled? boolean',
+            '---@return ScriptTimer',
+            'function ScriptInstance:invokeRepeating(fnOrMethodName, delay, interval, unscaled) end',
+            '',
+            '---Unity\'s CancelInvoke: every timer of this script, those invoking a method name, or one timer.',
+            '---@param timerOrMethodName? ScriptTimer|string',
+            'function ScriptInstance:cancelInvoke(timerOrMethodName) end',
+            '',
+            '---Unity\'s IsInvoking: a timer of this script (or of that method, or that timer) is pending.',
+            '---@param timerOrMethodName? ScriptTimer|string',
+            '---@return boolean',
+            'function ScriptInstance:isInvoking(timerOrMethodName) end',
+            '',
+            '---The physics messages a script receives when it defines them (Unity OnCollisionEnter...): called',
+            '---on the main thread after the fixed step that caused them, enabled or not, while the GameObject',
+            '---is active (docs: jasper://docs/physics). The collision is seen from this side (`collision.collider`',
+            '---and `collision.gameObject` are the other\'s); triggers get the other collider.',
+            '---@class ScriptCallbacks',
+            'local ScriptCallbacks = {}',
             '',
         ]
+        for name, param, ptype, doc in (
+                ('onCollisionEnter', 'collision', 'Collision', 'started touching another collider (3D)'),
+                ('onCollisionStay', 'collision', 'Collision', 'still touching, once per fixed step (not while asleep)'),
+                ('onCollisionExit', 'collision', 'Collision', 'stopped touching (also when the other goes; no contacts then)'),
+                ('onTriggerEnter', 'other', 'Collider', 'a collider entered this trigger, or this entered a trigger (3D)'),
+                ('onTriggerStay', 'other', 'Collider', 'still overlapping, once per fixed step'),
+                ('onTriggerExit', 'other', 'Collider', 'stopped overlapping (also when the other goes)'),
+                ('onCollisionEnter2D', 'collision', 'Collision2D', 'started touching another collider (2D)'),
+                ('onCollisionStay2D', 'collision', 'Collision2D', 'still touching, once per fixed step while a body is awake'),
+                ('onCollisionExit2D', 'collision', 'Collision2D', 'stopped touching (also when the other goes)'),
+                ('onTriggerEnter2D', 'other', 'Collider2D', 'a collider entered this trigger, or this entered a trigger (2D)'),
+                ('onTriggerStay2D', 'other', 'Collider2D', 'still overlapping, once per fixed step'),
+                ('onTriggerExit2D', 'other', 'Collider2D', 'stopped overlapping (also when the other goes)'),
+                ('onJointBreak2D', 'joint', 'Joint2D', 'a 2D joint of this GameObject (or whose bodyA is it) broke')):
+            L.append('---' + doc[0].upper() + doc[1:] + '.')
+            L.append(f'---@param {param} {ptype}')
+            L.append(f'function ScriptCallbacks:{name}({param}) end')
+            L.append('')
+        # the getScript family on a script instance, as on every GameObject handle (lua-api.json's
+        # EntityHandle methods: the emitters read only the JSON)
+        handle = self.classes.get('EntityHandle')
+        for m in (handle['methods'] if handle else []):
+            if not m['name'].startswith('getScript') or not m['overloads']:
+                continue
+            L += doc_lines(list(m['doc']))
+            sig = m['overloads'][0]
+            for prm in sig['params']:
+                L.append(f'---@param {prm["name"]}' + ('?' if prm['optional'] else '') + f' {prm["type"]}')
+            L.append(f'---@return {sig["returns"][0] if sig["returns"] else "any"}')
+            L.append(f'function ScriptInstance:{m["name"]}(' + ', '.join(prm['name'] for prm in sig['params']) + ') end')
+            L.append('')
         self.files['Script.lua'] = '\n'.join(L).rstrip() + '\n'
 
     def emit_editor_script(self):

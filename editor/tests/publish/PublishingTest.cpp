@@ -11,6 +11,7 @@
 #include "AppSettings.h"
 #include "player/ContentManifest.h"
 #include "publish/BinaryInfo.h"
+#include "publish/Notices.h"
 #include "publish/PayloadValidator.h"
 #include "publish/Publishing.h"
 #include "publish/TreeManifest.h"
@@ -538,3 +539,14 @@ TEST(PublishDeck, DeployRollbackSmoke) {
 }
 
 #endif
+
+TEST(Notices, ALicenceMayNameItselfInItsExtension) {
+    // FFmpeg's COPYING.LGPLv2.1, which the exporter stages as tools/ci/check-notices.py does
+    TestTempDir directory("notices");
+    TestTempDir::write(directory.path() / "COPYING.LGPLv2.1", "LGPL\n");
+    TestTempDir::write(directory.path() / "COPYING.bak", "no\n");
+    TestTempDir::write(directory.path() / "README.md", "no\n");
+    const std::vector<fs::path> files = licenceFiles(directory.path());
+    ASSERT_EQ(files.size(), 1u);
+    EXPECT_EQ(files[0].filename().string(), "COPYING.LGPLv2.1");
+}

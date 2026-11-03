@@ -18,6 +18,7 @@
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
 #include "mcp/McpRefs.h"
+#include "util/SafeWrite.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
@@ -34,6 +35,7 @@
 #include "players/PlayerRuntimes.h"
 #include "platform/AndroidTools.h"
 #include "platform/ExternalTools.h"
+#include "util/BuiltPlayers.h"
 #include "pool/ShaderPool.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
@@ -51,6 +53,10 @@
 #include <cstdlib>
 #include <fstream>
 #include <map>
+#include <cstdint>
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 #include <memory>
 #include <mutex>
 #include <regex>
@@ -287,6 +293,7 @@ std::string appName(Project* project) {
     return project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(project->getName());
 }
 
+// The file starts like a native executable: ELF, Mach-O (thin or universal) or PE
 std::string executableName(Project* project) {
 #ifdef _WIN32
     return appName(project) + ".exe";
@@ -332,6 +339,49 @@ fs::path defaultOutputDir(Project* project, ExportMode mode) {
     const fs::path base = AppSettings::getDefaultExportDirectory();
     if (!base.empty()) return base / (appName(project) + "-" + modeName(mode));
     return project->getProjectInternalPath() / "builds" / modeName(mode);
+}
+
+// An output folder an agent may build into: the user's saved export folder for the mode, the
+// default export location (or anything below it), or a folder inside the project's trusted roots.
+// Both outside folders are the user's: an agent can't set either (MCP never persists an output
+// folder, and preferences.default_export_dir is read-only over MCP).
+// "" when allowed, else the refusal (the agent can't make the editor write a build anywhere else)
+std::string outputDirRefusal(Project* project, const fs::path& outputDir, ExportMode mode) {
+    const fs::path where = safewrite::resolvedPath(outputDir);
+    auto below = [&](const fs::path& dir) {
+        if (dir.empty()) return false;
+        const fs::path real = safewrite::resolvedPath(dir);
+        return !real.empty() && !where.empty() && safewrite::isAtOrBelow(where, real);
+    };
+    // never under a hidden ('.'-named) component (.jasperengine and the like): a build there would
+    // write through the editor's own folders. Checked against every trusted root and the export
+    // folders, where the output resolves.
+    auto hiddenUnder = [&](const fs::path& dir) {
+        if (dir.empty() || where.empty()) return false;
+        const fs::path real = safewrite::resolvedPath(dir);
+        if (real.empty() || !safewrite::isAtOrBelow(where, real)) return false;
+        for (const fs::path& part : where.lexically_relative(real)) {
+            const std::string name = safewrite::comparableName(part);
+            if (!name.empty() && name[0] == '.' && name != "." && name != "..") return true;
+        }
+        return false;
+    };
+    const fs::path file = project->getProjectPath() / "project.yaml";
+    std::vector<fs::path> allowed = { AppSettings::getExportTargetDir(file, settingsModeKey(mode)),
+                                      AppSettings::getDefaultExportDirectory(), defaultOutputDir(project, mode) };
+    for (const fs::path& root : McpRefs::trustedRoots(project)) allowed.push_back(root);
+    for (const fs::path& dir : allowed) {
+        if (hiddenUnder(dir)) {
+            return "output_dir " + FileUtils::pathToGenericUtf8(outputDir) + " resolves under a hidden folder (.jasperengine and the "
+                   "like are the editor's): choose an output folder that is not inside one.";
+        }
+    }
+    for (const fs::path& dir : allowed) {
+        if (below(dir)) return std::string();
+    }
+    return "output_dir " + FileUtils::pathToGenericUtf8(outputDir) + " is not the export folder chosen for this project, the default "
+           "export location or a folder of the project. Fix: choose the output folder in Build Settings (or Preferences' default "
+           "export folder), or omit output_dir.";
 }
 
 std::string stripAnsi(const std::string& line) {
@@ -442,6 +492,40 @@ bool parseDiagnostic(const std::string& rawLine, Diagnostic& out) {
 
 // ------------------------------------------------------------------ build runs
 
+// A log file opened once beneath the project (util/SafeWrite.h: no link on the way followed) and
+// kept open while the run writes it
+class LogFile {
+public:
+    LogFile() = default;
+    LogFile(const LogFile&) = delete;
+    LogFile& operator=(const LogFile&) = delete;
+    ~LogFile() { close(); }
+    bool open(const fs::path& root, const fs::path& path) {
+        close();
+        std::string error;
+        // the build log lives in the editor's internal logs folder (.jasperengine/logs), which an
+        // MCP call's deny-by-default guard refuses: the editor names it so its own log opens
+        safewrite::EditorInternal ownLog(path.parent_path());
+        file = safewrite::openFileResolvedBeneath(root, path, false, error);
+        if (!file) Out::warning("No log file for this run: %s", error.c_str());
+        return file != nullptr;
+    }
+    explicit operator bool() const { return file != nullptr; }
+    void write(const std::string& text) {
+        if (file) std::fwrite(text.data(), 1, text.size(), file);
+    }
+    void flush() {
+        if (file) std::fflush(file);
+    }
+    void close() {
+        if (file) std::fclose(file);
+        file = nullptr;
+    }
+
+private:
+    std::FILE* file = nullptr;
+};
+
 struct BuildRun {
     JobPtr job;
     ExportMode mode = ExportMode::SourceCode;
@@ -449,6 +533,7 @@ struct BuildRun {
     ExportConfig config;
     fs::path projectPath;
     std::string executableName;
+    fs::path producedExecutable;          // the player the exporter actually wrote (Desktop)
     std::mutex mutex;                     // guards exporter
     std::unique_ptr<Exporter> exporter;
     jobs::Task<void> worker;              // generate_shaders: Exporter::generateShaders on the process channel
@@ -456,7 +541,7 @@ struct BuildRun {
     std::vector<Diagnostic> diagnostics;
     size_t errorCount = 0;
     size_t warningCount = 0;
-    std::ofstream logFile;
+    LogFile logFile;
     fs::path logPath;
     ExportResult result;                  // a player build's report (taken before the exporter goes)
 };
@@ -488,7 +573,7 @@ void consumeLog(BuildRun& run, const LogEntry& entry) {
     while (std::getline(ss, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         run.job->log(prefix + line);
-        if (run.logFile) run.logFile << prefix << line << "\n";
+        if (run.logFile) run.logFile.write(prefix + line + "\n");
         Diagnostic d;
         if (parseDiagnostic(line, d)) {
             if (d.severity == "error") run.errorCount++;
@@ -575,15 +660,24 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
             for (const std::string& note : report.notes) message += " " + note + ".";
             if (r.config.platform == hostBuildPlatform() && !report.executable.empty()) {
                 message += " Try it with run_build.";
+                // its full identity, as the Desktop mode's below: run_build runs only this file, unchanged
+                builtplayers::record(r.projectPath / ".jasperengine", report.executable, modeName(ExportMode::Desktop));
                 std::lock_guard<std::mutex> lock(manager().mutex);
                 manager().lastExecutable = report.executable;
             }
         } else if (r.shadersOnly) {
             message = "Shaders generated in " + FileUtils::pathToGenericUtf8(outputDir) + ".";
         } else if (r.mode == ExportMode::Desktop) {
-            const fs::path exe = outputDir / r.executableName;
+            // the file the exporter wrote (its name fixed when the export started), not one computed
+            // from the project now: a rename meanwhile can't make another file the recorded player
+            const fs::path exe = r.producedExecutable.empty() ? outputDir / r.executableName : r.producedExecutable;
             result["executable"] = FileUtils::pathToGenericUtf8(exe);
             message = "Built the Desktop player " + FileUtils::pathToGenericUtf8(exe) + ". Try it with run_build.";
+            // record its full identity so run_build runs only this file, unchanged (util/BuiltPlayers.h);
+            // still inside the job (edits refused until it succeeds below)
+            if (!r.producedExecutable.empty()) {
+                builtplayers::record(r.projectPath / ".jasperengine", r.producedExecutable, modeName(ExportMode::Desktop));
+            }
             std::lock_guard<std::mutex> lock(manager().mutex);
             manager().lastExecutable = exe;
         } else if (r.mode == ExportMode::Web) {
@@ -654,6 +748,7 @@ void watchRun(std::shared_ptr<BuildRun> run) {
         // joins the export thread, which has returned
         std::lock_guard<std::mutex> lock(r.mutex);
         if (r.exporter) r.result = r.exporter->getResult();
+        if (r.exporter) r.producedExecutable = r.exporter->getProducedExecutable();
         r.exporter.reset();
     }
     finishRun(run, progress);
@@ -679,12 +774,25 @@ void startRun(const std::shared_ptr<BuildRun>& run) {
 }
 
 bool openRunLog(BuildRun& run, Project* project) {
-    std::error_code ec;
     const fs::path dir = project->getProjectInternalPath() / "logs";
-    fs::create_directories(dir, ec);
     run.logPath = dir / ("build-" + run.job->id() + ".log");
-    run.logFile.open(run.logPath, std::ios::trunc);
-    return static_cast<bool>(run.logFile);
+    return run.logFile.open(project->getProjectPath(), run.logPath);
+}
+
+// The editor-owned folders a build writes (the internal folder, every link in it at any depth, an
+// output folder inside the project) must stay inside the project once links are resolved: CMake and
+// the exporter write there with their own writers, so this is checked up front ("" when fine, else
+// the refusal). An output folder outside the project was let through by outputDirRefusal (the
+// export folder the user chose, or the user's default export location).
+std::string buildFoldersEscape(Project* project, const std::vector<fs::path>& outputs) {
+    if (const std::string escape = McpRefs::internalFoldersEscape(project); !escape.empty()) return escape;
+    for (const fs::path& dir : outputs) {
+        if (dir.empty()) continue;
+        const fs::path rel = dir.lexically_normal().lexically_relative(project->getProjectPath().lexically_normal());
+        if (rel.empty() || *rel.begin() == "..") continue;   // outside the project: outputDirRefusal's job
+        if (const std::string escape = McpRefs::writeEscape(project, dir); !escape.empty()) return escape;
+    }
+    return std::string();
 }
 
 ToolResult buildResult(const McpJob& job) {
@@ -809,6 +917,10 @@ void buildProjectTool(const CallPtr& call) {
     }
     outputDir = outputDir.lexically_normal();
     if (outputDir.filename().empty()) outputDir = outputDir.parent_path();
+    if (const std::string refusal = outputDirRefusal(project, outputDir, mode); !refusal.empty()) {
+        call->fail(refusal);
+        return;
+    }
     if ((isInside(outputDir, project->getProjectPath()) || isInside(outputDir, project->getAssetsPath())) &&
         !isInside(outputDir, project->getProjectInternalPath())) {
         call->fail("output_dir " + FileUtils::pathToGenericUtf8(outputDir) + " is inside the project (its assets and scenes are scanned "
@@ -971,8 +1083,15 @@ void buildProjectTool(const CallPtr& call) {
         config.emsdkPath = AppSettings::getEmsdkPath();
         const EmsdkInfo emsdk = Exporter::detectEmsdk(config.emsdkPath);
         if (!emsdk.found) {
-            call->fail("Emscripten SDK not found: set preferences.emsdk_path (set_project_settings) to the emsdk root, set "
-                       "EMSDK, or put emcmake on PATH. Or export mode source.");
+            call->fail("Emscripten SDK not found: the user sets it in Edit > Preferences > External Tools (preferences.emsdk_path "
+                       "is read-only over MCP), or sets EMSDK / puts emcc on PATH before starting the editor. Or export mode source.");
+            return;
+        }
+        std::string refusal = Exporter::webBuildRefusal(
+            {project->getProjectPath(), Exporter::buildCacheDirFor(project, ExportMode::Web), outputDir});
+        if (refusal.empty()) refusal = Exporter::webTreeRefusal(Exporter::webSourceRoots(project));
+        if (!refusal.empty()) {
+            call->fail(refusal + ".");
             return;
         }
     }
@@ -1026,9 +1145,14 @@ void buildProjectTool(const CallPtr& call) {
         call->fail("Could not write the project file (see the console).");
         return;
     }
-    AppSettings::setExportTargetDir(projectFile, mode == ExportMode::Player ? playerSettingsKey(platform) : settingsModeKey(mode), outputDir);
+    // (an agent's output folder is not saved as the project's export folder: only the user picks that)
+    (void)projectFile;
 
     // ---- start
+    if (const std::string escape = buildFoldersEscape(project, {config.targetDir, config.destinationDir}); !escape.empty()) {
+        call->fail(escape);
+        return;
+    }
     const std::string playerLabel = std::string("Build ") + buildPlatformName(platform);
     const char* modeLabel = mode == ExportMode::SourceCode ? "Export source" : mode == ExportMode::Desktop ? "Build Desktop player"
                           : mode == ExportMode::Player ? playerLabel.c_str() : "Build Web player";
@@ -1068,6 +1192,10 @@ void generateShadersTool(const CallPtr& call) {
     }
     ExportConfig config;
     config.targetDir = FileUtils::pathFromUtf8(target).lexically_normal();
+    if (const std::string refusal = outputDirRefusal(project, config.targetDir, ExportMode::Desktop); !refusal.empty()) {
+        call->fail(refusal);
+        return;
+    }
     std::string error;
     if (!parseBackends(args.contains("backends") ? args["backends"] : Json("all"), config.selectedBackends, error)) {
         call->fail("backends: " + error + ".");
@@ -1104,6 +1232,10 @@ void generateShadersTool(const CallPtr& call) {
         return;
     }
     config.selectedShaderKeys = keys;
+    if (const std::string escape = buildFoldersEscape(project, {config.targetDir, config.destinationDir}); !escape.empty()) {
+        call->fail(escape);
+        return;
+    }
 
     auto run = std::make_shared<BuildRun>();
     run->job = ctx.jobs().create("shaders", "Generate " + std::to_string(keys.size()) + " shader(s)");
@@ -1156,7 +1288,7 @@ void getBuildInfoTool(const CallPtr& call) {
     const EmsdkInfo emsdk = Exporter::detectEmsdk(AppSettings::getEmsdkPath());
     data["web"] = {
         {"available", emsdk.found},
-        {"emsdk", emsdk.found ? emsdk.description : std::string("not found (set preferences.emsdk_path)")},
+        {"emsdk", emsdk.found ? emsdk.description : std::string("not found (the user sets it in Edit > Preferences > External Tools; read-only over MCP)")},
         {"output_dir", FileUtils::pathToGenericUtf8(defaultOutputDir(project, ExportMode::Web))}
     };
     const auto& sourceSettings = project->getSourceCodeExportSettings();
@@ -1529,6 +1661,7 @@ struct PlayerRun {
     fs::path exe;
     fs::path logPath;
     fs::path playerShot;             // the player's own --screenshot (run_build quit_after/screenshot_frame)
+    LogFile logFile;                 // opened beneath the project when the run starts
     // input script
     std::vector<PlayerAction> actions;
     size_t nextAction = 0;
@@ -1691,9 +1824,9 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         }
     }
 
-    if (!run->logPath.empty()) {
-        std::ofstream out(run->logPath, std::ios::trunc | std::ios::binary);
-        out << run->output;
+    if (run->logFile) {
+        run->logFile.write(run->output);
+        run->logFile.close();
     }
 
     const int maxLines = std::max(0, std::min(2000, call->args().value("log_lines", 80)));
@@ -1858,6 +1991,22 @@ void runBuildTool(const CallPtr& call) {
         call->fail("No executable at " + FileUtils::pathToGenericUtf8(exe) + ". Build a Desktop player with build_project first, or pass path.");
         return;
     }
+    // run_build runs ONLY the executable this project's build produced, UNCHANGED: the editor
+    // recorded its identity (resolved path, device/inode, size, mtime, SHA-256) right after the build
+    // in .jasperengine/user, which agents can't write; every field must still match and the path must
+    // not be a symbolic link (util/BuiltPlayers.h). No other program runs.
+    if (const std::string why = builtplayers::verify(project->getProjectInternalPath(), exe); !why.empty()) {
+        std::string fix = " Build it with build_project (mode desktop), then run_build runs that player.";
+        if (why.find("not built by this editor") != std::string::npos) {
+            // e.g. a player exported from the GUI Export window: it was built, but not by build_project
+            fix = " run_build only runs the player build_project made for this project (a player exported from the Export "
+                  "window is not recorded): build it with build_project (mode desktop), or run it from the Export window "
+                  "(Build And Run).";
+        }
+        call->fail("run_build runs the player this project built, unchanged. " + FileUtils::pathToGenericUtf8(exe) + ": " + why +
+                   "." + fix);
+        return;
+    }
 
     auto run = std::make_shared<PlayerRun>();
     run->exe = exe;
@@ -1955,9 +2104,10 @@ void runBuildTool(const CallPtr& call) {
     if (!run->shots.empty() || !run->actions.empty()) run->windowsBefore = listTopLevelWindows();
     {
         const fs::path logs = project->getProjectInternalPath() / "logs";
-        fs::create_directories(logs, ec);
         static std::atomic<unsigned> counter{0};
         run->logPath = logs / ("run-" + std::to_string(++counter) + ".log");
+        // opened now, beneath the project (no link on the way followed), and kept for the output
+        if (!run->logFile.open(project->getProjectPath(), run->logPath)) run->logPath.clear();
     }
 
     // stdbuf: a player's stdout into a pipe is block-buffered, and lost when it is killed
@@ -1985,14 +2135,18 @@ void runBuildTool(const CallPtr& call) {
     const std::string workDir = exe.parent_path().string();
 
     int pipeFds[2];
-    if (::pipe(pipeFds) != 0) {
+    if (!CommandRunner::makeCloexecPipe(pipeFds)) {
         call->fail("Could not create a pipe for the player's output.");
         return;
     }
     long maxFd = ::sysconf(_SC_OPEN_MAX);
     if (maxFd < 0 || maxFd > 65536) maxFd = 65536;
 
-    const pid_t pid = ::fork();
+    pid_t pid = -1;
+    {
+        std::lock_guard<std::mutex> spawning(CommandRunner::spawnMutex());   // see makeCloexecPipe
+        pid = ::fork();
+    }
     if (pid < 0) {
         ::close(pipeFds[0]);
         ::close(pipeFds[1]);

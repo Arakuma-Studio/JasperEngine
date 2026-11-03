@@ -125,14 +125,14 @@
    "properties_of_default": {
     "scripts": [
      15,
-     0,
+     562949953421312,
      false
     ]
    },
    "properties_without_component": {
     "scripts": [
      15,
-     0,
+     562949953421312,
      false
     ]
    },
@@ -10814,6 +10814,7 @@
     "indices",
     "lodBias",
     "lodEnabled",
+    "mirroredWinding",
     "morphTargetCount",
     "morphWeights",
     "normAdjustJoint",
@@ -11388,6 +11389,11 @@
      8,
      true
     ],
+    "submeshes[0].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[0].material.shaderParams": [
      15,
      68719476736,
@@ -11921,6 +11927,11 @@
     "submeshes[10].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[10].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[10].material.shaderParams": [
@@ -12458,6 +12469,11 @@
      8,
      true
     ],
+    "submeshes[11].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[11].material.shaderParams": [
      15,
      68719476736,
@@ -12991,6 +13007,11 @@
     "submeshes[12].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[12].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[12].material.shaderParams": [
@@ -13528,6 +13549,11 @@
      8,
      true
     ],
+    "submeshes[13].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[13].material.shaderParams": [
      15,
      68719476736,
@@ -14061,6 +14087,11 @@
     "submeshes[14].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[14].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[14].material.shaderParams": [
@@ -14598,6 +14629,11 @@
      8,
      true
     ],
+    "submeshes[15].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[15].material.shaderParams": [
      15,
      68719476736,
@@ -15131,6 +15167,11 @@
     "submeshes[1].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[1].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[1].material.shaderParams": [
@@ -15668,6 +15709,11 @@
      8,
      true
     ],
+    "submeshes[2].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[2].material.shaderParams": [
      15,
      68719476736,
@@ -16201,6 +16247,11 @@
     "submeshes[3].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[3].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[3].material.shaderParams": [
@@ -16738,6 +16789,11 @@
      8,
      true
     ],
+    "submeshes[4].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[4].material.shaderParams": [
      15,
      68719476736,
@@ -17271,6 +17327,11 @@
     "submeshes[5].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[5].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[5].material.shaderParams": [
@@ -17808,6 +17869,11 @@
      8,
      true
     ],
+    "submeshes[6].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[6].material.shaderParams": [
      15,
      68719476736,
@@ -18341,6 +18407,11 @@
     "submeshes[7].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[7].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[7].material.shaderParams": [
@@ -18878,6 +18949,11 @@
      8,
      true
     ],
+    "submeshes[8].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[8].material.shaderParams": [
      15,
      68719476736,
@@ -19411,6 +19487,11 @@
     "submeshes[9].material.shaderFeatures": [
      15,
      8,
+     true
+    ],
+    "submeshes[9].material.shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[9].material.shaderParams": [
@@ -20035,6 +20116,11 @@
      8,
      true
     ],
+    "submeshes[].material.shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
     "submeshes[].material.shaderParams": [
      15,
      68719476736,
@@ -20144,6 +20230,18 @@
   {
    "display_name": "Line Renderer",
    "enum_options": {
+    "alignment": [
+     [
+      0,
+      "view",
+      "View"
+     ],
+     [
+      1,
+      "transform_z",
+      "Transform Z"
+     ]
+    ],
     "blendMode": [
      [
       0,
@@ -20191,6 +20289,18 @@
       2,
       "off",
       "Disabled"
+     ]
+    ],
+    "mode": [
+     [
+      0,
+      "segments",
+      "Segments"
+     ],
+     [
+      1,
+      "polyline",
+      "Polyline"
      ]
     ],
     "stencil.compare": [
@@ -20370,29 +20480,88 @@
       "decr_wrap",
       "Decrement Wrap"
      ]
+    ],
+    "textureMode": [
+     [
+      0,
+      "stretch",
+      "Stretch"
+     ],
+     [
+      1,
+      "tile",
+      "Tile"
+     ],
+     [
+      2,
+      "distribute_per_segment",
+      "Distribute Per Segment"
+     ],
+     [
+      3,
+      "repeat_per_segment",
+      "Repeat Per Segment"
+     ]
+    ],
+    "widthUnit": [
+     [
+      0,
+      "world",
+      "World"
+     ],
+     [
+      1,
+      "pixels",
+      "Pixels"
+     ]
     ]
    },
    "has_enabled": true,
    "icon": "ef9ea4",
    "key": "linerenderer",
    "known_keys": [
+    "alignment",
     "blendMode",
+    "colorGradient",
     "colorWrite",
     "customShader",
     "depthWrite",
     "enabled",
     "lines",
+    "loop",
     "maxLines",
+    "mode",
+    "numCapVertices",
+    "numCornerVertices",
+    "positions",
     "shaderFeatures",
+    "shaderGlobalBindings",
     "shaderTextures",
     "shaderUniforms",
-    "stencil"
+    "sortPriority",
+    "stencil",
+    "textureMode",
+    "textureScale",
+    "useWorldSpace",
+    "widthCurve",
+    "widthMultiplier",
+    "widthUnit"
    ],
    "name": "LineRendererComponent",
    "properties_of_default": {
+    "alignment": [
+     13,
+     0,
+     true
+    ],
     "blendMode": [
      13,
      2147483648,
+     true
+    ],
+    "colorGradient": [
+     21,
+     268435456,
      true
     ],
     "colorWrite": [
@@ -20420,14 +20589,44 @@
      268435456,
      true
     ],
+    "loop": [
+     0,
+     268435456,
+     true
+    ],
     "maxLines": [
      9,
      536870912,
      true
     ],
+    "mode": [
+     13,
+     268435456,
+     true
+    ],
+    "numCapVertices": [
+     9,
+     268435456,
+     true
+    ],
+    "numCornerVertices": [
+     9,
+     268435456,
+     true
+    ],
+    "positions": [
+     15,
+     268435456,
+     false
+    ],
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -20438,6 +20637,11 @@
     "shaderUniforms": [
      15,
      68719476736,
+     true
+    ],
+    "sortPriority": [
+     8,
+     0,
      true
     ],
     "stencil": [
@@ -20478,13 +20682,53 @@
     "stencil.writeMask": [
      8,
      2147483648,
+     true
+    ],
+    "textureMode": [
+     13,
+     268435456,
+     true
+    ],
+    "textureScale": [
+     4,
+     268435456,
+     true
+    ],
+    "useWorldSpace": [
+     0,
+     268435456,
+     true
+    ],
+    "widthCurve": [
+     20,
+     268435456,
+     true
+    ],
+    "widthMultiplier": [
+     2,
+     268435456,
+     true
+    ],
+    "widthUnit": [
+     13,
+     268435456,
      true
     ]
    },
    "properties_without_component": {
+    "alignment": [
+     13,
+     0,
+     true
+    ],
     "blendMode": [
      13,
      2147483648,
+     true
+    ],
+    "colorGradient": [
+     21,
+     268435456,
      true
     ],
     "colorWrite": [
@@ -20512,14 +20756,44 @@
      268435456,
      true
     ],
+    "loop": [
+     0,
+     268435456,
+     true
+    ],
     "maxLines": [
      9,
      536870912,
      true
     ],
+    "mode": [
+     13,
+     268435456,
+     true
+    ],
+    "numCapVertices": [
+     9,
+     268435456,
+     true
+    ],
+    "numCornerVertices": [
+     9,
+     268435456,
+     true
+    ],
+    "positions": [
+     15,
+     268435456,
+     false
+    ],
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -20530,6 +20804,11 @@
     "shaderUniforms": [
      15,
      68719476736,
+     true
+    ],
+    "sortPriority": [
+     8,
+     0,
      true
     ],
     "stencil": [
@@ -20570,6 +20849,36 @@
     "stencil.writeMask": [
      8,
      2147483648,
+     true
+    ],
+    "textureMode": [
+     13,
+     268435456,
+     true
+    ],
+    "textureScale": [
+     4,
+     268435456,
+     true
+    ],
+    "useWorldSpace": [
+     0,
+     268435456,
+     true
+    ],
+    "widthCurve": [
+     20,
+     268435456,
+     true
+    ],
+    "widthMultiplier": [
+     2,
+     268435456,
+     true
+    ],
+    "widthUnit": [
+     13,
+     268435456,
      true
     ]
    },
@@ -21638,6 +21947,7 @@
     "maxPoints",
     "points",
     "shaderFeatures",
+    "shaderGlobalBindings",
     "shaderTextures",
     "shaderUniforms",
     "stencil",
@@ -21694,6 +22004,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -21801,6 +22116,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -21882,6 +22202,7 @@
     "depthWrite",
     "rotation",
     "shaderFeatures",
+    "shaderGlobalBindings",
     "shaderTextures",
     "shaderUniforms",
     "texture",
@@ -21908,6 +22229,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -21950,6 +22276,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -22318,6 +22649,7 @@
     "pointerMoved",
     "primitiveType",
     "shaderFeatures",
+    "shaderGlobalBindings",
     "shaderTextures",
     "shaderUniforms",
     "stencil",
@@ -22360,6 +22692,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -22452,6 +22789,11 @@
     "shaderFeatures": [
      15,
      2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
      true
     ],
     "shaderTextures": [
@@ -22891,7 +23233,8 @@
     "duration",
     "function",
     "loop",
-    "pingPong"
+    "pingPong",
+    "useUnscaledTime"
    ],
    "name": "TweenComponent",
    "properties_of_default": {
@@ -22919,6 +23262,11 @@
      0,
      0,
      true
+    ],
+    "useUnscaledTime": [
+     0,
+     0,
+     true
     ]
    },
    "properties_without_component": {
@@ -22946,6 +23294,11 @@
      0,
      0,
      true
+    ],
+    "useUnscaledTime": [
+     0,
+     0,
+     true
     ]
    },
    "structural_update_flags": 0,
@@ -22955,16 +23308,40 @@
   },
   {
    "display_name": "Alpha Tween",
-   "enum_options": {},
+   "enum_options": {
+    "alphaTarget": [
+     [
+      0,
+      "AUTO",
+      "Auto"
+     ],
+     [
+      1,
+      "COLOR",
+      "Color"
+     ],
+     [
+      2,
+      "CANVAS_GROUP",
+      "Canvas Group"
+     ]
+    ]
+   },
    "has_enabled": false,
    "icon": "ef81ae",
    "key": "alphatween",
    "known_keys": [
+    "alphaTarget",
     "endAlpha",
     "startAlpha"
    ],
    "name": "AlphaTweenComponent",
    "properties_of_default": {
+    "alphaTarget": [
+     13,
+     0,
+     true
+    ],
     "endAlpha": [
      2,
      0,
@@ -22977,6 +23354,11 @@
     ]
    },
    "properties_without_component": {
+    "alphaTarget": [
+     13,
+     0,
+     true
+    ],
     "endAlpha": [
      2,
      0,
@@ -23081,6 +23463,28 @@
       "Exponential Distance"
      ]
     ],
+    "loadType": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "decompress_on_load",
+      "Decompress On Load"
+     ],
+     [
+      2,
+      "compressed_in_memory",
+      "Compressed In Memory"
+     ],
+     [
+      3,
+      "streaming",
+      "Streaming"
+     ]
+    ],
     "state": [
      [
       0,
@@ -23109,13 +23513,19 @@
     "enableClocked",
     "enabled",
     "filename",
+    "ignoreListenerPause",
     "inaudibleBehaviorKill",
     "inaudibleBehaviorMustTick",
+    "loadType",
     "looping",
     "loopingPoint",
     "maxDistance",
+    "maxVoices",
     "minDistance",
+    "outputGroup",
+    "outputGroupName",
     "pan",
+    "priority",
     "protectVoice",
     "speed",
     "state",
@@ -23153,6 +23563,11 @@
      134217728,
      true
     ],
+    "ignoreListenerPause": [
+     0,
+     134217728,
+     true
+    ],
     "inaudibleBehaviorKill": [
      0,
      134217728,
@@ -23167,6 +23582,11 @@
      3,
      0,
      false
+    ],
+    "loadType": [
+     13,
+     134217728,
+     true
     ],
     "looping": [
      0,
@@ -23183,8 +23603,18 @@
      134217728,
      true
     ],
+    "maxVoices": [
+     8,
+     134217728,
+     true
+    ],
     "minDistance": [
      2,
+     134217728,
+     true
+    ],
+    "outputGroup": [
+     1,
      134217728,
      true
     ],
@@ -23197,6 +23627,11 @@
      3,
      0,
      false
+    ],
+    "priority": [
+     8,
+     134217728,
+     true
     ],
     "protectVoice": [
      0,
@@ -23250,6 +23685,11 @@
      134217728,
      true
     ],
+    "ignoreListenerPause": [
+     0,
+     134217728,
+     true
+    ],
     "inaudibleBehaviorKill": [
      0,
      134217728,
@@ -23264,6 +23704,11 @@
      3,
      0,
      false
+    ],
+    "loadType": [
+     13,
+     134217728,
+     true
     ],
     "looping": [
      0,
@@ -23280,8 +23725,18 @@
      134217728,
      true
     ],
+    "maxVoices": [
+     8,
+     134217728,
+     true
+    ],
     "minDistance": [
      2,
+     134217728,
+     true
+    ],
+    "outputGroup": [
+     1,
      134217728,
      true
     ],
@@ -23294,6 +23749,11 @@
      3,
      0,
      false
+    ],
+    "priority": [
+     8,
+     134217728,
+     true
     ],
     "protectVoice": [
      0,
@@ -23324,6 +23784,35 @@
   {
    "display_name": "Rigidbody 2D",
    "enum_options": {
+    "collisionDetection": [
+     [
+      0,
+      "discrete",
+      "Discrete"
+     ],
+     [
+      1,
+      "continuous",
+      "Continuous"
+     ]
+    ],
+    "sleepingMode": [
+     [
+      0,
+      "never_sleep",
+      "Never Sleep"
+     ],
+     [
+      1,
+      "start_awake",
+      "Start Awake"
+     ],
+     [
+      2,
+      "start_asleep",
+      "Start Asleep"
+     ]
+    ],
     "type": [
      [
       0,
@@ -23346,30 +23835,133 @@
    "icon": "ef8491",
    "key": "rigidbody2d",
    "known_keys": [
+    "angularDamping",
+    "autoCenterOfMass",
+    "autoInertia",
+    "centerOfMass",
     "colliders",
+    "collisionDetection",
     "enabled",
+    "fixedRotation",
+    "gravityScale",
+    "inertia",
+    "linearDamping",
+    "mass",
+    "material",
     "numColliders",
-    "type"
+    "sleepingMode",
+    "type",
+    "useAutoMass"
    ],
    "name": "Rigidbody2DComponent",
    "properties_of_default": {
+    "angularDamping": [
+     2,
+     281474976710656,
+     true
+    ],
+    "autoCenterOfMass": [
+     0,
+     281474976710656,
+     true
+    ],
+    "autoInertia": [
+     0,
+     281474976710656,
+     true
+    ],
+    "centerOfMass": [
+     4,
+     281474976710656,
+     true
+    ],
+    "colliders": [
+     15,
+     131072,
+     true
+    ],
+    "collisionDetection": [
+     13,
+     281474976710656,
+     true
+    ],
     "enabled": [
      0,
      0,
      true
     ],
-    "numColliders": [
-     9,
+    "fixedRotation": [
+     0,
+     281474976710656,
+     true
+    ],
+    "gravityScale": [
+     2,
+     281474976710656,
+     true
+    ],
+    "inertia": [
+     2,
+     281474976710656,
+     true
+    ],
+    "linearDamping": [
+     2,
+     281474976710656,
+     true
+    ],
+    "mass": [
+     2,
+     281474976710656,
+     true
+    ],
+    "material": [
+     1,
      131072,
+     true
+    ],
+    "sleepingMode": [
+     13,
+     281474976710656,
      true
     ],
     "type": [
      13,
      131072,
      true
+    ],
+    "useAutoMass": [
+     0,
+     281474976710656,
+     true
     ]
    },
    "properties_without_component": {
+    "angularDamping": [
+     2,
+     281474976710656,
+     true
+    ],
+    "autoCenterOfMass": [
+     0,
+     281474976710656,
+     true
+    ],
+    "autoInertia": [
+     0,
+     281474976710656,
+     true
+    ],
+    "centerOfMass": [
+     4,
+     281474976710656,
+     true
+    ],
+    "colliders": [
+     15,
+     131072,
+     true
+    ],
     "colliders[]": [
      15,
      131072,
@@ -23400,12 +23992,22 @@
      131072,
      true
     ],
+    "colliders[].material": [
+     1,
+     131072,
+     true
+    ],
     "colliders[].pointA": [
      4,
      131072,
      true
     ],
     "colliders[].pointB": [
+     4,
+     131072,
+     true
+    ],
+    "colliders[].points[]": [
      4,
      131072,
      true
@@ -23417,6 +24019,11 @@
     ],
     "colliders[].radius": [
      2,
+     131072,
+     true
+    ],
+    "colliders[].receiver": [
+     16,
      131072,
      true
     ],
@@ -23440,9 +24047,9 @@
      131072,
      true
     ],
-    "colliders[].vertices[]": [
-     4,
-     131072,
+    "collisionDetection": [
+     13,
+     281474976710656,
      true
     ],
     "enabled": [
@@ -23450,14 +24057,49 @@
      0,
      true
     ],
-    "numColliders": [
-     9,
+    "fixedRotation": [
+     0,
+     281474976710656,
+     true
+    ],
+    "gravityScale": [
+     2,
+     281474976710656,
+     true
+    ],
+    "inertia": [
+     2,
+     281474976710656,
+     true
+    ],
+    "linearDamping": [
+     2,
+     281474976710656,
+     true
+    ],
+    "mass": [
+     2,
+     281474976710656,
+     true
+    ],
+    "material": [
+     1,
      131072,
+     true
+    ],
+    "sleepingMode": [
+     13,
+     281474976710656,
      true
     ],
     "type": [
      13,
      131072,
+     true
+    ],
+    "useAutoMass": [
+     0,
+     281474976710656,
      true
     ]
    },
@@ -23469,6 +24111,28 @@
   {
    "display_name": "Rigidbody",
    "enum_options": {
+    "interpolation": [
+     [
+      0,
+      "scene",
+      "Scene"
+     ],
+     [
+      1,
+      "none",
+      "None"
+     ],
+     [
+      2,
+      "interpolate",
+      "Interpolate"
+     ],
+     [
+      3,
+      "extrapolate",
+      "Extrapolate"
+     ]
+    ],
     "motionQuality": [
      [
       0,
@@ -23503,25 +24167,83 @@
    "icon": "ef86b2",
    "key": "rigidbody",
    "known_keys": [
+    "allowSleeping",
     "allowedDOFs",
+    "angularDamping",
+    "automaticCenterOfMass",
+    "automaticInertiaTensor",
+    "automaticMass",
     "buoyancy",
+    "centerOfMass",
+    "collideKinematicVsNonDynamic",
     "colliders",
     "enabled",
     "friction",
     "gravityFactor",
+    "inertiaTensor",
+    "inertiaTensorRotation",
+    "interpolation",
+    "linearDamping",
+    "mass",
+    "material",
+    "maxAngularVelocity",
+    "maxLinearVelocity",
     "motionQuality",
     "numColliders",
+    "overrideMassProperties",
     "restitution",
     "sensor",
+    "solidBoxDensity",
+    "solidBoxSize",
     "type",
     "waterAngularDrag",
     "waterDrag"
    ],
    "name": "RigidbodyComponent",
    "properties_of_default": {
+    "allowSleeping": [
+     0,
+     4503599627370496,
+     true
+    ],
+    "angularDamping": [
+     2,
+     4503599627370496,
+     true
+    ],
+    "automaticCenterOfMass": [
+     0,
+     4503599627370496,
+     true
+    ],
+    "automaticInertiaTensor": [
+     0,
+     4503599627370496,
+     true
+    ],
+    "automaticMass": [
+     0,
+     4503599627370496,
+     true
+    ],
     "buoyancy": [
      2,
      0,
+     true
+    ],
+    "centerOfMass": [
+     5,
+     4503599627370496,
+     true
+    ],
+    "collideKinematicVsNonDynamic": [
+     0,
+     4503599627370496,
+     true
+    ],
+    "colliders": [
+     15,
+     262144,
      true
     ],
     "enabled": [
@@ -23539,13 +24261,48 @@
      262144,
      true
     ],
-    "motionQuality": [
-     13,
-     262144,
+    "inertiaTensor": [
+     5,
+     4503599627370496,
      true
     ],
-    "numColliders": [
-     9,
+    "inertiaTensorRotation": [
+     7,
+     4503599627370496,
+     true
+    ],
+    "interpolation": [
+     13,
+     0,
+     true
+    ],
+    "linearDamping": [
+     2,
+     4503599627370496,
+     true
+    ],
+    "mass": [
+     2,
+     4503599627370496,
+     true
+    ],
+    "material": [
+     1,
+     4503599627370496,
+     true
+    ],
+    "maxAngularVelocity": [
+     2,
+     4503599627370496,
+     true
+    ],
+    "maxLinearVelocity": [
+     2,
+     4503599627370496,
+     true
+    ],
+    "motionQuality": [
+     13,
      262144,
      true
     ],
@@ -23591,9 +24348,49 @@
     ]
    },
    "properties_without_component": {
+    "allowSleeping": [
+     0,
+     4503599627370496,
+     true
+    ],
+    "angularDamping": [
+     2,
+     4503599627370496,
+     true
+    ],
+    "automaticCenterOfMass": [
+     0,
+     4503599627370496,
+     true
+    ],
+    "automaticInertiaTensor": [
+     0,
+     4503599627370496,
+     true
+    ],
+    "automaticMass": [
+     0,
+     4503599627370496,
+     true
+    ],
     "buoyancy": [
      2,
      0,
+     true
+    ],
+    "centerOfMass": [
+     5,
+     4503599627370496,
+     true
+    ],
+    "collideKinematicVsNonDynamic": [
+     0,
+     4503599627370496,
+     true
+    ],
+    "colliders": [
+     15,
+     262144,
      true
     ],
     "colliders[]": [
@@ -23626,13 +24423,13 @@
      262144,
      true
     ],
-    "colliders[].numIndices": [
-     9,
+    "colliders[].isTrigger": [
+     0,
      262144,
      true
     ],
-    "colliders[].numVertices": [
-     9,
+    "colliders[].material": [
+     1,
      262144,
      true
     ],
@@ -23643,6 +24440,11 @@
     ],
     "colliders[].radius": [
      2,
+     262144,
+     true
+    ],
+    "colliders[].receiver": [
+     16,
      262144,
      true
     ],
@@ -23701,13 +24503,48 @@
      262144,
      true
     ],
-    "motionQuality": [
-     13,
-     262144,
+    "inertiaTensor": [
+     5,
+     4503599627370496,
      true
     ],
-    "numColliders": [
-     9,
+    "inertiaTensorRotation": [
+     7,
+     4503599627370496,
+     true
+    ],
+    "interpolation": [
+     13,
+     0,
+     true
+    ],
+    "linearDamping": [
+     2,
+     4503599627370496,
+     true
+    ],
+    "mass": [
+     2,
+     4503599627370496,
+     true
+    ],
+    "material": [
+     1,
+     4503599627370496,
+     true
+    ],
+    "maxAngularVelocity": [
+     2,
+     4503599627370496,
+     true
+    ],
+    "maxLinearVelocity": [
+     2,
+     4503599627370496,
+     true
+    ],
+    "motionQuality": [
+     13,
      262144,
      true
     ],
@@ -24862,6 +25699,40 @@
   {
    "display_name": "Joint 2D",
    "enum_options": {
+    "anchorSpace": [
+     [
+      0,
+      "world",
+      "World"
+     ],
+     [
+      1,
+      "local",
+      "Local"
+     ]
+    ],
+    "breakAction": [
+     [
+      0,
+      "ignore",
+      "Ignore"
+     ],
+     [
+      1,
+      "callback_only",
+      "Callback Only"
+     ],
+     [
+      2,
+      "disable",
+      "Disable"
+     ],
+     [
+      3,
+      "destroy",
+      "Destroy"
+     ]
+    ],
     "type": [
      [
       0,
@@ -24906,14 +25777,45 @@
    "known_keys": [
     "anchorA",
     "anchorB",
+    "anchorSpace",
+    "angularDampingRatio",
+    "angularFrequency",
+    "angularOffset",
     "autoAnchors",
+    "autoLength",
+    "autoOffset",
     "axis",
     "bodyA",
     "bodyB",
+    "breakAction",
+    "breakForce",
+    "breakTorque",
+    "correctionFactor",
+    "dampingRatio",
+    "enableCollision",
+    "enableSpring",
     "enabled",
+    "frequency",
+    "length",
+    "linearDampingRatio",
+    "linearFrequency",
+    "linearOffset",
+    "lowerAngle",
+    "lowerTranslation",
+    "maxForce",
+    "maxLength",
+    "maxMotorForce",
+    "maxMotorTorque",
+    "maxTorque",
+    "minLength",
+    "motorSpeed",
     "rope",
     "target",
-    "type"
+    "type",
+    "upperAngle",
+    "upperTranslation",
+    "useLimits",
+    "useMotor"
    ],
    "name": "Joint2DComponent",
    "properties_of_default": {
@@ -24927,7 +25829,37 @@
      524288,
      true
     ],
+    "anchorSpace": [
+     13,
+     524288,
+     true
+    ],
+    "angularDampingRatio": [
+     2,
+     140737488355328,
+     true
+    ],
+    "angularFrequency": [
+     2,
+     140737488355328,
+     true
+    ],
+    "angularOffset": [
+     2,
+     140737488355328,
+     true
+    ],
     "autoAnchors": [
+     0,
+     524288,
+     true
+    ],
+    "autoLength": [
+     0,
+     524288,
+     true
+    ],
+    "autoOffset": [
      0,
      524288,
      true
@@ -24947,9 +25879,114 @@
      524288,
      true
     ],
+    "breakAction": [
+     13,
+     140737488355328,
+     true
+    ],
+    "breakForce": [
+     2,
+     140737488355328,
+     true
+    ],
+    "breakTorque": [
+     2,
+     140737488355328,
+     true
+    ],
+    "correctionFactor": [
+     2,
+     140737488355328,
+     true
+    ],
+    "dampingRatio": [
+     2,
+     140737488355328,
+     true
+    ],
+    "enableCollision": [
+     0,
+     140737488355328,
+     true
+    ],
+    "enableSpring": [
+     0,
+     140737488355328,
+     true
+    ],
     "enabled": [
      0,
      0,
+     true
+    ],
+    "frequency": [
+     2,
+     140737488355328,
+     true
+    ],
+    "length": [
+     2,
+     140737488355328,
+     true
+    ],
+    "linearDampingRatio": [
+     2,
+     140737488355328,
+     true
+    ],
+    "linearFrequency": [
+     2,
+     140737488355328,
+     true
+    ],
+    "linearOffset": [
+     4,
+     140737488355328,
+     true
+    ],
+    "lowerAngle": [
+     2,
+     140737488355328,
+     true
+    ],
+    "lowerTranslation": [
+     2,
+     140737488355328,
+     true
+    ],
+    "maxForce": [
+     2,
+     140737488355328,
+     true
+    ],
+    "maxLength": [
+     2,
+     140737488355328,
+     true
+    ],
+    "maxMotorForce": [
+     2,
+     140737488355328,
+     true
+    ],
+    "maxMotorTorque": [
+     2,
+     140737488355328,
+     true
+    ],
+    "maxTorque": [
+     2,
+     140737488355328,
+     true
+    ],
+    "minLength": [
+     2,
+     140737488355328,
+     true
+    ],
+    "motorSpeed": [
+     2,
+     140737488355328,
      true
     ],
     "rope": [
@@ -24965,6 +26002,26 @@
     "type": [
      13,
      524288,
+     true
+    ],
+    "upperAngle": [
+     2,
+     140737488355328,
+     true
+    ],
+    "upperTranslation": [
+     2,
+     140737488355328,
+     true
+    ],
+    "useLimits": [
+     0,
+     140737488355328,
+     true
+    ],
+    "useMotor": [
+     0,
+     140737488355328,
      true
     ]
    },
@@ -24979,7 +26036,37 @@
      524288,
      true
     ],
+    "anchorSpace": [
+     13,
+     524288,
+     true
+    ],
+    "angularDampingRatio": [
+     2,
+     140737488355328,
+     true
+    ],
+    "angularFrequency": [
+     2,
+     140737488355328,
+     true
+    ],
+    "angularOffset": [
+     2,
+     140737488355328,
+     true
+    ],
     "autoAnchors": [
+     0,
+     524288,
+     true
+    ],
+    "autoLength": [
+     0,
+     524288,
+     true
+    ],
+    "autoOffset": [
      0,
      524288,
      true
@@ -24999,9 +26086,114 @@
      524288,
      true
     ],
+    "breakAction": [
+     13,
+     140737488355328,
+     true
+    ],
+    "breakForce": [
+     2,
+     140737488355328,
+     true
+    ],
+    "breakTorque": [
+     2,
+     140737488355328,
+     true
+    ],
+    "correctionFactor": [
+     2,
+     140737488355328,
+     true
+    ],
+    "dampingRatio": [
+     2,
+     140737488355328,
+     true
+    ],
+    "enableCollision": [
+     0,
+     140737488355328,
+     true
+    ],
+    "enableSpring": [
+     0,
+     140737488355328,
+     true
+    ],
     "enabled": [
      0,
      0,
+     true
+    ],
+    "frequency": [
+     2,
+     140737488355328,
+     true
+    ],
+    "length": [
+     2,
+     140737488355328,
+     true
+    ],
+    "linearDampingRatio": [
+     2,
+     140737488355328,
+     true
+    ],
+    "linearFrequency": [
+     2,
+     140737488355328,
+     true
+    ],
+    "linearOffset": [
+     4,
+     140737488355328,
+     true
+    ],
+    "lowerAngle": [
+     2,
+     140737488355328,
+     true
+    ],
+    "lowerTranslation": [
+     2,
+     140737488355328,
+     true
+    ],
+    "maxForce": [
+     2,
+     140737488355328,
+     true
+    ],
+    "maxLength": [
+     2,
+     140737488355328,
+     true
+    ],
+    "maxMotorForce": [
+     2,
+     140737488355328,
+     true
+    ],
+    "maxMotorTorque": [
+     2,
+     140737488355328,
+     true
+    ],
+    "maxTorque": [
+     2,
+     140737488355328,
+     true
+    ],
+    "minLength": [
+     2,
+     140737488355328,
+     true
+    ],
+    "motorSpeed": [
+     2,
+     140737488355328,
      true
     ],
     "rope": [
@@ -25018,6 +26210,26 @@
      13,
      524288,
      true
+    ],
+    "upperAngle": [
+     2,
+     140737488355328,
+     true
+    ],
+    "upperTranslation": [
+     2,
+     140737488355328,
+     true
+    ],
+    "useLimits": [
+     0,
+     140737488355328,
+     true
+    ],
+    "useMotor": [
+     0,
+     140737488355328,
+     true
     ]
    },
    "structural_update_flags": 0,
@@ -25028,6 +26240,103 @@
   {
    "display_name": "Joint",
    "enum_options": {
+    "anchorSpace": [
+     [
+      0,
+      "world",
+      "World"
+     ],
+     [
+      1,
+      "local",
+      "Local"
+     ]
+    ],
+    "angularXMotion": [
+     [
+      0,
+      "locked",
+      "Locked"
+     ],
+     [
+      1,
+      "limited",
+      "Limited"
+     ],
+     [
+      2,
+      "free",
+      "Free"
+     ]
+    ],
+    "angularYMotion": [
+     [
+      0,
+      "locked",
+      "Locked"
+     ],
+     [
+      1,
+      "limited",
+      "Limited"
+     ],
+     [
+      2,
+      "free",
+      "Free"
+     ]
+    ],
+    "angularZMotion": [
+     [
+      0,
+      "locked",
+      "Locked"
+     ],
+     [
+      1,
+      "limited",
+      "Limited"
+     ],
+     [
+      2,
+      "free",
+      "Free"
+     ]
+    ],
+    "breakAction": [
+     [
+      0,
+      "ignore",
+      "Ignore"
+     ],
+     [
+      1,
+      "callback_only",
+      "Callback Only"
+     ],
+     [
+      2,
+      "disable",
+      "Disable"
+     ],
+     [
+      3,
+      "destroy",
+      "Destroy"
+     ]
+    ],
+    "swingType": [
+     [
+      0,
+      "cone",
+      "Cone"
+     ],
+     [
+      1,
+      "pyramid",
+      "Pyramid"
+     ]
+    ],
     "type": [
      [
       0,
@@ -25089,6 +26398,57 @@
       "pulley",
       "Pulley"
      ]
+    ],
+    "xMotion": [
+     [
+      0,
+      "locked",
+      "Locked"
+     ],
+     [
+      1,
+      "limited",
+      "Limited"
+     ],
+     [
+      2,
+      "free",
+      "Free"
+     ]
+    ],
+    "yMotion": [
+     [
+      0,
+      "locked",
+      "Locked"
+     ],
+     [
+      1,
+      "limited",
+      "Limited"
+     ],
+     [
+      2,
+      "free",
+      "Free"
+     ]
+    ],
+    "zMotion": [
+     [
+      0,
+      "locked",
+      "Locked"
+     ],
+     [
+      1,
+      "limited",
+      "Limited"
+     ],
+     [
+      2,
+      "free",
+      "Free"
+     ]
     ]
    },
    "has_enabled": true,
@@ -25098,12 +26458,29 @@
     "anchor",
     "anchorA",
     "anchorB",
+    "anchorSpace",
+    "angularDriveDamping",
+    "angularDriveStiffness",
+    "angularLimitMax",
+    "angularLimitMin",
+    "angularXMotion",
+    "angularYMotion",
+    "angularZMotion",
     "autoAnchors",
     "axis",
     "axisX",
     "axisY",
     "bodyA",
     "bodyB",
+    "breakAction",
+    "breakForce",
+    "breakTorque",
+    "coneHalfAngle",
+    "driveDamping",
+    "driveMaxForce",
+    "driveMaxTorque",
+    "driveStiffness",
+    "enableCollision",
     "enabled",
     "fixedPointA",
     "fixedPointB",
@@ -25113,6 +26490,18 @@
     "isLooping",
     "limitsMax",
     "limitsMin",
+    "limitsSpringDamping",
+    "limitsSpringFrequency",
+    "linearLimitMax",
+    "linearLimitMin",
+    "maxDistance",
+    "maxFriction",
+    "minDistance",
+    "motorMaxForce",
+    "motorSpringDamping",
+    "motorSpringFrequency",
+    "motorTargetRotation",
+    "motorTargetVelocity",
     "normal",
     "normalHalfConeAngle",
     "numTeethGear",
@@ -25125,10 +26514,25 @@
     "planeHalfConeAngle",
     "rackLength",
     "slider",
+    "springDamper",
+    "springStiffness",
+    "springTargetPosition",
+    "swingType",
+    "targetAngularVelocity",
+    "targetPosition",
+    "targetRotation",
+    "targetVelocity",
     "twistAxis",
     "twistMaxAngle",
     "twistMinAngle",
-    "type"
+    "type",
+    "useDrive",
+    "useLimits",
+    "useMotor",
+    "useSpring",
+    "xMotion",
+    "yMotion",
+    "zMotion"
    ],
    "name": "Joint3DComponent",
    "properties_of_default": {
@@ -25145,6 +26549,46 @@
     "anchorB": [
      5,
      1048576,
+     true
+    ],
+    "anchorSpace": [
+     13,
+     1048576,
+     true
+    ],
+    "angularDriveDamping": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "angularDriveStiffness": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "angularLimitMax": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "angularLimitMin": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "angularXMotion": [
+     13,
+     9007199254740992,
+     true
+    ],
+    "angularYMotion": [
+     13,
+     9007199254740992,
+     true
+    ],
+    "angularZMotion": [
+     13,
+     9007199254740992,
      true
     ],
     "autoAnchors": [
@@ -25175,6 +26619,51 @@
     "bodyB": [
      16,
      1048576,
+     true
+    ],
+    "breakAction": [
+     13,
+     9007199254740992,
+     true
+    ],
+    "breakForce": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "breakTorque": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "coneHalfAngle": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "driveDamping": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "driveMaxForce": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "driveMaxTorque": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "driveStiffness": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "enableCollision": [
+     0,
+     9007199254740992,
      true
     ],
     "enabled": [
@@ -25220,6 +26709,66 @@
     "limitsMin": [
      2,
      1048576,
+     true
+    ],
+    "limitsSpringDamping": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "limitsSpringFrequency": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "linearLimitMax": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "linearLimitMin": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "maxDistance": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "maxFriction": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "minDistance": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "motorMaxForce": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "motorSpringDamping": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "motorSpringFrequency": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "motorTargetRotation": [
+     7,
+     9007199254740992,
+     true
+    ],
+    "motorTargetVelocity": [
+     2,
+     9007199254740992,
      true
     ],
     "normal": [
@@ -25282,6 +26831,46 @@
      1048576,
      true
     ],
+    "springDamper": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "springStiffness": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "springTargetPosition": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "swingType": [
+     13,
+     1048576,
+     true
+    ],
+    "targetAngularVelocity": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "targetPosition": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "targetRotation": [
+     7,
+     9007199254740992,
+     true
+    ],
+    "targetVelocity": [
+     5,
+     9007199254740992,
+     true
+    ],
     "twistAxis": [
      5,
      1048576,
@@ -25301,6 +26890,41 @@
      13,
      1048576,
      true
+    ],
+    "useDrive": [
+     0,
+     9007199254740992,
+     true
+    ],
+    "useLimits": [
+     0,
+     9007199254740992,
+     true
+    ],
+    "useMotor": [
+     0,
+     9007199254740992,
+     true
+    ],
+    "useSpring": [
+     0,
+     9007199254740992,
+     true
+    ],
+    "xMotion": [
+     13,
+     9007199254740992,
+     true
+    ],
+    "yMotion": [
+     13,
+     9007199254740992,
+     true
+    ],
+    "zMotion": [
+     13,
+     9007199254740992,
+     true
     ]
    },
    "properties_without_component": {
@@ -25317,6 +26941,46 @@
     "anchorB": [
      5,
      1048576,
+     true
+    ],
+    "anchorSpace": [
+     13,
+     1048576,
+     true
+    ],
+    "angularDriveDamping": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "angularDriveStiffness": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "angularLimitMax": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "angularLimitMin": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "angularXMotion": [
+     13,
+     9007199254740992,
+     true
+    ],
+    "angularYMotion": [
+     13,
+     9007199254740992,
+     true
+    ],
+    "angularZMotion": [
+     13,
+     9007199254740992,
      true
     ],
     "autoAnchors": [
@@ -25347,6 +27011,51 @@
     "bodyB": [
      16,
      1048576,
+     true
+    ],
+    "breakAction": [
+     13,
+     9007199254740992,
+     true
+    ],
+    "breakForce": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "breakTorque": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "coneHalfAngle": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "driveDamping": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "driveMaxForce": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "driveMaxTorque": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "driveStiffness": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "enableCollision": [
+     0,
+     9007199254740992,
      true
     ],
     "enabled": [
@@ -25392,6 +27101,66 @@
     "limitsMin": [
      2,
      1048576,
+     true
+    ],
+    "limitsSpringDamping": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "limitsSpringFrequency": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "linearLimitMax": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "linearLimitMin": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "maxDistance": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "maxFriction": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "minDistance": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "motorMaxForce": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "motorSpringDamping": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "motorSpringFrequency": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "motorTargetRotation": [
+     7,
+     9007199254740992,
+     true
+    ],
+    "motorTargetVelocity": [
+     2,
+     9007199254740992,
      true
     ],
     "normal": [
@@ -25459,6 +27228,46 @@
      1048576,
      true
     ],
+    "springDamper": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "springStiffness": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "springTargetPosition": [
+     2,
+     9007199254740992,
+     true
+    ],
+    "swingType": [
+     13,
+     1048576,
+     true
+    ],
+    "targetAngularVelocity": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "targetPosition": [
+     5,
+     9007199254740992,
+     true
+    ],
+    "targetRotation": [
+     7,
+     9007199254740992,
+     true
+    ],
+    "targetVelocity": [
+     5,
+     9007199254740992,
+     true
+    ],
     "twistAxis": [
      5,
      1048576,
@@ -25477,6 +27286,41 @@
     "type": [
      13,
      1048576,
+     true
+    ],
+    "useDrive": [
+     0,
+     9007199254740992,
+     true
+    ],
+    "useLimits": [
+     0,
+     9007199254740992,
+     true
+    ],
+    "useMotor": [
+     0,
+     9007199254740992,
+     true
+    ],
+    "useSpring": [
+     0,
+     9007199254740992,
+     true
+    ],
+    "xMotion": [
+     13,
+     9007199254740992,
+     true
+    ],
+    "yMotion": [
+     13,
+     9007199254740992,
+     true
+    ],
+    "zMotion": [
+     13,
+     9007199254740992,
      true
     ]
    },
@@ -25974,7 +27818,8 @@
     "inlineEffect",
     "playOnAwake",
     "playbackSpeed",
-    "seed"
+    "seed",
+    "useUnscaledTime"
    ],
    "name": "ParticleSystemComponent",
    "properties_of_default": {
@@ -26017,6 +27862,11 @@
      9,
      2199023255552,
      true
+    ],
+    "useUnscaledTime": [
+     0,
+     0,
+     true
     ]
    },
    "properties_without_component": {
@@ -26058,6 +27908,11 @@
     "seed": [
      9,
      2199023255552,
+     true
+    ],
+    "useUnscaledTime": [
+     0,
+     0,
      true
     ]
    },
@@ -26847,9 +28702,17 @@
     "fontSize",
     "maxTextSize",
     "multiline",
+    "outlineColor",
+    "outlineWidth",
     "pivotBaseline",
     "pivotCentered",
-    "text"
+    "shadowColor",
+    "shadowDilate",
+    "shadowEnabled",
+    "shadowOffset",
+    "shadowSoftness",
+    "text",
+    "visibleCharacters"
    ],
    "name": "TextComponent",
    "properties_of_default": {
@@ -26883,6 +28746,16 @@
      32768,
      true
     ],
+    "outlineColor": [
+     6,
+     32768,
+     true
+    ],
+    "outlineWidth": [
+     2,
+     32768,
+     true
+    ],
     "pivotBaseline": [
      0,
      32768,
@@ -26893,8 +28766,38 @@
      32768,
      true
     ],
+    "shadowColor": [
+     6,
+     32768,
+     true
+    ],
+    "shadowDilate": [
+     2,
+     32768,
+     true
+    ],
+    "shadowEnabled": [
+     0,
+     32768,
+     true
+    ],
+    "shadowOffset": [
+     4,
+     32768,
+     true
+    ],
+    "shadowSoftness": [
+     2,
+     32768,
+     true
+    ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "visibleCharacters": [
+     8,
      32768,
      true
     ]
@@ -26930,6 +28833,16 @@
      32768,
      true
     ],
+    "outlineColor": [
+     6,
+     32768,
+     true
+    ],
+    "outlineWidth": [
+     2,
+     32768,
+     true
+    ],
     "pivotBaseline": [
      0,
      32768,
@@ -26940,8 +28853,38 @@
      32768,
      true
     ],
+    "shadowColor": [
+     6,
+     32768,
+     true
+    ],
+    "shadowDilate": [
+     2,
+     32768,
+     true
+    ],
+    "shadowEnabled": [
+     0,
+     32768,
+     true
+    ],
+    "shadowOffset": [
+     4,
+     32768,
+     true
+    ],
+    "shadowSoftness": [
+     2,
+     32768,
+     true
+    ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "visibleCharacters": [
+     8,
      32768,
      true
     ]
@@ -31194,9 +33137,11 @@
    "key": "animationplayer",
    "known_keys": [
     "clips",
+    "controller",
     "defaultClip",
     "defaultFadeTime",
     "enabled",
+    "layers",
     "playAutomatically",
     "speed"
    ],
@@ -31222,6 +33167,11 @@
      0,
      true
     ],
+    "layers": [
+     15,
+     8796093022208,
+     true
+    ],
     "playAutomatically": [
      0,
      0,
@@ -31244,13 +33194,33 @@
      8796093022208,
      true
     ],
+    "clips[].footIK": [
+     0,
+     8796093022208,
+     true
+    ],
     "clips[].guid": [
      1,
      8796093022208,
      true
     ],
+    "clips[].layer": [
+     8,
+     8796093022208,
+     true
+    ],
+    "clips[].mirror": [
+     0,
+     8796093022208,
+     true
+    ],
     "clips[].name": [
      1,
+     8796093022208,
+     true
+    ],
+    "clips[].retarget": [
+     0,
      8796093022208,
      true
     ],
@@ -31272,6 +33242,36 @@
     "enabled": [
      0,
      0,
+     true
+    ],
+    "layers": [
+     15,
+     8796093022208,
+     true
+    ],
+    "layers[].blend": [
+     15,
+     8796093022208,
+     true
+    ],
+    "layers[].mask": [
+     1,
+     8796093022208,
+     true
+    ],
+    "layers[].maskGuid": [
+     1,
+     8796093022208,
+     true
+    ],
+    "layers[].name": [
+     1,
+     8796093022208,
+     true
+    ],
+    "layers[].weight": [
+     2,
+     8796093022208,
      true
     ],
     "playAutomatically": [
@@ -34593,6 +36593,2987 @@
    "type": 78,
    "type_of_key": 78,
    "type_of_name": 78
+  },
+  {
+   "display_name": "Trail Renderer",
+   "enum_options": {
+    "alignment": [
+     [
+      0,
+      "view",
+      "View"
+     ],
+     [
+      1,
+      "transform_z",
+      "Transform Z"
+     ]
+    ],
+    "blendMode": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "opaque",
+      "None"
+     ],
+     [
+      2,
+      "alpha",
+      "Alpha"
+     ],
+     [
+      3,
+      "premultiplied",
+      "Premultiplied"
+     ],
+     [
+      4,
+      "additive",
+      "Additive"
+     ],
+     [
+      5,
+      "multiply",
+      "Multiply"
+     ]
+    ],
+    "depthWrite": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "on",
+      "Enabled"
+     ],
+     [
+      2,
+      "off",
+      "Disabled"
+     ]
+    ],
+    "stencil.compare": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "disabled",
+      "Off"
+     ],
+     [
+      2,
+      "never",
+      "Never"
+     ],
+     [
+      3,
+      "less",
+      "Less"
+     ],
+     [
+      4,
+      "equal",
+      "Equal"
+     ],
+     [
+      5,
+      "less_equal",
+      "Less Equal"
+     ],
+     [
+      6,
+      "greater",
+      "Greater"
+     ],
+     [
+      7,
+      "not_equal",
+      "Not Equal"
+     ],
+     [
+      8,
+      "greater_equal",
+      "Greater Equal"
+     ],
+     [
+      9,
+      "always",
+      "Always"
+     ]
+    ],
+    "stencil.depthFail": [
+     [
+      0,
+      "keep",
+      "Keep"
+     ],
+     [
+      1,
+      "zero",
+      "Zero"
+     ],
+     [
+      2,
+      "replace",
+      "Replace"
+     ],
+     [
+      3,
+      "incr_clamp",
+      "Increment"
+     ],
+     [
+      4,
+      "decr_clamp",
+      "Decrement"
+     ],
+     [
+      5,
+      "invert",
+      "Invert"
+     ],
+     [
+      6,
+      "incr_wrap",
+      "Increment Wrap"
+     ],
+     [
+      7,
+      "decr_wrap",
+      "Decrement Wrap"
+     ]
+    ],
+    "stencil.fail": [
+     [
+      0,
+      "keep",
+      "Keep"
+     ],
+     [
+      1,
+      "zero",
+      "Zero"
+     ],
+     [
+      2,
+      "replace",
+      "Replace"
+     ],
+     [
+      3,
+      "incr_clamp",
+      "Increment"
+     ],
+     [
+      4,
+      "decr_clamp",
+      "Decrement"
+     ],
+     [
+      5,
+      "invert",
+      "Invert"
+     ],
+     [
+      6,
+      "incr_wrap",
+      "Increment Wrap"
+     ],
+     [
+      7,
+      "decr_wrap",
+      "Decrement Wrap"
+     ]
+    ],
+    "stencil.pass": [
+     [
+      0,
+      "keep",
+      "Keep"
+     ],
+     [
+      1,
+      "zero",
+      "Zero"
+     ],
+     [
+      2,
+      "replace",
+      "Replace"
+     ],
+     [
+      3,
+      "incr_clamp",
+      "Increment"
+     ],
+     [
+      4,
+      "decr_clamp",
+      "Decrement"
+     ],
+     [
+      5,
+      "invert",
+      "Invert"
+     ],
+     [
+      6,
+      "incr_wrap",
+      "Increment Wrap"
+     ],
+     [
+      7,
+      "decr_wrap",
+      "Decrement Wrap"
+     ]
+    ],
+    "textureMode": [
+     [
+      0,
+      "stretch",
+      "Stretch"
+     ],
+     [
+      1,
+      "tile",
+      "Tile"
+     ],
+     [
+      2,
+      "distribute_per_segment",
+      "Distribute Per Segment"
+     ],
+     [
+      3,
+      "repeat_per_segment",
+      "Repeat Per Segment"
+     ]
+    ],
+    "widthUnit": [
+     [
+      0,
+      "world",
+      "World"
+     ],
+     [
+      1,
+      "pixels",
+      "Pixels"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef9cae",
+   "key": "trailrenderer",
+   "known_keys": [
+    "alignment",
+    "autodestruct",
+    "blendMode",
+    "colorGradient",
+    "colorWrite",
+    "customShader",
+    "customShaderGuid",
+    "depthWrite",
+    "emitting",
+    "enabled",
+    "minVertexDistance",
+    "numCapVertices",
+    "numCornerVertices",
+    "shaderFeatures",
+    "shaderGlobalBindings",
+    "shaderTextures",
+    "shaderUniforms",
+    "sortPriority",
+    "stencil",
+    "textureMode",
+    "textureScale",
+    "time",
+    "widthCurve",
+    "widthMultiplier",
+    "widthUnit"
+   ],
+   "name": "TrailRendererComponent",
+   "properties_of_default": {
+    "alignment": [
+     13,
+     1125899906842624,
+     true
+    ],
+    "autodestruct": [
+     0,
+     0,
+     true
+    ],
+    "blendMode": [
+     13,
+     2147483648,
+     true
+    ],
+    "colorGradient": [
+     21,
+     1125899906842624,
+     true
+    ],
+    "colorWrite": [
+     8,
+     2147483648,
+     true
+    ],
+    "customShader": [
+     19,
+     2147483648,
+     true
+    ],
+    "depthWrite": [
+     13,
+     2147483648,
+     true
+    ],
+    "emitting": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "minVertexDistance": [
+     2,
+     1125899906842624,
+     true
+    ],
+    "numCapVertices": [
+     9,
+     1125899906842624,
+     true
+    ],
+    "numCornerVertices": [
+     9,
+     1125899906842624,
+     true
+    ],
+    "shaderFeatures": [
+     15,
+     2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
+    "shaderTextures": [
+     15,
+     2147483648,
+     true
+    ],
+    "shaderUniforms": [
+     15,
+     68719476736,
+     true
+    ],
+    "sortPriority": [
+     8,
+     1125899906842624,
+     true
+    ],
+    "stencil": [
+     15,
+     2147483648,
+     true
+    ],
+    "stencil.compare": [
+     13,
+     2147483648,
+     true
+    ],
+    "stencil.depthFail": [
+     13,
+     2147483648,
+     true
+    ],
+    "stencil.fail": [
+     13,
+     2147483648,
+     true
+    ],
+    "stencil.pass": [
+     13,
+     2147483648,
+     true
+    ],
+    "stencil.readMask": [
+     8,
+     2147483648,
+     true
+    ],
+    "stencil.ref": [
+     8,
+     2147483648,
+     true
+    ],
+    "stencil.writeMask": [
+     8,
+     2147483648,
+     true
+    ],
+    "textureMode": [
+     13,
+     1125899906842624,
+     true
+    ],
+    "textureScale": [
+     4,
+     1125899906842624,
+     true
+    ],
+    "time": [
+     2,
+     1125899906842624,
+     true
+    ],
+    "widthCurve": [
+     20,
+     1125899906842624,
+     true
+    ],
+    "widthMultiplier": [
+     2,
+     1125899906842624,
+     true
+    ],
+    "widthUnit": [
+     13,
+     1125899906842624,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "alignment": [
+     13,
+     1125899906842624,
+     true
+    ],
+    "autodestruct": [
+     0,
+     0,
+     true
+    ],
+    "blendMode": [
+     13,
+     2147483648,
+     true
+    ],
+    "colorGradient": [
+     21,
+     1125899906842624,
+     true
+    ],
+    "colorWrite": [
+     8,
+     2147483648,
+     true
+    ],
+    "customShader": [
+     19,
+     2147483648,
+     true
+    ],
+    "depthWrite": [
+     13,
+     2147483648,
+     true
+    ],
+    "emitting": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "minVertexDistance": [
+     2,
+     1125899906842624,
+     true
+    ],
+    "numCapVertices": [
+     9,
+     1125899906842624,
+     true
+    ],
+    "numCornerVertices": [
+     9,
+     1125899906842624,
+     true
+    ],
+    "shaderFeatures": [
+     15,
+     2147483648,
+     true
+    ],
+    "shaderGlobalBindings": [
+     15,
+     68719476736,
+     true
+    ],
+    "shaderTextures": [
+     15,
+     2147483648,
+     true
+    ],
+    "shaderUniforms": [
+     15,
+     68719476736,
+     true
+    ],
+    "sortPriority": [
+     8,
+     1125899906842624,
+     true
+    ],
+    "stencil": [
+     15,
+     2147483648,
+     true
+    ],
+    "stencil.compare": [
+     13,
+     2147483648,
+     true
+    ],
+    "stencil.depthFail": [
+     13,
+     2147483648,
+     true
+    ],
+    "stencil.fail": [
+     13,
+     2147483648,
+     true
+    ],
+    "stencil.pass": [
+     13,
+     2147483648,
+     true
+    ],
+    "stencil.readMask": [
+     8,
+     2147483648,
+     true
+    ],
+    "stencil.ref": [
+     8,
+     2147483648,
+     true
+    ],
+    "stencil.writeMask": [
+     8,
+     2147483648,
+     true
+    ],
+    "textureMode": [
+     13,
+     1125899906842624,
+     true
+    ],
+    "textureScale": [
+     4,
+     1125899906842624,
+     true
+    ],
+    "time": [
+     2,
+     1125899906842624,
+     true
+    ],
+    "widthCurve": [
+     20,
+     1125899906842624,
+     true
+    ],
+    "widthMultiplier": [
+     2,
+     1125899906842624,
+     true
+    ],
+    "widthUnit": [
+     13,
+     1125899906842624,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 79,
+   "type_of_key": 79,
+   "type_of_name": 79
+  },
+  {
+   "display_name": "Canvas Group",
+   "enum_options": {
+    "renderMode": [
+     [
+      0,
+      "per_element",
+      "Per Element"
+     ],
+     [
+      1,
+      "flatten",
+      "Flatten"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef97bd",
+   "key": "canvasgroup",
+   "known_keys": [
+    "alpha",
+    "blocksRaycasts",
+    "enabled",
+    "ignoreParentGroups",
+    "interactable",
+    "renderMode"
+   ],
+   "name": "CanvasGroupComponent",
+   "properties_of_default": {
+    "alpha": [
+     2,
+     2251799813685248,
+     true
+    ],
+    "blocksRaycasts": [
+     0,
+     2251799813685248,
+     true
+    ],
+    "enabled": [
+     0,
+     2251799813685248,
+     true
+    ],
+    "ignoreParentGroups": [
+     0,
+     2251799813685248,
+     true
+    ],
+    "interactable": [
+     0,
+     2251799813685248,
+     true
+    ],
+    "renderMode": [
+     13,
+     2251799813685248,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "alpha": [
+     2,
+     2251799813685248,
+     true
+    ],
+    "blocksRaycasts": [
+     0,
+     2251799813685248,
+     true
+    ],
+    "enabled": [
+     0,
+     2251799813685248,
+     true
+    ],
+    "ignoreParentGroups": [
+     0,
+     2251799813685248,
+     true
+    ],
+    "interactable": [
+     0,
+     2251799813685248,
+     true
+    ],
+    "renderMode": [
+     13,
+     2251799813685248,
+     true
+    ]
+   },
+   "structural_update_flags": 2251799813685248,
+   "type": 80,
+   "type_of_key": 80,
+   "type_of_name": 80
+  },
+  {
+   "display_name": "On-Screen Stick",
+   "enum_options": {
+    "axes": [
+     [
+      0,
+      "both",
+      "Both"
+     ],
+     [
+      1,
+      "horizontal",
+      "Horizontal"
+     ],
+     [
+      2,
+      "vertical",
+      "Vertical"
+     ]
+    ],
+    "mode": [
+     [
+      0,
+      "fixed",
+      "Fixed"
+     ],
+     [
+      1,
+      "floating",
+      "Floating"
+     ],
+     [
+      2,
+      "dynamic",
+      "Dynamic"
+     ]
+    ],
+    "visibility": [
+     [
+      0,
+      "always",
+      "Always"
+     ],
+     [
+      1,
+      "touch_devices_only",
+      "Touch Devices Only"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef849b",
+   "key": "onscreenstick",
+   "known_keys": [
+    "axes",
+    "background",
+    "clampToArea",
+    "deadZone",
+    "enabled",
+    "handle",
+    "handleRange",
+    "hideWhenReleased",
+    "horizontalAction",
+    "mode",
+    "moveThreshold",
+    "snapX",
+    "snapY",
+    "verticalAction",
+    "visibility"
+   ],
+   "name": "OnScreenStickComponent",
+   "properties_of_default": {
+    "axes": [
+     13,
+     0,
+     true
+    ],
+    "background": [
+     16,
+     0,
+     true
+    ],
+    "clampToArea": [
+     0,
+     0,
+     true
+    ],
+    "deadZone": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "handle": [
+     16,
+     0,
+     true
+    ],
+    "handleRange": [
+     2,
+     0,
+     true
+    ],
+    "hideWhenReleased": [
+     0,
+     0,
+     true
+    ],
+    "horizontalAction": [
+     1,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "moveThreshold": [
+     2,
+     0,
+     true
+    ],
+    "snapX": [
+     0,
+     0,
+     true
+    ],
+    "snapY": [
+     0,
+     0,
+     true
+    ],
+    "verticalAction": [
+     1,
+     0,
+     true
+    ],
+    "visibility": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "axes": [
+     13,
+     0,
+     true
+    ],
+    "background": [
+     16,
+     0,
+     true
+    ],
+    "clampToArea": [
+     0,
+     0,
+     true
+    ],
+    "deadZone": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "handle": [
+     16,
+     0,
+     true
+    ],
+    "handleRange": [
+     2,
+     0,
+     true
+    ],
+    "hideWhenReleased": [
+     0,
+     0,
+     true
+    ],
+    "horizontalAction": [
+     1,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "moveThreshold": [
+     2,
+     0,
+     true
+    ],
+    "snapX": [
+     0,
+     0,
+     true
+    ],
+    "snapY": [
+     0,
+     0,
+     true
+    ],
+    "verticalAction": [
+     1,
+     0,
+     true
+    ],
+    "visibility": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 81,
+   "type_of_key": 81,
+   "type_of_name": 81
+  },
+  {
+   "display_name": "On-Screen Button",
+   "enum_options": {
+    "visibility": [
+     [
+      0,
+      "always",
+      "Always"
+     ],
+     [
+      1,
+      "touch_devices_only",
+      "Touch Devices Only"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef8692",
+   "key": "onscreenbutton",
+   "known_keys": [
+    "action",
+    "enabled",
+    "pressWhenPointerEnters",
+    "releaseWhenPointerLeaves",
+    "value",
+    "visibility"
+   ],
+   "name": "OnScreenButtonComponent",
+   "properties_of_default": {
+    "action": [
+     1,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "pressWhenPointerEnters": [
+     0,
+     0,
+     true
+    ],
+    "releaseWhenPointerLeaves": [
+     0,
+     0,
+     true
+    ],
+    "value": [
+     2,
+     0,
+     true
+    ],
+    "visibility": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "action": [
+     1,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "pressWhenPointerEnters": [
+     0,
+     0,
+     true
+    ],
+    "releaseWhenPointerLeaves": [
+     0,
+     0,
+     true
+    ],
+    "value": [
+     2,
+     0,
+     true
+    ],
+    "visibility": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 82,
+   "type_of_key": 82,
+   "type_of_name": 82
+  },
+  {
+   "display_name": "Touch Area",
+   "enum_options": {
+    "visibility": [
+     [
+      0,
+      "always",
+      "Always"
+     ],
+     [
+      1,
+      "touch_devices_only",
+      "Touch Devices Only"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef899a",
+   "key": "toucharea",
+   "known_keys": [
+    "enabled",
+    "horizontalAction",
+    "invertX",
+    "invertY",
+    "sensitivity",
+    "verticalAction",
+    "visibility"
+   ],
+   "name": "TouchAreaComponent",
+   "properties_of_default": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "horizontalAction": [
+     1,
+     0,
+     true
+    ],
+    "invertX": [
+     0,
+     0,
+     true
+    ],
+    "invertY": [
+     0,
+     0,
+     true
+    ],
+    "sensitivity": [
+     2,
+     0,
+     true
+    ],
+    "verticalAction": [
+     1,
+     0,
+     true
+    ],
+    "visibility": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "horizontalAction": [
+     1,
+     0,
+     true
+    ],
+    "invertX": [
+     0,
+     0,
+     true
+    ],
+    "invertY": [
+     0,
+     0,
+     true
+    ],
+    "sensitivity": [
+     2,
+     0,
+     true
+    ],
+    "verticalAction": [
+     1,
+     0,
+     true
+    ],
+    "visibility": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 83,
+   "type_of_key": 83,
+   "type_of_name": 83
+  },
+  {
+   "display_name": "Ragdoll",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ee9586",
+   "key": "ragdoll",
+   "known_keys": [
+    "animator",
+    "enabled",
+    "inheritVelocity",
+    "root",
+    "selfCollision",
+    "simulated",
+    "totalMass"
+   ],
+   "name": "RagdollComponent",
+   "properties_of_default": {
+    "animator": [
+     16,
+     18014398509481984,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "inheritVelocity": [
+     0,
+     0,
+     true
+    ],
+    "root": [
+     16,
+     18014398509481984,
+     true
+    ],
+    "selfCollision": [
+     0,
+     0,
+     true
+    ],
+    "simulated": [
+     0,
+     0,
+     true
+    ],
+    "totalMass": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "animator": [
+     16,
+     18014398509481984,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "inheritVelocity": [
+     0,
+     0,
+     true
+    ],
+    "root": [
+     16,
+     18014398509481984,
+     true
+    ],
+    "selfCollision": [
+     0,
+     0,
+     true
+    ],
+    "simulated": [
+     0,
+     0,
+     true
+    ],
+    "totalMass": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 84,
+   "type_of_key": 84,
+   "type_of_name": 84
+  },
+  {
+   "display_name": "Camera Shaker",
+   "enum_options": {
+    "mode": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "3d",
+      "3D"
+     ],
+     [
+      2,
+      "2d",
+      "2D"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ee939c",
+   "key": "camerashaker",
+   "known_keys": [
+    "enabled",
+    "global",
+    "mode",
+    "positionScale",
+    "rotationScale",
+    "startPreset",
+    "traumaDecay",
+    "traumaFrequency",
+    "traumaMaxAngle",
+    "traumaMaxOffset",
+    "traumaPower",
+    "unscaledTime"
+   ],
+   "name": "CameraShakerComponent",
+   "properties_of_default": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "global": [
+     0,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "positionScale": [
+     2,
+     0,
+     true
+    ],
+    "rotationScale": [
+     2,
+     0,
+     true
+    ],
+    "startPreset": [
+     1,
+     0,
+     true
+    ],
+    "traumaDecay": [
+     2,
+     0,
+     true
+    ],
+    "traumaFrequency": [
+     2,
+     0,
+     true
+    ],
+    "traumaMaxAngle": [
+     5,
+     0,
+     true
+    ],
+    "traumaMaxOffset": [
+     5,
+     0,
+     true
+    ],
+    "traumaPower": [
+     2,
+     0,
+     true
+    ],
+    "unscaledTime": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "global": [
+     0,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "positionScale": [
+     2,
+     0,
+     true
+    ],
+    "rotationScale": [
+     2,
+     0,
+     true
+    ],
+    "startPreset": [
+     1,
+     0,
+     true
+    ],
+    "traumaDecay": [
+     2,
+     0,
+     true
+    ],
+    "traumaFrequency": [
+     2,
+     0,
+     true
+    ],
+    "traumaMaxAngle": [
+     5,
+     0,
+     true
+    ],
+    "traumaMaxOffset": [
+     5,
+     0,
+     true
+    ],
+    "traumaPower": [
+     2,
+     0,
+     true
+    ],
+    "unscaledTime": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 85,
+   "type_of_key": 85,
+   "type_of_name": 85
+  },
+  {
+   "display_name": "Camera Follow",
+   "enum_options": {
+    "offsetSpace": [
+     [
+      0,
+      "world",
+      "World"
+     ],
+     [
+      1,
+      "target",
+      "Target"
+     ],
+     [
+      2,
+      "target_yaw",
+      "Target Yaw"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef9881",
+   "key": "camerafollow",
+   "known_keys": [
+    "boundsMax",
+    "boundsMin",
+    "damping",
+    "deadZone",
+    "enabled",
+    "lookAt",
+    "lookAtOffset",
+    "maxSpeed",
+    "offset",
+    "offsetSpace",
+    "rotationDamping",
+    "target",
+    "unscaledTime",
+    "useBounds"
+   ],
+   "name": "CameraFollowComponent",
+   "properties_of_default": {
+    "boundsMax": [
+     5,
+     0,
+     true
+    ],
+    "boundsMin": [
+     5,
+     0,
+     true
+    ],
+    "damping": [
+     5,
+     0,
+     true
+    ],
+    "deadZone": [
+     4,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "lookAt": [
+     0,
+     0,
+     true
+    ],
+    "lookAtOffset": [
+     5,
+     0,
+     true
+    ],
+    "maxSpeed": [
+     2,
+     0,
+     true
+    ],
+    "offset": [
+     5,
+     0,
+     true
+    ],
+    "offsetSpace": [
+     13,
+     0,
+     true
+    ],
+    "rotationDamping": [
+     2,
+     0,
+     true
+    ],
+    "target": [
+     16,
+     0,
+     true
+    ],
+    "unscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "useBounds": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "boundsMax": [
+     5,
+     0,
+     true
+    ],
+    "boundsMin": [
+     5,
+     0,
+     true
+    ],
+    "damping": [
+     5,
+     0,
+     true
+    ],
+    "deadZone": [
+     4,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "lookAt": [
+     0,
+     0,
+     true
+    ],
+    "lookAtOffset": [
+     5,
+     0,
+     true
+    ],
+    "maxSpeed": [
+     2,
+     0,
+     true
+    ],
+    "offset": [
+     5,
+     0,
+     true
+    ],
+    "offsetSpace": [
+     13,
+     0,
+     true
+    ],
+    "rotationDamping": [
+     2,
+     0,
+     true
+    ],
+    "target": [
+     16,
+     0,
+     true
+    ],
+    "unscaledTime": [
+     0,
+     0,
+     true
+    ],
+    "useBounds": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 86,
+   "type_of_key": 86,
+   "type_of_name": 86
+  },
+  {
+   "display_name": "Text Effect",
+   "enum_options": {
+    "layers[0].mix": [
+     [
+      0,
+      "multiply",
+      "Multiply"
+     ],
+     [
+      1,
+      "add",
+      "Add"
+     ],
+     [
+      2,
+      "replace",
+      "Replace"
+     ]
+    ],
+    "layers[0].type": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "wave",
+      "Wave"
+     ],
+     [
+      2,
+      "bounce",
+      "Bounce"
+     ],
+     [
+      3,
+      "shake",
+      "Shake"
+     ],
+     [
+      4,
+      "pulse",
+      "Pulse"
+     ],
+     [
+      5,
+      "typewriter",
+      "Typewriter"
+     ],
+     [
+      6,
+      "fade_in",
+      "Fade In"
+     ],
+     [
+      7,
+      "grow",
+      "Grow"
+     ],
+     [
+      8,
+      "unfold",
+      "Unfold"
+     ],
+     [
+      9,
+      "rainbow",
+      "Rainbow"
+     ],
+     [
+      10,
+      "gradient",
+      "Gradient"
+     ]
+    ],
+    "layers[1].mix": [
+     [
+      0,
+      "multiply",
+      "Multiply"
+     ],
+     [
+      1,
+      "add",
+      "Add"
+     ],
+     [
+      2,
+      "replace",
+      "Replace"
+     ]
+    ],
+    "layers[1].type": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "wave",
+      "Wave"
+     ],
+     [
+      2,
+      "bounce",
+      "Bounce"
+     ],
+     [
+      3,
+      "shake",
+      "Shake"
+     ],
+     [
+      4,
+      "pulse",
+      "Pulse"
+     ],
+     [
+      5,
+      "typewriter",
+      "Typewriter"
+     ],
+     [
+      6,
+      "fade_in",
+      "Fade In"
+     ],
+     [
+      7,
+      "grow",
+      "Grow"
+     ],
+     [
+      8,
+      "unfold",
+      "Unfold"
+     ],
+     [
+      9,
+      "rainbow",
+      "Rainbow"
+     ],
+     [
+      10,
+      "gradient",
+      "Gradient"
+     ]
+    ],
+    "layers[2].mix": [
+     [
+      0,
+      "multiply",
+      "Multiply"
+     ],
+     [
+      1,
+      "add",
+      "Add"
+     ],
+     [
+      2,
+      "replace",
+      "Replace"
+     ]
+    ],
+    "layers[2].type": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "wave",
+      "Wave"
+     ],
+     [
+      2,
+      "bounce",
+      "Bounce"
+     ],
+     [
+      3,
+      "shake",
+      "Shake"
+     ],
+     [
+      4,
+      "pulse",
+      "Pulse"
+     ],
+     [
+      5,
+      "typewriter",
+      "Typewriter"
+     ],
+     [
+      6,
+      "fade_in",
+      "Fade In"
+     ],
+     [
+      7,
+      "grow",
+      "Grow"
+     ],
+     [
+      8,
+      "unfold",
+      "Unfold"
+     ],
+     [
+      9,
+      "rainbow",
+      "Rainbow"
+     ],
+     [
+      10,
+      "gradient",
+      "Gradient"
+     ]
+    ],
+    "layers[3].mix": [
+     [
+      0,
+      "multiply",
+      "Multiply"
+     ],
+     [
+      1,
+      "add",
+      "Add"
+     ],
+     [
+      2,
+      "replace",
+      "Replace"
+     ]
+    ],
+    "layers[3].type": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "wave",
+      "Wave"
+     ],
+     [
+      2,
+      "bounce",
+      "Bounce"
+     ],
+     [
+      3,
+      "shake",
+      "Shake"
+     ],
+     [
+      4,
+      "pulse",
+      "Pulse"
+     ],
+     [
+      5,
+      "typewriter",
+      "Typewriter"
+     ],
+     [
+      6,
+      "fade_in",
+      "Fade In"
+     ],
+     [
+      7,
+      "grow",
+      "Grow"
+     ],
+     [
+      8,
+      "unfold",
+      "Unfold"
+     ],
+     [
+      9,
+      "rainbow",
+      "Rainbow"
+     ],
+     [
+      10,
+      "gradient",
+      "Gradient"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ee8b8a",
+   "key": "texteffect",
+   "known_keys": [
+    "autoPlay",
+    "enabled",
+    "forWords",
+    "layers",
+    "length",
+    "loop",
+    "startIndex",
+    "useUnscaledTime"
+   ],
+   "name": "TextEffectComponent",
+   "properties_of_default": {
+    "autoPlay": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "forWords": [
+     1,
+     36028797018963968,
+     true
+    ],
+    "layers[0].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[0].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[0].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[0].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[1].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[1].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[1].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[1].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[2].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[2].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[2].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[2].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[3].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[3].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[3].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[3].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "length": [
+     8,
+     36028797018963968,
+     true
+    ],
+    "loop": [
+     0,
+     0,
+     true
+    ],
+    "startIndex": [
+     8,
+     36028797018963968,
+     true
+    ],
+    "useUnscaledTime": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "autoPlay": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "forWords": [
+     1,
+     36028797018963968,
+     true
+    ],
+    "layers[0].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[0].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[0].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[0].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[0].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[1].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[1].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[1].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[1].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[1].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[2].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[2].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[2].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[2].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[2].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[3].amplitude": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].charactersPerSecond": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].duration": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].enabled": [
+     0,
+     36028797018963968,
+     true
+    ],
+    "layers[3].fadeTime": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].frequency": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].gradient": [
+     15,
+     36028797018963968,
+     true
+    ],
+    "layers[3].lightness": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].mix": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "layers[3].phaseStep": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].saturation": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].spread": [
+     2,
+     36028797018963968,
+     true
+    ],
+    "layers[3].type": [
+     13,
+     36028797018963968,
+     true
+    ],
+    "length": [
+     8,
+     36028797018963968,
+     true
+    ],
+    "loop": [
+     0,
+     0,
+     true
+    ],
+    "startIndex": [
+     8,
+     36028797018963968,
+     true
+    ],
+    "useUnscaledTime": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 87,
+   "type_of_key": 87,
+   "type_of_name": 87
+  },
+  {
+   "display_name": "Video Player",
+   "enum_options": {
+    "aspectRatio": [
+     [
+      0,
+      "no_scaling",
+      "No Scaling"
+     ],
+     [
+      1,
+      "fit_vertically",
+      "Fit Vertically"
+     ],
+     [
+      2,
+      "fit_horizontally",
+      "Fit Horizontally"
+     ],
+     [
+      3,
+      "fit_inside",
+      "Fit Inside"
+     ],
+     [
+      4,
+      "fit_outside",
+      "Fit Outside"
+     ],
+     [
+      5,
+      "stretch",
+      "Stretch"
+     ]
+    ],
+    "audioOutputMode": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "audio_source",
+      "Audio Source"
+     ],
+     [
+      2,
+      "direct",
+      "Direct"
+     ]
+    ],
+    "renderMode": [
+     [
+      0,
+      "camera_far_plane",
+      "Camera Far Plane"
+     ],
+     [
+      1,
+      "camera_near_plane",
+      "Camera Near Plane"
+     ],
+     [
+      2,
+      "render_texture",
+      "Render Texture"
+     ],
+     [
+      3,
+      "material_override",
+      "Material Override"
+     ],
+     [
+      4,
+      "api_only",
+      "API Only"
+     ]
+    ],
+    "source": [
+     [
+      0,
+      "clip",
+      "Video Clip"
+     ],
+     [
+      1,
+      "url",
+      "URL"
+     ]
+    ],
+    "timeUpdateMode": [
+     [
+      0,
+      "game_time",
+      "Game Time"
+     ],
+     [
+      1,
+      "unscaled_game_time",
+      "Unscaled Game Time"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef8088",
+   "key": "videoplayer",
+   "known_keys": [
+    "aspectRatio",
+    "audioOutputMode",
+    "clip",
+    "directMute",
+    "directVolume",
+    "enabled",
+    "isLooping",
+    "playOnAwake",
+    "playbackSpeed",
+    "renderMode",
+    "renderTextureHeight",
+    "renderTextureWidth",
+    "skipOnDrop",
+    "source",
+    "targetAudioSource",
+    "targetCamera",
+    "targetCameraAlpha",
+    "targetMaterialProperty",
+    "targetMaterialRenderer",
+    "targetSubmesh",
+    "timeUpdateMode",
+    "url",
+    "waitForFirstFrame"
+   ],
+   "name": "VideoPlayerComponent",
+   "properties_of_default": {
+    "aspectRatio": [
+     13,
+     0,
+     true
+    ],
+    "audioOutputMode": [
+     13,
+     0,
+     true
+    ],
+    "clip": [
+     1,
+     0,
+     true
+    ],
+    "directMute": [
+     0,
+     0,
+     true
+    ],
+    "directVolume": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "isLooping": [
+     0,
+     0,
+     true
+    ],
+    "playOnAwake": [
+     0,
+     0,
+     true
+    ],
+    "playbackSpeed": [
+     2,
+     0,
+     true
+    ],
+    "renderMode": [
+     13,
+     0,
+     true
+    ],
+    "renderTextureHeight": [
+     9,
+     0,
+     true
+    ],
+    "renderTextureWidth": [
+     9,
+     0,
+     true
+    ],
+    "skipOnDrop": [
+     0,
+     0,
+     true
+    ],
+    "source": [
+     13,
+     0,
+     true
+    ],
+    "targetAudioSource": [
+     16,
+     0,
+     true
+    ],
+    "targetCamera": [
+     16,
+     0,
+     true
+    ],
+    "targetCameraAlpha": [
+     2,
+     0,
+     true
+    ],
+    "targetMaterialProperty": [
+     1,
+     0,
+     true
+    ],
+    "targetMaterialRenderer": [
+     16,
+     0,
+     true
+    ],
+    "targetSubmesh": [
+     8,
+     0,
+     true
+    ],
+    "timeUpdateMode": [
+     13,
+     0,
+     true
+    ],
+    "url": [
+     1,
+     0,
+     true
+    ],
+    "waitForFirstFrame": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "aspectRatio": [
+     13,
+     0,
+     true
+    ],
+    "audioOutputMode": [
+     13,
+     0,
+     true
+    ],
+    "clip": [
+     1,
+     0,
+     true
+    ],
+    "directMute": [
+     0,
+     0,
+     true
+    ],
+    "directVolume": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "isLooping": [
+     0,
+     0,
+     true
+    ],
+    "playOnAwake": [
+     0,
+     0,
+     true
+    ],
+    "playbackSpeed": [
+     2,
+     0,
+     true
+    ],
+    "renderMode": [
+     13,
+     0,
+     true
+    ],
+    "renderTextureHeight": [
+     9,
+     0,
+     true
+    ],
+    "renderTextureWidth": [
+     9,
+     0,
+     true
+    ],
+    "skipOnDrop": [
+     0,
+     0,
+     true
+    ],
+    "source": [
+     13,
+     0,
+     true
+    ],
+    "targetAudioSource": [
+     16,
+     0,
+     true
+    ],
+    "targetCamera": [
+     16,
+     0,
+     true
+    ],
+    "targetCameraAlpha": [
+     2,
+     0,
+     true
+    ],
+    "targetMaterialProperty": [
+     1,
+     0,
+     true
+    ],
+    "targetMaterialRenderer": [
+     16,
+     0,
+     true
+    ],
+    "targetSubmesh": [
+     8,
+     0,
+     true
+    ],
+    "timeUpdateMode": [
+     13,
+     0,
+     true
+    ],
+    "url": [
+     1,
+     0,
+     true
+    ],
+    "waitForFirstFrame": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 88,
+   "type_of_key": 88,
+   "type_of_name": 88
+  },
+  {
+   "display_name": "Safe Area",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef8f8d",
+   "key": "safearea",
+   "known_keys": [
+    "bottom",
+    "enabled",
+    "includeExtraInsets",
+    "left",
+    "right",
+    "top"
+   ],
+   "name": "SafeAreaComponent",
+   "properties_of_default": {
+    "bottom": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeExtraInsets": [
+     0,
+     0,
+     true
+    ],
+    "left": [
+     0,
+     0,
+     true
+    ],
+    "right": [
+     0,
+     0,
+     true
+    ],
+    "top": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "bottom": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeExtraInsets": [
+     0,
+     0,
+     true
+    ],
+    "left": [
+     0,
+     0,
+     true
+    ],
+    "right": [
+     0,
+     0,
+     true
+    ],
+    "top": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 89,
+   "type_of_key": 89,
+   "type_of_name": 89
   }
  ],
  "ease_options": [
@@ -34786,6 +39767,11 @@
    ]
   },
   "AlphaTweenComponent": {
+   "alphaTarget": [
+    13,
+    0,
+    true
+   ],
    "endAlpha": [
     2,
     0,
@@ -34835,13 +39821,33 @@
     8796093022208,
     true
    ],
+   "clips[N].footIK": [
+    0,
+    8796093022208,
+    true
+   ],
    "clips[N].guid": [
     1,
     8796093022208,
     true
    ],
+   "clips[N].layer": [
+    8,
+    8796093022208,
+    true
+   ],
+   "clips[N].mirror": [
+    0,
+    8796093022208,
+    true
+   ],
    "clips[N].name": [
     1,
+    8796093022208,
+    true
+   ],
+   "clips[N].retarget": [
+    0,
     8796093022208,
     true
    ],
@@ -34863,6 +39869,11 @@
    "enabled": [
     0,
     0,
+    true
+   ],
+   "layers": [
+    15,
+    8796093022208,
     true
    ],
    "playAutomatically": [
@@ -35124,6 +40135,11 @@
     134217728,
     true
    ],
+   "ignoreListenerPause": [
+    0,
+    134217728,
+    true
+   ],
    "inaudibleBehaviorKill": [
     0,
     134217728,
@@ -35138,6 +40154,11 @@
     3,
     0,
     false
+   ],
+   "loadType": [
+    13,
+    134217728,
+    true
    ],
    "looping": [
     0,
@@ -35154,8 +40175,18 @@
     134217728,
     true
    ],
+   "maxVoices": [
+    8,
+    134217728,
+    true
+   ],
    "minDistance": [
     2,
+    134217728,
+    true
+   ],
+   "outputGroup": [
+    1,
     134217728,
     true
    ],
@@ -35168,6 +40199,11 @@
     3,
     0,
     false
+   ],
+   "priority": [
+    8,
+    134217728,
+    true
    ],
    "protectVoice": [
     0,
@@ -35400,6 +40436,172 @@
    "yfov": [
     2,
     2,
+    true
+   ]
+  },
+  "CameraFollowComponent": {
+   "boundsMax": [
+    5,
+    0,
+    true
+   ],
+   "boundsMin": [
+    5,
+    0,
+    true
+   ],
+   "damping": [
+    5,
+    0,
+    true
+   ],
+   "deadZone": [
+    4,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "lookAt": [
+    0,
+    0,
+    true
+   ],
+   "lookAtOffset": [
+    5,
+    0,
+    true
+   ],
+   "maxSpeed": [
+    2,
+    0,
+    true
+   ],
+   "offset": [
+    5,
+    0,
+    true
+   ],
+   "offsetSpace": [
+    13,
+    0,
+    true
+   ],
+   "rotationDamping": [
+    2,
+    0,
+    true
+   ],
+   "target": [
+    16,
+    0,
+    true
+   ],
+   "unscaledTime": [
+    0,
+    0,
+    true
+   ],
+   "useBounds": [
+    0,
+    0,
+    true
+   ]
+  },
+  "CameraShakerComponent": {
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "global": [
+    0,
+    0,
+    true
+   ],
+   "mode": [
+    13,
+    0,
+    true
+   ],
+   "positionScale": [
+    2,
+    0,
+    true
+   ],
+   "rotationScale": [
+    2,
+    0,
+    true
+   ],
+   "startPreset": [
+    1,
+    0,
+    true
+   ],
+   "traumaDecay": [
+    2,
+    0,
+    true
+   ],
+   "traumaFrequency": [
+    2,
+    0,
+    true
+   ],
+   "traumaMaxAngle": [
+    5,
+    0,
+    true
+   ],
+   "traumaMaxOffset": [
+    5,
+    0,
+    true
+   ],
+   "traumaPower": [
+    2,
+    0,
+    true
+   ],
+   "unscaledTime": [
+    0,
+    0,
+    true
+   ]
+  },
+  "CanvasGroupComponent": {
+   "alpha": [
+    2,
+    2251799813685248,
+    true
+   ],
+   "blocksRaycasts": [
+    0,
+    2251799813685248,
+    true
+   ],
+   "enabled": [
+    0,
+    2251799813685248,
+    true
+   ],
+   "ignoreParentGroups": [
+    0,
+    2251799813685248,
+    true
+   ],
+   "interactable": [
+    0,
+    2251799813685248,
+    true
+   ],
+   "renderMode": [
+    13,
+    2251799813685248,
     true
    ]
   },
@@ -36067,7 +41269,37 @@
     524288,
     true
    ],
+   "anchorSpace": [
+    13,
+    524288,
+    true
+   ],
+   "angularDampingRatio": [
+    2,
+    140737488355328,
+    true
+   ],
+   "angularFrequency": [
+    2,
+    140737488355328,
+    true
+   ],
+   "angularOffset": [
+    2,
+    140737488355328,
+    true
+   ],
    "autoAnchors": [
+    0,
+    524288,
+    true
+   ],
+   "autoLength": [
+    0,
+    524288,
+    true
+   ],
+   "autoOffset": [
     0,
     524288,
     true
@@ -36087,9 +41319,114 @@
     524288,
     true
    ],
+   "breakAction": [
+    13,
+    140737488355328,
+    true
+   ],
+   "breakForce": [
+    2,
+    140737488355328,
+    true
+   ],
+   "breakTorque": [
+    2,
+    140737488355328,
+    true
+   ],
+   "correctionFactor": [
+    2,
+    140737488355328,
+    true
+   ],
+   "dampingRatio": [
+    2,
+    140737488355328,
+    true
+   ],
+   "enableCollision": [
+    0,
+    140737488355328,
+    true
+   ],
+   "enableSpring": [
+    0,
+    140737488355328,
+    true
+   ],
    "enabled": [
     0,
     0,
+    true
+   ],
+   "frequency": [
+    2,
+    140737488355328,
+    true
+   ],
+   "length": [
+    2,
+    140737488355328,
+    true
+   ],
+   "linearDampingRatio": [
+    2,
+    140737488355328,
+    true
+   ],
+   "linearFrequency": [
+    2,
+    140737488355328,
+    true
+   ],
+   "linearOffset": [
+    4,
+    140737488355328,
+    true
+   ],
+   "lowerAngle": [
+    2,
+    140737488355328,
+    true
+   ],
+   "lowerTranslation": [
+    2,
+    140737488355328,
+    true
+   ],
+   "maxForce": [
+    2,
+    140737488355328,
+    true
+   ],
+   "maxLength": [
+    2,
+    140737488355328,
+    true
+   ],
+   "maxMotorForce": [
+    2,
+    140737488355328,
+    true
+   ],
+   "maxMotorTorque": [
+    2,
+    140737488355328,
+    true
+   ],
+   "maxTorque": [
+    2,
+    140737488355328,
+    true
+   ],
+   "minLength": [
+    2,
+    140737488355328,
+    true
+   ],
+   "motorSpeed": [
+    2,
+    140737488355328,
     true
    ],
    "rope": [
@@ -36105,6 +41442,26 @@
    "type": [
     13,
     524288,
+    true
+   ],
+   "upperAngle": [
+    2,
+    140737488355328,
+    true
+   ],
+   "upperTranslation": [
+    2,
+    140737488355328,
+    true
+   ],
+   "useLimits": [
+    0,
+    140737488355328,
+    true
+   ],
+   "useMotor": [
+    0,
+    140737488355328,
     true
    ]
   },
@@ -36122,6 +41479,46 @@
    "anchorB": [
     5,
     1048576,
+    true
+   ],
+   "anchorSpace": [
+    13,
+    1048576,
+    true
+   ],
+   "angularDriveDamping": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "angularDriveStiffness": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "angularLimitMax": [
+    5,
+    9007199254740992,
+    true
+   ],
+   "angularLimitMin": [
+    5,
+    9007199254740992,
+    true
+   ],
+   "angularXMotion": [
+    13,
+    9007199254740992,
+    true
+   ],
+   "angularYMotion": [
+    13,
+    9007199254740992,
+    true
+   ],
+   "angularZMotion": [
+    13,
+    9007199254740992,
     true
    ],
    "autoAnchors": [
@@ -36152,6 +41549,51 @@
    "bodyB": [
     16,
     1048576,
+    true
+   ],
+   "breakAction": [
+    13,
+    9007199254740992,
+    true
+   ],
+   "breakForce": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "breakTorque": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "coneHalfAngle": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "driveDamping": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "driveMaxForce": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "driveMaxTorque": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "driveStiffness": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "enableCollision": [
+    0,
+    9007199254740992,
     true
    ],
    "enabled": [
@@ -36197,6 +41639,66 @@
    "limitsMin": [
     2,
     1048576,
+    true
+   ],
+   "limitsSpringDamping": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "limitsSpringFrequency": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "linearLimitMax": [
+    5,
+    9007199254740992,
+    true
+   ],
+   "linearLimitMin": [
+    5,
+    9007199254740992,
+    true
+   ],
+   "maxDistance": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "maxFriction": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "minDistance": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "motorMaxForce": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "motorSpringDamping": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "motorSpringFrequency": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "motorTargetRotation": [
+    7,
+    9007199254740992,
+    true
+   ],
+   "motorTargetVelocity": [
+    2,
+    9007199254740992,
     true
    ],
    "normal": [
@@ -36259,6 +41761,46 @@
     1048576,
     true
    ],
+   "springDamper": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "springStiffness": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "springTargetPosition": [
+    2,
+    9007199254740992,
+    true
+   ],
+   "swingType": [
+    13,
+    1048576,
+    true
+   ],
+   "targetAngularVelocity": [
+    5,
+    9007199254740992,
+    true
+   ],
+   "targetPosition": [
+    5,
+    9007199254740992,
+    true
+   ],
+   "targetRotation": [
+    7,
+    9007199254740992,
+    true
+   ],
+   "targetVelocity": [
+    5,
+    9007199254740992,
+    true
+   ],
    "twistAxis": [
     5,
     1048576,
@@ -36277,6 +41819,41 @@
    "type": [
     13,
     1048576,
+    true
+   ],
+   "useDrive": [
+    0,
+    9007199254740992,
+    true
+   ],
+   "useLimits": [
+    0,
+    9007199254740992,
+    true
+   ],
+   "useMotor": [
+    0,
+    9007199254740992,
+    true
+   ],
+   "useSpring": [
+    0,
+    9007199254740992,
+    true
+   ],
+   "xMotion": [
+    13,
+    9007199254740992,
+    true
+   ],
+   "yMotion": [
+    13,
+    9007199254740992,
+    true
+   ],
+   "zMotion": [
+    13,
+    9007199254740992,
     true
    ]
   },
@@ -36742,9 +42319,19 @@
    ]
   },
   "LineRendererComponent": {
+   "alignment": [
+    13,
+    0,
+    true
+   ],
    "blendMode": [
     13,
     2147483648,
+    true
+   ],
+   "colorGradient": [
+    21,
+    268435456,
     true
    ],
    "colorWrite": [
@@ -36772,14 +42359,44 @@
     268435456,
     true
    ],
+   "loop": [
+    0,
+    268435456,
+    true
+   ],
    "maxLines": [
     9,
     536870912,
     true
    ],
+   "mode": [
+    13,
+    268435456,
+    true
+   ],
+   "numCapVertices": [
+    9,
+    268435456,
+    true
+   ],
+   "numCornerVertices": [
+    9,
+    268435456,
+    true
+   ],
+   "positions": [
+    15,
+    268435456,
+    false
+   ],
    "shaderFeatures": [
     15,
     2147483648,
+    true
+   ],
+   "shaderGlobalBindings": [
+    15,
+    68719476736,
     true
    ],
    "shaderTextures": [
@@ -36790,6 +42407,11 @@
    "shaderUniforms": [
     15,
     68719476736,
+    true
+   ],
+   "sortPriority": [
+    8,
+    0,
     true
    ],
    "stencil": [
@@ -36830,6 +42452,36 @@
    "stencil.writeMask": [
     8,
     2147483648,
+    true
+   ],
+   "textureMode": [
+    13,
+    268435456,
+    true
+   ],
+   "textureScale": [
+    4,
+    268435456,
+    true
+   ],
+   "useWorldSpace": [
+    0,
+    268435456,
+    true
+   ],
+   "widthCurve": [
+    20,
+    268435456,
+    true
+   ],
+   "widthMultiplier": [
+    2,
+    268435456,
+    true
+   ],
+   "widthUnit": [
+    13,
+    268435456,
     true
    ]
   },
@@ -37399,6 +43051,11 @@
    "submeshes[N].material.shaderFeatures": [
     15,
     8,
+    true
+   ],
+   "submeshes[N].material.shaderGlobalBindings": [
+    15,
+    68719476736,
     true
    ],
    "submeshes[N].material.shaderParams": [
@@ -38332,6 +43989,115 @@
     true
    ]
   },
+  "OnScreenButtonComponent": {
+   "action": [
+    1,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "pressWhenPointerEnters": [
+    0,
+    0,
+    true
+   ],
+   "releaseWhenPointerLeaves": [
+    0,
+    0,
+    true
+   ],
+   "value": [
+    2,
+    0,
+    true
+   ],
+   "visibility": [
+    13,
+    0,
+    true
+   ]
+  },
+  "OnScreenStickComponent": {
+   "axes": [
+    13,
+    0,
+    true
+   ],
+   "background": [
+    16,
+    0,
+    true
+   ],
+   "clampToArea": [
+    0,
+    0,
+    true
+   ],
+   "deadZone": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "handle": [
+    16,
+    0,
+    true
+   ],
+   "handleRange": [
+    2,
+    0,
+    true
+   ],
+   "hideWhenReleased": [
+    0,
+    0,
+    true
+   ],
+   "horizontalAction": [
+    1,
+    0,
+    true
+   ],
+   "mode": [
+    13,
+    0,
+    true
+   ],
+   "moveThreshold": [
+    2,
+    0,
+    true
+   ],
+   "snapX": [
+    0,
+    0,
+    true
+   ],
+   "snapY": [
+    0,
+    0,
+    true
+   ],
+   "verticalAction": [
+    1,
+    0,
+    true
+   ],
+   "visibility": [
+    13,
+    0,
+    true
+   ]
+  },
   "PanelComponent": {
    "canBringToFront": [
     0,
@@ -38449,6 +44215,11 @@
     9,
     2199023255552,
     true
+   ],
+   "useUnscaledTime": [
+    0,
+    0,
+    true
    ]
   },
   "PointsComponent": {
@@ -38530,6 +44301,11 @@
    "shaderFeatures": [
     15,
     2147483648,
+    true
+   ],
+   "shaderGlobalBindings": [
+    15,
+    68719476736,
     true
    ],
    "shaderTextures": [
@@ -38683,6 +44459,43 @@
     true
    ],
    "value": [
+    2,
+    0,
+    true
+   ]
+  },
+  "RagdollComponent": {
+   "animator": [
+    16,
+    18014398509481984,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "inheritVelocity": [
+    0,
+    0,
+    true
+   ],
+   "root": [
+    16,
+    18014398509481984,
+    true
+   ],
+   "selfCollision": [
+    0,
+    0,
+    true
+   ],
+   "simulated": [
+    0,
+    0,
+    true
+   ],
+   "totalMass": [
     2,
     0,
     true
@@ -38843,26 +44656,131 @@
    ]
   },
   "Rigidbody2DComponent": {
+   "angularDamping": [
+    2,
+    281474976710656,
+    true
+   ],
+   "autoCenterOfMass": [
+    0,
+    281474976710656,
+    true
+   ],
+   "autoInertia": [
+    0,
+    281474976710656,
+    true
+   ],
+   "centerOfMass": [
+    4,
+    281474976710656,
+    true
+   ],
+   "colliders": [
+    15,
+    131072,
+    true
+   ],
+   "collisionDetection": [
+    13,
+    281474976710656,
+    true
+   ],
    "enabled": [
     0,
     0,
     true
    ],
-   "numColliders": [
-    9,
+   "fixedRotation": [
+    0,
+    281474976710656,
+    true
+   ],
+   "gravityScale": [
+    2,
+    281474976710656,
+    true
+   ],
+   "inertia": [
+    2,
+    281474976710656,
+    true
+   ],
+   "linearDamping": [
+    2,
+    281474976710656,
+    true
+   ],
+   "mass": [
+    2,
+    281474976710656,
+    true
+   ],
+   "material": [
+    1,
     131072,
+    true
+   ],
+   "sleepingMode": [
+    13,
+    281474976710656,
     true
    ],
    "type": [
     13,
     131072,
     true
+   ],
+   "useAutoMass": [
+    0,
+    281474976710656,
+    true
    ]
   },
   "RigidbodyComponent": {
+   "allowSleeping": [
+    0,
+    4503599627370496,
+    true
+   ],
+   "angularDamping": [
+    2,
+    4503599627370496,
+    true
+   ],
+   "automaticCenterOfMass": [
+    0,
+    4503599627370496,
+    true
+   ],
+   "automaticInertiaTensor": [
+    0,
+    4503599627370496,
+    true
+   ],
+   "automaticMass": [
+    0,
+    4503599627370496,
+    true
+   ],
    "buoyancy": [
     2,
     0,
+    true
+   ],
+   "centerOfMass": [
+    5,
+    4503599627370496,
+    true
+   ],
+   "collideKinematicVsNonDynamic": [
+    0,
+    4503599627370496,
+    true
+   ],
+   "colliders": [
+    15,
+    262144,
     true
    ],
    "enabled": [
@@ -38880,13 +44798,48 @@
     262144,
     true
    ],
-   "motionQuality": [
-    13,
-    262144,
+   "inertiaTensor": [
+    5,
+    4503599627370496,
     true
    ],
-   "numColliders": [
-    9,
+   "inertiaTensorRotation": [
+    7,
+    4503599627370496,
+    true
+   ],
+   "interpolation": [
+    13,
+    0,
+    true
+   ],
+   "linearDamping": [
+    2,
+    4503599627370496,
+    true
+   ],
+   "mass": [
+    2,
+    4503599627370496,
+    true
+   ],
+   "material": [
+    1,
+    4503599627370496,
+    true
+   ],
+   "maxAngularVelocity": [
+    2,
+    4503599627370496,
+    true
+   ],
+   "maxLinearVelocity": [
+    2,
+    4503599627370496,
+    true
+   ],
+   "motionQuality": [
+    13,
     262144,
     true
    ],
@@ -38980,6 +44933,38 @@
     false
    ]
   },
+  "SafeAreaComponent": {
+   "bottom": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "includeExtraInsets": [
+    0,
+    0,
+    true
+   ],
+   "left": [
+    0,
+    0,
+    true
+   ],
+   "right": [
+    0,
+    0,
+    true
+   ],
+   "top": [
+    0,
+    0,
+    true
+   ]
+  },
   "ScaleTracksComponent": {
    "inTangents": [
     15,
@@ -39012,7 +44997,7 @@
   "ScriptComponent": {
    "scripts": [
     15,
-    0,
+    562949953421312,
     false
    ],
    "scripts[N].body": [
@@ -39037,7 +45022,7 @@
    ],
    "scripts[N].enabled": [
     0,
-    0,
+    562949953421312,
     false
    ],
    "scripts[N].enemyPrefab": [
@@ -39149,6 +45134,11 @@
    "shaderFeatures": [
     15,
     2147483648,
+    true
+   ],
+   "shaderGlobalBindings": [
+    15,
+    68719476736,
     true
    ],
    "shaderTextures": [
@@ -40027,6 +46017,16 @@
     32768,
     true
    ],
+   "outlineColor": [
+    6,
+    32768,
+    true
+   ],
+   "outlineWidth": [
+    2,
+    32768,
+    true
+   ],
    "pivotBaseline": [
     0,
     32768,
@@ -40037,9 +46037,141 @@
     32768,
     true
    ],
+   "shadowColor": [
+    6,
+    32768,
+    true
+   ],
+   "shadowDilate": [
+    2,
+    32768,
+    true
+   ],
+   "shadowEnabled": [
+    0,
+    32768,
+    true
+   ],
+   "shadowOffset": [
+    4,
+    32768,
+    true
+   ],
+   "shadowSoftness": [
+    2,
+    32768,
+    true
+   ],
    "text": [
     1,
     32768,
+    true
+   ],
+   "visibleCharacters": [
+    8,
+    32768,
+    true
+   ]
+  },
+  "TextEffectComponent": {
+   "autoPlay": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    36028797018963968,
+    true
+   ],
+   "forWords": [
+    1,
+    36028797018963968,
+    true
+   ],
+   "layers[N].amplitude": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].charactersPerSecond": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].duration": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].enabled": [
+    0,
+    36028797018963968,
+    true
+   ],
+   "layers[N].fadeTime": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].frequency": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].gradient": [
+    15,
+    36028797018963968,
+    true
+   ],
+   "layers[N].lightness": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].mix": [
+    13,
+    36028797018963968,
+    true
+   ],
+   "layers[N].phaseStep": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].saturation": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].spread": [
+    2,
+    36028797018963968,
+    true
+   ],
+   "layers[N].type": [
+    13,
+    36028797018963968,
+    true
+   ],
+   "length": [
+    8,
+    36028797018963968,
+    true
+   ],
+   "loop": [
+    0,
+    0,
+    true
+   ],
+   "startIndex": [
+    8,
+    36028797018963968,
+    true
+   ],
+   "useUnscaledTime": [
+    0,
+    0,
     true
    ]
   },
@@ -40088,6 +46220,200 @@
     9,
     4194304,
     false
+   ]
+  },
+  "TouchAreaComponent": {
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "horizontalAction": [
+    1,
+    0,
+    true
+   ],
+   "invertX": [
+    0,
+    0,
+    true
+   ],
+   "invertY": [
+    0,
+    0,
+    true
+   ],
+   "sensitivity": [
+    2,
+    0,
+    true
+   ],
+   "verticalAction": [
+    1,
+    0,
+    true
+   ],
+   "visibility": [
+    13,
+    0,
+    true
+   ]
+  },
+  "TrailRendererComponent": {
+   "alignment": [
+    13,
+    1125899906842624,
+    true
+   ],
+   "autodestruct": [
+    0,
+    0,
+    true
+   ],
+   "blendMode": [
+    13,
+    2147483648,
+    true
+   ],
+   "colorGradient": [
+    21,
+    1125899906842624,
+    true
+   ],
+   "colorWrite": [
+    8,
+    2147483648,
+    true
+   ],
+   "customShader": [
+    19,
+    2147483648,
+    true
+   ],
+   "depthWrite": [
+    13,
+    2147483648,
+    true
+   ],
+   "emitting": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "minVertexDistance": [
+    2,
+    1125899906842624,
+    true
+   ],
+   "numCapVertices": [
+    9,
+    1125899906842624,
+    true
+   ],
+   "numCornerVertices": [
+    9,
+    1125899906842624,
+    true
+   ],
+   "shaderFeatures": [
+    15,
+    2147483648,
+    true
+   ],
+   "shaderGlobalBindings": [
+    15,
+    68719476736,
+    true
+   ],
+   "shaderTextures": [
+    15,
+    2147483648,
+    true
+   ],
+   "shaderUniforms": [
+    15,
+    68719476736,
+    true
+   ],
+   "sortPriority": [
+    8,
+    1125899906842624,
+    true
+   ],
+   "stencil": [
+    15,
+    2147483648,
+    true
+   ],
+   "stencil.compare": [
+    13,
+    2147483648,
+    true
+   ],
+   "stencil.depthFail": [
+    13,
+    2147483648,
+    true
+   ],
+   "stencil.fail": [
+    13,
+    2147483648,
+    true
+   ],
+   "stencil.pass": [
+    13,
+    2147483648,
+    true
+   ],
+   "stencil.readMask": [
+    8,
+    2147483648,
+    true
+   ],
+   "stencil.ref": [
+    8,
+    2147483648,
+    true
+   ],
+   "stencil.writeMask": [
+    8,
+    2147483648,
+    true
+   ],
+   "textureMode": [
+    13,
+    1125899906842624,
+    true
+   ],
+   "textureScale": [
+    4,
+    1125899906842624,
+    true
+   ],
+   "time": [
+    2,
+    1125899906842624,
+    true
+   ],
+   "widthCurve": [
+    20,
+    1125899906842624,
+    true
+   ],
+   "widthMultiplier": [
+    2,
+    1125899906842624,
+    true
+   ],
+   "widthUnit": [
+    13,
+    1125899906842624,
+    true
    ]
   },
   "Transform": {
@@ -40174,6 +46500,11 @@
     0,
     0,
     true
+   ],
+   "useUnscaledTime": [
+    0,
+    0,
+    true
    ]
   },
   "UIComponent": {
@@ -40210,6 +46541,11 @@
    "shaderFeatures": [
     15,
     2147483648,
+    true
+   ],
+   "shaderGlobalBindings": [
+    15,
+    68719476736,
     true
    ],
    "shaderTextures": [
@@ -40373,6 +46709,123 @@
    ],
    "speed": [
     2,
+    0,
+    true
+   ]
+  },
+  "VideoPlayerComponent": {
+   "aspectRatio": [
+    13,
+    0,
+    true
+   ],
+   "audioOutputMode": [
+    13,
+    0,
+    true
+   ],
+   "clip": [
+    1,
+    0,
+    true
+   ],
+   "directMute": [
+    0,
+    0,
+    true
+   ],
+   "directVolume": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "isLooping": [
+    0,
+    0,
+    true
+   ],
+   "playOnAwake": [
+    0,
+    0,
+    true
+   ],
+   "playbackSpeed": [
+    2,
+    0,
+    true
+   ],
+   "renderMode": [
+    13,
+    0,
+    true
+   ],
+   "renderTextureHeight": [
+    9,
+    0,
+    true
+   ],
+   "renderTextureWidth": [
+    9,
+    0,
+    true
+   ],
+   "skipOnDrop": [
+    0,
+    0,
+    true
+   ],
+   "source": [
+    13,
+    0,
+    true
+   ],
+   "targetAudioSource": [
+    16,
+    0,
+    true
+   ],
+   "targetCamera": [
+    16,
+    0,
+    true
+   ],
+   "targetCameraAlpha": [
+    2,
+    0,
+    true
+   ],
+   "targetMaterialProperty": [
+    1,
+    0,
+    true
+   ],
+   "targetMaterialRenderer": [
+    16,
+    0,
+    true
+   ],
+   "targetSubmesh": [
+    8,
+    0,
+    true
+   ],
+   "timeUpdateMode": [
+    13,
+    0,
+    true
+   ],
+   "url": [
+    1,
+    0,
+    true
+   ],
+   "waitForFirstFrame": [
+    0,
     0,
     true
    ]

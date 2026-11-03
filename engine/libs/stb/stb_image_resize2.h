@@ -6199,7 +6199,9 @@ static void stbir__resample_vertical_gather(stbir__info const * stbir_info, stbi
         inputs[ i ] = stbir__get_ring_buffer_scanline(stbir_info, split_info, k+i+contrib_n0 );
 
       // call the N scanlines at a time function (up to 8 scanlines of blending at once)
-      ((k==0)?stbir__vertical_gathers:stbir__vertical_gathers_continues)[cnt-1]( (vertical_first) ? decode_buffer : encode_buffer, vertical_coefficients + k, inputs, inputs[0] + width_times_channels );
+      // (JasperEngine local patch: each table indexed on its own, the same call; GCC 13's UBSan
+      // object-size check reports a valid (cond ? tableA : tableB)[i] at -O2, a false positive)
+      ((k==0)?stbir__vertical_gathers[cnt-1]:stbir__vertical_gathers_continues[cnt-1])( (vertical_first) ? decode_buffer : encode_buffer, vertical_coefficients + k, inputs, inputs[0] + width_times_channels );
       k += cnt;
       total -= cnt;
     } while ( total );
@@ -6360,7 +6362,8 @@ static void stbir__resample_vertical_scatter(stbir__info const * stbir_info, stb
         }
       }
       // call the scatter to N scanlines at a time function (up to 8 scanlines of scattering at once)
-      ((STBIR__FLOAT_BUFFER_IS_EMPTY( outputs[0] ))?stbir__vertical_scatter_sets:stbir__vertical_scatter_blends)[n-1]( outputs, vertical_coefficients + k, vertical_buffer, vertical_buffer_end );
+      // (JasperEngine local patch: each table indexed on its own, as in the gather above)
+      ((STBIR__FLOAT_BUFFER_IS_EMPTY( outputs[0] ))?stbir__vertical_scatter_sets[n-1]:stbir__vertical_scatter_blends[n-1])( outputs, vertical_coefficients + k, vertical_buffer, vertical_buffer_end );
       k += n;
       total -= n;
     } while ( total );

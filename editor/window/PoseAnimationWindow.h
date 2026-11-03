@@ -11,6 +11,7 @@
 
 #include "Project.h"
 #include "ecs/Entity.h"
+#include "pose/HumanoidMapIO.h"
 #include "pose/PoseEditSession.h"
 #include "pose/PoseTemplates.h"
 #include "pose/PoseThumbnails.h"
@@ -226,6 +227,8 @@ namespace jasperengine::editor{
         Entity mappingEntity = NULL_ENTITY;
         std::shared_ptr<const PoseRigInfo> mappingInfo;
         std::array<std::optional<std::string>, pose::HUMAN_BONE_COUNT> mappingOverrides;
+        // the sidecar as it was (its Avatar fields, anim-retarget: written back with the new bones)
+        pose::HumanoidOverrides mappingSidecar;
         char mappingFilter[64] = {};
         std::string mappingError;
 

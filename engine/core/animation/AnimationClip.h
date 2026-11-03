@@ -21,7 +21,8 @@
 //     track's widest key (padded with 0, at most MAX_MORPHTARGETS), lattice 3 per entry of
 //     `points` (the union of the keys' points; a key lacking one holds 0);
 //   * tangents are empty or the value's width, on both sides (in and out); tangents win over
-//     the ease (which the loader then resets to linear, with a warning);
+//     the ease (which the loader then resets to linear, with a warning), except a step (a
+//     Constant segment: it holds the key's value);
 //   * wrap is never ClipWrapMode::Default (that value only appears in player clip entries);
 //   * events sorted by (time, function); at most MAX_ANIMATION_EVENT_ARGS args each.
 //   Editors that build ClipData by hand keep these (AnimationClipIO::normalize restores them).
@@ -62,7 +63,7 @@ namespace jasperengine{
     // (ClampedAuto, Auto, Linear, Flat, Constant) are recomputed from the neighbouring keys by
     // every normalize, Free (in = out) and Broken (in, out apart) keep the stored tangents.
     // None: no mode (an eased key, or tangents as imported).
-    enum class ClipTangentMode : uint8_t { None, ClampedAuto, Auto, Free, Linear, Constant, Flat, Broken };
+    // ClipTangentMode: animation/ClipTypes.h
 
     struct JASPERENGINE_API ClipKey{
         float time = 0.0f;
@@ -90,11 +91,24 @@ namespace jasperengine{
         bool loop = false;
         // lattice: the flat point indices each key's value lists, in this order
         std::vector<int> points;
-        // property (reserved): the addressed component/property and the track as read (compact
-        // JSON text), written back verbatim
+        // humanoid / humanoid_position (anim-retarget 7.1): the bone, -1 for other channels.
+        // humanoid: 0..21 a slot (pose::HumanBone), 22..54 an extra bone (HUMAN_BONE_COUNT +
+        // pose::HumanExtraBone); humanoid_position: HUMANOID_POSITION_HIPS / _LEFT_FOOT / _RIGHT_FOOT
+        int humanBone = -1;
+        // property tracks (anim-properties spec 6): the addressed component and property (Catalog
+        // names, PropertyBindings.h). normalize resolves the rest from them: `kind` (a script
+        // field's or shader member's comes from its keys: set by the parser or the editor),
+        // `width` (floats per key: 1 for a swizzle), `swizzle` and `discrete`. A property that is
+        // not animatable (`known` false) keeps the track as read (compact JSON, `preserved`),
+        // written back verbatim and never played.
         std::string component;
         std::string property;
         std::string preserved;
+        PropertyKind kind = PropertyKind::None;
+        size_t width = 0;
+        int swizzle = -1;
+        bool discrete = false;
+        bool known = false;
         std::vector<ClipKey> keys;
 
         float lastKeyTime() const { return keys.empty() ? 0.0f : keys.back().time; }
@@ -104,6 +118,15 @@ namespace jasperengine{
         float time = 0.0f;
         std::string function;                   // a Lua identifier
         std::vector<AnimationEventArg> args;
+    };
+
+    // A humanoid clip's source (file key "humanoid", anim-retarget 6.1): informational, the
+    // reports show the scale ratio with it
+    struct JASPERENGINE_API ClipHumanoidInfo{
+        std::string sourceModel;                // asset-relative
+        float humanScale = 0.0f;                // the source rig's humanScale (0: unknown)
+
+        bool empty() const { return sourceModel.empty() && humanScale == 0.0f; }
     };
 
     // Written by Extract / Convert / Bake only; ignored by the runtime
@@ -123,23 +146,38 @@ namespace jasperengine{
         ClipWrapMode wrap = ClipWrapMode::Once;
         // explicit length in seconds; < 0 = automatic (last key or event time)
         float length = -1.0f;
+        // the time an additive layer measures this clip's delta from (anim layers spec 6.1, file
+        // key "additive_reference", written only when not 0); normalize clamps it to
+        // [0, effectiveLength()]
+        float additiveReference = 0.0f;
         std::vector<ClipTrackData> tracks;
         std::vector<ClipEventData> events;
         // editor-only hint: a model or prefab to preview the clip on (asset-relative)
         std::string previewModel;
         ClipSource source;
+        ClipHumanoidInfo humanoid;
         // unknown top-level keys and their compact JSON text, in file order: written back
         std::vector<std::pair<std::string, std::string>> unknownKeys;
 
         bool hasExplicitLength() const { return length >= 0.0f; }
+        // a clip with any humanoid track is a humanoid clip (written as version 2)
+        bool isHumanoid() const;
+        // index into tracks of the humanoid track (channel, humanBone), -1 when none
+        int findHumanoidTrack(ClipChannel channel, int humanBone) const;
         // the explicit length, else the last key or event time over the whole clip
         float effectiveLength() const;
-        // index into tracks, -1 when none (property tracks are not found by this)
+        // index into tracks, -1 when none (property tracks are not found by this; for a humanoid
+        // channel `path` is the bone name: "left_upper_arm", "hips")
         int findTrack(const std::string& path, ClipChannel channel) const;
+        // a property track by its identity (path, component, property), -1 when none
+        int findPropertyTrack(const std::string& path, const std::string& component, const std::string& property) const;
+        // the track with the identity of `like`: (path, channel), and (component, property) for
+        // a property track; -1 when none
+        int findTrack(const ClipTrackData& like) const;
 
-        // floats per key value: position/scale 3, rotation 4, morph `morphCount`, lattice
-        // 3 * `pointCount`, property 0
-        static size_t valueWidth(ClipChannel channel, size_t morphCount = 0, size_t pointCount = 0);
+        // floats per key value: position/scale/humanoid_position 3, rotation/humanoid 4, morph
+        // `morphCount`, lattice 3 * `pointCount`, property `propertyWidth` (ClipTrackData::width)
+        static size_t valueWidth(ClipChannel channel, size_t morphCount = 0, size_t pointCount = 0, size_t propertyWidth = 0);
     };
 
     // The immutable runtime clip (built from a ClipData; neither copyable nor movable, so the
@@ -151,6 +189,7 @@ namespace jasperengine{
             ClipChannel channel = ClipChannel::Position;
             bool relative = false;
             bool loop = false;
+            int humanBone = -1;                 // humanoid tracks (ClipTrackData::humanBone)
             float duration = 0.0f;              // its last key's time
 
             size_t keyCount = 0;
@@ -158,11 +197,12 @@ namespace jasperengine{
             const EaseType* easings = nullptr;  // keyCount: the segment starting at each key
 
             // values per key: 1 for position/rotation/scale, the morph target count for morph,
-            // the point count for lattice; key k's row starts at k * width
+            // the point count for lattice, the key width for property; key k's row starts at
+            // k * width
             size_t width = 1;
-            const Vector3* vectors = nullptr;       // position, scale, lattice
-            const Quaternion* rotations = nullptr;  // rotation
-            const float* weights = nullptr;         // morph
+            const Vector3* vectors = nullptr;       // position, scale, lattice, humanoid_position
+            const Quaternion* rotations = nullptr;  // rotation, humanoid
+            const float* weights = nullptr;         // morph, property (key space floats)
             // tangents of the same channel, null without (linear / eased track)
             const Vector3* inVectors = nullptr;
             const Vector3* outVectors = nullptr;
@@ -172,13 +212,20 @@ namespace jasperengine{
             const float* outWeights = nullptr;
             const int* points = nullptr;            // lattice: `width` flat indices
 
-            // property tracks (never sampled)
+            // property tracks (ClipTrackData's fields; anim-properties spec 8): a discrete track
+            // steps (its easings are STEP); `overridden`: components of this whole-property track
+            // that a swizzle track of the same clip (same path and property) keys instead
             std::string component;
             std::string property;
             std::string preserved;              // the track as read (ClipTrackData::preserved)
+            PropertyKind kind = PropertyKind::None;
+            int swizzle = -1;
+            bool discrete = false;
+            bool known = false;                 // false: not animatable, never sampled
+            uint8_t overridden = 0;             // bit k: component k
 
             bool hasTangents() const { return inVectors || inRotations || inWeights; }
-            bool isSampled() const { return channel != ClipChannel::Property && keyCount > 0; }
+            bool isSampled() const { return (channel != ClipChannel::Property || known) && keyCount > 0; }
         };
 
         AnimationClip(const AnimationClip&) = delete;
@@ -202,20 +249,28 @@ namespace jasperengine{
         // the effective length (ClipData::effectiveLength), seconds
         float getLength() const { return length; }
         bool hasExplicitLength() const { return explicitLength; }
+        // ClipData::additiveReference (seconds, in [0, getLength()])
+        float getAdditiveReference() const { return additiveReference; }
 
         const std::string& getGuid() const { return guid; }
         const std::string& getPreviewModel() const { return previewModel; }
         const ClipSource& getSource() const { return source; }
+        const ClipHumanoidInfo& getHumanoidInfo() const { return humanoid; }
+        // any humanoid track (anim-retarget 5.1)
+        bool isHumanoid() const { return humanoidTracks > 0; }
         const std::vector<std::pair<std::string, std::string>>& getUnknownKeys() const { return unknownKeys; }
         // the loader's and build's warnings (what the editor and tools report)
         const std::vector<ClipWarning>& getWarnings() const { return warnings; }
 
         const std::vector<Track>& getTracks() const { return tracks; }
+        // some track is a sampled property track
+        bool hasPropertyTracks() const { return propertyTracks; }
         // sorted by (time, function)
         const std::vector<ClipEventData>& getEvents() const { return events; }
 
-        // index into getTracks(), -1 when none
+        // index into getTracks(), -1 when none (humanoid channels: `path` is the bone name)
         int findTrack(const std::string& path, ClipChannel channel) const;
+        int findHumanoidTrack(ClipChannel channel, int humanBone) const;
 
     private:
         AnimationClip() = default;
@@ -227,13 +282,17 @@ namespace jasperengine{
         ClipWrapMode wrap = ClipWrapMode::Once;
         float length = 0.0f;
         bool explicitLength = false;
+        float additiveReference = 0.0f;
         std::string guid;
         std::string previewModel;
         ClipSource source;
+        ClipHumanoidInfo humanoid;
+        size_t humanoidTracks = 0;
         std::vector<std::pair<std::string, std::string>> unknownKeys;
         std::vector<ClipWarning> warnings;
         std::vector<Track> tracks;
         std::vector<ClipEventData> events;
+        bool propertyTracks = false;
 
         // contiguous storage the Track pointers point into
         std::vector<float> timeStorage;

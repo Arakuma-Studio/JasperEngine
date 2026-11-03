@@ -301,10 +301,39 @@ TEST_F(AnimatorEditor, StatesFromAnAnimationPlayer) {
     const anim::StateMachineDef& machine = def.layers[0].machine;
     ASSERT_EQ(machine.states.size(), 2u);
     EXPECT_EQ(machine.states[0].name, "Walk");
-    EXPECT_EQ(machine.states[0].loop, AnimatorStateLoop::Loop);
+    // the entry's wrap replaced its clip's (a ping-pong clip loops forward): Repeat
+    EXPECT_EQ(machine.states[0].loop, AnimatorStateLoop::Repeat);
     EXPECT_EQ(machine.states[1].name, "jump");
     EXPECT_EQ(machine.states[1].motion.clip.guid, jump.guid);
     EXPECT_EQ(machine.states[1].loop, AnimatorStateLoop::Once);
     EXPECT_EQ(machine.defaultState, "jump");
     EXPECT_NE(machine.states[0].position.x, machine.states[1].position.x) << "laid out apart";
+}
+
+// upstream's "Create Animator Controller from Clips" copied each entry's humanoid playback onto
+// its state: S21's states carry Retarget, Mirror and Foot IK now (they were dropped)
+TEST_F(AnimatorEditor, StatesFromAnAnimationPlayerKeepHumanoidPlayback) {
+    AnimationPlayerComponent player;
+    AnimationPlayerClip walk;
+    walk.clip = "models/hero.gltf#Walk";
+    walk.retarget = true;
+    walk.mirror = true;
+    AnimationPlayerClip idle;
+    idle.clip = "anim/idle_h.anim";
+    idle.footIK = true;
+    player.clips = {walk, idle};
+    anim::ControllerDef def;
+    ASSERT_EQ(appendPlayerStates(def, player), 2u);
+    const anim::StateMachineDef& machine = def.layers[0].machine;
+    EXPECT_TRUE(machine.states[0].retarget);
+    EXPECT_TRUE(machine.states[0].mirror);
+    EXPECT_FALSE(machine.states[0].footIK);
+    EXPECT_FALSE(machine.states[1].retarget);
+    EXPECT_FALSE(machine.states[1].mirror);
+    EXPECT_TRUE(machine.states[1].footIK);
+    // written and read back with the flags
+    anim::ControllerParseResult parsed = anim::parseController(anim::writeController(def));
+    ASSERT_TRUE(parsed.ok);
+    EXPECT_TRUE(parsed.data.layers[0].machine.states[0].retarget && parsed.data.layers[0].machine.states[0].mirror);
+    EXPECT_TRUE(parsed.data.layers[0].machine.states[1].footIK);
 }

@@ -8,6 +8,8 @@
 // AnimationWindowClipDraw.cpp.
 
 #include "AnimationWindowClip.h"
+#include "animation/ClipPropertyNames.h"
+#include "animation/PropertyBindings.h"
 #include "AnimationWindowClipUtil.h"
 
 #include "Out.h"
@@ -370,7 +372,16 @@ void AnimationWindowClip::refreshReport(){
 }
 
 bool AnimationWindowClip::KeyId::operator==(const KeyId& other) const{
-    return channel == other.channel && time == other.time && path == other.path;
+    return channel == other.channel && time == other.time && path == other.path && property == other.property;
+}
+
+AnimationWindowClip::KeyId AnimationWindowClip::keyIdOf(const ClipTrackData& track, float time){
+    KeyId id;
+    id.path = track.path;
+    id.channel = track.channel;
+    id.time = time;
+    id.property = propertyId(track);
+    return id;
 }
 
 void AnimationWindowClip::refreshSelection(){
@@ -390,7 +401,7 @@ void AnimationWindowClip::refreshSelection(){
     if (doc != indexDocument.lock() || doc->revision() != indexRevision){
         trackIndex.clear();
         for (size_t t = 0; t < data.tracks.size(); t++){
-            trackIndex[data.tracks[t].path + "|" + anim::channelName(data.tracks[t].channel)] = (int)t;
+            trackIndex[rowKey(data.tracks[t])] = (int)t;
         }
         indexDocument = doc;
         indexRevision = doc->revision();
@@ -401,7 +412,7 @@ void AnimationWindowClip::refreshSelection(){
     std::vector<KeyId> kept;
     kept.reserve(selection.size());
     for (const KeyId& id : selection){
-        auto it = trackIndex.find(id.path + "|" + anim::channelName(id.channel));
+        auto it = trackIndex.find(id.path + "|" + anim::channelName(id.channel) + (id.property.empty() ? std::string() : "|" + id.property));
         if (it == trackIndex.end()) continue;
         const std::vector<ClipKey>& keys = data.tracks[(size_t)it->second].keys;
         // keys are sorted: the nearest within the epsilon
@@ -414,7 +425,7 @@ void AnimationWindowClip::refreshSelection(){
         if (mark) continue;
         mark = 1;
         selectedRefs.push_back({(size_t)it->second, key});
-        kept.push_back({id.path, id.channel, at->time});
+        kept.push_back({id.path, id.channel, at->time, id.property});
     }
     selection = kept;
     resolvedSelection = kept;
@@ -430,7 +441,7 @@ void AnimationWindowClip::setSelectionFromRefs(const std::vector<AnimationClipCo
     for (const AnimationClipController::KeyRef& ref : refs){
         if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) continue;
         const ClipTrackData& track = data.tracks[ref.track];
-        selection.push_back({track.path, track.channel, track.keys[ref.key].time});
+        selection.push_back(keyIdOf(track, track.keys[ref.key].time));
     }
     refreshSelection();
 }
@@ -447,7 +458,9 @@ std::vector<std::string> AnimationWindowClip::componentLabels(size_t trackIndex)
         case ClipChannel::Position:
         case ClipChannel::Scale:
         case ClipChannel::Rotation:
-            return {"x", "y", "z"};
+        case ClipChannel::Humanoid:
+        case ClipChannel::HumanoidPosition:
+            return angleComponentNames(track);
         case ClipChannel::Morph: {
             size_t width = 0;
             for (const ClipKey& key : track.keys) width = std::max(width, key.value.size());
@@ -483,7 +496,17 @@ std::vector<std::string> AnimationWindowClip::componentLabels(size_t trackIndex)
         case ClipChannel::Lattice:
             return {std::to_string(track.points.size()) + " lattice points"};
         case ClipChannel::Property:
-            break;
+            // a colour's r g b a, a vector's x y z w; one value has no component rows
+            if (!track.known || track.swizzle >= 0 || track.width < 2) return {};
+            if (track.kind == PropertyKind::Color3 || track.kind == PropertyKind::Color4){
+                std::vector<std::string> labels = {"r", "g", "b", "a"};
+                labels.resize(track.width);
+                return labels;
+            }else{
+                std::vector<std::string> labels = {"x", "y", "z", "w"};
+                labels.resize(track.width);
+                return labels;
+            }
     }
     return {};
 }
@@ -504,21 +527,38 @@ std::vector<AnimationWindowClip::Row> AnimationWindowClip::buildRows() const{
     for (const TrackReport& entry : report.tracks){
         if (entry.track < reports.size()) reports[entry.track] = &entry;
     }
+    // tracks the state's layer mask hides (dimmed)
+    const std::vector<std::string> masked = controller().maskedTracks();
     for (size_t t = 0; t < data.tracks.size(); t++){
         const ClipTrackData& track = data.tracks[t];
         Row row;
+        if (t < masked.size()) row.masked = masked[t];
         row.kind = Row::Kind::Track;
         row.track = (int)t;
-        row.label = (track.path.empty() ? rootName : track.path) + " : " + channelLabel(track.channel);
+        // a property row: "Name : Image.Color" (the group as the bound GameObject shows it)
+        if (track.channel == ClipChannel::Property){
+            const Entity entity = reports[t] ? reports[t]->entity : NULL_ENTITY;
+            row.channelText = ClipPropertyNames::trackLabel(scene, entity, track);
+        }else{
+            row.channelText = channelLabel(track.channel);
+        }
+        row.label = (track.path.empty() ? rootName : track.path) + " : " + row.channelText;
         // Unity's form: the leaf GameObject's name (the full path in the tooltip)
-        row.leaf = (track.path.empty() ? rootName : lastSegment(track.path)) + " : " + channelLabel(track.channel);
+        row.leaf = (track.path.empty() ? rootName : lastSegment(track.path)) + " : " + row.channelText;
+        if (isHumanoidChannel(track.channel)){
+            // "Humanoid : Left Upper Arm" (anim-retarget 9)
+            row.label = humanoidTrackLabel(track.channel, track.humanBone);
+            row.leaf = row.label;
+        }
         if (const TrackReport* entry = reports[t]){
             const bool bad = entry->status == TrackBindingStatus::MissingPath ||
                              entry->status == TrackBindingStatus::MissingComponent ||
                              entry->status == TrackBindingStatus::LatticeIndexOutOfRange ||
                              entry->status == TrackBindingStatus::MorphIndexOutOfRange ||
                              entry->status == TrackBindingStatus::LegacyModelLayout ||
-                             entry->status == TrackBindingStatus::UnaddressableName;
+                             entry->status == TrackBindingStatus::UnaddressableName ||
+                             entry->status == TrackBindingStatus::UnknownProperty ||
+                             entry->status == TrackBindingStatus::HumanoidNoRig;
             row.missing = bad;
             row.message = entry->message;
             if (!entry->nearest.empty() && entry->status == TrackBindingStatus::MissingPath){
@@ -528,7 +568,7 @@ std::vector<AnimationWindowClip::Row> AnimationWindowClip::buildRows() const{
         }
         if (row.missing) row.label += " (Missing!)";
         rows.push_back(row);
-        if (track.channel != ClipChannel::Property && expanded.count(rowKey(track))){
+        if (expanded.count(rowKey(track))){
             const std::vector<std::string> labels = componentLabels(t);
             for (size_t c = 0; c < labels.size(); c++){
                 Row component;
@@ -538,6 +578,7 @@ std::vector<AnimationWindowClip::Row> AnimationWindowClip::buildRows() const{
                 component.label = labels[c];
                 component.leaf = labels[c];
                 component.missing = row.missing;
+                component.masked = row.masked;
                 rows.push_back(component);
             }
         }
@@ -551,7 +592,7 @@ std::vector<float> AnimationWindowClip::sampledValue(size_t trackIndex, float ti
     const ClipTrackData& data = doc->data().tracks[trackIndex];
     std::shared_ptr<const AnimationClip> clip = doc->clip();
     if (!clip) return {};
-    const int index = clip->findTrack(data.path, data.channel);
+    const int index = builtTrack(*clip, data);
     if (index < 0) return {};
     anim::TrackSample sample;
     if (!anim::sampleTrack(clip->getTracks()[(size_t)index], time, sample) || !sample.valid) return {};
@@ -772,7 +813,7 @@ bool AnimationWindowClip::boxSelect(int firstRow, int lastRow, float fromTime, f
             auto it = std::lower_bound(keys.begin(), keys.end(), fromTime - kKeyEpsilon,
                                        [](const ClipKey& k, float time){ return k.time < time; });
             for (; it != keys.end() && it->time <= toTime + kKeyEpsilon; ++it){
-                found.push_back({data.tracks[t].path, data.tracks[t].channel, it->time});
+                found.push_back(keyIdOf(data.tracks[t], it->time));
             }
         }
     }
@@ -848,6 +889,9 @@ void AnimationWindowClip::copySelected(){
         CopiedKey copied;
         copied.path = track.path;
         copied.channel = track.channel;
+        copied.component = track.component;
+        copied.property = track.property;
+        copied.kind = track.kind;
         copied.points = track.points;
         copied.key = track.keys[ref.key];
         copied.offset = copied.key.time - earliest;
@@ -900,13 +944,19 @@ bool AnimationWindowClip::paste(float time, std::string* error){
     int target = -1;
     bool oneSource = true;
     for (const CopiedKey& copied : clipboard){
-        oneSource = oneSource && copied.path == clipboard.front().path && copied.channel == clipboard.front().channel;
+        oneSource = oneSource && copied.path == clipboard.front().path && copied.channel == clipboard.front().channel &&
+                    copied.component == clipboard.front().component && copied.property == clipboard.front().property;
     }
     if (oneSource && !selectedRefs.empty()){
         bool oneTrack = true;
         for (const AnimationClipController::KeyRef& ref : selectedRefs) oneTrack = oneTrack && ref.track == selectedRefs.front().track;
         const ClipTrackData& selected = data.tracks[selectedRefs.front().track];
-        if (oneTrack && selected.channel == clipboard.front().channel && selected.path != clipboard.front().path &&
+        // (a property's keys onto another GameObject's same property, or onto a property of their kind)
+        const bool sameProperty = selected.channel != ClipChannel::Property ||
+            (selected.kind == clipboard.front().kind && selected.width == clipboard.front().key.value.size());
+        const bool otherTrack = selected.path != clipboard.front().path || selected.component != clipboard.front().component ||
+                                selected.property != clipboard.front().property;
+        if (oneTrack && selected.channel == clipboard.front().channel && otherTrack && sameProperty &&
             (selected.channel != ClipChannel::Lattice || selected.points == clipboard.front().points)){
             target = (int)selectedRefs.front().track;
         }
@@ -914,7 +964,8 @@ bool AnimationWindowClip::paste(float time, std::string* error){
     std::vector<KeyId> pasted;
     size_t skipped = 0, replaced = 0;
     for (const CopiedKey& copied : clipboard){
-        const int index = target >= 0 ? target : data.findTrack(copied.path, copied.channel);
+        const int index = target >= 0 ? target : copied.channel == ClipChannel::Property
+            ? data.findPropertyTrack(copied.path, copied.component, copied.property) : data.findTrack(copied.path, copied.channel);
         if (index < 0 || (copied.channel == ClipChannel::Lattice && data.tracks[(size_t)index].points != copied.points)){
             skipped++;
             continue;
@@ -929,7 +980,7 @@ bool AnimationWindowClip::paste(float time, std::string* error){
         bool wasThere = false;
         upsertKey(track, at, key, &wasThere);
         if (wasThere) replaced++;
-        pasted.push_back({track.path, track.channel, at});
+        pasted.push_back(keyIdOf(track, at));
     }
     if (pasted.empty()){
         if (error) *error = "no matching property in this clip for the copied keys";
@@ -973,7 +1024,7 @@ bool AnimationWindowClip::duplicateSelected(std::string* error){
         bool wasThere = false;
         upsertKey(track, at, copy.second, &wasThere);
         if (wasThere) replaced++;
-        made.push_back({track.path, track.channel, at});
+        made.push_back(keyIdOf(track, at));
     }
     if (!controller().commit(data, "Duplicate Keys", "", error)) return false;
     selection = made;
@@ -1017,7 +1068,7 @@ bool AnimationWindowClip::addKeysAt(int trackIndex, float time, std::string* err
     for (size_t t = 0; t < data.tracks.size(); t++){
         if (trackIndex >= 0 && (int)t != trackIndex) continue;
         ClipTrackData& track = data.tracks[t];
-        if (track.channel == ClipChannel::Property || track.keys.empty()) continue;
+        if ((track.channel == ClipChannel::Property && !track.known) || track.keys.empty()) continue;
         // the curve's own value there: adding a key never changes the shape
         std::vector<float> value = sampledValue(t, time);
         if (value.empty()) continue;
@@ -1032,7 +1083,7 @@ bool AnimationWindowClip::addKeysAt(int trackIndex, float time, std::string* err
             key.outTangent.assign(value.size(), 0.0f);
         }
         upsertKey(track, time, key);
-        made.push_back({track.path, track.channel, time});
+        made.push_back(keyIdOf(track, time));
     }
     if (made.empty()){
         if (error) *error = "no track to key";
@@ -1162,9 +1213,55 @@ bool AnimationWindowClip::setComponentValue(size_t trackIndex, int component, fl
         return false;
     }
     const ClipTrackData& track = doc->data().tracks[trackIndex];
+    if (track.channel == ClipChannel::Property && component >= 0){
+        // a component of a property (a colour's r, a vector's y): the whole value with it changed
+        std::vector<float> current;
+        Scene* scene = valueScene();
+        const Entity entity = scene ? anim::resolvePath(scene, valueRoot(), track.path) : NULL_ENTITY;
+        anim::PropertyRef ref;
+        anim::parsePropertyRef(track.component, track.property, ref);
+        const anim::PropertyBinding binding = entity != NULL_ENTITY ? anim::bindProperty(scene, entity, ref, track.width) : anim::PropertyBinding();
+        float whole[4] = {0, 0, 0, 0};
+        if (binding.status == anim::PropertyBindStatus::Bound && anim::readPropertyKeySpace(scene, entity, binding, whole)){
+            current.assign(whole, whole + binding.width);
+        }else{
+            current = sampledValue(trackIndex, c.getTime());
+        }
+        if ((size_t)component >= current.size()){
+            if (error) *error = "no such component";
+            return false;
+        }
+        current[(size_t)component] = value;
+        return setPropertyValue(trackIndex, current, newEdit, error);
+    }
     if (track.channel == ClipChannel::Lattice || track.channel == ClipChannel::Property || component < 0){
         if (error) *error = "this row's values are edited in the Scene view";
         return false;
+    }
+    if (isHumanoidChannel(track.channel)){
+        // a humanoid track has no GameObject of its own: the field keys its value at the playhead
+        // (slots in joint angles, converted to E; anim-retarget 9)
+        std::vector<float> current = sampledValue(trackIndex, c.getTime());
+        if (current.size() < (isRotationChannel(track.channel) ? 4u : 3u)){
+            if (error) *error = "the track has no value at the playhead";
+            return false;
+        }
+        if (isRotationChannel(track.channel)){
+            Vector3 angles = (eulerEditTrack == (int)trackIndex) ? eulerEdit : anglesOf(track, current);
+            if (component == 0) angles.x = value;
+            if (component == 1) angles.y = value;
+            if (component == 2) angles.z = value;
+            eulerEdit = angles;
+            current = xyzwOfAngles(track, angles);
+        }else if (component < 3){
+            current[(size_t)component] = value;
+        }
+        if (newEdit || valueMergeKey.empty()) valueMergeKey = "clipvalue#" + std::to_string(++valueEditSerial);
+        ClipData data = doc->data();
+        ClipKey key;
+        key.value = current;
+        upsertKey(data.tracks[trackIndex], snapToFrame(c.getTime()), key);
+        return c.commit(data, "Set Key Value", valueMergeKey, error);
     }
     if (!c.isPreviewing() && !startPreview(project->getSelectedScene(), error)) return false;
     // what the Scene view shows now, with this component changed
@@ -1193,7 +1290,7 @@ bool AnimationWindowClip::setComponentValue(size_t trackIndex, int component, fl
     if (newEdit || valueMergeKey.empty()) valueMergeKey = "clipvalue#" + std::to_string(++valueEditSerial);
     const float time = snapToFrame(c.getTime());
     AnimationClipController::KeyRef ref;
-    if (AnimationClipController::findKey(doc->data(), track.path, track.channel, time, ref)){
+    if (AnimationClipController::findKey(doc->data(), track, time, ref)){
         if (!c.setKeyValue(ref, current, valueMergeKey, error)) return false;
     }else{
         ClipData data = doc->data();
@@ -1203,6 +1300,42 @@ bool AnimationWindowClip::setComponentValue(size_t trackIndex, int component, fl
         if (!c.commit(data, "Set Key Value", valueMergeKey, error)) return false;
     }
     return true;
+}
+
+bool AnimationWindowClip::setPropertyValue(size_t trackIndex, const std::vector<float>& value, bool newEdit, std::string* error){
+    AnimationClipController& c = controller();
+    std::shared_ptr<AnimationClipDocument> doc = document();
+    if (!doc || trackIndex >= doc->data().tracks.size() || doc->data().tracks[trackIndex].channel != ClipChannel::Property){
+        if (error) *error = "no such property track";
+        return false;
+    }
+    const ClipTrackData& track = doc->data().tracks[trackIndex];
+    if (!c.isPreviewing() && !startPreview(project->getSelectedScene(), error)) return false;
+    // the track's own layout: a swizzle track holds its component of the whole value
+    std::vector<float> keyValue = value;
+    if (track.swizzle >= 0 && value.size() > 1){
+        if ((size_t)track.swizzle >= value.size()){
+            if (error) *error = "no such component";
+            return false;
+        }
+        keyValue = {value[(size_t)track.swizzle]};
+    }
+    if (track.discrete){
+        for (float& v : keyValue) v = std::round(v);
+    }
+    // Unity's pink field: shown, not keyed, until K (or the playhead moves)
+    if (!c.isRecording()) return c.setPendingValue(trackIndex, keyValue, error);
+    if (newEdit || valueMergeKey.empty()) valueMergeKey = "clipvalue#" + std::to_string(++valueEditSerial);
+    const float time = snapToFrame(c.getTime());
+    AnimationClipController::KeyRef ref;
+    if (AnimationClipController::findKey(doc->data(), track, time, ref)){
+        return c.setKeyValue(ref, keyValue, valueMergeKey, error);
+    }
+    ClipData data = doc->data();
+    ClipKey key;
+    key.value = keyValue;
+    upsertKey(data.tracks[trackIndex], time, key);
+    return c.commit(data, "Set Key Value", valueMergeKey, error);
 }
 
 void AnimationWindowClip::frameKeys(bool selectedOnly, float width){

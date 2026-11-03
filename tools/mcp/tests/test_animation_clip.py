@@ -220,7 +220,7 @@ async def test_file_mode_rejections(ed: Editor):
     track = {"path": "", "channel": "position", "keys": [{"time": 0, "value": [0, 0, 0]}]}
     for change, contains in (
             ({"start_time": 1}, "shift the keys"), ({"name": "x"}, "path and channel"), ({"path": "a//b"}, "malformed"),
-            ({"path": 3}, "must be a string"), ({"channel": "colour"}, "Use one of"), ({"channel": "property"}, "reserved"),
+            ({"path": 3}, "must be a string"), ({"channel": "colour"}, "Use one of"), ({"channel": "property"}, "needs component"),
             ({"channel": "morph", "relative": True, "keys": [{"time": 0, "value": [1]}]}, "only position, rotation and scale"),
             ({"target": "Hero"}, "give path or target"), ({"path": None, "target": "Hero"}, "turn target into a path"),
             ({"mode": "add"}, "replace or merge"), ({"keys": [{"time": -1, "value": [0, 0, 0]}]}, "time must be"),
@@ -1094,7 +1094,23 @@ async def test_guide_names_exist(ed: Editor):
               "unaddressable_name", "duplicate_sibling_name", "missing_path", "quad_out", "in_out", "external_changes", "frame_rate",
               # results of calls this test does not repeat: create {from}, an extract, a missing path with a fix, > 50 users
               "added_player", "removed_tracks", "model_clip_users", "fix_with", "users_total", "fix_path", "fix_conflict",
-              "rest_mismatch", "rig_mismatch"}
+              "rest_mismatch", "rig_mismatch",
+              # layers, masks and controllers (test_animation_layers / test_animator_controller): their results, the
+              # mask's humanoid parts and the clip / controller file keys
+              "humanoid_rig", "coverage_total", "mask_coverage", "live_weight", "normalized_time", "additive_reference",
+              "automate_thresholds", "left_arm", "right_arm", "left_leg", "right_leg", "left_fingers", "right_fingers",
+              # the Animator absorption's mask: the hands' body parts, a coverage rule (body_part:<part>) and
+              # an upstream version 1 mask's read_as (AnimatorTools, AnimatorAssetIO, AvatarMaskWeights)
+              "left_hand", "right_hand", "body_part", "read_as", "upstream_v1",
+              # property tracks (test_animation_properties): a status, the tangent key member and
+              # preview_animation's count of previewed properties
+              "unknown_property", "tangent_mode", "properties_total",
+              # humanoid clips (test_animation_retarget): get_animation's realisation and report, the Avatar
+              # (get_asset_info, set_humanoid) and the humanoid bone names
+              "retarget_report", "scale_ratio", "foot_ik", "missing_on_target", "unmapped_source_bones", "hips_local_position",
+              "local_rotation", "set_humanoid", "animation_type", "extra_mapped", "human_scale", "extra_bones",
+              "humanoid_position", "left_upper_arm", "left_index_proximal", "left_eye", "right_eye", "right_toes",
+              "left_foot", "right_foot"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")

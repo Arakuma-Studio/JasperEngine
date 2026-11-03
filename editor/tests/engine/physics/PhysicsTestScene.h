@@ -37,6 +37,13 @@ namespace jasperengine::physicstest {
         return true;
     }
 
+    // a System for the tests that swap one in to read the log (SystemTestAccess::swap)
+    class TestSystem : public System {
+    public:
+        int getScreenWidth() override { return 0; }
+        int getScreenHeight() override { return 0; }
+    };
+
     // TextureDataPool keys a texture's pixels by id: every test heightmap needs its own
     inline int nextHeightmapId() {
         static int counter = 0;
@@ -125,8 +132,8 @@ namespace jasperengine::physicstest {
                 scene.addComponent<RigidbodyComponent>(e, body);
             }
             RigidbodyComponent& body = scene.getComponent<RigidbodyComponent>(e);
-            Collider3D& c = body.colliders[body.numColliders++];
-            c = Collider3D();
+            body.colliders.push_back(Collider3D());
+            Collider3D& c = body.colliders.back();
             c.type = type;
             return c;
         }

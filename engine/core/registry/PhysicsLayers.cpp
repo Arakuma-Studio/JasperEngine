@@ -299,3 +299,24 @@ std::vector<RayReturn> Physics2D::raycastAll(Scene* scene, Vector2 origin, Vecto
     return hits;
 }
 #endif
+
+namespace {
+    std::atomic<bool> physicsDebugDraw{false};
+    std::atomic<bool> physicsDebugDrawContacts{false};
+}
+
+void Physics::setDebugDraw(bool debugDraw){
+    physicsDebugDraw.store(debugDraw, std::memory_order_relaxed);
+}
+
+bool Physics::isDebugDraw(){
+    return physicsDebugDraw.load(std::memory_order_relaxed);
+}
+
+void Physics::setDebugDrawContacts(bool debugDrawContacts){
+    physicsDebugDrawContacts.store(debugDrawContacts, std::memory_order_relaxed);
+}
+
+bool Physics::isDebugDrawContacts(){
+    return physicsDebugDrawContacts.load(std::memory_order_relaxed);
+}

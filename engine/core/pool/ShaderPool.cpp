@@ -652,9 +652,10 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::MESH:   return 36;
         case ShaderType::DEPTH:  return 18;
         case ShaderType::GBUFFER: return 16;
-        case ShaderType::UI:     return 4;
+        case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
-        case ShaderType::LINES:  return 3;
+        // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
+        case ShaderType::LINES:  return 6;
         case ShaderType::SKYBOX: return 1;
         case ShaderType::SSAO:   return 0;
         case ShaderType::SSAO_BLUR: return 0;
@@ -790,6 +791,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Ftx" : "Font Texture";
             case 2: return shortName ? "Vc3" : "Vertex Color 3";
             case 3: return shortName ? "Vc4" : "Vertex Color 4";
+            // a Text with outline or shadow: signed-distance glyphs
+            case 4: return shortName ? "Sdf" : "Font SDF";
         }
     } else if (shaderType == ShaderType::HTMLUI) {
         switch (bit) {
@@ -850,6 +853,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 0: return shortName ? "Vc3" : "Vertex Color 3";
             case 1: return shortName ? "Vc4" : "Vertex Color 4";
             case 2: return shortName ? "Pcl" : "Post Color";
+            case 3: return shortName ? "Rib" : "Ribbon";
+            case 4: return shortName ? "Tex" : "Texture";
+            case 5: return shortName ? "Pxw" : "Pixel Width";
         }
     } else if (shaderType == ShaderType::SKYBOX) {
         switch (bit) {
@@ -1802,13 +1808,14 @@ uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     return prop;
 }
 
-uint64_t ShaderPool::getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4){
+uint64_t ShaderPool::getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4, bool fontAtlasSdf){
     uint64_t prop = 0;
 
     prop |= texture          ? shaderPropertyBit(0) : 0;
     prop |= fontAtlasTexture ? shaderPropertyBit(1) : 0;
     prop |= vertexColorVec3  ? shaderPropertyBit(2) : 0;
     prop |= vertexColorVec4  ? shaderPropertyBit(3) : 0;
+    prop |= (fontAtlasTexture && fontAtlasSdf) ? shaderPropertyBit(4) : 0;
 
     return prop;
 }
@@ -1835,6 +1842,11 @@ std::vector<std::pair<ShaderType, uint64_t>> ShaderPool::getHtmlUIVariants(){
         variants.push_back({ShaderType::HTMLUI_POST, getHtmlUIPostProperties((HtmlUIPostVariant)variant)});
     }
     return variants;
+}
+
+std::vector<std::pair<ShaderType, uint64_t>> ShaderPool::getVideoPlayerVariants(){
+    return {{ShaderType::HTMLUI_POST, getHtmlUIPostProperties(HtmlUIPostVariant::YUV)},
+            {ShaderType::HTMLUI_POST, getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH)}};
 }
 
 uint64_t ShaderPool::getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect){
@@ -1865,11 +1877,15 @@ uint64_t ShaderPool::getParticlesProperties(const ParticlesShaderFlags& flags){
     return prop;
 }
 
-uint64_t ShaderPool::getLinesProperties(bool vertexColorVec3, bool vertexColorVec4){
+uint64_t ShaderPool::getLinesProperties(bool vertexColorVec3, bool vertexColorVec4, bool ribbon, bool texture, bool pixelWidth){
     uint64_t prop = 0;
 
     prop |= vertexColorVec3	 ? shaderPropertyBit(0) : 0;
     prop |= vertexColorVec4  ? shaderPropertyBit(1) : 0;
+    // a hairline has no texture coordinates nor widths
+    prop |= ribbon                  ? shaderPropertyBit(3) : 0;
+    prop |= (ribbon && texture)     ? shaderPropertyBit(4) : 0;
+    prop |= (ribbon && pixelWidth)  ? shaderPropertyBit(5) : 0;
 
     return prop;
 }

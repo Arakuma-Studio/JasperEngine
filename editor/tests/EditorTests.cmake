@@ -31,6 +31,17 @@ set_target_properties(je_log_crash_helper PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "tests")
 
+# HttpTest's HTTP server on 127.0.0.1 (POSIX sockets)
+if(NOT WIN32)
+    list(APPEND EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/util/TestHttpServer.cpp)
+else()
+    list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/HttpTest\\.cpp$")
+endif()
+# VideoMp4Test: the Linux FFmpeg backend and the media cache against that server
+if(WIN32 OR APPLE)
+    list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/VideoMp4Test\\.cpp$")
+endif()
+
 # the child ProcessExecTest runs (argument echo, environment, timeouts, a process tree, floods)
 add_executable(je_vcs_process_helper ${CMAKE_CURRENT_LIST_DIR}/vcs/ProcessHelper.cpp)
 set_target_properties(je_vcs_process_helper PROPERTIES
@@ -45,7 +56,8 @@ endif()
 jasperengine_add_test_target(jasperengine-editor-tests
     EDITOR
     SOURCES ${EDITOR_TEST_SOURCES}
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR}/engine/tests/core
+    # (engine/physics: upstream's flat physics tests include "PhysicsTestScene.h" as they did)
+    INCLUDES ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR}/engine/tests/core ${CMAKE_CURRENT_LIST_DIR}/engine/physics
     ASSET_DIR ${CMAKE_CURRENT_LIST_DIR}/fixtures
     # tinyexr: FloatImageTest writes EXRs with custom channel names through it
     LINK tinyexr
@@ -53,6 +65,11 @@ jasperengine_add_test_target(jasperengine-editor-tests
         # the repository root (the data-safety corpus reads tools/fixtures)
         JASPER_TEST_REPO_DIR="${CMAKE_SOURCE_DIR}"
         JASPER_TEST_FIXTURES_DIR="${CMAKE_CURRENT_LIST_DIR}/fixtures"
+        # upstream's name of the same folder
+        JASPER_EDITOR_TEST_FIXTURES="${CMAKE_CURRENT_LIST_DIR}/fixtures"
+        # the video tests' clips (tools/media/make_test_clips.sh) and the HTML UI's WebM fixtures
+        JASPER_MEDIA_TEST_CLIPS="${CMAKE_SOURCE_DIR}/engine/tests/media/clips"
+        JASPER_HTMLUI_VIDEO_FIXTURES="${CMAKE_SOURCE_DIR}/engine/tests/htmlui/fixtures/video"
         # tests that run the editor binary (CLI exit codes)
         JASPER_TEST_EDITOR_BINARY="$<TARGET_FILE:jasperengine-editor>"
         JASPER_TEST_LOG_CRASH_HELPER="$<TARGET_FILE:je_log_crash_helper>"
@@ -60,6 +77,10 @@ jasperengine_add_test_target(jasperengine-editor-tests
         # whether this build compiles V-HACD (engine/CMakeLists.txt): the test of the build without
         # it is registered only there, not skipped here (S02 R11, no skipped editor test)
         JASPER_TEST_CONVEX_DECOMPOSITION=$<BOOL:${JASPERENGINE_CONVEX_DECOMPOSITION}>
+        # the engine's include directories and definitions, and the compiler (the flags file is
+        # generated below): LineRendererStreamTest compiles Factory's component code
+        JASPER_EDITOR_TEST_ENGINE_FLAGS="${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt"
+        JASPER_EDITOR_TEST_CXX="${CMAKE_CXX_COMPILER}"
 )
 add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper je_vcs_process_helper)
 
@@ -94,3 +115,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         FOLDER "tests")
     add_dependencies(jasperengine-editor-tests jasperengine-texsynth-oom)
 endif()
+
+# The engine's include directories and definitions, for tests that compile the C++ the editor
+# generates for exports (LineRendererStreamTest: Factory's component code against the engine
+# headers, with the compiler that builds the tests)
+file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
+"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,\n>\n")

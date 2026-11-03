@@ -88,3 +88,14 @@ bool Tween::isPingPong() const{
 
     return tween.pingPong;
 }
+void Tween::setUseUnscaledTime(bool useUnscaledTime){
+    TweenComponent& tween = getComponent<TweenComponent>();
+
+    tween.useUnscaledTime = useUnscaledTime;
+}
+
+bool Tween::isUseUnscaledTime() const{
+    TweenComponent& tween = getComponent<TweenComponent>();
+
+    return tween.useUnscaledTime;
+}

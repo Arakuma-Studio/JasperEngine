@@ -18,6 +18,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/ClipTangents.h"
 #include "animation/KeyframeSampling.h"
 
 #include <algorithm>
@@ -36,6 +37,8 @@ size_t clipcurves::componentCount(const ClipTrackData& track){
         case ClipChannel::Position:
         case ClipChannel::Rotation:
         case ClipChannel::Scale:
+        case ClipChannel::Humanoid:
+        case ClipChannel::HumanoidPosition:
             return 3;
         case ClipChannel::Morph: {
             size_t width = 0;
@@ -45,7 +48,8 @@ size_t clipcurves::componentCount(const ClipTrackData& track){
         case ClipChannel::Lattice:
             return track.points.size() * 3;
         case ClipChannel::Property:
-            break;
+            // a property's components (a swizzle track: its one); unknown properties none
+            return track.known ? track.width : 0;
     }
     return 0;
 }
@@ -57,6 +61,9 @@ std::string clipcurves::componentLabel(const ClipTrackData& track, size_t compon
         case ClipChannel::Rotation:
         case ClipChannel::Scale:
             return component < 3 ? axes[component] : std::string();
+        case ClipChannel::Humanoid:
+        case ClipChannel::HumanoidPosition:
+            return component < 3 ? angleComponentNames(track)[component] : std::string();
         case ClipChannel::Morph:
             if (component < morphNames.size() && !morphNames[component].empty()) return morphNames[component];
             return "Weight " + std::to_string(component);
@@ -65,8 +72,12 @@ std::string clipcurves::componentLabel(const ClipTrackData& track, size_t compon
             const int index = point < track.points.size() ? track.points[point] : (int)point;
             return "Point " + std::to_string(index) + " " + axes[component % 3];
         }
-        case ClipChannel::Property:
-            break;
+        case ClipChannel::Property: {
+            static const char* const colors[4] = {"r", "g", "b", "a"};
+            static const char* const vectors[4] = {"x", "y", "z", "w"};
+            if (track.width <= 1 || component >= 4) return track.property;
+            return (track.kind == PropertyKind::Color3 || track.kind == PropertyKind::Color4) ? colors[component] : vectors[component];
+        }
     }
     return std::string();
 }
@@ -84,13 +95,19 @@ Vector3 clipcurves::nearestEuler(const Vector3& euler, const Vector3& reference)
     return distance(other) + 1e-3f < distance(same) ? other : same;
 }
 
+// joint angles: the swing pair is continuous, the twist wraps at 180: whole turns only
+static Vector3 nearestAngles(const ClipTrackData& track, const Vector3& value, const Vector3& reference){
+    if (!isJointAngleTrack(track)) return clipcurves::nearestEuler(value, reference);
+    return Vector3(value.x, value.y, value.z + 360.0f * std::round((reference.z - value.z) / 360.0f));
+}
+
 std::vector<Vector3> clipcurves::keyEulers(const ClipTrackData& track){
     std::vector<Vector3> out;
-    if (track.channel != ClipChannel::Rotation) return out;
+    if (!isAngleTrack(track)) return out;
     out.reserve(track.keys.size());
     for (size_t k = 0; k < track.keys.size(); k++){
-        const Vector3 euler = eulerOf(track.keys[k].value);
-        out.push_back(k == 0 ? euler : nearestEuler(euler, out.back()));
+        const Vector3 euler = anglesOf(track, track.keys[k].value);
+        out.push_back(k == 0 ? euler : nearestAngles(track, euler, out.back()));
     }
     return out;
 }
@@ -99,7 +116,7 @@ bool clipcurves::sampleCurves(const AnimationClip::Track& runtime, const ClipTra
                               std::vector<std::vector<float>>& out){
     out.clear();
     std::vector<float> flat;
-    const std::vector<Vector3> eulers = track.channel == ClipChannel::Rotation ? keyEulers(track) : std::vector<Vector3>();
+    const std::vector<Vector3> eulers = isAngleTrack(track) ? keyEulers(track) : std::vector<Vector3>();
     if (!sampleCurvesFlat(runtime, track, eulers, times, flat)) return false;
     const size_t count = componentCount(track);
     out.reserve(times.size());
@@ -110,8 +127,8 @@ bool clipcurves::sampleCurves(const AnimationClip::Track& runtime, const ClipTra
 bool clipcurves::sampleCurvesFlat(const AnimationClip::Track& runtime, const ClipTrackData& track, const std::vector<Vector3>& eulers,
                                   const std::vector<float>& times, std::vector<float>& out){
     out.clear();
-    if (track.channel == ClipChannel::Property || track.keys.empty() || !runtime.isSampled()) return false;
-    const bool rotation = track.channel == ClipChannel::Rotation;
+    if (track.keys.empty() || !runtime.isSampled()) return false;
+    const bool rotation = isAngleTrack(track);
     if (rotation && eulers.size() != track.keys.size()) return false;
     const size_t count = componentCount(track);
     out.assign(times.size() * count, 0.0f);
@@ -130,11 +147,13 @@ bool clipcurves::sampleCurvesFlat(const AnimationClip::Track& runtime, const Cli
         switch (track.channel){
             case ClipChannel::Position:
             case ClipChannel::Scale:
+            case ClipChannel::HumanoidPosition:
                 row[0] = sample.vector.x;
                 row[1] = sample.vector.y;
                 row[2] = sample.vector.z;
                 break;
-            case ClipChannel::Rotation: {
+            case ClipChannel::Rotation:
+            case ClipChannel::Humanoid: {
                 while (nextKey < track.keys.size() && track.keys[nextKey].time <= time + kKeyEpsilon) nextKey++;
                 const long segment = (long)nextKey - 1;
                 const size_t keyIndex = (size_t)std::max(0L, segment);
@@ -145,7 +164,7 @@ bool clipcurves::sampleCurvesFlat(const AnimationClip::Track& runtime, const Cli
                 }else{
                     quaternionToXYZW(sample.rotation, xyzw.data());
                     const Vector3 reference = segment == previousSegment ? previous : eulers[keyIndex];
-                    euler = nearestEuler(eulerOf(xyzw), reference);
+                    euler = nearestAngles(track, anglesOf(track, xyzw), reference);
                 }
                 previousSegment = segment;
                 previous = euler;
@@ -155,6 +174,7 @@ bool clipcurves::sampleCurvesFlat(const AnimationClip::Track& runtime, const Cli
                 break;
             }
             case ClipChannel::Morph:
+            case ClipChannel::Property:
                 for (size_t c = 0; c < count && c < sample.weights.size(); c++) row[c] = sample.weights[c];
                 break;
             case ClipChannel::Lattice:
@@ -164,8 +184,6 @@ bool clipcurves::sampleCurvesFlat(const AnimationClip::Track& runtime, const Cli
                     row[p * 3 + 2] = sample.offsets[p].z;
                 }
                 break;
-            case ClipChannel::Property:
-                break;
         }
     }
     return true;
@@ -173,8 +191,8 @@ bool clipcurves::sampleCurvesFlat(const AnimationClip::Track& runtime, const Cli
 
 std::vector<float> clipcurves::keyValues(const ClipTrackData& track, size_t key, const std::vector<Vector3>& eulers){
     if (key >= track.keys.size()) return {};
-    if (track.channel == ClipChannel::Rotation){
-        const Vector3 euler = key < eulers.size() ? eulers[key] : eulerOf(track.keys[key].value);
+    if (isAngleTrack(track)){
+        const Vector3 euler = key < eulers.size() ? eulers[key] : anglesOf(track, track.keys[key].value);
         return {euler.x, euler.y, euler.z};
     }
     std::vector<float> values = track.keys[key].value;
@@ -214,8 +232,13 @@ namespace {
         return rowKey(track) + "#" + std::to_string(component);
     }
 
-    // x red, y green, z blue; blend shapes cycle through the Theme's accents
+    // x red, y green, z blue; blend shapes cycle through the Theme's accents; a property's
+    // r g b (x y z) the same and its a (w) light grey, one value the accent of its kind
     ImVec4 curveColor(const ClipTrackData& track, size_t component){
+        if (track.channel == ClipChannel::Property){
+            if (track.width <= 1) return track.discrete ? Theme::Colors::WarningText : Theme::Colors::ChildSceneText;
+            if (component == 3) return ImVec4(0.85f, 0.85f, 0.85f, 1.0f);
+        }
         if (track.channel == ClipChannel::Morph){
             const ImVec4 palette[] = {Theme::Colors::WarningText, Theme::Colors::ChildSceneText, Theme::Colors::SubSelectionText,
                                       Theme::Colors::PrefabText, Theme::Colors::PhysicsAccent, Theme::Colors::ErrorText,
@@ -337,10 +360,10 @@ void AnimationWindowClip::refreshCurveCache(float from, float to, float stepTime
         if (!contentSame){
             entry.contentHash = hash;
             entry.components = count;
-            entry.eulers = track.channel == ClipChannel::Rotation ? clipcurves::keyEulers(track) : std::vector<Vector3>();
+            entry.eulers = isAngleTrack(track) ? clipcurves::keyEulers(track) : std::vector<Vector3>();
             entry.keyValues.assign(track.keys.size() * count, 0.0f);
             for (size_t k = 0; k < track.keys.size(); k++){
-                if (track.channel == ClipChannel::Rotation){
+                if (isAngleTrack(track)){
                     entry.keyValues[k * count] = entry.eulers[k].x;
                     entry.keyValues[k * count + 1] = entry.eulers[k].y;
                     entry.keyValues[k * count + 2] = entry.eulers[k].z;
@@ -351,7 +374,7 @@ void AnimationWindowClip::refreshCurveCache(float from, float to, float stepTime
         }
         entry.times.clear();
         entry.values.clear();
-        const int index = clip ? clip->findTrack(track.path, track.channel) : -1;
+        const int index = clip ? builtTrack(*clip, track) : -1;
         if (!entry.anyVisible || index < 0 || track.keys.empty()) continue;
         // the grid, plus the keys' own times while keys are sparser than the grid (dense keys:
         // the 2 px grid already follows the curve)
@@ -383,7 +406,7 @@ void AnimationWindowClip::refreshCurveSelection(){
     curveSelectedKeys.clear();
     const ClipData& data = doc->data();
     for (const CurveKeyId& point : curveSelection){
-        const int track = data.findTrack(point.key.path, point.key.channel);
+        const int track = findTrackById(data, point.key.path, point.key.channel, point.key.property);
         if (track < 0) continue;
         const std::vector<ClipKey>& keys = data.tracks[(size_t)track].keys;
         auto it = std::lower_bound(keys.begin(), keys.end(), point.key.time - kKeyEpsilon,
@@ -465,7 +488,7 @@ void AnimationWindowClip::frameCurveValues(bool selectedOnly){
         std::vector<float> flat;
         for (size_t t = 0; t < data.tracks.size() && clip; t++){
             const ClipTrackData& track = data.tracks[t];
-            const int index = clip->findTrack(track.path, track.channel);
+            const int index = builtTrack(*clip, track);
             if (index < 0) continue;
             const size_t count = clipcurves::componentCount(track);
             std::vector<char> visible(count);
@@ -551,16 +574,18 @@ bool AnimationWindowClip::updateCurveDrag(float rawTimeDelta, float valueDelta, 
             const AnimationClipController::KeyRef& ref = curveDragRefs[i];
             if (curveDragComponents[i].empty() || ref.track >= base.tracks.size() || ref.key >= base.tracks[ref.track].keys.size()) continue;
             const ClipTrackData& track = base.tracks[ref.track];
+            // stepped properties move in time only (their values are bools, ints, frames)
+            if (track.channel == ClipChannel::Property && track.discrete) continue;
             AnimationClipController::KeyDragValue entry;
             entry.dragIndex = i;
-            if (track.channel == ClipChannel::Rotation){
+            if (isAngleTrack(track)){
                 Vector3 euler = curveDragEulers[i];
                 for (int c : curveDragComponents[i]){
                     if (c == 0) euler.x += value;
                     if (c == 1) euler.y += value;
                     if (c == 2) euler.z += value;
                 }
-                entry.value = xyzwOf(euler);
+                entry.value = xyzwOfAngles(track, euler);
             }else{
                 entry.value = track.keys[ref.key].value;
                 for (int c : curveDragComponents[i]){
@@ -631,7 +656,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
         if (ImGui::Selectable(row.leaf.c_str(), false)){
             // the property's keys (as a click on a dopesheet label), its curves framed
             std::vector<KeyId> ids;
-            for (const ClipKey& key : track.keys) ids.push_back({track.path, track.channel, key.time});
+            for (const ClipKey& key : track.keys) ids.push_back(keyIdOf(track, key.time));
             selectKeys(ids, io.KeyShift || io.KeyCtrl);
             frameCurveValues(true);
         }
@@ -707,7 +732,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
     for (size_t t = 0; t < data.tracks.size() && t < curveCache.tracks.size(); t++){
         if (!curveCache.tracks[t].anyVisible) continue;
         anyShown = true;
-        onlyRotations = onlyRotations && data.tracks[t].channel == ClipChannel::Rotation;
+        onlyRotations = onlyRotations && isAngleTrack(data.tracks[t]);
     }
     const float step = clipcurves::niceStep(curveMax - curveMin, graphH, 26.0f * m.s);
     for (float tick : clipcurves::ticks(curveMin, curveMax, step)){
@@ -766,13 +791,27 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
                     drawList->AddRectFilled(ImVec2(x - r, y - r), ImVec2(x + r, y + r), color(colour, readOnly ? 0.6f : 1.0f));
                 }
                 points.push_back({t, key, (int)k, track.keys[key].time, value});
-                // tangents of selected keys that carry them: the stored tangents (value units per
-                // second), dragged by their tips; a rotation's (read-only) from its sampled curve
-                if (!selected || !track.keys[key].hasTangents()) continue;
+                // tangents of selected keys: the stored tangents (value units per second), dragged by
+                // their tips on scalar curves and continuous properties (anim-properties: a key
+                // without tangents shows its linear slopes); a rotation's (read-only) from its sampled curve
+                const bool editableTangents = !readOnly && cliptangents::editable(track);
+                if (!selected || (!track.keys[key].hasTangents() && !editableTangents)) continue;
                 float inSlope = 0.0f, outSlope = 0.0f;
-                if (track.channel == ClipChannel::Rotation){
+                if (!track.keys[key].hasTangents()){
+                    const ClipKey& keyed = track.keys[key];
+                    if (key > 0 && k < keyed.value.size() && k < track.keys[key - 1].value.size()){
+                        const float dt = keyed.time - track.keys[key - 1].time;
+                        if (dt > 0.0f) inSlope = (keyed.value[k] - track.keys[key - 1].value[k]) / dt;
+                    }
+                    if (key + 1 < track.keys.size() && k < keyed.value.size() && k < track.keys[key + 1].value.size()){
+                        const float dt = track.keys[key + 1].time - keyed.time;
+                        if (dt > 0.0f) outSlope = (track.keys[key + 1].value[k] - keyed.value[k]) / dt;
+                    }
+                    if (key == 0) inSlope = outSlope;
+                    if (key + 1 >= track.keys.size()) outSlope = inSlope;
+                }else if (isAngleTrack(track)){
                     std::shared_ptr<const AnimationClip> clip = doc->clip();
-                    const int index = clip ? clip->findTrack(track.path, track.channel) : -1;
+                    const int index = clip ? builtTrack(*clip, track) : -1;
                     const float h = 0.25f / fps;
                     std::vector<float> around;
                     if (index < 0 || !clipcurves::sampleCurvesFlat(clip->getTracks()[(size_t)index], track, entry.eulers,
@@ -786,7 +825,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
                     outSlope = keyed.outTangent[k];
                 }
                 const float length = 28.0f * m.s;
-                const bool draggable = !readOnly && track.channel != ClipChannel::Rotation;
+                const bool draggable = editableTangents;
                 const bool broken = track.keys[key].tangentMode == ClipTangentMode::Broken;
                 auto handle = [&](float slope, float side){
                     const ImVec2 dir(side, -slope * pixelsPerValue / pixelsPerSecond * side);
@@ -825,7 +864,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
     }
     auto pointId = [&](const CurvePoint& point){
         const ClipTrackData& track = data.tracks[point.track];
-        return CurveKeyId{KeyId{track.path, track.channel, point.time}, point.component};
+        return CurveKeyId{keyIdOf(track, point.time), point.component};
     };
     // a tangent handle under the mouse (the handles win over the key points)
     int hoveredHandle = -1;
@@ -969,7 +1008,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
                         for (size_t k = 0; k < entry.components; k++){
                             if (!entry.visible[k]) continue;
                             const float y = yAt(entry.keyValues[key * entry.components + k]);
-                            if (y >= a.y && y <= b.y) found.push_back({KeyId{track.path, track.channel, it->time}, (int)k});
+                            if (y >= a.y && y <= b.y) found.push_back({keyIdOf(track, it->time), (int)k});
                         }
                     }
                 }
@@ -998,7 +1037,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
             for (size_t t = 0; t < data.tracks.size() && t < curveCache.tracks.size(); t++){
                 const ClipTrackData& track = data.tracks[t];
                 const CurveTrackCache& entry = curveCache.tracks[t];
-                const int index = clip->findTrack(track.path, track.channel);
+                const int index = builtTrack(*clip, track);
                 if (!entry.anyVisible || index < 0 || track.keys.size() < 2 || time < track.keys.front().time || time > track.keys.back().time) continue;
                 if (!clipcurves::sampleCurvesFlat(clip->getTracks()[(size_t)index], track, entry.eulers, {time}, sample)) continue;
                 bool near = false;
@@ -1009,7 +1048,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
                 const auto after = std::upper_bound(track.keys.begin(), track.keys.end(), time,
                                                     [](float value, const ClipKey& k){ return value < k.time; });
                 const size_t segmentKey = (size_t)std::max<long>(0, (long)(after - track.keys.begin()) - 1);
-                selectKeys({KeyId{track.path, track.channel, track.keys[segmentKey].time}}, false);
+                selectKeys({keyIdOf(track, track.keys[segmentKey].time)}, false);
                 contextRow = rowOfTrack(t);
                 break;
             }
@@ -1029,7 +1068,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
         ImGui::SetTooltip("%s %s\n%s\n%.4g%s", rows[(size_t)std::max(0, rowOfTrack(point.track))].leaf.c_str(),
                           clipcurves::componentLabel(track, (size_t)point.component, names).c_str(),
                           formatBoth(point.time, fps, showFrames).c_str(), point.value,
-                          track.channel == ClipChannel::Rotation ? " deg" : "");
+                          isAngleTrack(track) ? " deg" : "");
     }
     // the wheel zooms the values at the mouse (Ctrl: time, Shift: pan, as in the dopesheet); the
     // middle button pans time and values

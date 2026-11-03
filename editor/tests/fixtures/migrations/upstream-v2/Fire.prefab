@@ -1,0 +1,212 @@
+type: Prefab
+version: 3
+guid: 6d5bd58708e5bf416c0f9ab6e3ad77ce
+nextEntity: 1002
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: FirePrefab
+    components:
+      transform:
+        position: [0, 0, -2]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, -2]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, -2, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, -2, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, -0, 1, 2], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 48
+          size: 192
+          count: 4
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: position
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 0
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: texcoord1
+              dataType: float
+              bufferName: ""
+              elements: 2
+              offset: 12
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: normal
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 20
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: color
+              dataType: float
+              bufferName: ""
+              elements: 4
+              offset: 32
+              count: 4
+              normalized: true
+              perInstance: false
+          data: AAAAvwAAAL8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAAAAACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/
+          vertexSize: 48
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 12
+          count: 6
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 6
+              normalized: true
+              perInstance: false
+          data: AAABAAIAAAACAAMA
+        eBuffers: ~
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: Default-Particle
+              shader: library:unlit
+              shaderTextures:
+                u_baseTexture:
+                  textureType: 2D
+                  source: path
+                  path: textures/spark.png
+                  minFilter: linear
+                  magFilter: linear
+                  wrapU: repeat
+                  wrapV: repeat
+                  releaseDataAfterLoad: true
+              shaderFeatures: [PARTICLE_TEXTURE]
+              blendMode: ADDITIVE
+              cullMode: OFF
+              depthWrite: DISABLED
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 1310720
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        aabb:
+          min: [-0.5, -0.5, 0]
+          max: [0.5, 0.5, 0]
+        verticesAABB:
+          min: [-0.5, -0.5, 0]
+          max: [0.5, 0.5, 0]
+        worldAABB:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: false
+        receiveShadows: false
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      action:
+        state: Stopped
+        speed: 1
+        target: 1001
+        ownedTarget: false
+      particlesystem:
+        enabled: true
+        version: 2
+        main:
+          startLifetime: {mode: two_constants, min: 0.5, max: 1}
+          startSpeed: {mode: two_constants, min: 1, max: 2}
+          startSize: {mode: two_constants, min: 0.35, max: 0.5}
+          maxParticles: 200
+        emission:
+          rateOverTime: 60
+        shape:
+          radius: 0.25
+          angle: 8
+        colorOverLifetime:
+          enabled: true
+          color:
+            mode: gradient
+            gradient:
+              mode: blend
+              colors:
+                - [0, [1, 0.79311013, 0.13320851]]
+                - [0.4, [1, 0.17261061, 0.006309573]]
+                - [1, [0.099300094, 0.0038618722, 0.00044634088]]
+              alphas:
+                - [0, 1]
+                - [1, 0]
+        sizeOverLifetime:
+          enabled: true
+          size:
+            mode: curve
+            multiplier: 1
+            curve:
+              keys:
+                - [0, 1, -0.9, -0.9]
+                - [1, 0.1, -0.9, -0.9]
+      instancedmesh:
+        enabled: true
+        maxInstances: 1000
+        cullInstances: false
+        distanceFade: false
+        cullDistance: 0
+        fadeStart: 0
+        fadeEnd: 0
+        instancedBillboard: false
+        instancedCylindricalBillboard: false
+        instances: ~

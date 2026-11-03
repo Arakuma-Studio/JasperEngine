@@ -11,6 +11,7 @@
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
+#include "util/CanvasScaler.h"
 #include <string>
 #include <vector>
 
@@ -313,6 +314,9 @@ namespace jasperengine{
         // the shader's textures by uniform (its manifest's @texture, or any it declares when it
         // has no manifest); one it declares and has none of binds the manifest default (white)
         std::vector<std::pair<std::string, Texture>> textures;
+        // u_fs_postParams members that follow a global shader value (Shader.setGlobal*):
+        // member -> global name, over uniforms and the manifest default
+        ShaderGlobalBindings shaderGlobalBindings;
         // the pass's output resolution, a fraction of the chain's (0.1..1): the next pass (or a
         // copy to the destination, after the last) samples it bilinearly
         float scale = 1.0f;
@@ -397,6 +401,8 @@ namespace jasperengine{
         Vector3 gravity3D = Vector3(0.0f, -9.81f, 0.0f);
         // bodies drawn between their last two fixed steps (owned by PhysicsSystem as gravity)
         bool physicsInterpolation = true;
+        // Box2D sub-steps of each fixed step, 1..16 (more: stiffer joint chains and stacks)
+        int physics2DSubSteps = 4;
 
         // fixed game resolution: when enabled and this scene is the Engine main scene, the main
         // camera renders into an offscreen framebuffer of this size, upscaled to the view rect
@@ -405,6 +411,11 @@ namespace jasperengine{
         unsigned int fixedResolutionWidth = 640;
         unsigned int fixedResolutionHeight = 360;
         TextureFilter fixedResolutionFilter = TextureFilter::NEAREST;
+
+        // the UI's own space (Canvas Scaler): the project default (Engine::setDefaultCanvasScaler)
+        // unless this scene overrides it
+        bool canvasScalerUseProjectDefault = true;
+        CanvasScalerSettings canvasScaler;
 
         // scene-wide custom shaders, used when a component's customShader is empty
         // (project-relative base or "a.vert|b.frag"; empty = engine built-in)

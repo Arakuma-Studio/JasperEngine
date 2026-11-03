@@ -26,6 +26,7 @@
 
 #include <cstddef>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -66,6 +67,11 @@ namespace jasperengine::anim{
                                         PathResolution* info = nullptr);
     JASPERENGINE_API Entity resolvePath(EntityRegistry* registry, Entity root, const std::vector<PathSegment>& segments,
                                         PathResolution* info = nullptr);
+
+    // The names of the entities under `root` (root excluded): each name's entity, NULL_ENTITY
+    // when two share it. A humanoid clip's path track that does not resolve binds by its last
+    // segment's unique name here (anim-retarget 7.6: the player and the MCP report use it).
+    JASPERENGINE_API void uniqueNamesUnder(EntityRegistry* registry, Entity root, std::unordered_map<std::string, Entity>& out);
 
     // The path of `entity` relative to `root` ("" for the root itself); false when it is not the
     // root or under it, or a name on the way can't be addressed

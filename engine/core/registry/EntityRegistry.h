@@ -35,13 +35,17 @@
 #include "component/ReflectionProbeComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/TextEffectComponent.h"
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/Transform.h"
@@ -59,6 +63,7 @@
 #include "component/ForceFieldComponent.h"
 #include "component/PointsComponent.h"
 #include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/TextComponent.h"
 #include "component/UIComponent.h"
 #include "component/ButtonComponent.h"
@@ -66,6 +71,7 @@
 #include "component/ScrollbarComponent.h"
 #include "component/ProgressbarComponent.h"
 #include "component/InputFieldComponent.h"
+#include "component/OnScreenControlComponents.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/AnimationComponent.h"
@@ -96,8 +102,11 @@
 #include "component/SplineAnimateComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Joint3DComponent.h"
+#include "component/RagdollComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/PrefabComponent.h"
+#include "component/CameraShakerComponent.h"
+#include "component/CameraFollowComponent.h"
 
 namespace jasperengine {
 
@@ -164,6 +173,11 @@ namespace jasperengine {
         // true (logged, asserts in debug) while a parallel wave runs: systems record
         // structural changes into their command buffer instead
         bool structuralLocked(const char* operation) const;
+        // `root` and its descendants whose activeInHierarchy is the same as root's (each one's
+        // own flag and every parent's up to root are active), in pre-order
+        std::vector<Entity> collectActivationBranch(Entity root);
+        // addEntityChild without the activation check
+        void setEntityChild(Entity parent, Entity child, bool changeTransform);
 
     protected:
         virtual void onComponentAdded(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
@@ -173,11 +187,20 @@ namespace jasperengine {
         // destroyHierarchy once it is not deferred: the entity's Transform branch, children
         // first (Scene: ObjectManager, which stops the scripts too)
         virtual void destroyHierarchyNow(Entity entity);
+        // setEntityActive / addEntityChild: `changed` are the entities whose activeInHierarchy
+        // flipped (the moved or (de)activated one and the descendants that follow it), parents
+        // before children, all now `nowActive`. Only asked for when isActivationObserved().
+        virtual bool isActivationObserved() const { return false; }
+        virtual void onActiveInHierarchyChanged(const std::vector<Entity>& changed, bool nowActive) { (void)changed; (void)nowActive; }
 
     public:
         EntityRegistry();
         EntityRegistry(EntityPool defaultPool);
         virtual ~EntityRegistry();
+        // not copyable (EntityManager owns its signature pages; MSVC instantiates the copies
+        // of an exported class)
+        EntityRegistry(const EntityRegistry&) = delete;
+        EntityRegistry& operator=(const EntityRegistry&) = delete;
 
         // The Scene this registry is, if it is one
         virtual Scene* asScene() { return nullptr; }
@@ -285,6 +308,10 @@ namespace jasperengine {
         }
         size_t getEntityCount() const;
         size_t getSystemEntityCount() const;
+        // Every entity in hierarchy pre-order: the Transform hierarchy as the Hierarchy panel
+        // shows it (parents before children, siblings in order, roots in order), then the
+        // entities without a Transform by ascending id
+        std::vector<Entity> getHierarchyOrder() const;
 
         void setDefaultEntityPool(EntityPool pool);
         EntityPool getDefaultEntityPool() const;

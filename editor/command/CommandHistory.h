@@ -160,6 +160,16 @@ namespace jasperengine::editor{
         static void releaseNow(std::unique_ptr<Command> cmd, size_t bytes);
         static void releaseEntries(std::vector<UndoEntry>& entries);
 
+        // the last undo()/redo() a step refused: why ("" when the last call did not refuse, or
+        // the step gave no reason), and which step (kept after the next call, for the Edit menu)
+        std::string refusal;
+        std::string undoProblemText;
+        std::string refusedText;
+        unsigned long long refusedSerial = 0;
+        bool refusedUndo = false;
+        // a step's serial when it enters the list (Command::serial)
+        static void stamp(Command* cmd);
+
     public:
         // Called after any command apply/undo/redo with the scene id and affectsStructure().
         static std::function<void(size_t, bool)> onSceneModified;
@@ -249,13 +259,28 @@ namespace jasperengine::editor{
         bool insertCommand(Command* cmd);
 
         // Undo/redo one step. Undo with an interactive edit open cancels it instead. False when
-        // the history did not move, also when the command refused (Command::canUndo/canRedo).
+        // the history did not move, also when the command refused (Command::canUndo / canRedo:
+        // the position stays, lastRefusal() says why, the console too) or a redo's execute
+        // failed (Command::failure). Never moves on a refusal, so a loop
+        // "while (position() > mark && undo())" ends at a refused step. Each step runs in the
+        // write scope it was made in (Command::writeRoot).
         bool undo();
         bool redo();
         // Undo until `id` is the newest applied step (0: everything undoable), or redo until
         // `id` has been applied. False when the id is not here or a step was refused.
         bool undoTo(uint64_t id);
         bool redoTo(uint64_t id);
+        // Why the last undo() / redo() was refused by its step (Command::undoRefusal / redoRefusal);
+        // "" when that call was not refused or the step gave no reason (a child scene cycle)
+        const std::string& lastRefusal() const { return refusal; }
+        // The last undo() / redo() was taken but a file it had to put back or write could not be
+        // (Command::takeUndoProblem, or a write the write scope refused in it; also said in the
+        // console): why ("" when it went through)
+        const std::string& lastUndoProblem() const { return undoProblemText; }
+        // The step undo() / redo() would take now refused the last time it was tried: why (a
+        // generic text when it gave none), "" else
+        std::string undoRefusedLastTry() const;
+        std::string redoRefusedLastTry() const;
 
         bool canUndo() const;
         bool canRedo() const;
@@ -265,7 +290,7 @@ namespace jasperengine::editor{
         // Frees the redo tail (UndoTimeline: a step of the partner history ends it)
         void freeRedo();
         // Why the last push/undo/redo was refused (beforeMutation)
-        static const std::string& lastRefusal();
+        static const std::string& lastBusyRefusal();
 
         // The newest applied step undo would take (null when none: empty, or at the play floor)
         const UndoEntry* top() const;
@@ -313,6 +338,16 @@ namespace jasperengine::editor{
         // Commits/cancels the open interactive edit, if any
         void commitInteractive();
         bool cancelInteractive();
+        // The step undo() would revert / redo() would apply (nullptr when none): who made the
+        // newest step (the Sprite Normal Map window's undo routing compares its own)
+        const Command* undoCommand() const { return index > 0 && index <= list.size() ? list[index - 1].cmd.get() : nullptr; }
+        const Command* redoCommand() const { return index < list.size() ? list[index].cmd.get() : nullptr; }
+        // ... their serials (Command::serial; 0 when none): what to keep and compare, never the pointers
+        unsigned long long undoSerial() const { const Command* c = undoCommand(); return c ? c->serial() : 0; }
+        unsigned long long redoSerial() const { const Command* c = redoCommand(); return c ? c->serial() : 0; }
+        // upstream's name for freeRedo(): a call that rolled itself back with undo() leaves
+        // nothing to redo
+        void dropRedo() { freeRedo(); }
 
         void beginPlaySession();
         // rolledBack: the scene was restored to its pre-play state, so the play-time commands

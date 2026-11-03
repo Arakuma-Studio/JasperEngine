@@ -52,6 +52,8 @@ namespace {
         ShaderUniformValues shaderParams;
         std::vector<std::pair<std::string, Texture>> shaderTextures;
         std::vector<std::string> shaderFeatures;
+        // upstream's shader globals (before S11's lobes on SYNC#4)
+        ShaderGlobalBindings shaderGlobalBindings;
         MaterialBlendMode blendMode;
         MaterialCullMode cullMode;
         MaterialDepthWrite depthWrite;

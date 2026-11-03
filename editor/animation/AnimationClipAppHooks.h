@@ -64,6 +64,19 @@ namespace jasperengine::editor{
         // controller's update(dt, frame), so previews play and deferred stops finish whether
         // or not the Animation window is open (set by AnimationClipController)
         std::function<void(Project* project, double dt, int frame)> frame;
+
+        // ---- anim layers (Animator Controllers, spec 11.4); set by the Animator window ----
+        // opens Window > Animation > Animator on a .controller (project-relative): with
+        // `entity` != NULL_ENTITY of `sceneId`, bound to that GameObject's Animation Player (live
+        // view in play mode, previews on it). Called by the Inspector's Controller field "Open",
+        // the Project window's double-click on a .controller and MCP. Unset: no Animator window.
+        std::function<void(Project* project, const std::string& controller, uint32_t sceneId, Entity entity)> openAnimator;
+        // Assets > Create > Animator Controller / Avatar Mask (main menu and the Project window's
+        // Create menu): "New Animator Controller.controller" (a Base Layer, no states) / "New Avatar
+        // Mask.mask" (every part 1, default 1) in the Project window's current folder, one project
+        // undo step. Set by the Inspector task; unset: the items are hidden.
+        std::function<void(Project* project)> createControllerAsset;
+        std::function<void(Project* project)> createMaskAsset;
     };
 
     // the editor-wide hooks (set once at startup by the tasks that own them)

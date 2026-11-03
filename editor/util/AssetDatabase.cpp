@@ -11,6 +11,7 @@
 #include "asset/AssetTypes.h"
 #include "asset/ContentHash.h"
 #include "asset/ModelSubAssets.h"
+#include "util/SafeWrite.h"
 #include "util/SHA1.h"
 #include "util/Util.h"
 
@@ -279,13 +280,13 @@ namespace {
             return anim::replaceClipGuid(text, guid.str());
         }
         const std::string kind = anim::animatorAssetKind(text);
-        if (kind == "controller") return rewriteIdentity(anim::parseController(text), &anim::writeController, text, guid, formerGuids);
+        if (kind == "controller") return rewriteIdentity(anim::parseController(text), static_cast<std::string (*)(const anim::ControllerDef&)>(&anim::writeController), text, guid, formerGuids);
         if (kind == "mask") return rewriteIdentity(anim::parseMask(text), &anim::writeMask, text, guid, formerGuids);
         return rewriteIdentity(anim::parseMontage(text), &anim::writeMontage, text, guid, formerGuids);
     }
 
-    // the JSON asset parses as its own type; a broken or foreign file (a Unity YAML .anim, broken
-    // JSON) is left alone: its error must keep its line
+    // the JSON asset parses as its own type; a broken or foreign file (a Unity YAML .anim, .mask
+    // or .controller, broken JSON) is left alone: its error must keep its line
     bool parsesAsJsonAsset(const fs::path& path, const std::string& text) {
         if (editor::Util::isVertexAnimationFile(path.string())) {
             return vat::parseVat(text).ok();
@@ -1379,6 +1380,10 @@ void editor::AssetDatabase::writeCache(const CacheSnapshot& snapshot) {
     root["caseInsensitive"] = snapshot.caseInsensitive;
     root["assets"] = assets;
     std::string error;
+    // the cache lives in the editor's internal folder, which an MCP call's deny-by-default guard
+    // refuses otherwise (util/SafeWrite.h, EditorInternal; a token is per thread: named here)
+    safewrite::EditorInternal ownCache(snapshot.file.parent_path());
+    safewrite::EditorInternal ownLegacy(snapshot.legacyFile);
     if (!assetio::writeFile(snapshot.file, cacheText(root, "assets"), assetio::Durability::Cache, &error)) {
         Out::warning("Could not write the asset database cache: %s", error.c_str());
     }
@@ -1684,6 +1689,10 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
         auto owner = identified ? byGuid.find(updated.guid) : byGuid.end();
         const bool copiedClipGuid = isClipFile(relative) && owner != byGuid.end() && owner->second != relativeKeyOf(relative) &&
                                     byPath.count(owner->second) && fileExists(byPath.at(owner->second).path);
+        // (a walk older than the file's deletion: the next one finds it gone)
+        if (!identified && !fileExists(relative)) {
+            continue;
+        }
         if (!identified || copiedClipGuid) {
             // Written again without its identity (another tool, or the meta deleted): it is
             // still the same asset
@@ -1751,6 +1760,12 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
 
     std::vector<std::string> withoutIdentity;
     for (const std::string& relative : fresh) {
+        // the walk is older than this file's deletion (a later step took it back, with the folder
+        // made for it): no asset, and writing its identity would make the meta and the folder again
+        if (!fileExists(relative)) {
+            present.erase(relativeKeyOf(relative));
+            continue;
+        }
         dirty = true;
         const AssetType type = AssetTypes::find(relative, assetsDir)->type;
         Entry entry;
@@ -1977,6 +1992,11 @@ editor::AssetDatabase::Resolution editor::AssetDatabase::resolve(const Guid& gui
         atHint.by = ResolvedBy::LegacyPath;
     }
     return atHint;
+}
+
+editor::AssetDatabase::Resolution editor::AssetDatabase::resolveInAssetsDir(const std::string& hint) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    return hint.empty() || assetsDir.empty() ? Resolution() : lookupPath((assetsDir / FileUtils::pathFromUtf8(hint)).generic_string());
 }
 
 std::vector<editor::AssetDatabase::OrphanMeta> editor::AssetDatabase::getOrphanMetas() const {

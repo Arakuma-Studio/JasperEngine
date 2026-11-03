@@ -53,10 +53,14 @@ namespace jasperengine::anim{
         float retry = 0.0f;
         bool reported = false;
         bool bound = false;                 // bound to the current rig
-        RigClipBinding binding;
+        RigClipBinding binding;             // the tracks that play by path (all of a clip that is not retargeted)
         RigClipCursors cursors;
+        // the one retarget path (AnimatorRetarget.h): a humanoid clip, or a generic clip of another
+        // humanoid model (Retarget Auto), or a clip whose state asks for humanoid playback
         RetargetBinding retarget;
-        bool retargeted = false;
+        std::vector<KeyCursor> retargetCursors;     // per clip track
+        bool retargeted = false;            // plays through the humanoid path
+        bool humanoid = false;              // the controller asks for the humanoid path (a state's Retarget, Mirror, Foot IK)
         ClipRootMotion rootMotion;
         // root motion: the bone, its tracks, the fixed transform of its parent chain
         int rootBone = -1;
@@ -77,6 +81,7 @@ namespace jasperengine::anim{
         bool hasReference = false;
         AdditiveReference referenceKind = AdditiveReference::FirstFrame;
         float referenceTime = 0.0f;
+        uint8_t referenceFlags = 0;         // the Mirror (1) and Foot IK (2) it was sampled with
         Pose reference;
 
         float length() const { return clip ? clip->getLength() : 0.0f; }
@@ -88,6 +93,10 @@ namespace jasperengine::anim{
         double time = 0.0;                  // normalised, unbounded (loops count up)
         double previous = 0.0;              // the time before this update's advance
         bool entered = false;               // entered during this update (events at its start fire)
+        // entered through a transition (or as a default state) and its events from the start not
+        // fired yet: they fire, from `start`, once it leads its layer (or every clip fires)
+        bool startPending = false;
+        double start = 0.0;
         float length = 0.0f;                // seconds of one cycle at speed 1 (the motion's weighted length)
     };
 
@@ -98,7 +107,12 @@ namespace jasperengine::anim{
         float elapsed = 0.0f;
         float duration = 0.0f;
         bool snapshot = false;              // current is the frozen pose of an interrupted transition
+        // the state a 0 s transition left in this update: its clip events of the step still fire
+        // (the step's events first, then the state notes)
+        AnimatorStateRun instantSource;
         float weight = 1.0f;
+        float targetWeight = 1.0f;          // setLayerWeight with a fade: weight moves toward it
+        float weightFadeSpeed = 0.0f;       // per second (0: no fade)
         Pose output;                        // this update's layer pose (a delta for additive layers)
         Pose snapshotPose;
         bool hasOutput = false;
@@ -221,6 +235,11 @@ namespace jasperengine::anim{
 
         std::vector<float> parameters;
         std::vector<float> velocities;      // setFloat damping state
+        // setFloatTarget: per parameter the value damped toward every update (dampTimes 0: none)
+        std::vector<float> dampTargets;
+        std::vector<float> dampTimes;
+        // per parameter: a trigger a transition consumed this update (reset after every layer)
+        std::vector<uint8_t> consumedTriggers;
         std::vector<AnimatorLayerRun> layers;
         std::vector<AnimatorClipSlot> clips;            // controller slots, then montage clips
         size_t controllerClipCount = 0;
@@ -260,7 +279,8 @@ namespace jasperengine::anim{
         void applyOverrides(const std::vector<AnimatorClipOverride>& overrides);
         // every path the rig must hold for the loaded clips, masks and IK of `component`
         void rigRequests(const AnimatorComponent& component, std::vector<std::string>& paths,
-                         std::vector<std::pair<std::string, std::pair<ClipChannel, int>>>& channelPaths) const;
+                         std::vector<std::pair<std::string, std::pair<ClipChannel, int>>>& channelPaths,
+                         std::vector<RigPropertyRequest>* propertyPaths = nullptr) const;
         // builds the rig and binds every loaded clip, the masks and the IK constraints
         void bind(Scene* scene, Entity root, const AnimatorComponent& component,
                   const std::vector<std::shared_ptr<const AvatarMaskDef>>& masks);
@@ -274,6 +294,9 @@ namespace jasperengine::anim{
         int findParameter(const std::string& name) const;
         bool setFloat(const std::string& name, float value);
         bool setFloat(const std::string& name, float value, float dampTime, float deltaTime);
+        // a Float parameter SmoothDamps toward `value` once per update until another set
+        // (upstream's player setFloat(name, value, dampTime)); others are set at once
+        bool setFloatTarget(const std::string& name, float value, float dampTime);
         bool setInteger(const std::string& name, int value);
         bool setBool(const std::string& name, bool value);
         bool setTrigger(const std::string& name);
@@ -284,6 +307,11 @@ namespace jasperengine::anim{
         // a transition to the state (duration in source-state lengths, or seconds when fixed)
         bool crossFade(const std::string& state, float duration, bool fixed, int layer, float offset);
         void setLayerWeight(int layer, float weight);
+        // weight reached linearly over `fade` seconds (<= 0: at once)
+        void setLayerWeight(int layer, float weight, float fade);
+        // every layer back to its default state (transitions cancelled, montages stopped,
+        // parameters kept): Unity's Animator enabled again (upstream's player stop() and enable)
+        void restart();
         float getLayerWeight(int layer) const;
         int getLayerIndex(const std::string& name) const;
 
@@ -321,6 +349,9 @@ namespace jasperengine::anim{
             float normalizedTime = 0.0f;
             float length = 0.0f;
             bool loop = false;
+            float speed = 1.0f;             // the state's speed times its speed parameter
+            bool mirror = false;            // the state's humanoid playback flags (§12)
+            bool footIK = false;
         };
         StateInfo currentState(int layer) const;
         StateInfo nextState(int layer) const;
@@ -364,13 +395,21 @@ namespace jasperengine::anim{
         float stateSpeed(int state) const;
         float motionLength(const CompiledMotion& motion);
         bool stateLoops(int state, int clipSlot) const;
+        // a looping state plays the clip back and forth (forced ping_pong, or a ping-pong clip
+        // under inherit / loop)
+        bool statePingPong(int state, int clipSlot) const;
         void collectLayer(size_t layer, const AnimatorComponent& component);
-        void collectLeaves(const AnimatorStateRun& run, float weight, bool leaderOnly, float& leaderWeight, int& leaderIndex);
+        void collectLeaves(const AnimatorStateRun& run, bool next, float weight, bool leaderOnly, float& leaderWeight, int& leaderIndex);
         void advanceMontages(float dt, const AnimatorComponent& component);
         void evaluateLayer(size_t layer, const AnimatorComponent& component);
         void evaluateMotion(size_t layer, const AnimatorStateRun& run, Pose& out, const AnimatorComponent& component);
         void sampleSlot(size_t slot, float clipTime, Pose& out, bool additive, AdditiveReference reference, float referenceTime,
-                        const AnimatorComponent& component);
+                        const AnimatorComponent& component, bool mirror = false, bool footIK = false);
+        // the humanoid path of a retargeted slot at `clipTime` into `out` (holding the rest elsewhere)
+        void sampleHumanoid(AnimatorClipSlot& slot, float clipTime, Pose& out, bool mirror, bool footIK, KeyCursor* cursors) const;
+        // the clip slot plays through the humanoid path: its source (null: a humanoid clip), false when it plays by path
+        bool humanoidSource(const AnimatorClipSlot& slot, const AnimatorComponent& component,
+                            std::shared_ptr<const RetargetSource>& source, std::string* error) const;
         void removeRootMotion(const AnimatorClipSlot& slot, Pose& out) const;
         // P(t) with the baked components held at the start, h(t) the heading change since time 0
         void rootPoint(const AnimatorClipSlot& slot, float clipTime, Vector3& position, float& heading) const;
@@ -385,6 +424,8 @@ namespace jasperengine::anim{
             double from = 0.0, to = 0.0;    // unwrapped clip seconds
             bool loops = false, pingPong = false, includeStart = false;
             int state = -1;
+            bool next = false;              // a leaf of the layer's next state (else its current)
+            double pendingStart = -1.0;     // clip seconds of a start its events did not fire at yet (-1: none)
         };
         std::vector<LeafRun> leafRuns;
         std::vector<CrossedEvent> crossed;

@@ -6,6 +6,7 @@
 #include "reflect/legacy/LegacyCodecs.h"
 #include "util/LightPhotometry.h"
 
+#include "Stream.h"
 #include "StreamSchema.h"
 #include "pool/SoundPool.h"
 #include "util/YamlNumbers.h"
@@ -579,6 +580,15 @@ YAML::Node LegacyCodecs::encodeAudioSourceComponent(const AudioSourceComponent& 
     node["attenuationModel"] = audioSourceAttenuationToString(audio.attenuationModel);
     encodeFinite(node, "attenuationRolloffFactor", audio.attenuationRolloffFactor);
     encodeFinite(node, "dopplerFactor", audio.dopplerFactor);
+    // (upstream's audio-mixer codec since SYNC#4) written only when not their default: older files
+    // stay byte-identical
+    const AudioSourceComponent defaults;
+    if (!audio.outputGroup.empty()) node["outputGroup"] = audio.outputGroup;
+    if (!audio.outputGroupName.empty()) node["outputGroupName"] = audio.outputGroupName;
+    if (audio.loadType != defaults.loadType) node["loadType"] = SoundPool::loadTypeName(audio.loadType);
+    if (audio.priority != defaults.priority) node["priority"] = audio.priority;
+    if (audio.maxVoices != defaults.maxVoices) node["maxVoices"] = audio.maxVoices;
+    if (audio.ignoreListenerPause != defaults.ignoreListenerPause) node["ignoreListenerPause"] = audio.ignoreListenerPause;
 
     return node;
 }
@@ -608,6 +618,19 @@ AudioSourceComponent LegacyCodecs::decodeAudioSourceComponent(const YAML::Node& 
     if (node["attenuationModel"]) audio.attenuationModel = decodeEnum(node, "attenuationModel", StreamSchema::audioSourceAttenuation());
     if (node["attenuationRolloffFactor"]) audio.attenuationRolloffFactor = decodeFinite(node["attenuationRolloffFactor"], audio.attenuationRolloffFactor);
     if (node["dopplerFactor"]) audio.dopplerFactor = decodeFinite(node["dopplerFactor"], audio.dopplerFactor);
+    // (upstream's audio-mixer codec since SYNC#4) written only when not their default: a key that
+    // is not there IS the default, also over an existing component
+    const AudioSourceComponent defaults;
+    audio.outputGroup = node["outputGroup"] ? node["outputGroup"].as<std::string>() : defaults.outputGroup;
+    audio.outputGroupName = node["outputGroupName"] ? node["outputGroupName"].as<std::string>() : defaults.outputGroupName;
+    audio.loadType = defaults.loadType;
+    if (node["loadType"]) {
+        AudioLoadType loadType;
+        if (SoundPool::loadTypeFromName(node["loadType"].as<std::string>(), loadType)) audio.loadType = loadType;
+    }
+    audio.priority = node["priority"] ? std::clamp(YamlNumbers::as<int>(node["priority"]), 0, 256) : defaults.priority;
+    audio.maxVoices = node["maxVoices"] ? std::clamp(YamlNumbers::as<int>(node["maxVoices"]), 1, 64) : defaults.maxVoices;
+    audio.ignoreListenerPause = node["ignoreListenerPause"] ? YamlNumbers::as<bool>(node["ignoreListenerPause"]) : defaults.ignoreListenerPause;
 
     bool keepLoadedSample = oldAudio && oldFilename == audio.filename && oldAudio->sample && oldAudio->loaded;
     if (!keepLoadedSample && oldAudio && !oldFilename.empty()) {
@@ -940,6 +963,17 @@ YAML::Node LegacyCodecs::encodeTextComponent(const TextComponent& text) {
     node["fixedHeight"] = text.fixedHeight;
     node["pivotBaseline"] = text.pivotBaseline;
     node["pivotCentered"] = text.pivotCentered;
+    // (upstream's ui-scaling-text codec since SYNC#4) outline, shadow and visible characters only
+    // when set: texts from before them stay byte-identical
+    const TextComponent d;
+    if (text.outlineWidth != d.outlineWidth) node["outlineWidth"] = text.outlineWidth;
+    if (text.outlineColor != d.outlineColor) node["outlineColor"] = encodeVector4(text.outlineColor);
+    if (text.shadowEnabled != d.shadowEnabled) node["shadowEnabled"] = text.shadowEnabled;
+    if (text.shadowColor != d.shadowColor) node["shadowColor"] = encodeVector4(text.shadowColor);
+    if (text.shadowOffset != d.shadowOffset) node["shadowOffset"] = encodeVector2(text.shadowOffset);
+    if (text.shadowSoftness != d.shadowSoftness) node["shadowSoftness"] = text.shadowSoftness;
+    if (text.shadowDilate != d.shadowDilate) node["shadowDilate"] = text.shadowDilate;
+    if (text.visibleCharacters != d.visibleCharacters) node["visibleCharacters"] = text.visibleCharacters;
 
     return node;
 }
@@ -973,6 +1007,16 @@ TextComponent LegacyCodecs::decodeTextComponent(const YAML::Node& node, const Te
     if (node["fixedHeight"]) text.fixedHeight = YamlNumbers::as<bool>(node["fixedHeight"]);
     if (node["pivotBaseline"]) text.pivotBaseline = YamlNumbers::as<bool>(node["pivotBaseline"]);
     if (node["pivotCentered"]) text.pivotCentered = YamlNumbers::as<bool>(node["pivotCentered"]);
+    // (upstream's ui-scaling-text codec since SYNC#4) absent = the default, also over an old text
+    const TextComponent defaults;
+    text.outlineWidth = node["outlineWidth"] ? std::max(decodeFinite(node["outlineWidth"], 0.0f), 0.0f) : defaults.outlineWidth;
+    text.outlineColor = node["outlineColor"] ? decodeVector4(node["outlineColor"]) : defaults.outlineColor;
+    text.shadowEnabled = node["shadowEnabled"] ? YamlNumbers::as<bool>(node["shadowEnabled"]) : defaults.shadowEnabled;
+    text.shadowColor = node["shadowColor"] ? decodeVector4(node["shadowColor"]) : defaults.shadowColor;
+    text.shadowOffset = node["shadowOffset"] ? decodeVector2(node["shadowOffset"]) : defaults.shadowOffset;
+    text.shadowSoftness = node["shadowSoftness"] ? std::max(decodeFinite(node["shadowSoftness"], 0.0f), 0.0f) : defaults.shadowSoftness;
+    text.shadowDilate = node["shadowDilate"] ? std::max(decodeFinite(node["shadowDilate"], 0.0f), 0.0f) : defaults.shadowDilate;
+    text.visibleCharacters = node["visibleCharacters"] ? std::max(YamlNumbers::as<int>(node["visibleCharacters"]), -1) : defaults.visibleCharacters;
 
     return text;
 }
@@ -1233,6 +1277,8 @@ YAML::Node LegacyCodecs::encodeTweenComponent(const TweenComponent& timed) {
     node["loop"] = timed.loop;
     node["pingPong"] = timed.pingPong;
     node["function"] = encodeEase(timed.function);
+    // (upstream's codec since SYNC#4) written when set: older files stay byte-identical
+    if (timed.useUnscaledTime) node["useUnscaledTime"] = true;
 
     return node;
 }
@@ -1251,6 +1297,9 @@ TweenComponent LegacyCodecs::decodeTweenComponent(const YAML::Node& node, const 
     if (node["loop"]) timed.loop = YamlNumbers::as<bool>(node["loop"]);
     if (node["pingPong"]) timed.pingPong = YamlNumbers::as<bool>(node["pingPong"]);
     if (node["function"]) timed.function = decodeEase(node["function"], oldTimed ? &oldTimed->function : nullptr);
+    // written only when set, so absent reads as false (the tables' OmitIfDefault rule; upstream's
+    // decode kept the base's value)
+    timed.useUnscaledTime = node["useUnscaledTime"] ? YamlNumbers::as<bool>(node["useUnscaledTime"]) : false;
 
     return timed;
 }
@@ -1358,6 +1407,8 @@ YAML::Node LegacyCodecs::encodeAlphaTweenComponent(const AlphaTweenComponent& al
 
     node["endAlpha"] = alphaTween.endAlpha;
     node["startAlpha"] = alphaTween.startAlpha;
+    // (upstream's codec since SYNC#4) written when not AUTO: older files stay byte-identical
+    if (alphaTween.alphaTarget != AlphaTweenTarget::AUTO) node["alphaTarget"] = editor::Stream::alphaTweenTargetToString(alphaTween.alphaTarget);
 
     return node;
 }
@@ -1371,6 +1422,9 @@ AlphaTweenComponent LegacyCodecs::decodeAlphaTweenComponent(const YAML::Node& no
 
     if (node["endAlpha"]) alphaTween.endAlpha = YamlNumbers::as<float>(node["endAlpha"]);
     if (node["startAlpha"]) alphaTween.startAlpha = YamlNumbers::as<float>(node["startAlpha"]);
+    // written only away from AUTO, so absent reads as AUTO (the tables' OmitIfDefault rule)
+    alphaTween.alphaTarget = node["alphaTarget"] ? editor::Stream::stringToAlphaTweenTarget(node["alphaTarget"].as<std::string>())
+                                                 : AlphaTweenTarget::AUTO;
 
     return alphaTween;
 }

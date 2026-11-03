@@ -106,6 +106,12 @@ namespace jasperengine::editor::curveops {
     // the pasted keys' indices (a key landing on an existing key's time replaces it)
     std::vector<int> pasteKeys(Curve& curve, const std::vector<CurveKey>& keys, float time, const CurveRange* range);
 
+    // the view zoomed around the pixel (x, y), which stays over the same point: `timeFactor` and
+    // `valueFactor` scale the spans (below 1 closer, 1 that axis unchanged)
+    View zoom(const View& view, float x, float y, float timeFactor, float valueFactor);
+    // the view dragged by (dx, dy) pixels: the graph follows the mouse
+    View pan(const View& view, float dx, float dy);
+
     // A view showing the keys (the selected ones, or all when none is) with a margin of
     // `margin` of the size on each side, and at least `minSpan` in each axis
     View frame(const std::vector<const Curve*>& curves, const std::vector<KeyRef>& selection, const View& pixels, float margin,

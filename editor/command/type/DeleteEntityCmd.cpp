@@ -10,6 +10,7 @@
 #include "Out.h"
 #include "util/CameraTextureLink.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "util/ProjectUtils.h"
 #include "util/BackgroundRelease.h"
 #include "util/EntityClipboard.h"
@@ -605,7 +606,8 @@ bool editor::DeleteEntityCmd::execute(){
     recordTransformOrder();
 
     Scene* scene = sceneProject->scene;
-    // Only a deleted camera or fluid changes what texture links resolve to
+    // Only a deleted link source (a camera, a fluid, a Video Player) changes what texture links
+    // resolve to
     std::vector<Entity> linkSources;
     auto cameraArray = scene->getComponentArray<CameraComponent>();
     for (size_t i = 0; i < cameraArray->size(); i++) {
@@ -615,6 +617,12 @@ bool editor::DeleteEntityCmd::execute(){
         auto fluidArray = scene->getComponentArray<FluidSimulationComponent>();
         for (size_t i = 0; i < fluidArray->size(); i++) {
             linkSources.push_back(fluidArray->getEntity(i));
+        }
+    }
+    if (scene->isComponentRegistered<VideoPlayerComponent>()) {
+        auto videoArray = scene->getComponentArray<VideoPlayerComponent>();
+        for (size_t i = 0; i < videoArray->size(); i++) {
+            linkSources.push_back(videoArray->getEntity(i));
         }
     }
 

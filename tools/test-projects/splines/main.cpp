@@ -19,7 +19,7 @@
 using namespace jasperengine;
 
 Scene scene;
-Camera camera(&scene);
+Camera sceneCamera(&scene);
 Light sun(&scene);
 GameObject road(&scene);
 GameObject cart(&scene);
@@ -104,12 +104,12 @@ JASPERENGINE_INIT void init(){
     animate.setMethod(SplineAnimateMethod::Speed);
     animate.setSpeed(20.0f);
 
-    camera.setType(CameraType::CAMERA_PERSPECTIVE);
+    sceneCamera.setType(CameraType::CAMERA_PERSPECTIVE);
     // looking down at the knot Lua moves (to z = 25): the canvas centre is the road there
-    camera.setPosition(0.0f, 60.0f, 85.0f);
-    camera.setTarget(0.0f, 0.0f, 25.0f);
-    camera.setFarClip(2000.0f);
-    camera.activate();
+    sceneCamera.setPosition(0.0f, 60.0f, 85.0f);
+    sceneCamera.setTarget(0.0f, 0.0f, 25.0f);
+    sceneCamera.setFarClip(2000.0f);
+    sceneCamera.activate();
 
     Engine::onPostUpdate = watchRebuild;
     Engine::setScene(&scene);

@@ -5,6 +5,8 @@
 #define LuaBridgeAddon_h
 
 #include "Scene.h"
+#include "util/CanvasScaler.h"
+#include "util/TextEffects.h"
 #include "Input.h"
 #include "input/InputActions.h"
 #include "component/CharacterCollision.h"
@@ -26,6 +28,10 @@
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
 #include "render/shadow/ShadowTiers.h"
+#include "debug/DebugOverlay.h"
+#include "Log.h"
+#include "component/LineRendererComponent.h"
+#include "component/VideoPlayerComponent.h"
 
 using namespace jasperengine;
 
@@ -38,7 +44,8 @@ namespace luabridge
     {
         static auto push(lua_State* L, T value) -> std::enable_if_t<std::is_enum_v<T>, luabridge::Result>
         {
-            lua_pushinteger(L, static_cast<std::size_t>(value));
+            // signed: SleepTimeout's values are negative
+            lua_pushinteger(L, static_cast<lua_Integer>(value));
             return {};
         }
 
@@ -124,6 +131,14 @@ namespace luabridge
     template<> struct Stack<ResourceLoadState> : EnumWrapper<ResourceLoadState>{};
     template<> struct Stack<LightState> : EnumWrapper<LightState>{};
     template<> struct Stack<UIEventState> : EnumWrapper<UIEventState>{};
+    // platform services (System, Screen, Input.deviceOrientation)
+    template<> struct Stack<SystemLanguage> : EnumWrapper<SystemLanguage>{};
+    template<> struct Stack<ScreenOrientation> : EnumWrapper<ScreenOrientation>{};
+    template<> struct Stack<DeviceOrientation> : EnumWrapper<DeviceOrientation>{};
+    template<> struct Stack<DeviceType> : EnumWrapper<DeviceType>{};
+    template<> struct Stack<NetworkReachability> : EnumWrapper<NetworkReachability>{};
+    template<> struct Stack<HapticFeedback> : EnumWrapper<HapticFeedback>{};
+    template<> struct Stack<SleepTimeout> : EnumWrapper<SleepTimeout>{};
 
     template<> struct Stack<EntityPool> : EnumWrapper<EntityPool>{};
 
@@ -141,6 +156,7 @@ namespace luabridge
     template<> struct Stack<AtmosphereQuality> : EnumWrapper<AtmosphereQuality>{};
     template<> struct Stack<AtmosphereQualityOverride> : EnumWrapper<AtmosphereQualityOverride>{};
     template<> struct Stack<CameraType> : EnumWrapper<CameraType>{};
+    template<> struct Stack<PlayMode> : EnumWrapper<PlayMode>{};
     template<> struct Stack<FrustumPlane> : EnumWrapper<FrustumPlane>{};
     template<> struct Stack<LightType> : EnumWrapper<LightType>{};
     template<> struct Stack<LightShading> : EnumWrapper<LightShading>{};
@@ -161,6 +177,7 @@ namespace luabridge
     template<> struct Stack<LutInputEncoding> : EnumWrapper<LutInputEncoding>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
+    template<> struct Stack<AudioLoadType> : EnumWrapper<AudioLoadType>{};
 
     template<> struct Stack<EaseType> : EnumWrapper<EaseType>{};
     template<> struct Stack<ActionState> : EnumWrapper<ActionState>{};
@@ -169,6 +186,15 @@ namespace luabridge
 
     template<> struct Stack<AnchorPreset> : EnumWrapper<AnchorPreset>{};
     template<> struct Stack<LayoutGroupType> : EnumWrapper<LayoutGroupType>{};
+    // Canvas Groups (ui canvas group spec 7.6)
+    template<> struct Stack<CanvasGroupRenderMode> : EnumWrapper<CanvasGroupRenderMode>{};
+    template<> struct Stack<AlphaTweenTarget> : EnumWrapper<AlphaTweenTarget>{};
+    // ui-scaling-text: the Canvas Scaler and Text Effect enums
+    template<> struct Stack<UIScaleMode> : EnumWrapper<UIScaleMode>{};
+    template<> struct Stack<ScreenMatchMode> : EnumWrapper<ScreenMatchMode>{};
+    template<> struct Stack<PhysicalUnit> : EnumWrapper<PhysicalUnit>{};
+    template<> struct Stack<TextEffectType> : EnumWrapper<TextEffectType>{};
+    template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
@@ -178,8 +204,19 @@ namespace luabridge
     template<> struct Stack<Collider3DType> : EnumWrapper<Collider3DType>{};
     template<> struct Stack<BodyType> : EnumWrapper<BodyType>{};
     template<> struct Stack<Joint2DType> : EnumWrapper<Joint2DType>{};
+    template<> struct Stack<JointLimitState2D> : EnumWrapper<JointLimitState2D>{};
+    template<> struct Stack<CollisionDetectionMode2D> : EnumWrapper<CollisionDetectionMode2D>{};
+    template<> struct Stack<RigidbodySleepMode2D> : EnumWrapper<RigidbodySleepMode2D>{};
+    template<> struct Stack<JointAnchorSpace> : EnumWrapper<JointAnchorSpace>{};
+    template<> struct Stack<JointBreakAction> : EnumWrapper<JointBreakAction>{};
+    template<> struct Stack<PhysicsMaterialCombine> : EnumWrapper<PhysicsMaterialCombine>{};
     template<> struct Stack<UIDocumentRenderMode> : EnumWrapper<UIDocumentRenderMode>{};
     template<> struct Stack<FluidOutput> : EnumWrapper<FluidOutput>{};
+    template<> struct Stack<VideoPlayerSource> : EnumWrapper<VideoPlayerSource>{};
+    template<> struct Stack<VideoTimeUpdateMode> : EnumWrapper<VideoTimeUpdateMode>{};
+    template<> struct Stack<VideoRenderMode> : EnumWrapper<VideoRenderMode>{};
+    template<> struct Stack<VideoAspectRatio> : EnumWrapper<VideoAspectRatio>{};
+    template<> struct Stack<VideoAudioOutputMode> : EnumWrapper<VideoAudioOutputMode>{};
     // bound enums that had none: LuaBridge pushed them as unregistered userdata (an error
     // reading probe.mode) and took no integer for them
     template<> struct Stack<ReflectionProbeMode> : EnumWrapper<ReflectionProbeMode>{};
@@ -200,6 +237,11 @@ namespace luabridge
     template<> struct Stack<MaterialStencilCompare> : EnumWrapper<MaterialStencilCompare>{};
     template<> struct Stack<MaterialStencilOp> : EnumWrapper<MaterialStencilOp>{};
     template<> struct Stack<MaterialColorWriteBits> : EnumWrapper<MaterialColorWriteBits>{};
+    // Line and Trail Renderers (lines and trails spec 6.6)
+    template<> struct Stack<LineRendererMode> : EnumWrapper<LineRendererMode>{};
+    template<> struct Stack<LineWidthUnit> : EnumWrapper<LineWidthUnit>{};
+    template<> struct Stack<LineAlignment> : EnumWrapper<LineAlignment>{};
+    template<> struct Stack<LineTextureMode> : EnumWrapper<LineTextureMode>{};
 
     template <>
     struct Stack <Touch>
@@ -233,12 +275,32 @@ namespace luabridge
             lua_pushboolean(L, touch.began);
             lua_setfield(L, -2, "began");
 
+            // Unity's names (TouchPhase.Began ... are the same phase values)
+            lua_pushinteger(L, touch.fingerId);
+            lua_setfield(L, -2, "fingerId");
+
+            if (!luabridge::push(L, touch.deltaPosition))
+                return makeErrorCode(ErrorCode::LuaStackOverflow);
+            lua_setfield(L, -2, "deltaPosition");
+
+            lua_pushnumber(L, touch.deltaTime);
+            lua_setfield(L, -2, "deltaTime");
+
+            lua_pushinteger(L, touch.tapCount);
+            lua_setfield(L, -2, "tapCount");
+
             return {};
         }
 
         static TypeResult<Touch> get(lua_State* L, int index)
         {
+            index = lua_absindex(L, index);
             lua_getfield(L, index, "pointer");
+            // a table with Unity's fingerId only
+            if (lua_type(L, -1) != LUA_TNUMBER){
+                lua_pop(L, 1);
+                lua_getfield(L, index, "fingerId");
+            }
             if (lua_type(L, -1) != LUA_TNUMBER)
                 return makeErrorCode(ErrorCode::InvalidTypeCast);
             if (! is_integral_representable_by<int>(L, -1))
@@ -267,7 +329,19 @@ namespace luabridge
                 touch.time = (float)lua_tonumber(L, -1);
             lua_getfield(L, index, "began");
             touch.began = lua_toboolean(L, -1) != 0;
-            lua_pop(L, 7);
+            touch.fingerId = pointer;
+            lua_getfield(L, index, "deltaPosition");
+            if (auto delta = luabridge::get<Vector2>(L, -1))
+                touch.deltaPosition = *delta;
+            else
+                touch.deltaPosition = touch.delta;
+            lua_getfield(L, index, "deltaTime");
+            if (lua_type(L, -1) == LUA_TNUMBER)
+                touch.deltaTime = (float)lua_tonumber(L, -1);
+            lua_getfield(L, index, "tapCount");
+            if (lua_type(L, -1) == LUA_TNUMBER)
+                touch.tapCount = (int)lua_tointeger(L, -1);
+            lua_pop(L, 10);
             return touch;
         }
 
@@ -275,18 +349,24 @@ namespace luabridge
         {
             if (lua_type (L, index) != LUA_TTABLE)
                 return false;
-            if (lua_getfield(L, index, "pointer") != LUA_TNUMBER)
-                return false;
-            if (!is_integral_representable_by<int>(L, -1))
-                return false;
-            if (lua_getfield(L, index, "position") != LUA_TUSERDATA)
-                return false;
-            if (!Stack<Vector2>::isInstance(L, -1))
-                return false;
-
-            return true;
+            index = lua_absindex(L, index);
+            const int top = lua_gettop(L);
+            // a pointer (S22) or a fingerId (Unity), and a position
+            bool ok = lua_getfield(L, index, "pointer") == LUA_TNUMBER;
+            if (!ok){
+                lua_pop(L, 1);
+                ok = lua_getfield(L, index, "fingerId") == LUA_TNUMBER;
+            }
+            ok = ok && is_integral_representable_by<int>(L, -1);
+            ok = ok && lua_getfield(L, index, "position") == LUA_TUSERDATA && Stack<Vector2>::isInstance(L, -1);
+            lua_settop(L, top);
+            return ok;
         }
     };
+
+    // feature debug-overlay: LogLevel.INFO .. ERROR, DebugOverlay.STATS_*
+    template<> struct Stack<LogLevel> : EnumWrapper<LogLevel>{};
+    template<> struct Stack<DebugOverlaySettings::Stats> : EnumWrapper<DebugOverlaySettings::Stats>{};
 
     // Entity type is not necessary here because it already exists Stack<unsigned int>
 

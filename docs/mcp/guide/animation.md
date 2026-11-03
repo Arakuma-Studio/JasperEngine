@@ -160,6 +160,7 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
 | `rotation` | `[x, y, z, w]`, `{"euler": [x, y, z]}` degrees or `{"quat": [...]}` | written as quaternions; with both `euler` and `quat` (a key read from a result) `euler` wins; `relative`: multiplies the rest rotation; a turn over 180 degrees between two keys needs middle keys |
 | `morph` | `[w0, w1, ...]` one weight per morph target (at most 8) | shorter arrays mean 0 for the rest |
 | `lattice` | `points` (below) | the path is the cage (the lattice GameObject), not the mesh |
+| `property` | `true`/`false`, a number, `[x, y(, z, w)]`, colours `[r, g, b(, a)]` sRGB or `"#RRGGBB[AA]"` | with `component` and `property`: see Property tracks below |
 
 - `ease` is the easing of the segment that starts at the key: `linear` (default), `step`, or
   `<quad|cubic|quart|quint|sine|expo|circ|back|elastic|bounce>_<in|out|in_out>` (`quad_out`).
@@ -172,11 +173,13 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
 - Per track: `mode: "replace"` (default: the track's keys become these) or `"merge"` (keys at
   the same time within 1 ms are replaced, others added); `loop: true` repeats the track's own
   keys inside a longer clip; `keys: []` with mode replace removes the track.
-- A track is identified by path + channel: giving the same pair edits that track. Its keys are
-  `{path, target, channel, keys, mode, loop, relative}`; other keys are refused.
+- A track is identified by path + channel (property tracks: + component and property): giving
+  the same edits that track. Its keys are `{path, target, channel, keys, mode, loop, relative}`
+  (property tracks add `component`, `property`); other keys are refused.
 - Results return keys as `{time, value | points, ease}` (`ease` only when not linear, `in`/`out`
-  for tangent keys of imported model clips), rotations as `{quat, euler}`; `max_keys` caps the
-  keys listed per track (`key_count` is the real count).
+  for tangent keys, with `tangent_mode` when the curves view made them: `auto`, `free`, `flat`,
+  `broken`, `linear`), rotations as `{quat, euler}`; `max_keys` caps the keys listed per track
+  (`key_count` is the real count).
 - Tangents: a key you send with `in`/`out` (both, the value's width) keeps them, and a key sent
   back unchanged (same time and value, linear) keeps the tangents it had, in `replace` and
   `merge`; `merge` leaves the keys it does not touch as they are. A key you change without
@@ -184,6 +187,52 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
   warning says so). In a rotation track with tangents, such a key keeps the quaternion sign of
   the key it replaces (inserted: of the previous key), so `{"euler": ...}` values don't flip the
   curve. Lattice keys have no tangents.
+
+## Property tracks
+
+`{path, channel: "property", component, property, keys}` animates a component value (Unity's
+`m_IsActive`, `m_Enabled`, `m_Color`, material and MonoBehaviour field curves). `component` is the
+Catalog key (as `set_properties`) or the Inspector name (`"Image"` -> `ui`), `gameobject` or
+`script:<Class>`; `property` the Catalog name, optionally with `.r .g .b .a` / `.x .y .z .w` (one
+component: `color.a`). An unknown name is refused with a did-you-mean and the component's list.
+List what a GameObject has with `get_animation {root, list_properties: "Panel/Stats"}`
+(`[{component, property, kind, label, value}]`).
+
+| component | properties |
+|---|---|
+| `gameobject` | `active` (bool) |
+| components with the checkbox | `enabled` (bool) |
+| `ui` (Image, Text, Button graphic) | `color` (sRGB) |
+| `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `disabled` |
+| `canvasgroup` | `alpha` (0-1), `interactable`, `blocksRaycasts`, `ignoreParentGroups` |
+| `recttransform` | `positionOffset` (anchored position), `width`, `height`, `pivot`, `anchorPointLeft/Top/Right/Bottom`, `anchorOffsetLeft/Top/Right/Bottom` |
+| `mesh` | `submeshes[N].material.baseColorFactor` (a sprite's colour: N = 0), `.emissiveFactor`, `.metallicFactor`, `.roughnessFactor`, `.alphaCutoff`, `submeshes[N].textureRect`, `submeshes[N].material.shaderParams.<member>` |
+| `sprite` | `frame` (index, stepped: Unity's sprite swap) |
+| `light` | `color`, `intensity`, `range`, `innerConeCos`, `outerConeCos` (keys: the full cone angle in degrees, Unity's Spot Angle; not a cosine, not the half angle) |
+| `light2d` | `color`, `intensity`, `range`, `falloff`, `height` |
+| `camera` | `yfov`, `near`, `far`, `left`, `right`, `bottom`, `top` |
+| `audiosource` | `volume`, `speed` (pitch), `pan` |
+| `fog` | `color`, `density`, `linearStart`, `linearEnd` |
+| `skybox` / `progressbar` | `color` / `value` |
+| `ui`, `linerenderer`, `points`, `skybox` | `shaderUniforms.<member>` |
+| `script:<Class>` | its declared bool/int/float/vector/color `properties`, `enabled` |
+
+- Keys are in the Inspector's units: sRGB colours, full cone angles in degrees. Bools, ints and frames step (an
+  ease is ignored with a warning); the rest interpolate. Results and `times` samples return the
+  same units (bools as JSON bools).
+- `active` changes apply after the other values, parents first; events run after the values (a
+  handler at 0.5 sees the GameObject turned on at 0.5). A clip that turns off its own root stops
+  its player until something turns it on.
+- A Button overwrites `ui.color` from its state colours: animate `button.colorNormal`.
+- Bindings report `missing_component` (no such component, submesh, shader member or script field
+  on the GameObject) and `unknown_property`. `preview_animation` lists `properties` (the first
+  16 previewed values; `properties_total` counts them all); `get_runtime_entity` shows them in play.
+- Unity ports: `m_IsActive` -> `gameobject.active`; Image `m_Color` / TMP `m_fontColor` ->
+  `ui.color`; CanvasGroup `m_Alpha` -> `canvasgroup.alpha`; a sprite swap -> `sprite.frame` keys.
+  The UI's layout space is y-down (Unity's is y-up): `m_AnchoredPosition.y` v -> `positionOffset.y`
+  -v; `m_Pivot.y` v -> `pivot.y` 1 - v; `m_AnchorMin.y` v -> `anchorPointBottom` 1 - v and
+  `m_AnchorMax.y` v -> `anchorPointTop` 1 - v; `m_OffsetMin.y` / `m_OffsetMax.y` v ->
+  `anchorOffsetBottom` / `anchorOffsetTop` -v (x values port as they are).
 
 ## Events and Lua scripts
 
@@ -262,6 +311,69 @@ Playback (Unity legacy semantics), from Lua (`GameObject(...):getAnimationPlayer
   (default: the default clip), `action` play / pause / seek / stop, `wait_ms` lets it play. The
   preview loops the clip whatever its wrap; Play mode follows the wrap.
 
+## Layers and masks
+
+A player has layers (Unity's animation layers); layer 0 is the base. `set_properties
+{animationplayer: {layers: [{name: "Base Layer"}, {name: "Holding", weight: 0, blend: "override",
+mask: "assets/anim/arm.mask"}], "clips[1].layer": 1}}`. `layers[i].weight|blend|mask|name` set one
+field (the base layer's weight and blend are refused: always 1, override; names are unique; a mask
+must exist and parse). Each clip entry plays on `clips[i].layer` (default 0).
+- Override replaces what the layers below produce, as much as `weight * mask`; Additive adds the
+  clip's change from its `additive_reference` time (default its first frame). A layer without a
+  mask animates only the channels its clips key: the rest passes through from below.
+- Lua: `player:setLayerWeight("Holding", w[, fade])`, `getLayerWeight`, `setLayerMask`,
+  `setLayerBlendMode`, `stopLayer`, `play(name, fade, PlayMode.STOP_ALL)`; `play` / `crossFade` /
+  `queue` act on the target's layer only. Events fire only on layers with weight > 0.
+
+An Avatar Mask is a `.mask` JSON file (version 2, the Animator's: `jasper://docs/animator`, "Masks
+and montages"): make it with `edit_avatar_mask` or `write_file` (it refuses unreadable text with
+`line:col`, Unity YAML too, and returns the lenient reader's warnings):
+
+```json
+{"format": "jasperengine.mask", "version": 2, "default": 0,
+ "body_parts": {"right_arm": 1, "right_hand": 1, "right_fingers": 1},
+ "paths": [{"path": "Granjero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/Can", "weight": 1, "children": true}]}
+```
+
+- `default`: the weight of what no rule covers (1 if absent: an empty mask passes all).
+- `paths[]`: clip-grammar paths from the player's GameObject; the entry of a bone, else its
+  nearest ancestor's with `children: true`, wins.
+- `body_parts`: `root`, `body`, `head`, `left_arm` / `right_arm` (shoulder to forearm),
+  `left_hand` / `right_hand`, `left_fingers` / `right_fingers`, `left_leg` / `right_leg` (0..1;
+  unset parts take `default`); used when the GameObject has a humanoid rig (Mixamo, VRM...
+  names), checked after the paths. `root_hierarchy: true` puts the GameObject and what is above
+  the hips in the `root` part.
+- Upstream's version 1 masks (`humanoid`, `transforms`) still load, converted (its arm also
+  weighs the hand; its transforms' `children` default true); `read_as: "upstream_v1"` says so and
+  the next edit saves version 2.
+- Check it: `get_animation {mask, root}` lists `coverage: [{path, weight, rule: path |
+  body_part:<part> | default}]` for the entities the root's player binds (200 at most,
+  `coverage_total`), `humanoid_rig` false when the body parts can't apply, and `users`.
+  `get_animation {entity}` has `players[0].layers` (`live_weight` and `queue` in play) and
+  `mask_coverage: [{layer, covered, total, warnings}]`.
+- Preview: `preview_animation {animation, state: "Hold", over: "Walk"}` shows a layer's state over a
+  base state with its mask, as in the game. Verify poses numerically in play with
+  `get_runtime_entity` on the bones (the right forearm holds, the left one walks).
+
+## Animator Controllers
+
+A `.controller` (Unity's Animator Controller) plays on an **Animator** component, not on the
+Animation Player: `jasper://docs/animator` (build it with `edit_animator_controller`, assign it
+with `add_component {component: "animator", values: {animator: {controller}}}`, read it with
+`get_animation {controller}` or `get_animator`). `edit_animator_controller {path, create: true,
+from_player: <entity>}` makes one state per clip entry of that player (its layers too) and, on a
+GameObject without an Animator, adds one playing it and disables the player: one scene step.
+
+Scenes and prefabs saved with upstream's `animationplayer.controller` load with an Animator
+playing that controller and the player disabled (scene version 6, prefab version 7). A disabled
+player beside an Animator hands over to it, so scripts written for upstream keep working:
+`getAnimationPlayer():setFloat('Speed', 2)`, `play`, `crossFade`, `getCurrentStateName(layer)`,
+`getCurrentStateInfo(layer)` (a `ControllerStateInfo`), `isInTransition`, `playInLayer`,
+`crossFadeInLayer`, `onStateEnter(layer, name)` / `onStateExit(layer, name)` all reach the Animator;
+`GameObject:getAnimator()` returns the Animator, which answers the same names. A type mismatch
+(`setBool` on a float) warns once and converts. Upstream's version 1 `.controller` files (flat
+`states` / `transitions`, `"from": "any"`) load converted; the next edit saves version 2.
+
 ## edit_animation: clip mode and scene mode
 
 `clip` selects the mode. Each mode refuses the other's arguments with a fix-it message:
@@ -334,18 +446,77 @@ changed it (else the file stays and the console says so).
   `.anim` shows its settings, tracks, events, warnings and users; `move_asset` keeps the players
   pointing at a moved clip (GUID), `delete_asset` leaves them a Missing reference (undo relinks).
 
+## Humanoid clips and retargeting
+
+A generic clip plays absolute bone rotations: on another rig (other bone names, rest pose or
+proportions) it looks wrong (`rest_mismatch`). A **humanoid clip** plays on any humanoid: per slot
+it stores the joint rotation from the rig's neutral pose (the pose system's DOFs), plus the body
+offset and foot goals in human-scale units, and the player realises them on its own rig (hips
+height and stride scale, feet planted with Foot IK). Nothing is retargeted unless one of these is
+set:
+
+- the source model's Animation Type is Humanoid: `edit_pose_animation {ops: [{op: "set_humanoid",
+  model: "assets/models/hero.gltf", animation_type: "humanoid"}]}` (no `path`: an Avatar-only edit,
+  one project step). Every `hero.gltf#Clip` then plays retargeted;
+- a player entry's `retarget`: `set_properties {entity: "Robot", values: {animationplayer:
+  {"clips[0].retarget": true}}}` plays that clip retargeted from its source model (a model clip's
+  model, an `.anim`'s `source.path` or `preview.model`; without one the state fails with "the clip
+  names no source model"), read through the source's rig as it plays: the Animator's path, which
+  retargets another humanoid's clip by itself (its `retarget` auto) and has the same `mirror`,
+  `foot_ik` and `retarget` per state (jasper://docs/animator);
+- a converted file: `edit_animation {clip: "assets/anim/wave_h.anim", create: {from:
+  "assets/anim/wave.anim", humanoid: {model?: "assets/models/hero.gltf"}}}` (the rig it was made
+  on; default its model, source or preview model). The result's `humanoid` lists mapped and
+  unmapped slots, fingers and dropped bones.
+
+`clips[i].mirror` (left/right swapped) and `clips[i].footIK` (legs reach the foot goals) apply to
+humanoid clips (a body slot the clip lacks is neutral; a finger, eye or jaw it lacks is left to
+other clips and layers: a one-hand pose leaves the other hand, mirrored it poses that hand instead); Lua `state.mirror` / `state.footIK` override them at runtime (`state:resetMirror()`
+/ `resetFootIK()` go back). The target rig is the
+first model on or under the player root whose bones map as a humanoid (`get_asset_info` on a
+model: its `avatar` with animation_type, humanoid, mapped, missing, extra_mapped, twist and
+human_scale).
+
+Verify numerically: `get_animation {clip, root: "Robot", times: [0.5]}` on a humanoid clip (a clip
+of an Animation Type: Humanoid model, or one the root's entry retargets) adds `retarget_report
+{target {model, human_scale}, source, scale_ratio, mirror, foot_ik, entry (Mirror and Foot IK of
+the root's first entry playing the clip, its index), folded, missing_on_target,
+unmapped_source_bones}` and `realised: [{time, bones: [{bone, entity,
+path, local_rotation {quat, euler}, angles}], hips_local_position}]`: compare `angles` with the
+source's, or `local_rotation` with `get_runtime_entity` in play. `folded` lists slots the target
+lacks whose rotation moved to the next slot ("chest folded into spine"); a slot the clip lacks
+stays neutral.
+
+Humanoid tracks in edit_animation (no `path`):
+
+```json
+{"channel": "humanoid", "bone": "left_upper_arm", "keys": [
+  {"time": 0, "value": {"angles": [12, 5, 0]}}, {"time": 1, "value": {"quat": [0.26, 0, 0, 0.97]}}]}
+{"channel": "humanoid_position", "bone": "hips", "keys": [{"time": 0, "value": [0, -0.02, 0.15]}]}
+```
+
+`bone` is a slot (`hips` ... `right_toes`), a finger (`left_index_proximal`), `left_eye`,
+`right_eye` or `jaw`; `humanoid_position` takes `hips`, `left_foot`, `right_foot`. `angles` are
+the slot's DOFs in degrees (jasper://docs/pose-animation), stored as the quaternion: `[a, b, c]` in
+the slot's DOF order or `{dof: degrees}` by name (`{"bend": 30}`, the others 0). Results list
+humanoid keys as `{quat, angles}`, and that form (with `in` / `out` tangents) goes back in as it
+is. A wrong bone gets a did-you-mean. Fix a bad mapping with
+`set_humanoid` (`bones`, `extra_bones` for fingers, eyes and jaw, `twist` (slot: degrees) to turn
+a slot's neutral pose about its direction); twists change the model's pose animations too.
+
 ## Scene mode: entity Animations and tweens
 
 Without `clip`, edit_animation edits an Animation GameObject (`animation`, or `target` to create
 one): `tracks` as above but with `target` (a GameObject; default `target`) instead of `path` and
 an optional `start_time`; `tweens: [{type, from, to, duration, ease, loop, ping_pong, ...}]`:
-`type` position, rotation, scale, color or alpha; `from` defaults to the target's current value;
+`type` position, rotation, scale, color or alpha; `duration` > 0; `from` defaults to the target's current value;
 `ping_pong` goes there and back in twice the duration; a rotation tween with `spin: true` turns
 `from` by `angle` degrees (default 360) around `axis` (default `[0, 1, 0]`) instead of reaching
 `to` (for turns over 180 degrees, instead of middle keys); a track's `loop` starts it over after
 its last key; a `relative` track there offsets from the target's pose when it starts (an
-anchored UI element moves by its layout offset). `add_actions` nests existing actions;
-`set_frames` / `remove_actions` use the indices before the call; `loop`, `duration` (-1: until
+anchored UI element moves by its layout offset). `add_actions` nests existing actions (`duration`
+0: the action's own); `set_frames` (`duration` 0: automatic) / `remove_actions` use the indices
+before the call; `loop`, `duration` (-1: until
 the actions end), `autoplay`, `speed` set the Animation. One scene undo step per call.
 
 ## Common mistakes
@@ -364,6 +535,10 @@ the actions end), `autoplay`, `speed` set the Animation. One scene undo step per
 - Events on a script of a child: handlers run on the scripts of the player's own GameObject.
 - `onEvent = function(name, args)`: the callback gets one `event` (`event.functionName`,
   `event.args`).
+- A layer at weight 0 shows nothing (and fires no events): raise it with `setLayerWeight` or
+  `layers[i].weight`; a layer whose mask is missing or broken contributes nothing (the Console says why).
+- Editing the `clips` of a disabled player beside an Animator: it hands over, the Animator's
+  controller owns the states; edit it with `edit_animator_controller`.
 - Forgetting `preview_animation stop`: the scene keeps showing the previewed pose until then
   (saves and Play restore it). `set_properties` during the preview writes the scene value (kept
   after the preview, also when equal to the previewed one).

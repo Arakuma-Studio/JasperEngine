@@ -44,8 +44,9 @@ namespace {
         Vector4 pivot;
         Vector4 screenSize;
         Vector4 cameraVelocity;
+        Vector4 tiling;
     };
-    static_assert(sizeof(vs_particles_params_t) == 64 + 6 * 16, "vs_particles_params_t must match u_vs_particlesParams");
+    static_assert(sizeof(vs_particles_params_t) == 64 + 7 * 16, "vs_particles_params_t must match u_vs_particlesParams");
 
     struct fs_particles_params_t {
         Vector4 blend;
@@ -600,7 +601,6 @@ bool RenderSystem::particleBoundsVisible(const ParticleSystemState& state, Camer
 }
 
 void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType){
-    (void)transform;
     if (!particles.state || !particles.state->effect)
         return;
     ParticleSystemState& state = *particles.state;
@@ -635,6 +635,22 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
                       worldToSim[0][2] * forward.x + worldToSim[1][2] * forward.y + worldToSim[2][2] * forward.z);
     if (forward.length() > 0.0f) forward.normalize();
     view.forward[0] = forward.x; view.forward[1] = forward.y; view.forward[2] = forward.z;
+    if (rp.mesh && rp.meshAlignment != MeshAlignment::Simulation && rp.meshAlignment != MeshAlignment::Velocity){
+        // the simulation space's rotation in the world: the emitter's (Local), or none (World)
+        const Quaternion simRotation = prog.space == SimulationSpace::Local ? transform.worldRotation : Quaternion();
+        const Quaternion toSim = simRotation.inverse();
+        const Vector3 up = toSim * (camTransform.worldRotation * Vector3(0.0f, 1.0f, 0.0f));
+        view.up[0] = up.x; view.up[1] = up.y; view.up[2] = up.z;
+        Quaternion align;
+        switch (rp.meshAlignment){
+            case MeshAlignment::View: align = toSim * camTransform.worldRotation; break;
+            case MeshAlignment::World: align = toSim; break;
+            case MeshAlignment::Local: align = toSim * transform.worldRotation; break;
+            default: break;
+        }
+        align.normalize();
+        view.alignQuat[0] = align.x; view.alignQuat[1] = align.y; view.alignQuat[2] = align.z; view.alignQuat[3] = align.w;
+    }
     view.sort = rp.sort != SortMode::None && (rp.blend == ParticleBlend::Alpha || rp.blend == ParticleBlend::Premultiplied);
     if (d.lod.enabled && d.lod.maxDistance > 0.0f){
         const Vector3 center((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
@@ -649,13 +665,14 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
     vs.modelMatrix = simToWorld;
     const float sheetKind = rp.sheet == SheetKind::Sprites ? 2.0f : (rp.sheet == SheetKind::Grid ? 1.0f : 0.0f);
     vs.mode = Vector4((float)(int)r.renderMode, rp.verticalEmitter ? 1.0f : 0.0f, (float)std::max<uint32_t>(rp.frameCount, 1u), sheetKind);
-    vs.sheet = Vector4((float)std::max<uint32_t>(rp.tilesX, 1u), (float)std::max<uint32_t>(rp.tilesY, 1u), rp.alignToVelocity ? 1.0f : 0.0f,
+    vs.sheet = Vector4((float)std::max<uint32_t>(rp.tilesX, 1u), (float)std::max<uint32_t>(rp.tilesY, 1u), rp.meshAlignment == MeshAlignment::Velocity ? 1.0f : 0.0f,
                        prog.trails.textureMode == TrailTextureMode::Tile ? kTrailTileRange : 1.0f);
     vs.stretch = Vector4(rp.cameraScale, rp.speedScale, rp.lengthScale, rp.freezeInView ? 1.0f : 0.0f);
     const bool perspective = camera.type == CameraType::CAMERA_PERSPECTIVE;
     const float viewHeight = perspective ? 2.0f * std::tan(camera.yfov * 0.5f) : std::fabs(camera.topClip - camera.bottomClip);
     vs.screenSize = Vector4(rp.minScreenSize, rp.maxScreenSize, perspective ? 1.0f : 0.0f, viewHeight);
     vs.cameraVelocity = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    vs.tiling = r.textureTiling;
     vs.pivot = Vector4(rp.pivot[0], rp.pivot[1], rp.pivot[2], 0.0f);
     auto vsLights = [&](size_t offset){
         // the point and spot lights nearest the system, in range

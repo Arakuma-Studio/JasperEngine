@@ -199,6 +199,13 @@ namespace {
                     linear(v.color, g.c0);
                     linear(v.colorMax, g.c1);
                     break;
+                case GradientValueMode::RandomColor:
+                    // Unity's Random Color: the gradient read at a random point per particle
+                    g.driver = CurveDriver::Random;
+                    g.scale = 1.0f;
+                    g.offset = 0.0f;
+                    g.wrap = CurveWrap::Clamp;
+                    [[fallthrough]];
                 case GradientValueMode::Gradient:
                 case GradientValueMode::TwoGradients: {
                     const bool two = v.mode == GradientValueMode::TwoGradients;
@@ -365,6 +372,9 @@ namespace {
         // a start rotation over the emitter time (or a parent's) cannot be recomputed from the spawn index
         if (!s.rotation && !s.quat && d.main.startRotation.usesCurve() && d.main.startRotation.driver != CurveDriver::Random)
             s.startRotation = true;
+        // nor a billboard's roll aligned to its start direction (Shape's Align to Direction)
+        if (!s.rotation && !s.quat && on(d.shape.present, d.shape.enabled) && d.shape.alignToDirection)
+            s.startRotation = true;
         return s;
     }
 
@@ -382,6 +392,12 @@ namespace {
         p.tanAngle = std::tan(std::min(s.angle, 89.9f) * kDegToRad);
         p.length = s.length;
         p.arc = std::clamp(s.arc, 0.0f, 360.0f) * kDegToRad;
+        p.arcDegrees = std::clamp(s.arc, 0.0f, 360.0f);
+        p.arcMode = s.arcMode;
+        p.arcSpread = std::clamp(s.arcSpread, 0.0f, 1.0f);
+        p.radiusMode = s.radiusMode;
+        p.radiusSpread = std::clamp(s.radiusSpread, 0.0f, 1.0f);
+        p.alignToDirection = s.alignToDirection ? 1 : 0;
         p.donutRadius = s.donutRadius;
         p.randomizeDirection = s.randomizeDirection;
         p.spherizeDirection = s.spherizeDirection;
@@ -633,7 +649,32 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
     prog.looping = d.looping;
     prog.prewarm = d.looping && d.prewarm;
     prog.prewarmSync = prog.prewarm && d.prewarmSync;
-    prog.startDelay = d.startDelay;
+    prog.startDelay = cx.curve(d.startDelay, ModuleId::Main, 72);
+    prog.useUnscaledTime = d.useUnscaledTime;
+    prog.stopAction = d.stopAction;
+    prog.emitterVelocityMode = d.emitterVelocityMode;
+    prog.gravitySource = d.main.gravitySource;
+    {
+        const ShapeModule& sh = d.shape;
+        const bool shapeOn = on(sh.present, sh.enabled);
+        auto moving = [](ShapeMultiMode m){ return m == ShapeMultiMode::Loop || m == ShapeMultiMode::PingPong; };
+        prog.shapePhases = shapeOn && (moving(sh.arcMode) || moving(sh.radiusMode));
+        if (prog.shapePhases){
+            // over the emitter time, one pick per play (a range: by the seed)
+            MinMaxCurve arcSpeed = sh.arcSpeed, radiusSpeed = sh.radiusSpeed;
+            if (arcSpeed.driver != CurveDriver::Random) arcSpeed.driver = CurveDriver::EmitterTime;
+            if (radiusSpeed.driver != CurveDriver::Random) radiusSpeed.driver = CurveDriver::EmitterTime;
+            prog.arcSpeed = moving(sh.arcMode) ? cx.curve(arcSpeed, ModuleId::Shape, 20, 360.0f) : CurveParam();
+            prog.radiusSpeed = moving(sh.radiusMode) ? cx.curve(radiusSpeed, ModuleId::Shape, 21) : CurveParam();
+        }
+        const NoiseModule& n = d.noise;
+        prog.noiseScroll = on(n.present, n.enabled) && !n.scrollSpeed.isConstant();
+        if (prog.noiseScroll){
+            MinMaxCurve scroll = n.scrollSpeed;
+            if (scroll.driver != CurveDriver::Random) scroll.driver = CurveDriver::EmitterTime;
+            prog.noiseScrollSpeed = cx.curve(scroll, ModuleId::Noise, 10);
+        }
+    }
     prog.space = d.simulationSpace;
     prog.tickRate = d.tickRate;
     prog.interpolate = d.interpolate && d.tickRate > 0;
@@ -675,6 +716,18 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
     if (worldCollision) need({ChPlaneNX, ChPlaneNY, ChPlaneNZ, ChPlaneD, ChPlaneTick});
     const bool trailsOn = on(d.trails.present, d.trails.enabled) && d.trails.mode == TrailMode::PerParticle;
     if (trailsOn) need({ChTrailSlot});
+    {
+        // the renderer draws along the velocity: the animated part is kept for it (the total
+        // velocity, Unity's)
+        const RendererModule& rm = d.renderer;
+        const VelocityOverLifetimeModule& v = d.velocityOverLifetime;
+        const bool animated = noiseOn || (on(v.present, v.enabled) &&
+            !(v.x.isZero() && v.y.isZero() && v.z.isZero() && v.orbitalX.isZero() && v.orbitalY.isZero() &&
+              v.orbitalZ.isZero() && v.radial.isZero()));
+        const bool alongVelocity = rm.renderMode == RenderMode::StretchedBillboard ||
+            (rm.renderMode == RenderMode::Mesh && rm.meshAlignment == MeshAlignment::Velocity);
+        if (animated && alongVelocity) need({ChAnimVelX, ChAnimVelY, ChAnimVelZ});
+    }
     prog.inheritsRotation = env.inheritsRotation;
 
     // ---- emission
@@ -689,11 +742,19 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             MinMaxCurve distance = d.emission.rateOverDistance;
             if (distance.driver != CurveDriver::Random) distance.driver = CurveDriver::EmitterTime;
             e.rateOverDistance = cx.curve(distance, ModuleId::Emission, 2);
-            for (const Burst& b : d.emission.bursts){
+            for (size_t bi = 0; bi < d.emission.bursts.size(); bi++){
+                const Burst& b = d.emission.bursts[bi];
                 BurstParam bp;
                 bp.time = b.time;
                 bp.countMin = b.count.mode == CurveMode::TwoConstants ? std::min(b.count.constant, b.count.constantMax) : b.count.constant;
                 bp.countMax = b.count.mode == CurveMode::TwoConstants ? std::max(b.count.constant, b.count.constantMax) : b.count.constant;
+                if (b.count.usesCurve()){
+                    // read at the burst's time over the emitter's duration (Unity)
+                    MinMaxCurve count = b.count;
+                    if (count.driver != CurveDriver::Random) count.driver = CurveDriver::EmitterTime;
+                    bp.countCurve = 1;
+                    bp.count = cx.curve(count, ModuleId::Emission, 110u + (uint32_t)bi);
+                }
                 bp.cycles = b.cycles;
                 bp.interval = std::max(b.interval, 1.0e-4f);
                 bp.probability = b.probability;
@@ -717,7 +778,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             vel.velMin[0] = d.startVelocity.min.x; vel.velMin[1] = d.startVelocity.min.y; vel.velMin[2] = d.startVelocity.min.z;
             vel.velMax[0] = d.startVelocity.max.x; vel.velMax[1] = d.startVelocity.max.y; vel.velMax[2] = d.startVelocity.max.z;
         }
-        if (!d.main.inheritVelocity.isZero()){
+        if (!d.main.inheritVelocity.isZero() && d.main.inheritVelocityMode == InheritVelocityMode::Initial){
             vel.hasInherit = 1;
             vel.inherit = cx.curve(d.main.inheritVelocity, ModuleId::Main, 2, 1.0f, true);
         }
@@ -737,6 +798,8 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         st.rotationX = cx.curve(d.main.startRotationX, ModuleId::Main, 8, kDegToRad, true);
         st.rotationY = cx.curve(d.main.startRotationY, ModuleId::Main, 9, kDegToRad, true);
         st.flipRotation = d.main.flipRotation;
+        // Shape's Align to Direction: the start rotation turned to the shape's direction
+        st.alignToDirection = (on(d.shape.present, d.shape.enabled) && d.shape.alignToDirection) ? 1 : 0;
         st.color = cx.gradient(d.main.startColor, ModuleId::Main, 10, true);
         st.storeRotation = (stored.startRotation || env.inheritsRotation) ? 1 : 0;
         st.storeQuat = stored.quat ? 1 : 0;
@@ -837,7 +900,11 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             fp.fy = cx.curve(f.y, ModuleId::ForceOverLifetime, 2);
             fp.fz = cx.curve(f.z, ModuleId::ForceOverLifetime, 3);
         }
-        if (fp.gravity || fp.force || fp.ownAcceleration)
+        if (!d.main.inheritVelocity.isZero() && d.main.inheritVelocityMode == InheritVelocityMode::Current){
+            fp.inheritCurrent = 1;
+            fp.inherit = cx.curve(d.main.inheritVelocity, ModuleId::Main, 2);
+        }
+        if (fp.gravity || fp.force || fp.ownAcceleration || fp.inheritCurrent)
             prog.updateOps.push_back({OpCode::Forces, cx.pool.add(fp)});
     }
 
@@ -865,7 +932,13 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             ap.ox = cx.curve(v.orbitalX, ModuleId::VelocityOverLifetime, 4, kDegToRad);
             ap.oy = cx.curve(v.orbitalY, ModuleId::VelocityOverLifetime, 5, kDegToRad);
             ap.oz = cx.curve(v.orbitalZ, ModuleId::VelocityOverLifetime, 6, kDegToRad);
-            ap.offset[0] = v.offset.x; ap.offset[1] = v.offset.y; ap.offset[2] = v.offset.z;
+            ap.offsetConst = (v.offsetX.isConstant() && v.offsetY.isConstant() && v.offsetZ.isConstant()) ? 1 : 0;
+            ap.offset[0] = v.offsetX.constant; ap.offset[1] = v.offsetY.constant; ap.offset[2] = v.offsetZ.constant;
+            if (!ap.offsetConst){
+                ap.offX = cx.curve(v.offsetX, ModuleId::VelocityOverLifetime, 9);
+                ap.offY = cx.curve(v.offsetY, ModuleId::VelocityOverLifetime, 10);
+                ap.offZ = cx.curve(v.offsetZ, ModuleId::VelocityOverLifetime, 11);
+            }
             ap.radial = v.radial.isZero() ? 0 : 1;
             ap.radialSpeed = cx.curve(v.radial, ModuleId::VelocityOverLifetime, 7);
             ap.speedModifier = (v.speedModifier.isConstant() && v.speedModifier.constant == 1.0f) ? 0 : 1;
@@ -882,13 +955,14 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         NoiseParams np;
         np.quality = n.quality;
         np.separateAxes = n.separateAxes ? 1 : 0;
-        np.octaves = (uint8_t)std::clamp(n.octaves, 1, 3);
+        np.octaves = (uint8_t)std::clamp(n.octaves, 1, 4);
         np.strengthX = cx.curve(n.strength, ModuleId::Noise, 1);
         np.strengthY = cx.curve(n.strengthY, ModuleId::Noise, 2);
         np.strengthZ = cx.curve(n.strengthZ, ModuleId::Noise, 3);
         np.frequency = n.frequency;
         np.strengthScale = n.damping ? 1.0f / std::max(n.frequency, 1.0e-4f) : 1.0f;
-        np.scrollSpeed = n.scrollSpeed;
+        np.scrollSpeed = n.scrollSpeed.constant;
+        np.scrollAccumulated = prog.noiseScroll ? 1 : 0;
         np.octaveMultiplier = n.octaveMultiplier;
         np.octaveScale = n.octaveScale;
         np.seed = d.seed * 0x2545f491u + 0x6a09e667u;
@@ -908,6 +982,12 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         if (on(l.present, l.enabled)){
             io.integrate.limit = 1;
             io.integrate.limitSpeed = cx.curve(l.limit, ModuleId::LimitVelocity, 1);
+            if (l.separateAxes){
+                io.integrate.limitAxes = 1;
+                io.integrate.limitWorld = l.space == ValueSpace::World ? 1 : 0;
+                io.integrate.limitY = cx.curve(l.limitY, ModuleId::LimitVelocity, 3);
+                io.integrate.limitZ = cx.curve(l.limitZ, ModuleId::LimitVelocity, 4);
+            }
             io.integrate.dampen = l.dampen;
             io.integrate.logKeep = l.dampen < 1.0f ? std::log(1.0f - l.dampen) : 0.0f;
             const bool drag = !l.drag.isZero() || l.quadraticDrag > 0.0f;
@@ -939,20 +1019,29 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         StoredAppearanceParams sa;
         const RotationBySpeedModule& rbs = d.rotationBySpeed;
         const RotationOverLifetimeModule& rol = d.rotationOverLifetime;
-        if (on(rbs.present, rbs.enabled) && (stored.rotation || stored.angularVelocity3D)){
-            sa.rotationBySpeed = 1;
-            MinMaxCurve speed = rbs.angularVelocity;
+        auto bySpeed = [&](const MinMaxCurve& c){
+            MinMaxCurve speed = c;
             speed.driver = CurveDriver::Speed;
             speed.driverMin = rbs.speedRange.x;
             speed.driverMax = rbs.speedRange.y;
-            sa.rotationSpeed = cx.curve(speed, ModuleId::RotationBySpeed, 1, kDegToRad);
+            return speed;
+        };
+        if (on(rbs.present, rbs.enabled) && stored.quat){
+            // a mesh turns its quaternion: Z, and X / Y with separate axes
+            sa.rotationBySpeed3D = 1;
+            sa.rotationSpeed = cx.curve(bySpeed(rbs.angularVelocity), ModuleId::RotationBySpeed, 1, kDegToRad);
+            sa.rotationSpeedX = rbs.separateAxes ? cx.curve(bySpeed(rbs.angularVelocityX), ModuleId::RotationBySpeed, 2, kDegToRad) : CurveParam();
+            sa.rotationSpeedY = rbs.separateAxes ? cx.curve(bySpeed(rbs.angularVelocityY), ModuleId::RotationBySpeed, 3, kDegToRad) : CurveParam();
+        }else if (on(rbs.present, rbs.enabled) && stored.rotation){
+            sa.rotationBySpeed = 1;
+            sa.rotationSpeed = cx.curve(bySpeed(rbs.angularVelocity), ModuleId::RotationBySpeed, 1, kDegToRad);
         }
         if (on(rol.present, rol.enabled) && stored.rotation && !stored.quat){
             sa.angularVelocity = 1;
             sa.angular = cx.curve(rol.angularVelocity, ModuleId::RotationOverLifetime, 1, kDegToRad);
         }
         sa.angularVelocity3D = stored.angularVelocity3D ? 1 : 0;
-        if (sa.rotationBySpeed || sa.angularVelocity || sa.angularVelocity3D)
+        if (sa.rotationBySpeed || sa.angularVelocity || sa.angularVelocity3D || sa.rotationBySpeed3D)
             prog.updateOps.push_back({OpCode::StoredAppearance, cx.pool.add(sa)});
     }
 
@@ -1104,6 +1193,8 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             r.fps = ts.fps;
             r.startFrame = cx.curve(ts.startFrame, ModuleId::TextureSheetAnimation, 2);
             r.cycles = ts.cycles;
+            r.flipU = std::clamp(ts.flipU, 0.0f, 1.0f);
+            r.flipV = std::clamp(ts.flipV, 0.0f, 1.0f);
             r.frameBlending = ts.frameBlending ? 1 : 0;
             if (!ts.startFrameList.empty()){
                 std::vector<uint32_t> frames;
@@ -1136,7 +1227,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         r.freezeInView = rm.freezeInView ? 1 : 0;
         r.verticalEmitter = rm.verticalLock == VerticalLock::Emitter ? 1 : 0;
         r.meshSelection = (uint8_t)rm.meshSelection;
-        r.alignToVelocity = rm.alignToVelocity ? 1 : 0;
+        r.meshAlignment = rm.meshAlignment;
         r.meshCount = (uint32_t)std::min(rm.meshes.size(), kMaxRendererMeshes);
         r.pivot[0] = rm.pivot.x; r.pivot[1] = rm.pivot.y; r.pivot[2] = rm.pivot.z;
         r.flip[0] = rm.flip.x; r.flip[1] = rm.flip.y; r.flip[2] = rm.flip.z;
@@ -1271,6 +1362,6 @@ const char* particles::channelName(Channel channel){
         "startColor", "rotation", "prevRotation", "startRotation", "sizeX", "sizeY", "sizeZ", "prevSizeX", "startSizeY",
         "startSizeZ", "quatX", "quatY", "quatZ", "quatW", "angVelX", "angVelY", "angVelZ", "colorR", "colorG", "colorB",
         "colorA", "accelX", "accelY", "accelZ", "frame", "noiseSize", "planeNX", "planeNY", "planeNZ", "planeD", "planeTick",
-        "trailSlot"};
+        "trailSlot", "animVelX", "animVelY", "animVelZ"};
     return channel < ChCount ? names[channel] : "?";
 }

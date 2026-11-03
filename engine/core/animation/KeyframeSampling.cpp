@@ -242,16 +242,20 @@ bool anim::sampleTrack(const AnimationClip::Track& track, float clipTime, TrackS
     switch (track.channel){
         case ClipChannel::Position:
         case ClipChannel::Scale:
+        case ClipChannel::HumanoidPosition:
             out.vector = sampleVector3(at, track.vectors + base,
                                        cubic ? track.inVectors + base : nullptr,
                                        cubic ? track.outVectors + base : nullptr);
             break;
         case ClipChannel::Rotation:
+        case ClipChannel::Humanoid:
             out.rotation = sampleQuaternion(at, track.rotations + base,
                                             cubic ? track.inRotations + base : nullptr,
                                             cubic ? track.outRotations + base : nullptr);
             break;
         case ClipChannel::Morph:
+        case ClipChannel::Property:
+            // a property row in key space (discrete tracks step: their easings are STEP)
             out.weights.resize(width);
             sampleFloatRow(at, track.weights + previous * width, track.weights + next * width, width,
                            cubic ? track.outWeights + previous * width : nullptr,
@@ -265,11 +269,29 @@ bool anim::sampleTrack(const AnimationClip::Track& track, float clipTime, TrackS
                              cubic ? track.inVectors + next * width : nullptr,
                              out.offsets.data());
             break;
-        case ClipChannel::Property:
-            return false;
     }
-    if (track.channel != ClipChannel::Morph) out.weights.clear();
+    if (track.channel != ClipChannel::Morph && track.channel != ClipChannel::Property) out.weights.clear();
     if (track.channel != ClipChannel::Lattice) out.offsets.clear();
+    out.valid = true;
+    return true;
+}
+
+bool anim::sampleTrackStepped(const AnimationClip::Track& track, float clipTime, TrackSample& out){
+    out.channel = track.channel;
+    out.valid = false;
+    if (!track.isSampled() || !track.times || !track.weights){
+        out.weights.clear();
+        return false;
+    }
+    const float time = trackTime(track, clipTime);
+    size_t index = 0;
+    if (!std::isnan(time)){
+        const float slack = 1e-6f + std::fabs(time) * FLT_EPSILON;
+        index = (size_t)(std::upper_bound(track.times, track.times + track.keyCount, time + slack) - track.times);
+        index = index > 0 ? index - 1 : 0;
+    }
+    out.weights.assign(track.weights + index * track.width, track.weights + (index + 1) * track.width);
+    out.offsets.clear();
     out.valid = true;
     return true;
 }

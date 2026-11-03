@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <string>
 #include <memory>
 #include <span>
 #include <string>
@@ -30,6 +31,8 @@ namespace jasperengine {
         // Paths are the ones Data::open() takes: asset://, lua://, shader://, content:// or
         // asset-relative
         static bool contains(const std::string& path);
+        // the unpacked size of an entry, false when the pack does not hold it
+        static bool size(const std::string& path, uint64_t& outSize);
         static bool read(const std::string& path, std::vector<unsigned char>& outData);
         // Data::open can take ownership directly, without copying the packed bytes.
         static bool readOwned(const std::string& path, std::unique_ptr<unsigned char[]>& outData,
@@ -42,6 +45,22 @@ namespace jasperengine {
         static const JPak* contentPack();
         // the pack key of a path (empty: no pack holds it, e.g. data:// or an absolute path)
         static std::string packKey(const std::string& path);
+        // A packed entry read in parts (videos: their decoders read positions, never the whole
+        // file into memory): open() gives the entry's size and a handle of the pack file;
+        // readRange() the bytes [from, from + count) of the entry, deobfuscated
+        class JASPERENGINE_API RangeReader {
+        public:
+            ~RangeReader();
+            bool open(const std::string& path);
+            uint64_t size() const { return entrySize; }
+            bool readRange(uint64_t from, unsigned char* dst, size_t count);
+        private:
+            void* file = nullptr;
+            uint64_t entryOffset = 0;
+            uint64_t entrySize = 0;
+            uint8_t key = 0;
+            uint32_t shift = 0;
+        };
     };
 
 }

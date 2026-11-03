@@ -23,6 +23,7 @@
 #include <RmlUi/Core/ScrollTypes.h>
 
 #include <bitset>
+#include <climits>
 #include <set>
 #include <vector>
 
@@ -259,8 +260,8 @@ bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, floa
         const int rmlMods = RmlKeyMap::toRmlModifiers(mods);
 
         if (touch){
-            getContext()->processTouchStart(pointer, Rml::Vector2f(cx, cy), rmlMods);
-            consumed = getContext()->isPointerOverContent();
+            // each finger its own pointer: over content (or its press) it is the documents'
+            consumed = getContext()->processTouchStart(pointer, Rml::Vector2f(cx, cy), rmlMods);
             if (consumed) state.capturedTouches.insert(pointer);
             else state.capturedTouches.erase(pointer);
         }else{
@@ -357,6 +358,38 @@ bool UIDocumentSystem::eventOnTouchCancel(int pointer){
         getContext()->processTouchCancel(pointer);
 
     return dispatchWorldPointer(pointer, -1, 0.0f, 0.0f, 0, PointerPhase::CANCEL, true) || captured;
+}
+
+bool UIDocumentSystem::eventOnMouseCancel(int button){
+    HtmlUIInputState& state = getInputState();
+    // one DOM pointer: its cancel lets go of every button
+    const bool captured = !state.capturedButtons.empty();
+    state.capturedButtons.clear();
+
+    if (getContext())
+        getContext()->processMouseCancel();
+
+    bool consumed = captured;
+    if (isWorldPointerCaptured(0, button, false))
+        consumed = dispatchWorldPointer(0, button, 0.0f, 0.0f, 0, PointerPhase::CANCEL, false) || consumed;
+    return consumed;
+}
+
+void UIDocumentSystem::cancelAllPointers(){
+    HtmlUIInputState& state = getInputState();
+
+    std::set<int> fingers = state.capturedTouches;
+    if (getContext()){
+        for (int pointer : getContext()->getTouches())
+            fingers.insert(pointer);
+    }
+    for (int pointer : fingers)
+        eventOnTouchCancel(pointer);
+
+    state.capturedButtons.clear();
+    if (getContext())
+        getContext()->processMouseCancel();
+    textureCancelAll();
 }
 
 bool UIDocumentSystem::eventOnWheel(float dx, float dy, int mods){
@@ -499,6 +532,24 @@ bool UIDocumentSystem::hasPointerCapture(int pointer, int button, bool touch) co
     if (!inputState)
         return false;
     return touch ? inputState->capturedTouches.count(pointer) > 0 : inputState->capturedButtons.count(button) > 0;
+}
+
+bool UIDocumentSystem::isPointerOverUI(int pointerId) const{
+    const bool mouse = pointerId == INT_MIN || pointerId < 0;
+    const bool fingers = pointerId == INT_MIN || pointerId >= 0;
+    if (mouse){
+        if (inputState && !inputState->capturedButtons.empty())
+            return true;
+        if (hasVisibleDocument() && getContext() && getContext()->isPointerOverContent())
+            return true;
+    }
+    if (fingers && inputState){
+        if (pointerId == INT_MIN ? !inputState->capturedTouches.empty() : inputState->capturedTouches.count(pointerId) > 0)
+            return true;
+    }
+    if (fingers && pointerId != INT_MIN && hasVisibleDocument() && getContext() && getContext()->isTouchOverContent(pointerId))
+        return true;
+    return false;
 }
 
 CursorType UIDocumentSystem::getPointerCursor() const{

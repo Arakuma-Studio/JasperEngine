@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <filesystem>
 #include <string>
 
 namespace jasperengine::editor {
@@ -24,12 +25,9 @@ namespace jasperengine::editor {
         // Absolute path of a command found on PATH, or "" when it is not on it.
         static std::string findExecutable(const std::string& command);
 
-#ifndef _WIN32
-        // Runs a command through /bin/sh and returns its output, killing it
-        // after timeoutMs. popen() has no timeout, and a GUI application asked
-        // for --version never answers. Windows uses runCaptureNoWindow.
-        static std::string runCapture(const std::string& command, int timeoutMs);
-#endif
+        // The user's home folder: $HOME (Windows: %USERPROFILE%), else the account's own
+        // (getpwuid; Windows: SHGetKnownFolderPath(FOLDERID_Profile)). Empty when unknown.
+        static std::filesystem::path homeDirectory();
     };
 
 }

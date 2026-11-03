@@ -13,6 +13,8 @@
 #include "animation/ClipEditorUtil.h"
 #include "animation/KeyframeSampling.h"
 #include "imgui.h"
+#include "pose/PoseDofs.h"
+#include "pose/PoseRig.h"
 
 #include <algorithm>
 #include <cmath>
@@ -73,8 +75,32 @@ namespace jasperengine::editor::clipui{
 
     // (channelLabel, lastSegment: animation/ClipEditorUtil.h, shared with the Inspector)
 
+    // a property track's (component, property) as one string ("ui.color.a"), "" for the others
+    inline std::string propertyId(const ClipTrackData& track){
+        return track.channel == ClipChannel::Property ? track.component + "." + track.property : std::string();
+    }
+
+    // a track's identity: path and channel, and a property track's component and property
     inline std::string rowKey(const ClipTrackData& track){
-        return track.path + "|" + anim::channelName(track.channel);
+        // humanoid tracks have no path: their bone tells them apart
+        if (isHumanoidChannel(track.channel)) return std::string("humanoid:") + anim::humanoidTrackBoneName(track.channel, track.humanBone) + "|" + anim::channelName(track.channel);
+        const std::string key = track.path + "|" + anim::channelName(track.channel);
+        return track.channel == ClipChannel::Property ? key + "|" + propertyId(track) : key;
+    }
+
+    // the track of an identity (path, channel, propertyId), -1 when none (a humanoid track's
+    // path is its bone name)
+    inline int findTrackById(const ClipData& data, const std::string& path, ClipChannel channel, const std::string& property){
+        if (channel != ClipChannel::Property) return data.findTrack(path, channel);
+        // "component.property": a component key (or script:<Class>) has no '.'
+        const size_t dot = property.find('.');
+        if (dot == std::string::npos) return -1;
+        return data.findPropertyTrack(path, property.substr(0, dot), property.substr(dot + 1));
+    }
+
+    // the built clip's track of a data track (the same identity), -1 when none
+    inline int builtTrack(const AnimationClip& clip, const ClipTrackData& track){
+        return clipui::findRuntimeTrack(clip, track);
     }
 
     inline std::string lower(std::string s){
@@ -100,25 +126,64 @@ namespace jasperengine::editor::clipui{
         return out;
     }
 
+    // ---- how keys show as three angles (anim-retarget 9) ----
+    // rotation tracks and humanoid extra bones: Euler degrees; humanoid slots: the slot's joint
+    // angles (the pose system's DOFs: raise, forward, twist...), written back as E
+
+    inline bool isAngleTrack(const ClipTrackData& track){
+        return isRotationChannel(track.channel);
+    }
+    inline bool isJointAngleTrack(const ClipTrackData& track){
+        return track.channel == ClipChannel::Humanoid && track.humanBone >= 0 && track.humanBone < pose::HUMAN_BONE_COUNT;
+    }
+
+    inline Vector3 anglesOf(const ClipTrackData& track, const std::vector<float>& xyzw){
+        if (!isJointAngleTrack(track)) return eulerOf(xyzw);
+        if (xyzw.size() < 4) return Vector3(0, 0, 0);
+        float angles[pose::DOFS_PER_BONE];
+        pose::jointAngles(pose::boneAt(track.humanBone), pose::Quatd(quaternionFromXYZW(xyzw.data())).normalized(), angles);
+        auto tidy = [](float v){ return std::fabs(v) < 1e-4f ? 0.0f : v; };
+        return Vector3(tidy(angles[0]), tidy(angles[1]), tidy(angles[2]));
+    }
+
+    inline std::vector<float> xyzwOfAngles(const ClipTrackData& track, const Vector3& angles){
+        if (!isJointAngleTrack(track)) return xyzwOf(angles);
+        const float values[pose::DOFS_PER_BONE] = {angles.x, angles.y, angles.z};
+        std::vector<float> out(4);
+        quaternionToXYZW(pose::jointRotation(pose::boneAt(track.humanBone), values).normalized().toQuaternion(), out.data());
+        return out;
+    }
+
+    // the names of a track's three components: "x" "y" "z", a slot's DOF names, "left" "up" "forward"
+    inline std::vector<std::string> angleComponentNames(const ClipTrackData& track){
+        if (isJointAngleTrack(track)){
+            const pose::BoneDofInfo& info = pose::boneDofInfo(pose::boneAt(track.humanBone));
+            return {info.dofs[0].name, info.dofs[1].name, info.dofs[2].name};
+        }
+        if (track.channel == ClipChannel::HumanoidPosition) return {"left", "up", "forward"};
+        return {"x", "y", "z"};
+    }
+
     inline std::vector<float> flatten(const anim::TrackSample& sample){
         switch (sample.channel){
             case ClipChannel::Position:
             case ClipChannel::Scale:
+            case ClipChannel::HumanoidPosition:
                 return {sample.vector.x, sample.vector.y, sample.vector.z};
-            case ClipChannel::Rotation: {
+            case ClipChannel::Rotation:
+            case ClipChannel::Humanoid: {
                 std::vector<float> out(4);
                 quaternionToXYZW(sample.rotation, out.data());
                 return out;
             }
             case ClipChannel::Morph:
+            case ClipChannel::Property:
                 return sample.weights;
             case ClipChannel::Lattice: {
                 std::vector<float> out;
                 for (const Vector3& v : sample.offsets) out.insert(out.end(), {v.x, v.y, v.z});
                 return out;
             }
-            case ClipChannel::Property:
-                break;
         }
         return {};
     }
@@ -130,7 +195,7 @@ namespace jasperengine::editor::clipui{
         // a rotation key (with its tangents) on the side of the key it replaces or follows: a
         // pasted or added key never makes a Hermite segment flip
         ClipKey key = given;
-        if (track.channel == ClipChannel::Rotation && key.value.size() == 4){
+        if (isRotationChannel(track.channel) && key.value.size() == 4){
             const std::vector<float> aligned = clipui::alignedRotationKeyValue(track, time, key.value, kKeyEpsilon);
             if (aligned != key.value){
                 key.value = aligned;

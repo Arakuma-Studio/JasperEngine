@@ -658,3 +658,87 @@ What the implementation does differently from the text above, and why.
   events gather over a frame's ticks, the caps per frame.
 - **Immediate calls** (seek, step, the editor's preview) work out a moved GameObject's matrices
   before they simulate, instead of using the last frame's.
+
+## 11. Upstream absorption (sync #4)
+
+origin/main grew its own Unity-shaped particle model (its "version 2" Particle System: modules on
+the component, simulated by its ActionSystem into the GameObject's InstancedMesh quads or a Points
+component) and a Unity ParticleSystem importer. S20 is the main version: it absorbs what was
+unique there, reads every upstream file losslessly and drops the second model.
+
+- **Fields taken over** (ParticleModules' table, so the codec, Inspector, MCP patches and Lua see
+  them): `startDelay` as a MinMaxCurve (a random range picked per play), `useUnscaledTime`,
+  `stopAction` (Disable deactivates, Destroy destroys at the frame's end, Callback sends
+  `onParticleSystemStopped`), `emitterVelocityMode` (Rigidbody: the body's velocity for Inherit
+  Velocity and Rate over Distance); Main `gravitySource` (Physics2D: Box2D's gravity in scene
+  units) and `inheritVelocityMode` (Current: the emitter's change of velocity every tick); Shape
+  `radiusMode`/`arcMode` (Random, Loop, Ping-Pong, Burst Spread) with `radiusSpread`/`arcSpread`
+  and `radiusSpeed`/`arcSpeed`, `alignToDirection`; Velocity over Lifetime `offsetX/Y/Z` curves
+  (an older file's `offset` vector reads as constants); Limit Velocity `separateAxes`, `limitY`,
+  `limitZ`, `space`; Rotation by Speed `separateAxes` (3D, into the quaternion); Noise
+  `scrollSpeed` (a curve over the emitter time) and four octaves; Texture Sheet `flipU`/`flipV`;
+  burst counts as curves over the emitter time; the gradient mode Random Color; the Renderer's
+  Velocity-aligned billboards, `meshAlignment` (Simulation, View, World, Local, Facing, Velocity;
+  an older file's `alignToVelocity` reads as Velocity) and `textureTiling`. Stretched and Velocity-aligned mesh particles follow the total velocity (Velocity over Lifetime and Noise included, as origin/main's `totalVelocity`): such a program keeps the last tick's animated velocity in `ChAnimVelX/Y/Z`, 12 bytes per particle, no others pay. A teleport (an emitter
+  moving more than 100 units in a tick) spawns nothing over distance, said once. Deactivating a
+  GameObject stops and clears its system; Play On Awake plays it again on reactivation. Play starts every system as a load does (`ParticleSubsystem::resetForPlay`, before the scripts' init: the editor plays the edit-time scene in place, and the Scene view's preview had stopped or played some), and an empty system is never culled (nothing of it is drawn to be seen: its old bounds held a stopped and cleared one paused for good).
+- **Its files** (`editor/stream/UpstreamParticles`, run by the scene 2 -> 3 / prefab 4 -> 5
+  migration, which every origin/main scene (format 0) and prefab (format 3) goes through): a
+  `particlesystem` with `version: 2` becomes an inline effect on its action's target (itself, as
+  origin/main made them). Values convert: rotations and angular speeds radians -> degrees (the
+  noise's rotation amount is radians per second in both), linear colours -> sRGB (hex was sRGB
+  already), Two Constants and Two Curves keep (min, max) as (first, second), the shape's Euler
+  X-then-Y-then-Z -> S20's Z-then-X-then-Y (the same turn), Cone Volume / Box Shell / Box Edge ->
+  emit-from modes, billboard alignments -> render modes (World in a Local system is
+  LocalOriented), origin/main's defaults where S20's differ (Texture Sheet 30 fps, drag by
+  velocity on). The quad's material moves into the Renderer (`u_baseTexture` or the base colour
+  map, `baseColor` -> `tint`, `tiling`, SOFT / NEAR_FADE and their parameters, the blend, depth
+  write, shadows, the MeshComponent's enabled); the quad MeshComponent and the empty InstancedMesh
+  go; Mesh mode keeps the MeshComponent, disabled, as the GameObject mesh source. A Points target
+  gives its texture, frames (Sprites mode picks them by id), shader features and blend. Prefab
+  instance overrides of version 2 fields convert their values and name `inlineEffect` (Play On
+  Awake and the seed stay their own). Before this the migration read a version 2 system as an
+  old one and dropped every value (`StreamMigrations.cpp`'s legacy branch).
+- **The importer** (`editor/unity/`) writes S20 systems: inline effects with the renderer's
+  material in the Renderer module (no `.material` files), Unity's sRGB colours as they are,
+  degrees, the culling mode imported; MCP `import_unity_particles`, the CLI
+  `import-unity-particles` and Assets > Import Unity Particle System... are back.
+- **Lua**: Unity's module proxies on `ParticleSystem` (`ps.main.startSpeed`, `ps.emission`,
+  `ps.shape`, ... with Unity's names and radians), `clear/play/stop/pause(withChildren)`,
+  `ParticleSystemStopBehavior` and the enum tables; `GameObject:getParticleSystemsInChildren()`;
+  origin/main's constructors `ParticleSystem(scene, true)`, `MinMaxCurve(min, max)`,
+  `MinMaxCurve(multiplier, curve[, maxCurve])`, `MinMaxGradient(min, max)` and
+  `MinMaxGradient(gradient[, maxGradient])` (its benchmark script, `tools/fixtures/particles/bench`, runs).
+- **UI particles** (origin/main's ui-scaling-text): the component's own `useUnscaledTime`
+  (OmitIfDefault: written only when on; Inspector "Unscaled Time", Lua `ps.useUnscaledTime`, the
+  exported code) ticks a system on the unscaled frame time, as the effect's Unscaled Time does
+  (either one: a prefab with a shared asset plays unscaled without a copy); an old system's
+  `useUnscaledTime` key migrates onto it. A Particle System under a RectTransform draws in place,
+  between its siblings, inside the nearest panel's scissor (as UI Points do). GameObject > UI >
+  Particle System is one GameObject: origin/main's sparkle through the old system's converter, the
+  soft image `ui/particle_soft.png`, unscaled time; `create_particles` under a UI element or in a
+  UI scene turns the Transform 180 degrees about X (y down), Local space, unscaled time, the soft
+  image, and replies `ui: true`. The HTML `<particle-system>` finds the first Particle System of its
+  prefab (an older prefab's controller action is left idle) and draws the render extraction's
+  billboards (`UIParticleSource`: positions, sizes, rotations, colours, sheet frames, the soft disc
+  of an untextured system); `time="ui"` is the component's `useUnscaledTime` (`game` also turns the
+  effect's off), `loop=` the effect's Looping (the GameObject's own copy), `clear()` Unity's Clear,
+  `isPlaying()` S20's, `complete` when a system that does not loop stops. Not kept: a Canvas
+  Group's alpha does not fade a Particle System (it fades Points; S20's shader has no group alpha).
+  Tests: `engine/tests/htmlui/TestParticleSystemElement.cpp` (origin/main's, on S20 systems, with
+  its golden; time, loop, clear, pause, complete, an old prefab layout) and
+  `TestGoldenUIScaling.cpp`'s `UIParticleSystemsClippedByAPanel`.
+- **Dropped**: origin/main's ParticleSystemComponent version 2 fields and their simulation
+  (`particles/MinMax`, `ParticleFields`, `ParticleNoise`, `ParticleShapes`,
+  `ParticleSimulation`, `ParticleUpgrade`, `ActionSystemParticles.cpp`), its overlay and shape
+  gizmo (S20's Particle Effect overlay and `ParticleCompiler::shapeOutline` draw them), its
+  `create_particles` version 2 arguments (`create_particles` keeps S20's, plus `duration`,
+  `speed` and a `modules` merge patch).
+- **Tests**: origin/main's ParticleEmission/Shape/Simulation/MinMax tests are
+  `engine/tests/core/particles/ParticleUpstreamBehaviourTest.cpp` and
+  `ParticleUpstreamModulesTest.cpp` (with the absorbed fields'), its stream and upgrade tests
+  `editor/tests/stream/UpstreamParticlesTest.cpp`, its legacy identity test
+  `editor/tests/stream/LegacyParticlePresetsTest.cpp` (S20's model draws from its own random
+  streams: counts and mean colours are compared, not single particles), its importer tests
+  `editor/tests/unity/`, and a scene and prefab saved by origin/main's editor
+  (`editor/tests/fixtures/migrations/upstream-v2/`) are `UpstreamParticleFilesTest.cpp`.

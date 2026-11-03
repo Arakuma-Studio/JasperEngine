@@ -3,8 +3,11 @@
 
 #include "SystemMac.h"
 #include "PlatformConfig.h"
+#include "HostServices.h"
+#include "JasperEngineMac.h"
 #include "WindowMac.h"
 #include "MacTextInputClient.h"
+#include "io/FileUtils.h"
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
@@ -178,8 +181,22 @@ std::string SystemMac::getAssetPath() {
 #endif
 }
 
+// An export (the Exporter defines JASPERENGINE_APP_IDENTIFIER) saves per user, as an app may
+// not write inside its bundle: ~/Library/Application Support/<identifier>. Other builds (a
+// project run from outside the editor, engine tests) keep the working directory.
 std::string SystemMac::getUserDataPath() {
+#ifdef JASPERENGINE_APP_IDENTIFIER
+    static const std::string path = []() {
+        NSArray* paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
+        if ([paths count] == 0) return std::string(".");
+        NSString* dir = [[paths objectAtIndex:0] stringByAppendingPathComponent:[NSString stringWithUTF8String:JASPERENGINE_APP_IDENTIFIER]];
+        const std::string utf8 = [dir UTF8String];
+        return FileUtils::prepareUserDataFolder(utf8) ? utf8 : std::string(".");
+    }();
+    return path;
+#else
     return ".";
+#endif
 }
 
 std::string SystemMac::getCachePath() {
@@ -217,4 +234,74 @@ std::string SystemMac::getShaderPath() {
 #else
     return System::getShaderPath();
 #endif
+}
+
+bool SystemMac::platformOpenURL(const std::string& url) {
+    return HostServices::openURL(url);
+}
+
+std::vector<std::string> SystemMac::getPreferredLocales() {
+    std::vector<std::string> locales = HostServices::preferredLocales();
+    return locales.empty() ? System::getPreferredLocales() : locales;
+}
+
+std::string SystemMac::getRegionOverride() {
+    return HostServices::regionOverride();
+}
+
+std::string SystemMac::getOperatingSystem() {
+    static const std::string value = HostServices::operatingSystem();
+    return value;
+}
+
+std::string SystemMac::getOperatingSystemVersion() {
+    static const std::string value = HostServices::operatingSystemVersion();
+    return value;
+}
+
+std::string SystemMac::getDeviceModel() {
+    static const std::string value = HostServices::deviceModel();
+    return value;
+}
+
+DeviceType SystemMac::getDeviceType() {
+    return DeviceType::Desktop;
+}
+
+int SystemMac::getSystemMemorySize() {
+    static const int value = HostServices::systemMemoryMiB();
+    return value;
+}
+
+NetworkReachability SystemMac::getInternetReachability() {
+    return HostServices::internetReachability();
+}
+
+bool SystemMac::hapticFeedback(HapticFeedback type) {
+    // Force Touch trackpads only; a Mac without one ignores it
+    id<NSHapticFeedbackPerformer> performer = [NSHapticFeedbackManager defaultPerformer];
+    if (!performer) return false;
+    const NSHapticFeedbackPattern pattern = (type == HapticFeedback::Selection || type == HapticFeedback::Light)
+        ? NSHapticFeedbackPatternAlignment
+        : (type == HapticFeedback::NotificationSuccess || type == HapticFeedback::NotificationWarning || type == HapticFeedback::NotificationError)
+            ? NSHapticFeedbackPatternLevelChange
+            : NSHapticFeedbackPatternGeneric;
+    [performer performFeedbackPattern:pattern performanceTime:NSHapticFeedbackPerformanceTimeNow];
+    return true;
+}
+
+float SystemMac::getScreenDpi() {
+    return HostServices::screenDpi();
+}
+
+float SystemMac::getRefreshRate() {
+    return HostServices::refreshRate();
+}
+
+void SystemMac::setKeepScreenOn(bool keepOn) {
+    HostServices::setKeepScreenOn(keepOn);
+}
+
+void SystemMac::applyFramePacing(const FramePacing& pacing) {
+    JasperEngineMac::applySwapInterval(pacing.swapInterval);
 }

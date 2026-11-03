@@ -40,6 +40,15 @@ namespace jasperengine { namespace particles {
     enum class CullingMode : uint8_t { Automatic, Pause, PauseAndCatchUp, AlwaysSimulate };
     enum class BoundsMode : uint8_t { Computed, Authored };
     enum class ValueSpace : uint8_t { Local, World };
+    // what the GameObject does when the effect has finished (Unity's Stop Action): not looping,
+    // its last particle gone (or stopped and empty)
+    enum class StopAction : uint8_t { None, Disable, Destroy, Callback };
+    // the emitter velocity Inherit Velocity and Rate over Distance read (Unity's Emitter Velocity Mode)
+    enum class EmitterVelocityMode : uint8_t { Transform, Rigidbody };
+    // the world the Gravity Modifier scales (Unity's Gravity Source)
+    enum class GravitySource : uint8_t { Physics3D, Physics2D };
+    // Inherit Velocity at birth only, or the emitter's change of velocity every tick (Unity's mode)
+    enum class InheritVelocityMode : uint8_t { Initial, Current };
 
     // ---------------------------------------------------------------- modules
 
@@ -59,13 +68,16 @@ namespace jasperengine { namespace particles {
         float flipRotation = 0.0f;                      // share of particles turning the other way
         MinMaxGradient startColor;
         MinMaxCurve gravityModifier = MinMaxCurve(0.0f);
-        MinMaxCurve inheritVelocity = MinMaxCurve(0.0f); // share of the emitter's velocity at birth
+        GravitySource gravitySource = GravitySource::Physics3D;
+        MinMaxCurve inheritVelocity = MinMaxCurve(0.0f); // share of the emitter's velocity
+        InheritVelocityMode inheritVelocityMode = InheritVelocityMode::Initial;
         // the old Points default (size 0): the start size is the texture's largest side
         bool startSizeFromTexture = false;
     };
 
     struct Burst {
         float time = 0.0f;
+        // constants, a random range, or curves over the emitter time (read at the burst's time)
         MinMaxCurve count = MinMaxCurve(30.0f);
         int cycles = 1;           // 0 repeats for ever
         float interval = 0.01f;   // seconds between cycles
@@ -100,6 +112,11 @@ namespace jasperengine { namespace particles {
         bool operator!=(const MeshSource& other) const { return !(*this == other); }
     };
 
+    // How a shape picks the angle on its arc or the point along its radius (Unity's
+    // ParticleSystemShapeMultiModeValue): at random, around it at Speed (Loop, Ping-Pong), or a
+    // burst's particles spread evenly over it
+    enum class ShapeMultiMode : uint8_t { Random, Loop, PingPong, BurstSpread };
+
     struct ShapeModule {
         bool present = true;
         bool enabled = true;
@@ -107,9 +124,15 @@ namespace jasperengine { namespace particles {
         ShapeEmitFrom emitFrom = ShapeEmitFrom::Base;
         float radius = 1.0f;
         float radiusThickness = 1.0f;   // 1 = the volume, 0 = the surface
+        ShapeMultiMode radiusMode = ShapeMultiMode::Random;
+        float radiusSpread = 0.0f;      // 0..1: positions only at multiples of it (0: anywhere)
+        MinMaxCurve radiusSpeed = MinMaxCurve(1.0f);   // radius lengths per second (Loop, Ping-Pong)
         float angle = 25.0f;            // cone half-angle, degrees
         float length = 5.0f;            // cone length (Volume)
         float arc = 360.0f;             // degrees
+        ShapeMultiMode arcMode = ShapeMultiMode::Random;
+        float arcSpread = 0.0f;         // 0..1 of the arc
+        MinMaxCurve arcSpeed = MinMaxCurve(1.0f);      // turns of the arc per second (Loop, Ping-Pong)
         float donutRadius = 0.2f;
         Vector3 boxThickness = Vector3(0.0f, 0.0f, 0.0f);
         MeshSource mesh;
@@ -119,6 +142,8 @@ namespace jasperengine { namespace particles {
         float randomizeDirection = 0.0f;
         float spherizeDirection = 0.0f;
         float randomizePosition = 0.0f;
+        // particles start turned towards their direction (their up axis along it)
+        bool alignToDirection = false;
     };
 
     struct StartVelocityModule {
@@ -135,7 +160,9 @@ namespace jasperengine { namespace particles {
         MinMaxCurve x, y, z;
         ValueSpace space = ValueSpace::Local;
         MinMaxCurve orbitalX, orbitalY, orbitalZ;   // degrees per second around the offset
-        Vector3 offset = Vector3(0.0f, 0.0f, 0.0f);
+        // the orbit's centre from the emitter, over the particle's life (an older file's
+        // "offset" vector reads as constants)
+        MinMaxCurve offsetX, offsetY, offsetZ;
         MinMaxCurve radial;
         MinMaxCurve speedModifier = MinMaxCurve(1.0f);
     };
@@ -143,7 +170,11 @@ namespace jasperengine { namespace particles {
     struct LimitVelocityModule {
         bool present = false;
         bool enabled = true;
-        MinMaxCurve limit = MinMaxCurve(1.0f);
+        bool separateAxes = false;
+        MinMaxCurve limit = MinMaxCurve(1.0f);          // the speed; X with separateAxes
+        MinMaxCurve limitY = MinMaxCurve(1.0f);
+        MinMaxCurve limitZ = MinMaxCurve(1.0f);
+        ValueSpace space = ValueSpace::Local;           // the axes of separateAxes
         float dampen = 1.0f;               // share of the excess speed removed per 1/30 s (1: clamped)
         MinMaxCurve drag = MinMaxCurve(0.0f);   // linear drag, 1/s
         float quadraticDrag = 0.0f;        // 1/unit
@@ -169,7 +200,7 @@ namespace jasperengine { namespace particles {
         MinMaxCurve strengthY = MinMaxCurve(1.0f);
         MinMaxCurve strengthZ = MinMaxCurve(1.0f);
         float frequency = 0.5f;
-        float scrollSpeed = 0.0f;
+        MinMaxCurve scrollSpeed = MinMaxCurve(0.0f);   // over the emitter time
         bool damping = true;               // strength scales with 1/frequency
         int octaves = 1;
         float octaveMultiplier = 0.5f;
@@ -244,7 +275,10 @@ namespace jasperengine { namespace particles {
     struct RotationBySpeedModule {
         bool present = false;
         bool enabled = true;
-        MinMaxCurve angularVelocity = MinMaxCurve(45.0f);
+        bool separateAxes = false;
+        MinMaxCurve angularVelocity = MinMaxCurve(45.0f);   // degrees per second (Z)
+        MinMaxCurve angularVelocityX = MinMaxCurve(0.0f);
+        MinMaxCurve angularVelocityY = MinMaxCurve(0.0f);
         Vector2 speedRange = Vector2(0.0f, 1.0f);
     };
 
@@ -275,6 +309,8 @@ namespace jasperengine { namespace particles {
         Vector2 speedRange = Vector2(0.0f, 1.0f);
         MinMaxCurve startFrame = MinMaxCurve(0.0f);   // frames
         float cycles = 1.0f;
+        float flipU = 0.0f;        // 0..1: the share of particles mirrored horizontally
+        float flipV = 0.0f;
         bool frameBlending = false;
         // old sprite initializers: the start frame is picked from this list
         std::vector<int> startFrameList;
@@ -354,8 +390,13 @@ namespace jasperengine { namespace particles {
         WorldOriented,
         LocalOriented,
         Mesh,
-        None                     // trails only
+        None,                    // trails only
+        VelocityAligned          // faces along the velocity (Unity's Velocity alignment)
     };
+    // How Mesh particles turn (Unity's Render Alignment): in the simulation space (the
+    // effect's own default), facing the camera plane or position, in world or emitter axes, or
+    // their +Z along the velocity
+    enum class MeshAlignment : uint8_t { Simulation, View, World, Local, Facing, Velocity };
     enum class VerticalLock : uint8_t { World, Emitter };
     enum class MeshSelection : uint8_t { Random, Index };
     enum class ParticleBlend : uint8_t { Alpha, Premultiplied, Additive, Multiply };
@@ -393,7 +434,8 @@ namespace jasperengine { namespace particles {
         VerticalLock verticalLock = VerticalLock::World;
         std::vector<MeshSource> meshes;
         MeshSelection meshSelection = MeshSelection::Random;
-        bool alignToVelocity = false;
+        // (an older file's alignToVelocity reads as Velocity)
+        MeshAlignment meshAlignment = MeshAlignment::Simulation;
         Vector3 pivot = Vector3(0.0f, 0.0f, 0.0f);
         Vector3 flip = Vector3(0.0f, 0.0f, 0.0f);
         std::string shader = "library:particles";
@@ -402,6 +444,9 @@ namespace jasperengine { namespace particles {
         std::vector<ShaderTexture> shaderTextures;
         std::string texture;
         std::string textureGuid;
+        // the texture's UVs (and the sheet's frames) scaled by xy, then offset by zw (a
+        // material's tiling and offset)
+        Vector4 textureTiling = Vector4(1.0f, 1.0f, 0.0f, 0.0f);
         UntexturedShape untexturedShape = UntexturedShape::Disc;
         std::string trailTexture;
         std::string trailTextureGuid;
@@ -493,7 +538,7 @@ namespace jasperengine { namespace particles {
         bool looping = true;
         bool prewarm = false;
         bool prewarmSync = false;
-        float startDelay = 0.0f;
+        MinMaxCurve startDelay = MinMaxCurve(0.0f);   // seconds; a random range picks per play
         SimulationSpace simulationSpace = SimulationSpace::Local;
         int tickRate = 30;           // ticks per second, 0: a bounded variable step
         bool interpolate = true;
@@ -501,6 +546,10 @@ namespace jasperengine { namespace particles {
         uint32_t seed = 0;           // 0: each Particle System picks its own
         ScalingMode scalingMode = ScalingMode::Local;
         float simulationSpeed = 1.0f;
+        // ticks with the unscaled frame time (Time.timeScale does not slow it: UI, pause menus)
+        bool useUnscaledTime = false;
+        StopAction stopAction = StopAction::None;
+        EmitterVelocityMode emitterVelocityMode = EmitterVelocityMode::Transform;
         CullingMode cullingMode = CullingMode::Automatic;
         BoundsMode boundsMode = BoundsMode::Computed;
         Vector3 boundsCenter = Vector3(0.0f, 0.0f, 0.0f);

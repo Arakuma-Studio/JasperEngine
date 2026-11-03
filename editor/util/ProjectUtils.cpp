@@ -6,6 +6,8 @@
 #include "io/AtomicFile.h"
 
 #include "Out.h"
+#include "util/FileUtils.h"
+#include "stb_image_write.h"
 #include "Catalog.h"
 #include "Stream.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -14,10 +16,13 @@
 #include "util/ProjectChecks.h"
 #include "script/LuaBinding.h"
 #include "System.h"
+#include "pool/TextureDataPool.h"
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <filesystem>
 #include <functional>
@@ -32,6 +37,7 @@
 #include "component/ButtonComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "component/MeshComponent.h"
@@ -48,10 +54,13 @@
 #include "component/LineRendererComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/AudioSourceComponent.h"
+#include "audio/AudioMixerDocument.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "component/UIComponent.h"
 #include "component/TextComponent.h"
 #include "component/InputFieldComponent.h"
+#include "stb_image_write.h"
 #include "component/ImageComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
@@ -127,6 +136,16 @@ bool splitTrailingDuplicateNumber(const std::string& name, std::string& baseName
     return true;
 }
 
+}
+
+// An RGBA square written to a project file through the atomic writer (docs/data-safety.md)
+static bool writePngFile(const fs::path& file, int size, const std::vector<unsigned char>& pixels) {
+    std::string png;
+    auto append = [](void* context, void* data, int count) {
+        static_cast<std::string*>(context)->append(static_cast<const char*>(data), static_cast<size_t>(count));
+    };
+    if (!stbi_write_png_to_func(append, &png, size, size, 4, pixels.data(), size * 4)) return false;
+    return editor::FileUtils::writeFile(file, png) != editor::FileUtils::WriteResult::Failed;
 }
 
 void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
@@ -222,7 +241,7 @@ void pruneForkDirectories(const std::filesystem::path& root) {
 
     // The iterator visits parents first, so deleting in reverse empties the leaves first.
     for (auto it = dirs.rbegin(); it != dirs.rend(); ++it) {
-        std::filesystem::remove(*it, ec);
+        editor::FileUtils::removePath(*it, ec);   // empty folders only (in a write scope: beneath its root)
     }
 }
 
@@ -341,6 +360,16 @@ bool editor::ProjectUtils::writeShaderFork(const ShaderForkPlan& plan) {
     std::vector<std::filesystem::path> written;
     auto writeFile = [&](const std::filesystem::path& path, const std::string& content) -> bool {
         std::error_code ec;
+        if (std::filesystem::exists(std::filesystem::symlink_status(path, ec)))
+            return false;
+        // in a write scope (fork_shader): beneath its root, no link on the way followed
+        if (const FileUtils::ScopedOps* ops = FileUtils::scopedOps()) {
+            const int r = ops->write(path, content, ec);
+            if (r >= 0) {
+                if (r == 1) written.push_back(path);
+                return r == 1;
+            }
+        }
         std::filesystem::create_directories(path.parent_path(), ec);
         if (ec)
             return false;
@@ -364,7 +393,7 @@ bool editor::ProjectUtils::writeShaderFork(const ShaderForkPlan& plan) {
     if (!success) {
         std::error_code ec;
         for (const auto& path : written)
-            std::filesystem::remove(path, ec);
+            FileUtils::removePath(path, ec);
         pruneForkDirectories(plan.forkDirPath);
         Out::error("Could not write forked shader files");
     }
@@ -373,10 +402,11 @@ bool editor::ProjectUtils::writeShaderFork(const ShaderForkPlan& plan) {
 
 void editor::ProjectUtils::removeShaderFork(const ShaderForkPlan& plan) {
     std::error_code ec;
-    std::filesystem::remove(plan.vertPath, ec);
-    std::filesystem::remove(plan.fragPath, ec);
+    // (in a write scope: beneath its root, the entries themselves)
+    FileUtils::removePath(plan.vertPath, ec);
+    FileUtils::removePath(plan.fragPath, ec);
     for (const auto& include : plan.includeFiles)
-        std::filesystem::remove(include.path, ec);
+        FileUtils::removePath(include.path, ec);
     pruneForkDirectories(plan.forkDirPath);
 }
 
@@ -1793,6 +1823,41 @@ EntityClassInfo handleClass(const char* name) { return {name, false, false}; }
 
 } // namespace
 
+std::string editor::ProjectUtils::ensureOnScreenControlTexture(const std::filesystem::path& assetsPath, bool knob) {
+    const std::string stored = knob ? "ui/onscreen/stick_knob.png" : "ui/onscreen/stick_base.png";
+    const std::filesystem::path file = assetsPath / "ui" / "onscreen" / (knob ? "stick_knob.png" : "stick_base.png");
+    std::error_code ec;
+    if (std::filesystem::exists(file, ec))
+        return stored;
+    std::filesystem::create_directories(file.parent_path(), ec);
+
+    // white, so the Image color tints it: a translucent disc with a brighter rim (the base) or
+    // a nearly opaque disc (the knob), antialiased over one pixel
+    const int size = knob ? 128 : 256;
+    std::vector<unsigned char> pixels(static_cast<size_t>(size) * size * 4, 0);
+    const float radius = size / 2.0f - 1.0f;
+    const float rim = knob ? 0.0f : size * 0.03f;
+    for (int y = 0; y < size; y++) {
+        for (int x = 0; x < size; x++) {
+            const float dx = x + 0.5f - size / 2.0f;
+            const float dy = y + 0.5f - size / 2.0f;
+            const float d = std::sqrt(dx * dx + dy * dy);
+            const float coverage = std::clamp(radius - d + 0.5f, 0.0f, 1.0f);
+            float alpha = knob ? 0.85f : 0.35f;
+            if (!knob && d > radius - rim)
+                alpha = 0.7f;
+            unsigned char* p = &pixels[(static_cast<size_t>(y) * size + x) * 4];
+            p[0] = p[1] = p[2] = 255;
+            p[3] = static_cast<unsigned char>(std::lround(255.0f * alpha * coverage));
+        }
+    }
+    if (!writePngFile(file, size, pixels)) {
+        Out::error("Could not write %s", file.string().c_str());
+        return "";
+    }
+    return stored;
+}
+
 editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(Scene* scene, Entity entity) {
     if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return handleClass("EntityHandle");
 
@@ -1814,6 +1879,9 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<VolumetricCloudsComponent>())) return handleClass("VolumetricClouds");
     if (signature.test(scene->getComponentId<LocalVolumetricFogComponent>())) return objectClass("LocalVolumetricFog");
     if (signature.test(scene->getComponentId<AudioSourceComponent>()))       return handleClass("AudioSource");
+    if (signature.test(scene->getComponentId<OnScreenStickComponent>()))  return objectClass("OnScreenStick");
+    if (signature.test(scene->getComponentId<OnScreenButtonComponent>())) return objectClass("OnScreenButton");
+    if (signature.test(scene->getComponentId<TouchAreaComponent>()))      return objectClass("TouchArea");
     if (signature.test(scene->getComponentId<ButtonComponent>()))      return objectClass("Button");
     if (signature.test(scene->getComponentId<ScrollbarComponent>()))   return objectClass("Scrollbar");
     if (signature.test(scene->getComponentId<ProgressbarComponent>())) return objectClass("Progressbar");
@@ -1824,9 +1892,13 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<LayoutGroupComponent>())) return objectClass("LayoutGroup");
     if (signature.test(scene->getComponentId<UIDocumentComponent>()))  return objectClass("UIDocument");
     if (signature.test(scene->getComponentId<UIComponent>()))          return objectClass("RectTransform");
+    // a container whose own component is its Canvas Group (CanvasGroup(scene, entity) there)
+    if (signature.test(scene->getComponentId<CanvasGroupComponent>())) return handleClass("CanvasGroup");
     // after the renderers: a fluid shown on a Sprite or a Mesh is that object first (its
     // FluidSimulation is FluidSimulation(scene, entity) there)
     if (signature.test(scene->getComponentId<FluidSimulationComponent>())) return objectClass("FluidSimulation");
+    // after the renderers too: a trail behind a Sprite or a Mesh is that object first
+    if (signature.test(scene->getComponentId<TrailRendererComponent>())) return objectClass("TrailRenderer");
     if (signature.test(scene->getComponentId<Light2DComponent>()))     return objectClass("Light2D");
     if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()))  return objectClass("ShadowCaster2D");
     if (signature.test(scene->getComponentId<LightComponent>()))       return objectClass("Light");
@@ -1837,6 +1909,7 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<RigidbodyComponent>()))      return handleClass("Rigidbody");
     if (signature.test(scene->getComponentId<Joint2DComponent>()))     return handleClass("Joint2D");
     if (signature.test(scene->getComponentId<Joint3DComponent>()))     return handleClass("Joint3D");
+    if (signature.test(scene->getComponentId<RagdollComponent>()))     return handleClass("Ragdoll");
     if (signature.test(scene->getComponentId<AlphaTweenComponent>())) return handleClass("AlphaTween");
     if (signature.test(scene->getComponentId<ColorTweenComponent>())) return handleClass("ColorTween");
     if (signature.test(scene->getComponentId<PositionTweenComponent>())) return handleClass("PositionTween");
@@ -1869,3 +1942,56 @@ void editor::ProjectUtils::clearPreviewParticles(Scene* scene, Entity entity) {
 std::string editor::ProjectUtils::getEntityTypeName(Scene* scene, Entity entity) {
     return getEntityClassInfo(scene, entity).name;
 }
+
+std::string editor::ProjectUtils::ensureSoftParticleTexture(Project* project) {
+    if (!project) return "";
+    // project-relative, as texture paths are ("assets/ui/particle_soft.png")
+    const std::string relative = (project->getAssetsDir() / "ui" / "particle_soft.png").generic_string();
+    const fs::path file = project->getAssetsPath() / "ui" / "particle_soft.png";
+    std::error_code ec;
+    if (fs::exists(file, ec)) return relative;
+
+    // a 64 x 64 white disc whose alpha falls off smoothly to the edge
+    constexpr int size = 64;
+    std::vector<unsigned char> pixels((size_t)size * size * 4, 255);
+    for (int y = 0; y < size; y++) {
+        for (int x = 0; x < size; x++) {
+            const float dx = ((float)x + 0.5f) / (float)size * 2.0f - 1.0f;
+            const float dy = ((float)y + 0.5f) / (float)size * 2.0f - 1.0f;
+            const float d = std::sqrt(dx * dx + dy * dy);
+            const float t = std::clamp(1.0f - d, 0.0f, 1.0f);
+            const float alpha = t * t * (3.0f - 2.0f * t);
+            pixels[((size_t)y * size + x) * 4 + 3] = (unsigned char)std::lround(alpha * 255.0f);
+        }
+    }
+    fs::create_directories(file.parent_path(), ec);
+    if (!writePngFile(file, size, pixels)) {
+        Out::warning("Could not write %s", FileUtils::pathToUtf8(file).c_str());
+        return "";
+    }
+    return relative;
+}
+
+void editor::ProjectUtils::setupNewLineRenderer(LineRendererComponent& lines, bool scene2D){
+    lines.mode = LineRendererMode::Polyline;
+    lines.useWorldSpace = true;
+    if (scene2D){
+        lines.positions = {Vector3(0.0f, 0.0f, 0.0f), Vector3(100.0f, 0.0f, 0.0f)};
+        lines.widthMultiplier = 4.0f;
+    }else{
+        lines.positions = {Vector3(0.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f)};
+        lines.widthMultiplier = 0.1f;
+    }
+    lines.needUpdateRibbon = true;
+}
+
+void editor::ProjectUtils::setupNewTrailRenderer(TrailRendererComponent& trail, bool scene2D){
+    trail.widthMultiplier = scene2D ? 8.0f : 0.2f;
+    if (scene2D){
+        trail.minVertexDistance = 2.0f;
+    }
+    trail.widthCurve = Curve::linear(0.0f, 1.0f, 1.0f, 0.0f);
+    trail.colorGradient = Gradient::twoColors(Vector3(1.0f, 1.0f, 1.0f), Vector3(1.0f, 1.0f, 1.0f), 1.0f, 0.0f);
+    trail.needUpdateRibbon = true;
+}
+

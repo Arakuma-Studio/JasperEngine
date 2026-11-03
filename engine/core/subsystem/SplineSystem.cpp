@@ -1417,8 +1417,8 @@ void SplineSystem::updateCollision(Entity entity, Resolve& resolve, const Spline
         // EdgeCollider2D. A Box2D chain is one-sided (its right) and an open one does not collide
         // on its first and last edge, so: every chain is made twice, the second reversed; the
         // line gets a ghost point beyond each open end (a loop: its neighbours across the seam);
-        // it is cut into chains of at most MAX_COLLIDER_POINTS_2D points overlapping by three
-        // (Box2D's smooth join, every edge an inner edge of one chain); MAX_COLLIDERS_2D chains
+        // it is cut into chains of at most kChainPoints points overlapping by three
+        // (Box2D's smooth join, every edge an inner edge of one chain); kChainsPerBody chains
         // a body. Points stay farther apart than twice Box2D's linear slop.
         const float scale = largestScale(*transform);
         const float pointsPerMetre = physics->getPointsToMeterScale2D();
@@ -1469,13 +1469,17 @@ void SplineSystem::updateCollision(Entity entity, Resolve& resolve, const Spline
                 chain.push_back(line.back() + tailStep);
             }
         }
-        const size_t perChain = std::max<size_t>(4, MAX_COLLIDER_POINTS_2D);
+        // the chunks of the capped collider arrays from before upstream's unbounded collider
+        // lists (16 points a chain, 10 colliders a body): the generated bodies stay as they were
+        constexpr size_t kChainPoints = 16;
+        constexpr int kChainsPerBody = 10;
+        const size_t perChain = std::max<size_t>(4, kChainPoints);
         size_t start = 0;
         Entity bodyEntity = NULL_ENTITY;
-        int chainsInBody = MAX_COLLIDERS_2D;
+        int chainsInBody = kChainsPerBody;
         while (chain.size() >= 4 && start + 3 < chain.size()){
             const size_t end = std::min(chain.size(), start + perChain);
-            if (chainsInBody + 2 > MAX_COLLIDERS_2D){
+            if (chainsInBody + 2 > kChainsPerBody){
                 bodyEntity = scene->createEntity();
                 scene->addComponent<Transform>(bodyEntity);
                 generatedOwners[bodyEntity] = entity;

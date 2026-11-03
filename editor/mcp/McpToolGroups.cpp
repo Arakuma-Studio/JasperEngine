@@ -27,11 +27,13 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"particles", "Particle processors, forces, trails, sub-emitters and render modes."},
         {"animation", "Blend spaces, state machines, layers, IK, retargeting and curves."},
         {"gameplay", "Character controller, buoyancy and input action maps."},
+        {"physics", "Ragdolls and physics materials."},
+        {"audio", "The Audio Mixer: groups, effects, exposed parameters and snapshots."},
         {"editor_tools", "Colour picker, curve editor, project templates and movie recording."},
         {"vcs", "Version control: status, locks, commits and scene diffs."},
         {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, graph files."},
         {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
-        {"shipping", "Player runtimes, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
+        {"shipping", "Player runtimes, native plugins, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

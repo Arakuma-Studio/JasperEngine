@@ -840,6 +840,9 @@ void ElementText::SuppressAutoLayout()
 	dirty_layout_on_change = false;
 }
 
+// the engine's text effects (fork, T21-1); not owned
+static TextEffectProvider* text_effect_provider = nullptr;
+
 void ElementText::OnPropertyChange(const PropertyIdSet& changed_properties)
 {
 	RMLUI_ZoneScoped;
@@ -870,6 +873,10 @@ void ElementText::OnPropertyChange(const PropertyIdSet& changed_properties)
 			geometry_dirty = true;
 		}
 	}
+
+	// a text effect set, changed or removed: the geometry again, the layout stays (fork, T21-1)
+	if (text_effect_provider && text_effect_provider->IsTextEffectChange(changed_properties))
+		geometry_dirty = true;
 
 	if (changed_properties.Contains(PropertyId::FontFamily) ||         //
 		changed_properties.Contains(PropertyId::FontWeight) ||         //
@@ -962,6 +969,35 @@ bool ElementText::UpdateFontEffects()
 	return false;
 }
 
+void ElementText::SetTextEffectProvider(TextEffectProvider* provider)
+{
+	text_effect_provider = provider;
+}
+
+TextEffectProvider* ElementText::GetTextEffectProvider()
+{
+	return text_effect_provider;
+}
+
+void ElementText::DirtyGeometry()
+{
+	geometry_dirty = true;
+}
+
+int ElementText::CountEffectCharacters(StringView text)
+{
+	int count = 0;
+	for (StringIteratorU8 it(text); it; ++it)
+	{
+		const Character c = *it;
+		const char32_t code = (char32_t)c;
+		if (code == ' ' || code == '\t' || code == '\n' || code == '\r' || code == 0xA0 || code == 0x3000 || (code >= 0x2000 && code <= 0x200B))
+			continue;
+		count++;
+	}
+	return count;
+}
+
 void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFaceHandle font_face_handle)
 {
 	RMLUI_ZoneScopedC(0xD2691E);
@@ -977,6 +1013,26 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 	FontEngineInterface* font_engine_interface = GetFontEngineInterface();
 	font_engine_interface->ReportTextRegeneration(render_manager);
 
+	// A text effect (fork, T21-2): each line's first visible character index in the effect, the lines before it counted
+	int effect_first_index = 0;
+	if (text_effect_provider)
+		text_shaping_context.text_effect = text_effect_provider->GetTextEffect(*this, effect_first_index);
+	Vector<int> line_effect_index(lines.size(), effect_first_index);
+	if (text_shaping_context.text_effect)
+	{
+		int index = effect_first_index;
+		for (size_t i = 0; i < lines.size(); i++)
+		{
+			line_effect_index[i] = index;
+			index += CountEffectCharacters(lines[i].text);
+		}
+	}
+	const auto EffectContext = [&](const Line& line, TextShapingContext context) {
+		if (context.text_effect)
+			context.glyph_index_base = line_effect_index[(size_t)(&line - lines.data())];
+		return context;
+	};
+
 	// The strings to draw: the lines, cut at the clipping edge with the overflow text when the text overflows.
 	StringList line_strings(lines.size());
 	for (size_t i = 0; i < lines.size(); i++)
@@ -986,16 +1042,17 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 	mesh_list.reserve(geometry.size());
 
 	// A justified line draws its characters with the space added around them (p6-justify).
-	const auto LineContext = [this, &text_shaping_context](const Line& line) {
+	const auto LineContext = [this, &text_shaping_context, &EffectContext](const Line& line) {
 		TextShapingContext context = text_shaping_context;
 		context.justification = GetJustification(line);
-		return context;
+		return EffectContext(line, context);
 	};
+	const auto PlainContext = [&text_shaping_context, &EffectContext](const Line& line) { return EffectContext(line, text_shaping_context); };
 
 	for (Line& line : lines)
 	{
 		line.width = font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, line.text, line.position, colour,
-			opacity, line.justification_index < 0 ? text_shaping_context : LineContext(line), mesh_list);
+			opacity, line.justification_index < 0 ? PlainContext(line) : LineContext(line), mesh_list);
 	}
 
 	const auto text_overflows_on_line = [&](const Line& line) { return line.position.x + line.width > text_overflow.overflow_edge; };
@@ -1013,7 +1070,7 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 			if ((int)i == line_clamp_ellipsis_line)
 			{
 				line.width = font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, line.text, line.position,
-					colour, opacity, line.justification_index < 0 ? text_shaping_context : LineContext(line), mesh_list);
+					colour, opacity, line.justification_index < 0 ? PlainContext(line) : LineContext(line), mesh_list);
 				continue;
 			}
 
@@ -1038,17 +1095,20 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 			if (abbreviated_text.empty())
 			{
 				line.width = font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, line_strings[i],
-					line.position, colour, opacity, line.justification_index < 0 ? text_shaping_context : LineContext(line), mesh_list);
+					line.position, colour, opacity, line.justification_index < 0 ? PlainContext(line) : LineContext(line), mesh_list);
 				continue;
 			}
 			// (an abbreviated line is drawn without its justification: it overflows)
 			line.justification_index = -1;
 			// the kept text in the text's colour, the overflow text after it in the block container's (CSS Overflow 4 §3.2)
 			const float kept_width = (float)font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, kept_text,
-				line.position, colour, opacity, text_shaping_context, mesh_list);
+				line.position, colour, opacity, PlainContext(line), mesh_list);
+			// (the overflow text is not part of the effect)
+			TextShapingContext overflow_context = text_shaping_context;
+			overflow_context.text_effect = nullptr;
 			line.width = (int)kept_width +
 				font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, text_overflow.overflow_text,
-					line.position + Vector2f(kept_width, 0.f), text_overflow.colour.ToPremultiplied(opacity), opacity, text_shaping_context, mesh_list);
+					line.position + Vector2f(kept_width, 0.f), text_overflow.colour.ToPremultiplied(opacity), opacity, overflow_context, mesh_list);
 		}
 	}
 
@@ -1116,8 +1176,9 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 			{
 				const Line& line = lines[i];
 				const Vector2f position = line.position + resolved.offset;
-				TextShapingContext shadow_context = (line.justification_index < 0 ? text_shaping_context : LineContext(line));
+				TextShapingContext shadow_context = (line.justification_index < 0 ? PlainContext(line) : LineContext(line));
 				shadow_context.shadow_blur = (gpu_blur ? resolved.blur : 0.f);
+				shadow_context.text_effect_shadow = true;
 				font_engine_interface->GenerateString(render_manager, font_face_handle, 0, line_strings[i], position, shadow_colour, opacity,
 					shadow_context, shadow_meshes);
 				const Rectanglef line_ink =

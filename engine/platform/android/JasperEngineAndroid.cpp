@@ -9,9 +9,16 @@
 #include <stdarg.h>
 #include <android/asset_manager.h>
 #include <vector>
+#include <algorithm>
+#include <cmath>
 #include "NativeEngine.h"
 #include "Log.h"
+#include "util/PlatformRules.h"
 #include "util/StringUtils.h"
+
+#include <android/window.h>
+#include <game-activity/GameActivity.h>
+#include <swappy/swappyGL.h>
 
 static int android_read(void* cookie, char* buf, int size) {
     return AAsset_read((AAsset*)cookie, buf, size);
@@ -230,133 +237,153 @@ FILE* JasperEngineAndroid::platformFopen(const char* fname, const char* mode) {
     return funopen(asset, android_read, android_write, android_seek, android_close);
 }
 
-bool JasperEngineAndroid::getBoolForKey(const char *key, bool defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
+// ---- UserSettings: SharedPreferences through UserSettings.java (it catches its own
+// exceptions: a key read with another type than it was written with gives the default).
+// Strings cross as UTF-16 (newJavaString / javaStringToUtf8): NewStringUTF and
+// GetStringUTFChars use modified UTF-8, which differs outside the BMP.
 
-    jstring strKey = env->NewStringUTF(key);
-    bool value = env->CallBooleanMethod(jniData.userSettingsObjRef, jniData.getBoolForKeyRef, strKey, defaultValue);
-    env->DeleteLocalRef(strKey);
-    return value;
+namespace {
+
+    // The game thread's JNIEnv and the key as a Java string, released at the end of the call
+    class UserSettingsCall {
+    public:
+        explicit UserSettingsCall(const char* key)
+            : jniData(NativeEngine::getInstance()->getJniData()),
+              env(NativeEngine::getInstance()->getJniEnv()),
+              key(newJavaString(env, key ? key : "")) {
+        }
+
+        ~UserSettingsCall() {
+            if (key)
+                env->DeleteLocalRef(key);
+        }
+
+        UserSettingsCall(const UserSettingsCall&) = delete;
+        UserSettingsCall& operator=(const UserSettingsCall&) = delete;
+
+        // false (logged) when the call raised; the caller uses the default then
+        bool done(const char* what) {
+            return !clearJavaException(env, what);
+        }
+
+        JniData& jniData;
+        JNIEnv* env;
+        jstring key;
+    };
+
+}
+
+bool JasperEngineAndroid::getBoolForKey(const char *key, bool defaultValue){
+    UserSettingsCall call(key);
+    const bool value = call.env->CallBooleanMethod(call.jniData.userSettingsObjRef, call.jniData.getBoolForKeyRef, call.key, defaultValue);
+    return call.done("UserSettings.getBoolForKey") ? value : defaultValue;
 }
 
 int JasperEngineAndroid::getIntegerForKey(const char *key, int defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    int value = env->CallIntMethod(jniData.userSettingsObjRef, jniData.getIntegerForKeyRef, strKey, defaultValue);
-    env->DeleteLocalRef(strKey);
-    return value;
+    UserSettingsCall call(key);
+    const int value = call.env->CallIntMethod(call.jniData.userSettingsObjRef, call.jniData.getIntegerForKeyRef, call.key, defaultValue);
+    return call.done("UserSettings.getIntegerForKey") ? value : defaultValue;
 }
 
 long JasperEngineAndroid::getLongForKey(const char *key, long defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    long value = env->CallLongMethod(jniData.userSettingsObjRef, jniData.getLongForKeyRef, strKey, defaultValue);
-    env->DeleteLocalRef(strKey);
-    return value;
+    UserSettingsCall call(key);
+    const long value = static_cast<long>(call.env->CallLongMethod(call.jniData.userSettingsObjRef, call.jniData.getLongForKeyRef, call.key,
+                                                                  static_cast<jlong>(defaultValue)));
+    return call.done("UserSettings.getLongForKey") ? value : defaultValue;
 }
 
 float JasperEngineAndroid::getFloatForKey(const char *key, float defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    float value = env->CallFloatMethod(jniData.userSettingsObjRef, jniData.getFloatForKeyRef, strKey, defaultValue);
-    env->DeleteLocalRef(strKey);
-    return value;
+    UserSettingsCall call(key);
+    const float value = call.env->CallFloatMethod(call.jniData.userSettingsObjRef, call.jniData.getFloatForKeyRef, call.key, defaultValue);
+    return call.done("UserSettings.getFloatForKey") ? value : defaultValue;
 }
 
 double JasperEngineAndroid::getDoubleForKey(const char *key, double defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    double value = env->CallDoubleMethod(jniData.userSettingsObjRef, jniData.getDoubleForKeyRef, strKey, defaultValue);
-    env->DeleteLocalRef(strKey);
-    return value;
+    UserSettingsCall call(key);
+    const double value = call.env->CallDoubleMethod(call.jniData.userSettingsObjRef, call.jniData.getDoubleForKeyRef, call.key, defaultValue);
+    return call.done("UserSettings.getDoubleForKey") ? value : defaultValue;
 }
 
 std::string JasperEngineAndroid::getStringForKey(const char *key, const std::string& defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    jstring strDefaultValue = env->NewStringUTF(defaultValue.c_str());
-    jstring rv = (jstring)env->CallObjectMethod(jniData.userSettingsObjRef, jniData.getStringForKeyRef, strKey, strDefaultValue);
-    std::string value = env->GetStringUTFChars(rv, 0);
-    env->DeleteLocalRef(strKey);
-    env->DeleteLocalRef(strDefaultValue);
-    env->DeleteLocalRef(rv);
+    UserSettingsCall call(key);
+    jstring strDefaultValue = newJavaString(call.env, defaultValue);
+    jstring rv = (jstring)call.env->CallObjectMethod(call.jniData.userSettingsObjRef, call.jniData.getStringForKeyRef, call.key, strDefaultValue);
+    std::string value = defaultValue;
+    if (call.done("UserSettings.getStringForKey") && rv)
+        value = javaStringToUtf8(call.env, rv);
+    if (strDefaultValue)
+        call.env->DeleteLocalRef(strDefaultValue);
+    if (rv)
+        call.env->DeleteLocalRef(rv);
     return value;
 }
 
 void JasperEngineAndroid::setBoolForKey(const char *key, bool value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setBoolForKeyRef, strKey, value);
-    env->DeleteLocalRef(strKey);
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setBoolForKeyRef, call.key, value);
+    call.done("UserSettings.setBoolForKey");
 }
 
 void JasperEngineAndroid::setIntegerForKey(const char *key, int value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setIntegerForKeyRef, strKey, value);
-    env->DeleteLocalRef(strKey);
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setIntegerForKeyRef, call.key, value);
+    call.done("UserSettings.setIntegerForKey");
 }
 
 void JasperEngineAndroid::setLongForKey(const char *key, long value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setLongForKeyRef, strKey, value);
-    env->DeleteLocalRef(strKey);
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setLongForKeyRef, call.key, static_cast<jlong>(value));
+    call.done("UserSettings.setLongForKey");
 }
 
 void JasperEngineAndroid::setFloatForKey(const char *key, float value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setFloatForKeyRef, strKey, value);
-    env->DeleteLocalRef(strKey);
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setFloatForKeyRef, call.key, value);
+    call.done("UserSettings.setFloatForKey");
 }
 
 void JasperEngineAndroid::setDoubleForKey(const char *key, double value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setDoubleForKeyRef, strKey, value);
-    env->DeleteLocalRef(strKey);
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setDoubleForKeyRef, call.key, value);
+    call.done("UserSettings.setDoubleForKey");
 }
 
 void JasperEngineAndroid::setStringForKey(const char* key, const std::string& value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    jstring strValue = env->NewStringUTF(value.c_str());
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setStringForKeyRef, strKey, strValue);
-    env->DeleteLocalRef(strKey);
-    env->DeleteLocalRef(strValue);
+    if (!key || !key[0]){
+        jasperengine::Log::error("UserSettings: a key must be a non-empty string");
+        return;
+    }
+    UserSettingsCall call(key);
+    jstring strValue = newJavaString(call.env, value);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setStringForKeyRef, call.key, strValue);
+    call.done("UserSettings.setStringForKey");
+    if (strValue)
+        call.env->DeleteLocalRef(strValue);
 }
 
 void JasperEngineAndroid::removeKey(const char* key){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.removeKeyRef, call.key);
+    call.done("UserSettings.removeKey");
+}
 
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.removeKeyRef, strKey);
-    env->DeleteLocalRef(strKey);
+bool JasperEngineAndroid::hasKey(const char* key){
+    if (!key) return false;
+    UserSettingsCall call(key);
+    const bool value = call.env->CallBooleanMethod(call.jniData.userSettingsObjRef, call.jniData.hasKeyRef, call.key);
+    return call.done("UserSettings.hasKey") && value;
+}
+
+void JasperEngineAndroid::removeAllKeys(){
+    UserSettingsCall call(nullptr);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.removeAllKeysRef);
+    call.done("UserSettings.removeAllKeys");
+}
+
+void JasperEngineAndroid::saveUserSettings(){
+    UserSettingsCall call(nullptr);
+    call.env->CallBooleanMethod(call.jniData.userSettingsObjRef, call.jniData.saveUserSettingsRef);
+    call.done("UserSettings.save");
 }
 
 // The export compiles the AdMob wrapper in only when the project enables AdMob
@@ -423,4 +450,231 @@ void JasperEngineAndroid::showInterstitialAd(){
     if (!hasAdMob(jniData)) return;
 
     env->CallVoidMethod(jniData.adMobWrapperObjRef, jniData.showInterstitialAd);
+}
+
+// ------------------------------------------------------------------ platform services
+
+namespace {
+
+// The calling thread's env for a JasperPlatform call: NULL when the class or method is missing
+JNIEnv* platformEnv(jmethodID method){
+    NativeEngine* nativeEngine = NativeEngine::getInstance();
+    if (!nativeEngine || !method || !nativeEngine->getJniData().platformClsRef) return NULL;
+    return nativeEngine->getJniEnv();
+}
+
+std::string callPlatformString(jmethodID method, bool withActivity){
+    JNIEnv* env = platformEnv(method);
+    if (!env) return "";
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    jstring value = withActivity
+        ? (jstring)env->CallStaticObjectMethod(jniData.platformClsRef, method, jniData.gameActivityObjRef)
+        : (jstring)env->CallStaticObjectMethod(jniData.platformClsRef, method);
+    std::string out;
+    if (!clearJavaException(env, "JasperPlatform")){
+        out = javaStringToUtf8(env, value);
+    }
+    if (value) env->DeleteLocalRef(value);
+    return out;
+}
+
+int callPlatformInt(jmethodID method, bool withActivity, int fallback){
+    JNIEnv* env = platformEnv(method);
+    if (!env) return fallback;
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    const jint value = withActivity
+        ? env->CallStaticIntMethod(jniData.platformClsRef, method, jniData.gameActivityObjRef)
+        : env->CallStaticIntMethod(jniData.platformClsRef, method);
+    return clearJavaException(env, "JasperPlatform") ? fallback : (int)value;
+}
+
+jasperengine::DeviceOrientation lastDeviceOrientation = jasperengine::DeviceOrientation::Unknown;
+
+} // namespace
+
+bool JasperEngineAndroid::platformOpenURL(const std::string& url){
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformOpenURL);
+    if (!env) return System::platformOpenURL(url);
+    jstring text = newJavaString(env, url);
+    const jboolean opened = env->CallStaticBooleanMethod(jniData.platformClsRef, jniData.platformOpenURL, jniData.gameActivityObjRef, text);
+    env->DeleteLocalRef(text);
+    return !clearJavaException(env, "openURL") && opened == JNI_TRUE;
+}
+
+std::vector<std::string> JasperEngineAndroid::getPreferredLocales(){
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformGetPreferredLocales);
+    if (!env) return System::getPreferredLocales();
+    jobjectArray array = (jobjectArray)env->CallStaticObjectMethod(jniData.platformClsRef, jniData.platformGetPreferredLocales);
+    std::vector<std::string> tags;
+    if (!clearJavaException(env, "getPreferredLocales") && array){
+        const jsize count = env->GetArrayLength(array);
+        for (jsize i = 0; i < count; i++){
+            jstring tag = (jstring)env->GetObjectArrayElement(array, i);
+            const std::string value = jasperengine::LocaleRules::normalize(javaStringToUtf8(env, tag));
+            if (!value.empty()) tags.push_back(value);
+            if (tag) env->DeleteLocalRef(tag);
+        }
+    }
+    if (array) env->DeleteLocalRef(array);
+    return tags.empty() ? System::getPreferredLocales() : tags;
+}
+
+std::string JasperEngineAndroid::getRegionOverride(){
+    return callPlatformString(NativeEngine::getInstance()->getJniData().platformGetRegion, false);
+}
+
+std::string JasperEngineAndroid::getAppVersion(){
+    static const std::string value = callPlatformString(NativeEngine::getInstance()->getJniData().platformGetAppVersion, true);
+    return value.empty() ? System::getAppVersion() : value;
+}
+
+int64_t JasperEngineAndroid::getAppBuild(){
+    static int64_t value = -1;
+    if (value < 0){
+        JniData& jniData = NativeEngine::getInstance()->getJniData();
+        JNIEnv* env = platformEnv(jniData.platformGetAppBuild);
+        value = 0;
+        if (env){
+            const jlong build = env->CallStaticLongMethod(jniData.platformClsRef, jniData.platformGetAppBuild, jniData.gameActivityObjRef);
+            if (!clearJavaException(env, "getAppBuild")) value = (int64_t)build;
+        }
+    }
+    return value > 0 ? value : System::getAppBuild();
+}
+
+std::string JasperEngineAndroid::getAppIdentifier(){
+    static const std::string value = callPlatformString(NativeEngine::getInstance()->getJniData().platformGetAppIdentifier, true);
+    return value.empty() ? System::getAppIdentifier() : value;
+}
+
+std::string JasperEngineAndroid::getAppName(){
+    static const std::string value = callPlatformString(NativeEngine::getInstance()->getJniData().platformGetAppName, true);
+    return value.empty() ? System::getAppName() : value;
+}
+
+std::string JasperEngineAndroid::getOperatingSystem(){
+    static const std::string value = [this](){
+        JniData& jniData = NativeEngine::getInstance()->getJniData();
+        return jasperengine::OsRules::androidOperatingSystem(
+            callPlatformString(jniData.platformGetOsRelease, false), getAndroidApiLevel(),
+            callPlatformString(jniData.platformGetBuildDisplay, false),
+            callPlatformString(jniData.platformGetBuildIncremental, false));
+    }();
+    return value;
+}
+
+std::string JasperEngineAndroid::getOperatingSystemVersion(){
+    static const std::string value = callPlatformString(NativeEngine::getInstance()->getJniData().platformGetOsRelease, false);
+    return value;
+}
+
+int JasperEngineAndroid::getAndroidApiLevel(){
+    static const int value = callPlatformInt(NativeEngine::getInstance()->getJniData().platformGetApiLevel, false, 0);
+    return value;
+}
+
+std::string JasperEngineAndroid::getDeviceModel(){
+    static const std::string value = callPlatformString(NativeEngine::getInstance()->getJniData().platformGetDeviceModel, false);
+    return value;
+}
+
+jasperengine::DeviceType JasperEngineAndroid::getDeviceType(){
+    return jasperengine::DeviceType::Handheld;
+}
+
+int JasperEngineAndroid::getSystemMemorySize(){
+    static const int value = callPlatformInt(NativeEngine::getInstance()->getJniData().platformGetSystemMemorySize, true, 0);
+    return value;
+}
+
+jasperengine::NetworkReachability JasperEngineAndroid::getInternetReachability(){
+    const int value = callPlatformInt(NativeEngine::getInstance()->getJniData().platformGetInternetReachability, true, 0);
+    if (value == 1) return jasperengine::NetworkReachability::ReachableViaCarrierDataNetwork;
+    if (value == 2) return jasperengine::NetworkReachability::ReachableViaLocalAreaNetwork;
+    return jasperengine::NetworkReachability::NotReachable;
+}
+
+bool JasperEngineAndroid::vibrate(int milliseconds){
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformVibrate);
+    if (!env) return false;
+    const jboolean done = env->CallStaticBooleanMethod(jniData.platformClsRef, jniData.platformVibrate, jniData.gameActivityObjRef, (jint)milliseconds);
+    return !clearJavaException(env, "vibrate") && done == JNI_TRUE;
+}
+
+bool JasperEngineAndroid::hapticFeedback(jasperengine::HapticFeedback type){
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformHapticFeedback);
+    if (!env) return false;
+    const jboolean done = env->CallStaticBooleanMethod(jniData.platformClsRef, jniData.platformHapticFeedback, jniData.gameActivityObjRef, (jint)type);
+    return !clearJavaException(env, "hapticFeedback") && done == JNI_TRUE;
+}
+
+float JasperEngineAndroid::getScreenDpi(){
+    return (float)callPlatformInt(NativeEngine::getInstance()->getJniData().platformGetScreenDpi, true, 0);
+}
+
+float JasperEngineAndroid::getRefreshRate(){
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformGetRefreshRate);
+    if (!env) return 60.0f;
+    const jfloat rate = env->CallStaticFloatMethod(jniData.platformClsRef, jniData.platformGetRefreshRate, jniData.gameActivityObjRef);
+    if (clearJavaException(env, "getRefreshRate") || rate <= 1.0f) return 60.0f;
+    return (float)rate;
+}
+
+void JasperEngineAndroid::setKeepScreenOn(bool keepOn){
+    GameActivity* activity = NativeEngine::getInstance()->getActivity();
+    if (keepOn){
+        GameActivity_setWindowFlags(activity, AWINDOW_FLAG_KEEP_SCREEN_ON, 0);
+    }else{
+        GameActivity_setWindowFlags(activity, 0, AWINDOW_FLAG_KEEP_SCREEN_ON);
+    }
+}
+
+void JasperEngineAndroid::applyOrientationPolicy(jasperengine::ScreenOrientation requested, uint8_t allowedMask){
+    bool unsupported = false;
+    const int orientation = jasperengine::PlatformRules::androidRequestedOrientation(requested, allowedMask, &unsupported);
+    static bool warned = false;
+    if (unsupported && !warned){
+        warned = true;
+        jasperengine::Log::warn("Android cannot restrict auto-rotation to this set of Screen.autorotateTo* orientations; all four are allowed");
+    }
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformSetOrientationPolicy);
+    if (!env) return;
+    env->CallStaticVoidMethod(jniData.platformClsRef, jniData.platformSetOrientationPolicy, jniData.gameActivityObjRef, (jint)orientation);
+    clearJavaException(env, "setOrientationPolicy");
+}
+
+jasperengine::ScreenOrientation JasperEngineAndroid::getScreenOrientation(){
+    NativeEngine* nativeEngine = NativeEngine::getInstance();
+    if (!nativeEngine->getJniData().platformDisplayRotation) return System::getScreenOrientation();
+    return jasperengine::PlatformRules::orientationFromRotation(nativeEngine->getDisplayRotation(), nativeEngine->isNaturalPortrait());
+}
+
+jasperengine::DeviceOrientation JasperEngineAndroid::getDeviceOrientation(){
+    NativeEngine* nativeEngine = NativeEngine::getInstance();
+    lastDeviceOrientation = jasperengine::PlatformRules::deviceOrientationFromDegrees(
+        nativeEngine->getDeviceDegrees(), nativeEngine->isNaturalPortrait(), lastDeviceOrientation);
+    return lastDeviceOrientation;
+}
+
+void JasperEngineAndroid::applyFramePacing(const jasperengine::FramePacing& pacing){
+    const int fps = pacing.mobileFps > 0 ? pacing.mobileFps : 60;
+    if (SwappyGL_isEnabled()){
+        // Swappy picks the nearest multiple of the display period
+        SwappyGL_setSwapIntervalNS((uint64_t)(1000000000.0 / (double)fps));
+        NativeEngine::getInstance()->setFallbackPacing(1, 0.0);
+        return;
+    }
+    // without Swappy (devices it refuses): the swap interval nearest the rate, and the frame
+    // limiter for what an interval cannot give (45 fps at 60 Hz). The swap interval needs the
+    // context: systemViewLoaded applies the pacing again once it exists.
+    const double refresh = getRefreshRate();
+    const int interval = std::max(1, (int)std::lround(refresh / (double)fps));
+    const double intervalFps = refresh / (double)interval;
+    NativeEngine::getInstance()->setFallbackPacing(interval, std::fabs(intervalFps - (double)fps) > 1.0 ? (double)fps : 0.0);
 }

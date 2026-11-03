@@ -122,7 +122,8 @@ public:
     bool changed() const { return history->position() > start; }
     void commit() { history->groupSince(start); }
     void rollback() {
-        while (history->position() > start && history->canUndo()) history->undo();
+        // a refused undo leaves the position (CommandHistory::undo false): it ends the loop too
+        while (history->position() > start && history->canUndo() && history->undo()) {}
     }
 
 private:

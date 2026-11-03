@@ -195,8 +195,11 @@ const std::vector<EntityKind>& entityKinds() {
         {"particle_system", EntityCreationType::PARTICLE_SYSTEM, "Particle System"},
         {"force_field", EntityCreationType::FORCE_FIELD, "Force Field"},
         {"fluid_simulation", EntityCreationType::FLUID_SIMULATION, "Fluid Simulation"},
+        {"video_player", EntityCreationType::VIDEO_PLAYER, "Video Player"},
+        {"video_background", EntityCreationType::VIDEO_BACKGROUND, "Video Background"},
         {"points", EntityCreationType::POINTS, "Points"},
         {"line_renderer", EntityCreationType::LINE_RENDERER, "Line Renderer"},
+        {"trail_renderer", EntityCreationType::TRAIL_RENDERER, "Trail Renderer"},
         {"mesh_polygon", EntityCreationType::MESH_POLYGON, "Mesh Polygon"},
         {"sprite", EntityCreationType::SPRITE, "Sprite"},
         {"tilemap", EntityCreationType::TILEMAP, "Tilemap"},
@@ -214,9 +217,14 @@ const std::vector<EntityKind>& entityKinds() {
         {"scrollbar", EntityCreationType::SCROLLBAR, "Scrollbar"},
         {"progressbar", EntityCreationType::PROGRESSBAR, "Progress Bar"},
         {"input_field", EntityCreationType::INPUT_FIELD, "Input Field"},
+        {"onscreen_stick", EntityCreationType::ONSCREEN_STICK_FIXED, "On-Screen Stick"},
+        {"onscreen_button", EntityCreationType::ONSCREEN_BUTTON, "On-Screen Button"},
+        {"touch_area", EntityCreationType::TOUCH_AREA, "Touch Area"},
         {"panel", EntityCreationType::PANEL, "Panel"},
         {"polygon", EntityCreationType::POLYGON, "Polygon"},
         {"layout_group", EntityCreationType::LAYOUT_GROUP, "Layout Group"},
+        {"canvas_group", EntityCreationType::CANVAS_GROUP, "Canvas Group"},
+        {"safe_area", EntityCreationType::SAFE_AREA, "Safe Area"},
         {"ui_document", EntityCreationType::UI_DOCUMENT, "UI Document"},
         {"animation", EntityCreationType::ANIMATION, "Animation"},
         {"sprite_animation", EntityCreationType::SPRITE_ANIMATION, "Sprite Animation"},
@@ -246,7 +254,8 @@ const EntityKind* findKind(const std::string& given) {
         {"rigidbody3d", "rigidbody"}, {"joint", "joint3d"}, {"joint_2d", "joint2d"}, {"progress_bar", "progressbar"},
         {"sun", "directional_light"}, {"audio", "audio_source"}, {"ui_image", "image"}, {"ui_text", "text"},
         {"label", "text"}, {"quad", "plane"}, {"uidocument", "ui_document"}, {"html", "ui_document"},
-        {"fluid", "fluid_simulation"}
+        {"fluid", "fluid_simulation"}, {"line", "line_renderer"}, {"trail", "trail_renderer"}, {"video", "video_player"},
+        {"videoplayer", "video_player"}, {"video_camera_background", "video_background"}
     };
     auto alias = aliases.find(key);
     if (alias != aliases.end()) key = alias->second;
@@ -704,7 +713,8 @@ void createEntityRun(const CallPtr& call, bool waited) {
     const bool stepsOk = stepCount == 0 ? (delete steps, true) : runSceneCommand(sceneId, steps, error);
     if (kind->type == EntityCreationType::LATTICE) {
         if (!stepsOk) {
-            while (history->position() > start && history->canUndo()) history->undo();
+            // a refused undo leaves the position (CommandHistory::undo false): it ends the loop too
+            while (history->position() > start && history->canUndo() && history->undo()) {}
         } else {
             history->groupSince(start);
             if (!select) project->replaceSelectedEntities(sceneId, selectedBefore);
@@ -1209,21 +1219,22 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create with parent, name, local transform, components and initial values in one "
-            "step. empty = Transform only; bare = no components (root only); model needs model (a project "
-            "model); *_tween/*_tracks: animation actions. values {component: {property: value}} or changes "
-            "(set_properties).";
+            "GameObject > Create in one step: parent, name (default: the type's Unity name), local transform, extra "
+            "components, values ({component: "
+            "{property: value}} or set_properties changes). empty: Transform only; bare: "
+            "no components (root only); model: a project .gltf/.glb/.obj/.fbx; lattice: fitted and bound to "
+            "targets; *_tween/*_tracks: animation actions.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"type", withDefault(stringEnum("", types), "empty")},
-            {"name", string("Default: the type's Unity name.")},
+            {"name", string("")},
             {"parent", entityRef()},
             {"position", vec3("")},
             {"rotation", quat()},
             {"scale", vec3("")},
-            {"model", assetPath("type model: .gltf/.glb/.obj/.fbx.")},
-            {"targets", entities("type lattice: fitted, bound.")},
-            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Extra components."}}},
+            {"model", assetPath("")},
+            {"targets", entities()},
+            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}}},
             {"values", anyObject("")},
             {"changes", array(anyObject(""), "")},
             {"select", withDefault(boolean(""), true)}

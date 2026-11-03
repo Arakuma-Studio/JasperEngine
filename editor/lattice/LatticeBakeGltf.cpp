@@ -1006,7 +1006,7 @@ bool LatticeBakeGltf::saveBinary(const fs::path& file, std::string& error){
     out.insert(out.end(), bin.begin(), bin.end());
 
     std::error_code ec;
-    if (fs::exists(file, ec)){
+    if (fs::exists(fs::symlink_status(file, ec))){
         error = "'" + file.generic_string() + "' already exists";
         return false;
     }

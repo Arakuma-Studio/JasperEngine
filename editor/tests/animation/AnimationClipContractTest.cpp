@@ -50,9 +50,13 @@ TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
     // within the types every loop runs over (S19's navigation components follow it)
     EXPECT_LE(static_cast<int>(ComponentType::AnimationPlayerComponent), static_cast<int>(LastComponentType));
     EXPECT_LT(static_cast<int>(ComponentType::AnimationPlayerComponent), ComponentTypeCount);
-    // and upstream's Vertex Animator is last
-    EXPECT_EQ(LastComponentType, ComponentType::VertexAnimatorComponent);
-    EXPECT_EQ(ComponentTypeCount, static_cast<int>(ComponentType::VertexAnimatorComponent) + 1);
+    // later features append after the Vertex Animator (prefab override masks use the ordinal):
+    // upstream's Trail Renderer, Canvas Group, on-screen controls and Ragdoll, then the Camera
+    // Shaker, the Camera Follow, the Text Effect, the Video Player and the Safe Area
+    EXPECT_GT(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::VertexAnimatorComponent));
+    EXPECT_EQ(ComponentTypeCount, static_cast<int>(LastComponentType) + 1);
+    // the Text Effect (ui-scaling-text), then the Video Player and the Safe Area; later features append after them
+    EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::SafeAreaComponent));
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentType("AnimationPlayerComponent"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentName(ComponentType::AnimationPlayerComponent, false), "AnimationPlayerComponent");
@@ -98,8 +102,12 @@ TEST(AnimationClipContract, ChannelsOfComponentWrites){
               (Channels{ClipChannel::Position, ClipChannel::Rotation, ClipChannel::Scale}));
     EXPECT_TRUE(ClipRecordHooks::channelsOf(ComponentType::Transform, "parent").empty());
     EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::LatticeComponent, "offsets"), Channels{ClipChannel::Lattice});
-    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::MeshComponent, ""), Channels{ClipChannel::Morph});
-    EXPECT_TRUE(ClipRecordHooks::channelsOf(ComponentType::CameraComponent, "").empty());
+    // a whole-component write (Reset, Paste Component Values) also writes its animatable
+    // properties (anim-properties): the previewed ones are notified
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::MeshComponent, ""), (Channels{ClipChannel::Morph, ClipChannel::Property}));
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::CameraComponent, ""), Channels{ClipChannel::Property});
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::ScriptComponent, "scripts[0].glow"), Channels{ClipChannel::Property});
+    EXPECT_TRUE(ClipRecordHooks::channelsOf(ComponentType::ActionComponent, "").empty()) << "no animatable property";
 }
 
 TEST(AnimationClipContract, Document){

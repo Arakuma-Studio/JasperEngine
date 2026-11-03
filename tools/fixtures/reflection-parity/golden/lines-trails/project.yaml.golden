@@ -1,0 +1,31 @@
+formatVersion: 1
+name: LinesTrails
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+export:
+  shaderAdditions:
+    - type: lines
+      properties: 2
+    - type: lines
+      properties: 10
+    - type: lines
+      properties: 26
+    - type: lines
+      properties: 42
+startSceneId: 1
+scenes:
+  - filepath: Main Scene.scene
+    filepathGuid: 2385f1a5e2877b94bc16d5309fb19aca

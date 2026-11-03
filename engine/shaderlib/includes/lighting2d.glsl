@@ -5,12 +5,63 @@
 //
 // Declares the engine's 2D lights block (u_fs_lighting2d, filled for every mesh variant
 // with USE_LIGHT2D) and, with USE_SHADOWS_2D, the shadow atlas, so mesh.frag and library
-// shaders share one declaration. Fragment stage only. getNormal2D reads the surface
-// normal the including shader declares (v_tbn / v_normal with HAS_NORMALS, the normal map
-// with HAS_NORMAL_MAP); without HAS_NORMALS the normal is +Z.
+// shaders share one declaration. Fragment stage only.
+//
+// getNormal2D() is the normal the lights shade with; getNormal2DAt(uv) the same with the
+// normal map read at uv (a shader that clamps its UV, library/sprite.frag). Normal maps are
+// tangent-space, OpenGL convention (green up the image), as the 2D meshes' tangent frame
+// reads them. The normal comes from, in order:
+//   - a library shader with @require normalmap (SURFACE_NORMAL_MAP, ShaderRequire_NormalMap)
+//     whose variant has the material's normal map, tangents and uv1: SURFACE_NORMAL_MAP_ACTIVE
+//     (includes/surface_vs.glsl writes v_normal, v_tangent, v_bitangent then). This include
+//     declares v_tangent and v_bitangent (unless the shader requires tangents, SURFACE_TANGENTS),
+//     v_normal (unless SURFACE_NORMALS or SURFACE_TANGENTS: the shader declares it) and
+//     u_normalTexture / u_normal_smp, read at v_uv1, which the shader declares (a shader that
+//     declares those two itself defines LIGHT2D_NORMAL_TEXTURE_DECLARED before including);
+//   - a library shader requiring tangents without a map: its v_normal;
+//   - mesh.frag's surface: v_tbn and the normal map (HAS_NORMAL_MAP, at getNormalUV(), Lit's
+//     Stochastic Tiling taps under LIT_STOCHASTIC), v_tbn[2] or v_normal with HAS_NORMALS;
+//   - else +Z.
+//
+// A light's height gives normals a direction to answer (N.L with the light raised above the
+// plane) only where they mean something: LIGHT2D_NORMAL_MAP is defined when getNormal2D samples
+// a normal map, LIGHT2D_NORMAL_RESPONSE when that, or when the including shader defined
+// LIGHT2D_SURFACE_NORMALS before including (mesh.frag's lit path: real normals, the light's
+// N.L). Without LIGHT2D_NORMAL_RESPONSE getLight2DIntensity ignores n and the height: a plain
+// sprite is lit as a height-0 light lights it, at any height.
 
 #ifndef LIGHTING2D_GLSL
 #define LIGHTING2D_GLSL
+
+// the same test as includes/surface_vs.glsl's (both stages see the same defines)
+#if defined(SURFACE_NORMAL_MAP) && defined(HAS_NORMAL_MAP) && defined(HAS_TANGENTS) && defined(HAS_UV_SET1)
+    #define SURFACE_NORMAL_MAP_ACTIVE
+#endif
+
+// getNormal2D samples a normal map
+#if defined(HAS_NORMAL_MAP) && (defined(HAS_UV_SET1) || defined(HAS_UV_SET2)) && ((defined(HAS_NORMALS) && defined(HAS_TANGENTS)) || defined(SURFACE_NORMAL_MAP_ACTIVE))
+    #define LIGHT2D_NORMAL_MAP
+#endif
+
+// the light's height and n shape the light
+#if defined(LIGHT2D_NORMAL_MAP) || defined(LIGHT2D_SURFACE_NORMALS)
+    #define LIGHT2D_NORMAL_RESPONSE
+#endif
+
+#ifdef SURFACE_NORMAL_MAP_ACTIVE
+    #ifndef SURFACE_TANGENTS
+        in vec3 v_tangent;
+        in vec3 v_bitangent;
+        #ifndef SURFACE_NORMALS
+            in vec3 v_normal;
+        #endif
+    #endif
+    #ifndef LIGHT2D_NORMAL_TEXTURE_DECLARED
+        #define LIGHT2D_NORMAL_TEXTURE_DECLARED
+        uniform texture2D u_normalTexture;
+        uniform sampler u_normal_smp;
+    #endif
+#endif
 
 #ifdef HAS_NORMAL_MAP
     #include "includes/normal_map.glsl"
@@ -31,17 +82,27 @@ uniform u_fs_lighting2d {
     #include "includes/depth_util.glsl"
 #endif
 
-// Normal for the 2D light path. The lit path already has getNormalInfo(), but it
-// is compiled out under MATERIAL_UNLIT, so this is a minimal standalone version.
-vec3 getNormal2D(){
-#ifdef HAS_NORMALS
+// Normal for the 2D light path, the normal map read at uv. The lit path already has
+// getNormalInfo(), but it is compiled out under MATERIAL_UNLIT, so this is a minimal
+// standalone version.
+vec3 getNormal2DAt(vec2 uv){
+#if defined(SURFACE_NORMAL_MAP_ACTIVE)
+    // the library path's frame (includes/surface_vs.glsl, mirrored there); two-channel maps
+    // decode alike (includes/normal_map.glsl)
+    vec3 ntex = decodeNormalMap(texture(sampler2D(u_normalTexture, u_normal_smp), uv));
+    return normalize(mat3(normalize(v_tangent), normalize(v_bitangent), normalize(v_normal)) * ntex);
+#elif defined(SURFACE_TANGENTS)
+    // a library shader requiring tangents, without a map: its normal (it has no v_tbn)
+    return normalize(v_normal);
+#elif defined(HAS_NORMALS)
     #ifdef HAS_TANGENTS
         #if defined(HAS_NORMAL_MAP) && defined(LIT_STOCHASTIC)
-            // the built-in Lit's Stochastic Tiling (includes/pbr.glsl): the same taps and weights
+            // the built-in Lit's Stochastic Tiling (includes/pbr.glsl): the same taps and weights,
+            // at the material's own UVs
             vec3 ntex = stochasticNormal(u_normalTexture, u_normal_smp, getNormalStochastic(), 1.0, STOCHASTIC_NORMAL_GL);
             return normalize(v_tbn * ntex);
         #elif defined(HAS_NORMAL_MAP) && (defined(HAS_UV_SET1) || defined(HAS_UV_SET2))
-            vec3 ntex = decodeNormalMap(texture(sampler2D(u_normalTexture, u_normal_smp), getNormalUV()));
+            vec3 ntex = decodeNormalMap(texture(sampler2D(u_normalTexture, u_normal_smp), uv));
             return normalize(v_tbn * ntex);
         #else
             return normalize(v_tbn[2]);
@@ -51,6 +112,17 @@ vec3 getNormal2D(){
     #endif
 #else
     return vec3(0.0, 0.0, 1.0);
+#endif
+}
+
+// Normal for the 2D light path, the normal map read at the surface's UV
+vec3 getNormal2D(){
+#if defined(SURFACE_NORMAL_MAP_ACTIVE)
+    return getNormal2DAt(v_uv1);
+#elif defined(HAS_NORMALS) && defined(HAS_TANGENTS) && defined(HAS_NORMAL_MAP) && (defined(HAS_UV_SET1) || defined(HAS_UV_SET2)) && !defined(SURFACE_TANGENTS) && !defined(LIT_STOCHASTIC)
+    return getNormal2DAt(getNormalUV());
+#else
+    return getNormal2DAt(vec2(0.0));
 #endif
 }
 
@@ -102,7 +174,8 @@ float shadow2DCalculation(float row, vec2 lightToFrag, float dist01, float softn
 #endif
 
 // Accumulated 2D light at fragPos: ambient2D (optional) + sum of light
-// contributions. Each light's shadow attenuates only that light's term.
+// contributions. Each light's shadow attenuates only that light's term. n and the lights'
+// heights count only with LIGHT2D_NORMAL_RESPONSE (see the top of this file).
 vec3 getLight2DIntensity(vec3 fragPos, vec3 n, bool includeAmbient){
     vec3 acc = includeAmbient ? lighting2d.ambient.rgb : vec3(0.0);
     int count = int(lighting2d.ambient.w);
@@ -114,12 +187,14 @@ vec3 getLight2DIntensity(vec3 fragPos, vec3 n, bool includeAmbient){
         if (d >= pr.w) continue;
         float atten = pow(clamp(1.0 - d / pr.w, 0.0, 1.0), lighting2d.falloff_shadow[i].x);
         float ndotl = 1.0;
-        if (pr.z > 0.0){
-            // virtual light height above the sprite plane: gives normal maps a
-            // direction to respond to (height 0 = pure radial, ignores normals)
-            vec3 l = normalize(vec3(toLight, pr.z));
-            ndotl = clamp(dot(n, l), 0.0, 1.0);
-        }
+        #ifdef LIGHT2D_NORMAL_RESPONSE
+            if (pr.z > 0.0){
+                // virtual light height above the sprite plane: gives normal maps a
+                // direction to respond to (height 0 = pure radial, ignores normals)
+                vec3 l = normalize(vec3(toLight, pr.z));
+                ndotl = clamp(dot(n, l), 0.0, 1.0);
+            }
+        #endif
         float lit = 1.0;
         #ifdef USE_SHADOWS_2D
             float rowIdx = lighting2d.falloff_shadow[i].y;

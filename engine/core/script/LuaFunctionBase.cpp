@@ -27,6 +27,7 @@
 #include "LuaWatchdog.h"
 #include "Log.h"
 #include "animation/AnimationEvent.h"
+#include "object/VideoPlayer.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -34,15 +35,15 @@
 
 using namespace jasperengine;
 
-LuaFunctionBase::LuaFunctionBase(lua_State *vm, const std::string &func): m_vm(vm), m_generation(LuaBinding::getLuaStateGeneration()) {
+LuaFunctionBase::LuaFunctionBase(lua_State *vm, const std::string &func): m_vm(vm), m_func(LUA_NOREF), m_generation(LuaBinding::getLuaStateGeneration()) {
     // get the function
-    lua_getglobal(m_vm, func.c_str());
+    lua_getglobal(vm, func.c_str());
 
-    store_function();
+    store_function(vm);
 }
 
-LuaFunctionBase::LuaFunctionBase(lua_State *vm): m_vm(vm), m_generation(LuaBinding::getLuaStateGeneration()) {
-    store_function();
+LuaFunctionBase::LuaFunctionBase(lua_State *vm): m_vm(vm), m_func(LUA_NOREF), m_generation(LuaBinding::getLuaStateGeneration()) {
+    store_function(vm);
 }
 
 LuaFunctionBase::LuaFunctionBase(const LuaFunctionBase &other)
@@ -80,15 +81,18 @@ LuaFunctionBase& LuaFunctionBase::operator=(const LuaFunctionBase &other){
     return *this;
 }
 
-void LuaFunctionBase::store_function(){
+void LuaFunctionBase::store_function(lua_State *vm){
     // ensure it's a function
-    if (!lua_isfunction(m_vm, -1)) {
-        lua_pop(m_vm, 1);
+    if (!lua_isfunction(vm, -1)) {
+        lua_pop(vm, 1);
         throw std::runtime_error("not a valid function");
     }
     m_record = lua_reload::callbackRecordForFunction(m_vm);
     // store it in registry for later use
-    m_func = luaL_ref(m_vm, LUA_REGISTRYINDEX);
+    m_func = luaL_ref(vm, LUA_REGISTRYINDEX);
+    // called later from the main thread: `vm` may be a coroutine's, which ends (and is
+    // collected) long before the callback runs
+    m_vm = LuaBinding::mainThread(vm);
 }
 
 void LuaFunctionBase::push_function(lua_State *vm, int func){
@@ -241,6 +245,11 @@ void LuaFunctionBase::push_value(lua_State *vm, NavMeshAgent o){
 
 void LuaFunctionBase::push_value(lua_State *vm, NavMeshSurface o){
     if (!luabridge::push<NavMeshSurface>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, const VideoPlayer &o){
+    if (!luabridge::push<VideoPlayer>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 

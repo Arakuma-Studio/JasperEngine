@@ -279,6 +279,26 @@ TEST(StreamComponent, ParticleSystemFieldsRoundTrip){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// (ui-scaling-text) the GameObject's Unscaled Time: written only when on (a file from before it
+// reads and writes as it was), read back; absent over a component that had it is off
+TEST(StreamComponent, ParticleSystemUnscaledTimeOnlyWhenOn){
+    ParticleSystemComponent plain{};
+    const YAML::Node plainNode = reflect::encodeValue(ComponentType::ParticleSystemComponent, &plain);
+    EXPECT_FALSE(plainNode["useUnscaledTime"]) << "off: not written";
+
+    ParticleSystemComponent unscaled{};
+    unscaled.useUnscaledTime = true;
+    const YAML::Node node = reflect::encodeValue(ComponentType::ParticleSystemComponent, &unscaled);
+    ASSERT_TRUE(node["useUnscaledTime"]);
+    EXPECT_TRUE(node["useUnscaledTime"].as<bool>());
+    EXPECT_TRUE(roundTrip(ComponentType::ParticleSystemComponent, unscaled).useUnscaledTime);
+
+    // the old component decoded over: an absent key is off again
+    const ParticleSystemComponent over = Stream::decodeParticleSystemComponent(plainNode, &unscaled);
+    EXPECT_FALSE(over.useUnscaledTime);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 TEST(StreamComponent, ForceFieldFieldsRoundTrip){
     ForceFieldComponent field{};
     field.enabled = false;

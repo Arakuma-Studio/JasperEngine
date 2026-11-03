@@ -58,6 +58,7 @@ namespace {
         empty.lodBias = mesh.lodBias;
         empty.cullingMode = mesh.cullingMode;
         empty.windingOrder = mesh.windingOrder;
+        empty.mirroredWinding = mesh.mirroredWinding;
         return empty;
     }
 

@@ -5,6 +5,7 @@
 #include "io/AtomicFile.h"
 
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/GlbBuilder.h"
 #include "util/Util.h"
 

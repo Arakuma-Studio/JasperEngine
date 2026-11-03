@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "htmlui/HtmlTextEffects.h"
+#include "htmlui/UIParticleSystemElement.h"
 #include "HtmlUI.h"
 
 #include "HtmlUIContext.h"
@@ -11,6 +13,7 @@
 #if JASPERENGINE_VIDEO
 #include "media/UIVideoElement.h"
 #endif
+#include "controls/OnScreenControls.h"
 #include "compat/runtime/RuntimeRegistry.h"
 #include "widgets/WidgetsRuntime.h"
 #include "effects/EffectRegistry.h"
@@ -99,6 +102,11 @@ bool HtmlUI::acquire(){
 #if JASPERENGINE_VIDEO
     UIVideoElement::registerInstancer();
 #endif
+    UIParticleSystemElement::registerInstancer();
+    // text-effect (per-character animation): the fork's text effect provider
+    htmlui::HtmlTextEffects::install();
+    // the on-screen controls (ui-multitouch): <onscreen-stick>, <onscreen-button>, <touch-area>
+    UIOnScreenControl::registerInstancers();
     // the compat layer's runtime emulations (phase-2 hook H1), before any document loads
     htmlui::compat::registerRuntime();
     // the S17 widgets: virtual views, markdown, tooltips, drag and drop
@@ -135,6 +143,7 @@ void HtmlUI::release(){
     debuggerContext = nullptr;
     debuggerVisible = false;
 
+    htmlui::HtmlTextEffects::uninstall();
     Rml::Shutdown();
 
     // after Rml::Shutdown: the documents (and their ThorVG animations) are gone
@@ -142,6 +151,8 @@ void HtmlUI::release(){
 #if JASPERENGINE_VIDEO
     UIVideoElement::releaseInstancer();
 #endif
+    UIParticleSystemElement::releaseInstancer();
+    UIOnScreenControl::releaseInstancers();
     htmlui::compat::releaseRuntime();
     htmlui::WidgetsRuntime::releaseAll();
     htmlui::EffectRegistry::get().shutdown();

@@ -132,6 +132,10 @@ def _class(bd, c, repo_root):
         ev = bd.r.lua_classes.get(t) if getattr(m, 'is_event', False) else None
         if ev is not None and getattr(ev, 'subscribe_sig', None):
             hp, hr = ev.subscribe_sig
+            # an event field's handler arguments by name, where the C++ signature has none
+            names = p.EVENT_FIELD_ARGS.get((c.name, m.name))
+            if names and len(names) == len(hp):
+                hp = [(names[i], tt, o) for i, (_, tt, o) in enumerate(hp)]
             handler = 'fun(' + ', '.join(f'{n}: {tt}' for n, tt, _ in hp) + ')' + (f': {hr}' if hr else '')
             if getattr(m, 'assign_fn', None):
                 # assigning a function subscribes it ("luaFunction" tag)
@@ -184,9 +188,12 @@ def _class(bd, c, repo_root):
         sigs = getattr(m, 'lua_sigs', [])
         cpp_sigs = getattr(m, 'cpp_sigs', [])
         overloads = [_sig(s, cpp_sigs[i] if i < len(cpp_sigs) and len(cpp_sigs) == len(sigs) else None) for i, s in enumerate(sigs)]
-        methods.append({'name': m.name, 'static': m.kind == 'StaticMethod', 'overloads': overloads, 'doc': list(m.doc),
-                        'conditions': _cond_notes(m.call.cond), 'modules': _modules(m.call.cond),
-                        'unresolved': list(m.unresolved)})
+        method = {'name': m.name, 'static': m.kind == 'StaticMethod', 'overloads': overloads, 'doc': list(m.doc),
+                  'conditions': _cond_notes(m.call.cond), 'modules': _modules(m.call.cond),
+                  'unresolved': list(m.unresolved)}
+        if getattr(m, 'is_async', False):
+            method['async'] = True   # it yields the running engine coroutine (LuaLS ---@async)
+        methods.append(method)
     out['methods'] = methods
 
     # the public C++ methods LuaBridge does not bind (C++ scripts only)

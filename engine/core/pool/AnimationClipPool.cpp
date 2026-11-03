@@ -6,7 +6,10 @@
 
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/HumanoidClip.h"
 #include "animation/ModelSubClips.h"
+#include "pose/HumanoidMapIO.h"
+#include "pose/ModelRig.h"
 #include "Engine.h"
 #include "io/Data.h"
 #include "io/FileData.h"
@@ -76,8 +79,9 @@ namespace{
         std::string clip;       // sub-clip: the part after '#'
     };
 
-    Reference reference(const std::string& path){
+    Reference reference(const std::string& input){
         Reference out;
+        const std::string& path = input;
         anim::SubClipReference parsed;
         if (anim::parseSubClipReference(path, parsed)){
             out.subClip = true;
@@ -254,6 +258,31 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::get(const std::string& p
     return key.empty() ? nullptr : cachedLocked(pool, key, nullptr);
 }
 
+namespace{
+
+    // the sidecar of a model says Animation Type: Humanoid
+    bool modelIsHumanoid(const std::string& modelPath){
+        std::string stamp;
+        if (!pose::humanoidSidecarStamp(modelPath, stamp, nullptr) || stamp.empty()) return false;
+        pose::HumanoidOverrides overrides;
+        std::vector<std::string> warnings;
+        return pose::parseHumanoidOverrides(stamp, overrides, warnings, nullptr) && overrides.isHumanoid();
+    }
+
+    // `data` converted from `modelPath`'s rig (false + error when the model is no humanoid)
+    bool convertFromModel(const ClipData& data, const std::string& modelPath, ClipData& out, std::vector<ClipWarning>& warnings,
+                          std::string* error){
+        std::shared_ptr<const anim::HumanoidSource> source;
+        std::string sourceError;
+        if (!anim::HumanoidSourceCache::get(modelPath, source, &sourceError)){
+            if (error) *error = "retarget from " + modelPath + ": " + sourceError;
+            return false;
+        }
+        return anim::convertToHumanoid(data, *source, out, warnings, error);
+    }
+
+}
+
 std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::string& path, std::string* error,
                                                                   std::vector<ClipWarning>* warnings){
     PoolState& pool = state();
@@ -361,6 +390,16 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
     bool built = anim::buildModelSubClip(build, data, buildWarnings, error);
 #endif
     if (!built) return nullptr;
+    // a model whose Animation Type is Humanoid serves its clips as humanoid clips (spec 7.4)
+    if (modelIsHumanoid(parsed.model)){
+        ClipData converted;
+        std::string convertError;
+        if (convertFromModel(data, parsed.model, converted, buildWarnings, &convertError)){
+            data = std::move(converted);
+        }else{
+            buildWarnings.push_back({"", "the model's Animation Type is Humanoid, but " + convertError + ": played as a generic clip"});
+        }
+    }
     std::shared_ptr<const AnimationClip> clip = AnimationClip::build(data, buildWarnings, nullptr);
     std::shared_ptr<const AnimationClip> cached = insert(pool, key, stamp, clip);
     if (warnings) *warnings = cached->getWarnings();
@@ -445,6 +484,8 @@ void AnimationClipPool::invalidateModel(const std::string& modelPath){
     if (modelPath.empty()) return;
     // the builders' own parse of the file first: a load after this reads the file again
     anim::dropModelFileParse(modelPath);
+    // its humanoid rig (the model or its .humanoid sidecar changed)
+    anim::HumanoidSourceCache::drop(modelPath);
     std::string modelKey = pathKey(modelPath);
     forgetAsyncLoads(modelKey);
     PoolState& pool = state();
@@ -454,6 +495,7 @@ void AnimationClipPool::invalidateModel(const std::string& modelPath){
 
 void AnimationClipPool::clear(){
     anim::dropModelFileParse(std::string());
+    anim::HumanoidSourceCache::drop(std::string());
     forgetAsyncLoads(std::string());
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);

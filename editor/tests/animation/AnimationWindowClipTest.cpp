@@ -1301,3 +1301,32 @@ TEST_F(AnimationWindowClipTest, EntityModeEntriesAndFrameMove) {
     EXPECT_EQ(st["entity_animation"], "SpineTweens");
     EXPECT_EQ(st["entity_mode_entries"], Json::array({"hero_clip (clip)", "Create New Clip..."}));
 }
+
+// Keys copied from one property paste onto the selected key's property only when it is of their
+// kind and width: a bool key on a float curve goes back to its own property
+TEST_F(AnimationWindowClipTest, PastedPropertyKeysKeepTheirKind) {
+    heroClip();
+    const Json clip = {{"format", "jasperengine.anim"}, {"version", 1}, {"frame_rate", 30}, {"wrap", "once"},
+                       {"tracks", {{{"path", ""}, {"channel", "property"}, {"component", "gameobject"}, {"property", "active"},
+                                    {"keys", {{0, true}, {0.5, false}}}},
+                                   {{"path", ""}, {"channel", "property"}, {"component", "light"}, {"property", "intensity"},
+                                    {"keys", {{0, 2.0}, {1, 3.0}}}}}},
+                       {"events", Json::array()}};
+    writeClip("assets/anim/kinds.anim", clip);
+    act({{"clip", "assets/anim/kinds.anim"}, {"root", "Hero"}});
+    act({{"select", {{{"track", 0}, {"time", 0.5}}}}, {"copy", true}});
+    act({{"select", {{{"track", 1}, {"time", 1.0}}}}, {"paste", 0.8}});
+    const Json file = clipFile("assets/anim/kinds.anim");
+    size_t activeKeys = 0, intensityKeys = 0;
+    bool pastedOnActive = false;
+    for (const Json& t : file["tracks"]) {
+        if (t["property"] == "active") {
+            activeKeys = t["keys"].size();
+            for (const Json& k : t["keys"]) pastedOnActive = pastedOnActive || std::fabs(k[0].get<float>() - 0.8f) < 1e-4f;
+        }
+        if (t["property"] == "intensity") intensityKeys = t["keys"].size();
+    }
+    EXPECT_EQ(intensityKeys, 2u) << "the float curve is not given a bool key: " << file.dump();
+    EXPECT_EQ(activeKeys, 3u);
+    EXPECT_TRUE(pastedOnActive) << "pasted on its own property at the playhead";
+}

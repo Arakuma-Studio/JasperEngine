@@ -22,6 +22,7 @@
 #include "component/ScriptComponent.h"
 #include "component/SplineExtrudeComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/VideoPlayerComponent.h"
 
 #include <algorithm>
 #include <cctype>
@@ -267,6 +268,7 @@ namespace {
                 for (const std::string& module : player::allModules()) add(module, "Project Settings", "Strip Engine Code is off");
                 return std::move(usage);
             }
+            if (scan.debugOverlayInBuilds) add("htmlui", "Project Settings", "Debug > Overlay (an HTML UI document)");
             if (scan.navigationInBuilds) add("navigation", "Project Settings", "Navigation > Include in Builds");
             for (const std::string& source : scan.cppScripts)
                 for (const std::string& module : detectedModules()) add(module, source, "C++ script (it can use any engine code)");
@@ -300,6 +302,13 @@ namespace {
             if (count < MAX_EVIDENCE) usage.evidence.push_back({module, where, what});
         }
 
+        // A Video Player plays without a document, but the video module comes with the HTML UI
+        // (engine/CMakeLists.txt): a build without it would play nothing
+        void addVideoPlayer(const std::string& where, const std::string& what) {
+            add("htmlui", where, what + " (video comes with the HTML UI)");
+            add("video", where, what);
+        }
+
         void addVideo(const std::string& where, const std::string& what) {
             if (videoUses.size() < MAX_EVIDENCE) videoUses.push_back({where, what});
         }
@@ -315,6 +324,7 @@ namespace {
                 const std::string object = registry->getEntityName(entity);
                 auto has = [&](auto* component) { return component != nullptr; };
                 if (has(registry->findComponent<UIDocumentComponent>(entity))) add("htmlui", content.label, "UI Document on " + object);
+                if (has(registry->findComponent<VideoPlayerComponent>(entity))) addVideoPlayer(content.label, "Video Player on " + object);
                 if (has(registry->findComponent<RigidbodyComponent>(entity))) add("physics3d", content.label, "Rigidbody on " + object);
                 if (has(registry->findComponent<Joint3DComponent>(entity))) add("physics3d", content.label, "Joint 3D on " + object);
                 if (has(registry->findComponent<CharacterControllerComponent>(entity))) add("physics3d", content.label, "Character Controller on " + object);
@@ -361,6 +371,8 @@ namespace {
                     const bool member = afterMember(i);
                     if (member || tables.globalNames.count(token.text)) lookUp(token.text, where(token.line));
                     if (!member) dynamicAccess(tokens, i, where(token.line));
+                    if (lower(token.text).find("videoplayer") != std::string::npos) addVideoPlayer(where(token.line), token.text);
+                    if (token.text == "DebugOverlay") add("htmlui", where(token.line), "DebugOverlay (an HTML UI document)");
                     if (lower(token.text).find("video") != std::string::npos) addVideo(where(token.line), token.text);
                 } else if (token.kind == LuaToken::String) {
                     for (const std::string& word : wordsOf(token.text)) {
@@ -536,6 +548,9 @@ ModuleScan ModuleUsageDetector::collect(Project* project) {
     ModuleScan scan;
     scan.stripEngineCode = project->isStripEngineCode();
     scan.navigationInBuilds = project->getNavigationSettings().includeInBuilds;
+    const DebugSettings::Mode overlay = project->getDebugSettings().overlay;
+    scan.debugOverlayInBuilds = overlay == DebugSettings::Mode::AllBuilds ||
+                                (overlay == DebugSettings::Mode::Development && project->isDevelopmentBuild());
     for (const SceneScriptSource& script : project->getBuildCppScripts())
         if (!script.path.empty()) scan.cppScripts.push_back(script.path.generic_string());
     for (SceneProject& scene : project->getScenes()) {

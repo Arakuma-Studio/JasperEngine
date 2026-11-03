@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimationClipDocument.h"
+#include "AnimatorAssetDocument.h"
 
 #include "animation/AnimatorAssetIO.h"
 #include "pool/AnimatorAssetPool.h"
@@ -415,6 +416,8 @@ std::vector<ClipHintEdit> jasperengine::editor::remapClipHints(Project* project,
         return Util::isModelFile(p) || Util::isPrefabFile(p) || Util::isSceneFile(p) || Util::isPoseAnimationFile(p) ||
                Util::isAnimationClipFile(p) || Util::isAvatarMaskFile(p);
     };
+    // (the Animator's controllers and montages naming a moved clip, model or mask are rewritten
+    // below: their path hints follow, their GUIDs stay)
     if (!fs::is_directory(newAbsolute, ec) && !hintable(oldAbsolute) && !hintable(newAbsolute)){
         return edits;
     }
@@ -532,6 +535,8 @@ void jasperengine::editor::restoreClipHints(Project* project, const std::vector<
 // ---- documents ----
 
 void AnimationClipDocument::setFilesWrittenHook(std::function<void(const std::vector<fs::path>&)> hook){
+    // the Animator's documents' commits (controllers, masks, montages) reach the same file sync
+    AnimatorAssetDocument::setFilesWrittenHook(hook);
     registry().filesWrittenHook = std::move(hook);
 }
 
@@ -874,6 +879,15 @@ bool AnimationClipDocument::commit(const ClipData& newData, const std::string& u
 void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths, Project* project){
     Registry& reg = registry();
     if (!project) project = reg.project;
+    // the Animator's documents (controllers, masks, montages) hear of the same changes (one
+    // broadcast for the animation assets)
+    {
+        std::vector<fs::path> animatorAssets;
+        for (const fs::path& path : givenPaths){
+            if (Util::isAnimatorAssetFile(path.string())) animatorAssets.push_back(path);
+        }
+        if (!animatorAssets.empty()) AnimatorAssetDocument::filesChanged(animatorAssets);
+    }
 
     // a .gltf's buffer changed: the .gltf did
     std::vector<fs::path> paths = givenPaths;
@@ -893,6 +907,15 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths
         if (Util::isModelFile(normal.string()) && modelsDropped.insert(keyOf(normal)).second){
             MeshSystem::invalidateModelParse(normal.generic_string());
         }
+    }
+    // a changed .humanoid sidecar (the model's Avatar, anim-retarget 7.4): the model's clips and its
+    // humanoid rig are built again (a humanoid model's clips, clips retargeted from it)
+    for (const fs::path& path : paths){
+        const fs::path normal = path.lexically_normal();
+        if (normal.extension() != ".humanoid") continue;
+        fs::path model = normal;
+        model.replace_extension();
+        if (Util::isModelFile(model.string())) AnimationClipPool::invalidateModel(model.generic_string());
     }
 
     std::vector<std::shared_ptr<AnimationClipDocument>> changed;
@@ -943,6 +966,8 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths
 }
 
 void AnimationClipDocument::filesMoved(const fs::path& oldPath, const fs::path& newPath){
+    // the Animator's documents follow the move too
+    AnimatorAssetDocument::filesMoved(oldPath, newPath);
     Registry& reg = registry();
     std::vector<std::pair<std::string, std::shared_ptr<AnimationClipDocument>>> moved;
     for (const auto& entry : reg.documents){
@@ -981,6 +1006,8 @@ void AnimationClipDocument::filesMoved(const fs::path& oldPath, const fs::path& 
 }
 
 void AnimationClipDocument::checkDiskChanges(Project* project){
+    // the Animator's documents check theirs too
+    AnimatorAssetDocument::checkDiskChanges();
     std::vector<std::shared_ptr<AnimationClipDocument>> documents;
     for (const auto& entry : registry().documents){
         if (entry.second->stampChanged()){
@@ -1039,6 +1066,8 @@ void AnimationClipDocument::checkDiskChanges(Project* project){
 }
 
 void AnimationClipDocument::closeAll(){
+    // the Animator's documents close with them (another project)
+    AnimatorAssetDocument::closeAll();
     Registry& reg = registry();
     reg.documents.clear();
     reg.project = nullptr;

@@ -5,15 +5,21 @@
 // and binding, states, fades, queue, events, the rest term in the pose blend, edit-mode preview.
 
 #include "ActionSystem.h"
+#include "ActionSystemPlayersDetail.h"
 
 #include "Scene.h"
 #include "Log.h"
 
 #include "animation/AnimationPlayerRuntime.h"
+#include "animation/AvatarMaskWeights.h"
 #include "animation/ClipBinding.h"
+#include "animation/HumanoidClip.h"
 #include "animation/KeyframeSampling.h"
+#include "animation/PropertyBindings.h"
+#include "component/ButtonComponent.h"
 #include "lattice/LatticeSolver.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/AnimatorAssetPool.h"
 #include "script/LuaBinding.h"
 
 #include <algorithm>
@@ -21,6 +27,91 @@
 #include <limits>
 
 using namespace jasperengine;
+using playerdetail::completeRest;
+using playerdetail::sampleTimeOf;
+
+// the scene value of the channels of `entity` (R2) that have none yet
+bool playerdetail::refreshHumanoidSlots(Scene* scene, Entity root, std::shared_ptr<anim::HumanoidSlots>& current){
+    auto again = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, root));
+    if (current){
+        const pose::PoseRig* before = current->target ? current->target->rig.get() : nullptr;
+        const pose::PoseRig* after = again->target ? again->target->rig.get() : nullptr;
+        const std::array<Entity, pose::HUMAN_EXTRA_BONE_COUNT>* beforeExtra = current->target ? &current->target->extraEntities : nullptr;
+        const std::array<Entity, pose::HUMAN_EXTRA_BONE_COUNT>* afterExtra = again->target ? &again->target->extraEntities : nullptr;
+        if (before == after && again->valid == current->valid && again->entities == current->entities &&
+            (beforeExtra == nullptr) == (afterExtra == nullptr) && (!beforeExtra || *beforeExtra == *afterExtra)){
+            return false;
+        }
+    }
+    current = again;
+    return true;
+}
+
+void playerdetail::completeRest(Scene* scene, Entity entity, anim::ChannelRest& rest, ClipChannel channel){
+    switch (channel){
+        case ClipChannel::Position:
+        case ClipChannel::Rotation:
+        case ClipChannel::Scale:
+            if (!rest.hasTransform){
+                if (Transform* transform = scene->findComponent<Transform>(entity)){
+                    rest.hasTransform = true;
+                    rest.position = transform->position;
+                    rest.rotation = transform->rotation;
+                    rest.scale = transform->scale;
+                }
+            }
+            break;
+        case ClipChannel::Morph:
+            if (!rest.hasMorph){
+                if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+                    rest.hasMorph = true;
+                    rest.morphWeights.assign(mesh->morphWeights, mesh->morphWeights + MAX_MORPHTARGETS);
+                }
+            }
+            break;
+        case ClipChannel::Lattice:
+            if (!rest.hasLattice){
+                if (LatticeComponent* latticecomp = scene->findComponent<LatticeComponent>(entity)){
+                    rest.hasLattice = true;
+                    const size_t pointCount = (size_t)lattice::pointCount(latticecomp->resolutionX, latticecomp->resolutionY, latticecomp->resolutionZ);
+                    rest.latticeOffsets.assign(pointCount, Vector3(0, 0, 0));
+                    for (size_t i = 0; i < pointCount && i < latticecomp->offsets.size(); i++){
+                        rest.latticeOffsets[i] = latticecomp->offsets[i];
+                    }
+                }
+            }
+            break;
+        case ClipChannel::Property:
+        case ClipChannel::Humanoid:
+        case ClipChannel::HumanoidPosition:
+            break;
+    }
+}
+
+anim::PropertyRest* playerdetail::completePropertyRest(Scene* scene, Entity entity, anim::ChannelRest& rest, const anim::PropertyBinding& binding){
+    if (binding.status != anim::PropertyBindStatus::Bound || binding.key == 0) return nullptr;
+    anim::PropertyRest& property = rest.properties[binding.key];
+    // taken once (R2); again when the property now binds with another width (a script reload)
+    if (!property.has || property.binding.width != binding.width){
+        anim::readPropertyRest(scene, entity, binding, property);
+    }
+    property.binding = binding;
+    return property.has ? &property : nullptr;
+}
+
+// the time a state is sampled at this update, in its clip
+float playerdetail::sampleTimeOf(const AnimationPlayerComponent& player, const anim::PlayerStateRuntime& state){
+    if (state.finishing || state.held) return state.finishTime;
+    const float length = anim::stateLength(state);
+    const ClipWrapMode wrap = anim::stateWrap(state);
+    if (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong){
+        const float time = anim::wrapClipTime(state.time, length, wrap);
+        // a loop going backwards reaches its start at the end of the clip (M2)
+        if (wrap == ClipWrapMode::Loop && time == 0.0f && anim::effectiveSpeed(player, state) < 0.0f) return length;
+        return time;
+    }
+    return std::min(std::max(state.time, 0.0f), length);
+}
 
 namespace {
 
@@ -61,70 +152,161 @@ namespace {
         return entity;
     }
 
-    // the scene value of the channels of `entity` (R2) that have none yet
-    void completeRest(Scene* scene, Entity entity, anim::ChannelRest& rest, ClipChannel channel){
-        switch (channel){
-            case ClipChannel::Position:
-            case ClipChannel::Rotation:
-            case ClipChannel::Scale:
-                if (!rest.hasTransform){
-                    if (Transform* transform = scene->findComponent<Transform>(entity)){
-                        rest.hasTransform = true;
-                        rest.position = transform->position;
-                        rest.rotation = transform->rotation;
-                        rest.scale = transform->scale;
-                    }
-                }
-                break;
-            case ClipChannel::Morph:
-                if (!rest.hasMorph){
-                    if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
-                        rest.hasMorph = true;
-                        rest.morphWeights.assign(mesh->morphWeights, mesh->morphWeights + MAX_MORPHTARGETS);
-                    }
-                }
-                break;
-            case ClipChannel::Lattice:
-                if (!rest.hasLattice){
-                    if (LatticeComponent* latticecomp = scene->findComponent<LatticeComponent>(entity)){
-                        rest.hasLattice = true;
-                        const size_t pointCount = (size_t)lattice::pointCount(latticecomp->resolutionX, latticecomp->resolutionY, latticecomp->resolutionZ);
-                        rest.latticeOffsets.assign(pointCount, Vector3(0, 0, 0));
-                        for (size_t i = 0; i < pointCount && i < latticecomp->offsets.size(); i++){
-                            rest.latticeOffsets[i] = latticecomp->offsets[i];
-                        }
-                    }
-                }
-                break;
-            case ClipChannel::Property:
-                break;
-        }
-    }
-
-    size_t sampledTrackCount(const AnimationClip& clip){
+    // the path tracks that can resolve (humanoid tracks are realised on the rig, not by path, and
+    // so are the humanoid-mapped tracks of a Retarget entry's generic clip)
+    size_t sampledTrackCount(const anim::ClipBindings& bindings){
+        const std::vector<AnimationClip::Track>& tracks = bindings.clip->getTracks();
+        const bool retargeted = bindings.retarget && !bindings.clip->isHumanoid();
+        if (retargeted && !bindings.source) return 0;
+        const std::vector<uint8_t>* byPath = retargeted && bindings.humanoid ? &bindings.humanoid->reader.byPath : nullptr;
         size_t count = 0;
-        for (const AnimationClip::Track& track : clip.getTracks()){
-            if (track.isSampled()) count++;
+        for (size_t i = 0; i < tracks.size(); i++){
+            if (!tracks[i].isSampled() || isHumanoidChannel(tracks[i].channel)) continue;
+            if (byPath && (i >= byPath->size() || !(*byPath)[i])) continue;
+            count++;
         }
         return count;
     }
 
+    // the entities under `root` (itself excluded) by name, -> NULL_ENTITY for names used twice
+    // ClipBindings::serial: one number per resolve, process-wide (main thread)
+    uint64_t bindSerial = 0;
+
+    // A property track on its path's entity (anim-properties spec 8, Binding); the reasons it
+    // does not bind, and a few runtime caveats, are logged once per change
+    anim::PropertyBinding bindPropertyTrack(Scene* scene, Entity root, Entity target, const AnimationClip::Track& track,
+                                            const anim::PropertyBinding* previous){
+        anim::PropertyRef ref;
+        anim::parsePropertyRef(track.component, track.property, ref);
+        // a rebind keeps the script the track had (two scripts of a class: never the other one)
+        anim::PropertyBinding binding = anim::bindProperty(scene, target, ref, track.width, previous ? previous->scriptIndex : -1);
+        const bool changed = !previous || previous->status != binding.status || previous->message != binding.message;
+        if (!changed) return binding;
+        const std::string who = scene->getEntityName(root);
+        const std::string name = (track.path.empty() ? std::string("") : track.path + " : ") + track.component + "." + track.property;
+        if (binding.status != anim::PropertyBindStatus::Bound){
+            Log::warn("Animation Player '%s': property track '%s' does not bind: %s", who.c_str(), name.c_str(), binding.message.c_str());
+            return binding;
+        }
+        if (track.component == "ui" && ref.base == "color" && scene->findComponent<ButtonComponent>(target)){
+            Log::warn("Animation Player '%s': '%s' is a Button: it writes ui.color from its state colours (animate button.colorNormal)",
+                      who.c_str(), name.c_str());
+        }
+        if (track.component == "gameobject" && target == root){
+            Log::warn("Animation Player '%s': the clip animates its own active state: the player stops when it turns it off", who.c_str());
+        }
+        if (track.component == "sprite" && ref.base == "frame"){
+            const SpriteComponent* sprite = scene->findComponent<SpriteComponent>(target);
+            int highest = -1;
+            for (size_t k = 0; k < track.keyCount; k++) highest = std::max(highest, (int)std::lround(track.weights[k]));
+            if (sprite && sprite->numFramesRect == 0){
+                Log::warn("Animation Player '%s': '%s': the sprite has no frames (the track does nothing)", who.c_str(), name.c_str());
+            }else if (sprite && highest >= (int)sprite->numFramesRect){
+                Log::warn("Animation Player '%s': '%s': frame %d is outside the sprite's %u frames (skipped)", who.c_str(), name.c_str(),
+                          highest, sprite->numFramesRect);
+            }
+        }
+        return binding;
+    }
+
+    // a bound script field's script is not the instance it bound
+    bool scriptBindingsStale(Scene* scene, const anim::ClipBindings& bindings){
+        for (size_t i = 0; i < bindings.properties.size() && i < bindings.targets.size(); i++){
+            const anim::PropertyBinding& binding = bindings.properties[i];
+            if (binding.scriptIndex >= 0 && bindings.targets[i] != NULL_ENTITY &&
+                anim::scriptBindingStale(scene, bindings.targets[i], binding)) return true;
+        }
+        return false;
+    }
+
     // Every track of the bindings' clip resolved again from `root`; the rest of every newly bound
-    // channel is taken now, before anything writes it
-    void resolveBindings(Scene* scene, Entity root, anim::ClipBindings& bindings, anim::RestMap* rest){
+    // channel is taken now, before anything writes it. A humanoid clip (anim-retarget 7.4), or a
+    // generic clip of a Retarget entry (through `bindings.source`: the one retarget path the
+    // Animator plays too), binds its humanoid motion to the root's rig `humanoid` (none: it stays
+    // unresolved) and tries its other tracks that do not resolve by path again by unique bone
+    // name under the root (7.6); a retargeted clip's humanoid-mapped tracks never bind by path. A
+    // Retarget entry whose source failed binds nothing (`retargetError`).
+    void resolveBindings(Scene* scene, Entity root, anim::ClipBindings& bindings, anim::RestMap* rest,
+                         const anim::HumanoidSlots* humanoid = nullptr){
+        bindings.serial = ++bindSerial;
         const std::vector<AnimationClip::Track>& tracks = bindings.clip->getTracks();
         const size_t count = tracks.size();
+        const bool humanoidClip = bindings.humanoidPath();
+        const bool retargeted = bindings.retarget && !bindings.clip->isHumanoid();
+        // the humanoid binding first: it says which tracks of a retargeted clip play by path
+        std::shared_ptr<anim::HumanoidBinding> humanoidBinding;
+        if (humanoidClip && humanoid && humanoid->target && (!retargeted || bindings.source)){
+            auto binding = std::make_shared<anim::HumanoidBinding>();
+            if (anim::bindHumanoidClip(*bindings.clip, humanoid->target, *binding, retargeted ? bindings.source : nullptr)){
+                humanoidBinding = binding;
+            }
+        }
+        anim::RetargetBinding probe;
+        const std::vector<uint8_t>* byPath = nullptr;
+        if (retargeted && bindings.source){
+            if (humanoidBinding){
+                byPath = &humanoidBinding->reader.byPath;
+            }else if (probe.bind(*bindings.clip, bindings.source)){
+                byPath = &probe.byPath;
+            }
+        }
         bindings.targets.assign(count, NULL_ENTITY);
         bindings.cursors.assign(count, anim::KeyCursor());
+        bindings.byName.clear();
         bindings.resolvedCount = 0;
+        bindings.unboundProperties = 0;
+        bindings.scriptProperties = 0;
+        std::vector<anim::PropertyBinding> previous;
+        previous.swap(bindings.properties);
+        if (bindings.clip->hasPropertyTracks()) bindings.properties.assign(count, anim::PropertyBinding());
         std::unordered_map<std::string, Entity> cache;
+        std::unordered_map<std::string, Entity> names;
+        bool namesCollected = false;
         for (size_t i = 0; i < count; i++){
-            if (!tracks[i].isSampled()) continue;
+            if (!tracks[i].isSampled() || isHumanoidChannel(tracks[i].channel)) continue;
+            // a Retarget entry: nothing without its source, never the humanoid-mapped tracks
+            if (retargeted && (!bindings.source || (byPath && (i >= byPath->size() || !(*byPath)[i])))) continue;
             Entity target = resolveCached(scene, root, tracks[i].path, cache);
+            if (target == NULL_ENTITY && humanoidClip && !tracks[i].path.empty()){
+                // a prop or an unmapped bone of another rig: its unique name under the root
+                std::vector<anim::PathSegment> segments;
+                if (anim::parsePath(tracks[i].path, segments) && !segments.empty() && segments.back().index == 0){
+                    if (!namesCollected){
+                        anim::uniqueNamesUnder(scene, root, names);
+                        namesCollected = true;
+                    }
+                    auto found = names.find(segments.back().name);
+                    if (found != names.end() && found->second != NULL_ENTITY){
+                        target = found->second;
+                        cache[tracks[i].path] = target;
+                        if (bindings.byName.empty()) bindings.byName.assign(count, false);
+                        bindings.byName[i] = true;
+                    }
+                }
+            }
             if (target == NULL_ENTITY) continue;
+            if (tracks[i].channel == ClipChannel::Property){
+                anim::PropertyBinding& binding = bindings.properties[i];
+                binding = bindPropertyTrack(scene, root, target, tracks[i], i < previous.size() ? &previous[i] : nullptr);
+                if (binding.status != anim::PropertyBindStatus::Bound){
+                    bindings.unboundProperties++;
+                    continue;
+                }
+                bindings.targets[i] = target;
+                bindings.resolvedCount++;
+                if (binding.scriptIndex >= 0) bindings.scriptProperties++;
+                if (rest) playerdetail::completePropertyRest(scene, target, (*rest)[target], binding);
+                continue;
+            }
             bindings.targets[i] = target;
             bindings.resolvedCount++;
             if (rest) completeRest(scene, target, (*rest)[target], tracks[i].channel);
+        }
+        bindings.humanoid = humanoidBinding;
+        if (humanoidBinding && rest){
+            for (const anim::HumanoidOutput& output : humanoidBinding->outputs){
+                completeRest(scene, output.entity, (*rest)[output.entity], output.channel);
+            }
         }
         // every entity a resolved path went through (the targets and their ancestors), with the
         // "#N" its segment selected it by
@@ -291,6 +473,38 @@ namespace {
         return (float)(std::max(0.0, speed > 0.0f ? end - time : time - end) / rate);
     }
 
+    // the root's humanoid rig, shared by humanoid masks and humanoid clips (anim-layers 6.2 rule 2):
+    // resolved when first needed, again after a model reload or a pool change (a sidecar edit
+    // invalidates the model's clips) when the rig changed, and when a bone entity went
+    void refreshHumanoidRig(Scene* scene, Entity entity, anim::AnimationPlayerRuntime& runtime, bool needed, bool reloaded,
+                            bool poolChanged){
+        if (reloaded && runtime.humanoid){
+            runtime.humanoid.reset();
+            runtime.humanoidWarned = false;
+        }
+        const bool hierarchyChanged = runtime.humanoidHierarchy != scene->hierarchyRevision();
+        runtime.humanoidHierarchy = scene->hierarchyRevision();
+        if (runtime.humanoid && hierarchyChanged){
+            bool alive = true;
+            for (Entity bone : runtime.humanoid->entities){
+                if (bone != NULL_ENTITY && !scene->isEntityCreated(bone)) alive = false;
+            }
+            if (runtime.humanoid->target){
+                for (Entity bone : runtime.humanoid->target->extraEntities){
+                    if (bone != NULL_ENTITY && !scene->isEntityCreated(bone)) alive = false;
+                }
+            }
+            if (!alive) runtime.humanoid.reset();
+        }
+        if (!needed) return;
+        if (!runtime.humanoid){
+            runtime.humanoid = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(scene, entity));
+            runtime.humanoidRevision++;
+        }else if (poolChanged){
+            if (playerdetail::refreshHumanoidSlots(scene, entity, runtime.humanoid)) runtime.humanoidRevision++;
+        }
+    }
+
     void pendEvent(anim::AnimationPlayerRuntime& runtime, const anim::PlayerStateRuntime& state, const ClipEventData& data, float when){
         anim::PendingPlayerCallback callback;
         callback.event.functionName = data.function;
@@ -315,6 +529,8 @@ namespace {
     // into it: wrap, the stop at a cycle end for a queue, events (R16) and finishes (R18)
     void advanceState(const AnimationPlayerComponent& player, anim::AnimationPlayerRuntime& runtime,
                       anim::PlayerStateRuntime& state, float offset, float span){
+        // a layer at weight 0 fires nothing (anim layers spec 5.8); the base layer always fires
+        const float layerWeight = runtime.layerWeight(runtime.stateLayer(state));
         if (!state.enabled || !state.bindings.clip) return;
         const AnimationClip& clip = *state.bindings.clip;
         const double length = clip.getLength();
@@ -325,7 +541,7 @@ namespace {
         const bool includeStart = state.startedThisUpdate;
         // only the states that are not fading out fire (during a crossfade the incoming one); a
         // state that starts without weight keeps its start events until it fires or moves on
-        const bool fires = state.weight > 0.0f && state.targetWeight > 0.0f;
+        const bool fires = state.weight > 0.0f && state.targetWeight > 0.0f && layerWeight > 0.0f;
         if (fires || delta != 0.0) state.startedThisUpdate = false;
         auto when = [&](double position){
             return delta != 0.0 ? offset + (float)((double)span * std::min(1.0, std::max(0.0, (position - from) / delta))) : offset;
@@ -414,25 +630,13 @@ namespace {
         }
     }
 
-    // the time a state is sampled at this update, in its clip
-    float sampleTimeOf(const AnimationPlayerComponent& player, const anim::PlayerStateRuntime& state){
-        if (state.finishing || state.held) return state.finishTime;
-        const float length = anim::stateLength(state);
-        const ClipWrapMode wrap = anim::stateWrap(state);
-        if (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong){
-            const float time = anim::wrapClipTime(state.time, length, wrap);
-            // a loop going backwards reaches its start at the end of the clip (M2)
-            if (wrap == ClipWrapMode::Loop && time == 0.0f && anim::effectiveSpeed(player, state) < 0.0f) return length;
-            return time;
-        }
-        return std::min(std::max(state.time, 0.0f), length);
-    }
 
 }
 
 void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings& bindings, float clipTime, float weight,
                                   std::unordered_map<Entity, anim::ChannelRest>& rest,
-                                  std::vector<std::pair<Entity, ClipChannel>>* written){
+                                  std::vector<std::pair<Entity, ClipChannel>>* written,
+                                  std::vector<std::pair<Entity, uint32_t>>* writtenProperties){
     if (!(weight > 0.0f)) return;
     const std::vector<AnimationClip::Track>& tracks = clip.getTracks();
     anim::TrackSample sample;
@@ -555,13 +759,99 @@ void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings&
                 }
                 break;
             }
-            case ClipChannel::Property:
+            case ClipChannel::Property: {
+                // anim-properties spec 8: per component in key space (a swizzle track its own
+                // component, a whole track the others), a discrete property's winner
+                if (i >= bindings.properties.size()) continue;
+                const anim::PropertyBinding& binding = bindings.properties[i];
+                anim::PropertyRest* propertyRest = nullptr;
+                auto found = channelRest.properties.find(binding.key);
+                if (found != channelRest.properties.end() && found->second.has && found->second.binding.width == binding.width &&
+                    found->second.binding.kind == binding.kind){
+                    propertyRest = &found->second;
+                }else{
+                    propertyRest = playerdetail::completePropertyRest(scene, target, channelRest, binding);
+                }
+                if (!propertyRest) continue;
+                // a discrete binding of keys that interpolate (a script's Int field keyed with numbers) steps
+                if (binding.discrete && !track.discrete) anim::sampleTrackStepped(track, clipTime, sample);
+                PropertyBlendAccum& accum = propertyAccum(target, binding.key, propertyRest);
+                if (binding.discrete){
+                    accum.total += weight;
+                    if (!sample.weights.empty() && weight >= accum.bestWeight){
+                        accum.bestWeight = weight;
+                        accum.bestValue = sample.weights[0];
+                    }
+                }else{
+                    for (size_t j = 0; j < sample.weights.size(); j++){
+                        const size_t k = binding.swizzle >= 0 ? (size_t)binding.swizzle : j;
+                        if (k >= 4 || k >= binding.width) break;
+                        if (track.overridden & (1u << k)) continue;
+                        accum.sums[k] += sample.weights[j] * weight;
+                        accum.weights[k] += weight;
+                    }
+                    // RGB keys ("#RRGGBB", 3 numbers) of a Color4 key an opaque alpha (spec 5.4)
+                    if (anim::keysOpaqueAlpha(binding, sample.weights.size()) && !(track.overridden & 8u)){
+                        accum.sums[3] += weight;
+                        accum.weights[3] += weight;
+                    }
+                }
+                if (writtenProperties){
+                    std::pair<Entity, uint32_t> entry(target, binding.key);
+                    if (std::find(writtenProperties->begin(), writtenProperties->end(), entry) == writtenProperties->end()){
+                        writtenProperties->push_back(entry);
+                    }
+                }
+                continue;
+            }
+            case ClipChannel::Humanoid:
+            case ClipChannel::HumanoidPosition:
                 continue;
         }
         if (written){
             std::pair<Entity, ClipChannel> entry(target, track.channel);
             if (std::find(written->begin(), written->end(), entry) == written->end()){
                 written->push_back(entry);
+            }
+        }
+    }
+
+    // a humanoid clip's realisation on the root's rig (anim-retarget 7.3): ordinary rotation and
+    // position contributions of the bone entities
+    if (bindings.humanoid && !bindings.humanoid->outputs.empty()){
+        anim::HumanoidBinding& humanoid = *bindings.humanoid;
+        anim::sampleHumanoidBinding(clip, humanoid, clipTime, &bindings.cursors);
+        for (const anim::HumanoidOutput& output : humanoid.outputs){
+            if (!anim::isLive(humanoid, output)) continue;
+            anim::ChannelRest& channelRest = rest[output.entity];
+            completeRest(scene, output.entity, channelRest, output.channel);
+            if (!channelRest.hasTransform) continue;
+            TransformBlendAccum& accum = transformBlend[output.entity];
+            if (output.channel == ClipChannel::Position){
+                accum.positionSum = accum.positionSum + output.position * weight;
+                accum.positionWeight += weight;
+                if (!accum.hasRestPosition){
+                    accum.hasRestPosition = true;
+                    accum.restPosition = channelRest.position;
+                }
+            }else{
+                Quaternion value = output.rotation;
+                if (!accum.hasRotationRef){
+                    accum.rotationRef = value;
+                    accum.hasRotationRef = true;
+                }else if (accum.rotationRef.dot(value) < 0.0f){
+                    value = -value;
+                }
+                accum.rotationSum = accum.rotationSum + value * weight;
+                accum.rotationWeight += weight;
+                if (!accum.hasRestRotation){
+                    accum.hasRestRotation = true;
+                    accum.restRotation = channelRest.rotation;
+                }
+            }
+            if (written){
+                std::pair<Entity, ClipChannel> entry(output.entity, output.channel);
+                if (std::find(written->begin(), written->end(), entry) == written->end()) written->push_back(entry);
             }
         }
     }
@@ -610,10 +900,20 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
     runtime.waitingForModel = waiting;
     if (waiting) return false;
 
+    // the humanoid rig of the root, when a humanoid clip (or a humanoid mask) needs it
+    bool humanoidNeeded = false;
+    for (const anim::PlayerStateRuntime& state : runtime.states){
+        if (state.retarget || (state.bindings.clip && state.bindings.clip->isHumanoid())) humanoidNeeded = true;
+    }
+    for (const anim::LayerRuntime& layer : runtime.layers){
+        if (layer.mask && layer.mask->usesHumanoid()) humanoidNeeded = true;
+    }
+    refreshHumanoidRig(scene, entity, runtime, humanoidNeeded, reloaded, poolChanged);
+
     for (anim::PlayerStateRuntime& state : runtime.states){
         // the clip: loaded on first use, again after an edit (pool generation), retried after a failure
         bool fetch = !state.bindings.clip;
-        if (!fetch && poolChanged && AnimationClipPool::getGeneration(state.clip) != state.bindings.clipGeneration){
+        if (!fetch && poolChanged && AnimationClipPool::getGeneration(state.poolKey) != state.bindings.clipGeneration){
             fetch = true;
         }
         if (fetch && state.loadFailed){
@@ -624,7 +924,7 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
         if (fetch){
             std::string error;
             bool loading = false;
-            std::shared_ptr<const AnimationClip> clip = state.clip.empty() ? nullptr : AnimationClipPool::pollOrLoad(state.clip, loading, &error);
+            std::shared_ptr<const AnimationClip> clip = state.clip.empty() ? nullptr : AnimationClipPool::pollOrLoad(state.poolKey, loading, &error);
             if (loading){
                 // a model sub-clip building on the thread pool (async loading): the player waits
                 // for it as for its models (time stops, calls are kept); a bound clip plays on meanwhile
@@ -648,10 +948,17 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
                 state.errorLogged = false;
                 state.error.clear();
                 state.retryTimer = 0.0f;
-                state.bindings.clipGeneration = AnimationClipPool::getGeneration(state.clip);
-                if (changed){
+                state.bindings.clipGeneration = AnimationClipPool::getGeneration(state.poolKey);
+                if (changed || state.bindings.retarget != (state.retarget && !clip->isHumanoid())){
                     state.bindings.clip = clip;
                     state.bindings.resolved = false;
+                    anim::prepareRetarget(state.bindings, state.clip, state.retarget);
+                    if (!state.bindings.retargetError.empty() && !state.errorLogged){
+                        state.errorLogged = true;
+                        Log::error("Animation Player '%s': state '%s': %s", scene->getEntityName(entity).c_str(),
+                                   state.name.c_str(), state.bindings.retargetError.c_str());
+                    }
+                    state.error = state.bindings.retargetError;
                 }
                 if (state.startAtEnd){
                     state.startAtEnd = false;
@@ -660,12 +967,39 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
             }
         }
         if (!state.bindings.clip) continue;
+        // a Retarget entry follows its source model's Avatar (a sidecar edit invalidates the model)
+        if (poolChanged && state.bindings.retarget){
+            std::string error;
+            std::shared_ptr<const anim::RetargetSource> again = anim::clipRetargetSource(*state.bindings.clip, state.clip, &error);
+            if (again != state.bindings.source){
+                state.bindings.source = again;
+                state.bindings.retargetError = again ? std::string() : error;
+                state.bindings.resolved = false;
+            }
+        }
 
         anim::ClipBindings& bindings = state.bindings;
+        // a humanoid clip (or a Retarget entry) binds on the root's rig: again when the rig changed
+        if (bindings.humanoidPath() && !runtime.humanoid){
+            refreshHumanoidRig(scene, entity, runtime, true, false, false);
+        }
+        const anim::HumanoidSlots* humanoid = bindings.humanoidPath() ? runtime.humanoid.get() : nullptr;
+        if (bindings.resolved && humanoid && state.humanoidRevision != runtime.humanoidRevision){
+            bindings.resolved = false;
+        }
         if (!bindings.resolved || reloaded){
-            resolveBindings(scene, entity, bindings, &runtime.rest);
+            resolveBindings(scene, entity, bindings, &runtime.rest, humanoid);
+            state.humanoidRevision = runtime.humanoidRevision;
             resolvedAny = true;
-            if (bindings.resolvedCount < sampledTrackCount(*bindings.clip)){
+            // H5: a humanoid clip on a root without a humanoid rig (once per state and clip)
+            if (humanoid && !bindings.humanoid && (!bindings.retarget || bindings.source) && state.humanoidWarned != bindings.clip.get()){
+                state.humanoidWarned = bindings.clip.get();
+                Log::warn("Animation Player '%s': state '%s' plays a humanoid clip, but the root has no humanoid rig (%s): "
+                          "map its model's bones (Configure Avatar...); its other tracks still play",
+                          scene->getEntityName(entity).c_str(), state.name.c_str(),
+                          humanoid->error.empty() ? "not a humanoid" : humanoid->error.c_str());
+            }
+            if (bindings.resolvedCount < sampledTrackCount(bindings)){
                 bindings.nextUnresolvedRetry = runtime.clock + UNRESOLVED_RETRY_SECONDS;
             }
         }else if (bindings.hierarchyRevision != revision){
@@ -686,25 +1020,45 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
                 for (Entity changed : failed){
                     if (!scene->isEntityCreated(changed)) runtime.rest.erase(changed);
                 }
-                resolveBindings(scene, entity, bindings, &runtime.rest);
+                resolveBindings(scene, entity, bindings, &runtime.rest, humanoid);
+                state.humanoidRevision = runtime.humanoidRevision;
                 resolvedAny = true;
-            }else if (bindings.resolvedCount < sampledTrackCount(*bindings.clip)){
+            }else if (bindings.resolvedCount < sampledTrackCount(bindings)){
                 // unresolved paths may resolve now: at most 4 times a second (the revision is
                 // left behind until then, so a later frame retries)
                 if (runtime.clock >= bindings.nextUnresolvedRetry){
-                    resolveBindings(scene, entity, bindings, &runtime.rest);
+                    resolveBindings(scene, entity, bindings, &runtime.rest, humanoid);
+                    state.humanoidRevision = runtime.humanoidRevision;
                     bindings.nextUnresolvedRetry = runtime.clock + UNRESOLVED_RETRY_SECONDS;
                     resolvedAny = true;
                 }
             }else{
                 bindings.hierarchyRevision = revision;
             }
+        }else if (bindings.unboundProperties > 0 && runtime.clock >= bindings.nextUnresolvedRetry){
+            // a property's component, script or field may be there now (added at runtime): looked
+            // for again at most 4 times a second
+            resolveBindings(scene, entity, bindings, &runtime.rest, humanoid);
+            bindings.nextUnresolvedRetry = runtime.clock + UNRESOLVED_RETRY_SECONDS;
+            resolvedAny = true;
+        }
+        // the bind stamp of script fields (spec P4), every update whatever the checks above did
+        // (a frame that changed the hierarchy too): a reloaded, removed or reordered script binds
+        // again (its declared type may have changed)
+        if (bindings.resolved && bindings.scriptProperties > 0 && scriptBindingsStale(scene, bindings)){
+            resolveBindings(scene, entity, bindings, &runtime.rest, humanoid);
+            resolvedAny = true;
         }
         bindings.checkedFrame = playerFrame;
     }
     if (resolvedAny && runtime.modelsRevision != revision){
         collectModels(scene, entity, runtime);
         runtime.modelsRevision = revision;
+    }
+    // layers, masks, mixing transforms (anim layers spec 7.3): what the evaluator needs
+    if (!anim::isDefaultLayering(player)){
+        // the humanoid rig was refreshed above (a reload included)
+        preparePlayerLayers(entity, player, dt, false);
     }
     return !clipsLoading;
 }
@@ -747,11 +1101,12 @@ void ActionSystem::startQueuedState(Entity entity, AnimationPlayerComponent& pla
     before.reserve(states.size());
     for (const anim::PlayerStateRuntime& state : states) before.push_back({state.targetWeight, state.fadeSpeed});
 
-    // the rest of the queue stays queued
+    // the rest of the layer's queue stays queued
+    std::deque<anim::QueuedState>& queue = runtime.layers[(size_t)runtime.stateLayer(target)].queue;
     std::deque<anim::QueuedState> rest;
-    rest.swap(runtime.queue);
+    rest.swap(queue);
     anim::playState(player, target.name, head.fade, scene->getEntityName(entity));
-    runtime.queue.swap(rest);
+    runtime.layers[(size_t)runtime.stateLayer(target)].queue.swap(rest);
     if (restart && head.fade > 0.0f){
         anim::startState(player, target);
         target.weight = std::max(weight, 1e-6f);
@@ -771,22 +1126,32 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
     anim::AnimationPlayerRuntime& runtime = *player.runtime;
     std::vector<anim::PlayerStateRuntime>& states = runtime.states;
 
+    // layer weight fades (linear, the player's time: anim layers spec 5.9), before the states'
+    for (size_t l = 1; l < runtime.layers.size(); l++){
+        anim::LayerRuntime& layer = runtime.layers[l];
+        if (layer.weight == layer.targetWeight) continue;
+        const float step = layer.fadeSpeed > 0.0f && std::isfinite(layer.fadeSpeed) ? layer.fadeSpeed * dt : std::abs(layer.targetWeight - layer.weight);
+        if (layer.weight < layer.targetWeight) layer.weight = std::min(layer.targetWeight, layer.weight + step);
+        else layer.weight = std::max(layer.targetWeight, layer.weight - step);
+    }
+
     // fades (real time), held states included
     for (anim::PlayerStateRuntime& state : states){
         fadeState(state, dt);
     }
 
-    // the queue's head waits for the states playing now (R17): they stop at their next end
+    // each layer's queue head waits for the states playing now on that layer (R17 per layer):
+    // they stop at their next end
     std::vector<float> offsets(states.size(), 0.0f);
-    std::vector<char> advanced(states.size(), 0);
-    if (!runtime.queue.empty()){
-        const anim::QueuedState head = runtime.queue.front();
+    for (size_t l = 0; l < runtime.layers.size(); l++){
+        if (runtime.layers[l].queue.empty()) continue;
+        const anim::QueuedState head = runtime.layers[l].queue.front();
         float remaining = 0.0f;
         bool blocked = false;
         bool headPlaying = false;
         for (size_t i = 0; i < states.size(); i++){
             anim::PlayerStateRuntime& state = states[i];
-            if (!state.enabled || state.targetWeight <= 0.0f) continue;
+            if (!state.enabled || state.targetWeight <= 0.0f || (size_t)runtime.stateLayer(state) != l) continue;
             state.stopAtCycleEnd = true;
             blocked = true;
             remaining = std::max(remaining, remainingSeconds(player, state));
@@ -795,13 +1160,13 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
         // a fading head starts `fade` seconds before their end and crossfades
         if (blocked && head.fade > 0.0f && !headPlaying && head.state < states.size() &&
             std::isfinite(remaining) && remaining - head.fade <= dt){
-            runtime.queue.pop_front();
+            runtime.layers[l].queue.pop_front();
             const float offset = std::max(0.0f, remaining - head.fade);
             startQueuedState(entity, player, head, offset, dt);
             offsets[head.state] = offset;
             // the others still stop at their end
             for (size_t i = 0; i < states.size(); i++){
-                if (i != head.state && states[i].enabled) states[i].stopAtCycleEnd = true;
+                if (i != head.state && states[i].enabled && (size_t)runtime.stateLayer(states[i]) == l) states[i].stopAtCycleEnd = true;
             }
         }
     }
@@ -810,28 +1175,42 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
         advanceState(player, runtime, states[i], offsets[i], dt - offsets[i]);
     }
 
-    // a head without a fade (or the playing state queued again) starts when the last of them ended
-    while (!runtime.queue.empty()){
-        bool blocked = false;
-        float ended = 0.0f;
-        for (const anim::PlayerStateRuntime& state : states){
-            if (state.finishing) ended = std::max(ended, state.finishWhen);
-            else if (state.enabled && state.targetWeight > 0.0f) blocked = true;
+    // a head without a fade (or the playing state queued again) starts when the last of its
+    // layer's states ended
+    for (size_t l = 0; l < runtime.layers.size(); l++){
+        while (!runtime.layers[l].queue.empty()){
+            bool blocked = false;
+            float ended = 0.0f;
+            for (const anim::PlayerStateRuntime& state : states){
+                if ((size_t)runtime.stateLayer(state) != l) continue;
+                if (state.finishing) ended = std::max(ended, state.finishWhen);
+                else if (state.enabled && state.targetWeight > 0.0f) blocked = true;
+            }
+            if (blocked) break;
+            const anim::QueuedState head = runtime.layers[l].queue.front();
+            runtime.layers[l].queue.pop_front();
+            if (head.state >= states.size()) continue;
+            startQueuedState(entity, player, head, ended, dt);
+            advanceState(player, runtime, states[head.state], ended, std::max(0.0f, dt - ended));
+            break;
         }
-        if (blocked) break;
-        const anim::QueuedState head = runtime.queue.front();
-        runtime.queue.pop_front();
-        if (head.state >= states.size()) continue;
-        startQueuedState(entity, player, head, ended, dt);
-        advanceState(player, runtime, states[head.state], ended, std::max(0.0f, dt - ended));
-        break;
     }
 }
 
-void ActionSystem::samplePlayerStates(AnimationPlayerComponent& player){
+void ActionSystem::samplePlayerStates(Entity entity, AnimationPlayerComponent& player){
     anim::AnimationPlayerRuntime& runtime = *player.runtime;
+    // the v1 fast path for a player without layers, masks or mixing transforms (spec 5.5, L1);
+    // every other player goes through the layered evaluator
+    const bool layered = !anim::isDefaultLayering(player);
     for (anim::PlayerStateRuntime& state : runtime.states){
-        if ((state.enabled || state.finishing || state.held) && state.bindings.clip && state.weight > 0.0f){
+        if (state.bindings.humanoid){
+            state.bindings.humanoid->mirror = anim::stateMirror(state);
+            state.bindings.humanoid->footIK = anim::stateFootIK(state);
+        }
+    }
+    if (layered) evaluateLayeredPlayer(entity, player, true);
+    for (anim::PlayerStateRuntime& state : runtime.states){
+        if (!layered && (state.enabled || state.finishing || state.held) && state.bindings.clip && state.weight > 0.0f){
             accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(player, state), state.weight, runtime.rest, nullptr);
         }
         if (state.finishing){
@@ -875,6 +1254,9 @@ void ActionSystem::updatePlayers(double dt){
     const uint64_t poolRevision = AnimationClipPool::revision();
     const bool poolChanged = poolRevision != playerPoolRevision;
     playerPoolRevision = poolRevision;
+    const uint64_t maskPoolRevision = AnimatorAssetPool::revision();
+    playerMaskPoolChanged = maskPoolRevision != playerMaskPoolRevision;
+    playerMaskPoolRevision = maskPoolRevision;
     const float step = std::isfinite(dt) ? (float)dt : 0.0f;
 
     // nothing below adds or removes Animation Players: the array stays put (callbacks run later)
@@ -903,7 +1285,7 @@ void ActionSystem::updatePlayers(double dt){
             continue;
         }
         advancePlayer(entity, player, step);
-        samplePlayerStates(player);
+        samplePlayerStates(entity, player);
 
         if (!runtime.pending.empty() &&
             std::find(playersWithCallbacks.begin(), playersWithCallbacks.end(), entity) == playersWithCallbacks.end()){
@@ -959,13 +1341,24 @@ void ActionSystem::samplePlayer(Entity entity){
     AnimationPlayerComponent* player = scene->isEntityCreated(entity) ? scene->findComponent<AnimationPlayerComponent>(entity) : nullptr;
     if (!player) return;
     anim::playerRuntime(*player);
+    playerMaskPoolChanged = true;   // generations decide
     if (!preparePlayer(entity, *player, 0.0f, true)) return;
 
     clearPoseBlend();
     anim::AnimationPlayerRuntime& runtime = *player->runtime;
     for (anim::PlayerStateRuntime& state : runtime.states){
-        if ((state.enabled || state.held) && state.bindings.clip && state.weight > 0.0f){
-            accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(*player, state), state.weight, runtime.rest, nullptr);
+        if (state.bindings.humanoid){
+            state.bindings.humanoid->mirror = anim::stateMirror(state);
+            state.bindings.humanoid->footIK = anim::stateFootIK(state);
+        }
+    }
+    if (!anim::isDefaultLayering(*player)){
+        evaluateLayeredPlayer(entity, *player, false);
+    }else{
+        for (anim::PlayerStateRuntime& state : runtime.states){
+            if ((state.enabled || state.held) && state.bindings.clip && state.weight > 0.0f){
+                accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(*player, state), state.weight, runtime.rest, nullptr);
+            }
         }
     }
     flushPoseBlend();
@@ -992,8 +1385,11 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
     std::vector<AnimationEvent> fired;
     std::vector<anim::ClipBindings> kept;
     kept.reserve(preview.states.size());
+    // the layered preview (anim layers spec 7.5): each state's bindings, time, weight and layer
+    std::vector<LayeredPreviewState> layeredStates;
     std::unordered_map<std::string, float> times;
     std::vector<std::pair<Entity, ClipChannel>> channels;
+    std::vector<std::pair<Entity, uint32_t>> properties;
 
     clearPoseBlend();
     for (size_t s = 0; s < preview.states.size(); s++){
@@ -1001,6 +1397,10 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         std::shared_ptr<const AnimationClip> clip = state.clip;
         ClipWrapMode wrap = state.wrap;
         std::string key;
+        bool mirror = state.mirror > 0;
+        bool footIK = state.footIK > 0;
+        bool retarget = state.retarget > 0;
+        std::string reference = state.reference;
         if (clip){
             if (wrap == ClipWrapMode::Default) wrap = clip->getWrap();
             key = "clip:" + std::to_string((uintptr_t)clip.get());
@@ -1012,6 +1412,10 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
             }
             const AnimationPlayerClip& entry = entries[(size_t)(it - names.begin())];
             clip = AnimationClipPool::getOrLoad(entry.clip);
+            if (state.retarget < 0) retarget = entry.retarget;
+            reference = entry.clip;
+            if (state.mirror < 0) mirror = entry.mirror;
+            if (state.footIK < 0) footIK = entry.footIK;
             if (!clip){
                 result.ready = false;
                 continue;
@@ -1023,12 +1427,13 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
 
         // the session's bindings of this clip, resolved again after hierarchy changes
         anim::ClipBindings* bindings = nullptr;
+        const bool retargeted = retarget && !clip->isHumanoid();
         for (anim::ClipBindings& candidate : kept){
-            if (candidate.clip == clip) bindings = &candidate;
+            if (candidate.clip == clip && candidate.retarget == retargeted) bindings = &candidate;
         }
         if (!bindings){
             for (anim::ClipBindings& candidate : session.bindings){
-                if (candidate.clip == clip){
+                if (candidate.clip == clip && candidate.retarget == retargeted){
                     kept.push_back(candidate);
                     bindings = &kept.back();
                     break;
@@ -1038,15 +1443,36 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         if (!bindings){
             anim::ClipBindings created;
             created.clip = clip;
+            anim::prepareRetarget(created, reference, retargeted);
             kept.push_back(created);
             bindings = &kept.back();
         }
-        if (!bindings->resolved || bindings->hierarchyRevision != scene->hierarchyRevision()){
-            resolveBindings(scene, root, *bindings, nullptr);
+        if (!bindings->retargetError.empty() && result.humanoidError.empty()) result.humanoidError = bindings->retargetError;
+        // a humanoid clip (or a retargeted one) realises on the root's rig (looked up once per hierarchy revision)
+        const anim::HumanoidSlots* humanoid = nullptr;
+        if (bindings->humanoidPath()){
+            if (!session.humanoid || session.humanoidRevision != scene->hierarchyRevision() ||
+                session.humanoidPool != AnimationClipPool::revision()){
+                // kept when the rig is the same (a clip insert changes the pool revision too)
+                playerdetail::refreshHumanoidSlots(scene, root, session.humanoid);
+                session.humanoidRevision = scene->hierarchyRevision();
+                session.humanoidPool = AnimationClipPool::revision();
+            }
+            humanoid = session.humanoid.get();
+        }
+        if (!bindings->resolved || bindings->hierarchyRevision != scene->hierarchyRevision() ||
+            (humanoid && (bindings->humanoid ? bindings->humanoid->target : nullptr) != humanoid->target)){
+            resolveBindings(scene, root, *bindings, nullptr, humanoid);
+        }
+        if (bindings->humanoid){
+            bindings->humanoid->mirror = mirror;
+            bindings->humanoid->footIK = footIK;
+        }else if (humanoid && result.humanoidError.empty() && (!bindings->retarget || bindings->source)){
+            result.humanoidError = "the root has no humanoid rig (" + (humanoid->error.empty() ? std::string("not a humanoid") : humanoid->error) + ")";
         }
         const std::vector<AnimationClip::Track>& tracks = clip->getTracks();
         for (size_t t = 0; t < tracks.size() && t < bindings->targets.size(); t++){
-            if (bindings->targets[t] == NULL_ENTITY && tracks[t].isSampled() &&
+            if (bindings->targets[t] == NULL_ENTITY && tracks[t].isSampled() && !isHumanoidChannel(tracks[t].channel) &&
                 std::find(result.unresolved.begin(), result.unresolved.end(), tracks[t].path) == result.unresolved.end()){
                 result.unresolved.push_back(tracks[t].path);
             }
@@ -1054,7 +1480,11 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
 
         const float length = clip->getLength();
         const float clipTime = anim::wrapClipTime(state.time, length, wrap);
-        accumulateClip(*clip, *bindings, clipTime, state.weight, session.rest, &channels);
+        if (preview.layered){
+            layeredStates.push_back({(size_t)(bindings - kept.data()), clipTime, state.weight, state.layer});
+        }else{
+            accumulateClip(*clip, *bindings, clipTime, state.weight, session.rest, &channels, &properties);
+        }
 
         if (preview.fireEvents){
             auto previous = session.previousTimes.find(key);
@@ -1074,6 +1504,9 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         }
         times[key] = state.time;
     }
+    if (preview.layered && !layeredStates.empty()){
+        previewLayers(root, preview, session, kept, layeredStates, channels, properties);
+    }
     // drop the bindings (and times) of clips this call does not name
     session.bindings = std::move(kept);
     session.previousTimes = std::move(times);
@@ -1086,6 +1519,15 @@ ActionSystem::PlayerPreviewResult ActionSystem::previewPlayer(Entity root, const
         }
         if (std::find(session.written.begin(), session.written.end(), entry) == session.written.end()){
             session.written.push_back(entry);
+        }
+    }
+    result.properties = properties;
+    for (const std::pair<Entity, uint32_t>& entry : properties){
+        if (std::find(result.written.begin(), result.written.end(), entry.first) == result.written.end()){
+            result.written.push_back(entry.first);
+        }
+        if (std::find(session.writtenProperties.begin(), session.writtenProperties.end(), entry) == session.writtenProperties.end()){
+            session.writtenProperties.push_back(entry);
         }
     }
 
@@ -1136,9 +1578,33 @@ void ActionSystem::restorePlayerPreview(anim::ClipPreviewSession& session){
                 break;
             }
             case ClipChannel::Property:
+            case ClipChannel::Humanoid:
+            case ClipChannel::HumanoidPosition:
                 continue;
         }
         anim::writeChannelValue(scene, entry.first, entry.second, {}, value);
+    }
+    // properties: the rest value, then what the write changed besides it (a sprite's texture
+    // rect, an anchor preset); GameObject active last, parents first (it runs no game code in
+    // edit mode, but it is what the flush does)
+    // the stored rests, exactly; the ones that run callbacks last, in hierarchy order
+    std::vector<std::pair<size_t, std::pair<Entity, const anim::PropertyRest*>>> deferred;
+    for (const std::pair<Entity, uint32_t>& entry : session.writtenProperties){
+        auto it = session.rest.find(entry.first);
+        if (it == session.rest.end() || !scene->isEntityCreated(entry.first)) continue;
+        auto property = it->second.properties.find(entry.second);
+        if (property == it->second.properties.end() || !property->second.has) continue;
+        const anim::PropertyRest& rest = property->second;
+        if (rest.binding.deferred){
+            deferred.push_back({hierarchyIndex(scene, entry.first), {entry.first, &rest}});
+            continue;
+        }
+        anim::restorePropertyRest(scene, entry.first, rest);
+    }
+    std::stable_sort(deferred.begin(), deferred.end(), [](const auto& a, const auto& b){ return a.first < b.first; });
+    for (const auto& entry : deferred){
+        if (!scene->isEntityCreated(entry.second.first)) continue;
+        anim::restorePropertyRest(scene, entry.second.first, *entry.second.second);
     }
     session.reset();
 }
@@ -1157,6 +1623,8 @@ void ActionSystem::resetPlayers(){
         // play's scripts and C++ libraries are gone after it: their callbacks with them
         player.onEvent.clear();
         player.onFinish.clear();
+        player.onStateEnter.clear();
+        player.onStateExit.clear();
     }
     playersWithCallbacks.clear();
     warnedEventHandlers.clear();

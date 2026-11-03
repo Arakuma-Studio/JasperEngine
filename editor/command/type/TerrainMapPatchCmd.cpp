@@ -80,3 +80,8 @@ bool editor::TerrainMapPatchCmd::execute(){
 void editor::TerrainMapPatchCmd::undo(){
     apply(patch.beforePixels, true);
 }
+
+std::vector<editor::Command::Touched> editor::TerrainMapPatchCmd::touchedPaths(bool) const{
+    if (!project || patch.path.empty()) return {};
+    return {{project->resolveAssetPath(patch.path), false}};
+}

@@ -82,6 +82,21 @@ float LegacyParticleConverter::cycleDuration(const LegacyParticleSystem& p){
     return cycle;
 }
 
+float LegacyParticleConverter::emissionDuration(const LegacyParticleSystem& p){
+    // ActionSystem::particlesActionUpdate before S20: without loop, findUnusedParticle scans
+    // forward and never reuses a slot, so emission ended once maxParticles were emitted
+    if (p.loop || p.rate <= 0)
+        return cycleDuration(p);
+    float burstParticles = 0.0f;
+    float lastBurst = 0.0f;
+    for (const ParticleBurst& b : p.bursts){
+        burstParticles += 0.5f * (float)(std::max(b.minCount, 0) + std::max(b.maxCount, 0));
+        lastBurst = std::max(lastBurst, b.time);
+    }
+    const float slots = std::max(0.0f, (float)p.maxParticles - burstParticles);
+    return std::max(slots / (float)p.rate, lastBurst);
+}
+
 Curve LegacyParticleConverter::sampleEase(const Ease& ease){
     if (ease.getType() == EaseType::LINEAR)
         return Curve::linear(0.0f, 1.0f);
@@ -93,7 +108,7 @@ void LegacyParticleConverter::apply(const LegacyParticleSystem& p, ParticleEffec
     auto note = [&](const std::string& line){ if (notes) notes->push_back(line); };
     d.maxParticles = std::max(p.maxParticles, 1u);
     d.looping = p.loop;
-    d.duration = std::max(cycleDuration(p), 0.05f);
+    d.duration = std::max(emissionDuration(p), 0.05f);
     d.simulationSpace = p.localSpace ? SimulationSpace::Local : SimulationSpace::World;
     // the old step: every frame, sizes in world units whatever the hierarchy's scale
     d.tickRate = 60;

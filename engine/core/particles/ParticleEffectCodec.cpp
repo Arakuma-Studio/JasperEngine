@@ -776,8 +776,31 @@ bool ParticleEffectCodec::fromJson(const Json& json, ParticleEffectDocument& doc
                 }else{
                     m->setEnabled(document, true);
                 }
-                static const std::set<std::string> header = {"type", "enabled"};
+                // the keys of older files that a field replaced: Velocity over Lifetime's offset vector
+                // (now the Orbital Offset curves), the Renderer's Align Z to Velocity (now a Render
+                // Alignment); a file that has both keys takes the new one
+                static const std::set<std::string> header = {"type", "enabled", "offset", "alignToVelocity"};
                 ok = structFromJson(m->fields, entry, m->module(document), m->key, diagnostics, &header) && ok;
+                if (m->id == ModuleId::VelocityOverLifetime && entry.contains("offset")){
+                    float v[3];
+                    if (!readFloats(entry["offset"], v)){
+                        error(diagnostics, std::string(m->key) + ".offset", "an offset is [x, y, z]");
+                        ok = false;
+                    }else{
+                        VelocityOverLifetimeModule& vol = document.velocityOverLifetime;
+                        if (!entry.contains("offsetX")) vol.offsetX = MinMaxCurve(v[0]);
+                        if (!entry.contains("offsetY")) vol.offsetY = MinMaxCurve(v[1]);
+                        if (!entry.contains("offsetZ")) vol.offsetZ = MinMaxCurve(v[2]);
+                    }
+                }
+                if (m->id == ModuleId::Renderer && entry.contains("alignToVelocity")){
+                    if (!entry["alignToVelocity"].is_boolean()){
+                        error(diagnostics, std::string(m->key) + ".alignToVelocity", "true or false");
+                        ok = false;
+                    }else if (entry["alignToVelocity"].get<bool>() && !entry.contains("meshAlignment")){
+                        document.renderer.meshAlignment = MeshAlignment::Velocity;
+                    }
+                }
             }
         }
     }
@@ -840,13 +863,8 @@ bool ParticleEffectCodec::validate(const ParticleEffectDocument& d, std::vector<
         validateStruct(ParticleModules::subEmitterFields(), &d.subEmitters[i], indexed("subEmitters", i), out);
 
     // what the field ranges do not say
-    if (d.emission.present){
-        for (size_t i = 0; i < d.emission.bursts.size(); i++){
-            const Burst& b = d.emission.bursts[i];
-            if (b.count.usesCurve())
-                error(out, indexed("emission.bursts", i) + ".count", "a burst count is a constant or a random between two constants");
-        }
-    }
+    if (d.startDelay.usesCurve())
+        error(out, "startDelay", "a start delay is a constant or a random between two constants");
     if (d.shape.present && d.shape.enabled){
         if (d.shape.shape == ShapeType::Mesh)
             validateMesh(d.shape.mesh, "shape.mesh", out);

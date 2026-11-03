@@ -49,8 +49,7 @@ REPO = Path(__file__).resolve().parents[2]
 WEB_TEMPLATE = REPO / "engine/platform/emscripten/web"
 ANDROID_TEMPLATE = REPO / "engine/platform/android/player"
 CAPACITIES = ("MAX_SUBMESHES", "MAX_TILEMAP_TILESRECT", "MAX_TILEMAP_TILES", "MAX_SPRITE_FRAMES", "MAX_EXTERNAL_BUFFERS",
-              "MAX_BONES", "MAX_COLLIDERS_2D", "MAX_COLLIDER_POINTS_2D", "MAX_COLLIDERS_3D", "MAX_COLLIDER_VERTICES_3D",
-              "MAX_COLLIDER_INDICES_3D")
+              "MAX_BONES")
 VARIANTS = REPO / "engine/player/variants.json"
 
 

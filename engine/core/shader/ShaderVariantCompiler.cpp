@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderVariantCompiler.h"
+#include "ShaderGlobals.h"
 
 #include "Engine.h"
 #include "pool/ShaderPool.h"
@@ -458,6 +459,7 @@ void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const
     if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_FONTATLAS_TEXTURE", "1"});    // 'Ftx'
     if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
     if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
+    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_FONTATLAS_SDF", "1"});        // 'Sdf' (with 'Ftx')
 }
 
 void addHtmlUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -487,6 +489,9 @@ void addLinesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, co
     if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
     if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
     if (prop & shaderPropertyBit(2))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
+    if (prop & shaderPropertyBit(3))  defs.push_back({"LINE_RIBBON", "1"});              // 'Rib'
+    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
+    if (prop & shaderPropertyBit(5))  defs.push_back({"LINE_PIXEL_WIDTH", "1"});         // 'Pxw'
 }
 
 // ShaderPool::getParticlesProperties; the effect's modules pick them (the Renderer module, Texture
@@ -1320,6 +1325,16 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
                            getLangSuffix(args.lang, args.version, args.es, args.platform);
     out = convertToShaderData(spirvcrossvec, args);
 
+    // a globals block (ShaderGlobals) takes at most 64 vec4 slots of a stage's uniform space
+    // (GLES3 guarantees 256 vertex uniform vectors in all): a larger one fails like any error
+    const std::string globalsProblem = checkGlobalsBlocks(out);
+    if (!globalsProblem.empty()) {
+        compileLog += globalsProblem + "\n";
+        if (log)
+            *log = compileLog;
+        return fail(globalsProblem);
+    }
+
     if (log)
         *log = compileLog;
     report(1.0f);
@@ -1329,6 +1344,19 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
     (void)report; (void)stopped;
     return fail("This build has no runtime shader compiler (JASPERENGINE_RUNTIME_SHADERS is off)");
 #endif
+}
+
+std::string ShaderVariantCompiler::checkGlobalsBlocks(const ShaderData& data) {
+    for (const ShaderStage& stage : data.stages) {
+        for (const ShaderUniformBlock& block : stage.uniformblocks) {
+            if ((block.name == ShaderGlobals::VERTEX_BLOCK || block.name == ShaderGlobals::FRAGMENT_BLOCK) &&
+                    block.sizeBytes > ShaderGlobals::MAX_BLOCK_BYTES) {
+                return "globals-block-too-large: " + block.name + " is " + std::to_string(block.sizeBytes) + " bytes, over the " +
+                       std::to_string(ShaderGlobals::MAX_BLOCK_BYTES) + " (64 vec4) a globals block may take: declare only the globals the stage reads";
+            }
+        }
+    }
+    return "";
 }
 
 std::string ShaderVariantCompiler::checkResourceBudget(const ShaderData& data) {

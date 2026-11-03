@@ -10,6 +10,9 @@
 #include "AnimationWindowClip.h"
 #include "util/FileUtils.h"
 #include "AnimationWindowClipUtil.h"
+#include "animation/PropertyBindings.h"
+#include "animation/ClipPropertyNames.h"
+#include "animation/ClipTangents.h"
 
 #include "imgui_internal.h"
 #include "external/IconsFontAwesome6.h"
@@ -28,10 +31,12 @@
 #include "component/LatticeComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
+#include "component/SpriteComponent.h"
 #include "util/EntityPath.h"
 #include "util/UIProbe.h"
 #include "util/Util.h"
 #include "shortcuts/CommandCatalog.h"
+#include "widget/ColorField.h"
 
 #include <chrono>
 #include <functional>
@@ -158,7 +163,11 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
     {
         const bool on = c.isRecording();
         const bool editableClip = doc && !doc->isReadOnly();
-        ImGui::BeginDisabled(!on && (!editableClip || !blocker.empty() || !stopped));
+        // a humanoid clip keys the rig's joint rotations: only on a humanoid character (anim-retarget 9)
+        const std::string recordBlocker = !blocker.empty() ? blocker
+            : (doc && doc->data().isHumanoid() && c.getRoot() != NULL_ENTITY && !c.boundHumanoid()) ? std::string("Bind a humanoid character to record this humanoid clip")
+            : std::string();
+        ImGui::BeginDisabled(!on && (!editableClip || !recordBlocker.empty() || !stopped));
         if (on) ImGui::PushStyleColor(ImGuiCol_Button, mix(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.45f));
         ImGui::PushStyleColor(ImGuiCol_Text, on ? ImVec4(1, 1, 1, 1) : Theme::Colors::ErrorText);
         if (ImGui::Button(ICON_FA_CIRCLE "##clip_record")){
@@ -173,7 +182,7 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
                                                               : "Stop recording (R): the preview stops and the scene goes back to how it was before")
                                     : !doc ? "Record: open a clip first"
                                     : doc->isReadOnly() ? "Record: the clip is read-only (extract it to edit it)"
-                                    : !blocker.empty() ? blocker.c_str()
+                                    : !recordBlocker.empty() ? recordBlocker.c_str()
                                     : "Record (R): moving the bound GameObject or its children (Scene view, Inspector) keys the clip at the playhead");
         }
     }
@@ -237,6 +246,25 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
 
     drawClipCombo(sceneProject);
 
+    // Preview over (anim layers spec 9): for a state above the base layer, a base state under it
+    if (c.getStateLayer() > 0){
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Preview over");
+        ImGui::SameLine();
+        const std::string over = c.getPreviewOver();
+        ImGui::SetNextItemWidth(std::max(Theme::dpi(90.0f), ImGui::CalcTextSize(over.c_str()).x + ImGui::GetFrameHeight() * 2.0f));
+        if (ImGui::BeginCombo("##clip_preview_over", over.empty() ? "None" : over.c_str())){
+            if (ImGui::Selectable("None", over.empty())) c.setPreviewOver("");
+            for (const std::string& state : c.previewOverChoices()){
+                if (ImGui::Selectable((state + "##over").c_str(), state == over)) c.setPreviewOver(state);
+            }
+            ImGui::EndCombo();
+        }
+        UIProbe::item("clip.previewOver");
+        ImGui::SetItemTooltip("Preview this clip on its layer (with its mask) over a base layer state at the playhead, as in the game");
+    }
+
     if (doc){
         ImGui::SameLine();
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
@@ -293,20 +321,29 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
 void AnimationWindowClip::drawClipCombo(SceneProject* sceneProject){
     AnimationClipController& c = controller();
     std::shared_ptr<AnimationClipDocument> doc = document();
+    // a player with layers: its states grouped by layer ("Holding ▸ Hold", anim layers spec 9)
+    const std::vector<std::pair<std::string, std::vector<std::string>>> groups = c.getStatesByLayer();
+    const bool layered = groups.size() > 1;
     std::string current = !c.getStateName().empty() ? c.getStateName()
                         : doc ? FileUtils::pathToUtf8(FileUtils::pathFromUtf8(doc->path()).filename()) : std::string("(No Clip)");
     if (doc && doc->isReadOnly()) current = ICON_FA_LOCK " " + current;
     const float width = std::max(Theme::dpi(150.0f), ImGui::CalcTextSize(current.c_str()).x + ImGui::GetFrameHeight() * 2.0f);
     ImGui::SetNextItemWidth(width);
     if (ImGui::BeginCombo("##clip_combo", current.c_str())){
-        const std::vector<std::string> states = c.getStateNames();
-        for (size_t i = 0; i < states.size(); i++){
-            ImGui::PushID((int)i);
-            if (ImGui::Selectable(states[i].c_str(), states[i] == c.getStateName())){
-                std::string error;
-                if (!openState(states[i], &error)) setNotice(error, true);
+        int id = 0;
+        for (const auto& group : groups){
+            if (layered){
+                ImGui::SeparatorText(group.first.c_str());
             }
-            ImGui::PopID();
+            for (const std::string& state : group.second){
+                ImGui::PushID(id++);
+                const std::string label = layered ? group.first + " \xe2\x96\xb8 " + state : state;
+                if (ImGui::Selectable(label.c_str(), state == c.getStateName())){
+                    std::string error;
+                    if (!openState(state, &error)) setNotice(error, true);
+                }
+                ImGui::PopID();
+            }
         }
         SceneProject* bound = boundScene();
         const Entity root = c.getRoot();
@@ -618,7 +655,8 @@ void AnimationWindowClip::drawRowLabel(const Row& row, size_t index, ImVec2 pos,
     }
     const ClipTrackData& track = doc->data().tracks[(size_t)row.track];
     if (row.kind == Row::Kind::Track){
-        const bool foldable = track.channel != ClipChannel::Property;
+        // a property folds when it has components (a colour's r g b a, a vector's x y z w)
+        const bool foldable = track.channel != ClipChannel::Property || !componentLabels((size_t)row.track).empty();
         const bool open = expanded.count(rowKey(track)) > 0;
         ImGui::SetCursorScreenPos(ImVec2(pos.x + 2.0f * m.s, pos.y));
         ImGui::PushID((int)index);
@@ -642,29 +680,33 @@ void AnimationWindowClip::drawRowLabel(const Row& row, size_t index, ImVec2 pos,
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left)){
             // selects the row's keys (Unity)
             std::vector<KeyId> keys;
-            for (const ClipKey& key : track.keys) keys.push_back({track.path, track.channel, key.time});
+            for (const ClipKey& key : track.keys) keys.push_back(keyIdOf(track, key.time));
             const ImGuiIO& io = ImGui::GetIO();
             selectKeys(keys, io.KeyShift || io.KeyCtrl);
         }
         if (!row.message.empty()) ImGui::SetItemTooltip("%s\n%s", row.label.c_str(), row.message.c_str());
+        else if (!row.masked.empty()) ImGui::SetItemTooltip("%s\n%s", row.label.c_str(), row.masked.c_str());
         else ImGui::SetItemTooltip("%s", row.label.c_str());
         ImGui::PopID();
         // the leaf name, elided in its middle; " : Channel" and the missing mark always show
         const std::string icon = row.missing ? std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") : std::string();
-        const std::string suffix = std::string(" : ") + channelLabel(track.channel) + (row.missing ? " (Missing!)" : "");
-        const std::string name = row.leaf.substr(0, row.leaf.size() - (std::string(" : ") + channelLabel(track.channel)).size());
+        const std::string suffix = std::string(" : ") + row.channelText + (row.missing ? " (Missing!)" : "");
+        const std::string name = row.leaf.substr(0, row.leaf.size() - (std::string(" : ") + row.channelText).size());
         const float x = pos.x + m.indent + 4.0f * m.s;
         const float room = labelEnd - x - ImGui::CalcTextSize((icon + suffix).c_str()).x;
         const std::string shown = icon + elideMiddle(name, std::max(room, ImGui::CalcTextSize("...").x)) + suffix;
         drawList->PushClipRect(pos, ImVec2(labelEnd, pos.y + height), true);
-        drawList->AddText(ImVec2(x, textY), row.missing ? color(Theme::Colors::WarningText) : ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
+        // a track the layer's mask hides is dimmed (anim layers spec 9)
+        drawList->AddText(ImVec2(x, textY), row.missing ? color(Theme::Colors::WarningText) :
+                          !row.masked.empty() ? ImGui::GetColorU32(ImGuiCol_TextDisabled) : ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
         drawList->PopClipRect();
         return;
     }
     // a component row (x / y / z, a blend shape, the lattice point count)
     drawList->PushClipRect(pos, ImVec2(labelEnd, pos.y + height), true);
     drawList->AddText(ImVec2(pos.x + m.indent * 2.0f + 4.0f * m.s, textY),
-                      row.missing ? color(Theme::Colors::WarningText) : color(Theme::Colors::SubtleText), row.label.c_str());
+                      row.missing ? color(Theme::Colors::WarningText) :
+                      !row.masked.empty() ? ImGui::GetColorU32(ImGuiCol_TextDisabled) : color(Theme::Colors::SubtleText), row.label.c_str());
     drawList->PopClipRect();
 }
 
@@ -674,13 +716,20 @@ void AnimationWindowClip::drawValueField(const Row& row, ImVec2 pos, float width
     std::shared_ptr<AnimationClipDocument> doc = document();
     const SheetMetrics m = sheetMetrics();
     const ClipTrackData& track = doc->data().tracks[(size_t)row.track];
-    if (track.channel == ClipChannel::Property) return;
+    if (track.channel == ClipChannel::Property){
+        drawPropertyValueField(row, pos, width, height);
+        return;
+    }
     // the lattice point count shows on the track row only
     if (row.kind == Row::Kind::Component && track.channel == ClipChannel::Lattice) return;
     // what the Scene view shows while previewing (incl. an unkeyed pink value), else the clip's value
     std::vector<float> value;
     bool shown = false;
-    if (c.isPreviewing() && !row.missing){
+    if (c.isPreviewing() && !row.missing && isHumanoidChannel(track.channel)){
+        // the bound rig's pose as the humanoid value (anim-retarget 9)
+        std::shared_ptr<const anim::HumanoidSlots> humanoid = c.boundHumanoid();
+        shown = humanoid && anim::readHumanoidValue(valueScene(), *humanoid->target, track.channel, track.humanBone, value);
+    }else if (c.isPreviewing() && !row.missing){
         Scene* scene = valueScene();
         const Entity entity = scene ? anim::resolvePath(scene, valueRoot(), track.path) : NULL_ENTITY;
         shown = entity != NULL_ENTITY && anim::readChannelValue(scene, entity, track.channel, track.points, value);
@@ -691,8 +740,8 @@ void AnimationWindowClip::drawValueField(const Row& row, ImVec2 pos, float width
     ImGui::PushID(row.track * 64 + row.component + 1);
     if (row.kind == Row::Kind::Track){
         char text[96] = "";
-        if (track.channel == ClipChannel::Rotation){
-            const Vector3 e = eulerOf(value);
+        if (isAngleTrack(track)){
+            const Vector3 e = anglesOf(track, value);
             std::snprintf(text, sizeof(text), "%.1f  %.1f  %.1f", e.x, e.y, e.z);
         }else if (track.channel == ClipChannel::Morph){
             std::snprintf(text, sizeof(text), "%zu weights", value.size());
@@ -711,9 +760,9 @@ void AnimationWindowClip::drawValueField(const Row& row, ImVec2 pos, float width
     // an editable component: unkeyed edits preview in pink until K keys them
     ImGui::SetCursorScreenPos(ImVec2(pos.x + width - m.valueWidth, pos.y + (height - ImGui::GetFrameHeight()) * 0.5f));
     float v = 0.0f;
-    const bool editingEuler = track.channel == ClipChannel::Rotation && eulerEditTrack == row.track;
-    if (track.channel == ClipChannel::Rotation){
-        const Vector3 e = editingEuler ? eulerEdit : eulerOf(value);
+    const bool editingEuler = isAngleTrack(track) && eulerEditTrack == row.track;
+    if (isAngleTrack(track)){
+        const Vector3 e = editingEuler ? eulerEdit : anglesOf(track, value);
         v = row.component == 0 ? e.x : row.component == 1 ? e.y : e.z;
     }else if ((size_t)row.component < value.size()){
         v = value[(size_t)row.component];
@@ -721,14 +770,14 @@ void AnimationWindowClip::drawValueField(const Row& row, ImVec2 pos, float width
     if (pending) ImGui::PushStyleColor(ImGuiCol_FrameBg, pendingFieldColor());
     ImGui::SetNextItemWidth(m.valueWidth - 4.0f * m.s);
     ImGui::BeginDisabled(doc->isReadOnly() || row.missing);
-    const float speed = track.channel == ClipChannel::Rotation ? 0.5f : 0.01f;
+    const float speed = isAngleTrack(track) ? 0.5f : 0.01f;
     const bool changed = ImGui::DragFloat("##value", &v, speed, 0.0f, 0.0f, "%.3f");
     if (ImGui::IsItemActivated()){
         valueMergeKey.clear();
-        if (track.channel == ClipChannel::Rotation){
+        if (isAngleTrack(track)){
             // the triple stays as dragged while the field is active (M13)
             eulerEditTrack = row.track;
-            eulerEdit = eulerOf(value);
+            eulerEdit = anglesOf(track, value);
         }
     }
     if (changed){
@@ -740,6 +789,104 @@ void AnimationWindowClip::drawValueField(const Row& row, ImVec2 pos, float width
     if (pending) ImGui::PopStyleColor();
     ImGui::SetItemTooltip(pending ? "Not keyed: K keys it (the value goes when the playhead moves)"
                                   : "The value at the playhead. Editing it previews the change; K keys it");
+    ImGui::PopID();
+}
+
+void AnimationWindowClip::drawPropertyValueField(const Row& row, ImVec2 pos, float width, float height){
+    AnimationClipController& c = controller();
+    std::shared_ptr<AnimationClipDocument> doc = document();
+    const SheetMetrics m = sheetMetrics();
+    const ClipTrackData& track = doc->data().tracks[(size_t)row.track];
+    if (!track.known) return;
+    // what the Scene view shows while previewing (incl. a pink value), else the clip's value;
+    // the whole property in key space (a swizzle track its component)
+    std::vector<float> value;
+    bool shown = false;
+    anim::PropertyBinding binding;
+    if (c.isPreviewing() && !row.missing){
+        Scene* scene = valueScene();
+        const Entity entity = scene ? anim::resolvePath(scene, valueRoot(), track.path) : NULL_ENTITY;
+        anim::PropertyRef ref;
+        anim::parsePropertyRef(track.component, track.property, ref);
+        if (entity != NULL_ENTITY) binding = anim::bindProperty(scene, entity, ref, track.width);
+        float whole[4] = {0, 0, 0, 0};
+        if (binding.status == anim::PropertyBindStatus::Bound && anim::readPropertyKeySpace(scene, entity, binding, whole)){
+            value = binding.swizzle >= 0 ? std::vector<float>{whole[binding.swizzle]} : std::vector<float>(whole, whole + binding.width);
+            shown = true;
+        }
+    }
+    if (!shown) value = sampledValue((size_t)row.track, c.getTime());
+    if (value.empty()) return;
+    const bool pending = c.hasPendingValue((size_t)row.track);
+    const bool readOnly = doc->isReadOnly() || row.missing;
+    const PropertyKind kind = track.kind;
+    ImGui::PushID(row.track * 64 + row.component + 1);
+    ImGui::SetCursorScreenPos(ImVec2(pos.x + width - m.valueWidth, pos.y + (height - ImGui::GetFrameHeight()) * 0.5f));
+    if (pending) ImGui::PushStyleColor(ImGuiCol_FrameBg, pendingFieldColor());
+    ImGui::BeginDisabled(readOnly);
+    std::string error;
+    const bool colour = kind == PropertyKind::Color3 || kind == PropertyKind::Color4;
+    if (row.kind == Row::Kind::Component){
+        // one component of a colour or vector
+        float v = (size_t)row.component < value.size() ? value[(size_t)row.component] : 0.0f;
+        ImGui::SetNextItemWidth(m.valueWidth - 4.0f * m.s);
+        const bool changed = ImGui::DragFloat("##value", &v, 0.01f, 0.0f, 0.0f, "%.3f");
+        if (ImGui::IsItemActivated()) valueMergeKey.clear();
+        if (changed && !setComponentValue((size_t)row.track, row.component, v, ImGui::IsItemActivated(), &error)) setNotice(error, true);
+    }else if (kind == PropertyKind::Bool){
+        bool on = value[0] > 0.5f;
+        if (ImGui::Checkbox("##value", &on)){
+            valueMergeKey.clear();
+            if (!setPropertyValue((size_t)row.track, {on ? 1.0f : 0.0f}, true, &error)) setNotice(error, true);
+        }
+    }else if (kind == PropertyKind::Int || kind == PropertyKind::Frame){
+        int v = (int)std::lround(value[0]);
+        ImGui::SetNextItemWidth(m.valueWidth - 4.0f * m.s);
+        const bool changed = ImGui::DragInt("##value", &v, 0.1f);
+        if (ImGui::IsItemActivated()) valueMergeKey.clear();
+        if (changed && !setPropertyValue((size_t)row.track, {(float)v}, ImGui::IsItemActivated(), &error)) setNotice(error, true);
+    }else if (colour && track.swizzle < 0 && value.size() >= 3){
+        // the Inspector's colour widget, in sRGB (the keys' space)
+        Vector4 rgba(value[0], value[1], value[2], value.size() > 3 ? value[3] : 1.0f);
+        ui::ColorFieldOptions options;
+        options.alpha = kind == PropertyKind::Color4;
+        options.linearStorage = false;
+        options.label = "Key Color";
+        options.width = m.valueWidth - 4.0f * m.s;
+        const ui::EditPhase phase = ui::colorField("##value", rgba, options);
+        // the Color window's session is one merged value edit (a cancel puts the original back)
+        if (phase == ui::EditPhase::Begin) valueMergeKey.clear();
+        if (phase == ui::EditPhase::Changing || phase == ui::EditPhase::Cancelled || phase == ui::EditPhase::Applied){
+            const float channels[4] = {rgba.x, rgba.y, rgba.z, rgba.w};
+            std::vector<float> next(channels, channels + (kind == PropertyKind::Color4 ? 4 : 3));
+            if (!setPropertyValue((size_t)row.track, next, false, &error)) setNotice(error, true);
+        }
+    }else if (value.size() == 1){
+        float v = value[0];
+        ImGui::SetNextItemWidth(m.valueWidth - 4.0f * m.s);
+        const bool changed = ImGui::DragFloat("##value", &v, 0.01f, 0.0f, 0.0f, "%.3f");
+        if (ImGui::IsItemActivated()) valueMergeKey.clear();
+        if (changed && !setPropertyValue((size_t)row.track, {v}, ImGui::IsItemActivated(), &error)) setNotice(error, true);
+    }else{
+        // a vector: its components fold out
+        std::string text;
+        for (size_t i = 0; i < value.size(); i++){
+            char number[32];
+            std::snprintf(number, sizeof(number), "%.2f", value[i]);
+            text += (i ? "  " : "") + std::string(number);
+        }
+        const float right = pos.x + width - 4.0f * m.s;
+        const float w = ImGui::CalcTextSize(text.c_str()).x;
+        ImGui::GetWindowDrawList()->AddText(ImVec2(std::max(pos.x + width - m.valueWidth, right - w), pos.y + (height - ImGui::GetTextLineHeight()) * 0.5f),
+                                            color(pending ? pendingTextColor() : Theme::Colors::SubtleText), text.c_str());
+    }
+    ImGui::EndDisabled();
+    if (pending) ImGui::PopStyleColor();
+    if (ImGui::IsItemHovered()){
+        ImGui::SetTooltip(pending ? "Not keyed: K keys it (the value goes when the playhead moves)"
+                                  : track.discrete ? "The value at the playhead (stepped: it changes at its keys). Editing it previews the change; K keys it"
+                                  : "The value at the playhead. Editing it previews the change; K keys it");
+    }
     ImGui::PopID();
 }
 
@@ -899,6 +1046,51 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
             }
             rowsList->PushClipRect(ImVec2(keyAreaX, clipMin.y), ImVec2(keyAreaX + keyAreaWidth, clipMax.y), true);
             const float cy = rowPos.y + m.rowHeight * 0.5f;
+            // property rows (anim-properties spec 10): a bool's on bars, an int's or frame's values,
+            // a colour's sampled gradient under its keys
+            if (row.kind == Row::Kind::Track && data.tracks[(size_t)row.track].channel == ClipChannel::Property){
+                const ClipTrackData& track = data.tracks[(size_t)row.track];
+                const float keyAreaRight = keyAreaX + keyAreaWidth;
+                if (track.kind == PropertyKind::Bool && track.known){
+                    for (size_t k = 0; k < track.keys.size(); k++){
+                        if (track.keys[k].value.empty() || track.keys[k].value[0] <= 0.5f) continue;
+                        const float x0 = std::max(keyAreaX, xAt(track.keys[k].time));
+                        const float x1 = k + 1 < track.keys.size() ? xAt(track.keys[k + 1].time) : keyAreaRight;
+                        if (x1 <= keyAreaX || x0 >= keyAreaRight) continue;
+                        rowsList->AddRectFilled(ImVec2(x0, cy - m.keyRadius * 0.45f), ImVec2(std::min(x1, keyAreaRight), cy + m.keyRadius * 0.45f),
+                                                color(Theme::Colors::Selection, 0.45f));
+                    }
+                }else if ((track.kind == PropertyKind::Int || track.kind == PropertyKind::Frame) && track.known){
+                    for (size_t k = 0; k < track.keys.size(); k++){
+                        if (track.keys[k].value.empty()) continue;
+                        const float x = xAt(track.keys[k].time);
+                        if (x < keyAreaX - 40.0f * m.s || x > keyAreaRight) continue;
+                        const std::string text = std::to_string((long)std::lround(track.keys[k].value[0]));
+                        rowsList->AddText(ImVec2(x + m.keyRadius + 2.0f * m.s, rowPos.y + (m.rowHeight - ImGui::GetTextLineHeight()) * 0.5f),
+                                          color(Theme::Colors::SubtleText), text.c_str());
+                    }
+                }else if ((track.kind == PropertyKind::Color3 || track.kind == PropertyKind::Color4) && track.known && track.swizzle < 0 &&
+                          !track.keys.empty()){
+                    // the sampled colour every few pixels over the keyed span (the keys are sRGB)
+                    std::shared_ptr<const AnimationClip> clip = doc->clip();
+                    const int built = clip ? builtTrack(*clip, track) : -1;
+                    if (built >= 0){
+                        const float from = std::max(keyAreaX, xAt(track.keys.front().time));
+                        const float to = std::min(keyAreaRight, xAt(track.keys.back().time));
+                        const float step = 4.0f * m.s;
+                        anim::TrackSample sample;
+                        for (float x = from; x < to; x += step){
+                            const float t = timeAt(x + step * 0.5f);
+                            if (!anim::sampleTrack(clip->getTracks()[(size_t)built], t, sample) || sample.weights.size() < 3) continue;
+                            const float a = sample.weights.size() > 3 ? std::clamp(sample.weights[3], 0.0f, 1.0f) : 1.0f;
+                            const ImVec4 c(std::clamp(sample.weights[0], 0.0f, 1.0f), std::clamp(sample.weights[1], 0.0f, 1.0f),
+                                           std::clamp(sample.weights[2], 0.0f, 1.0f), 0.35f + 0.55f * a);
+                            rowsList->AddRectFilled(ImVec2(x, rowPos.y + m.rowHeight * 0.68f), ImVec2(std::min(x + step, to), rowPos.y + m.rowHeight - 2.0f * m.s),
+                                                    ImGui::GetColorU32(c));
+                        }
+                    }
+                }
+            }
             const bool rowHovered = ImGui::IsWindowHovered() && io.MousePos.y >= rowPos.y && io.MousePos.y < rowPos.y + m.rowHeight &&
                                     io.MousePos.x >= keyAreaX;
             float lastX = -1e9f;
@@ -936,7 +1128,7 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
                     hoveredKeyIds.clear();
                     for (size_t k = i; k < j; k++){
                         const ClipTrackData& track = data.tracks[keys[k].track];
-                        hoveredKeyIds.push_back({track.path, track.channel, keys[k].time});
+                        hoveredKeyIds.push_back(keyIdOf(track, keys[k].time));
                     }
                 }
                 i = j;
@@ -1145,6 +1337,9 @@ void AnimationWindowClip::drawKeyContextMenu(){
     if (ImGui::BeginMenu("Tangents")){
         ClipTangentMode common = ClipTangentMode::None;
         bool uniform = true, first = true;
+        // anim-properties: the per-side items need keys of scalar curves (not rotations, not
+        // stepped properties)
+        bool sideKeys = false;
         if (doc){
             for (const AnimationClipController::KeyRef& ref : selectedRefs){
                 if (ref.track >= doc->data().tracks.size() || ref.key >= doc->data().tracks[ref.track].keys.size()) continue;
@@ -1152,8 +1347,10 @@ void AnimationWindowClip::drawKeyContextMenu(){
                 if (first) common = mode;
                 else if (mode != common) uniform = false;
                 first = false;
+                sideKeys = sideKeys || cliptangents::editable(doc->data().tracks[ref.track]);
             }
         }
+        std::string notice;
         const ClipTangentMode modes[] = {ClipTangentMode::ClampedAuto, ClipTangentMode::Auto, ClipTangentMode::Free,
                                          ClipTangentMode::Flat, ClipTangentMode::Linear, ClipTangentMode::Constant,
                                          ClipTangentMode::Broken};
@@ -1161,6 +1358,27 @@ void AnimationWindowClip::drawKeyContextMenu(){
             if (mode == ClipTangentMode::Linear) ImGui::Separator();
             if (ImGui::MenuItem(clipui::tangentModeLabel(mode), nullptr, uniform && !first && common == mode)){
                 if (!setTangentMode(mode, &error)) setNotice(error, true);
+            }
+        }
+        // Unity's Left / Right / Both Tangents: one side Free, Linear or Constant (the key Broken)
+        if (sideKeys){
+            ImGui::Separator();
+            AnimationClipController& ctl = controller();
+            struct SideChoice{ const char* label; cliptangents::Side side; };
+            const SideChoice sides[] = {{"Left Tangent", cliptangents::Side::Left}, {"Right Tangent", cliptangents::Side::Right},
+                                        {"Both Tangents", cliptangents::Side::Both}};
+            struct TypeChoice{ const char* label; cliptangents::SideType type; };
+            const TypeChoice types[] = {{"Free", cliptangents::SideType::Free}, {"Linear", cliptangents::SideType::Linear},
+                                        {"Constant", cliptangents::SideType::Constant}};
+            for (const SideChoice& side : sides){
+                if (!ImGui::BeginMenu(side.label)) continue;
+                for (const TypeChoice& type : types){
+                    if (ImGui::MenuItem(type.label)){
+                        if (!ctl.setSideTangent(selectedRefs, side.side, type.type, &error, &notice)) setNotice(error, true);
+                        else if (!notice.empty()) setNotice(notice, true);
+                    }
+                }
+                ImGui::EndMenu();
             }
         }
         ImGui::EndMenu();
@@ -1261,6 +1479,61 @@ void AnimationWindowClip::drawAddPropertyPopup(){
             }
             ImGui::PopID();
         }
+        // the component properties (anim-properties spec 10): GameObject Active, then one group
+        // per component in the Inspector's names (Enabled and its registry rows; a colour also
+        // as Alpha only), a sprite's material colour as Sprite Renderer : Color, Lua scripts
+        const std::vector<anim::AnimatablePropertyInfo> properties = anim::listAnimatableProperties(scene, entity);
+        std::vector<std::string> groups;
+        for (const anim::AnimatablePropertyInfo& info : properties){
+            if (std::find(groups.begin(), groups.end(), info.component) == groups.end()) groups.push_back(info.component);
+        }
+        auto addPropertyItem = [&](const std::string& component, const std::string& property, const std::string& label){
+            const bool exists = data.findPropertyTrack(path, component, property) >= 0;
+            const std::string text = label + (exists ? "  (animated)" : "");
+            ImGui::PushID(property.c_str());
+            if (ImGui::Selectable(text.c_str(), false, exists ? ImGuiSelectableFlags_Disabled : 0)){
+                AnimationClipController& c = controller();
+                c.setTime(snapToFrame(c.getTime()));
+                size_t track = 0;
+                if (!c.addPropertyTrack(path, component, property, &track, &error)) setNotice(error, true);
+                done = true;
+            }
+            ImGui::PopID();
+        };
+        for (const std::string& group : groups){
+            if (done) break;
+            ImGui::PushID(group.c_str());
+            const std::string groupLabel = ClipPropertyNames::groupLabel(scene, entity, group);
+            if (ImGui::TreeNodeEx("##group", 0, "%s", groupLabel.c_str())){
+                std::string submeshGroup;
+                bool submeshOpen = true;
+                for (const anim::AnimatablePropertyInfo& info : properties){
+                    if (info.component != group || done) continue;
+                    std::string label = info.label;
+                    // a sprite's colour (Lua Sprite.color) is its material's base colour: Sprite Renderer : Color
+                    const bool spriteColor = group == "mesh" && info.property == "submeshes[0].material.baseColorFactor" &&
+                                             scene->findComponent<SpriteComponent>(entity);
+                    if (spriteColor) label = "Color";
+                    // "Material [N] : X" rows fold under Material [N]
+                    const size_t colon = label.find(" : ");
+                    if (!spriteColor && colon != std::string::npos && label.compare(0, 9, "Material ") == 0){
+                        const std::string sub = label.substr(0, colon);
+                        if (sub != submeshGroup){
+                            if (!submeshGroup.empty() && submeshOpen) ImGui::TreePop();
+                            submeshGroup = sub;
+                            submeshOpen = ImGui::TreeNodeEx(sub.c_str(), 0, "%s", sub.c_str());
+                        }
+                        if (!submeshOpen) continue;
+                        label = label.substr(colon + 3);
+                    }
+                    addPropertyItem(info.component, info.property, label);
+                    if (info.kind == PropertyKind::Color4) addPropertyItem(info.component, info.property + ".a", label + " : Alpha only");
+                }
+                if (!submeshGroup.empty() && submeshOpen) ImGui::TreePop();
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
     };
     ImGui::BeginChild("##tree", ImVec2(Theme::dpi(380.0f), Theme::dpi(320.0f)), ImGuiChildFlags_None);
     // the bound root's hierarchy, depth first in child order; unaddressable names warn (R39)
@@ -1308,6 +1581,46 @@ void AnimationWindowClip::drawAddPropertyPopup(){
         ImGui::PopID();
     };
     visit(root, "", true);
+
+    // humanoid tracks (anim-retarget 9): every slot and extra bone, the body position and the
+    // foot goals, keyed from the bound humanoid rig
+    std::shared_ptr<const anim::HumanoidSlots> humanoid = controller().boundHumanoid();
+    if (!done && (humanoid || data.isHumanoid())){
+        ImGui::PushID("humanoid");
+        if (!humanoid){
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " Humanoid (bind a humanoid character)");
+            ImGui::SetItemTooltip("Humanoid tracks are keyed from a humanoid rig: bind a character whose model maps the humanoid bones");
+        }else if (ImGui::TreeNodeEx("##humanoid", needle.empty() ? 0 : ImGuiTreeNodeFlags_DefaultOpen, "Humanoid")){
+            auto humanoidItem = [&](ClipChannel channel, int bone){
+                const std::string label = humanoidTrackLabel(channel, bone).substr(std::string("Humanoid : ").size());
+                if (!needle.empty() && lower(label).find(needle) == std::string::npos) return;
+                const bool exists = data.findHumanoidTrack(channel, bone) >= 0;
+                std::vector<float> value;
+                const bool available = anim::readHumanoidValue(scene, *humanoid->target, channel, bone, value);
+                ImGui::PushID(bone + (channel == ClipChannel::HumanoidPosition ? 1000 : 0));
+                const std::string text = label + (exists ? "  (animated)" : available ? "" : "  (not on this rig)");
+                if (ImGui::Selectable(text.c_str(), false, exists || !available ? ImGuiSelectableFlags_Disabled : 0)){
+                    AnimationClipController& c = controller();
+                    c.setTime(snapToFrame(c.getTime()));
+                    size_t track = 0;
+                    if (!c.addProperty(anim::humanoidTrackBoneName(channel, bone), channel, &track, &error)){
+                        setNotice(error, true);
+                    }else{
+                        std::shared_ptr<AnimationClipDocument> now = document();
+                        if (now && track < now->data().tracks.size()) expanded.insert(rowKey(now->data().tracks[track]));
+                    }
+                    done = true;
+                }
+                ImGui::PopID();
+            };
+            humanoidItem(ClipChannel::HumanoidPosition, HUMANOID_POSITION_HIPS);
+            for (int b = 0; b < anim::HUMANOID_TRACK_BONE_COUNT && !done; b++) humanoidItem(ClipChannel::Humanoid, b);
+            humanoidItem(ClipChannel::HumanoidPosition, HUMANOID_POSITION_LEFT_FOOT);
+            humanoidItem(ClipChannel::HumanoidPosition, HUMANOID_POSITION_RIGHT_FOOT);
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
     ImGui::EndChild();
     if (done) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();

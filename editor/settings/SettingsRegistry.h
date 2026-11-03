@@ -69,6 +69,9 @@ namespace jasperengine::editor {
         std::function<bool(SettingsContext&, const mcp::Json& value, bool apply, std::string& error)> set;
         // custom drawing of a row the windows do not draw themselves
         std::function<void()> draw;
+        // A machine-level preference naming a program to run or a folder outside the project: only
+        // the user changes it (Edit > Preferences); over MCP it is read-only (the sandbox hardening)
+        bool userOnly = false;
     };
 
     class SettingsRegistry {

@@ -73,6 +73,8 @@ namespace {
         JE_FIELD(TweenComponent, loop),
         JE_FIELD(TweenComponent, pingPong, .label = "Ping-pong", .tooltip = "Plays forward and then back, in twice the duration"),
         JE_FIELD(TweenComponent, function, .label = "Ease"),
+        // upstream (coroutines / Time API): advances at time scale 0
+        JE_FIELD(TweenComponent, useUnscaledTime, .flags = OmitIfDefault | CodegenIfChanged),
         // the ease "Curve" (docs/specs/S27-editor-tools.md R13): value = curve(time), time 0 to 1;
         // the field's view spans values -1 to 2 (overshoot)
         JE_FIELD(TweenComponent, curve, .flags = OmitIfDefault | CodegenIfChanged, .uiMin = -1.0f, .uiMax = 2.0f,
@@ -115,6 +117,8 @@ namespace {
     constexpr FieldDesc kAlphaTweenFields[] = {
         JE_FIELD(AlphaTweenComponent, endAlpha, .flags = NoDefault),
         JE_FIELD(AlphaTweenComponent, startAlpha, .flags = NoDefault),
+        // upstream (ui canvas group): what the alpha drives
+        JE_FIELD(AlphaTweenComponent, alphaTarget, .enumDesc = &enums::kAlphaTweenTarget, .flags = OmitIfDefault | CodegenIfChanged),
     };
 
     // ---------------------------------------------------------------- Animation

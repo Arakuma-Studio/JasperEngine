@@ -1,4 +1,4 @@
-id: 1924743159
+id: 2590416048
 name: Arena2D
 scene:
   backgroundColor: [0.231, 0.298, 0.475, 1]
@@ -38,11 +38,6 @@ maxValues:
   maxExternalBuffers: 0
   maxSpriteFrames: 0
   maxBones: 128
-  maxColliders2D: 1
-  maxColliderPoints2D: 4
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: points
     properties: 4
@@ -53,16 +48,26 @@ shaderKeys:
   - type: mesh
     properties: 1025
   - type: mesh
+    properties: 263171
+  - type: mesh
     properties: 4195393
   - type: mesh
     properties: 4197699
+  - type: mesh
+    properties: 4457475
   - type: depth
   - type: depth
     properties: 129
   - type: blit
+  - type: mesh
+    properties: 263171
+    customShader: library:unlit#BLEND_ADDITIVE,PARTICLE_TEXTURE
+  - type: mesh
+    properties: 4457475
+    customShader: library:unlit#BLEND_ADDITIVE,PARTICLE_TEXTURE
 prefabs:
   - path: prefabs/Ball.prefab
-    guid: 16cc275eff03aecf8ca89c0b6925694c
+    guid: 847cf89bab7df6db140cb329d78000dd
 entities:
   - type: Entity
     entity: 1001
@@ -160,6 +165,19 @@ entities:
         enabled: true
         type: static
         numColliders: 1
+        gravityScale: 1
+        linearDamping: 0
+        angularDamping: 0
+        fixedRotation: false
+        collisionDetection: discrete
+        sleepingMode: start_awake
+        useAutoMass: true
+        mass: 1
+        autoCenterOfMass: true
+        centerOfMass: [0, 0]
+        autoInertia: true
+        inertia: 0
+        material: ""
         colliders:
           - type: polygon
             pointA: [450, 20]
@@ -177,7 +195,7 @@ entities:
             categoryBits: 1
             maskBits: 65535
             groupIndex: 0
-            vertices:
+            points:
               - [0, 0]
               - [900, 0]
               - [900, 40]
@@ -278,6 +296,19 @@ entities:
         enabled: true
         type: dynamic
         numColliders: 1
+        gravityScale: 1
+        linearDamping: 0
+        angularDamping: 0
+        fixedRotation: false
+        collisionDetection: discrete
+        sleepingMode: start_awake
+        useAutoMass: true
+        mass: 1
+        autoCenterOfMass: true
+        centerOfMass: [0, 0]
+        autoInertia: true
+        inertia: 0
+        material: ""
         colliders:
           - type: circle
             pointA: [24, 24]
@@ -295,11 +326,11 @@ entities:
             categoryBits: 1
             maskBits: 65535
             groupIndex: 0
-            vertices: ~
+            points: ~
       prefab:
         name: Ball
         path: prefabs/Ball.prefab
-        guid: 16cc275eff03aecf8ca89c0b6925694c
+        guid: 847cf89bab7df6db140cb329d78000dd
     prefabInstance:
       version: 3
   - type: Entity
@@ -399,6 +430,19 @@ entities:
         enabled: true
         type: dynamic
         numColliders: 1
+        gravityScale: 1
+        linearDamping: 0
+        angularDamping: 0
+        fixedRotation: false
+        collisionDetection: discrete
+        sleepingMode: start_awake
+        useAutoMass: true
+        mass: 1
+        autoCenterOfMass: true
+        centerOfMass: [0, 0]
+        autoInertia: true
+        inertia: 0
+        material: ""
         colliders:
           - type: circle
             pointA: [24, 24]
@@ -416,11 +460,11 @@ entities:
             categoryBits: 1
             maskBits: 65535
             groupIndex: 0
-            vertices: ~
+            points: ~
       prefab:
         name: Ball
         path: prefabs/Ball.prefab
-        guid: 16cc275eff03aecf8ca89c0b6925694c
+        guid: 847cf89bab7df6db140cb329d78000dd
     prefabInstance:
       version: 3
       overrides:
@@ -524,6 +568,19 @@ entities:
         enabled: true
         type: dynamic
         numColliders: 1
+        gravityScale: 1
+        linearDamping: 0
+        angularDamping: 0
+        fixedRotation: false
+        collisionDetection: discrete
+        sleepingMode: start_awake
+        useAutoMass: true
+        mass: 1
+        autoCenterOfMass: true
+        centerOfMass: [0, 0]
+        autoInertia: true
+        inertia: 0
+        material: ""
         colliders:
           - type: circle
             pointA: [24, 24]
@@ -541,11 +598,11 @@ entities:
             categoryBits: 1
             maskBits: 65535
             groupIndex: 0
-            vertices: ~
+            points: ~
       prefab:
         name: Ball
         path: prefabs/Ball.prefab
-        guid: 16cc275eff03aecf8ca89c0b6925694c
+        guid: 847cf89bab7df6db140cb329d78000dd
     prefabInstance:
       version: 3
   - type: Entity

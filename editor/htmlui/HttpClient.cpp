@@ -47,13 +47,6 @@ namespace {
         return instance;
     }
 
-    // CommandRunner logs a non-zero exit code to the Console: curl's own exit code is not
-    // needed (its write-out and error lines say everything), so the shell always succeeds
-#ifdef _WIN32
-    constexpr const char* kAlwaysSucceed = " || (call )";
-#else
-    constexpr const char* kAlwaysSucceed = " || true";
-#endif
 
     std::string lower(std::string text){
         for (char& c : text){
@@ -175,7 +168,7 @@ bool HttpClient::available(){
 
     bool found = false;
     CommandRunner runner;
-    runner.run(std::string("curl --version") + kAlwaysSucceed, fs::path(), [&found](const std::string& line){
+    runner.run({"curl", "--version"}, fs::path(), [&found](const std::string& line){
         if (line.compare(0, 5, "curl ") == 0)
             found = true;
     });
@@ -373,6 +366,10 @@ HttpResponse HttpClient::get(const std::string& url){
         out << "url = " << configValue(requestUrl) << "\n"
             << "output = " << configValue(body.string()) << "\n"
             << "user-agent = " << configValue(kUserAgent) << "\n"
+            // http(s) only, also after a redirect: remote content (a Lottie image ref, a Google
+            // Fonts src) can't make curl read file:// or another scheme
+            << "proto = \"=https,http\"\n"
+            << "proto-redir = \"=https,http\"\n"
             << "location\n"
             << "max-redirs = 5\n"
             << "max-time = " << timeoutSeconds << "\n"
@@ -396,7 +393,10 @@ HttpResponse HttpClient::get(const std::string& url){
         }
         active().runners.insert(runner.get());
     }
-    runner->run("curl -K \"" + config.string() + "\"" + kAlwaysSucceed, fs::path(), [&lines](const std::string& line){
+    // argv, no shell: the config file path is one literal argument (its contents — URL, headers —
+    // are curl's own config syntax, written by newCurlConfig). curl's non-zero exit is expected on a
+    // network error and is read from `lines`, not the return code.
+    runner->run({"curl", "-K", config.string()}, fs::path(), [&lines](const std::string& line){
         lines.push_back(line);
     });
     {

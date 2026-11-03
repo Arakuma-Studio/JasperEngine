@@ -23,7 +23,7 @@
 using namespace jasperengine;
 
 Scene lit3dScene;
-Camera camera(&lit3dScene);
+Camera sceneCamera(&lit3dScene);
 Light sun(&lit3dScene);
 Primitive ground(&lit3dScene);
 Primitive redBox(&lit3dScene);
@@ -54,10 +54,10 @@ namespace {
     void setupLit3d(){
         lit3dScene.setBackgroundColor(0.45f, 0.62f, 0.85f);
 
-        camera.setType(CameraType::CAMERA_PERSPECTIVE);
-        camera.setPosition(0.0f, 6.0f, 18.0f);
-        camera.setTarget(Vector3(0.0f, 0.8f, 0.0f));
-        lit3dScene.setCamera(&camera);
+        sceneCamera.setType(CameraType::CAMERA_PERSPECTIVE);
+        sceneCamera.setPosition(0.0f, 6.0f, 18.0f);
+        sceneCamera.setTarget(Vector3(0.0f, 0.8f, 0.0f));
+        lit3dScene.setCamera(&sceneCamera);
 
         ground.createPlane(12.0f, 12.0f);
         ground.setColor(0.55f, 0.55f, 0.5f);

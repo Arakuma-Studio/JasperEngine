@@ -154,11 +154,39 @@ values on both sides are mirror images. The full table with the signs and the li
 [agent guide](mcp/guide/pose-animation.md#angles-degrees-from-a-neutral-standing-pose).
 
 Because the angles are measured from each model's own neutral pose, they mean the same thing on
-every humanoid. Fingers, eyes and the jaw are not part of a pose (they keep their rest pose).
+every humanoid. Fingers, eyes and the jaw are not part of a pose (they keep their rest pose; humanoid
+clips animate them).
 
 A pose also has: a **hold** (seconds it is held before the transition out), **Grounded** (the
 lowest point of the body touches the floor, automatically; turn it off for airborne poses and set
 **Lift**, the height above the floor), and an **offset** that shifts the hips horizontally.
+
+## The Avatar Configuration window
+
+A model's **Avatar** is its humanoid mapping, saved next to it as `<model>.humanoid` (Unity's Rig
+tab). Pose animations and humanoid clips (see
+[Humanoid clips and retargeting](animation-clips.md#humanoid-clips-and-retargeting)) both use it.
+Open it with **Configure Avatar...** in the Inspector's Model > **Rig** foldout (which also has the
+model's **Animation Type**: Generic or Humanoid, its status and human scale), or **Avatar...** next
+to the Pose window's Map Bones.
+
+- **Mapping**: the 22 **Body** slots and the 33 **Hands & Head** bones (three joints per finger,
+  the eyes, the jaw). Each row picks a skeleton bone (with search), **Auto** (the name-based
+  detection) or **None** (forced unmapped). Required slots that are missing are red, detected rows
+  grey, your overrides white. Fingers are found under each hand by their names (thumb, index or
+  pointer, middle, ring, little or pinky; tips and metacarpals skipped), eyes and the jaw under the
+  head. **Auto Map All** puts every bone back to detection, **Clear Overrides** also drops the
+  twists.
+- **Pose**: shows the model in its **neutral pose** in the Scene view (what every humanoid clip and
+  pose is relative to). A **twist correction** per slot (-180 to 180 degrees) turns a bone's
+  neutral pose about its own direction: use it when a downloaded character's forearms or wrists
+  look twisted in every clip. Twists change the model's pose animations too (one rig, one neutral
+  pose). A **Test clip** (type or drop a clip) plays retargeted with a scrubber, with **Mirror** and
+  **Foot IK** to try.
+- **Notes**: what the detection decided and why.
+
+Edits preview live; **Apply** writes the `.humanoid` file as one undo step (the model's clips and
+poses update), **Discard** goes back. Closing with changes asks to apply or discard.
 
 ## Lua
 

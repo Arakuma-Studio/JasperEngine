@@ -504,3 +504,68 @@ void anim::poseToRigSpaceSubtree(const Pose& local, const int* parents, size_t b
 void anim::poseToRigSpace(const Pose& local, const int* parents, RigSpace out){
     poseToRigSpaceFrom(local, parents, 0, out);
 }
+
+// ---------------------------------------------------------------- one element
+// The scalar lanes of the Kernels above, operation for operation (the same bits as poseBlend /
+// poseAdditive on the Scalar back end: AnimatorPoseOps.ElementOpsMatchTheKernels)
+
+namespace{
+
+    void normalizeElement(float& x, float& y, float& z, float& w, float fx, float fy, float fz, float fw){
+        const float len2 = ((x * x) + (y * y)) + ((z * z) + (w * w));
+        const bool tiny = len2 < 1e-24f;
+        const float len = std::sqrt(tiny ? 1.0f : len2);
+        x = tiny ? fx : x / len;
+        y = tiny ? fy : y / len;
+        z = tiny ? fz : z / len;
+        w = tiny ? fw : w / len;
+    }
+
+}
+
+float anim::poseBlendValue(float base, float layer, float weight){
+    if (weight == 0.0f) return base;
+    if (weight == 1.0f) return layer;
+    return base + (layer - base) * weight;
+}
+
+Quaternion anim::poseBlendRotation(const Quaternion& base, const Quaternion& layer, float weight){
+    if (weight == 0.0f) return base;
+    if (weight == 1.0f) return layer;
+    const float d = ((base.x * layer.x) + (base.y * layer.y)) + ((base.z * layer.z) + (base.w * layer.w));
+    const float sign = d < 0.0f ? -1.0f : 1.0f;
+    const float ws = weight * sign;
+    const float iw = 1.0f - weight;
+    float x = (base.x * iw) + (layer.x * ws);
+    float y = (base.y * iw) + (layer.y * ws);
+    float z = (base.z * iw) + (layer.z * ws);
+    float w = (base.w * iw) + (layer.w * ws);
+    normalizeElement(x, y, z, w, base.x, base.y, base.z, base.w);
+    return Quaternion(w, x, y, z);
+}
+
+Quaternion anim::poseAdditiveRotation(const Quaternion& base, const Quaternion& delta, float weight){
+    if (weight == 0.0f) return base;
+    const float sign = delta.w < 0.0f ? -1.0f : 1.0f;
+    const float ws = weight * sign;
+    float nx = delta.x * ws, ny = delta.y * ws, nz = delta.z * ws;
+    float nw = (1.0f - weight) + (delta.w * ws);
+    normalizeElement(nx, ny, nz, nw, 0.0f, 0.0f, 0.0f, 1.0f);
+    const float bx = base.x, by = base.y, bz = base.z, bw = base.w;
+    float rw = ((bw * nw) - (bx * nx)) - ((by * ny) + (bz * nz));
+    float rx = ((bw * nx) + (bx * nw)) + ((by * nz) - (bz * ny));
+    float ry = ((bw * ny) + (by * nw)) + ((bz * nx) - (bx * nz));
+    float rz = ((bw * nz) + (bz * nw)) + ((bx * ny) - (by * nx));
+    normalizeElement(rx, ry, rz, rw, bx, by, bz, bw);
+    return Quaternion(rw, rx, ry, rz);
+}
+
+float anim::poseAdditiveScale(float base, float delta, float weight){
+    if (weight == 0.0f) return base;
+    return base * (1.0f + ((delta - 1.0f) * weight));
+}
+
+float anim::poseAdditiveValue(float base, float delta, float weight){
+    if (weight == 0.0f) return base;
+    return base + (delta * weight);
+}

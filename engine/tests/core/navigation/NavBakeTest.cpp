@@ -197,14 +197,14 @@ TEST_F(NavBakeTest, CollectPolicy){
     const Entity dynamicBox = transformEntity(*scene, Vector3(0.0f, 0.5f, -8.0f));
     RigidbodyComponent dynamicBody;
     dynamicBody.type = BodyType::DYNAMIC;
+    dynamicBody.colliders.resize(1);
     dynamicBody.colliders[0].type = Collider3DType::BOX;
-    dynamicBody.numColliders = 1;
     scene->addComponent<RigidbodyComponent>(dynamicBox, dynamicBody);
     const Entity staticBox = transformEntity(*scene, Vector3(0.0f, 0.5f, 8.0f));
     RigidbodyComponent staticBody;
     staticBody.type = BodyType::STATIC;
+    staticBody.colliders.resize(1);
     staticBody.colliders[0].type = Collider3DType::BOX;
-    staticBody.numColliders = 1;
     scene->addComponent<RigidbodyComponent>(staticBox, staticBody);
     const Heightmap heights = hills(33, 3);
     terrain(*scene, Vector3(0.0f, -1.0f, 0.0f), 30.0f, 0.5f, heights);

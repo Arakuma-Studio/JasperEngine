@@ -59,7 +59,8 @@ Video of the HTML/CSS UI (`<video>`: AV1 + Opus in WebM, decoded in software; FF
 
 | Library | Version | Location | License | Used for |
 |---|---|---|---|---|
-| [dav1d](https://code.videolan.org/videolan/dav1d) | 1.5.4 | `engine/libs/dav1d/` (`COPYING`; what is vendored: `README.jasper.md`) | BSD-2-Clause | AV1 decoding (`engine/core/htmlui/media/Av1Decoder`), C and the x86-64/aarch64/armv7 asm |
+| [dav1d](https://code.videolan.org/videolan/dav1d) | 1.5.4 | `engine/libs/dav1d/` (`COPYING`; what is vendored: `README.jasper.md`) | BSD-2-Clause | AV1 decoding (`engine/core/media/Av1Decoder`), C and the x86-64/aarch64/armv7 asm |
+| [FFmpeg](https://ffmpeg.org) public headers | 4.4.5, 5.1.6, 6.1.2, 7.1.1, 8.0 | `engine/libs/ffmpeg-headers/`, one folder per avcodec major (`COPYING.LGPLv2.1`; what is vendored: `README.jasper.md`) | LGPL-2.1-or-later | declarations only: the Linux video backend, in the Linux editor and every Linux game, is compiled against these headers and loads the system's FFmpeg libraries with `dlopen` (no FFmpeg library is linked or shipped) |
 | x86inc.asm ([x264](https://code.videolan.org/videolan/x264), bundled with dav1d) | dav1d 1.5.4's copy | `engine/libs/dav1d/src/ext/x86/x86inc.asm` (licence in its header) | ISC | the macro layer of dav1d's NASM code |
 | [libopus](https://opus-codec.org) | 1.6.1 (decoder sources) | `engine/libs/opus/` (`COPYING`, `README.jasper.md`) | BSD-3-Clause (with the codec's patent licences referenced in `COPYING`) | Opus audio of videos (`OpusAudioDecoder`) |
 | [libwebm](https://chromium.googlesource.com/webm/libwebm) | 1.0.0.32 (`mkvparser`) | `engine/libs/libwebm/` (`LICENSE.TXT`, `PATENTS.TXT`, `README.jasper.md`) | BSD-3-Clause, plus Google's WebM patent grant | WebM/Matroska demuxing (`VideoDemuxer`) |
@@ -91,11 +92,12 @@ UI effects of the HTML/CSS UI: the effects of `engine/shaderlib/effects/` marked
 
 Fluid simulation: the FluidSimulation component and the HTML UI `fluid` effect port [WebGL-Fluid-Simulation](https://github.com/PavelDoGreat/WebGL-Fluid-Simulation) by Pavel Dobryakov (MIT, Copyright (c) 2017 Pavel Dobryakov): his solver and look kernels (`engine/shaderlib/effects/lib/fam_fluid_solver.glsl`, `engine/shaderlib/effects/lib/fam_fluid_look.glsl`; these two are his, not shaders.com's), the native passes on them (`engine/shaderlib/fluid.vert`, `engine/shaderlib/fluid.frag`) and his simulation loop, defaults and splats (`engine/core/fluid/`). His blue-noise dithering texture (`LDR_LLL1_0.png`, whose licence is not stated) was not copied: the dither is procedural. The notice is `engine/shaderlib/effects/LICENSE.webgl-fluid-simulation.txt`; exports that run the fluid (a FluidSimulation component in an exported scene or prefab, or the `fluid` effect) copy it to `licenses/webgl-fluid-simulation-LICENSE.txt`.
 
-Texture synthesis of the editor (editor-only: never part of an exported game):
+Texture synthesis and sprite normal maps of the editor (editor-only: never part of an exported game):
 
 | Code | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [texture-synthesis](https://github.com/EmbarkStudios/texture-synthesis) by Embark Studios (`lib/src`, ported to C++) | 0.8.2 (`22825ec4ad25`) | `editor/texsynth/` (`editor/texsynth/LICENSE-texture-synthesis.txt`) | MIT OR Apache-2.0 (used under MIT) | `jasperengine-editor synthesize-texture`: new, tileable, inpainted and guided textures from examples |
+| [spritefusion-sprite-normals](https://github.com/Hugo-Dz/spritefusion-sprite-normals) by Hugo Duprez (`src`, ported to C++) | 0.1.0 (`d14b067`) | `editor/spritenormals/` (`editor/spritenormals/LICENSE-spritefusion-sprite-normals.txt`; C++ port of the normal-map generator) | MIT | Window > Sprite Normal Map, `jasperengine-editor generate-sprite-normals` and the `generate_sprite_normals` MCP tool: normal maps for 2D sprites, sheets, animations and tilesets |
 
 FBX import of the editor (editor-only: an exported game ships the converted `.glb`, never ufbx):
 
@@ -107,7 +109,7 @@ EXR reading of the editor (editor-only: the Vertex Animation importers re-pack E
 
 | Library | Version | Location | License | Used for |
 |---|---|---|---|---|
-| [tinyexr](https://github.com/syoyo/tinyexr) (v1: `tinyexr.h` with the two headers it includes, `exr_reader.hh` and `streamreader.hh`; it contains OpenEXR-derived code under the same BSD-3-Clause terms, noted in its header) | v3.2.0 release (`6f470c9ab24b`), unmodified | `libs/tinyexr/` (`LICENSE`; configured in `CMakeLists.txt`: deflate through the engine's stb_image/stb_image_write zlib, not miniz or zlib) | BSD-3-Clause | reading and writing `.exr` images (`editor/util/FloatImage`) |
+| [tinyexr](https://github.com/syoyo/tinyexr) (v1: `tinyexr.h` with the two headers it includes, `exr_reader.hh` and `streamreader.hh`; it contains OpenEXR-derived code under the same BSD-3-Clause terms, noted in its header) | v3.2.0 release (`6f470c9ab24b`); local patch: the Huffman encoder's bit buffer (`outputBits`, `outputCode`, `sendCode`, `hufPackEncTable`, `hufEncode`) is `unsigned long long` as in OpenEXR (signed, its shifts past the top bit were undefined behaviour) | `libs/tinyexr/` (`LICENSE`; configured in `CMakeLists.txt`: deflate through the engine's stb_image/stb_image_write zlib, not miniz or zlib) | BSD-3-Clause | reading and writing `.exr` images (`editor/util/FloatImage`) |
 
 Vertex Animation (`.vat`, [docs/vertex-animation.md](docs/vertex-animation.md)): no third-party code is copied. The formats and formulas below were reimplemented from their sources and are credited here:
 

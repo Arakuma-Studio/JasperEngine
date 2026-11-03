@@ -14,6 +14,7 @@
 #include "DocumentFile.h"
 #include "StreamPreserved.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/AnimatorAssetDocument.h"
 #include "animation/ModelSubClips.h"
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
@@ -28,6 +29,7 @@
 #include <algorithm>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <system_error>
 #include <unordered_set>
 
@@ -260,8 +262,10 @@ void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>
     std::vector<AssetDatabase::Change> changes;
     std::vector<AssetDatabase::Change> clipChanges;
     for (const AssetDatabase::Change& change : allChanges) {
+        // (Avatar Masks too: the Animation Player layers and the controllers naming them follow)
         const auto clipLike = [](const fs::path& path) {
-            return Util::isAnimationClipFile(path.string()) || Util::isVertexAnimationFile(path.string());
+            return Util::isAnimationClipFile(path.string()) || Util::isVertexAnimationFile(path.string()) ||
+                   Util::isAvatarMaskFile(path.string());
         };
         if (clipLike(change.path) || clipLike(change.oldPath) ||
             (change.type == AssetDatabase::Change::Type::Moved && Util::isModelFile(change.path.string()))) {
@@ -521,6 +525,10 @@ bool editor::Project::resolveRegistryClipRefs(EntityRegistry* registry, bool may
         for (AnimationPlayerClip& entry : player.clips) {
             playerChanged |= resolveClipReference(entry, mayImport);
         }
+        // layer masks follow their GUIDs the same way (anim layers spec 6.3)
+        for (AnimationPlayerLayer& layer : player.layers) {
+            playerChanged |= resolveAssetReference(layer.mask, layer.maskGuid, mayImport);
+        }
         if (playerChanged) {
             player.needsLoad = true;
             changed = true;
@@ -543,6 +551,8 @@ bool editor::Project::resolveRegistryClipRefs(EntityRegistry* registry, bool may
 
 void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Change>& changes) {
     std::vector<fs::path> touched;
+    // the clips and masks back at a path: the controllers naming them by GUID follow
+    std::map<std::string, fs::path> relinked;
     for (const AssetDatabase::Change& change : changes) {
         if (Util::isModelFile(change.path.string()) && !Util::isAnimationClipFile(change.path.string())) {
             // a model moved: "<model>#<clip>" entries are path-only, their model part follows (R26)
@@ -575,6 +585,9 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
         // moved outside the editor, or back (an undone delete): every entry with the GUID
         // points at the file again
         const std::string form = normalizeToAssetsRelative(projectPath / change.path).generic_string();
+        if (!change.guid.empty() && (Util::isAnimationClipFile(change.path.string()) || Util::isAvatarMaskFile(change.path.string()))) {
+            relinked[change.guid] = (projectPath / change.path).lexically_normal();
+        }
         auto relink = [&](EntityRegistry* registry) {
             bool changed = false;
             if (!registry) {
@@ -592,6 +605,20 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
                         entry.clip = form;
                         changed = true;
                     }
+                }
+                // a layer's mask (anim layers spec 6.3, L6)
+                auto relinkPath = [&](std::string& path, const std::string& guid) {
+                    if (guid != change.guid) {
+                        return;
+                    }
+                    player.needsLoad = true;
+                    if (fs::path(path).lexically_normal().generic_string() != form) {
+                        path = form;
+                        changed = true;
+                    }
+                };
+                for (AnimationPlayerLayer& layer : player.layers) {
+                    relinkPath(layer.mask, layer.maskGuid);
                 }
             }
             auto animators = registry->getComponentArray<VertexAnimatorComponent>();
@@ -623,6 +650,8 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
             relink(prefab.registry.get());
         }
     }
+    // the controllers and montages naming them by GUID (their documents reload there)
+    AnimatorAssetDocument::relinkGuids(this, relinked);
     AnimationClipDocument::filesChanged(touched, this);
     // Vertex Animations: their documents reload, the pool drops them, their animators reload
     VatDocument::filesChanged(touched, this);

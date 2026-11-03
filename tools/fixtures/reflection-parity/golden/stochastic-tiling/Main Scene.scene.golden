@@ -1,4 +1,4 @@
-formatVersion: 5
+formatVersion: 7
 guid: 2385f1a5e2877b94bc16d5309fb19aca
 id: 1102162980
 name: Main Scene
@@ -92,14 +92,14 @@ shaderKeys:
   - type: mesh
     properties: 1089
     customShader: library:triplanar#BLEND_NONE,SPACE_WORLD
-  - type: mesh
-    properties: 1027
-    customShader: library:unlit#BLEND_NONE
   - type: depth
     customShader: library:unlit
   - type: depth
     properties: 6144
     customShader: library:unlit
+  - type: mesh
+    properties: 1027
+    customShader: library:unlit#BLEND_NONE
 entities:
   - type: Entity
     entity: 1001

@@ -68,6 +68,15 @@ class CheckNoticesTest(unittest.TestCase):
         self.assertIn("libs/alpha: no licence file (LICENSE, LICENCE, COPYING or UNLICENSE)",
                       check_notices.check_repository(self.repo))
 
+    def test_licence_named_by_its_extension(self):
+        # FFmpeg's COPYING.LGPLv2.1 is a licence file; any other extension is not
+        (self.repo / "libs/alpha/LICENSE").unlink()
+        (self.repo / "libs/alpha/COPYING.LGPLv2.1").write_text("LGPL")
+        self.assertEqual(check_notices.check_repository(self.repo), [])
+        (self.repo / "libs/alpha/COPYING.LGPLv2.1").rename(self.repo / "libs/alpha/COPYING.bak")
+        self.assertIn("libs/alpha: no licence file (LICENSE, LICENCE, COPYING or UNLICENSE)",
+                      check_notices.check_repository(self.repo))
+
     def test_new_library_without_anything_fails_three_times(self):
         (self.repo / "engine/libs/gamma").mkdir()
         problems = check_notices.check_repository(self.repo)

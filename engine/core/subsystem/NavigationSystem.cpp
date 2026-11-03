@@ -1370,7 +1370,7 @@ bool NavigationSystem::rebuildGrid(Entity grid, std::string& error) {
                 const Transform* transform = scene->findComponent<Transform>(entity);
                 if (!body.enabled || body.type != BodyType::STATIC || !transform || !scene->isEntityActiveInHierarchy(entity))
                     continue;
-                for (size_t c = 0; c < body.numColliders; c++) {
+                for (size_t c = 0; c < body.colliders.size(); c++) {
                     const Collider2D& collider = body.colliders[c];
                     if (collider.sensor)
                         continue;
@@ -1382,10 +1382,10 @@ bool NavigationSystem::rebuildGrid(Entity grid, std::string& error) {
                     if (collider.type == Collider2DType::CIRCLE) {
                         add(collider.pointA - Vector2(r, r));
                         add(collider.pointA + Vector2(r, r));
-                    } else if (collider.type == Collider2DType::POLYGON && collider.numVertices >= 3) {
-                        for (size_t v = 0; v < collider.numVertices; v++) add(collider.vertices[v]);
+                    } else if (collider.type == Collider2DType::POLYGON && collider.points.size() >= 3) {
+                        for (size_t v = 0; v < collider.points.size(); v++) add(collider.points[v]);
                     } else if (collider.type == Collider2DType::CHAIN) {
-                        for (size_t v = 0; v < collider.numVertices; v++) add(collider.vertices[v]);
+                        for (size_t v = 0; v < collider.points.size(); v++) add(collider.points[v]);
                     } else {
                         add(collider.pointA - Vector2(r, r));
                         add(collider.pointB + Vector2(r, r));

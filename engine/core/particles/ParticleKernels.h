@@ -117,6 +117,29 @@ namespace jasperengine { namespace particles {
             qx = nx; qy = ny; qz = nz; qw = nw;
         }
 
+        // e * q, both per lane
+        static void quatMulLanes(f4 ex, f4 ey, f4 ez, f4 ew, f4& qx, f4& qy, f4& qz, f4& qw){
+            const f4 nx = B::add(B::add(B::mul(ew, qx), B::mul(ex, qw)), B::sub(B::mul(ey, qz), B::mul(ez, qy)));
+            const f4 ny = B::add(B::add(B::mul(ew, qy), B::mul(ey, qw)), B::sub(B::mul(ez, qx), B::mul(ex, qz)));
+            const f4 nz = B::add(B::add(B::mul(ew, qz), B::mul(ez, qw)), B::sub(B::mul(ex, qy), B::mul(ey, qx)));
+            const f4 nw = B::sub(B::mul(ew, qw), dot3(ex, ey, ez, qx, qy, qz));
+            qx = nx; qy = ny; qz = nz; qw = nw;
+        }
+
+        // the shortest rotation taking +Y onto the unit direction d, as a quaternion (x, y, z, w);
+        // d = -Y turns about X by 180 degrees
+        static void fromUpTo(f4 dx, f4 dy, f4 dz, f4& qx, f4& qy, f4& qz, f4& qw){
+            // q = (up x d, 1 + up . d) normalized, up = (0, 1, 0): (dz, 0, -dx, 1 + dy)
+            const f4 w = B::add(k(1.0f), dy);
+            const u4 opposite = B::cmplt(w, k(1.0e-6f));
+            f4 x = B::select(opposite, k(1.0f), dz);
+            f4 y = B::zero();
+            f4 z = B::select(opposite, B::zero(), B::neg(dx));
+            f4 ww = B::select(opposite, B::zero(), w);
+            const f4 len = B::sqrt(B::add(B::add(B::mul(x, x), B::mul(y, y)), B::add(B::mul(z, z), B::mul(ww, ww))));
+            qx = B::div(x, len); qy = B::div(y, len); qz = B::div(z, len); qw = B::div(ww, len);
+        }
+
         // a uniform direction on the unit sphere from two randoms
         static void unitSphere(f4 u, f4 v, f4& x, f4& y, f4& z){
             const f4 cy = B::sub(B::mul(u, k(2.0f)), k(1.0f));
@@ -307,14 +330,63 @@ namespace jasperengine { namespace particles {
 
         // ------------------------------------------------------------ spawn: shape
 
+        // A shape mode's 0..1 value (Unity's ParticleSystemShapeMultiModeValue): the random pick,
+        // the phase around (Loop) or back and forth (Ping-Pong), a burst's particles spread
+        // evenly (Burst Spread; out of a burst at random), then held at multiples of `spread`
+        static f4 multiMode(ShapeMultiMode mode, float spread, f4 random, f4 phase, const KernelContext& ctx, uint32_t first){
+            f4 v;
+            switch (mode){
+                case ShapeMultiMode::Loop:
+                    v = M::fract(phase);
+                    break;
+                case ShapeMultiMode::PingPong: {
+                    const f4 m = B::sub(phase, B::mul(B::floor(B::mul(phase, k(0.5f))), k(2.0f)));
+                    v = B::select(B::cmpgt(m, k(1.0f)), B::sub(k(2.0f), m), m);
+                    break;
+                }
+                case ShapeMultiMode::BurstSpread:
+                    if (ctx.spreadCount > 0){
+                        const float base = (float)(ctx.spreadBase + first);
+                        v = B::div(B::add(k(base), B::set(0.0f, 1.0f, 2.0f, 3.0f)), k((float)ctx.spreadCount));
+                    }else{
+                        v = random;
+                    }
+                    break;
+                case ShapeMultiMode::Random:
+                default:
+                    v = random;
+                    break;
+            }
+            if (spread > 0.0f){
+                const float step = std::min(spread, 1.0f);
+                v = B::min(B::mul(B::floor(B::add(B::div(v, k(step)), k(1.0e-4f))), k(step)), k(1.0f));
+            }
+            return v;
+        }
+
         static void spawnShape(const KernelContext& ctx, const ShapeParams& p, uint32_t begin, uint32_t end){
             const uint32_t key = ctx.seed ^ randomSalt((uint32_t)ModuleId::Shape, 0);
+            const bool arcModed = p.arcMode != ShapeMultiMode::Random || p.arcSpread > 0.0f;
+            const bool radiusModed = p.radiusMode != ShapeMultiMode::Random || p.radiusSpread > 0.0f;
             for (uint32_t i = begin; i < end; i += 4){
                 const u4 spawn = ldu(ctx.ch[ChSpawnIndex], i);
                 auto rnd = [&](uint32_t stream){ return rand01(key ^ (stream * 0x27d4eb2fu), spawn); };
                 f4 px = B::zero(), py = B::zero(), pz = B::zero();
                 f4 dx = B::zero(), dy = k(1.0f), dz = B::zero();
-                const f4 arcAngle = B::mul(rnd(1), k(p.arc));
+                // the arc's and the radius's 0..1 picks (where in the tick it spawns moves the phases)
+                f4 arcPick = rnd(1);
+                if (arcModed){
+                    const f4 at = B::mul(ld(ctx.spawnFraction, i), k(ctx.dt));
+                    const f4 phase = p.arcDegrees > 0.0f ? B::div(B::madd(at, k(ctx.arcRate), k(ctx.arcPhase)), k(p.arcDegrees)) : B::zero();
+                    arcPick = multiMode(p.arcMode, p.arcSpread, arcPick, phase, ctx, i);
+                }
+                auto radiusPick = [&](uint32_t stream){
+                    const f4 random = rnd(stream);
+                    if (!radiusModed) return random;
+                    const f4 at = B::mul(ld(ctx.spawnFraction, i), k(ctx.dt));
+                    return multiMode(p.radiusMode, p.radiusSpread, random, B::madd(at, k(ctx.radiusRate), k(ctx.radiusPhase)), ctx, i);
+                };
+                const f4 arcAngle = B::mul(arcPick, k(p.arc));
                 f4 sa, ca;
                 M::sincos(arcAngle, sa, ca);
                 switch (p.kind){
@@ -331,7 +403,7 @@ namespace jasperengine { namespace particles {
                         dz = B::mul(rr, sa);
                         // radius uniform in the shell's volume: cbrt(lerp(inner^3, 1, u))
                         const float inner3 = p.innerRatio * p.innerRatio * p.innerRatio;
-                        const f4 r = B::mul(M::cbrt(B::madd(k(1.0f - inner3), rnd(3), k(inner3))), k(p.radius));
+                        const f4 r = B::mul(M::cbrt(B::madd(k(1.0f - inner3), radiusPick(3), k(inner3))), k(p.radius));
                         px = B::mul(dx, r);
                         py = B::mul(dy, r);
                         pz = B::mul(dz, r);
@@ -339,7 +411,7 @@ namespace jasperengine { namespace particles {
                     }
                     case SpawnShapeKind::Circle: {
                         const float inner2 = p.innerRatio * p.innerRatio;
-                        const f4 r = B::mul(B::sqrt(B::madd(k(1.0f - inner2), rnd(3), k(inner2))), k(p.radius));
+                        const f4 r = B::mul(B::sqrt(B::madd(k(1.0f - inner2), radiusPick(3), k(inner2))), k(p.radius));
                         dx = ca;
                         dy = B::zero();
                         dz = sa;
@@ -352,7 +424,7 @@ namespace jasperengine { namespace particles {
                         // normalized radius rho leaves tilted by rho * tan(angle)
                         const float inner2 = p.innerRatio * p.innerRatio;
                         const bool shell = p.emitFrom == ShapeEmitFrom::Shell || p.emitFrom == ShapeEmitFrom::Edge;
-                        const f4 rho = shell ? k(1.0f) : B::sqrt(B::madd(k(1.0f - inner2), rnd(3), k(inner2)));
+                        const f4 rho = shell ? k(1.0f) : B::sqrt(B::madd(k(1.0f - inner2), radiusPick(3), k(inner2)));
                         const f4 tilt = B::mul(rho, k(p.tanAngle));
                         const f4 inv = B::div(k(1.0f), B::sqrt(B::add(B::mul(tilt, tilt), k(1.0f))));
                         dx = B::mul(B::mul(ca, tilt), inv);
@@ -426,7 +498,7 @@ namespace jasperengine { namespace particles {
                         f4 sinT, cosT;
                         M::sincos(tube, sinT, cosT);
                         const float inner2 = p.innerRatio * p.innerRatio;
-                        const f4 rt = B::mul(B::sqrt(B::madd(k(1.0f - inner2), rnd(3), k(inner2))), k(p.donutRadius));
+                        const f4 rt = B::mul(B::sqrt(B::madd(k(1.0f - inner2), radiusPick(3), k(inner2))), k(p.donutRadius));
                         // outward from the tube's centre line
                         dx = B::mul(ca, cosT);
                         dy = sinT;
@@ -437,8 +509,8 @@ namespace jasperengine { namespace particles {
                         break;
                     }
                     case SpawnShapeKind::Edge: {
-                        // a line along X, radius on each side
-                        px = B::mul(B::sub(B::mul(rnd(2), k(2.0f)), k(1.0f)), k(p.radius));
+                        // a line along X, radius on each side (the radius mode picks along it)
+                        px = B::mul(B::sub(B::mul(radiusPick(2), k(2.0f)), k(1.0f)), k(p.radius));
                         break;
                     }
                     case SpawnShapeKind::Rectangle: {
@@ -494,6 +566,12 @@ namespace jasperengine { namespace particles {
                 st(ctx.ch[ChVelX], i, vx);
                 st(ctx.ch[ChVelY], i, vy);
                 st(ctx.ch[ChVelZ], i, vz);
+                // Align to Direction: kept for SpawnStartValues (the velocity is no direction by then)
+                if (p.alignToDirection && ctx.scratch){
+                    st(ctx.scratch->ax, i, vx);
+                    st(ctx.scratch->ay, i, vy);
+                    st(ctx.scratch->az, i, vz);
+                }
             }
         }
 
@@ -615,6 +693,18 @@ namespace jasperengine { namespace particles {
                         rot = B::select(B::cmplt(rand01(flipKey, L.spawn), k(p.flipRotation)), B::neg(rot), rot);
                     }
                 }
+                const bool align = p.alignToDirection && ctx.scratch;
+                f4 adx = B::zero(), ady = k(1.0f), adz = B::zero();
+                if (align){
+                    adx = ld(ctx.scratch->ax, i);
+                    ady = ld(ctx.scratch->ay, i);
+                    adz = ld(ctx.scratch->az, i);
+                    if (!p.storeQuat){
+                        // a billboard's roll: its up turned towards the direction's X and Y (clockwise)
+                        const f4 xy = B::add(B::mul(adx, adx), B::mul(ady, ady));
+                        rot = B::add(rot, B::select(B::cmpgt(xy, k(1.0e-12f)), M::atan2(adx, ady), B::zero()));
+                    }
+                }
                 if (p.storeRotation)
                     st(ctx.ch[ChStartRotation], i, rot);
                 if (p.initRotation){
@@ -634,8 +724,16 @@ namespace jasperengine { namespace particles {
                     f4 qx = B::add(B::mul(B::mul(cy, sx), cz), B::mul(B::mul(sy, cx), sz));
                     f4 qy = B::sub(B::mul(B::mul(sy, cx), cz), B::mul(B::mul(cy, sx), sz));
                     f4 qz = B::sub(B::mul(B::mul(cy, cx), sz), B::mul(B::mul(sy, sx), cz));
-                    // in World space the emitter's rotation at birth turns it
-                    quatMulUniform(ctx.emitterToSimQuat, qx, qy, qz, qw);
+                    if (align){
+                        // up (+Y) turned onto the direction (simulation space, the emitter's turn in it)
+                        // as the shortest rotation, applied after the start rotation
+                        f4 ax, ay, az, aw;
+                        fromUpTo(adx, ady, adz, ax, ay, az, aw);
+                        quatMulLanes(ax, ay, az, aw, qx, qy, qz, qw);
+                    }else{
+                        // in World space the emitter's rotation at birth turns it
+                        quatMulUniform(ctx.emitterToSimQuat, qx, qy, qz, qw);
+                    }
                     st(ctx.ch[ChQuatX], i, qx);
                     st(ctx.ch[ChQuatY], i, qy);
                     st(ctx.ch[ChQuatZ], i, qz);
@@ -686,6 +784,11 @@ namespace jasperengine { namespace particles {
                     st(ctx.ch[ChNoiseSize], i, k(1.0f));
                 if (ctx.ch[ChPlaneTick])
                     stu(ctx.ch[ChPlaneTick], i, B::iset1(0u));
+                if (ctx.ch[ChAnimVelX]){
+                    st(ctx.ch[ChAnimVelX], i, B::zero());
+                    st(ctx.ch[ChAnimVelY], i, B::zero());
+                    st(ctx.ch[ChAnimVelZ], i, B::zero());
+                }
                 // the previous position is the birth position (no interpolation from elsewhere)
                 st(ctx.ch[ChPrevX], i, ld(ctx.ch[ChPosX], i));
                 st(ctx.ch[ChPrevY], i, ld(ctx.ch[ChPosY], i));
@@ -843,6 +946,14 @@ namespace jasperengine { namespace particles {
                     ay = B::add(ay, fy);
                     az = B::add(az, fz);
                 }
+                if (p.inheritCurrent){
+                    // Inherit Velocity (Current): the emitter's change of velocity this tick, a share
+                    // of it over the particle's life, straight into the velocity
+                    const f4 share = curve(p.inherit, L);
+                    st(ctx.ch[ChVelX], i, B::madd(k(ctx.emitterVelocityDelta[0]), share, ld(ctx.ch[ChVelX], i)));
+                    st(ctx.ch[ChVelY], i, B::madd(k(ctx.emitterVelocityDelta[1]), share, ld(ctx.ch[ChVelY], i)));
+                    st(ctx.ch[ChVelZ], i, B::madd(k(ctx.emitterVelocityDelta[2]), share, ld(ctx.ch[ChVelZ], i)));
+                }
                 const uint32_t j = i - begin;
                 st(s.ax, j, ax);
                 st(s.ay, j, ay);
@@ -956,9 +1067,14 @@ namespace jasperengine { namespace particles {
                     xformDir(ldir, curve(p.vx, L), curve(p.vy, L), curve(p.vz, L), vx, vy, vz);
                 }
                 if (p.orbital || p.radial){
-                    const f4 rx = B::sub(ld(ctx.ch[ChPosX], i), k(center[0]));
-                    const f4 ry = B::sub(ld(ctx.ch[ChPosY], i), k(center[1]));
-                    const f4 rz = B::sub(ld(ctx.ch[ChPosZ], i), k(center[2]));
+                    f4 cx = k(center[0]), cy = k(center[1]), cz = k(center[2]);
+                    if (!p.offsetConst){
+                        // the offset over the particle's life (emitter space)
+                        xformPoint(ctx.emitterToSim, curve(p.offX, L), curve(p.offY, L), curve(p.offZ, L), cx, cy, cz);
+                    }
+                    const f4 rx = B::sub(ld(ctx.ch[ChPosX], i), cx);
+                    const f4 ry = B::sub(ld(ctx.ch[ChPosY], i), cy);
+                    const f4 rz = B::sub(ld(ctx.ch[ChPosZ], i), cz);
                     if (p.orbital){
                         f4 wx, wy, wz;
                         xformDir(ctx.emitterToSimDir, curve(p.ox, L), curve(p.oy, L), curve(p.oz, L), wx, wy, wz);
@@ -990,7 +1106,7 @@ namespace jasperengine { namespace particles {
         static void noiseOp(const KernelContext& ctx, const NoiseParams& p, uint32_t begin, uint32_t end){
             ChunkScratch& s = *ctx.scratch;
             typedef noise::GradientCurlSimd<B> Curl;
-            const float scroll = p.scrollSpeed * ctx.time;
+            const float scroll = p.scrollAccumulated ? ctx.noiseScroll : p.scrollSpeed * ctx.time;
             // High and Medium 8 samples at a time where the processor has it: the same values
             // (CurlNoiseAvx2.cpp), summed over the octaves in the same order
             bool wide = false;
@@ -1177,7 +1293,34 @@ namespace jasperengine { namespace particles {
                     v1y = B::mul(v1y, scale);
                     v1z = B::mul(v1z, scale);
                 }
-                if (p.limit){
+                if (p.limit && p.limitAxes){
+                    // a limit per axis, in the emitter's or the world's axes: each axis's excess
+                    // above its limit dampened as the speed's would be
+                    const float* toAxes = p.limitWorld ? ctx.worldToSimDir : ctx.emitterToSimDir;
+                    f4 ax, ay, az;
+                    // simulation space into the limit's axes: the transpose of its rotation
+                    ax = B::add(B::add(B::mul(k(toAxes[0]), v1x), B::mul(k(toAxes[1]), v1y)), B::mul(k(toAxes[2]), v1z));
+                    ay = B::add(B::add(B::mul(k(toAxes[3]), v1x), B::mul(k(toAxes[4]), v1y)), B::mul(k(toAxes[5]), v1z));
+                    az = B::add(B::add(B::mul(k(toAxes[6]), v1x), B::mul(k(toAxes[7]), v1y)), B::mul(k(toAxes[8]), v1z));
+                    f4 share;
+                    if (p.dampen >= 1.0f){
+                        share = k(1.0f);
+                    }else if (shareHoisted){
+                        share = shareUniform;
+                    }else{
+                        share = B::sub(k(1.0f), M::exp(B::mul(B::mul(dt, k(30.0f)), k(p.logKeep))));
+                    }
+                    auto clampAxis = [&](f4 v, f4 limit){
+                        const f4 a = B::abs(v);
+                        const f4 target = B::madd(B::sub(limit, a), share, a);
+                        const f4 sign = B::select(B::cmplt(v, B::zero()), k(-1.0f), k(1.0f));
+                        return B::select(B::cmpgt(a, limit), B::mul(target, sign), v);
+                    };
+                    ax = clampAxis(ax, B::abs(curve(p.limitSpeed, L)));
+                    ay = clampAxis(ay, B::abs(curve(p.limitY, L)));
+                    az = clampAxis(az, B::abs(curve(p.limitZ, L)));
+                    xformDir(toAxes, ax, ay, az, v1x, v1y, v1z);
+                }else if (p.limit){
                     const f4 limit = B::max(curve(p.limitSpeed, L), B::zero());
                     const f4 speed = length3(v1x, v1y, v1z);
                     // the share of the excess removed: dampen per 1/30 s, at this tick's length
@@ -1220,6 +1363,12 @@ namespace jasperengine { namespace particles {
                 st(ctx.ch[ChVelX], i, v1x);
                 st(ctx.ch[ChVelY], i, v1y);
                 st(ctx.ch[ChVelZ], i, v1z);
+                if (ctx.ch[ChAnimVelX]){
+                    // the renderer's total velocity: the stored one plus this
+                    st(ctx.ch[ChAnimVelX], i, s.hasAnimated ? ld(s.vx, j) : B::zero());
+                    st(ctx.ch[ChAnimVelY], i, s.hasAnimated ? ld(s.vy, j) : B::zero());
+                    st(ctx.ch[ChAnimVelZ], i, s.hasAnimated ? ld(s.vz, j) : B::zero());
+                }
                 st(ctx.ch[ChAge], i, B::add(L.age, dt));
             }
         }
@@ -1291,15 +1440,26 @@ namespace jasperengine { namespace particles {
             for (uint32_t i = begin; i < end; i += 4){
                 Lane L(ctx, i);
                 const f4 dt = dtAt(ctx, i);
-                if (p.rotationBySpeed || p.angularVelocity){
+                if ((p.rotationBySpeed || p.angularVelocity) && ctx.ch[ChRotation]){
                     f4 w = B::zero();
                     if (p.angularVelocity) w = curve(p.angular, L);
                     if (p.rotationBySpeed) w = B::add(w, curve(p.rotationSpeed, L));
                     st(ctx.ch[ChRotation], i, B::madd(w, dt, ld(ctx.ch[ChRotation], i)));
                 }
-                if (p.angularVelocity3D){
-                    // q' = q + 0.5 (0, w) q dt, normalized
-                    const f4 wx = ld(ctx.ch[ChAngVelX], i), wy = ld(ctx.ch[ChAngVelY], i), wz = ld(ctx.ch[ChAngVelZ], i);
+                if ((p.angularVelocity3D || p.rotationBySpeed3D) && ctx.ch[ChQuatX]){
+                    // q' = q + 0.5 (0, w) q dt, normalized; w: the particle's angular velocity and
+                    // Rotation by Speed's (its axes)
+                    f4 wx = B::zero(), wy = B::zero(), wz = B::zero();
+                    if (p.angularVelocity3D && ctx.ch[ChAngVelX]){
+                        wx = ld(ctx.ch[ChAngVelX], i);
+                        wy = ld(ctx.ch[ChAngVelY], i);
+                        wz = ld(ctx.ch[ChAngVelZ], i);
+                    }
+                    if (p.rotationBySpeed3D){
+                        wz = B::add(wz, curve(p.rotationSpeed, L));
+                        if (!p.rotationSpeedX.isZero()) wx = B::add(wx, curve(p.rotationSpeedX, L));
+                        if (!p.rotationSpeedY.isZero()) wy = B::add(wy, curve(p.rotationSpeedY, L));
+                    }
                     const f4 qx = ld(ctx.ch[ChQuatX], i), qy = ld(ctx.ch[ChQuatY], i), qz = ld(ctx.ch[ChQuatZ], i), qw = ld(ctx.ch[ChQuatW], i);
                     const f4 h = B::mul(dt, k(0.5f));
                     f4 nx = B::madd(B::add(B::sub(B::mul(wx, qw), B::mul(wz, qy)), B::mul(wy, qz)), h, qx);

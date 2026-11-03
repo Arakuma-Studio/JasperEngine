@@ -31,17 +31,22 @@ namespace {
         "dragstart", "drag", "dragend", "dragmove", "dragdrop", "dragout", "textinput",
         // the phase-3 fork's CSS animation and transition events
         "animationstart", "animationiteration", "animationcancel", "transitionrun", "transitionstart", "transitioncancel",
+        // the engine-gaps fork's Pointer Events (ui-multitouch, FORK.md G5-2)
+        "pointerdown", "pointermove", "pointerup", "pointercancel", "pointerover", "pointerout", "pointerenter",
+        "pointerleave", "gotpointercapture", "lostpointercapture", "mouseenter", "mouseleave",
     };
 
-    // DOM events documents never receive: listening to them would never fire
+    // DOM events documents never receive: listening to them would never fire. Touch Events
+    // (touchstart...) are not dispatched: Pointer Events cover them (pointerdown with pointerType "touch")
     bool isUnsupported(const std::string& type){
         static const std::unordered_set<std::string> names = {
-            "mouseenter", "mouseleave", "contextmenu", "beforeinput",
+            "contextmenu", "beforeinput",
             "compositionstart", "compositionupdate", "compositionend",
+            "pointerrawupdate",
         };
         if (names.count(type))
             return true;
-        return type.rfind("pointer", 0) == 0 || type.rfind("touch", 0) == 0;
+        return type.rfind("touch", 0) == 0;
     }
 
     // the per-element registry (cleaned in OnDetach) and the id index
@@ -171,6 +176,13 @@ const std::string& HtmlUIEventNames::supportedList(){
 }
 
 bool HtmlUIEventNames::toRml(const std::string& domType, std::string& rmlType, const char* what){
+    if (!domType.empty() && domType.rfind("touch", 0) == 0){
+        // Pointer Events cover touch (ui-multitouch): every finger is a pointer of its own
+        Log::warn("[HTML UI] %s: documents do not receive '%s' events (Touch Events); use the Pointer Events: pointerdown, "
+                  "pointermove, pointerup, pointercancel (event.pointerType \"touch\", event.pointerId per finger)",
+                  what, domType.c_str());
+        return false;
+    }
     if (domType.empty() || isUnsupported(domType)){
         Log::warn("[HTML UI] %s: documents do not receive '%s' events; supported: %s",
                   what, domType.c_str(), supportedList().c_str());

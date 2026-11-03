@@ -19,6 +19,8 @@
 //   SURFACE_COLOR     @require color     out vec4 v_color      vertex x instance colour
 //   SURFACE_RAW_COLOR @require rawcolor  out vec4 v_rawColor   the vertex colour alone
 //   SURFACE_SMOOTH_NORMALS @require smoothnormals  (no varying) surfaceSmoothNormal
+//   SURFACE_NORMAL_MAP @require normalmap with the material's normal map under 2D lights:
+//                      as SURFACE_TANGENTS (read by includes/lighting2d.glsl's getNormal2D)
 //
 // surfaceSmoothNormal (SURFACE_SMOOTH_NORMALS) is, for the displacement hooks below, the
 // object-space normal averaged over every vertex sharing the vertex's position (the
@@ -63,6 +65,15 @@
 //   #define SURFACE_DISPLACE_NORMAL
 //   vec3 surfaceDisplaceNormal(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv){ ... }
 //
+// Per-vertex work of a fork at the final world position and normal (vertex lighting read
+// from global shader values, u_vs_globals: docs/mcp/guide/shaders.md "Global values"), with
+// the vertex colour and UV the varyings get; it writes varyings of its own:
+//
+//   #define SURFACE_VERTEX
+//   #include "includes/surface_vs.glsl"
+//   out vec3 v_light;
+//   void surfaceVertex(vec3 worldPosition, vec3 worldNormal, vec4 color, vec2 uv){ v_light = ...; }
+//
 // Lattices (HAS_LATTICE, includes/lattice.glsl): the vertex goes through the lattices bound
 // to the mesh with its normal, smoothed normal and tangent, the before-skinning ones on the
 // bind pose, the others after the instance matrix and the instance fade, so the hooks above
@@ -96,6 +107,17 @@ uniform u_vs_pbrParams {
 
 // same expression as the depth programs, so a depth pre-pass and this pass agree bit for bit
 invariant gl_Position;
+
+// @require normalmap (SURFACE_NORMAL_MAP): a variant with the material's normal map, tangents
+// and uv1 (the engine gives it the 2D lights' normal map, RenderSystem) writes the tangent
+// frame, which includes/lighting2d.glsl declares and reads in the fragment stage (the same
+// test there)
+#if defined(SURFACE_NORMAL_MAP) && defined(HAS_NORMAL_MAP) && defined(HAS_TANGENTS) && defined(HAS_UV_SET1)
+    #define SURFACE_NORMAL_MAP_ACTIVE
+    #ifndef SURFACE_TANGENTS
+        #define SURFACE_TANGENTS
+    #endif
+#endif
 
 #if defined(SURFACE_TANGENTS) && !defined(SURFACE_NORMALS)
     #define SURFACE_NORMALS
@@ -210,6 +232,10 @@ in vec3 a_position;
 #include "includes/morphtarget.glsl"
 #include "includes/lattice.glsl"
 #include "includes/vat.glsl"
+#ifdef SURFACE_TANGENTS
+    // mirrorTangentFrame, tangentFrameMirror: a mirroring transform or texture rect
+    #include "includes/tangent_frame.glsl"
+#endif
 
 // the rest normal vatSmoothNormal turns the smoothed normal from (the smoothed one itself on a
 // mesh without normals)
@@ -233,6 +259,9 @@ float surfaceFadeVisible;
 #ifdef SURFACE_DISPLACE_NORMAL
     // the same inputs as surfaceDisplace; returns the moved object-space normal
     vec3 surfaceDisplaceNormal(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv);
+#endif
+#ifdef SURFACE_VERTEX
+    void surfaceVertex(vec3 worldPosition, vec3 worldNormal, vec4 color, vec2 uv);
 #endif
 
 // the vertex colour attribute, white without one
@@ -446,8 +475,17 @@ void main() {
         vec3 worldTangent = normalize(vec3(pbrParams.modelMatrix * vec4(objectTangent, 0.0)));
         // re-orthogonalised against the (possibly fallback) normal
         worldTangent = normalize(worldTangent - worldNormal * dot(worldNormal, worldTangent));
+        vec3 worldBitangent = cross(worldNormal, worldTangent) * tangentSign;
+        // mirrored by a negative determinant and a mirrored texture rect
+        // (includes/tangent_frame.glsl); the fallback tangent is not tied to u, so only by the
+        // determinant
+        #ifdef HAS_TANGENTS
+            mirrorTangentFrame(worldTangent, worldBitangent);
+        #else
+            worldBitangent *= tangentFrameMirror();
+        #endif
         v_tangent = worldTangent;
-        v_bitangent = cross(worldNormal, worldTangent) * tangentSign;
+        v_bitangent = worldBitangent;
     #endif
     #ifdef SURFACE_UV1
         v_uv1 = uv1;
@@ -473,6 +511,10 @@ void main() {
                 v_vertexLight += ambientLight(worldNormal);
             #endif
         #endif
+    #endif
+
+    #ifdef SURFACE_VERTEX
+        surfaceVertex(worldPos.xyz / worldPos.w, worldNormal, color, uv1);
     #endif
 
     gl_Position = pbrParams.mvpMatrix * pos;

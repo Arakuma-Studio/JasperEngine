@@ -191,6 +191,7 @@
 #include <string>
 #include "Export.h"
 #include "math/Vector2.h"
+#include "System.h"
 
 // Gamepads with their own edge and level state at once (more connect and are ignored)
 #define D_INPUT_MAX_GAMEPADS             16
@@ -199,13 +200,19 @@
 
 namespace jasperengine {
 
-    // A finger's phase in the frame's window (Input::getTouch)
+    // A finger's phase in the frame's window (Input::getTouch). The Unity spellings (Began...)
+    // are the same values (Lua: Input.TOUCH_BEGAN or TouchPhase.Began)
     enum class TouchPhase : int {
         BEGAN = 0,      // touched the screen in the window (and is still down)
         MOVED,          // was down at the window's start and moved in it
         STATIONARY,     // was down at the window's start and did not move
         ENDED,          // lifted in the window
-        CANCELED        // interrupted in the window (systemTouchCancel): no release, no click
+        CANCELED,       // interrupted in the window (systemTouchCancel): no release, no click
+        Began = BEGAN,
+        Moved = MOVED,
+        Stationary = STATIONARY,
+        Ended = ENDED,
+        Canceled = CANCELED
     };
 
     // Whether the pointer is locked to the window (MouseMode::CAPTURED, Input::getPointerLockState)
@@ -216,14 +223,25 @@ namespace jasperengine {
         LOCKED          // active: the mouse delta is raw relative motion
     };
 
+    // A finger (Unity's Touch). Positions are canvas pixels, y down. fingerId is pointer and
+    // deltaPosition is delta (both spellings are kept: S22's and Unity's)
     typedef struct Touch{
         int pointer;
         Vector2 position;
         TouchPhase phase = TouchPhase::STATIONARY;
         Vector2 delta;              // canvas pixels moved in the window
         Vector2 startPosition;      // where it touched the screen
-        float time = 0.0f;          // seconds since it touched the screen
+        float time = 0.0f;          // unscaled seconds since it touched the screen
         bool began = false;         // it touched the screen in the window (also when it ENDED in it)
+        // Unity's names: the platform's finger id (an opaque small integer, stable while the
+        // finger is down: Android pointer ids from 0, iOS slots from 1, browser identifiers),
+        // the position change in the window, the unscaled seconds since the finger last moved
+        // (at the window's latch), and 1, then 2, 3... for quick taps at the same place
+        // (Input::multiTapTime / multiTapDistance)
+        int fingerId = 0;
+        Vector2 deltaPosition;
+        float deltaTime = 0.0f;
+        int tapCount = 1;
     } Touch;
 
     typedef struct Gamepad{
@@ -232,6 +250,15 @@ namespace jasperengine {
         std::map<int,bool> buttonPressed;
         std::map<int,float> axisValue;
     } Gamepad;
+
+    // While typing or using a menu, the controls the UI takes do not drive input actions:
+    // keyboard controls while a text field has the keyboard focus, the d-pad, left stick and A
+    // while a document has the gamepad focus (Input::beginFrame passes it to InputActions; maps
+    // that ignore what the UI consumes honour it)
+    struct InputSuppression {
+        bool keyboard = false;            // a text field has keyboard focus
+        bool gamepadNavigation = false;   // a document has gamepad focus (d-pad, left stick, A)
+    };
 
     // The edges of one control in one window (Input::getControlEdges)
     struct InputControlEdges {
@@ -253,6 +280,10 @@ namespace jasperengine {
     // Inside the fixed steps (onFixedUpdate, Scene::fixedUpdate) the edges are those of a fixed
     // window instead: each beginFrame() adds to it and each fixed step that ran clears it, so
     // one fixed step sees an edge exactly once, also after frames that ran no fixed step.
+    //
+    // The device-state writers below are the platform and engine entry points: Engine::system*
+    // calls them (and tests drive Input with them). The editor's Play input and the MCP tools
+    // go through Engine::system*, never through these.
     class JASPERENGINE_API Input {
 
         friend class Engine;
@@ -268,8 +299,7 @@ namespace jasperengine {
         static constexpr int GAMEPAD_CONTROL_BASE = MOUSE_CONTROL_BASE + MOUSE_CONTROLS;
         static constexpr int CONTROL_COUNT = GAMEPAD_CONTROL_BASE + D_INPUT_MAX_GAMEPADS * GAMEPAD_BUTTONS;
 
-    private:
-
+        // ---- device state writers (Engine::system*)
         static void addKeyPressed(int key, bool repeat = false, int mods = 0);
         static void releaseKeyPressed(int key);
 
@@ -280,6 +310,13 @@ namespace jasperengine {
         static void moveMouse(float x, float y);
         // the pointer put somewhere else (Engine::setMousePosition, a finger as the mouse): no delta
         static void warpMouse(float x, float y);
+        // the same as moveMouse without the position: the pointer moved to (x, y) (outside the
+        // canvas too, so a captured mouse looks around), the delta from the previous movement
+        static void addMouseMovement(float x, float y);
+        // a movement that is not the mouse's own (a finger simulating it): dx, dy as they are
+        static void addMouseDelta(float dx, float dy);
+        // the next movement starts the delta from where it is (the pointer came back elsewhere)
+        static void resetMouseMovement();
         // a wheel event: the deprecated sticky value and the window's sum
         static void setMouseScroll(float xoffset, float yoffset);
         // the part of it the UI did not consume
@@ -304,7 +341,19 @@ namespace jasperengine {
 
         static void setPointerLockState(PointerLockState state);
 
-    public:
+        // text typed (code points), for getInputString (Unity's inputString): backspace is "\b",
+        // return "\n"; other control characters are left out
+        static void addInputCharacter(uint32_t codepoint);
+
+        // Releases every held key, mouse button and gamepad button (their up edges are in the
+        // next window) and reports the fingers down Canceled in the next window's touches: app
+        // pause, focus loss, the editor's Play stop. The fingers stay in the fingers-down list
+        // (numTouches, getTouches) until the platform's touch cancel or lift removes them, which
+        // then adds no second Canceled
+        static void releaseAll();
+        // releaseAll and a clean slate (levels, windows, deltas, text, touches, taps, the input
+        // clock): the editor's Play start and stop
+        static void reset();
 
         // ---- Engine and editor only
         // the press just recorded went to the UI (a document or the component UI consumed it):
@@ -315,6 +364,22 @@ namespace jasperengine {
         static void setGamepadAxisConsumedByUI(int id, int axis, bool consumed);
         // the pending window becomes the frame's (and is added to the fixed window)
         static void beginFrame();
+        // the input frame of a frame that runs its update (Engine::systemDraw): the latch above,
+        // the input clock advanced by the unscaled frame time (touch times, taps, smoothing),
+        // then the input actions' evaluation (InputActions::evaluate, with the suppression of a
+        // focused text field or gamepad navigation, Engine's when not given) and the actions'
+        // Engine::onButtonDown / onButtonUp, before the fixed steps
+        static void beginFrame(double unscaledDeltaTime);
+        static void beginFrame(double unscaledDeltaTime, const InputSuppression& suppression);
+        // the end of that frame (after the update): what was for this frame only goes (the
+        // virtual sources' deltas, InputActions::endFrame); the windows stay until the next latch
+        static void endFrame();
+        // between beginFrame(dt) and endFrame()
+        static bool isInFrame();
+        // input frames latched so far (1 before the first)
+        static uint64_t getInputFrame();
+        // the input clock: unscaled seconds the input frames ran
+        static double getInputTime();
         // around each fixed step: edge queries read the fixed window between them, which
         // endFixedStep() clears
         static void beginFixedStep();
@@ -343,6 +408,15 @@ namespace jasperengine {
         static bool getGamepadButtonUp(int id, int button);
         // a key, a mouse button or a gamepad button was pressed in the window
         static bool anyKeyDown();
+        // Unity's anyKey / anyKeyDown: one is held now / anyKeyDown()
+        static bool isAnyKeyPressed();
+        static bool isAnyKeyDown();
+        // the first control pressed in the window, by its control name (InputControlNames: keys,
+        // "mouse_left"..., "gamepad_a"..., a gamepad axis past 0.5 as "left_x+" / "left_x-", a
+        // trigger past half way as "left_trigger"), "" when none: "press a key" screens
+        static std::string getPressedControl();
+        // the UTF-8 text typed in the window (Unity's inputString: backspace "\b", return "\n")
+        static std::string getInputString();
 
         static Vector2 getMousePosition();
         // canvas pixels the pointer moved in the frame's window (raw relative motion while
@@ -362,7 +436,23 @@ namespace jasperengine {
         // the frame's touches: the fingers down at the latch and the ones lifted or
         // cancelled in the window, each with its phase
         static size_t getTouchCount();
+        // a Touch with pointer and fingerId -1 when out of range
         static Touch getTouch(size_t index);
+        // the frame's touches as a list (Unity's Input.touches)
+        static std::vector<Touch> getFrameTouches();
+        // the frame's touch of that finger; false when it has none
+        static bool findTouchById(int fingerId, Touch& out);
+        // false: only the first finger down is in the frame's touches and the bindings (the
+        // fingers-down list and the UI still get them all; Unity's multiTouchEnabled)
+        static void setMultiTouchEnabled(bool enabled);
+        static bool isMultiTouchEnabled();
+        // a finger the frame's touches report (multiTouchEnabled), also one not down
+        static bool isTouchVisible(int fingerId);
+        // a touch that begins within multiTapTime seconds of the last one's end, and within
+        // multiTapDistance canvas pixels of its start, counts on from its tapCount (the last
+        // one must have lasted less than multiTapTime)
+        static double multiTapTime;
+        static float multiTapDistance;
         static bool getTouchDown(int pointer);
         static bool getTouchUp(int pointer);
         // the edges of a finger's presses in the window (InputActions' touch/primary)
@@ -386,6 +476,10 @@ namespace jasperengine {
         static int getModifiers();
         // D_MODIFIER_SHIFT/CONTROL/ALT/SUPER of the modifier keys held now
         static int getHeldModifierKeys();
+
+        // Unity's Input.deviceOrientation: how the device is held (FaceUp/FaceDown on iOS),
+        // Unknown where nothing reports it (desktops, flat Android devices)
+        static DeviceOrientation getDeviceOrientation();
 
         static size_t findTouchIndex(int pointer);
         static size_t findGamepadIndex(int id);

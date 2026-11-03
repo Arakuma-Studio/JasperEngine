@@ -15,8 +15,16 @@
 #include "SceneBackup.h"
 #include "diag/CrashHandler.h"
 #include "Project.h"
+#include "util/PlatformRules.h"
 #include "command/CommandHistory.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
+#include "command/type/ShaderGlobalsCmd.h"
+#include "command/type/InputActionsCmd.h"
+#include "command/type/DebugSettingsCmd.h"
+#include "DebugSettings.h"
+#include "Generator.h"
+#include "audio/AudioMixer.h"
+#include "util/ShaderGlobalsJson.h"
 #include "reflect/Reflect.h"
 #include "input/InputActions.h"
 #include "players/PlayerRuntimes.h"
@@ -24,9 +32,12 @@
 #include "texture/TextureImportSettings.h"
 #include "log/Logger.h"
 #include "mcp/McpRefs.h"
+#include "mcp/McpValues.h"
+#include "mcp/tools/W4Shared.h"
 #include "registry/TagManager.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
+#include "util/NativePlugins.h"
 #include "window/ConsoleWindow.h"
 #include "vcs/VcsService.h"
 
@@ -35,6 +46,7 @@
 #include <cctype>
 #include <functional>
 #include <map>
+#include <regex>
 #include <set>
 #include <sstream>
 
@@ -60,6 +72,8 @@ struct Setting {
     // Validates `value`; applies it when apply is true. Returns false with error.
     std::function<bool(SettingsContext&, const Json& value, bool apply, std::string& error)> set;
     bool preference = false;   // editor/machine preference, not project.yaml
+    // a program to run or a folder outside the project: only the user sets it (read-only over MCP)
+    bool userOnly = false;
 };
 
 template <typename T>
@@ -80,10 +94,12 @@ const EnumMap<ShadowTier> shadowTiers[] = {
     {"low", ShadowTier::LOW}, {"medium", ShadowTier::MEDIUM}, {"high", ShadowTier::HIGH}, {"ultra", ShadowTier::ULTRA}};
 const EnumMap<WindowMode> windowModes[] = {
     {"windowed", WindowMode::WINDOWED}, {"maximized", WindowMode::MAXIMIZED}, {"fullscreen", WindowMode::FULLSCREEN}};
-const EnumMap<AndroidOrientation> androidOrientations[] = {
-    {"unspecified", AndroidOrientation::Unspecified}, {"portrait", AndroidOrientation::Portrait},
-    {"landscape", AndroidOrientation::Landscape}, {"sensor_portrait", AndroidOrientation::SensorPortrait},
-    {"sensor_landscape", AndroidOrientation::SensorLandscape}, {"full_sensor", AndroidOrientation::FullSensor}};
+const EnumMap<ScreenOrientation> playerOrientations[] = {
+    {"portrait", ScreenOrientation::Portrait}, {"portrait_upside_down", ScreenOrientation::PortraitUpsideDown},
+    {"landscape_left", ScreenOrientation::LandscapeLeft}, {"landscape_right", ScreenOrientation::LandscapeRight},
+    {"auto_rotation", ScreenOrientation::AutoRotation}};
+const EnumMap<AndroidInternetAccess> androidInternetAccesses[] = {
+    {"auto", AndroidInternetAccess::Auto}, {"require", AndroidInternetAccess::Require}};
 
 template <typename T, size_t N>
 std::vector<std::string> enumNames(const EnumMap<T> (&map)[N]) {
@@ -276,6 +292,35 @@ Setting boolField(const std::string& key, const std::string& description, std::f
                        [field](Project& p, bool v) { field(p) = v; });
 }
 
+// Unity's Input Manager actions (a list in the shape InputManagerFormat reads, or "defaults") into the
+// project's actions asset's "Input Manager" map: one step of the project history (InputActionsCmd)
+bool setInputManagerActions(SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+    std::vector<InputManagerAction> actions;
+    if (value.is_string() && value.get<std::string>() == "defaults") {
+        actions = InputManagerFormat::defaults();
+    } else if (!value.is_array()) {
+        error = "must be a list of actions [{name, type, bindings}, ...] or \"defaults\"";
+        return false;
+    } else if (!InputManagerFormat::parseActionsJson(value.dump(), actions, &error)) {
+        return false;
+    }
+    if (!apply) return true;
+    Project* p = ctx.project();
+    if (InputManagerFormat::actionsToJson(actions) == InputManagerFormat::actionsToJson(p->getInputManagerActions()) &&
+            !p->getInputActionsAsset().empty())
+        return true;
+    // a project without an asset that keeps the defaults keeps having none
+    if (p->getInputActionsAsset().empty() && InputManagerFormat::actionsToJson(actions) == InputManagerFormat::actionsToJson(InputManagerFormat::defaults()))
+        return true;
+    auto* command = new InputActionsCmd(p, actions);
+    command->setNoMerge();
+    if (!p->getProjectCommandHistory()->addCommand(command)) {
+        error = "the input actions could not be applied";
+        return false;
+    }
+    return true;
+}
+
 Setting pathSetting(const std::string& key, const std::string& description, std::function<fs::path&(Project&)> field) {
     Setting s;
     s.key = key;
@@ -382,6 +427,175 @@ Setting layerCollisionSetting(const std::string& key, bool is3D) {
     return s;
 }
 
+
+// ---- native plugins (Project Settings > Native Plugins)
+
+// A list of strings; `valid` checks each ("" when fine, else why)
+Setting stringListField(const std::string& key, const std::string& description, std::function<std::vector<std::string>&(Project&)> field,
+                        std::function<std::string(const std::string&)> valid = nullptr) {
+    Setting s;
+    s.key = key;
+    s.type = "list";
+    s.description = description;
+    s.get = [field](SettingsContext& ctx) {
+        Json list = Json::array();
+        for (const std::string& item : field(*ctx.project())) list.push_back(item);
+        return list;
+    };
+    s.set = [field, valid](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        if (!value.is_array()) {
+            error = "must be a list of strings";
+            return false;
+        }
+        std::vector<std::string> items;
+        for (const Json& item : value) {
+            std::string text;
+            if (!readString(item, text, error, 2048)) return false;
+            text.erase(0, text.find_first_not_of(" \t"));
+            text.erase(text.find_last_not_of(" \t") + 1);
+            if (text.empty()) continue;
+            if (valid) {
+                const std::string why = valid(text);
+                if (!why.empty()) {
+                    error = "\"" + text + "\" " + why;
+                    return false;
+                }
+            }
+            items.push_back(text);
+        }
+        if (apply) field(*ctx.project()) = items;
+        return true;
+    };
+    return s;
+}
+
+// Raw XML, refused when it is not well-formed
+Setting xmlField(const std::string& key, const std::string& description, std::function<std::string&(Project&)> field) {
+    Setting s;
+    s.key = key;
+    s.type = "string";
+    s.description = description + " Refused unless well-formed XML; \"\" clears it.";
+    s.get = [field](SettingsContext& ctx) { return Json(field(*ctx.project())); };
+    s.set = [field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        std::string text;
+        if (!readString(value, text, error, 65536)) return false;
+        const std::string why = NativePlugins::xmlFragmentError(text);
+        if (!why.empty()) {
+            error = "is " + why;
+            return false;
+        }
+        if (apply) field(*ctx.project()) = text;
+        return true;
+    };
+    return s;
+}
+
+Json plistValueJson(const NativePlistValue& value) {
+    switch (value.kind) {
+        case NativePlistValue::Kind::Bool: return Json(value.flag);
+        case NativePlistValue::Kind::Integer: return Json(value.integer);
+        case NativePlistValue::Kind::Real: return Json(value.real);
+        case NativePlistValue::Kind::StringArray: {
+            Json list = Json::array();
+            for (const std::string& item : value.items) list.push_back(item);
+            return list;
+        }
+        case NativePlistValue::Kind::String: break;
+    }
+    return Json(value.text);
+}
+
+Setting plistEntriesField(const std::string& key, const std::string& description, std::function<std::map<std::string, NativePlistValue>&(Project&)> field) {
+    Setting s;
+    s.key = key;
+    s.type = "object";
+    s.description = description;
+    s.get = [field](SettingsContext& ctx) {
+        Json object = Json::object();
+        for (const auto& [name, value] : field(*ctx.project())) object[name] = plistValueJson(value);
+        return object;
+    };
+    s.set = [field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        if (!value.is_object()) {
+            error = "must be an object {\"NSUserTrackingUsageDescription\": \"...\", \"ITSAppUsesNonExemptEncryption\": false}";
+            return false;
+        }
+        std::map<std::string, NativePlistValue> entries;
+        for (auto it = value.begin(); it != value.end(); ++it) {
+            const std::string& name = it.key();
+            if (name.empty() || name.find_first_of("<>&\"") != std::string::npos) {
+                error = "key \"" + name + "\" is not an Info.plist key";
+                return false;
+            }
+            const Json& v = it.value();
+            NativePlistValue entry;
+            if (v.is_boolean()) {
+                entry.kind = NativePlistValue::Kind::Bool;
+                entry.flag = v.get<bool>();
+            } else if (v.is_number_integer()) {
+                entry.kind = NativePlistValue::Kind::Integer;
+                entry.integer = v.get<long long>();
+            } else if (v.is_number()) {
+                entry.kind = NativePlistValue::Kind::Real;
+                entry.real = v.get<double>();
+            } else if (v.is_string()) {
+                entry.text = v.get<std::string>();
+            } else if (v.is_array()) {
+                entry.kind = NativePlistValue::Kind::StringArray;
+                for (const Json& item : v) {
+                    if (!item.is_string()) {
+                        error = name + ": a list holds strings only (other shapes: ios.plist_xml)";
+                        return false;
+                    }
+                    entry.items.push_back(item.get<std::string>());
+                }
+            } else {
+                error = name + ": a value is a string, a boolean, a number or a list of strings (dictionaries: ios.plist_xml)";
+                return false;
+            }
+            entries[name] = entry;
+        }
+        if (apply) field(*ctx.project()) = entries;
+        return true;
+    };
+    return s;
+}
+
+std::string frameworkNameError(const std::string& name) {
+    std::string bare = name;
+    if (!bare.empty() && bare.back() == '?') bare.pop_back();
+    if (bare.empty() || !std::all_of(bare.begin(), bare.end(), [](unsigned char c) { return std::isalnum(c) || c == '_' || c == '.' || c == '-'; })) {
+        return "is not a system framework name (\"StoreKit\", \"AppTrackingTransparency?\" for weak)";
+    }
+    return std::string();
+}
+
+// Project Settings > Debug: one key of DebugSettings, applied as one undoable step (undo scope project)
+Setting debugSetting(const std::string& key, const std::string& type, const std::string& description, std::vector<std::string> values,
+                     std::function<Json(const DebugSettings&)> get, std::function<bool(DebugSettings&, const Json&, std::string&)> set) {
+    Setting s;
+    s.key = key;
+    s.type = type;
+    s.description = description + " Undoable (undo scope project).";
+    s.values = std::move(values);
+    s.get = [get](SettingsContext& ctx) { return get(ctx.project()->getDebugSettings()); };
+    s.set = [set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        Project* p = ctx.project();
+        DebugSettings changed = p->getDebugSettings();
+        if (!set(changed, value, error)) return false;
+        if (apply && changed != p->getDebugSettings()) {
+            auto* command = new DebugSettingsCmd(p, p->getDebugSettings(), changed);
+            command->setNoMerge();
+            if (!p->getProjectCommandHistory()->addCommand(command)) {
+                error = "the debug settings could not be applied";
+                return false;
+            }
+        }
+        return true;
+    };
+    return s;
+}
+
 // "mainThreadBudgetMs" -> "main_thread_budget_ms"
 std::string snakeCase(const char* name) {
     std::string out;
@@ -431,6 +645,85 @@ void addShaderCreationSettings(const std::function<void(Setting)>& add) {
     }
 }
 
+const DebugSettingsNames::SettingKey* debugSettingKey(const std::string& key) {
+    for (const DebugSettingsNames::SettingKey& entry : DebugSettingsNames::settingKeys()) {
+        if (key == entry.key) return &entry;
+    }
+    return nullptr;
+}
+
+// One row per field: its type, values, help and range are the table's; a change is one undoable
+// step (DebugSettingsCmd)
+void addDebugSettings(const std::function<void(Setting)>& add) {
+    for (const DebugSettingsNames::SettingKey& entry : DebugSettingsNames::settingKeys()) {
+        const reflect::FieldDesc* field = reflect::debugSettingsField(entry.field);
+        if (!field) continue;
+        const std::string description = field->tooltip ? field->tooltip : "";
+        if (field->enumDesc) {
+            std::vector<std::string> names;
+            for (const reflect::EnumItem& item : field->enumDesc->items) names.push_back(item.token);
+            add(debugSetting(entry.key, "enum", description, names,
+                [field](const DebugSettings& d) {
+                    const reflect::EnumItem* item = reflect::enumItem(*field->enumDesc, reflect::readEnum(*field, field->ref(const_cast<DebugSettings*>(&d))));
+                    return Json(item ? item->token : "");
+                },
+                [field, names](DebugSettings& d, const Json& value, std::string& error) {
+                    const reflect::EnumItem* item = value.is_string() ? reflect::enumItemByToken(*field->enumDesc, value.get<std::string>()) : nullptr;
+                    if (!item) {
+                        error = "must be one of:";
+                        for (const std::string& name : names) error += " " + name;
+                        return false;
+                    }
+                    reflect::writeEnum(*field, field->ref(&d), item->value);
+                    return true;
+                }));
+        } else if (field->kind == reflect::Kind::Bool) {
+            add(debugSetting(entry.key, "bool", description, {},
+                [field](const DebugSettings& d) { return Json(*static_cast<const bool*>(field->ref(const_cast<DebugSettings*>(&d)))); },
+                [field](DebugSettings& d, const Json& value, std::string& error) {
+                    return readBool(value, *static_cast<bool*>(field->ref(&d)), error);
+                }));
+        } else if (field->drawer && std::string(field->drawer) == "key") {
+            add(debugSetting(entry.key, "string", description + " A key name (backquote, f3, f12, escape, a...) or \"\" for none.", {},
+                [field](const DebugSettings& d) { return Json(*static_cast<const std::string*>(field->ref(const_cast<DebugSettings*>(&d)))); },
+                [field](DebugSettings& d, const Json& value, std::string& error) {
+                    std::string text;
+                    if (!readString(value, text, error, 64)) return false;
+                    if (!DebugSettingsNames::isKeyName(text)) {
+                        error = "is not a key name (backquote, f3, f12, escape, a...)";
+                        return false;
+                    }
+                    *static_cast<std::string*>(field->ref(&d)) = text;
+                    return true;
+                }));
+        } else {
+            add(debugSetting(entry.key, "int", description, {},
+                [field](const DebugSettings& d) { return Json(*static_cast<const unsigned int*>(field->ref(const_cast<DebugSettings*>(&d)))); },
+                [field](DebugSettings& d, const Json& value, std::string& error) {
+                    long long v;
+                    if (!readInt(value, static_cast<long long>(field->min), static_cast<long long>(field->max), v, error)) return false;
+                    *static_cast<unsigned int*>(field->ref(&d)) = static_cast<unsigned int>(v);
+                    return true;
+                }));
+        }
+    }
+}
+
+std::string titleCase(const std::string& key);
+
+// the Debug page's rows: section (the table's group), label and help the table's
+void debugRowPlacement(const std::string& key, SettingRow& row) {
+    row.page = "Debug";
+    row.label = titleCase(key);
+    const DebugSettingsNames::SettingKey* entry = debugSettingKey(key);
+    if (!entry) return;
+    row.keywords = entry->keywords;
+    if (const reflect::FieldDesc* field = reflect::debugSettingsField(entry->field)) {
+        if (field->group) row.section = field->group;
+        if (field->label) row.label = field->label;
+    }
+}
+
 std::vector<Setting> mcpSettingsTable() {
     return [] {
         std::vector<Setting> t;
@@ -467,6 +760,78 @@ std::vector<Setting> mcpSettingsTable() {
         add(stringSetting("player.version", "Application version (1 to 3 numeric parts, e.g. 1.2.0).",
                           [](Project& p) -> std::string& { return p.getApplicationSettings().version; },
                           [](const std::string& v) { return isNumericVersion(v, 3, 65535); }, "1 to 3 numeric parts, each 0-65535"));
+        // Player > Resolution and Presentation (upstream's platform services; android.orientation and
+        // android.keep_screen_on of earlier projects migrate to these)
+        {
+            Setting s;
+            s.key = "player.default_orientation";
+            s.type = "enum";
+            s.values = enumNames(playerOrientations);
+            s.description = "Orientation phones and tablets start in (Android and iOS); auto_rotation turns within "
+                            "player.allowed_orientations. landscape_left = device turned counter-clockwise.";
+            s.get = [](SettingsContext& ctx) {
+                return Json(enumName(playerOrientations, ctx.project()->getPresentationSettings().defaultOrientation));
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                ScreenOrientation o;
+                if (!parseEnum(playerOrientations, value, o, error)) return false;
+                if (apply) ctx.project()->getPresentationSettings().defaultOrientation = o;
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "player.allowed_orientations";
+            s.type = "list";
+            s.values = {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"};
+            s.description = "Allowed Orientations for Auto Rotation: non-empty subset; a fixed default is always allowed too.";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                const uint8_t mask = ctx.project()->getPresentationSettings().allowedOrientations;
+                for (int i = 0; i < 4; i++) {
+                    if (mask & PlatformRules::orientationBit(playerOrientations[i].value)) list.push_back(playerOrientations[i].name);
+                }
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array() || value.empty()) {
+                    error = "must be a non-empty list of portrait, portrait_upside_down, landscape_left, landscape_right";
+                    return false;
+                }
+                uint8_t mask = 0;
+                for (const Json& item : value) {
+                    ScreenOrientation o;
+                    if (!parseEnum(playerOrientations, item, o, error) || !PlatformRules::isFixedOrientation(o)) {
+                        error = "must be a non-empty list of portrait, portrait_upside_down, landscape_left, landscape_right";
+                        return false;
+                    }
+                    mask |= PlatformRules::orientationBit(o);
+                }
+                if (apply) ctx.project()->getPresentationSettings().allowedOrientations = mask;
+                return true;
+            };
+            add(s);
+        }
+        add(boolField("player.keep_screen_on", "Initial Screen.sleepTimeout on Android/iOS: true = NeverSleep, false = the device setting.",
+                      [](Project& p) -> bool& { return p.getPresentationSettings().keepScreenOn; }));
+        {
+            Setting s;
+            s.key = "player.target_frame_rate";
+            s.type = "int";
+            s.description = "Initial Engine.targetFrameRate; -1 = platform default (60 mobile; desktops ignore it with vsync on).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getPresentationSettings().targetFrameRate); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, -1, 1000, v, error)) return false;
+                if (apply) ctx.project()->getPresentationSettings().targetFrameRate = v <= 0 ? -1 : (int)v;
+                return true;
+            };
+            add(s);
+        }
+        add(boolField("player.allow_insecure_http", "Plain http:// to hosts other than localhost/127.0.0.1/::1 (Http). Off (default): "
+                      "insecure_http on every platform, editor Play included; exports set Android cleartext and iOS/macOS ATS to match.",
+                      [](Project& p) -> bool& { return p.getApplicationSettings().allowInsecureHttp; }));
         add(intField("player.build", "Build number (Apple build number, Android version code).", 1, 2100000000,
                      [](Project& p) -> unsigned int& { return p.getApplicationSettings().build; }));
         {
@@ -705,6 +1070,10 @@ std::vector<Setting> mcpSettingsTable() {
         add(stringSetting("web.head_include", "Extra HTML put in the page <head>.", [](Project& p) -> std::string& { return p.getWebProjectSettings().headInclude; }));
         add(boolField("web.resize_canvas_to_window", "The canvas follows the browser window size.", [](Project& p) -> bool& { return p.getWebProjectSettings().resizeCanvasToWindow; }));
         add(boolField("web.hide_emscripten_ui", "Hide the Emscripten status/console UI.", [](Project& p) -> bool& { return p.getWebProjectSettings().hideEmscriptenUI; }));
+        add(stringListField("web.script_urls", "Native plugins: SDK script URLs, each a <script src> in <head> before plugins/native/web/*.js (in order).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getWebProjectSettings().scriptUrls; },
+                            [](const std::string& v) { return v.find_first_of("<>\"") != std::string::npos ? std::string("is not a URL") : std::string(); }));
+        add(boolField("web.viewport_fit_cover", "Page viewport-fit=cover: canvas under the notch, safe area from env().", [](Project& p) -> bool& { return p.getWebProjectSettings().viewportFitCover; }));
         add(stringSetting("linux.application_name", "Linux .desktop name override.", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().applicationName; }));
         add(stringSetting("linux.comment", "Linux .desktop comment.", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().comment; }));
         add(stringSetting("linux.categories", "Linux .desktop categories (e.g. Game;).", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().categories; }));
@@ -723,6 +1092,10 @@ std::vector<Setting> mcpSettingsTable() {
                           [](const std::string& v) { return isNumericVersion(v, 3, 0xFFFFFFFFull); }, "1 to 3 numeric parts"));
         add(pathSetting("macos.icon", "macOS icon.", [](Project& p) -> fs::path& { return p.getMacOSProjectSettings().icon; }));
         add(boolField("macos.high_dpi", "macOS high DPI (Retina) rendering.", [](Project& p) -> bool& { return p.getMacOSProjectSettings().highDpi; }));
+        add(plistEntriesField("macos.plist_entries", "Native plugins: macOS Info.plist keys -> string, boolean, number or string list (replacing the export's keys).",
+                              [](Project& p) -> std::map<std::string, NativePlistValue>& { return p.getMacOSProjectSettings().plistEntries; }));
+        add(stringListField("macos.frameworks", "Native plugins: macOS system frameworks linked (\"GameKit\"; \"Name?\" = weak).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getMacOSProjectSettings().frameworks; }, frameworkNameError));
         add(stringSetting("ios.application_name", "iOS name override.", [](Project& p) -> std::string& { return p.getIOSProjectSettings().applicationName; }));
         add(stringSetting("ios.bundle_identifier", "iOS bundle identifier override.", [](Project& p) -> std::string& { return p.getIOSProjectSettings().bundleIdentifier; },
                           [](const std::string& v) { return isDottedIdentifier(v, appleIdPart); }, "dot-separated parts of letters, digits and hyphens"));
@@ -739,6 +1112,120 @@ std::vector<Setting> mcpSettingsTable() {
         add(stringSetting("ios.admob_app_id", "iOS AdMob App ID (GADApplicationIdentifier) from the AdMob console; without it the export leaves AdMob out.",
                           [](Project& p) -> std::string& { return p.getIOSProjectSettings().admobAppId; },
                           isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
+        add(plistEntriesField("ios.plist_entries", "Native plugins: iOS Info.plist keys -> string, boolean, number or string list, replacing the export's "
+                              "(NSUserTrackingUsageDescription, GADApplicationIdentifier...).",
+                              [](Project& p) -> std::map<std::string, NativePlistValue>& { return p.getIOSProjectSettings().plistEntries; }));
+        add(xmlField("ios.plist_xml", "Native plugins: raw <key>..</key><value> pairs appended to the iOS Info.plist top dict (SKAdNetworkItems...).",
+                     [](Project& p) -> std::string& { return p.getIOSProjectSettings().plistXml; }));
+        add(stringListField("ios.frameworks", "Native plugins: iOS system frameworks linked (\"StoreKit\", \"AppTrackingTransparency?\" = weak).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getIOSProjectSettings().frameworks; }, frameworkNameError));
+        {
+            Setting s;
+            s.key = "ios.cocoapods";
+            s.type = "list";
+            s.description = "Native plugins: CocoaPods [{name, version?, source?}] in workspaces/xcode/Podfile (run pod install there, open the "
+                            ".xcworkspace); version like \"~> 1.7\", source a spec repository URL.";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const NativeCocoaPod& pod : ctx.project()->getIOSProjectSettings().cocoapods) {
+                    Json item = {{"name", pod.name}};
+                    if (!pod.version.empty()) item["version"] = pod.version;
+                    if (!pod.source.empty()) item["source"] = pod.source;
+                    list.push_back(item);
+                }
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of {name, version?, source?}";
+                    return false;
+                }
+                std::vector<NativeCocoaPod> pods;
+                for (const Json& item : value) {
+                    NativeCocoaPod pod;
+                    if (item.is_string()) {
+                        pod.name = item.get<std::string>();
+                    } else if (item.is_object() && item.contains("name") && item["name"].is_string()) {
+                        pod.name = item["name"].get<std::string>();
+                        if (item.contains("version") && !readString(item["version"], pod.version, error, 256)) return false;
+                        if (item.contains("source") && !readString(item["source"], pod.source, error, 2048)) return false;
+                    } else {
+                        error = "each pod is {name, version?, source?}";
+                        return false;
+                    }
+                    if (pod.name.empty() || pod.name.find_first_of(" '\"\\") != std::string::npos) {
+                        error = "\"" + pod.name + "\" is not a pod name";
+                        return false;
+                    }
+                    if (pod.version.find_first_of("'\\\n") != std::string::npos || pod.source.find_first_of("'\\\n ") != std::string::npos) {
+                        error = pod.name + ": version and source cannot hold quotes, backslashes or line breaks";
+                        return false;
+                    }
+                    pods.push_back(pod);
+                }
+                if (apply) ctx.project()->getIOSProjectSettings().cocoapods = pods;
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "ios.swift_packages";
+            s.type = "list";
+            s.description = "Native plugins: Swift packages [{url, version, products[]}] of the iOS target (up to the next major version).";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const NativeSwiftPackage& package : ctx.project()->getIOSProjectSettings().swiftPackages) {
+                    list.push_back({{"url", package.url}, {"version", package.version}, {"products", package.products}});
+                }
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of {url, version, products}";
+                    return false;
+                }
+                std::vector<NativeSwiftPackage> packages;
+                for (const Json& item : value) {
+                    if (!item.is_object() || !item.contains("url") || !item["url"].is_string()) {
+                        error = "each package is {url, version, products}";
+                        return false;
+                    }
+                    NativeSwiftPackage package;
+                    package.url = item["url"].get<std::string>();
+                    if (package.url.rfind("https://", 0) != 0 && package.url.rfind("git@", 0) != 0) {
+                        error = "\"" + package.url + "\" is not a repository URL (https://github.com/...)";
+                        return false;
+                    }
+                    if (!item.contains("version") || !readString(item["version"], package.version, error, 64) ||
+                        !std::regex_match(package.version, std::regex("^[0-9]+(\\.[0-9]+){0,2}([-+][0-9A-Za-z.-]+)?$"))) {
+                        error = package.url + ": version must be a minimum version like \"4.0.0\"";
+                        return false;
+                    }
+                    if (!item.contains("products") || !item["products"].is_array() || item["products"].empty()) {
+                        error = package.url + ": products lists the package products to link (e.g. [\"RevenueCat\"])";
+                        return false;
+                    }
+                    for (const Json& product : item["products"]) {
+                        if (!product.is_string() || product.get<std::string>().empty()) {
+                            error = package.url + ": products are names";
+                            return false;
+                        }
+                        package.products.push_back(product.get<std::string>());
+                    }
+                    packages.push_back(package);
+                }
+                if (apply) ctx.project()->getIOSProjectSettings().swiftPackages = packages;
+                return true;
+            };
+            add(s);
+        }
+        add(xmlField("ios.entitlements_xml", "Native plugins: the <key>..</key><value> pairs of ios/JasperEngine.entitlements (CODE_SIGN_ENTITLEMENTS).",
+                     [](Project& p) -> std::string& { return p.getIOSProjectSettings().entitlementsXml; }));
+        add(stringSetting("ios.deployment_target", "iOS deployment target of every target (IPHONEOS_DEPLOYMENT_TARGET), 15.0 or later.",
+                          [](Project& p) -> std::string& { return p.getIOSProjectSettings().deploymentTarget; },
+                          [](const std::string& v) { return std::regex_match(v, std::regex("^[0-9]+\\.[0-9]+$")) && std::stod(v) >= 15.0; },
+                          "a version like 15.0 or 16.4, at least 15.0"));
         add(stringSetting("android.application_name", "Android label override.", [](Project& p) -> std::string& { return p.getAndroidProjectSettings().applicationName; }));
         add(stringSetting("android.package_name", "Android package name override.", [](Project& p) -> std::string& { return p.getAndroidProjectSettings().packageName; },
                           [](const std::string& v) { return isDottedIdentifier(v, javaIdPart); }, "a Java package name (dot-separated identifiers)"));
@@ -767,21 +1254,6 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
         add(intField("android.target_sdk", "Android target SDK level.", 1, 100, [](Project& p) -> unsigned int& { return p.getAndroidProjectSettings().targetSdk; }));
-        {
-            Setting s;
-            s.key = "android.orientation";
-            s.type = "enum";
-            s.values = enumNames(androidOrientations);
-            s.description = "Android screen orientation.";
-            s.get = [](SettingsContext& ctx) { return Json(enumName(androidOrientations, ctx.project()->getAndroidProjectSettings().orientation)); };
-            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
-                AndroidOrientation o;
-                if (!parseEnum(androidOrientations, value, o, error)) return false;
-                if (apply) ctx.project()->getAndroidProjectSettings().orientation = o;
-                return true;
-            };
-            add(s);
-        }
         {
             Setting s;
             s.key = "android.abis";
@@ -855,12 +1327,47 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(boolField("android.allow_backup", "Android allowBackup.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().allowBackup; }));
         add(boolField("android.fullscreen", "Android fullscreen theme.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().fullscreen; }));
-        add(boolField("android.keep_screen_on", "Keep the Android screen on.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().keepScreenOn; }));
+        {
+            Setting s;
+            s.key = "android.internet_access";
+            s.type = "enum";
+            s.values = enumNames(androidInternetAccesses);
+            s.description = "INTERNET permission: auto adds it when exported Lua/C++ uses Http (or android.permissions has internet); "
+                            "require always adds it (e.g. a native plugin uses the network).";
+            s.get = [](SettingsContext& ctx) { return Json(enumName(androidInternetAccesses, ctx.project()->getAndroidProjectSettings().internetAccess)); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                AndroidInternetAccess access;
+                if (!parseEnum(androidInternetAccesses, value, access, error)) return false;
+                if (apply) ctx.project()->getAndroidProjectSettings().internetAccess = access;
+                return true;
+            };
+            add(s);
+        }
         add(boolField("android.admob_enabled", "Compile Google Mobile Ads into the Android export (System.initializeAdMob and the interstitial calls); needs android.admob_app_id.",
                       [](Project& p) -> bool& { return p.getAndroidProjectSettings().admobEnabled; }));
         add(stringSetting("android.admob_app_id", "Android AdMob App ID (com.google.android.gms.ads.APPLICATION_ID) from the AdMob console; without it the export leaves AdMob out.",
                           [](Project& p) -> std::string& { return p.getAndroidProjectSettings().admobAppId; },
                           isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
+        add(stringListField("android.gradle_dependencies", "Native plugins: Gradle dependencies; \"group:name:version\" becomes api \"...\" in the "
+                            "nativeplugins module, any other text is a dependencies line as is (implementation platform('...')).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getAndroidProjectSettings().gradleDependencies; },
+                            [](const std::string& v) { return v.find('\n') != std::string::npos ? std::string("is more than one line") : std::string(); }));
+        add(stringListField("android.gradle_repositories", "Native plugins: Maven repository URLs (allprojects.repositories).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getAndroidProjectSettings().gradleRepositories; },
+                            [](const std::string& v) { return (v.find("://") == std::string::npos || v.find_first_of("\" \n") != std::string::npos)
+                                ? std::string("is not a repository URL (https://...)") : std::string(); }));
+        add(stringListField("android.gradle_properties", "Native plugins: gradle.properties lines \"key=value\" (replacing a key already there).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getAndroidProjectSettings().gradleProperties; },
+                            [](const std::string& v) { return (v.find('=') == std::string::npos || v.find('=') == 0 || v.find('\n') != std::string::npos)
+                                ? std::string("is not a key=value line") : std::string(); }));
+        add(stringListField("android.extra_permissions", "Native plugins: <uses-permission> by full name (com.google.android.gms.permission.AD_ID).",
+                            [](Project& p) -> std::vector<std::string>& { return p.getAndroidProjectSettings().extraPermissions; },
+                            [](const std::string& v) { return (v.find('.') == std::string::npos || v.find_first_of("\"<>& ") != std::string::npos)
+                                ? std::string("is not a full permission name (android.permission.X)") : std::string(); }));
+        add(xmlField("android.manifest_xml", "Native plugins: raw XML inside <manifest>, before <application> (<queries>, tools:node=\"remove\" entries).",
+                     [](Project& p) -> std::string& { return p.getAndroidProjectSettings().manifestXml; }));
+        add(xmlField("android.manifest_application_xml", "Native plugins: raw XML inside <application> (<meta-data>, <activity>, <provider>).",
+                     [](Project& p) -> std::string& { return p.getAndroidProjectSettings().manifestApplicationXml; }));
 
         // ---- graphics / quality
         for (const bool width : {true, false}) {
@@ -895,6 +1402,24 @@ std::vector<Setting> mcpSettingsTable() {
                 Scaling mode;
                 if (!parseEnum(scalingModes, value, mode, error)) return false;
                 if (apply) ctx.project()->setScalingMode(mode);
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "graphics.ui_scale";
+            s.type = "object";
+            s.description = "Canvas Scaler of every scene's UI and screen HTML documents unless a scene overrides it (scene setting "
+                            "canvas_scaler): {mode: follow_game_canvas (default, UI = game canvas)|constant_pixel_size|"
+                            "scale_with_screen_size|constant_physical_size, reference: [w,h], match_mode: "
+                            "match_width_or_height|expand|shrink, match: 0 width..1 height, scale_factor, physical_unit, "
+                            "fallback_dpi}; fields not given keep their value.";
+            s.get = [](SettingsContext& ctx) { return mcp::McpValues::canvasScalerToJson(ctx.project()->getUIScale()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                CanvasScalerSettings settings = ctx.project()->getUIScale();
+                if (!mcp::McpValues::canvasScalerFromJson(value, settings, error)) return false;
+                if (apply) ctx.project()->setUIScale(settings);
                 return true;
             };
             add(s);
@@ -1041,6 +1566,37 @@ std::vector<Setting> mcpSettingsTable() {
                     return false;
                 }
                 if (apply) ctx.project()->setHtmlUiMsaaSamples(static_cast<int>(v));
+                return true;
+            };
+            add(s);
+        }
+        // Project Settings > Graphics > Shader Globals (upstream's shader globals): the list, replaced
+        // whole, one undo step of the project history (graphics.shader_globals.<name>: ProjectTools)
+        {
+            Setting s;
+            s.key = "graphics.shader_globals";
+            s.type = "list";
+            s.description =
+                "Project Settings > Graphics > Shader Globals: global shader values (Lua Shader.setGlobal*) with their defaults, "
+                "read by shaders declaring u_vs_globals / u_fs_globals members (or a texture uniform) of the same name. Each "
+                "{name, type: float|vector2|vector3|vector4|color|matrix4|float_array|vector4_array|texture2d|texturecube, "
+                "array_size (arrays, 1-64), default}: color \"#RRGGBB[AA]\" or [r,g,b,a] sRGB, vectors [x,y,...], matrix4 16 "
+                "numbers column-major, arrays N values, textures an asset path. Setting it replaces the list; "
+                "graphics.shader_globals.<name> upserts one ({type, default, array_size, name: renames}; null removes). The "
+                "read result adds glsl_vs / glsl_fs, the blocks to paste. Undoable. Details: jasper://docs/shaders#global-values.";
+            s.get = [](SettingsContext& ctx) { return ShaderGlobalsJson::listToJson(ctx.project()->getShaderGlobals()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::vector<ShaderGlobalDecl> decls;
+                if (!value.is_null() && !ShaderGlobalsJson::listFromJson(value, decls, error)) return false;
+                if (!apply) return true;
+                Project* p = ctx.project();
+                if (decls == p->getShaderGlobals()) return true;
+                auto* command = new ShaderGlobalsCmd(p, p->getShaderGlobals(), decls, {});
+                command->setNoMerge();
+                if (!p->getProjectCommandHistory()->addCommand(command)) {
+                    error = "the shader globals could not be applied";
+                    return false;
+                }
                 return true;
             };
             add(s);
@@ -1201,6 +1757,32 @@ std::vector<Setting> mcpSettingsTable() {
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
                         [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));
         add(layerCollisionSetting("physics.layer_collision_matrix", true));
+        // the 3D world capacity (worlds made from now on: the next Play, exported builds): upstream's
+        // physics-3d keys (Project Settings > Physics > 3D World Capacity)
+        struct CapacityKey { const char* key; const char* description; unsigned int Physics3DWorldSettings::* field; };
+        static const CapacityKey capacityKeys[] = {
+            {"physics.max_bodies", "Bodies a 3D world holds (default 8192); past it new bodies are refused with an error naming this setting.", &Physics3DWorldSettings::maxBodies},
+            {"physics.max_body_pairs", "Touching body pairs a 3D world tracks (default 8192); past it contacts are dropped and reported once.", &Physics3DWorldSettings::maxBodyPairs},
+            {"physics.max_contact_constraints", "Contact constraints of a 3D world (default 8192); past it contacts are dropped and reported once.", &Physics3DWorldSettings::maxContactConstraints}};
+        for (const CapacityKey& capacity : capacityKeys) {
+            Setting s;
+            s.key = capacity.key;
+            s.type = "int";
+            s.description = capacity.description;
+            unsigned int Physics3DWorldSettings::* field = capacity.field;
+            s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getPhysics3DWorldSettings().*field); };
+            s.set = [field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 16, 8388607, v, error)) return false;
+                if (apply) {
+                    Physics3DWorldSettings world = ctx.project()->getPhysics3DWorldSettings();
+                    world.*field = static_cast<unsigned int>(v);
+                    ctx.project()->setPhysics3DWorldSettings(world);
+                }
+                return true;
+            };
+            add(s);
+        }
         add(boolSetting("physics2d.enabled", "2D physics (Box2D). Off leaves Rigidbody2Ds and joints out of builds.",
                         [](Project& p) { return p.isPhysics2DEnabled(); }, [](Project& p, bool v) { p.setPhysics2DEnabled(v); }));
         add(layerCollisionSetting("physics2d.layer_collision_matrix", false));
@@ -1259,9 +1841,42 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
-        // ---- input (S22)
-        add(pathSetting("input.actions", "The Input Actions asset Play and the game load at start (an .inputactions file in the assets directory).",
-                        [](Project& p) -> fs::path& { return p.getInputActionsAsset(); }));
+        // ---- input (S22, and Unity's Input Manager absorbed from the older Project Settings > Input)
+        {
+            // the asset path; an older editor's list of Input Manager actions (or "defaults") set
+            // here goes into the asset's Input Manager map, as input.manager_actions does
+            Setting s = pathSetting("input.actions", "The Input Actions asset Play and the game load at start (an .inputactions file in "
+                                    "the assets directory). Also takes a list of Input Manager actions or \"defaults\" (input.manager_actions).",
+                                    [](Project& p) -> fs::path& { return p.getInputActionsAsset(); });
+            auto setPath = s.set;
+            s.set = [setPath](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (value.is_array() || (value.is_string() && value.get<std::string>() == "defaults"))
+                    return setInputManagerActions(ctx, value, apply, error);
+                return setPath(ctx, value, apply, error);
+            };
+            add(std::move(s));
+        }
+        {
+            Setting s;
+            s.key = "input.manager_actions";
+            s.type = "list";
+            s.description =
+                "Unity's Input Manager: the actions asset's \"Input Manager\" map (Unity's 11 defaults without an asset) as virtual "
+                "axes and buttons, read by Input.getAxis / getButton / getButtonDown. Each {name, type: axis|button, description?, "
+                "press_point? (0.5), bindings: [{kind: buttons, positive: [control names], negative: [...], gravity, sensitivity, "
+                "dead, snap, invert, gamepad: any|0-15} | {kind: gamepad_axis, axis: left_x..right_trigger, gamepad, dead, "
+                "sensitivity, invert} | {kind: mouse_delta, axis: x|y|wheel, sensitivity, invert}]}. Control names: a, space, left, "
+                "left_shift, kp_0, f1, mouse_left, gamepad_a, gamepad_dpad_up... (Unity spellings accepted). Setting it replaces the "
+                "whole list (get it first to add one) and makes InputManager.inputactions when the project has no asset; "
+                "\"defaults\" restores Unity's 11. Undoable (undo scope project). Details: jasper://docs/input.";
+            s.get = [](SettingsContext& ctx) {
+                return Json::parse(InputManagerFormat::actionsToJson(ctx.project()->getInputManagerActions()))["actions"];
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                return setInputManagerActions(ctx, value, apply, error);
+            };
+            add(std::move(s));
+        }
         {
             Setting s;
             s.key = "input.deadzone";
@@ -1275,6 +1890,140 @@ std::vector<Setting> mcpSettingsTable() {
                 return true;
             };
             add(std::move(s));
+        }
+
+        // ---- audio (Project Settings > Audio)
+        {
+            Setting s;
+            s.key = "audio.mixer";
+            s.type = "path";
+            s.description = "The project's Audio Mixer (a .mixer in the assets; \"\" = none: an implicit Master). audio_mixer "
+                            "edit creates audio/Main.mixer there when unset. Guide: jasper://docs/audio.";
+            s.get = [](SettingsContext& ctx) {
+                Project* p = ctx.project();
+                return Json(p->getAudioSettings().mixer.empty() ? std::string() : mcp::w4::projectRelative(p, p->getAudioMixerFile()));
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string()) {
+                    error = "must be a .mixer path (\"audio/Main.mixer\") or \"\"";
+                    return false;
+                }
+                std::string text = value.get<std::string>();
+                Project* p = ctx.project();
+                std::string relative;
+                if (!text.empty()) {
+                    const fs::path asProject = p->getProjectPath() / FileUtils::pathFromUtf8(text);
+                    std::error_code ec;
+                    fs::path absolute = fs::exists(asProject, ec) || text.rfind("assets/", 0) == 0 ? asProject : p->resolveAssetPath(FileUtils::pathFromUtf8(text));
+                    if (!p->isInsideAssetsPath(absolute)) {
+                        error = "must be inside the assets directory";
+                        return false;
+                    }
+                    relative = FileUtils::pathToGenericUtf8(p->normalizeToAssetsRelative(absolute));
+                    if (FileUtils::pathFromUtf8(relative).extension() != ".mixer") {
+                        error = "must be a .mixer file";
+                        return false;
+                    }
+                }
+                if (apply) {
+                    AudioSettings settings = p->getAudioSettings();
+                    settings.mixer = relative;
+                    p->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+        auto audioInt = [&add](const char* key, const char* description, long long minimum, long long maximum, int AudioSettings::*field) {
+            Setting s;
+            s.key = key;
+            s.type = "int";
+            s.description = description;
+            s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().*field); };
+            s.set = [field, minimum, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, minimum, maximum, v, error)) return false;
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.*field = static_cast<int>(v);
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        };
+        audioInt("audio.max_real_voices", "Voices mixed at once (default 32); the quietest others are virtualised. At most 255 minus "
+                 "the mixer's groups.", 1, 255, &AudioSettings::maxRealVoices);
+        {
+            // SoLoud mixes at most 255 voices at once, the mixer's buses among them
+            Setting& s = t.back();
+            auto inner = s.set;
+            s.set = [inner](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                const long long groups = (long long)AudioMixer::getGroupNames().size();
+                const long long limit = (long long)AudioMixer::maxActiveVoices - groups;
+                if (value.is_number_integer() && value.get<long long>() > limit) {
+                    error = "must be at most " + std::to_string(limit) + " (255 voices at once, the mixer's " +
+                            std::to_string(groups) + " group(s) included)";
+                    return false;
+                }
+                return inner(ctx, value, apply, error);
+            };
+        }
+        audioInt("audio.max_voices", "Voices playing at all (default 256); past it the least important (AudioSource priority) stops.", 1, 1000, &AudioSettings::maxVoices);
+        {
+            Setting s;
+            s.key = "audio.sample_rate";
+            s.type = "enum";
+            s.values = {"auto", "22050", "44100", "48000"};
+            s.description = "Output sample rate (auto = the device's).";
+            s.get = [](SettingsContext& ctx) {
+                const int rate = ctx.project()->getAudioSettings().sampleRate;
+                return Json(rate == 0 ? std::string("auto") : std::to_string(rate));
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                int rate = -1;
+                if (value.is_string()) {
+                    const std::string text = value.get<std::string>();
+                    if (text == "auto") rate = 0;
+                    else if (text == "22050" || text == "44100" || text == "48000") rate = std::stoi(text);
+                } else if (value.is_number_integer()) {
+                    const int v = value.get<int>();
+                    if (v == 0 || v == 22050 || v == 44100 || v == 48000) rate = v;
+                }
+                if (rate < 0) {
+                    error = "must be one of: auto 22050 44100 48000";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.sampleRate = rate;
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "audio.default_output_group";
+            s.type = "string";
+            s.description = "The mixer group new Audio Sources play through (\"\" = Master).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().defaultOutputGroup); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::string text;
+                if (!readString(value, text, error, 64)) return false;
+                if (!text.empty() && !AudioMixer::hasGroup(text)) {
+                    error = "no mixer group '" + text + "' (audio_mixer get lists them)";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.defaultOutputGroup = text;
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
         }
 
         // ---- scripting
@@ -1360,10 +2109,23 @@ std::vector<Setting> mcpSettingsTable() {
                 Project* p = ctx.project();
                 std::string text;
                 if (!readString(value, text, error)) return false;
+                // a plain project-relative folder: no absolute path, no ".." (even one that comes
+                // back in), no hidden or editor-owned folder (upstream's round 9 checks)
+                if (const std::string why = mcp::McpRefs::rootValueRefusal(text); !why.empty()) {
+                    error = why + ": an asset root is a folder of the project, given project-relative without '..'";
+                    return false;
+                }
                 fs::path dir = text.empty() ? fs::path(".") : FileUtils::pathFromUtf8(text).lexically_normal();
                 if (dir != ".") {
                     fs::path absolute;
+                    // the referenced files are moved there, and it becomes a trusted root: inside the
+                    // project directory itself once links are resolved (never via the current
+                    // assets directory's link)
                     if (!mcp::McpRefs::resolveProjectPath(p, text, absolute, error)) return false;
+                    if (const std::string escape = mcp::McpRefs::projectOnlyEscape(p, absolute); !escape.empty()) {
+                        error = escape;
+                        return false;
+                    }
                 }
                 if (ctx.isPlaying()) {
                     error = "cannot change asset roots during Play";
@@ -1371,7 +2133,7 @@ std::vector<Setting> mcpSettingsTable() {
                 }
                 if (apply) {
                     std::error_code ec;
-                    fs::create_directories(p->getProjectPath() / dir, ec);
+                    FileUtils::createDirectories(p->getProjectPath() / dir, ec);
                     if (lua) p->changeAssetRoots(p->getAssetsDir(), dir);
                     else p->changeAssetRoots(dir, p->getLuaDir());
                 }
@@ -1496,6 +2258,10 @@ std::vector<Setting> mcpSettingsTable() {
                 return readBool(value, settings.commitAndPush, error);
             });
         }
+
+        // ---- debug: the on-device console and stats overlay, the log (jasper://docs/debugging),
+        // from the reflection table
+        addDebugSettings(add);
 
         // ---- tags and layers
         {
@@ -1646,6 +2412,7 @@ std::vector<Setting> mcpSettingsTable() {
             s.key = key;
             s.type = "string";
             s.preference = true;
+            s.userOnly = true;
             s.description = description;
             s.get = [get](SettingsContext&) { return Json(get()); };
             s.set = [set](SettingsContext&, const Json& value, bool apply, std::string& error) {
@@ -1795,6 +2562,8 @@ std::vector<Setting> mcpSettingsTable() {
             s.key = field.key;
             s.type = "string";
             s.preference = true;
+            // the compilers are programs the build runs: user-only (the generator is just a name)
+            s.userOnly = field.member != &LocalBuildSettings::generator;
             s.description = field.description;
             auto member = field.member;
             s.get = [member](SettingsContext& ctx) {
@@ -1803,6 +2572,12 @@ std::vector<Setting> mcpSettingsTable() {
             s.set = [member](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                 std::string text;
                 if (!readString(value, text, error)) return false;
+                // the generator is a name CMake must recognise (it drives the build command): an
+                // arbitrary string is refused, never stored (upstream's round 9)
+                if (member == &LocalBuildSettings::generator && !text.empty() && !Generator::isKnownGenerator(text)) {
+                    error = "not a CMake generator name (e.g. \"Ninja\", \"Unix Makefiles\", \"Visual Studio 17 2022\")";
+                    return false;
+                }
                 if (apply) {
                     const fs::path file = ctx.project()->getProjectPath() / "project.yaml";
                     LocalBuildSettings build = AppSettings::getBuildSettings(file);
@@ -1862,6 +2637,11 @@ const Placement placements[] = {
     {"player.identifier", "Player", "", "Application Identifier", "bundle package reverse domain"},
     {"player.version", "Player", "", "Version", ""},
     {"player.build", "Player", "", "Build", "build number version code"},
+    {"player.default_orientation", "Player", "Resolution and Presentation", "Default Orientation", "orientation portrait landscape auto rotation android ios"},
+    {"player.allowed_orientations", "Player", "Resolution and Presentation", "Allowed Orientations for Auto Rotation", "orientation rotation android ios"},
+    {"player.keep_screen_on", "Player", "Resolution and Presentation", "Keep Screen On", "sleep timeout screen on"},
+    {"player.target_frame_rate", "Player", "Resolution and Presentation", "Target Frame Rate", "fps frame rate"},
+    {"player.allow_insecure_http", "Player", "Other Settings", "Allow Insecure HTTP", "http cleartext network"},
     {"player.window_icon", "Player", "Icon", "Default Icon", "icon window taskbar"},
     {"player.window_mode", "Player", "Resolution and Presentation", "Fullscreen Mode", "window mode windowed maximized"},
     {"player.window_width", "Player", "Resolution and Presentation", "Default Screen Width", "window resolution"},
@@ -1902,6 +2682,7 @@ const Placement placements[] = {
     {"web.head_include", "Player", "Web", "Head Include", "web html head"},
     {"web.resize_canvas_to_window", "Player", "Web", "Resize Canvas To Window", "web"},
     {"web.hide_emscripten_ui", "Player", "Web", "Hide Emscripten UI", "web"},
+    {"web.viewport_fit_cover", "Player", "Web", "Viewport Fit Cover", "web safe area notch viewport-fit env safe-area-inset"},
     {"linux.application_name", "Player", "Linux", "App Name", "linux desktop"},
     {"linux.comment", "Player", "Linux", "Comment", "linux desktop"},
     {"linux.categories", "Player", "Linux", "Categories", "linux desktop"},
@@ -1934,17 +2715,17 @@ const Placement placements[] = {
     {"android.adaptive_icon_background", "Player", "Android", "Adaptive Background", "android launcher icons adaptive icon"},
     {"android.min_sdk", "Player", "Android", "Min SDK", "android api level"},
     {"android.target_sdk", "Player", "Android", "Target SDK", "android api level"},
-    {"android.orientation", "Player", "Android", "Orientation", "android portrait landscape"},
+    {"android.internet_access", "Player", "Android", "Internet Access", "android internet permission network http"},
     {"android.abis", "Player", "Android", "Architectures", "android abi arm64 x86"},
     {"android.permissions", "Player", "Android", "Permissions", "android"},
     {"android.allow_backup", "Player", "Android", "Application Options", "android allow backup"},
-    {"android.keep_screen_on", "Player", "Android", "Keep Screen On", "android application options"},
     {"android.fullscreen", "Player", "Android", "Screen Options", "android fullscreen"},
     {"android.admob_enabled", "Player", "Android", "Google AdMob", "android ads advertising mobile ads sdk"},
     {"android.admob_app_id", "Player", "Android", "AdMob App ID", "android ads advertising application id"},
     {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution"},
     {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
     {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch"},
+    {"graphics.ui_scale", "Graphics", "", "UI Scale", "canvas scaler ui scaling reference resolution match width height constant pixel physical size dpi"},
     {"graphics.texture_strategy", "Graphics", "", "Texture Strategy", "power of two"},
     {"graphics.mobile_pbr_tier", "Graphics", "", "Mobile PBR Tier", "clear coat iridescence anisotropy lit android ios web"},
     {"graphics.html_ui_msaa_samples", "Graphics", "", "HTML UI MSAA", "anti-aliasing antialiasing multisampling"},
@@ -1964,6 +2745,9 @@ const Placement placements[] = {
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
     {"physics.enabled", "Physics", "", "3D Physics", "jolt rigidbody"},
     {"physics.layer_collision_matrix", "Physics", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
+    {"physics.max_bodies", "Physics", "3D World Capacity", "Max Bodies", "jolt capacity limit rigidbodies"},
+    {"physics.max_body_pairs", "Physics", "3D World Capacity", "Max Body Pairs", "jolt capacity limit contacts"},
+    {"physics.max_contact_constraints", "Physics", "3D World Capacity", "Max Contact Constraints", "jolt capacity limit contacts"},
     {"physics2d.enabled", "Physics 2D", "", "2D Physics", "box2d rigidbody 2d"},
     {"physics2d.layer_collision_matrix", "Physics 2D", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"navigation.include_in_builds", "Navigation", "", "Include in Builds", "navmesh recast detour strip export"},
@@ -1972,6 +2756,13 @@ const Placement placements[] = {
     {"navigation.web_bake_budget_ms", "Navigation", "", "Web Bake Budget", "navmesh bake web single thread"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
+    {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
+    // Project Settings > Audio
+    {"audio.mixer", "Audio", "", "Audio Mixer", "mixer groups master bus sound music"},
+    {"audio.default_output_group", "Audio", "", "Default Output Group", "mixer group master output audio source"},
+    {"audio.max_real_voices", "Audio", "", "Max Real Voices", "voices virtual virtualised polyphony"},
+    {"audio.max_voices", "Audio", "", "Max Voices", "voices polyphony priority"},
+    {"audio.sample_rate", "Audio", "", "Sample Rate", "hz 22050 44100 48000 output frequency"},
     {"scripting.lua_dir", "Scripting", "", "Lua Directory", "lua"},
     {"scripting.script_dirs", "Scripting", "", "Script Directories", "c++ cpp"},
     {"scripting.cxx_standard", "Scripting", "", "C++ Standard", "cpp c++17 c++20 c++23"},
@@ -1989,6 +2780,23 @@ const Placement placements[] = {
     {"editor.assets_dir", "Editor", "", "Assets Directory", "assets root"},
     {"tags_and_layers.tags", "Tags and Layers", "Tags", "Tags", "tag"},
     {"tags_and_layers.layers", "Tags and Layers", "Layers", "Layers", "layer"},
+    // Project Settings > Native Plugins
+    {"android.gradle_dependencies", "Native Plugins", "Android", "Gradle Dependencies", "android gradle dependencies sdk api implementation"},
+    {"android.gradle_repositories", "Native Plugins", "Android", "Maven Repositories", "android gradle maven repository url"},
+    {"android.gradle_properties", "Native Plugins", "Android", "Gradle Properties", "android gradle properties"},
+    {"android.extra_permissions", "Native Plugins", "Android", "Extra Permissions", "android uses-permission permissions"},
+    {"android.manifest_xml", "Native Plugins", "Android", "Manifest XML", "android manifest xml queries uses-feature"},
+    {"android.manifest_application_xml", "Native Plugins", "Android", "Application XML", "android manifest application xml meta-data activity provider"},
+    {"ios.plist_entries", "Native Plugins", "iOS", "Info.plist Entries", "ios info.plist plist keys"},
+    {"ios.plist_xml", "Native Plugins", "iOS", "Info.plist XML", "ios info.plist plist xml skadnetwork"},
+    {"ios.frameworks", "Native Plugins", "iOS", "Frameworks", "ios frameworks link weak storekit"},
+    {"ios.cocoapods", "Native Plugins", "iOS", "CocoaPods", "ios cocoapods pods podfile"},
+    {"ios.swift_packages", "Native Plugins", "iOS", "Swift Packages", "ios swift packages spm"},
+    {"ios.entitlements_xml", "Native Plugins", "iOS", "Entitlements", "ios entitlements capabilities xml"},
+    {"ios.deployment_target", "Native Plugins", "iOS", "Deployment Target", "ios deployment target minimum version iphoneos"},
+    {"macos.plist_entries", "Native Plugins", "macOS", "Info.plist Entries", "macos mac info.plist plist keys"},
+    {"macos.frameworks", "Native Plugins", "macOS", "Frameworks", "macos mac frameworks link weak gamekit"},
+    {"web.script_urls", "Native Plugins", "Web", "Script URLs", "web script sdk javascript head url"},
     {"preferences.clear_on_play", "General", "Console", "Clear on Play", "console"},
     {"preferences.error_pause", "General", "Console", "Error Pause", "console"},
     {"preferences.simulate_touch", "General", "Game View", "Simulate Touch", "game view mouse finger"},
@@ -2110,7 +2918,8 @@ void addOrAbort(SettingsRegistry& registry, SettingRow row) {
 } // namespace
 
 void registerBuiltinSettings(SettingsRegistry& registry) {
-    // the pages, in the windows' order (the category arrays the windows had before S25)
+    // the pages, in the windows' order (the category arrays the windows had before S25; Project
+    // Settings' ProjectCategory, window/dialog/ProjectSettingsWindow.cpp, follows these orders)
     const SettingsPage pages[] = {
         {"Player", SettingsScope::Project, 0, "project product application icon resolution splash loading publishing platform"},
         {"Graphics", SettingsScope::Project, 1, "canvas scaling texture shaders shadows"},
@@ -2119,10 +2928,17 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Physics", SettingsScope::Project, 4, "3d jolt"},
         {"Physics 2D", SettingsScope::Project, 5, "2d box2d"},
         {"Input", SettingsScope::Project, 6, "input actions bindings controls gamepad deadzone"},
-        {"Scripting", SettingsScope::Project, 7, "lua c++"},
-        {"Tags and Layers", SettingsScope::Project, 8, "tags layers"},
-        {"Editor", SettingsScope::Project, 9, "version control assets labels"},
-        {"Navigation", SettingsScope::Project, 10, "navigation navmesh agents areas crowd grid pathfinding ai"},
+        // upstream's (SYNC#4: audio-mixer, debug-overlay, native-bridge)
+        {"Audio", SettingsScope::Project, 7, "audio mixer groups voices real voices sample rate output group sound music volume"},
+        {"Scripting", SettingsScope::Project, 8, "lua c++"},
+        {"Debug", SettingsScope::Project, 9, "debug overlay console log stats fps graph development build toggle key gesture popup error commands lua "
+                                             "buffer stack traces ingamedebugconsole graphy"},
+        {"Tags and Layers", SettingsScope::Project, 10, "tags layers"},
+        {"Native Plugins", SettingsScope::Project, 11, "native plugins android java kotlin ios macos objective-c swift web javascript c++ gradle dependencies "
+                                                       "repositories maven properties permissions manifest xml application info.plist plist frameworks cocoapods "
+                                                       "pods swift packages spm entitlements deployment target script urls sdk"},
+        {"Editor", SettingsScope::Project, 12, "version control assets labels"},
+        {"Navigation", SettingsScope::Project, 13, "navigation navmesh agents areas crowd grid pathfinding ai"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},
@@ -2155,6 +2971,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         row.get = setting.get;
         row.set = setting.set;
         row.mcp = true;
+        row.userOnly = setting.userOnly;
         row.tooltip = setting.description;
         if (const Placement* placement = placementOf(setting.key)) {
             row.page = placement->page;
@@ -2165,6 +2982,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             textureRowPlacement(setting.key, row);
         } else if (setting.key.rfind("shader_creation.", 0) == 0) {
             shaderCreationRowPlacement(setting.key, row);
+        } else if (setting.key.rfind("debug.", 0) == 0) {
+            debugRowPlacement(setting.key, row);
         } else {
             row.page = setting.preference ? "General" : "Editor";
             row.label = titleCase(setting.key);

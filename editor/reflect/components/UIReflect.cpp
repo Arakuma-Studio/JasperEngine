@@ -211,6 +211,17 @@ namespace {
         JE_FIELD(TextComponent, fixedHeight, .updateFlags = kText, .label = "Height", .group = "Fixed size"),
         JE_FIELD(TextComponent, pivotBaseline, .updateFlags = kText, .label = "Baseline", .group = "Pivot"),
         JE_FIELD(TextComponent, pivotCentered, .updateFlags = kText, .label = "Center", .group = "Pivot"),
+        // upstream (ui-scaling-text): outline, shadow and visible characters, written only when set;
+        // the widths read finite and not below 0, the visible characters not below -1 (its decode)
+        JE_FIELD(TextComponent, outlineWidth, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Outline"),
+        JE_FIELD(TextComponent, outlineColor, .flags = OmitIfDefault | ColorLinear, .updateFlags = kText, .group = "Outline"),
+        JE_FIELD(TextComponent, shadowEnabled, .flags = OmitIfDefault, .updateFlags = kText, .label = "Shadow", .group = "Shadow"),
+        JE_FIELD(TextComponent, shadowColor, .flags = OmitIfDefault | ColorLinear, .updateFlags = kText, .group = "Shadow"),
+        JE_FIELD(TextComponent, shadowOffset, .flags = OmitIfDefault, .updateFlags = kText, .group = "Shadow"),
+        JE_FIELD(TextComponent, shadowSoftness, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Shadow"),
+        JE_FIELD(TextComponent, shadowDilate, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Shadow"),
+        JE_FIELD(TextComponent, visibleCharacters, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault, .updateFlags = kText, .min = -1.0f,
+                 .tooltip = "Characters past it are not drawn (-1: all)."),
     };
 
     // ---------------------------------------------------------------- Image
@@ -303,6 +314,7 @@ namespace {
         // the shader library's: resolved when the UI loads its shader
         JE_FIELD(UIComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
+        JE_FIELD(UIComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(UIComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
@@ -316,7 +328,7 @@ namespace {
 
     constexpr const char* kUIExtraKeys[] = {"buffer", "indices", "minBufferCount", "minIndicesCount", "primitiveType", "vertexCount", "aabb",
         "worldAABB", "texture", "color", "automaticFlipY", "flipY", "pointerMoved", "focused", "customShader", "shaderUniforms", "shaderTextures",
-        "shaderFeatures", "blendMode", "depthWrite", "stencil", "colorWrite", "enabled"};
+        "shaderFeatures", "shaderGlobalBindings", "blendMode", "depthWrite", "stencil", "colorWrite", "enabled"};
 
 }
 

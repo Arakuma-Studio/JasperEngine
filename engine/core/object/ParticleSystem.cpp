@@ -6,6 +6,7 @@
 #include "Log.h"
 #include "Scene.h"
 #include "component/ActionComponent.h"
+#include "component/Transform.h"
 #include "particles/LegacyParticleConverter.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleEffectLibrary.h"
@@ -13,6 +14,7 @@
 #include "subsystem/ParticleSubsystem.h"
 
 #include <algorithm>
+#include <functional>
 
 using namespace jasperengine;
 using namespace jasperengine::particles;
@@ -189,6 +191,14 @@ float ParticleSystem::getPlaybackSpeed() const{
     return system().playbackSpeed;
 }
 
+void ParticleSystem::setUseUnscaledTime(bool useUnscaledTime){
+    system().useUnscaledTime = useUnscaledTime;
+}
+
+bool ParticleSystem::isUseUnscaledTime() const{
+    return system().useUnscaledTime;
+}
+
 void ParticleSystem::setSeed(unsigned int seed){
     system().seed = seed;
     system().needReload = true;
@@ -224,6 +234,68 @@ bool ParticleSystem::setInlineEffect(const std::string& json){
 
 std::string ParticleSystem::getInlineEffect() const{
     return ParticleEffectCodec::write(system().inlineEffect);
+}
+
+ParticleEffectDocument ParticleSystem::getEffectDocument() const{
+    const ParticleEffectDocument* document = ParticleSubsystem::getDocument(system());
+    return document ? *document : system().inlineEffect;
+}
+
+void ParticleSystem::setEffectDocument(const ParticleEffectDocument& document){
+    ParticleSystemComponent& particles = system();
+    if (!particles.effect.empty()){
+        Log::verbose("[Particles] %s: a module edit makes the effect of %s its own (the asset is not changed)",
+                     particles.effect.path.c_str(), getName().c_str());
+        particles.effect.clear();
+    }
+    particles.inlineEffect = document;
+    particles.needReload = true;
+}
+
+namespace {
+
+    // the GameObject's Particle System and, with children, every one below it (hierarchy order)
+    void eachSystem(Scene* scene, Entity entity, bool withChildren, const std::function<void(Entity)>& visit){
+        if (scene->findComponent<ParticleSystemComponent>(entity))
+            visit(entity);
+        if (!withChildren)
+            return;
+        // the descendants follow it in the Transform array (depth first): its branch
+        auto transforms = scene->getComponentArray<Transform>();
+        if (!transforms->hasEntity(entity))
+            return;
+        const size_t start = transforms->getIndex(entity);
+        const size_t last = scene->findBranchLastIndex(entity);
+        std::vector<Entity> below;
+        for (size_t i = start + 1; i <= last && i < transforms->size(); i++)
+            below.push_back(transforms->getEntity(i));
+        for (Entity child : below){
+            if (scene->isEntityCreated(child) && scene->findComponent<ParticleSystemComponent>(child))
+                visit(child);
+        }
+    }
+
+}
+
+void ParticleSystem::play(bool withChildren){
+    ParticleSubsystem* subsystem = scene->getSystem<ParticleSubsystem>().get();
+    eachSystem(scene, entity, withChildren, [&](Entity e){ subsystem->play(e); });
+}
+
+void ParticleSystem::stop(bool withChildren, bool clear){
+    ParticleSubsystem* subsystem = scene->getSystem<ParticleSubsystem>().get();
+    eachSystem(scene, entity, withChildren, [&](Entity e){ subsystem->stop(e, clear); });
+}
+
+void ParticleSystem::pause(bool withChildren){
+    ParticleSubsystem* subsystem = scene->getSystem<ParticleSubsystem>().get();
+    eachSystem(scene, entity, withChildren, [&](Entity e){ subsystem->pause(e); });
+}
+
+void ParticleSystem::clear(bool withChildren){
+    // Unity's Clear: the particles go, the system keeps playing (or stays stopped)
+    ParticleSubsystem* subsystem = scene->getSystem<ParticleSubsystem>().get();
+    eachSystem(scene, entity, withChildren, [&](Entity e){ subsystem->clear(e); });
 }
 
 // ---------------------------------------------------------------- exposed parameters

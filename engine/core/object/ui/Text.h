@@ -74,6 +74,26 @@ namespace jasperengine{
         void setPivotCentered(bool pivotCentered);
         bool isPivotCentered() const;
 
+        // Outline and shadow (TMP outline and underlay), in UI units; colours sRGB. Either
+        // one switches the text to signed-distance glyphs.
+        void setOutlineWidth(float outlineWidth);
+        float getOutlineWidth() const;
+        void setOutlineColor(Vector4 color);
+        Vector4 getOutlineColor() const;
+        void setShadowEnabled(bool shadowEnabled);
+        bool isShadowEnabled() const;
+        void setShadowColor(Vector4 color);
+        Vector4 getShadowColor() const;
+        void setShadowOffset(Vector2 offset);
+        Vector2 getShadowOffset() const;
+        void setShadowSoftness(float softness);
+        float getShadowSoftness() const;
+        void setShadowDilate(float dilate);
+        float getShadowDilate() const;
+        // TMP maxVisibleCharacters: characters past it are not drawn (-1 all)
+        void setVisibleCharacters(int visibleCharacters);
+        int getVisibleCharacters() const;
+
         AABB getAABB() const;
         AABB getWorldAABB() const;
 
@@ -91,6 +111,10 @@ namespace jasperengine{
         // default; the @texture uniforms by path ("" removes one: its default binds); the
         // enabled @feature and chosen @keywords defines
         Vector4 getShaderParam(const std::string& name) const;
+        // a custom-block member that follows a global shader value (Shader.setGlobal*) instead of
+        // its shader uniform; "" unbinds (false when nothing changed)
+        bool setShaderGlobalBinding(const std::string& member, const std::string& global);
+        std::string getShaderGlobalBinding(const std::string& member) const;
         void setShaderTexture(const std::string& name, const std::string& path);
         std::string getShaderTexture(const std::string& name) const;
         void setShaderFeature(const std::string& define, bool enabled);

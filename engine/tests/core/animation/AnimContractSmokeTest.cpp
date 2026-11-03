@@ -94,7 +94,8 @@ TEST(AnimContract, AnimationClipIO){
 
     EXPECT_NE(std::string(anim::unityYamlRefusal()).find("Unity .anim (YAML)"), std::string::npos);
     EXPECT_STREQ(anim::ANIM_FORMAT, "jasperengine.anim");
-    EXPECT_EQ(anim::ANIM_VERSION, 1);
+    // version 2 (anim-retarget): humanoid clips; other clips are still written as version 1
+    EXPECT_EQ(anim::ANIM_VERSION, 2);
 
     anim::ClipParseError error;
     error.line = 3;

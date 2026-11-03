@@ -64,6 +64,11 @@ namespace jasperengine{
         // values of the fork's custom uniform blocks, by member name
         ShaderUniformValues shaderUniforms;
         bool needUpdateShaderUniforms = false;
+        // custom-block members that follow a global shader value (Shader.setGlobal*): member
+        // -> global name, over shaderUniforms and the manifest default; globalsVersionSeen is
+        // ShaderGlobals::getVersion() when the blocks were last written with them
+        ShaderGlobalBindings shaderGlobalBindings;
+        uint64_t globalsVersionSeen = 0;
         CustomUniformBlock customVSParams;
         CustomUniformBlock customFSParams;
         // shader library: textures by @texture uniform name and enabled @feature/@keywords
@@ -85,6 +90,11 @@ namespace jasperengine{
         bool sceneInputsPredicted = false; // see MeshComponent::sceneInputsPredicted
         // its shader's @state priority=, the transparent queue order (points have no sortPriority)
         int sortPriority = 0;
+        // added to its camera distance in the transparent queue (a version 2 Particle System's
+        // renderer sortingFudge, written by it; runtime): lower draws on top, Unity
+        float sortingFudge = 0.0f;
+        // a version 2 Particle System's renderer sortPriority, added to sortPriority when queued (runtime)
+        int particleSortPriority = 0;
 
         Texture texture;
 
@@ -98,6 +108,15 @@ namespace jasperengine{
         bool isTransparent() const { return transparent || (autoTransparency && derivedTransparent); }
 
         bool hasTextureRect = false;
+
+        // UI particles (Points under a RectTransform): the Canvas Group alpha over the chain,
+        // multiplied into each render point (UISystem::syncCanvasGroups), runtime
+        float uiGroupAlpha = 1.0f;
+        // uiGroupAlpha changed after the render update (a write in onPostUpdate, synced by the
+        // UI draw): RenderSystem::draw rebuilds the render points before this frame's passes
+        bool needUpdateGroupAlpha = false;
+        // the pipeline types it was loaded with (see UIComponent::loadedPipelines)
+        uint16_t loadedPipelines = 0;
 
         bool needUpdate = true;
         bool needUpdateBuffer = false;

@@ -76,7 +76,7 @@ SIMD, the S06 job system). Old scenes play exactly as before.
 
 **Out of scope**
 - GPU/compute animation sampling (README: no compute requirement).
-- Humanoid muscle space, mirroring, sync layers, Unity `.controller`/`.anim` import (README: no
+- Humanoid muscle space (mirroring arrived with upstream's anim-retarget, §12), sync layers, Unity `.controller`/`.anim` import (README: no
   Unity importer), ragdolls, clip compression, property/sprite-frame curves, VRM/KHR humanoid
   extensions, rate LOD by screen height.
 - OpenEngine's graph runtime, editor panels, retarget nodes (README do-not-copy: their editor UI
@@ -166,8 +166,10 @@ gets no entry from this stream.
   parameter; targets settable from Lua/MCP.
 - **R12 Humanoid retargeting.** A clip whose source model (`model#clip`'s model; a `.anim`'s
   `source.path` or `preview.model`) is another humanoid model than the Animator's plays through
-  D12 retargeting (slots + hips). `retarget: Off` disables. Avatar = upstream humanoid detection
-  + `.humanoid` sidecar of the Animator's model.
+  D12 retargeting (slots + hips; with §12: fingers, eyes, jaw, folded slots, humanoid clips,
+  state Mirror / Foot IK). `retarget: Off` disables. Avatar = upstream humanoid detection
+  + `.humanoid` sidecar of the Animator's model. The Animation Player retargets through the same
+  path (§12 "Retargeting").
 - **R13 Modes.** Update: Normal, AnimatePhysics (evaluated in FixedUpdate), UnscaledTime. Culling:
   AlwaysAnimate, CullUpdateTransforms (time, states, events and root motion advance; sampling, IK,
   skinning skipped when none of its meshes was visible last frame), CullCompletely.
@@ -516,3 +518,190 @@ Unit tests in `engine/tests/core/animation/` (`Animator*.cpp`), editor tests in
   expects an older shader message; the fluid / UI-effect "no notice" exports get S18's
   unconditional `licenses/OpenEngine-LICENSE.txt`), or are flaky (`test_animation_assets`
   autosync and `test_post_processing_review_fixes` LUT: pass and fail across three reruns).
+
+## 12. Upstream absorption (sync 4)
+
+Upstream (origin/main, "anim layers", `docs/superpowers/specs/2026-10-31-anim-layers-design.md`)
+built Animation Player layers with Avatar Masks, and Animator Controllers played by the Animation
+Player itself, with their own `.controller` / `.mask` readers, Animator window and MCP tool
+(`edit_animator`). S21 is the main implementation; upstream's unique parts were absorbed onto it.
+
+**What was kept from upstream, on S21's runtime.**
+- Animation Player layers (`AnimationPlayerComponent::layers`, `clips[].layer`; weight, mask,
+  override / additive, per-layer `play` / `crossFade` / `queue`, `setLayerWeight(name, w, fade)`,
+  `PlayMode.STOP_ALL`, events only from weighted layers) with upstream's semantics, composed with
+  S21's per-element maths (`poseBlendRotation` / `poseAdditive*`, the scalar lanes of the SIMD
+  kernels) and S21's masks (`AvatarMaskWeights.h`). The Inspector's Layers table, clip Layer combo,
+  Create Mask from Selection, mask coverage in Bindings, the Animation window's Preview over and
+  masked rows, MCP `set_properties` of layers, `get_animation {entity}` layers and coverage,
+  `get_animation {mask, root}` and `{controller}`.
+- Upstream's Inspector parts: the Avatar Mask figure (fractional parts, Default, Root
+  Hierarchy, Preview Model, Users), the controller asset's validation (`validateController`: clips
+  that do not load, mistyped parameters, dead ends, unreachable states, transitions never taken,
+  unused parameters, non-Lua names), "Create Animator Controller from Clips" (an Animator added,
+  the player disabled, one scene step). The Animator window gained upstream's behaviours: renames
+  that follow their references, Copy / Paste, typed paths checked, a Problems strip whose click
+  selects the item, the current layer followed by name across layer list changes (a stale
+  selection dropped), parameter removal taking its conditions (MCP too), state removal taking the
+  transitions into it (MCP too), out-of-range numbers refused by `edit_animator_controller`, whose
+  result now carries `warnings` and `users`.
+- Upstream's controller-on-player API, as a **handover**: a disabled Animation Player on a
+  GameObject with an Animator forwards `play` / `crossFade` / `stop` / `isPlaying` / `setEnabled`,
+  the parameters, the state reads (`ControllerStateInfo`), `playInLayer` / `crossFadeInLayer`,
+  layer weights and its `onStateEnter` / `onStateExit` / `onEvent` to the Animator
+  (`object/AnimationPlayer.h`). `GameObject:getAnimator()` returns the Animator (the player without
+  one); the Animator's Lua class also answers upstream's names (`getCurrentStateName`,
+  `getCurrentStateInfo`, `getNextStateInfo`, `isInTransition([layer])`, `playInLayer`,
+  `crossFadeInLayer`, `hasController`, `hasParameter`, layer weights by name).
+
+**Formats.** `.controller` and `.mask` are version 2 (`CONTROLLER_VERSION`, `MASK_VERSION`); both
+dialects wrote `"version": 1` with the same header, so a version 1 file is told apart by its
+members (`AnimatorAssetIO.cpp`, `AnimatorFileDialect`): a controller is upstream's when a layer has
+upstream's members (`states`, `transitions`, `blend`, `default_state`, `any_state` as an object,
+`mask_guid`, a string `mask`) and none has S21's (`state_machine`, `blending`, `slot`); a mask is
+upstream's when it has upstream's members (`default`, `humanoid`, `transforms`, `preview`) and no
+S21 member, or upstream's are informative and S21's are not. Upstream's files are read by
+`UpstreamAnimFormats` and converted losslessly: every member lands in an S21 member or in the
+unknown keys of the matching S21 object (unknown keys are kept at every level now, and written
+back; an unknown key colliding with an S21 member is kept as `upstream_<key>`). Controller: flat
+states and transitions nest into each layer's state machine (`from: "any"` -> Any State),
+`blend` -> `blending`, string references + `*_guid` -> `{path, guid}`, `interruption` ->
+`interruption_source`, upstream's defaults made explicit (`has_exit_time` true,
+`can_transition_to_self` true on Any State), `wrap` -> `loop` (new `ping_pong`, `clamp_forever`,
+`repeat`), additive reference -> `clip` (new: the .anim's own `additive_reference`), a child's
+`speed` -> `time_scale`, `mirror` / `foot_ik` / `retarget` / `automate_thresholds` kept as unknown
+keys, positions kept (a grid for states without one). Mask: `default` -> default, `humanoid` ->
+`body_parts` (upstream's arm also weighs the hand; fingers are parts of their own now), `transforms`
+-> `paths` (with their `children`, upstream's default true), `preview.model`, `root_hierarchy`
+true. S21's version 1 masks convert too (default = the body's weight, every part set, a hand's
+part also below it, paths exact). Readers report `version`, `dialect` and `converted()`; the
+editor, MCP (`read_as`) and `check --anims` note a converted file, and the next save writes version
+2. A save never drops data: the conversion tests read, save and re-read every upstream member.
+
+**Mask rule (version 2).** A GameObject's weight: its `paths` entry, else its nearest ancestor's
+entry with `children`; else (a humanoid rig) its body part (slot bones by slot: body, head,
+shoulder to forearm `<side>_arm`, the hand bone `<side>_hand`, legs; a non-slot bone takes its
+nearest slot ancestor's part, below a hand `<side>_fingers`; with `root_hierarchy` the root and
+what is between it and the hips: `root`); a part not set weighs `default`; else `default`. Root
+motion weighs the root part. Animator layers and Animation Player layers use the same function.
+
+**Migrations.** Scene version 5 -> 6 and prefab 6 -> 7 (`StreamMigrations.cpp`
+`moveAnimationPlayerControllers`): a player's `controller` / `controllerGuid` become an
+`animator` component on the same entity playing that controller (enabled as the player was,
+`retarget: off` as upstream played it), and the player is disabled so it hands over; prefab
+instance overrides of a player's controller become an added Animator. Players with layers load
+unchanged (the codec writes `layers` and `clips[].layer`, `StreamComponents.cpp`); a `controller`
+key left in a current file is not read (a warning).
+
+**Clip property tracks on the Animator (anim-properties, sync 4 with origin/main 27d562a6b).**
+Upstream's property tracks (`ClipChannel::Property`: Catalog component properties, GameObject
+active, enabled checkboxes, Lua script fields) play on the Animator as they play on the Animation
+Player: the same bindings (`PropertyBindings.h`, bound on the entity the path names, `""` the
+root) and key space. Each bound (entity, property) is `width` float channels of the rig
+(`AnimatorRig::properties`), sampled by `sampleClip` (swizzle tracks key one component, a whole
+track the components no swizzle track keys, RGB keys of a Color4 an opaque alpha, a discrete
+binding of interpolating keys stepped) and blended like morph weights by states, transitions and
+layers; layer masks pass them (masks select transforms). `AnimatorSystem::writePose` writes the
+values that changed, a discrete property rounded to the nearest value (the heavier side of a
+two-way blend), deferred rows (GameObject active, a script's enabled) after the other writes; the
+rest is taken before the first write and put back by the preview's restore. An entity keyed only by
+property tracks is not a bone. Test: `AnimatorSystemTest.PropertyTracksPlayOnTheAnimator`.
+
+**Deviations from upstream (S21's and Unity's rules win).**
+1. A destination's `onStateEnter` fires when its transition starts, the source's `onStateExit`
+   when it ends (upstream: both at the end).
+2. An interrupted transition freezes the blended pose and fades it out under the new one.
+3. A blend tree state's length is the weighted average of its children's; `normalizedTime`
+   excludes the cycle offset.
+4. A transition with neither conditions nor exit time is never taken (validated), not taken at
+   once.
+5. A controller with no layers has none (upstream added a Base Layer on read).
+6. Parameter names that are not Lua identifiers are kept and warned about (scripts pass names as
+   strings), not refused.
+7. Morph-weight and lattice channels on entities that are not bones follow the layer's mask like
+   bones.
+8. The last layer of a controller cannot be removed; the base layer may move (Unity's rule).
+
+**Tests.** Core: `AnimatorUpstreamFiles` (written red first: an upstream controller read as empty
+layers and a save wiped it, an upstream mask let every bone through; then the conversion member
+by member, the converted file playing like the upstream one, the humanoid mask conversion, S21's
+version 1 files), `Layers` (upstream's layer tests), `Controllers` (upstream's controller tests
+through the handover). Editor: `AnimationLayersEditor`, `AnimationLayersUi`, `AnimationLayersFigure`,
+`AnimatorWindow` (upstream's window tests on S21's window), `StreamMigrations.SceneV5ToV6*`. MCP:
+`test_animation_layers.py`, `test_animator_controller.py`, `test_animator_window.py`,
+`test_checks.py` (`--anims`).
+
+### Retargeting (anim-retarget)
+
+Upstream's anim-retarget (`docs/superpowers/specs/2026-10-31-anim-retarget-design.md`) made the
+Animation Player retarget through its own path: generic clips converted to humanoid clips in the
+clip pool (`"<clip>@humanoid"`) and realised on the player's rig, with humanoid clips, Avatars,
+Mirror and Foot IK. S21's retargeting wins, and there is **one retarget path** for the Animator
+and the Animation Player: `animation/AnimatorRetarget.{h,cpp}`. A clip becomes a
+`HumanoidSample` (a humanoid clip's tracks, or a generic clip read at play time through its
+source model's `RetargetSource`: D12's source half, `E = A_s * local * B_s`), and
+`realiseHumanoid` poses the target (D12's target half, `left_t * E * neutral_t`), then the
+Animator writes its rig's pose (`writeRealised`) and the player its bone entities
+(`HumanoidBinding` outputs). Nothing else turns clip values into another rig's bones: the pool's
+`@humanoid` form is gone (a Retarget entry loads its clip as it is), and Convert to Humanoid Clip
+writes keys with the very source maps the play-time path applies (a converted clip and its generic
+original play the same, `HumanoidRetargetTest` checks it on every conversion).
+
+**Absorbed from upstream, on that path.**
+- Humanoid clips (`.anim` version 2: `humanoid` / `humanoid_position` tracks, `{"angles"}` keys,
+  the `humanoid` header): the Animator plays them (`AnimatorRig`'s sampler leaves humanoid tracks
+  to the path; their generic tracks bind by path), as does the player.
+- The Avatar (`.humanoid` version 2: `animation_type`, `extra_bones`, `twist`): the Animator's
+  avatar is its model's `RetargetSource` (the skin skeleton of `pose::buildSkeletonFromGltf` with
+  its bridges, the sidecar's bones, extra bones and twist corrections), mapped onto the rig's bones
+  by path (deviation 7), else one built from the rig's own bones. Fingers, eyes and jaw retarget;
+  a slot the target lacks folds into its next present one (S21 dropped it); a slot the clip lacks
+  is neutral; an Animation Type: Humanoid model serves humanoid clips (the pool's conversion).
+- Mirror and Foot IK: S21 state fields `mirror`, `foot_ik` and `retarget` (written when true;
+  upstream's state flags convert into them, no longer unknown keys) and a blend child's `mirror`
+  (it flips its state's). A state with any of them plays its clips through the humanoid path
+  whenever the Animator has an avatar (its own model's clips read through the avatar), so Mirror
+  works on the model's own clips (deviation 9 below); `retarget` retargets whatever the Animator's
+  Retarget (a migrated upstream controller has the Animator's Retarget Off, as upstream played
+  it, and keeps its states' Retarget). A clip used by states that ask for the path and by states
+  that do not gets one clip slot of each (`CompiledController::clipHumanoid`). The Animator
+  window's state inspector has Retarget / Mirror / Foot IK, the blend tree table a Mirror column;
+  "Create Animator Controller from Clips" copies each entry's flags onto its state; MCP
+  `edit_animator_controller` takes `mirror`, `foot_ik`, `retarget` on states and `mirror` on
+  children, `get_animator` lists them; Lua `AnimatorStateInfo.mirror` / `.footIK`.
+- The Avatar Configuration window and the Model Inspector's Rig foldout (upstream's), now also
+  what the Animator drawer's **Configure Avatar...** opens; Convert to Humanoid Clip (the Project
+  window's `.anim` menu too) and Bake to Humanoid Clip; Lua `Model:getHumanoidInfo`; MCP
+  `set_humanoid` Avatar fields, humanoid tracks in `edit_animation`, `get_animation`'s
+  `retarget_report` and `realised` (computed through the play-time binding of the entry).
+
+**Lost in the merge, restored.** The player entries' `retarget` / `mirror` / `footIK` were on
+`AnimationPlayerClip` but not in the scene codec (`StreamComponents.cpp`: an upstream scene's
+flagged entries loaded unflagged and a save dropped them), the S08 tables (`set_properties
+clips[i].retarget` was refused) or the exported Factory code (exported games played them as
+generic entries); `RuntimeFields.gen.inc` and `docs/mcp/TOOLS.md` are regenerated.
+
+**Rules and deviations.**
+9. Mirror and Foot IK apply whenever the Animator has a humanoid avatar (Unity: every clip of a
+   humanoid avatar is humanoid); upstream applied them to humanoid clips and Retarget entries only
+   (its player keeps that rule: a generic entry without Retarget ignores them).
+10. A state's Foot IK solves per sample before blending (upstream's order: the same pose on both
+    players), with the pose system's limb IK; it is not the IK stack's FootIK constraint (ground
+    raycasts after every layer, R11).
+11. A Retarget entry retargets at play time: no conversion wait (H9), the source rig built on the
+    first bind (cached per model and sidecar text) and rebuilt after a sidecar edit; a missing
+    source model fails the state ("retarget: the clip names no source model (set its Preview
+    Model)") and binds nothing.
+12. The Animator binds a retargeted generic clip's generic tracks (props, unmapped leaf bones)
+    by path only; the player also tries a unique bone name (upstream's 7.6).
+
+**Tests.** Core: `AnimatorHumanoid` (written red first, commit "Retarget absorption, red": the
+Animator left the robot at rest on a humanoid clip, on an Animation Type: Humanoid model's clips
+and on upstream's state Mirror / Foot IK / Retarget, ignored the Avatar's twist, dropped the
+hero's upper chest instead of folding it and left the fingers at rest; then each matches the
+Animation Player within 0.05 degrees and 0.1 mm), its lossless-file tests (upstream controllers
+with the flags, the earlier absorption's unknown-key form, `.anim` v2 and `.humanoid` v2 round
+trips), `HumanoidRetargetTest` and `HumanoidModelTest` (upstream's, un-parked: play time and
+conversion agree, S21 masks for the masked humanoid layer, a Retarget entry without a source
+model), `AnimatorRetargeting` (AC7 unchanged). Editor: `AnimatorEditor` (the player's flags on
+the states), upstream's `HumanoidRetargetEditor`. MCP: `test_animation_retarget.py`.

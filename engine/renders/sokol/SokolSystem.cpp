@@ -210,11 +210,15 @@ void sokol_log(const char* tag,                // e.g. 'sg'
                     const char* filename_or_null,   // source filename, may be nullptr in release mode
                     void* user_data){
     // The GL backend warns (and logs the resource name) when the driver strips an unused
-    // uniform block or image-sampler. This is benign and expected for custom/simplified
-    // shaders that don't use every binding their variant provides, so log it at debug only.
+    // uniform block, image-sampler or vertex attribute. This is benign and expected for
+    // custom/simplified shaders that don't use every binding their variant provides (an unlit
+    // library shader on a mesh with normals and tangents: the converted particle quads), so log
+    // it at debug only.
     if (log_item_id == SG_LOGITEM_GL_UNIFORMBLOCK_NAME_NOT_FOUND_IN_SHADER ||
-        log_item_id == SG_LOGITEM_GL_IMAGE_SAMPLER_NAME_NOT_FOUND_IN_SHADER){
-        Log::debug("%s\n", message_or_null);
+        log_item_id == SG_LOGITEM_GL_IMAGE_SAMPLER_NAME_NOT_FOUND_IN_SHADER ||
+        log_item_id == SG_LOGITEM_GL_VERTEX_ATTRIBUTE_NOT_FOUND_IN_SHADER){
+        // the warning itself carries no message in release builds: the name follows it (info)
+        if (message_or_null) Log::debug("%s\n", message_or_null);
         return;
     }
     // A full pool: one clear error per pool (each failed object would log one, every frame
@@ -472,6 +476,10 @@ void SokolSystem::executeQueue(){
 }
 
 void SokolSystem::commit(){
+    // no device (a headless frame: tests running Engine::systemUpdate without graphics): nothing
+    // to commit (sokol asserts on it in debug builds)
+    if (!sg_isvalid())
+        return;
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     // what the frame took of Vulkan's descriptor buffer (sokol's own count: every draw's sets),
     // read before sg_commit submits it

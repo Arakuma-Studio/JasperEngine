@@ -1277,8 +1277,10 @@ For each declaration, in this order:
      flex until phase 3). `var()` inside → resolved
      through the custom property index when every declaration of the variable is static and
      identical in kind; otherwise the declaration is dropped with `HTMLUI-CSS-0012`.
-   - `env(safe-area-inset-*)` → `0px` (or the fallback); other `env()` → fallback or drop,
-     Info. `attr()` → dropped Warning `HTMLUI-CSS-0015`.
+   - `env(safe-area-inset-*)` (and `safe-area-max-inset-*`) → `var(--jasper-safe-area-inset-*, <fallback or 0px>)`,
+     a runtime variable the document system sets on each document from `Screen.safeAreaInsets`
+     (safe-area spec 6.4; never folded, `0px` where a rewrite must fold a value statically); other
+     `env()` → fallback or drop, Info. `attr()` → dropped Warning `HTMLUI-CSS-0015`.
    - `!important` → handled in step 7.
    - Quoted strings → double quotes, inner `"` escaped (RCSS only understands `"`).
 5. **`inherit`, `initial`, `unset`, `revert`, `revert-layer`** (until `CssWideKeywords`;
@@ -4259,7 +4261,7 @@ I rows `HTMLUI-CSS-0003` (Info); F rows `HTMLUI-CSS-0007`. Inherited properties 
 | `rgb()`, `rgba()`, `hsl()`, `hsla()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, `color()`, relative colors | R | hex output |
 | `color-mix()`, `light-dark()` | R / A | static operands; `light-dark` → light |
 | `var()` | N | typed when needed |
-| `env()` | R / U | `safe-area-inset-*` → 0 |
+| `env()` | R / U | `safe-area-inset-*` → the live inset (`var(--jasper-safe-area-inset-*)`) |
 | `attr()` | U | |
 | `calc()`, `min()`, `max()`, `clamp()` | F(Calc) | static folding (3.9.6) until the fork has `Calc` |
 | `round()`, `mod()`, `rem()`, `abs()`, `sign()`, `sin()`, `cos()`, `tan()`, `asin()`, `acos()`, `atan()`, `atan2()`, `pow()`, `sqrt()`, `hypot()`, `log()`, `exp()` | A | static folding (3.9.6) in every fork state (PR #983 has only the four above) |

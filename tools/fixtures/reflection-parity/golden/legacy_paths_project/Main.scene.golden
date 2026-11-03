@@ -1,4 +1,4 @@
-formatVersion: 5
+formatVersion: 7
 guid: 0a0a075220cf4d05f700ac24562aab37
 id: 1
 name: Main
@@ -40,11 +40,6 @@ maxValues:
   maxExternalBuffers: 2
   maxSpriteFrames: 0
   maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: mesh
     properties: 33554433
@@ -151,7 +146,7 @@ entities:
         path: prefabs/Lamp.prefab
         guid: 30aeaad93c80be96b89030fe283e7a8b
     prefabInstance:
-      version: 6
+      version: 8
       overrides:
         - registryEntity: 1001
           removedComponents:

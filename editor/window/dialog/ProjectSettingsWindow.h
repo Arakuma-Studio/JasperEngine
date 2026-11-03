@@ -4,7 +4,10 @@
 #pragma once
 
 #include "Project.h"
+#include "NativePluginDialog.h"
 #include "imgui.h"
+#include "util/ShaderGlobalsEdit.h"
+#include "util/ShaderGlobalsUsage.h"
 
 #include <string>
 #include <filesystem>
@@ -31,6 +34,7 @@ namespace jasperengine::editor {
         int m_canvasWidth = 0;
         int m_canvasHeight = 0;
         int m_scalingModeIndex = 0;
+        CanvasScalerSettings m_uiScale;
         int m_textureStrategyIndex = 0;
         bool m_vsyncEnabled = true;
         // Quality > Atmosphere Quality (desktop, mobile, web) as AtmosphereQuality values
@@ -49,6 +53,11 @@ namespace jasperengine::editor {
         char m_windowTitleBuffer[256] = {0};
         std::string m_windowTitleOriginal;
         fs::path m_windowIcon;
+        // Player > Resolution and Presentation
+        int m_defaultOrientationIndex = 4;
+        uint8_t m_allowedOrientations = PresentationSettings{}.allowedOrientations;
+        bool m_keepScreenOn = true;
+        int m_targetFrameRate = -1;
         char m_applicationNameBuffer[256] = {0};
         char m_applicationIdentifierBuffer[256] = {0};
         char m_applicationVersionBuffer[64] = {0};
@@ -63,6 +72,10 @@ namespace jasperengine::editor {
         ShaderCreationProjectSettings m_shaderCreation;
         HtmlUiRenderSettings m_htmlUiRender;
         NavigationProjectSettings m_navigation;
+        AudioSettings m_audioSettings;
+        char m_audioMixerBuffer[512] = {0};
+        char m_audioDefaultGroupBuffer[128] = {0};
+        DebugSettings m_debugSettings;
         fs::path m_assetsDir;
         fs::path m_luaDir;
         std::vector<fs::path> m_scriptDirs;
@@ -75,6 +88,7 @@ namespace jasperengine::editor {
         float m_inputDeadzone = 0.15f;
         std::vector<fs::path> m_inputActionsFiles;
         std::string m_inputStatus;
+        Physics3DWorldSettings m_physics3DWorld;
         bool m_runtimeShadersEnabled = true;
         int m_mobilePbrTierIndex = 1;
         bool m_packNativeResources = false;
@@ -87,6 +101,7 @@ namespace jasperengine::editor {
         char m_androidKeystoreAliasBuffer[128] = {0};
         char m_iosTeamIdBuffer[32] = {0};
         int m_iosExportMethodIndex = 0;        // development, ad-hoc, app-store, enterprise
+        bool m_allowInsecureHttp = false;
         bool m_versionControlMetadata = true;
         VcsProjectSettings m_vcs;
         char m_webApplicationNameBuffer[256] = {0};
@@ -94,6 +109,7 @@ namespace jasperengine::editor {
         fs::path m_webCustomHtmlShell;
         char m_webHeadIncludeBuffer[2048] = {0};
         bool m_webResizeCanvasToWindow = true;
+        bool m_webViewportFitCover = true;
         bool m_webHideEmscriptenUI = false;
         char m_linuxApplicationNameBuffer[256] = {0};
         char m_linuxCommentBuffer[512] = {0};
@@ -127,17 +143,38 @@ namespace jasperengine::editor {
         char m_androidVersionCodeBuffer[16] = {0};
         int m_androidMinSdk = 21;
         int m_androidTargetSdk = 33;
-        int m_androidOrientationIndex = 0;
         bool m_androidAbiArmeabiV7a = true;
         bool m_androidAbiArm64V8a = true;
         bool m_androidAbiX86 = true;
         bool m_androidAbiX86_64 = true;
         std::set<std::string> m_androidPermissions;
+        int m_androidInternetAccessIndex = 0;
         bool m_androidAllowBackup = true;
         bool m_androidFullscreen = true;
-        bool m_androidKeepScreenOn = false;
         bool m_androidAdmobEnabled = false;
         char m_androidAdmobAppIdBuffer[128] = {0};
+
+        // Native Plugins being edited (Project Settings > Native Plugins); plist entries as rows
+        std::vector<std::string> m_gradleDependencies;
+        std::vector<std::string> m_gradleRepositories;
+        std::vector<std::string> m_gradleProperties;
+        std::vector<std::string> m_extraPermissions;
+        std::string m_manifestXml;
+        std::string m_manifestApplicationXml;
+        std::vector<std::pair<std::string, NativePlistValue>> m_iosPlistEntries;
+        std::string m_iosPlistXml;
+        std::vector<std::string> m_iosFrameworks;
+        std::vector<NativeCocoaPod> m_iosCocoapods;
+        std::vector<NativeSwiftPackage> m_iosSwiftPackages;
+        std::string m_iosEntitlementsXml;
+        std::string m_iosDeploymentTarget;
+        std::vector<std::pair<std::string, NativePlistValue>> m_macosPlistEntries;
+        std::vector<std::string> m_macosFrameworks;
+        std::vector<std::string> m_webScriptUrls;
+        NativePluginDialog m_nativePluginDialog;
+        // plugins/native as last scanned (open, Refresh, after Create Plugin): not every frame
+        std::string m_nativeSummary;
+        void refreshNativeSummary();
 
         // Tags and Layers being edited: user tags, and user layer names indexed by layer
         // (MAX_LAYERS entries, built-in ones empty)
@@ -149,24 +186,85 @@ namespace jasperengine::editor {
         LayerCollisionRows m_layerCollision3D = allLayersCollide();
         LayerCollisionRows m_layerCollision2D = allLayersCollide();
 
+        // Project Settings > Input's Input Manager: the actions asset's "Input Manager" map (Unity's
+        // defaults without an asset) being edited as Unity's virtual axes and buttons. The section
+        // has its own undo (Ctrl+Z / Ctrl+Y while the page shows); OK makes the whole edit one
+        // project history step (InputActionsCmd), which makes an asset when the project has none
+        std::vector<InputManagerAction> m_inputActions;
+        std::vector<InputManagerAction> m_inputOriginal;  // as the dialog opened (or the asset changed)
+        std::filesystem::path m_inputActionsSource;       // the asset those came from
+        bool m_inputManagerReadable = true;               // the asset could be read
+        std::vector<InputManagerAction> m_inputCommitted;      // the state of the last section undo step
+        std::string m_inputCommittedJson;
+        std::vector<std::vector<InputManagerAction>> m_inputUndo;
+        std::vector<std::vector<InputManagerAction>> m_inputRedo;
+        int m_inputSelected = 0;
+        char m_inputSearch[64] = {0};
+        char m_inputControlFilter[64] = {0};
+        // Listen: the next key, mouse button or gamepad control pressed goes to this binding
+        // (list 0: positive, 1: negative, 2: the gamepad axis)
+        struct InputListen {
+            int action = -1;
+            int binding = -1;
+            int list = 0;
+            int frames = 0;
+        };
+        InputListen m_inputListen;
+
+        // Shader Globals being edited (Project Settings > Graphics). Every valid edit is declared to
+        // the engine at once, so the Scene and Game views follow it; Cancel declares the project's
+        // again, OK makes the whole edit one project history step (a renamed global takes the
+        // material and component bindings of the open scenes along)
+        ShaderGlobalsEdit m_globalsEdit;
+        // "Used by", scanned when the page opens and on Refresh (not every frame)
+        std::vector<ShaderGlobalsUsage::Use> m_shaderGlobalUses;
+        bool m_shaderGlobalUsesScanned = false;
+        int m_shaderGlobalRemove = -1;   // the row whose removal asks first (bindings use it)
+
         // Unity-style category list; indexes ProjectCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
 
         void drawSettings();
         void drawPlayerSettings();
+        // Default Orientation, Allowed Orientations, Keep Screen On, Target Frame Rate (rows of the open table)
+        void drawPresentationSettings();
         void drawGraphicsSettings();
         void drawShaderCreationSettings();
+        void drawShaderGlobals();
+        // the default (or, in Play, the live value) of a global: a field per type; matrices and
+        // arrays edit in a popup. True when `values` changed
+        bool drawShaderGlobalValue(const char* id, ShaderGlobalType type, unsigned int arraySize, std::vector<Vector4>& values);
+        bool drawShaderGlobalTexture(const char* id, ShaderGlobalType type, std::string& path);
+        void refreshShaderGlobalUses();
         void drawQualitySettings();
         void drawTextureSettings();
         void drawPhysicsSettings();
         void drawPhysics2DSettings();
         void drawInputSettings();
+        void drawAudioSettings();
         void drawNavigationSettings();
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);
+        // the Input Manager section of the Input page
+        void drawInputManagerSection();
+        void loadInputManagerActions();
+        void drawInputActionList();
+        void drawInputActionDetails(InputManagerAction& action, int actionIndex);
+        void drawInputBinding(InputManagerAction& action, int actionIndex, int bindingIndex);
+        // a binding's control list: names to remove, a picker to add, Listen
+        void drawInputControls(const char* id, std::vector<InputControl>& controls, int actionIndex, int bindingIndex, int list);
+        void pollInputListen();
+        void commitInputEdit();
+        void undoInputEdit();
+        void redoInputEdit();
+        // First Input problem that blocks OK, "" when there is none
+        std::string inputError() const;
+
         void drawScriptingSettings();
+        // Debug: the on-device console and stats overlay, the log
+        void drawDebugSettings();
         void drawTagsAndLayersSettings();
         // Why the New Tag Name field cannot be added ("" when it can)
         std::string newTagError() const;
@@ -176,6 +274,7 @@ namespace jasperengine::editor {
         std::string tagsAndLayersError() const;
         void drawEditorSettings();
         void drawAssetLabelsSettings();
+        void drawNativePluginsSettings();
         Texture* findThumbnail(const std::string& path);
 
         // Player's per-platform tabs; each platform draws rows into the table its tab opens.
@@ -200,6 +299,8 @@ namespace jasperengine::editor {
         void open(Project* project, const char* category = nullptr);
         void show();
         bool isOpen() const { return m_isOpen; }
+        // a native plugin's Lua mock the Create Plugin dialog wrote (to open in the code editor); once
+        std::filesystem::path consumeCreatedFile() { return m_nativePluginDialog.consumeCreatedFile(); }
     };
 
 }

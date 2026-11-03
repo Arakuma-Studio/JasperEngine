@@ -17,12 +17,14 @@
 #include "Matrix4.h"
 #include "Quaternion.h"
 #include "Rect.h"
+#include "EdgeInsets.h"
 #include "Ray.h"
 #include "Sphere.h"
 #include "Plane.h"
 #include "AABB.h"
 #include "OBB.h"
 #include "Curve.h"
+#include "Log.h"
 #include "particles/ParticleValues.h"
 
 #include <optional>
@@ -133,22 +135,54 @@ namespace {
         return index < 0 ? -1 : index + 1;
     }
 
-    // a key table entry of a Gradient's colorKeys / alphaKeys argument, skipped when it is not one
-    template <class T>
-    std::vector<T> keyList(const luabridge::LuaRef& table){
-        std::vector<T> keys;
-        if (!table.isTable())
-            return keys;
-        const int count = table.length();
-        for (int i = 1; i <= count && keys.size() < Gradient::kMaxKeys; i++){
-            const luabridge::LuaRef entry = table[i];
-            if (!entry.isInstance<T>())
-                continue;
-            const auto key = entry.cast<T>();
-            if (key)
-                keys.push_back(*key);
+    // a key of a Gradient's colorKeys / alphaKeys argument: a GradientColorKey / GradientAlphaKey,
+    // or (upstream's lines-and-trails form) a {time, Vector3 sRGB colour} / {time, alpha} table
+    bool keyEntry(const luabridge::LuaRef& entry, GradientColorKey& key){
+        if (entry.isInstance<GradientColorKey>()){
+            const auto cast = entry.cast<GradientColorKey>();
+            if (!cast) return false;
+            key = *cast;
+            return true;
         }
-        return keys;
+        if (!entry.isTable() || entry.length() < 2) return false;
+        const luabridge::LuaRef time = entry[1];
+        const luabridge::LuaRef color = entry[2];
+        if (!time.isNumber() || !color.isInstance<Vector3>()) return false;
+        const auto c = color.cast<Vector3>();
+        if (!c) return false;
+        key = GradientColorKey{time.unsafe_cast<float>(), *c};
+        return true;
+    }
+
+    bool keyEntry(const luabridge::LuaRef& entry, GradientAlphaKey& key){
+        if (entry.isInstance<GradientAlphaKey>()){
+            const auto cast = entry.cast<GradientAlphaKey>();
+            if (!cast) return false;
+            key = *cast;
+            return true;
+        }
+        if (!entry.isTable() || entry.length() < 2) return false;
+        const luabridge::LuaRef time = entry[1];
+        const luabridge::LuaRef alpha = entry[2];
+        if (!time.isNumber() || !alpha.isNumber()) return false;
+        key = GradientAlphaKey{time.unsafe_cast<float>(), alpha.unsafe_cast<float>()};
+        return true;
+    }
+
+    // the keys of a colorKeys / alphaKeys argument, entries that are not keys skipped; false
+    // when it holds more than Gradient::kMaxKeys keys (Unity's limit: nothing is set then)
+    template <class T>
+    bool keyList(const luabridge::LuaRef& table, std::vector<T>& keys){
+        keys.clear();
+        if (!table.isTable())
+            return true;
+        const int count = table.length();
+        for (int i = 1; i <= count; i++){
+            T key;
+            if (keyEntry(table[i], key))
+                keys.push_back(key);
+        }
+        return keys.size() <= Gradient::kMaxKeys;
     }
 
     template <class T>
@@ -202,6 +236,7 @@ namespace {
             .addVariable("Gradient", particles::GradientValueMode::Gradient)
             .addVariable("TwoColors", particles::GradientValueMode::TwoColors)
             .addVariable("TwoGradients", particles::GradientValueMode::TwoGradients)
+            .addVariable("RandomColor", particles::GradientValueMode::RandomColor)
             .endNamespace();
 
         luabridge::getGlobalNamespace(L)
@@ -227,19 +262,31 @@ namespace {
             .addStaticFunction("linear", [](float timeStart, float valueStart, float timeEnd, float valueEnd) -> Curve {
                 return Curve::linear(timeStart, valueStart, timeEnd, valueEnd); })
             .addStaticFunction("easeInOut", &Curve::easeInOut)
-            .addStaticFunction("constant", [](float timeStart, float timeEnd, float value) -> Curve {
-                return Curve::constant(timeStart, timeEnd, value); })
+            // Unity's constant(timeStart, timeEnd, value); constant(value) is one key (upstream's form)
+            .addStaticFunction("constant", [](float first, std::optional<float> timeEnd, std::optional<float> value) -> Curve {
+                if (!timeEnd || !value) return Curve::constant(first);
+                return Curve::constant(first, *timeEnd, *value); })
             .addFunction("evaluate", &Curve::evaluate)
             .addFunction("addKey",
                 [](Curve& curve, float time, float value) -> int { return luaIndex(curve.addKey(time, value)); },
+                [](Curve& curve, float time, float value, float inTangent, float outTangent) -> int {
+                    return luaIndex(curve.addKey(CurveKey{time, value, inTangent, outTangent})); },
                 [](Curve& curve, const CurveKey& key) -> int { return luaIndex(curve.addKey(key)); })
             .addFunction("removeKey", [](Curve& curve, int index) -> bool {
                 if (!keyIndex(curve, index)) return false;
                 curve.removeKey((size_t)index - 1);
                 return true; })
-            .addFunction("moveKey", [](Curve& curve, int index, const CurveKey& key) -> int {
-                if (!keyIndex(curve, index)) return -1;
-                return luaIndex(curve.moveKey((size_t)index - 1, key)); })
+            .addFunction("moveKey",
+                [](Curve& curve, int index, const CurveKey& key) -> int {
+                    if (!keyIndex(curve, index)) return -1;
+                    return luaIndex(curve.moveKey((size_t)index - 1, key)); },
+                // the key to (time, value), its tangents kept
+                [](Curve& curve, int index, float time, float value) -> int {
+                    if (!keyIndex(curve, index)) return -1;
+                    CurveKey key = curve.keys[(size_t)index - 1];
+                    key.time = time;
+                    key.value = value;
+                    return luaIndex(curve.moveKey((size_t)index - 1, key)); })
             .addFunction("getKey", [](const Curve& curve, int index) -> std::optional<CurveKey> {
                 if (!keyIndex(curve, index)) return std::nullopt;
                 return curve.keys[(size_t)index - 1]; })
@@ -248,6 +295,21 @@ namespace {
                 curve.smoothTangents((size_t)index - 1, weight);
                 return true; })
             .addProperty("length", [](const Curve* curve) -> int { return (int)curve->keys.size(); })
+            .addProperty("keyCount", [](const Curve* curve) -> int { return (int)curve->keys.size(); })
+            // every key (a copy, a 1-based table); set it to replace them (sorted, equal times dropped)
+            .addProperty("keys",
+                [](const Curve* curve, lua_State* L) -> luabridge::LuaRef { return keyTable(L, curve->keys); },
+                [](Curve* curve, const luabridge::LuaRef& keys, lua_State*) {
+                    std::vector<CurveKey> read;
+                    if (keys.isTable()){
+                        for (int i = 1; i <= keys.length(); i++){
+                            const luabridge::LuaRef entry = keys[i];
+                            if (!entry.isInstance<CurveKey>()) continue;
+                            if (const auto key = entry.cast<CurveKey>()) read.push_back(*key);
+                        }
+                    }
+                    curve->keys = std::move(read);
+                    curve->normalize(); })
             .addProperty("preWrapMode", &Curve::preWrapMode, &Curve::preWrapMode)
             .addProperty("postWrapMode", &Curve::postWrapMode, &Curve::postWrapMode)
             .addFunction("__eq", &equalsLua<Curve>)
@@ -275,10 +337,28 @@ namespace {
             .beginClass<Gradient>("Gradient")
             .addConstructor<void()>()
             .addFunction("evaluate", &Gradient::evaluate)
-            .addFunction("setKeys", [](Gradient& gradient, const luabridge::LuaRef& colorKeys, const luabridge::LuaRef& alphaKeys) -> void {
-                gradient.colorKeys = keyList<GradientColorKey>(colorKeys);
-                gradient.alphaKeys = keyList<GradientAlphaKey>(alphaKeys);
-                gradient.sortKeys(); })
+            // false (and the gradient unchanged, a warning logged) for more than 8 keys of a kind
+            .addFunction("setKeys", [](Gradient& gradient, const luabridge::LuaRef& colorKeys, const luabridge::LuaRef& alphaKeys) -> bool {
+                std::vector<GradientColorKey> colors;
+                std::vector<GradientAlphaKey> alphas;
+                if (!keyList(colorKeys, colors) || !keyList(alphaKeys, alphas)){
+                    Log::warn("Gradient:setKeys: at most %d colour and %d alpha keys (got %d and %d): nothing set",
+                              (int)Gradient::kMaxKeys, (int)Gradient::kMaxKeys, (int)colors.size(), (int)alphas.size());
+                    return false;
+                }
+                gradient.colorKeys = std::move(colors);
+                gradient.alphaKeys = std::move(alphas);
+                gradient.normalize();
+                return true; })
+            .addProperty("colorKeyCount", [](const Gradient* gradient) -> int { return (int)gradient->colorKeys.size(); })
+            .addProperty("alphaKeyCount", [](const Gradient* gradient) -> int { return (int)gradient->alphaKeys.size(); })
+            // a copy of colour / alpha key `index` (1-based), nil out of range
+            .addFunction("getColorKey", [](const Gradient& gradient, int index) -> std::optional<GradientColorKey> {
+                if (index < 1 || (size_t)index > gradient.colorKeys.size()) return std::nullopt;
+                return gradient.colorKeys[(size_t)index - 1]; })
+            .addFunction("getAlphaKey", [](const Gradient& gradient, int index) -> std::optional<GradientAlphaKey> {
+                if (index < 1 || (size_t)index > gradient.alphaKeys.size()) return std::nullopt;
+                return gradient.alphaKeys[(size_t)index - 1]; })
             .addProperty("colorKeys", [](const Gradient* gradient, lua_State* L) -> luabridge::LuaRef {
                 return keyTable(L, gradient->colorKeys); })
             .addProperty("alphaKeys", [](const Gradient* gradient, lua_State* L) -> luabridge::LuaRef {
@@ -290,9 +370,18 @@ namespace {
 
         luabridge::getGlobalNamespace(L)
             .beginClass<particles::MinMaxCurve>("MinMaxCurve")
+            // origin/main's (Unity's) constructors too: (min, max) two constants, (multiplier,
+            // curve) a curve, (multiplier, min curve, max curve) two curves
             .addConstructor(
                 [](void* ptr) { return new (ptr) particles::MinMaxCurve(); },
-                [](void* ptr, float value) { return new (ptr) particles::MinMaxCurve(value); })
+                [](void* ptr, float value) { return new (ptr) particles::MinMaxCurve(value); },
+                [](void* ptr, float lo, float hi) { return new (ptr) particles::MinMaxCurve(particles::MinMaxCurve::twoConstants(lo, hi)); },
+                [](void* ptr, float multiplier, const Curve& curve) { return new (ptr) particles::MinMaxCurve(particles::MinMaxCurve::fromCurve(curve, multiplier)); },
+                [](void* ptr, float multiplier, const Curve& curveMin, const Curve& curveMax) {
+                    particles::MinMaxCurve value = particles::MinMaxCurve::fromCurve(curveMin, multiplier);
+                    value.mode = particles::CurveMode::TwoCurves;
+                    value.curveMax = curveMax;
+                    return new (ptr) particles::MinMaxCurve(value); })
             .addStaticFunction("twoConstants", &particles::MinMaxCurve::twoConstants)
             .addStaticFunction("fromCurve", [](const Curve& curve, float multiplier) -> particles::MinMaxCurve {
                 return particles::MinMaxCurve::fromCurve(curve, multiplier); })
@@ -315,9 +404,28 @@ namespace {
 
         luabridge::getGlobalNamespace(L)
             .beginClass<particles::MinMaxGradient>("MinMaxGradient")
+            // origin/main's (Unity's) constructors too (sRGB colours, as the pickers): a colour
+            // (Vector3: opaque), two colours, a gradient, two gradients
             .addConstructor(
                 [](void* ptr) { return new (ptr) particles::MinMaxGradient(); },
-                [](void* ptr, Vector4 color) { return new (ptr) particles::MinMaxGradient(color); })
+                [](void* ptr, Vector4 color) { return new (ptr) particles::MinMaxGradient(color); },
+                [](void* ptr, Vector3 color) { return new (ptr) particles::MinMaxGradient(Vector4(color.x, color.y, color.z, 1.0f)); },
+                [](void* ptr, Vector4 lo, Vector4 hi) {
+                    particles::MinMaxGradient value(lo);
+                    value.mode = particles::GradientValueMode::TwoColors;
+                    value.colorMax = hi;
+                    return new (ptr) particles::MinMaxGradient(value); },
+                [](void* ptr, const Gradient& gradient) {
+                    particles::MinMaxGradient value;
+                    value.mode = particles::GradientValueMode::Gradient;
+                    value.gradient = gradient;
+                    return new (ptr) particles::MinMaxGradient(value); },
+                [](void* ptr, const Gradient& lo, const Gradient& hi) {
+                    particles::MinMaxGradient value;
+                    value.mode = particles::GradientValueMode::TwoGradients;
+                    value.gradient = lo;
+                    value.gradientMax = hi;
+                    return new (ptr) particles::MinMaxGradient(value); })
             .addFunction("evaluate", [](const particles::MinMaxGradient& value, float time, std::optional<float> random) -> Vector4 {
                 return value.evaluate(time, random.value_or(0.0f)); })
             .addProperty("mode", &particles::MinMaxGradient::mode, &particles::MinMaxGradient::mode)
@@ -328,6 +436,13 @@ namespace {
             .addProperty("gradientMin", &particles::MinMaxGradient::gradient, &particles::MinMaxGradient::gradient)
             .addProperty("gradientMax", &particles::MinMaxGradient::gradientMax, &particles::MinMaxGradient::gradientMax)
             .endClass();
+
+        // upstream's (lines and trails) names: CurveKey is Keyframe, CurveWrap is WrapMode (its
+        // Clamp, Loop and PingPong are the same values)
+        lua_getglobal(L, "Keyframe");
+        lua_setglobal(L, "CurveKey");
+        lua_getglobal(L, "WrapMode");
+        lua_setglobal(L, "CurveWrap");
     }
 
 }
@@ -483,6 +598,7 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addFunction("isNaN", &Vector4::isNaN)
         .endClass();
 
+
     luabridge::getGlobalNamespace(L)
         .beginClass<Rect>("Rect")
         .addConstructor<void(), void(float, float, float, float)>()
@@ -500,6 +616,19 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addFunction("contains", &Rect::contains)
         .addFunction("isNormalized", &Rect::isNormalized)
         .addFunction("isZero", &Rect::isZero)
+        .endClass();
+
+    // Distances in from the four edges of a rectangle (Screen.safeAreaInsets, Screen.extraInsets)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<EdgeInsets>("EdgeInsets")
+        .addConstructor<void(), void(float, float, float, float)>()
+        .addProperty("left", &EdgeInsets::left, &EdgeInsets::left)
+        .addProperty("top", &EdgeInsets::top, &EdgeInsets::top)
+        .addProperty("right", &EdgeInsets::right, &EdgeInsets::right)
+        .addProperty("bottom", &EdgeInsets::bottom, &EdgeInsets::bottom)
+        .addFunction("__tostring", &EdgeInsets::toString)
+        .addFunction("__eq", &equalsLua<EdgeInsets>)
+        .addFunction("isZero", &EdgeInsets::isZero)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

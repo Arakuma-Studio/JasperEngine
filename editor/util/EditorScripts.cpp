@@ -502,6 +502,8 @@ namespace {
     // the item functions, static in it, can be registered after it) and the CMake project
     bool writeCppEditorProject(Project* project, const std::vector<fs::path>& sources, const fs::path& dir, std::string& libName){
         libName = project->getLibName() + "_editor";
+        // the editor's own internal folder (util/SafeWrite.h: a tool's call is refused there)
+        safewrite::EditorInternal ownDir(dir);
         const fs::path genDir = dir / "gen";
         std::error_code ec;
         fs::create_directories(genDir, ec);

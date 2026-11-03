@@ -65,8 +65,13 @@ namespace jasperengine { namespace particles {
     struct RenderView {
         float position[3] = {0, 0, 0};   // the camera, in the emitter's simulation space
         float forward[3] = {0, 0, -1};   // its view direction
+        float up[3] = {0, 1, 0};         // its up, in simulation space (Mesh Facing alignment)
         bool sort = false;               // the program sorts and the blend needs it (D7)
         float keep = 1.0f;               // distance thinning: the share drawn
+        // Mesh particles' Render Alignment: the rotation (x, y, z, w, simulation space) a View,
+        // World or Local alignment puts in front of each particle's own (the camera's, the
+        // world's or the emitter's axes, seen from the simulation space)
+        float alignQuat[4] = {0, 0, 0, 1};
     };
 
     struct PackResult {

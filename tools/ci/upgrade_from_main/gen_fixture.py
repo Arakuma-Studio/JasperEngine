@@ -228,7 +228,11 @@ async def make_level(d: Driver) -> None:
     # pickup feedback: a sound and a burst of sparks
     await d("create_entity", scene=s, type="audio_source", name="PickupSound",
             values={"audiosource": {"filename": "assets/audio/pickup.wav", "volume": 0.6}})
-    await d("create_particles", scene=s, preset="sparks", name="PickupFX", position=[0, 1, 0], autoplay=False,
+    # the legacy layout (a version 1 Particle System action drawing on a Points GameObject), as
+    # main made it before its version 2 systems: main's create_particles keeps it for an
+    # emitter_entity, and the upgrade converts it (S20)
+    await d("create_entity", scene=s, type="points", name="PickupFX", position=[0, 1, 0])
+    await d("create_particles", scene=s, preset="sparks", emitter_entity="PickupFX", autoplay=False,
             loop=False, bursts=[{"time": 0, "count": 24}])
     # its Particle System (an action at the scene root, targeting PickupFX) gets a name of its own
     newest = max((n for n in await tree(d, s) if n["name"] == "Particle System"), key=lambda n: int(n["id"]))

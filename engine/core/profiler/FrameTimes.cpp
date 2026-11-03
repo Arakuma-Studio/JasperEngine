@@ -66,6 +66,25 @@ void FrameTimes::beginFrame() {
     s.drawCalls = 0;
 }
 
+void FrameTimes::recordSample(float frameMs, float cpuMs) {
+    State& s = state();
+    FrameTimeSample sample;
+    sample.frame = s.frame;
+    sample.frameMs = frameMs;
+    sample.cpuMs = cpuMs >= 0.0f ? cpuMs : frameMs;
+    sample.fps = frameMs > 0.0f ? 1000.0f / frameMs : 0.0f;
+    sample.drawCalls = s.drawCalls;
+    s.ring[s.head] = sample;
+    s.head = (s.head + 1) % CAPACITY;
+    s.count = std::min(s.count + 1, CAPACITY);
+    s.started = true;
+    s.hostWork = false;
+    s.frame++;
+    s.frameStart = std::chrono::steady_clock::now();
+    s.cpuMs = -1.0;
+    s.drawCalls = 0;
+}
+
 void FrameTimes::endFrameWork() {
     State& s = state();
     if (s.started)

@@ -12,6 +12,10 @@ class JasperEngineMac {
 public:
 
     static int init(int argc, char **argv);
+
+    // Engine.vSyncCount on or off: CAMetalLayer.displaySyncEnabled, the GL swap interval or
+    // the Vulkan present mode (intervals past 1 come from the limiter)
+    static void applySwapInterval(int interval);
 };
 
 #endif /* JasperEngineMac_h */

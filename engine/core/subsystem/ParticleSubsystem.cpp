@@ -16,11 +16,20 @@
 #include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticleMeshes.h"
 #include "particles/ParticleModules.h"
+#include "manager/ObjectManager.h"
 #include "registry/PhysicsLayers.h"
+#include "script/ScriptBase.h"
+#include "script/ScriptMessages.h"
 #include "render/SystemRender.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
+#ifdef JASPERENGINE_PHYSICS_3D
+#include "object/physics/Rigidbody.h"
+#endif
+#ifdef JASPERENGINE_PHYSICS_2D
+#include "object/physics/Rigidbody2D.h"
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -248,6 +257,7 @@ void ParticleSubsystem::play(Entity entity){
         }
         state->runtime.play();
         state->started = true;
+        state->running = true;
     }
 }
 
@@ -261,6 +271,27 @@ void ParticleSubsystem::stop(Entity entity, bool clear){
         state->runtime.stop(clear);
         state->started = true;
     }
+}
+
+void ParticleSubsystem::clear(Entity entity){
+    // the particles (and trails) go; playing or stopped as it was
+    if (ParticleSystemState* state = getState(entity))
+        state->runtime.clear();
+}
+
+void ParticleSubsystem::resetForPlay(){
+    auto systems = scene->getComponentArray<ParticleSystemComponent>();
+    for (size_t i = 0; i < systems->size(); i++){
+        ParticleSystemComponent& particles = systems->getComponentFromIndex(i);
+        if (!particles.state)
+            continue;
+        particles.state->runtime.stop(true);
+        particles.state->started = false;
+        particles.state->running = false;
+        particles.state->hasBounds = false;
+        particles.state->cull = CullState();
+    }
+    stopActions.clear();
 }
 
 void ParticleSubsystem::restart(Entity entity){
@@ -285,7 +316,7 @@ void ParticleSubsystem::seek(Entity entity, double time){
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
     EmitterInput input;
     refreshTransform(scene, entity);
-    prepareInput(particles, scene->getComponent<Transform>(entity), input);
+    prepareInput(entity, particles, scene->getComponent<Transform>(entity), input);
     state->runtime.seek(input, time);
     state->started = true;
 }
@@ -297,7 +328,7 @@ void ParticleSubsystem::step(Entity entity, uint32_t ticks){
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
     EmitterInput input;
     refreshTransform(scene, entity);
-    prepareInput(particles, scene->getComponent<Transform>(entity), input);
+    prepareInput(entity, particles, scene->getComponent<Transform>(entity), input);
     if (state->runtime.state() != PlayState::Playing)
         state->runtime.play();
     for (uint32_t t = 0; t < ticks; t++) state->runtime.step(input);
@@ -346,7 +377,7 @@ void ParticleSubsystem::previewSeek(Entity entity, double time){
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
     EmitterInput input;
     refreshTransform(scene, entity);
-    prepareInput(particles, scene->getComponent<Transform>(entity), input);
+    prepareInput(entity, particles, scene->getComponent<Transform>(entity), input);
     state->preview->seek(state->runtime, input, std::max(0.0, time));
     state->started = true;
 }
@@ -358,7 +389,7 @@ bool ParticleSubsystem::previewUpdate(Entity entity, double budgetMs){
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
     EmitterInput input;
     refreshTransform(scene, entity);
-    prepareInput(particles, scene->getComponent<Transform>(entity), input);
+    prepareInput(entity, particles, scene->getComponent<Transform>(entity), input);
     const bool done = state->preview->update(state->runtime, input, budgetMs);
     updateBounds(*state);
     return done;
@@ -375,7 +406,7 @@ void ParticleSubsystem::previewAdvance(Entity entity, double dt){
     }
     EmitterInput input;
     refreshTransform(scene, entity);
-    prepareInput(particles, scene->getComponent<Transform>(entity), input);
+    prepareInput(entity, particles, scene->getComponent<Transform>(entity), input);
     const auto start = std::chrono::steady_clock::now();
     state->runtime.advance(input, dt);
     state->simulateMicros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
@@ -422,7 +453,27 @@ void ParticleSubsystem::markVisible(Entity entity){
 
 // ---------------------------------------------------------------- the frame
 
-void ParticleSubsystem::prepareInput(ParticleSystemComponent& particles, Transform& transform, EmitterInput& input){
+// the velocity of the GameObject's Rigidbody (3D, else 2D; one that is made already)
+bool ParticleSubsystem::bodyVelocity(Entity entity, Vector3& velocity){
+#ifdef JASPERENGINE_PHYSICS_3D
+    if (const RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity); body && !body->body.IsInvalid()){
+        velocity = Rigidbody(scene, entity).getLinearVelocity();
+        return true;
+    }
+#endif
+#ifdef JASPERENGINE_PHYSICS_2D
+    if (const Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity); body && b2Body_IsValid(body->body)){
+        const Vector2 v = Rigidbody2D(scene, entity).getLinearVelocity();
+        velocity = Vector3(v.x, v.y, 0.0f);
+        return true;
+    }
+#endif
+    (void)entity;
+    (void)velocity;
+    return false;
+}
+
+void ParticleSubsystem::prepareInput(Entity entity, ParticleSystemComponent& particles, Transform& transform, EmitterInput& input){
     ParticleSystemState& state = *particles.state;
     copyMatrix(transform.modelMatrix, state.transform);
     input.transform = state.transform;
@@ -440,10 +491,30 @@ void ParticleSubsystem::prepareInput(ParticleSystemComponent& particles, Transfo
             sizeScale = (std::fabs(transform.scale.x) + std::fabs(transform.scale.y) + std::fabs(transform.scale.z)) / 3.0f;
     }
     input.sizeScale = sizeScale;
-    const Vector3 gravity = scene->getGravity3D();
+    // the gravity the Gravity Modifier scales: the 3D world's, or the 2D world's in the scene's
+    // units (its meters times the points per meter)
+    Vector3 gravity = scene->getGravity3D();
+    if (prog && prog->gravitySource == GravitySource::Physics2D){
+        const Vector2 g2 = scene->getGravity2D();
+        float pointsPerMeter = 64.0f;
+#ifdef JASPERENGINE_PHYSICS_2D
+        if (PhysicsSystem* physics = scene->findSystem<PhysicsSystem>().get())
+            pointsPerMeter = physics->getPointsToMeterScale2D();
+#endif
+        gravity = Vector3(g2.x * pointsPerMeter, g2.y * pointsPerMeter, 0.0f);
+    }
     input.gravity[0] = gravity.x;
     input.gravity[1] = gravity.y;
     input.gravity[2] = gravity.z;
+    // Emitter Velocity Rigidbody: the body's velocity (one that is made already), else the motion
+    input.hasVelocity = false;
+    if (prog && prog->emitterVelocityMode == EmitterVelocityMode::Rigidbody){
+        Vector3 v;
+        if (bodyVelocity(entity, v)){
+            input.hasVelocity = true;
+            input.velocity[0] = v.x; input.velocity[1] = v.y; input.velocity[2] = v.z;
+        }
+    }
 
     // the force fields that overlap it (its bounds, or everywhere before it has any)
     state.fields.clear();
@@ -728,6 +799,22 @@ void ParticleSubsystem::dispatchEvents(ParticleSystemComponent& particles){
     }
 }
 
+namespace {
+
+    // the frame stats (main thread): simulation time and alive particles since the last take
+    double frameSimulationSeconds = 0.0;
+    size_t frameAlive = 0;
+
+}
+
+double ParticleSubsystem::takeFrameSimulation(size_t* alive){
+    const double ms = frameSimulationSeconds * 1000.0;
+    if (alive) *alive = frameAlive;
+    frameSimulationSeconds = 0.0;
+    frameAlive = 0;
+    return ms;
+}
+
 void ParticleSubsystem::update(double dt){
     auto systems = scene->getComponentArray<ParticleSystemComponent>();
     // a scene without particle systems pays nothing more (R26)
@@ -760,10 +847,21 @@ void ParticleSubsystem::update(double dt){
     tasks.clear();
     taskEntities.clear();
     const uint64_t frame = SystemRender::getFrameCount();
+    const double unscaledDt = Engine::getUnscaledDeltatime();
     for (size_t i = 0; i < systems->size(); i++){
         ParticleSystemComponent& particles = systems->getComponentFromIndex(i);
         const Entity entity = systems->getEntity(i);
-        if (!particles.enabled || !scene->isEntityActiveInHierarchy(entity))
+        if (!scene->isEntityActiveInHierarchy(entity)){
+            // a deactivated GameObject stops and clears its system (Unity); Play On Awake plays it
+            // again when it comes back. Its stop action does not run: nothing finished
+            if (particles.state && (particles.state->started || particles.state->runtime.isAlive())){
+                particles.state->runtime.stop(true);
+                particles.state->started = false;
+                particles.state->running = false;
+            }
+            continue;
+        }
+        if (!particles.enabled)
             continue;
         Transform* transform = scene->findComponent<Transform>(entity);
         if (!transform)
@@ -773,8 +871,10 @@ void ParticleSubsystem::update(double dt){
         ParticleSystemState& state = *particles.state;
         if (!state.started){
             state.started = true;
-            if (particles.playOnAwake)
+            if (particles.playOnAwake){
                 state.runtime.play();
+                state.running = true;
+            }
         }
         EmitterTask task;
         task.runtime = &state.runtime;
@@ -791,10 +891,15 @@ void ParticleSubsystem::update(double dt){
             inRange = t <= 1.0f;
             task.input.emissionScale = std::max(0.0f, d.lod.emissionScale.evaluate(std::min(t, 1.0f), 0.5f));
         }
-        // a camera saw it last frame (a new system counts as seen until it has bounds)
-        const bool visible = inRange && (!state.hasBounds || frame <= state.visibleFrame + 1);
+        // a camera saw it last frame (a new system counts as seen until it has bounds; so does
+        // an empty one: nothing of it is drawn to be seen, and its old bounds would hold it
+        // paused for good once stopped and cleared)
+        const bool visible = inRange && (!state.hasBounds || state.runtime.count() == 0 || frame <= state.visibleFrame + 1);
         uint32_t maxTicks = kMaxTicksPerFrame;
-        task.dt = cullingStep(d.cullingMode, d.looping, visible, dt, d.tickRate, state.cull, maxTicks);
+        // Unscaled Time (the effect's or the component's): Time.timeScale does not slow it (UI,
+        // pause menus)
+        const double frameDt = (d.useUnscaledTime || particles.useUnscaledTime) ? unscaledDt : dt;
+        task.dt = cullingStep(d.cullingMode, d.looping, visible, frameDt, d.tickRate, state.cull, maxTicks);
         task.maxTicks = maxTicks;
         state.culled = !visible;
         if (task.dt <= 0.0){
@@ -802,12 +907,14 @@ void ParticleSubsystem::update(double dt){
             state.ticks = 0;
             continue;
         }
-        prepareInput(particles, *transform, task.input);
+        prepareInput(entity, particles, *transform, task.input);
         tasks.push_back(task);
         taskEntities.push_back(entity);
     }
-    if (tasks.empty())
+    if (tasks.empty()){
+        checkStopActions();
         return;
+    }
 
 #ifdef JASPERENGINE_PHYSICS_3D
     // world collisions query Jolt from the workers: never while it steps
@@ -816,7 +923,9 @@ void ParticleSubsystem::update(double dt){
         return;
     }
 #endif
+    const auto simulateStart = std::chrono::steady_clock::now();
     world.simulate(tasks, &jobs::system());
+    frameSimulationSeconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - simulateStart).count();
 
     const double perEmitter = world.stats().simulateMicros / (double)tasks.size();
     for (size_t t = 0; t < tasks.size(); t++){
@@ -827,7 +936,68 @@ void ParticleSubsystem::update(double dt){
         state.budget = tasks[t].budget;
         state.emissionScale = tasks[t].emissionScale;
         state.simulateMicros = perEmitter;
+        frameAlive += state.runtime.count();
         updateBounds(state);
         dispatchEvents(particles);
     }
+    checkStopActions();
+}
+
+// the stop actions of the systems that have finished (this frame, or stopped by a script since
+// the last one): after the events, outside the loops over the component arrays
+void ParticleSubsystem::checkStopActions(){
+    auto systems = scene->getComponentArray<ParticleSystemComponent>();
+    for (size_t i = 0; i < systems->size(); i++){
+        ParticleSystemComponent& particles = systems->getComponentFromIndex(i);
+        if (!particles.state || !particles.state->effect)
+            continue;
+        ParticleSystemState& state = *particles.state;
+        const bool runningNow = state.runtime.state() != PlayState::Stopped || state.runtime.isAlive();
+        if (state.running && !runningNow)
+            queueStopAction(systems->getEntity(i), state);
+        state.running = runningNow;
+    }
+    runStopActions();
+}
+
+void ParticleSubsystem::queueStopAction(Entity entity, ParticleSystemState& state){
+    if (state.effect->program.stopAction == StopAction::None)
+        return;
+    if (std::find(stopActions.begin(), stopActions.end(), entity) == stopActions.end())
+        stopActions.push_back(entity);
+}
+
+void ParticleSubsystem::runStopActions(){
+    if (stopActions.empty())
+        return;
+    // a callback can play a system again, deactivate or destroy others: a copy, each checked
+    std::vector<Entity> entities;
+    entities.swap(stopActions);
+    for (Entity entity : entities){
+        if (!scene->isEntityCreated(entity))
+            continue;
+        ParticleSystemComponent* particles = scene->findComponent<ParticleSystemComponent>(entity);
+        if (!particles || !particles->state || !particles->state->effect)
+            continue;
+        // played again meanwhile: nothing has stopped any more
+        if (particles->state->runtime.state() != PlayState::Stopped)
+            continue;
+        switch (particles->state->effect->program.stopAction){
+            case StopAction::None:
+                break;
+            case StopAction::Disable:
+                scene->setEntityActive(entity, false);
+                break;
+            case StopAction::Destroy:
+                ObjectManager::destroy(scene, entity, 0.0f);
+                break;
+            case StopAction::Callback:
+                ScriptMessages::send(scene, entity, ScriptMessage::ParticleSystemStopped, nullptr,
+                                     [](ScriptBase& script){ script.onParticleSystemStopped(); });
+                break;
+        }
+    }
+    // (a callback that queued more: they run next frame)
+    if (stopActions.capacity() < entities.capacity())
+        stopActions.reserve(entities.capacity());
 }

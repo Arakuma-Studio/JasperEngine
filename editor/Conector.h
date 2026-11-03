@@ -38,6 +38,8 @@ namespace jasperengine::editor{
         std::vector<Library> libraries;                // in load order
         size_t current = 0;                            // the one in use
         LoadCheck lastCheck;
+        // connect()'s project root (the staging sweep stays beneath it)
+        fs::path stagingProjectRoot;
 
         void* loadSharedLibrary(const std::string& libPath);
         void unloadSharedLibrary(void* libHandle);
@@ -49,8 +51,9 @@ namespace jasperengine::editor{
         Conector();
         virtual ~Conector();
 
-        // Play: the first generation (unloads what was loaded)
-        bool connect(const fs::path& buildPath, std::string libName);
+        // Play: the first generation (unloads what was loaded). projectRoot: the project, whose
+        // in-project staging folder is swept only beneath it (never through a link)
+        bool connect(const fs::path& buildPath, std::string libName, const fs::path& projectRoot = {});
         // A C++ reload: the rebuilt library next to the current one, which stays current until
         // makeLatestCurrent(). False (lastLoadCheck says why) when refused or not loadable.
         bool connectNext(const fs::path& buildPath, const std::string& libName);

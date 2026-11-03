@@ -25,11 +25,15 @@ namespace jasperengine {
     // cannot apply (nothing is changed then). Addresses: map "Map", action "Map/Action",
     // binding by id.
     //   add_map {name, priority?, enabled?, consume?, exclusive?, ignore_when_ui_consumes?, index?}
+    //   add_input_manager {index?}   (the "Input Manager" map with Unity's eleven default axes and buttons)
     //   add_action {map, name, type?, press_point?, hold_time?, deadzone?, index?}
     //   add_binding {action, path, scale?, invert?, deadzone?, required_mods?, forbidden_mods?, groups?, index?}
-    //   add_composite {action, composite: axis1d|dpad2d, parts: {part: path | {path, ...}}, groups?, normalize?, index?}
-    //   set {map | action | binding, values: {key: value}}   (the asset's JSON keys)
-    //   remove {map | action | binding}
+    //   add_composite {action, composite: axis1d|dpad2d, parts: {part: path | {path, ...} | [...]}, groups?,
+    //                  normalize?, gamepad?, smoothing?, index?}
+    //   add_part {binding (a composite's id), part, path | {path, ...}, index?}  (another control of a role)
+    //   set {map | action | binding, values: {key: value}}   (the asset's JSON keys; a binding's
+    //        gravity, sensitivity, dead and snap set its smoothing, smoothing: null removes it)
+    //   remove {map | action | binding}                      (a composite's part too)
     //   rename {map | action, name}
     //   move {map | action | binding, index}                 (within its parent)
     //   duplicate {map | action | binding}                   (fresh ids)

@@ -130,6 +130,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("edit.step", "Step", AppMenuCommand::StepFrame, C::Global, "Ctrl+Alt+P").description = "Advance a paused game by one frame";
     b.menu("edit.stop", "Stop", AppMenuCommand::StopScene);
     b.menu("edit.projectSettings", "Project Settings...", AppMenuCommand::ProjectSettings);
+    b.menu("edit.clearUserSettings", "Clear User Settings (PlayerPrefs)...", AppMenuCommand::ClearUserSettings).description =
+        "Delete what the game saved with UserSettings / PlayerPrefs on this machine";
     b.menu("edit.preferences", "Preferences...", AppMenuCommand::EditorSettings);
     b.menu("edit.shortcuts", "Shortcuts...", AppMenuCommand::Shortcuts).description = "View and rebind the editor's keyboard shortcuts";
 
@@ -148,6 +150,9 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createAnimatorController", "Create Animator Controller", AppMenuCommand::AssetsCreateAnimatorController);
     b.menu("assets.createAvatarMask", "Create Avatar Mask", AppMenuCommand::AssetsCreateAvatarMask);
     b.menu("assets.createAnimationMontage", "Create Animation Montage", AppMenuCommand::AssetsCreateAnimationMontage);
+    b.menu("assets.createAudioMixer", "Create Audio Mixer", AppMenuCommand::AssetsCreateAudioMixer);
+    b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
+    b.menu("assets.createNativePlugin", "Create Native Plugin...", AppMenuCommand::AssetsCreateNativePlugin);
     b.menu("assets.showInFileManager", "Show in File Manager", AppMenuCommand::AssetsShowInFileManager);
     b.menu("assets.open", "Open", AppMenuCommand::AssetsOpen);
     b.menu("assets.rename", "Rename Asset", AppMenuCommand::AssetsRename);
@@ -191,6 +196,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         }
     }
 
+    b.menu("gameobject.addCameraShakerToMainCamera", "Add Camera Shaker to Main Camera", AppMenuCommand::AddCameraShakerToMainCamera);
+
     b.group = "Component";
     b.menu("component.add", "Add Component", AppMenuCommand::AddComponent, C::Editor, "Ctrl+Shift+A");
 
@@ -216,9 +223,12 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("recorder.toggle", "Start Recording", AppMenuCommand::ToggleRecording, C::Global, "F10").description =
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
+    b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
+    b.menu("window.spriteNormals", "Sprite Normal Map", AppMenuCommand::ToggleSpriteNormals).description =
+        "Generate and edit normal maps for 2D sprites";
     b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
     b.menu("window.missingAssets", "Missing Assets", AppMenuCommand::ToggleMissingAssets);
     b.menu("window.assetReferences", "References", AppMenuCommand::ToggleAssetReferences);

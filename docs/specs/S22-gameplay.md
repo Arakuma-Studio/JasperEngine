@@ -676,3 +676,213 @@ Recorded during implementation (branch `feat/s22-gameplay`).
   - upstream's `test_water.py` waited inside one Lua call for `Water.getTime()` to move. The
     clock is now latched once a frame (R29), so it waits frames instead.
   - R37 on C (not enforced): 100 bodies × 4 columns take 0.075 ms a step.
+
+## 11. Upstream absorption (SYNC#4)
+
+SYNC#4 brought upstream's `input` feature (merge `d29e2a4be`, extended by ui-multitouch
+`bd1d8b220` and platform-services `cbf8f65a9`; spec `docs/superpowers/specs/2026-10-31-input-design.md`):
+Unity's Input Manager as one flat list of virtual axes and buttons in Project Settings > Input.
+Both sides defined `InputAction`, `InputBinding`, `InputActions` and `InputControlNames`. S22 is the
+input system; it absorbs what upstream had and S22 did not (comparison:
+`je-evidence/sync4-duplicates-comparison.md` §3). Nothing upstream did is lost; where the two
+disagreed, S22's semantics stand and the choice is listed below.
+
+### 11.1 The Input Manager as an action map
+
+- **The model.** Upstream's flat actions are the actions of an S22 map named `Input Manager`
+  (`InputManagerFormat::MAP_NAME`), read by their flat names. The conversion
+  (`engine/core/input/InputManagerFormat.{h,cpp}`) is lossless both ways:
+  - a `buttons` binding (Unity's "Key or Mouse Button") is an `axis1d` composite whose roles hold
+    the positive and negative lists (any number of parts per role, none allowed), with the entry's
+    `gravity`, `sensitivity`, `dead` and `snap` as the binding's `smoothing` and its pad as `gamepad`;
+  - a `gamepad_axis` binding is `gamepad/<axis>` with `deadzone` = `dead` (rescaled, as both did),
+    `scale` = `sensitivity`, and `invert` flipped on the Y axes (S22's sticks are up-positive,
+    upstream read the pad's -1 for up);
+  - a `mouse_delta` binding is `mouse/delta/x`, `mouse/delta/y` (inverted: canvas y grows down)
+    or `mouse/scroll/y`, `scale` = `sensitivity`;
+  - any other S22 binding keeps its `.inputactions` JSON as `{kind: "binding", binding: {...}}`, and
+    actions carry S22's `vector2` type, `hold_time` and `deadzone`, so every S22 action has a flat
+    form too (MCP `input.manager_actions`, Lua `Input.getBindings`).
+  The map is `consume: false` (it takes no control from the asset's other maps) and
+  `ignoreWhenUIConsumes: true`. Binding ids are derived from the names, so the same actions give
+  the same asset.
+- **The asset format (still `version: 1`).** New optional keys: an action's `description`; a
+  binding's `gamepad` (0-15, the pad its gamepad controls read; -1 the map's) and `smoothing`
+  `{gravity, sensitivity, dead, snap}`; a composite role may be a list of parts (written as a list
+  only when it has not exactly one, so S22 assets save byte for byte as before). An action's name
+  may contain `/` (a map's still may not: `Map/Action` splits at the first). Edit operations:
+  `add_part {binding, part, path}`, `remove` of a part, `set` of `gamepad`, `smoothing`, `gravity`,
+  `sensitivity`, `dead`, `snap`, `description`, and `add_input_manager` (the map with Unity's
+  defaults). Older S22 readers keep the new keys as unknown keys.
+- **Defaults.** A game or Play without an actions asset has Unity's eleven defaults (Horizontal,
+  Vertical, Fire1-3, Jump, Mouse X/Y, Mouse ScrollWheel, Submit, Cancel) as that map:
+  `InputActions::loadDefaults()` = `unload()`, `usesBuiltInDefaults()`, `isLoaded()` stays false.
+  An asset without the map has no defaults (its maps are what the project chose).
+- **Evaluation.** One evaluation computes both views of each action:
+  - S22's (`readValue`, `isPressed`, edges, phases, callbacks), with smoothing applied to a smoothed
+    binding's value and the virtual sources counted; AXIS is now `clamp(bounded) + deltas` (before,
+    an action with a delta binding left its bounded part unclamped) and VECTOR2 likewise;
+  - the Input Manager's (`getAxis`, `getAxisRaw`, `getButton`, `getButtonDown`, `getButtonUp`,
+    `getVector`, `getState`): bounded bindings summed then clamped, deltas added unclamped,
+    held while a control holds it (a smoothed axis at once), a source pressed and released between
+    evaluations gives both edges, a disabled action reads 0 with no edges.
+  - Smoothing runs on the unscaled frame time (`Input::beginFrame(dt)`).
+  - Consumption, priorities, modifiers and UI consumption apply to the Input Manager's actions
+    as to any map's. A BUTTON's smoothed `axis1d` ignores its negative role (upstream's Button).
+- **Flat names.** `InputActions::find(name)` and every Input Manager query take `Map/Action` or a
+  flat name: the Input Manager map's action, else the first action of that name in priority order.
+  `getActionNames()` lists the map's names, then every other action as `Map/Action`;
+  `onButtonDown`/`onButtonUp` use the same names. An unknown name logs once
+  (`Input action "Fire4" does not exist (Project Settings > Input)`).
+- **Virtual sources.** Owner-keyed values and deltas (`setSourceValue`, `addSourceDelta`,
+  `clearSource`, `clearSources(kind)`, `clearAllSources`, `namedSource`) feed any action (the Input
+  Manager's or an S22 map's), next to S22's `virtual/<name>` controls and `inject`. `getAxis`
+  counts them at once; the action's state, presses and edges from the next evaluation. Deltas last
+  until `Input::endFrame()`. A released script instance's sources go
+  (`Engine::removeSubscriptionsByTag`).
+- **Runtime rebinding (flat).** `setBindings`, `getBindings`, `hasBindingOverride`,
+  `resetBindings`, `exportOverrides`, `importOverrides` replace an action's whole binding list at
+  runtime; S22's per-binding overrides (`setOverride`, `saveOverrides`) stay as they were, and
+  `getBindings` shows them. `resetRuntimeState()` (and `resetSession()`) drop replacements,
+  sources, disabled flags and smoothing.
+- **Suppression (upstream P7).** While a text field has the keyboard (`InputSuppression.keyboard`)
+  or a document has gamepad focus (`gamepadNavigation`: d-pad, left stick, A), those controls do not
+  actuate bindings of maps with `ignoreWhenUIConsumes` (`InputActions::setSuppression`, set by
+  `Input::beginFrame(dt)` from `Engine::isTextInputFocused` / `wantsGamepadNavigation`). A key held
+  when the field took focus is released.
+
+### 11.2 Input
+
+- `Touch` gains Unity's `fingerId` (= `pointer`), `deltaPosition` (= `delta`), `deltaTime`
+  (unscaled seconds since it last moved, at the window's latch) and `tapCount` (a touch that begins
+  within `Input::multiTapTime` 0.3 s of the last short touch's end and within `multiTapDistance`
+  24 px of its start counts on). `TouchPhase` has the Unity spellings (`Began`...) as the same
+  values. `getFrameTouches()`, `findTouchById()`, `setMultiTouchEnabled()` (false: only the first
+  finger in the frame's touches and the bindings, and in the simulated mouse; the fingers-down list
+  and the UI get every finger), `isTouchVisible()`.
+- Touch times run on the input clock (the unscaled frame times `beginFrame(dt)` adds), not the wall
+  clock: deterministic under a fixed frame time.
+- `getInputString()` (Unity's `inputString`: typed text of the window, `\b`, `\n`),
+  `getPressedControl()` (the first control pressed: control names, `left_x+`, `right_trigger`),
+  `isAnyKeyPressed()` (`anyKey`), `isAnyKeyDown()`.
+- The mouse delta counts moves outside the canvas too (`Engine::systemMouseMove` adds every
+  movement; the position stays the last inside one). `addMouseMovement`, `addMouseDelta`,
+  `resetMouseMovement`.
+- `getGamepadButtonDown/Up(-1, b)`: any pad.
+- `releaseAll()`: every held key and button released (edges in the next window), the fingers down
+  reported Canceled in the next window and left in the fingers-down list for the platform's cancel
+  (which then adds nothing). `reset()`: `resetFrameState()` and the input clock, taps and
+  `multiTouchEnabled`. Focus loss now also ends with `releaseAll()` (a gamepad's held buttons).
+- `beginFrame(dt[, suppression])` is the frame's input step (Engine::systemDraw): the latch, the
+  clock, the actions' evaluation and the `onButtonDown` / `onButtonUp` events; `endFrame()` after the
+  update (the sources' deltas go), `isInFrame()`, `getInputFrame()`, `getInputTime()`. The bare
+  `beginFrame()` is the latch alone, as before.
+- The device writers are public (the engine's entry points; the editor and MCP keep going through
+  `Engine::system*`, R34).
+- A cancelled finger that simulated the mouse releases it (`callMouseInTouchEvent`).
+
+### 11.3 Names, Lua and MCP
+
+- **One `InputControlNames`** (`engine/core/input/InputControlNames.{h,cpp}`, upstream's file):
+  upstream's table (Unity's Input Manager and KeyCode spellings, `joystick button N`, `[1]`...) and
+  S22's path names (`mouse/button4`). Path segments keep S22's functions (`mouseButtonName` "left",
+  `gamepadButtonName` "a"); upstream's control names are `mouseButtonControlName` ("mouse_left"),
+  `gamepadButtonControlName` ("gamepad_a") and `name(InputControl)`; the picker lists are
+  `keyNames`, `mouseButtonControlNames`, `gamepadButtonControlNames`, `gamepadAxisNames`.
+- **Lua `Input`**: S22's names and upstream's together. `getKey`/`getKeyDown`/`getKeyUp` and
+  `getGamepadButtonDown`/`Up` take a code or a name; `anyKey`, `inputString`, `mouseDelta`,
+  `mouseScrollDelta`, `touchCount`, `touches`, `multiTouchEnabled`, `touchSupported` properties;
+  `getTouch(i)` (nil out of range), `getTouchById`, `getPressedControl`, `getAxis`, `getAxisRaw`,
+  `getButton*`, `getVector`, `hasAction`, `getActionNames`, `set/isActionEnabled`, `simulateButton`,
+  `simulateAxis`, `addAxisDelta`, `clearSimulated`, `isPointerOverUI`, `get/setBindings`,
+  `resetBindings`, `export/importBindings`; `TouchPhase.Began...`; the Touch table has both field
+  sets. `Input.anyKeyDown` is upstream's property and S22's function at once: booleans are callable
+  with no arguments in the engine's Lua states (calling one gives it back; with arguments it is
+  the usual error), so `if Input.anyKeyDown then` and `Input.anyKeyDown()` both work.
+- **MCP**: `send_input` keeps `input_action` (S22) and gains `action` (`phase` press/down/up),
+  `axis` (`value`, held until 0 / release_all / stop unless `hold_frames`) and `axis_delta`
+  through the `"mcp"` source; a `wait` cut short releases what its input held. `get_play_state`
+  gains `input` (the Input Manager's actions not at rest, touches, keys held) and `held_input`
+  `actions` / `axes`. `get_input_state` gains `built_in_defaults` and a touch's `tap_count`.
+  `set_project_settings`: `input.actions` stays S22's path and also takes upstream's list (or
+  `"defaults"`); `input.manager_actions` reads and writes the Input Manager map's actions in the
+  flat shape (one project history step, `InputActionsCmd`; a project without an asset gets
+  `InputManager.inputactions` in the assets directory and the setting). `edit_input_actions` has
+  `add_part` and `add_input_manager`.
+
+### 11.4 Editor and projects
+
+- **Older projects.** A `project.yaml` whose `input` node is upstream's (`{version: 1, actions:
+  [...]}` or a list; before this, `as<std::string>()` threw and the project failed with "Failed to
+  load project file!") is converted when it loads (`Stream::decodeProject`): the actions become the
+  Input Manager map of `InputManager.inputactions` in the assets directory, written at once (a new
+  file; project.yaml itself is rewritten only when the user saves, as for every migration), and
+  `input.actions` points to it. The asset records `migratedFrom.hash` of the converted actions: a
+  later load of the same unsaved node reuses the asset as it is now (edits made in between stay); a
+  file of that name that is not the conversion is left alone (`InputManager 2.inputactions`...).
+  A node that cannot be read is reported, kept verbatim and written back until an asset is set; the
+  defaults run meanwhile. Saving writes a pending conversion first.
+- **Project Settings > Input** keeps S22's rows (Default Actions Asset, Default Deadzone, Rebinding
+  Overrides) and gains upstream's page as its **Input Manager** section: the asset's Input Manager
+  map (the defaults without an asset) as Unity's list with search, drag reorder, Gravity / Dead /
+  Sensitivity / Snap / Invert / Gamepad, control pickers, Listen, live values during Play, its own
+  Ctrl+Z / Ctrl+Y and Reset to Unity Defaults; OK is one project history step (`InputActionsCmd`),
+  which makes `InputManager.inputactions` when the project has no asset. Picking another asset
+  shows that asset's map.
+- **Window > Input Actions** shows and edits the new fields: an action's Description, a binding's
+  Gamepad and Input Manager Smoothing (Gravity, Sensitivity, Dead, Snap), parts added per role and
+  deleted, and a button that adds the Input Manager map with Unity's defaults.
+- **Exports** load the asset (`InputActions::loadDefault` in the generated `main.cpp`, the
+  prebuilt players' `PlayerConfig input.actions`) as S22 did; upstream's inline JSON
+  (`Generator::inputActionsInitSource`, `InputActions::loadJson` in raw literals) is gone:
+  `Generator::inputSettingsInitSource`. Without an asset the game keeps the built-in defaults.
+- Play start and stop (`Project::resetPlayInput`): `Input::reset()` and
+  `InputActions::resetRuntimeState()` besides S22's reload of the asset; `PlayInput::releaseAll`
+  ends with `Input::releaseAll()`.
+
+### 11.5 On-screen controls
+
+Upstream's On-Screen Stick, On-Screen Button and Touch Area (component UI, `UISystemPointer.cpp`)
+and `<onscreen-stick>`, `<onscreen-button>`, `<touch-area>` (HTML UI,
+`htmlui/controls/OnScreenControls.cpp`) feed the actions through the virtual sources, owned by
+their component or element: values while held, a touch area's drag as a per-frame delta, cleared
+on release, disable, destroy, scene unload, cancel, pause and focus loss, several fingers at once.
+A touch area dragged with the mouse adds nothing to an action bound to mouse movement
+(`isMouseMotionBound`). Their action fields name a flat Input Manager action or an S22
+`Map/Action`; the Inspector lists the Input Manager's names (axes first for a stick or touch
+area), then the asset's other actions. S22's `InputVirtualControls` (`bindVirtualStick` /
+`bindVirtualButton` on `virtual/<name>`) stays as it was.
+
+### 11.6 Choices where the two disagreed (S22 stands)
+
+- A touch that begins and ends in one window is one `ENDED` touch with `began` (upstream: Began,
+  then Ended the frame after). The frame's touches list the fingers down first, then the ones
+  lifted (upstream: the ended one first).
+- Edges inside fixed steps are the fixed window's, each seen by one step (upstream: every step of
+  the frame), for the Input Manager's `getButtonDown`/`Up` too.
+- An app pause or focus loss cancels the fingers through `systemTouchCancel` (onTouchCancel comes
+  then; upstream left them to the platform's later cancel).
+- The windows stay until the next latch: a query between `endFrame` and the next `beginFrame`
+  (onDraw, the editor) still sees the frame's edges.
+- The Input Manager map ignores what the UI consumes: a click or key a document or the component
+  UI took does not count for `Fire1` / `Submit` (upstream counted them; its P7 suppression is this
+  flag's typing and navigation part).
+- project.yaml keeps S22's `input: {actions, deadzone}`; the actions live in the asset.
+
+### 11.7 Tests
+
+- `editor/tests/engine/input/InputManagerTest.cpp`: upstream's 43 Input tests (edges, touches,
+  the Input Manager's numbers, sources, rebinding, JSON, control names) on S22, the disagreements
+  above adapted and named; plus the merged control-name table.
+- `engine/tests/core/input/InputManagerMapTest.cpp`: the asset's new keys byte for byte, the edit
+  ops, the lossless conversion, flat names and priorities, consumption, smoothing and role parts
+  on S22 actions, a binding's pad, suppression per map, sources on S22 actions, flat rebinding of
+  S22 bindings, Unity's touch fields.
+- `editor/tests/ProjectInputTest.cpp` (upstream's, adapted), `editor/tests/ProjectInputMigrationTest.cpp`
+  (a project saved by upstream's editor at 047eccf9b with edited input:
+  `editor/tests/fixtures/upstream-input-project/`, red on the merge base, green here),
+  `editor/tests/GeneratorInputTest.cpp` (upstream's, on the asset line).
+- `editor/tests/UIMultiPointerTest.cpp`, `engine/tests/htmlui/TestInput.cpp` (on-screen controls
+  with real pointer events in both UIs).
+- MCP: `test_input_manager.py` (upstream's `test_input.py`), `test_input_ui.py`,
+  `test_onscreen_controls.py`, beside S22's `test_input.py` and `test_input_actions.py`.

@@ -107,6 +107,21 @@ namespace jasperengine::anim{
     // the identity delta (dq = I, dt = 0, ds = 1, channels 0)
     JASPERENGINE_API void poseIdentityDelta(Pose& delta);
 
+    // ---- one element (the Animation Player's layers compose per (entity, channel), S21's maths) ----
+
+    // poseBlend of one rotation: base nlerped toward layer by weight (aligned to base's
+    // hemisphere, normalised); weight 0 is base exactly, 1 the layer exactly
+    JASPERENGINE_API Quaternion poseBlendRotation(const Quaternion& base, const Quaternion& layer, float weight);
+    // poseBlend of one float: weight 0 is base, 1 is layer, else base + (layer - base) * weight
+    JASPERENGINE_API float poseBlendValue(float base, float layer, float weight);
+    // poseAdditive of one rotation: base * normalize(nlerp(I, delta, weight)), normalised (delta
+    // aligned to the identity's hemisphere); weight 0 is base exactly
+    JASPERENGINE_API Quaternion poseAdditiveRotation(const Quaternion& base, const Quaternion& delta, float weight);
+    // poseAdditive of one scale component: base * (1 + (delta - 1) * weight)
+    JASPERENGINE_API float poseAdditiveScale(float base, float delta, float weight);
+    // poseAdditive of one translation / channel value: base + delta * weight
+    JASPERENGINE_API float poseAdditiveValue(float base, float delta, float weight);
+
     // ---- rig space ----
 
     // A rig-space affine transform: column-major 3x3 (rotation * scale) and translation

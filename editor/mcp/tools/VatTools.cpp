@@ -587,6 +587,11 @@ bool requestFromArgs(Project* project, const Json& args, VatRequest& request, st
                 return false;
             }
             const fs::path absolute = project->getProjectPath() / FileUtils::pathFromUtf8(relative);
+            // written by the tool: inside the project once links are resolved
+            if (const std::string escape = McpRefs::writeEscape(project, absolute); !escape.empty()) {
+                error = "output: " + escape;
+                return false;
+            }
             if (!Util::isVertexAnimationFile(relative) || !project->isInsideAssetsPath(absolute)) {
                 error = "output must be a .vat path inside the assets folder (e.g. \"assets/vat/hero.vat\"; the mesh goes to hero.vat.glb), or "
                         "true for the default name next to the source (got \"" + relative + "\").";
@@ -1030,6 +1035,8 @@ void tick(const VatCallPtr& state) {
 void scheduleTick(const VatCallPtr& state) {
     state->ctx->app().requestRedraw();
     getEditorHost().enqueueMainThreadTask([state]() {
+        // a continuation writes beneath the project, as the tool's run did
+        McpWriteScope writeScope;
         // whatever goes wrong, the job ends (the main-thread loop would swallow an exception)
         const std::string fix = "call bake_vertex_animation again; if it fails the same way, read_console for the cause";
         try {
@@ -1102,6 +1109,8 @@ void bakeVertexAnimationRun(const CallPtr& call, bool waited) {
         title = "Import Vertex Animation " + relativeOf(project, FileUtils::pathFromUtf8(request.importSpec.path));
     } else {
         state->session = std::make_unique<VatBakeSession>(project);
+        // its files stay beneath the project when written (a default output beside a linked-in source included)
+        state->session->writeBeneath(McpRefs::trustedRoots(project));
         if (request.rebake) {
             if (!state->session->loadRebake(request.rebakePath, error)) {
                 call->fail("Can't rebake " + request.rebakePath + ": " + error + ".");
@@ -1297,20 +1306,16 @@ void registerVatTools(McpRegistry& registry) {
     tool.title = "Bake Vertex Animation";
     tool.description =
         "Bake animation into a Vertex Animation (.vat + .vat.glb: GPU crowds, Vertex Animator), or import a "
-        "Houdini VAT 3 / OpenVAT export. Without output (or rebake) nothing is written: the report (mode, sizes, errors, warnings with "
-        "fixes) and a contact sheet (source vs VAT). The same arguments + output write exactly that (one undo step). "
+        "Houdini VAT 3 / OpenVAT export. Without output (or rebake) nothing is written: the report "
+        "and a contact sheet (source vs VAT). The same arguments + output write exactly that (one undo step). "
         "Guide: jasper://docs/vertex-animation.";
     Json source;
-    source["description"] = "GameObject, model, model#Clip, .anim list (+on), .poseanim, or an export path.";
     source["type"] = Json::array({"string", "integer", "array"});
     Json on;
-    on["description"] = "Model, prefab or GameObject the clips play on.";
     on["type"] = Json::array({"string", "integer"});
     Json output;
-    output["description"] = ".vat path, or true: default name. Omitted: preview.";
     output["type"] = Json::array({"string", "boolean"});
     Json place;
-    place["description"] = "On write.";
     place["anyOf"] = Json::array({stringEnum("", {"none", "beside", "replace"}),
                                   object({{"crowd", object({{"count", integer("")}, {"area", number("m")}, {"seed", integer("")}})}})});
     tool.inputSchema = object({
@@ -1318,21 +1323,21 @@ void registerVatTools(McpRegistry& registry) {
         {"scene", sceneRef()},
         {"on", on},
         // (an object's keys and values are checked by clipsArg; the guide lists them)
-        {"clips", array(Json{{"type", Json::array({"string", "object"})}}, "Names or {name, wrap, interpolate, fps}. Default all.")},
+        {"clips", array(Json{{"type", Json::array({"string", "object"})}}, "")},
         {"mode", withDefault(stringEnum("", {"auto", "vertices", "bones"}), "auto")},
-        {"fps", number("Default 30.")},
+        {"fps", number("")},
         {"normals", withDefault(boolean(""), true)},
         {"precision", withDefault(stringEnum("", {"auto", "half", "float"}), "auto")},
         {"preset", withDefault(stringEnum("", {"mobile_web", "desktop"}), "mobile_web")},
         {"tolerance_mm", number("")},
-        {"sockets", array(Json{{"type", "string"}}, "Node paths.")},
+        {"sockets", array(Json{{"type", "string"}}, "")},
         {"output", output},
         {"overwrite", withDefault(boolean(""), false)},
-        {"rebake", string("A .vat: run its recipe again.")},
+        {"rebake", string("")},
         {"place", place},
-        {"import", anyObject("Importer options (guide).")},
+        {"import", anyObject("")},
         {"wait", withDefault(boolean(""), true)},
-        {"timeout_seconds", withDefault(number("Then a job_id (get_job).", 1, 3600), 120)}
+        {"timeout_seconds", withDefault(number("", 1, 3600), 120)}
     });
     tool.allowedWhilePlaying = false;
     tool.activity = ToolActivity::Edit;

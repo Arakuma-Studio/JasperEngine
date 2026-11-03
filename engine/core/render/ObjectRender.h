@@ -66,8 +66,11 @@ namespace jasperengine {
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face, built on
         // first use and released by destroy() (the editor's Scene view debug toggle; ignored
-        // outside the editor)
-        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false);
+        // outside the editor). mirrored draws with a variant whose face winding is reversed,
+        // built on first use too: a draw whose transform mirrors the mesh (its triangles turn on
+        // screen) keeps culling its back faces and gl_FrontFacing true on its front
+        // (RenderSystem::isMirroredDraw)
+        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false);
         // the pipeline of that state from the pipeline cache (created on first use), applied
         // unless it is the one applied last in this pass; false while the shader is not ready
         bool beginDraw(const PipelineState& state);
@@ -96,6 +99,9 @@ namespace jasperengine {
 
         // pipelines made by every object and not destroyed yet (diagnostics)
         static int getLivePipelineCount();
+        // the pipeline variants (mirrored draws, the editor's no-cull view) alive, shared by
+        // every object drawing with the same description (diagnostics)
+        static size_t getSharedVariantCount();
         // loads that left a vertex input of their shader without a buffer (diagnostics: zero
         // when every load binds what its shader reads)
         static int getUnfedVertexInputLoads();

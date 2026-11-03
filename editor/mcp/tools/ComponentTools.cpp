@@ -4,6 +4,7 @@
 // W1: the Inspector: get_entity, components (add, remove, reset, copy/paste values),
 // set_properties (every property type), set_transform, list_component_types
 #include "McpTools.h"
+#include "component/ParticleSystemComponent.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -243,7 +244,10 @@ void getEntityTool(const CallPtr& call) {
     size_t elided = 0;
     // a mesh's submesh array is fixed-size: only the used submeshes are its properties
     unsigned int usedSubmeshes = 0;
-    if (MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)) usedSubmeshes = mesh->numSubmeshes;
+    // (a Sprite's first submesh exists before its first update sets the count)
+    if (MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)) {
+        usedSubmeshes = std::max(mesh->numSubmeshes, registry->findComponent<SpriteComponent>(entity) ? 1u : 0u);
+    }
     auto unusedSubmesh = [usedSubmeshes](ComponentType type, const std::string& name) {
         if (type != ComponentType::MeshComponent || name.compare(0, 10, "submeshes[") != 0) return false;
         return std::strtoul(name.c_str() + 10, nullptr, 10) >= usedSubmeshes;
@@ -351,6 +355,48 @@ void getEntityTool(const CallPtr& call) {
         }
     }
     if (!assetGuids.empty()) data["asset_guids"] = assetGuids;
+    // a thick line's ribbon and a trail's stored points as the renderer has them (read only;
+    // in Play the trail's points move every frame)
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::LineRendererComponent) != filter.end()) {
+        if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)) {
+            Json ribbon = Json::object();
+            if (lines->widthMultiplier > 0.0f) {
+                ribbon["vertices"] = lines->ribbon.vertices.size();
+                ribbon["indices"] = lines->ribbon.indices.size();
+                ribbon["length"] = McpValues::number(lines->ribbon.length);
+                ribbon["loaded"] = lines->loaded && lines->loadedRibbon;
+            } else {
+                ribbon["hairline"] = true;
+                ribbon["segments"] = (lines->mode == LineRendererMode::Polyline) ? lines->polylineSegments.size() : lines->lines.size();
+            }
+            data["ribbon"] = ribbon;
+            text += ". ribbon: " + ribbon.dump();
+        }
+    }
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::TrailRendererComponent) != filter.end()) {
+        if (const TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)) {
+            Json stats = Json::object();
+            stats["points"] = trail->points.size();
+            stats["vertices"] = trail->ribbon.vertices.size();
+            stats["length"] = McpValues::number(trail->ribbon.length);
+            data["trail"] = stats;
+            text += ". trail: " + stats.dump();
+        }
+    }
+    // a Video Player's playback (read only; in Play)
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::VideoPlayerComponent) != filter.end()) {
+        const Json video = McpValues::videoStatusToJson(registry, entity);
+        if (!video.is_null()) {
+            data["video"] = video;
+            text += ". video: " + video.dump();
+        }
+    }
+    // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)
+    const Json groupState = McpValues::canvasGroupStateToJson(registry, entity);
+    if (!groupState.is_null()) {
+        data["canvas_group_state"] = groupState;
+        text += ". canvas_group_state: " + groupState.dump();
+    }
     // what its draws read of the scene (phase 3) in their current variants, and the cost
     const Json sceneInputs = McpValues::entitySceneInputsToJson(registry, entity);
     if (!sceneInputs.empty()) {

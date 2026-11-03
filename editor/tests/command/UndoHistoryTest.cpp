@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <type_traits>
 
@@ -95,28 +97,35 @@ TEST_F(CommandHistoryTests, NamesAreClippedTo80CodePoints) {
 }
 
 TEST_F(CommandHistoryTests, TrimByCountAndBytes) {
-    CommandHistory::maxEntries = 10;
-    CommandHistory a(1);
-    CommandHistory b(2);
-    for (int i = 0; i < 12; i++) a.addCommand(make("a" + std::to_string(i), i + 1));
-    // the oldest went first, count per history
-    EXPECT_EQ(a.appliedCount(), 10u);
-    EXPECT_EQ(a.getTrimmedCount(), 2u);
-    EXPECT_EQ(a.entries().front()->name(), "a2");
+    // The byte limit counts every live history of the process, and the oldest step of any goes
+    // first: the headless projects other suites of this binary keep would take part. The check
+    // runs in a process of its own (a threadsafe death test re-runs only this test).
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+    EXPECT_EXIT({
+        CommandHistory::maxEntries = 10;
+        CommandHistory a(1);
+        CommandHistory b(2);
+        for (int i = 0; i < 12; i++) a.addCommand(make("a" + std::to_string(i), i + 1));
+        // the oldest went first, count per history
+        EXPECT_EQ(a.appliedCount(), 10u);
+        EXPECT_EQ(a.getTrimmedCount(), 2u);
+        EXPECT_EQ(a.entries().front()->name(), "a2");
 
-    // bytes over both histories: the lowest id of any goes
-    CommandHistory::maxEntries = 1000;
-    CommandHistory::memoryLimit = 1000;
-    state.deleted.clear();
-    auto* big = make("b0", 100);
-    big->bytes = 500;
-    b.addCommand(big);
-    // a holds 10 x 64 = 640, b 500: 1140 > 1000, so a's oldest steps go, b's newest stays
-    EXPECT_LE(CommandHistory::totalBytes(), 1000u);
-    EXPECT_FALSE(state.deleted.empty());
-    EXPECT_EQ(state.deleted.front(), "a2");
-    ASSERT_NE(b.top(), nullptr);
-    EXPECT_EQ(b.top()->name(), "b0");
+        // bytes over both histories: the lowest id of any goes
+        CommandHistory::maxEntries = 1000;
+        CommandHistory::memoryLimit = 1000;
+        state.deleted.clear();
+        auto* big = make("b0", 100);
+        big->bytes = 500;
+        b.addCommand(big);
+        // a holds 10 x 64 = 640, b 500: 1140 > 1000, so a's oldest steps go, b's newest stays
+        EXPECT_LE(CommandHistory::totalBytes(), 1000u);
+        EXPECT_FALSE(state.deleted.empty());
+        if (!state.deleted.empty()) { EXPECT_EQ(state.deleted.front(), "a2"); }
+        EXPECT_TRUE(b.top() && b.top()->name() == "b0");
+        std::fflush(nullptr);
+        std::_Exit(::testing::Test::HasFailure() ? 1 : 0);
+    }, ::testing::ExitedWithCode(0), "");
 }
 
 TEST_F(CommandHistoryTests, TrimNeverTakesTheNewestEntryPlayStepsOrAHeldGroup) {
@@ -395,7 +404,7 @@ TEST_F(CommandHistoryTests, BeforeMutationRefuses) {
     CommandHistory::beforeMutation = [](std::string& why) { why = "Play mode is starting"; return false; };
     EXPECT_FALSE(history.addCommand(make("b", 2)));
     EXPECT_FALSE(history.undo());
-    EXPECT_EQ(CommandHistory::lastRefusal(), "Play mode is starting");
+    EXPECT_EQ(CommandHistory::lastBusyRefusal(), "Play mode is starting");
     EXPECT_EQ(state.value, 1);
     CommandHistory::beforeMutation = nullptr;
     EXPECT_TRUE(history.undo());

@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "htmlui/HtmlTextEffects.h"
 #include "HtmlUIContext.h"
 
 #include "HtmlUI.h"
@@ -209,9 +210,11 @@ void HtmlUIContext::destroy(){
     context->UnloadAllDocuments();
     activeElement.reset();
     touches.clear();
+    touchPresses.clear();
 
     // geometry goes back through RmlRenderer::ReleaseGeometry
     RmlRenderer::unbindContext(context);
+    htmlui::HtmlTextEffects::get().forget(context);
     Rml::RemoveContext(name);
     context = nullptr;
     navigateListener.reset();   // detached with the root element
@@ -304,12 +307,18 @@ void HtmlUIContext::unloadDocument(Rml::ElementDocument* document){
     if (activeElement && activeElement->GetOwnerDocument() == document){
         activeElement.reset();
     }
+    for (auto& press : touchPresses){
+        if (press.second && press.second->GetOwnerDocument() == document)
+            press.second.reset();
+    }
 
     context->UnloadDocument(document);
 }
 
 void HtmlUIContext::update(){
     if (context){
+        // text-effect: the texts that animate draw again (geometry only)
+        htmlui::HtmlTextEffects::get().update(context);
         // focus tracking, animation fill modes (phase-2 hook H1)
         htmlui::compat::updateRuntime(context);
         // S17: tooltips, drags, runtime diagnostics
@@ -336,6 +345,8 @@ bool HtmlUIContext::processMouseButtonDown(int button, int modifiers){
         return false;
 
     context->ProcessMouseButtonDown(button, modifiers);
+    if (button >= 0 && button < 31)
+        mouseButtons |= 1 << button;
     if (button == 0)
         htmlui::EffectRuntime::get().onPointerButton(context, true);
 
@@ -360,6 +371,8 @@ bool HtmlUIContext::processMouseButtonUp(int button, int modifiers){
     const bool overContent = isPointerOverContent();
 
     context->ProcessMouseButtonUp(button, modifiers);
+    if (button >= 0 && button < 31)
+        mouseButtons &= ~(1 << button);
 
     if (button == 0){
         activeElement.reset();
@@ -425,6 +438,8 @@ const std::string& HtmlUIContext::getColorScheme() const{
 
 void HtmlUIContext::setReducedMotion(bool reduced){
     reducedMotion = reduced;
+    if (context)
+        htmlui::HtmlTextEffects::get().setReducedMotion(context, reduced);
     applyThemes();
 }
 

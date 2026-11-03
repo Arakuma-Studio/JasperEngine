@@ -13,6 +13,16 @@
 //   gradient  {"colorKeys": [[time, r, g, b]], "alphaKeys": [[time, alpha]], "mode": "fixed", "linear": true}
 //             colours sRGB-encoded; mode and linear only when not the default
 //
+// The readers also take upstream's (origin/main lines and trails) forms, so its scenes, prefabs
+// and MCP calls read without loss (docs/specs/S27-editor-tools.md, Upstream absorption):
+//   curve     a number (a constant curve); {"keys": [...], "pre": "loop", "post": "ping_pong"};
+//             key maps {time, value, inTangent, outTangent}; "inf" / "-inf" step tangents.
+//             Such a curve is normalized as upstream's was (sorted, equal times dropped).
+//   gradient  {"mode": "blend", "colors": [[time, "#RRGGBB" | [r, g, b]]], "alphas": [[time, a]]}
+//             or one colour ("#RRGGBB(AA)", [r, g, b(, a)]): array colours are linear and become
+//             sRGB-encoded keys (the same colours; linear values above 1 stay above 1); at most 8
+//             keys of each (the first 7 and the last).
+//
 // A key's mode token (5th element, left out for Free on both sides): "clampedAuto", "auto",
 // "free", "linear" or "constant" when both sides agree and the key is not broken, else
 // "in:<mode>,out:<mode>" with ",broken" when broken. Floats are written in their shortest
@@ -40,6 +50,10 @@ namespace jasperengine { namespace curvejson {
     JASPERENGINE_API Json curveToJson(const Curve& curve);
     // false on an error (the curve is then left as read so far); warnings do not fail
     JASPERENGINE_API bool curveFromJson(const Json& json, Curve& curve, std::vector<Issue>& issues);
+
+    // a curve or gradient in upstream's dialect (above): what the readers take besides the one form
+    JASPERENGINE_API bool isUpstreamCurve(const Json& json);
+    JASPERENGINE_API bool isUpstreamGradient(const Json& json);
 
     JASPERENGINE_API Json gradientToJson(const Gradient& gradient);
     JASPERENGINE_API bool gradientFromJson(const Json& json, Gradient& gradient, std::vector<Issue>& issues);

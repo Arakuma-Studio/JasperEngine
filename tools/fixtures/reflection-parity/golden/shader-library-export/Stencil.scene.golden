@@ -1,4 +1,4 @@
-formatVersion: 5
+formatVersion: 7
 guid: fa957052190b74172aca2dc49fa7bbdc
 id: 2971396629
 name: Stencil
@@ -64,16 +64,11 @@ shaderKeys:
   - type: depth
   - type: blit
   - type: mesh
-    properties: 1027
-    customShader: library:unlit#BLEND_NONE
+    properties: 33554433
+    customShader: library:outline#BLEND_NONE,DISTANCE_SCALE,WIDTH_MODE_WORLD
   - type: mesh
-    properties: 33555459
-    customShader: library:unlit#BLEND_NONE
-  - type: depth
-    customShader: library:unlit
-  - type: mesh
-    properties: 3075
-    customShader: library:sprite#BLEND_ALPHA
+    properties: 33554435
+    customShader: library:outline#BLEND_NONE,TEXTURE,WIDTH_MODE_WORLD
   - type: mesh
     properties: 33554433
     customShader: library:outline#BLEND_NONE,WIDTH_MODE_SCREEN
@@ -82,22 +77,10 @@ shaderKeys:
     customShader: library:outline#BLEND_NONE,WIDTH_MODE_WORLD
   - type: mesh
     properties: 33554433
-    customShader: library:outline#BLEND_NONE,DISTANCE_SCALE,WIDTH_MODE_WORLD
-  - type: mesh
-    properties: 33554435
-    customShader: library:outline#BLEND_NONE,TEXTURE,WIDTH_MODE_WORLD
-  - type: mesh
-    properties: 33554435
-    customShader: library:unlit#BLEND_ALPHA
-  - type: mesh
-    properties: 33555459
-    customShader: library:unlit#BLEND_ALPHA
+    customShader: library:outline_stencil#BLEND_NONE,VISIBILITY_ALWAYS,WIDTH_MODE_SCREEN
   - type: mesh
     properties: 33554433
     customShader: library:outline_stencil#BLEND_NONE,VISIBILITY_VISIBLE_ONLY,WIDTH_MODE_SCREEN
-  - type: mesh
-    properties: 33554433
-    customShader: library:outline_stencil#BLEND_NONE,VISIBILITY_ALWAYS,WIDTH_MODE_SCREEN
   - type: mesh
     properties: 33554433
     customShader: library:silhouette#BLEND_ALPHA,SILHOUETTE_MODE_FLAT
@@ -105,14 +88,31 @@ shaderKeys:
     properties: 33554497
     customShader: library:silhouette#BLEND_ALPHA,SILHOUETTE_MODE_FRESNEL
   - type: mesh
-    properties: 1
-    customShader: library:stencil_mask#BLEND_NONE
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA
+  - type: mesh
+    properties: 2051
+    customShader: library:sprite_mask#BLEND_NONE
   - type: mesh
     properties: 3
     customShader: library:stencil_mask#ALPHA_CLIP,BLEND_NONE
   - type: mesh
-    properties: 2051
-    customShader: library:sprite_mask#BLEND_NONE
+    properties: 1
+    customShader: library:stencil_mask#BLEND_NONE
+  - type: depth
+    customShader: library:unlit
+  - type: mesh
+    properties: 33554435
+    customShader: library:unlit#BLEND_ALPHA
+  - type: mesh
+    properties: 33555459
+    customShader: library:unlit#BLEND_ALPHA
+  - type: mesh
+    properties: 1027
+    customShader: library:unlit#BLEND_NONE
+  - type: mesh
+    properties: 33555459
+    customShader: library:unlit#BLEND_NONE
 entities:
   - type: Entity
     entity: 1001

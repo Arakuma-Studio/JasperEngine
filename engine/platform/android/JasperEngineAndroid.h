@@ -46,12 +46,42 @@ public:
     virtual void setStringForKey(const char* key, const std::string& value) override;
 
     virtual void removeKey(const char* key) override;
+    virtual bool hasKey(const char* key) override;
+    virtual void removeAllKeys() override;
+    virtual void saveUserSettings() override;
+
+    // platform services (JasperPlatform.java)
+    virtual std::vector<std::string> getPreferredLocales() override;
+    virtual std::string getRegionOverride() override;
+    virtual std::string getAppVersion() override;
+    virtual int64_t getAppBuild() override;
+    virtual std::string getAppIdentifier() override;
+    virtual std::string getAppName() override;
+    virtual std::string getOperatingSystem() override;
+    virtual std::string getOperatingSystemVersion() override;
+    virtual int getAndroidApiLevel() override;
+    virtual std::string getDeviceModel() override;
+    virtual jasperengine::DeviceType getDeviceType() override;
+    virtual int getSystemMemorySize() override;
+    virtual jasperengine::NetworkReachability getInternetReachability() override;
+    virtual bool vibrate(int milliseconds) override;
+    virtual bool hapticFeedback(jasperengine::HapticFeedback type) override;
+    virtual float getScreenDpi() override;
+    virtual float getRefreshRate() override;
+    virtual void setKeepScreenOn(bool keepOn) override;
+    virtual void applyOrientationPolicy(jasperengine::ScreenOrientation requested, uint8_t allowedMask) override;
+    virtual jasperengine::ScreenOrientation getScreenOrientation() override;
+    virtual jasperengine::DeviceOrientation getDeviceOrientation() override;
+    virtual void applyFramePacing(const jasperengine::FramePacing& pacing) override;
 
     virtual void initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent) override;
     virtual void setMaxAdContentRating(jasperengine::AdMobRating rating) override;
     virtual void loadInterstitialAd(const std::string& adUnitID) override;
     virtual bool isInterstitialAdLoaded() override;
     virtual void showInterstitialAd() override;
+
+protected:
+    virtual bool platformOpenURL(const std::string& url) override;
 };
 
 #endif /* JasperEngineAndroid_H_ */

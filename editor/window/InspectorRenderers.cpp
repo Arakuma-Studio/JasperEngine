@@ -233,15 +233,15 @@ void editor::InspectorWindow::drawPointsComponent(ComponentType cpType, ScenePro
     }
 }
 
-void editor::InspectorWindow::drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+// the Line Renderer's Segments mode: Max Lines and the A-B segment list (drawLineRendererComponent,
+// InspectorLinesTrails.cpp, draws the rest)
+void editor::InspectorWindow::drawLineSegmentsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
 
     beginTable(cpType, getLabelSize("Max Lines"));
     propertyRow(RowPropertyType::UInt, cpType, "maxLines", "Max Lines", sceneProject, entities, settingsInt);
     endTable();
-
-    drawCustomShaderRow(cpType, ShaderType::LINES, sceneProject, entities);
 
     if (entities.size() != 1) {
         separatorText("Lines");

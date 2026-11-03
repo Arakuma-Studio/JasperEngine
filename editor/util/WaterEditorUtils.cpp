@@ -69,7 +69,7 @@ bool editor::WaterEditorUtils::colliderBounds(Scene* scene, Entity entity, Vecto
     const float inf = std::numeric_limits<float>::max();
     min = Vector3(inf, inf, inf);
     max = Vector3(-inf, -inf, -inf);
-    for (size_t i = 0; i < body->numColliders; i++){
+    for (size_t i = 0; i < body->colliders.size(); i++){
         Vector3 half;
         float volume = 0.0f;
         if (!colliderShape(body->colliders[i], half, volume))
@@ -90,7 +90,7 @@ bool editor::WaterEditorUtils::colliderMass(Scene* scene, Entity entity, float& 
         return false;
     const Vector3 scale = worldScale(scene, entity);
     const float scaleVolume = scale.x * scale.y * scale.z;
-    for (size_t i = 0; i < body->numColliders; i++){
+    for (size_t i = 0; i < body->colliders.size(); i++){
         Vector3 half;
         float v = 0.0f;
         if (!colliderShape(body->colliders[i], half, v))

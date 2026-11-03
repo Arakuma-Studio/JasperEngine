@@ -1,4 +1,4 @@
-formatVersion: 5
+formatVersion: 7
 guid: 743bbd65bf2a44796f3a2c6886d66f02
 id: 2
 name: Closed
@@ -40,11 +40,6 @@ maxValues:
   maxExternalBuffers: 2
   maxSpriteFrames: 0
   maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: mesh
     properties: 33554504

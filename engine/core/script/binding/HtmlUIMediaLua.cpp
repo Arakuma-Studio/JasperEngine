@@ -99,6 +99,8 @@ void LuaBinding::registerHtmlUIMediaClasses(lua_State *L){
         .addProperty("videoWidth", [](const UIElement* self, lua_State* L) -> int { checkMediaElement(self, L); return self->getVideoWidth(); })
         .addProperty("videoHeight", [](const UIElement* self, lua_State* L) -> int { checkMediaElement(self, L); return self->getVideoHeight(); })
         .addProperty("currentSrc", [](const UIElement* self, lua_State* L) -> std::string { checkMediaElement(self, L); return self->getCurrentSrc(); })
+        // what decodes it: "webm" (AV1/Opus in software), "ffmpeg", "mediacodec", "avfoundation", "mediafoundation", "browser"
+        .addProperty("videoBackend", [](const UIElement* self, lua_State* L) -> std::string { checkMediaElement(self, L); return self->getVideoBackend(); })
         .addProperty("poster",
             [](const UIElement* self, lua_State* L) -> std::string { checkMediaElement(self, L); return self->getPoster(); },
             [](UIElement* self, const std::string& poster, lua_State* L) { checkMediaElement(self, L); self->setPoster(poster); })

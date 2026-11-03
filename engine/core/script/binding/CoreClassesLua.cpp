@@ -14,15 +14,31 @@
 #include "LuaBridgeAddon.h"
 
 #include "Engine.h"
+
+#include <climits>
+#include <cmath>
 #include "Log.h"
+#include "util/SubscriptionOwnerIndex.h"
+#include "debug/DebugOverlay.h"
+#include "debug/DebugStats.h"
 #include "Scene.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
 #include "PrefabAsset.h"
 #include "asset/AssetMap.h"
 #include "Input.h"
+#include "input/InputActions.h"
+#include "input/InputControlNames.h"
+#include "input/InputManagerFormat.h"
+#include "json.hpp"
+
+#include <cstring>
+#include <set>
+#include <stdexcept>
 #include "System.h"
 #include "player/RunControl.h"
+#include "Screen.h"
+#include "util/CanvasScalerRef.h"
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
 #include "picking/MeshRaycast.h"
@@ -49,6 +65,8 @@
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderUniforms.h"
+#include "shader/ShaderGlobals.h"
+#include "util/Color.h"
 #include "object/EntityHandle.h"
 
 using namespace jasperengine;
@@ -80,9 +98,22 @@ namespace {
         LogCategory* category;
     };
 
+    // a Lua traceback per Project Settings > Debug > Log Stack Traces (from the caller of the
+    // logging function), "" when that level gets none
+    std::string luaLogTraceback(lua_State* L, LogLevel level) {
+        if (!Log::wantsStackTrace(level)) return std::string();
+        luaL_traceback(L, L, nullptr, 1);
+        size_t length = 0;
+        const char* trace = lua_tolstring(L, -1, &length);
+        std::string text(trace ? trace : "", trace ? length : 0);
+        lua_pop(L, 1);
+        return text;
+    }
+
     void luaLog(lua_State* L, LogLevel level, const LogCategory& category, const char* text) {
         if (!Logger::shouldLog(level, category)) return;
-        LuaBinding::logFromLua(L, level, category, text ? std::string_view(text) : std::string_view("(nil)"));
+        LuaBinding::logFromLua(L, level, category, text ? std::string_view(text) : std::string_view("(nil)"),
+                               luaLogTraceback(L, level));
     }
 }
 
@@ -149,6 +180,506 @@ static bool luaComponentIds(lua_State* L, int index, Scene* scene, const char* f
     return true;
 }
 
+// Screen.setExtraInsets(left, top, right, bottom [, unit]): unit "canvas" (default) or "pixels"
+static int luaScreenSetExtraInsets(lua_State* L){
+    const char* edges[] = {"left", "top", "right", "bottom"};
+    float values[4];
+    for (int i = 0; i < 4; i++){
+        if (lua_type(L, i + 1) != LUA_TNUMBER){
+            return luaL_error(L, "Screen.setExtraInsets: %s must be a number (left, top, right, bottom [, \"canvas\"|\"pixels\"])", edges[i]);
+        }
+        values[i] = (float)lua_tonumber(L, i + 1);
+    }
+    bool pixels = false;
+    if (!lua_isnoneornil(L, 5)){
+        const char* unit = lua_type(L, 5) == LUA_TSTRING ? lua_tostring(L, 5) : nullptr;
+        if (unit && std::string(unit) == "pixels"){
+            pixels = true;
+        }else if (!unit || std::string(unit) != "canvas"){
+            return luaL_error(L, "Screen.setExtraInsets: unit must be \"canvas\" or \"pixels\"");
+        }
+    }
+    Screen::setExtraInsets(EdgeInsets(values[0], values[1], values[2], values[3]), pixels);
+    return 0;
+}
+
+// ---- Input (Unity's Input class: edges, touches, the Input Manager's actions)
+namespace{
+
+    // a key, mouse button or gamepad button by its control name ("space", "mouse_left",
+    // "gamepad_a", Unity's "left ctrl", "joystick button 0"...); one error per unknown name
+    bool luaInputControl(const std::string& name, InputControl& control){
+        static std::set<std::string> reported;
+        std::string error;
+        if (InputControlNames::parseButton(name, control, &error))
+            return true;
+        if (reported.insert(name).second)
+            Log::error("Input: %s", error.c_str());
+        return false;
+    }
+
+    bool luaControlHeld(const std::string& name){
+        InputControl control;
+        if (!luaInputControl(name, control)) return false;
+        switch (control.device){
+            case InputDevice::Key: return Input::isKeyPressed(control.code);
+            case InputDevice::Mouse: return Input::isMousePressed(control.code);
+            case InputDevice::GamepadButton:
+                for (size_t i = 0; i < Input::numGamepads(); i++){
+                    if (Input::isGamepadButtonPressed(Input::getGamepadId(i), control.code)) return true;
+                }
+                return false;
+            default: return false;
+        }
+    }
+
+    bool luaControlEdge(const std::string& name, bool down){
+        InputControl control;
+        if (!luaInputControl(name, control)) return false;
+        switch (control.device){
+            case InputDevice::Key: return down ? Input::getKeyDown(control.code) : Input::getKeyUp(control.code);
+            case InputDevice::Mouse: return down ? Input::getMouseButtonDown(control.code) : Input::getMouseButtonUp(control.code);
+            case InputDevice::GamepadButton: return down ? Input::getGamepadButtonDown(-1, control.code) : Input::getGamepadButtonUp(-1, control.code);
+            default: return false;
+        }
+    }
+
+    int luaGamepadButton(const std::string& name){
+        const int button = InputControlNames::parseGamepadButton(name);
+        if (button < 0){
+            static std::set<std::string> reported;
+            if (reported.insert(name).second)
+                Log::error("Input: unknown gamepad button \"%s\" (gamepad_a, gamepad_dpad_up, ... or Input.GAMEPAD_BUTTON_*)", name.c_str());
+        }
+        return button;
+    }
+
+    // the owner of a simulated source: a name (default "script") or a script instance (`self`),
+    // whose sources go when the instance is released
+    uintptr_t luaSourceOwner(const luabridge::LuaRef& source){
+        if (source.isTable()){
+            lua_State* L = source.state();
+            source.push(L);
+            const void* table = lua_topointer(L, -1);
+            lua_pop(L, 1);
+            return reinterpret_cast<uintptr_t>(table);
+        }
+        if (source.isString())
+            return InputActions::namedSource(source.unsafe_cast<std::string>());
+        return InputActions::namedSource("script");
+    }
+
+    // JSON <-> Lua tables, for the bindings (getBindings / setBindings)
+    void luaPushJson(lua_State* L, const nlohmann::json& value){
+        if (value.is_object()){
+            lua_newtable(L);
+            for (auto it = value.begin(); it != value.end(); ++it){
+                luaPushJson(L, it.value());
+                lua_setfield(L, -2, it.key().c_str());
+            }
+        }else if (value.is_array()){
+            lua_newtable(L);
+            for (size_t i = 0; i < value.size(); i++){
+                luaPushJson(L, value[i]);
+                lua_rawseti(L, -2, (lua_Integer)i + 1);
+            }
+        }else if (value.is_boolean()){
+            lua_pushboolean(L, value.get<bool>() ? 1 : 0);
+        }else if (value.is_number_integer()){
+            lua_pushinteger(L, (lua_Integer)value.get<long long>());
+        }else if (value.is_number()){
+            lua_pushnumber(L, value.get<double>());
+        }else if (value.is_string()){
+            const std::string& text = value.get_ref<const std::string&>();
+            lua_pushlstring(L, text.data(), text.size());
+        }else{
+            lua_pushnil(L);
+        }
+    }
+
+    // a table with keys 1..n is a list (an empty table too), else an object
+    nlohmann::json luaToJson(lua_State* L, int index, int depth = 0){
+        index = lua_absindex(L, index);
+        switch (lua_type(L, index)){
+            case LUA_TBOOLEAN: return lua_toboolean(L, index) != 0;
+            case LUA_TNUMBER:
+                if (lua_isinteger(L, index)) return (long long)lua_tointeger(L, index);
+                return lua_tonumber(L, index);
+            case LUA_TSTRING: {
+                size_t length = 0;
+                const char* text = lua_tolstring(L, index, &length);
+                return std::string(text, length);
+            }
+            case LUA_TTABLE: {
+                if (depth > 16) return nullptr;
+                const lua_Integer length = (lua_Integer)lua_rawlen(L, index);
+                size_t keys = 0;
+                lua_pushnil(L);
+                while (lua_next(L, index) != 0){
+                    keys++;
+                    lua_pop(L, 1);
+                }
+                if ((lua_Integer)keys == length){
+                    nlohmann::json list = nlohmann::json::array();
+                    for (lua_Integer i = 1; i <= length; i++){
+                        lua_rawgeti(L, index, i);
+                        list.push_back(luaToJson(L, -1, depth + 1));
+                        lua_pop(L, 1);
+                    }
+                    return list;
+                }
+                nlohmann::json object = nlohmann::json::object();
+                lua_pushnil(L);
+                while (lua_next(L, index) != 0){
+                    if (lua_type(L, -2) == LUA_TSTRING)
+                        object[lua_tostring(L, -2)] = luaToJson(L, -1, depth + 1);
+                    lua_pop(L, 1);
+                }
+                return object;
+            }
+            default: return nullptr;
+        }
+    }
+
+    // Input.getBindings(name): the bindings in use, as tables of the Input Manager's shape
+    int luaInputGetBindings(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        if (!InputActions::hasAction(name)){
+            InputActions::getBindings(name);   // logs the unknown name once
+            lua_newtable(L);
+            return 1;
+        }
+        luaPushJson(L, nlohmann::json::parse(InputManagerFormat::bindingsToJson(InputActions::getBindings(name))));
+        return 1;
+    }
+
+    // Input.setBindings(name, bindings) -> true | false, error
+    int luaInputSetBindings(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        luaL_checktype(L, 2, LUA_TTABLE);
+        std::vector<InputManagerBinding> bindings;
+        std::string error;
+        if (!InputActions::hasAction(name)){
+            error = "Input action \"" + name + "\" does not exist (Project Settings > Input)";
+        }else if (InputManagerFormat::parseBindingsJson(luaToJson(L, 2).dump(), bindings, &error, name) &&
+                   InputActions::setBindings(name, bindings, &error)){
+            lua_pushboolean(L, 1);
+            return 1;
+        }
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, error.c_str());
+        return 2;
+    }
+
+    // Input.importBindings(json) -> true | false, error
+    int luaInputImportBindings(lua_State* L){
+        const std::string json = luaL_checkstring(L, 1);
+        std::string error;
+        if (InputActions::importOverrides(json, &error)){
+            lua_pushboolean(L, 1);
+            return 1;
+        }
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, error.c_str());
+        return 2;
+    }
+
+    // Input.anyKeyDown is a property (Unity: `if Input.anyKeyDown then`) and a function (S22:
+    // `Input.anyKeyDown()`): calling a boolean with no arguments gives it back. With arguments it
+    // is the usual error
+    int luaCallBoolean(lua_State* L){
+        if (lua_gettop(L) != 1)
+            return luaL_error(L, "attempt to call a boolean value");
+        lua_pushvalue(L, 1);
+        return 1;
+    }
+
+    void luaMakeBooleansCallable(lua_State* L){
+        lua_pushboolean(L, 0);
+        if (!lua_getmetatable(L, -1))
+            lua_newtable(L);
+        lua_pushcfunction(L, &luaCallBoolean);
+        lua_setfield(L, -2, "__call");
+        lua_setmetatable(L, -2);
+        lua_pop(L, 1);
+    }
+
+}
+
+// Shader: global shader values (Unity's Shader.SetGlobal* / PropertyToID). A global is named
+// by a string or by the integer Shader.propertyToID gave; setters return false (and log once)
+// when the global is of another kind (a matrix, an array, a texture)
+namespace{
+
+    // a binding's global argument: a name, or nil to unbind (anything else is an error)
+    std::string luaBindingGlobal(const luabridge::LuaRef& global, const char* function){
+        if (global.isNil())
+            return std::string();
+        if (global.isString())
+            return global.unsafe_cast<std::string>();
+        throw std::runtime_error(std::string(function) + ": the global is a name (a string), or nil to unbind");
+    }
+
+    // the global argument 1 names: a string (made on first use by a setter), or an id
+    int luaGlobalArg(lua_State* L, const char* function, bool create){
+        if (lua_type(L, 1) == LUA_TNUMBER){
+            if (!lua_isinteger(L, 1))
+                luaL_error(L, "Shader.%s: an id must be an integer (Shader.propertyToID)", function);
+            const int id = (int)lua_tointeger(L, 1);
+            if (ShaderGlobals::nameOf(id).empty())
+                luaL_error(L, "Shader.%s: %d is not an id Shader.propertyToID gave", function, id);
+            return id;
+        }
+        if (lua_type(L, 1) != LUA_TSTRING)
+            luaL_error(L, "Shader.%s: argument 1 must be a global's name or id", function);
+        const std::string name = lua_tostring(L, 1);
+        std::string error;
+        if (create && !ShaderGlobals::isValidName(name, &error))
+            luaL_error(L, "Shader.%s: %s", function, error.c_str());
+        return create ? ShaderGlobals::propertyToID(name) : ShaderGlobals::findID(name);
+    }
+
+    // a value of a registered class, nil when it cannot be pushed
+    template<typename T>
+    void luaPushValue(lua_State* L, const T& value){
+        if (!luabridge::push(L, value))
+            lua_pushnil(L);
+    }
+
+    // a Vector4, Vector3 (w = wFill) or Vector2 at index
+    bool luaVectorArg(lua_State* L, int index, Vector4& out, float wFill, bool allowVector2){
+        if (luabridge::isInstance<Vector4>(L, index)){
+            auto value = luabridge::get<Vector4>(L, index);
+            if (value){ out = *value; return true; }
+        }else if (luabridge::isInstance<Vector3>(L, index)){
+            auto value = luabridge::get<Vector3>(L, index);
+            if (value){ const Vector3 v = *value; out = Vector4(v.x, v.y, v.z, wFill); return true; }
+        }else if (allowVector2 && luabridge::isInstance<Vector2>(L, index)){
+            auto value = luabridge::get<Vector2>(L, index);
+            if (value){ const Vector2 v = *value; out = Vector4(v.x, v.y, 0.0f, 0.0f); return true; }
+        }
+        return false;
+    }
+
+    int luaShaderPropertyToID(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        std::string error;
+        if (!ShaderGlobals::isValidName(name, &error))
+            return luaL_error(L, "Shader.propertyToID: %s", error.c_str());
+        lua_pushinteger(L, ShaderGlobals::propertyToID(name));
+        return 1;
+    }
+
+    int luaShaderSetGlobalFloat(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalFloat", true);
+        if (!lua_isnumber(L, 2))
+            return luaL_error(L, "Shader.setGlobalFloat: argument 2 must be a number");
+        lua_pushboolean(L, ShaderGlobals::setFloat(id, (float)lua_tonumber(L, 2)) ? 1 : 0);
+        return 1;
+    }
+
+    // Unity's SetGlobalInt stores a float
+    int luaShaderSetGlobalInt(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalInt", true);
+        if (!lua_isnumber(L, 2))
+            return luaL_error(L, "Shader.setGlobalInt: argument 2 must be an integer");
+        lua_pushboolean(L, ShaderGlobals::setFloat(id, (float)(lua_Integer)lua_tonumber(L, 2)) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderSetGlobalVector(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalVector", true);
+        Vector4 value;
+        if (!luaVectorArg(L, 2, value, 0.0f, true))
+            return luaL_error(L, "Shader.setGlobalVector: argument 2 must be a Vector4, Vector3 or Vector2");
+        lua_pushboolean(L, ShaderGlobals::setVector(id, value) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderSetGlobalColor(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalColor", true);
+        Vector4 value;
+        if (!luaVectorArg(L, 2, value, 1.0f, false))
+            return luaL_error(L, "Shader.setGlobalColor: argument 2 must be a Vector4 or Vector3 (sRGB)");
+        lua_pushboolean(L, ShaderGlobals::setColor(id, value) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderSetGlobalMatrix(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalMatrix", true);
+        if (!luabridge::isInstance<Matrix4>(L, 2))
+            return luaL_error(L, "Shader.setGlobalMatrix: argument 2 must be a Matrix4");
+        auto value = luabridge::get<Matrix4>(L, 2);
+        lua_pushboolean(L, value && ShaderGlobals::setMatrix(id, *value) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderSetGlobalFloatArray(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalFloatArray", true);
+        luaL_checktype(L, 2, LUA_TTABLE);
+        const lua_Integer count = (lua_Integer)lua_rawlen(L, 2);
+        if (count < 1)
+            return luaL_error(L, "Shader.setGlobalFloatArray: the table needs 1 to %d numbers", (int)ShaderGlobals::MAX_ARRAY_SIZE);
+        std::vector<float> values;
+        for (lua_Integer i = 1; i <= count; i++){
+            lua_rawgeti(L, 2, i);
+            if (!lua_isnumber(L, -1))
+                return luaL_error(L, "Shader.setGlobalFloatArray: element %d must be a number", (int)i);
+            values.push_back((float)lua_tonumber(L, -1));
+            lua_pop(L, 1);
+        }
+        lua_pushboolean(L, ShaderGlobals::setFloatArray(id, values.data(), values.size()) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderSetGlobalVectorArray(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalVectorArray", true);
+        luaL_checktype(L, 2, LUA_TTABLE);
+        const lua_Integer count = (lua_Integer)lua_rawlen(L, 2);
+        if (count < 1)
+            return luaL_error(L, "Shader.setGlobalVectorArray: the table needs 1 to %d vectors", (int)ShaderGlobals::MAX_ARRAY_SIZE);
+        std::vector<Vector4> values;
+        for (lua_Integer i = 1; i <= count; i++){
+            lua_rawgeti(L, 2, i);
+            Vector4 value;
+            if (!luaVectorArg(L, lua_gettop(L), value, 0.0f, true))
+                return luaL_error(L, "Shader.setGlobalVectorArray: element %d must be a Vector4, Vector3 or Vector2", (int)i);
+            values.push_back(value);
+            lua_pop(L, 1);
+        }
+        lua_pushboolean(L, ShaderGlobals::setVectorArray(id, values.data(), values.size()) ? 1 : 0);
+        return 1;
+    }
+
+    // a Texture, an image path, a Framebuffer (a camera's render texture); nil: the default again
+    int luaShaderSetGlobalTexture(lua_State* L){
+        const int id = luaGlobalArg(L, "setGlobalTexture", true);
+        if (lua_isnoneornil(L, 2)){
+            lua_pushboolean(L, ShaderGlobals::clearTexture(id) ? 1 : 0);
+            return 1;
+        }
+        Texture texture;
+        if (lua_type(L, 2) == LUA_TSTRING){
+            texture.setPath(lua_tostring(L, 2));
+        }else if (luabridge::isInstance<Texture>(L, 2)){
+            auto value = luabridge::get<Texture>(L, 2);
+            if (value) texture = *value;
+        }else if (luabridge::isInstance<Framebuffer>(L, 2)){
+            auto value = luabridge::get<Framebuffer*>(L, 2);
+            if (value && *value) texture.setFramebuffer(*value);
+        }else{
+            return luaL_error(L, "Shader.setGlobalTexture: argument 2 must be a Texture, an image path, a Framebuffer or nil");
+        }
+        lua_pushboolean(L, ShaderGlobals::setTexture(id, texture) ? 1 : 0);
+        return 1;
+    }
+
+    // the value of the global argument 1 names: false when it does not exist or is a texture
+    bool luaGlobalValue(lua_State* L, const char* function, ShaderGlobalValue& value){
+        const int id = luaGlobalArg(L, function, false);
+        return ShaderGlobals::get(id, value) && !ShaderGlobals::isTexture(value.type) && !value.values.empty();
+    }
+
+    // its first slot (a float in .x); false for a matrix too
+    bool luaGlobalLeading(lua_State* L, const char* function, Vector4& out){
+        ShaderGlobalValue value;
+        if (!luaGlobalValue(L, function, value) || value.type == ShaderGlobalType::Matrix4)
+            return false;
+        out = value.values[0];
+        return true;
+    }
+
+    int luaShaderGetGlobalFloat(lua_State* L){
+        Vector4 value;
+        if (luaGlobalLeading(L, "getGlobalFloat", value)) lua_pushnumber(L, value.x);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    int luaShaderGetGlobalInt(lua_State* L){
+        Vector4 value;
+        if (luaGlobalLeading(L, "getGlobalInt", value)) lua_pushinteger(L, (lua_Integer)value.x);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    int luaShaderGetGlobalVector(lua_State* L){
+        Vector4 value;
+        if (luaGlobalLeading(L, "getGlobalVector", value)) luaPushValue(L, value);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    // as sRGB (alpha as is)
+    int luaShaderGetGlobalColor(lua_State* L){
+        Vector4 value;
+        if (luaGlobalLeading(L, "getGlobalColor", value)) luaPushValue(L, Color::linearTosRGB(value));
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    int luaShaderGetGlobalMatrix(lua_State* L){
+        ShaderGlobalValue value;
+        if (!luaGlobalValue(L, "getGlobalMatrix", value) || value.type != ShaderGlobalType::Matrix4 || value.values.size() < 4){
+            lua_pushnil(L);
+            return 1;
+        }
+        Matrix4 matrix;
+        for (unsigned int c = 0; c < 4; c++)
+            matrix.setColumn(c, value.values[c]);
+        luaPushValue(L, matrix);
+        return 1;
+    }
+
+    int luaShaderGetGlobalArray(lua_State* L, const char* function, bool vectors){
+        ShaderGlobalValue value;
+        if (!luaGlobalValue(L, function, value) || !ShaderGlobals::isArray(value.type)){
+            lua_pushnil(L);
+            return 1;
+        }
+        lua_createtable(L, (int)value.values.size(), 0);
+        for (size_t i = 0; i < value.values.size(); i++){
+            if (vectors)
+                luaPushValue(L, value.values[i]);
+            else
+                lua_pushnumber(L, value.values[i].x);
+            lua_rawseti(L, -2, (lua_Integer)i + 1);
+        }
+        return 1;
+    }
+    int luaShaderGetGlobalFloatArray(lua_State* L){ return luaShaderGetGlobalArray(L, "getGlobalFloatArray", false); }
+    int luaShaderGetGlobalVectorArray(lua_State* L){ return luaShaderGetGlobalArray(L, "getGlobalVectorArray", true); }
+
+    // the Texture a texture global holds (nil for none, its default unset, or another kind)
+    int luaShaderGetGlobalTexture(lua_State* L){
+        ShaderGlobalValue value;
+        const int id = luaGlobalArg(L, "getGlobalTexture", false);
+        if (!ShaderGlobals::get(id, value) || !ShaderGlobals::isTexture(value.type) || value.texture.empty()){
+            lua_pushnil(L);
+            return 1;
+        }
+        luaPushValue(L, value.texture);
+        return 1;
+    }
+
+    int luaShaderHasGlobal(lua_State* L){
+        const int id = luaGlobalArg(L, "hasGlobal", false);
+        lua_pushboolean(L, ShaderGlobals::exists(id) ? 1 : 0);
+        return 1;
+    }
+
+    int luaShaderGetGlobalNames(lua_State* L){
+        const std::vector<std::string> names = ShaderGlobals::getNames();
+        lua_createtable(L, (int)names.size(), 0);
+        for (size_t i = 0; i < names.size(); i++){
+            lua_pushstring(L, names[i].c_str());
+            lua_rawseti(L, -2, (lua_Integer)i + 1);
+        }
+        return 1;
+    }
+
+}
+
 // Physics and Physics2D. Layer masks are read as Unity's int and any integer is taken by
 // its low 32 bits, so LayerMask.getMask(...), ~mask and -1 (Everything) all work.
 namespace{
@@ -205,6 +736,97 @@ namespace{
         (void)L;
         PhysicsT::resetLayerCollisionMatrix();
         return 0;
+    }
+
+    // Physics.ignoreCollision(a, b [, ignore = true]) / getIgnoreCollision(a, b): a and b are
+    // GameObjects or bodies (any EntityHandle) with a Rigidbody (2D: Rigidbody 2D) of one scene
+    template<bool is2D>
+    bool luaBodyPairArgs(lua_State* L, const char* function, Scene*& scene, Entity& a, Entity& b){
+        const char* kind = is2D ? "Rigidbody 2D" : "Rigidbody";
+        Entity entities[2] = {NULL_ENTITY, NULL_ENTITY};
+        Scene* scenes[2] = {nullptr, nullptr};
+        for (int i = 0; i < 2; i++){
+            EntityHandle* handle = nullptr;
+            if (luabridge::isInstance<EntityHandle>(L, i + 1)){
+                auto result = luabridge::get<EntityHandle*>(L, i + 1);
+                if (result) handle = result.value();
+            }
+            if (!handle || !handle->getScene() || !handle->getScene()->isEntityCreated(handle->getEntity())){
+                luaL_error(L, "%s: argument %d must be a GameObject or %s", function, i + 1, kind);
+                return false;
+            }
+            scenes[i] = handle->getScene();
+            entities[i] = handle->getEntity();
+            bool hasBody = false;
+            if constexpr (is2D){
+#ifdef JASPERENGINE_PHYSICS_2D
+                hasBody = scenes[i]->findComponent<Rigidbody2DComponent>(entities[i]) != nullptr;
+#endif
+            }else{
+#ifdef JASPERENGINE_PHYSICS_3D
+                hasBody = scenes[i]->findComponent<RigidbodyComponent>(entities[i]) != nullptr;
+#endif
+            }
+            if (!hasBody){
+                luaL_error(L, "%s: argument %d ('%s') has no %s", function, i + 1, scenes[i]->getEntityName(entities[i]).c_str(), kind);
+                return false;
+            }
+        }
+        if (scenes[0] != scenes[1]){
+            luaL_error(L, "%s: the two bodies are in different scenes", function);
+            return false;
+        }
+        if (entities[0] == entities[1]){
+            luaL_error(L, "%s: a body with itself", function);
+            return false;
+        }
+        scene = scenes[0];
+        a = entities[0];
+        b = entities[1];
+        return true;
+    }
+
+    template<bool is2D>
+    int luaIgnoreCollision(lua_State* L){
+        const char* function = is2D ? "Physics2D.ignoreCollision" : "Physics.ignoreCollision";
+        Scene* scene = nullptr;
+        Entity a = NULL_ENTITY, b = NULL_ENTITY;
+        if (!luaBodyPairArgs<is2D>(L, function, scene, a, b)){
+            return 0;
+        }
+        const bool ignore = lua_isnoneornil(L, 3) ? true : lua_toboolean(L, 3) != 0;
+        if constexpr (is2D){
+#ifdef JASPERENGINE_PHYSICS_2D
+            scene->getSystem<PhysicsSystem>()->setIgnoreCollision2D(a, b, ignore);
+#endif
+        }else{
+#ifdef JASPERENGINE_PHYSICS_3D
+            scene->getSystem<PhysicsSystem>()->setIgnoreCollision3D(a, b, ignore);
+#endif
+        }
+        return 0;
+    }
+
+    template<bool is2D>
+    int luaGetIgnoreCollision(lua_State* L){
+        const char* function = is2D ? "Physics2D.getIgnoreCollision" : "Physics.getIgnoreCollision";
+        Scene* scene = nullptr;
+        Entity a = NULL_ENTITY, b = NULL_ENTITY;
+        if (!luaBodyPairArgs<is2D>(L, function, scene, a, b)){
+            return 0;
+        }
+        bool ignored = false;
+        if constexpr (is2D){
+#ifdef JASPERENGINE_PHYSICS_2D
+            ignored = scene->getSystem<PhysicsSystem>()->getIgnoreCollision2D(a, b);
+#endif
+        }else{
+#ifdef JASPERENGINE_PHYSICS_3D
+            ignored = scene->getSystem<PhysicsSystem>()->getIgnoreCollision3D(a, b);
+#endif
+        }
+        lua_pushboolean(L, ignored ? 1 : 0);
+        return 1;
     }
 
 #if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
@@ -508,6 +1130,266 @@ namespace{
     lua_Integer luaMeshRaycastAll(){ return MeshRaycast::ALL; }
 }
 
+// ---- Log and DebugOverlay (feature debug-overlay). Lua is built as C: lua_error longjmps over
+// C++ destructors, so every check that can raise comes before the first C++ object.
+namespace {
+
+    struct LogLevelNames {};
+
+    // Log.print/info/verbose/debug/warn/error(...): category lua, the values joined with tabs
+    // (tostring), the calling chunk and line as the source (S09 R5) and a Lua traceback per
+    // Project Settings > Debug > Log Stack Traces. Gated first: a filtered call builds nothing.
+    int luaLogLine(lua_State* L, LogLevel level){
+        LogCategory& category = logCategoryLua();
+        if (!Logger::shouldLog(level, category))
+            return 0;
+        const int count = lua_gettop(L);
+        luaL_Buffer buffer;
+        luaL_buffinit(L, &buffer);
+        if (count == 0)
+            luaL_addstring(&buffer, "(nil)");
+        for (int i = 1; i <= count; i++){
+            if (i > 1)
+                luaL_addchar(&buffer, '\t');
+            luaL_tolstring(L, i, nullptr);
+            luaL_addvalue(&buffer);
+        }
+        luaL_pushresult(&buffer);
+        if (Log::wantsStackTrace(level))
+            luaL_traceback(L, L, nullptr, 1);
+        else
+            lua_pushliteral(L, "");
+        size_t messageLength = 0, traceLength = 0;
+        const char* message = lua_tolstring(L, -2, &messageLength);
+        const char* trace = lua_tolstring(L, -1, &traceLength);
+        {
+            const std::string messageText(message, messageLength);
+            const std::string traceText(trace, traceLength);
+            lua_pop(L, 2);
+            LuaBinding::logFromLua(L, level, category, messageText, traceText);
+        }
+        return 0;
+    }
+
+    int luaLogPrint(lua_State* L){ return luaLogLine(L, LogLevel::Info); }
+    int luaLogVerbose(lua_State* L){ return luaLogLine(L, LogLevel::Trace); }
+    // compiled out of release builds, as Log::debug
+    int luaLogDebug(lua_State* L){
+    #ifndef NDEBUG
+        return luaLogLine(L, LogLevel::Debug);
+    #else
+        (void)L;
+        return 0;
+    #endif
+    }
+    int luaLogWarn(lua_State* L){ return luaLogLine(L, LogLevel::Warn); }
+    int luaLogError(lua_State* L){ return luaLogLine(L, LogLevel::Error); }
+
+    // Log.getEntries([maxCount [, levels]]): the buffered lines, newest last
+    int luaLogGetEntries(lua_State* L){
+        lua_Integer maxCount = 0;
+        if (!lua_isnoneornil(L, 1)){
+            maxCount = luaL_checkinteger(L, 1);
+            if (maxCount < 0)
+                return luaL_argerror(L, 1, "must be 0 (all) or more");
+        }
+        uint32_t mask = LOG_LEVELS_ALL;
+        if (!lua_isnoneornil(L, 2)){
+            luaL_checktype(L, 2, LUA_TTABLE);
+            mask = 0;
+            const lua_Integer length = (lua_Integer)lua_rawlen(L, 2);
+            for (lua_Integer i = 1; i <= length; i++){
+                lua_rawgeti(L, 2, i);
+                int isNumber = 0;
+                const lua_Integer value = lua_tointegerx(L, -1, &isNumber);
+                lua_pop(L, 1);
+                if (!isNumber || value < 0 || value > static_cast<lua_Integer>(LogLevel::Fatal))
+                    return luaL_argerror(L, 2, "a list of LogLevel values (LogLevel.TRACE .. LogLevel.FATAL)");
+                mask |= logLevelBit(static_cast<LogLevel>(value));
+            }
+        }
+        const std::vector<LogEntry> entries = Log::getEntries(static_cast<size_t>(maxCount), mask);
+        lua_createtable(L, static_cast<int>(entries.size()), 0);
+        for (size_t i = 0; i < entries.size(); i++){
+            const LogEntry& entry = entries[i];
+            lua_createtable(L, 0, 9);
+            lua_pushinteger(L, static_cast<lua_Integer>(entry.id));
+            lua_setfield(L, -2, "id");
+            lua_pushstring(L, entry.category ? entry.category->name : "engine");
+            lua_setfield(L, -2, "category");
+            lua_pushinteger(L, static_cast<lua_Integer>(entry.level));
+            lua_setfield(L, -2, "level");
+            lua_pushlstring(L, entry.message.data(), entry.message.size());
+            lua_setfield(L, -2, "message");
+            lua_pushlstring(L, entry.stackTrace.data(), entry.stackTrace.size());
+            lua_setfield(L, -2, "stackTrace");
+            lua_pushnumber(L, entry.time);
+            lua_setfield(L, -2, "time");
+            lua_pushinteger(L, static_cast<lua_Integer>(entry.frame));
+            lua_setfield(L, -2, "frame");
+            lua_pushboolean(L, entry.mainThread);
+            lua_setfield(L, -2, "mainThread");
+            lua_pushboolean(L, entry.fromLua);
+            lua_setfield(L, -2, "fromLua");
+            lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+        }
+        return 1;
+    }
+
+    // Log.count(level)
+    int luaLogCount(lua_State* L){
+        const lua_Integer level = luaL_checkinteger(L, 1);
+        if (level < 0 || level > static_cast<lua_Integer>(LogLevel::Fatal))
+            return luaL_argerror(L, 1, "a LogLevel value (LogLevel.TRACE .. LogLevel.FATAL)");
+        lua_pushinteger(L, static_cast<lua_Integer>(Log::getCount(static_cast<LogLevel>(level))));
+        return 1;
+    }
+
+    // DebugOverlay.statsMode = DebugOverlay.STATS_OFF / STATS_FPS / STATS_FULL (no other value)
+    int luaDebugOverlaySetStatsMode(lua_State* L){
+        // a number with an integral value (2 and 2.0), 0 .. 2
+        const lua_Number mode = lua_type(L, 1) == LUA_TNUMBER ? lua_tonumber(L, 1) : -1.0;
+        if (mode != std::floor(mode) || mode < static_cast<lua_Number>(DebugOverlaySettings::Stats::Off) ||
+            mode > static_cast<lua_Number>(DebugOverlaySettings::Stats::Full))
+            return luaL_argerror(L, 1, "DebugOverlay.statsMode takes DebugOverlay.STATS_OFF, STATS_FPS or STATS_FULL (0, 1 or 2)");
+        DebugOverlay::setStatsMode(static_cast<DebugOverlaySettings::Stats>(static_cast<int>(mode)));
+        return 0;
+    }
+
+    // DebugOverlay.getStats(): DebugStatsSnapshot's fields, camelCase
+    int luaDebugOverlayGetStats(lua_State* L){
+        const DebugStatsSnapshot s = DebugStats::sample();
+        lua_createtable(L, 0, 20);
+        auto number = [L](const char* name, double value){
+            lua_pushnumber(L, value);
+            lua_setfield(L, -2, name);
+        };
+        auto integer = [L](const char* name, uint64_t value){
+            lua_pushinteger(L, static_cast<lua_Integer>(value));
+            lua_setfield(L, -2, name);
+        };
+        number("fps", s.fps);
+        number("frameMs", s.frameMs);
+        number("frameMsAvg", s.frameMsAvg);
+        number("frameMsMin", s.frameMsMin);
+        number("frameMsMax", s.frameMsMax);
+        number("frameMs1PercentLow", s.frameMs1PercentLow);
+        integer("drawCalls", s.drawCalls);
+        integer("instances", s.instances);
+        integer("triangles", s.triangles);
+        integer("processMemoryBytes", s.processMemoryBytes);
+        integer("luaMemoryBytes", s.luaMemoryBytes);
+        integer("audioVoices", s.audioVoices);
+        integer("audioVoicesMax", s.audioVoicesMax);
+        integer("bodies2D", s.bodies2D);
+        integer("bodies3D", s.bodies3D);
+        integer("entities", s.entities);
+        integer("scenes", s.scenes);
+        integer("coroutines", s.coroutines);
+        integer("timers", s.timers);
+        integer("htmlUiDrawCalls", s.htmlUiDrawCalls);
+        return 1;
+    }
+
+    // a console command's Lua function, unreferenced when the command goes (while its state lives)
+    struct LuaCommandFunction {
+        lua_State* L = nullptr;
+        int ref = LUA_NOREF;
+        ~LuaCommandFunction(){
+            if (L && ref != LUA_NOREF && LuaBinding::getLuaState() == L)
+                luaL_unref(L, LUA_REGISTRYINDEX, ref);
+        }
+    };
+
+    // the table `self` of the Lua function that called (a script method), or 0
+    const void* callerSelf(lua_State* L){
+        lua_Debug ar;
+        if (!lua_getstack(L, 1, &ar))
+            return nullptr;
+        const void* self = nullptr;
+        for (int i = 1; ; i++){
+            const char* name = lua_getlocal(L, &ar, i);
+            if (!name)
+                break;
+            if (std::strcmp(name, "self") == 0 && lua_istable(L, -1))
+                self = lua_topointer(L, -1);
+            lua_pop(L, 1);
+            if (self || std::strcmp(name, "self") == 0)
+                break;
+        }
+        return self;
+    }
+
+    // The console commands of a script go when it is released (LuaBinding::removeScriptSubscriptions:
+    // SubscriptionOwnerIndex::releaseOwner): one entry per owner, its key the owner's, whose removal
+    // drops the commands tagged "_<key>_"
+    class DebugCommandOwners : public detail::SlotStateBase {
+    public:
+        bool removeSlot(uint64_t ownerKey) override {
+            const std::string tag = "_" + std::to_string(ownerKey) + "_";
+            const size_t before = DebugOverlay::getCommands().size();
+            DebugOverlay::removeCommandsByTag(tag);
+            return DebugOverlay::getCommands().size() != before;
+        }
+    };
+
+    const std::shared_ptr<DebugCommandOwners>& debugCommandOwners(){
+        static const std::shared_ptr<DebugCommandOwners> owners = std::make_shared<DebugCommandOwners>();
+        return owners;
+    }
+
+    // DebugOverlay.addCommand(name, description, fn [, owner]): fn(args) gets the words after the
+    // name. The owner (a script table; by default the `self` of the calling method) takes the
+    // command with it when it is released
+    int luaDebugOverlayAddCommand(lua_State* L){
+        size_t nameLength = 0;
+        const char* name = luaL_checklstring(L, 1, &nameLength);
+        size_t descriptionLength = 0;
+        const char* description = lua_isnoneornil(L, 2) ? "" : luaL_checklstring(L, 2, &descriptionLength);
+        luaL_checktype(L, 3, LUA_TFUNCTION);
+        const void* owner = nullptr;
+        if (!lua_isnoneornil(L, 4)){
+            luaL_checktype(L, 4, LUA_TTABLE);
+            owner = lua_topointer(L, 4);
+        }else{
+            owner = callerSelf(L);
+        }
+        lua_pushvalue(L, 3);
+        const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        bool added = false;
+        {
+            const std::string commandName(name, nameLength);
+            auto function = std::make_shared<LuaCommandFunction>();
+            function->L = L;
+            function->ref = ref;
+            // without an owner a Lua command still goes with the Lua state (Play stop, quit)
+            const std::string ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string("lua");
+            added = DebugOverlay::addCommand(commandName, std::string(description, descriptionLength),
+                [function, commandName](const std::vector<std::string>& args){
+                    lua_State* state = function->L;
+                    if (!state || LuaBinding::getLuaState() != state)
+                        return;
+                    lua_rawgeti(state, LUA_REGISTRYINDEX, function->ref);
+                    lua_createtable(state, static_cast<int>(args.size()), 0);
+                    for (size_t i = 0; i < args.size(); i++){
+                        lua_pushlstring(state, args[i].data(), args[i].size());
+                        lua_rawseti(state, -2, static_cast<lua_Integer>(i + 1));
+                    }
+                    if (LuaBinding::pcallWithTraceback(state, 1, 0) != LUA_OK){
+                        const std::string error = LuaBinding::getLuaStackErrorString(state, -1);
+                        lua_pop(state, 1);
+                        Log::error("Lua Error: console command '%s': %s", commandName.c_str(), error.c_str());
+                    }
+                }, ownerTag);
+            if (added && owner)
+                SubscriptionOwnerIndex::add(ownerKeyOf(owner), debugCommandOwners(), ownerKeyOf(owner));
+        }
+        lua_pushboolean(L, added);
+        return 1;
+    }
+
+}
+
 void LuaBinding::registerCoreClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
 
@@ -521,6 +1403,53 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("NATIVE", Scaling::NATIVE)
         .endNamespace();
 
+    // the Canvas Scaler (Unity's CanvasScaler.ScaleMode, ScreenMatchMode, Unit)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("UIScaleMode")
+        .addVariable("FollowGameCanvas", UIScaleMode::FollowGameCanvas)
+        .addVariable("ConstantPixelSize", UIScaleMode::ConstantPixelSize)
+        .addVariable("ScaleWithScreenSize", UIScaleMode::ScaleWithScreenSize)
+        .addVariable("ConstantPhysicalSize", UIScaleMode::ConstantPhysicalSize)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ScreenMatchMode")
+        .addVariable("MatchWidthOrHeight", ScreenMatchMode::MatchWidthOrHeight)
+        .addVariable("Expand", ScreenMatchMode::Expand)
+        .addVariable("Shrink", ScreenMatchMode::Shrink)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PhysicalUnit")
+        .addVariable("Centimeters", PhysicalUnit::Centimeters)
+        .addVariable("Millimeters", PhysicalUnit::Millimeters)
+        .addVariable("Inches", PhysicalUnit::Inches)
+        .addVariable("Points", PhysicalUnit::Points)
+        .addVariable("Picas", PhysicalUnit::Picas)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<CanvasScalerRef>("CanvasScaler")
+        .addProperty("uiScaleMode", &CanvasScalerRef::getUIScaleMode, &CanvasScalerRef::setUIScaleMode)
+        .addProperty("scaleFactor", &CanvasScalerRef::getScaleFactor, &CanvasScalerRef::setScaleFactor)
+        .addProperty("referenceResolution", &CanvasScalerRef::getReferenceResolution, &CanvasScalerRef::setReferenceResolution)
+        .addProperty("screenMatchMode", &CanvasScalerRef::getScreenMatchMode, &CanvasScalerRef::setScreenMatchMode)
+        .addProperty("matchWidthOrHeight", &CanvasScalerRef::getMatchWidthOrHeight, &CanvasScalerRef::setMatchWidthOrHeight)
+        .addProperty("physicalUnit", &CanvasScalerRef::getPhysicalUnit, &CanvasScalerRef::setPhysicalUnit)
+        .addProperty("fallbackScreenDPI", &CanvasScalerRef::getFallbackScreenDPI, &CanvasScalerRef::setFallbackScreenDPI)
+        .addProperty("useProjectDefault", &CanvasScalerRef::isUseProjectDefault, &CanvasScalerRef::setUseProjectDefault)
+        .addProperty("canvasSize", &CanvasScalerRef::getCanvasSize)
+        .addProperty("appliedScaleFactor", &CanvasScalerRef::getAppliedScaleFactor)
+        .endClass();
+
+    // the UI's statics: canvas pixels (Input, the game canvas) <-> a scene's UI units
+    luabridge::getGlobalNamespace(L)
+        .beginClass<UIStatics>("UI")
+        .addStaticFunction("canvasToUI", &UIStatics::canvasToUI)
+        .addStaticFunction("uiToCanvas", &UIStatics::uiToCanvas)
+        .addStaticProperty("reducedMotion", &UISystem::isReducedMotion, &UISystem::setReducedMotion)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("Platform")
         .addVariable("MacOS", Platform::MacOS)
@@ -529,6 +1458,113 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("Android", Platform::Android)
         .addVariable("Linux", Platform::Linux)
         .addVariable("Windows", Platform::Windows)
+        .endNamespace();
+
+    // Unity's SystemLanguage (System.getSystemLanguage), same names and values
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SystemLanguage")
+        .addVariable("Afrikaans", SystemLanguage::Afrikaans)
+        .addVariable("Arabic", SystemLanguage::Arabic)
+        .addVariable("Basque", SystemLanguage::Basque)
+        .addVariable("Belarusian", SystemLanguage::Belarusian)
+        .addVariable("Bulgarian", SystemLanguage::Bulgarian)
+        .addVariable("Catalan", SystemLanguage::Catalan)
+        .addVariable("Chinese", SystemLanguage::Chinese)
+        .addVariable("Czech", SystemLanguage::Czech)
+        .addVariable("Danish", SystemLanguage::Danish)
+        .addVariable("Dutch", SystemLanguage::Dutch)
+        .addVariable("English", SystemLanguage::English)
+        .addVariable("Estonian", SystemLanguage::Estonian)
+        .addVariable("Faroese", SystemLanguage::Faroese)
+        .addVariable("Finnish", SystemLanguage::Finnish)
+        .addVariable("French", SystemLanguage::French)
+        .addVariable("German", SystemLanguage::German)
+        .addVariable("Greek", SystemLanguage::Greek)
+        .addVariable("Hebrew", SystemLanguage::Hebrew)
+        .addVariable("Hungarian", SystemLanguage::Hungarian)
+        .addVariable("Icelandic", SystemLanguage::Icelandic)
+        .addVariable("Indonesian", SystemLanguage::Indonesian)
+        .addVariable("Italian", SystemLanguage::Italian)
+        .addVariable("Japanese", SystemLanguage::Japanese)
+        .addVariable("Korean", SystemLanguage::Korean)
+        .addVariable("Latvian", SystemLanguage::Latvian)
+        .addVariable("Lithuanian", SystemLanguage::Lithuanian)
+        .addVariable("Norwegian", SystemLanguage::Norwegian)
+        .addVariable("Polish", SystemLanguage::Polish)
+        .addVariable("Portuguese", SystemLanguage::Portuguese)
+        .addVariable("Romanian", SystemLanguage::Romanian)
+        .addVariable("Russian", SystemLanguage::Russian)
+        .addVariable("SerboCroatian", SystemLanguage::SerboCroatian)
+        .addVariable("Slovak", SystemLanguage::Slovak)
+        .addVariable("Slovenian", SystemLanguage::Slovenian)
+        .addVariable("Spanish", SystemLanguage::Spanish)
+        .addVariable("Swedish", SystemLanguage::Swedish)
+        .addVariable("Thai", SystemLanguage::Thai)
+        .addVariable("Turkish", SystemLanguage::Turkish)
+        .addVariable("Ukrainian", SystemLanguage::Ukrainian)
+        .addVariable("Vietnamese", SystemLanguage::Vietnamese)
+        .addVariable("ChineseSimplified", SystemLanguage::ChineseSimplified)
+        .addVariable("ChineseTraditional", SystemLanguage::ChineseTraditional)
+        .addVariable("Unknown", SystemLanguage::Unknown)
+        .addVariable("Hindi", SystemLanguage::Hindi)
+        .endNamespace();
+
+    // Unity's ScreenOrientation (Screen.orientation)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ScreenOrientation")
+        .addVariable("Portrait", ScreenOrientation::Portrait)
+        .addVariable("PortraitUpsideDown", ScreenOrientation::PortraitUpsideDown)
+        .addVariable("LandscapeLeft", ScreenOrientation::LandscapeLeft)
+        .addVariable("LandscapeRight", ScreenOrientation::LandscapeRight)
+        .addVariable("AutoRotation", ScreenOrientation::AutoRotation)
+        .endNamespace();
+
+    // Unity's DeviceOrientation (Input.deviceOrientation)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("DeviceOrientation")
+        .addVariable("Unknown", DeviceOrientation::Unknown)
+        .addVariable("Portrait", DeviceOrientation::Portrait)
+        .addVariable("PortraitUpsideDown", DeviceOrientation::PortraitUpsideDown)
+        .addVariable("LandscapeLeft", DeviceOrientation::LandscapeLeft)
+        .addVariable("LandscapeRight", DeviceOrientation::LandscapeRight)
+        .addVariable("FaceUp", DeviceOrientation::FaceUp)
+        .addVariable("FaceDown", DeviceOrientation::FaceDown)
+        .endNamespace();
+
+    // Unity's DeviceType (System.getDeviceType)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("DeviceType")
+        .addVariable("Unknown", DeviceType::Unknown)
+        .addVariable("Handheld", DeviceType::Handheld)
+        .addVariable("Console", DeviceType::Console)
+        .addVariable("Desktop", DeviceType::Desktop)
+        .endNamespace();
+
+    // Unity's NetworkReachability (System.getInternetReachability)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("NetworkReachability")
+        .addVariable("NotReachable", NetworkReachability::NotReachable)
+        .addVariable("ReachableViaCarrierDataNetwork", NetworkReachability::ReachableViaCarrierDataNetwork)
+        .addVariable("ReachableViaLocalAreaNetwork", NetworkReachability::ReachableViaLocalAreaNetwork)
+        .endNamespace();
+
+    // System.hapticFeedback kinds
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("HapticFeedback")
+        .addVariable("Light", HapticFeedback::Light)
+        .addVariable("Medium", HapticFeedback::Medium)
+        .addVariable("Heavy", HapticFeedback::Heavy)
+        .addVariable("Selection", HapticFeedback::Selection)
+        .addVariable("Success", HapticFeedback::NotificationSuccess)
+        .addVariable("Warning", HapticFeedback::NotificationWarning)
+        .addVariable("Error", HapticFeedback::NotificationError)
+        .endNamespace();
+
+    // Unity's SleepTimeout (Screen.sleepTimeout)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SleepTimeout")
+        .addVariable("NeverSleep", SleepTimeout::NeverSleep)
+        .addVariable("SystemSetting", SleepTimeout::SystemSetting)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -879,11 +1915,16 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("ALL_LAYERS", &luaAllLayers)
         .addStaticProperty("DEFAULT_RAYCAST_LAYERS", &luaDefaultRaycastLayers)
         .addStaticProperty("IGNORE_RAYCAST_LAYER", &luaIgnoreRaycastLayer)
+        // the runtime collider and joint wireframes of every scene (3D and 2D), and the contacts
+        .addStaticProperty("debugDraw", &Physics::isDebugDraw, &Physics::setDebugDraw)
+        .addStaticProperty("debugDrawContacts", &Physics::isDebugDrawContacts, &Physics::setDebugDrawContacts)
         .addStaticFunction("ignoreLayerCollision", &luaIgnoreLayerCollision<Physics>)
         .addStaticFunction("getIgnoreLayerCollision", &luaGetIgnoreLayerCollision<Physics>)
         .addStaticFunction("getLayerCollisionMask", &luaGetLayerCollisionMask<Physics>)
         .addStaticFunction("setLayerCollisionMask", &luaSetLayerCollisionMask<Physics>)
         .addStaticFunction("resetLayerCollisionMatrix", &luaResetLayerCollisionMatrix<Physics>)
+        .addStaticFunction("ignoreCollision", &luaIgnoreCollision<false>)
+        .addStaticFunction("getIgnoreCollision", &luaGetIgnoreCollision<false>)
 #ifdef JASPERENGINE_PHYSICS_3D
         .addStaticFunction("raycast", &luaRaycast<Vector3, false, false>)
         .addStaticFunction("raycastAll", &luaRaycast<Vector3, true, false>)
@@ -900,6 +1941,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getLayerCollisionMask", &luaGetLayerCollisionMask<Physics2D>)
         .addStaticFunction("setLayerCollisionMask", &luaSetLayerCollisionMask<Physics2D>)
         .addStaticFunction("resetLayerCollisionMatrix", &luaResetLayerCollisionMatrix<Physics2D>)
+        .addStaticFunction("ignoreCollision", &luaIgnoreCollision<true>)
+        .addStaticFunction("getIgnoreCollision", &luaGetIgnoreCollision<true>)
 #ifdef JASPERENGINE_PHYSICS_2D
         .addStaticFunction("raycast", &luaRaycast<Vector2, false, true>)
         .addStaticFunction("raycastAll", &luaRaycast<Vector2, true, true>)
@@ -1024,6 +2067,34 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("warmUp", +[]() { ShaderWarmup::begin(); })
         .endClass();
 
+    // global shader values (Unity's Shader.SetGlobal*): read by every shader declaring them in
+    // its u_vs_globals / u_fs_globals block (texture globals: a texture uniform of the name),
+    // Project Settings > Graphics > Shader Globals declares them with their defaults
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ShaderGlobals>("Shader")
+        .addStaticFunction("propertyToID", &luaShaderPropertyToID)
+        .addStaticFunction("setGlobalFloat", &luaShaderSetGlobalFloat)
+        .addStaticFunction("setGlobalInt", &luaShaderSetGlobalInt)
+        .addStaticFunction("setGlobalVector", &luaShaderSetGlobalVector)
+        .addStaticFunction("setGlobalColor", &luaShaderSetGlobalColor)
+        .addStaticFunction("setGlobalMatrix", &luaShaderSetGlobalMatrix)
+        .addStaticFunction("setGlobalFloatArray", &luaShaderSetGlobalFloatArray)
+        .addStaticFunction("setGlobalVectorArray", &luaShaderSetGlobalVectorArray)
+        .addStaticFunction("setGlobalTexture", &luaShaderSetGlobalTexture)
+        .addStaticFunction("getGlobalFloat", &luaShaderGetGlobalFloat)
+        .addStaticFunction("getGlobalInt", &luaShaderGetGlobalInt)
+        .addStaticFunction("getGlobalVector", &luaShaderGetGlobalVector)
+        .addStaticFunction("getGlobalColor", &luaShaderGetGlobalColor)
+        .addStaticFunction("getGlobalMatrix", &luaShaderGetGlobalMatrix)
+        .addStaticFunction("getGlobalFloatArray", &luaShaderGetGlobalFloatArray)
+        .addStaticFunction("getGlobalVectorArray", &luaShaderGetGlobalVectorArray)
+        .addStaticFunction("getGlobalTexture", &luaShaderGetGlobalTexture)
+        .addStaticFunction("hasGlobal", &luaShaderHasGlobal)
+        .addStaticFunction("getGlobalNames", &luaShaderGetGlobalNames)
+        // back to the Project Settings defaults; the globals scripts made are dropped
+        .addStaticFunction("resetGlobals", +[]() { ShaderGlobals::resetToDefaults(); })
+        .endClass();
+
     // diagnostics: the pipelines renderable objects made and did not destroy yet
     luabridge::getGlobalNamespace(L)
         .beginClass<ObjectRender>("ObjectRender")
@@ -1132,6 +2203,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("openGL", &Engine::isOpenGL)
         .addStaticProperty("framerate", &Engine::getFramerate)
         .addStaticProperty("deltatime", &Engine::getDeltatime)
+        // the frame delta before timeScale, and its sum (Time.unscaledDeltaTime / unscaledTime)
+        .addStaticProperty("unscaledDeltatime", &Engine::getUnscaledDeltatime)
+        .addStaticProperty("unscaledTime", &Engine::getUnscaledTime)
+        .addStaticProperty("maxDeltatime", &Engine::getMaxDeltatime, &Engine::setMaxDeltatime)
         .addStaticProperty("systemTime", &Engine::getSystemTime)
         .addStaticProperty("timeScale", &Engine::getTimeScale, &Engine::setTimeScale)
         .addStaticProperty("fixedDeltatime", &Engine::getFixedDeltatime, &Engine::setFixedDeltatime)
@@ -1140,6 +2215,11 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("isHeadless", &Engine::isHeadless)
         .addStaticFunction("quit", [] (std::optional<int> code) { Engine::quit(code.value_or(0)); })
         .addStaticProperty("frameCount", &Engine::getGameFrames)
+        // Unity's Debug.isDebugBuild: the editor's Play and Debug-type exports
+        .addStaticProperty("isDevelopmentBuild", &Engine::isDevelopmentBuild)
+        .addStaticProperty("targetFrameRate", &Engine::getTargetFrameRate, &Engine::setTargetFrameRate)
+        .addStaticProperty("vSyncCount", &Engine::getVSyncCount, &Engine::setVSyncCount)
+        .addStaticProperty("isFocused", &Engine::isFocused)
         .addStaticProperty("asyncLoading", &Engine::isAsyncLoading, &Engine::setAsyncLoading)
         .addStaticFunction("startAsyncThread", &Engine::startAsyncThread)
         .addStaticFunction("commitThreadQueue", &Engine::commitThreadQueue)
@@ -1162,6 +2242,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onPause", [] () { return &Engine::onPause; }, [] (lua_State* L) { Engine::onPause = L; })
         .addStaticProperty("onResume", [] () { return &Engine::onResume; }, [] (lua_State* L) { Engine::onResume = L; })
         .addStaticProperty("onShutdown", [] () { return &Engine::onShutdown; }, [] (lua_State* L) { Engine::onShutdown = L; })
+        .addStaticProperty("onFocus", [] () { return &Engine::onFocus; }, [] (lua_State* L) { Engine::onFocus = L; })
+        .addStaticProperty("onOrientationChanged", [] () { return &Engine::onOrientationChanged; }, [] (lua_State* L) { Engine::onOrientationChanged = L; })
+        .addStaticProperty("onLowMemory", [] () { return &Engine::onLowMemory; }, [] (lua_State* L) { Engine::onLowMemory = L; })
+        .addStaticProperty("onSafeAreaChanged", [] () { return &Engine::onSafeAreaChanged; }, [] (lua_State* L) { Engine::onSafeAreaChanged = L; })
         .addStaticProperty("onSceneLoaded", [] () { return &Engine::onSceneLoaded; }, [] (lua_State* L) { Engine::onSceneLoaded = L; })
         .addStaticProperty("onTouchStart", [] () { return &Engine::onTouchStart; }, [] (lua_State* L) { Engine::onTouchStart = L; })
         .addStaticProperty("onTouchEnd", [] () { return &Engine::onTouchEnd; }, [] (lua_State* L) { Engine::onTouchEnd = L; })
@@ -1181,6 +2265,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onGamepadButtonDown", [] () { return &Engine::onGamepadButtonDown; }, [] (lua_State* L) { Engine::onGamepadButtonDown = L; })
         .addStaticProperty("onGamepadButtonUp", [] () { return &Engine::onGamepadButtonUp; }, [] (lua_State* L) { Engine::onGamepadButtonUp = L; })
         .addStaticProperty("onGamepadAxisMove", [] () { return &Engine::onGamepadAxisMove; }, [] (lua_State* L) { Engine::onGamepadAxisMove = L; })
+        // an input action's button went down / up this frame (its Input Manager name: "Jump", else
+        // "Map/Action"), before onUpdate
+        .addStaticProperty("onButtonDown", [] () { return &Engine::onButtonDown; }, [] (lua_State* L) { Engine::onButtonDown = L; })
+        .addStaticProperty("onButtonUp", [] () { return &Engine::onButtonUp; }, [] (lua_State* L) { Engine::onButtonUp = L; })
 
         .endClass();
 
@@ -1335,6 +2423,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("cancelPreload",
             luabridge::overload<uint32_t>(&SceneManager::cancelPreload),
             luabridge::overload<const std::string&>(&SceneManager::cancelPreload))
+        // the DontDestroyOnLoad scene, nil before the first DontDestroyOnLoad
+        .addStaticProperty("persistentScene", &SceneManager::getPersistentScene)
+        .addStaticFunction("moveGameObjectToScene", &LuaBinding::luaMoveGameObjectToScene)
         .addStaticFunction("clearAll", &SceneManager::clearAll)
         .addStaticFunction("setScenePtr", &SceneManager::setScenePtr)
         .addStaticFunction("getScenePtr", &SceneManager::getScenePtr)
@@ -1421,6 +2512,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void()>::call)
         .addFunction("call", &FunctionSubscribe<void()>::call)
         .addFunction("add", (bool (FunctionSubscribe<void()>::*)(const std::string&, lua_State*))&FunctionSubscribe<void()>::add)
+        .addFunction("remove", &FunctionSubscribe<void()>::remove)
+        .addFunction("has", &FunctionSubscribe<void()>::has)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(bool)>>("FunctionSubscribe_V_B")
+        .addFunction("__call", &FunctionSubscribe<void(bool)>::call)
+        .addFunction("call", &FunctionSubscribe<void(bool)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(bool)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(bool)>::add)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1428,6 +2528,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(float)>::call)
         .addFunction("call", &FunctionSubscribe<void(float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(float)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(float)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(float)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1435,6 +2537,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(float,float)>::call)
         .addFunction("call", &FunctionSubscribe<void(float,float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(float,float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(float,float)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(float,float)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(float,float)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1442,6 +2546,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(float,float,int)>::call)
         .addFunction("call", &FunctionSubscribe<void(float,float,int)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(float,float,int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(float,float,int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(float,float,int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(float,float,int)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1449,6 +2555,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int)>::call)
         .addFunction("call", &FunctionSubscribe<void(int)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1456,6 +2564,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int,int)>::call)
         .addFunction("call", &FunctionSubscribe<void(int,int)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int,int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int,int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int,int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int,int)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1463,6 +2573,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int,int,float)>::call)
         .addFunction("call", &FunctionSubscribe<void(int,int,float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int,int,float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int,int,float)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int,int,float)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int,int,float)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1470,6 +2582,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int,float,float)>::call)
         .addFunction("call", &FunctionSubscribe<void(int,float,float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int,float,float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int,float,float)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int,float,float)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int,float,float)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1477,6 +2591,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int,float,float,int)>::call)
         .addFunction("call", &FunctionSubscribe<void(int,float,float,int)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int,float,float,int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int,float,float,int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int,float,float,int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int,float,float,int)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1484,6 +2600,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int,bool,int)>::call)
         .addFunction("call", &FunctionSubscribe<void(int,bool,int)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int,bool,int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int,bool,int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int,bool,int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int,bool,int)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1491,6 +2609,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(wchar_t)>::call)
         .addFunction("call", &FunctionSubscribe<void(wchar_t)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(wchar_t)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(wchar_t)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(wchar_t)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(wchar_t)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1498,6 +2618,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(const std::string&)>::call)
         .addFunction("call", &FunctionSubscribe<void(const std::string&)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(const std::string&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::string&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(const std::string&)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(const std::string&)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1505,6 +2627,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(const AnimationEvent&)>::call)
         .addFunction("call", &FunctionSubscribe<void(const AnimationEvent&)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(const AnimationEvent&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const AnimationEvent&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(const AnimationEvent&)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(const AnimationEvent&)>::has)
         .endClass();
 
     // Vertex Animator instance events: (instance, event) and (instance, clip)
@@ -1513,6 +2637,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int, const AnimationEvent&)>::call)
         .addFunction("call", &FunctionSubscribe<void(int, const AnimationEvent&)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int, const AnimationEvent&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int, const AnimationEvent&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int, const AnimationEvent&)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int, const AnimationEvent&)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1520,6 +2646,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int, const std::string&)>::call)
         .addFunction("call", &FunctionSubscribe<void(int, const std::string&)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int, const std::string&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int, const std::string&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int, const std::string&)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int, const std::string&)>::has)
         .endClass();
 
     // the Animator's callbacks (onStateEnter / onStateExit, onMontageEnded, onAnimatorMove)
@@ -1549,6 +2677,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<float(float)>::call)
         .addFunction("call", &FunctionSubscribe<float(float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<float(float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<float(float)>::add)
+        .addFunction("remove", &FunctionSubscribe<float(float)>::remove)
+        .addFunction("has", &FunctionSubscribe<float(float)>::has)
         .endClass();
 
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -1557,6 +2687,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
         .addFunction("call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1564,6 +2696,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::call)
         .addFunction("call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1571,6 +2705,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
         .addFunction("call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
         .addFunction("add", (bool (FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::add)
+        .addFunction("remove", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::remove)
+        .addFunction("has", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1578,6 +2714,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::call)
         .addFunction("call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::call)
         .addFunction("add", (bool (FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::add)
+        .addFunction("remove", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::remove)
+        .addFunction("has", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::has)
         .endClass();
 #endif
 
@@ -1587,6 +2725,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(Rigidbody)>::call)
         .addFunction("call", &FunctionSubscribe<void(Rigidbody)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(Rigidbody)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(Rigidbody)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1594,6 +2734,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::call)
         .addFunction("call", &FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1601,6 +2743,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::call)
         .addFunction("call", &FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1608,6 +2752,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::call)
         .addFunction("call", &FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::call)
         .addFunction("add", (bool (FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::add)
+        .addFunction("remove", &FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::remove)
+        .addFunction("has", &FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::has)
         .endClass();
 #endif
 
@@ -1883,6 +3029,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("removeShaderParam", +[](Material* self, const std::string& name) -> bool {
             return ShaderUniforms::remove(self->shaderParams, name);
         })
+        // a @property member that follows a global shader value (Shader.setGlobal*) instead of
+        // its own value; nil unbinds (then mesh:setMaterial(m))
+        .addFunction("setShaderGlobalBinding", +[](Material* self, const std::string& member, luabridge::LuaRef global) -> bool {
+            return ShaderGlobals::setBinding(self->shaderGlobalBindings, member, luaBindingGlobal(global, "Material.setShaderGlobalBinding"));
+        })
+        .addFunction("getShaderGlobalBinding", +[](const Material* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = ShaderGlobals::getBinding(self->shaderGlobalBindings, member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         // the texture of a @texture uniform by path ("" removes it: the manifest default binds)
         .addFunction("setShaderTexture", +[](Material* self, const std::string& name, const std::string& path) {
             ShaderLibraryValues::setTexture(self->shaderTextures, name, path);
@@ -2035,6 +3190,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<Vector3>(&Scene::setGravity3D),
             luabridge::overload<float, float, float>(&Scene::setGravity3D))
         .addProperty("physicsInterpolation", &Scene::isPhysicsInterpolation, &Scene::setPhysicsInterpolation)
+        .addProperty("physics2DSubSteps", &Scene::getPhysics2DSubSteps, &Scene::setPhysics2DSubSteps)
         .addProperty("ssaoEnabled", &Scene::isSSAOEnabled, &Scene::setSSAOEnabled)
         .addProperty("ssaoRadius", &Scene::getSSAORadius, &Scene::setSSAORadius)
         .addProperty("ssaoIntensity", &Scene::getSSAOIntensity, &Scene::setSSAOIntensity)
@@ -2058,6 +3214,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("fixedResolutionHeight", &Scene::getFixedResolutionHeight, &Scene::setFixedResolutionHeight)
         .addProperty("fixedResolutionFilter", &Scene::getFixedResolutionFilter, &Scene::setFixedResolutionFilter)
         .addFunction("setFixedResolutionSize", &Scene::setFixedResolutionSize)
+        .addFunction("getCanvasScaler", [] (Scene* self) { return CanvasScalerRef(self); })
         .addProperty("defaultMeshShader", &Scene::getDefaultMeshShader, &Scene::setDefaultMeshShader)
         .addProperty("defaultUIShader", &Scene::getDefaultUIShader, &Scene::setDefaultUIShader)
         .addProperty("defaultSkyShader", &Scene::getDefaultSkyShader, &Scene::setDefaultSkyShader)
@@ -2071,6 +3228,14 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<unsigned int, const std::string&, float>(&Scene::setPostProcessUniform))
         .addFunction("getPostProcessUniform", &Scene::getPostProcessUniform)
         .addFunction("removePostProcessUniform", &Scene::removePostProcessUniform)
+        // a pass's u_fs_postParams member that follows a global shader value; nil unbinds
+        .addFunction("setPostProcessGlobalBinding", +[](Scene* self, unsigned int index, const std::string& member, luabridge::LuaRef global) -> bool {
+            return self->setPostProcessGlobalBinding(index, member, luaBindingGlobal(global, "Scene.setPostProcessGlobalBinding"));
+        })
+        .addFunction("getPostProcessGlobalBinding", +[](const Scene* self, unsigned int index, const std::string& member, lua_State* L) -> luabridge::LuaRef {
+            const std::string global = self->getPostProcessGlobalBinding(index, member);
+            return global.empty() ? luabridge::LuaRef(L) : luabridge::LuaRef(L, global);
+        })
         .addFunction("setPostProcessPassEnabled", &Scene::setPostProcessPassEnabled)
         .addFunction("isPostProcessPassEnabled", &Scene::isPostProcessPassEnabled)
         .addFunction("canReceiveUIEvents", &Scene::canReceiveUIEvents)
@@ -2139,22 +3304,17 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         })
         .endClass();
 
-    // Log.*: category lua, with the calling chunk and line. debug is compiled out of release
-    // builds as before; Log.category(name) gives a category's own trace...error
+    // Log.*(...): category lua, any values (tab-joined), with the calling chunk and line and a
+    // traceback per Log Stack Traces (luaLogLine). debug is compiled out of release builds as
+    // before; Log.category(name) gives a category's own trace...error
     luabridge::getGlobalNamespace(L)
         .beginClass<Log>("Log")
-        .addStaticFunction("print", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Info, logCategoryLua(), text); })
-        .addStaticFunction("info", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Info, logCategoryLua(), text); })
-        .addStaticFunction("verbose", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Trace, logCategoryLua(), text); })
-        .addStaticFunction("debug", [] (const char* text, lua_State* L) {
-        #ifndef NDEBUG
-            luaLog(L, LogLevel::Debug, logCategoryLua(), text);
-        #else
-            (void)text; (void)L;
-        #endif
-        })
-        .addStaticFunction("warn", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Warn, logCategoryLua(), text); })
-        .addStaticFunction("error", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Error, logCategoryLua(), text); })
+        .addStaticFunction("print", &luaLogPrint)
+        .addStaticFunction("info", &luaLogPrint)
+        .addStaticFunction("verbose", &luaLogVerbose)
+        .addStaticFunction("debug", &luaLogDebug)
+        .addStaticFunction("warn", &luaLogWarn)
+        .addStaticFunction("error", &luaLogError)
         // false (and a warning) for an unknown level name
         .addStaticFunction("setLevel", [] (const std::string& level, std::optional<std::string> category, lua_State* L) {
             LogLevel value;
@@ -2184,6 +3344,73 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("warn", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Warn, *self->category, text); })
         .addFunction("error", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Error, *self->category, text); })
         .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LogLevel")
+        // the Logger's one LogLevel (S09 R1): TRACE and VERBOSE are the same level
+        .addVariable("TRACE", LogLevel::Trace)
+        .addVariable("VERBOSE", LogLevel::Trace)
+        .addVariable("DEBUG", LogLevel::Debug)
+        .addVariable("INFO", LogLevel::Info)
+        .addVariable("WARN", LogLevel::Warn)
+        .addVariable("ERROR", LogLevel::Error)
+        .addVariable("FATAL", LogLevel::Fatal)
+        .endNamespace();
+
+    // Log.onMessageReceived's event: (message, stackTrace, level)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const std::string&, const std::string&, int)>>("FunctionSubscribe_V_SSI")
+        .addFunction("__call", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::call)
+        .addFunction("call", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(const std::string&, const std::string&, int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::string&, const std::string&, int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(const std::string&, const std::string&, int)>::has)
+        .endClass();
+
+    // the engine's log (feature debug-overlay): the buffer and listeners, on S09's Log class
+    // (re-opened: its print... and categories are S09's)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Log>("Log")
+        // Unity's Application.logMessageReceived: RegisterEvent(self, Log.onMessageReceived, "onLog")
+        .addStaticProperty("onMessageReceived", [] () { return &Log::onMessageReceived; }, [] (lua_State* L) { Log::onMessageReceived = L; })
+        .addStaticFunction("getEntries", &luaLogGetEntries)
+        .addStaticFunction("clear", &Log::clearEntries)
+        .addStaticFunction("count", &luaLogCount)
+        .addStaticProperty("bufferSize", [] () -> int { return (int)std::min<size_t>(Log::getBufferSize(), INT32_MAX); },
+                           // 0 .. Log::maxBufferSize (100000), clamped
+                           [] (int size) { Log::setBufferSize(size > 0 ? (size_t)size : 0); })
+        .endClass();
+
+    // the on-device console and stats overlay (Unity's IngameDebugConsole and Graphy)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<DebugOverlay>("DebugOverlay")
+        .addStaticProperty("enabled", &DebugOverlay::isEnabled, &DebugOverlay::setEnabled)
+        .addStaticFunction("showConsole", &DebugOverlay::showConsole)
+        .addStaticFunction("hideConsole", &DebugOverlay::hideConsole)
+        .addStaticFunction("toggleConsole", &DebugOverlay::toggleConsole)
+        .addStaticProperty("consoleVisible", &DebugOverlay::isConsoleVisible)
+        .addStaticProperty("statsMode", &DebugOverlay::getStatsMode, static_cast<lua_CFunction>(&luaDebugOverlaySetStatsMode))
+        .addStaticProperty("STATS_OFF", [] () -> int { return (int)DebugOverlaySettings::Stats::Off; })
+        .addStaticProperty("STATS_FPS", [] () -> int { return (int)DebugOverlaySettings::Stats::Fps; })
+        .addStaticProperty("STATS_FULL", [] () -> int { return (int)DebugOverlaySettings::Stats::Full; })
+        .addStaticFunction("getStats", &luaDebugOverlayGetStats)
+        .addStaticFunction("addCommand", &luaDebugOverlayAddCommand)
+        .addStaticFunction("removeCommand", &DebugOverlay::removeCommand)
+        .addStaticFunction("executeCommand", &DebugOverlay::executeCommand)
+        .endClass();
+
+    // Unity's TouchPhase (the values of Input.TOUCH_BEGAN ...)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TouchPhase")
+        .addVariable("Began", TouchPhase::Began)
+        .addVariable("Moved", TouchPhase::Moved)
+        .addVariable("Stationary", TouchPhase::Stationary)
+        .addVariable("Ended", TouchPhase::Ended)
+        .addVariable("Canceled", TouchPhase::Canceled)
+        .endNamespace();
+
+    // Input.anyKeyDown both as Unity's property and as S22's function
+    luaMakeBooleansCallable(L);
 
     luabridge::getGlobalNamespace(L)
         .beginClass<Input>("Input")
@@ -2368,23 +3595,113 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("POINTER_PENDING", [] () -> int { return static_cast<int>(PointerLockState::PENDING); })
         .addStaticProperty("POINTER_LOCKED", [] () -> int { return static_cast<int>(PointerLockState::LOCKED); })
 
-        // levels, and the edges of the frame (of the fixed step inside onFixedUpdate)
-        .addStaticFunction("getKey", &Input::getKey)
-        .addStaticFunction("getKeyDown", &Input::getKeyDown)
-        .addStaticFunction("getKeyUp", &Input::getKeyUp)
+        // levels, and the edges of the frame (of the fixed step inside onFixedUpdate). key: an
+        // Input.KEY_* code or a control name ("space", "a", "left_shift", "mouse_left",
+        // "gamepad_a", Unity's "left ctrl", "joystick button 0"...)
+        .addStaticFunction("getKey",
+            +[](int key) { return Input::getKey(key); },
+            +[](const std::string& key) -> bool { return luaControlHeld(key); })
+        .addStaticFunction("getKeyDown",
+            +[](int key) { return Input::getKeyDown(key); },
+            +[](const std::string& key) -> bool { return luaControlEdge(key, true); })
+        .addStaticFunction("getKeyUp",
+            +[](int key) { return Input::getKeyUp(key); },
+            +[](const std::string& key) -> bool { return luaControlEdge(key, false); })
+        // button: 0 left, 1 right, 2 middle (Input.MOUSE_BUTTON_*)
         .addStaticFunction("getMouseButton", &Input::getMouseButton)
         .addStaticFunction("getMouseButtonDown", &Input::getMouseButtonDown)
         .addStaticFunction("getMouseButtonUp", &Input::getMouseButtonUp)
-        .addStaticFunction("getGamepadButtonDown", &Input::getGamepadButtonDown)
-        .addStaticFunction("getGamepadButtonUp", &Input::getGamepadButtonUp)
-        .addStaticFunction("anyKeyDown", &Input::anyKeyDown)
+        // id -1: any gamepad; button: Input.GAMEPAD_BUTTON_* or a name ("gamepad_a", "a", "dpad_up")
+        .addStaticFunction("getGamepadButtonDown",
+            +[](int id, int button) { return Input::getGamepadButtonDown(id, button); },
+            +[](int id, const std::string& button) { return Input::getGamepadButtonDown(id, luaGamepadButton(button)); })
+        .addStaticFunction("getGamepadButtonUp",
+            +[](int id, int button) { return Input::getGamepadButtonUp(id, button); },
+            +[](int id, const std::string& button) { return Input::getGamepadButtonUp(id, luaGamepadButton(button)); })
+        // a key, mouse button or gamepad button pressed this frame: a property (Unity) that may
+        // be called (Input.anyKeyDown())
+        .addStaticProperty("anyKeyDown", +[]() { return Input::anyKeyDown(); })
+        // one held now
+        .addStaticProperty("anyKey", +[]() { return Input::isAnyKeyPressed(); })
+        // UTF-8 text typed this frame (backspace "\b", return "\n")
+        .addStaticProperty("inputString", +[]() { return Input::getInputString(); })
+        // the first control pressed this frame by name ("space", "mouse_left", "gamepad_a", "left_x+"), nil when none
+        .addStaticFunction("getPressedControl", +[]() -> std::optional<std::string> {
+            const std::string name = Input::getPressedControl();
+            if (name.empty()) return std::nullopt;
+            return name;
+        })
         .addStaticFunction("getMouseDelta", &Input::getMouseDelta)
         .addStaticFunction("getMouseScrollDelta", &Input::getMouseScrollDelta)
+        // the same as properties (Unity): canvas px this frame, y down; wheel steps (y up)
+        .addStaticProperty("mouseDelta", +[]() { return Input::getMouseDelta(); })
+        .addStaticProperty("mouseScrollDelta", +[]() { return Input::getMouseScrollDelta(); })
         .addStaticFunction("getTouchCount", &Input::getTouchCount)
-        .addStaticFunction("getTouch", &Input::getTouch)
+        .addStaticProperty("touchCount", +[]() { return Input::getTouchCount(); })
+        // index 0-based; nil when out of range
+        .addStaticFunction("getTouch", +[](int index) -> std::optional<Touch> {
+            if (index < 0 || (size_t)index >= Input::getTouchCount()) return std::nullopt;
+            return Input::getTouch((size_t)index);
+        })
+        // the frame's touches (Unity's Input.touches)
+        .addStaticProperty("touches", +[]() { return Input::getFrameTouches(); })
+        // the touch of that finger this frame, nil when none
+        .addStaticFunction("getTouchById", +[](int fingerId) -> std::optional<Touch> {
+            Touch touch;
+            if (!Input::findTouchById(fingerId, touch)) return std::nullopt;
+            return touch;
+        })
+        .addStaticProperty("multiTouchEnabled", &Input::isMultiTouchEnabled, &Input::setMultiTouchEnabled)
+        // System.isTouchDevice()
+        .addStaticProperty("touchSupported", +[]() { return System::instance().isTouchDevice(); })
         .addStaticFunction("getTouchDown", &Input::getTouchDown)
         .addStaticFunction("getTouchUp", &Input::getTouchUp)
         .addStaticFunction("getPointerLockState", &Input::getPointerLockState)
+
+        // the Input Manager's actions (an action's flat name, the "Input Manager" map's first,
+        // or "Map/Action"): smoothed, -1..1 (0..1 for a button; mouse movement unclamped)
+        .addStaticFunction("getAxis", +[](const std::string& name) { return InputActions::getAxis(name); })
+        // without smoothing: -1, 0 or 1 for keys
+        .addStaticFunction("getAxisRaw", +[](const std::string& name) { return InputActions::getAxisRaw(name); })
+        .addStaticFunction("getButton", +[](const std::string& name) { return InputActions::getButton(name); })
+        .addStaticFunction("getButtonDown", +[](const std::string& name) { return InputActions::getButtonDown(name); })
+        .addStaticFunction("getButtonUp", +[](const std::string& name) { return InputActions::getButtonUp(name); })
+        // (getAxis(xName), getAxis(yName)) with the length clamped to 1 (Godot's get_vector)
+        .addStaticFunction("getVector", +[](const std::string& xName, const std::string& yName) { return InputActions::getVector(xName, yName); })
+        .addStaticFunction("hasAction", +[](const std::string& name) { return InputActions::hasAction(name); })
+        .addStaticFunction("getActionNames", +[]() { return InputActions::getActionNames(); })
+        // a disabled action reads 0 / false
+        .addStaticFunction("setActionEnabled", +[](const std::string& name, bool enabled) { InputActions::setActionEnabled(name, enabled); })
+        .addStaticFunction("isActionEnabled", +[](const std::string& name) { return InputActions::isActionEnabled(name); })
+        .addStaticFunction("simulateButton", +[](const std::string& name, bool pressed, luabridge::LuaRef source) {
+            InputActions::setSourceValue(luaSourceOwner(source), name, pressed ? 1.0f : 0.0f, InputSourceKind::Script);
+        })
+        .addStaticFunction("simulateAxis", +[](const std::string& name, float value, luabridge::LuaRef source) {
+            InputActions::setSourceValue(luaSourceOwner(source), name, value, InputSourceKind::Script);
+        })
+        .addStaticFunction("addAxisDelta", +[](const std::string& name, float delta, luabridge::LuaRef source) {
+            InputActions::addSourceDelta(luaSourceOwner(source), name, delta, InputSourceKind::Script);
+        })
+        .addStaticFunction("clearSimulated", +[](luabridge::LuaRef source) {
+            if (source.isNil()) InputActions::clearSources(InputSourceKind::Script);
+            else InputActions::clearSource(luaSourceOwner(source));
+        })
+        // ui-multitouch D15: the pointer (-1 the mouse, a finger's fingerId; none: the mouse or
+        // any finger) is over component UI that takes events or HTML content, or either holds it
+        .addStaticFunction("isPointerOverUI", +[](luabridge::LuaRef pointerId) {
+            if (pointerId.isNil()) return Engine::isPointerOverUI(INT_MIN);
+            if (!pointerId.isNumber()) return false;
+            return Engine::isPointerOverUI(pointerId.unsafe_cast<int>());
+        })
+        .addStaticFunction("getBindings", &luaInputGetBindings)
+        .addStaticFunction("setBindings", &luaInputSetBindings)
+        // undoes setBindings / importBindings of the action (without a name: of every action)
+        .addStaticFunction("resetBindings",
+            +[]() { InputActions::resetBindings(""); },
+            +[](const std::string& name) { InputActions::resetBindings(name); })
+        // the replacements as JSON text: keep it with UserSettings, give it back to importBindings
+        .addStaticFunction("exportBindings", +[]() { return InputActions::exportOverrides(); })
+        .addStaticFunction("importBindings", &luaInputImportBindings)
 
         .addStaticFunction("isKeyPressed", &Input::isKeyPressed)
         .addStaticFunction("isMousePressed", &Input::isMousePressed)
@@ -2403,6 +3720,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getGamepadId", &Input::getGamepadId)
         .addStaticFunction("getModifiers", &Input::getModifiers)
         .addStaticFunction("findTouchIndex", &Input::findTouchIndex)
+        // Unity's Input.deviceOrientation (platform services)
+        .addStaticProperty("deviceOrientation", &Input::getDeviceOrientation)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -2446,6 +3765,39 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getUserDataPath", [] () { return System::instance().getUserDataPath(); })
         .addStaticFunction("getLuaPath", [] () { return System::instance().getLuaPath(); })
         .addStaticFunction("getShaderPath", [] () { return System::instance().getShaderPath(); })
+        // The web build: writes the user data files (data://) to IndexedDB now instead of in
+        // half a second (File.writeText and Json.writeFile ask for that write themselves; Lua io
+        // writes need this call). Elsewhere files are on disk already: true.
+        .addStaticFunction("syncFileSystem", [] () { return System::instance().flushFileSystem(); })
+        // The web build: the saved files are restored from IndexedDB (the first scene waits for
+        // it, up to 3 s). Elsewhere always true.
+        .addStaticFunction("isUserDataLoaded", [] () { return System::instance().isUserDataLoaded(); })
+
+        // platform services
+        .addStaticFunction("openURL", [] (const std::string& url) { return System::instance().openURL(url); })
+        .addStaticFunction("getSystemLanguage", [] () { return System::instance().getSystemLanguage(); })
+        .addStaticFunction("getLanguageCode", [] () { return System::instance().getLanguageCode(); })
+        .addStaticFunction("getRegionCode", [] () { return System::instance().getRegionCode(); })
+        .addStaticFunction("getLocale", [] () { return System::instance().getLocale(); })
+        .addStaticFunction("getPreferredLanguages", [] () { return System::instance().getPreferredLocales(); })
+        .addStaticFunction("getAppVersion", [] () { return System::instance().getAppVersion(); })
+        .addStaticFunction("getAppBuild", [] () { return System::instance().getAppBuild(); })
+        .addStaticFunction("getAppIdentifier", [] () { return System::instance().getAppIdentifier(); })
+        .addStaticFunction("getAppName", [] () { return System::instance().getAppName(); })
+        .addStaticFunction("getOperatingSystem", [] () { return System::instance().getOperatingSystem(); })
+        .addStaticFunction("getOperatingSystemVersion", [] () { return System::instance().getOperatingSystemVersion(); })
+        .addStaticFunction("getAndroidApiLevel", [] () { return System::instance().getAndroidApiLevel(); })
+        .addStaticFunction("getDeviceModel", [] () { return System::instance().getDeviceModel(); })
+        .addStaticFunction("getDeviceType", [] () { return System::instance().getDeviceType(); })
+        .addStaticFunction("getSystemMemorySize", [] () { return System::instance().getSystemMemorySize(); })
+        .addStaticFunction("getProcessorCount", [] () { return System::instance().getProcessorCount(); })
+        .addStaticFunction("isEditor", [] () { return System::instance().isEditor(); })
+        .addStaticFunction("getInternetReachability", [] () { return System::instance().getInternetReachability(); })
+        // Handheld.Vibrate: 400 ms by default (Unity's length); iOS ignores the length
+        .addStaticFunction("vibrate",
+            [] () { return System::instance().vibrate(400); },
+            [] (int milliseconds) { return System::instance().vibrate(milliseconds); })
+        .addStaticFunction("hapticFeedback", [] (HapticFeedback type) { return System::instance().hapticFeedback(type); })
 
         //UserSettings not need here
 
@@ -2462,6 +3814,35 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("gameplayStopCrazyGames", [] () { return System::instance().gameplayStopCrazyGames(); })
         .addStaticFunction("loadingStartCrazyGames", [] () { return System::instance().loadingStartCrazyGames(); })
         .addStaticFunction("loadingStopCrazyGames", [] () { return System::instance().loadingStopCrazyGames(); })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Screen>("Screen")
+        .addStaticProperty("orientation", &Screen::getOrientation, &Screen::setOrientation)
+        .addStaticProperty("autorotateToPortrait",
+            [] () { return Screen::getAutorotate(ScreenOrientation::Portrait); },
+            [] (bool allowed) { Screen::setAutorotate(ScreenOrientation::Portrait, allowed); })
+        .addStaticProperty("autorotateToPortraitUpsideDown",
+            [] () { return Screen::getAutorotate(ScreenOrientation::PortraitUpsideDown); },
+            [] (bool allowed) { Screen::setAutorotate(ScreenOrientation::PortraitUpsideDown, allowed); })
+        .addStaticProperty("autorotateToLandscapeLeft",
+            [] () { return Screen::getAutorotate(ScreenOrientation::LandscapeLeft); },
+            [] (bool allowed) { Screen::setAutorotate(ScreenOrientation::LandscapeLeft, allowed); })
+        .addStaticProperty("autorotateToLandscapeRight",
+            [] () { return Screen::getAutorotate(ScreenOrientation::LandscapeRight); },
+            [] (bool allowed) { Screen::setAutorotate(ScreenOrientation::LandscapeRight, allowed); })
+        .addStaticProperty("sleepTimeout", &Screen::getSleepTimeout, &Screen::setSleepTimeout)
+        .addStaticProperty("dpi", &Screen::getDpi)
+        .addStaticProperty("refreshRate", &Screen::getRefreshRate)
+        .addStaticProperty("safeArea", &Screen::getSafeArea)
+        .addStaticProperty("safeAreaInsets", &Screen::getSafeAreaInsets)
+        .addStaticProperty("deviceSafeArea", &Screen::getDeviceSafeArea)
+        .addStaticProperty("deviceSafeAreaInsets", &Screen::getDeviceSafeAreaInsets)
+        .addStaticProperty("safeAreaPixels", &Screen::getSafeAreaPixels)
+        .addStaticProperty("cutouts", &Screen::getCutouts)
+        .addStaticProperty("extraInsets", &Screen::getExtraInsets)
+        .addStaticFunction("setExtraInsets", &luaScreenSetExtraInsets)
+        .addStaticFunction("clearExtraInsets", &Screen::clearExtraInsets)
         .endClass();
 
 #endif //DISABLE_LUA_BINDINGS

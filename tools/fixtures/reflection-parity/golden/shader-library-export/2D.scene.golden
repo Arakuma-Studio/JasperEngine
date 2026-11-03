@@ -1,4 +1,4 @@
-formatVersion: 5
+formatVersion: 7
 guid: 25e1614af9e2418a7e7919404bb13615
 id: 4155373791
 name: 2D
@@ -59,95 +59,95 @@ shaderKeys:
   - type: depth
     properties: 129
   - type: blit
-  - type: mesh
-    properties: 3075
-    customShader: library:sprite#BLEND_PREMULTIPLIED
-  - type: mesh
-    properties: 3075
-    customShader: library:sprite#BLEND_ALPHA,OUTLINE
-  - type: mesh
-    properties: 3075
-    customShader: library:sprite#BLEND_ALPHA,HUE_SHIFT
-  - type: mesh
-    properties: 3075
-    customShader: library:sprite#BLEND_ALPHA,FLASH
-  - type: mesh
-    properties: 3075
-    customShader: library:sprite#BLEND_ALPHA,GRAYSCALE
+  - type: sky
+    customShader: library:gradient_sky#BLEND_ALPHA
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_ADDITIVE
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_ADDITIVE
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_ADDITIVE
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_ALPHA
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_ALPHA
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_ALPHA
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_ALPHA,EROSION
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_ALPHA,EROSION
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_ALPHA,EROSION
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_ALPHA,GLOW
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_ALPHA,GLOW
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_ALPHA,GLOW
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_MULTIPLY
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_MULTIPLY
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_MULTIPLY
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_NONE
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_NONE
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_NONE
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_PREMULTIPLIED
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_PREMULTIPLIED
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_PREMULTIPLIED
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE
   - type: mesh
     properties: 3075
-    customShader: library:sprite#BLEND_ALPHA,OVERLAY
+    customShader: library:sprite#BLEND_ALPHA,FLASH
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,GLOW
-  - type: points
-    properties: 4
-    customShader: library:particle#BLEND_ALPHA
-  - type: points
-    properties: 5
-    customShader: library:particle#BLEND_ALPHA
-  - type: points
-    properties: 13
-    customShader: library:particle#BLEND_ALPHA
-  - type: points
-    properties: 4
-    customShader: library:particle#BLEND_NONE
-  - type: points
-    properties: 5
-    customShader: library:particle#BLEND_NONE
-  - type: points
-    properties: 13
-    customShader: library:particle#BLEND_NONE
-  - type: points
-    properties: 4
-    customShader: library:particle#BLEND_PREMULTIPLIED
-  - type: points
-    properties: 5
-    customShader: library:particle#BLEND_PREMULTIPLIED
-  - type: points
-    properties: 13
-    customShader: library:particle#BLEND_PREMULTIPLIED
-  - type: points
-    properties: 4
-    customShader: library:particle#BLEND_ADDITIVE
-  - type: points
-    properties: 5
-    customShader: library:particle#BLEND_ADDITIVE
-  - type: points
-    properties: 13
-    customShader: library:particle#BLEND_ADDITIVE
-  - type: points
-    properties: 4
-    customShader: library:particle#BLEND_MULTIPLY
-  - type: points
-    properties: 5
-    customShader: library:particle#BLEND_MULTIPLY
-  - type: points
-    properties: 13
-    customShader: library:particle#BLEND_MULTIPLY
-  - type: points
-    properties: 4
-    customShader: library:particle#BLEND_ALPHA,GLOW
-  - type: points
-    properties: 5
-    customShader: library:particle#BLEND_ALPHA,GLOW
-  - type: points
-    properties: 13
-    customShader: library:particle#BLEND_ALPHA,GLOW
-  - type: points
-    properties: 4
-    customShader: library:particle#BLEND_ALPHA,EROSION
-  - type: points
-    properties: 5
-    customShader: library:particle#BLEND_ALPHA,EROSION
-  - type: points
-    properties: 13
-    customShader: library:particle#BLEND_ALPHA,EROSION
-  - type: sky
-    customShader: library:gradient_sky#BLEND_ALPHA
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,GRAYSCALE
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,HUE_SHIFT
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,OUTLINE
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,OVERLAY
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_PREMULTIPLIED
 entities:
   - type: Entity
     entity: 1001

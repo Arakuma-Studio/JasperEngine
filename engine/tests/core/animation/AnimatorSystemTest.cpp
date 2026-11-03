@@ -14,6 +14,7 @@
 
 #include "Engine.h"
 #include "component/CameraComponent.h"
+#include "component/LightComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "object/AnimationPlayer.h"
@@ -64,6 +65,16 @@ namespace {
             }
         }
     };
+
+    ClipTrackData propertyTrack(const std::string& path, const std::string& component, const std::string& name, std::vector<ClipKey> keys){
+        ClipTrackData t;
+        t.path = path;
+        t.channel = ClipChannel::Property;
+        t.component = component;
+        t.property = name;
+        t.keys = std::move(keys);
+        return t;
+    }
 
     ControllerDef oneState(const std::string& clip, AnimatorStateLoop loop = AnimatorStateLoop::Inherit){
         StateDef s = state("Play", clip);
@@ -153,6 +164,59 @@ TEST_F(AnimatorSystemTest, LayersWithMaskAndAdditive){
     step(kDt);
     EXPECT_EQ(position(head).y, 0.4f) << "an additive layer at weight 0 changes nothing";
     EXPECT_EQ(object.getLayerIndex("Upper"), 1);
+}
+
+// anim-properties on S21: a state's clip property tracks are written by the Animator (the
+// Animation Player's bindings and key space), a discrete one stepped, a layer blending with what
+// is under it (masks do not stop properties), and an entity keyed only by property tracks is not
+// a bone of the rig
+TEST_F(AnimatorSystemTest, PropertyTracksPlayOnTheAnimator){
+    const Entity lamp = node(root, "Lamp", Vector3(0, 2, 0));
+    LightComponent light;
+    light.intensity = 1.0f;
+    scene.addComponent<LightComponent>(lamp, light);
+    const Entity box = node(root, "Box", Vector3(0, 0, 0));
+    auto intensity = [&](){ return scene.getComponent<LightComponent>(lamp).intensity; };
+
+    ClipData glow;
+    glow.wrap = ClipWrapMode::ClampForever;
+    glow.tracks = {propertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}),
+                   propertyTrack("Box", "gameobject", "active", {key(0, {1}), key(0.5f, {0})})};
+    ClipData bright;
+    bright.wrap = ClipWrapMode::Loop;
+    bright.tracks = {propertyTrack("Lamp", "light", "intensity", {key(0, {5}), key(1, {5})})};
+
+    AvatarMaskDef mask;
+    mask.paths = {{"Hips", 1.0f}};
+    ControllerDef def = oneState(clip("glow", glow));
+    LayerDef top;
+    top.name = "Bright";
+    top.weight = 0.0f;
+    top.mask.path = maskFile("hips", mask);
+    top.machine.states.push_back(state("Bright", clip("bright", bright)));
+    def.layers.push_back(top);
+    animator(controllerFile("c", def));
+
+    step(0.0);
+    step(0.25);
+    EXPECT_NEAR(intensity(), 1.5f, 1e-5f) << "the clip at 0.25";
+    EXPECT_TRUE(scene.isEntityActive(box)) << "the key at 0 holds until 0.5";
+    step(0.5);
+    EXPECT_NEAR(intensity(), 2.5f, 1e-5f) << "the clip at 0.75";
+    EXPECT_FALSE(scene.isEntityActive(box)) << "stepped: the key at 0.5 from then on";
+    EXPECT_EQ(position(lamp), Vector3(0, 2, 0)) << "property tracks do not make their entity a bone";
+    EXPECT_LT(instance().rig.findBone(lamp), 0);
+
+    // the second layer at weight 0.5, its mask covering only Hips: properties pass masks
+    Animator object(&scene, root);
+    object.setLayerWeight(1, 0.5f);
+    step(0.5);
+    EXPECT_NEAR(intensity(), 0.5f * 3.0f + 0.5f * 5.0f, 1e-5f) << "the base clamped at 3, half of the layer's 5";
+
+    // the layer at weight 0 changes nothing
+    object.setLayerWeight(1, 0.0f);
+    step(kDt);
+    EXPECT_NEAR(intensity(), 3.0f, 1e-5f);
 }
 
 TEST_F(AnimatorSystemTest, EventsLeaderOnlyAllAndSeek){

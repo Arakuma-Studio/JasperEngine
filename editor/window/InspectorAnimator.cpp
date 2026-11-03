@@ -10,8 +10,11 @@
 #include "InspectorWindow.h"
 
 #include "Backend.h"
+#include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimatorAssetDocument.h"
+#include "animation/AvatarMaskWeights.h"
+#include "InspectorAnimLayers.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "animation/AnimatorInstance.h"
 #include "animation/CompiledController.h"
@@ -146,43 +149,16 @@ namespace{
         return candidate.string();
     }
 
-    // the Avatar Mask figure: a part's rectangle in a 0..1 box
-    struct FigurePart{
-        AvatarBodyPart part;
-        float x0, y0, x1, y1;
-        bool round;
-    };
-    const FigurePart kFigure[] = {
-        {AvatarBodyPart::Head, 0.42f, 0.02f, 0.58f, 0.16f, true},
-        {AvatarBodyPart::Body, 0.40f, 0.17f, 0.60f, 0.50f, false},
-        {AvatarBodyPart::LeftArm, 0.61f, 0.18f, 0.69f, 0.44f, false},
-        {AvatarBodyPart::RightArm, 0.31f, 0.18f, 0.39f, 0.44f, false},
-        {AvatarBodyPart::LeftHand, 0.61f, 0.45f, 0.70f, 0.53f, true},
-        {AvatarBodyPart::RightHand, 0.30f, 0.45f, 0.39f, 0.53f, true},
-        {AvatarBodyPart::LeftLeg, 0.51f, 0.51f, 0.59f, 0.90f, false},
-        {AvatarBodyPart::RightLeg, 0.41f, 0.51f, 0.49f, 0.90f, false},
-        {AvatarBodyPart::Root, 0.44f, 0.92f, 0.56f, 0.98f, true},
-    };
-
     const char* bodyPartLabel(AvatarBodyPart part){
-        switch (part){
-            case AvatarBodyPart::Root: return "Root (root motion)";
-            case AvatarBodyPart::Body: return "Body";
-            case AvatarBodyPart::Head: return "Head";
-            case AvatarBodyPart::LeftArm: return "Left Arm";
-            case AvatarBodyPart::RightArm: return "Right Arm";
-            case AvatarBodyPart::LeftHand: return "Left Hand";
-            case AvatarBodyPart::RightHand: return "Right Hand";
-            case AvatarBodyPart::LeftLeg: return "Left Leg";
-            case AvatarBodyPart::RightLeg: return "Right Leg";
-            default: return "";
-        }
+        return part == AvatarBodyPart::Root ? "Root (root motion)" : animlayersui::partLabel(part);
     }
 
-    // the model a mask's transform list was last filled from (per mask document)
-    std::map<std::string, std::string>& maskModels(){
-        static std::map<std::string, std::string> models;
-        return models;
+    ImU32 weightColor(float weight, bool hovered){
+        weight = std::clamp(weight, 0.0f, 1.0f);
+        const float lift = hovered ? 0.12f : 0.0f;
+        const ImVec4 off(0.67f + lift, 0.24f + lift, 0.24f + lift, 1.0f);
+        const ImVec4 on(0.27f + lift, 0.67f + lift, 0.31f + lift, 1.0f);
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(off.x + (on.x - off.x) * weight, off.y + (on.y - off.y) * weight, off.z + (on.z - off.z) * weight, 1.0f));
     }
 
 }
@@ -263,7 +239,7 @@ void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneP
         }
         ImGui::EndDisabled();
         UIProbe::item("animator.configureAvatar");
-        ImGui::SetItemTooltip("Map the model's bones to the humanoid slots (the model's .humanoid file) in the Pose Animation window");
+        ImGui::SetItemTooltip("The model's Avatar (its .humanoid file): bone mapping, fingers, eyes and jaw, twist corrections, a test clip");
     }
 
     // problems and the running states
@@ -326,6 +302,11 @@ bool editor::InspectorWindow::drawAnimatorAsset(const fs::path& asset){
 
 void editor::InspectorWindow::drawControllerAsset(const std::shared_ptr<AnimatorAssetDocument>& document){
     const ControllerDef& def = document->controller();
+    if (document->converted()){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_CIRCLE_INFO " %s", document->dialect() == AnimatorFileDialect::UpstreamVersion1 ?
+                           "Upstream's version 1 controller: read converted, the next edit saves it as version 2" :
+                           "A version 1 controller: read converted, the next edit saves it as version 2");
+    }
     const AnimatorEditorHooks& hooks = animatorEditorHooks();
     ImGui::BeginDisabled(!hooks.openController);
     if (ImGui::Button(ICON_FA_DIAGRAM_PROJECT " Open in Animator", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
@@ -349,137 +330,216 @@ void editor::InspectorWindow::drawControllerAsset(const std::shared_ptr<Animator
         ImGui::BulletText("%s  %zu state(s)  %s%s%s", layer.name.c_str(), count(layer.machine), layerBlendingName(layer.blending),
                           layer.mask.path.empty() ? "" : "  mask ", layer.mask.path.c_str());
     }
-    // the compiler's diagnostics (unknown parameters, missing targets, unreachable states)
-    std::shared_ptr<const CompiledController> compiled = compileController(def);
-    if (compiled && !compiled->diagnostics.empty()){
+    // the validation (unknown or mistyped parameters, missing targets, clips that do not load,
+    // unreachable and dead-end states, transitions never taken, unused parameters)
+    const std::vector<ClipWarning> problems = validateController(def, [this](const std::string& clip){
+        ControllerClipInfo info;
+        std::string error;
+        std::shared_ptr<AnimationClipDocument> clipDocument = AnimationClipDocument::open(project, clip, &error);
+        info.loads = clipDocument != nullptr;
+        info.error = error;
+        if (clipDocument) info.loops = clipDocument->data().wrap == ClipWrapMode::Loop || clipDocument->data().wrap == ClipWrapMode::PingPong;
+        return info;
+    });
+    if (!problems.empty()){
         ImGui::SeparatorText("Problems");
-        for (const ClipWarning& warning : compiled->diagnostics) warningText(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
+        UIProbe::item("asset.controller.problems");
+        for (const ClipWarning& warning : problems) warningText(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
     }
+    drawAnimatorAssetUsers(document->projectPath(), false);
 }
 
 void editor::InspectorWindow::drawMaskAsset(const std::shared_ptr<AnimatorAssetDocument>& document){
     AvatarMaskDef mask = maskOf(document);
     bool changed = false;
     std::string undo = "Edit Avatar Mask";
+    if (document->converted()){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_CIRCLE_INFO " %s", document->dialect() == AnimatorFileDialect::UpstreamVersion1 ?
+                           "Upstream's version 1 mask: read converted, the next edit saves it as version 2" :
+                           "A version 1 mask: read converted, the next edit saves it as version 2");
+    }
 
-    // the humanoid figure: a click toggles a body part (green: animated, red: masked out)
+    // Default: what no path and no body part covers (an empty mask passes everything)
+    ImGui::SeparatorText("Default");
+    float defaultWeight = mask.defaultWeight;
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::SliderFloat("##mask_default", &defaultWeight, 0.0f, 1.0f, "Default %.2f")){
+        mask.defaultWeight = std::clamp(defaultWeight, 0.0f, 1.0f);
+        changed = true;
+        undo = "Mask Default Weight";
+    }
+    UIProbe::item("asset.mask.default");
+    ImGui::SetItemTooltip("The weight of what no transform path and no (set) body part covers");
+
+    // the humanoid figure: a click toggles a body part between 1 and 0 (a tint: a fraction)
     ImGui::SeparatorText("Humanoid");
     const float side = std::min(ImGui::GetContentRegionAvail().x, Theme::dpi(220.0f));
     const ImVec2 origin(ImGui::GetCursorScreenPos().x + (ImGui::GetContentRegionAvail().x - side) * 0.5f, ImGui::GetCursorScreenPos().y);
     ImDrawList* list = ImGui::GetWindowDrawList();
     list->AddRectFilled(origin, ImVec2(origin.x + side, origin.y + side), IM_COL32(30, 30, 34, 255), 4.0f);
-    int hoveredPart = -1;
     const ImVec2 mouse = ImGui::GetIO().MousePos;
-    for (const FigurePart& f : kFigure){
+    const bool inside = mouse.x >= origin.x && mouse.x <= origin.x + side && mouse.y >= origin.y && mouse.y <= origin.y + side && ImGui::IsWindowHovered();
+    const int hoveredPart = inside ? animlayersui::figurePartAt((mouse.x - origin.x) / side, (mouse.y - origin.y) / side) : -1;
+    for (const animlayersui::FigureShape& f : animlayersui::figureShapes()){
         const int index = (int)f.part;
         const ImVec2 a(origin.x + f.x0 * side, origin.y + f.y0 * side);
         const ImVec2 b(origin.x + f.x1 * side, origin.y + f.y1 * side);
-        const bool on = mask.bodyParts[index];
-        const bool hovered = mouse.x >= a.x && mouse.x <= b.x && mouse.y >= a.y && mouse.y <= b.y && ImGui::IsWindowHovered();
-        if (hovered) hoveredPart = index;
-        ImU32 color = on ? IM_COL32(70, 170, 80, 255) : IM_COL32(170, 60, 60, 255);
-        if (hovered) color = on ? IM_COL32(100, 200, 110, 255) : IM_COL32(200, 90, 90, 255);
-        if (f.round) list->AddEllipseFilled(ImVec2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f), ImVec2((b.x - a.x) * 0.5f, (b.y - a.y) * 0.5f), color);
+        const ImU32 color = weightColor(mask.partWeight(f.part), hoveredPart == index);
+        if (f.disc) list->AddEllipseFilled(ImVec2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f), ImVec2((b.x - a.x) * 0.5f, (b.y - a.y) * 0.5f), color);
         else list->AddRectFilled(a, b, color, 3.0f);
+        // an unset part follows the default: drawn with an outline
+        if (!mask.hasPart(f.part)) list->AddRect(a, b, IM_COL32(220, 220, 220, 120), 3.0f);
+    }
+    // each part's clickable centre (UI tests click there)
+    for (int part = 0; part < AVATAR_BODY_PART_COUNT; part++){
+        float cx = 0.0f, cy = 0.0f;
+        animlayersui::figurePartCenter((AvatarBodyPart)part, cx, cy);
+        const ImVec2 c(origin.x + cx * side, origin.y + cy * side);
+        UIProbe::rect(std::string("asset.mask.part.") + bodyPartName((AvatarBodyPart)part), c.x - 2.0f, c.y - 2.0f, c.x + 2.0f, c.y + 2.0f);
     }
     ImGui::SetCursorScreenPos(origin);
     ImGui::InvisibleButton("##mask_figure", ImVec2(side, side));
     UIProbe::item("asset.mask.figure");
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && hoveredPart >= 0){
-        mask.bodyParts[hoveredPart] = !mask.bodyParts[hoveredPart];
+        mask = animlayersui::togglePart(mask, (AvatarBodyPart)hoveredPart);
         changed = true;
-        undo = std::string(mask.bodyParts[hoveredPart] ? "Include " : "Mask Out ") + bodyPartLabel((AvatarBodyPart)hoveredPart);
+        undo = std::string(mask.partWeight((AvatarBodyPart)hoveredPart) > 0.0f ? "Include " : "Mask Out ") + bodyPartLabel((AvatarBodyPart)hoveredPart);
     }
-    if (hoveredPart >= 0) ImGui::SetItemTooltip("%s: %s (click to toggle)", bodyPartLabel((AvatarBodyPart)hoveredPart),
-                                               mask.bodyParts[hoveredPart] ? "animated" : "masked out");
-    // the same as checkboxes (keyboard, tests)
-    if (ImGui::BeginTable("##mask_parts", 3)){
+    if (hoveredPart >= 0){
+        ImGui::SetItemTooltip("%s: %.2f%s (click to toggle)", bodyPartLabel((AvatarBodyPart)hoveredPart), mask.partWeight((AvatarBodyPart)hoveredPart),
+                              mask.hasPart((AvatarBodyPart)hoveredPart) ? "" : " (the default)");
+    }
+    // each part's weight (keyboard, fractions, tests); unset parts take the default
+    if (ImGui::BeginTable("##mask_parts", 2, ImGuiTableFlags_SizingStretchProp)){
         for (int i = 0; i < AVATAR_BODY_PART_COUNT; i++){
+            const AvatarBodyPart part = (AvatarBodyPart)i;
+            ImGui::PushID(i);
             ImGui::TableNextColumn();
-            bool on = mask.bodyParts[i];
-            if (ImGui::Checkbox(bodyPartLabel((AvatarBodyPart)i), &on)){
-                mask.bodyParts[i] = on;
+            bool set = mask.hasPart(part);
+            if (ImGui::Checkbox(bodyPartLabel(part), &set)){
+                if (set) mask.bodyParts[i] = mask.defaultWeight;
+                else mask.bodyParts[i].reset();
                 changed = true;
-                undo = std::string(on ? "Include " : "Mask Out ") + bodyPartLabel((AvatarBodyPart)i);
+                undo = std::string(set ? "Set " : "Unset ") + bodyPartLabel(part);
             }
+            ImGui::SetItemTooltip("Set: the part has its own weight; unset: it takes the default");
+            ImGui::TableNextColumn();
+            ImGui::BeginDisabled(!set);
+            float weight = mask.partWeight(part);
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::SliderFloat("##part_weight", &weight, 0.0f, 1.0f, "%.2f") && set){
+                mask.bodyParts[i] = std::clamp(weight, 0.0f, 1.0f);
+                changed = true;
+                undo = std::string("Mask Weight ") + bodyPartLabel(part);
+            }
+            ImGui::EndDisabled();
+            ImGui::PopID();
         }
         ImGui::EndTable();
     }
-
-    // the transform paths: every bone of a model, ticked and weighted
-    ImGui::SeparatorText("Transforms");
-    ImGui::TextDisabled("Paths below the Animator's GameObject; a listed path counts with its weight, the others follow the body parts.");
-    std::string& modelPath = maskModels()[document->projectPath()];
-    char buffer[512];
-    std::snprintf(buffer, sizeof(buffer), "%s", modelPath.c_str());
-    ImGui::SetNextItemWidth(-1);
-    if (ImGui::InputTextWithHint("##mask_model", "Drop a model to list its bones", buffer, sizeof(buffer), ImGuiInputTextFlags_EnterReturnsTrue)){
-        modelPath = buffer;
+    bool rootHierarchy = mask.rootHierarchy;
+    if (ImGui::Checkbox("Root covers the hierarchy above the hips", &rootHierarchy)){
+        mask.rootHierarchy = rootHierarchy;
+        changed = true;
+        undo = "Mask Root Hierarchy";
     }
+    UIProbe::item("asset.mask.rootHierarchy");
+    ImGui::SetItemTooltip("On: the masked GameObject and the transforms between it and the hips (an armature) take the Root weight "
+                          "(upstream's rule); off: they take the default. Root motion always takes the Root weight.");
+    if (mask.usesHumanoid() && ImGui::SmallButton("Unset Every Part##mask_unset_parts")){
+        for (std::optional<float>& part : mask.bodyParts) part.reset();
+        changed = true;
+        undo = "Unset Mask Body Parts";
+    }
+
+    // the transform paths: every node of the preview model, ticked, weighted, with children
+    ImGui::SeparatorText("Transforms");
+    ImGui::TextDisabled("Paths below the masked GameObject; a listed path counts with its weight (its descendants too with Children), "
+                        "the others follow the body parts and the default.");
+    char buffer[512];
+    std::snprintf(buffer, sizeof(buffer), "%s", mask.previewModel.c_str());
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::InputTextWithHint("##mask_model", "Preview model: drop a model or prefab to list its nodes", buffer, sizeof(buffer),
+                                 ImGuiInputTextFlags_EnterReturnsTrue)){
+        mask.previewModel = buffer;
+        changed = true;
+        undo = "Mask Preview Model";
+    }
+    UIProbe::item("asset.mask.previewModel");
     if (ImGui::BeginDragDropTarget()){
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
             std::vector<std::string> dropped = Util::getStringsFromPayload(payload);
-            if (!dropped.empty() && Util::isModelFile(dropped[0]) && project->isInsideAssetsPath(dropped[0])){
-                modelPath = project->normalizeToAssetsRelative(dropped[0]).generic_string();
+            if (!dropped.empty() && (Util::isModelFile(dropped[0]) || Util::isPrefabFile(dropped[0])) && project->isInsideAssetsPath(dropped[0])){
+                mask.previewModel = project->normalizeToAssetsRelative(dropped[0]).generic_string();
+                changed = true;
+                undo = "Mask Preview Model";
             }
         }
         ImGui::EndDragDropTarget();
     }
     std::vector<std::string> paths;
     for (const MaskPathDef& entry : mask.paths) paths.push_back(entry.path);
-    if (!modelPath.empty()){
-        std::vector<ModelNodeInfo> nodes;
-        std::string error;
-        if (readModelFileNodes(modelPath, nodes, &error)){
-            for (const ModelNodeInfo& node : nodes){
-                if (!node.path.empty() && std::find(paths.begin(), paths.end(), node.path) == paths.end()) paths.push_back(node.path);
+    if (!mask.previewModel.empty()){
+        animlayersui::PreviewHierarchy preview;
+        if (animlayersui::previewHierarchyFromModel(project, mask.previewModel, preview)){
+            for (const std::string& path : preview.paths){
+                if (std::find(paths.begin(), paths.end(), path) == paths.end()) paths.push_back(path);
             }
+            if (mask.usesHumanoid() && !preview.humanoid.valid) warningText("Not humanoid (" + preview.humanoid.error + "): the body parts do not apply to it");
         }else{
-            warningText(error);
+            warningText(preview.error);
         }
     }
-    if (ImGui::BeginTable("##mask_paths", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp,
+    std::sort(paths.begin(), paths.end());
+    if (ImGui::BeginTable("##mask_paths", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp,
                           ImVec2(0, std::min(Theme::dpi(320.0f), ImGui::GetFrameHeightWithSpacing() * (float)(paths.size() + 1))))){
         ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
         ImGui::TableSetupColumn("Path");
         ImGui::TableSetupColumn("Weight", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(70.0f));
+        ImGui::TableSetupColumn("Children", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
         for (size_t i = 0; i < paths.size(); i++){
             ImGui::PushID((int)i);
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            auto it = std::find_if(mask.paths.begin(), mask.paths.end(), [&](const MaskPathDef& e){ return e.path == paths[i]; });
-            bool listed = it != mask.paths.end();
+            int index = mask.findPath(paths[i]);
+            bool listed = index >= 0;
             if (ImGui::Checkbox("##on", &listed)){
-                if (listed){
-                    MaskPathDef entry;
-                    entry.path = paths[i];
-                    mask.paths.push_back(entry);
-                }else{
-                    mask.paths.erase(it);
-                }
+                // Shift: the whole subtree
+                mask = animlayersui::setTransform(mask, paths[i], listed, ImGui::GetIO().KeyShift, paths);
                 changed = true;
                 undo = (listed ? "Add Mask Path " : "Remove Mask Path ") + paths[i];
-                it = std::find_if(mask.paths.begin(), mask.paths.end(), [&](const MaskPathDef& e){ return e.path == paths[i]; });
+                index = mask.findPath(paths[i]);
             }
+            ImGui::SetItemTooltip("Shift-click: the path and everything below it");
             ImGui::TableNextColumn();
-            // depth indent by the path's segments
             const size_t depth = (size_t)std::count(paths[i].begin(), paths[i].end(), '/');
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (float)depth * ImGui::GetStyle().IndentSpacing * 0.5f);
             const size_t slash = paths[i].rfind('/');
             ImGui::TextUnformatted(slash == std::string::npos ? paths[i].c_str() : paths[i].c_str() + slash + 1);
             ImGui::SetItemTooltip("%s", paths[i].c_str());
             ImGui::TableNextColumn();
-            if (it != mask.paths.end()){
+            if (index >= 0){
                 ImGui::SetNextItemWidth(-1);
-                if (ImGui::SliderFloat("##weight", &it->weight, 0.0f, 1.0f, "%.2f")){
+                if (ImGui::SliderFloat("##weight", &mask.paths[(size_t)index].weight, 0.0f, 1.0f, "%.2f")){
                     changed = true;
                     undo = "Mask Path Weight " + paths[i];
                 }
+                ImGui::TableNextColumn();
+                bool children = mask.paths[(size_t)index].children;
+                if (ImGui::Checkbox("##children", &children)){
+                    mask.paths[(size_t)index].children = children;
+                    changed = true;
+                    undo = "Mask Path Children " + paths[i];
+                }
+                ImGui::SetItemTooltip("Children: the entry also covers what is below the path");
+            }else{
+                ImGui::TableNextColumn();
             }
             ImGui::PopID();
         }
         ImGui::EndTable();
     }
+    drawAnimatorAssetUsers(document->projectPath(), true);
     if (changed) stageMask(document, mask, undo);
 }
 

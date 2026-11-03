@@ -10,6 +10,8 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/TextEffectComponent.h"
+#include "component/TextComponent.h"
 #include "component/FogComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/Light2DComponent.h"
@@ -33,6 +35,8 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/effects/EffectRegistry.h"
@@ -44,6 +48,7 @@
 #include "util/Util.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <cstring>
 #include <filesystem>
@@ -519,7 +524,8 @@ namespace {
                     collectFoliage(*terrain);
                 }
                 if (const UIComponent* ui = registry->findComponent<UIComponent>(entity)){
-                    collectUI(*ui);
+                    collectUI(*ui, registry->findComponent<TextComponent>(entity),
+                              registry->isComponentRegistered<TextEffectComponent>() && registry->findComponent<TextEffectComponent>(entity));
                 }
                 // an HTML UI document draws geometry, gradients and its layer/filter passes
                 // (RmlRenderer) (asked first: an editor built without the document component's
@@ -528,14 +534,23 @@ namespace {
                     for (const auto& variant : ShaderPool::getHtmlUIVariants())
                         insertKeys(variant.first, variant.second, 0);
                 }
+                // a Video Player's frame conversion and camera-plane blit (VideoTextureConverter)
+                if (registry->isComponentRegistered<VideoPlayerComponent>() && registry->findComponent<VideoPlayerComponent>(entity)){
+                    for (const auto& variant : ShaderPool::getVideoPlayerVariants())
+                        insertKeys(variant.first, variant.second, 0);
+                }
                 if (const PointsComponent* points = registry->findComponent<PointsComponent>(entity)){
                     collectPoints(points);
                 }
                 if (const ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
                     collectParticles(*particles);
                 }
+                // the hairline, or the ribbon variant a width loads (pixel widths, a base texture)
                 if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
-                    insertKeys(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
+                    insertKeys(ShaderType::LINES, RenderSystem::getLinesVariantProperties(scene, *lines), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
+                }
+                if (const TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)){
+                    insertKeys(ShaderType::LINES, RenderSystem::getTrailVariantProperties(scene, *trail), shaderId(trail->customShader, ShaderType::LINES, trail->shaderFeatures, trail->blendMode));
                 }
                 if (const SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)){
                     insertKeys(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));
@@ -787,11 +802,21 @@ namespace {
         // The three UI variants (plain, texture, font atlas) are all a UI component can take:
         // its texture comes and goes with what the UI shows (a button's state, a script, a
         // font atlas), see RenderSystem::loadUI
-        void collectUI(const UIComponent& ui){
+        // A Text with a Text Effect also draws its atlas with a vertex colour, one with an outline or a
+        // shadow from a distance field (ui-scaling-text; scripts turning them on later rely on the
+        // runtime shader compiler)
+        void collectUI(const UIComponent& ui, const TextComponent* text = nullptr, bool textEffect = false){
             const uint16_t id = shaderId(ui.customShader, ShaderType::UI, ui.shaderFeatures, ui.blendMode);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(true, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, true, false, false), id);
+            if (text){
+                const bool sdf = (std::isfinite(text->outlineWidth) && text->outlineWidth > 0.0f) || text->shadowEnabled;
+                if (textEffect)
+                    insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, true, false, true), id);
+                if (sdf)
+                    insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, true, false, textEffect, true), id);
+            }
         }
 
         // what RenderSystem::loadParticles draws with: the effect's quads, meshes and trails,
@@ -1105,6 +1130,10 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
             add(flipped(1u << i));
     }
     return features;
+}
+
+void editor::ShaderVariantCollector::addBuildRequiredKeys(std::set<ShaderKey>& keys){
+    keys.insert(ShaderPool::getShaderKey(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH)));
 }
 
 void editor::ShaderVariantCollector::addFluidKeys(std::set<ShaderKey>& keys){

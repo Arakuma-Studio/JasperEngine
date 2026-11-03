@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "media/VideoFormats.h"
+#include "media/VideoSourceFactory.h"
 #include "CommandLine.h"
 #include "log/Logger.h"
 #include "io/AtomicFile.h"
@@ -54,6 +56,8 @@
 #include "util/EditorScripts.h"
 #include "htmlui/HtmlUiImportCli.h"
 #include "texsynth/SynthesisCli.h"
+#include "spritenormals/SpriteNormalsCheck.h"
+#include "spritenormals/SpriteNormalsCli.h"
 #include "physics/PlacementCli.h"
 #include "vat/VatCli.h"
 #include "htmlui/effects/EffectManifest.h"
@@ -61,6 +65,7 @@
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Util.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimatorAssetIO.h"
 #include "animation/ModelSubClips.h"
 #include "json.hpp"
 #include "tiny_gltf.h"
@@ -81,6 +86,7 @@
 #include "shader/ShaderLibraryDoc.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "unity/UnityParticleImport.h"
 
 #include <algorithm>
 #include <cctype>
@@ -94,6 +100,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #if defined(_WIN32)
@@ -277,12 +284,14 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
         << "  " << commandName << " merge-scene <base> <ours> <theirs> <path>  Git merge driver for scenes and prefabs.\n"
         << "  " << commandName << " scene-diff <old> <new> [--json]  Semantic diff of two scenes or prefabs.\n"
-        << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts, HTML/CSS UI, clips and vertex animations (compiler-style).\n"
+        << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts, HTML/CSS UI, clips, vertex animations and normal maps (compiler-style).\n"
         << "  " << commandName << " assets check|migrate     Missing asset references (JSON); rewrite references with GUIDs.\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
         << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
         << "  " << commandName << " place-physics [options]  Drop, separate or move GameObjects with edit-time physics.\n"
         << "  " << commandName << " bake-vat [options]       Bake a Vertex Animation (.vat) from a model, clips or GameObject, or import one.\n"
+        << "  " << commandName << " import-unity-particles <file> [options]  Import Unity Particle Systems as engine prefabs.\n"
+        << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
@@ -2093,6 +2102,8 @@ struct CheckOptions {
     bool textures = false;
     bool anims = false;
     bool vat = false;
+    bool normals = false;
+    bool videos = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -2124,12 +2135,21 @@ void printCheckUsage(const std::string& commandName) {
         << "      --vat                Vertex Animations (.vat): the format, a source changed or missing since the\n"
         << "                           bake (warnings), a mesh or layout that no longer matches, a payload over its\n"
         << "                           preset's device limit (errors).\n"
-        << "      --all                Lua, shaders, C++, UI, textures, clips and vertex animations.\n"
-        << "                           Default: --lua --shaders --ui --textures --anims --vat.\n"
+        << "      --normals            Sprite normal maps: generated ones whose source changed or went missing, and\n"
+        << "                           normal maps on sprites that don't match their colour texture (size, frames,\n"
+        << "                           filter), look like DirectX or aren't normal maps, or no Light 2D can show\n"
+        << "                           (height 0).\n"
+        << "      --videos             Video Players' clips: codecs an export platform does not decode\n"
+        << "                           (video-codec-unsupported-on-target, a warning per platform) and URL MP4s\n"
+        << "                           whose moov box follows the media data (video-not-faststart-url, info; an\n"
+        << "                           http(s) url by the project's file of that name: nothing is downloaded).\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps and videos.\n"
+        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "                           A .vat or .vat.glb checks the Vertex Animation; another file checks the\n"
-        << "                           .vat files baked from it.\n"
+        << "                           .vat files baked from it. An image checks the normal map it is (a recipe)\n"
+        << "                           or the normal maps made from it.\n"
         << "      --format <format>    text (default) or json.\n"
         << "  -q, --quiet              No summary line.\n"
         << "      --hook               Agent hook mode: read the hook's JSON on stdin (any tool: Claude Code\n"
@@ -2168,6 +2188,10 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.anims = true;
         } else if (arg == "--vat") {
             options.vat = true;
+        } else if (arg == "--normals") {
+            options.normals = true;
+        } else if (arg == "--videos") {
+            options.videos = true;
         } else if (arg == "--all") {
             options.all = true;
         } else if (arg == "--files") {
@@ -2265,7 +2289,7 @@ bool isVatMeshFile(const std::string& rel) {
 bool isHookTrackedFile(const std::string& rel) {
     if (Util::isLuaFile(rel) || Util::isShaderFile(rel) || Util::isHeaderFile(rel) || Util::isSourceFile(rel)) return true;
     if (ProjectChecks::isUiFile(rel)) return true;
-    if (Util::isAnimationClipFile(rel) || Util::isVertexAnimationFile(rel) || isVatMeshFile(rel)) return true;
+    if (Util::isGuidJsonAssetFile(rel) || isVatMeshFile(rel)) return true;
     const std::string ext = fs::path(rel).extension().string();
     return ext == ".c" || ext == ".inl";
 }
@@ -2274,7 +2298,7 @@ std::map<std::string, HookStamp> scanHookFiles(const fs::path& root) {
     std::map<std::string, HookStamp> files;
     static const std::vector<std::string> extensions = {".lua", ".vert", ".frag", ".glsl", ".h", ".hh", ".hpp", ".hxx",
                                                         ".cpp", ".cc", ".cxx", ".c", ".inl", ".html", ".htm", ".css", ".anim",
-                                                        ".vat", ".glb"};
+                                                        ".vat", ".glb", ".mask", ".controller"};
     for (const fs::path& file : ProjectChecks::findProjectFiles(root, extensions)) {
         std::error_code ec;
         HookStamp stamp;
@@ -2494,6 +2518,41 @@ void collectPlayerClips(const YAML::Node& node, std::vector<std::pair<std::strin
     }
 }
 
+// The masks (layers[i].mask) and the controller of every Animation Player under a node:
+// {what, path, guid}, what being "layers[i].mask" or "controller"
+struct PlayerAssetReference {
+    std::string what;
+    std::string path;
+    std::string guid;
+};
+
+void collectPlayerAssets(const YAML::Node& node, std::vector<PlayerAssetReference>& out, int depth = 0) {
+    if (depth > 64 || !node) return;
+    auto scalar = [](const YAML::Node& map, const char* key) {
+        const YAML::Node value = map[key];
+        return value && value.IsScalar() ? value.Scalar() : std::string();
+    };
+    if (node.IsMap()) {
+        for (const auto& item : node) {
+            const YAML::Node value = item.second;
+            if (item.first.IsScalar() && item.first.Scalar() == "animationplayer" && value.IsMap()) {
+                if (value["layers"] && value["layers"].IsSequence()) {
+                    for (size_t i = 0; i < value["layers"].size(); i++) {
+                        const YAML::Node layer = value["layers"][i];
+                        if (!layer.IsMap() || scalar(layer, "mask").empty()) continue;
+                        out.push_back({"layers[" + std::to_string(i) + "].mask", scalar(layer, "mask"), scalar(layer, "maskGuid")});
+                    }
+                }
+                if (!scalar(value, "controller").empty()) out.push_back({"controller", scalar(value, "controller"), scalar(value, "controllerGuid")});
+                continue;
+            }
+            collectPlayerAssets(value, out, depth + 1);
+        }
+    } else if (node.IsSequence()) {
+        for (const YAML::Node& child : node) collectPlayerAssets(child, out, depth + 1);
+    }
+}
+
 // The glTF animation names of a model file, read from its JSON without the engine: a .gltf's
 // text, a .glb's JSON chunk, and for an .fbx the .glb the editor imported it to (none yet:
 // false, nothing to compare with). Empty names stay empty (subClipNames names them).
@@ -2541,10 +2600,260 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
 // reference (the entries of their Animation Players, prefab-instance overrides included): a
 // missing .anim (an error; a warning when its GUID still finds the moved file), a missing model
 // of a sub-clip, and a sub-clip name the model has no animation for
+struct VideoCheck {
+    std::vector<ProjectChecks::Finding> findings;
+    size_t players = 0;
+};
+
+// Every VideoPlayerComponent node under a scene or prefab file's YAML
+void collectVideoPlayers(const YAML::Node& node, std::vector<YAML::Node>& out, int depth = 0) {
+    if (depth > 64 || !node) return;
+    if (node.IsMap()) {
+        for (auto it = node.begin(); it != node.end(); ++it) {
+            if (it->first.IsScalar() && (it->first.Scalar() == "videoplayer" || it->first.Scalar() == "VideoPlayerComponent") && it->second.IsMap())
+                out.push_back(it->second);
+            else
+                collectVideoPlayers(it->second, out, depth + 1);
+        }
+    } else if (node.IsSequence()) {
+        for (const YAML::Node& child : node) collectVideoPlayers(child, out, depth + 1);
+    }
+}
+
+// the project's file an http(s) url names (its last path segment, query and fragment dropped): the
+// copy that was uploaded there, presumably; "" when the project has none (or several)
+fs::path findServedCopy(const fs::path& assets, const std::string& url) {
+    std::string path = url.substr(0, url.find_first_of("?#"));
+    const size_t slash = path.find_last_of('/');
+    const std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
+    if (name.empty() || name.find('.') == std::string::npos) return {};
+    fs::path found;
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(assets, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string entry = it->path().filename().string();
+        if (it->is_directory(ec) && !entry.empty() && (entry[0] == '.' || entry == "build")) {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (entry == name && it->is_regular_file(ec)) {
+            if (!found.empty()) return {};
+            found = it->path();
+        }
+    }
+    return found;
+}
+
+// video-codec-unsupported-on-target: a player's clip (or local url) in a codec an export platform
+// does not decode (Linux counts as FFmpeg's); video-not-faststart-url: an MP4 played as a URL
+// whose moov box follows the media data (it plays only once downloaded)
+VideoCheck checkVideoPlayers(const fs::path& root) {
+    VideoCheck check;
+    const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
+    std::set<std::string> reported;
+    for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        std::vector<YAML::Node> players;
+        try {
+            collectVideoPlayers(YAML::LoadFile(file.string()), players);
+        } catch (const std::exception&) {
+            continue;
+        }
+        for (const YAML::Node& player : players) {
+            check.players++;
+            const bool url = player["source"] && player["source"].IsScalar() && player["source"].Scalar() == "url";
+            const std::string value = url ? (player["url"] ? player["url"].as<std::string>("") : "") : (player["clip"] ? player["clip"].as<std::string>("") : "");
+            std::string scheme = value.substr(0, 8);
+            std::transform(scheme.begin(), scheme.end(), scheme.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+            const bool remote = scheme.rfind("http://", 0) == 0 || scheme.rfind("https://", 0) == 0;
+            if (value.empty() || scheme.rfind("data://", 0) == 0)
+                continue;
+            if (remote) {
+                // the check is offline (nothing is downloaded): an http(s) url is judged by the
+                // project's own copy of the file it names (the one uploaded there), when there is one
+                const fs::path served = findServedCopy(assets, value);
+                if (served.empty() || !reported.insert(rel + "|" + value).second) continue;
+                const jasperengine::VideoProbe probe = jasperengine::VideoFormats::probeStdio(std::fopen(served.string().c_str(), "rb"), value);
+                const bool mp4 = probe.container == "mp4" || probe.container == "mov" || probe.container == "3gp";
+                if (mp4 && !probe.fastStart && !probe.fragmented) {
+                    check.findings.push_back({"videos", rel, 0, 0, "info", "'" + value + "' (as the project's " +
+                                              ProjectChecks::projectRelative(root, served) + ") has its moov box after the media data: it plays only once downloaded",
+                                              "video-not-faststart-url",
+                                              "the video asset's Inspector: Optimize for streaming (or ffmpeg -movflags +faststart), then upload it again"});
+                }
+                continue;
+            }
+            const fs::path video = fs::path(value).is_absolute() ? fs::u8path(value) : (assets / fs::u8path(value)).lexically_normal();
+            std::error_code ec;
+            if (!fs::is_regular_file(video, ec)) {
+                check.findings.push_back({"videos", rel, 0, 0, "warning", "a Video Player's " + std::string(url ? "url" : "clip") + " '" + value +
+                                          "' is not in the project", "video-missing"});
+                continue;
+            }
+            if (!reported.insert(rel + "|" + value).second) continue;
+            const jasperengine::VideoProbe probe = jasperengine::VideoFormats::probeStdio(std::fopen(video.string().c_str(), "rb"), value);
+            for (int p = 0; p < jasperengine::VideoSourceFactory::PLATFORM_COUNT; p++) {
+                const auto platform = (jasperengine::VideoSourceFactory::Platform)p;
+                const std::string cell = jasperengine::VideoSourceFactory::playableOn(platform, probe);
+                if (cell != "no") continue;
+                ProjectChecks::Finding finding{"videos", rel, 0, 0, "warning",
+                    "'" + value + "' (" + jasperengine::VideoFormats::codecName(probe.videoCodec) + " in " + (probe.container.empty() ? "an unknown container" : probe.container) +
+                    ") does not play on " + jasperengine::VideoSourceFactory::platformLabel(platform), "video-codec-unsupported-on-target",
+                    "convert it to WebM (AV1): the Project window's Convert to WebM (AV1)..., or an H.264 MP4"};
+                check.findings.push_back(finding);
+            }
+            const bool mp4 = probe.container == "mp4" || probe.container == "mov" || probe.container == "3gp";
+            if (url && mp4 && !probe.fastStart && !probe.fragmented) {
+                check.findings.push_back({"videos", rel, 0, 0, "info", "'" + value + "' has its moov box after the media data: served from a URL it plays only "
+                                          "once downloaded", "video-not-faststart-url",
+                                          "the video asset's Inspector: Optimize for streaming (or ffmpeg -movflags +faststart)"});
+            }
+        }
+    }
+    return check;
+}
+
+// Avatar Masks (.mask: the format) and Animator Controllers (.controller: the format and
+// anim::validateController, with the clips it names read here: .anim files parsed, model
+// sub-clips looked up in the model). Version 1 files (S21's or upstream's dialect) are read by
+// their members and noted: the editor converts them and saves version 2.
+// `guids`: each readable mask's and controller's GUID -> its project-relative path.
+// `projectGuids`: every clip's, mask's and controller's GUID in the project -> its absolute path
+// (a controller's clips and masks are found by GUID first, as the editor does)
+void checkAnimAssetFiles(const fs::path& root, const std::vector<fs::path>& masks, const std::vector<fs::path>& controllers, ClipCheck& check,
+                         std::map<std::string, std::string>& guids, const std::map<std::string, fs::path>& projectGuids) {
+    const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
+    for (const fs::path& file : masks) {
+        std::string text;
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        if (!ProjectChecks::readFile(file, text)) continue;
+        check.clips++;
+        const anim::MaskParseResult parsed = anim::parseMask(text);
+        if (!parsed.ok) {
+            check.findings.push_back({"anim", rel, parsed.error.line, parsed.error.column, "error", parsed.error.message});
+            continue;
+        }
+        if (!parsed.data.guid.empty()) guids[parsed.data.guid] = rel;
+        if (parsed.converted()) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", std::string(parsed.dialect == anim::AnimatorFileDialect::UpstreamVersion1 ?
+                                      "upstream's version 1 Avatar Mask" : "a version 1 Avatar Mask") +
+                                      ": read as version 2 (the editor saves it as version 2 when it is edited)"});
+        }
+        for (const ClipWarning& warning : parsed.warnings) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
+        }
+    }
+    std::map<std::string, anim::ControllerClipInfo> clipInfos;
+    auto resolve = [&](const std::string& clip) {
+        auto known = clipInfos.find(clip);
+        if (known != clipInfos.end()) return known->second;
+        anim::ControllerClipInfo info;
+        anim::SubClipReference reference;
+        const bool subClip = anim::parseSubClipReference(clip, reference);
+        const fs::path target = (assets / fs::u8path(subClip ? reference.model : clip)).lexically_normal();
+        std::error_code ec;
+        if (!fs::is_regular_file(target, ec)) {
+            info.error = subClip ? "the model " + reference.model + " does not exist" : "the file does not exist (paths are relative to the assets folder)";
+        } else if (subClip) {
+            std::vector<std::string> names;
+            if (!readModelAnimationNames(root, assets, target, names)) {
+                info.loads = true;      // not readable here (an FBX not imported yet): not reported
+            } else {
+                tinygltf::Model listed;
+                listed.animations.resize(names.size());
+                for (size_t i = 0; i < names.size(); i++) listed.animations[i].name = names[i];
+                info.loads = anim::findModelClip(listed, reference.clip) >= 0;
+                if (!info.loads) info.error = "the model has no animation '" + reference.clip + "'";
+            }
+            info.loops = false;         // a model's animations import as once
+        } else {
+            std::string text;
+            const anim::ClipParseResult parsed = ProjectChecks::readFile(target, text) ? anim::parseClip(text) : anim::ClipParseResult();
+            info.loads = parsed.ok();
+            if (!info.loads) info.error = parsed.error.empty() ? "cannot read it" : parsed.error.toString();
+            else info.loops = parsed.data->wrap == ClipWrapMode::Loop || parsed.data->wrap == ClipWrapMode::PingPong;
+        }
+        clipInfos[clip] = info;
+        return info;
+    };
+    for (const fs::path& file : controllers) {
+        std::string text;
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        if (!ProjectChecks::readFile(file, text)) continue;
+        check.clips++;
+        const anim::ControllerParseResult parsed = anim::parseController(text);
+        if (!parsed.ok) {
+            check.findings.push_back({"anim", rel, parsed.error.line, parsed.error.column, "error", parsed.error.message});
+            continue;
+        }
+        if (!parsed.data.guid.empty()) guids[parsed.data.guid] = rel;
+        if (parsed.converted()) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", std::string(parsed.dialect == anim::AnimatorFileDialect::UpstreamVersion1 ?
+                                      "upstream's version 1 Animator Controller" : "a version 1 Animator Controller") +
+                                      ": read as version 2 (the editor saves it as version 2 when it is edited)"});
+        }
+        for (const ClipWarning& warning : parsed.warnings) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
+        }
+        // a clip or mask its GUID finds elsewhere: checked there (a moved file, or a GUID
+        // naming another file than the path)
+        anim::ControllerDef data = parsed.data;
+        auto follow = [&](std::string& stored, const std::string& guid, const std::string& what) {
+            if (stored.empty() || guid.empty() || anim::isSubClipReference(stored)) return;
+            const auto found = projectGuids.find(guid);
+            const fs::path target = (assets / fs::u8path(stored)).lexically_normal();
+            if (found == projectGuids.end() || found->second == target) return;
+            const std::string foundRel = ProjectChecks::projectRelative(root, found->second);
+            std::error_code ec;
+            if (fs::is_regular_file(target, ec)) {
+                check.findings.push_back({"anim", rel, 0, 0, "warning", what + ": '" + stored + "' has the GUID of '" + foundRel +
+                                          "', which the editor uses (it resolves the GUID first): set it again in the editor, or fix the GUID"});
+            } else {
+                check.findings.push_back({"anim", rel, 0, 0, "warning", what + ": '" + stored + "' moved to '" + foundRel +
+                                          "' (found by its GUID; the editor updates the path when it sees the move)"});
+            }
+            stored = found->second.lexically_relative(assets.lexically_normal()).generic_string();
+        };
+        anim::visitControllerRefs(data, [&](anim::AnimatorAssetRef& ref, const std::string& field) {
+            follow(ref.path, ref.guid, field);
+        });
+        for (const ClipWarning& warning : anim::validateController(data, resolve)) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
+        }
+        // the masks its layers name
+        for (size_t l = 0; l < data.layers.size(); l++) {
+            const std::string& mask = data.layers[l].mask.path;
+            std::error_code ec;
+            if (!mask.empty() && !fs::is_regular_file((assets / fs::u8path(mask)).lexically_normal(), ec)) {
+                check.findings.push_back({"anim", rel, 0, 0, "error", "layers[" + std::to_string(l) + "].mask: '" + mask +
+                                          "' does not exist (paths are relative to the assets folder)"});
+            }
+        }
+    }
+}
+
 ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& files) {
     ClipCheck check;
     const bool all = files.empty();
-    const std::vector<fs::path> clips = all ? ProjectChecks::findProjectFiles(root, {".anim"}) : files;
+    std::vector<fs::path> given, masks, controllers;
+    for (const fs::path& file : files) {
+        const std::string name = file.string();
+        (Util::isAvatarMaskFile(name) ? masks : Util::isAnimatorControllerFile(name) ? controllers : given).push_back(file);
+    }
+    if (all) {
+        masks = ProjectChecks::findProjectFiles(root, {".mask"});
+        controllers = ProjectChecks::findProjectFiles(root, {".controller"});
+    }
+    // every clip's, mask's and controller's GUID, also when only some files are checked
+    std::map<std::string, fs::path> projectGuids;
+    for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".anim", ".mask", ".controller"})) {
+        std::string text;
+        if (!ProjectChecks::readFile(file, text)) continue;
+        const std::string guid = anim::readClipGuid(text);
+        if (!guid.empty()) projectGuids.emplace(guid, file.lexically_normal());
+    }
+    std::map<std::string, std::string> assetGuids;   // mask / controller guid -> project-relative path
+    checkAnimAssetFiles(root, masks, controllers, check, assetGuids, projectGuids);
+    const std::vector<fs::path> clips = all ? ProjectChecks::findProjectFiles(root, {".anim"}) : given;
     std::map<std::string, std::string> guids;   // guid -> project-relative path
     for (const fs::path& file : clips) {
         std::string text;
@@ -2566,9 +2875,12 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
     std::map<std::string, std::pair<bool, std::vector<std::string>>> modelNames;   // model file -> (read, animation names)
     for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
         std::vector<std::pair<std::string, std::string>> entries;
+        std::vector<PlayerAssetReference> assetReferences;
         const std::string rel = ProjectChecks::projectRelative(root, file);
         try {
-            collectPlayerClips(YAML::LoadFile(file.string()), entries);
+            const YAML::Node loaded = YAML::LoadFile(file.string());
+            collectPlayerClips(loaded, entries);
+            collectPlayerAssets(loaded, assetReferences);
         } catch (const std::exception& e) {
             check.findings.push_back({"anim", rel, 0, 0, "warning", std::string("could not read Animation Player entries: ") + e.what()});
             continue;
@@ -2622,6 +2934,26 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
             } else {
                 check.findings.push_back({"anim", rel, 0, 0, "error", "an Animation Player plays '" + clip + "', which does not exist "
                                           "(paths are relative to the assets folder)"});
+            }
+        }
+        // its masks and controllers, as its clips (the editor resolves their GUIDs first too)
+        std::set<std::tuple<std::string, std::string, std::string>> assetsReported;
+        for (const PlayerAssetReference& reference : assetReferences) {
+            if (!assetsReported.insert({reference.what, reference.path, reference.guid}).second) continue;
+            const fs::path target = (assets / fs::u8path(reference.path)).lexically_normal();
+            const std::string what = "an Animation Player's " + reference.what + " '" + reference.path + "'";
+            auto named = reference.guid.empty() ? assetGuids.end() : assetGuids.find(reference.guid);
+            std::error_code ec;
+            if (fs::is_regular_file(target, ec)) {
+                if (named != assetGuids.end() && named->second != ProjectChecks::projectRelative(root, target)) {
+                    check.findings.push_back({"anim", rel, 0, 0, "warning", what + " has the GUID of '" + named->second +
+                                              "', which the editor uses (it resolves the GUID first): set it again in the editor, or fix the GUID"});
+                }
+            } else if (named != assetGuids.end()) {
+                check.findings.push_back({"anim", rel, 0, 0, "warning", what + " moved to '" + named->second +
+                                          "' (found by its GUID; the editor updates the path when the file is opened and saved)"});
+            } else {
+                check.findings.push_back({"anim", rel, 0, 0, "error", what + " does not exist (paths are relative to the assets folder)"});
             }
         }
     }
@@ -2743,6 +3075,12 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         if (shadersAll) {
             const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(&project);
             run.findings.insert(run.findings.end(), stochastic.begin(), stochastic.end());
+            // Line and Trail Renderers drawing nothing or reading no texture coordinates
+            const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(&project);
+            run.findings.insert(run.findings.end(), lines.begin(), lines.end());
+            // Particle Systems: legacy ones, points with a render mode, the mobile budget
+            const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(&project);
+            run.findings.insert(run.findings.end(), particleChecks.begin(), particleChecks.end());
         }
         run.checked.push_back({"shaders", forks.size()});
     }
@@ -2805,8 +3143,11 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool textures = options.textures || options.all;
     bool anims = options.anims || options.all;
     bool vatAssets = options.vat || options.all;
-    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.all) {
-        lua = shaders = ui = textures = anims = vatAssets = true;
+    bool normals = options.normals || options.all;
+    bool videos = options.videos || options.all;
+    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
+        !options.videos && !options.all) {
+        lua = shaders = ui = textures = anims = vatAssets = normals = videos = true;
     }
 
     fs::path base = CommandLine::invocationDirectory();
@@ -2839,6 +3180,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> synthesisFiles;    // images: synthesized ones, or their examples
     std::vector<fs::path> clipFiles;
     std::vector<fs::path> vatGiven;     // .vat, .vat.glb and the other files (sources of bakes)
+    std::vector<fs::path> normalFiles;  // images: generated normal maps, or sources of some
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -2870,13 +3212,15 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
                 cppFiles = true;
             } else if (ProjectChecks::isUiFile(name)) {
                 if (ui) uiFiles.push_back(path);
-            } else if (Util::isAnimationClipFile(name)) {
+            } else if (Util::isAnimationClipFile(name) || Util::isAvatarMaskFile(name) || Util::isAnimatorControllerFile(name)) {
                 if (anims) clipFiles.push_back(path);
             } else if (isCookableTexture(name)) {
                 if (textures) textureFiles.push_back(name);
             }
             // a synthesized PNG, or an image a synthesized texture was made from
             if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
+            // a generated normal map, or an image normal maps were made from
+            if (normals && Util::isImageFile(name)) normalFiles.push_back(path);
         }
     } else if (lua) {
         luaFiles = ProjectChecks::findProjectFiles(root, {".lua"});
@@ -2889,6 +3233,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool texturesWanted = fileMode ? !textureFiles.empty() : textures;
     const bool synthesisWanted = fileMode ? !synthesisFiles.empty() : textures;
     const bool animsWanted = fileMode ? !clipFiles.empty() : anims;
+    const bool normalsWanted = fileMode ? !normalFiles.empty() : normals;
+    // scene files' Video Players (a whole-project check: not per file)
+    const bool videosWanted = !fileMode && videos;
     // the recipes are read without the engine: it starts only when a .vat is concerned
     const std::vector<fs::path> vatFiles = fileMode ? vat::vatAssetsForFiles(root, vatGiven) : std::vector<fs::path>();
     const bool vatWanted = fileMode ? !vatFiles.empty() : vatAssets;
@@ -2929,6 +3276,18 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (run.vatRan) {
         run.findings.insert(run.findings.end(), run.vat.findings.begin(), run.vat.findings.end());
         run.checked.push_back({"vat", run.vat.assets});
+    }
+    if (normalsWanted) {
+        // PNG headers, the scene and prefab YAML, pixels only of normal maps without a recipe: no engine
+        const spritenormals::NormalsCheck normalsCheck = spritenormals::checkSpriteNormals(root, fileMode ? normalFiles : std::vector<fs::path>());
+        run.findings.insert(run.findings.end(), normalsCheck.findings.begin(), normalsCheck.findings.end());
+        run.checked.push_back({"normals", normalsCheck.recipes + normalsCheck.maps});
+    }
+    if (videosWanted) {
+        // the scene and prefab YAML and the clips' header boxes: no engine
+        const VideoCheck videoCheck = checkVideoPlayers(root);
+        run.findings.insert(run.findings.end(), videoCheck.findings.begin(), videoCheck.findings.end());
+        run.checked.push_back({"videos", videoCheck.players});
     }
     ProjectChecks::sortFindings(run.findings);
     const size_t errors = ProjectChecks::countSeverity(run.findings, "error");
@@ -2988,7 +3347,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         std::string what;
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
                                                           {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"},
-                                                          {"vat", "file"}, {"navigation", "surface"}};
+                                                          {"vat", "file"}, {"navigation", "surface"},
+                                                          {"normals", "map"}, {"videos", "Video Player"}};
         for (const auto& [category, count] : run.checked) {
             // a category without a unit here still prints (never a map::at abort after the results)
             const auto unit = units.find(category);
@@ -3243,6 +3603,117 @@ int CommandLine::runSynthesizeTextureCommand(int argc, char** argv, const char* 
 int CommandLine::runBakeVatCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return vat::runBakeVat(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+static void printImportUnityParticlesUsage(const std::string& commandName) {
+    std::cout
+        << "Usage:\n"
+        << "  " << commandName << " import-unity-particles <file.prefab|file.unity> --project <engine project> [options]\n\n"
+        << "Imports the Unity ParticleSystems of a prefab or scene as engine prefabs (Particle Systems,\n"
+        << "each renderer's material in its Renderer module) with their textures, and writes a report of what was imported,\n"
+        << "approximated or not supported. The Unity project is only read.\n\n"
+        << "Options:\n"
+        << "  -p, --project <path>        The engine project (directory or project.yaml) the files go into.\n"
+        << "      --object <path>         A GameObject path (\"Player/Camera/EndParticles\"); default: every root\n"
+        << "                              GameObject with a ParticleSystem in itself or its children.\n"
+        << "      --dest <folder>         Project-relative output folder (default assets/fx).\n"
+        << "      --unity-project <dir>   The Unity project (default: the nearest folder holding Assets/ and\n"
+        << "                              ProjectSettings/ around the file).\n"
+        << "      --report <file.json>    Also write the report there.\n"
+        << "      --overwrite             Replace existing prefabs and textures (default: a numbered prefab\n"
+        << "                              name, existing textures kept).\n"
+        << "      --dry-run               Print the report, write nothing.\n"
+        << "  -h, --help                  Show this help.\n\n"
+        << "Exit code: 0 imported, 1 error, 2 imported with notes (approximations, unsupported modules).\n";
+}
+
+int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    const std::string commandName = getCommandName(executableName);
+    unity::ImportOptions options;
+    fs::path reportPath;
+    std::string file;
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = argv[i];
+        auto value = [&](std::string& out) -> bool {
+            if (i + 1 >= argc) {
+                std::cerr << "error: " << arg << " needs a value\n";
+                return false;
+            }
+            out = argv[++i];
+            return true;
+        };
+        std::string v;
+        if (arg == "-h" || arg == "--help") {
+            printImportUnityParticlesUsage(commandName);
+            return 0;
+        } else if (arg == "-p" || arg == "--project") {
+            if (!value(v)) return 1;
+            options.engineProject = projectArgPath(v);
+        } else if (arg == "--object") {
+            if (!value(v)) return 1;
+            options.object = v;
+        } else if (arg == "--dest") {
+            if (!value(v)) return 1;
+            options.dest = v;
+        } else if (arg == "--unity-project") {
+            if (!value(v)) return 1;
+            options.unityProject = absoluteArgPath(v);
+        } else if (arg == "--report") {
+            if (!value(v)) return 1;
+            reportPath = absoluteArgPath(v);
+        } else if (arg == "--overwrite") {
+            options.overwrite = true;
+        } else if (arg == "--dry-run") {
+            options.dryRun = true;
+        } else if (!arg.empty() && arg[0] == '-') {
+            std::cerr << "error: unknown option " << arg << "\n";
+            printImportUnityParticlesUsage(commandName);
+            return 1;
+        } else if (file.empty()) {
+            file = arg;
+        } else {
+            std::cerr << "error: one file at a time (" << file << ", " << arg << ")\n";
+            return 1;
+        }
+    }
+    if (file.empty()) {
+        std::cerr << "error: give the .prefab or .unity file to import\n";
+        printImportUnityParticlesUsage(commandName);
+        return 1;
+    }
+    if (options.engineProject.empty()) {
+        std::cerr << "error: --project is required (the engine project the files go into)\n";
+        return 1;
+    }
+    std::error_code ec;
+    if (!fs::is_regular_file(options.engineProject / "project.yaml", ec)) {
+        std::cerr << "error: not an engine project (no project.yaml): " << options.engineProject.string() << "\n";
+        return 1;
+    }
+    options.file = absoluteArgPath(file);
+
+    const unity::ImportResult result = unity::importParticles(options);
+    if (!result.ok) {
+        std::cerr << "error: " << result.error << "\n";
+        return 1;
+    }
+    std::cout << result.report.dump(2) << "\n";
+    if (!reportPath.empty()) {
+        if (FileUtils::writeFile(reportPath, result.report.dump(2) + "\n") == FileUtils::WriteResult::Failed) {
+            std::cerr << "error: cannot write the report to " << reportPath.string() << "\n";
+            return 1;
+        }
+    }
+    for (const std::string& prefab : result.prefabs) {
+        std::cerr << (options.dryRun ? "would write " : "wrote ") << prefab << "\n";
+    }
+    return result.hasWarnings ? 2 : 0;
+}
+
+int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return spritenormals::runGenerateSpriteNormals(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {

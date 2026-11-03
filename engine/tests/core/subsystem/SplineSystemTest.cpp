@@ -333,9 +333,9 @@ TEST_F(SplineSystemTest, AnEdgeWithChain2DCarriesABall){
     transform.needUpdate = true;
     Rigidbody2DComponent body;
     body.type = BodyType::DYNAMIC;
+    body.colliders.resize(1);
     body.colliders[0].type = Collider2DType::CIRCLE;
     body.colliders[0].radius = 10.0f;
-    body.numColliders = 1;
     scene->addComponent<Rigidbody2DComponent>(ball, body);
 
     for (int frame = 0; frame < 240; frame++){
@@ -351,7 +351,7 @@ TEST_F(SplineSystemTest, AnEdgeWithChain2DCarriesABall){
     ASSERT_FALSE(chainBodies.empty()) << "no chain body";
     const Rigidbody2DComponent& chain = scene->getComponent<Rigidbody2DComponent>(chainBodies[0]);
     EXPECT_EQ(chain.type, BodyType::STATIC);
-    ASSERT_GE(chain.numColliders, 1u);
+    ASSERT_GE(chain.colliders.size(), 1u);
     EXPECT_EQ(chain.colliders[0].type, Collider2DType::CHAIN);
     // resting on the curve under it (its lowest point -110 at x = 0): centre one radius above
     const float y = scene->getComponent<Transform>(ball).worldPosition.y;

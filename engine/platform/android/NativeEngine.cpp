@@ -6,6 +6,9 @@
 // ---------------------------------------
 
 #include "NativeEngine.h"
+#include "HttpBackendAndroid.h"
+#include "MediaCodecBackend.h"
+#include "NativePlatformAndroid.h"
 
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #include <android/log.h>
@@ -14,6 +17,7 @@
 #include <swappy/swappyGL.h>
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <memory>
 #include <cstring>
 #include <string>
@@ -25,6 +29,7 @@
 #include "Engine.h"
 #include "System.h"
 #include "Input.h"
+#include "Screen.h"
 #include "Log.h"
 #include "render/GpuWorkerContext.h"
 #include "util/StringUtils.h"
@@ -614,6 +619,18 @@ NativeEngine::NativeEngine(struct android_app *app) {
     mEglReleaseSurface = EGL_NO_SURFACE;
     mEglConfig = 0;
     mSurfWidth = mSurfHeight = 0;
+    mDisplayRotation = 0;
+    mNaturalPortrait = true;
+    mFullscreenGame = true;
+    mSafeAreaKnown = false;
+    mLastCutoutInsets = ARect{0, 0, 0, 0};
+    mLastBarInsets = ARect{0, 0, 0, 0};
+    mLastSafeAreaRevision = -1;
+    mLastSafeAreaWidth = -1;
+    mLastSafeAreaHeight = -1;
+    mFallbackSwapInterval = 1;
+    mFallbackLimiterFps = 0.0;
+    mAppliedSwapInterval = 0;
     mJniEnv = NULL;
     memset(&mState, 0, sizeof(mState));
 
@@ -644,7 +661,8 @@ NativeEngine::NativeEngine(struct android_app *app) {
     assert(_singleton == NULL);
     _singleton = this;
 
-    // initialize Swappy to adjuest swap timing properly.
+    // initialize Swappy to adjuest swap timing properly. 60 fps until Engine.targetFrameRate
+    // says otherwise (JasperEngineAndroid::applyFramePacing)
     SwappyGL_init(getJniEnv(), mApp->activity->javaGameActivity);
     SwappyGL_setSwapIntervalNS(SWAPPY_SWAP_60FPS);
 
@@ -729,6 +747,103 @@ int NativeEngine::getSurfHeight(){
     return mSurfHeight;
 }
 
+void NativeEngine::setFallbackPacing(int swapInterval, double limiterFps){
+    mFallbackSwapInterval = std::max(1, swapInterval);
+    mFallbackLimiterFps = limiterFps;
+}
+
+int NativeEngine::getDisplayRotation(){
+    return mDisplayRotation;
+}
+
+bool NativeEngine::isNaturalPortrait(){
+    return mNaturalPortrait;
+}
+
+int NativeEngine::getDeviceDegrees(){
+    if (!mJniData.platformClsRef || !mJniData.platformDeviceDegrees) return -1;
+    return getJniEnv()->GetStaticIntField(mJniData.platformClsRef, mJniData.platformDeviceDegrees);
+}
+
+bool NativeEngine::refreshDisplayRotation(){
+    if (!mJniData.platformClsRef || !mJniData.platformDisplayRotation) return false;
+    JNIEnv* env = getJniEnv();
+    const int rotation = env->GetStaticIntField(mJniData.platformClsRef, mJniData.platformDisplayRotation);
+    if (rotation == mDisplayRotation) return false;
+    mDisplayRotation = rotation;
+    if (mJniData.platformIsNaturalPortrait) {
+        mNaturalPortrait = env->CallStaticBooleanMethod(mJniData.platformClsRef, mJniData.platformIsNaturalPortrait,
+                                                        mJniData.gameActivityObjRef) == JNI_TRUE;
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            mNaturalPortrait = true;
+        }
+    }
+    return true;
+}
+
+void NativeEngine::updateSafeArea(){
+    if (!mApp || !mApp->activity || mSurfWidth <= 0 || mSurfHeight <= 0) return;
+
+    // window pixels: the display cutout (waterfall included; zero below API 28) and, for a game
+    // that shows them, the system bars (in fullscreen they come and go over the game, Unity's rule)
+    ARect cutout{0, 0, 0, 0};
+    ARect bars{0, 0, 0, 0};
+    GameActivity_getWindowInsets(mApp->activity, GAMECOMMON_INSETS_TYPE_DISPLAY_CUTOUT, &cutout);
+    if (!mFullscreenGame) {
+        GameActivity_getWindowInsets(mApp->activity, GAMECOMMON_INSETS_TYPE_SYSTEM_BARS, &bars);
+    }
+    JNIEnv* env = getJniEnv();
+    const int revision = (env && mJniData.platformClsRef && mJniData.platformSafeAreaRevision)
+        ? env->GetStaticIntField(mJniData.platformClsRef, mJniData.platformSafeAreaRevision) : 0;
+    auto same = [](const ARect& a, const ARect& b){
+        return a.left == b.left && a.top == b.top && a.right == b.right && a.bottom == b.bottom;
+    };
+    if (mSafeAreaKnown && same(cutout, mLastCutoutInsets) && same(bars, mLastBarInsets) && revision == mLastSafeAreaRevision &&
+        mSurfWidth == mLastSafeAreaWidth && mSurfHeight == mLastSafeAreaHeight) {
+        return;
+    }
+    mSafeAreaKnown = true;
+    mLastCutoutInsets = cutout;
+    mLastBarInsets = bars;
+    mLastSafeAreaRevision = revision;
+    mLastSafeAreaWidth = mSurfWidth;
+    mLastSafeAreaHeight = mSurfHeight;
+
+    // where the surface lies in the window (0 in fullscreen) and the cutout rectangles
+    int offsets[4] = {0, 0, 0, 0};
+    std::vector<jasperengine::Rect> cutouts;
+    if (env && mJniData.platformClsRef && mJniData.platformSafeAreaInfo) {
+        jintArray array = (jintArray)env->GetStaticObjectField(mJniData.platformClsRef, mJniData.platformSafeAreaInfo);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            array = NULL;
+        }
+        if (array) {
+            const jsize length = env->GetArrayLength(array);
+            std::vector<jint> values((size_t)length);
+            if (length > 0) env->GetIntArrayRegion(array, 0, length, values.data());
+            if (length >= 5) {
+                for (int i = 0; i < 4; i++) offsets[i] = std::max(0, (int)values[i]);
+                const int count = std::max(0, (int)values[4]);
+                for (int i = 0; i < count && 5 + i * 4 + 3 < length; i++) {
+                    const jint* r = &values[5 + i * 4];
+                    // window to surface pixels
+                    cutouts.push_back(jasperengine::Rect((float)(r[0] - offsets[0]), (float)(r[1] - offsets[1]),
+                                                         (float)(r[2] - r[0]), (float)(r[3] - r[1])));
+                }
+            }
+            env->DeleteLocalRef(array);
+        }
+    }
+
+    // the window's insets less where the surface already keeps clear of them
+    auto edge = [](int cut, int bar, int offset){ return (float)std::max(0, std::max(cut, bar) - offset); };
+    const jasperengine::EdgeInsets insets(edge(cutout.left, bars.left, offsets[0]), edge(cutout.top, bars.top, offsets[1]),
+                                          edge(cutout.right, bars.right, offsets[2]), edge(cutout.bottom, bars.bottom, offsets[3]));
+    jasperengine::Screen::setPlatformSafeArea(insets, cutouts);
+}
+
 void NativeEngine::showSoftInput(std::wstring text){
     textInputBuffer = text;
 
@@ -775,8 +890,10 @@ void NativeEngine::gameLoop() {
     mApp->userData = this;
     mApp->onAppCmd = _handle_cmd_proxy;
 
+    // keeping the screen on is Screen.sleepTimeout's (Player > Keep Screen On, applied by
+    // Screen::initialize through JasperEngineAndroid::setKeepScreenOn)
     GameActivity_setWindowFlags(mApp->activity,
-                                AWINDOW_FLAG_KEEP_SCREEN_ON | AWINDOW_FLAG_TURN_SCREEN_ON |
+                                AWINDOW_FLAG_TURN_SCREEN_ON |
                                 AWINDOW_FLAG_FULLSCREEN |
                                 AWINDOW_FLAG_SHOW_WHEN_LOCKED,
                                 0);
@@ -882,6 +999,9 @@ void NativeEngine::setupJNI(){
     mJniData.setStringForKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "setStringForKey", "(Ljava/lang/String;Ljava/lang/String;)V");
 
     mJniData.removeKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "removeKey", "(Ljava/lang/String;)V");
+    mJniData.hasKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "hasKey", "(Ljava/lang/String;)Z");
+    mJniData.removeAllKeysRef = env->GetMethodID(mJniData.userSettingsClsRef, "removeAllKeys", "()V");
+    mJniData.saveUserSettingsRef = env->GetMethodID(mJniData.userSettingsClsRef, "save", "()Z");
 
     if (mJniData.adMobWrapperClsRef) {
         mJniData.initializeAdMob = env->GetMethodID(mJniData.adMobWrapperClsRef, "initialize","(ZZ)V");
@@ -910,6 +1030,118 @@ void NativeEngine::setupJNI(){
     }
     if (!mJniData.setClipboardText || !mJniData.getClipboardText)
         jasperengine::Log::warn("NativeEngine: activity has no clipboard methods, using an in-process clipboard");
+
+    // the HTTP client's Java side (JasperHttp) and its native callbacks
+    jasperengine::httpAndroidSetup(env, mJniData.gameActivityObjRef);
+    jasperengine::mediaCodecSetAssetManager(getAssetManager());
+    // the native bridge's Java side (JasperNative) and its natives
+    jasperengine::nativeBridgeAndroidSetup(env, mJniData.gameActivityObjRef);
+    setupPlatformJNI(env);
+}
+
+// JasperPlatform through the activity's class loader: the game thread is attached natively, so
+// FindClass would only see the system's classes
+void NativeEngine::setupPlatformJNI(JNIEnv* env){
+    memset(&mJniData.platformClsRef, 0, sizeof(JniData) - offsetof(JniData, platformClsRef));
+
+    jclass activityClass = env->GetObjectClass(mJniData.gameActivityObjRef);
+    jmethodID getClassLoader = env->GetMethodID(activityClass, "getClassLoader", "()Ljava/lang/ClassLoader;");
+    jobject loader = getClassLoader ? env->CallObjectMethod(mJniData.gameActivityObjRef, getClassLoader) : NULL;
+    jclass platformClass = NULL;
+    if (loader && !env->ExceptionCheck()) {
+        jclass loaderClass = env->GetObjectClass(loader);
+        jmethodID loadClass = env->GetMethodID(loaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+        jstring name = env->NewStringUTF("com.jaspergameengine.jasperengine.JasperPlatform");
+        platformClass = loadClass ? (jclass)env->CallObjectMethod(loader, loadClass, name) : NULL;
+        env->DeleteLocalRef(name);
+        env->DeleteLocalRef(loaderClass);
+    }
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        platformClass = NULL;
+    }
+    if (loader) env->DeleteLocalRef(loader);
+    env->DeleteLocalRef(activityClass);
+    if (!platformClass) {
+        jasperengine::Log::warn("NativeEngine: no JasperPlatform class: openURL, locale, orientation and device info use the defaults");
+        return;
+    }
+    mJniData.platformClsRef = (jclass)env->NewGlobalRef(platformClass);
+    env->DeleteLocalRef(platformClass);
+
+    auto method = [&](const char* name, const char* signature) -> jmethodID {
+        jmethodID id = env->GetStaticMethodID(mJniData.platformClsRef, name, signature);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            jasperengine::Log::warn("NativeEngine: JasperPlatform.%s is missing", name);
+            return NULL;
+        }
+        return id;
+    };
+    // (Activity, ...) signatures: rest is what follows the activity parameter
+    auto withActivity = [&](const char* name, const char* rest) {
+        return method(name, (std::string("(Landroid/app/Activity;") + rest).c_str());
+    };
+    mJniData.platformOpenURL = withActivity("openURL", "Ljava/lang/String;)Z");
+    mJniData.platformGetPreferredLocales = method("getPreferredLocales", "()[Ljava/lang/String;");
+    mJniData.platformGetRegion = method("getRegion", "()Ljava/lang/String;");
+    mJniData.platformGetAppVersion = withActivity("getAppVersion", ")Ljava/lang/String;");
+    mJniData.platformGetAppBuild = withActivity("getAppBuild", ")J");
+    mJniData.platformGetAppIdentifier = withActivity("getAppIdentifier", ")Ljava/lang/String;");
+    mJniData.platformGetAppName = withActivity("getAppName", ")Ljava/lang/String;");
+    mJniData.platformGetOsRelease = method("getOsRelease", "()Ljava/lang/String;");
+    mJniData.platformGetApiLevel = method("getApiLevel", "()I");
+    mJniData.platformGetBuildDisplay = method("getBuildDisplay", "()Ljava/lang/String;");
+    mJniData.platformGetBuildIncremental = method("getBuildIncremental", "()Ljava/lang/String;");
+    mJniData.platformGetDeviceModel = method("getDeviceModel", "()Ljava/lang/String;");
+    mJniData.platformGetSystemMemorySize = withActivity("getSystemMemorySize", ")I");
+    mJniData.platformGetInternetReachability = withActivity("getInternetReachability", ")I");
+    mJniData.platformVibrate = withActivity("vibrate", "I)Z");
+    mJniData.platformHapticFeedback = withActivity("hapticFeedback", "I)Z");
+    mJniData.platformGetScreenDpi = withActivity("getScreenDpi", ")I");
+    mJniData.platformGetRefreshRate = withActivity("getRefreshRate", ")F");
+    mJniData.platformIsNaturalPortrait = withActivity("isNaturalPortrait", ")Z");
+    mJniData.platformSetOrientationPolicy = withActivity("setOrientationPolicy", "I)V");
+
+    mJniData.platformDisplayRotation = env->GetStaticFieldID(mJniData.platformClsRef, "displayRotation", "I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformDisplayRotation = NULL;
+    }
+    mJniData.platformDeviceDegrees = env->GetStaticFieldID(mJniData.platformClsRef, "deviceDegrees", "I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformDeviceDegrees = NULL;
+    }
+    mJniData.platformSafeAreaRevision = env->GetStaticFieldID(mJniData.platformClsRef, "safeAreaRevision", "I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformSafeAreaRevision = NULL;
+    }
+    mJniData.platformSafeAreaInfo = env->GetStaticFieldID(mJniData.platformClsRef, "safeAreaInfo", "[I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformSafeAreaInfo = NULL;
+    }
+
+    // Player > Android > Fullscreen as the export wrote it into MainActivity (true without it)
+    jmethodID isFullscreenGame = env->GetMethodID(mJniData.gameActivityClsRef, "isFullscreenGame", "()Z");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        isFullscreenGame = NULL;
+    }
+    mFullscreenGame = true;
+    if (isFullscreenGame) {
+        mFullscreenGame = env->CallBooleanMethod(mJniData.gameActivityObjRef, isFullscreenGame) == JNI_TRUE;
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            mFullscreenGame = true;
+        }
+    }
+
+    // the orientation the app starts in
+    mDisplayRotation = -1;
+    refreshDisplayRotation();
 }
 
 bool NativeEngine::initDisplay() {
@@ -1131,6 +1363,8 @@ void NativeEngine::killContext() {
 
 void NativeEngine::killSurface() {
     eglMakeCurrent(mEglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    // a new surface takes the swap interval again
+    mAppliedSwapInterval = 0;
     if (mEglSurface != EGL_NO_SURFACE) {
         eglDestroySurface(mEglDisplay, mEglSurface);
         mEglSurface = EGL_NO_SURFACE;
@@ -1231,16 +1465,35 @@ void NativeEngine::doFrame() {
     eglQuerySurface(mEglDisplay, mEglSurface, EGL_WIDTH, &width);
     eglQuerySurface(mEglDisplay, mEglSurface, EGL_HEIGHT, &height);
 
+    // a rotation changes the display rotation; a half turn changes nothing else
+    const bool rotated = refreshDisplayRotation();
+
     if (width != mSurfWidth || height != mSurfHeight) {
         mSurfWidth = width;
         mSurfHeight = height;
 
+        // the insets that go with the new size, then onCanvasChanged, onOrientationChanged and
+        // onSafeAreaChanged
+        updateSafeArea();
         jasperengine::Engine::systemViewChanged();
 
         glViewport(0, 0, mSurfWidth, mSurfHeight);
+    } else if (rotated) {
+        jasperengine::Engine::systemOrientationChanged();
     }
+    // insets that changed without a new surface size (a half turn moves the cutout; the
+    // event comes at the start of this frame's update). During a quarter turn that waits for its
+    // surface size Screen holds them for that size (Engine::isOrientationPending)
+    updateSafeArea();
 
     jasperengine::Engine::systemDraw();
+
+    // without Swappy, SwappyGL_swap is eglSwapBuffers: pace it with the swap interval
+    const bool swappy = SwappyGL_isEnabled();
+    if (!swappy && mAppliedSwapInterval != mFallbackSwapInterval) {
+        eglSwapInterval(mEglDisplay, mFallbackSwapInterval);
+        mAppliedSwapInterval = mFallbackSwapInterval;
+    }
 
     // swap buffers
     if (!SwappyGL_swap(mEglDisplay, mEglSurface)) {        // failed to swap buffers...
@@ -1250,6 +1503,10 @@ void NativeEngine::doFrame() {
         return;
     }
     jasperengine::Engine::systemFramePresented();
+
+    if (!swappy) {
+        mFrameLimiter.wait(mFallbackLimiterFps);
+    }
 
     // print out GL errors, if any
     GLenum e;
@@ -1265,8 +1522,9 @@ void NativeEngine::doFrame() {
     }
 }
 
+// Visible but unfocused (a permission dialog, the notification shade) keeps rendering, as Unity
 bool NativeEngine::isAnimating() {
-    return mHasFocus && mIsVisible && mHasWindow;
+    return mIsVisible && mHasWindow;
 }
 
 // Gamepads are registered lazily on their first event; Android has no NDK-side
@@ -1526,12 +1784,14 @@ void NativeEngine::handleCommand(int32_t cmd) {
             mHasFocus = true;
             mState.mHasFocus = appState.mHasFocus = mHasFocus;
             jasperengine::Engine::systemFocusChanged(true);
+            jasperengine::Engine::systemFocus(true);
             break;
         case APP_CMD_LOST_FOCUS:
             mHasFocus = false;
             mState.mHasFocus = appState.mHasFocus = mHasFocus;
             // the fingers and pressed buttons are let go (a notification shade, a call)
             jasperengine::Engine::systemFocusChanged(false);
+            jasperengine::Engine::systemFocus(false);
             break;
         case APP_CMD_PAUSE:
             jasperengine::Engine::systemPause();
@@ -1545,7 +1805,17 @@ void NativeEngine::handleCommand(int32_t cmd) {
         case APP_CMD_START:
             mIsVisible = true;
             break;
+        case APP_CMD_WINDOW_INSETS_CHANGED:
+            // the display cutout or the system bars changed: read in the next doFrame, after the
+            // display rotation and the surface size, so the insets go with the size they belong
+            // to (a rotation reports the new insets before the surface resizes)
+            break;
+        case APP_CMD_CONFIG_CHANGED:
+            // a rotation or a locale change (configChanges keeps the activity): the surface size
+            // follows in a later frame, which reports the rotation after onCanvasChanged
+            break;
         case APP_CMD_LOW_MEMORY:
+            jasperengine::Engine::systemLowMemory();
             // system told us we have low memory. So if we are not visible, let's
             // cooperate by deallocating all of our graphic resources.
             // killContext makes the context current without a surface to delete the GL objects

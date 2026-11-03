@@ -341,6 +341,14 @@ bool reflect::detail::curveFromYaml(const FieldDesc&, const YAML::Node& node, vo
     return curvecodec::curveFromYaml(node, *static_cast<jasperengine::Curve*>(value), reason);
 }
 
+YAML::Node reflect::detail::gradientToYaml(const FieldDesc&, const void* value, const EncodeContext&) {
+    return curvecodec::gradientToYaml(*static_cast<const jasperengine::Gradient*>(value));
+}
+
+bool reflect::detail::gradientFromYaml(const FieldDesc&, const YAML::Node& node, void* value, const DecodeContext&, std::string& reason) {
+    return curvecodec::gradientFromYaml(node, *static_cast<jasperengine::Gradient*>(value), reason);
+}
+
 YAML::Node reflect::detail::textureToYaml(const FieldDesc&, const void* value, const EncodeContext& ctx) {
     return Stream::encodeTexture(*static_cast<const jasperengine::Texture*>(value), ctx.embedTextureData);
 }
@@ -504,6 +512,10 @@ std::string reflect::detail::curveLiteral(const FieldDesc&, const void* value, c
     return curvecodec::curveCppLiteral(*static_cast<const jasperengine::Curve*>(value));
 }
 
+std::string reflect::detail::gradientLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
+    return curvecodec::gradientCppLiteral(*static_cast<const jasperengine::Gradient*>(value));
+}
+
 std::string reflect::detail::entityLiteral(const FieldDesc&, const void* value, const CodegenContext& ctx) {
     return Factory::formatEntity(*static_cast<const jasperengine::Entity*>(value), ctx.entityVarNames);
 }
@@ -588,6 +600,23 @@ bool reflect::detail::shaderFeaturesFromYaml(const FieldDesc&, const YAML::Node&
     } catch (const YAML::Exception& e) {
         return unreadable(node, e.msg, reason);
     }
+}
+
+YAML::Node reflect::detail::shaderGlobalBindingsToYaml(const FieldDesc&, const void* value, const EncodeContext&) {
+    return Stream::encodeShaderGlobalBindings(*static_cast<const jasperengine::ShaderGlobalBindings*>(value));
+}
+
+bool reflect::detail::shaderGlobalBindingsFromYaml(const FieldDesc&, const YAML::Node& node, void* value, const DecodeContext&, std::string& reason) {
+    try {
+        *static_cast<jasperengine::ShaderGlobalBindings*>(value) = Stream::decodeShaderGlobalBindings(node);
+        return true;
+    } catch (const YAML::Exception& e) {
+        return unreadable(node, e.msg, reason);
+    }
+}
+
+bool reflect::detail::skipEmptyShaderGlobalBindings(const FieldDesc&, const void* value) {
+    return static_cast<const jasperengine::ShaderGlobalBindings*>(value)->empty();
 }
 
 std::string reflect::detail::charScalar(const FieldDesc&, const void* value) {

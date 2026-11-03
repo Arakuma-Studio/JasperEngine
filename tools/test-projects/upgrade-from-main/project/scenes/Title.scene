@@ -1,4 +1,4 @@
-id: 2599130642
+id: 1313999883
 name: Title
 scene:
   backgroundColor: [0.231, 0.298, 0.475, 1]
@@ -38,11 +38,6 @@ maxValues:
   maxExternalBuffers: 0
   maxSpriteFrames: 0
   maxBones: 0
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: blit
   - type: htmlui

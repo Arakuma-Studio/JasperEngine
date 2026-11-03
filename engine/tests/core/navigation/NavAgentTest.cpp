@@ -127,9 +127,9 @@ TEST_F(NavAgentTest, Drivers){
     walkers.push_back(run(NavAgentDriver::RIGIDBODY, [&](Entity entity) {
         RigidbodyComponent body;
         body.type = BodyType::KINEMATIC;
+        body.colliders.resize(1);
         body.colliders[0].type = Collider3DType::SPHERE;
         body.colliders[0].radius = 0.4f;
-        body.numColliders = 1;
         scene->addComponent<RigidbodyComponent>(entity, body);
     }));
 #endif
@@ -137,9 +137,9 @@ TEST_F(NavAgentTest, Drivers){
     walkers.push_back(run(NavAgentDriver::RIGIDBODY, [&](Entity entity) {
         Rigidbody2DComponent body;
         body.type = BodyType::KINEMATIC;
+        body.colliders.resize(1);
         body.colliders[0].type = Collider2DType::CIRCLE;
         body.colliders[0].radius = 0.4f;
-        body.numColliders = 1;
         scene->addComponent<Rigidbody2DComponent>(entity, body);
     }));
 #endif
@@ -172,11 +172,11 @@ TEST_F(NavAgentTest, CharacterControllerDriver){
     const Entity floor = transformEntity(*scene, Vector3(0.0f, -0.5f, 0.0f));
     RigidbodyComponent ground;
     ground.type = BodyType::STATIC;
+    ground.colliders.resize(1);
     ground.colliders[0].type = Collider3DType::BOX;
     ground.colliders[0].width = 40.0f;
     ground.colliders[0].height = 1.0f;
     ground.colliders[0].depth = 40.0f;
-    ground.numColliders = 1;
     scene->addComponent<RigidbodyComponent>(floor, ground);
     const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
     addSurface(*scene, surface, 0.2f, 32).useGeometry = NavUseGeometry::PHYSICS_COLLIDERS;

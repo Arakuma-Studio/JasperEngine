@@ -26,6 +26,8 @@
 
 namespace jasperengine::editor {
 
+    class MultiPropertyCmd;
+
 // ProjectUtils::makeUniqueEntityName for many names in a row, each then taken. Remembers,
 // per base name, the run of numbered names found taken, so naming a thousand copies of
 // "Sprite 1".."Sprite 1000" does not rescan the run for each: same names, linear time.
@@ -59,6 +61,14 @@ private:
 
 class ProjectUtils {
 public:
+    // the editor's new Line Renderer (GameObject > Effects > Line, Add Component,
+    // create_entity, add_component): Unity's, a world-space polyline (0,0,0)-(0,0,1) of width
+    // 0.1, in a 2D scene (pixel units) (0,0)-(100,0) of width 4. The component's own defaults
+    // stay the old hairline (scenes and scripts unchanged)
+    static void setupNewLineRenderer(LineRendererComponent& lines, bool scene2D);
+    // the editor's new Trail Renderer: width 0.2 (8 in a 2D scene, whose minimum vertex
+    // distance is 2 pixels), thinning (1 -> 0) and fading out (alpha 1 -> 0) to the tail
+    static void setupNewTrailRenderer(TrailRendererComponent& trail, bool scene2D);
 
     static Entity getLockedEntityParent(Scene* scene, Entity entity);
     // getLockedEntityParent's UI part (a control's label, bar, ... below it); `checkPanels`
@@ -75,6 +85,14 @@ public:
     static Entity getEffectiveParent(Scene* scene, Entity entity);
     static bool canMoveLockedEntityOrder(Scene* scene, Entity source, Entity target, InsertionType type, std::string* reason = nullptr);
     static std::string makeUniqueEntityName(const std::string& baseName, const std::unordered_set<std::string>& existingNames);
+    // the soft round particle image the UI Particle System starts with ("ui/particle_soft.png"
+    // in the assets, made once); its project-relative path ("assets/ui/particle_soft.png", as
+    // Texture paths are), "" when it cannot be written
+    static std::string ensureSoftParticleTexture(Project* project);
+    // The on-screen controls' circle images (ui-multitouch), written once into the project's
+    // assets as assets/ui/onscreen/stick_base.png and stick_knob.png (generated, not bundled);
+    // the assets-relative path a Texture stores, "" when it could not be written
+    static std::string ensureOnScreenControlTexture(const std::filesystem::path& assetsPath, bool knob);
     static std::string makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities = {});
 
     static size_t getTransformIndex(EntityRegistry* registry, Entity entity);

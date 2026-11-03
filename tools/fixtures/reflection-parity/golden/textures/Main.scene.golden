@@ -1,4 +1,4 @@
-formatVersion: 5
+formatVersion: 7
 guid: 0a0a075220cf4d05f700ac24562aab37
 id: 1
 name: Main
@@ -40,11 +40,6 @@ maxValues:
   maxExternalBuffers: 5
   maxSpriteFrames: 0
   maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: blit
 entities:

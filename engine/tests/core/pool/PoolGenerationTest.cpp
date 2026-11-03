@@ -74,7 +74,7 @@ TEST(PoolGenerationTests, SoundReplaceBumpsTheGeneration) {
     const std::string id = uniqueId("s05-test:sound.wav");
     const uint32_t before = SoundPool::generation(id);
     EXPECT_EQ(SoundPool::get(id), nullptr);
-    std::shared_ptr<SoLoud::Wav> held = SoundPool::get(id);
+    std::shared_ptr<SoLoud::AudioSource> held = SoundPool::get(id);
     SoundPool::replace(id, std::make_shared<SoLoud::Wav>());
     EXPECT_EQ(SoundPool::generation(id), before + 1);
     EXPECT_NE(SoundPool::get(id), nullptr);

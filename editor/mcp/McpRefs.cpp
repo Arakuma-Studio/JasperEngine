@@ -3,6 +3,8 @@
 
 #include "McpRefs.h"
 
+#include "util/SafeWrite.h"
+
 #include "util/EntityPath.h"
 #include "util/FileUtils.h"
 
@@ -385,7 +387,8 @@ bool McpRefs::resolveComponent(const Json& ref, ComponentType& out, std::string&
             {"rigidbody3d", "rigidbody"}, {"collider", "rigidbody"}, {"collider2d", "rigidbody2d"},
             {"canvasrenderer", "ui"},
             {"sky", "skybox"}, {"audio", "audiosource"}, {"sound", "audiosource"}, {"scripts", "script"},
-            {"lua", "script"}, {"particles", "particlesystem"}, {"lines", "linerenderer"}, {"fluid", "fluidsimulation"}
+            {"lua", "script"}, {"particles", "particlesystem"}, {"lines", "linerenderer"}, {"line", "linerenderer"},
+            {"fluid", "fluidsimulation"}, {"video", "videoplayer"}
         };
         auto alias = aliases.find(key);
         for (const std::string& candidate : {given, key, alias != aliases.end() ? alias->second : key}) {
@@ -449,4 +452,215 @@ bool McpRefs::resolveProjectPath(Project* project, const std::string& requested,
         return false;
     }
     return true;
+}
+
+std::vector<fs::path> McpRefs::trustedRoots(Project* project) {
+    if (!project || project->getProjectPath().empty()) return {};
+    // the project directory, its configured assets directory and its configured Lua scripts
+    // directory, as resolved when the project loaded (or a root setting was applied) and pinned:
+    // never resolved again, so a root can't be re-pointed by moving folders around; one that is
+    // no longer the folder it was is left out
+    std::vector<fs::path> roots;
+    for (const fs::path& root : project->getTrustedRoots()) {
+        if (safewrite::trustedRootIntact(root)) roots.push_back(root);
+    }
+    return roots;
+}
+
+fs::path McpRefs::rootFor(Project* project, const fs::path& absolute, WriteUse use) {
+    return safewrite::trustedRootFor(trustedRoots(project), absolute, use == WriteUse::Entry);
+}
+
+namespace {
+    // `absolute` inside one of `roots` once links are resolved ("" ok, else the error)
+    std::string escapeAgainst(const std::vector<fs::path>& roots, const fs::path& root, const fs::path& absolute, McpRefs::WriteUse use) {
+        const fs::path normal = absolute.lexically_normal();
+        const fs::path rel = normal.lexically_relative(root.lexically_normal());
+        const std::string shown = rel.empty() || *rel.begin() == ".." ? FileUtils::pathToGenericUtf8(normal) : FileUtils::pathToGenericUtf8(rel);
+        // a write follows a link at the name (a dangling one too: a plain write creates its target)
+        const fs::path where = use == McpRefs::WriteUse::Entry ? safewrite::entryLocation(normal) : safewrite::resolvedPath(normal);
+        if (where.empty()) {
+            return "\"" + shown + "\" can't be resolved: a symbolic link on its way loops or can't be read. Remove the loop, then try again.";
+        }
+        for (const fs::path& trusted : roots) {
+            const fs::path real = safewrite::resolvedPath(trusted);
+            if (!real.empty() && safewrite::isAtOrBelow(where, real)) return std::string();
+        }
+        return "\"" + shown + "\" resolves outside the project: a symbolic link on its way leads to " + FileUtils::pathToGenericUtf8(where) +
+               ". Tools write, create, delete and move files only inside the project and its assets directory (reads may follow links): "
+               "use a path that is not behind a link to elsewhere, or replace the link with a real folder.";
+    }
+}
+
+namespace {
+    bool hiddenComponent(const fs::path& rel) {
+        for (const fs::path& part : rel) {
+            const std::string name = safewrite::comparableName(part);
+            if (!name.empty() && name[0] == '.' && name != "." && name != "..") return true;
+        }
+        return false;
+    }
+}
+
+std::string McpRefs::writeEscape(Project* project, const fs::path& absolute, WriteUse use) {
+    if (!project) return "No project is open.";
+    // the trusted roots: the project directory and its configured assets directory (each resolved
+    // once: an assets directory linked in from a shared drive works); links below them are checked
+    if (std::string escape = escapeAgainst(trustedRoots(project), project->getProjectPath(), absolute, use); !escape.empty()) return escape;
+    // a path not under a hidden folder that a link inside the project leads into one (the project's
+    // .jasperengine, .git ...): no way in (a path under one as named is the tool's own rules)
+    const fs::path normal = absolute.lexically_normal();
+    const fs::path rel = normal.lexically_relative(project->getProjectPath().lexically_normal());
+    if (!rel.empty() && *rel.begin() != ".." && hiddenComponent(rel)) return std::string();
+    const fs::path where = use == WriteUse::Entry ? safewrite::entryLocation(normal) : safewrite::resolvedPath(normal);
+    const fs::path projectReal = safewrite::resolvedPath(project->getProjectPath());
+    if (where.empty() || projectReal.empty() || !safewrite::isAtOrBelow(where, projectReal)) return std::string();
+    const fs::path inside = where.lexically_relative(projectReal);
+    if (!hiddenComponent(inside)) return std::string();
+    const std::string shown = rel.empty() || *rel.begin() == ".." ? FileUtils::pathToGenericUtf8(normal) : FileUtils::pathToGenericUtf8(rel);
+    return "\"" + shown + "\" leads into the project's hidden folder " + FileUtils::pathToGenericUtf8(inside) +
+           " through a symbolic link: tools don't write, create, delete or move files there (.jasperengine is the editor's). "
+           "Use a path that is not behind that link.";
+}
+
+std::string McpRefs::projectOnlyEscape(Project* project, const fs::path& absolute) {
+    if (!project) return "No project is open.";
+    // a new trusted root (an asset root setting): inside the project directory itself, never via
+    // the current assets directory's link
+    const std::string escape = escapeAgainst({project->getProjectPath()}, project->getProjectPath(), absolute, WriteUse::Write);
+    if (escape.empty()) return escape;
+    return escape + " An asset root must be a folder of the project itself.";
+}
+
+std::string McpRefs::rootValueRefusal(const std::string& text) {
+    const fs::path value = FileUtils::pathFromUtf8(text);
+    if (value.is_absolute() || value.has_root_name() || value.has_root_directory()) return "\"" + text + "\" is absolute";
+    for (const fs::path& part : value) {
+        if (part == "..") return "\"" + text + "\" has a '..' step";
+        // an editor-owned or hidden folder (.jasperengine, .trash, .git ...) is never an asset root
+        const std::string name = safewrite::comparableName(part);
+        if (!name.empty() && name[0] == '.' && name != ".") return "\"" + text + "\" goes through the hidden folder " + FileUtils::pathToUtf8(part);
+        if (safewrite::isProjectFileName(part) || name == "cmakelists.txt") return "\"" + text + "\" names a file the editor owns";
+    }
+    return std::string();
+}
+
+std::string McpRefs::trustedRootTouched(Project* project, const fs::path& absolute, bool destination) {
+    if (!project) return std::string();
+    const fs::path normal = absolute.lexically_normal();
+    const fs::path entry = safewrite::entryLocation(normal);
+    const fs::path projectNormal = project->getProjectPath().lexically_normal();
+    struct Root {
+        fs::path configured;
+        const char* what;
+    };
+    const std::vector<Root> roots = {{project->getAssetsPath(), "assets folder"}, {project->getLuaPath(), "Lua scripts folder"}};
+    for (const Root& root : roots) {
+        if (root.configured.empty() || root.configured.lexically_normal() == projectNormal) continue;
+        const fs::path resolved = safewrite::resolvedPath(root.configured);
+        const bool touches = safewrite::isAtOrBelow(root.configured, normal) ||
+                             (!entry.empty() && !resolved.empty() && safewrite::isAtOrBelow(resolved, entry));
+        if (!touches) continue;
+        const std::string rel = FileUtils::pathToGenericUtf8(normal.lexically_relative(projectNormal));
+        return "\"" + rel + "\" " + (destination ? "would take the place of " : "is or holds ") + "the project's " + root.what +
+               " (a trusted root): it can't be " + (destination ? "replaced" : "moved, renamed or deleted") +
+               " by a tool. Change the root in Project Settings first, or pick another path.";
+    }
+    return std::string();
+}
+
+std::string McpRefs::internalFoldersEscape(Project* project) {
+    if (!project) return "No project is open.";
+    const fs::path internal = project->getProjectInternalPath();
+    // every link inside the internal folder (any depth, bounded; links not followed): one out of
+    // the project there would let a build, Play or an export write or delete through it
+    if (const std::string escape = linkOutInside(project, internal); !escape.empty()) return escape;
+    for (const fs::path& dir : {internal, internal / "build", internal / "build" / "hotreload", internal / "engine-api",
+                                internal / "engine-api" / "lua" / "scripts", internal / "generated", internal / "logs",
+                                internal / "externalbuild", project->getImportPath(), project->getThumbsDir(),
+                                project->getTerrainMapsDir(), project->getProjectPath() / ".vscode"}) {
+        if (const std::string escape = writeEscape(project, dir); !escape.empty()) return escape;
+    }
+    return std::string();
+}
+
+std::string McpRefs::linkOutInside(Project* project, const fs::path& dir, size_t maxEntries) {
+    if (!project) return "No project is open.";
+    std::error_code ec;
+    if (!fs::is_directory(fs::symlink_status(dir, ec))) return std::string();
+    size_t entries = 0;
+    // directory_options::none: a link to a folder is listed, never entered (no loop, no escape walk)
+    for (fs::recursive_directory_iterator it(dir, fs::directory_options::none, ec), end; !ec && it != end; it.increment(ec)) {
+        if (++entries > maxEntries) {
+            return "\"" + FileUtils::pathToGenericUtf8(dir) + "\" holds more than " + std::to_string(maxEntries) +
+                   " entries: too many to check for links leading out of the project. Remove what isn't needed there, then try again.";
+        }
+        std::error_code statusError;
+        const fs::file_status status = it->symlink_status(statusError);
+        bool link = fs::is_symlink(status);
+#ifdef _MSC_VER
+        link = link || status.type() == fs::file_type::junction;
+#endif
+        if (!link) continue;
+        if (const std::string escape = writeEscape(project, it->path()); !escape.empty()) return escape;
+    }
+    return std::string();
+}
+
+namespace {
+    // why `rel` (one spelling of a path, relative to a trusted root; `atProjectRoot`: relative to
+    // the project directory) is a protected place, "" when it isn't
+    std::string protectedSpelling(const fs::path& rel, bool atProjectRoot) {
+        if (rel.empty() || *rel.begin() == "..") return std::string();
+        size_t parts = 0;
+        for (const fs::path& part : rel) {
+            const std::string name = safewrite::comparableName(part);
+            if (name == ".") continue;
+            parts++;
+            if (!name.empty() && name[0] == '.') {
+                return "it is under a hidden folder (" + FileUtils::pathToUtf8(part) +
+                       "; .jasperengine is generated by the editor): tools don't write, move or create files there";
+            }
+        }
+        if (safewrite::isProjectFileName(rel)) {
+            return "it is a file named project.yaml: tools don't write, move, copy or create one in any folder (the editor "
+                   "writes the project's own: use set_project_settings; another one would be a project to open)";
+        }
+        if (atProjectRoot && parts == 1 && safewrite::comparableName(rel) == "cmakelists.txt") {
+            return "CMakeLists.txt is regenerated on every build; put custom build settings in ProjectBuild.cmake";
+        }
+        return std::string();
+    }
+}
+
+std::string McpRefs::protectedPlace(Project* project, const fs::path& absolute, WriteUse use) {
+    if (!project) return "No project is open.";
+    const fs::path normal = absolute.lexically_normal();
+    const fs::path projectNormal = project->getProjectPath().lexically_normal();
+    // as named
+    if (std::string why = protectedSpelling(normal.lexically_relative(projectNormal), true); !why.empty()) return why;
+    if (safewrite::isProjectFileName(normal)) return protectedSpelling(fs::path("project.yaml"), false);
+    // where it resolves, against each trusted root holding it
+    const fs::path where = use == WriteUse::Entry ? safewrite::entryLocation(normal) : safewrite::resolvedPath(normal);
+    if (where.empty()) return std::string();   // a loop: writeEscape refuses it
+    if (safewrite::isProjectFileName(where)) return protectedSpelling(fs::path("project.yaml"), false);
+    const std::vector<fs::path> roots = trustedRoots(project);
+    const fs::path projectReal = safewrite::resolvedPath(project->getProjectPath());
+    for (const fs::path& root : roots) {
+        if (!safewrite::isAtOrBelow(where, root)) continue;
+        const bool projectRoot = !projectReal.empty() && safewrite::isAtOrBelow(root, projectReal) && safewrite::isAtOrBelow(projectReal, root);
+        if (std::string why = protectedSpelling(where.lexically_relative(root), projectRoot); !why.empty()) {
+            return why + " (\"" + FileUtils::pathToGenericUtf8(normal.lexically_relative(projectNormal)) + "\" leads there through a link)";
+        }
+    }
+    return std::string();
+}
+
+bool McpRefs::resolveProjectWritePath(Project* project, const std::string& relative, fs::path& absolute, std::string& error,
+                                      bool mustExist, WriteUse use) {
+    if (!resolveProjectPath(project, relative, absolute, error, mustExist)) return false;
+    const std::string escape = writeEscape(project, absolute, use);
+    if (escape.empty()) return true;
+    error = escape;
+    return false;
 }

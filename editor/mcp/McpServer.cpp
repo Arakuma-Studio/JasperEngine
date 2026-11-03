@@ -12,12 +12,15 @@
 #include "McpTransportStdio.h"
 #include "McpUndo.h"
 #include "tools/McpTools.h"
+#include "tools/W4Shared.h"
 
 #include "App.h"
 #include "AppSettings.h"
 #include "EditorVersion.h"
 #include "Out.h"
 #include "thread/ResourceProgress.h"
+#include "Project.h"
+#include "util/ProjectFileWrites.h"
 #include "profiler/Profile.h"
 #include "profiler/FrameTimes.h"
 
@@ -128,10 +131,25 @@ McpServer& McpServer::get() {
 void McpServer::start(App& app) {
     if (started) return;
     started = true;
+    // the folders an MCP call's strict write scope lets writes reach outside the project
+    safewrite::allowOutsideScopes(AppSettings::getConfigDirectory());
+    {
+        std::error_code tempError;
+        safewrite::allowOutsideScopes(std::filesystem::temp_directory_path(tempError));
+    }
     appPtr = &app;
     ctx = std::make_unique<McpContext>(app, *this);
     McpAutoSync::get().serverStarted();
     installPoseSyncHook(*ctx);
+    // the editor's own file writes (its windows' Save, the sprite normals watcher) go through the
+    // file sync while the server runs: their files are current for the automatic pick-up, not
+    // external changes
+    ProjectFileWrites::setSyncHook([](Project* project, const std::vector<std::filesystem::path>& changed) {
+        McpServer& server = McpServer::get();
+        if (!server.isStarted() || server.context().project() != project) return false;
+        w4::syncFiles(server.context(), changed, false);
+        return true;
+    });
 
     buildToolRegistry(reg);
     chooseInitialToolGroups();
@@ -837,6 +855,8 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
         // Resource not found: -32002 up to 2025-11-25, Invalid params since
         const int notFound = modern ? -32602 : -32002;
         runOnMainThread([this, id, uri, reply, notFound]() {
+            // a resource that writes (project-agents makes AGENTS.md / CLAUDE.md) stays beneath the project
+            McpWriteScope writeScope;
             ResourceResult result;
             try {
                 std::map<std::string, std::string> vars;
@@ -1350,6 +1370,10 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     const bool onMainThread = app.isMainThread();
     if (onMainThread && app.getProject()) app.getProject()->compactAllComponents();
 
+    // every file the tool writes stays beneath the project (util/SafeWrite.h): FileUtils' writes,
+    // and the commands it makes (their undo and redo too); outside the project nothing but the
+    // editor's own folders, except for a tool that switches projects (its paths are explicit)
+    McpWriteScope writeScope(McpWriteScope::projectRoots(), effectiveActivity(def) != ToolActivity::ProjectSwitch);
     try {
         std::optional<UndoOriginScope> attribution;
         if (call->attributed()) attribution.emplace(call->getUndoOrigin());
@@ -1446,6 +1470,8 @@ void McpServer::tick() {
             call->fail("Cancelled.");
             continue;
         }
+        // a continuation writes beneath the project as the tool's run did
+        McpWriteScope writeScope;
         try {
             // a continuation of an attributed call is the agent's too
             std::optional<UndoOriginScope> attribution;

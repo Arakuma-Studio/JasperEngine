@@ -99,6 +99,17 @@ namespace {
         &kSplineAnimateDesc,
         &kAnimatorDesc,
         &kVertexAnimatorDesc,
+        &kTrailRendererDesc,
+        &kCanvasGroupDesc,
+        &kOnScreenStickDesc,
+        &kOnScreenButtonDesc,
+        &kTouchAreaDesc,
+        &kRagdollDesc,
+        &kCameraShakerDesc,
+        &kCameraFollowDesc,
+        &kTextEffectDesc,
+        &kVideoPlayerDesc,
+        &kSafeAreaDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -183,6 +194,18 @@ namespace {
         &kMeshPolygonDesc,
         &kInstancedMeshDesc,
         &kPrefabDesc,
+        // upstream's (UpstreamReflect.cpp)
+        &kTrailRendererDesc,
+        &kCanvasGroupDesc,
+        &kOnScreenStickDesc,
+        &kOnScreenButtonDesc,
+        &kTouchAreaDesc,
+        &kRagdollDesc,
+        &kCameraShakerDesc,
+        &kCameraFollowDesc,
+        &kTextEffectDesc,
+        &kVideoPlayerDesc,
+        &kSafeAreaDesc,
     };
 
     // the order a GameObject lists its components in (Catalog::findComponents: the exported code)
@@ -266,11 +289,22 @@ namespace {
         &kUIDesc,
         &kLayoutGroupDesc,
         &kRectTransformDesc,
+        &kTrailRendererDesc,
+        &kCanvasGroupDesc,
+        &kOnScreenStickDesc,
+        &kOnScreenButtonDesc,
+        &kTouchAreaDesc,
+        &kRagdollDesc,
+        &kCameraShakerDesc,
+        &kCameraFollowDesc,
+        &kTextEffectDesc,
+        &kVideoPlayerDesc,
+        &kSafeAreaDesc,
     };
 
     constexpr const EnumDesc* kEnums[] = {
         &enums::kActionState, &enums::kAnchorPreset, &enums::kAtmosphereQualityOverride, &enums::kAudioSourceAttenuation,
-        &enums::kAudioSourceState, &enums::kBodyType, &enums::kBuoyancyColumns, &enums::kCameraType, &enums::kClipWrapMode, &enums::kAnimatorUpdateMode, &enums::kAnimatorCullingMode, &enums::kAnimatorWriteBones,
+        &enums::kAudioSourceState, &enums::kBodyType, &enums::kBuoyancyColumns, &enums::kCameraType, &enums::kClipWrapMode, &enums::kAnimationLayerBlend, &enums::kAnimatorUpdateMode, &enums::kAnimatorCullingMode, &enums::kAnimatorWriteBones,
         &enums::kAnimatorEventMode, &enums::kAnimatorRetarget, &enums::kAnimatorIKType, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
         &enums::kCloudsRendering, &enums::kCollider2DType, &enums::kCollider3DSource, &enums::kCollider3DType, &enums::kCullingMode,
         &enums::kEaseType, &enums::kFogColorMode, &enums::kFogType, &enums::kFogVolumeFalloff, &enums::kFogVolumeShape,
@@ -290,6 +324,9 @@ namespace {
         &enums::kSplineExtrudeShape, &enums::kSplineWidthSource, &enums::kSplineCornerStyle, &enums::kSplineGrade, &enums::kSplineConform,
         &enums::kSplineCollision, &enums::kSplineInstantiateMode, &enums::kSplineSpacingFit, &enums::kSplinePlantMode,
         &enums::kSplineSpanOverrideKind, &enums::kSplineAnimateMethod, &enums::kSplineLoop, &enums::kSplineEasing, &enums::kSplineAlignment,
+        &enums::kLineRendererMode, &enums::kLineWidthUnit, &enums::kLineAlignment, &enums::kLineTextureMode, &enums::kCanvasGroupRenderMode, &enums::kOnScreenStickMode,
+        &enums::kOnScreenStickAxes, &enums::kOnScreenVisibility, &enums::kJointAnchorSpace, &enums::kCollisionDetection2D, &enums::kSleepMode2D, &enums::kRigidbodyInterpolation, &enums::kJointBreakAction,
+        &enums::kJointMotion, &enums::kJointSwingType, &enums::kAlphaTweenTarget,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

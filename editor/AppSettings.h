@@ -78,8 +78,10 @@ struct PanelVisibilitySettings {
     bool animator = false;
     bool terrain = false;
     bool textureSynthesis = false;
+    bool audioMixer = false;
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
+    bool spriteNormals = false;
     bool mcp = false;
     bool game = true;
     bool undoHistory = true;
@@ -94,8 +96,10 @@ struct PanelVisibilitySettings {
             && animator == other.animator
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
+            && audioMixer == other.audioMixer
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
+            && spriteNormals == other.spriteNormals
             && mcp == other.mcp
             && game == other.game
             && undoHistory == other.undoHistory;
@@ -106,6 +110,25 @@ struct PanelVisibilitySettings {
     }
 };
 
+// The Game view's Custom device (Device > Custom...): its portrait screen and insets in pixels
+struct CustomDeviceSettings {
+    int width = 1080;
+    int height = 2340;
+    float top = 0.0f;
+    float right = 0.0f;
+    float bottom = 0.0f;
+    float left = 0.0f;
+    float cornerRadius = 0.0f;
+    // Screen.dpi (Constant Physical Size); 0: the computer's
+    float dpi = 0.0f;
+
+    bool operator==(const CustomDeviceSettings& other) const {
+        return width == other.width && height == other.height && top == other.top && right == other.right
+            && bottom == other.bottom && left == other.left && cornerRadius == other.cornerRadius && dpi == other.dpi;
+    }
+    bool operator!=(const CustomDeviceSettings& other) const { return !(*this == other); }
+};
+
 // Game view toolbar state
 struct GameViewSettings {
     int aspect = 0;              // index into the Game view's aspect list (0 = Free Aspect)
@@ -114,11 +137,31 @@ struct GameViewSettings {
     bool showStats = false;
     // Preview Atmosphere Quality: -1 the project's, else an AtmosphereQuality (Off..High)
     int atmosphereQuality = -1;
+    // device simulation (window/DeviceProfiles.h): a profile id ("" = none), how it is turned
+    // (ScreenOrientation) and the simulated language (BCP 47, "" = the system's)
+    std::string device;
+    int orientation = 1;
+    std::string language;
+    // a fixed resolution (window/GameResolutions.h): the game renders at that size, fitted to
+    // the view; "" = the aspect above (the view's own size). A device's screen wins over it.
+    std::string resolution;
+    int resolutionWidth = 0;
+    int resolutionHeight = 0;
+    float resolutionDpi = 0.0f;
+    // the device's screen drawn over the game (rounded corners, cutout, home indicator) and
+    // the safe area outlined (safe-area spec 6.6)
+    bool deviceOverlay = true;
+    bool safeAreaOutline = false;
+    CustomDeviceSettings custom{};
 
     bool operator==(const GameViewSettings& other) const {
         return aspect == other.aspect && scale == other.scale
             && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
-            && atmosphereQuality == other.atmosphereQuality;
+            && atmosphereQuality == other.atmosphereQuality
+            && device == other.device && orientation == other.orientation && language == other.language
+            && resolution == other.resolution && resolutionWidth == other.resolutionWidth
+            && resolutionHeight == other.resolutionHeight && resolutionDpi == other.resolutionDpi
+            && deviceOverlay == other.deviceOverlay && safeAreaOutline == other.safeAreaOutline && custom == other.custom;
     }
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
 };

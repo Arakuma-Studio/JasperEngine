@@ -1,4 +1,4 @@
-id: 2411570675
+id: 926570148
 name: HUD
 scene:
   backgroundColor: [0.525, 0.525, 0.525, 1]
@@ -38,11 +38,6 @@ maxValues:
   maxExternalBuffers: 0
   maxSpriteFrames: 0
   maxBones: 0
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: points
     properties: 4
@@ -52,6 +47,8 @@ shaderKeys:
     properties: 13
   - type: mesh
     properties: 1025
+  - type: mesh
+    properties: 263171
   - type: ui
     properties: 2
   - type: ui
@@ -59,6 +56,9 @@ shaderKeys:
   - type: ui
     properties: 9
   - type: blit
+  - type: mesh
+    properties: 263171
+    customShader: library:unlit#BLEND_ADDITIVE,PARTICLE_TEXTURE
 entities:
   - type: Entity
     entity: 1001

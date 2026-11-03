@@ -136,6 +136,24 @@ void TestSystem::platformLog(const int type, const char* fmt, va_list args){
         logs.push_back({type, buffer});
     }
 
+    // A test that swaps another System in (SystemTestAccess::swap) to read the log gets the
+    // line too, as when Log:: called System::instance().platformLog directly: the sink is
+    // bound to this TestSystem. A swapped System deriving from TestSystem comes back here,
+    // which the guard stops.
+    static thread_local bool forwarding = false;
+    if (!forwarding && System::hasInstance()) {
+        System& current = System::instance();
+        if (&current != this) {
+            forwarding = true;
+            va_list forwarded;
+            va_copy(forwarded, args);
+            current.platformLog(type, fmt, forwarded);
+            va_end(forwarded);
+            forwarding = false;
+            return;
+        }
+    }
+
     System::platformLog(type, fmt, args);
 }
 

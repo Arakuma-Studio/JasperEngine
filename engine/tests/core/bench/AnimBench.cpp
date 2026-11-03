@@ -190,10 +190,12 @@ namespace {
         const std::string breath = writeFile("breath.anim", writeClip(motionClip(out.paths, 3, 0.0f, 0.0f, false, spineOnly)));
 
         AvatarMaskDef mask;
-        for (bool& part : mask.bodyParts) part = false;
-        mask.bodyParts[(int)AvatarBodyPart::Head] = true;
-        mask.bodyParts[(int)AvatarBodyPart::LeftArm] = mask.bodyParts[(int)AvatarBodyPart::RightArm] = true;
-        mask.bodyParts[(int)AvatarBodyPart::LeftHand] = mask.bodyParts[(int)AvatarBodyPart::RightHand] = true;
+        mask.defaultWeight = 0.0f;
+        for (std::optional<float>& part : mask.bodyParts) part = 0.0f;
+        mask.bodyParts[(int)AvatarBodyPart::Head] = 1.0f;
+        mask.bodyParts[(int)AvatarBodyPart::LeftArm] = mask.bodyParts[(int)AvatarBodyPart::RightArm] = 1.0f;
+        mask.bodyParts[(int)AvatarBodyPart::LeftHand] = mask.bodyParts[(int)AvatarBodyPart::RightHand] = 1.0f;
+        mask.bodyParts[(int)AvatarBodyPart::LeftFingers] = mask.bodyParts[(int)AvatarBodyPart::RightFingers] = 1.0f;
         const std::string maskPath = writeFile("upper.mask", writeMask(mask));
 
         ControllerDef def;
@@ -309,11 +311,11 @@ namespace {
             const Entity ground = node(scene, NULL_ENTITY, "Ground", Vector3(0, -0.5f, 0));
             RigidbodyComponent body;
             body.type = BodyType::STATIC;
+            body.colliders.resize(1);
             body.colliders[0].type = Collider3DType::BOX;
             body.colliders[0].width = 400.0f;
             body.colliders[0].height = 1.0f;
             body.colliders[0].depth = 400.0f;
-            body.numColliders = 1;
             scene.addComponent<RigidbodyComponent>(ground, body);
         }
         crowd->lookTarget = node(scene, NULL_ENTITY, "LookTarget", Vector3(0, 1.6f, 50.0f));

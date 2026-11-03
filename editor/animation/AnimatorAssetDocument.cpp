@@ -3,8 +3,10 @@
 
 #include "AnimatorAssetDocument.h"
 
+#include "Out.h"
 #include "Project.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/ModelSubClips.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "component/AnimationPlayerComponent.h"
 #include "command/CommandHistory.h"
@@ -27,6 +29,8 @@ namespace{
         Project* project = nullptr;
         fs::path projectPath;
         std::map<std::string, std::weak_ptr<AnimatorAssetDocument>> documents;
+        // the editor's own writes (commits, their undo and redo) to the MCP file sync
+        std::function<void(const std::vector<fs::path>&)> filesWrittenHook;
     };
 
     Registry& registry(){
@@ -167,6 +171,7 @@ std::shared_ptr<AnimatorAssetDocument> AnimatorAssetDocument::create(Project* pr
     }
     auto* command = new WriteFilesCmd({{absolute, text}}, [](const std::vector<fs::path>& changed){
         AnimatorAssetDocument::filesChanged(changed);
+        if (registry().filesWrittenHook) registry().filesWrittenHook(changed);
     });
     command->setName(undoName.empty() ? std::string("Create ") + kindName(kind) + " " + CommandNames::file(absolute) : undoName);
     command->setNoMerge();
@@ -193,6 +198,104 @@ void AnimatorAssetDocument::filesChanged(const std::vector<fs::path>& paths){
     }
 }
 
+void AnimatorAssetDocument::filesMoved(const fs::path& oldPath, const fs::path& newPath){
+    Registry& reg = registry();
+    const std::string oldKey = key(oldPath);
+    std::vector<std::pair<std::string, std::shared_ptr<AnimatorAssetDocument>>> moved;
+    for (auto it = reg.documents.begin(); it != reg.documents.end();){
+        std::shared_ptr<AnimatorAssetDocument> document = it->second.lock();
+        if (!document){
+            it = reg.documents.erase(it);
+            continue;
+        }
+        const std::string& current = it->first;
+        if (current == oldKey || current.compare(0, oldKey.size() + 1, oldKey + "/") == 0){
+            moved.emplace_back(current, document);
+            it = reg.documents.erase(it);
+        }else{
+            ++it;
+        }
+    }
+    for (auto& [oldDocumentKey, document] : moved){
+        const fs::path rest = document->filePath.lexically_relative(oldPath.lexically_normal());
+        const fs::path absolute = (rest == "." ? newPath : newPath / rest).lexically_normal();
+        document->filePath = absolute;
+        fs::path relative;
+        if (document->project && isInside(document->project->getProjectPath(), absolute, &relative)) document->relativePath = relative.generic_string();
+        if (document->project) document->assetRelative = document->project->normalizeToAssetsRelative(absolute).generic_string();
+        reg.documents[key(absolute)] = document;
+        AnimatorAssetPool::invalidate(oldDocumentKey);
+        document->notify();
+    }
+}
+
+void AnimatorAssetDocument::checkDiskChanges(){
+    std::vector<std::shared_ptr<AnimatorAssetDocument>> open;
+    for (const auto& entry : registry().documents){
+        if (std::shared_ptr<AnimatorAssetDocument> document = entry.second.lock()) open.push_back(document);
+    }
+    for (const std::shared_ptr<AnimatorAssetDocument>& document : open){
+        std::string onDisk;
+        const bool readable = ProjectChecks::readFile(document->filePath, onDisk);
+        // (a document holding a load error reads the file again: it may be fixed with the text
+        // the document had before the error)
+        if (!readable || onDisk != document->text || !document->error.empty()){
+            AnimatorAssetPool::invalidate(document->filePath.string());
+            document->reload();
+        }
+    }
+}
+
+std::vector<fs::path> AnimatorAssetDocument::relinkGuids(Project* project, const std::map<std::string, fs::path>& moved){
+    std::vector<fs::path> written;
+    if (!project || project->getProjectPath().empty() || moved.empty()) return written;
+    auto relink = [&](anim::AnimatorAssetRef& ref){
+        if (ref.guid.empty() || anim::isSubClipReference(ref.path)) return false;
+        const auto found = moved.find(ref.guid);
+        if (found == moved.end()) return false;
+        const std::string form = project->normalizeToAssetsRelative(found->second).generic_string();
+        if (fs::path(ref.path).lexically_normal().generic_string() == form) return false;
+        ref.path = form;
+        return true;
+    };
+    for (const fs::path& file : ProjectChecks::findProjectFiles(project->getProjectPath().lexically_normal(), {".controller", ".montage"})){
+        std::string text;
+        if (!ProjectChecks::readFile(file, text)) continue;
+        bool named = false;
+        for (const auto& entry : moved) named = named || text.find(entry.first) != std::string::npos;
+        if (!named) continue;
+        std::string newText;
+        if (Util::isAnimatorControllerFile(file.string())){
+            anim::ControllerParseResult parsed = anim::parseController(text);
+            if (!parsed.ok) continue;
+            bool changed = false;
+            anim::visitControllerRefs(parsed.data, [&](anim::AnimatorAssetRef& ref, const std::string&){ changed = relink(ref) || changed; });
+            if (!changed) continue;
+            newText = anim::writeController(parsed.data);
+        }else{
+            anim::MontageParseResult parsed = anim::parseMontage(text);
+            if (!parsed.ok || !relink(parsed.data.clip)) continue;
+            newText = anim::writeMontage(parsed.data);
+        }
+        if (newText == text) continue;
+        if (!FileUtils::writeFileReplacing(file, newText)){
+            Out::warning("Could not update the clip and mask paths of %s", file.string().c_str());
+            continue;
+        }
+        written.push_back(file);
+    }
+    if (!written.empty()){
+        filesChanged(written);
+        // the MCP file sync: rewritten by the editor, not changed outside it
+        if (registry().filesWrittenHook) registry().filesWrittenHook(written);
+    }
+    return written;
+}
+
+void AnimatorAssetDocument::setFilesWrittenHook(std::function<void(const std::vector<fs::path>&)> hook){
+    registry().filesWrittenHook = std::move(hook);
+}
+
 void AnimatorAssetDocument::closeAll(){
     registry().documents.clear();
 }
@@ -209,11 +312,13 @@ const std::string& AnimatorAssetDocument::guid() const{
 bool AnimatorAssetDocument::load(const std::string& newText, std::string* loadError){
     std::vector<ClipWarning> warnings;
     anim::AnimatorParseError parseError;
+    anim::AnimatorFileDialect read = anim::AnimatorFileDialect::Current;
     bool ok = false;
     if (assetKind == Kind::Controller){
         anim::ControllerParseResult parsed = anim::parseController(newText);
         ok = parsed.ok;
         parseError = parsed.error;
+        read = parsed.dialect;
         if (ok){
             controllerData = std::move(parsed.data);
             warnings = std::move(parsed.warnings);
@@ -222,6 +327,7 @@ bool AnimatorAssetDocument::load(const std::string& newText, std::string* loadEr
         anim::MaskParseResult parsed = anim::parseMask(newText);
         ok = parsed.ok;
         parseError = parsed.error;
+        read = parsed.dialect;
         if (ok){
             maskData = std::move(parsed.data);
             warnings = std::move(parsed.warnings);
@@ -241,6 +347,7 @@ bool AnimatorAssetDocument::load(const std::string& newText, std::string* loadEr
     }
     error.clear();
     text = newText;
+    fileDialect = read;
     loadWarnings = std::move(warnings);
     documentRevision++;
     return true;
@@ -273,6 +380,7 @@ bool AnimatorAssetDocument::write(const std::string& newText, const std::string&
     }
     auto* command = new WriteFilesCmd({{filePath, newText}}, [](const std::vector<fs::path>& changed){
         AnimatorAssetDocument::filesChanged(changed);
+        if (registry().filesWrittenHook) registry().filesWrittenHook(changed);
     });
     writing = newText;
     command->setName(undoName.empty() ? std::string("Edit ") + kindName(assetKind) + " " + CommandNames::file(filePath) : undoName);
@@ -330,25 +438,59 @@ void AnimatorAssetDocument::notify(){
 }
 
 size_t jasperengine::editor::appendPlayerStates(anim::ControllerDef& def, const AnimationPlayerComponent& player){
-    if (def.layers.empty()){
-        anim::LayerDef layer;
-        layer.name = "Base Layer";
-        def.layers.push_back(layer);
+    // the player's layers as controller layers (weight, blending, mask; upstream's "Create
+    // Controller from Clips"), each state on its entry's layer
+    const std::vector<AnimationPlayerLayer> layers = anim::playerLayers(player);
+    std::vector<size_t> target(layers.size(), 0);
+    for (size_t l = 0; l < layers.size(); l++){
+        int found = def.findLayer(layers[l].name);
+        if (found < 0 && l == 0 && !def.layers.empty()) found = 0;
+        if (found < 0){
+            anim::LayerDef layer;
+            layer.name = layers[l].name;
+            layer.weight = l == 0 ? 1.0f : layers[l].weight;
+            layer.blending = l > 0 && layers[l].blend == AnimationLayerBlend::Additive ? AnimatorLayerBlending::Additive : AnimatorLayerBlending::Override;
+            layer.mask.path = layers[l].mask;
+            layer.mask.guid = layers[l].maskGuid;
+            def.layers.push_back(layer);
+            found = (int)def.layers.size() - 1;
+        }
+        target[l] = (size_t)found;
     }
-    anim::StateMachineDef& machine = def.layers[0].machine;
     const std::vector<std::string> names = anim::playerStateNames(player.clips);
-    const size_t first = machine.states.size();
+    std::vector<size_t> cells(def.layers.size(), 0);
+    for (size_t l = 0; l < def.layers.size(); l++) cells[l] = def.layers[l].machine.states.size();
     for (size_t i = 0; i < player.clips.size(); i++){
+        const AnimationPlayerClip& entry = player.clips[i];
+        const size_t layer = target[entry.layer >= 0 && (size_t)entry.layer < target.size() ? (size_t)entry.layer : 0];
         anim::StateDef s;
         s.name = names[i];
-        s.motion.clip.path = player.clips[i].clip;
-        s.motion.clip.guid = player.clips[i].guid;
-        if (player.clips[i].wrap == ClipWrapMode::Loop || player.clips[i].wrap == ClipWrapMode::PingPong) s.loop = AnimatorStateLoop::Loop;
-        else if (player.clips[i].wrap == ClipWrapMode::Once || player.clips[i].wrap == ClipWrapMode::ClampForever) s.loop = AnimatorStateLoop::Once;
-        const size_t cell = first + i;
+        s.motion.clip.path = entry.clip;
+        s.motion.clip.guid = entry.guid;
+        // the entry's wrap replaced the clip's (a loop entry of a ping-pong clip loops forward)
+        switch (entry.wrap){
+            case ClipWrapMode::Default: s.loop = AnimatorStateLoop::Inherit; break;
+            case ClipWrapMode::Loop: s.loop = AnimatorStateLoop::Repeat; break;
+            case ClipWrapMode::PingPong: s.loop = AnimatorStateLoop::PingPong; break;
+            case ClipWrapMode::Once: s.loop = AnimatorStateLoop::Once; break;
+            case ClipWrapMode::ClampForever: s.loop = AnimatorStateLoop::ClampForever; break;
+        }
+        // the player's additive layers measured from the clip's additive_reference
+        s.additiveReference = AdditiveReference::Clip;
+        // the entry's humanoid playback (upstream's per-state Retarget, Mirror, Foot IK)
+        s.retarget = entry.retarget;
+        s.mirror = entry.mirror;
+        s.footIK = entry.footIK;
+        const size_t cell = cells[layer]++;
         s.position = Vector2(240.0f + 220.0f * (float)(cell % 4), 120.0f + 90.0f * (float)(cell / 4));
-        machine.states.push_back(s);
+        def.layers[layer].machine.states.push_back(s);
     }
-    if (!player.defaultClip.empty()) machine.defaultState = player.defaultClip;
+    // the default clip's state is its layer's default (else the first state)
+    const std::string defaultState = player.defaultClip.empty() ? (names.empty() ? std::string() : names[0]) : player.defaultClip;
+    for (size_t i = 0; i < player.clips.size(); i++){
+        if (names[i] != defaultState) continue;
+        const size_t layer = target[player.clips[i].layer >= 0 && (size_t)player.clips[i].layer < target.size() ? (size_t)player.clips[i].layer : 0];
+        def.layers[layer].machine.defaultState = defaultState;
+    }
     return player.clips.size();
 }

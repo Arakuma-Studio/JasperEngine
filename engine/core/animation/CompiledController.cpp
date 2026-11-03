@@ -91,20 +91,22 @@ namespace{
             return index;
         }
 
-        int clipSlot(const AnimatorAssetRef& ref){
+        int clipSlot(const AnimatorAssetRef& ref, bool humanoid){
             for (size_t i = 0; i < out.clips.size(); i++){
+                if (out.clipHumanoid[i] != (humanoid ? 1 : 0)) continue;
                 if (!ref.path.empty() ? out.clips[i].path == ref.path : (!ref.guid.empty() && out.clips[i].guid == ref.guid)) return (int)i;
             }
             out.clips.push_back(ref);
+            out.clipHumanoid.push_back(humanoid ? 1 : 0);
             return (int)out.clips.size() - 1;
         }
 
-        CompiledMotion compileMotion(const MotionDef& motion, const std::string& path, int depth, uint32_t& leaves){
+        CompiledMotion compileMotion(const MotionDef& motion, const std::string& path, int depth, uint32_t& leaves, bool humanoid){
             CompiledMotion result;
             leaves = 0;
             if (motion.isTree()){
                 result.kind = CompiledMotion::Kind::Tree;
-                result.index = compileTree(motion.tree.front(), path + ".blend_tree", depth + 1);
+                result.index = compileTree(motion.tree.front(), path + ".blend_tree", depth + 1, humanoid);
                 leaves = out.trees[(size_t)result.index].leafCount;
                 out.maxTreeDepth = std::max(out.maxTreeDepth, depth + 1);
             }else if (!motion.clip.empty()){
@@ -113,13 +115,13 @@ namespace{
                     return result;
                 }
                 result.kind = CompiledMotion::Kind::Clip;
-                result.index = clipSlot(motion.clip);
+                result.index = clipSlot(motion.clip, humanoid);
                 leaves = 1;
             }
             return result;
         }
 
-        int compileTree(const BlendTreeDef& tree, const std::string& path, int depth){
+        int compileTree(const BlendTreeDef& tree, const std::string& path, int depth, bool humanoid){
             const int index = (int)out.trees.size();
             out.trees.emplace_back();
             CompiledTree compiled;
@@ -143,7 +145,8 @@ namespace{
                 const std::string at = path + ".children[" + std::to_string(c) + "]";
                 CompiledTreeChild child;
                 uint32_t childLeaves = 0;
-                child.motion = compileMotion(childDef.motion, at + ".motion", depth, childLeaves);
+                child.motion = compileMotion(childDef.motion, at + ".motion", depth, childLeaves, humanoid || childDef.mirror);
+                child.mirror = childDef.mirror;
                 leaves += childLeaves;
                 child.threshold = childDef.threshold;
                 child.x = childDef.position.x;
@@ -248,7 +251,8 @@ namespace{
                 state.layer = layer;
                 state.machine = index;
                 uint32_t leaves = 0;
-                state.motion = compileMotion(stateDef.motion, stateAt + ".motion", 0, leaves);
+                state.motion = compileMotion(stateDef.motion, stateAt + ".motion", 0, leaves,
+                                             stateDef.mirror || stateDef.footIK || stateDef.retarget);
                 out.maxMotionLeaves = std::max(out.maxMotionLeaves, std::max<uint32_t>(leaves, 1));
                 state.speed = stateDef.speed;
                 state.speedParameter = floatParameter(stateDef.speedParameter, stateAt + ".speed_parameter", "speed multiplier");
@@ -258,6 +262,9 @@ namespace{
                 state.loop = stateDef.loop;
                 state.additiveReference = stateDef.additiveReference;
                 state.additiveTime = stateDef.additiveTime;
+                state.mirror = stateDef.mirror;
+                state.footIK = stateDef.footIK;
+                state.retarget = stateDef.retarget;
                 state.nameHash = animatorNameHash(state.name);
                 state.fullPathHash = animatorNameHash(state.fullPath);
                 machineNodes[(size_t)index][stateDef.name] = {TransitionTargetKind::State, (int)out.states.size()};

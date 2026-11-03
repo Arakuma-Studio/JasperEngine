@@ -1,4 +1,4 @@
-formatVersion: 5
+formatVersion: 7
 guid: 0f153ca2a957eb5d8f91ac03716acf99
 id: 1
 name: Legacy Particles
@@ -40,11 +40,6 @@ maxValues:
   maxExternalBuffers: 0
   maxSpriteFrames: 0
   maxBones: 0
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: blit
   - type: particles

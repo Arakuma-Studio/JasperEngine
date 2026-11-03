@@ -8,6 +8,7 @@
 #include "math/Rect.h"
 #include "math/Vector3.h"
 #include "UIValue.h"
+#include "object/ParticleSystem.h"
 
 #include <cstdint>
 #include <functional>
@@ -158,6 +159,10 @@ namespace jasperengine{
         // focus / interaction / scroll / geometry
 
         void focus(); void blur(); void click();
+        // DOM pointer capture (ui-multitouch): the element gets that pointer's move, up and cancel
+        // events until released or the pointer is up; pointerId as event.pointerId (1 the mouse,
+        // fingerId + 2 a finger). false when the pointer is not pressed (set) or not captured here (release)
+        bool setPointerCapture(int pointerId); bool releasePointerCapture(int pointerId); bool hasPointerCapture(int pointerId) const;
         void scrollIntoView(bool alignToTop = true);
         void scrollTo(float x, float y, bool smooth = false); void scrollBy(float dx, float dy, bool smooth = false);
         float getScrollTop() const; void setScrollTop(float value); float getScrollLeft() const; void setScrollLeft(float value);
@@ -221,6 +226,15 @@ namespace jasperengine{
         // --- phase 1 (p1-vector): <lottie> control; logs an error on other elements ---
 
         void play(); void pause(); void stop(); void seek(float seconds); void setFrame(float frame);
+        // <particle-system> (ui-scaling-text): play/pause/stop/isPlaying above, its live particles
+        // gone, and the ParticleSystem of its hidden entity (every particle API works). Before the
+        // prefab is made (document scripts, onLoad, edit mode) or when its src failed there is none:
+        // hasParticleSystem() is false and getParticleSystem() an empty handle (Lua: nil)
+        void clear();
+        bool hasParticleSystem() const;
+        ParticleSystem getParticleSystem() const;
+        // text-effect: the effect of this element (or the one its text inherits) from the start
+        void restartTextEffect();
         void setSpeed(float speed); void setDirection(int direction); void setLoop(bool loop); void setLoopCount(int count);
         void setSegment(float startFrame, float endFrame); void setMarker(const std::string& marker);
         bool isPlaying() const; float getCurrentFrame() const; float getTotalFrames() const; float getDuration() const;
@@ -251,6 +265,9 @@ namespace jasperengine{
         int getReadyState() const; int getNetworkState() const;
         int getVideoWidth() const; int getVideoHeight() const;
         std::string getCurrentSrc() const;
+        // what decodes it: "webm" (AV1/Opus in software), "ffmpeg", "mediacodec", "avfoundation",
+        // "mediafoundation", "browser" ("" before a source opened)
+        std::string getVideoBackend() const;
         std::string getPoster() const; void setPoster(const std::string& poster);
         std::string getPreload() const; void setPreload(const std::string& preload);
         std::optional<UIMediaError> getMediaError() const;

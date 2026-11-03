@@ -65,6 +65,11 @@ namespace jasperengine{
         bool isPlayOnAwake() const;
         void setPlaybackSpeed(float playbackSpeed);
         float getPlaybackSpeed() const;
+        // ticks with the unscaled frame time: it plays at Engine.timeScale 0 (a pause menu, UI
+        // particles). The GameObject's own switch; the effect's Unscaled Time (main.useUnscaledTime)
+        // does the same for every system playing that effect
+        void setUseUnscaledTime(bool useUnscaledTime);
+        bool isUseUnscaledTime() const;
         // 0: a new random seed at every play
         void setSeed(unsigned int seed);
         unsigned int getSeed() const;
@@ -76,6 +81,18 @@ namespace jasperengine{
         // when it does not read
         bool setInlineEffect(const std::string& json);
         std::string getInlineEffect() const;
+        // the effect it plays (its asset's or the inline one), as a document
+        particles::ParticleEffectDocument getEffectDocument() const;
+        // Unity's module edits (ps.main.startSpeed = 4): the effect becomes the system's own
+        // (an asset's document is copied in first; the asset is not changed) and plays on,
+        // keeping its live particles when only values changed
+        void setEffectDocument(const particles::ParticleEffectDocument& document);
+        // Unity's Play / Stop / Pause / Clear(withChildren): this system and, with children, every
+        // Particle System below it in the hierarchy
+        void play(bool withChildren);
+        void stop(bool withChildren, bool clear);
+        void pause(bool withChildren);
+        void clear(bool withChildren);
 
         // ---- exposed parameters (the effect's `exposed` list): false for a name it does not expose
         bool setFloat(const std::string& name, float value);
@@ -118,6 +135,7 @@ namespace jasperengine{
 
         void setLocalSpace(bool localSpace);
         bool isLocalSpace() const;
+
 
         void setMaxPerUpdate(int maxPerUpdate);
         int getMaxPerUpdate() const;

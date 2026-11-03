@@ -8,10 +8,12 @@
 #include "UndoTimeline.h"
 #include "Out.h"
 #include "util/BackgroundRelease.h"
+#include "util/SafeWrite.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <optional>
 
 using namespace jasperengine;
 
@@ -45,6 +47,18 @@ namespace {
     struct Applying{
         Applying(){ applyingDepth++; }
         ~Applying(){ applyingDepth--; }
+    };
+
+    // A step's execute, undo and redo run in the write scope it was made in (Command::writeRoots,
+    // util/SafeWrite.h): an MCP call's step undone from the Edit menu stays beneath the project
+    class StepScope {
+    public:
+        explicit StepScope(const editor::Command* cmd) {
+            if (cmd && !cmd->writeRoots().empty()) scope.emplace(cmd->writeRoots());
+        }
+
+    private:
+        std::optional<editor::safewrite::Scope> scope;
     };
 
     uint64_t changes = 0;
@@ -252,7 +266,7 @@ bool editor::CommandHistory::beforeMutating(){
     return false;
 }
 
-const std::string& editor::CommandHistory::lastRefusal(){
+const std::string& editor::CommandHistory::lastBusyRefusal(){
     return refusedWhy;
 }
 
@@ -367,6 +381,7 @@ bool editor::CommandHistory::addCommand(Command* raw){
     bool executed;
     {
         Applying applying;
+        StepScope scope(cmd.get());
         executed = cmd->execute();
     }
     if (!executed){
@@ -379,6 +394,7 @@ bool editor::CommandHistory::addCommand(Command* raw){
     if (cmd->isNoOp()){
         {
             Applying applying;
+            StepScope scope(cmd.get());
             cmd->undo();
             if (hasSelection && selectionHooks.restore){
                 selectionHooks.restore(sceneId, before);
@@ -426,6 +442,7 @@ void editor::CommandHistory::recordEntry(std::unique_ptr<Command> cmd, const Sel
         entry.info.id = nextEntryId++;
     }
 
+    stamp(cmd.get());
     entry.cmd = std::move(cmd);
 
     // A merge back to where it started changed nothing
@@ -484,6 +501,7 @@ bool editor::CommandHistory::insertCommand(Command* raw){
     bool executed;
     {
         Applying applying;
+        StepScope scope(cmd.get());
         executed = cmd->execute();
     }
     if (!executed){
@@ -492,6 +510,7 @@ bool editor::CommandHistory::insertCommand(Command* raw){
         return false;
     }
     cmd->setNoMerge();
+    stamp(cmd.get());
 
     // The scene Stop restores was captured with this step applied, so in Play it is an
     // edit-time step: below the floor. An open drag keeps collecting above it.
@@ -532,6 +551,8 @@ bool editor::CommandHistory::insertCommand(Command* raw){
 }
 
 bool editor::CommandHistory::undo(){
+    refusal.clear();
+    undoProblemText.clear();
     // a Physics Placement gesture still running is cancelled instead
     if (beforeChange && !beforeChange(sceneId, Change::Undo)){
         return false;
@@ -544,18 +565,35 @@ bool editor::CommandHistory::undo(){
         return false;
     }
     UndoEntry& entry = list[index - 1];
-    // undoing it now would break the project (a child scene cycle): the history stays
-    if (!entry.cmd->canUndo()){
-        return false;
+    // undoing it now would break the project (a child scene cycle; a file it changes resolving
+    // outside its write root through a link): the history stays, lastRefusal() says why
+    {
+        StepScope scope(entry.cmd.get());
+        if (!entry.cmd->canUndo()){
+            refusal = entry.cmd->undoRefusal();
+            refusedText = refusal;
+            refusedSerial = entry.cmd->serial();
+            refusedUndo = true;
+            safewrite::warn("Undo not applied: " + (refusal.empty() ? std::string("the step can't be undone now.") : refusal));
+            return false;
+        }
     }
+    refusedSerial = 0;
     if (beforeStep){
         beforeStep(sceneId);
     }
     const bool structural = entry.cmd->affectsStructure();
+    const unsigned long long failuresBefore = safewrite::scopedFailureCount();
     {
         Applying applying;
+        StepScope scope(entry.cmd.get());
         entry.cmd->undo();
     }
+    // a file it could not put back after its check passed (a link planted since; a write the
+    // write scope refused inside it): said
+    undoProblemText = entry.cmd->takeUndoProblem();
+    if (undoProblemText.empty()) undoProblemText = safewrite::scopedFailureSince(failuresBefore);
+    if (!undoProblemText.empty()) safewrite::warn("Undo incomplete: " + undoProblemText);
     index--;
     // the undo put back the modified flag it found, which a save since has made stale
     if (entry.info.savedApplied && onUndoPastSave){
@@ -572,6 +610,8 @@ bool editor::CommandHistory::undo(){
 }
 
 bool editor::CommandHistory::redo(){
+    refusal.clear();
+    undoProblemText.clear();
     if (beforeChange && !beforeChange(sceneId, Change::Redo)){
         return false;
     }
@@ -582,15 +622,47 @@ bool editor::CommandHistory::redo(){
         return false;
     }
     UndoEntry& entry = list[index];
-    if (!entry.cmd->canRedo()){
-        return false;
+    {
+        StepScope scope(entry.cmd.get());
+        if (!entry.cmd->canRedo()){
+            refusal = entry.cmd->redoRefusal();
+            refusedText = refusal;
+            refusedSerial = entry.cmd->serial();
+            refusedUndo = false;
+            safewrite::warn("Redo not applied: " + (refusal.empty() ? std::string("the step can't be redone now.") : refusal));
+            return false;
+        }
     }
+    refusedSerial = 0;
     if (beforeStep){
         beforeStep(sceneId);
     }
+    bool executed = false;
+    const unsigned long long failuresBefore = safewrite::scopedFailureCount();
     {
         Applying applying;
-        entry.cmd->execute();
+        StepScope scope(entry.cmd.get());
+        executed = entry.cmd->execute();
+    }
+    // a step that could not be done again and says why (its failure, or a write the write
+    // scope refused in it) is not taken; one that just found nothing to do (the GameObjects it
+    // changes are gone) is passed over as before
+    if (!executed){
+        std::string why = entry.cmd->failure();
+        if (why.empty()) why = safewrite::scopedFailureSince(failuresBefore);
+        if (!why.empty()){
+            refusal = why;
+            refusedText = refusal;
+            refusedSerial = entry.cmd->serial();
+            refusedUndo = false;
+            safewrite::warn("Redo not applied: " + refusal);
+            return false;
+        }
+    }
+    // done, but a write the write scope refused inside it: said
+    if (executed && safewrite::scopedFailureCount() != failuresBefore){
+        undoProblemText = safewrite::scopedFailureSince(failuresBefore);
+        safewrite::warn("Redo incomplete: " + undoProblemText);
     }
     index++;
     restoreSelection(entry, true);
@@ -601,6 +673,22 @@ bool editor::CommandHistory::redo(){
     #endif
     notifyChanged();
     return true;
+}
+
+std::string editor::CommandHistory::undoRefusedLastTry() const{
+    if (!refusedUndo || refusedSerial == 0 || refusedSerial != undoSerial()) return std::string();
+    return refusedText.empty() ? std::string("the step can't be undone now") : refusedText;
+}
+
+std::string editor::CommandHistory::redoRefusedLastTry() const{
+    if (refusedUndo || refusedSerial == 0 || refusedSerial != redoSerial()) return std::string();
+    return refusedText.empty() ? std::string("the step can't be redone now") : refusedText;
+}
+
+void editor::CommandHistory::stamp(Command* cmd){
+    // a step's identity for the editor's run: a freed command's address can come back, its serial can't
+    static unsigned long long next = 0;
+    if (cmd) cmd->historySerial = ++next;
 }
 
 bool editor::CommandHistory::undoTo(uint64_t id){
@@ -772,6 +860,7 @@ void editor::CommandHistory::fold(size_t localStart, const std::string& label, b
     }
     list.erase(list.begin() + localStart, list.end());
     entry.cmd = std::make_unique<CommandGroup>(std::move(commands), label);
+    stamp(entry.cmd.get());
     entry.info.bytes += sizeof(CommandGroup);
     entry.cmd->label = CommandNames::clip(entry.cmd->describe());
     list.push_back(std::move(entry));
@@ -978,7 +1067,10 @@ void editor::CommandHistory::cancelInteractive(uint64_t serial){
             list.pop_back();
             structural = structural || entry.cmd->affectsStructure();
             pastSave = pastSave || entry.info.savedApplied;
-            entry.cmd->undo();
+            {
+                StepScope scope(entry.cmd.get());
+                entry.cmd->undo();
+            }
             if (entry.info.hasSelection && selectionHooks.restore){
                 selectionHooks.restore(sceneId, entry.info.selectionBefore);
             }

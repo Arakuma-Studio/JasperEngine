@@ -13,10 +13,15 @@
 
 #include "Engine.h"
 #include "Input.h"
+#include "Screen.h"
 #include "System.h"
 #include "Log.h"
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
+#include "util/FrameLimiter.h"
+#include "util/PlatformRules.h"
+
+#include <algorithm>
 
 #ifdef __clang__
 #pragma clang diagnostic push
@@ -29,6 +34,8 @@ std::string JasperEngineWeb::canvas;
 int JasperEngineWeb::syncWaitTime;
 bool JasperEngineWeb::enabledIDB;
 bool JasperEngineWeb::loadedIDB;
+bool JasperEngineWeb::projectStarted = false;
+double JasperEngineWeb::startTime = 0.0;
 
 int JasperEngineWeb::screenWidth;
 int JasperEngineWeb::screenHeight;
@@ -39,6 +46,27 @@ double JasperEngineWeb::mousePosY;
 int JasperEngineWeb::sampleCount = 0;
 
 bool JasperEngineWeb::quitRequested = false;
+
+bool JasperEngineWeb::pageHidden = false;
+bool JasperEngineWeb::adPlaying = false;
+bool JasperEngineWeb::contextLost = false;
+bool JasperEngineWeb::windowFocused = true;
+double JasperEngineWeb::lastFrameTime = 0.0;
+std::vector<double> JasperEngineWeb::frameIntervals;
+float JasperEngineWeb::measuredRefreshRate = 0.0f;
+
+namespace {
+    // Engine.targetFrameRate: animation frames that are not due draw nothing
+    jasperengine::FrameLimiter frameLimiter;
+
+    // a string a JavaScript snippet made with _malloc (null: none)
+    std::string takeJsString(char* value){
+        if (!value) return std::string();
+        std::string out = value;
+        free(value);
+        return out;
+    }
+}
 
 JasperEngineWeb::GamepadState JasperEngineWeb::gamepads[JASPERENGINE_WEB_MAX_GAMEPADS];
 
@@ -60,6 +88,10 @@ extern "C" {
 
     EMSCRIPTEN_KEEPALIVE 
     void syncfs_enable_callback(const char* err) {
+        // the game started after the 3 s wait: data:// writes were refused until now (FileUtils),
+        // so the restore replaced nothing the game wrote; what it read before is older
+        if (JasperEngineWeb::hasProjectStarted())
+            jasperengine::Log::warn("user data restored from IndexedDB after the game started; data:// files can be written from now on");
 	    if (!err || err[0]) {
 		    jasperengine::Log::error("Failed to enable IndexedDB: %s", err);
             JasperEngineWeb::setEnabledIDB(false);
@@ -112,12 +144,12 @@ extern "C" {
 
     EMSCRIPTEN_KEEPALIVE 
     void crazygamesad_started_callback() {
-        jasperengine::Engine::systemPause();
+        JasperEngineWeb::setAdPlaying(true);
     }
 
     EMSCRIPTEN_KEEPALIVE 
     void crazygamesad_finished_callback() {
-        jasperengine::Engine::systemResume();
+        JasperEngineWeb::setAdPlaying(false);
     }
 
     EMSCRIPTEN_KEEPALIVE 
@@ -125,9 +157,61 @@ extern "C" {
 	    if (!err || err[0]) {
 		    jasperengine::Log::error("Failed to load CrazyGames ad: %s", err);
 	    }
-        jasperengine::Engine::systemResume();
+        JasperEngineWeb::setAdPlaying(false);
+    }
+
+    // screen.orientation's change event: a half turn changes no canvas size
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_orientation_changed() {
+        jasperengine::Engine::systemOrientationChanged();
+    }
+
+    // the page's env(safe-area-inset-*) over the canvas, CSS pixels of the canvas (the engine's
+    // screen on the web is the canvas's CSS size): jasper_safe_area_read, on a change only
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_safe_area(float left, float top, float right, float bottom) {
+        jasperengine::Screen::setPlatformSafeArea(jasperengine::EdgeInsets(left, top, right, bottom));
     }
 }
+
+// Screen.safeArea on the web: a hidden fixed <div id="jasper-safe-area"> padded by the page's
+// env(safe-area-inset-*) (non-zero with viewport-fit=cover on phones with a notch) gives the
+// viewport's safe rectangle; intersected with the canvas, it becomes canvas-local insets.
+// Read again on resize, orientationchange and visualViewport resize, and with each canvas size.
+EM_JS(void, jasper_safe_area_create, (), {
+    if (document.getElementById('jasper-safe-area')) return;
+    var probe = document.createElement('div');
+    probe.id = 'jasper-safe-area';
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+        'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);';
+    (document.body || document.documentElement).appendChild(probe);
+    Module.jasperSafeArea = null;
+    Module.jasperReadSafeArea = function() {
+        var canvas = Module.canvas;
+        if (!canvas || !probe.isConnected) return;
+        var style = getComputedStyle(probe);
+        var pt = parseFloat(style.paddingTop) || 0, pr = parseFloat(style.paddingRight) || 0;
+        var pb = parseFloat(style.paddingBottom) || 0, pl = parseFloat(style.paddingLeft) || 0;
+        var vw = document.documentElement.clientWidth || window.innerWidth;
+        var vh = document.documentElement.clientHeight || window.innerHeight;
+        var rect = canvas.getBoundingClientRect();
+        var l = Math.max(0, pl - rect.left), t = Math.max(0, pt - rect.top);
+        var r = Math.max(0, rect.right - (vw - pr)), b = Math.max(0, rect.bottom - (vh - pb));
+        var last = Module.jasperSafeArea;
+        if (last && last[0] === l && last[1] === t && last[2] === r && last[3] === b) return;
+        Module.jasperSafeArea = [l, t, r, b];
+        ccall('jasper_web_safe_area', null, ['number', 'number', 'number', 'number'], [l, t, r, b]);
+    };
+    var read = function() { Module.jasperReadSafeArea(); };
+    window.addEventListener('resize', read);
+    window.addEventListener('orientationchange', read);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', read);
+});
+
+EM_JS(void, jasper_safe_area_read, (), {
+    if (Module.jasperReadSafeArea) Module.jasperReadSafeArea();
+});
 
 
 
@@ -349,9 +433,24 @@ int JasperEngineWeb::init(int argc, char **argv){
     emscripten_set_webglcontextlost_callback(canvas.c_str(), 0, true, webgl_context_callback);
     emscripten_set_webglcontextrestored_callback(canvas.c_str(), 0, true, webgl_context_callback);
     emscripten_set_pointerlockchange_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, 0, true, pointerlock_callback);
-    // not in the capture phase: the IME textarea's own focus and blur (which do not bubble) stay out
-    emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, focus_callback);
+    // Unity's OnApplicationFocus / OnApplicationPause: the window's focus and the page's visibility.
+    // Not in the capture phase: the IME textarea's own focus and blur (which do not bubble) stay out
+    emscripten_set_visibilitychange_callback(0, true, visibility_callback);
     emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, focus_callback);
+    emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, focus_callback);
+    EM_ASM({
+        if (screen.orientation && screen.orientation.addEventListener) {
+            screen.orientation.addEventListener('change', function() { ccall('jasper_web_orientation_changed', null); });
+        }
+        // an orientation lock only holds in fullscreen: asked again on entering it
+        document.addEventListener('fullscreenchange', function() {
+            if (document.fullscreenElement && Module.jasperOrientationLock && screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock(Module.jasperOrientationLock).catch(function(e) {
+                    console.debug('Screen.orientation: ' + e.message);
+                });
+            }
+        });
+    });
 
     syncWaitTime = 0;
     enabledIDB = false;
@@ -364,9 +463,14 @@ int JasperEngineWeb::init(int argc, char **argv){
 		});
 	);
 
-    jasperengine::Engine::systemInit(argc, argv, new JasperEngineWeb());
+    // the project (main.lua, init(): the first scene) starts once the saved files are restored
+    // (renderLoop), so its init reads them
+    jasperengine::Engine::systemInit(argc, argv, new JasperEngineWeb(), false);
+    projectStarted = false;
+    startTime = emscripten_get_now();
 
     jasper_ime_create();
+    jasper_safe_area_create();
 
     sampleCount = 4;
 
@@ -386,10 +490,10 @@ int JasperEngineWeb::init(int argc, char **argv){
     
     emscripten_webgl_make_context_current(ctx);
 
+    // the view is loaded once the project has started (renderLoop): the order of the other
+    // platforms, init -> view loaded -> view changed, so Engine.onViewLoaded reaches the game
     JasperEngineWeb::screenWidth = sWidth;
     JasperEngineWeb::screenHeight = sHeight;
-    jasperengine::Engine::systemViewLoaded();
-    changeCanvasSize(sWidth, sHeight);
 
     emscripten_request_animation_frame_loop(renderLoop, 0);
 
@@ -413,8 +517,54 @@ void JasperEngineWeb::unregisterCallbacks(){
     emscripten_set_webglcontextlost_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_webglcontextrestored_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_pointerlockchange_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, 0, true, NULL);
-    emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, NULL);
+    emscripten_set_visibilitychange_callback(0, true, NULL);
     emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, NULL);
+    emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, NULL);
+}
+
+// One pause, whatever the sources: the page hidden, an ad playing, the GPU context lost.
+// Resumes when none is left (Engine::systemPause / systemResume are idempotent)
+void JasperEngineWeb::updatePause(){
+    // a pause saves the user settings: not before the IndexedDB restore (renderLoop applies it)
+    if (!projectStarted) return;
+    if (pageHidden || adPlaying || contextLost){
+        jasperengine::Engine::systemPause();
+    }else{
+        jasperengine::Engine::systemResume();
+    }
+}
+
+void JasperEngineWeb::setAdPlaying(bool playing){
+    adPlaying = playing;
+    updatePause();
+}
+
+void JasperEngineWeb::setContextLost(bool lost){
+    contextLost = lost;
+    updatePause();
+}
+
+EM_BOOL JasperEngineWeb::visibility_callback(int eventType, const EmscriptenVisibilityChangeEvent* e, void* userData){
+    pageHidden = e && e->hidden != 0;
+    updatePause();
+
+    // A hidden tab may be closed without another frame: files written in the last half second
+    // (and the settings the pause saved) go to IndexedDB now
+    if (pageHidden && syncWaitTime > 0)
+        syncFileSystemNow();
+
+    return EM_FALSE;
+}
+
+// the page lost the keyboard (another tab, window or app): held keys and buttons come up at
+// once; then Unity's OnApplicationFocus
+EM_BOOL JasperEngineWeb::focus_callback(int eventType, const EmscriptenFocusEvent* e, void* userData){
+    windowFocused = eventType == EMSCRIPTEN_EVENT_FOCUS;
+    jasperengine::Engine::systemFocusChanged(windowFocused);
+    // before the project starts (the IndexedDB restore) it is applied at the start
+    if (projectStarted)
+        jasperengine::Engine::systemFocus(windowFocused);
+    return 0;
 }
 
 void JasperEngineWeb::changeCanvasSize(int width, int height){
@@ -422,7 +572,11 @@ void JasperEngineWeb::changeCanvasSize(int width, int height){
 
     JasperEngineWeb::screenWidth = width;
     JasperEngineWeb::screenHeight = height;
-    jasperengine::Engine::systemViewChanged();
+    // the page may resize before the project starts; the view is loaded with this size then
+    // (and where the canvas now lies under the page's safe area first)
+    jasper_safe_area_read();
+    if (projectStarted)
+        jasperengine::Engine::systemViewChanged();
 }
 
 bool JasperEngineWeb::isFullscreen(){
@@ -529,6 +683,13 @@ bool JasperEngineWeb::syncFileSystem(){
     return true;
 }
 
+bool JasperEngineWeb::flushFileSystem(){
+    if (enabledIDB)
+        syncFileSystemNow();
+
+    return true;
+}
+
 void JasperEngineWeb::syncFileSystemNow(){
     syncWaitTime = 0;
 
@@ -617,7 +778,9 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
         // input events would reach destroyed scenes and a closed Lua state
         unregisterCallbacks();
 
-        jasperengine::Engine::systemViewDestroyed();
+        // a quit before the project started has no view to destroy
+        if (projectStarted)
+            jasperengine::Engine::systemViewDestroyed();
         jasperengine::Engine::systemShutdown();
 
         // shutdown also writes files and this loop will not run again
@@ -629,6 +792,41 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
         std::printf("JasperEngine exit code %d\n", exitCode);
         std::fflush(stdout);
         return EM_FALSE;
+    }
+
+    if (!projectStarted){
+        // IndexedDB answers in a few milliseconds; a browser that never does (storage
+        // blocked) must not keep the game from starting
+        const bool timedOut = emscripten_get_now() - startTime >= 3000.0;
+        if (!loadedIDB && !timedOut)
+            return EM_TRUE;
+        if (!loadedIDB)
+            jasperengine::Log::warn("user data not restored after 3 s; saves may be missing");
+        projectStarted = true;
+        jasperengine::Engine::systemStartProject();
+        jasperengine::Engine::systemViewLoaded();
+        changeCanvasSize(screenWidth, screenHeight);
+        // what the page did while the project waited
+        if (!windowFocused)
+            jasperengine::Engine::systemFocus(false);
+        updatePause();
+    }
+
+    // the display's rate: the median interval of the first animation frames
+    if (lastFrameTime > 0.0 && frameIntervals.size() < 30){
+        const double interval = time - lastFrameTime;
+        if (interval > 1.0 && interval < 200.0) frameIntervals.push_back(interval);
+        if (frameIntervals.size() == 30){
+            std::vector<double> sorted = frameIntervals;
+            std::sort(sorted.begin(), sorted.end());
+            measuredRefreshRate = (float)std::round(1000.0 / sorted[sorted.size() / 2]);
+        }
+    }
+    lastFrameTime = time;
+
+    // Engine.targetFrameRate: a frame that is not due yet draws nothing (2 ms early still counts)
+    if (!frameLimiter.isDue(jasperengine::Engine::getFramePacing().limiterFps, 0.002)){
+        return EM_TRUE;
     }
 
     pollGamepads();
@@ -664,7 +862,11 @@ EM_BOOL JasperEngineWeb::canvas_resize(int eventType, const void *reserved, void
 
     JasperEngineWeb::screenWidth = w;
     JasperEngineWeb::screenHeight = h;
-    jasperengine::Engine::systemViewChanged();
+    // before the project starts the view is not loaded yet: it gets this size when it is
+    // (and where the canvas now lies under the page's safe area first)
+    jasper_safe_area_read();
+    if (projectStarted)
+        jasperengine::Engine::systemViewChanged();
 
     return 0;
 }
@@ -854,12 +1056,6 @@ EM_BOOL JasperEngineWeb::pointerlock_callback(int eventType, const EmscriptenPoi
     return 0;
 }
 
-// the page lost the keyboard (another tab, window or app): held keys and buttons come up
-EM_BOOL JasperEngineWeb::focus_callback(int eventType, const EmscriptenFocusEvent* e, void* userData) {
-    jasperengine::Engine::systemFocusChanged(eventType == EMSCRIPTEN_EVENT_FOCUS);
-    return 0;
-}
-
 EM_BOOL JasperEngineWeb::wheel_callback(int eventType, const EmscriptenWheelEvent *e, void *userData) {
     float scale;
     switch (e->deltaMode) {
@@ -942,8 +1138,8 @@ EM_BOOL JasperEngineWeb::touch_callback(int emsc_type, const EmscriptenTouchEven
 
 EM_BOOL JasperEngineWeb::webgl_context_callback(int emsc_type, const void* reserved, void* user_data) {
     switch (emsc_type) {
-        case EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST:     jasperengine::Engine::systemPause(); break;
-        case EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED: jasperengine::Engine::systemResume(); break;
+        case EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST:     setContextLost(true); break;
+        case EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED: setContextLost(false); break;
         default:                                    break;
     }
 
@@ -1201,24 +1397,150 @@ int JasperEngineWeb::jasperengine_legacy_input(int code){
     return 0;
 }
 
-// Pages of one site share localStorage, so each game prefixes its keys. The bare keys
-// of older builds are still read, so their saves carry over.
-std::string JasperEngineWeb::getStringForKey(const char *key, const std::string& defaultValue){
-    char* value = (char*)EM_ASM_INT({
-        var key = UTF8ToString($0);
-        var val = localStorage.getItem(UTF8ToString($1) + '/' + key);
-        if (val === null) val = localStorage.getItem(key);
-        if (val) {
-            var len = lengthBytesUTF8(val)+1;
-            var buf = _malloc(len);
-            stringToUTF8(val, buf, len);
-            return buf;
-        }
-        return null;
-    }, key, jasperengine::platformConfig().storageId.c_str());
+// ---- UserSettings: localStorage. Pages of one site share it, so each game prefixes its keys:
+// "<storageId>/<key>". Bare "<key>" entries of older builds are still read, so their saves
+// carry over, until this game writes or deletes the key, or deletes all (then no bare key counts
+// any more: the "<storageId>/\u0001jasperengine:cleared" marker). A deleted key whose bare entry
+// exists is kept as the tombstone value "\u0001jasperengine:deleted" (a bare key may be another
+// game's, so it is never removed). Older builds wrote "" as their tombstone; those are turned
+// into the new one once ("<storageId>/\u0001jasperengine:v2"), so "" is a value like any other.
+// Typed values use System's text format (the getters and setters of the base class).
+// localStorage is synchronous: there is nothing to save. It can throw (storage disabled, quota):
+// a read then gives the default and a failed write is logged once.
 
+// the JS library functions the store uses (stringToNewUTF8 brings malloc in)
+EM_JS_DEPS(jasper_user_settings, "$UTF8ToString,$stringToNewUTF8,$lengthBytesUTF8");
+
+EM_JS(void, jasper_settings_install, (), {
+    if (Module.jasperSettings) return;
+    var SOH = String.fromCharCode(1);
+    var TOMBSTONE = SOH + "jasperengine:deleted";
+    var migrated = {};
+    function storage() { try { return window.localStorage; } catch (e) { return null; } }
+    function marker(id, name) { return id + "/" + SOH + "jasperengine:" + name; }
+    function migrate(ls, id) {
+        if (migrated[id]) return;
+        migrated[id] = true;
+        if (ls.getItem(marker(id, "v2")) !== null) return;
+        var prefix = id + "/";
+        var keys = [];
+        for (var i = 0; i < ls.length; i++) {
+            var k = ls.key(i);
+            if (k !== null && k.indexOf(prefix) === 0) keys.push(k);
+        }
+        keys.forEach(function(k) {
+            if (ls.getItem(k) === "" && ls.getItem(k.substring(prefix.length)) !== null) ls.setItem(k, TOMBSTONE);
+        });
+        ls.setItem(marker(id, "v2"), "1");
+    }
+    function open(id) {
+        var ls = storage();
+        if (!ls) return null;
+        try { migrate(ls, id); } catch (e) {}
+        return ls;
+    }
+    Module.jasperSettings = {
+        get: function(id, key) {
+            try {
+                var ls = open(id);
+                if (!ls) return null;
+                var own = ls.getItem(id + "/" + key);
+                if (own !== null) return own === TOMBSTONE ? null : own;
+                if (ls.getItem(marker(id, "cleared")) !== null) return null;
+                return ls.getItem(key);
+            } catch (e) { return null; }
+        },
+        set: function(id, key, value) {
+            try {
+                var ls = open(id);
+                if (!ls) return 0;
+                ls.setItem(id + "/" + key, value);
+                return 1;
+            } catch (e) { return 0; }
+        },
+        remove: function(id, key) {
+            try {
+                var ls = open(id);
+                if (!ls) return 0;
+                var own = id + "/" + key;
+                if (ls.getItem(marker(id, "cleared")) === null && ls.getItem(key) !== null) ls.setItem(own, TOMBSTONE);
+                else ls.removeItem(own);
+                return 1;
+            } catch (e) { return 0; }
+        },
+        clear: function(id) {
+            try {
+                var ls = open(id);
+                if (!ls) return 0;
+                var prefix = id + "/";
+                var keep = marker(id, "v2");
+                var keys = [];
+                for (var i = 0; i < ls.length; i++) {
+                    var k = ls.key(i);
+                    if (k !== null && k.indexOf(prefix) === 0 && k !== keep) keys.push(k);
+                }
+                keys.forEach(function(k) { ls.removeItem(k); });
+                ls.setItem(marker(id, "cleared"), "1");
+                return 1;
+            } catch (e) { return 0; }
+        }
+    };
+});
+
+// Values cross with their byte length (UTF8ToString / stringToUTF8 stop at a zero byte), so a
+// value with zeros survives as on the other platforms; keys never have one (UserSettings).
+EM_JS(char*, jasper_settings_get, (const char* id, const char* key, int* length), {
+    var value = Module.jasperSettings.get(UTF8ToString(id), UTF8ToString(key));
+    if (value === null) return 0;
+    // stringToNewUTF8 encodes U+0000 as a zero byte and does not stop there
+    HEAP32[length >> 2] = lengthBytesUTF8(value);
+    return stringToNewUTF8(value);
+});
+
+EM_JS(int, jasper_settings_has, (const char* id, const char* key), {
+    return Module.jasperSettings.get(UTF8ToString(id), UTF8ToString(key)) !== null ? 1 : 0;
+});
+
+EM_JS(int, jasper_settings_set, (const char* id, const char* key, const char* value, int length), {
+    var text = new TextDecoder().decode(HEAPU8.subarray(value, value + length));
+    return Module.jasperSettings.set(UTF8ToString(id), UTF8ToString(key), text);
+});
+
+EM_JS(int, jasper_settings_remove, (const char* id, const char* key), {
+    return Module.jasperSettings.remove(UTF8ToString(id), UTF8ToString(key));
+});
+
+EM_JS(int, jasper_settings_clear, (const char* id), {
+    return Module.jasperSettings.clear(UTF8ToString(id));
+});
+
+namespace {
+    // the JS store (Module.jasperSettings), made on first use
+    const char* settingsId(){
+        static bool installed = false;
+        if (!installed){
+            installed = true;
+            jasper_settings_install();
+        }
+        // the export's id (PlatformDefaults) or a player's game.json
+        return jasperengine::platformConfig().storageId.c_str();
+    }
+
+    void settingsWriteFailed(){
+        static bool logged = false;
+        if (!logged){
+            logged = true;
+            jasperengine::Log::error("UserSettings: localStorage refused the write (storage disabled or full)");
+        }
+    }
+}
+
+std::string JasperEngineWeb::getStringForKey(const char *key, const std::string& defaultValue){
+    if (!key) return defaultValue;
+    int length = 0;
+    char* value = jasper_settings_get(settingsId(), key, &length);
     if (value){
-        std::string strValue = value;
+        std::string strValue(value, static_cast<size_t>(length));
         free(value); //Each call to _malloc() must be paired with free() or heap memory will leak
         return strValue;
     }
@@ -1227,21 +1549,30 @@ std::string JasperEngineWeb::getStringForKey(const char *key, const std::string&
 }
 
 void JasperEngineWeb::setStringForKey(const char* key, const std::string& value){
-    EM_ASM_ARGS({
-        var key = UTF8ToString($0);
-        var value = UTF8ToString($1);
-        localStorage.setItem(UTF8ToString($2) + '/' + key, value);
-    }, key, value.c_str(), jasperengine::platformConfig().storageId.c_str());
+    if (!key || !key[0]){
+        jasperengine::Log::error("UserSettings: a key must be a non-empty string");
+        return;
+    }
+    if (!jasper_settings_set(settingsId(), key, value.data(), static_cast<int>(value.size())))
+        settingsWriteFailed();
 }
 
 void JasperEngineWeb::removeKey(const char *key){
-    // A bare key may be another game's, so an empty value hides it instead
-    EM_ASM_ARGS({
-        var key = UTF8ToString($0);
-        var own = UTF8ToString($1) + '/' + key;
-        if (localStorage.getItem(key) === null) localStorage.removeItem(own);
-        else localStorage.setItem(own, "");
-    }, key, jasperengine::platformConfig().storageId.c_str());
+    if (key && !jasper_settings_remove(settingsId(), key))
+        settingsWriteFailed();
+}
+
+bool JasperEngineWeb::hasKey(const char *key){
+    return key && jasper_settings_has(settingsId(), key);
+}
+
+void JasperEngineWeb::removeAllKeys(){
+    if (!jasper_settings_clear(settingsId()))
+        settingsWriteFailed();
+}
+
+void JasperEngineWeb::saveUserSettings(){
+    // localStorage writes are synchronous
 }
 
 void JasperEngineWeb::initializeCrazyGamesSDK(){
@@ -1304,4 +1635,186 @@ void JasperEngineWeb::loadingStopCrazyGames(){
     EM_ASM(
         window.CrazyGames.SDK.game.sdkGameLoadingStop();
     );
+}
+
+// ------------------------------------------------------------------ platform services
+
+bool JasperEngineWeb::platformOpenURL(const std::string& url){
+    // a popup the browser blocks (no click or key going on) opens on the next one instead
+    return EM_ASM_INT({
+        var url = UTF8ToString($0);
+        var opened = window.open(url, '_blank');
+        if (opened) {
+            try { opened.opener = null; } catch (e) {}
+            return 1;
+        }
+        Module.jasperPendingUrl = url;
+        if (!Module.jasperPendingUrlListener) {
+            Module.jasperPendingUrlListener = function() {
+                var pending = Module.jasperPendingUrl;
+                if (!pending) return;
+                Module.jasperPendingUrl = null;
+                var w = window.open(pending, '_blank');
+                if (w) { try { w.opener = null; } catch (e) {} }
+            };
+            (['pointerup', 'keyup', 'touchend']).forEach(function(type) {
+                document.addEventListener(type, Module.jasperPendingUrlListener, true);
+            });
+        }
+        console.log('System.openURL: the browser blocked the popup; ' + url + ' opens on the next click or key');
+        return 0;
+    }, url.c_str()) != 0;
+}
+
+std::vector<std::string> JasperEngineWeb::getPreferredLocales(){
+    const std::string list = takeJsString((char*)EM_ASM_INT({
+        var langs = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language || 'en-US'];
+        var text = langs.join('\n');
+        var len = lengthBytesUTF8(text) + 1;
+        var buf = _malloc(len);
+        stringToUTF8(text, buf, len);
+        return buf;
+    }));
+    std::vector<std::string> tags;
+    size_t start = 0;
+    while (start <= list.size()){
+        const size_t end = list.find('\n', start);
+        const std::string tag = jasperengine::LocaleRules::normalize(list.substr(start, end == std::string::npos ? std::string::npos : end - start));
+        if (!tag.empty() && std::find(tags.begin(), tags.end(), tag) == tags.end()) tags.push_back(tag);
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return tags.empty() ? System::getPreferredLocales() : tags;
+}
+
+std::string JasperEngineWeb::getOperatingSystem(){
+    static const std::string value = "Web (" + takeJsString((char*)EM_ASM_INT({
+        var platform = (navigator.userAgentData && navigator.userAgentData.platform) ? navigator.userAgentData.platform
+                       : (navigator.platform || 'unknown');
+        var len = lengthBytesUTF8(platform) + 1;
+        var buf = _malloc(len);
+        stringToUTF8(platform, buf, len);
+        return buf;
+    })) + ")";
+    return value;
+}
+
+std::string JasperEngineWeb::getOperatingSystemVersion(){
+    return "";
+}
+
+std::string JasperEngineWeb::getDeviceModel(){
+    return "Browser";
+}
+
+jasperengine::DeviceType JasperEngineWeb::getDeviceType(){
+    return isTouchDevice() ? jasperengine::DeviceType::Handheld : jasperengine::DeviceType::Desktop;
+}
+
+int JasperEngineWeb::getSystemMemorySize(){
+    // navigator.deviceMemory: GiB, rounded and capped by the browser (Chromium only)
+    return EM_ASM_INT({
+        return navigator.deviceMemory ? Math.round(navigator.deviceMemory * 1024) : 0;
+    });
+}
+
+jasperengine::NetworkReachability JasperEngineWeb::getInternetReachability(){
+    const int online = EM_ASM_INT({ return navigator.onLine ? 1 : 0; });
+    return online ? jasperengine::NetworkReachability::ReachableViaLocalAreaNetwork : jasperengine::NetworkReachability::NotReachable;
+}
+
+bool JasperEngineWeb::vibrate(int milliseconds){
+    return EM_ASM_INT({
+        return (navigator.vibrate && navigator.vibrate(Math.max(1, $0))) ? 1 : 0;
+    }, milliseconds) != 0;
+}
+
+bool JasperEngineWeb::hapticFeedback(jasperengine::HapticFeedback type){
+    // the Vibration API's approximation of the iOS feedback kinds (the list in parentheses: a
+    // comma outside them would split the EM_ASM macro arguments)
+    return EM_ASM_INT({
+        var patterns = ([[10], [20], [40], [10], [20, 40, 20], [30, 60, 30], [40, 60, 40, 60, 40]]);
+        var pattern = patterns[$0] || [20];
+        return (navigator.vibrate && navigator.vibrate(pattern)) ? 1 : 0;
+    }, (int)type) != 0;
+}
+
+float JasperEngineWeb::getScreenDpi(){
+    return (float)EM_ASM_DOUBLE({ return (window.devicePixelRatio || 1) * 96; });
+}
+
+float JasperEngineWeb::getRefreshRate(){
+    return measuredRefreshRate > 0.0f ? measuredRefreshRate : 60.0f;
+}
+
+void JasperEngineWeb::setKeepScreenOn(bool keepOn){
+    // the Screen Wake Lock API; the browser drops the lock when the page is hidden, so it is
+    // asked again when the page shows
+    EM_ASM({
+        Module.jasperKeepScreenOn = $0 != 0;
+        function acquire() {
+            if (!Module.jasperKeepScreenOn || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+            // one request at a time: a second one before the first resolves would leak a lock
+            if (Module.jasperWakeLock || Module.jasperWakeLockPending) return;
+            Module.jasperWakeLockPending = true;
+            navigator.wakeLock.request('screen').then(function(lock) {
+                Module.jasperWakeLockPending = false;
+                Module.jasperWakeLock = lock;
+                lock.addEventListener('release', function() { if (Module.jasperWakeLock === lock) Module.jasperWakeLock = null; });
+                if (!Module.jasperKeepScreenOn) { Module.jasperWakeLock = null; lock.release(); }
+            }).catch(function(e) {
+                Module.jasperWakeLockPending = false;
+                console.debug('Screen.sleepTimeout: ' + e.message);
+            });
+        }
+        if (!Module.jasperWakeLockListener) {
+            Module.jasperWakeLockListener = acquire;
+            document.addEventListener('visibilitychange', acquire);
+        }
+        if (Module.jasperKeepScreenOn) {
+            acquire();
+        } else if (Module.jasperWakeLock) {
+            var lock = Module.jasperWakeLock;
+            Module.jasperWakeLock = null;
+            lock.release();
+        }
+    }, keepOn ? 1 : 0);
+}
+
+void JasperEngineWeb::applyOrientationPolicy(jasperengine::ScreenOrientation requested, uint8_t allowedMask){
+    using jasperengine::PlatformRules::orientationBit;
+    using jasperengine::ScreenOrientation;
+    const uint8_t mask = jasperengine::PlatformRules::effectiveMask(requested, allowedMask);
+    const uint8_t portraits = orientationBit(ScreenOrientation::Portrait) | orientationBit(ScreenOrientation::PortraitUpsideDown);
+    const uint8_t landscapes = orientationBit(ScreenOrientation::LandscapeLeft) | orientationBit(ScreenOrientation::LandscapeRight);
+    const char* lock = "any";
+    if (mask == orientationBit(ScreenOrientation::Portrait)) lock = "portrait-primary";
+    else if (mask == orientationBit(ScreenOrientation::PortraitUpsideDown)) lock = "portrait-secondary";
+    else if (mask == orientationBit(ScreenOrientation::LandscapeLeft)) lock = "landscape-primary";
+    else if (mask == orientationBit(ScreenOrientation::LandscapeRight)) lock = "landscape-secondary";
+    else if ((mask & landscapes) == 0) lock = "portrait";
+    else if ((mask & portraits) == 0) lock = "landscape";
+    // browsers lock only in fullscreen: a refusal is expected and logged verbosely
+    EM_ASM({
+        var lock = UTF8ToString($0);
+        Module.jasperOrientationLock = lock;
+        if (!screen.orientation || !screen.orientation.lock) return;
+        screen.orientation.lock(lock).catch(function(e) {
+            console.debug('Screen.orientation: ' + e.message);
+        });
+    }, lock);
+}
+
+jasperengine::ScreenOrientation JasperEngineWeb::getScreenOrientation(){
+    // a desktop browser's screen is the monitor, not the canvas: the canvas size says it there
+    if (!isTouchDevice()) return System::getScreenOrientation();
+    const int type = EM_ASM_INT({
+        if (!screen.orientation || !screen.orientation.type) return 0;
+        var types = ({'portrait-primary': 1, 'portrait-secondary': 2, 'landscape-primary': 3, 'landscape-secondary': 4});
+        return types[screen.orientation.type] || 0;
+    });
+    if (jasperengine::PlatformRules::isOrientation(type) && type != (int)jasperengine::ScreenOrientation::AutoRotation){
+        return (jasperengine::ScreenOrientation)type;
+    }
+    return System::getScreenOrientation();
 }

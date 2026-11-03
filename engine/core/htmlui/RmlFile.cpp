@@ -5,6 +5,7 @@
 
 #include "HtmlUIDependencies.h"
 #include "compat/VirtualFiles.h"
+#include "debug/DebugOverlayResources.h"
 #include "io/Data.h"
 
 #include <cstdio>
@@ -40,6 +41,17 @@ Rml::FileHandle RmlFile::Open(const Rml::String& path){
             return 0;
         RmlFileHandle* handle = new RmlFileHandle();
         handle->data.open(reinterpret_cast<unsigned char*>(const_cast<char*>(content->data())), (unsigned int)content->size(), true, true);
+        return reinterpret_cast<Rml::FileHandle>(handle);
+    }
+
+    // the engine's embedded files (engine://debug/overlay.rml): never the project's
+    if (EngineResources::isEnginePath(path)){
+        const char* data = nullptr;
+        size_t size = 0;
+        if (!EngineResources::find(path, data, size))
+            return 0;
+        RmlFileHandle* handle = new RmlFileHandle();
+        handle->data.open(reinterpret_cast<unsigned char*>(const_cast<char*>(data)), (unsigned int)size, true, true);
         return reinterpret_cast<Rml::FileHandle>(handle);
     }
 
@@ -122,6 +134,15 @@ bool RmlFile::LoadFile(const Rml::String& path, Rml::String& out_data){
         if (!content)
             return false;
         out_data = *content;
+        return true;
+    }
+
+    if (EngineResources::isEnginePath(path)){
+        const char* data = nullptr;
+        size_t size = 0;
+        if (!EngineResources::find(path, data, size))
+            return false;
+        out_data.assign(data, size);
         return true;
     }
 

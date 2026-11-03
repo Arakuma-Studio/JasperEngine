@@ -13,7 +13,7 @@
 using namespace jasperengine;
 
 Scene scene;
-Camera camera(&scene);
+Camera sceneCamera(&scene);
 Light sun(&scene);
 Terrain terrain(&scene);
 
@@ -26,11 +26,11 @@ JASPERENGINE_INIT void init(){
     sun.setIntensity(2.0f);
     sun.setShadows(false);
 
-    camera.setType(CameraType::CAMERA_PERSPECTIVE);
-    camera.setPosition(0.0f, 5.0f, 95.0f);
-    camera.setTarget(0.0f, 5.0f, 0.0f);
-    camera.setFarClip(1000.0f);
-    camera.activate();
+    sceneCamera.setType(CameraType::CAMERA_PERSPECTIVE);
+    sceneCamera.setPosition(0.0f, 5.0f, 95.0f);
+    sceneCamera.setTarget(0.0f, 5.0f, 0.0f);
+    sceneCamera.setFarClip(1000.0f);
+    sceneCamera.activate();
 
     // a terrain is built for the scene's camera: after it
     terrain.setHeightMap("heightmap.png");

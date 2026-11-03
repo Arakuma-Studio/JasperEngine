@@ -27,6 +27,9 @@ namespace jasperengine::editor::mcp::clip_tools {
     void editClip(const CallPtr& call);
     // get_animation with `clip`: the file (or a model sub-clip), `times` sampled, `root` bindings
     void getClip(const CallPtr& call);
+    // get_animation {root, list_properties: "<path>"}: what a property track can animate on that
+    // GameObject [{component, property, kind, label, group, value, discrete?}] (anim-properties)
+    void listProperties(const CallPtr& call);
 
     // The arguments one mode refuses with a fix-it message (two-way table of 9.R29); "" when
     // none. `fileMode`: the call has `clip`.
@@ -45,6 +48,10 @@ namespace jasperengine::editor::mcp::clip_tools {
     // warnings, users}; `text` gets the summary appended. False (with data.error) when it is not
     // a readable clip.
     bool clipAssetInfo(Project* project, const std::filesystem::path& file, Json& data, std::string& text);
+
+    // get_asset_info's `avatar` of a model (anim-retarget 10): {animation_type, humanoid, mapped,
+    // missing, extra_mapped, twist, human_scale, notes}; null for a model without bones
+    Json avatarJson(Project* project, const std::filesystem::path& model);
 
     // write_file of an .anim: false + error when the text can't be read as a clip (not JSON,
     // another format or version, Unity YAML); `warnings` the lenient reader's ("path: message")

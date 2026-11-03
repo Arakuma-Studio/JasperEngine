@@ -11,6 +11,12 @@
 #include "component/AnimationPlayerComponent.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ModelSubClips.h"
+#include "animation/AnimatorInstance.h"
+#include "animation/CompiledController.h"
+#include "component/AnimatorComponent.h"
+#include "object/AnimationPlayer.h"
+#include "subsystem/AnimatorSystem.h"
+#include "pose/ModelRig.h"
 
 #include <algorithm>
 
@@ -22,9 +28,44 @@ static AnimationPlayerComponent* findModelPlayer(Scene* scene, Entity entity){
     return scene->isEntityCreated(entity) ? scene->findComponent<AnimationPlayerComponent>(entity) : nullptr;
 }
 
-static bool playerHasState(const AnimationPlayerComponent& player, const std::string& name){
+// upstream's controller players: a disabled Animation Player beside an Animator hands over to
+// it (object/AnimationPlayer.h); the Animator's states have no index
+static bool playerHandsOver(Scene* scene, Entity entity, const AnimationPlayerComponent& player){
+    return !player.enabled && scene->findComponent<AnimatorComponent>(entity) != nullptr;
+}
+
+// the player's states in list order (none when it hands over to an Animator)
+static std::vector<std::string> playerIndexedStates(Scene* scene, Entity entity, const AnimationPlayerComponent& player){
+    return playerHandsOver(scene, entity, player) ? std::vector<std::string>() : anim::playerStateNames(player.clips);
+}
+
+static bool playerHasState(Scene* scene, Entity entity, AnimationPlayerComponent& player, const std::string& name){
+    if (playerHandsOver(scene, entity, player)){
+        // a controller's state ("Layer.State" or "State")
+        anim::AnimatorInstance* instance = scene->getSystem<AnimatorSystem>()->instance(entity);
+        return instance && instance->controller && instance->controller->findState(name, -1) >= 0;
+    }
     std::vector<std::string> names = anim::playerStateNames(player.clips);
     return std::find(names.begin(), names.end(), name) != names.end();
+}
+
+// plays a player state with a fade: an Animator transitions to it (CrossFadeInFixedTime)
+static void playPlayerState(Scene* scene, Entity entity, AnimationPlayerComponent& player, const std::string& name, float fadeTime,
+                            const std::string& who){
+    if (playerHandsOver(scene, entity, player)){
+        AnimationPlayer(scene, entity).play(name, fadeTime);
+        return;
+    }
+    anim::playState(player, name, fadeTime, who);
+}
+
+// the player gives way to the model's entity animations (an Animator it hands over to stops)
+static void fadeOutPlayer(Scene* scene, Entity entity, AnimationPlayerComponent& player, float fadeTime){
+    if (playerHandsOver(scene, entity, player)){
+        AnimationPlayer(scene, entity).stop();
+        return;
+    }
+    anim::fadeOutStates(player, fadeTime);
 }
 
 // every running entity animation of the model fades out (except `keep`)
@@ -198,9 +239,9 @@ void Model::playAnimation(int index, float fadeTime){
     // with an Animation Player an index is one of its states first (as a name is); an index past
     // its states is the entity animation of that index, which the player's states make room for
     if (AnimationPlayerComponent* player = findModelPlayer(scene, entity)){
-        std::vector<std::string> names = anim::playerStateNames(player->clips);
+        std::vector<std::string> names = playerIndexedStates(scene, entity, *player);
         if (index >= 0 && index < (int)names.size()){
-            anim::playState(*player, names[(size_t)index], fadeTime, getName());
+            playPlayerState(scene, entity, *player, names[(size_t)index], fadeTime, getName());
             fadeOutModelAnimations(scene, model, NULL_ENTITY, fadeTime);
             return;
         }
@@ -208,7 +249,7 @@ void Model::playAnimation(int index, float fadeTime){
             Log::error("Playing non-existent animation: '%s' has no Animation Player state or animation %i", getName().c_str(), index);
             return;
         }
-        anim::fadeOutStates(*player, fadeTime);
+        fadeOutPlayer(scene, entity, *player, fadeTime);
     }
 
     playModelEntityAnimation(scene, model, index, fadeTime);
@@ -216,7 +257,7 @@ void Model::playAnimation(int index, float fadeTime){
 
 void Model::playAnimation(int index){
     AnimationPlayerComponent* player = findModelPlayer(scene, entity);
-    if (player && index >= 0 && index < (int)player->clips.size()){
+    if (player && index >= 0 && index < (int)playerIndexedStates(scene, entity, *player).size()){
         playAnimation(index, player->defaultFadeTime);
         return;
     }
@@ -241,8 +282,8 @@ void Model::playAnimation(const std::string& name, float fadeTime){
     // a state of the Animation Player first; else the entity animation of that name, which the
     // player's states then make room for
     AnimationPlayerComponent* player = findModelPlayer(scene, entity);
-    if (player && playerHasState(*player, name)){
-        anim::playState(*player, name, fadeTime, getName());
+    if (player && playerHasState(scene, entity, *player, name)){
+        playPlayerState(scene, entity, *player, name, fadeTime, getName());
         fadeOutModelAnimations(scene, model, NULL_ENTITY, fadeTime);
         return;
     }
@@ -250,7 +291,7 @@ void Model::playAnimation(const std::string& name, float fadeTime){
     int index = findModelAnimationIndex(scene, model, name);
     if (index >= 0){
         if (player){
-            anim::fadeOutStates(*player, fadeTime);
+            fadeOutPlayer(scene, entity, *player, fadeTime);
         }
         playModelEntityAnimation(scene, model, index, fadeTime);
         return;
@@ -263,7 +304,7 @@ void Model::playAnimation(const std::string& name){
     ModelComponent& model = getComponent<ModelComponent>();
 
     AnimationPlayerComponent* player = findModelPlayer(scene, entity);
-    if (player && playerHasState(*player, name)){
+    if (player && playerHasState(scene, entity, *player, name)){
         playAnimation(name, player->defaultFadeTime);
         return;
     }
@@ -272,7 +313,7 @@ void Model::playAnimation(const std::string& name){
     if (index >= 0){
         const float fadeTime = scene->getComponent<AnimationComponent>(model.animations[index]).defaultFadeTime;
         if (player){
-            anim::fadeOutStates(*player, fadeTime);
+            fadeOutPlayer(scene, entity, *player, fadeTime);
         }
         playModelEntityAnimation(scene, model, index, fadeTime);
         return;
@@ -285,7 +326,7 @@ void Model::stopAnimations(float fadeTime){
     ModelComponent& model = getComponent<ModelComponent>();
 
     if (AnimationPlayerComponent* player = findModelPlayer(scene, entity)){
-        anim::fadeOutStates(*player, fadeTime);
+        fadeOutPlayer(scene, entity, *player, fadeTime);
     }
 
     for (Entity animEntity : model.animations){
@@ -306,6 +347,48 @@ void Model::stopAnimations(float fadeTime){
 
 PoseAnimator Model::getPoseAnimator(){
     return PoseAnimator(scene, entity);
+}
+
+ModelHumanoidInfo Model::getHumanoidInfo() const{
+    ModelHumanoidInfo info;
+    const ModelComponent* model = scene ? scene->findComponent<ModelComponent>(entity) : nullptr;
+    if (!model || model->bonesIdMapping.empty()) return info;
+    info.valid = true;
+    // the sidecar's Animation Type, even when the map does not validate
+    std::string stamp;
+    pose::HumanoidOverrides overrides;
+    if (pose::humanoidSidecarStamp(model->filename, stamp, nullptr) && !stamp.empty()){
+        std::vector<std::string> warnings;
+        if (pose::parseHumanoidOverrides(stamp, overrides, warnings, nullptr)){
+            info.animationType = pose::animationTypeName(overrides.animationType.value_or(pose::AnimationType::Generic));
+        }else{
+            overrides = pose::HumanoidOverrides();
+        }
+    }
+    pose::ModelRigInfo rig;
+    std::vector<Entity> bones;
+    std::string error;
+    if (!pose::buildModelRig(scene, entity, rig, bones, nullptr, &error)){
+        info.error = error;
+        // what is missing from the map auto-detect and the sidecar's overrides give
+        pose::Skeleton skeleton;
+        if (pose::buildSkeleton(scene, entity, skeleton, bones)){
+            pose::HumanoidMap map;
+            std::string ignored;
+            pose::resolveHumanoid(skeleton, overrides, map, &ignored, nullptr);
+            for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
+                if (map.bones[(size_t)s].empty()) info.missing.push_back(pose::humanBoneName(pose::boneAt(s)));
+            }
+        }
+        return info;
+    }
+    info.humanoid = true;
+    info.humanScale = rig.rig->humanScale();
+    for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
+        if (rig.humanoid.bones[(size_t)s].empty()) info.missing.push_back(pose::humanBoneName(pose::boneAt(s)));
+    }
+    info.extraMapped = rig.extra.mappedCount();
+    return info;
 }
 
 Bone Model::getBone(const std::string& name){

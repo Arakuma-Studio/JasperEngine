@@ -125,7 +125,8 @@ namespace jasperengine::editor {
         ImVec2 canvasEngineScale(uint32_t sceneId) const;
         float canvasDpi(uint32_t sceneId) const;
         void toEngineCanvas(uint32_t sceneId, float& x, float& y) const;
-        
+
+
     public:
         // The ImGui id of Prefab Mode's tab: one tab, whichever stage it shows
         static constexpr const char* PREFAB_STAGE_WINDOW_ID = "###PrefabMode";

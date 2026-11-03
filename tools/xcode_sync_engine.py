@@ -14,11 +14,17 @@
 # Headers phase that has ActionSystem.h. Object ids are "4A534E47" + 16 hex of the sha1 of the
 # kind and path: deterministic, and two branches adding different files do not collide.
 #
-# Only core/ is compared: the libraries (libs/) and the HTML UI compat layer have their own sync
-# scripts (tools/htmlui/xcode_sync_*.py) and their own source lists. The exception is the headers
-# of LIBRARY_HEADER_DIRECTORIES: the project finds headers through its header map, which knows the
-# files it references, so a header added there (sokol_gpu_timer.h, sokol_async.h) failed the Apple
-# builds at compile time. They get a reference in their group and no build phase, as sokol_gfx.h.
+# Only core/ is compared (and APPLE_ENGINE_SOURCES), plus the libraries listed in LIBRARIES (their
+# CMake add_library list against their own two targets, e.g. SoLoud's filters: soloud-ios/-macos);
+# the HTML UI libraries and compat layer have their own sync scripts (tools/htmlui/xcode_sync_*.py).
+# The exception is the headers of LIBRARY_HEADER_DIRECTORIES: the project finds headers through its
+# header map, which knows the files it references, so a header added there (sokol_gpu_timer.h,
+# sokol_async.h) failed the Apple builds at compile time. They get a reference in their group and no
+# build phase, as sokol_gfx.h.
+# It also makes both app targets link APP_FRAMEWORKS explicitly: the engine's Objective-C++ sources
+# (.mm, and miniaudio compiled as Objective-C++) do not autolink their frameworks (clang's -fmodules
+# covers C and Objective-C only), so without them the app links only when another library happens
+# to pull them in (the iOS app's Google ads frameworks did; the macOS app and ad-free exports failed).
 
 import hashlib
 import os
@@ -37,6 +43,26 @@ ANCHOR_HEADER = "core/subsystem/ActionSystem.h"
 # header-only directories (no .cpp of theirs in the CMake list)
 HEADER_DIRECTORIES = ["core/component"]
 
+# platform sources outside JASPERENGINE_SRCS that both Apple engine targets compile (CMake picks
+# them per platform): the HTTP client's NSURLSession backend, the video backend, the native bridge's
+# platform layer and its Objective-C helper (JasperNative.h, which plugin code imports)
+APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm", "platform/apple/AVFoundationBackend.mm",
+                        "platform/apple/NativePlatformApple.mm", "platform/apple/JasperNative.m"]
+
+# libraries whose CMake add_library(...) source list the project's targets of the anchor follow:
+# (CMakeLists.txt relative to engine/, the source prefix relative to engine/, the anchor source)
+LIBRARIES = [
+    ("libs/soloud/CMakeLists.txt", "libs/soloud", "libs/soloud/src/core/soloud_filter.cpp"),
+]
+
+# the app targets and the system frameworks every engine build of them needs (AVFoundation: miniaudio's
+# iOS audio session, the video backend; CoreMedia/CoreVideo: the video backend's sample and pixel buffers;
+# AudioToolbox: miniaudio's Core Audio backend)
+APP_TARGETS = ["JasperEngine iOS", "JasperEngine macOS"]
+APP_FRAMEWORKS = ["AVFoundation", "AudioToolbox", "CoreMedia", "CoreVideo"]
+# the group of the project's system framework references (GameController.framework is in it)
+FRAMEWORK_GROUP_ANCHOR = "GameController.framework"
+
 # library directories whose headers the engine includes by name (referenced, in no phase)
 LIBRARY_HEADER_DIRECTORIES = ["libs/sokol"]
 
@@ -49,7 +75,8 @@ def object_id(kind, path):
 
 def cmake_sources():
     with open(CMAKE, encoding="utf-8") as f:
-        text = f.read()
+        # (comments dropped: a ")" in one must not end the list)
+        text = re.sub(r"#[^\n]*", "", f.read())
     start = text.index("set(JASPERENGINE_SRCS")
     end = text.index(")", start)
     sources = []
@@ -57,6 +84,16 @@ def cmake_sources():
         if token.startswith("core/") and token.endswith(".cpp"):
             sources.append(token)
     return sources
+
+
+def library_sources(cmake, prefix):
+    """the .c/.cpp of the first add_library(...) of engine/<cmake>, as paths relative to engine/"""
+    with open(os.path.join(ENGINE, cmake), encoding="utf-8") as f:
+        text = f.read()
+    start = text.index("add_library(")
+    end = text.index(")", start)
+    return [prefix + "/" + token for token in text[start + len("add_library("):end].split()
+            if token.endswith((".c", ".cpp"))]
 
 
 def unquote(value):
@@ -76,7 +113,7 @@ def parse_project(lines):
             i += 1
             continue
         oid, comment, rest = m.group(1), m.group(2), m.group(3)
-        obj = {"comment": comment, "line": i, "children": [], "files": []}
+        obj = {"comment": comment, "line": i, "children": [], "files": [], "buildPhases": []}
         if rest.rstrip().endswith("};"):
             body = rest
             obj["end"] = i
@@ -93,7 +130,7 @@ def parse_project(lines):
         fm = re.search(r"\bfileRef = ([0-9A-F]{24})", body)
         if fm:
             obj["fileRef"] = fm.group(1)
-        for list_key, out in (("children", "children"), ("files", "files")):
+        for list_key, out in (("children", "children"), ("files", "files"), ("buildPhases", "buildPhases")):
             lm = re.search(list_key + r" = \((.*?)\);", body, re.S)
             if lm:
                 obj[out] = re.findall(r"([0-9A-F]{24}) /\*", lm.group(1))
@@ -165,26 +202,33 @@ def analyse():
     source_phases = phase_containing(objects, anchor_ref, "PBXSourcesBuildPhase")
     header_phases = phase_containing(objects, by_path[ANCHOR_HEADER][0], "PBXHeadersBuildPhase")
 
-    missing = []   # (rel path, what is missing)
-    for source in cmake_sources():
-        refs = by_path.get(source, [])
-        if not refs:
-            missing.append((source, "file"))
-        else:
-            for phase in source_phases:
-                if not any(objects.get(b, {}).get("fileRef") in refs for b in objects[phase]["files"]):
-                    missing.append((source, "phase " + phase))
+    missing = []   # (rel path, what is missing, the Sources phases the file belongs to)
+    source_sets = [(cmake_sources() + APPLE_ENGINE_SOURCES, source_phases)]
+    for cmake, prefix, anchor in LIBRARIES:
+        phases = phase_containing(objects, by_path[anchor][0], "PBXSourcesBuildPhase")
+        if len(phases) != 2:
+            raise SystemExit("expected 2 Sources phases with %s, found %d" % (anchor, len(phases)))
+        source_sets.append((library_sources(cmake, prefix), phases))
+    for sources, phases in source_sets:
+        for source in sources:
+            refs = by_path.get(source, [])
+            if not refs:
+                missing.append((source, "file", phases))
+            else:
+                for phase in phases:
+                    if not any(objects.get(b, {}).get("fileRef") in refs for b in objects[phase]["files"]):
+                        missing.append((source, "phase " + phase, phases))
     # the headers of every directory with a listed source (header-only ones too)
     for directory in sorted({os.path.dirname(s) for s in cmake_sources()} | set(HEADER_DIRECTORIES)):
         for name in sorted(os.listdir(os.path.join(ENGINE, directory))):
             header = directory + "/" + name
             if name.endswith(".h") and header not in by_path:
-                missing.append((header, "file"))
+                missing.append((header, "file", source_phases))
     for directory in LIBRARY_HEADER_DIRECTORIES:
         for name in sorted(os.listdir(os.path.join(ENGINE, directory))):
             header = directory + "/" + name
             if name.endswith(".h") and header not in by_path:
-                missing.append((header, "reference"))
+                missing.append((header, "reference", source_phases))
     return lines, objects, by_path, group_dirs, source_phases, header_phases, missing
 
 
@@ -244,38 +288,83 @@ def insert_object(lines, objects, isa, line):
     raise SystemExit("no %s section" % isa)
 
 
+def missing_frameworks(objects):
+    """[(framework, target name, Frameworks phase id)] the app targets do not link"""
+    result = []
+    for tid, target in objects.items():
+        if target.get("isa") != "PBXNativeTarget" or target.get("comment") not in APP_TARGETS:
+            continue
+        phases = [pid for pid in target.get("buildPhases", []) if objects.get(pid, {}).get("isa") == "PBXFrameworksBuildPhase"]
+        if len(phases) != 1:
+            raise SystemExit("expected one Frameworks phase in %s, found %d" % (target.get("comment"), len(phases)))
+        linked = {objects.get(objects.get(b, {}).get("fileRef"), {}).get("comment") for b in objects[phases[0]]["files"]}
+        for framework in APP_FRAMEWORKS:
+            if framework + ".framework" not in linked:
+                result.append((framework, target.get("comment"), phases[0]))
+    return result
+
+
+def add_frameworks(lines, objects, missing):
+    for framework, target, phase in missing:
+        name = framework + ".framework"
+        refs = [oid for oid, o in objects.items() if o.get("isa") == "PBXFileReference" and o.get("comment") == name]
+        if refs:
+            ref = refs[0]
+        else:
+            ref = object_id("fwref", name)
+            insert_object(lines, objects, "PBXFileReference",
+                          "\t\t%s /* %s */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = %s; path = System/Library/Frameworks/%s; sourceTree = SDKROOT; };"
+                          % (ref, name, name, name))
+            anchor = [oid for oid, o in objects.items() if o.get("isa") == "PBXFileReference" and o.get("comment") == FRAMEWORK_GROUP_ANCHOR]
+            group = [gid for gid, o in objects.items() if o.get("isa") == "PBXGroup" and anchor and anchor[0] in o["children"]]
+            if not group:
+                raise SystemExit("no group holds %s" % FRAMEWORK_GROUP_ANCHOR)
+            add_child(lines, objects, group[0], ref, name)
+        build = object_id("fw", target + ":" + name)
+        label = "%s in Frameworks" % name
+        insert_object(lines, objects, "PBXBuildFile",
+                      "\t\t%s /* %s */ = {isa = PBXBuildFile; fileRef = %s /* %s */; };" % (build, label, ref, name))
+        add_child(lines, objects, phase, build, label, key="files")
+
+
 def main():
     check = "--check" in sys.argv
     lines, objects, by_path, group_dirs, source_phases, header_phases, missing = analyse()
     if len(source_phases) != 2:
         raise SystemExit("expected 2 engine Sources phases with %s, found %d" % (ANCHOR_SOURCE, len(source_phases)))
-    if not missing:
-        print("Xcode project lists every engine source of engine/CMakeLists.txt")
+    frameworks = missing_frameworks(objects)
+    if not missing and not frameworks:
+        print("Xcode project lists every engine source of engine/CMakeLists.txt (and of the LIBRARIES), "
+              "and the app targets link " + ", ".join(APP_FRAMEWORKS))
         return 0
     if check:
         print("missing from the Xcode project (run python3 tools/xcode_sync_engine.py):")
-        for path, what in missing:
+        for path, what, _ in missing:
             print("  %s (%s)" % (path, what))
+        for framework, target, _ in frameworks:
+            print("  %s.framework (not linked by %s)" % (framework, target))
         return 1
 
-    for path, what in missing:
+    for path, what, set_phases in missing:
         name = os.path.basename(path)
         is_header = path.endswith(".h")
         if what in ("file", "reference"):
             gid = group_for_directory(lines, objects, group_dirs, os.path.dirname(path))
             ref = object_id("ref", path)
-            file_type = "sourcecode.c.h" if is_header else "sourcecode.cpp.cpp"
+            file_type = "sourcecode.c.h" if is_header else ("sourcecode.cpp.objcpp" if path.endswith(".mm") else
+                                                           "sourcecode.c.c" if path.endswith(".c") else
+                                                           "sourcecode.c.objc" if path.endswith(".m") else "sourcecode.cpp.cpp")
             insert_object(lines, objects, "PBXFileReference",
                           "\t\t%s /* %s */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = %s; path = %s; sourceTree = \"<group>\"; };"
                           % (ref, name, file_type, name))
             add_child(lines, objects, gid, ref, name)
             by_path.setdefault(path, []).append(ref)
-            phases = [] if what == "reference" else header_phases if is_header else source_phases
+            phases = [] if what == "reference" else header_phases if is_header else set_phases
         else:
             ref = by_path[path][0]
             phases = [what.split()[1]]
         for phase in phases:
-            index = source_phases.index(phase) if phase in source_phases else 0
+            index = set_phases.index(phase) if phase in set_phases else 0
             kind = "hdr" if is_header else "src%d" % (index + 1)
             build = object_id(kind, path)
             label = "%s in %s" % (name, "Headers" if is_header else "Sources")
@@ -283,9 +372,14 @@ def main():
                           "\t\t%s /* %s */ = {isa = PBXBuildFile; fileRef = %s /* %s */; };" % (build, label, ref, name))
             add_child(lines, objects, phase, build, label, key="files")
 
+    if frameworks:
+        reparse(lines, objects)
+        add_frameworks(lines, objects, missing_frameworks(objects))
+
     with open(PROJECT, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
-    print("added to the Xcode project: " + ", ".join(sorted({p for p, _ in missing})))
+    added = sorted({p for p, _, _ in missing}) + ["%s.framework in %s" % (f, t) for f, t, _ in frameworks]
+    print("added to the Xcode project: " + ", ".join(added))
     return 0
 
 

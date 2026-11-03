@@ -11,7 +11,7 @@
 using namespace jasperengine;
 
 Scene scene;
-Camera camera(&scene);
+Camera sceneCamera(&scene);
 Primitive floorBox(&scene);
 Primitive box(&scene);
 Light sun(&scene);
@@ -22,10 +22,10 @@ JASPERENGINE_INIT void init(){
     Engine::setScene(&scene);
     scene.setBackgroundColor(0.2f, 0.25f, 0.35f);
 
-    camera.setType(CameraType::CAMERA_PERSPECTIVE);
-    camera.setPosition(0.0f, 2.0f, 6.0f);
-    camera.setTarget(Vector3(0.0f, 0.5f, 0.0f));
-    scene.setCamera(&camera);
+    sceneCamera.setType(CameraType::CAMERA_PERSPECTIVE);
+    sceneCamera.setPosition(0.0f, 2.0f, 6.0f);
+    sceneCamera.setTarget(Vector3(0.0f, 0.5f, 0.0f));
+    scene.setCamera(&sceneCamera);
 
     floorBox.createBox(8.0f, 0.1f, 8.0f);
     floorBox.setColor(0.6f, 0.6f, 0.6f);

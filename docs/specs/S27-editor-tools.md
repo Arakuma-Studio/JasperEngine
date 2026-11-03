@@ -800,3 +800,42 @@ and `using AnimationCurve = Curve;`. `MinMaxCurve` must have
 - Unverified here: Windows and macOS (the screen eyedropper's BitBlt / NSColorSampler, the
   Shift-at-launch readers, D3D11 and Metal rect readback compile paths), manual checks of
   docs/editor/color-picker.md and curves.md, R36-R38 budgets on the benchmark server.
+
+## 12. Upstream absorption (sync #4)
+
+origin/main had its own `AnimationCurve` and `Gradient` (lines and trails, its version 2
+particles) with a YAML form, Lua bindings and an ImGui curve/gradient field. S27's `Curve` and
+`Gradient` are the main version: everything that used upstream's now uses S27's, upstream's files
+read losslessly, and its types are gone (`jasperengine::upcurve`, `math/AnimationCurve`,
+`math/Gradient`, `window/widget/CurveField*`, `GradientField*`, `MinMaxFields`).
+
+- **Line and Trail Renderers**: `widthCurve` is a `Curve`, `colorGradient` a `Gradient`
+  (reflected fields with the curve and gradient drawers: the Inspector, `set_properties`,
+  `get_entity`, prefab overrides and undo go through S08/S24 like any field). Trail renderers'
+  `customShader` is an asset reference (GUID, rename-following, Fix references).
+  `set_shape_points` `colors` on a line set the gradient's keys (linear in, sRGB stored).
+- **Its form reads too** (CurveJson's upstream dialect, so YAML, MCP and the exported code take
+  it): curves as a number, `{keys: [[t, v(, in, out)]], pre, post}` (wraps clamp, loop, repeat,
+  ping_pong; `inf` / `.inf` / null steps) or `{time, value, inTangent, outTangent}` key maps;
+  gradients as one colour, `{mode, colors: [[t, "#RRGGBB" | [r, g, b] linear]], alphas}` (hex is
+  sRGB, arrays are linear and become their sRGB encoding, values above 1 kept). Both blend in
+  sRGB, so the gradients look the same. Scene format 6 -> 7 and prefab 7 -> 8 (after S21's 5 -> 6 and 6 -> 7) rewrite the Line
+  and Trail Renderers' curves and gradients in S27's form (an older editor then refuses the
+  file instead of misreading it).
+- **Curve** gained `normalize()` (drops non-finite keys, sorts, one key per time), `isConstant()`,
+  `valueRange()`, `firstTime()`/`lastTime()`; `addKey`/`moveKey` refuse non-finite keys and NaN
+  tangents, `removeKey` returns whether it removed one, a NaN time evaluates to the first key.
+  **Gradient** gained `normalize()` (the first 7 keys by time and the last past 8).
+- **Editor**: `curveops::zoom` and `curveops::pan` (the curve editor's wheel and drag) and
+  `widget/GradientEditorOps` (the gradient window's marker hits, key add / move / remove) are
+  pure functions now, from upstream's field logic; the Default swatch library has upstream's
+  gradient presets (White, Fade Out, Fade In, Black to White, White to Black, Rainbow).
+- **Lua**: `AnimationCurve.constant(v)` (or `(t0, t1, v)`), `curve:addKey(t, v, in, out)`,
+  `moveKey(i, t, v)`, `keyCount`, `keys` (get and set), `CurveKey` (= `Keyframe`), `CurveWrap`
+  (= `WrapMode`); `Gradient:setKeys` takes `GradientColorKey`s or `{time, Vector3}` tables and
+  returns false (with a warning) past 8 keys; `colorKeyCount`, `alphaKeyCount`, `getColorKey`,
+  `getAlphaKey`.
+- **Tests**: upstream's AnimationCurveTest and GradientTest run on S27's types
+  (`editor/tests/engine/math/`), its CurveFieldLogicTest on CurveEditorOps, GradientEditorOps
+  and the swatch presets (`editor/tests/widget/CurveFieldLogicTest.cpp`), LineRendererStreamTest
+  and LineRibbonBuilderTest on S27's curves, with upstream-written files read losslessly.

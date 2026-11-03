@@ -303,8 +303,12 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
             if (!json["track"].is_number_integer()) return false;
             const int track = json["track"].get<int>();
             if (track < 0 || track >= (int)doc->data().tracks.size()) return false;
-            id.path = doc->data().tracks[(size_t)track].path;
-            id.channel = doc->data().tracks[(size_t)track].channel;
+            // the track's own identity (property tracks: their component and property)
+            const ClipTrackData& like = doc->data().tracks[(size_t)track];
+            AnimationClipController::KeyRef ref;
+            if (!AnimationClipController::findKey(doc->data(), like, id.time, ref)) return false;
+            id = AnimationWindowClip::keyIdOf(like, doc->data().tracks[ref.track].keys[ref.key].time);
+            return true;
         }else{
             if (!json.contains("path") || !json["path"].is_string() || !json.contains("channel") || !json["channel"].is_string()) return false;
             id.path = json["path"].get<std::string>();

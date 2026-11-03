@@ -270,6 +270,7 @@ namespace {
         JE_FIELD(PointsComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(PointsComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
+        JE_FIELD(PointsComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(PointsComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
@@ -286,11 +287,29 @@ namespace {
         JE_FIELD(LineRendererComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(LineRendererComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
+        JE_FIELD(LineRendererComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(LineRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
         JE_FIELD(LineRendererComponent, lines, .flags = ListWhole, .updateFlags = kLines),
+        // upstream (lines and trails): the polyline and its ribbon (S27's Curve and Gradient)
+        JE_FIELD(LineRendererComponent, mode, .enumDesc = &enums::kLineRendererMode, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, positions, .ops = &ops::PushBackList<Vector3>, .flags = NoDefault | ListWhole | ListElements, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, loop, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, useWorldSpace, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, widthMultiplier, .updateFlags = kLines, .min = 0.0f),
+        JE_FIELD(LineRendererComponent, widthCurve, .updateFlags = kLines, .tooltip = "The width over the line's length (0 to 1), times Width Multiplier.",
+                 .drawer = "curve"),
+        JE_FIELD(LineRendererComponent, widthUnit, .enumDesc = &enums::kLineWidthUnit, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, colorGradient, .updateFlags = kLines, .tooltip = "The polyline's colour over its length (0 to 1).",
+                 .drawer = "gradient"),
+        JE_FIELD(LineRendererComponent, numCornerVertices, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, numCapVertices, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, alignment, .enumDesc = &enums::kLineAlignment),
+        JE_FIELD(LineRendererComponent, textureMode, .enumDesc = &enums::kLineTextureMode, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, textureScale, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, sortPriority),
     };
 
     // ---------------------------------------------------------------- Mesh instancing
@@ -384,7 +403,8 @@ namespace {
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::customSchema};
 
     constexpr FieldDesc kScriptFields[] = {
-        JE_FIELD(ScriptComponent, scripts, .ops = &kScriptEntriesOps, .flags = NoDefault | Hidden),
+        // an enabled change runs onEnable / onDisable in Play (Catalog::updateEntity: UpdateFlags_Script_Enabled, as upstream's Catalog)
+        JE_FIELD(ScriptComponent, scripts, .ops = &kScriptEntriesOps, .flags = NoDefault | Hidden, .updateFlags = UpdateFlags_Script_Enabled),
     };
 
     // A script property's value and its default (the script's declared one)
@@ -428,7 +448,7 @@ namespace {
         if (pos + 1 >= path.size() || path[pos] != ']' || path[pos + 1] != '.' || index >= script.scripts.size()) return PropertyData();
         ScriptEntry& entry = script.scripts[index];
         const std::string field = path.substr(pos + 2);
-        if (field == "enabled") return {PropertyType::Bool, UpdateFlags_None, nullptr, &entry.enabled};
+        if (field == "enabled") return {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, &entry.enabled};
         for (ScriptProperty& prop : entry.properties) {
             if (prop.name == field) return scriptProperty(prop);
             if (prop.type == ScriptPropertyType::EntityReference && field == prop.name + ".sceneId") return sceneIdProperty(prop);
@@ -442,7 +462,7 @@ namespace {
         for (size_t i = 0; i < script.scripts.size(); i++) {
             ScriptEntry& entry = script.scripts[i];
             const std::string prefix = "scripts[" + std::to_string(i) + "].";
-            out[prefix + "enabled"] = {PropertyType::Bool, UpdateFlags_None, nullptr, &entry.enabled};
+            out[prefix + "enabled"] = {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, &entry.enabled};
             for (ScriptProperty& prop : entry.properties) {
                 out[prefix + prop.name] = scriptProperty(prop);
                 if (prop.type == ScriptPropertyType::EntityReference) out[prefix + prop.name + ".sceneId"] = sceneIdProperty(prop);
@@ -478,7 +498,7 @@ namespace {
     constexpr const char* kPolygonExtraKeys[] = {"points"};
 
     // the keys its codec reads
-    constexpr const char* kMeshKnownKeys[] = {"aabb", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodBias", "lodEnabled", "morphTargetCount", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
+    constexpr const char* kMeshKnownKeys[] = {"mirroredWinding", "aabb", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodBias", "lodEnabled", "morphTargetCount", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
 
 }
 
@@ -511,7 +531,7 @@ const ComponentDesc kModelDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kPointsKnownKeys[] = {"autoTransparency", "blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "framesRect", "maxPoints", "points", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil", "texture", "transparent"};
+    constexpr const char* kPointsKnownKeys[] = {"autoTransparency", "blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "framesRect", "maxPoints", "points", "shaderFeatures", "shaderGlobalBindings", "shaderTextures", "shaderUniforms", "stencil", "texture", "transparent"};
 
 }
 
@@ -528,7 +548,23 @@ const ComponentDesc kPointsDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kLineRendererKnownKeys[] = {"blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "lines", "maxLines", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil"};
+    constexpr const char* kLineRendererKnownKeys[] = {"alignment", "blendMode", "colorGradient", "colorWrite", "customShader", "depthWrite", "enabled", "lines", "loop",
+        "maxLines", "mode", "numCapVertices", "numCornerVertices", "positions", "shaderFeatures", "shaderGlobalBindings", "shaderTextures", "shaderUniforms",
+        "sortPriority", "stencil", "textureMode", "textureScale", "useWorldSpace", "widthCurve", "widthMultiplier", "widthUnit"};
+
+}
+
+namespace {
+
+    // every point of a polyline as its own property ("positions[2]": Vector3), as the Inspector
+    // and MCP name them (origin/main's catalog listed them so)
+    void lineExtraProperties(void* comp, std::map<std::string, PropertyData>& out) {
+        if (!comp) return;
+        LineRendererComponent& lines = *static_cast<LineRendererComponent*>(comp);
+        for (size_t i = 0; i < lines.positions.size(); i++) {
+            out["positions[" + std::to_string(i) + "]"] = PropertyData{PropertyType::Vector3, UpdateFlags_Lines, nullptr, &lines.positions[i]};
+        }
+    }
 
 }
 
@@ -541,6 +577,7 @@ const ComponentDesc kLineRendererDesc{
     .decodeApply = DecodeApply::MarkOnly,
     .codegen = JE_FACTORY_CODEGEN(createLineRendererComponent),
     .extraKeys = kLineRendererKnownKeys,
+    .extraProperties = &lineExtraProperties,
 };
 
 namespace {

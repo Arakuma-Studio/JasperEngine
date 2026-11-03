@@ -20,8 +20,8 @@ to commit, the few things a script has to change, and how the upgrade is tested
 
 | File | Change | Why |
 |---|---|---|
-| `*.scene` | `formatVersion: 5` written first, a `guid` | scene formats 0 -> 5 ([data-safety](data-safety.md)): a version stamp; light shadow bias in shadow texels (S10: a light's Bias is reset to 1); the scene's shadow quality Low (the old default) becomes Auto; the old Particle System actions become inline effects on their targets (S20); the derived transform keys (`worldPosition`, `worldRotation`, `worldScale`, `localMatrix`, `modelMatrix`, `normalMatrix`) are no longer written (S29); splines (S18: nothing to convert) |
-| `*.prefab` | `version: 6` | prefab versions 3 -> 6: the same shadow bias, particle and transform changes; a prefab is written again by the first save of a scene that uses it |
+| `*.scene` | `formatVersion: 7` written first, a `guid` | scene formats 0 -> 7 ([data-safety](data-safety.md)): a version stamp; light shadow bias in shadow texels (S10: a light's Bias is reset to 1); the scene's shadow quality Low (the old default) becomes Auto; the old Particle System actions become inline effects on their targets (S20), and so do main's module (`version: 2`) Particle Systems, every module value kept (S20, Upstream absorption); the derived transform keys (`worldPosition`, `worldRotation`, `worldScale`, `localMatrix`, `modelMatrix`, `normalMatrix`) are no longer written (S29); splines (S18: nothing to convert); an Animation Player's `controller` moves to an Animator on the same GameObject, which plays it while the player is disabled (S21, Upstream absorption); the Line and Trail Renderers' width curves and colour gradients in the editor's curve form (S27, Upstream absorption: the same values) |
+| `*.prefab` | `version: 8` | prefab versions 3 -> 8: the same shadow bias, particle, transform, Animation Player controller and curve changes; a prefab is written again by the first save of a scene that uses it |
 | every asset (`.png`, `.gltf`, `.wav`, `.html`, `.css`, `.lua`, `.poseanim`, ...) | a `<file>.meta` next to it, holding its GUID | S04: references survive renames and moves |
 | references in scenes and prefabs | a `pathGuid` next to every asset path (textures, models, sounds, scripts, clips, documents) | S04 |
 | `project.yaml` | `formatVersion: 1` written first | the project format's version stamp |
@@ -62,7 +62,7 @@ too.
 The upgrade test found these, fixed in this editor (each with a test that failed before):
 
 - **Prefabs stayed at version 3.** A prefab migrated on load was never written again, so it was
-  migrated on every load. A scene's save now writes the migrated prefabs it uses in version 6.
+  migrated on every load. A scene's save now writes the migrated prefabs it uses in version 7.
 - **Old particle scripts stopped.** `ps:isRunning()`, `isStopped()`, `getTimeCount()`, `ps.target`
   and `ps.speed` of the old Particle System action failed with "attempt to call a nil value"; they
   work again, with a deprecation warning.

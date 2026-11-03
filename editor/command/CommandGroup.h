@@ -22,6 +22,8 @@ namespace jasperengine::editor{
         bool applied;
         std::vector<std::string> failures;
         std::function<void(const std::vector<size_t>&)> onFailures;
+        // why the last redo failed (a step's failure(), or a write the write scope refused in it)
+        std::string failureText;
 
         static std::string commandName(const Command* cmd);
 
@@ -37,6 +39,12 @@ namespace jasperengine::editor{
         // false when any command refuses (Command::canUndo/canRedo)
         bool canUndo() const override;
         bool canRedo() const override;
+        // the first command's refusal (util/SafeWrite.h: a path it changes resolving outside
+        // its write root), "" when none refuses
+        std::string undoRefusal() const override;
+        std::string redoRefusal() const override;
+        std::vector<Touched> touchedPaths(bool undo) const override;
+        std::string failure() const override { return failureText; }
 
         bool affectsStructure() const override;
 

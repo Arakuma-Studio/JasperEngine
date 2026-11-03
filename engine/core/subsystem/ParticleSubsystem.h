@@ -58,6 +58,9 @@ namespace jasperengine{
         void draw() override;
         void destroy() override;
         void update(double dt) override;
+        // the time every scene's systems spent simulating since the last call, in milliseconds,
+        // and the particles alive after it (the frame stats' particles_sim_ms line)
+        static double takeFrameSimulation(size_t* alive = nullptr);
 
         void onComponentAdded(Entity entity, ComponentId componentId) override;
         void onComponentRemoved(Entity entity, ComponentId componentId) override;
@@ -67,7 +70,12 @@ namespace jasperengine{
         void pause(Entity entity);
         // stops emitting; clear also removes the particles
         void stop(Entity entity, bool clear);
+        // Unity's Clear: the particles go, it plays on (or stays stopped, or paused)
+        void clear(Entity entity);
         void restart(Entity entity);
+        // every system back to not started, without particles: Play begins as a load does
+        // (Play On Awake plays them; a Scene view preview's play or stop does not carry over)
+        void resetForPlay();
         void emit(Entity entity, uint32_t count, const particles::EmitOverrides* overrides = nullptr);
         // restarts and simulates to `time` at once (a preview scrub uses previewSeek)
         void seek(Entity entity, double time);
@@ -108,7 +116,8 @@ namespace jasperengine{
         // binds (or rebinds) the component's effect; false when there is none to run
         bool ensureEffect(Entity entity, ParticleSystemComponent& particles);
         particles::ParticleSystemState* stateOf(Entity entity, bool load);
-        void prepareInput(ParticleSystemComponent& particles, Transform& transform, particles::EmitterInput& input);
+        void prepareInput(Entity entity, ParticleSystemComponent& particles, Transform& transform, particles::EmitterInput& input);
+        bool bodyVelocity(Entity entity, Vector3& velocity);
         void gatherFields();
         void gatherTerrains();
         void dispatchEvents(ParticleSystemComponent& particles);
@@ -120,6 +129,11 @@ namespace jasperengine{
         static bool sampleTerrain(const void* context, const float point[3], float surface[3], float normal[3]);
 
         particles::ParticleWorld world;
+        // the systems whose stop action runs at the end of this frame (Disable, Destroy, Callback)
+        std::vector<Entity> stopActions;
+        void queueStopAction(Entity entity, particles::ParticleSystemState& state);
+        void checkStopActions();
+        void runStopActions();
         std::vector<particles::EmitterTask> tasks;
         std::vector<Entity> taskEntities;
         std::vector<particles::ForceFieldSample> fields;

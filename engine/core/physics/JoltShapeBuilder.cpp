@@ -22,6 +22,7 @@
 #include "Jolt/Physics/PhysicsSettings.h"
 #include "Jolt/Physics/Collision/Shape/BoxShape.h"
 #include "Jolt/Physics/Collision/Shape/CapsuleShape.h"
+#include "Jolt/Physics/Collision/Shape/ConvexShape.h"
 #include "Jolt/Physics/Collision/Shape/ConvexHullShape.h"
 #include "Jolt/Physics/Collision/Shape/CylinderShape.h"
 #include "Jolt/Physics/Collision/Shape/HeightFieldShape.h"
@@ -41,18 +42,24 @@
 using namespace jasperengine;
 
 namespace {
+#ifdef JASPERENGINE_PHYSICS_3D
 
     Vector3 absScale(const Vector3& scale){
         return Vector3(std::fabs(scale.x), std::fabs(scale.y), std::fabs(scale.z));
     }
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
 
     float maxScaleXZ(const Vector3& scale){
         return std::max(scale.x, scale.z);
     }
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
 
     float maxScaleXYZ(const Vector3& scale){
         return std::max(scale.x, std::max(scale.y, scale.z));
     }
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
     // Jolt's default convex radius, or half the thinnest extent when that is thinner: a box
@@ -63,10 +70,12 @@ namespace {
         return fits ? JPH::cDefaultConvexRadius : std::max(0.0f, 0.5f * thinnestHalfExtent);
     }
 #endif
+#ifdef JASPERENGINE_PHYSICS_3D
 
     void setError(std::string* error, const std::string& message){
         if (error) *error = message;
     }
+#endif
 
 }
 
@@ -160,14 +169,14 @@ void JoltShapeBuilder::ensureJoltGlobalInit(){
 
 // Intentionally leaked: the editor keeps its App (and every Scene) in a static, so
 // ~PhysicsSystem runs during static destruction and must not find these already gone.
-JPH::TempAllocatorImpl& JoltShapeBuilder::sharedPhysicsTempAllocator(){
+JPH::TempAllocator& JoltShapeBuilder::sharedPhysicsTempAllocator(){
     constexpr unsigned int bytes = 10 * 1024 * 1024;
-    static JPH::TempAllocatorImpl* instance = [](){
-        // its block, reserved for the process, in the memory stats
+    static JPH::TempAllocatorImplWithMallocFallback* instance = [](){
+        // its block, reserved for the process, in the memory stats (the malloc fallback is not)
         static memory::TrackedBytes* tracked = new memory::TrackedBytes("Physics.JoltTempAllocator", memory::Residency::Cpu);
         tracked->add(bytes);
         tracked->setCapacity(bytes);
-        return new JPH::TempAllocatorImpl(bytes);
+        return new JPH::TempAllocatorImplWithMallocFallback(bytes);
     }();
     return *instance;
 }
@@ -210,7 +219,7 @@ JPH::ShapeRefC JoltShapeBuilder::buildConvexHullShape(const std::vector<Vector3>
 }
 
 JPH::ShapeRefC JoltShapeBuilder::buildMeshShape(const std::vector<Vector3>& vertices, const std::vector<uint32_t>& indices,
-                                                std::string* error){
+                                                std::string* error, const JPH::PhysicsMaterial* material){
     JPH::VertexList jvertices;
     jvertices.reserve(vertices.size());
     for (const Vector3& vertex : vertices){
@@ -224,6 +233,10 @@ JPH::ShapeRefC JoltShapeBuilder::buildMeshShape(const std::vector<Vector3>& vert
     }
 
     JPH::MeshShapeSettings shape_settings(jvertices, jindices);
+    if (material){
+        // every triangle's material index is 0
+        shape_settings.mMaterials.push_back(material);
+    }
     JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
     if (!shape_result.IsValid()){
         setError(error, "Cannot create mesh shape: " + std::string(shape_result.GetError().c_str()));
@@ -242,7 +255,7 @@ unsigned int JoltShapeBuilder::defaultHeightFieldSamples(const TerrainComponent&
 }
 
 JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComponent& terrain, const Vector3& scale,
-                                                       unsigned int samplesSize, std::string* error){
+                                                       unsigned int samplesSize, std::string* error, const JPH::PhysicsMaterial* material){
     if (terrain.terrainSize <= std::numeric_limits<float>::epsilon()){
         setError(error, "Cannot create heightfield shape for a terrain without size");
         return NULL;
@@ -282,6 +295,10 @@ JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComp
     const JPH::Vec3 terrainScale(spacing * absEntityScale.x, absEntityScale.y, spacing * absEntityScale.z);
 
     JPH::HeightFieldShapeSettings shape_settings(samples.data(), terrainOffset, terrainScale, samplesSize);
+    if (material){
+        // one material: every square uses it (no index list)
+        shape_settings.mMaterials.push_back(material);
+    }
     JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
     if (!shape_result.IsValid()){
         setError(error, "Cannot create heightfield shape: " + std::string(shape_result.GetError().c_str()));
@@ -290,7 +307,19 @@ JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComp
     return shape_result.Get();
 }
 
-JPH::ShapeRefC JoltShapeBuilder::buildColliderShape(Scene* scene, Entity entity, const Collider3D& shapeData, std::string* error){
+JPH::ShapeRefC JoltShapeBuilder::buildColliderShape(Scene* scene, Entity entity, const Collider3D& shapeData, std::string* error,
+                                                    const JPH::PhysicsMaterial* material){
+    JPH::ShapeRefC shape = buildColliderLeaf(scene, entity, shapeData, error, material);
+    // a convex leaf is the collider's only one: it carries the material itself (mesh and
+    // heightfield leaves got it per triangle)
+    if (shape && material && shape->GetType() == JPH::EShapeType::Convex){
+        const_cast<JPH::ConvexShape*>(static_cast<const JPH::ConvexShape*>(shape.GetPtr()))->SetMaterial(material);
+    }
+    return shape;
+}
+
+JPH::ShapeRefC JoltShapeBuilder::buildColliderLeaf(Scene* scene, Entity entity, const Collider3D& shapeData, std::string* error,
+                                                   const JPH::PhysicsMaterial* material){
     const Vector3 entityScale = entityWorldScale(scene, entity);
     const Vector3 absEntityScale = absScale(entityScale);
 
@@ -328,8 +357,8 @@ JPH::ShapeRefC JoltShapeBuilder::buildColliderShape(Scene* scene, Entity entity,
         std::vector<Vector3> points;
 
         if (source == Collider3DSource::RAW_VERTICES){
-            points.resize(shapeData.numVertices);
-            for (size_t i = 0; i < shapeData.numVertices; i++){
+            points.resize(shapeData.vertices.size());
+            for (size_t i = 0; i < shapeData.vertices.size(); i++){
                 points[i] = shapeData.vertices[i] * entityScale;
             }
         }else if (source == Collider3DSource::ENTITY_MESH){
@@ -352,14 +381,24 @@ JPH::ShapeRefC JoltShapeBuilder::buildColliderShape(Scene* scene, Entity entity,
         std::vector<uint32_t> indices;
 
         if (source == Collider3DSource::RAW_MESH){
-            vertices.resize(shapeData.numVertices);
-            for (size_t i = 0; i < shapeData.numVertices; i++){
+            vertices.resize(shapeData.vertices.size());
+            for (size_t i = 0; i < shapeData.vertices.size(); i++){
                 vertices[i] = shapeData.vertices[i] * entityScale;
             }
 
-            int indicesize = int(shapeData.numIndices / 3);
-            for (int i = 0; i < (indicesize * 3); i++){
-                indices.push_back(shapeData.indices[i]);
+            // whole triangles whose corners exist
+            const size_t triangleIndices = (shapeData.indices.size() / 3) * 3;
+            indices.reserve(triangleIndices);
+            for (size_t i = 0; i + 2 < triangleIndices; i += 3){
+                const uint32_t a = shapeData.indices[i], b = shapeData.indices[i + 1], c = shapeData.indices[i + 2];
+                if (a >= vertices.size() || b >= vertices.size() || c >= vertices.size()){
+                    setError(error, "Cannot create mesh shape: triangle " + std::to_string(i / 3) + " has an index past the " +
+                             std::to_string(vertices.size()) + " vertices of 3D Body entity: " + std::to_string(entity));
+                    return NULL;
+                }
+                indices.push_back(a);
+                indices.push_back(b);
+                indices.push_back(c);
             }
             // mirrored by the scale: wound back so the triangles face out again
             if (entityScale.x * entityScale.y * entityScale.z < 0.0f){
@@ -378,7 +417,7 @@ JPH::ShapeRefC JoltShapeBuilder::buildColliderShape(Scene* scene, Entity entity,
             return NULL;
         }
 
-        return buildMeshShape(vertices, indices, error);
+        return buildMeshShape(vertices, indices, error, material);
     }else if (shapeData.type == Collider3DType::HEIGHTFIELD){
         Entity terrainEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
@@ -387,7 +426,7 @@ JPH::ShapeRefC JoltShapeBuilder::buildColliderShape(Scene* scene, Entity entity,
             return NULL;
         }
 
-        return buildHeightFieldShape(scene, *terrain, entityScale, shapeData.samplesSize, error);
+        return buildHeightFieldShape(scene, *terrain, entityScale, shapeData.samplesSize, error, material);
     }
 
     return NULL;

@@ -27,7 +27,8 @@ namespace jasperengine { namespace particles {
         Color,
         Gradient,
         TwoColors,      // Random Between Two Colors
-        TwoGradients    // Random Between Two Gradients
+        TwoGradients,   // Random Between Two Gradients
+        RandomColor     // the gradient at a random point per particle (Unity's Random Color)
     };
 
     // What a curve or gradient is evaluated at
@@ -105,7 +106,7 @@ namespace jasperengine { namespace particles {
         MinMaxGradient() = default;
         explicit MinMaxGradient(const Vector4& c): color(c), colorMax(c) {}
 
-        bool usesGradient() const { return mode == GradientValueMode::Gradient || mode == GradientValueMode::TwoGradients; }
+        bool usesGradient() const { return mode == GradientValueMode::Gradient || mode == GradientValueMode::TwoGradients || mode == GradientValueMode::RandomColor; }
         bool usesRandom() const { return mode == GradientValueMode::TwoColors || mode == GradientValueMode::TwoGradients; }
         bool isWhite() const;
         // linear RGBA at `input` with the random pick

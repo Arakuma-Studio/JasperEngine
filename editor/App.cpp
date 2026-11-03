@@ -21,6 +21,7 @@
 #include "imgui_internal.h"
 #include "Platform.h"
 #include "Backend.h"
+#include "manager/SceneManager.h"
 #include "Engine.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
@@ -28,6 +29,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
 #include "command/UndoTimeline.h"
+#include "command/type/AddComponentCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
@@ -75,6 +77,7 @@
 
 #include "EditorVersion.h"
 #include "Out.h"
+#include "window/HumanoidConvertDialog.h"
 #include "AppSettings.h"
 #include "Theme.h"
 #include "resources/fonts/fa-solid-900_ttf.h"
@@ -93,10 +96,13 @@
 #include "render/preview/PoseRender.h"
 #include "render/preview/VatPreviewRender.h"
 #include "util/FileUtils.h"
+#include "io/UserSettings.h"
+#include "io/UserSettingsStore.h"
 #include "pose/PoseTemplates.h"
 #include "pose/PoseViewport.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "animation/AnimationClipController.h"
+#include "unity/UnityParticleImport.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -186,10 +192,15 @@ editor::App::App(){
     animationWindow = new AnimationWindow(&project);
     poseAnimationWindow = new PoseAnimationWindow(&project);
     animatorWindow = new AnimatorWindow(&project, poseAnimationWindow);
+    avatarWindow = new AvatarWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
+    audioMixerWindow = new AudioMixerWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
+    spriteNormalsWindow = new SpriteNormalsWindow(&project);
+    spriteNormalsWatcher = new SpriteNormalsWatcher(&project);
+    SpriteNormalsWatcher::setActive(spriteNormalsWatcher);
     mcpActivityWindow = new mcp::McpActivityWindow();
     systemsWindow = new SystemsWindow(&project);
     missingAssetsWindow = new MissingAssetsWindow(&project);
@@ -495,6 +506,15 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         const uint32_t sceneId = hasSelectedScene ? selectedSceneId : NULL_PROJECT_SCENE;
         undoLabel = UndoTimeline::undoLabel(sceneId);
         redoLabel = UndoTimeline::redoLabel(sceneId);
+        // the step Undo would take refused the last try (a file it changes resolves out of the
+        // project through a link: the console says which and how to fix it): the menu says so
+        const UndoTimeline::EntryView next = UndoTimeline::nextUndo(sceneId);
+        if (next && next.history && !next.history->undoRefusedLastTry().empty()) undoLabel = "Undo (refused, see the Console)";
+        // the Sprite Normal Map window's paint strokes come first
+        if (lastFocusedWindow == LastFocusedWindow::SpriteNormals && spriteNormalsWindow) {
+            if (spriteNormalsWindow->canUndoPaint()) undoLabel = "Undo Paint Stroke";
+            if (spriteNormalsWindow->canRedoPaint()) redoLabel = "Redo Paint Stroke";
+        }
     }
 
     // Every item below is a catalog command (shortcuts/DefaultCommands.cpp): its shortcut
@@ -568,6 +588,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("edit.stop"),
         menuSeparator(),
         catalogItem("edit.projectSettings"),
+        catalogItem("edit.clearUserSettings"),
         catalogItem("edit.preferences"),
         catalogItem("edit.shortcuts")
     }));
@@ -580,7 +601,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSeparator(),
         catalogItem("assets.createHtmlDocument", "HTML Document"),
         menuSeparator(),
-        catalogItem("assets.createPoseAnimation", "Pose Animation")
+        catalogItem("assets.createAudioMixer", "Audio Mixer"),
+        menuSeparator(),
+        catalogItem("assets.createPoseAnimation", "Pose Animation"),
+        menuSeparator(),
+        catalogItem("assets.createNativePlugin", "Native Plugin...")
     };
     // Animation Clip: once the clip asset task set its hook
     if (animationClipAppHooks().createClipAsset) {
@@ -589,6 +614,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     assetsCreateItems.push_back(catalogItem("assets.createAnimatorController", "Animator Controller"));
     assetsCreateItems.push_back(catalogItem("assets.createAvatarMask", "Avatar Mask"));
     assetsCreateItems.push_back(catalogItem("assets.createAnimationMontage", "Animation Montage"));
+    assetsCreateItems.push_back(catalogItem("assets.createShakePreset", "Shake Preset"));
     assetsCreateItems.push_back(menuSeparator());
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
 
@@ -628,7 +654,16 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.emptyTrash")
     }));
 
-    menu.menus.push_back(menuSubmenu("GameObject", gameObjectMenuItems(selectedScene, canCreate)));
+    // Camera Shaker on the scene's main camera (camera shake spec 9), after the create items
+    std::vector<PlatformMenuItem> gameObjectItems = gameObjectMenuItems(selectedScene, canCreate);
+    {
+        const Entity mainCamera = hasSelectedScene ? project.getGameCamera(selectedSceneId) : NULL_ENTITY;
+        const bool canAddShaker = hasSelectedScene && !isProjectBusy && mainCamera != NULL_ENTITY && selectedScene->scene &&
+                                  !selectedScene->scene->findComponent<CameraShakerComponent>(mainCamera);
+        gameObjectItems.push_back(menuSeparator());
+        gameObjectItems.push_back(menuCommand(AppMenuCommand::AddCameraShakerToMainCamera, "Add Camera Shaker to Main Camera", canAddShaker));
+    }
+    menu.menus.push_back(menuSubmenu("GameObject", std::move(gameObjectItems)));
 
     menu.menus.push_back(menuSubmenu("Component", {
         catalogItem("component.add", "Add...")
@@ -654,6 +689,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.animator", windowMenuLabel(AnimatorWindow::WINDOW_NAME)),
             catalogItem("window.vertexAnimationBaker", windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
         }),
+        menuSubmenu("Audio", {
+            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME))
+        }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
         menuSubmenu("AI", {
@@ -670,6 +708,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
+        catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("MCP", {
             catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
@@ -928,6 +967,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
             break;
+        case AppMenuCommand::ToggleAudioMixer:
+            audioMixerWindow->open();
+            break;
+        case AppMenuCommand::ToggleSpriteNormals:
+            spriteNormalsWindow->open();
+            break;
         case AppMenuCommand::ToggleVertexAnimationBaker:
             vertexAnimationBakerWindow->open();
             break;
@@ -985,6 +1030,21 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::EditorSettings:
             editorSettingsWindow.open(&project);
             break;
+        case AppMenuCommand::ClearUserSettings: {
+            // the store Play mode uses (.jasperengine/user/rundata/UserSettings.xml): a running
+            // game sees the keys gone at once
+            const size_t count = UserSettingsStore::instance().entries().size();
+            const std::string file = UserSettingsStore::instance().getFilePath();
+            registerConfirmAlert("Clear User Settings",
+                "Delete every UserSettings / PlayerPrefs key of this project (" + std::to_string(count) +
+                (count == 1 ? " key" : " keys") + ")?\n" + file + "\nThis cannot be undone.",
+                []() {
+                    UserSettings::deleteAll();
+                    UserSettings::save();
+                    Out::info("Cleared the project's User Settings (PlayerPrefs)");
+                });
+            break;
+        }
         case AppMenuCommand::ProjectScenes:
             if (!project.isAnyScenePlaying())
                 scenesWindow.open(&project);
@@ -1065,8 +1125,28 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateHtmlDocument:
             projectWindow->assetsCreateHtmlDocument();
             break;
+        case AppMenuCommand::AssetsCreateAudioMixer:
+            projectWindow->assetsCreateAudioMixer();
+            break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
             projectWindow->assetsCreatePoseAnimation();
+            break;
+        case AppMenuCommand::AssetsCreateShakePreset:
+            projectWindow->assetsCreateShakePreset();
+            break;
+        case AppMenuCommand::AddCameraShakerToMainCamera: {
+            SceneProject* scene = project.getSelectedScene();
+            const Entity mainCamera = scene ? project.getGameCamera(scene->id) : NULL_ENTITY;
+            if (scene && scene->scene && !project.isAnyScenePlaying() && mainCamera != NULL_ENTITY &&
+                !scene->scene->findComponent<CameraShakerComponent>(mainCamera)) {
+                CommandHandle::get(scene->id)->addCommandNoMerge(
+                    new AddComponentCmd(&project, scene->id, mainCamera, ComponentType::CameraShakerComponent));
+                project.setSelectedEntity(scene->id, mainCamera);
+            }
+            break;
+        }
+        case AppMenuCommand::AssetsCreateNativePlugin:
+            nativePluginDialog.open(&project);
             break;
         case AppMenuCommand::AssetsCreateAnimationClip:
             if (animationClipAppHooks().createClipAsset) {
@@ -1291,7 +1371,9 @@ editor::UndoTimeline::Target editor::App::undoTarget() const{
         case LastFocusedWindow::Code: focused = UndoTimeline::FocusedWindow::Code; break;
         // their edits are steps of the project history: the timeline orders them with the scene's
         case LastFocusedWindow::PoseAnimation:
-        case LastFocusedWindow::AnimationClip: focused = UndoTimeline::FocusedWindow::Other; break;
+        case LastFocusedWindow::AnimationClip:
+        // its assigns are steps too; its paint strokes are its own (undoRedo takes them first)
+        case LastFocusedWindow::SpriteNormals: focused = UndoTimeline::FocusedWindow::Other; break;
     }
     return UndoTimeline::resolveTarget(ImGui::GetIO().WantTextInput, codeEditor->isFocused(), focused);
 }
@@ -1306,6 +1388,23 @@ void editor::App::undoRedo(bool undo){
             return;
         case UndoTimeline::Target::Timeline:
             break;
+    }
+    // the Sprite Normal Map window: its paint strokes (window-local until Save) first, then the
+    // scene of its last Save & Assign while that assign is the scene's newest step
+    if (lastFocusedWindow == LastFocusedWindow::SpriteNormals && spriteNormalsWindow) {
+        if (undo ? spriteNormalsWindow->canUndoPaint() : spriteNormalsWindow->canRedoPaint()) {
+            if (undo) spriteNormalsWindow->undoPaint();
+            else spriteNormalsWindow->redoPaint();
+            return;
+        }
+        // another history's step undone: the stroke redos go (Ctrl+Y redoes that step first)
+        if (undo) spriteNormalsWindow->dropPaintRedo();
+        uint32_t routedScene = 0;
+        if (undo ? spriteNormalsWindow->undoGoesToScene(routedScene) : spriteNormalsWindow->redoGoesToScene(routedScene)) {
+            if (undo) CommandHandle::get(routedScene)->undo();
+            else CommandHandle::get(routedScene)->redo();
+            return;
+        }
     }
     const bool dragging = CommandHistory::anyInteractiveOpen();
     std::string why;
@@ -1966,6 +2065,7 @@ void editor::App::buildDefaultLayout(){
     // system names and the Enabled checkboxes were cut off)
     ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
 
@@ -1977,8 +2077,12 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
     // Texture Synthesis is mostly a preview: a tab next to the Scene and Game views
     ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
+    // the Audio Mixer's strips want the width of the views
+    ImGui::DockBuilderDockWindow(AudioMixerWindow::WINDOW_NAME, dock_id_middle_top);
     // the baker too (its preview), so the Inspector entries that open it stay in view
     ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
+    // the Sprite Normal Map window: a preview too
+    ImGui::DockBuilderDockWindow(SpriteNormalsWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2222,6 +2326,8 @@ ImFont* editor::App::getBoldFont() {
 }
 
 void editor::App::setup() {
+    // DontDestroyOnLoad moves nothing in edit mode (Play installs the session's factory)
+    Project::refusePersistentScenes();
     mainThreadId = std::this_thread::get_id();
 
     // a queued offscreen pose render keeps the loop drawing until processFrame serves it
@@ -2396,6 +2502,10 @@ void editor::App::deleteSelection() {
     bool tileDeleted = false;
     bool instanceDeleted = false;
     if (sp && sp->sceneRender) {
+        // a polyline point selected in the Scene view: that point goes, not the GameObject
+        if (sp->sceneRender->removeSelectedLinePoint(&project, targetSceneId)) {
+            return;
+        }
         int tileIdx = sp->sceneRender->getSelectedTileIndex();
         Entity tileEntity = sp->sceneRender->getSelectedTileEntity();
         if (tileIdx >= 0) {
@@ -2608,8 +2718,13 @@ void editor::App::show(){
         if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME && animatorWindow->inspectorShowsSelection())) {
             lastFocusedWindow = LastFocusedWindow::Resources;
+        } else if (animatorWindow->isFocused()) {
+            // the Animator window's edits are project steps (its controller file)
+            lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
+        } else if (spriteNormalsWindow->isFocused()) {
+            lastFocusedWindow = LastFocusedWindow::SpriteNormals;
         } else if (poseAnimationWindow->ownsUndo(sceneWindow->isFocused())) {
             lastFocusedWindow = LastFocusedWindow::PoseAnimation;
         } else if (clipUndoGoesToProject(placementBusy)) {
@@ -2674,9 +2789,17 @@ void editor::App::show(){
     exportWindow.show();
     if (exportWindow.consumePlayerSettingsRequest()) projectSettingsWindow.open(&project, "Player");
     if (inspectorWindow->consumeTagsAndLayersRequest()) projectSettingsWindow.open(&project, "Tags and Layers");
+    if (inspectorWindow->consumeShaderGlobalsRequest()) projectSettingsWindow.open(&project, "Graphics");
     editorSettingsWindow.show();
     aboutWindow.show();
     projectSettingsWindow.show();
+    nativePluginDialog.show();
+    // a native plugin was made (either dialog): its Lua mock opens in the code editor
+    for (const fs::path& created : {nativePluginDialog.consumeCreatedFile(), projectSettingsWindow.consumeCreatedFile()}) {
+        if (created.empty()) continue;
+        projectWindow->refreshCurrentDirectory();
+        codeEditor->openFile(created.string());
+    }
     prefabsWindow.show();
     scenesWindow.show();
 
@@ -2689,12 +2812,18 @@ void editor::App::show(){
     imageViewerWindow->show();
     consoleWindow->show();
     animationWindow->show();
+    animatorWindow->show();
+    avatarWindow->show();
+    HumanoidConvertDialog::draw(&project);
     poseAnimationWindow->show();
     animatorWindow->show();
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
     terrainEditWindow->show();
     textureSynthesisWindow->show();
+    audioMixerWindow->show();
+    // also the tick of its Shift-click generations (with the window closed)
+    spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     // also the tick of the Scene view's physics sessions, with the panel closed too
@@ -3507,6 +3636,16 @@ bool editor::App::answerDialog(const std::string& choice, std::string& error) {
 
 void editor::App::requestProjectChange(std::function<void()> change) {
     if (projectLoading || pendingProjectChange) return;
+    // the Sprite Normal Map window's unsaved paint strokes are asked about first
+    if (spriteNormalsWindow && spriteNormalsWindow->hasUnsavedPaint()) {
+        registerConfirmAlert("Discard Paint Changes?",
+                             "The Sprite Normal Map window has paint strokes that are not saved into the normal map.\n\nDiscard them and switch projects?",
+                             [this, change]() {
+                                 spriteNormalsWindow->discardPaint();
+                                 requestProjectChange(change);
+                             });
+        return;
+    }
     pendingProjectChange = std::move(change);
     requestRedraw();
 }
@@ -3622,6 +3761,8 @@ void editor::App::engineRender(){
     ScriptReloadService::get().update();
     // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
     NavigationEditor::get().update(&project);
+    // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
+    spriteNormalsWatcher->tick();
     project.updateGeneratedSources();
     // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
     if (animationClipAppHooks().frame) {
@@ -3937,6 +4078,15 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
         std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
         sceneRender->activateGame(gameTarget);
 
+        if (project.isPlayedSceneReplaced(sceneProject.id)) {
+            // a scene load replaced the played scene (or rebuilt it, Restart): the game is the
+            // stack that load made, its main scene first
+            Engine::removeScene(sceneProject.scene);
+            Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
+            if (loadedMain && std::find(runtimeLayers.begin(), runtimeLayers.end(), loadedMain) != runtimeLayers.end()) {
+                Engine::setScene(loadedMain);
+            }
+        }
         for (Scene* runtimeLayer : runtimeLayers) {
             Engine::addSceneLayer(runtimeLayer);
         }
@@ -3955,9 +4105,14 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
         || gameTarget->getWidth() != static_cast<unsigned int>(gameWidth)
         || gameTarget->getHeight() != static_cast<unsigned int>(gameHeight);
 
-    // the Engine's view is the game's: the Scene view never changes it
+    // the Engine's view is the game's: the Scene view never changes it. A simulated device's
+    // orientation goes with the size it was laid out for (Screen.orientation, onOrientationChanged).
+    Platform::setShownOrientation(gameWindow->getLayoutOrientation());
     if (Platform::setSizes(gameWidth, gameHeight) || viewChanged || framebufferMismatch){
         Engine::systemViewChanged();
+    }else{
+        // a half turn keeps the size
+        Engine::systemOrientationChanged();
     }
 
     // the Scene view's camera follows its size before the frame updates the scene
@@ -4065,8 +4220,23 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     Engine::computeViewLayout(width, height, (int)project.getCanvasWidth(), (int)project.getCanvasHeight(), project.getScalingMode(),
                               canvasWidth, canvasHeight, viewRect);
 
+    // a UI scene's camera covers its Canvas Scaler UI size (what it is laid out at), any other the canvas
+    auto layerCanvas = [&](SceneProject* layerScene, Entity layerCamera, float& layerWidth, float& layerHeight) {
+        layerWidth = (float)canvasWidth;
+        layerHeight = (float)canvasHeight;
+        CameraComponent* camera = layerScene->scene->findComponent<CameraComponent>(layerCamera);
+        if (layerScene->sceneType == SceneType::SCENE_UI && layerScene->scene->getCanvasScale().scaled &&
+            camera && camera->type == CameraType::CAMERA_UI) {
+            const Vector2 ui = layerScene->scene->getSystem<UISystem>()->getCanvasSize();
+            layerWidth = ui.x;
+            layerHeight = ui.y;
+        }
+    };
+
     std::vector<Engine::ViewLayer> layers;
-    layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, (float)canvasWidth, (float)canvasHeight});
+    float mainCanvasWidth = 0.0f, mainCanvasHeight = 0.0f;
+    layerCanvas(&sceneProject, cameraEntity, mainCanvasWidth, mainCanvasHeight);
+    layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, mainCanvasWidth, mainCanvasHeight});
     layers.back().atmosphereQuality = gameWindow->getSettings().atmosphereQuality;
 
     for (const ChildSceneRef& childSceneRef : sceneProject.childScenes) {
@@ -4082,7 +4252,9 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
             childScene->scene->getSystem<UIDocumentSystem>()->update(0);
             childScene->scene->getSystem<RenderSystem>()->update(0);
         }
-        layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, (float)canvasWidth, (float)canvasHeight});
+        float childCanvasWidth = 0.0f, childCanvasHeight = 0.0f;
+        layerCanvas(childScene, childCamera, childCanvasWidth, childCanvasHeight);
+        layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, childCanvasWidth, childCanvasHeight});
     }
 
     Engine::drawView(GAME_VIEW_ID, target, layers);
@@ -4603,6 +4775,12 @@ void editor::App::shutdownBackgroundWork() {
         Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
     }
     HotReloadService::get().stopWatching();
+    if (spriteNormalsWatcher) spriteNormalsWatcher->shutdown(1.0);
+    // Shift-click generations and Regenerates: cancelled, waited for a moment
+    if (spriteNormalsWindow) spriteNormalsWindow->shutdownJobs(2.0);
+    if (!editor::spritenormals::SpriteNormalsRun::cancelAll()) {
+        Out::warning("A sprite normal map generation did not stop in time; it is left to finish without effect.");
+    }
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
     PoseRender::setFrameRequester(nullptr);
@@ -4671,6 +4849,10 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
         animatorWindow->clearSceneState(sceneId);
     }
 
+    if (avatarWindow) {
+        avatarWindow->clearSceneState(sceneId);
+    }
+
     if (lastActivatedScene == sceneId) {
         resetLastActivatedScene();
     }
@@ -4687,6 +4869,8 @@ void editor::App::prepareForProjectSwitch() {
     poseAnimationWindow->prepareForProjectSwitch();
     // the Animator window's preview goes back, its controller document is dropped
     animatorWindow->prepareForProjectSwitch();
+    avatarWindow->stopPreview();
+    avatarWindow->projectClosed();
     // and the clip previews (documents and the shared clip controller are released)
     if (animationClipAppHooks().projectClosed) {
         animationClipAppHooks().projectClosed();
@@ -4694,6 +4878,11 @@ void editor::App::prepareForProjectSwitch() {
     imageViewerWindow->closeAll();
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
+    audioMixerWindow->resetForProjectSwitch();
+    // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
+    spriteNormalsWindow->resetForProjectSwitch();
+    spriteNormalsWatcher->reset();
+    editor::spritenormals::SpriteNormalsRun::cancelRunning();
     // a running bake or import is cancelled, its source and result forgotten
     vertexAnimationBakerWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
@@ -4814,6 +5003,9 @@ void editor::App::stopTransientPreviews() {
     if (animatorWindow) {
         animatorWindow->stopPreview();
     }
+    if (avatarWindow) {
+        avatarWindow->stopTransientPreviews();
+    }
     // and the Animation window's previewed targets to their snapshots (animation clips 9.R6):
     // the entity-sequence mode, then the clip mode
     if (animationWindow) {
@@ -4853,6 +5045,35 @@ void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {
 void editor::App::saveAllCodeEditors() {
     if (codeEditor) {
         codeEditor->saveAll();
+    }
+}
+
+void editor::App::importUnityParticles() {
+    const std::string file = FileDialogs::openFileDialog("", FILE_DIALOG_UNITY_PREFAB_SCENE);
+    if (file.empty()) return;
+    unity::ImportOptions options;
+    options.file = fs::u8path(file);
+    const unity::ImportResult result = unity::importParticlesIntoProject(&project, options);
+    if (!result.ok) {
+        Out::error("Import Unity Particle System: %s", result.error.c_str());
+        registerAlert("Import Unity Particle System", result.error);
+        return;
+    }
+    for (const std::string& prefab : result.prefabs) {
+        Out::info("Imported Unity particles: %s", prefab.c_str());
+    }
+    // the report's notes, one line each
+    for (const auto& system : result.report["systems"]) {
+        for (const auto& note : system["notes"]) {
+            Out::warning("%s: %s: %s", system["path"].get<std::string>().c_str(), note["code"].get<std::string>().c_str(),
+                         note["message"].get<std::string>().c_str());
+        }
+    }
+    for (const auto& warning : result.report["warnings"]) {
+        Out::warning("Import Unity Particle System: %s", warning.get<std::string>().c_str());
+    }
+    if (!result.reportFile.empty()) {
+        Out::info("Import report: %s", result.reportFile.c_str());
     }
 }
 
@@ -5135,7 +5356,13 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      33/34, DEPTH 16/17, GBUFFER 14/15).
     // v43: upstream's vertex animation (its v39) with oe-port's v42: MESH 'Vat'/'Vab' are bits 34/35
     //      (S10's 'Shq' keeps 33), DEPTH 16/17, GBUFFER 14/15; an upstream cache's MESH bit 33 is 'Vat'.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v43";
+    // (upstream) v40: sprite normal maps: the 2D tangent frame (includes/tangent_frame.glsl, mesh.vert,
+    //      includes/surface_vs.glsl: OpenGL green, mirroring), the Light 2D normal response
+    //      (includes/lighting2d.glsl: LIGHT2D_NORMAL_RESPONSE, getNormal2DAt, mesh.frag's
+    //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
+    // v44: upstream's sprite normal maps and shader globals (u_vs_globals / u_fs_globals, its v40)
+    //      with oe-port's v43: either side's v40-v43 cache holds other variants.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v44";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -5195,6 +5422,18 @@ editor::PoseAnimationWindow* editor::App::getPoseAnimationWindow() const{
     return poseAnimationWindow;
 }
 
+editor::AvatarWindow* editor::App::getAvatarWindow() const{
+    return avatarWindow;
+}
+
+void editor::App::openAvatarWindow(uint32_t sceneId, Entity entity){
+    std::string error;
+    // the bound model keeps its edits; another one asks about unsaved edits first
+    if (!avatarWindow->requestOpen(sceneId, entity, &error)){
+        Out::warning("Configure Avatar: %s", error.c_str());
+    }
+}
+
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }
@@ -5224,8 +5463,42 @@ editor::PhysicsPlacementWindow* editor::App::getPhysicsPlacementWindow() const{
     return physicsPlacementWindow;
 }
 
+editor::SpriteNormalsWindow* editor::App::getSpriteNormalsWindow() const{
+    return spriteNormalsWindow;
+}
+
+editor::SpriteNormalsWatcher* editor::App::getSpriteNormalsWatcher() const{
+    return spriteNormalsWatcher;
+}
+
+void editor::App::openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe){
+    std::string error;
+    if (editRecipe && !images.empty()) {
+        if (!spriteNormalsWindow->openRecipe(images[0], error)) {
+            registerAlert("Sprite Normal Map", "Can't open " + FileUtils::pathToUtf8(images[0].filename()) + ": " + error);
+        }
+        return;
+    }
+    if (!spriteNormalsWindow->openSources(images, error)) {
+        registerAlert("Sprite Normal Map", "Can't open " + (images.size() == 1 ? FileUtils::pathToUtf8(images[0].filename()) : std::string("the images")) + ": " + error);
+    }
+}
+
+void editor::App::openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now){
+    std::string error;
+    if (!spriteNormalsWindow->openForEntity(sceneId, static_cast<Entity>(entity), submesh, now, error)) {
+        SceneProject* sp = project.getScene(sceneId);
+        const std::string name = sp && sp->scene && sp->scene->isEntityCreated(static_cast<Entity>(entity)) ? sp->scene->getEntityName(static_cast<Entity>(entity)) : "the GameObject";
+        registerAlert("Sprite Normal Map", "Can't open " + name + ": " + error);
+    }
+}
+
 editor::MainToolbar* editor::App::getMainToolbar() const{
     return mainToolbar;
+}
+
+void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){
+    audioMixerWindow->open(mixer);
 }
 
 void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool editRecipe){
@@ -5569,6 +5842,8 @@ void editor::App::applyPanelVisibilitySettings() {
     animatorWindow->setOpen(visibility.animator);
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
+    audioMixerWindow->setOpen(visibility.audioMixer);
+    spriteNormalsWindow->setOpen(visibility.spriteNormals);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
     mcpActivityWindow->setOpen(visibility.mcp);
@@ -5587,6 +5862,8 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.animator = animatorWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
+    visibility.audioMixer = audioMixerWindow->isOpen();
+    visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
@@ -5645,6 +5922,17 @@ void editor::App::exit() {
 
     if (project.isAnySceneSaving()) {
         registerAlert("Saving Scene", "Wait for the current scene save to finish before exiting.");
+        return;
+    }
+
+    // the Sprite Normal Map window's unsaved paint strokes (not in any file): asked first, like its close
+    if (spriteNormalsWindow && spriteNormalsWindow->hasUnsavedPaint()) {
+        registerConfirmAlert("Discard Paint Changes?",
+                             "The Sprite Normal Map window has paint strokes that are not saved into the normal map.\n\nDiscard them and exit?",
+                             [this]() {
+                                 spriteNormalsWindow->discardPaint();
+                                 exit();
+                             });
         return;
     }
 

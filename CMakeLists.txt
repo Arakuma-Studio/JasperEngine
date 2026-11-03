@@ -260,6 +260,7 @@ if(API_BACKEND STREQUAL "linux")
         ${EDITOR_DIR}/backend/BackendLinux.cpp
         ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
         ${JASPERENGINE_ROOT}/platform/linux/GamepadDB.cpp
+        ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp
     )
     list(APPEND BACKEND_LIBS X11::X11 X11::Xrandr)
 
@@ -279,6 +280,7 @@ elseif(API_BACKEND STREQUAL "win")
         ${EDITOR_DIR}/backend/BackendWin.cpp
         ${JASPERENGINE_ROOT}/platform/win/WindowWin.cpp
         ${JASPERENGINE_ROOT}/platform/win/GamepadWin.cpp
+        ${JASPERENGINE_ROOT}/platform/win/HostServicesWin.cpp
     )
 
     list(APPEND BACKEND_LIBS
@@ -286,6 +288,9 @@ elseif(API_BACKEND STREQUAL "win")
         gdi32
         dwmapi
         shell32
+        ole32
+        uuid
+        advapi32
     )
 
     if(GRAPHIC_BACKEND STREQUAL "vulkan")
@@ -304,6 +309,7 @@ elseif(API_BACKEND STREQUAL "mac")
         ${IMGUI_DIR}/backends/imgui_impl_osx.mm
         ${EDITOR_DIR}/backend/BackendMac.mm
         ${JASPERENGINE_ROOT}/platform/mac/WindowMac.mm
+        ${JASPERENGINE_ROOT}/platform/mac/HostServicesMac.mm
         ${JASPERENGINE_ROOT}/platform/apple/JasperEngineGameController.mm
     )
 
@@ -321,6 +327,7 @@ elseif(API_BACKEND STREQUAL "mac")
         ${IMGUI_DIR}/backends/imgui_impl_metal.mm
         ${EDITOR_DIR}/backend/BackendMac.mm
         ${JASPERENGINE_ROOT}/platform/mac/WindowMac.mm
+        ${JASPERENGINE_ROOT}/platform/mac/HostServicesMac.mm
         ${EDITOR_DIR}/util/GraphicUtils.cpp
         ${JASPERENGINE_ROOT}/platform/apple/JasperEngineGameController.mm
         PROPERTIES
@@ -497,6 +504,8 @@ include_directories (${CMAKE_CURRENT_SOURCE_DIR})
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/sokol)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/json)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/tinygltf)
+# the native plugins export checks XML fragments (util/NativeExportAndroid.cpp, NativeExportApple.cpp)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/tinyxml2)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/lua)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/luabridge3)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/box2d/include)
@@ -645,6 +654,38 @@ set(JASPERENGINE_TEXSYNTH_SOURCES
     ${EDITOR_DIR}/texsynth/TextureSynthesis.cpp
 )
 
+# The sprite normal generator core (editor/spritenormals: spritefusion-sprite-normals ported, NOTICE.md),
+# also built alone into jasperengine-spritenormals-tests (-DJASPERENGINE_SPRITENORMALS_TESTS=ON)
+set(JASPERENGINE_SPRITENORMALS_SOURCES
+    ${EDITOR_DIR}/spritenormals/SpriteNormals.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsField.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsInflate.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteMedia.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsRecipe.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsPreview.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsPaint.cpp
+)
+# Upstream parity: Rust never contracts a*b+c into an FMA (the generator calls std::fma itself
+# exactly where upstream calls mul_add); the media decoding (resampling, frame compositing) and the
+# paint layer's compositing likewise keep their bytes on every target. MSVC: /fp:precise (no
+# contraction without /fp:contract); clang-cl (the MSVC front end of Clang, which contracts under
+# /fp:precise): Clang's own flag through /clang:; GCC and Clang: -ffp-contract=off
+set(JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES
+    ${EDITOR_DIR}/spritenormals/SpriteNormals.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsField.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsInflate.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteMedia.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsPaint.cpp
+)
+if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(JASPERENGINE_NO_FMA_FLAGS "/fp:precise")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    set(JASPERENGINE_NO_FMA_FLAGS "/fp:precise;/clang:-ffp-contract=off")
+else()
+    set(JASPERENGINE_NO_FMA_FLAGS "-ffp-contract=off")
+endif()
+set_source_files_properties(${JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
+
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
     ${EDITOR_DIR}/cli/CommandLine.cpp
@@ -704,6 +745,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/Properties.cpp
     ${EDITOR_DIR}/reflect/PostProcessingReflect.cpp
     ${EDITOR_DIR}/reflect/ShaderCreationReflect.cpp
+    ${EDITOR_DIR}/reflect/DebugReflect.cpp
     ${EDITOR_DIR}/reflect/components/AnimationReflect.cpp
     ${EDITOR_DIR}/reflect/components/CameraAudioReflect.cpp
     ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
@@ -714,16 +756,21 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/AnimatorReflect.cpp
     ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
+    ${EDITOR_DIR}/reflect/components/UpstreamReflect.cpp
+    ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
     ${EDITOR_DIR}/reflect/components/UIReflect.cpp
     ${EDITOR_DIR}/reflect/components/LatticeFluidReflect.cpp
     ${EDITOR_DIR}/Conector.cpp
     ${EDITOR_DIR}/EditorHost.cpp
     ${EDITOR_DIR}/Generator.cpp
+    ${EDITOR_DIR}/DebugSettings.cpp
     ${EDITOR_DIR}/Stream.cpp
     ${EDITOR_DIR}/StreamComponents.cpp
+    ${EDITOR_DIR}/StreamUpstream.cpp
     ${EDITOR_DIR}/StreamPrefab.cpp
     ${EDITOR_DIR}/StreamMigrations.cpp
+    ${EDITOR_DIR}/stream/UpstreamParticles.cpp
     ${EDITOR_DIR}/StreamSchema.cpp
     ${EDITOR_DIR}/StreamPreserved.cpp
     ${EDITOR_DIR}/LoadReport.cpp
@@ -783,6 +830,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/AtmosphereTools.cpp
     ${EDITOR_DIR}/mcp/tools/ConsoleTools.cpp
+    ${EDITOR_DIR}/mcp/tools/DataTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AudioTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptingTools.cpp
     ${EDITOR_DIR}/mcp/tools/GraphTools.cpp
@@ -810,6 +859,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
     ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SpriteNormalsTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -818,11 +868,15 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/GraphicUtils.cpp
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
     ${EDITOR_DIR}/util/FluidTextureLink.cpp
+    ${EDITOR_DIR}/util/VideoTextureLink.cpp
     ${EDITOR_DIR}/util/FluidEditorTools.cpp
     ${EDITOR_DIR}/util/UIProbe.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp
     ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
+    ${EDITOR_DIR}/util/ExportFeatureScan.cpp
+    ${EDITOR_DIR}/util/NativeExportAndroid.cpp
+    ${EDITOR_DIR}/util/NativePlugins.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/reload/HotReloadService.cpp
     ${EDITOR_DIR}/window/StatusBar.cpp
@@ -866,6 +920,15 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/LuaApiData.cpp
     ${EDITOR_DIR}/util/NumericExpression.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
+    ${EDITOR_DIR}/util/ShaderGlobalsJson.cpp
+    ${EDITOR_DIR}/util/ShaderGlobalsUsage.cpp
+    ${EDITOR_DIR}/util/ShaderGlobalsEdit.cpp
+    ${EDITOR_DIR}/util/ProjectFileWrites.cpp
+    ${EDITOR_DIR}/util/PhysicsMaterialAssets.cpp
+    ${EDITOR_DIR}/util/RagdollWizard.cpp
+    ${EDITOR_DIR}/window/dialog/RagdollWizardDialog.cpp
+    ${EDITOR_DIR}/util/SafeWrite.cpp
+    ${EDITOR_DIR}/util/BuiltPlayers.cpp
     ${EDITOR_DIR}/util/NormalMapTilt.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
@@ -881,6 +944,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${JASPERENGINE_TEXSYNTH_SOURCES}
     ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
     ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
+    ${JASPERENGINE_SPRITENORMALS_SOURCES}
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsSession.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsApply.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsCli.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsCheck.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsWatcher.cpp
     ${EDITOR_DIR}/physics/PlacementSettings.cpp
     ${EDITOR_DIR}/physics/PlacementSession.cpp
     ${EDITOR_DIR}/physics/PlacementCli.cpp
@@ -903,10 +972,13 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/AnimationClipController.cpp
     ${EDITOR_DIR}/animation/AnimationClipDocument.cpp
     ${EDITOR_DIR}/animation/AnimatorAssetDocument.cpp
+    ${EDITOR_DIR}/animation/AnimatorAssetUsers.cpp
     ${EDITOR_DIR}/animation/PreviewParticles.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
+    ${EDITOR_DIR}/animation/ClipPropertyNames.cpp
+    ${EDITOR_DIR}/animation/ClipTangents.cpp
     ${EDITOR_DIR}/animation/PlayerModelLayout.cpp
     ${EDITOR_DIR}/animation/PreviewOwner.cpp
     ${EDITOR_DIR}/util/UserFiles.cpp
@@ -993,7 +1065,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
     ${EDITOR_DIR}/window/InspectorSplines.cpp
     ${EDITOR_DIR}/window/InputActionsWindow.cpp
+    ${EDITOR_DIR}/window/InspectorWindowAnimLayers.cpp
+    ${EDITOR_DIR}/window/InspectorAnimLayers.cpp
+    ${EDITOR_DIR}/window/InspectorModelRig.cpp
     ${EDITOR_DIR}/window/InspectorWindowVat.cpp
+    ${EDITOR_DIR}/window/InspectorPhysics2D.cpp
+    ${EDITOR_DIR}/window/InspectorWindowSpriteNormals.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
     ${EDITOR_DIR}/window/InspectorParticles.cpp
@@ -1001,11 +1078,15 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorFluid.cpp
     ${EDITOR_DIR}/window/InspectorShadows.cpp
     ${EDITOR_DIR}/window/InspectorDefault.cpp
+    ${EDITOR_DIR}/window/InspectorUpstream.cpp
     ${EDITOR_DIR}/window/InspectorPhysics.cpp
     ${EDITOR_DIR}/window/InspectorAnimation.cpp
     ${EDITOR_DIR}/window/InspectorRenderers.cpp
     ${EDITOR_DIR}/window/InspectorLattice.cpp
     ${EDITOR_DIR}/window/InspectorAnimator.cpp
+    ${EDITOR_DIR}/window/InspectorLinesTrails.cpp
+    ${EDITOR_DIR}/window/InspectorWindowCamera.cpp
+    ${EDITOR_DIR}/window/InspectorVideo.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/InspectorVcs.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
@@ -1018,6 +1099,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ParticleEffectOverlay.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
     ${EDITOR_DIR}/window/ExternalChangeBar.cpp
+    ${EDITOR_DIR}/window/DeviceProfiles.cpp
+    ${EDITOR_DIR}/window/CanvasScalerFields.cpp
+    ${EDITOR_DIR}/window/GameResolutions.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
     ${EDITOR_DIR}/window/MainToolbar.cpp
     ${EDITOR_DIR}/window/PlayInput.cpp
@@ -1037,6 +1121,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
+    ${EDITOR_DIR}/window/AnimatorWindow.cpp
+    ${EDITOR_DIR}/window/AvatarWindow.cpp
+    ${EDITOR_DIR}/window/HumanoidConvertDialog.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipSheet.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipEvents.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipCurves.cpp
@@ -1075,8 +1162,13 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vat/import/HoudiniVat3.cpp
     ${EDITOR_DIR}/vat/import/OpenVat.cpp
     ${EDITOR_DIR}/vat/VatImportWrite.cpp
+    # the Unity ParticleSystem importer (S20 systems)
+    ${EDITOR_DIR}/unity/UnityYaml.cpp
+    ${EDITOR_DIR}/unity/UnityProject.cpp
+    ${EDITOR_DIR}/unity/UnityParticleImport.cpp
     ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
+    ${EDITOR_DIR}/window/SpriteNormalsWindow.cpp
     ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
     ${EDITOR_DIR}/window/SystemsWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
@@ -1084,6 +1176,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/DataSafetyDialogs.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp
     ${EDITOR_DIR}/window/dialog/ProjectSaveDialog.cpp
+    ${EDITOR_DIR}/window/dialog/NativePluginDialog.cpp
     ${EDITOR_DIR}/window/dialog/ScriptCreateDialog.cpp
     ${EDITOR_DIR}/window/dialog/ShaderForkDialog.cpp
     ${EDITOR_DIR}/window/dialog/TextureSlicerToolDialog.cpp
@@ -1091,6 +1184,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/ExportWindowShipping.cpp
     ${EDITOR_DIR}/window/dialog/EditorSettingsWindow.cpp
     ${EDITOR_DIR}/window/dialog/ProjectSettingsWindow.cpp
+    ${EDITOR_DIR}/window/AudioMixerWindow.cpp
     ${EDITOR_DIR}/window/dialog/PrefabsWindow.cpp
     ${EDITOR_DIR}/window/dialog/AboutWindow.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
@@ -1161,6 +1255,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/AssetRefCmds.cpp
     ${EDITOR_DIR}/command/type/SelectionCmd.cpp
     ${EDITOR_DIR}/command/type/SetAssetMetaCmd.cpp
+    ${EDITOR_DIR}/command/type/AudioSettingsCmd.cpp
+    ${EDITOR_DIR}/audio/AudioMixerDocument.cpp
+    ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
+    ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
+    ${EDITOR_DIR}/command/type/DebugSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp
@@ -1176,6 +1275,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/CreateClipCmd.cpp
     ${EDITOR_DIR}/command/type/CreateVatCmd.cpp
     ${EDITOR_DIR}/command/type/ClipSceneActions.cpp
+    ${EDITOR_DIR}/command/type/PlayerLayerActions.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabVariantAssetCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
     ${EDITOR_DIR}/command/type/UnpackPrefabCmd.cpp
@@ -1528,6 +1628,14 @@ endif()
 if(JASPERENGINE_HTMLUI_EDITOR_TESTS)
     include(${EDITOR_DIR}/htmlui/tests/HtmlUiEditorTests.cmake)
 endif()
+# jasperengine-spritenormals-tests: the sprite normal generator core (editor/spritenormals): upstream
+# parity on golden fixtures, the options, GIF/APNG decoding, recipes, the lit preview
+# (-DJASPERENGINE_SPRITENORMALS_TESTS=ON and the target)
+option(JASPERENGINE_SPRITENORMALS_TESTS "Build jasperengine-spritenormals-tests (sprite normal generator tests)" OFF)
+if(JASPERENGINE_SPRITENORMALS_TESTS)
+    include(${EDITOR_DIR}/spritenormals/tests/SpriteNormalsTests.cmake)
+endif()
+
 if(JASPERENGINE_TESTS)
     include(${EDITOR_DIR}/tests/EditorTests.cmake)
 endif()

@@ -13,6 +13,12 @@
 #include "RmlSystem.h"
 #include "RmlTextInputHandler.h"
 #include "util/Utf16Combiner.h"
+#include "input/InputActions.h"
+#include "component/ButtonComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "object/ui/Button.h"
+#include "object/ui/OnScreenControls.h"
+#include "subsystem/UISystem.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -22,6 +28,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
 #include <functional>
 #include <vector>
 
@@ -507,6 +514,347 @@ TEST_F(InputTest, MultiTouch){
     Engine::systemTouchEnd(4, touchAX, touchAY);
     EXPECT_FALSE(a->IsPseudoClassSet("active"));
     EXPECT_EQ(touchEnds, 1) << "a document-owned release does not reach the game";
+}
+
+// ---- ui-multitouch: every finger its own pointer ----
+
+namespace {
+    // "<type>:<pointer_id>:<pointer_type>" of the events it hears
+    class PointerRecorder : public Rml::EventListener {
+    public:
+        std::vector<std::string> events;
+        void ProcessEvent(Rml::Event& event) override{
+            events.push_back(event.GetType() + ":" + std::to_string(event.GetParameter<int>("pointer_id", 0)) + ":" +
+                             event.GetParameter<Rml::String>("pointer_type", ""));
+        }
+    };
+}
+
+TEST_F(InputTest, MultiTouchLiftingOneFingerKeepsTheOther){
+    Rml::Element* a = element("touchA");
+    Rml::Element* b = element("touchB");
+    PointerRecorder clicks;
+    a->AddEventListener(Rml::EventId::Click, &clicks);
+    b->AddEventListener(Rml::EventId::Click, &clicks);
+
+    Engine::systemTouchStart(0, touchAX, touchAY);
+    Engine::systemTouchStart(7, touchBX, touchBY);
+    Engine::systemTouchEnd(0, touchAX, touchAY);
+    EXPECT_FALSE(a->IsPseudoClassSet("active"));
+    EXPECT_TRUE(b->IsPseudoClassSet("active")) << "the other finger's element stays :active";
+    EXPECT_TRUE(b->IsPseudoClassSet("hover"));
+    Engine::systemTouchEnd(7, touchBX, touchBY);
+    EXPECT_FALSE(b->IsPseudoClassSet("active"));
+    ASSERT_EQ(clicks.events.size(), 2u) << "each finger clicks its element";
+    EXPECT_EQ(clicks.events[0], "click:2:touch") << "D1: a finger is pointer fingerId + 2";
+    EXPECT_EQ(clicks.events[1], "click:9:touch");
+    a->RemoveEventListener(Rml::EventId::Click, &clicks);
+    b->RemoveEventListener(Rml::EventId::Click, &clicks);
+}
+
+TEST_F(InputTest, PointerEventsOfTheMouseAndFingers){
+    Rml::Element* a = element("touchA");
+    PointerRecorder recorder;
+    for (Rml::EventId id : {Rml::EventId::Pointerdown, Rml::EventId::Pointerup, Rml::EventId::Mousedown})
+        a->AddEventListener(id, &recorder);
+
+    Engine::systemMouseMove(touchAX, touchAY, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, touchAX, touchAY, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, touchAX, touchAY, 0);
+    Engine::systemTouchStart(3, touchAX, touchAY);
+    Engine::systemTouchEnd(3, touchAX, touchAY);
+    const std::vector<std::string> expected = {"pointerdown:1:mouse", "mousedown:1:mouse", "pointerup:1:mouse",
+                                               "pointerdown:5:touch", "mousedown:5:touch", "pointerup:5:touch"};
+    EXPECT_EQ(recorder.events, expected);
+    EXPECT_TRUE(Engine::isPointerOverUI(-1)) << "the mouse is over the document";
+    Engine::systemMouseLeave();
+    for (Rml::EventId id : {Rml::EventId::Pointerdown, Rml::EventId::Pointerup, Rml::EventId::Mousedown})
+        a->RemoveEventListener(id, &recorder);
+}
+
+TEST_F(InputTest, OnScreenControlsFeedInputActions){
+    InputActions::loadDefaults();
+    InputActions::resetRuntimeState();
+    UIDocument& controls = fixture->add<UIDocument>();
+    ASSERT_TRUE(controls.load("p1/input/controls.html"));
+    for (int i = 0; i < 3; i++)
+        Engine::systemUpdate();
+    UIElement stick = controls.getElementById("stick");
+    ASSERT_TRUE(stick.isValid());
+
+    // finger 0 on the stick, 40 px right of its centre (half a radius)
+    Engine::systemTouchStart(0, 100, 260);
+    Engine::systemTouchMove(0, 140, 260);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.5f, 0.01f);
+    EXPECT_EQ(stick.getAttribute("data-pressed"), "true");
+    EXPECT_EQ(stick.getAttribute("data-x"), "0.500");
+
+    // finger 1 on the look area, at the same time
+    Engine::systemTouchStart(1, 400, 100);
+    Engine::systemTouchMove(1, 410, 80);
+    EXPECT_NEAR(InputActions::getAxis("Mouse X"), 1.0f, 0.01f);
+    EXPECT_NEAR(InputActions::getAxis("Mouse Y"), 2.0f, 0.01f) << "a drag up is Mouse Y up";
+
+    // finger 2 on the button
+    Engine::systemTouchStart(2, 560, 280);
+    EXPECT_NEAR(InputActions::getAxis("Fire1"), 1.0f, 0.01f);
+    Engine::systemTouchEnd(2, 560, 280);
+    EXPECT_NEAR(InputActions::getAxis("Fire1"), 0.0f, 0.01f);
+
+    // lifting the look finger keeps the stick
+    Engine::systemTouchEnd(1, 410, 80);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.5f, 0.01f);
+
+    // the stick removed while held: nothing stays held
+    stick.remove();
+    Engine::systemUpdate();
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.0f, 0.01f);
+    Engine::systemTouchEnd(0, 140, 260);
+    InputActions::resetRuntimeState();
+}
+
+namespace {
+
+    // an element of any document of the scene's context
+    Rml::Element* rmlById(Rml::Context* context, const char* id){
+        for (int i = 0; i < context->GetNumDocuments(); i++){
+            if (Rml::Element* element = context->GetDocument(i)->GetElementById(id))
+                return element;
+        }
+        return nullptr;
+    }
+
+    // the translate() of a stick part placePart moved (0, 0 without a transform)
+    Rml::Vector2f partOffset(Rml::Element* control, const char* className){
+        Rml::ElementList found;
+        control->GetElementsByClassName(found, className);
+        if (found.empty())
+            return Rml::Vector2f(-1000, -1000);
+        const Rml::Property* transform = found.front()->GetLocalProperty(Rml::PropertyId::Transform);
+        if (!transform)
+            return Rml::Vector2f(0, 0);
+        float x = 0, y = 0;
+        std::sscanf(transform->ToString().c_str(), "translate(%fpx, %fpx)", &x, &y);
+        return Rml::Vector2f(x, y);
+    }
+
+}
+
+// review HIGH 2: the finger that slid onto a press-on-enter button is captured by the touch area
+// it went down on, which gets its up; the button lets go at the lifted finger's leave
+TEST_F(InputTest, PressOnEnterButtonReleasesWhenTheSlidingFingerEnds){
+    InputActions::loadDefaults();
+    InputActions::resetRuntimeState();
+    UIDocument& controls = fixture->add<UIDocument>();
+    ASSERT_TRUE(controls.load("p1/input/controls-enter.html"));
+    for (int i = 0; i < 3; i++)
+        Engine::systemUpdate();
+    UIElement fire = controls.getElementById("fire");
+    ASSERT_TRUE(fire.isValid());
+
+    // down on the area, slid onto Fire: pressed; lifted there: released
+    Engine::systemTouchStart(0, 100, 100);
+    Engine::systemTouchMove(0, 360, 140);
+    EXPECT_NEAR(InputActions::getAxis("Fire1"), 1.0f, 0.01f);
+    EXPECT_EQ(fire.getAttribute("data-pressed"), "true");
+    Engine::systemTouchEnd(0, 360, 140);
+    EXPECT_NEAR(InputActions::getAxis("Fire1"), 0.0f, 0.01f);
+    EXPECT_EQ(fire.getAttribute("data-pressed"), "false");
+    EXPECT_FALSE(rmlById(rmlContext(scene()), "fire")->IsPseudoClassSet("active"));
+
+    // the same with a cancel
+    Engine::systemTouchStart(1, 100, 100);
+    Engine::systemTouchMove(1, 360, 140);
+    EXPECT_EQ(fire.getAttribute("data-pressed"), "true");
+    Engine::systemTouchCancel(1);
+    EXPECT_NEAR(InputActions::getAxis("Fire1"), 0.0f, 0.01f);
+    EXPECT_EQ(fire.getAttribute("data-pressed"), "false");
+
+    // a second finger holding it keeps it pressed when the first one lifts
+    Engine::systemTouchStart(2, 100, 100);
+    Engine::systemTouchMove(2, 360, 140);
+    Engine::systemTouchStart(3, 380, 150);
+    Engine::systemTouchEnd(2, 360, 140);
+    EXPECT_EQ(fire.getAttribute("data-pressed"), "true");
+    Engine::systemTouchEnd(3, 380, 150);
+    EXPECT_EQ(fire.getAttribute("data-pressed"), "false");
+    InputActions::resetRuntimeState();
+}
+
+// review MEDIUM 3: the Dynamic stick's base follows the finger from its rest centre (the
+// transform that moves it is not part of the layout offset)
+TEST_F(InputTest, DynamicStickBaseFollowsFromItsRestCentre){
+    InputActions::loadDefaults();
+    InputActions::resetRuntimeState();
+    UIDocument& controls = fixture->add<UIDocument>();
+    ASSERT_TRUE(controls.load("p1/input/controls-enter.html"));
+    for (int i = 0; i < 3; i++)
+        Engine::systemUpdate();
+    UIElement dyn = controls.getElementById("dyn");
+    ASSERT_TRUE(dyn.isValid());
+
+    // pressed at the rest centre: the base stays
+    Engine::systemTouchStart(0, 150, 260);
+    Rml::Vector2f base = partOffset(rmlById(rmlContext(scene()), "dyn"), "stick-base");
+    EXPECT_NEAR(base.x, 0.0f, 0.01f);
+    EXPECT_NEAR(base.y, 0.0f, 0.01f);
+
+    // two radii right: the base follows one radius (to 230)
+    Engine::systemTouchMove(0, 310, 260);
+    base = partOffset(rmlById(rmlContext(scene()), "dyn"), "stick-base");
+    EXPECT_NEAR(base.x, 80.0f, 0.01f);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 1.0f, 0.01f);
+
+    // 10 px further: the base follows by 10 more, not from a shifted rest
+    Engine::systemTouchMove(0, 320, 260);
+    base = partOffset(rmlById(rmlContext(scene()), "dyn"), "stick-base");
+    EXPECT_NEAR(base.x, 90.0f, 0.05f);
+    EXPECT_NEAR(base.y, 0.0f, 0.01f);
+    Rml::Vector2f knob = partOffset(rmlById(rmlContext(scene()), "dyn"), "stick-knob");
+    EXPECT_NEAR(knob.x, 80.0f, 0.05f);
+
+    // back inside the radius: the base does not move, the value is relative to its new centre
+    Engine::systemTouchMove(0, 280, 260);
+    base = partOffset(rmlById(rmlContext(scene()), "dyn"), "stick-base");
+    EXPECT_NEAR(base.x, 90.0f, 0.05f);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.5f, 0.01f);
+
+    // released: back at rest
+    Engine::systemTouchEnd(0, 280, 260);
+    base = partOffset(rmlById(rmlContext(scene()), "dyn"), "stick-base");
+    EXPECT_NEAR(base.x, 0.0f, 0.01f);
+    InputActions::resetRuntimeState();
+}
+
+// review HIGH 1 and D6: a finger lifted or a button released outside the canvas, a lost focus and a
+// pause end the documents' pointers (cancelled: the controls let go)
+TEST_F(InputTest, PointersOutsideTheCanvasFocusLossAndPauseReleaseControls){
+    InputActions::loadDefaults();
+    InputActions::resetRuntimeState();
+    UIDocument& controls = fixture->add<UIDocument>();
+    ASSERT_TRUE(controls.load("p1/input/controls-enter.html"));
+    for (int i = 0; i < 3; i++)
+        Engine::systemUpdate();
+    UIElement stick = controls.getElementById("stick");
+    UIElement fire = controls.getElementById("fire");
+    ASSERT_TRUE(stick.isValid());
+
+    // the stick's finger dragged off the canvas and lifted there
+    Engine::systemTouchStart(0, 540, 260);
+    Engine::systemTouchMove(0, 600, 260);
+    EXPECT_EQ(stick.getAttribute("data-pressed"), "true");
+    Engine::systemTouchEnd(0, 700, 260);
+    EXPECT_EQ(stick.getAttribute("data-pressed"), "false");
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.0f, 0.01f);
+    EXPECT_FALSE(documentSystem(scene()).getContext()->hasTouch(0));
+
+    // the mouse pressing Fire, released off the canvas
+    Engine::systemMouseMove(360, 140, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, 360, 140, 0);
+    EXPECT_EQ(fire.getAttribute("data-pressed"), "true");
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, -20, 140, 0);
+    EXPECT_EQ(fire.getAttribute("data-pressed"), "false");
+    EXPECT_NEAR(InputActions::getAxis("Fire1"), 0.0f, 0.01f);
+    EXPECT_FALSE(rmlById(rmlContext(scene()), "fire")->IsPseudoClassSet("active"));
+
+    // focus lost while a finger holds the stick and the mouse holds Fire
+    Engine::systemTouchStart(1, 540, 260);
+    Engine::systemTouchMove(1, 580, 260);
+    Engine::systemMouseMove(360, 140, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, 360, 140, 0);
+    EXPECT_EQ(stick.getAttribute("data-pressed"), "true");
+    EXPECT_EQ(fire.getAttribute("data-pressed"), "true");
+    Engine::systemFocus(false);
+    EXPECT_EQ(stick.getAttribute("data-pressed"), "false");
+    EXPECT_EQ(fire.getAttribute("data-pressed"), "false");
+    EXPECT_FALSE(documentSystem(scene()).getContext()->hasTouch(1));
+    Engine::systemFocus(true);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, 360, 140, 0);
+    Engine::systemTouchEnd(1, 580, 260);
+
+    // paused while a finger holds the stick
+    Engine::systemTouchStart(2, 540, 260);
+    Engine::systemTouchMove(2, 580, 260);
+    EXPECT_EQ(stick.getAttribute("data-pressed"), "true");
+    Engine::systemPause();
+    EXPECT_EQ(stick.getAttribute("data-pressed"), "false");
+    EXPECT_FALSE(documentSystem(scene()).getContext()->hasTouch(2));
+    Engine::systemResume();
+    InputActions::resetRuntimeState();
+}
+
+// review HIGH 1 and D6, the component UI: a finger lifted or a mouse button released outside
+// the canvas, a lost focus and a pause cancel its pointers (the controls let go, no click)
+TEST_F(InputTest, ComponentUIPointersOutsideTheCanvasFocusLossAndPauseAreCancelled){
+    // focused, as an app is: a pause in an earlier test took the focus and a resume does not give
+    // it back (platform services), so the focus loss below would be no change
+    Engine::systemFocus(true);
+    InputActions::loadDefaults();
+    InputActions::resetRuntimeState();
+    // where the document has nothing: x 500..620, y 180..300 (centre (560, 240), radius 60)
+    OnScreenStick& stick = fixture->add<OnScreenStick>();
+    stick.setPosition(500, 180);
+    stick.setSize(120, 120);
+    Button& button = fixture->add<Button>();
+    button.setPosition(500, 310);
+    button.setSize(120, 40);
+    int releases = 0;
+    button.getComponent<ButtonComponent>().onRelease.add(callbackTag, std::function<void()>([&](){ releases++; }));
+    GpuEnvironment::drawFrames(2);
+    UISystem& ui = *scene().getSystem<UISystem>();
+    OnScreenStickComponent& control = stick.getStick();
+
+    // the stick's finger dragged into the letterbox (off the canvas) and lifted there
+    Engine::systemTouchStart(0, 560, 240);
+    Engine::systemTouchMove(0, 590, 240);
+    EXPECT_TRUE(control.pressed);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.5f, 0.01f);
+    Engine::systemTouchEnd(0, 700, 240);
+    EXPECT_FALSE(control.pressed);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.0f, 0.01f);
+    EXPECT_TRUE(ui.getPointers().find(0) == ui.getPointers().end());
+
+    // the right button pressed on the Button, released off the canvas
+    Engine::systemMouseMove(560, 330, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_RIGHT, 560, 330, 0);
+    ASSERT_TRUE(ui.getPointers().count(-2) == 1);
+    EXPECT_TRUE(ui.getPointers().at(-2).down);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_RIGHT, 700, 330, 0);
+    EXPECT_TRUE(ui.getPointers().count(-2) == 0) << "the right button's press ended";
+
+    // the left button: the Button released without a click
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, 560, 330, 0);
+    EXPECT_TRUE(button.getComponent<ButtonComponent>().pressed);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, 560, -30, 0);
+    EXPECT_FALSE(button.getComponent<ButtonComponent>().pressed);
+    EXPECT_EQ(releases, 1);
+    EXPECT_FALSE(ui.isPointerCaptured(-1));
+
+    // focus lost while a finger holds the stick and the mouse the Button (from a focused app: an
+    // earlier test's pause took the focus, and the engine keeps it until it comes back)
+    Engine::systemFocusChanged(true);
+    Engine::systemFocus(true);
+    Engine::systemTouchStart(1, 560, 240);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, 560, 330, 0);
+    EXPECT_TRUE(control.pressed);
+    EXPECT_TRUE(button.getComponent<ButtonComponent>().pressed);
+    Engine::systemFocus(false);
+    EXPECT_FALSE(control.pressed);
+    EXPECT_FALSE(button.getComponent<ButtonComponent>().pressed);
+    Engine::systemFocus(true);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, 560, 330, 0);
+    Engine::systemTouchEnd(1, 560, 240);
+    EXPECT_EQ(releases, 2) << "the up after the cancel releases nothing more";
+
+    // paused while a finger holds the stick
+    Engine::systemTouchStart(2, 560, 240);
+    EXPECT_TRUE(control.pressed);
+    Engine::systemPause();
+    EXPECT_FALSE(control.pressed);
+    Engine::systemResume();
+    Engine::systemTouchEnd(2, 560, 240);
+    button.getComponent<ButtonComponent>().onRelease.remove(callbackTag);
+    InputActions::resetRuntimeState();
 }
 
 TEST_F(InputTest, MouseLeaveClearsHover){

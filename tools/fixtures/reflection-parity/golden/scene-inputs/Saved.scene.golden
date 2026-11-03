@@ -1,4 +1,4 @@
-formatVersion: 5
+formatVersion: 7
 guid: d03b260f33fbad2534a87b618e82d620
 id: 367179023
 name: Saved
@@ -68,29 +68,26 @@ shaderKeys:
     properties: 6144
   - type: blit
   - type: shadowcache
-  - type: mesh
-    properties: 1
-    customShader: shaders/si_world_grid#BLEND_NONE
-  - type: mesh
-    properties: 1
-    customShader: shaders/si_depth_grid#BLEND_ALPHA
-  - type: mesh
-    properties: 1027
-    customShader: library:unlit#BLEND_NONE
   - type: depth
     customShader: library:unlit
   - type: depth
     properties: 6144
     customShader: library:unlit
   - type: mesh
+    properties: 1027
+    customShader: library:unlit#BLEND_NONE
+  - type: mesh
+    properties: 1
+    customShader: shaders/si_depth_grid#BLEND_ALPHA
+  - type: mesh
+    properties: 2051
+    customShader: shaders/si_haze#BLEND_ALPHA
+  - type: mesh
     properties: 1
     customShader: shaders/si_intersection#BLEND_ADDITIVE
   - type: mesh
     properties: 65
     customShader: shaders/si_refraction#BLEND_ALPHA
-  - type: mesh
-    properties: 2051
-    customShader: shaders/si_haze#BLEND_ALPHA
   - type: points
     properties: 4
     customShader: shaders/si_soft_points#BLEND_ALPHA
@@ -100,6 +97,9 @@ shaderKeys:
   - type: points
     properties: 13
     customShader: shaders/si_soft_points#BLEND_ALPHA
+  - type: mesh
+    properties: 1
+    customShader: shaders/si_world_grid#BLEND_NONE
 entities:
   - type: Entity
     entity: 1001

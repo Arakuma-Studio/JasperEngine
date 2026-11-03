@@ -5,8 +5,10 @@
 // tilemaps, sprite sheets and sprite animations, keyframe animations and tweens, physics
 // colliders and joints, UI widget trees and rect layouts, particle systems, models, and the
 // point lists of polygons / shadow casters / line renderers.
+#include "util/ProjectUtils.h"
 #include "McpTools.h"
 #include "AnimationClipTools.h"
+#include "AnimatorTools.h"
 #include "AnimationKeys.h"
 
 #include "mcp/McpCall.h"
@@ -23,12 +25,18 @@
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/AddComponentCmd.h"
+#include "util/RagdollWizard.h"
+#include "component/AnimationPlayerComponent.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/ModelClearCmd.h"
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "physics/PolygonDecomposition2D.h"
+#include "physics/PhysicsMaterial.h"
+#include "util/PhysicsMaterialAssets.h"
+#include "subsystem/PhysicsSystem.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
@@ -51,8 +59,11 @@
 #include "component/PanelComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "particles/LegacyParticleConverter.h"
+#include "particles/ParticleEffectCodec.h"
 #include "util/ParticleEffectEdit.h"
 #include "mcp/tools/ParticleShared.h"
+#include "util/Color.h"
+#include "util/ProjectUtils.h"
 #include "component/PointsComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/ProgressbarComponent.h"
@@ -87,6 +98,7 @@
 #include "window/AnimationWindow.h"
 #include "window/ProjectWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "util/Angle.h"
 
 #include "stb_image.h"
 
@@ -535,6 +547,12 @@ void sculptTerrainTool(const CallPtr& call) {
         call->fail("strokes must be a non-empty array of {mode, points, ...}.");
         return;
     }
+    // the editable maps a stroke makes and writes: inside the project once links are resolved
+    // (the writes themselves go beneath it: the call's write scope, carried to the map writer)
+    if (const std::string escape = McpRefs::writeEscape(target.project, target.project->getTerrainMapsDir()); !escape.empty()) {
+        call->fail(escape);
+        return;
+    }
     Scene* scene = target.engineScene();
     Transform& transform = scene->getComponent<Transform>(target.entity);
     const Matrix4 inverseModel = transform.modelMatrix.inverse();
@@ -977,7 +995,7 @@ bool parsePoints2D(const Json& value, std::vector<Vector2>& out, std::string& er
 }
 
 // Applies a 2D collider spec onto `shape` (a copy of an existing collider or a default one)
-bool applyCollider2D(Scene* scene, Entity entity, const Json& spec, Collider2D& shape, bool isNew, std::string& error) {
+bool applyCollider2D(Project* project, Scene* scene, Entity entity, const Json& spec, Collider2D& shape, bool isNew, std::string& error) {
     std::string shapeName = isNew ? stringOr(spec, "shape", "box") : stringOr(spec, "shape", "");
     if (!shapeName.empty() && !pickName(collider2DTypes(), shapeName, shape.type, "shape", error)) return false;
     shapeName = lowerText(shapeName);
@@ -1007,11 +1025,8 @@ bool applyCollider2D(Scene* scene, Entity entity, const Json& spec, Collider2D& 
             return false;
         }
         const Vector2 half = size * 0.5f;
-        shape.numVertices = 4;
-        shape.vertices[0] = center + Vector2(-half.x, -half.y);
-        shape.vertices[1] = center + Vector2(half.x, -half.y);
-        shape.vertices[2] = center + Vector2(half.x, half.y);
-        shape.vertices[3] = center + Vector2(-half.x, half.y);
+        shape.points = {center + Vector2(-half.x, -half.y), center + Vector2(half.x, -half.y),
+                        center + Vector2(half.x, half.y), center + Vector2(-half.x, half.y)};
         shape.pointA = center;
     } else if (shape.type == Collider2DType::CIRCLE) {
         if (!shapeName.empty() || has(spec, "center")) shape.pointA = center;
@@ -1049,25 +1064,19 @@ bool applyCollider2D(Scene* scene, Entity entity, const Json& spec, Collider2D& 
         }
     } else {
         // polygon / chain: explicit points, or the bounds rectangle
+        // any number of points: a polygon may be concave (split in convex pieces), a chain
+        // of 2 or 3 points is made of segments
         if (has(spec, "points")) {
             std::vector<Vector2> points;
             if (!parsePoints2D(spec["points"], points, error)) return false;
-            if (points.size() > MAX_COLLIDER_POINTS_2D) {
-                error = "A 2D collider holds at most " + std::to_string(MAX_COLLIDER_POINTS_2D) + " points.";
-                return false;
-            }
-            shape.numVertices = static_cast<uint8_t>(points.size());
-            for (size_t i = 0; i < points.size(); i++) shape.vertices[i] = points[i];
+            shape.points = std::move(points);
         } else if (!shapeName.empty()) {
             const Vector2 half = size * 0.5f;
-            shape.numVertices = 4;
-            shape.vertices[0] = center + Vector2(-half.x, -half.y);
-            shape.vertices[1] = center + Vector2(half.x, -half.y);
-            shape.vertices[2] = center + Vector2(half.x, half.y);
-            shape.vertices[3] = center + Vector2(-half.x, half.y);
+            shape.points = {center + Vector2(-half.x, -half.y), center + Vector2(half.x, -half.y),
+                            center + Vector2(half.x, half.y), center + Vector2(-half.x, half.y)};
         }
-        const unsigned minPoints = shape.type == Collider2DType::CHAIN ? 4u : 3u;
-        if (shape.numVertices < minPoints) {
+        const unsigned minPoints = shape.type == Collider2DType::CHAIN ? 2u : 3u;
+        if (shape.points.size() < minPoints) {
             error = std::string(shape.type == Collider2DType::CHAIN ? "chain" : "polygon") + " needs at least " +
                     std::to_string(minPoints) + " points.";
             return false;
@@ -1078,7 +1087,24 @@ bool applyCollider2D(Scene* scene, Entity entity, const Json& spec, Collider2D& 
     shape.density = numberOr(spec, "density", shape.density);
     shape.friction = numberOr(spec, "friction", shape.friction);
     shape.restitution = numberOr(spec, "restitution", shape.restitution);
-    shape.sensor = boolOr(spec, "sensor", shape.sensor);
+    if (spec.is_object() && spec.contains("material")) {
+        if (spec["material"].is_null()) {
+            shape.material.clear();
+        } else if (spec["material"].is_string()) {
+            // project-relative over MCP, assets-relative in the component
+            std::string stored;
+            if (!McpValues::assetPathFromJson(project, spec["material"].get<std::string>(), stored, error)) return false;
+            if (!PhysicsMaterialAssets::isPhysicsMaterialFile(stored)) {
+                error = "material must be a .physicsmaterial (edit_physics_material creates one).";
+                return false;
+            }
+            shape.material = stored;
+        } else {
+            error = "material must be a .physicsmaterial path or null.";
+            return false;
+        }
+    }
+    shape.sensor = boolOr(spec, "sensor", boolOr(spec, "is_trigger", shape.sensor));
     shape.enableHitEvents = boolOr(spec, "hit_events", shape.enableHitEvents);
     shape.contactEvents = boolOr(spec, "contact_events", shape.contactEvents);
     shape.preSolveEvents = boolOr(spec, "pre_solve_events", shape.preSolveEvents);
@@ -1093,16 +1119,46 @@ bool applyCollider2D(Scene* scene, Entity entity, const Json& spec, Collider2D& 
     return true;
 }
 
-Json collider2DJson(const Collider2D& shape) {
+// receiver (physics-contacts D9): also gets the collider's contact callbacks; null clears it
+bool applyColliderReceiver(const Target& target, const Json& spec, Entity& receiver, std::string& error) {
+    if (!spec.is_object() || !spec.contains("receiver")) return true;
+    if (spec["receiver"].is_null()) {
+        receiver = NULL_ENTITY;
+        return true;
+    }
+    const Entity resolved = resolveRef(target.scene, spec["receiver"], error);
+    if (resolved == NULL_ENTITY) {
+        error = "receiver: " + error;
+        return false;
+    }
+    receiver = resolved;
+    return true;
+}
+
+void colliderReceiverJson(const Target& target, Entity receiver, Json& out) {
+    if (receiver != NULL_ENTITY && target.engineScene()->isEntityCreated(receiver)) out["receiver"] = entityJson(target, receiver);
+}
+
+Json collider2DJson(Project* project, Scene* scene, Entity entity, const Collider2D& shape) {
     Json out = {{"shape", nameOf(collider2DTypes(), shape.type)}, {"density", shape.density}, {"friction", shape.friction},
                 {"restitution", shape.restitution}, {"sensor", shape.sensor},
                 {"category_bits", shape.categoryBits}, {"mask_bits", shape.maskBits}, {"group_index", shape.groupIndex}};
+    if (!shape.material.empty()) out["material"] = McpValues::assetPathToJson(project, shape.material);
     if (shape.type == Collider2DType::POLYGON || shape.type == Collider2DType::CHAIN) {
         if (shape.type == Collider2DType::POLYGON) out["shape"] = "polygon";
         Json points = Json::array();
-        for (unsigned i = 0; i < shape.numVertices; i++) points.push_back(McpValues::toJson(shape.vertices[i]));
+        for (const Vector2& point : shape.points) points.push_back(McpValues::toJson(point));
         out["points"] = points;
         if (shape.type == Collider2DType::CHAIN) out["loop"] = shape.loop;
+        if (shape.type == Collider2DType::POLYGON && shape.points.size() >= 3) {
+            // the convex Box2D pieces the polygon is split into: the body's own (after the
+            // GameObject's scale, slivers Box2D cannot hull left out)
+            Collider2D pieces = shape;
+            scene->getSystem<PhysicsSystem>()->updateCollider2DPieces(entity, pieces);
+            out["pieces"] = pieces.pieces.size();
+            if (pieces.selfIntersecting) out["self_intersecting"] = true;
+            if (!pieces.decompositionError.empty()) out["error"] = pieces.decompositionError;
+        }
     } else if (shape.type == Collider2DType::CIRCLE) {
         out["center"] = McpValues::toJson(shape.pointA);
         out["radius"] = shape.radius;
@@ -1120,7 +1176,47 @@ bool applyCollider3D(const Target& target, Entity entity, const Json& spec, Coll
     if (!shapeName.empty() && !pickName(collider3DTypes(), shapeName, shape.type, "shape", error)) return false;
 
     MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-    if (shape.type == Collider3DType::CONVEX_HULL || shape.type == Collider3DType::MESH) {
+    // raw geometry: hull points, or points and triangles (any size, GameObject-local)
+    const bool raw = has(spec, "vertices");
+    if ((shape.type == Collider3DType::CONVEX_HULL || shape.type == Collider3DType::MESH) && raw) {
+        if (!spec["vertices"].is_array()) {
+            error = "vertices must be an array of [x, y, z].";
+            return false;
+        }
+        std::vector<Vector3> vertices;
+        for (const Json& item : spec["vertices"]) {
+            Vector3 vertex;
+            if (!McpValues::parseVector3(item, vertex)) {
+                error = "vertices must be an array of [x, y, z].";
+                return false;
+            }
+            vertices.push_back(vertex);
+        }
+        shape.vertices = vertices;
+        shape.sourceEntity = NULL_ENTITY;
+        if (shape.type == Collider3DType::CONVEX_HULL) {
+            shape.source = Collider3DSource::RAW_VERTICES;
+            shape.indices.clear();
+        } else {
+            shape.source = Collider3DSource::RAW_MESH;
+            if (!has(spec, "indices") || !spec["indices"].is_array()) {
+                error = "a raw mesh collider needs indices (3 per triangle).";
+                return false;
+            }
+            shape.indices.clear();
+            for (const Json& item : spec["indices"]) {
+                if (!item.is_number_integer() || item.get<long long>() < 0 || item.get<long long>() >= (long long)vertices.size()) {
+                    error = "indices must be integers below the vertex count.";
+                    return false;
+                }
+                shape.indices.push_back((uint32_t)item.get<long long>());
+            }
+            if (shape.indices.size() % 3 != 0) {
+                error = "indices must come 3 per triangle.";
+                return false;
+            }
+        }
+    } else if (shape.type == Collider3DType::CONVEX_HULL || shape.type == Collider3DType::MESH) {
         Entity source = entity;
         if (has(spec, "source")) {
             source = resolveRef(target.scene, spec["source"], error);
@@ -1196,6 +1292,24 @@ bool applyCollider3D(const Target& target, Entity entity, const Json& spec, Coll
     shape.topRadius = numberOr(spec, "top_radius", shape.topRadius);
     shape.bottomRadius = numberOr(spec, "bottom_radius", shape.bottomRadius);
     shape.density = numberOr(spec, "density", shape.density);
+    shape.isTrigger = boolOr(spec, "is_trigger", shape.isTrigger);
+    if (has(spec, "material")) {
+        if (spec["material"].is_null()) {
+            shape.material.clear();
+        } else if (spec["material"].is_string()) {
+            // project-relative over MCP, assets-relative in the component
+            std::string stored;
+            if (!McpValues::assetPathFromJson(target.project, spec["material"].get<std::string>(), stored, error)) return false;
+            if (!PhysicsMaterialAssets::isPhysicsMaterialFile(stored)) {
+                error = "material must be a .physicsmaterial (edit_physics_material creates one).";
+                return false;
+            }
+            shape.material = stored;
+        } else {
+            error = "material must be a .physicsmaterial path or null.";
+            return false;
+        }
+    }
     if (shape.width <= 0.0f || shape.height <= 0.0f || shape.depth <= 0.0f || shape.radius <= 0.0f ||
         shape.halfHeight <= 0.0f || shape.topRadius <= 0.0f || shape.bottomRadius <= 0.0f || shape.density <= 0.0f) {
         error = "Collider sizes, radii and density must be positive.";
@@ -1207,6 +1321,12 @@ bool applyCollider3D(const Target& target, Entity entity, const Json& spec, Coll
 Json collider3DJson(const Target& target, const Collider3D& shape) {
     Json out = {{"shape", nameOf(collider3DTypes(), shape.type)}, {"center", McpValues::toJson(shape.position)},
                 {"rotation", McpValues::toJson(shape.rotation)}, {"density", shape.density}};
+    if (shape.isTrigger) out["is_trigger"] = true;
+    if (!shape.material.empty()) out["material"] = McpValues::assetPathToJson(target.project, shape.material);
+    if (shape.source == Collider3DSource::RAW_VERTICES || shape.source == Collider3DSource::RAW_MESH) {
+        out["vertices"] = shape.vertices.size();
+        if (shape.source == Collider3DSource::RAW_MESH) out["triangles"] = shape.indices.size() / 3;
+    }
     switch (shape.type) {
         case Collider3DType::BOX: out["size"] = McpValues::toJson(Vector3(shape.width, shape.height, shape.depth)); break;
         case Collider3DType::SPHERE: out["radius"] = shape.radius; break;
@@ -1337,39 +1457,43 @@ void editCollidersTool(const CallPtr& call) {
         addProp<BodyType>(*multi, target, target.entity, bodyType, "type", type);
     }
 
-    size_t oldCount = 0;
+    [[maybe_unused]] size_t oldCount = 0;
     size_t newCount = 0;
     Json colliders = Json::array();
     Json bodyMaterial = Json::object();  // 3D friction / restitution given on shapes
     if (is2D) {
         std::vector<Collider2D> shapes;
         if (Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(target.entity)) {
-            oldCount = body->numColliders;
-            for (size_t i = 0; i < body->numColliders; i++) shapes.push_back(body->colliders[i]);
+            oldCount = body->colliders.size();
+            shapes = body->colliders;
         }
         auto apply = [&](const Json& spec, Collider2D& shape, bool isNew, std::string& err) {
-            return applyCollider2D(scene, target.entity, spec, shape, isNew, err);
+            return applyCollider2D(target.project, scene, target.entity, spec, shape, isNew, err) &&
+                   applyColliderReceiver(target, spec, shape.receiver, err);
         };
-        if (!editShapes(args, shapes, MAX_COLLIDERS_2D, apply, error)) {
+        // no limit on colliders per body
+        if (!editShapes(args, shapes, SIZE_MAX, apply, error)) {
             call->fail(error);
             return;
         }
         newCount = shapes.size();
-        for (size_t i = 0; i < std::max(oldCount, newCount); i++) {
-            addProp<Collider2D>(*multi, target, target.entity, bodyType, "colliders[" + std::to_string(i) + "]",
-                                i < newCount ? shapes[i] : Collider2D());
+        // the whole list in one value (any length)
+        if (editing && (has(args, "add") || has(args, "update") || has(args, "remove") || boolOr(args, "clear", false))) {
+            addProp<std::vector<Collider2D>>(*multi, target, target.entity, bodyType, "colliders", shapes);
         }
-        for (const Collider2D& shape : shapes) colliders.push_back(collider2DJson(shape));
+        for (const Collider2D& shape : shapes) { colliders.push_back(collider2DJson(target.project, scene, target.entity, shape)); colliderReceiverJson(target, shape.receiver, colliders.back()); }
     } else {
         std::vector<Collider3D> shapes;
         if (RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(target.entity)) {
-            oldCount = body->numColliders;
-            for (size_t i = 0; i < body->numColliders; i++) shapes.push_back(body->colliders[i]);
+            oldCount = body->colliders.size();
+            shapes = body->colliders;
         }
         auto apply = [&](const Json& spec, Collider3D& shape, bool isNew, std::string& err) {
-            return applyCollider3D(target, target.entity, spec, shape, isNew, err);
+            return applyCollider3D(target, target.entity, spec, shape, isNew, err) &&
+                   applyColliderReceiver(target, spec, shape.receiver, err);
         };
-        if (!editShapes(args, shapes, MAX_COLLIDERS_3D, apply, error)) {
+        // no limit on colliders per body
+        if (!editShapes(args, shapes, SIZE_MAX, apply, error)) {
             call->fail(error);
             return;
         }
@@ -1393,20 +1517,27 @@ void editCollidersTool(const CallPtr& call) {
                 }
             }
         }
-        for (size_t i = 0; i < std::max(oldCount, newCount); i++) {
-            addProp<Collider3D>(*multi, target, target.entity, bodyType, "colliders[" + std::to_string(i) + "]",
-                                i < newCount ? shapes[i] : Collider3D());
+        // the whole list in one value (any length)
+        if (editing && (has(args, "add") || has(args, "update") || has(args, "remove") || boolOr(args, "clear", false))) {
+            addProp<std::vector<Collider3D>>(*multi, target, target.entity, bodyType, "colliders", shapes);
         }
-        for (const Collider3D& shape : shapes) colliders.push_back(collider3DJson(target, shape));
-    }
-    if (editing) {
-        if (newCount != oldCount || !hasBody) addProp<size_t>(*multi, target, target.entity, bodyType, "numColliders", newCount);
+        for (const Collider3D& shape : shapes) { colliders.push_back(collider3DJson(target, shape)); colliderReceiverJson(target, shape.receiver, colliders.back()); }
     }
 
     Json data = {{"entity", entityJson(target, target.entity)}, {"dimension", dimension}, {"colliders", colliders}};
     auto bodyJson = [scene, &target]() {
         const RigidbodyComponent& body = scene->getComponent<RigidbodyComponent>(target.entity);
-        return Json{{"friction", body.friction}, {"restitution", body.restitution}};
+        Json out = {{"friction", body.friction}, {"restitution", body.restitution},
+                    {"linearDamping", body.linearDamping}, {"angularDamping", body.angularDamping},
+                    {"automaticMass", body.automaticMass}, {"interpolation", McpValues::enumToJson((int)body.interpolation, *McpValues::enumTable("rigidbody_interpolation"))}};
+        if (!body.automaticMass) out["mass"] = body.mass;
+        else {
+            PhysicsSystem::MassInfo3D info;
+            if (scene->getSystem<PhysicsSystem>()->computeMassProperties3D(target.entity, body, info)) out["mass"] = info.mass;
+        }
+        if (!body.automaticCenterOfMass) out["centerOfMass"] = McpValues::toJson(body.centerOfMass);
+        if (!body.material.empty()) out["material"] = McpValues::assetPathToJson(target.project, body.material);
+        return out;
     };
     if (!editing) {
         if (is2D) data["body_type"] = nameOf(bodyTypes(), scene->getComponent<Rigidbody2DComponent>(target.entity).type);
@@ -1433,10 +1564,32 @@ void editCollidersTool(const CallPtr& call) {
             return;
         }
     }
-    // Other body properties ({"gravityFactor": 0.5, ...}) after the body exists (they win)
+    // Other body properties ({"gravityFactor": 0.5, ...}) after the body exists (they win);
+    // snake_case names are accepted too (linear_damping = linearDamping)
     if (has(args, "body")) {
+        Json bodyArgs = Json::object();
+        if (args["body"].is_object()) {
+            for (auto it = args["body"].begin(); it != args["body"].end(); ++it) {
+                std::string name;
+                bool upper = false;
+                for (char c : it.key()) {
+                    if (c == '_') { upper = true; continue; }
+                    name += upper ? (char)std::toupper((unsigned char)c) : c;
+                    upper = false;
+                }
+                bodyArgs[name] = it.value();
+            }
+        } else {
+            bodyArgs = args["body"];
+        }
+        // a mass or centre given turns its automatic off (Unity)
+        if (!is2D && bodyArgs.is_object()) {
+            if (bodyArgs.contains("mass") && !bodyArgs.contains("automaticMass")) bodyArgs["automaticMass"] = false;
+            if (bodyArgs.contains("centerOfMass") && !bodyArgs.contains("automaticCenterOfMass")) bodyArgs["automaticCenterOfMass"] = false;
+            if (bodyArgs.contains("inertiaTensor") && !bodyArgs.contains("automaticInertiaTensor")) bodyArgs["automaticInertiaTensor"] = false;
+        }
         MultiPropertyCmd* bodyProps = new MultiPropertyCmd();
-        if (!addCatalogProperties(target.project, target.scene, target.entity, bodyType, args["body"], *bodyProps, error) ||
+        if (!addCatalogProperties(target.project, target.scene, target.entity, bodyType, bodyArgs, *bodyProps, error) ||
             !step.add(bodyProps)) {
             if (error.empty()) error = "The editor rejected the body properties.";
             step.fail(call, "body: " + error);
@@ -1448,19 +1601,186 @@ void editCollidersTool(const CallPtr& call) {
     colliders = Json::array();
     if (is2D) {
         Rigidbody2DComponent& body = scene->getComponent<Rigidbody2DComponent>(target.entity);
-        for (size_t i = 0; i < body.numColliders; i++) colliders.push_back(collider2DJson(body.colliders[i]));
+        for (const Collider2D& shape : body.colliders) { colliders.push_back(collider2DJson(target.project, scene, target.entity, shape)); colliderReceiverJson(target, shape.receiver, colliders.back()); }
     } else {
         RigidbodyComponent& body = scene->getComponent<RigidbodyComponent>(target.entity);
-        for (size_t i = 0; i < body.numColliders; i++) colliders.push_back(collider3DJson(target, body.colliders[i]));
+        for (size_t i = 0; i < body.colliders.size(); i++) { colliders.push_back(collider3DJson(target, body.colliders[i])); colliderReceiverJson(target, body.colliders[i].receiver, colliders.back()); }
     }
     data["colliders"] = colliders;
     data["body_type"] = is2D ? nameOf(bodyTypes(), scene->getComponent<Rigidbody2DComponent>(target.entity).type)
                              : nameOf(bodyTypes(), scene->getComponent<RigidbodyComponent>(target.entity).type);
     data["body_added"] = !hasBody;
     if (!is2D) data["body"] = bodyJson();
+    if (is2D) {
+        // a decomposed polygon has inner seams a rolling wheel can catch on
+        const Rigidbody2DComponent& body = scene->getComponent<Rigidbody2DComponent>(target.entity);
+        Json warnings = Json::array();
+        for (size_t i = 0; i < body.colliders.size(); i++) {
+            const Collider2D& shape = body.colliders[i];
+            if (body.type == BodyType::STATIC && shape.type == Collider2DType::POLYGON && shape.points.size() > 8) {
+                warnings.push_back("collider " + std::to_string(i) + ": a polygon of " + std::to_string(shape.points.size()) +
+                                   " points is split in convex pieces; for ground that wheels roll over consider shape chain "
+                                   "(no inner seams, one-sided).");
+            }
+        }
+        if (!warnings.empty()) data["warnings"] = warnings;
+    }
     call->ok("\"" + scene->getEntityName(target.entity) + "\" now has " + std::to_string(newCount) + " collider(s)" +
              (hasBody ? "" : std::string(" on a new ") + (is2D ? "Rigidbody 2D" : "Rigidbody")) + " (one undo step)." +
              (bodyMaterial.empty() ? "" : " Note: 3D friction/restitution are per body: set on the Rigidbody (all its colliders)."), data);
+}
+
+// edit_physics_material: a .physicsmaterial's four values (created from the 3D or 2D preset)
+// create_ragdoll: Unity's Ragdoll Wizard on a character (RagdollBuilder through one undo step)
+void createRagdollTool(const CallPtr& call) {
+    Target target;
+    if (!resolveEntityArg(call, target) || !sceneStopped(call, target)) return;
+    const Json& args = call->args();
+    Scene* scene = target.engineScene();
+    std::string error;
+
+    // the bones: the model's humanoid mapping / names, then the given ones
+    std::vector<std::string> notes;
+    RagdollBones bones = RagdollBuilder::guessBones(scene, target.entity, &notes);
+    if (has(args, "bones")) {
+        if (!args["bones"].is_object()) {
+            call->fail("bones must be {pelvis, left_hips, ...: GameObject}.");
+            return;
+        }
+        for (auto it = args["bones"].begin(); it != args["bones"].end(); ++it) {
+            const std::vector<const char*>& slots = RagdollBones::slotNames();
+            if (std::find_if(slots.begin(), slots.end(), [&](const char* slot) { return it.key() == slot; }) == slots.end()) {
+                std::string names;
+                for (const char* slot : slots) names += std::string(names.empty() ? "" : ", ") + slot;
+                call->fail("bones: unknown bone \"" + it.key() + "\" (" + names + ").");
+                return;
+            }
+            Entity bone = NULL_ENTITY;
+            if (!it.value().is_null()) {
+                bone = resolveRef(target.scene, it.value(), error);
+                if (bone == NULL_ENTITY) {
+                    call->fail("bones." + it.key() + ": " + error);
+                    return;
+                }
+            }
+            bones.slot(it.key()) = bone;
+        }
+    }
+    RagdollBuildSettings settings;
+    settings.totalMass = numberOr(args, "total_mass", settings.totalMass);
+    settings.flipForward = boolOr(args, "flip_forward", false);
+    settings.selfCollision = boolOr(args, "self_collision", true);
+    const std::string start = lowerText(stringOr(args, "start", ""));
+    if (!start.empty() && start != "animated" && start != "simulated") {
+        call->fail("start must be animated or simulated.");
+        return;
+    }
+    // animated when the character has an Animation Player (it drives the bones), else simulated
+    bool hasAnimator = false;
+    for (Entity e = target.entity; e != NULL_ENTITY && !hasAnimator;) {
+        hasAnimator = scene->findComponent<AnimationPlayerComponent>(e) != nullptr;
+        Transform* t = scene->findComponent<Transform>(e);
+        e = t ? t->parent : NULL_ENTITY;
+    }
+    settings.startSimulated = start.empty() ? !hasAnimator : start == "simulated";
+    if (!(settings.totalMass > 0.0f)) {
+        call->fail("total_mass must be above 0.");
+        return;
+    }
+
+    RagdollBuildResult result;
+    if (!applyRagdollWizard(target.project, target.sceneId(), target.entity, bones, settings, result, error)) {
+        call->fail(error);
+        return;
+    }
+    Json parts = Json::array();
+    for (const RagdollBuiltPart& part : result.parts) {
+        Json item = {{"bone", part.slot}, {"entity", entityJson(target, part.entity)}, {"collider", part.collider}, {"mass", part.mass}};
+        item["joint"] = part.hasJoint ? Json{{"type", "swingtwist"}, {"connected", entityJson(target, part.joint.bodyB)},
+                                             {"twist", {Angle::defaultToDeg(part.joint.twistMinAngle), Angle::defaultToDeg(part.joint.twistMaxAngle)}},
+                                             {"swing1", Angle::defaultToDeg(part.joint.normalHalfConeAngle)}}
+                                      : Json(nullptr);
+        parts.push_back(item);
+    }
+    Json data = {{"entity", entityJson(target, target.entity)}, {"parts", parts}, {"skipped", result.skipped},
+                 {"warnings", result.warnings}, {"notes", notes}, {"start", settings.startSimulated ? "simulated" : "animated"}};
+    call->ok("Made a ragdoll of " + std::to_string(result.parts.size()) + " parts on \"" + scene->getEntityName(target.entity) +
+             "\" (Ragdoll component on it; ragdoll.simulated = true switches it in Play).", data);
+}
+
+void editPhysicsMaterialTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    std::string error;
+    const std::string relative = stringOr(args, "path", "");
+    if (relative.empty() || !PhysicsMaterialAssets::isPhysicsMaterialFile(relative)) {
+        call->fail("path must be a project-relative .physicsmaterial (e.g. \"assets/physics/Tire.physicsmaterial\").");
+        return;
+    }
+    fs::path absolute;
+    if (!McpRefs::resolveProjectWritePath(project, relative, absolute, error, false)) {
+        call->fail(error);
+        return;
+    }
+    if (!project->isInsideAssetsPath(absolute)) {
+        call->fail("\"" + relative + "\" must be inside the assets directory.");
+        return;
+    }
+    const std::string create = lowerText(stringOr(args, "create", ""));
+    if (!create.empty() && create != "3d" && create != "2d") {
+        call->fail("create must be 3d or 2d (the presets of Create > Physics Material / Physics Material 2D).");
+        return;
+    }
+
+    std::error_code ec;
+    const bool exists = fs::is_regular_file(absolute, ec);
+    PhysicsMaterialData data;
+    if (exists) {
+        if (!PhysicsMaterialAssets::read(absolute, data, error)) {
+            call->fail("Cannot read \"" + relative + "\": " + error);
+            return;
+        }
+    } else if (create.empty()) {
+        call->fail("\"" + relative + "\" does not exist; pass create: \"2d\" (or \"3d\") to make it.");
+        return;
+    } else {
+        data = create == "2d" ? PhysicsMaterialData::preset2D() : PhysicsMaterialData::preset3D();
+        data.guid = physicsmaterial::generateGuid();
+    }
+
+    if (has(args, "friction")) {
+        if (!args["friction"].is_number() || args["friction"].get<float>() < 0.0f) {
+            call->fail("friction must be a number >= 0 (above 1 is allowed: a tyre is about 2).");
+            return;
+        }
+        data.friction = args["friction"].get<float>();
+    }
+    if (has(args, "bounciness")) {
+        if (!args["bounciness"].is_number() || args["bounciness"].get<float>() < 0.0f || args["bounciness"].get<float>() > 1.0f) {
+            call->fail("bounciness must be a number 0-1.");
+            return;
+        }
+        data.bounciness = args["bounciness"].get<float>();
+    }
+    for (const char* key : {"friction_combine", "bounce_combine"}) {
+        if (!has(args, key)) continue;
+        PhysicsMaterialCombine mode;
+        if (!args[key].is_string() || !physicsmaterial::combineFromName(args[key].get<std::string>(), mode)) {
+            call->fail(std::string(key) + " must be average, geometric_mean, minimum, multiply or maximum.");
+            return;
+        }
+        (std::string(key) == "friction_combine" ? data.frictionCombine : data.bounceCombine) = mode;
+    }
+
+    if (!PhysicsMaterialAssets::write(project, absolute, data, error)) {
+        call->fail(error);
+        return;
+    }
+    Json result = {{"path", McpValues::assetPathToJson(project, project->normalizeToAssetsRelative(absolute).generic_string())},
+                   {"created", !exists}, {"friction", data.friction}, {"bounciness", data.bounciness},
+                   {"friction_combine", physicsmaterial::combineName(data.frictionCombine)},
+                   {"bounce_combine", physicsmaterial::combineName(data.bounceCombine)}, {"undo", {{"scope", "project"}}}};
+    call->ok(std::string(exists ? "Updated" : "Created") + " physics material \"" + relative + "\" (one project undo step: undo scope project).", result);
 }
 
 const std::vector<std::pair<const char*, Joint2DType>>& joint2DTypes() {
@@ -1517,8 +1837,10 @@ void setJointTool(const CallPtr& call) {
         call->fail("\"" + scene->getEntityName(joint) + "\" has no " + (is2D ? "Joint 2D" : "Joint") + " component.");
         return;
     }
-    if (joint == NULL_ENTITY && (bodyA == NULL_ENTITY || bodyB == NULL_ENTITY)) {
-        call->fail("A new joint needs body_a and body_b (the two Rigidbody GameObjects it connects). Pass joint to edit an existing one.");
+    // without body_b the joint holds body_a to the world (Unity connectedBody none)
+    if (joint == NULL_ENTITY && bodyA == NULL_ENTITY) {
+        call->fail(std::string("A new joint needs body_a (the ") + (is2D ? "Rigidbody 2D" : "Rigidbody") +
+                   " GameObject it is on) and usually body_b (the connected one; none = the world). Pass joint to edit an existing one.");
         return;
     }
     Json warnings = Json::array();
@@ -1532,8 +1854,11 @@ void setJointTool(const CallPtr& call) {
     UndoStep step(target.sceneId());
     const bool created = joint == NULL_ENTITY;
     if (created) {
-        auto* create = new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", is2D ? "Joint 2D" : "Joint"),
-                                           is2D ? EntityCreationType::JOINT2D : EntityCreationType::JOINT3D);
+        // a 2D joint lives under body_a (it follows it, a prefab carries it along)
+        auto* create = is2D ? new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", "Joint 2D"),
+                                                  EntityCreationType::JOINT2D, bodyA)
+                            : new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", "Joint"),
+                                                  EntityCreationType::JOINT3D, bodyA);
         if (!step.add(create)) {
             call->fail("Could not create the joint GameObject.");
             return;
@@ -1542,15 +1867,30 @@ void setJointTool(const CallPtr& call) {
     }
 
     auto* multi = new MultiPropertyCmd();
+    // what the 2D joint will be once this edit is applied (type-dependent defaults, motor fields)
+    Joint2DComponent resulting2D = is2D ? scene->getComponent<Joint2DComponent>(joint) : Joint2DComponent();
+    Joint3DComponent resulting3D = is2D ? Joint3DComponent() : scene->getComponent<Joint3DComponent>(joint);
     if (has(args, "type")) {
         if (is2D) {
             Joint2DType type;
             if (!pickName(joint2DTypes(), stringOr(args, "type", ""), type, "type", error)) { delete multi; step.fail(call, error); return; }
+            // the fields still at the old type's defaults take the new type's (wheel: 2 Hz spring)
+            const Joint2DComponent before = resulting2D;
+            changeJoint2DType(resulting2D, type);
             addProp<Joint2DType>(*multi, target, joint, jointType, "type", type);
+            if (resulting2D.enableSpring != before.enableSpring) addProp<bool>(*multi, target, joint, jointType, "enableSpring", resulting2D.enableSpring);
+            if (resulting2D.frequency != before.frequency) addProp<float>(*multi, target, joint, jointType, "frequency", resulting2D.frequency);
+            if (resulting2D.dampingRatio != before.dampingRatio) addProp<float>(*multi, target, joint, jointType, "dampingRatio", resulting2D.dampingRatio);
+            if (resulting2D.maxForce != before.maxForce) addProp<float>(*multi, target, joint, jointType, "maxForce", resulting2D.maxForce);
         } else {
             Joint3DType type;
             if (!pickName(joint3DTypes(), stringOr(args, "type", ""), type, "type", error)) { delete multi; step.fail(call, error); return; }
+            // the fields still at the old type's defaults take the new type's (hinge limits -45..45)
+            const Joint3DComponent before = resulting3D;
+            changeJoint3DType(resulting3D, type);
             addProp<Joint3DType>(*multi, target, joint, jointType, "type", type);
+            if (resulting3D.limitsMin != before.limitsMin) addProp<float>(*multi, target, joint, jointType, "limitsMin", resulting3D.limitsMin);
+            if (resulting3D.limitsMax != before.limitsMax) addProp<float>(*multi, target, joint, jointType, "limitsMax", resulting3D.limitsMax);
         }
     }
     if (bodyA != NULL_ENTITY) addProp<Entity>(*multi, target, joint, jointType, "bodyA", bodyA);
@@ -1564,23 +1904,202 @@ void setJointTool(const CallPtr& call) {
             addProp<Vector2>(*multi, target, joint, jointType, v.prop, value);
         }
         if (has(args, "rope")) addProp<bool>(*multi, target, joint, jointType, "rope", boolOr(args, "rope", false));
+        if (has(args, "anchor_space")) {
+            const std::string space = lowerText(stringOr(args, "anchor_space", ""));
+            if (space != "local" && space != "world") { delete multi; step.fail(call, "anchor_space must be local or world."); return; }
+            resulting2D.anchorSpace = space == "local" ? JointAnchorSpace::LOCAL : JointAnchorSpace::WORLD;
+            addProp<JointAnchorSpace>(*multi, target, joint, jointType, "anchorSpace", resulting2D.anchorSpace);
+        }
+        if (has(args, "enable_collision")) addProp<bool>(*multi, target, joint, jointType, "enableCollision", boolOr(args, "enable_collision", false));
+        const Joint2DType type2D = resulting2D.type;
+        if (has(args, "motor")) {
+            const Json& motor = args["motor"];
+            if (!motor.is_object()) { delete multi; step.fail(call, "motor must be {enabled, speed, max}."); return; }
+            if (type2D != Joint2DType::REVOLUTE && type2D != Joint2DType::WHEEL && type2D != Joint2DType::PRISMATIC && type2D != Joint2DType::DISTANCE) {
+                delete multi; step.fail(call, "motor: a " + std::string(nameOf(joint2DTypes(), type2D)) + " joint has no motor (revolute, wheel, prismatic, distance do)."); return;
+            }
+            addProp<bool>(*multi, target, joint, jointType, "useMotor", boolOr(motor, "enabled", true));
+            if (has(motor, "speed")) addProp<float>(*multi, target, joint, jointType, "motorSpeed", numberOr(motor, "speed", 0.0f));
+            if (has(motor, "max")) {
+                const bool torque = type2D == Joint2DType::REVOLUTE || type2D == Joint2DType::WHEEL;
+                addProp<float>(*multi, target, joint, jointType, torque ? "maxMotorTorque" : "maxMotorForce", std::max(0.0f, numberOr(motor, "max", 0.0f)));
+            }
+        }
+        if (has(args, "spring")) {
+            const Json& spring = args["spring"];
+            if (!spring.is_object()) { delete multi; step.fail(call, "spring must be {enabled, frequency, damping}."); return; }
+            if (type2D == Joint2DType::WELD) {
+                // weld stiffness: both linear and angular
+                if (has(spring, "frequency")) {
+                    addProp<float>(*multi, target, joint, jointType, "linearFrequency", std::max(0.0f, numberOr(spring, "frequency", 0.0f)));
+                    addProp<float>(*multi, target, joint, jointType, "angularFrequency", std::max(0.0f, numberOr(spring, "frequency", 0.0f)));
+                }
+                if (has(spring, "damping")) {
+                    addProp<float>(*multi, target, joint, jointType, "linearDampingRatio", std::max(0.0f, numberOr(spring, "damping", 0.0f)));
+                    addProp<float>(*multi, target, joint, jointType, "angularDampingRatio", std::max(0.0f, numberOr(spring, "damping", 0.0f)));
+                }
+            } else {
+                if (type2D != Joint2DType::MOUSE && type2D != Joint2DType::MOTOR) {
+                    addProp<bool>(*multi, target, joint, jointType, "enableSpring", boolOr(spring, "enabled", true));
+                }
+                if (has(spring, "frequency")) addProp<float>(*multi, target, joint, jointType, "frequency", std::max(0.0f, numberOr(spring, "frequency", 0.0f)));
+                if (has(spring, "damping")) addProp<float>(*multi, target, joint, jointType, "dampingRatio", std::max(0.0f, numberOr(spring, "damping", 0.0f)));
+            }
+        }
+        if (has(args, "limits")) {
+            if (args["limits"].is_boolean() && !args["limits"].get<bool>()) {
+                addProp<bool>(*multi, target, joint, jointType, "useLimits", false);
+            } else {
+                Vector2 limits;
+                if (!readVec2(args, "limits", limits, error)) { delete multi; step.fail(call, "limits must be [min, max] (or false): " + error); return; }
+                const float lower = std::min(limits.x, limits.y), upper = std::max(limits.x, limits.y);
+                if (type2D == Joint2DType::REVOLUTE) {
+                    // a revolute limit stays within a half turn each way (Box2D), in the project's unit
+                    const float halfTurn = Angle::degToDefault(180.0f);
+                    addProp<float>(*multi, target, joint, jointType, "lowerAngle", std::max(-halfTurn, lower));
+                    addProp<float>(*multi, target, joint, jointType, "upperAngle", std::min(halfTurn, upper));
+                } else if (type2D == Joint2DType::PRISMATIC || type2D == Joint2DType::WHEEL) {
+                    addProp<float>(*multi, target, joint, jointType, "lowerTranslation", lower);
+                    addProp<float>(*multi, target, joint, jointType, "upperTranslation", upper);
+                } else if (type2D == Joint2DType::DISTANCE) {
+                    addProp<float>(*multi, target, joint, jointType, "minLength", std::max(0.0f, lower));
+                    addProp<float>(*multi, target, joint, jointType, "maxLength", std::max(0.0f, upper));
+                } else {
+                    delete multi; step.fail(call, "limits: a " + std::string(nameOf(joint2DTypes(), type2D)) + " joint has no limits (revolute angles, prismatic/wheel translation, distance length)."); return;
+                }
+                addProp<bool>(*multi, target, joint, jointType, "useLimits", true);
+            }
+        }
+        if (has(args, "break")) {
+            const Json& breaking = args["break"];
+            if (!breaking.is_object()) { delete multi; step.fail(call, "break must be {force, torque, action}."); return; }
+            // a number, or null / "infinity" for never
+            auto threshold = [&](const char* key, float& out) {
+                const Json& value = breaking[key];
+                if (value.is_null() || (value.is_string() && lowerText(value.get<std::string>()) == "infinity")) { out = std::numeric_limits<float>::infinity(); return true; }
+                if (!value.is_number() || value.get<float>() < 0.0f) return false;
+                out = value.get<float>();
+                return true;
+            };
+            for (const char* key : {"force", "torque"}) {
+                if (!breaking.contains(key)) continue;
+                float value = 0.0f;
+                if (!threshold(key, value)) { delete multi; step.fail(call, std::string("break.") + key + " must be >= 0, or null for never."); return; }
+                addProp<float>(*multi, target, joint, jointType, std::string(key) == "force" ? "breakForce" : "breakTorque", value);
+            }
+            if (has(breaking, "action")) {
+                static const std::vector<std::pair<const char*, JointBreakAction>> actions = {
+                    {"ignore", JointBreakAction::IGNORE}, {"callback_only", JointBreakAction::CALLBACK_ONLY},
+                    {"disable", JointBreakAction::DISABLE}, {"destroy", JointBreakAction::DESTROY}};
+                JointBreakAction action;
+                if (!pickName(actions, stringOr(breaking, "action", ""), action, "break.action", error)) { delete multi; step.fail(call, error); return; }
+                addProp<JointBreakAction>(*multi, target, joint, jointType, "breakAction", action);
+            }
+        }
     } else {
-        for (const VecArg& v : {VecArg{"anchor_a", "anchorA"}, VecArg{"anchor_b", "anchorB"}, VecArg{"anchor", "anchor"}, VecArg{"axis", "axis"}, VecArg{"normal", "normal"}}) {
+        const Joint3DType type3D = resulting3D.type;
+        // anchor_a is the joint's anchor (bodyA) in local space, its world point in world space
+        // for the types that had one; anchor_b the connected anchor
+        for (const VecArg& v : {VecArg{"anchor_b", "anchorB"}, VecArg{"anchor", "anchor"}, VecArg{"axis", "axis"}, VecArg{"normal", "normal"}}) {
             Vector3 value;
             if (!has(args, v.arg)) continue;
             if (!readVec3(args, v.arg, value, error)) { delete multi; step.fail(call, error); return; }
             addProp<Vector3>(*multi, target, joint, jointType, v.prop, value);
         }
+        if (has(args, "anchor_a")) {
+            Vector3 value;
+            if (!readVec3(args, "anchor_a", value, error)) { delete multi; step.fail(call, error); return; }
+            addProp<Vector3>(*multi, target, joint, jointType, "anchorA", value);
+            if (!has(args, "anchor")) addProp<Vector3>(*multi, target, joint, jointType, "anchor", value);
+        }
+        if (has(args, "anchor_space")) {
+            const std::string space = lowerText(stringOr(args, "anchor_space", ""));
+            if (space != "local" && space != "world") { delete multi; step.fail(call, "anchor_space must be local or world."); return; }
+            resulting3D.anchorSpace = space == "local" ? JointAnchorSpace::LOCAL : JointAnchorSpace::WORLD;
+            addProp<JointAnchorSpace>(*multi, target, joint, jointType, "anchorSpace", resulting3D.anchorSpace);
+        }
+        if (has(args, "enable_collision")) addProp<bool>(*multi, target, joint, jointType, "enableCollision", boolOr(args, "enable_collision", false));
+        if (has(args, "cone_half_angle")) {
+            if (type3D != Joint3DType::CONE) { delete multi; step.fail(call, "cone_half_angle: only a cone joint has one."); return; }
+            addProp<float>(*multi, target, joint, jointType, "coneHalfAngle", std::max(0.0f, numberOr(args, "cone_half_angle", 45.0f)));
+        }
+        if (has(args, "motor")) {
+            const Json& motor = args["motor"];
+            if (!motor.is_object()) { delete multi; step.fail(call, "motor must be {enabled, speed, max}."); return; }
+            if (type3D != Joint3DType::HINGE && type3D != Joint3DType::PRISMATIC && type3D != Joint3DType::SWINGTWIST) {
+                delete multi; step.fail(call, "motor: a " + std::string(nameOf(joint3DTypes(), type3D)) + " joint has no motor (hinge, prismatic, swingtwist do)."); return;
+            }
+            addProp<bool>(*multi, target, joint, jointType, "useMotor", boolOr(motor, "enabled", true));
+            if (has(motor, "speed")) addProp<float>(*multi, target, joint, jointType, "motorTargetVelocity", numberOr(motor, "speed", 0.0f));
+            if (has(motor, "max")) addProp<float>(*multi, target, joint, jointType, "motorMaxForce", std::max(0.0f, numberOr(motor, "max", 0.0f)));
+        }
+        if (has(args, "spring")) {
+            const Json& spring = args["spring"];
+            if (!spring.is_object()) { delete multi; step.fail(call, "spring must be {enabled, stiffness, damper, target}."); return; }
+            if (type3D != Joint3DType::HINGE && type3D != Joint3DType::PRISMATIC && type3D != Joint3DType::DISTANCE) {
+                delete multi; step.fail(call, "spring: a " + std::string(nameOf(joint3DTypes(), type3D)) + " joint has no spring (hinge, prismatic, distance do)."); return;
+            }
+            addProp<bool>(*multi, target, joint, jointType, "useSpring", boolOr(spring, "enabled", true));
+            if (has(spring, "stiffness")) addProp<float>(*multi, target, joint, jointType, "springStiffness", std::max(0.0f, numberOr(spring, "stiffness", 0.0f)));
+            if (has(spring, "damper")) addProp<float>(*multi, target, joint, jointType, "springDamper", std::max(0.0f, numberOr(spring, "damper", 0.0f)));
+            if (has(spring, "target")) addProp<float>(*multi, target, joint, jointType, "springTargetPosition", numberOr(spring, "target", 0.0f));
+        }
         if (has(args, "limits")) {
-            Vector2 limits;
-            if (!readVec2(args, "limits", limits, error)) { delete multi; step.fail(call, error); return; }
-            addProp<float>(*multi, target, joint, jointType, "limitsMin", limits.x);
-            addProp<float>(*multi, target, joint, jointType, "limitsMax", limits.y);
+            if (args["limits"].is_boolean() && !args["limits"].get<bool>()) {
+                addProp<bool>(*multi, target, joint, jointType, "useLimits", false);
+            } else {
+                Vector2 limits;
+                if (!readVec2(args, "limits", limits, error)) { delete multi; step.fail(call, "limits must be [min, max] (or false): " + error); return; }
+                const float lower = std::min(limits.x, limits.y), upper = std::max(limits.x, limits.y);
+                if (type3D == Joint3DType::HINGE || type3D == Joint3DType::PRISMATIC) {
+                    addProp<float>(*multi, target, joint, jointType, "limitsMin", lower);
+                    addProp<float>(*multi, target, joint, jointType, "limitsMax", upper);
+                    addProp<bool>(*multi, target, joint, jointType, "useLimits", true);
+                } else if (type3D == Joint3DType::DISTANCE) {
+                    addProp<float>(*multi, target, joint, jointType, "minDistance", std::max(0.0f, lower));
+                    addProp<float>(*multi, target, joint, jointType, "maxDistance", std::max(0.0f, upper));
+                } else if (type3D == Joint3DType::SWINGTWIST) {
+                    // the twist range (Unity low / high twist)
+                    addProp<float>(*multi, target, joint, jointType, "twistMinAngle", lower);
+                    addProp<float>(*multi, target, joint, jointType, "twistMaxAngle", upper);
+                } else {
+                    delete multi; step.fail(call, "limits: a " + std::string(nameOf(joint3DTypes(), type3D)) + " joint has no limits (hinge angles, prismatic metres, distance length, swingtwist twist)."); return;
+                }
+            }
+        }
+        if (has(args, "break")) {
+            const Json& breaking = args["break"];
+            if (!breaking.is_object()) { delete multi; step.fail(call, "break must be {force, torque, action}."); return; }
+            auto threshold = [&](const char* key, float& out) {
+                const Json& value = breaking[key];
+                if (value.is_null() || (value.is_string() && lowerText(value.get<std::string>()) == "infinity")) { out = std::numeric_limits<float>::infinity(); return true; }
+                if (!value.is_number() || value.get<float>() < 0.0f) return false;
+                out = value.get<float>();
+                return true;
+            };
+            for (const char* key : {"force", "torque"}) {
+                if (!breaking.contains(key)) continue;
+                float value = 0.0f;
+                if (!threshold(key, value)) { delete multi; step.fail(call, std::string("break.") + key + " must be >= 0, or null for never."); return; }
+                addProp<float>(*multi, target, joint, jointType, std::string(key) == "force" ? "breakForce" : "breakTorque", value);
+            }
+            if (has(breaking, "action")) {
+                static const std::vector<std::pair<const char*, JointBreakAction>> actions = {
+                    {"ignore", JointBreakAction::IGNORE}, {"callback_only", JointBreakAction::CALLBACK_ONLY},
+                    {"disable", JointBreakAction::DISABLE}, {"destroy", JointBreakAction::DESTROY}};
+                JointBreakAction action;
+                if (!pickName(actions, stringOr(breaking, "action", ""), action, "break.action", error)) { delete multi; step.fail(call, error); return; }
+                addProp<JointBreakAction>(*multi, target, joint, jointType, "breakAction", action);
+            }
         }
     }
     const bool anchorsGiven = has(args, "anchor_a") || has(args, "anchor_b") || has(args, "anchor");
-    if (has(args, "auto_anchors") || anchorsGiven) {
-        addProp<bool>(*multi, target, joint, jointType, "autoAnchors", boolOr(args, "auto_anchors", !anchorsGiven));
+    // local anchors: anchor (anchor_a) alone keeps the connected anchor automatic (Unity);
+    // anchor_b sets it
+    const bool localJoint = is2D ? resulting2D.anchorSpace == JointAnchorSpace::LOCAL : resulting3D.anchorSpace == JointAnchorSpace::LOCAL;
+    const bool turnsAutoOff = localJoint ? has(args, "anchor_b") : anchorsGiven;
+    if (has(args, "auto_anchors") || turnsAutoOff) {
+        addProp<bool>(*multi, target, joint, jointType, "autoAnchors", boolOr(args, "auto_anchors", !turnsAutoOff));
     }
     if (has(args, "properties") && !addCatalogProperties(target.project, target.scene, joint, jointType, args["properties"], *multi, error)) {
         delete multi;
@@ -1594,18 +2113,32 @@ void setJointTool(const CallPtr& call) {
     step.commit();
 
     Json data = {{"joint", entityJson(target, joint)}, {"dimension", dimension}, {"created", created}};
-    if (is2D) {
-        Joint2DComponent& j = scene->getComponent<Joint2DComponent>(joint);
-        data["type"] = nameOf(joint2DTypes(), j.type);
-        data["body_a"] = j.bodyA != NULL_ENTITY ? entityJson(target, j.bodyA) : Json(nullptr);
-        data["body_b"] = j.bodyB != NULL_ENTITY ? entityJson(target, j.bodyB) : Json(nullptr);
-        data["auto_anchors"] = j.autoAnchors;
-    } else {
-        Joint3DComponent& j = scene->getComponent<Joint3DComponent>(joint);
-        data["type"] = nameOf(joint3DTypes(), j.type);
-        data["body_a"] = j.bodyA != NULL_ENTITY ? entityJson(target, j.bodyA) : Json(nullptr);
-        data["body_b"] = j.bodyB != NULL_ENTITY ? entityJson(target, j.bodyB) : Json(nullptr);
-        data["auto_anchors"] = j.autoAnchors;
+    {
+        if (is2D) {
+            Joint2DComponent& j = scene->getComponent<Joint2DComponent>(joint);
+            data["type"] = nameOf(joint2DTypes(), j.type);
+            data["body_a"] = j.bodyA != NULL_ENTITY ? entityJson(target, j.bodyA) : Json(nullptr);
+            data["body_b"] = j.bodyB != NULL_ENTITY ? entityJson(target, j.bodyB) : Json(nullptr);
+            data["auto_anchors"] = j.autoAnchors;
+        } else {
+            Joint3DComponent& j = scene->getComponent<Joint3DComponent>(joint);
+            data["type"] = nameOf(joint3DTypes(), j.type);
+            data["body_a"] = j.bodyA != NULL_ENTITY ? entityJson(target, j.bodyA) : Json(nullptr);
+            data["body_b"] = j.bodyB != NULL_ENTITY ? entityJson(target, j.bodyB) : Json(nullptr);
+            data["auto_anchors"] = j.autoAnchors;
+        }
+        // every field as it resolved (Catalog names, set_properties takes the same)
+        Json fields = Json::object();
+        McpValues::ReadContext read;
+        read.project = target.project;
+        read.scene = target.scene;
+        read.entity = joint;
+        read.component = jointType;
+        for (const auto& [name, property] : Catalog::findEntityProperties(scene, joint, jointType)) {
+            if (name == "bodyA" || name == "bodyB" || name == "type" || name == "pathPoints" || name.find('[') != std::string::npos) continue;
+            fields[name] = McpValues::readProperty(read, name, property);
+        }
+        data["fields"] = fields;
     }
     if (!warnings.empty()) data["warnings"] = warnings;
     call->ok(std::string(created ? "Created" : "Updated") + " joint \"" + scene->getEntityName(joint) + "\" (" + data["type"].get<std::string>() + ").", data);
@@ -3325,8 +3858,21 @@ void editAnimationTool(const CallPtr& call) {
 
 void getAnimationTool(const CallPtr& call) {
     const Json& args = call->args();
+    if (has(args, "list_properties")) {
+        clip_tools::listProperties(call);
+        return;
+    }
     if (has(args, "clip")) {
         clip_tools::getClip(call);
+        return;
+    }
+    // an Avatar Mask (root: its coverage) or an Animator Controller (upstream anim layers spec 10, 11.5)
+    if (has(args, "mask")) {
+        animator_tools::getMask(call);
+        return;
+    }
+    if (has(args, "controller")) {
+        animator_tools::getController(call);
         return;
     }
     if (has(args, "times") || has(args, "root")) {
@@ -3335,7 +3881,8 @@ void getAnimationTool(const CallPtr& call) {
         return;
     }
     if (!has(args, "entity")) {
-        call->fail("Pass entity (an Animation, or a GameObject that is animated or has an Animation Player) or clip (an .anim path).");
+        call->fail("Pass entity (an Animation, or a GameObject that is animated or has an Animation Player), clip (an .anim path), "
+                   "mask (a .mask) or controller (a .controller).");
         return;
     }
     Target target;
@@ -3511,8 +4058,7 @@ float layoutParentHeight(Scene* scene, Entity entity) {
         parent = ptf ? ptf->parent : NULL_ENTITY;
     }
     UISystem* ui = scene->getSystem<UISystem>().get();
-    const int height = ui ? ui->getAnchorReferenceHeight() : 0;
-    return static_cast<float>(height != 0 ? height : Engine::getCanvasHeight());
+    return ui ? ui->getCanvasSize().y : static_cast<float>(Engine::getCanvasHeight());
 }
 
 // RectTransform layout: absolute (position + size), an anchor preset (+ size, offset), or
@@ -3526,6 +4072,10 @@ bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity,
     }
     if (!layout.is_object()) {
         error = "layout must be an object {anchor, size, position, pivot, margins}.";
+        return false;
+    }
+    if (const std::string driven = McpValues::safeAreaDrivenError(scene, entity, ""); !driven.empty()) {
+        error = driven;
         return false;
     }
     const bool mirrored = uiMirrored(target);
@@ -3661,8 +4211,22 @@ const std::vector<std::pair<const char*, EntityCreationType>>& uiTypes() {
         {"button", EntityCreationType::BUTTON}, {"input_field", EntityCreationType::INPUT_FIELD},
         {"progress_bar", EntityCreationType::PROGRESSBAR}, {"scrollbar", EntityCreationType::SCROLLBAR},
         {"layout_group", EntityCreationType::LAYOUT_GROUP}, {"container", EntityCreationType::GAMEOBJECT},
-        {"polygon", EntityCreationType::POLYGON}};
+        {"safe_area", EntityCreationType::SAFE_AREA},
+        {"polygon", EntityCreationType::POLYGON}, {"onscreen_stick", EntityCreationType::ONSCREEN_STICK_FIXED},
+        {"onscreen_button", EntityCreationType::ONSCREEN_BUTTON}, {"touch_area", EntityCreationType::TOUCH_AREA}};
     return table;
+}
+
+// on-screen controls: a stick's [horizontal, vertical] or a touch area's actions
+bool readActionPair(const Json& node, const std::string& where, std::string& horizontal, std::string& vertical, std::string& error) {
+    const Json& actions = node["actions"];
+    if (!actions.is_array() || actions.size() != 2 || !actions[0].is_string() || !actions[1].is_string()) {
+        error = where + ".actions must be [horizontal, vertical] action names (Project Settings > Input).";
+        return false;
+    }
+    horizontal = actions[0].get<std::string>();
+    vertical = actions[1].get<std::string>();
+    return true;
 }
 
 bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::string& where, Json& out, std::string& error) {
@@ -3675,8 +4239,22 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
     EntityCreationType type;
     const std::string typeName = lowerText(stringOr(node, "type", ""));
     if (!pickName(uiTypes(), typeName, type, where + ".type", error)) return false;
+    if (type == EntityCreationType::ONSCREEN_STICK_FIXED && has(node, "mode")) {
+        static const std::vector<std::pair<const char*, EntityCreationType>> modes = {
+            {"fixed", EntityCreationType::ONSCREEN_STICK_FIXED}, {"floating", EntityCreationType::ONSCREEN_STICK_FLOATING},
+            {"dynamic", EntityCreationType::ONSCREEN_STICK_DYNAMIC}};
+        if (!pickName(modes, lowerText(stringOr(node, "mode", "")), type, where + ".mode", error)) return false;
+    } else if (has(node, "mode")) {
+        error = where + ".mode (fixed, floating, dynamic) is for onscreen_stick.";
+        return false;
+    }
     if (++build.count > 300) {
         error = "create_ui builds at most 300 elements per call.";
+        return false;
+    }
+    if (type == EntityCreationType::SAFE_AREA && has(node, "layout")) {
+        error = where + ": a safe_area is laid out by its Safe Area component (it fits the screen's safe area); "
+                "drop layout and lay its children out inside it.";
         return false;
     }
     std::string name = stringOr(node, "name", "");
@@ -3696,6 +4274,29 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         !build.step->add(new AddComponentCmd(target.project, target.sceneId(), entity, ComponentType::RectTransformComponent))) {
         error = where + ": could not add the RectTransform.";
         return false;
+    }
+    // canvas_group: true | {alpha, interactable, blocks_raycasts, ignore_parent_groups, render_mode}
+    const bool wantsGroup = has(node, "canvas_group") && !(node["canvas_group"].is_boolean() && !node["canvas_group"].get<bool>());
+    if (wantsGroup) {
+        const Json& group = node["canvas_group"];
+        if (!group.is_boolean() && !group.is_object()) {
+            error = where + ".canvas_group must be true or {alpha, interactable, blocks_raycasts, ignore_parent_groups, render_mode}.";
+            return false;
+        }
+        if (group.is_object()) {
+            static const std::vector<std::string> keys = {"alpha", "interactable", "blocks_raycasts", "ignore_parent_groups", "render_mode"};
+            for (auto it = group.begin(); it != group.end(); ++it) {
+                if (std::find(keys.begin(), keys.end(), it.key()) == keys.end()) {
+                    error = where + ".canvas_group: unknown key '" + it.key() + "' (alpha, interactable, blocks_raycasts, ignore_parent_groups, render_mode).";
+                    return false;
+                }
+            }
+        }
+        if (!scene->findComponent<CanvasGroupComponent>(entity) &&
+            !build.step->add(new AddComponentCmd(target.project, target.sceneId(), entity, ComponentType::CanvasGroupComponent))) {
+            error = where + ": could not add the Canvas Group.";
+            return false;
+        }
     }
 
     // The entity holding the node's text: itself, a button label, a panel title, an input field's text
@@ -3724,6 +4325,32 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         return false;
     }
     if (has(node, "multiline") && textEntity != NULL_ENTITY) addProp<bool>(*multi, target, textEntity, tc, "multiline", boolOr(node, "multiline", true));
+    // TMP outline {width, color} and underlay shadow {offset, color, softness, dilate} (UI units, colours linear)
+    if (has(node, "outline")) {
+        const Json& outline = node["outline"];
+        Vector4 outlineColor(0.0f, 0.0f, 0.0f, 1.0f);
+        if (textEntity == NULL_ENTITY || !outline.is_object() || (outline.contains("color") && !parseColor4(outline["color"], outlineColor))) {
+            error = where + ".outline must be {width, color} on an element with text.";
+            return false;
+        }
+        addProp<float>(*multi, target, textEntity, tc, "outlineWidth", std::max(0.0f, (float)numberOr(outline, "width", 2.0f)));
+        addProp<Vector4>(*multi, target, textEntity, tc, "outlineColor", outlineColor);
+    }
+    if (has(node, "shadow")) {
+        const Json& shadow = node["shadow"];
+        Vector4 shadowColor(0.0f, 0.0f, 0.0f, 0.5f);
+        Vector2 offset(2.0f, 2.0f);
+        if (textEntity == NULL_ENTITY || !shadow.is_object() || (shadow.contains("color") && !parseColor4(shadow["color"], shadowColor)) ||
+            (shadow.contains("offset") && !McpValues::parseVector2(shadow["offset"], offset))) {
+            error = where + ".shadow must be {offset: [x, y], color, softness, dilate} on an element with text.";
+            return false;
+        }
+        addProp<bool>(*multi, target, textEntity, tc, "shadowEnabled", true);
+        addProp<Vector4>(*multi, target, textEntity, tc, "shadowColor", shadowColor);
+        addProp<Vector2>(*multi, target, textEntity, tc, "shadowOffset", offset);
+        addProp<float>(*multi, target, textEntity, tc, "shadowSoftness", std::max(0.0f, (float)numberOr(shadow, "softness", 0.0f)));
+        addProp<float>(*multi, target, textEntity, tc, "shadowDilate", std::max(0.0f, (float)numberOr(shadow, "dilate", 0.0f)));
+    }
     Vector4 color;
     if (has(node, "text_color")) {
         if (textEntity == NULL_ENTITY || !parseColor4(node["text_color"], color)) {
@@ -3764,11 +4391,35 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         }
     }
     if (has(node, "value")) {
-        if (!scene->findComponent<ProgressbarComponent>(entity)) {
-            error = where + ".value is for progress_bar (0-1).";
+        if (scene->findComponent<OnScreenButtonComponent>(entity)) {
+            addProp<float>(*multi, target, entity, ComponentType::OnScreenButtonComponent, "value", std::clamp(numberOr(node, "value", 1.0f), -1.0f, 1.0f));
+        } else if (scene->findComponent<ProgressbarComponent>(entity)) {
+            addProp<float>(*multi, target, entity, ComponentType::ProgressbarComponent, "value", std::clamp(numberOr(node, "value", 0.5f), 0.0f, 1.0f));
+        } else {
+            error = where + ".value is for progress_bar (0-1) and onscreen_button (-1..1).";
             return false;
         }
-        addProp<float>(*multi, target, entity, ComponentType::ProgressbarComponent, "value", std::clamp(numberOr(node, "value", 0.5f), 0.0f, 1.0f));
+    }
+    if (has(node, "action")) {
+        if (!scene->findComponent<OnScreenButtonComponent>(entity) || !node["action"].is_string()) {
+            error = where + ".action (an Input action name) is for onscreen_button.";
+            return false;
+        }
+        addProp<std::string>(*multi, target, entity, ComponentType::OnScreenButtonComponent, "action", node["action"].get<std::string>());
+    }
+    if (has(node, "actions")) {
+        std::string horizontal, vertical;
+        if (!readActionPair(node, where, horizontal, vertical, error)) return false;
+        if (scene->findComponent<OnScreenStickComponent>(entity)) {
+            addProp<std::string>(*multi, target, entity, ComponentType::OnScreenStickComponent, "horizontalAction", horizontal);
+            addProp<std::string>(*multi, target, entity, ComponentType::OnScreenStickComponent, "verticalAction", vertical);
+        } else if (scene->findComponent<TouchAreaComponent>(entity)) {
+            addProp<std::string>(*multi, target, entity, ComponentType::TouchAreaComponent, "horizontalAction", horizontal);
+            addProp<std::string>(*multi, target, entity, ComponentType::TouchAreaComponent, "verticalAction", vertical);
+        } else {
+            error = where + ".actions is for onscreen_stick and touch_area.";
+            return false;
+        }
     }
     if (has(node, "placeholder")) {
         if (!scene->findComponent<InputFieldComponent>(entity)) {
@@ -3804,6 +4455,34 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
             return false;
         }
     }
+    if (wantsGroup && node["canvas_group"].is_object()) {
+        const Json& group = node["canvas_group"];
+        const ComponentType cg = ComponentType::CanvasGroupComponent;
+        if (has(group, "alpha")) {
+            if (!group["alpha"].is_number()) {
+                error = where + ".canvas_group.alpha must be a number 0-1.";
+                return false;
+            }
+            addProp<float>(*multi, target, entity, cg, "alpha", std::clamp(group["alpha"].get<float>(), 0.0f, 1.0f));
+        }
+        static const std::vector<std::pair<const char*, const char*>> flags = {
+            {"interactable", "interactable"}, {"blocks_raycasts", "blocksRaycasts"}, {"ignore_parent_groups", "ignoreParentGroups"}};
+        for (const auto& flag : flags) {
+            if (!has(group, flag.first)) continue;
+            if (!group[flag.first].is_boolean()) {
+                error = where + ".canvas_group." + flag.first + " must be true or false.";
+                return false;
+            }
+            addProp<bool>(*multi, target, entity, cg, flag.second, group[flag.first].get<bool>());
+        }
+        if (has(group, "render_mode")) {
+            static const std::vector<std::pair<const char*, CanvasGroupRenderMode>> modes = {
+                {"per_element", CanvasGroupRenderMode::PER_ELEMENT}, {"flatten", CanvasGroupRenderMode::FLATTEN}};
+            CanvasGroupRenderMode mode;
+            if (!pickName(modes, lowerText(stringOr(group, "render_mode", "")), mode, where + ".canvas_group.render_mode", error)) return false;
+            addProp<CanvasGroupRenderMode>(*multi, target, entity, cg, "renderMode", mode);
+        }
+    }
     if (has(node, "layout") && !addRectLayout(*multi, target, entity, node["layout"], error)) {
         error = where + ".layout: " + error;
         return false;
@@ -3822,6 +4501,10 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
     if (textEntity != NULL_ENTITY && textEntity != entity) out["text_entity"] = entityJson(target, textEntity);
     if (ProgressbarComponent* bar = scene->findComponent<ProgressbarComponent>(entity)) out["fill"] = entityJson(target, bar->fill);
     if (ScrollbarComponent* bar = scene->findComponent<ScrollbarComponent>(entity)) out["bar"] = entityJson(target, bar->bar);
+    if (OnScreenStickComponent* stick = scene->findComponent<OnScreenStickComponent>(entity)) {
+        out["background"] = entityJson(target, stick->background);
+        out["handle"] = entityJson(target, stick->handle);
+    }
     if (has(node, "children")) {
         if (!node["children"].is_array()) {
             error = where + ".children must be an array of nodes.";
@@ -4142,7 +4825,49 @@ ParticleSettings fromLegacy(const LegacyParticleSystem& c) {
 bool hasParticleSettings(const Json& args, const std::string& preset) {
     return !preset.empty() || has(args, "max_particles") || has(args, "rate") || has(args, "life") || has(args, "size") ||
            has(args, "velocity") || has(args, "acceleration") || has(args, "color") || has(args, "gradient") || has(args, "bursts") ||
-           has(args, "emitter") || has(args, "loop") || has(args, "size_over_life") || has(args, "alpha_over_life");
+           has(args, "emitter") || has(args, "loop") || has(args, "size_over_life") || has(args, "alpha_over_life") ||
+           has(args, "duration") || has(args, "speed") || has(args, "modules");
+}
+
+// The arguments that set the effect itself, after the preset and its overrides: duration, speed
+// (the Start Speed along the shape: a number or [min, max]) and modules (a merge patch of the
+// effect's modules, the keyed form edit_particle_effect patches: {"emission": {"rateOverTime": 60}})
+bool applyEffectArgs(const Json& args, particles::ParticleEffectDocument& document, std::string& error) {
+    if (has(args, "duration")) {
+        if (!args["duration"].is_number()) { error = "duration is a number of seconds."; return false; }
+        document.duration = std::max(0.05f, args["duration"].get<float>());
+    }
+    if (has(args, "speed")) {
+        const Json& speed = args["speed"];
+        if (speed.is_number()) {
+            document.main.startSpeed = particles::MinMaxCurve(speed.get<float>());
+        } else if (speed.is_array() && speed.size() == 2 && speed[0].is_number() && speed[1].is_number()) {
+            document.main.startSpeed = particles::MinMaxCurve::twoConstants(speed[0].get<float>(), speed[1].get<float>());
+        } else {
+            error = "speed is a number or [min, max] (the Start Speed, along the shape).";
+            return false;
+        }
+    }
+    if (has(args, "modules")) {
+        if (!args["modules"].is_object()) {
+            error = "modules is a merge patch of the effect's modules: {\"main\": {\"startSpeed\": 4}, \"emission\": {\"rateOverTime\": 60}}.";
+            return false;
+        }
+        nlohmann::ordered_json patch = nlohmann::ordered_json::object();
+        patch["modules"] = nlohmann::ordered_json::parse(args["modules"].dump());
+        std::vector<particles::Diagnostic> diagnostics;
+        if (!particles::ParticleEffectCodec::applyMergePatch(document, patch, diagnostics)) {
+            for (const particles::Diagnostic& d : diagnostics) {
+                if (d.severity == particles::Diagnostic::Severity::Error) {
+                    error = "modules: " + (d.path.empty() ? d.message : d.path + ": " + d.message);
+                    return false;
+                }
+            }
+            error = "modules: the patch was refused.";
+            return false;
+        }
+    }
+    return true;
 }
 
 // The settings of a preset (scaled for 2D) with the call's overrides
@@ -4159,6 +4884,8 @@ bool presetSettings(const Json& args, const std::string& preset, bool is2D, Part
     return applyParticleOverrides(args, settings, error);
 }
 
+// version 1 (legacy): a system drawing on an existing Points / Mesh GameObject (emitter_entity), or
+// reconfiguring a version 1 system with its legacy fields, as before the module model
 void createParticlesTool(const CallPtr& call) {
     Target target;
     if (!resolveSceneArg(call, target) || !sceneStopped(call, target)) return;
@@ -4180,6 +4907,7 @@ void createParticlesTool(const CallPtr& call) {
 
     Entity system = NULL_ENTITY;
     bool created = false;
+    bool inUI = false;
     std::string preset;
     auto* multi = new MultiPropertyCmd();
     std::unique_ptr<MultiPropertyCmd> guard(multi);
@@ -4206,13 +4934,20 @@ void createParticlesTool(const CallPtr& call) {
             }
             toLegacy(settings, legacy);
             const bool setTexture = has(args, "texture");
+            // the effect arguments checked before the edit is built (its lambda cannot report why)
+            {
+                particles::ParticleEffectDocument check = document;
+                particles::LegacyParticleConverter::apply(legacy, check);
+                if (!applyEffectArgs(args, check, error)) { failWith(error); return; }
+            }
             Command* edit = ParticleEffectEdit::build(target.project, target.sceneId(), {system}, [&](particles::ParticleEffectDocument& doc) {
                 particles::LegacyParticleConverter::apply(legacy, doc);
                 if (setTexture) {
                     doc.renderer.texture = texture;
                     doc.renderer.textureGuid = texture.empty() ? std::string() : target.project->makeAssetRef(texture, AssetPathBase::Assets).guid.str();
                 }
-                return true;
+                std::string ignored;
+                return applyEffectArgs(args, doc, ignored);
             });
             if (edit) multi->addCommand(std::unique_ptr<Command>(edit));
         }
@@ -4247,6 +4982,15 @@ void createParticlesTool(const CallPtr& call) {
         } else {
             Entity parent = NULL_ENTITY;
             if (has(args, "parent") && (parent = resolveRef(target.scene, args["parent"], error)) == NULL_ENTITY) { failWith("parent: " + error); return; }
+            // particles of a UI scene or under a UI element (ui-scaling-text): drawn between their
+            // siblings, clipped by the nearest panel, unscaled time (they play in a paused game),
+            // turned y down as the UI is (local simulation space), the soft round image
+            inUI = target.scene->sceneType == SceneType::SCENE_UI;
+            for (Entity e = parent; e != NULL_ENTITY && !inUI;) {
+                if (scene->findComponent<RectTransformComponent>(e)) inUI = true;
+                Transform* tf = scene->findComponent<Transform>(e);
+                e = tf ? tf->parent : NULL_ENTITY;
+            }
             const std::string name = stringOr(args, "name", "Particle System");
             auto* create = parent != NULL_ENTITY
                 ? new CreateEntityCmd(target.project, target.sceneId(), name, EntityCreationType::PARTICLE_SYSTEM, parent)
@@ -4254,14 +4998,27 @@ void createParticlesTool(const CallPtr& call) {
             Vector3 position;
             if (!readVec3(args, "position", position, error)) { delete create; failWith(error); return; }
             if (has(args, "position")) create->addProperty<Vector3>(ComponentType::Transform, "position", position);
+            // the UI is y down: what rises in the world rises on screen (local simulation space)
+            if (inUI) create->addProperty<Quaternion>(ComponentType::Transform, "rotation", Quaternion(180.0f, Vector3(1.0f, 0.0f, 0.0f)));
             if (!step.add(create)) { failWith("Could not create the Particle System."); return; }
             system = create->getEntity();
+            if (inUI && !has(args, "texture")) {
+                const std::string soft = ProjectUtils::ensureSoftParticleTexture(target.project);
+                std::string stored;
+                if (!soft.empty() && McpValues::assetPathFromJson(target.project, soft, stored, error)) {
+                    legacyTarget.texture = stored;
+                    legacyTarget.textureGuid = target.project->makeAssetRef(stored, AssetPathBase::Assets).guid.str();
+                }
+            }
         }
         created = true;
         particles::ParticleEffectDocument document = particles::LegacyParticleConverter::convert(legacy, legacyTarget);
         // a new effect draws Unity's soft particle without a texture (the converter keeps the old squares)
         document.renderer.untexturedShape = particles::UntexturedShape::Disc;
+        if (inUI) document.simulationSpace = particles::SimulationSpace::Local;
+        if (!applyEffectArgs(args, document, error)) { failWith(error); return; }
         addProp<particles::ParticleEffectDocument>(*multi, target, system, ComponentType::ParticleSystemComponent, "inlineEffect", document);
+        if (inUI) addProp<bool>(*multi, target, system, ComponentType::ParticleSystemComponent, "useUnscaledTime", true);
     }
 
     if (has(args, "properties") && !addCatalogProperties(target.project, target.scene, system, ComponentType::ParticleSystemComponent, args["properties"], *multi, error)) {
@@ -4282,11 +5039,14 @@ void createParticlesTool(const CallPtr& call) {
              (preset.empty() ? std::string() : " (" + preset + ")") + ". It plays when the scene plays (autoplay: Play On Awake) or when a "
              "script calls play(); edit_particle_effect edits any module of its effect.",
              Json{{"particle_system", entityJson(target, system)}, {"emitter", entityJson(target, system)}, {"created", created},
+                  {"ui", inUI}, {"unscaled_time", c.useUnscaledTime},
                   {"effect", c.effect.empty() ? Json(nullptr) : Json(c.effect.path)},
                   {"max_particles", view.maxParticles}, {"rate", view.rate}, {"loop", view.loop},
                   {"life", {view.lifeInitializer.minLife, view.lifeInitializer.maxLife}}, {"bursts", view.bursts.size()},
                   {"gradient_stops", view.colorGradient.stops.size()}, {"autoplay", c.playOnAwake}});
 }
+
+
 
 // ================================================================== models
 
@@ -4537,8 +5297,10 @@ void setShapePointsTool(const CallPtr& call) {
         written = list.size();
     } else if (component == "line_renderer") {
         if (!scene->findComponent<LineRendererComponent>(target.entity)) { call->fail("The GameObject has no Line Renderer."); return; }
-        std::vector<LineData> lines;
+        const ComponentType lineType = ComponentType::LineRendererComponent;
         if (has(args, "lines")) {
+            // a segment list: Segments mode, in the GameObject's space (as segment lists always were)
+            std::vector<LineData> lines;
             if (!args["lines"].is_array()) { call->fail("lines is [{a: [x,y,z], b: [x,y,z], color_a, color_b}]."); return; }
             for (const Json& l : args["lines"]) {
                 LineData line;
@@ -4550,17 +5312,54 @@ void setShapePointsTool(const CallPtr& call) {
                 }
                 lines.push_back(line);
             }
+            LineRendererComponent& renderer = scene->getComponent<LineRendererComponent>(target.entity);
+            if (lines.size() > renderer.maxLines) {
+                addProp<unsigned int>(*multi, target, target.entity, lineType, "maxLines", static_cast<unsigned int>(lines.size()));
+            }
+            addProp<LineRendererMode>(*multi, target, target.entity, lineType, "mode", LineRendererMode::Segments);
+            addProp<bool>(*multi, target, target.entity, lineType, "useWorldSpace", false);
+            addProp<std::vector<LineData>>(*multi, target, target.entity, lineType, "lines", lines);
+            written = lines.size();
         } else {
-            // A polyline through the points; closed joins the last to the first
-            for (size_t i = 0; i + 1 < points.size(); i++) lines.push_back({points[i], colorAt(i), points[i + 1], colorAt(i + 1)});
-            if (boolOr(args, "closed", false) && points.size() > 2) lines.push_back({points.back(), colorAt(points.size() - 1), points.front(), colorAt(0)});
+            // a polyline through the points (Polyline mode); the points are local like every shape's,
+            // moved to world space for a world-space line (the default of new ones); closed makes
+            // it a loop; colours become its gradient
+            if (points.size() < 2) { call->fail("A line needs at least 2 points."); return; }
+            std::vector<Vector3> positions = points;
+            const LineRendererComponent& renderer = scene->getComponent<LineRendererComponent>(target.entity);
+            if (renderer.useWorldSpace) {
+                if (const Transform* transform = scene->findComponent<Transform>(target.entity)) {
+                    for (Vector3& p : positions) p = transform->modelMatrix * p;
+                }
+            }
+            addProp<LineRendererMode>(*multi, target, target.entity, lineType, "mode", LineRendererMode::Polyline);
+            addProp<std::vector<Vector3>>(*multi, target, target.entity, lineType, "positions", positions);
+            addProp<bool>(*multi, target, target.entity, lineType, "loop", boolOr(args, "closed", false));
+            if (has(args, "colors")) {
+                if (colors.size() > Gradient::kMaxKeys) {
+                    call->fail("colors: a polyline's gradient takes at most " + std::to_string(Gradient::kMaxKeys) +
+                               " keys (one per point); set colorGradient with set_properties for more points.");
+                    return;
+                }
+                // a key per point, at its share of the length (the colours are linear; the
+                // gradient's keys sRGB-encoded)
+                std::vector<float> at(points.size(), 0.0f);
+                for (size_t i = 1; i < points.size(); i++) at[i] = at[i - 1] + points[i - 1].distance(points[i]);
+                const float total = at.back();
+                Gradient gradient;
+                for (size_t i = 0; i < points.size(); i++) {
+                    const float t = total > 0.0f ? at[i] / total : (float)i / (float)(points.size() - 1);
+                    gradient.colorKeys.push_back(GradientColorKey{t, Color::linearTosRGB(Vector3(colors[i].x, colors[i].y, colors[i].z))});
+                    gradient.alphaKeys.push_back(GradientAlphaKey{t, colors[i].w});
+                }
+                gradient.normalize();
+                addProp<Gradient>(*multi, target, target.entity, lineType, "colorGradient", gradient);
+            } else if (has(args, "color")) {
+                addProp<Gradient>(*multi, target, target.entity, lineType, "colorGradient",
+                                  Gradient::constant(Color::linearTosRGB(Vector3(color.x, color.y, color.z)), color.w));
+            }
+            written = points.size();
         }
-        LineRendererComponent& renderer = scene->getComponent<LineRendererComponent>(target.entity);
-        if (lines.size() > renderer.maxLines) {
-            addProp<unsigned int>(*multi, target, target.entity, ComponentType::LineRendererComponent, "maxLines", static_cast<unsigned int>(lines.size()));
-        }
-        addProp<std::vector<LineData>>(*multi, target, target.entity, ComponentType::LineRendererComponent, "lines", lines);
-        written = lines.size();
     } else {
         call->fail("component must be polygon, mesh_polygon, shadow_caster_2d or line_renderer.");
         return;
@@ -4571,7 +5370,7 @@ void setShapePointsTool(const CallPtr& call) {
         return;
     }
     step.commit();
-    call->ok("Set " + std::to_string(written) + (component == "line_renderer" ? " line(s)" : " point(s)") + " on the " + component +
+    call->ok("Set " + std::to_string(written) + (component == "line_renderer" && has(args, "lines") ? " line(s)" : " point(s)") + " on the " + component +
              " of \"" + scene->getEntityName(target.entity) + "\".",
              Json{{"entity", entityJson(target, target.entity)}, {"component", component}, {"count", written}});
 }
@@ -4717,7 +5516,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Add/update/remove a Rigidbody 2D / Rigidbody's colliders, creating the body if missing (no edits = "
         "list). Order: clear, remove (old indices), update, add. 2D: box, circle, capsule, segment, polygon, "
         "chain; 3D: box, sphere, capsule, cylinder, tapered_capsule, convex_hull, mesh, heightfield. New shapes "
-        "fit the drawn GameObject unless fit: false. Fields per shape: jasper://docs/physics. Returns the colliders.",
+        "fit the drawn GameObject unless fit: false. Fields: jasper://docs/physics.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4732,10 +5531,10 @@ void registerWorldTools(McpRegistry& registry) {
         editCollidersTool, false, false);
 
     add("set_joint", "Create / Edit Joint",
-        "Create a joint GameObject between two bodies, or edit one (joint). 2D: distance, revolute, prismatic, "
-        "mouse, wheel, weld, motor. 3D: fixed, distance, point, hinge, cone, prismatic, swing_twist, six_dof, "
-        "path, gear, rack_and_pinion, pulley. Anchors turn auto_anchors off. Both bodies need Rigidbodies of "
-        "that dimension; built on play.",
+        "Create a joint (under body_a) or edit one (joint); anchors are local, no body_b = the world; "
+        "built on play. Types, arguments, units: jasper://docs/physics.",
+        // what each argument does: docs/mcp/guide/physics.md (2D joints); the handler checks the
+        // vectors' shapes itself (readVec2 / readVec3), so they are not spelled out here
         object({
             {"scene", sceneRef()},
             {"joint", entityRef("")},
@@ -4746,16 +5545,52 @@ void registerWorldTools(McpRegistry& registry) {
             {"body_b", entityRef()},
             {"anchor_a", any("")},
             {"anchor_b", any("")},
-            {"anchor", vec3("3D.")},
+            {"anchor", any("")},
             {"axis", any("")},
-            {"normal", vec3("3D.")},
-            {"target", vec2("2D mouse.")},
-            {"limits", vec2("3D [min, max].")},
-            {"rope", boolean("2D distance.")},
+            {"normal", any("")},
+            {"target", any("")},
+            {"limits", any("")},
+            {"rope", boolean("")},
             {"auto_anchors", boolean("")},
-            {"properties", anyObject("Other joint properties.")}
+            {"anchor_space", stringEnum("", {"local", "world"})},
+            {"enable_collision", boolean("")},
+            {"cone_half_angle", number("")},
+            {"motor", anyObject("")},
+            {"spring", anyObject("")},
+            {"break", anyObject("")},
+            {"properties", anyObject("")}
         }),
         setJointTool, false, false);
+
+    // upstream's physics-3d tools: the physics group (out of core to fit the budget, S31)
+    group = "physics";
+    add("edit_physics_material", "Edit Physics Material",
+        "Create (create: 3d|2d preset) or edit a .physicsmaterial; combine modes average|geometric_mean|"
+        "minimum|multiply|maximum.",
+        object({
+            {"path", string("")},
+            {"create", stringEnum("", {"3d", "2d"})},
+            {"friction", number("")},
+            {"bounciness", number("")},
+            {"friction_combine", string("")},
+            {"bounce_combine", string("")}
+        }, {"path"}),
+        editPhysicsMaterialTool, false, false);
+
+    add("create_ragdoll", "Create Ragdoll",
+        "Unity's Ragdoll Wizard on a character root: a Rigidbody, collider and swing-twist joint per bone and a "
+        "Ragdoll (one undo). Bones from the humanoid map or names; bones overrides. jasper://docs/physics.",
+        object({
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"bones", anyObject("")},
+            {"total_mass", number("")},
+            {"start", stringEnum("", {"animated", "simulated"})},
+            {"self_collision", boolean("")},
+            {"flip_forward", boolean("")}
+        }, {"entity"}),
+        createRagdollTool, false, false);
+    group.clear();
 
     // ---------------------------------------------------------------- tilemap
     add("edit_tilemap", "Edit Tilemap",
@@ -4856,26 +5691,26 @@ void registerWorldTools(McpRegistry& registry) {
     // a key takes the channel-specific keys too (in/out tangents...): free-form, said so (S31)
     openKeyItem["additionalProperties"] = true;
     add("edit_animation", "Edit Animation",
-        "Keyframes in seconds. clip (.anim): a shared clip file, tracks by path from the GameObject whose "
-        "Animation Player plays it; create {from?: entity Animation or \"model.gltf#Walk\"}; root checks paths "
-        "(bindings); a project undo step (from an Animation, or a model clip with root: scene). Without clip: an entity Animation (creates one under target), tweens, "
-        "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation "
-        "(quaternion or euler; > 180 degrees needs middle keys), morph weights or lattice points; the same "
-        "path|target+channel replaces or merges; relative: offsets from the pose when it starts. "
-        "Guide: jasper://docs/animation.",
+        "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from the root whose "
+        "Animation Player plays it; create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
+        "Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; "
+        "property: component + property; humanoid: bone.",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
-            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}})},
+            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}, {"humanoid", object({{"model", assetPath("")}})}})},
             {"root", entityRef("")},
             {"animation", entityRef("")},
             {"target", entityRef("Required to create.")},
             {"name", string("")},
             {"tracks", array(object({
-                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice"})},
+                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice", "property", "humanoid", "humanoid_position"})},
                 {"keys", array(openKeyItem, "")},
                 {"path", string("")},
-                {"target", entityRef("Default: target.")},
+                {"component", string("")},
+                {"property", string("")},
+                {"bone", string("")},
+                {"target", entityRef("")},
                 {"start_time", number("")},
                 {"mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
                 {"loop", boolean("")},
@@ -4886,23 +5721,23 @@ void registerWorldTools(McpRegistry& registry) {
             {"events_mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
             {"wrap", stringEnum("", {"once", "loop", "ping_pong", "clamp_forever"})},
             {"frame_rate", number("")},
-            {"length", number("-1: auto.")},
+            {"length", number("")},
             {"tweens", array(object({
                 {"type", stringEnum("", {"position", "rotation", "scale", "color", "alpha"})},
                 {"from", any("")}, {"to", any("")},
-                {"duration", number("> 0.")}, {"ease", string("")}, {"loop", boolean("")},
+                {"duration", number("")}, {"ease", string("")}, {"loop", boolean("")},
                 {"ping_pong", boolean("")}, {"spin", boolean("")}, {"axis", any("")}, {"angle", number("")},
-                {"start_time", number("")}, {"target", entityRef("Default: target.")},
+                {"start_time", number("")}, {"target", entityRef("")},
                 {"name", string("")}
             }, {"type"}), "")},
             {"add_actions", array(object({{"action", entityRef()}, {"start_time", number("")},
-                                          {"duration", number("0 = own.")}, {"lane", integer("")}}, {"action"}), "")},
+                                          {"duration", number("")}, {"lane", integer("")}}, {"action"}), "")},
             {"set_frames", array(object({{"index", integer("")}, {"start_time", number("")},
-                                         {"duration", number("0 = auto.")}, {"lane", integer("")}}, {"index"}), "")},
+                                         {"duration", number("")}, {"lane", integer("")}}, {"index"}), "")},
             {"remove_actions", array(integerItem, "")},
             {"delete_removed", withDefault(boolean(""), true)},
             {"loop", boolean("")},
-            {"duration", number("-1: until actions end.")},
+            {"duration", number("")},
             {"speed", number("")},
             {"autoplay", boolean("")},
             {"max_keys", withDefault(integer("Per track."), 20)}
@@ -4910,16 +5745,22 @@ void registerWorldTools(McpRegistry& registry) {
         editAnimationTool, false, false);
 
     add("get_animation", "Get Animation",
-        "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys or tween "
-        "values), or for another GameObject the animations targeting it or its children (model clips too) and "
-        "the Animation Player playing it (states, clips, bindings). clip (.anim or \"model.gltf#Walk\"): its "
-        "settings, tracks, events, users; times: values sampled there; root: bindings.",
+        "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys/tween "
+        "values), or for a GameObject the animations on it or below (model clips too) and "
+        "its Animation Player (states, layers, mask coverage, bindings; live in play). clip (.anim or "
+        "\"model.gltf#Walk\"): settings, tracks, events, users; times: sampled values; root: bindings (humanoid: "
+        "retarget_report, realised); "
+        "root + list_properties (a path): its animatable properties. "
+        "mask (.mask; root: coverage) or controller (.controller summary).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("")},
             {"clip", assetPath("")},
+            {"mask", assetPath("")},
+            {"controller", assetPath("")},
             {"times", array(number(""), "Seconds.")},
             {"root", entityRef("")},
+            {"list_properties", string("")},
             {"max_keys", withDefault(integer("Per track."), 50)}
         }),
         getAnimationTool, true, true);
@@ -4927,11 +5768,12 @@ void registerWorldTools(McpRegistry& registry) {
     add("preview_animation", "Preview Animation",
         "Edit-mode preview (Animation window): play, pause, seek (time), stop (restores the authored "
         "state; always stop when done). animation: an Animation, or a GameObject whose Animation Player plays "
-        "state (default its default clip; returns bound transforms). Selects it; wait_ms lets it play first (it loops).",
+        "state (default its default clip; returns bound transforms); over: a base state under a layer's state. Selects it; wait_ms lets it play first (it loops).",
         object({
             {"scene", sceneRef()},
             {"animation", entityRef()},
             {"state", string("")},
+            {"over", string("")},
             {"action", withDefault(stringEnum("", {"play", "pause", "stop", "seek"}), "play")},
             {"time", number("seek: seconds.")},
             {"wait_ms", integer("", 0, 30000)}
@@ -4940,12 +5782,15 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- UI
     add("create_ui", "Create UI",
-        "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, color, "
-        "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text = "
+        "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, outline {width, "
+        "color}, shadow {offset, color, softness}, color, colors, texture, value, placeholder, direction, multiline, "
+        "properties, children}. Types: panel (text = "
         "title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
-        "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins}: px, y "
+        "layout_group (direction), container, polygon, safe_area (fits Screen.safeArea); touch controls feeding Input actions: onscreen_stick, "
+        "onscreen_button, touch_area. layout {anchor, size, position, pivot, margins}: px, y "
         "DOWN from the parent's top-left; an anchor (top_left, center, top_wide, ..., stretch) pins to the "
-        "parent (screen for roots), position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear.",
+        "parent (screen for roots), position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear. canvas_group: true | {alpha, interactable, "
+        "blocks_raycasts, ignore_parent_groups, render_mode}.",
         object({
             {"scene", sceneRef()},
             {"parent", entityRef()},
@@ -4967,12 +5812,11 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- particles
     add("create_particles", "Create / Configure Particles",
-        "Create a Particle System GameObject (an inline effect) from a preset, or reconfigure one (entity: its "
-        "effect or asset). 3D presets in meters; 2D ones scaled by scale (px per unit). emitter {shape: "
-        "box|sphere|hemisphere|circle|cone, min, max, radius, inner_radius, cone_angle, cone_height}; "
-        "velocity/acceleration/color: value or {min, max}; gradient = color over life; bursts [{time, count}]. "
-        "Plays in play (autoplay = Play On Awake). emitter_entity: put it on that GameObject (a Mesh one emits its mesh). "
-        "edit_particle_effect edits every module.",
+        "Create a Particle System GameObject from a preset, or reconfigure one (entity). 3D presets "
+        "in meters; 2D scaled by scale (px/unit). emitter {shape: box|sphere|hemisphere|circle|cone, min, max, radius, "
+        "inner_radius, cone_angle, cone_height}; velocity/acceleration/color: value or {min, max}; gradient: color over "
+        "life; bursts [{time, count}]; modules: a merge patch (edit_particle_effect's). autoplay = "
+        "Play On Awake. emitter_entity: on that GameObject.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("")},
@@ -4985,7 +5829,9 @@ void registerWorldTools(McpRegistry& registry) {
             {"max_particles", integer("", 1, 100000)},
             {"rate", integer("", 0, 100000)},
             {"loop", boolean("")},
+            {"duration", number("")},
             {"life", any("Seconds or [min, max].")},
+            {"speed", any("Or [min, max].")},
             {"emitter", anyObject("")},
             {"velocity", any("")},
             {"acceleration", any("")},
@@ -4996,6 +5842,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"gradient", array(arrayItem, "[[t, [r, g, b]], ...]")},
             {"bursts", array(anyObject(""), "")},
             {"texture", assetPath("")},
+            {"modules", anyObject("")},
             {"properties", anyObject("")},
             {"autoplay", boolean("")}
         }),
@@ -5031,7 +5878,7 @@ void registerWorldTools(McpRegistry& registry) {
     add("set_shape_points", "Set Shape Points",
         "Set the points of a Polygon (UI), Polygon Mesh, Shadow Caster 2D or Line Renderer: points (local), "
         "circle or rect. Polygon order outline converts a convex outline to the triangle strip; strip: points "
-        "as is. Line renderers: polyline (closed joins ends) or lines.",
+        "as is. Line renderers: a polyline (closed: loop) or lines (segments).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

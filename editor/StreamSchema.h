@@ -149,7 +149,6 @@ namespace jasperengine::editor {
         // Name tables of every enum the decoders read
         static const EnumTable<ActionState>& actionState();
         static const EnumTable<AnchorPreset>& anchorPreset();
-        static const EnumTable<AndroidOrientation>& androidOrientation();
         static const EnumTable<AttributeDataType>& attributeDataType();
         static const EnumTable<AttributeType>& attributeType();
         static const EnumTable<AudioSourceAttenuation>& audioSourceAttenuation();

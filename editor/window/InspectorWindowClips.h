@@ -72,6 +72,8 @@ namespace jasperengine::editor::inspectorclips{
     const char* channelLabel(ClipChannel channel);
     // "1.25 s"
     std::string formatSeconds(float seconds);
+    // a ratio in reports: "0.93"
+    std::string formatRatio(float ratio);
     // "1 user in open scenes", "3 users in open scenes, 1 in loaded prefabs" (R45: only loaded
     // scenes and prefabs are counted)
     std::string usersText(size_t sceneUsers, size_t prefabUsers);

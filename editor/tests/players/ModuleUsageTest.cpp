@@ -23,6 +23,7 @@
 #include "component/SplineExtrudeComponent.h"
 #include "component/Transform.h"
 #include "component/UIDocumentComponent.h"
+#include "component/VideoPlayerComponent.h"
 
 #include <gtest/gtest.h>
 
@@ -206,6 +207,29 @@ TEST(ModuleUsage, StripEngineCodeOffNeedsEveryModule) {
     EXPECT_EQ(ModuleUsageDetector::analyze(scan).list(), player::allModules());
 }
 
+// a Video Player plays without a document (upstream's component): its project needs the video module,
+// which comes with the HTML UI, or its build would play nothing
+TEST(ModuleUsage, AVideoPlayerNeedsVideoAndTheHtmlUI) {
+    OneEntity one;
+    one.scene.addComponent<VideoPlayerComponent>(one.entity, {});
+    const ModuleUsage byComponent = one.usage();
+    EXPECT_TRUE(byComponent.needs("video"));
+    EXPECT_TRUE(byComponent.needs("htmlui"));
+
+    const ModuleUsage byLua = withLua("local v = GameObject(self.scene, self.entity):getVideoPlayer()");
+    EXPECT_TRUE(byLua.needs("video"));
+    EXPECT_TRUE(byLua.needs("htmlui"));
+}
+
+// the debug overlay is an HTML UI document: a project that ships it, or asks for it, keeps the module
+TEST(ModuleUsage, TheDebugOverlayNeedsTheHtmlUI) {
+    ModuleScan scan = empty();
+    EXPECT_FALSE(ModuleUsageDetector::analyze(scan).needs("htmlui"));
+    scan.debugOverlayInBuilds = true;
+    EXPECT_TRUE(ModuleUsageDetector::analyze(scan).needs("htmlui"));
+    EXPECT_TRUE(withLua("DebugOverlay.showConsole()").needs("htmlui"));
+}
+
 TEST(ModuleUsage, VideoNeedsTheHtmlUIAndAVideo) {
     auto withDocument = [](const std::string& html, bool component) {
         OneEntity one;
@@ -232,6 +256,13 @@ TEST(ModuleUsage, DocumentScriptsAreScanned) {
     EXPECT_TRUE(usage.needs("physics3d"));
     EXPECT_TRUE(usage.needs("runtimeshaders"));
     EXPECT_EQ(usage.firstEvidence("runtimeshaders"), "ui/menu.html:3: Mesh");
+}
+
+// the debug drawing's lines are a LineRenderer's, made at runtime; a physics query draws nothing
+TEST(ModuleUsage, PhysicsDebugDrawingNeedsRuntimeShaders) {
+    EXPECT_TRUE(withLua("Physics.debugDraw = true").needs("runtimeshaders"));
+    EXPECT_TRUE(withLua("Physics.debugDrawContacts = true").needs("runtimeshaders"));
+    EXPECT_FALSE(withLua("local hit = Physics.raycast(self.scene, Ray(Vector3(0, 0, 0), Vector3(0, 1, 0)))").needs("runtimeshaders"));
 }
 
 TEST(ModuleUsage, RuntimeShadersFollowShaderRelevantNames) {

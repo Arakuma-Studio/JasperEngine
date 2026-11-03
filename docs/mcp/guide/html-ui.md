@@ -74,8 +74,9 @@ page written for Chrome at the canvas size looks the same.
 
 Parity stops at:
 
-- **No JavaScript, no network at run time, no `<canvas>` or `<iframe>`** (by design).
-  `<video>` plays AV1 + Opus WebM only (see "Video"). Remote fonts, images and videos are
+- **No JavaScript, no network access from documents, no `<canvas>` or `<iframe>`** (by design;
+  Lua's `Http` makes requests, `jasper://docs/networking`).
+  `<video>` plays AV1 + Opus WebM everywhere and MP4 through the platform's decoders (see "Video"). Remote fonts, images and videos are
   imported into the project by the editor.
 - **The unsupported CSS** listed under "CSS that differs": container queries, blend modes,
   vertical text, multi-column layout, `subgrid`, scroll snapping, ... Each use is reported.
@@ -132,7 +133,7 @@ return Terminal
   from the scene's camera; the nearest texture document whose surface it hits gets it at the
   hit's texture coordinate, with the usual rules (an element, or a page with a background,
   takes it; a transparent page passes it on). A press keeps the pointer until the release
-  (drags); touch works per finger; the wheel goes to the document under the mouse; keys go to
+  (drags); every finger is its own pointer (Pointer Events); the wheel goes to the document under the mouse; keys go to
   the document that took the last press. The hit test reads the mesh's CPU geometry
   (primitives, sprites, imported models), ignores other objects in front of the surface and
   tests skinned or morph-target meshes in their bind pose. The mouse cursor shape follows
@@ -306,7 +307,7 @@ pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`, `::placeholder
 | `<script>` (JavaScript) | `<script type="text/lua">` or a Lua script on the GameObject (`HTMLUI-HTML-0006`, error) |
 | `onclick="..."` and every `on*` attribute | `el:addEventListener("click", fn)` in Lua, or `data-event-click` with a data model (`HTMLUI-HTML-0005`, error) |
 | `<canvas>` | a Lottie animation or an image sequence; 3D content drawn by the game behind a transparent part of the page, or the document on a mesh in texture mode (`HTMLUI-HTML-0002`: a placeholder box) |
-| `<video src="clip.mp4">` (H.264, VP9, ...) | `<video src="clip.webm">` with AV1 + Opus: `import_files` converts the file with FFmpeg (`HTMLUI-HTML-0027`) |
+| `<video src="clip.avi">` (Ogg/Theora, AVI, ...) | `<video src="clip.webm">` with AV1 + Opus (`HTMLUI-HTML-0027`); MP4 (H.264, HEVC) plays through the platform's decoders |
 | `<iframe>` | another UI Document (`HTMLUI-HTML-0002`) |
 | `<div/>` | `<div></div>`: in HTML a non-void element does not self-close (`HTMLUI-HTML-0026`) |
 | Tailwind's Play CDN, GSAP, jQuery `<script>`s | a built stylesheet (Tailwind CLI output), the Lua `anime` API, Lua (`HTMLUI-HTML-0007`) |
@@ -423,6 +424,11 @@ Native or exactly rewritten, as in Chrome:
   (several, blurred: a glow), `-webkit-text-stroke` (drawn outside the glyphs), soft hyphens
   (`&shy;`) and zero-width spaces as break opportunities, right-to-left text with
   `direction: rtl` (Arabic shaping built in).
+- **Native Canvas Groups compared** (`jasper://docs/ui`): CSS `opacity` composites the element
+  and its children as one layer (a native group does that only in its `FLATTEN` mode; the default
+  fades each element, as Unity), and a child can undo `pointer-events: none` with `auto`, while
+  a native child re-enables blocking only with a group of its own with `ignoreParentGroups`. A
+  UI Document under a Canvas Group is not affected by it.
 - **Details that match Chrome** and surprise people: `opacity: 0` still receives the mouse
   (use `visibility: hidden` or `pointer-events: none`); `outline` paints above the element's
   content but below its positioned children; `will-change: transform` (or `opacity`, `filter`)
@@ -543,6 +549,39 @@ from distance-field glyphs, sharp at any pixel ratio and without layers; larger 
 first frame before those glyphs exist) are drawn the old way, through an offscreen layer or CPU
 glyphs.
 
+### Animated text: `text-effect`
+
+The engine's `text-effect` (inherited) animates each character, with the formulas of the native
+Text Effect component (`jasper://docs/ui`): a comma list of functions, applied in order, omitted
+trailing arguments taking their defaults:
+
+| Function | Arguments (defaults) |
+|---|---|
+| `wave()` | amplitude `<length>` (0.15em), period `<time>` (1.5s), phase step `<angle>` (0.3rad) |
+| `bounce()` | `<length>` (0.3em), `<time>` (1s), spread 0..1 (0.5) |
+| `shake()` | `<length>` (0.05em), frequency Hz (12) |
+| `pulse()` | scale change (0.15), `<time>` (1s), spread (0.5) |
+| `typewriter()` | characters per second (30), fade `<time>` (0s) |
+| `fade-in()` | `<time>` (0.5s), spread (0.5): one-shot |
+| `grow()`, `unfold()` | `<time>` (0.5s), spread (0.5), amplitude (1: the whole change, TMP's Amplitude): one-shot |
+| `rainbow()` | `<time>` (2s), hue step `<angle>` (20deg), saturation `%` (80%), lightness `%` (60%) |
+| `gradient()` | `<time>` (1.5s), `multiply` / `add` / `replace` (multiply), colour stops `<color> [<percentage>]` |
+
+```css
+h1 { text-effect: wave(0.12em 1.5s), gradient(1.5s add #ffffff, #ffd040); }
+.dialog p { text-effect: typewriter(40 0.05s); text-effect-iteration: 1; }
+```
+
+The index runs on across elements (`Hello <b>World</b>` waves as one text) and lines; outlines and
+shadows (`font-effect`, `text-shadow`) follow each glyph. `text-effect-iteration: infinite |
+<integer>` repeats the one-shot functions (typewriter, fade-in, grow, unfold), then `texteffectend`
+(bubbles) fires at the element that declares the effect; `text-effect-time: ui` (default, unscaled:
+runs at `Engine.timeScale = 0`) or `game`. `doc:setReducedMotion(true)` holds the motion functions
+still (wave, bounce, shake, pulse, grow, unfold; an effect of only those still ends). Lua:
+`el.style.textEffect = "bounce()"` (set, changed or `none` at runtime; new content types again, a
+new line wrap does not), `el:restartTextEffect()` (on any element of the effect: all of it). An animating text regenerates its glyphs each frame (never its layout):
+cheap for titles and dialog lines.
+
 ### CSS units, fonts and icons
 
 - `px` is a canvas pixel; `vw`/`vh` (and `dvh`, `svh`, `lvh`) are the canvas, which has one
@@ -611,7 +650,9 @@ get no input). Create elements with `createElement` or `innerHTML`, then `append
 
 | DOM name | Fired by |
 |---|---|
-| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout` | the pointer (mouse and touch) |
+| `pointerdown`, `pointermove`, `pointerup`, `pointercancel`, `pointerover`, `pointerout` (bubble), `pointerenter`, `pointerleave` (do not bubble) | every pointer: the mouse (`pointerId` 1, every button) and each finger (`pointerType` `"touch"`, `pointerId` = `fingerId` + 2); "Pointer events" below |
+| `gotpointercapture`, `lostpointercapture` | `setPointerCapture` and the end of a capture |
+| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `mouseenter`, `mouseleave` | every pointer too (compatibility events, with its `pointerId`): each finger clicks on its own |
 | `wheel` | the mouse wheel (`deltaX`, `deltaY` in steps, positive down/right) |
 | `keydown`, `keyup` | the keyboard and gamepads, to the focused element ("Input and focus") |
 | `textinput` | typed text, to the focused element |
@@ -629,16 +670,18 @@ get no input). Create elements with `createElement` or `innerHTML`, then `append
 | `play`, `pause`, `loop`, `complete`, `error`, `load` | `<lottie>` (they do not bubble) |
 | any other name | `dispatchEvent` |
 
-`mouseenter`, `mouseleave`, `pointer*`, `touch*`, `contextmenu`, `beforeinput` and
-`composition*` never reach documents: `addEventListener` logs a warning listing the supported
-events (use `mouseover`/`mouseout` and `mousedown`).
+`touch*` (Touch Events: use the pointer events, `pointerType == "touch"`), `contextmenu`,
+`beforeinput` and `composition*` never reach documents: `addEventListener` logs a warning
+listing the supported events.
 
 A listener gets a `UIEvent`: `type`, `target`, `currentTarget`, `eventPhase` (1 capture,
 2 target, 3 bubble), `button` (0 left, 1 middle, 2 right), `clientX`/`clientY` (document px),
 `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`, `key` (browser key names:
 `"Enter"`, `"Escape"`, `"ArrowUp"`, `"a"`), `code` (`"KeyA"`; a gamepad's `"GamepadA"`, ...),
 `keyCode` (`Input.KEY_*`), `repeat` (`event["repeat"]`), `gamepad` (the pad's id, -1 for the
-keyboard), `data` (`textinput`), `animationName`, `propertyName`,
+keyboard), `pointerId`, `pointerType` (`"mouse"`, `"touch"`, `"pen"`), `isPrimary`, `buttons` (1
+left, 2 right, 4 middle), `pressure` (0.5 while pressed), `width`, `height`, `fingerId` (the
+`Input` finger id, -1 for the mouse), `data` (`textinput`), `animationName`, `propertyName`,
 `elapsedTime`, `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`, and
 `stopPropagation()`, `stopImmediatePropagation()`, `preventDefault()`. The event is valid only
 while the listener runs. `preventDefault()` skips the element's own action (a checkbox does not
@@ -698,7 +741,9 @@ script runs after every load and reload **while the game plays** (never in edit 
 own environment (globals readable, its definitions local; `_G.x = 1` shares a value) with
 `document` and `anime` bound. Its listeners go with the old elements on reload, so a handler
 runs once however often the file was saved; what it started outside its elements (an
-`anime.createTimer`, globals) is not undone: guard it. Errors point at the HTML line
+`anime.createTimer`, a `Timer.after` / `Coroutine.start`, globals) is not undone: guard it. The
+document script is no script instance: `self:invoke` / `self:startCoroutine` do not exist
+there, `Timer.after` and `Coroutine.start` do (unowned: they end at Play stop, lua-api 2.13 and 2.17). Errors point at the HTML line
 (`ui/menu.html:45: ... [HTMLUI-HTML-0022]`).
 
 ```html
@@ -1264,19 +1309,26 @@ transforms, clipping and filters apply to them as to `<img>`.
 <video src="video/trailer.webm" poster="video/trailer.png" controls></video>
 ```
 
-**Format: WebM with AV1 video and Opus audio, nothing else.** The engine decodes it itself (dav1d,
-libopus, libwebm: BSD licences, no patents to license, the same on every platform) instead of
-using each platform's decoders, so a video plays identically on desktop, mobile and Web.
-`.mkv` with the same codecs plays too. MP4/H.264, MOV, VP8/VP9 WebM, Ogg/Theora, AVI and the
-rest are reported (`HTMLUI-HTML-0027`, the fix is the conversion) and show their poster or nothing.
+**Formats**: WebM with AV1 video and Opus audio plays everywhere, decoded by the engine itself
+(dav1d, libopus, libwebm: BSD licences, no patents to license, identical frames on desktop, mobile
+and Web); `.mkv` with the same codecs too. **MP4/MOV** (H.264 + AAC, HEVC where the platform has
+it) and VP8/VP9 WebM play through each platform's decoders (Android MediaCodec, AVFoundation,
+Media Foundation, the browser, Linux with the system's FFmpeg): jasper://docs/video has the
+per-platform matrix. `src` may be an `https://` URL (downloaded into the media cache, played while
+it downloads when the MP4 is fast start; the browser streams it on the Web).
+`canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')` answers for the platform it runs on;
+`element.videoBackend` (and `inspect_ui`'s media `backend`) says what decodes it (`webm`,
+`ffmpeg`, `mediacodec`, `avfoundation`, `mediafoundation`, `browser`). Ogg/Theora, AVI and the rest
+are reported (`HTMLUI-HTML-0027`, the fix is the conversion) and show their poster or nothing.
 
-**Converting**: `import_files {"sources": ["/abs/clip.mp4"], "to_dir": "assets/ui/video"}` writes
+**Converting** (for WebM AV1 everywhere; MP4s are imported as they are): the Project window's
+*Convert to WebM (AV1)...* on a video, or `import_files` on a non-MP4 file (e.g. `"/abs/clip.avi"`), writes
 `clip.webm` (AV1 with SVT-AV1, libaom or rav1e, keyframes every 2 s, 8-bit 4:2:0, at most 4096
 px; Opus 128 kb/s stereo) and does not copy the original; files dropped on the Project window
 and video URLs (in `import_files`, or a document's remote `<video src>` when the editor imports
 its references) are converted the same way. It runs your own FFmpeg as a separate program:
-`JASPER_FFMPEG`, else Preferences > External Tools > FFmpeg (`preferences.ffmpeg_path`), else
-`ffmpeg` on `PATH` (never shipped or linked). Without FFmpeg, or
+`JASPER_FFMPEG`, else Preferences > External Tools > FFmpeg (`preferences.ffmpeg_path`: the user sets it;
+read-only over MCP), else `ffmpeg` on `PATH` (never shipped or linked). Without FFmpeg, or
 without an AV1 encoder in it, the file is copied unconverted with `HTMLUI-IMP-0010` and the
 exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
 `ffmpeg -i in.mp4 -c:v libsvtav1 -preset 6 -crf 32 -g 60 -pix_fmt yuv420p -c:a libopus -b:a 128k out.webm`.
@@ -1308,7 +1360,7 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
   `canPlayType(type)`, `fastSeek(t)`; properties `currentTime` (set = seek), `duration`
   (NaN before the metadata), `paused`, `ended`, `seeking`, `loop`, `autoplay`, `controls`,
   `muted`, `defaultMuted`, `volume`, `playbackRate`, `defaultPlaybackRate`, `readyState`,
-  `networkState`, `videoWidth`, `videoHeight`, `currentSrc`, `poster`, `preload`, `error` (`nil`
+  `networkState`, `videoWidth`, `videoHeight`, `currentSrc`, `videoBackend` (what decodes it: `webm`, `ffmpeg`, `mediacodec`, `avfoundation`, `mediafoundation`, `browser`), `poster`, `preload`, `error` (`nil`
   or `{code, message}`); constants `UIElement.HAVE_ENOUGH_DATA`, `UIElement.MEDIA_ERR_SRC_NOT_SUPPORTED`, ...
   Out of range values (`volume = 2`) warn and leave the value (HTML throws).
 - Events (they do not bubble): `loadstart`, `durationchange`, `loadedmetadata`, `loadeddata`,
@@ -1332,6 +1384,41 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
   captions (`HTMLUI-HTML-0002`), `playsinline`/`crossorigin` and the like (dropped, info
   `HTMLUI-HTML-0028`), picture-in-picture, `preservesPitch` (pitch follows `playbackRate`),
   `::-webkit-media-controls-*`, HDR (8-bit SDR is shown; 10-bit is decoded and rounded).
+
+### Particles: `<particle-system>`
+
+`<particle-system src="fx/confetti.prefab" autoplay loop time="ui" scale="1">` plays a prefab's
+Particle System (the first of its GameObjects with one; its billboards as they look: the Renderer's
+texture or soft disc, sprite sheet frames, additive or alpha blending, sizes, rotations, colours)
+and draws its particles in document order: above what comes before it,
+below what comes after, inside the element's clip (`overflow: hidden`) and transform. The emitter
+is at the centre of its content box (0 x 0 by default: give it a size or position it), one prefab
+unit is `scale` CSS px, y up. `time="ui"` (default: the system's `useUnscaledTime`) plays while
+the game is paused, `game` follows `Engine.timeScale` (the effect's own Unscaled Time off too);
+`loop="false"` plays once, `loop` loops (the effect's Looping on the GameObject's own copy; the
+prefab's own setting otherwise); without `autoplay` it waits for `el:play()`.
+
+```html
+<div class="panel" style="overflow: hidden">
+  <particle-system id="confetti" src="fx/confetti.prefab" autoplay scale="40" style="position: absolute; left: 50%; top: 30%"></particle-system>
+  <button id="again">Play again</button>
+</div>
+```
+
+Lua: `el:play()`, `el:pause()`, `el:stop()`, `el:clear()`, `el:isPlaying()`,
+`el:getParticleSystem()` (the system of its hidden GameObject: every `ParticleSystem` API works;
+`nil` until the element's first update made the prefab, e.g. in `onLoad`, in edit mode, or when its
+`src` failed); `el:clear()` removes the particles (the system plays on), `el:stop()` stops
+emitting (what is alive dies out; `el:isPlaying()` until then, as Unity's), `el:isPlaying()` is
+false while paused; event `complete` when a system that does not loop has stopped (its last
+particle died). `play()` / `pause()` /
+`stop()` before the prefab exists are queued (the last one applies, over `autoplay`). The prefab is
+made on a hidden GameObject of the document's scene (not in the Hierarchy, not saved; none of its
+renderers draws) and goes, with all its children, with the element, its document or a new `src`.
+Screen and texture-mode (world) documents both work. Prefabs exist in Play and in exported games: in
+edit mode the element is empty. A `src` that names no prefab with a Particle System logs
+`HTMLUI-HTML-0029` and adds it to the document's diagnostics (`inspect_ui`). Keep a system under
+about 1000 particles (one mesh is rebuilt each frame).
 
 ### Fonts
 
@@ -1494,11 +1581,63 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
 
 ### Touch, text fields and the cursor
 
-**Touch.** Every finger is a pointer; taps are clicks. Hover-only affordances do not exist on
-touch: show them by default or on `:focus`/`:active`, or use `@media (hover: hover)`, evaluated
-once at load (false on touch devices). Each pressed element gets `:active`, but lifting any
-finger clears it on all of them, and only the last pressed element can be clicked. Linux
-desktops have no multi-touch.
+**Touch.** Every finger is a pointer of its own: its own `:hover` (only while it is down),
+`:active`, capture, drag and click. Two fingers press two buttons; lifting one releases and
+clicks only its own. Hover-only affordances do not exist on touch: show them by default or on
+`:focus`/`:active`, or use `@media (hover: hover)`, evaluated once at load (false on touch
+devices). A finger that starts on a scrollable box pans it once it moves past a few pixels,
+where `touch-action` allows (then it gets `pointercancel` and loses `:active`); on-screen
+controls and game surfaces use `touch-action: none`. Linux desktops have no multi-touch: the
+Game view's Simulate Touch with an Alt-pinned finger and `send_input` cover testing.
+
+**Pointer events.** As in a browser (W3C Pointer Events 3): per pointer `pointerover` →
+`pointerenter` → `pointerdown` → `pointermove`s → `pointerup` → `click` → `pointerout` →
+`pointerleave` (a finger leaves with its release), and the compatibility mouse events after the
+pointer event of the same moment (`mousedown` after `pointerdown`). `preventDefault()` on
+`pointerdown` suppresses the `mousedown` and the focus change. A finger is captured by the
+element it pressed (implicit capture): its moves, up and cancel go there wherever it is, while
+`:hover` follows what is under it. `el:setPointerCapture(event.pointerId)` captures the mouse
+or a finger for a drag (a custom slider, a joystick); `el:releasePointerCapture(id)`,
+`el:hasPointerCapture(id)`; `gotpointercapture` / `lostpointercapture` fire before the
+pointer's next event, and the capture ends with the release. Deviation from browsers: the
+compatibility mouse events fire for every finger, not only the first (the engine's earlier
+advice was `mousedown` for touch, which keeps working with two fingers). `touch-action`: `auto`
+(default), `none`, `pan-x`, `pan-y`, `pan-x pan-y`, `manipulation` (= auto: no zoom here); not
+inherited, the effective value is the intersection from the touched element up to its scroll
+box. Gestures (pinch, rotate) are two pointers: keep each `pointerId`'s position.
+
+```lua
+-- a custom slider: the knob follows the finger or mouse that grabbed it
+knob:addEventListener("pointerdown", function(e)
+    knob:setPointerCapture(e.pointerId)
+end)
+knob:addEventListener("pointermove", function(e)
+    if knob:hasPointerCapture(e.pointerId) then setValue(e.clientX) end
+end)
+```
+
+**On-screen controls.** `<onscreen-stick>`, `<onscreen-button>` and `<touch-area>` feed the
+input actions (`jasper://docs/input` 4.1), so `Input.getAxis("Horizontal")` reads the stick and
+mouse-look code reading `Mouse X`/`Mouse Y` works with the touch area. Each takes the first
+pointer that presses it; three fingers on three controls work at once.
+
+```html
+<onscreen-stick mode="floating" dead-zone="0.1" horizontal-action="Horizontal" vertical-action="Vertical"></onscreen-stick>
+<touch-area sensitivity="0.1" invert-y></touch-area>
+<onscreen-button action="Jump" value="1" press-on-enter>Jump</onscreen-button>
+```
+
+| Element | Attributes (defaults) | State and events |
+|---|---|---|
+| `onscreen-stick` | `mode` (`fixed`, `floating`: the base appears under the finger, `dynamic`: it follows past `move-threshold`), `handle-range` (1), `dead-zone` (0), `move-threshold` (1), `axes` (`both`, `horizontal`, `vertical`), `snap-x`, `snap-y`, `horizontal-action` (`Horizontal`), `vertical-action` (`Vertical`), `visibility` (`always`, `touch-devices-only`) | `data-pressed`, `data-x`, `data-y` (-1..1, y up); `:active` while held; `stickstart`, `stickmove`, `stickend` (`event.detail.x` / `.y`) |
+| `onscreen-button` | `action` (`Fire1`), `value` (1; -1 on an axis), `press-on-enter`, `release-on-leave`, `visibility` | `data-pressed`, `:active`; the usual pointer and click events |
+| `touch-area` | `horizontal-action` (`Mouse X`), `vertical-action` (`Mouse Y`), `sensitivity` (0.1), `invert-x`, `invert-y`, `visibility` | `data-pressed`; `areadrag` (`event.detail.dx` / `.dy`, document px) |
+
+A stick without children gets `<div class="stick-base"><div class="stick-knob"></div></div>`
+(a 160 px translucent circle and a 64 px knob from the UA sheet; give your own children these
+classes to restyle). The stick maths is Joystick Pack's in document px: the base's half width is
+the radius; the knob moves with `transform: translate(...)`. Released, removed, hidden with
+`display: none`, or with its document hidden or unloaded, a control clears what it wrote.
 
 **Text fields.** Focusing one opens the virtual keyboard (Android, iOS, Web) and places the IME
 window at the caret. Composition shows inside the field on Windows, macOS, iOS, Android and
@@ -1546,6 +1685,34 @@ The page is the canvas, so responsiveness is about the canvas size:
   [1920, 1080], [1024, 768], [720, 1280]]}` runs every check at each size, and
   `inspect_ui {"viewport": [720, 1280]}` returns the tree laid out at that size (both restore
   the real size). For a screenshot at another aspect, `configure_game_view {"aspect": "9:16"}`.
+
+### UI scaling (Canvas Scaler)
+
+Screen documents lay out in the scene's **UI size** when a Canvas Scaler scales it
+(`graphics.ui_scale`, the scene setting `canvas_scaler`; modes and formulas: `jasper://docs/ui`),
+the canvas above otherwise (the default, Follow Game Canvas). With Scale With Screen Size 1920 x
+1080 and `match_mode: expand`, `100vw` x `100vh` is 1920 x 1440 on a 4:3 screen and 2400 x 1080 on
+a 20:9 one: design for the reference, let flex and `%` take the extra room. Text is rasterized at
+the screen's pixels either way. Preview real devices with `configure_game_view {"resolution":
+"2400x1080"}` (or a preset, `"WxH@dpi"`, `"free"`), then `screenshot`; `getBoundingClientRect()`
+of `body` is the UI size.
+
+### Safe areas (notches)
+
+`env(safe-area-inset-top|right|bottom|left[, fallback])` is the live safe-area inset of the
+screen (`Screen.safeAreaInsets`, the app's extra insets such as a banner included), in the
+document's CSS px, as in a mobile browser with `viewport-fit=cover`:
+
+```css
+.hud { padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.bottom-bar { position: absolute; left: 0; right: 0; bottom: max(12px, env(safe-area-inset-bottom)); }
+```
+
+It is a runtime variable (`var(--jasper-safe-area-inset-<edge>, <fallback or 0px>)`): a rotation or
+`Screen.setExtraInsets` lays the document out again without a reload; `calc()`, `min()`, `max()`
+and `clamp()` keep it. `--jasper-device-safe-area-inset-*` leave the extras out. Documents on meshes
+get 0. Try it with a phone in the Game view (`configure_game_view {"device": "iphone_15_pro"}`);
+details in jasper://docs/safe-area.
 
 ## The loop in detail
 
@@ -1641,7 +1808,7 @@ Read-only, edit mode and play. Returns:
   `atlasBytes`, `atlasEvictions`, ...); with `"detail": "full"` each element also has
   `paint: {path: "primitive" | "mesh", reason}` and, with text, `raster: {mode: "bitmap" | "msdf" |
   "stretched", scale}`;
-- a `<video>`'s entry has `media`: `currentSrc`, `currentTime`, `duration`, `paused`, `ended`,
+- a `<video>`'s entry has `media`: `currentSrc`, `backend`, `currentTime`, `duration`, `paused`, `ended`,
   `seeking`, `loop`, `muted`, `volume`, `playbackRate`, `readyState`, `networkState`,
   `videoWidth`/`videoHeight`, `frame` (the index on screen), `droppedFrames`, `decodeMs`,
   `memoryBytes`, `poster` (showing it), `error`, and with `controls` their rectangles
@@ -1723,9 +1890,9 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | `doc.getElementById("x")`, `el.classList.add("x")` | colon calls: `doc:getElementById("x")`, `el.classList:add("x")` | LuaLS `param-type-mismatch` / `missing-parameter` |
 | `el.innerText = "x"`, `el.onclick = fn` | `el.textContent = "x"`, `el:addEventListener("click", fn)` | LuaLS `inject-field` |
 | `getElementByID`, other misspelt members | the DOM names (`getElementById`) | LuaLS `undefined-field` |
-| `addEventListener("onclick")`, `"mouseenter"`, `"pointerdown"` | `"click"`, `"mouseover"`/`"mouseout"`, `"mousedown"` | LuaLS `param-type-mismatch` (`UIEventType`); a warning at run time |
-| `setTimeout`, `setInterval`, `requestAnimationFrame` | `anime.createTimer({ duration = 2000, onComplete = fn })`, or `RegisterEngineEvent(self, "onUpdate")` | none (Lua has no such globals) |
-| `fetch`, `XMLHttpRequest` | no network at run time: ship data as Lua modules (`require`) or files | none |
+| `addEventListener("onclick")`, `"touchstart"` | `"click"`, `"pointerdown"` (`event.pointerType == "touch"`) | LuaLS `param-type-mismatch` (`UIEventType`); a warning at run time |
+| `setTimeout`, `setInterval`, `requestAnimationFrame` | `anime.createTimer({ duration = 2000, onComplete = fn })` (UI clock, milliseconds), gameplay `Timer.after(2, fn)` / `Timer.every(0.5, fn)` (seconds, game time; `{unscaled = true}`), `Coroutine.start(function() Coroutine.wait(2) ... end)`, or `RegisterEngineEvent(self, "onUpdate")` | none (Lua has no such globals) |
+| `fetch`, `XMLHttpRequest` | call Lua `Http` (`jasper://docs/networking`): in the document's `<script type="text/lua">` `Http.get(url, {owner = document}, function(res) ... end)` (no `self` there; the document's GameObject owns it), in the GameObject's script `{owner = self}`; documents themselves load nothing from the network | none |
 | `localStorage` | `UserSettings.setStringForKey(key, value)` / `getStringForKey` | none |
 | `alert()`, `confirm()` | a `<dialog>` with `showModal()`, or a modal element | `HTMLUI-HTML-0006` (inside JavaScript) |
 | JS animation libraries (GSAP, anime.js `<script>`) | the Lua `anime` API | `HTMLUI-HTML-0007` |

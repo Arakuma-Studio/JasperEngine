@@ -17,6 +17,7 @@
 
 #include "jobs/JobSystem.h"
 #include "Scene.h"
+#include "DebugSettings.h"
 #include "registry/TagManager.h"
 #include "Factory.h"
 #include "util/Prefab.h"
@@ -160,6 +161,22 @@ namespace jasperengine::editor {
         bool operator!=(const HtmlUiRenderSettings& other) const{ return !(*this == other); }
     };
 
+    // Project Settings > Audio (audio-mixer spec 9): the exported init configures the voices and
+    // loads the mixer before the first scene
+    struct AudioSettings {
+        std::string mixer;              // asset-relative path of the project's .mixer ("" = none: an implicit Master)
+        int maxRealVoices = 32;
+        int maxVoices = 256;
+        int sampleRate = 0;             // 0 = the device's
+        std::string defaultOutputGroup; // the group new Audio Sources get ("" = Master)
+
+        bool operator==(const AudioSettings& other) const {
+            return mixer == other.mixer && maxRealVoices == other.maxRealVoices && maxVoices == other.maxVoices &&
+                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup;
+        }
+        bool operator!=(const AudioSettings& other) const { return !(*this == other); }
+    };
+
     // Layer Collision Matrix of Project Settings > Physics or Physics 2D: index = layer,
     // bit j set when that layer and layer j collide (kept symmetric)
     using LayerCollisionRows = std::array<uint32_t, MAX_LAYERS>;
@@ -177,6 +194,10 @@ namespace jasperengine::editor {
         std::vector<std::string> layerNames;  // index = layer, empty when built-in or unnamed
         LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
+        // Project Settings > Physics > 3D World Capacity (PhysicsSystem::setWorldCapacity3D)
+        unsigned int maxBodies3D = 8192;
+        unsigned int maxBodyPairs3D = 8192;
+        unsigned int maxContactConstraints3D = 8192;
     };
 
     // A script build's state, published by every Generator (Play, compile_scripts, C++ reload,
@@ -193,6 +214,21 @@ namespace jasperengine::editor {
         std::vector<std::string> output;     // Finished: the build's lines (diagnostics are read from them)
     };
 
+    // Player > Resolution and Presentation and the application, baked into the generated
+    // init() (Screen::initialize, Engine::setTargetFrameRate, System::setApplicationInfo)
+    struct PlayerSettings {
+        ScreenOrientation defaultOrientation = ScreenOrientation::AutoRotation;
+        uint8_t allowedOrientations = (1u << 1) | (1u << 3) | (1u << 4);
+        bool keepScreenOn = true;
+        int targetFrameRate = -1;
+        // what System.getAppName/Identifier/Version/Build return on each desktop and the web
+        // (with their platform overrides); Android and iOS read their package and bundle
+        ApplicationInfo linuxApp, windowsApp, macosApp, webApp;
+    };
+
+    // editor/tests/PlatformServicesTest.cpp: the generated platform source lists
+    struct GeneratorTestAccess;
+
     class Generator {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
@@ -204,6 +240,7 @@ namespace jasperengine::editor {
         std::array<int, 3> textureQuality = {0, 0, 0};
         std::array<int, 3> textureBudgetMB = {0, 512, 384};
         std::array<bool, 3> textureLowMemory = {false, false, true};
+        friend struct GeneratorTestAccess;
     private:
         // what the build's events name (setStatusRow)
         std::string statusRow = "cpp";
@@ -226,8 +263,12 @@ namespace jasperengine::editor {
         // the build on the process channel, or one running inline in a channel job
         jobs::Task<void> buildTask;
         std::atomic<int> inlineBuilds{0};
+        // macos.frameworks (Project Settings > Native Plugins): linked with the Objective-C plugins
+        std::vector<std::string> macOSFrameworks;
         std::atomic<bool> lastBuildSucceeded;
         CommandRunner commandRunner;
+        // the project's UI Scale, emitted by configure (setUIScale before it)
+        CanvasScalerSettings uiScale;
 
         static fs::path getGeneratedPath(const fs::path& projectInternalPath);
         static std::string getEditorPluginAbiCheck();
@@ -250,6 +291,7 @@ namespace jasperengine::editor {
         void writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<SceneBuildInfo>& scenes, const std::vector<PrefabSceneInfo>& prefabs, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard);
 
     public:
+        void setMacOSFrameworks(std::vector<std::string> frameworks) { macOSFrameworks = std::move(frameworks); }
         // AGENTS.md at the project root, written only when the project has none (then CLAUDE.md likewise)
         static void writeAgentsFile(const fs::path& projectPath, const fs::path& projectInternalPath);
         // CLAUDE.md importing AGENTS.md, written only when the project has none
@@ -287,6 +329,10 @@ namespace jasperengine::editor {
         // cmake for a command line: the configured path (quoted) or plain
         // "cmake" for PATH to resolve.
         static std::string cmakeExecutable();
+        // The CMake program path for an argv launch (unquoted; "cmake" when none is configured)
+        static std::string cmakeProgram();
+        // Whether `generator` is a CMake generator name the editor will pass to CMake (allow-list)
+        static bool isKnownGenerator(const std::string& generator);
         // A file dialog pick turned into a cmake executable, "" when it holds none.
         static std::string resolveCMakePath(const std::string& userPath);
         // Version a cmake executable reports, "" when it is not one.
@@ -304,7 +350,22 @@ namespace jasperengine::editor {
         void writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const;
-        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED, const ShaderCreationProjectSettings& shaderCreation = ShaderCreationProjectSettings());
+        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED, const ShaderCreationProjectSettings& shaderCreation = ShaderCreationProjectSettings(), bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = {}, const AudioSettings& audioSettings = AudioSettings(), const DebugSettings& debugSettings = DebugSettings());
+        // main.cpp's init lines of Project Settings > Input: the default deadzone (when not 0.15)
+        // and InputActions::loadDefault of the actions asset (none: the engine keeps Unity's
+        // Input Manager defaults)
+        // the Canvas Scaler project default the next configure() writes into the generated main
+        void setUIScale(const CanvasScalerSettings& settings) { uiScale = settings; }
+        static std::string inputSettingsInitSource(const std::string& actionsAsset, float deadzone);
+        // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations
+        // (with their defaults) before any scene loads; "" when the project declares none
+        static std::string shaderGlobalsInitSource(const std::vector<ShaderGlobalDecl>& shaderGlobals);
+        // AudioSystem::configure / AudioMixer::load lines of main.cpp ("" for the defaults)
+        static std::string audioInitSource(const AudioSettings& audioSettings);
+        // The generated init's lines of Project Settings > Debug: the development build flag
+        // (JASPERENGINE_DEVELOPMENT_BUILD of a Debug-type export, DEBUG of Xcode's Debug
+        // configuration), the log buffer and stack traces, DebugOverlay::configure
+        static std::string debugInitSource(const DebugSettings& debugSettings);
         void build(const fs::path projectPath, const fs::path buildPath, const std::string& cCompiler = "", const std::string& cxxCompiler = "", const std::string& generator = "", unsigned int parallelJobs = 0);
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
         // starts with; set before configure()

@@ -50,7 +50,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 - entity: numeric id ("12" ok), or a path of names from the scene root joined by "/" with "#N" for the
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
   scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
-  and list the matching paths. Results return both id and path; prefer ids within a session.
+  and list the matching paths. Results return id and path; prefer ids within a session.
   `entities` (array) instead of `entity` applies a tool to several GameObjects.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
   names fail with the valid list. property: catalog paths ("position",
@@ -68,7 +68,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
    project.yaml. Group many edits in one `batch` call
    (undo_group: one undo step, see Undo). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
-4. Play the start scene; a C++ project builds first (seconds to minutes).
+4. Play the start scene; a C++ project builds first.
 5. Look: screenshot the Game view (Scene view for layout). Drive the game with
    send_input / wait; query runtime state while playing (get_runtime_entity, eval_lua).
 6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
@@ -133,8 +133,8 @@ REGISTER_ENGINE_EVENT(onUpdate) in the constructor, UNREGISTER_ENGINE_EVENT in t
 Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in ProjectBuild.cmake.
 
 ## Play and time
-- play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
-  action "set"): time_scale, fixed_fps (each frame exactly 1/fixed_fps s: reproducible runs),
+- play: start, stop, pause, resume, step (frames), restart; clock options with any action
+  (or "set"): time_scale, fixed_fps (exactly 1/fixed_fps s a frame: reproducible),
   auto_pause (frozen between your calls; runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
@@ -152,10 +152,10 @@ Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in 
   top-left. Put HUDs and menus in a UI scene attached as a child scene (set_child_scene): in a
   2D scene layout groups stack bottom-up and pointer input needs a UI camera.
 - Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
-- Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}, for an Animation
-  Player (jasper://docs/animation).
-- Crowds: bake_vertex_animation (preview, then output): a .vat a Vertex Animator plays on the
-  GPU (jasper://docs/vertex-animation).
+- Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; other rigs:
+  an Animator, clips[i].retarget, create.humanoid; property tracks: channel property
+  (jasper://docs/animation).
+- Crowds: bake_vertex_animation (preview, output) -> a .vat (jasper://docs/vertex-animation).
 - Animator (.controller): edit_animator_controller, control_animator (jasper://docs/animator).
 
 ## Atmosphere
@@ -190,10 +190,12 @@ nothing fits; read the fork first. A failing shader draws as the built-in one. R
 uniforms: jasper://docs/shaders; Lit lobes, Lit Quality, light units: jasper://docs/materials.
 Screenshots wait for async shader creation; pending: get_render_stats shader_creation.
 
-Textures from examples: synthesize_texture (group assets_pipeline,
-jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
-(jasper://docs/fluid). Bend/squash: edit_lattice (group animation, jasper://docs/lattice).
-Colours ("#hex", {srgb}), curves, templates, recording: jasper://docs/editor-tools.
+Feature pages, jasper://docs/<page>: texture-synthesis (synthesize_texture), fluid, lattice
+(edit_lattice), lines-trails, editor-tools (colours, curves, templates, recording),
+sprite-normals (generate_sprite_normals), audio (audio_mixer), camera (camerashaker,
+camerafollow), ui (configure_game_view: Canvas Scaler, text effects, devices), safe-area,
+video, debugging (DebugOverlay), native-bridge (Native.call, native_plugins),
+platform-services (focus, pause, rotation, language: send_input type app; user_settings).
 
 ## Post-processing
 Main camera only: apply_post_processing_preset (film, vhs, mobile_adaptive...), then
@@ -216,8 +218,7 @@ Calls time out: get_editor_health (answers mid-hang) tells hung from slow; get_c
 Scenes in Build order and the start scene live in project.yaml (project tools).
 build_project: a game per platform or a CMake project; ship: jasper://docs/shipping.
 Before exporting: scenes saved, Console clean in play, the start scene right.
-)JE"
-R"JE(
+
 ## HTML/CSS UI
 Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript): create_ui_document
 (template: blank, main_menu, hud, inventory, settings, shop...) adds the GameObject and writes

@@ -641,7 +641,7 @@ inline int raise_lua_error(lua_State* L, const char* fmt, ...)
 
 [[noreturn]] LUABRIDGE_COLD_NOINLINE inline void raise_exception_error(lua_State* L, const std::exception& e)
 {
-    raise_exception_error(L, e);
+    raise_lua_error(L, "%s", e.what());
     std::abort();
 }
 

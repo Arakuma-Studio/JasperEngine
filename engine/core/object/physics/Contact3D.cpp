@@ -10,17 +10,10 @@
 #include "Jolt/Physics/Body/Body.h"
 #include "Jolt/Physics/Collision/ContactListener.h"
 
+#include <algorithm>
 #include <tuple>
 
 using namespace jasperengine;
-
-namespace {
-
-    Vector3 toVector3(JPH::Vec3Arg v){
-        return Vector3(v.GetX(), v.GetY(), v.GetZ());
-    }
-
-}
 
 bool ContactPairKey3D::operator<(const ContactPairKey3D& other) const{
     return std::tie(body1, body2, subShape1, subShape2) < std::tie(other.body1, other.body2, other.subShape1, other.subShape2);
@@ -30,30 +23,26 @@ bool ContactPairKey3D::operator==(const ContactPairKey3D& other) const{
     return body1 == other.body1 && body2 == other.body2 && subShape1 == other.subShape1 && subShape2 == other.subShape2;
 }
 
-Contact3D::Contact3D() = default;
+// an empty snapshot: no Jolt pointers to read
+Contact3D::Contact3D(): snapshot(std::make_shared<Contact3DSnapshot>()){
+}
 
-Contact3D::Contact3D(Scene* scene, const JPH::Body* body1, const JPH::Body* body2, const JPH::ContactManifold* contactManifold, const JPH::ContactSettings* contactSettings){
+Contact3D::Contact3D(Scene* scene, const JPH::Body* body1, const JPH::Body* body2, const JPH::ContactManifold* contactManifold, JPH::ContactSettings* contactSettings){
     this->scene = scene;
+    this->body1 = body1;
+    this->body2 = body2;
+    this->contactManifold = contactManifold;
+    this->contactSettings = contactSettings;
     key.body1 = body1->GetID().GetIndexAndSequenceNumber();
     key.body2 = body2->GetID().GetIndexAndSequenceNumber();
     key.subShape1 = contactManifold->mSubShapeID1.GetValue();
     key.subShape2 = contactManifold->mSubShapeID2.GetValue();
+}
 
-    baseOffset = Vector3(contactManifold->mBaseOffset.GetX(), contactManifold->mBaseOffset.GetY(), contactManifold->mBaseOffset.GetZ());
-    worldSpaceNormal = toVector3(contactManifold->mWorldSpaceNormal);
-    penetrationDepth = contactManifold->mPenetrationDepth;
-    colliderIndex1 = body1->GetShape()->GetSubShapeUserData(contactManifold->mSubShapeID1);
-    colliderIndex2 = body2->GetShape()->GetSubShapeUserData(contactManifold->mSubShapeID2);
-    for (JPH::Vec3 point : contactManifold->mRelativeContactPointsOn1){
-        pointsOn1.push_back(toVector3(point));
-    }
-    for (JPH::Vec3 point : contactManifold->mRelativeContactPointsOn2){
-        pointsOn2.push_back(toVector3(point));
-    }
-
-    combinedFriction = contactSettings->mCombinedFriction;
-    combinedRestitution = contactSettings->mCombinedRestitution;
-    sensor = contactSettings->mIsSensor;
+Contact3D::Contact3D(Scene* scene, std::shared_ptr<const Contact3DSnapshot> snapshot){
+    this->scene = scene;
+    this->snapshot = snapshot ? std::move(snapshot) : std::make_shared<Contact3DSnapshot>();
+    this->key = this->snapshot->key;
 }
 
 Contact3D::~Contact3D() = default;
@@ -64,64 +53,131 @@ const ContactPairKey3D& Contact3D::getKey() const{
     return key;
 }
 
+const JPH::ContactManifold* Contact3D::getJoltContactManifold() const{
+    return contactManifold;
+}
+
+JPH::ContactSettings* Contact3D::getJoltContactSettings() const{
+    return contactSettings;
+}
+
+size_t Contact3D::getNumContactPoints() const{
+    return getContactPointCount();
+}
+
+Contact3DSnapshot Contact3D::takeSnapshot() const{
+    if (snapshot){
+        return *snapshot;
+    }
+    Contact3DSnapshot copy;
+    copy.key = key;
+    copy.baseOffset = getBaseOffset();
+    copy.worldSpaceNormal = getWorldSpaceNormal();
+    copy.penetrationDepth = getPenetrationDepth();
+    copy.colliderIndex1 = getColliderIndex1();
+    copy.colliderIndex2 = getColliderIndex2();
+    const size_t points1 = std::min<size_t>(4, contactManifold->mRelativeContactPointsOn1.size());
+    const size_t points2 = std::min<size_t>(4, contactManifold->mRelativeContactPointsOn2.size());
+    for (size_t i = 0; i < points1; i++) copy.pointsOn1.push_back(getRelativeContactPointsOnA(i));
+    for (size_t i = 0; i < points2; i++) copy.pointsOn2.push_back(getRelativeContactPointsOnB(i));
+    copy.combinedFriction = getCombinedFriction();
+    copy.combinedRestitution = getCombinedRestitution();
+    copy.sensor = isSensor();
+    return copy;
+}
+
+Contact3DSnapshot& Contact3D::editSnapshot(){
+    // the copies of this Contact3D keep what they had
+    std::shared_ptr<Contact3DSnapshot> copy = std::make_shared<Contact3DSnapshot>(*snapshot);
+    snapshot = copy;
+    return *copy;
+}
+
 Vector3 Contact3D::getBaseOffset() const{
-    return baseOffset;
+    if (snapshot) return snapshot->baseOffset;
+    return Vector3(contactManifold->mBaseOffset.GetX(), contactManifold->mBaseOffset.GetY(), contactManifold->mBaseOffset.GetZ());
 }
 
 Vector3 Contact3D::getWorldSpaceNormal() const{
-    return worldSpaceNormal;
+    if (snapshot) return snapshot->worldSpaceNormal;
+    return Vector3(contactManifold->mWorldSpaceNormal.GetX(), contactManifold->mWorldSpaceNormal.GetY(), contactManifold->mWorldSpaceNormal.GetZ());
 }
 
 float Contact3D::getPenetrationDepth() const{
-    return penetrationDepth;
+    if (snapshot) return snapshot->penetrationDepth;
+    return contactManifold->mPenetrationDepth;
 }
 
 size_t Contact3D::getColliderIndex1() const{
-    return colliderIndex1;
+    if (snapshot) return snapshot->colliderIndex1;
+    return body1->GetShape()->GetSubShapeUserData(contactManifold->mSubShapeID1);
 }
 
 size_t Contact3D::getColliderIndex2() const{
-    return colliderIndex2;
+    if (snapshot) return snapshot->colliderIndex2;
+    return body2->GetShape()->GetSubShapeUserData(contactManifold->mSubShapeID2);
 }
 
 size_t Contact3D::getContactPointCount() const{
-    return pointsOn1.size();
+    if (snapshot) return snapshot->pointsOn1.size();
+    return contactManifold->mRelativeContactPointsOn1.size();
 }
 
 Vector3 Contact3D::getRelativeContactPointsOnA(size_t index) const{
-    return index < pointsOn1.size() ? pointsOn1[index] : Vector3(0, 0, 0);
+    if (snapshot) return index < snapshot->pointsOn1.size() ? snapshot->pointsOn1[index] : Vector3(0, 0, 0);
+    if (index >= contactManifold->mRelativeContactPointsOn1.size()) return Vector3(0, 0, 0);
+    JPH::Vec3 point = contactManifold->mRelativeContactPointsOn1[index];
+    return Vector3(point.GetX(), point.GetY(), point.GetZ());
 }
 
 Vector3 Contact3D::getRelativeContactPointsOnB(size_t index) const{
-    return index < pointsOn2.size() ? pointsOn2[index] : Vector3(0, 0, 0);
+    if (snapshot) return index < snapshot->pointsOn2.size() ? snapshot->pointsOn2[index] : Vector3(0, 0, 0);
+    if (index >= contactManifold->mRelativeContactPointsOn2.size()) return Vector3(0, 0, 0);
+    JPH::Vec3 point = contactManifold->mRelativeContactPointsOn2[index];
+    return Vector3(point.GetX(), point.GetY(), point.GetZ());
 }
 
 float Contact3D::getCombinedFriction() const{
-    return combinedFriction;
+    if (snapshot) return snapshot->combinedFriction;
+    return contactSettings->mCombinedFriction;
 }
 
 void Contact3D::setCombinedFriction(float combinedFriction){
-    this->combinedFriction = combinedFriction;
+    if (!snapshot){
+        contactSettings->mCombinedFriction = combinedFriction;
+        return;
+    }
+    editSnapshot().combinedFriction = combinedFriction;
     if (scene)
         scene->getSystem<PhysicsSystem>()->setContactFriction3D(key, combinedFriction);
 }
 
 float Contact3D::getCombinedRestitution() const{
-    return combinedRestitution;
+    if (snapshot) return snapshot->combinedRestitution;
+    return contactSettings->mCombinedRestitution;
 }
 
 void Contact3D::setCombinedRestitution(float combinedRestitution){
-    this->combinedRestitution = combinedRestitution;
+    if (!snapshot){
+        contactSettings->mCombinedRestitution = combinedRestitution;
+        return;
+    }
+    editSnapshot().combinedRestitution = combinedRestitution;
     if (scene)
         scene->getSystem<PhysicsSystem>()->setContactRestitution3D(key, combinedRestitution);
 }
 
 bool Contact3D::isSensor() const{
-    return sensor;
+    if (snapshot) return snapshot->sensor;
+    return contactSettings->mIsSensor;
 }
 
 void Contact3D::setIsSensor(bool sensor){
-    this->sensor = sensor;
+    if (!snapshot){
+        contactSettings->mIsSensor = sensor;
+        return;
+    }
+    editSnapshot().sensor = sensor;
     if (scene)
         scene->getSystem<PhysicsSystem>()->setContactSensor3D(key, sensor);
 }

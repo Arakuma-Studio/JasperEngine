@@ -9,6 +9,7 @@
 
 #include "DocumentFile.h"
 #include "Stream.h"
+#include "StreamMigrations.h"
 #include "StreamPreserved.h"
 #include "util/Prefab.h"
 
@@ -158,14 +159,17 @@ TEST(Compat, CorpusRoundTrip) {
                                    original.find("prefabInstance") == std::string::npos && original.find("\n      prefab:") == std::string::npos &&
                                    // a model's images are textures by id (the model file's path on the
                                    // machine that saved it), which a bare decode cannot load
-                                   original.find("|gltf-image|") == std::string::npos;
+                                   original.find("|gltf-image|") == std::string::npos &&
+                                   // old Particle Systems (S20 D9's, origin/main's version 2) become
+                                   // inline effects on their targets: their GameObjects change
+                                   (original.find("particlesystem:") == std::string::npos || original.find("inlineEffect:") != std::string::npos);
         if (editorWritten) {
             const std::string difference =
                 firstDifference(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first)))),
                                 withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original)))));
             EXPECT_TRUE(difference.empty()) << "the save changed more than the version line, at " << difference;
             EXPECT_EQ(shaderKeySet(first), shaderKeySet(original)) << "the shader keys";
-            EXPECT_EQ(first.rfind("formatVersion: 5\n", 0), 0u);
+            EXPECT_EQ(first.rfind("formatVersion: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Scene)) + "\n", 0), 0u);
         }
     }
 

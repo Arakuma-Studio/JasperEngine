@@ -45,7 +45,7 @@ function BadUI:init()
     anime.animate(el, 5)
     el.innerText = "x"
     document.querySelector("#x")
-    el:addEventListener("mouseenter", f)
+    el:addEventListener("contextmenu", f)
     el.classList.add("on")
     el.onclick = f
 end
@@ -59,7 +59,7 @@ BAD_UI_LUA_EXPECTED = {
     11: "param-type-mismatch",  # a number where the params table goes
     12: "inject-field",         # innerText is not a UIElement field
     13: "undefined-global",     # document exists only in <script type="text/lua">
-    14: "param-type-mismatch",  # mouseenter never reaches documents
+    14: "param-type-mismatch",  # contextmenu never reaches documents (mouseenter does since ui-multitouch)
     15: "param-type-mismatch",  # a dot call: the string goes where the UIClassList goes
     16: "inject-field",         # onclick is not a UIElement field
 }

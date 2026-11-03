@@ -48,7 +48,7 @@ namespace jasperengine::editor::reflect {
 
     enum class AssetKind : uint8_t {
         None, Texture, Cubemap, Font, Material, Model, Audio, Script, Prefab, Shader, UIDocument, Scene, Any,
-        PoseAnimation, AnimationClip, AnimatorController, VertexAnimation
+        PoseAnimation, AnimationClip, AnimatorController, VertexAnimation, AvatarMask
     };
 
     enum class Unit : uint8_t {
@@ -454,6 +454,12 @@ namespace jasperengine::editor::reflect {
     std::vector<const EnumDesc*> postProcessingEnums();
     // Project Settings > Graphics > Shader Creation (ShaderCreationProjectSettings, spec S32)
     const StructDesc& shaderCreationStruct();
+    // Project Settings > Debug (DebugSettings, feature debug-overlay): the project file's debug
+    // block, the names of its values and its settings rows (editor/reflect/DebugReflect.cpp)
+    const StructDesc& debugSettingsStruct();
+    std::vector<const EnumDesc*> debugSettingsEnums();
+    // a field of it by its member name ("toggleKey"), null if none
+    const FieldDesc* debugSettingsField(std::string_view name);
     // the rows the struct can hold (a static check of the engine table's size)
     size_t postProcessingFieldCapacity();
 

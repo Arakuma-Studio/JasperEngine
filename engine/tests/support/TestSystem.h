@@ -34,6 +34,12 @@ namespace jasperengine { namespace test {
         int getScreenWidth() override;
         int getScreenHeight() override;
 
+        // a phone or tablet for the tests that ask (the debug overlay's scale); off by default
+        bool touchDevice = false;
+        float screenDpi = 0.0f;
+        bool isTouchDevice() override { return touchDevice; }
+        float getScreenDpi() override { return screenDpi; }
+
 #if defined(SOKOL_VULKAN) && defined(JASPER_TEST_HAS_GPU)
         // the device of the headless VulkanContext; the swapchain is never acquired, so
         // nothing is ever presented

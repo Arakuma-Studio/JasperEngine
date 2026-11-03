@@ -29,11 +29,16 @@
 #include "animation/AnimatorTypes.h"
 #include "math/Vector2.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace jasperengine::anim{
+
+    // unknown members of a file's object and their compact JSON text, in file order: written back
+    // (every object of a controller and of a mask keeps them, so no edit drops what it does not know)
+    using AnimatorUnknownKeys = std::vector<std::pair<std::string, std::string>>;
 
     // an asset reference in one of the files: the path hint and the GUID (editor)
     struct JASPERENGINE_API AnimatorAssetRef{
@@ -50,12 +55,14 @@ namespace jasperengine::anim{
         AnimatorParameterType type = AnimatorParameterType::Float;
         // Float: the value; Int: an integer value; Bool / Trigger: 0 or 1
         float defaultValue = 0.0f;
+        AnimatorUnknownKeys unknownKeys;
     };
 
     struct JASPERENGINE_API ConditionDef{
         std::string parameter;
         AnimatorConditionMode mode = AnimatorConditionMode::If;
         float threshold = 0.0f;     // Greater / Less / Equals / NotEqual
+        AnimatorUnknownKeys unknownKeys;
     };
 
     struct JASPERENGINE_API TransitionDef{
@@ -70,6 +77,7 @@ namespace jasperengine::anim{
         bool orderedInterruption = true;
         bool canTransitionToSelf = false;   // any-state transitions only
         bool mute = false;                  // never taken
+        AnimatorUnknownKeys unknownKeys;
     };
 
     struct BlendTreeDef;
@@ -90,6 +98,8 @@ namespace jasperengine::anim{
         Vector2 position = Vector2(0, 0);   // 2D types
         float timeScale = 1.0f;
         std::string directParameter;        // Direct: the Float parameter that is its weight
+        bool mirror = false;                // flips its state's Mirror (humanoid playback)
+        AnimatorUnknownKeys unknownKeys;
     };
 
     struct JASPERENGINE_API BlendTreeDef{
@@ -97,6 +107,7 @@ namespace jasperengine::anim{
         std::string parameter;              // 1D and 2D x
         std::string parameterY;             // 2D y
         std::vector<BlendChildDef> children;
+        AnimatorUnknownKeys unknownKeys;
     };
 
     inline bool MotionDef::isTree() const { return !tree.empty(); }
@@ -115,7 +126,15 @@ namespace jasperengine::anim{
         std::string tag;
         AdditiveReference additiveReference = AdditiveReference::FirstFrame;   // additive layers
         float additiveTime = 0.0f;          // seconds, AdditiveReference::Time
+        // humanoid playback (the one retarget path, §12): left and right swapped; the legs reach
+        // the clip's foot goals; retargeted from the clip's source model whatever the Animator's
+        // Retarget (upstream's state flags). Each plays the state's clips through the humanoid
+        // path when the Animator has a humanoid avatar.
+        bool mirror = false;
+        bool footIK = false;
+        bool retarget = false;
         std::vector<TransitionDef> transitions;
+        AnimatorUnknownKeys unknownKeys;
     };
 
     struct JASPERENGINE_API StateMachineDef{
@@ -132,6 +151,7 @@ namespace jasperengine::anim{
         Vector2 entryPosition = Vector2(50, 120);
         Vector2 anyStatePosition = Vector2(50, 40);
         Vector2 exitPosition = Vector2(800, 120);
+        AnimatorUnknownKeys unknownKeys;
     };
 
     struct JASPERENGINE_API LayerDef{
@@ -141,6 +161,7 @@ namespace jasperengine::anim{
         AnimatorAssetRef mask;              // a .mask; empty: every bone
         std::string slot;                   // the montage slot this layer plays (empty: none)
         StateMachineDef machine;
+        AnimatorUnknownKeys unknownKeys;
     };
 
     struct JASPERENGINE_API ControllerDef{
@@ -148,7 +169,7 @@ namespace jasperengine::anim{
         std::vector<ParameterDef> parameters;
         std::vector<LayerDef> layers;
         // unknown top-level keys and their compact JSON text, in file order: written back
-        std::vector<std::pair<std::string, std::string>> unknownKeys;
+        AnimatorUnknownKeys unknownKeys;
 
         int findParameter(const std::string& name) const;
         int findLayer(const std::string& name) const;
@@ -156,16 +177,46 @@ namespace jasperengine::anim{
 
     // ---- avatar mask ----
 
+    // The weight of a GameObject under the masked root is decided by AvatarMaskWeights.h: its path
+    // entry (or an ancestor's with `children`), else its humanoid body part, else `defaultWeight`.
     struct JASPERENGINE_API MaskPathDef{
-        std::string path;                   // relative to the Animator's GameObject (ClipBinding grammar)
+        std::string path;                   // relative to the Animator's GameObject (ClipBinding grammar; "" = itself)
         float weight = 1.0f;                // 0..1
+        bool children = false;              // the entry also covers the path's descendants
+
+        bool operator==(const MaskPathDef& other) const{
+            return path == other.path && weight == other.weight && children == other.children;
+        }
+        bool operator!=(const MaskPathDef& other) const{ return !(*this == other); }
     };
 
     struct JASPERENGINE_API AvatarMaskDef{
         std::string guid;
-        bool bodyParts[AVATAR_BODY_PART_COUNT] = {true, true, true, true, true, true, true, true, true};
+        // the weight of what neither a path nor a body part covers (an empty mask passes everything)
+        float defaultWeight = 1.0f;
+        // per body part 0..1; unset parts take defaultWeight
+        std::optional<float> bodyParts[AVATAR_BODY_PART_COUNT];
+        // the root part also covers the masked GameObject and the transforms between it and the
+        // hips (upstream's rule; otherwise they take defaultWeight). The root part always weighs
+        // root motion.
+        bool rootHierarchy = false;
         std::vector<MaskPathDef> paths;
-        std::vector<std::pair<std::string, std::string>> unknownKeys;
+        // editor only: the model or prefab the mask Inspector builds its tree and figure from
+        std::string previewModel;
+        AnimatorUnknownKeys unknownKeys;
+
+        // the part's own weight, else defaultWeight
+        float partWeight(AvatarBodyPart part) const;
+        bool hasPart(AvatarBodyPart part) const { return bodyParts[(int)part].has_value(); }
+        // a body part is set: the weights need the root's humanoid
+        bool usesHumanoid() const{
+            for (const std::optional<float>& part : bodyParts){
+                if (part) return true;
+            }
+            return false;
+        }
+        // index into paths, -1 when none
+        int findPath(const std::string& path) const;
     };
 
     // ---- montage ----
@@ -197,7 +248,7 @@ namespace jasperengine::anim{
         // sorted by start; the first starts at 0 (normalize adds "Default" when none is given)
         std::vector<MontageSectionDef> sections;
         std::vector<MontageEventDef> events;
-        std::vector<std::pair<std::string, std::string>> unknownKeys;
+        AnimatorUnknownKeys unknownKeys;
 
         int findSection(const std::string& name) const;
     };

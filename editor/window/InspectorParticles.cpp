@@ -27,6 +27,8 @@
 #include "command/type/PropertyCmd.h"
 #include "component/ForceFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleModules.h"
@@ -741,6 +743,29 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
     propertyRow(RowPropertyType::Bool, cpType, "playOnAwake", "Play On Awake", sceneProject, entities);
     propertyRow(RowPropertyType::UInt, cpType, "seed", "Seed", sceneProject, entities, settingsSeed);
     propertyRow(RowPropertyType::Float, cpType, "playbackSpeed", "Playback Speed", sceneProject, entities, settingsSpeed);
+    RowSettings settingsUnscaled;
+    settingsUnscaled.help = "Advance on the unscaled frame time: plays while Engine.timeScale is 0 (a pause menu). "
+                            "UI particles usually want it. The effect's own Unscaled Time does the same for every system using it.";
+    propertyRow(RowPropertyType::Bool, cpType, "useUnscaledTime", "Unscaled Time", sceneProject, entities, settingsUnscaled);
+    // particles in a UI (under a RectTransform): drawn in Hierarchy order, clipped by panels, in UI units
+    if (entities.size() == 1) {
+        bool inUI = false;
+        for (Entity e = entities[0]; e != NULL_ENTITY && !inUI;) {
+            const Transform* tf = scene->findComponent<Transform>(e);
+            e = tf ? tf->parent : NULL_ENTITY;
+            inUI = e != NULL_ENTITY && scene->findComponent<RectTransformComponent>(e) != nullptr;
+        }
+        if (inUI) {
+            // (an asset's own Unscaled Time is not read here: its effect is not the GameObject's)
+            const bool unscaled = first->useUnscaledTime || (first->effect.empty() && first->inlineEffect.useUnscaledTime);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled("%s", unscaled ? "UI particles: drawn between their siblings, clipped by panels, sizes in UI units."
+                                               : "UI particles: turn on Unscaled Time so they play in a paused game (menus).");
+            ImGui::PopTextWrapPos();
+        }
+    }
     endTable();
 
     bool anyAsset = false;

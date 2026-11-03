@@ -23,6 +23,7 @@
 #include "object/Model.h"
 #include "object/Primitive.h"
 #include "pool/MeshBufferPool.h"
+#include "render/ObjectRender.h"
 #include "render/SystemRender.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -856,4 +857,51 @@ TEST_F(SharedMeshBuffersTest, FullPoolIsReportedOnceAndItsMeshFailsUntilThereIsR
     Screen roomy;
     ASSERT_TRUE(roomy.read());
     EXPECT_FALSE(roomy.inkOnBackground(s.cell(0), 16).empty());
+}
+
+// Copies sharing their buffers and pipelines, some mirrored (a negative scale): a mirrored copy
+// still draws with the reversed-winding variant of the shared pipeline (SokolPipelineCache's,
+// one for all of them), so its single-sided quad keeps its front face and draws as the others;
+// the variant goes with the last mirrored copy
+TEST_F(SharedMeshBuffersTest, MirroredCopiesSharingBuffersDrawWithTheReversedWindingVariant){
+    const std::string path = (tempDir() / "mirrored_quad.gltf").string();
+    writeQuadGltf(path, 0.6f, 1.6f); // symmetric in x
+    const int count = 8;
+    std::vector<std::unique_ptr<Model>> models; // (outlive the scene)
+    GridScene s(count, 2.0f, 2.0f);
+    ASSERT_TRUE(s.settle());
+    const size_t variantsBefore = ObjectRender::getSharedVariantCount();
+    const size_t poolBefore = MeshBufferPool::getBufferCount();
+    addCopies(s, path, 0, count, models);
+    for (int i = 1; i < count; i += 2)
+        models[i]->setScale(Vector3(-1.0f, 1.0f, 1.0f));
+    ASSERT_TRUE(s.settle());
+
+    EXPECT_TRUE(models[0]->isFaceCulling()) << "a single-sided glTF material culls back faces";
+    EXPECT_EQ(MeshBufferPool::getBufferCount(), poolBefore + 3) << "one set of buffers for every copy";
+    const std::set<uint32_t> ids = meshBufferIds(models[0]->getComponent<MeshComponent>());
+    for (auto& model : models)
+        EXPECT_EQ(meshBufferIds(model->getComponent<MeshComponent>()), ids) << "mirrored or not, the same buffers";
+    const size_t variants = ObjectRender::getSharedVariantCount();
+    EXPECT_GT(variants, variantsBefore) << "the mirrored copies draw with a variant";
+    EXPECT_LT(variants - variantsBefore, size_t(count / 2)) << "one a pass type for all of them, not one a mirrored copy";
+
+    Screen screen;
+    ASSERT_TRUE(screen.read());
+    const InkBox plain = screen.inkOnBackground(s.cell(0), 16);
+    ASSERT_GT(plain.count, 2u);
+    for (int i = 0; i < count; i++){
+        const InkBox box = screen.inkOnBackground(s.cell(i), 16);
+        EXPECT_GT(box.count, plain.count * 9 / 10) << "copy " << i << (i % 2 ? " (mirrored)" : "") << " draws its front face";
+        EXPECT_NEAR(box.width(), plain.width(), 2) << "copy " << i;
+    }
+
+    // unmirrored and reloaded: the variant goes with its last holder
+    for (int i = 1; i < count; i += 2){
+        models[i]->setScale(Vector3(1.0f, 1.0f, 1.0f));
+        models[i]->getComponent<MeshComponent>().needReload = true;
+    }
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(ObjectRender::getSharedVariantCount(), variantsBefore);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u) << errorLines();
 }

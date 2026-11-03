@@ -194,6 +194,7 @@ namespace {
         JE_FIELD(Material, shaderParams, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(Material, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kMeshReload | kTexture),
         JE_FIELD(Material, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kMeshReload),
+        JE_FIELD(Material, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(Material, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kMeshReload),
         JE_FIELD(Material, cullMode, .enumDesc = &enums::kMaterialCullMode, .updateFlags = kMeshReload),
         JE_FIELD(Material, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kMeshReload),

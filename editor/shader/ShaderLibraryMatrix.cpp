@@ -77,6 +77,14 @@ namespace {
                 {"shadows, high filters", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.lights = true; e.shadows = true; e.shadowsHQ = true; }},
                 {"2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
                 {"instanced sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; i.instanced = true; }},
+                // a normal-mapped sprite under 2D lights (@require normalmap: the material's Normal
+                // Texture through getNormal2D, the 2D tangent frame of includes/tangent_frame.glsl)
+                {"2d lights + shadows, normal-mapped sprite", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    i.normal = true; i.tangent = true; i.normalTexture = true; i.textureRect = true; i.vertexColor4 = true;
+                    e.lights2D = true; e.shadows2D = true; }},
+                {"post colour, 2d lights, normal-mapped instanced sprite", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    i.normal = true; i.tangent = true; i.normalTexture = true; i.textureRect = true; i.instanced = true;
+                    e.postColor = true; e.lights2D = true; }},
                 // a Terrain's patches (no UV or tangent attributes: uv1 is the terrain's own)
                 {"terrain", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.terrain = true; i.texCoord1 = false; i.tangent = false; }},
                 {"terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
@@ -328,7 +336,10 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                           {"texture", ShaderPool::getPointsProperties(true, false, true, false)},
                           {"texture rect", ShaderPool::getPointsProperties(true, false, true, true)}};
         }else if (type == ShaderType::LINES){
-            properties = {{"plain", ShaderPool::getLinesProperties(false, true)}};
+            // the hairline, the ribbon of thick lines and trails, its pixel-width form
+            properties = {{"ribbon", ShaderPool::getLinesProperties(false, true, true)},
+                          {"hairline", ShaderPool::getLinesProperties(false, true)},
+                          {"ribbon pixel width", ShaderPool::getLinesProperties(false, true, true, false, true)}};
         }else{
             properties = {{"sky", 0}};
         }

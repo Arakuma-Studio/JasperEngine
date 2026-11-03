@@ -47,7 +47,8 @@ namespace jasperengine::editor::mcp {
         // Writes files as one step of the project command history (editor/command/type)
         using WriteFilesCmd = ::jasperengine::editor::WriteFilesCmd;
 
-        // Runs a WriteFilesCmd on the project history (one undo step). False + error on failure.
+        // Runs a WriteFilesCmd on the project history (one undo step: ProjectFileWrites::writeUndoable,
+        // syncFiles after its execute, undo and redo). False + error on failure.
         // alsoSync: files written before it (an import's downloads) that the same reload takes,
         // so the documents reading them all reload once
         bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error,
@@ -56,7 +57,9 @@ namespace jasperengine::editor::mcp {
         // The MCP form of the hot reload (HotReloadService::apply, S05): what reads files that
         // changed on disk (written by a tool or by an external agent) follows them: code
         // editor buffers, script properties, linked materials, shader forks, textures, models,
-        // audio, fonts, HTML UI documents, the asset database and the Project window.
+        // audio, fonts, HTML UI documents, the asset database and the Project window (the
+        // editor's part is ProjectFileWrites::refresh, which the editor's own writes run without
+        // the server).
         // `changed` = absolute paths known to have changed (may be empty); `full` also scans the
         // project for changes since the last sync; `force` reloads even what is current.
         // Returns {changed, code_editor, script_properties, problems, notes, reloaded, pending}:

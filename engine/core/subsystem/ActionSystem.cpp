@@ -4,8 +4,10 @@
 #include "ActionSystem.h"
 
 #include "Scene.h"
+#include "Engine.h"
 #include "util/Color.h"
 #include "util/Angle.h"
+#include "animation/AnimationPlayerRuntime.h"
 #include "animation/KeyframeSampling.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/ParticleSubsystem.h"
@@ -743,8 +745,26 @@ void ActionSystem::latticeTracksUpdate(KeyframeTracksComponent& keyframe, Lattic
 }
 
 void ActionSystem::clearPoseBlend(){
-    transformBlend.clear();
+    // the nodes stay for the next frame (no allocation per animated entity and frame); the
+    // entries of destroyed entities go
+    for (auto it = transformBlend.begin(); it != transformBlend.end();){
+        if (!scene->isEntityCreated(it->first)){
+            it = transformBlend.erase(it);
+        }else{
+            it->second.reset();
+            ++it;
+        }
+    }
     morphBlend.clear();
+    for (auto it = propertyBlend.begin(); it != propertyBlend.end();){
+        if (!scene->isEntityCreated(it->second.target)){
+            it = propertyBlend.erase(it);
+        }else{
+            it->second.active = false;
+            it->second.rest = nullptr;
+            ++it;
+        }
+    }
     for (auto it = latticeBlend.begin(); it != latticeBlend.end();){
         if (!scene->isEntityCreated(it->first)){
             it = latticeBlend.erase(it);
@@ -759,9 +779,16 @@ void ActionSystem::clearPoseBlend(){
 }
 
 void ActionSystem::flushPoseBlend(){
-    for (auto& entry : transformBlend){
-        Entity target = entry.first;
-        TransformBlendAccum& accum = entry.second;
+    for (auto it = transformBlend.begin(); it != transformBlend.end();){
+        // kept from an earlier frame, nothing this one: dropped (the nodes of what animates
+        // every frame stay; the rest does not cost later frames)
+        if (it->second.empty()){
+            it = transformBlend.erase(it);
+            continue;
+        }
+        Entity target = it->first;
+        TransformBlendAccum& accum = it->second;
+        ++it;
 
         // one lookup: a destroyed entity has no components
         Transform* transform = scene->findComponent<Transform>(target);
@@ -869,7 +896,113 @@ void ActionSystem::flushPoseBlend(){
         }
     }
 
+    // properties after the transforms (anim-properties spec 5.6); the writes that run user
+    // callbacks (GameObject active, a script's enabled) wait for the end of the flush, and in
+    // update() for the end of its pose blend scope (an onEnable may sample a player)
+    flushPropertyBlend(deferredPropertyWrites);
+
     clearPoseBlend();
+
+    if (!poseBlendScope) applyDeferredPropertyWrites();
+}
+
+size_t ActionSystem::hierarchyIndex(Scene* scene, Entity entity){
+    if (!scene || !scene->isEntityCreated(entity) || !scene->findComponent<Transform>(entity)) return SIZE_MAX;
+    return scene->getComponentArray<Transform>()->getIndex(entity);
+}
+
+void ActionSystem::applyDeferredPropertyWrites(){
+    if (deferredPropertyWrites.empty()) return;
+    // taken out first: a callback sampling a player flushes (and applies) its own
+    std::vector<DeferredPropertyWrite> writes;
+    writes.swap(deferredPropertyWrites);
+    // hierarchy order (parents first, siblings in order); every one re-checked (an onEnable /
+    // onDisable before it may have destroyed GameObjects or added components: nothing is held
+    // across these writes)
+    std::vector<std::pair<size_t, size_t>> order;
+    order.reserve(writes.size());
+    for (size_t i = 0; i < writes.size(); i++) order.push_back({hierarchyIndex(scene, writes[i].target), i});
+    std::stable_sort(order.begin(), order.end(), [](const auto& a, const auto& b){ return a.first < b.first; });
+    for (const auto& entry : order){
+        const DeferredPropertyWrite& write = writes[entry.second];
+        if (!scene->isEntityCreated(write.target)) continue;
+        anim::writePropertyKeySpace(scene, write.target, write.binding, &write.value);
+    }
+}
+
+ActionSystem::PropertyBlendAccum& ActionSystem::propertyAccum(Entity target, uint32_t key, const anim::PropertyRest* rest){
+    PropertyBlendAccum& accum = propertyBlend[((uint64_t)target << 32) | key];
+    if (!accum.active){
+        accum.active = true;
+        accum.target = target;
+        accum.rest = rest;
+        for (int k = 0; k < 4; k++){
+            accum.sums[k] = 0.0f;
+            accum.weights[k] = 0.0f;
+        }
+        accum.total = 0.0f;
+        accum.bestWeight = -1.0f;
+        accum.bestValue = 0.0f;
+    }
+    return accum;
+}
+
+void ActionSystem::flushPropertyBlend(std::vector<DeferredPropertyWrite>& deferred){
+    for (auto& entry : propertyBlend){
+        PropertyBlendAccum& accum = entry.second;
+        if (!accum.active || !accum.rest) continue;
+        const Entity target = accum.target;
+        const anim::PropertyRest& rest = *accum.rest;
+        const anim::PropertyBinding& binding = rest.binding;
+        const size_t width = std::min<size_t>(binding.width, 4);
+        if (width == 0 || !scene->isEntityCreated(target)) continue;
+
+        float stored[4] = {0, 0, 0, 0};
+        const bool known = anim::readPropertyStored(scene, target, binding, stored);
+        float current[4] = {stored[0], stored[1], stored[2], stored[3]};
+        anim::storedToKey(binding.kind, binding.display, current, width);
+
+        // the value in key space: the rest fills what the contributors leave (R1)
+        float value[4] = {0, 0, 0, 0};
+        if (binding.discrete){
+            value[0] = accum.bestValue;
+            if (accum.total < 1.0f && rest.has && 1.0f - accum.total > accum.bestWeight) value[0] = rest.value[0];
+        }else{
+            for (size_t k = 0; k < width; k++){
+                const float w = accum.weights[k];
+                if (w > 0.0f){
+                    value[k] = (rest.has && w < 1.0f) ? accum.sums[k] + rest.value[k] * (1.0f - w) : accum.sums[k] / w;
+                }else{
+                    // a component no track keys keeps its value
+                    value[k] = known ? current[k] : rest.value[k];
+                }
+            }
+        }
+
+        // written only when the stored value changes; a component no track keys keeps its stored
+        // value exactly (no key-space round trip: a ui.color.a fade leaves r, g, b alone)
+        float next[4] = {value[0], value[1], value[2], value[3]};
+        anim::keyToStored(binding.kind, binding.display, binding.discrete || binding.interpolateInt, next, width);
+        if (known && !binding.discrete){
+            for (size_t k = 0; k < width; k++){
+                if (!(accum.weights[k] > 0.0f)) next[k] = stored[k];
+            }
+        }
+        bool changed = !known;
+        for (size_t k = 0; k < width && !changed; k++){
+            if (next[k] != stored[k]) changed = true;
+        }
+        if (!changed) continue;
+        if (binding.deferred){
+            DeferredPropertyWrite write;
+            write.target = target;
+            write.value = value[0];
+            write.binding = binding;
+            deferred.push_back(std::move(write));
+            continue;
+        }
+        anim::writePropertyStored(scene, target, binding, next);
+    }
 }
 
 float ActionSystem::getDuration(Entity entity) {
@@ -985,9 +1118,10 @@ float ActionSystem::getDuration(Entity entity, int depth) {
         // else until its last particle dies
         if (isParticleController(entity, *action)) {
             if (const particles::ParticleEffectDocument* effect = ParticleSubsystem::getDocument(scene->getComponent<ParticleSystemComponent>(action->target))) {
-                float lifetimeLo = 0.0f, lifetimeHi = 0.0f;
+                float lifetimeLo = 0.0f, lifetimeHi = 0.0f, delayLo = 0.0f, delayHi = 0.0f;
                 effect->main.startLifetime.range(lifetimeLo, lifetimeHi);
-                duration = effect->startDelay + effect->duration + (effect->looping ? 0.0f : lifetimeHi);
+                effect->startDelay.range(delayLo, delayHi);
+                duration = std::max(delayHi, 0.0f) + effect->duration + (effect->looping ? 0.0f : lifetimeHi);
             }
         }
     }
@@ -1225,12 +1359,26 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
         if (signature.test(scene->getComponentId<AlphaTweenComponent>())){
             AlphaTweenComponent& alphatween = scene->getComponent<AlphaTweenComponent>(entity);
 
-            if (targetSignature.test(scene->getComponentId<MeshComponent>())){
+            // AUTO: the target's enabled Canvas Group when it has one, else its colour alpha
+            CanvasGroupComponent* group = targetSignature.test(scene->getComponentId<CanvasGroupComponent>())
+                ? &scene->getComponent<CanvasGroupComponent>(action.target) : nullptr;
+            const bool toGroup = alphatween.alphaTarget == AlphaTweenTarget::CANVAS_GROUP ||
+                                 (alphatween.alphaTarget == AlphaTweenTarget::AUTO && group && group->enabled);
+
+            if (toGroup){
+                if (group){
+                    const float alpha = alphatween.startAlpha + (alphatween.endAlpha - alphatween.startAlpha) * tween.value;
+                    // clamped (an overshooting ease stays in range), NaN rejected
+                    if (!std::isnan(alpha)){
+                        group->alpha = std::clamp(alpha, 0.0f, 1.0f);
+                    }
+                }
+            }else if (targetSignature.test(scene->getComponentId<MeshComponent>())){
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
 
                 alphaTweenUpdate(tween, alphatween, mesh.submeshes[0].material.baseColorFactor);
             }
-            if (targetSignature.test(scene->getComponentId<UIComponent>())){
+            if (!toGroup && targetSignature.test(scene->getComponentId<UIComponent>())){
                 UIComponent& ui = scene->getComponent<UIComponent>(action.target);
 
                 alphaTweenUpdate(tween, alphatween, ui.color);
@@ -1345,6 +1493,30 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
     }
 }
 
+// The unscaled frame delta of an update given the scaled one. While the time scale is above 0
+// it is dt / timeScale (the frame delta before the scale, exact for any dt a caller steps
+// with); at time scale 0 it is the frame delta the engine measured (the fixed frame delta
+// when set, else the last frame's, capped like Engine::deltatime): Engine::getUnscaledDeltatime(),
+// or, for an update stepped outside an engine frame, the same value worked out here.
+double ActionSystem::unscaledDeltatime(double dt){
+    const double timeScale = Engine::getTimeScale();
+    if (timeScale > 0.0){
+        return dt / timeScale;
+    }
+    const double frameUnscaled = Engine::getUnscaledDeltatime();
+    if (frameUnscaled > 0.0){
+        return frameUnscaled;
+    }
+    if (Engine::getFixedDeltatime() > 0.0){
+        return Engine::getFixedDeltatime();
+    }
+    const float framerate = Engine::getFramerate();
+    if (framerate <= 0.0f){
+        return 0.0;
+    }
+    return std::min(1.0 / (double)framerate, (double)Engine::getMaxDeltatime());
+}
+
 void ActionSystem::update(double dt){
     if (paused) {
         return;
@@ -1376,6 +1548,8 @@ void ActionSystem::update(double dt){
     }
 
     //All actions
+    // a tween with useUnscaledTime advances with the frame delta before the time scale
+    const double unscaledDt = unscaledDeltatime(dt);
     auto actions = scene->getComponentArray<ActionComponent>();
     for (int i = 0; i < actions->size(); i++){
 		Entity entity = actions->getEntity(i);
@@ -1388,7 +1562,8 @@ void ActionSystem::update(double dt){
 
         // Action update
         if (action && action->state == ActionState::Running){
-            processRunningAction(dt, entity, *action);
+            const TweenComponent* timed = scene->findComponent<TweenComponent>(entity);
+            processRunningAction((timed && timed->useUnscaledTime) ? unscaledDt : dt, entity, *action);
         }
 
 	}
@@ -1399,6 +1574,8 @@ void ActionSystem::update(double dt){
     // Write the blended (weighted-average) pose to each animated target.
     flushPoseBlend();
     poseBlendScope = false;
+    // the writes that run onEnable / onDisable, now that a callback may sample a player
+    applyDeferredPropertyWrites();
 
     // clip events and onFinish, after the pose is written
     dispatchPlayerCallbacks();
@@ -1428,7 +1605,8 @@ void ActionSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 			}
 		}
 
-		if (ownedTarget && target != NULL_ENTITY && scene->isEntityCreated(target)) {
+		// (a system drawing on its own GameObject owns no other)
+		if (ownedTarget && target != NULL_ENTITY && target != entity && scene->isEntityCreated(target)) {
 			scene->destroyEntity(target);
 		}
 	} else if (componentId == scene->getComponentId<AnimationComponent>()) {

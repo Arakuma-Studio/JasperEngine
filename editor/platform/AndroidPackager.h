@@ -26,6 +26,8 @@ namespace jasperengine::editor::platform {
 
     struct AndroidPackage {
         AndroidProjectSettings settings;
+        // Player > Resolution and Presentation: the manifest's screenOrientation and keep-screen-on
+        PresentationSettings presentation;
         std::string label;
         std::string applicationId;
         unsigned int versionCode = 1;

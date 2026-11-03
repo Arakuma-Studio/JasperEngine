@@ -9,6 +9,9 @@
 #include "GpuEnvironment.h"
 #include "LogCapture.h"
 #include "TestPaths.h"
+#if defined(JASPER_HTMLUI_TEST_SOURCE_DIR)
+#include "media/VideoSourceFactory.h"
+#endif
 
 #include <gtest/gtest.h>
 
@@ -62,6 +65,12 @@ int main(int argc, char** argv){
 #endif
 
     jasperengine::test::GpuEnvironment::initEngine(argc, argv);
+#if defined(JASPER_HTMLUI_TEST_SOURCE_DIR)
+    // jasperengine-htmlui-tests (upstream's engine/tests/htmlui/main.cpp): the video suites'
+    // world is the WebM path's alone (the same on every machine): MP4 and the platform's decoders
+    // are the editor tests' (VideoMp4Test)
+    jasperengine::VideoSourceFactory::setPlatformDecodersEnabledForTesting(false);
+#endif
     ::testing::AddGlobalTestEnvironment(new jasperengine::test::GpuTestEnvironment());
     ::testing::UnitTest::GetInstance()->listeners().Append(new LogMarker());
 

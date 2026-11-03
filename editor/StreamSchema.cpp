@@ -46,11 +46,11 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
 
 const std::vector<std::string>& StreamSchema::knownNestedKeys(NestedKind kind) {
     static const std::map<NestedKind, std::vector<std::string>> tables = {
-        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveStrength", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "pbr", "roughnessFactor", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "sortPriority", "stencil", "stochasticBlendSharpness", "stochasticCellSize", "stochasticContrast", "stochasticRotation", "stochasticTiling"}},
+        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveStrength", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "pbr", "roughnessFactor", "shader", "shaderFeatures", "shaderGlobalBindings", "shaderParams", "shaderTextures", "sortPriority", "stencil", "stochasticBlendSharpness", "stochasticCellSize", "stochasticContrast", "stochasticRotation", "stochasticTiling"}},
         {NestedKind::MaterialPass, {"blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "order", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "stencil"}},
         {NestedKind::Stencil, {"compare", "depthFail", "fail", "pass", "readMask", "ref", "writeMask"}},
         {NestedKind::Submesh, {"faceCulling", "hasMorphNormal", "hasMorphTangent", "hasMorphTarget", "hasNormalMap", "hasSkinning", "hasTangent", "hasTexCoord1", "hasTexCoord2", "hasTextureRect", "hasVertexColor3", "hasVertexColor4", "material", "normAdjustJoint", "normAdjustWeight", "overrideFields", "primitiveType", "textureRect", "textureShadow", "vertexCount"}},
-        {NestedKind::Texture, {"alphaBorder", "camera", "channels", "colorFormat", "cubeMode", "data", "fluid", "guid", "guids", "height", "id", "magFilter", "minFilter", "path", "paths", "releaseDataAfterLoad", "size", "source", "svgScale", "textureType", "width", "wrapU", "wrapV"}},
+        {NestedKind::Texture, {"video", "alphaBorder", "camera", "channels", "colorFormat", "cubeMode", "data", "fluid", "guid", "guids", "height", "id", "magFilter", "minFilter", "path", "paths", "releaseDataAfterLoad", "size", "source", "svgScale", "textureType", "width", "wrapU", "wrapV"}},
     };
     return lookup(tables, kind);
 }
@@ -59,7 +59,9 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
     static const std::map<RootKind, std::vector<std::string>> tables = {
         {RootKind::Scene, {"formatVersion", "guid", "formerGuids", "labels", "id", "name", "scene", "sceneType", "mainCamera", "maxValues", "shaderKeys",
             "childScenes", "cppScripts", "cppScriptPaths", "prefabs", "imports", "entities"}},
-        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "backgroundColor", "defaultLinesShader", "defaultMeshShader", "defaultPointsShader", "defaultSkyShader", "defaultUIShader", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "litQuality", "maxLightsPerObject", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness"}},
+        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "backgroundColor", "defaultLinesShader", "defaultMeshShader", "defaultPointsShader", "defaultSkyShader", "defaultUIShader", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "litQuality", "maxLightsPerObject", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness",
+            // upstream's scene settings (SYNC#4): written away from their defaults
+            "canvasScaler", "physics2DSubSteps"}},
         // prefabInstance and the keys written before it (prefabOverrides...), and the keys of
         // the GameObjects a prefab adds to an instance (addedTo, childIndex...)
         {RootKind::Entity, {"type", "entity", "name", "active", "tag", "layer", "components", "children",
@@ -67,8 +69,10 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "addedTo", "childIndex", "parentRegistryEntity", "prefabRootRegistryEntity", "prefabPath"}},
         // the editor state an older project.yaml held (Workspace::adoptLegacyProjectState) and
         // its build settings (AppSettings, build.yaml) are read too
-        {RootKind::Project, {"formatVersion", "android", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiGlyphAtlasMiB", "htmlUiMsaaSamples", "htmlUiSdfPrimitives", "htmlUiTransformAwareText", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mobilePbrTier", "name", "navigation", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "shaderCreation", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "versionControl", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
-            "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor"}},
+        {RootKind::Project, {"formatVersion", "android", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "debug", "export", "graphics", "htmlUiGlyphAtlasMiB", "htmlUiMsaaSamples", "htmlUiSdfPrimitives", "htmlUiTransformAwareText", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mobilePbrTier", "name", "navigation", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "shaderCreation", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "versionControl", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
+            "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor",
+            // upstream's project.yaml blocks (SYNC#4): the editor writes and reads them
+            "audio", "physics3DWorld", "playerCrash", "presentation", "shaderGlobals", "uiScale"}},
         {RootKind::Material, {}},
         {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped"}},
     };
@@ -157,18 +161,6 @@ const EnumTable<AnchorPreset>& StreamSchema::anchorPreset() {
     return table;
 }
 
-const EnumTable<AndroidOrientation>& StreamSchema::androidOrientation() {
-    static const EnumTable<AndroidOrientation> table("AndroidOrientation", {
-        {AndroidOrientation::Portrait, "portrait"},
-        {AndroidOrientation::Landscape, "landscape"},
-        {AndroidOrientation::SensorPortrait, "sensorPortrait"},
-        {AndroidOrientation::SensorLandscape, "sensorLandscape"},
-        {AndroidOrientation::FullSensor, "fullSensor"},
-        {AndroidOrientation::Unspecified, "unspecified"},
-    }, AndroidOrientation::Unspecified);
-    return table;
-}
-
 const EnumTable<AttributeDataType>& StreamSchema::attributeDataType() {
     static const EnumTable<AttributeDataType> table("AttributeDataType", {
         {AttributeDataType::BYTE, "byte"},
@@ -233,6 +225,9 @@ const EnumTable<AttributeType>& StreamSchema::attributeType() {
         {AttributeType::PARTICLEVELOCITY, "particlevelocity"},
         {AttributeType::PARTICLEROTATION, "particlerotation"},
         {AttributeType::PARTICLECUSTOM, "particlecustom"},
+        {AttributeType::LINETANGENTIN, "linetangentin"},
+        {AttributeType::LINETANGENTOUT, "linetangentout"},
+        {AttributeType::LINEPARAMS, "lineparams"},
     }, AttributeType::POSITION);
     return table;
 }

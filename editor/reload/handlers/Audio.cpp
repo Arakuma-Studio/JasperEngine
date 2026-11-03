@@ -29,10 +29,14 @@ void reload::reloadAudio(Context& ctx, const std::vector<fs::path>& files) {
             }
         }
         if (filename.empty()) continue;
-        ctx.service.startJob("audio", path, [filename]() -> HotReloadService::AdoptFn {
-            std::shared_ptr<SoLoud::Wav> sound = SoundPool::decode(filename, filename);
-            return [filename, sound](std::string&) {
-                SoundPool::replace(filename, sound);
+        // every load type the file is cached with ("<file>#<type>"): decoded again as it was
+        std::vector<std::string> ids = SoundPool::idsOfFile(filename);
+        if (ids.empty()) ids.push_back(SoundPool::key(filename, SoundPool::resolveLoadType(filename, AudioLoadType::Auto)));
+        ctx.service.startJob("audio", path, [filename, ids]() -> HotReloadService::AdoptFn {
+            std::vector<std::shared_ptr<SoLoud::AudioSource>> sounds;
+            for (const std::string& id : ids) sounds.push_back(SoundPool::decode(id, filename));
+            return [ids, sounds](std::string&) {
+                for (size_t i = 0; i < ids.size(); i++) SoundPool::replace(ids[i], sounds[i]);
                 return true;
             };
         });

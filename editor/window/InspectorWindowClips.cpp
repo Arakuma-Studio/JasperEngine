@@ -11,7 +11,17 @@
 // Window actions (open, convert, extract, use player, create) are AnimationClipInspectorHooks:
 // a button shows once its hook is set. Owner: T2c.
 
+#include "media/VideoFormats.h"
+#include "util/NativePlugins.h"
 #include "InspectorWindow.h"
+#include "window/HumanoidConvertDialog.h"
+#include "pose/PoseRigProvider.h"
+#include "App.h"
+#include "Backend.h"
+#include "animation/AvatarMaskWeights.h"
+#include "animation/HumanoidClip.h"
+#include "pool/AnimationClipPool.h"
+#include "util/PhysicsMaterialAssets.h"
 #include "InspectorWindowClips.h"
 #include "InspectorVatBake.h"
 #include "util/FileUtils.h"
@@ -25,7 +35,9 @@
 #include "animation/ClipValidation.h"
 #include "animation/ModelSubClips.h"
 #include "animation/PreviewOwner.h"
+#include "audio/AudioMixerDocument.h"
 #include "command/CommandHandle.h"
+#include "command/type/AudioSettingsCmd.h"
 #include "command/type/ClipSceneActions.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -40,6 +52,7 @@
 #include "Out.h"
 #include "Scene.h"
 #include "Theme.h"
+#include "EditorHost.h"
 
 #include "imgui.h"
 
@@ -100,6 +113,12 @@ const char* inspectorclips::wrapLabel(ClipWrapMode wrap){
     return "Default";
 }
 
+std::string inspectorclips::formatRatio(float ratio){
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.2f", std::isfinite(ratio) ? ratio : 0.0f);
+    return text;
+}
+
 const char* inspectorclips::channelLabel(ClipChannel channel){
     switch (channel){
         case ClipChannel::Position: return "Position";
@@ -108,6 +127,8 @@ const char* inspectorclips::channelLabel(ClipChannel channel){
         case ClipChannel::Morph: return clipui::channelLabel(channel);
         case ClipChannel::Lattice: return "Lattice";
         case ClipChannel::Property: return "Property";
+        case ClipChannel::Humanoid:
+        case ClipChannel::HumanoidPosition: return clipui::channelLabel(channel);
     }
     return "";
 }
@@ -206,7 +227,12 @@ namespace{
 }
 
 std::string inspectorclips::trackProblemText(const TrackReport& track){
-    std::string text = leafName(track.path) + " : " + channelLabel(track.channel) + ": ";
+    std::string text = leafName(track.path) + " : " + (track.channel == ClipChannel::Property ? track.property : channelLabel(track.channel)) + ": ";
+    if (track.channel == ClipChannel::Property && !track.reason.empty() &&
+        (track.status == TrackBindingStatus::MissingComponent || track.status == TrackBindingStatus::UnknownProperty)){
+        // the binding's own reason ("no 'light' component", "did you mean 'intensity'?")
+        return text + track.reason;
+    }
     switch (track.status){
         case TrackBindingStatus::MissingPath: text += "missing"; break;
         case TrackBindingStatus::DuplicateSiblingName: text += "several siblings share a name"; break;
@@ -215,6 +241,7 @@ std::string inspectorclips::trackProblemText(const TrackReport& track){
         case TrackBindingStatus::MorphIndexOutOfRange: text += "more weights than morph targets"; break;
         case TrackBindingStatus::LegacyModelLayout: text += "under a legacy-layout model"; break;
         case TrackBindingStatus::UnaddressableName: text += "a name on the path can't be addressed"; break;
+        case TrackBindingStatus::UnknownProperty: text += "not an animatable property"; break;
         default: text += "not bound"; break;
     }
     if (!track.nearest.empty()){
@@ -423,6 +450,20 @@ namespace jasperengine::editor{
         std::string playerError;
         std::string assetError;
         std::string modelAssetClip;         // the model asset section's selected sub-clip
+        // the Bindings report's humanoid rig of the inspected player (anim-retarget)
+        std::shared_ptr<anim::HumanoidSlots> humanoidRig;
+        Entity humanoidRoot = NULL_ENTITY;
+        uint64_t humanoidRevision = 0;
+        uint64_t humanoidPool = 0;
+        // a Retarget entry's source model rig (the one retarget path reads its clip through it):
+        // looked up once per pool change; a failure is kept until the pool changes or a second passed
+        struct ConversionEntry{
+            std::shared_ptr<const anim::RetargetSource> source;
+            std::string error;
+            uint64_t pool = 0;
+            double retryAt = 0.0;
+        };
+        std::map<std::string, ConversionEntry> conversions;
 
         // a clip setting being dragged: committed once when the drag ends
         bool editingFrameRate = false;
@@ -807,12 +848,19 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     fadeSettings.secondColSize = 6 * ImGui::GetFontSize();
     fadeSettings.help = "Seconds of the crossfade when play(name, fade), crossFade(name) or Model:playAnimation give none.";
 
+    // the Animator Controller row: create one from the clips (an Animator plays it), or what a
+    // player that hands over to its Animator plays (upstream's controller players)
+    if (entities.size() == 1){
+        drawAnimationPlayerController(cpType, sceneProject, entities[0]);
+    }
+
     // Unity's order: the default clip ("Animation"), the list, then the settings
     beginTable(cpType, getLabelSize("Play Automatically"), "player_default");
     drawPlayerDefaultClipRow(cpType, sceneProject, entities);
     endTable();
 
     if (entities.size() == 1){
+        drawAnimationPlayerLayers(cpType, sceneProject, entities[0]);
         drawAnimationPlayerClips(cpType, sceneProject, entities[0]);
     }else{
         beginTable(cpType, getLabelSize("Play Automatically"), "player_clips_multi");
@@ -962,6 +1010,9 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
                 if (subClip && hooks.extractSubClip && ImGui::MenuItem("Extract to .anim...", nullptr, false, exists && stopped)){
                     hooks.extractSubClip(project, sceneProject->id, entity, entry.clip);
                 }
+                if (ImGui::MenuItem("Convert to Humanoid Clip...", nullptr, false, exists && stopped)){
+                    HumanoidConvertDialog::open(project, entry.clip, sceneProject->id, entity, i);
+                }
                 if (ImGui::MenuItem("Show in Project", nullptr, false, exists)){
                     anim::SubClipReference reference;
                     const std::string file = anim::parseSubClipReference(entry.clip, reference) ? reference.model : entry.clip;
@@ -984,6 +1035,7 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
             }
 
             drawPlayerClipNameRow(cpType, sceneProject, entity, i);
+            drawPlayerClipLayerRow(cpType, sceneProject, entity, i);
 
             // wrap: a one-byte enum (PropertyCmd<ClipWrapMode>, never the int Enum row)
             ClipWrapMode clipWrap = ClipWrapMode::Once;
@@ -1013,6 +1065,45 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
                 ImGui::EndCombo();
             }
             ImGui::SetItemTooltip("How this state wraps: Default uses the clip's own wrap mode");
+
+            // humanoid playback (anim-retarget 9): Retarget for a generic clip; Mirror and Foot IK
+            // for a humanoid (or retargeted) one, with its badge
+            bool humanoidClip = false;
+            if (exists){
+                if (std::shared_ptr<AnimationClipDocument> document = findClipDocument(project, state, entry.clip, nullptr)){
+                    humanoidClip = document->data().isHumanoid();
+                }
+                anim::SubClipReference reference;
+                if (!humanoidClip && anim::parseSubClipReference(entry.clip, reference)){
+                    humanoidClip = PoseRigProvider::forModelFile(project, project->resolveAssetPath(fs::u8path(reference.model)).lexically_normal())->overrides.isHumanoid();
+                }
+            }
+            auto flagRow = [&](const char* label, const char* field, bool value, const char* tooltip){
+                prefabRowProperty = prefix + field;
+                if (propertyHeader(label, -1, value, false, true)){
+                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                        new PropertyCmd<bool>(project, sceneProject->id, entity, cpType, prefix + field, false));
+                }
+                bool checked = value;
+                ImGui::BeginDisabled(!stopped);
+                if (ImGui::Checkbox((std::string("##") + field).c_str(), &checked)){
+                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                        new PropertyCmd<bool>(project, sceneProject->id, entity, cpType, prefix + field, checked));
+                }
+                ImGui::EndDisabled();
+                ImGui::SetItemTooltip("%s", tooltip);
+            };
+            if (!humanoidClip){
+                flagRow("Retarget", ".retarget", entry.retarget, "Play as a humanoid clip, retargeted from its source model");
+            }
+            if (humanoidClip || entry.retarget){
+                ImGui::SameLine();
+                ImGui::TextColored(Theme::Colors::PrefabText, ICON_FA_PERSON " Humanoid");
+                ImGui::SetItemTooltip(humanoidClip ? "A humanoid clip: it plays on this character's humanoid rig"
+                                                   : "Retargeted: converted from its source model's rig at load");
+                flagRow("Mirror", ".mirror", entry.mirror, "Left and right swapped (humanoid clips)");
+                flagRow("Foot IK", ".footIK", entry.footIK, "The feet reach the clip's foot goals: no sliding on other leg proportions");
+            }
 
             ImGui::PopID();
         }
@@ -1310,10 +1401,68 @@ void editor::InspectorWindow::drawAnimationPlayerBindings(SceneProject* scenePro
             if (hidden > 0){
                 ImGui::TextDisabled("... and %zu more", hidden);
             }
+            // a humanoid (or retargeted) state: the rig it plays on (anim-retarget 9)
+            std::shared_ptr<const AnimationClip> humanoidClip;
+            std::shared_ptr<const anim::RetargetSource> retargetSource;
+            std::string retargetError;
+            if (row.document->data().isHumanoid()) humanoidClip = row.document->clip();
+            else if (clips[i].retarget && row.document->clip()){
+                InspectorClipState::ConversionEntry& conversion = state.conversions[clips[i].clip];
+                const double now = ImGui::GetTime();
+                if (conversion.pool != AnimationClipPool::revision() || (!conversion.source && now >= conversion.retryAt)){
+                    conversion.error.clear();
+                    conversion.source = anim::clipRetargetSource(*row.document->clip(), clips[i].clip, &conversion.error);
+                    conversion.pool = AnimationClipPool::revision();
+                    conversion.retryAt = now + CLIP_RETRY_SECONDS;
+                }
+                if (state.conversions.size() > 256){
+                    state.conversions.clear();
+                }else if (conversion.source){
+                    humanoidClip = row.document->clip();
+                    retargetSource = conversion.source;
+                }else{
+                    retargetError = conversion.error;
+                }
+            }
+            if (!retargetError.empty()) ImGui::TextColored(warning, ICON_FA_TRIANGLE_EXCLAMATION " %s", retargetError.c_str());
+            if (humanoidClip && (humanoidClip->isHumanoid() || retargetSource)){
+                if (!state.humanoidRig || state.humanoidRoot != entity || state.humanoidRevision != sceneProject->scene->hierarchyRevision() ||
+                    state.humanoidPool != AnimationClipPool::revision()){
+                    state.humanoidRig = std::make_shared<anim::HumanoidSlots>(anim::resolveHumanoidSlots(sceneProject->scene, entity));
+                    state.humanoidRoot = entity;
+                    state.humanoidRevision = sceneProject->scene->hierarchyRevision();
+                    state.humanoidPool = AnimationClipPool::revision();
+                }
+                if (!state.humanoidRig->target){
+                    ImGui::TextColored(warning, ICON_FA_TRIANGLE_EXCLAMATION " Humanoid clip, but not a humanoid: %s", state.humanoidRig->error.c_str());
+                    // the skinned model under the player (it may be a child of the player's GameObject)
+                    const Entity model = state.humanoidRig->model;
+                    ImGui::BeginDisabled(model == NULL_ENTITY);
+                    if (ImGui::SmallButton("Map Bones...")) Backend::getApp().openAvatarWindow(sceneProject->id, model);
+                    ImGui::EndDisabled();
+                    if (model == NULL_ENTITY) ImGui::SetItemTooltip("No skinned Model on or under this GameObject");
+                }else{
+                    anim::HumanoidBinding binding;
+                    anim::bindHumanoidClip(*humanoidClip, state.humanoidRig->target, binding, retargetSource);
+                    const float scale = state.humanoidRig->target->rig->humanScale();
+                    const float source = retargetSource ? retargetSource->rig->humanScale() : humanoidClip->getHumanoidInfo().humanScale;
+                    ImGui::TextColored(Theme::Colors::SubtleText, ICON_FA_PERSON " Humanoid on %s (human scale %.3f%s)",
+                                       FileUtils::pathToUtf8(FileUtils::pathFromUtf8(state.humanoidRig->target->modelPath).filename()).c_str(), scale,
+                                       source > 0.0f ? (", " + inspectorclips::formatRatio(scale / source) + "x the source's").c_str() : "");
+                    for (const std::string& line : binding.folded) ImGui::TextColored(Theme::Colors::SubtleText, "%s", line.c_str());
+                    if (!binding.missingOnTarget.empty()){
+                        std::string list;
+                        for (const std::string& bone : binding.missingOnTarget) list += (list.empty() ? "" : ", ") + bone;
+                        ImGui::TextColored(Theme::Colors::SubtleText, "The rig lacks: %s", list.c_str());
+                    }
+                }
+            }
             ImGui::Unindent();
         }
         ImGui::PopID();
     }
+    // the layers' masks: how many bound entities each covers (anim layers spec 9)
+    drawPlayerMaskCoverage(sceneProject, entity);
     ImGui::TreePop();
 }
 
@@ -1327,47 +1476,56 @@ void editor::InspectorWindow::drawAnimationPlayerStates(ComponentType cpType, Sc
     UIProbe::item("player.states");
     // the component exists: the object adds none
     AnimationPlayer playerObject(scene, entity);
-    beginTable(cpType, getLabelSize("Play Automatically"), "player_states");
-    for (size_t i = 0; i < states.size(); i++){
-        const AnimationStateInfo info = playerObject.getStateInfo(states[i]);
-        ImGui::PushID((int)i);
-        ImGui::TableNextRow();
-        ImGui::TableNextColumn();
-        ImGui::AlignTextToFramePadding();
-        if (info.playing){
-            ImGui::TextUnformatted(ICON_FA_PLAY);
-        }else{
-            ImGui::TextDisabled(ICON_FA_PAUSE);
-        }
-        ImGui::SameLine();
-        ImGui::TextUnformatted(states[i].c_str());
-        ImGui::TableNextColumn();
-        if (!info.error.empty()){
+    AnimationPlayerComponent& component = scene->getComponent<AnimationPlayerComponent>(entity);
+    const anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(component);
+    // grouped under their layers (anim layers spec 9: a live weight per layer)
+    const size_t layerCount = std::max<size_t>(1, runtime.layers.size());
+    for (size_t layer = 0; layer < layerCount; layer++){
+        if (layerCount > 1) drawPlayerLayerStatesHeader(sceneProject, entity, (int)layer);
+        beginTable(cpType, getLabelSize("Play Automatically"), "player_states" + std::to_string(layer));
+        for (size_t i = 0; i < states.size(); i++){
+            const int stateIndex = runtime.findState(states[i]);
+            if (layerCount > 1 && (stateIndex < 0 || runtime.stateLayer(runtime.states[(size_t)stateIndex]) != (int)layer)) continue;
+            const AnimationStateInfo info = playerObject.getStateInfo(states[i]);
+            ImGui::PushID((int)i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
-            ImGui::TextColored(Theme::Colors::ErrorText, "%s", info.error.c_str());
-        }else if (!info.loaded){
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextDisabled("Loading...");
-        }else{
-            char overlay[64];
-            std::snprintf(overlay, sizeof(overlay), "%.2f / %.2f s", info.time, info.length);
-            const float weightWidth = textWidth("w 0.00") + ImGui::GetStyle().ItemSpacing.x;
-            const float fraction = info.length > 0.0f ? std::clamp(info.time / info.length, 0.0f, 1.0f) : 0.0f;
-            ImGui::ProgressBar(fraction, ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x - weightWidth), 0), overlay);
-            ImGui::SameLine();
-            ImGui::AlignTextToFramePadding();
-            if (info.weight > 0.0f){
-                ImGui::Text("w %.2f", info.weight);
+            if (info.playing){
+                ImGui::TextUnformatted(ICON_FA_PLAY);
             }else{
-                ImGui::TextDisabled("w %.2f", info.weight);
+                ImGui::TextDisabled(ICON_FA_PAUSE);
             }
-            ImGui::SetItemTooltip("Weight %.2f (target %.2f), speed %.2f, %s%s, %zu/%zu tracks bound", info.weight, info.targetWeight,
-                                  info.speed, inspectorclips::wrapLabel(info.wrap), info.queued ? ", queued" : "",
-                                  info.boundTracks, info.trackCount);
+            ImGui::SameLine();
+            ImGui::TextUnformatted(states[i].c_str());
+            ImGui::TableNextColumn();
+            if (!info.error.empty()){
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextColored(Theme::Colors::ErrorText, "%s", info.error.c_str());
+            }else if (!info.loaded){
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextDisabled("Loading...");
+            }else{
+                char overlay[64];
+                std::snprintf(overlay, sizeof(overlay), "%.2f / %.2f s", info.time, info.length);
+                const float weightWidth = textWidth("w 0.00") + ImGui::GetStyle().ItemSpacing.x;
+                const float fraction = info.length > 0.0f ? std::clamp(info.time / info.length, 0.0f, 1.0f) : 0.0f;
+                ImGui::ProgressBar(fraction, ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x - weightWidth), 0), overlay);
+                ImGui::SameLine();
+                ImGui::AlignTextToFramePadding();
+                if (info.weight > 0.0f){
+                    ImGui::Text("w %.2f", info.weight);
+                }else{
+                    ImGui::TextDisabled("w %.2f", info.weight);
+                }
+                ImGui::SetItemTooltip("Weight %.2f (target %.2f), speed %.2f, %s%s, %zu/%zu tracks bound", info.weight, info.targetWeight,
+                                      info.speed, inspectorclips::wrapLabel(info.wrap), info.queued ? ", queued" : "",
+                                      info.boundTracks, info.trackCount);
+            }
+            ImGui::PopID();
         }
-        ImGui::PopID();
+        endTable();
     }
-    endTable();
 }
 
 // ---- the inspected asset (.anim, or a model's clips) ----
@@ -1386,6 +1544,56 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawVatAsset(asset);
         return true;
     }
+    // a .shake: its own view (InspectorWindowCamera.cpp)
+    if (Util::isShakePresetFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawShakePresetAsset(asset);
+        return true;
+    }
+    // a .mixer: its summary (audio-mixer spec 9)
+    if (asset.extension() == AudioMixerIO::EXTENSION){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawAudioMixerAsset(asset);
+        return true;
+    }
+    // a video (.mp4, .m4v, .mov, .webm, .mkv): probe, platform matrix, preview (InspectorVideo.cpp)
+    if (VideoFormats::isPlayableExtension(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawVideoAsset(asset);
+        return true;
+    }
+    // a native plugin's file (plugins/native): what it is for, read-only
+    const std::string nativePlatform = NativePlugins::platformOf(project->getProjectPath(), asset);
+    if (!nativePlatform.empty()){
+        std::error_code ec;
+        if (!fs::exists(asset, ec)) return false;
+        static const std::map<std::string, std::string> kinds = {
+            {"android", "Native plugin source (Android)"}, {"apple", "Native plugin source (iOS and macOS)"},
+            {"ios", "Native plugin source (iOS)"}, {"macos", "Native plugin source (macOS)"},
+            {"web", "Native plugin source (Web)"}, {"cpp", "Native plugin source (C++, every platform)"}};
+        drawAssetHeader(ICON_FA_PLUG, asset, kinds.at(nativePlatform).c_str());
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("%s", nativePlatform == "cpp"
+            ? "Compiled into the Play library and every export. Lua calls its JASPERENGINE_NATIVE_PLUGIN by name: Native.call(\"Name\", \"method\", ...)."
+            : "Built into that platform's export only (editor Play answers with the plugin's Lua mock in native_mocks). "
+              "Lua calls it by class or object name: Native.call(\"Name\", \"method\", ...).");
+        ImGui::TextDisabled("Edit it in the code editor or your IDE; Project Settings > Native Plugins lists the SDK settings. "
+                            "Guide: jasper://docs/native-bridge.");
+        ImGui::PopTextWrapPos();
+        return true;
+    }
+    // a physics material: its four fields (InspectorPhysics2D.cpp)
+    if (PhysicsMaterialAssets::isPhysicsMaterialFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawPhysicsMaterialAsset(asset);
+        return true;
+    }
+    // a generated normal map or its source image: their own view; any other image keeps the scene selection
+    if (Util::isImageFile(file)) return drawSpriteNormalsAsset(asset);
     const bool clip = Util::isAnimationClipFile(file);
     if (!clip && !Util::isModelFile(file)) return false;
     if (state.relativeOf != asset){
@@ -1403,6 +1611,58 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         return true;
     }
     return false;
+}
+
+void editor::InspectorWindow::drawAudioMixerAsset(const fs::path& asset){
+    drawAssetHeader(ICON_FA_SLIDERS, asset, "Audio Mixer");
+    ImGui::Separator();
+    AudioMixerDef def;
+    std::string error;
+    if (!AudioMixerDocument::read(asset, def, &error)){
+        ImGui::TextWrapped("Does not read: %s", error.c_str());
+        return;
+    }
+    const bool projectMixer = project->getAudioMixerFile() == asset.lexically_normal();
+    if (projectMixer){
+        ImGui::TextDisabled("The project's mixer (Project Settings > Audio)");
+    } else if (ImGui::Button("Use as Project Mixer")){
+        AudioSettings after = project->getAudioSettings();
+        after.mixer = project->normalizeToAssetsRelative(asset).generic_string();
+        auto* command = new AudioSettingsCmd(project, project->getAudioSettings(), after);
+        command->setNoMerge();
+        project->getProjectCommandHistory()->addCommand(command);
+    }
+    if (ImGui::Button(ICON_FA_SLIDERS " Open in Audio Mixer")){
+        editor::getEditorHost().openAudioMixerWindow(asset);
+    }
+    ImGui::SeparatorText("Groups");
+    for (const AudioMixerGroupDef* group : def.treeOrder()){
+        int depth = 0;
+        for (const AudioMixerGroupDef* parent = def.findGroupById(group->parentId); parent && depth < 16; parent = def.findGroupById(parent->parentId)) depth++;
+        std::string effects;
+        for (const AudioMixerEffectDef& effect : group->effects){
+            const AudioEffectInfo* info = AudioEffects::find(effect.type);
+            effects += (effects.empty() ? "" : ", ") + std::string(info ? info->label : effect.typeName.c_str());
+        }
+        ImGui::Text("%*s%s  %.1f dB%s%s", depth * 2, "", group->name.c_str(), group->volumeDb, group->mute ? "  M" : "", group->solo ? "  S" : "");
+        if (!effects.empty()){
+            ImGui::SameLine();
+            ImGui::TextDisabled("[%s]", effects.c_str());
+        }
+    }
+    ImGui::SeparatorText("Exposed Parameters");
+    if (def.exposed.empty()) ImGui::TextDisabled("None");
+    for (const AudioMixerExposedDef& exposed : def.exposed){
+        ImGui::Text("%s", exposed.name.c_str());
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s%s", AudioMixerIO::describeTarget(def, exposed.target).c_str(), exposed.remember ? " (remembered)" : "");
+    }
+    ImGui::SeparatorText("Snapshots");
+    if (def.snapshots.empty()) ImGui::TextDisabled("None");
+    for (const AudioMixerSnapshotDef& snapshot : def.snapshots){
+        ImGui::Text("%s%s", snapshot.name.c_str(), snapshot.name == def.startSnapshot ? "  (start)" : "");
+    }
+    ImGui::TextDisabled("Update mode: %s time", def.unscaled ? "unscaled" : "scaled");
 }
 
 void editor::InspectorWindow::drawAssetHeader(const char* icon, const fs::path& asset, const char* kind){
@@ -1536,6 +1796,18 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
             ImGui::SetItemTooltip("Write the clip to an editable .anim file (keeps its source)");
         }
         ImGui::EndDisabled();
+    }
+    // Convert to Humanoid Clip (anim-retarget 9): a generic clip as a clip any humanoid plays
+    if (!data.isHumanoid()){
+        ImGui::BeginDisabled(playing);
+        if (ImGui::Button(ICON_FA_PERSON " Convert to Humanoid Clip...##clip_asset_humanoid", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
+            HumanoidConvertDialog::open(project, reference);
+        }
+        ImGui::SetItemTooltip("A humanoid clip (rotations relative to the neutral pose) that plays on any humanoid character");
+        ImGui::EndDisabled();
+    }else{
+        ImGui::TextColored(Theme::Colors::PrefabText, ICON_FA_PERSON " Humanoid clip%s%s", data.humanoid.sourceModel.empty() ? "" : " (made on ",
+                           data.humanoid.sourceModel.empty() ? "" : (data.humanoid.sourceModel + ")").c_str());
     }
     if (readOnly){
         ImGui::TextDisabled(ICON_FA_LOCK " Read-only: a clip of %s", data.source.path.empty() ? "a model" : data.source.path.c_str());
@@ -1681,8 +1953,11 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
                 const ClipTrackData& track = data.tracks[(size_t)i];
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                std::string label = (track.path.empty() ? std::string(clipui::rootLabel()) : track.path) + " : " + inspectorclips::channelLabel(track.channel);
-                if (track.channel == ClipChannel::Property) label += " (not played)";
+                // a property track: "path : component.property" (anim-properties spec 10)
+                std::string label = (track.path.empty() ? std::string(clipui::rootLabel()) : track.path) + " : " +
+                                    (track.channel == ClipChannel::Property ? track.component + "." + track.property
+                                                                            : std::string(inspectorclips::channelLabel(track.channel)));
+                if (track.channel == ClipChannel::Property && !track.known) label += " (not animatable: kept, not played)";
                 ImGui::TextUnformatted(inspectorclips::elideStart(label, ImGui::GetContentRegionAvail().x, textWidth).c_str());
                 ImGui::SetItemTooltip("%s", label.c_str());
                 ImGui::TableNextColumn();

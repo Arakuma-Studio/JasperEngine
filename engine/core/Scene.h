@@ -47,12 +47,16 @@ namespace jasperengine{
 
         UIEventState uiEventState;
 
+        // the Canvas Scaler's last result (updateCanvasScale)
+        CanvasScalerResult canvasScale;
+
         std::vector<std::pair<std::string, std::shared_ptr<SubSystem>>> systems;
         // runs the systems' phases (the SubSystems' and the system functions)
         SystemScheduler scheduler;
 
         // Alive from construction to the start of the destructor (see getLifetime)
         std::shared_ptr<char> lifetime;
+        bool tearingDown = false;
 
         void init();
         Entity createDefaultCamera();
@@ -106,6 +110,10 @@ namespace jasperengine{
             }
         }
 
+        // the scripts' onEnable / onDisable (and a first init) once they started (ScriptRuntime)
+        bool isActivationObserved() const override;
+        void onActiveInHierarchyChanged(const std::vector<Entity>& changed, bool nowActive) override;
+
         void onEntityDestroyed(Entity entity, Signature signature) override {
             for (auto const& pair : systems) {
                 SubSystem* system = pair.second.get();
@@ -140,6 +148,11 @@ namespace jasperengine{
         // lua_close at shutdown). The scene destroys all its entities, so nothing leaks.
         std::weak_ptr<char> getLifetime() const;
 
+        // Being deleted (set first thing in the destructor): what goes with it sends no
+        // callbacks (physics contact Exits...). Not Scene::destroy, which also runs when a
+        // view is recreated.
+        bool isTearingDown() const { return tearingDown; }
+
         void load();
         void destroy();
         void draw();
@@ -152,11 +165,42 @@ namespace jasperengine{
         // Deprecated, as Engine::removeSubscriptionsByTag: SubscriptionOwnerIndex::releaseOwner
         void removeSubscriptionsByTag(const std::string& substring);
 
+        // the Canvas Scaler of the current view, then the camera: a UI scene's camera spans the
+        // UI size, any other the game canvas (Engine::systemViewChanged, includeScene, setCamera)
         void updateCameraSize();
+
+        // Canvas Scaler (the UI's own space). The scene's settings, used unless
+        // useProjectDefault (then Engine::getDefaultCanvasScaler()); a change applies at once
+        // when the view exists (the next frame lays the UI out in it)
+        void setCanvasScaler(const CanvasScalerSettings& settings);
+        const CanvasScalerSettings& getCanvasScaler() const;
+        void setCanvasScalerUseProjectDefault(bool useProjectDefault);
+        bool isCanvasScalerUseProjectDefault() const;
+        // what applies to this scene: its own settings or the project default
+        const CanvasScalerSettings& getEffectiveCanvasScaler() const;
+        // Recomputes the result for a view of viewWidth x viewHeight physical pixels showing a
+        // game canvas of canvasWidth x canvasHeight (updateCameraSize passes the Engine's; the
+        // editor passes the Game view's for the Scene view)
+        void updateCanvasScale(float viewWidth, float viewHeight, float canvasWidth, float canvasHeight, float screenDpi);
+        // {uiWidth, uiHeight, scaleFactor} of the current view (the safe-area contract);
+        // scaled is false under FollowGameCanvas
+        const CanvasScalerResult& getCanvasScale() const;
+        // the native UI of this scene lays out in the scaled UI size: a scaler other than
+        // FollowGameCanvas and a UI camera (CAMERA_UI)
+        bool isUIScaled() const;
+        // the screen HTML UI documents lay out in the scaled UI size (a scaler other than
+        // FollowGameCanvas, whatever the camera)
+        bool isDocumentScaled() const;
+        // game canvas pixels <-> this scene's UI units (identity when not scaled)
+        Vector2 canvasToUI(const Vector2& canvasPoint) const;
+        Vector2 uiToCanvas(const Vector2& uiPoint) const;
 
         void setCamera(Camera* camera);
         void setCamera(Entity camera);
         Entity getCamera() const;
+        // Back to the scene's own default camera (a UI camera, made if needed): its camera
+        // GameObject went to another scene (SceneManager::moveGameObjectToScene)
+        void useDefaultCamera();
 
         void setBackgroundColor(Vector4 color);
         void setBackgroundColor(float red, float green, float blue);
@@ -296,6 +340,10 @@ namespace jasperengine{
         void setPhysicsInterpolation(bool interpolation);
         bool isPhysicsInterpolation() const;
 
+        // forwarder to PhysicsSystem::setSubSteps2D: Box2D sub-steps of each fixed step (1..16)
+        void setPhysics2DSubSteps(int subSteps);
+        int getPhysics2DSubSteps() const;
+
         void setDefaultMeshShader(const std::string& path);
         const std::string& getDefaultMeshShader() const;
 
@@ -329,6 +377,10 @@ namespace jasperengine{
         void setPostProcessUniform(unsigned int index, const std::string& name, float value);
         Vector4 getPostProcessUniform(unsigned int index, const std::string& name) const;
         bool removePostProcessUniform(unsigned int index, const std::string& name);
+        // a u_fs_postParams member of pass index that follows a global shader value
+        // (Shader.setGlobal*); "" unbinds. False when nothing changed
+        bool setPostProcessGlobalBinding(unsigned int index, const std::string& member, const std::string& global);
+        std::string getPostProcessGlobalBinding(unsigned int index, const std::string& member) const;
         void setPostProcessPassEnabled(unsigned int index, bool enabled);
         bool isPostProcessPassEnabled(unsigned int index) const;
 

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    html, body { margin: 0; width: 640px; height: 360px; }
+    #area { position: absolute; left: 0; top: 0; width: 300px; height: 150px; }
+    #fire { position: absolute; left: 320px; top: 100px; width: 96px; height: 96px; }
+    #dyn { position: absolute; left: 0; top: 160px; width: 300px; height: 200px; }
+    #stick { position: absolute; left: 440px; top: 160px; width: 200px; height: 200px; }
+</style>
+</head>
+<body>
+    <touch-area id="area"></touch-area>
+    <!-- a finger already down sliding onto it presses it -->
+    <onscreen-button id="fire" action="Fire1" press-on-enter="true">Fire</onscreen-button>
+    <!-- the base (160 px) rests centred at (150, 260), radius 80; it follows past one radius -->
+    <onscreen-stick id="dyn" mode="dynamic" move-threshold="1"></onscreen-stick>
+    <!-- fixed, centred at (540, 260) -->
+    <onscreen-stick id="stick"></onscreen-stick>
+</body>
+</html>

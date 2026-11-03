@@ -93,6 +93,7 @@ add_executable(${TARGET_NAME}
 	PluginDataModel.cpp
 	PointerPassThrough.cpp
 	VirtualViews.cpp
+	PointerEvents.cpp
 	TransformStates.cpp
 	Position.cpp
 )

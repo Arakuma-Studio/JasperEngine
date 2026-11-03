@@ -8,6 +8,8 @@
 #include "StreamSchema.h"
 #include "StreamPreserved.h"
 #include "StreamMigrations.h"
+#include "stream/CurveCodec.h"
+#include "util/ShaderGlobalsJson.h"
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "Out.h"
@@ -18,13 +20,17 @@
 #include "Catalog.h"
 #include "util/YamlNumbers.h"
 #include "lattice/LatticeTypes.h"
+#include "object/CameraFollow.h"
+#include "object/CameraShaker.h"
 #include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/MeshSystem.h"
 #include "System.h"
 #include "util/CameraTextureLink.h"
+#include "util/Color.h"
 #include "util/FluidTextureLink.h"
+#include "util/VideoTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
 #include "util/LightPhotometry.h"
@@ -34,12 +40,23 @@
 #include "render/SceneRender3D.h"
 #include "window/TerrainEditWindow.h"
 #include "physics/PlacementSettingsLimits.h"
+#include "spritenormals/SpriteNormalsRecipe.h"
+#include "input/InputActions.h"
+#include "DebugSettings.h"
+#include "json.hpp"
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <iomanip>
+#include <locale>
+#include <sstream>
 #include <cmath>
+#include <cstdio>
+#include <limits>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <set>
 #include <stdexcept>
 
@@ -120,12 +137,30 @@ bool editor::Stream::decodeShaderKey(const YAML::Node& keyNode, ShaderKey& key) 
 }
 
 // Both directions normalize, keeping a since-retired property bit out of the file.
+// Built-in variants keep the set's order (type, then properties); variants of custom shaders
+// follow, ordered by the shader's name, not by its session-local customId (the order shaders
+// were registered in this session), so a second save writes the same list.
 YAML::Node editor::Stream::encodeShaderKeys(const std::set<ShaderKey>& shaderKeys) {
     YAML::Node node(YAML::NodeType::Sequence);
+    // YAML::Node assignment writes through to the node it refers to: the entries stay put and
+    // only their order (names and indices) is sorted
+    std::vector<YAML::Node> customEntries;
+    std::vector<std::pair<std::string, size_t>> customOrder;
     for (ShaderKey rawKey : shaderKeys) {
-        YAML::Node entry = encodeShaderKey(ShaderPool::normalizeKey(rawKey));
-        if (entry.IsMap()) node.push_back(entry);
+        const ShaderKey key = ShaderPool::normalizeKey(rawKey);
+        YAML::Node entry = encodeShaderKey(key);
+        if (!entry.IsMap()) continue;
+        if (key.customId == 0) {
+            node.push_back(entry);
+            continue;
+        }
+        const std::string name = entry["customShader"] && entry["customShader"].IsScalar() ? entry["customShader"].Scalar() : std::string();
+        customOrder.emplace_back(name, customEntries.size());
+        customEntries.push_back(entry);
     }
+    // stable: one shader's variants keep their (type, properties) order
+    std::stable_sort(customOrder.begin(), customOrder.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (const auto& item : customOrder) node.push_back(customEntries[item.second]);
     return node;
 }
 
@@ -168,10 +203,57 @@ namespace {
         return backends;
     }
 
-    std::string androidOrientationToString(editor::AndroidOrientation orientation) {
-        return editor::StreamSchema::androidOrientation().toString(orientation);
+    // presentation.allowedOrientations: the names of the set, Portrait first
+    YAML::Node orientationMaskToNode(uint8_t mask) {
+        YAML::Node node(YAML::NodeType::Sequence);
+        for (ScreenOrientation orientation : {ScreenOrientation::Portrait, ScreenOrientation::PortraitUpsideDown,
+                                              ScreenOrientation::LandscapeLeft, ScreenOrientation::LandscapeRight}) {
+            if (mask & PlatformRules::orientationBit(orientation)) node.push_back(PlatformRules::orientationName(orientation));
+        }
+        return node;
     }
 
+    uint8_t nodeToOrientationMask(const YAML::Node& node, uint8_t fallback) {
+        if (!node || !node.IsSequence()) return fallback;
+        uint8_t mask = 0;
+        for (const auto& item : node) {
+            ScreenOrientation orientation;
+            if (item.IsScalar() && PlatformRules::parseOrientationName(item.as<std::string>(), orientation) &&
+                PlatformRules::isFixedOrientation(orientation)) {
+                mask |= PlatformRules::orientationBit(orientation);
+            }
+        }
+        return mask ? mask : fallback;
+    }
+}
+
+// Projects written before Player > Resolution and Presentation kept an Android-only
+// orientation (android.orientation, the manifest's screenOrientation): its value as the shared
+// default and allowed orientations. False for "unspecified" or an unknown value (the defaults stay).
+bool editor::Stream::migrateAndroidOrientation(const std::string& value, PresentationSettings& presentation) {
+    const uint8_t P = PlatformRules::orientationBit(ScreenOrientation::Portrait);
+    const uint8_t PU = PlatformRules::orientationBit(ScreenOrientation::PortraitUpsideDown);
+    const uint8_t LL = PlatformRules::orientationBit(ScreenOrientation::LandscapeLeft);
+    const uint8_t LR = PlatformRules::orientationBit(ScreenOrientation::LandscapeRight);
+    if (value == "portrait") {
+        presentation.defaultOrientation = ScreenOrientation::Portrait;
+        presentation.allowedOrientations = P;
+    } else if (value == "landscape") {
+        presentation.defaultOrientation = ScreenOrientation::LandscapeLeft;
+        presentation.allowedOrientations = LL;
+    } else if (value == "sensorPortrait") {
+        presentation.defaultOrientation = ScreenOrientation::AutoRotation;
+        presentation.allowedOrientations = P | PU;
+    } else if (value == "sensorLandscape") {
+        presentation.defaultOrientation = ScreenOrientation::AutoRotation;
+        presentation.allowedOrientations = LL | LR;
+    } else if (value == "fullSensor") {
+        presentation.defaultOrientation = ScreenOrientation::AutoRotation;
+        presentation.allowedOrientations = P | PU | LL | LR;
+    } else {
+        return false;
+    }
+    return true;
 }
 
 std::string editor::Stream::makeEmbeddedTextureId(){
@@ -809,6 +891,32 @@ std::string editor::Stream::layoutGroupTypeToString(LayoutGroupType type) {
     return StreamSchema::layoutGroupType().toString(type);
 }
 
+std::string editor::Stream::canvasGroupRenderModeToString(CanvasGroupRenderMode mode) {
+    return mode == CanvasGroupRenderMode::FLATTEN ? "FLATTEN" : "PER_ELEMENT";
+}
+
+CanvasGroupRenderMode editor::Stream::stringToCanvasGroupRenderMode(const std::string& str) {
+    std::string upper = str;
+    std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c){ return (char)std::toupper(c); });
+    return upper == "FLATTEN" ? CanvasGroupRenderMode::FLATTEN : CanvasGroupRenderMode::PER_ELEMENT;
+}
+
+std::string editor::Stream::alphaTweenTargetToString(AlphaTweenTarget target) {
+    switch (target) {
+        case AlphaTweenTarget::COLOR: return "COLOR";
+        case AlphaTweenTarget::CANVAS_GROUP: return "CANVAS_GROUP";
+        default: return "AUTO";
+    }
+}
+
+AlphaTweenTarget editor::Stream::stringToAlphaTweenTarget(const std::string& str) {
+    std::string upper = str;
+    std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c){ return (char)std::toupper(c); });
+    if (upper == "COLOR") return AlphaTweenTarget::COLOR;
+    if (upper == "CANVAS_GROUP") return AlphaTweenTarget::CANVAS_GROUP;
+    return AlphaTweenTarget::AUTO;
+}
+
 LayoutGroupType editor::Stream::stringToLayoutGroupType(const std::string& str) {
     return StreamSchema::layoutGroupType().fromString(str);
 }
@@ -997,6 +1105,47 @@ ScriptType editor::Stream::stringToScriptType(const std::string& str) {
     return StreamSchema::scriptType().fromString(str);
 }
 
+YAML::Node editor::Stream::encodeCanvasScaler(const CanvasScalerSettings& settings){
+    const CanvasScalerSettings d;
+    YAML::Node node(YAML::NodeType::Map);
+    if (settings.mode != d.mode)
+        node["mode"] = CanvasScaler::modeName(settings.mode);
+    if (settings.scaleFactor != d.scaleFactor)
+        node["scaleFactor"] = settings.scaleFactor;
+    if (settings.referenceResolution != d.referenceResolution)
+        node["referenceResolution"] = encodeVector2(settings.referenceResolution);
+    if (settings.screenMatchMode != d.screenMatchMode)
+        node["screenMatchMode"] = CanvasScaler::matchModeName(settings.screenMatchMode);
+    if (settings.matchWidthOrHeight != d.matchWidthOrHeight)
+        node["matchWidthOrHeight"] = settings.matchWidthOrHeight;
+    if (settings.physicalUnit != d.physicalUnit)
+        node["physicalUnit"] = CanvasScaler::unitName(settings.physicalUnit);
+    if (settings.fallbackScreenDPI != d.fallbackScreenDPI)
+        node["fallbackScreenDPI"] = settings.fallbackScreenDPI;
+    return node;
+}
+
+CanvasScalerSettings editor::Stream::decodeCanvasScaler(const YAML::Node& node){
+    CanvasScalerSettings settings;
+    if (!node || !node.IsMap())
+        return settings;
+    if (node["mode"] && !CanvasScaler::parseMode(node["mode"].as<std::string>().c_str(), settings.mode))
+        Log::warn("Unknown Canvas Scaler mode '%s', using follow_game_canvas", node["mode"].as<std::string>().c_str());
+    if (node["scaleFactor"])
+        settings.scaleFactor = decodeFinite(node["scaleFactor"], settings.scaleFactor);
+    if (node["referenceResolution"])
+        settings.referenceResolution = decodeVector2(node["referenceResolution"]);
+    if (node["screenMatchMode"] && !CanvasScaler::parseMatchMode(node["screenMatchMode"].as<std::string>().c_str(), settings.screenMatchMode))
+        Log::warn("Unknown Canvas Scaler screen match mode '%s'", node["screenMatchMode"].as<std::string>().c_str());
+    if (node["matchWidthOrHeight"])
+        settings.matchWidthOrHeight = decodeFinite(node["matchWidthOrHeight"], settings.matchWidthOrHeight);
+    if (node["physicalUnit"] && !CanvasScaler::parseUnit(node["physicalUnit"].as<std::string>().c_str(), settings.physicalUnit))
+        Log::warn("Unknown Canvas Scaler physical unit '%s'", node["physicalUnit"].as<std::string>().c_str());
+    if (node["fallbackScreenDPI"])
+        settings.fallbackScreenDPI = decodeFinite(node["fallbackScreenDPI"], settings.fallbackScreenDPI);
+    return settings;
+}
+
 YAML::Node editor::Stream::encodeVector2(const Vector2& vec){
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
@@ -1048,6 +1197,36 @@ Vector4 editor::Stream::decodeVector4(const YAML::Node& node) {
     return Vector4(decodeFinite(node[0], 0.0f), decodeFinite(node[1], 0.0f), decodeFinite(node[2], 0.0f), decodeFinite(node[3], 0.0f));
 }
 
+YAML::Node editor::Stream::encodeCurve(const Curve& curve) {
+    return curvecodec::curveToYaml(curve);
+}
+
+Curve editor::Stream::decodeCurve(const YAML::Node& node, const Curve& fallback) {
+    if (!node || node.IsNull()) return fallback;
+    Curve curve;
+    std::string reason;
+    if (!curvecodec::curveFromYaml(node, curve, reason)) {
+        Out::warning("Curve: %s: the default curve is used", reason.c_str());
+        return fallback;
+    }
+    return curve;
+}
+
+YAML::Node editor::Stream::encodeGradient(const Gradient& gradient) {
+    return curvecodec::gradientToYaml(gradient);
+}
+
+Gradient editor::Stream::decodeGradient(const YAML::Node& node, const Gradient& fallback) {
+    if (!node || node.IsNull()) return fallback;
+    Gradient gradient;
+    std::string reason;
+    if (!curvecodec::gradientFromYaml(node, gradient, reason)) {
+        Out::warning("Gradient: %s: the default gradient is used", reason.c_str());
+        return fallback;
+    }
+    return gradient;
+}
+
 YAML::Node editor::Stream::encodeShaderUniforms(const ShaderUniformValues& uniforms) {
     YAML::Node node;
     for (const auto& uniform : uniforms) {
@@ -1066,6 +1245,25 @@ ShaderUniformValues editor::Stream::decodeShaderUniforms(const YAML::Node& node)
         }
     }
     return uniforms;
+}
+
+// {member: global}, written only when not empty
+YAML::Node editor::Stream::encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings) {
+    YAML::Node node(YAML::NodeType::Map);
+    for (const auto& binding : bindings) node[binding.first] = binding.second;
+    return node;
+}
+
+ShaderGlobalBindings editor::Stream::decodeShaderGlobalBindings(const YAML::Node& node) {
+    ShaderGlobalBindings bindings;
+    if (!node || !node.IsMap()) return bindings;
+    for (const auto& binding : node) {
+        if (!binding.second.IsScalar()) continue;
+        const std::string member = binding.first.as<std::string>();
+        const std::string global = binding.second.as<std::string>();
+        if (!member.empty() && !global.empty()) bindings.push_back({member, global});
+    }
+    return bindings;
 }
 
 YAML::Node editor::Stream::encodeQuaternion(const Quaternion& quat) {
@@ -1209,6 +1407,14 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
         node["textureType"] = "2D";
         node["source"] = "fluid";
         node["fluid"] = linkedFluid;
+        return node;
+    }
+    // a Video Player's render texture (VideoTextureLink), the same way
+    Entity linkedVideo = VideoTextureLink::parse(texture.getId());
+    if (linkedVideo != NULL_ENTITY) {
+        node["textureType"] = "2D";
+        node["source"] = "video";
+        node["video"] = linkedVideo;
         return node;
     }
 
@@ -1362,6 +1568,11 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                 // a FluidSimulation's output, bound by CameraTextureLink::resolve too
                 if (node["fluid"]) {
                     texture.setId(FluidTextureLink::makeId(YamlNumbers::as<Entity>(node["fluid"])));
+                }
+            } else if (source == "video") {
+                // a Video Player's render texture, bound by CameraTextureLink::resolve too
+                if (node["video"]) {
+                    texture.setId(VideoTextureLink::makeId(YamlNumbers::as<Entity>(node["video"])));
                 }
             }
         }
@@ -1829,6 +2040,134 @@ editor::PhysicsPlacementSettings editor::Stream::decodePhysicsPlacementSettings(
 
 namespace {
 
+// The window's settings are stored as the recipe writes them (settingsToJson), JSON <-> YAML
+YAML::Node jsonToYaml(const nlohmann::json& j) {
+    YAML::Node node;
+    if (j.is_object()) {
+        node = YAML::Node(YAML::NodeType::Map);
+        for (auto it = j.begin(); it != j.end(); ++it) node[it.key()] = jsonToYaml(it.value());
+    } else if (j.is_array()) {
+        node = YAML::Node(YAML::NodeType::Sequence);
+        for (const nlohmann::json& v : j) node.push_back(jsonToYaml(v));
+    } else if (j.is_boolean()) {
+        node = j.get<bool>();
+    } else if (j.is_number_integer()) {
+        node = j.get<int64_t>();
+    } else if (j.is_number()) {
+        node = j.get<double>();
+    } else if (j.is_string()) {
+        node = j.get<std::string>();
+    }
+    return node;
+}
+
+nlohmann::json yamlToJson(const YAML::Node& node) {
+    if (node.IsMap()) {
+        nlohmann::json j = nlohmann::json::object();
+        for (const auto& entry : node) j[entry.first.as<std::string>()] = yamlToJson(entry.second);
+        return j;
+    }
+    if (node.IsSequence()) {
+        nlohmann::json j = nlohmann::json::array();
+        for (const auto& entry : node) j.push_back(yamlToJson(entry));
+        return j;
+    }
+    if (!node.IsScalar()) return nlohmann::json();
+    const std::string text = node.Scalar();
+    if (node.Tag() == "!" || node.Tag() == "tag:yaml.org,2002:str") return text;   // quoted
+    if (text == "true") return true;
+    if (text == "false") return false;
+    char* end = nullptr;
+    const long long integer = std::strtoll(text.c_str(), &end, 10);
+    if (!text.empty() && end && *end == '\0') return integer;
+    const double number = std::strtod(text.c_str(), &end);
+    if (!text.empty() && end && *end == '\0') return number;
+    return text;
+}
+
+// JSON -> YAML with numbers written as their shortest float text ("0.1", not 0.10000000000000001)
+YAML::Node shaderGlobalsJsonToYaml(const nlohmann::json& j) {
+    if (j.is_number_float()) {
+        char text[32];
+        snprintf(text, sizeof(text), "%.17g", j.get<double>());
+        // the shortest that reads back the same (the values are float-exact doubles)
+        for (int digits = 6; digits <= 17; digits++) {
+            snprintf(text, sizeof(text), "%.*g", digits, j.get<double>());
+            if (std::strtod(text, nullptr) == j.get<double>()) break;
+        }
+        return YAML::Node(std::string(text));
+    }
+    if (j.is_object()) {
+        YAML::Node node(YAML::NodeType::Map);
+        for (auto it = j.begin(); it != j.end(); ++it) node[it.key()] = shaderGlobalsJsonToYaml(it.value());
+        return node;
+    }
+    if (j.is_array()) {
+        YAML::Node node(YAML::NodeType::Sequence);
+        for (const nlohmann::json& v : j) node.push_back(shaderGlobalsJsonToYaml(v));
+        return node;
+    }
+    return jsonToYaml(j);
+}
+
+const char* spriteNormalsViewName(int view) {
+    switch (view) {
+        case 0: return "color";
+        case 1: return "normal";
+        case 3: return "split";
+        default: return "lit";
+    }
+}
+
+} // namespace
+
+YAML::Node editor::Stream::encodeSpriteNormalsSettings(const SpriteNormalsWindowSettings& s) {
+    YAML::Node node;
+    node["settings"] = jsonToYaml(spritenormals::settingsToJson(s.settings));
+    node["view"] = spriteNormalsViewName(s.view);
+    encodeFinite(node, "lightHeight", s.lightHeight);
+    encodeFiniteVector3(node, "lightColour", s.lightColour);
+    encodeFinite(node, "ambient", s.ambient);
+    node["orbit"] = s.orbit;
+    node["grid"] = s.grid;
+    node["advancedOpen"] = s.advancedOpen;
+    node["autoRegenerate"] = s.autoRegenerate;
+    return node;
+}
+
+editor::SpriteNormalsWindowSettings editor::Stream::decodeSpriteNormalsSettings(const YAML::Node& node) {
+    SpriteNormalsWindowSettings s;
+    if (!node.IsMap()) return s;
+    decodeSettingKey(node, "view", [&s](const YAML::Node& n) {
+        const std::string view = n.as<std::string>();
+        s.view = view == "color" ? 0 : view == "normal" ? 1 : view == "split" ? 3 : 2;
+    });
+    decodeSettingKey(node, "lightHeight", [&s](const YAML::Node& n) { s.lightHeight = std::clamp(decodeFinite(n, s.lightHeight), 0.0f, 4096.0f); });
+    decodeSettingKey(node, "lightColour", [&s](const YAML::Node& n) { s.lightColour = decodeFiniteVector3(n, s.lightColour); });
+    decodeSettingKey(node, "ambient", [&s](const YAML::Node& n) { s.ambient = std::clamp(decodeFinite(n, s.ambient), 0.0f, 1.0f); });
+    decodeSettingKey(node, "orbit", [&s](const YAML::Node& n) { s.orbit = YamlNumbers::as<bool>(n); });
+    decodeSettingKey(node, "grid", [&s](const YAML::Node& n) { s.grid = YamlNumbers::as<bool>(n); });
+    decodeSettingKey(node, "advancedOpen", [&s](const YAML::Node& n) { s.advancedOpen = YamlNumbers::as<bool>(n); });
+    decodeSettingKey(node, "autoRegenerate", [&s](const YAML::Node& n) { s.autoRegenerate = YamlNumbers::as<bool>(n); });
+    if (node["settings"] && node["settings"].IsMap()) {
+        // the preset first, then every value over it (the recipe's resolution order)
+        const nlohmann::json j = yamlToJson(node["settings"]);
+        spritenormals::Preset preset = spritenormals::Preset::Default;
+        if (j.contains("preset") && j["preset"].is_string()) spritenormals::parsePreset(j["preset"].get<std::string>(), preset);
+        spritenormals::Settings settings = spritenormals::presetSettings(preset);
+        std::string error;
+        if (!spritenormals::settingsFromJson(j, settings, error)) throw std::runtime_error(error);
+        settings.preset = preset;
+        const std::vector<spritenormals::Problem> problems = spritenormals::validateSettings(settings);
+        if (!problems.empty()) throw std::runtime_error(problems.front().message);
+        s.settings = settings;
+    }
+    return s;
+}
+
+
+namespace {
+
 // The per-scene view keys an older project.yaml carried
 const char* const sceneDisplayKeys[] = {
     "showAllJoints", "showAllBones", "showAllBodies", "hideCameraView",
@@ -1908,6 +2247,226 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["rotationSnapDegrees"])  ds.rotationSnapDegrees  = decodePositiveFinite(node["rotationSnapDegrees"], ds.rotationSnapDegrees);
 }
 
+namespace {
+
+// ---- the native plugin settings of project.yaml (android/ios/macos/web nodes)
+
+using jasperengine::editor::NativePlistValue;
+
+void encodeStringList(YAML::Node& parent, const char* key, const std::vector<std::string>& values) {
+    if (values.empty()) return;
+    YAML::Node list(YAML::NodeType::Sequence);
+    for (const std::string& value : values) list.push_back(value);
+    parent[key] = list;
+}
+
+std::vector<std::string> decodeStringList(const YAML::Node& node) {
+    std::vector<std::string> values;
+    if (!node || !node.IsSequence()) return values;
+    for (const YAML::Node& item : node) {
+        if (item.IsScalar()) values.push_back(item.as<std::string>());
+    }
+    return values;
+}
+
+// A plain scalar read back as a plist value: true/false, an integer, a real, else a string
+NativePlistValue plainPlistValue(const std::string& text) {
+    NativePlistValue value;
+    if (text == "true" || text == "false") {
+        value.kind = NativePlistValue::Kind::Bool;
+        value.flag = text == "true";
+        return value;
+    }
+    if (!text.empty()) {
+        char* end = nullptr;
+        errno = 0;
+        const long long integer = std::strtoll(text.c_str(), &end, 10);
+        if (errno == 0 && end && *end == '\0' && text.find_first_of(" \t") == std::string::npos) {
+            value.kind = NativePlistValue::Kind::Integer;
+            value.integer = integer;
+            return value;
+        }
+        errno = 0;
+        const double real = std::strtod(text.c_str(), &end);
+        if (errno == 0 && end && *end == '\0' && std::isfinite(real) && text.find_first_of(" \tinfINFnNxX") == std::string::npos) {
+            value.kind = NativePlistValue::Kind::Real;
+            value.real = real;
+            return value;
+        }
+    }
+    value.kind = NativePlistValue::Kind::String;
+    value.text = text;
+    return value;
+}
+
+YAML::Node encodePlistValue(const NativePlistValue& value) {
+    switch (value.kind) {
+        case NativePlistValue::Kind::Bool: return YAML::Node(value.flag);
+        case NativePlistValue::Kind::Integer: return YAML::Node(value.integer);
+        case NativePlistValue::Kind::Real: {
+            // a real keeps a decimal point, so it reads back as a real
+            std::ostringstream out;
+            out.imbue(std::locale::classic());
+            out << std::setprecision(17) << value.real;
+            std::string text = out.str();
+            if (text.find_first_of(".eE") == std::string::npos) text += ".0";
+            return YAML::Node(text);
+        }
+        case NativePlistValue::Kind::StringArray: {
+            YAML::Node list(YAML::NodeType::Sequence);
+            for (const std::string& item : value.items) list.push_back(item);
+            return list;
+        }
+        case NativePlistValue::Kind::String:
+            break;
+    }
+    // a string that would read back as something else ("true", "12", "") is written {string: ...}
+    const NativePlistValue plain = plainPlistValue(value.text);
+    if (plain.kind != NativePlistValue::Kind::String || value.text.empty() || value.text == "null" || value.text == "~") {
+        YAML::Node wrapped;
+        wrapped["string"] = value.text;
+        return wrapped;
+    }
+    return YAML::Node(value.text);
+}
+
+bool decodePlistValue(const YAML::Node& node, NativePlistValue& out) {
+    if (node.IsSequence()) {
+        out = NativePlistValue();
+        out.kind = NativePlistValue::Kind::StringArray;
+        out.items = decodeStringList(node);
+        return true;
+    }
+    if (node.IsMap() && node["string"] && node["string"].IsScalar()) {
+        out = NativePlistValue();
+        out.kind = NativePlistValue::Kind::String;
+        out.text = node["string"].as<std::string>();
+        return true;
+    }
+    if (!node.IsScalar()) return false;
+    // a quoted scalar is a string whatever it says
+    if (node.Tag() == "!") {
+        out = NativePlistValue();
+        out.text = node.as<std::string>();
+        return true;
+    }
+    out = plainPlistValue(node.as<std::string>());
+    return true;
+}
+
+void encodePlistEntries(YAML::Node& parent, const std::map<std::string, NativePlistValue>& entries) {
+    if (entries.empty()) return;
+    YAML::Node map(YAML::NodeType::Map);
+    for (const auto& [key, value] : entries) map[key] = encodePlistValue(value);
+    parent["plistEntries"] = map;
+}
+
+std::map<std::string, NativePlistValue> decodePlistEntries(const YAML::Node& node) {
+    std::map<std::string, NativePlistValue> entries;
+    if (!node || !node.IsMap()) return entries;
+    for (const auto& item : node) {
+        NativePlistValue value;
+        if (item.first.IsScalar() && decodePlistValue(item.second, value)) entries[item.first.as<std::string>()] = value;
+    }
+    return entries;
+}
+
+} // namespace
+
+namespace {
+
+// ---- an older editor's Project Settings > Input in project.yaml: `input: {version: 1, actions:
+// [...]}`, Unity's Input Manager as a flat list (the JSON InputManagerFormat reads, each binding a
+// flow map). It becomes the "Input Manager" map of an .inputactions asset
+
+// YAML -> the JSON InputManagerFormat reads: names, kinds, axes and control names stay text ("0"
+// is the key 0, an action may be named "1"), the rest reads as numbers and booleans
+nlohmann::json inputYamlToJson(const YAML::Node& node, const std::string& key = "") {
+    static const std::set<std::string> textKeys = {"name", "description", "type", "kind", "axis", "positive", "negative"};
+    if (node.IsMap()) {
+        nlohmann::json j = nlohmann::json::object();
+        for (const auto& entry : node) {
+            const std::string child = entry.first.as<std::string>();
+            j[child] = inputYamlToJson(entry.second, child);
+        }
+        return j;
+    }
+    if (node.IsSequence()) {
+        nlohmann::json j = nlohmann::json::array();
+        for (const auto& entry : node) j.push_back(inputYamlToJson(entry, key));
+        return j;
+    }
+    if (!node.IsScalar()) return nlohmann::json();
+    const std::string text = node.Scalar();
+    if (textKeys.count(key) || node.Tag() == "!") return text;
+    if (text == "true") return true;
+    if (text == "false") return false;
+    char* end = nullptr;
+    const long long integer = std::strtoll(text.c_str(), &end, 10);
+    if (!text.empty() && end && *end == '\0') return integer;
+    const double number = std::strtod(text.c_str(), &end);
+    if (!text.empty() && end && *end == '\0') return number;
+    return text;
+}
+
+// the input node is an older editor's: a version, or an actions list (S22 writes a path)
+bool isInputManagerNode(const YAML::Node& input) {
+    if (input.IsSequence()) return true;
+    if (!input.IsMap()) return false;
+    return input["version"].IsDefined() || (input["actions"].IsDefined() && !input["actions"].IsScalar());
+}
+
+std::string inputSourceHash(const std::string& json) {
+    uint64_t hash = 14695981039346656037ull;
+    for (unsigned char c : json) {
+        hash ^= c;
+        hash *= 1099511628211ull;
+    }
+    char text[17];
+    snprintf(text, sizeof(text), "%016llx", static_cast<unsigned long long>(hash));
+    return text;
+}
+
+// the asset the actions become: InputManager.inputactions in the assets directory (another name
+// when a file there is not this conversion), or the one an earlier load of the same node wrote
+editor::InputActionsMigration convertInputManagerNode(editor::Project* project, const std::vector<InputManagerAction>& actions) {
+    const std::string hash = inputSourceHash(InputManagerFormat::actionsToJson(actions));
+    InputActionAssetDesc asset;
+    asset.maps.push_back(InputManagerFormat::toMap(actions));
+    nlohmann::ordered_json marker = nlohmann::ordered_json::object();
+    marker["migratedFrom"] = {{"projectYaml", "input"}, {"hash", hash}};
+    asset.passthrough = marker.dump();
+
+    editor::InputActionsMigration migration;
+    migration.actions = actions.size();
+    migration.text = asset.save();
+    migration.pending = true;
+    const fs::path assets = project->getAssetsPath();
+    for (int n = 1;; n++) {
+        const std::string name = n == 1 ? "InputManager.inputactions" : "InputManager " + std::to_string(n) + ".inputactions";
+        const fs::path file = assets / name;
+        fs::path relative = file.lexically_relative(project->getProjectPath());
+        if (relative.empty()) relative = file;
+        migration.asset = relative;
+        std::error_code ec;
+        if (!fs::exists(file, ec))
+            return migration;
+        // written by an earlier load of the same node: kept as it is now (edits made since stay)
+        std::ifstream in(file, std::ios::binary);
+        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        const nlohmann::json existing = nlohmann::json::parse(text, nullptr, false);
+        if (!existing.is_discarded() && existing.is_object() && existing.contains("migratedFrom") &&
+                existing["migratedFrom"].is_object() && existing["migratedFrom"].value("hash", std::string()) == hash) {
+            migration.pending = false;
+            migration.reused = true;
+            migration.text = text;
+            return migration;
+        }
+    }
+}
+
+}
+
 YAML::Node editor::Stream::encodeProject(Project* project) {
     YAML::Node root;
 
@@ -1918,6 +2477,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     root["canvasHeight"] = project->getCanvasHeight();
 
     root["scalingMode"] = scalingModeToString(project->getScalingMode());
+    // absent = Follow Game Canvas (projects from before the Canvas Scaler stay unchanged)
+    if (project->getUIScale() != CanvasScalerSettings())
+        root["uiScale"] = encodeCanvasScaler(project->getUIScale());
     root["textureStrategy"] = textureStrategyToString(project->getTextureStrategy());
     root["vsync"] = project->isVSyncEnabled();
     if (project->getAtmosphereQuality() != Project::defaultAtmosphereQuality) {
@@ -1935,6 +2497,13 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->getInputDeadzone() != Project::defaultInputDeadzone)
             input["deadzone"] = project->getInputDeadzone();
         root["input"] = input;
+    } else if (!project->getUnreadableInputNode().empty()) {
+        // an older editor's Input Manager node that could not be read: back as it was, until
+        // an actions asset is set
+        try {
+            root["input"] = YAML::Load(project->getUnreadableInputNode());
+        } catch (const YAML::Exception&) {
+        }
     }
     if (!(project->getPlayerLogging() == PlayerLoggingSettings())) {
         const PlayerLoggingSettings& logging = project->getPlayerLogging();
@@ -2078,6 +2647,27 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
     }
 
+    // Project Settings > Graphics > Shader Globals: {name, type, arraySize (arrays), default}
+    if (!project->getShaderGlobals().empty()) {
+        YAML::Node globals = shaderGlobalsJsonToYaml(ShaderGlobalsJson::listToJson(project->getShaderGlobals(), "arraySize"));
+        for (YAML::Node global : globals) {
+            if (global["default"] && global["default"].IsSequence()) global["default"].SetStyle(YAML::EmitterStyle::Flow);
+        }
+        root["shaderGlobals"] = globals;
+    }
+
+    // Project Settings > Physics > 3D World Capacity: only when it differs from the defaults (its own key:
+    // physics3D is the 3D physics on/off switch)
+    if (project->getPhysics3DWorldSettings() != Physics3DWorldSettings()) {
+        const Physics3DWorldSettings& world = project->getPhysics3DWorldSettings();
+        YAML::Node physicsNode;
+        physicsNode["maxBodies"] = world.maxBodies;
+        physicsNode["maxBodyPairs"] = world.maxBodyPairs;
+        physicsNode["maxContactConstraints"] = world.maxContactConstraints;
+        root["physics3DWorld"] = physicsNode;
+    }
+
+
     {
         YAML::Node exportNode;
 
@@ -2112,6 +2702,22 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     }
 
     {
+        // Player > Resolution and Presentation (non-defaults only)
+        const PresentationSettings& presentation = project->getPresentationSettings();
+        const PresentationSettings defaults;
+        YAML::Node presentationNode;
+        if (presentation.defaultOrientation != defaults.defaultOrientation) {
+            presentationNode["defaultOrientation"] = PlatformRules::orientationName(presentation.defaultOrientation);
+        }
+        if (presentation.allowedOrientations != defaults.allowedOrientations) {
+            presentationNode["allowedOrientations"] = orientationMaskToNode(presentation.allowedOrientations);
+        }
+        if (presentation.keepScreenOn != defaults.keepScreenOn) presentationNode["keepScreenOn"] = presentation.keepScreenOn;
+        if (presentation.targetFrameRate != defaults.targetFrameRate) presentationNode["targetFrameRate"] = presentation.targetFrameRate;
+        if (presentationNode.size() != 0) root["presentation"] = presentationNode;
+    }
+
+    {
         const ApplicationSettings& application = project->getApplicationSettings();
         const ApplicationSettings defaultApplication;
         YAML::Node applicationNode;
@@ -2119,6 +2725,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (application.identifier != defaultApplication.identifier) applicationNode["identifier"] = application.identifier;
         if (application.version != defaultApplication.version) applicationNode["version"] = application.version;
         if (application.build != defaultApplication.build) applicationNode["build"] = application.build;
+        if (application.allowInsecureHttp != defaultApplication.allowInsecureHttp) applicationNode["allowInsecureHttp"] = application.allowInsecureHttp;
         if (applicationNode.size() != 0) root["application"] = applicationNode;
     }
 
@@ -2134,6 +2741,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (!web.headInclude.empty()) webNode["headInclude"] = web.headInclude;
         if (web.resizeCanvasToWindow != defaultWeb.resizeCanvasToWindow) webNode["resizeCanvasToWindow"] = web.resizeCanvasToWindow;
         if (web.hideEmscriptenUI != defaultWeb.hideEmscriptenUI) webNode["hideEmscriptenUI"] = web.hideEmscriptenUI;
+        encodeStringList(webNode, "scriptUrls", web.scriptUrls);
+        if (web.viewportFitCover != defaultWeb.viewportFitCover) webNode["viewportFitCover"] = web.viewportFitCover;
         if (webNode.size() != 0) root["web"] = webNode;
     }
 
@@ -2167,6 +2776,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (!macOS.buildNumber.empty()) macOSNode["buildNumber"] = macOS.buildNumber;
         if (!macOS.icon.empty()) macOSNode["icon"] = macOS.icon.generic_string();
         if (macOS.highDpi != defaultMacOS.highDpi) macOSNode["highDpi"] = macOS.highDpi;
+        encodePlistEntries(macOSNode, macOS.plistEntries);
+        encodeStringList(macOSNode, "frameworks", macOS.frameworks);
         if (macOSNode.size() != 0) root["macos"] = macOSNode;
     }
 
@@ -2186,6 +2797,33 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (!ios.admobAppId.empty()) iosNode["admobAppId"] = ios.admobAppId;
         if (!ios.teamId.empty()) iosNode["teamId"] = ios.teamId;
         if (ios.exportMethod != defaultIOS.exportMethod) iosNode["exportMethod"] = ios.exportMethod;
+        encodePlistEntries(iosNode, ios.plistEntries);
+        if (!ios.plistXml.empty()) iosNode["plistXml"] = ios.plistXml;
+        encodeStringList(iosNode, "frameworks", ios.frameworks);
+        if (!ios.cocoapods.empty()) {
+            YAML::Node pods(YAML::NodeType::Sequence);
+            for (const NativeCocoaPod& pod : ios.cocoapods) {
+                YAML::Node podNode;
+                podNode["name"] = pod.name;
+                if (!pod.version.empty()) podNode["version"] = pod.version;
+                if (!pod.source.empty()) podNode["source"] = pod.source;
+                pods.push_back(podNode);
+            }
+            iosNode["cocoapods"] = pods;
+        }
+        if (!ios.swiftPackages.empty()) {
+            YAML::Node packages(YAML::NodeType::Sequence);
+            for (const NativeSwiftPackage& package : ios.swiftPackages) {
+                YAML::Node packageNode;
+                packageNode["url"] = package.url;
+                packageNode["version"] = package.version;
+                encodeStringList(packageNode, "products", package.products);
+                packages.push_back(packageNode);
+            }
+            iosNode["swiftPackages"] = packages;
+        }
+        if (!ios.entitlementsXml.empty()) iosNode["entitlementsXml"] = ios.entitlementsXml;
+        if (ios.deploymentTarget != defaultIOS.deploymentTarget) iosNode["deploymentTarget"] = ios.deploymentTarget;
         if (iosNode.size() != 0) root["ios"] = iosNode;
     }
 
@@ -2210,7 +2848,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (android.minSdk != defaults.minSdk) androidNode["minSdk"] = android.minSdk;
         if (android.targetSdk != defaults.targetSdk) androidNode["targetSdk"] = android.targetSdk;
-        if (android.orientation != defaults.orientation) androidNode["orientation"] = androidOrientationToString(android.orientation);
 
         YAML::Node abiNode;
         if (android.abiArmeabiV7a != defaults.abiArmeabiV7a) abiNode["armeabi-v7a"] = android.abiArmeabiV7a;
@@ -2224,10 +2861,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             permissionsNode.push_back(permission);
         }
         if (android.permissions != defaults.permissions) androidNode["permissions"] = permissionsNode;
+        if (android.internetAccess != defaults.internetAccess) {
+            androidNode["internetAccess"] = android.internetAccess == AndroidInternetAccess::Require ? "require" : "auto";
+        }
 
         if (android.allowBackup != defaults.allowBackup) androidNode["allowBackup"] = android.allowBackup;
         if (android.fullscreen != defaults.fullscreen) androidNode["fullscreen"] = android.fullscreen;
-        if (android.keepScreenOn != defaults.keepScreenOn) androidNode["keepScreenOn"] = android.keepScreenOn;
         if (android.admobEnabled != defaults.admobEnabled) androidNode["admobEnabled"] = android.admobEnabled;
         if (!android.admobAppId.empty()) androidNode["admobAppId"] = android.admobAppId;
         if (android.packageFormat != defaults.packageFormat) androidNode["packageFormat"] = android.packageFormat;
@@ -2237,6 +2876,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             keystoreNode["alias"] = android.keystoreAlias;
             androidNode["keystore"] = keystoreNode;
         }
+        encodeStringList(androidNode, "gradleDependencies", android.gradleDependencies);
+        encodeStringList(androidNode, "gradleRepositories", android.gradleRepositories);
+        encodeStringList(androidNode, "gradleProperties", android.gradleProperties);
+        encodeStringList(androidNode, "extraPermissions", android.extraPermissions);
+        if (!android.manifestXml.empty()) androidNode["manifestXml"] = android.manifestXml;
+        if (!android.manifestApplicationXml.empty()) androidNode["manifestApplicationXml"] = android.manifestApplicationXml;
         if (androidNode.size()) root["android"] = androidNode;
     }
 
@@ -2281,6 +2926,25 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // Project Settings > Texture (S14 R24): only what differs from the defaults
         const YAML::Node textureNode = encodeTextureProjectSettings(project->getTextureSettings());
         if (textureNode.size() > 0) root["texture"] = textureNode;
+    }
+
+    // Project Settings > Audio: only what differs from the defaults (old projects have no node)
+    {
+        const AudioSettings& audio = project->getAudioSettings();
+        const AudioSettings defaults;
+        YAML::Node audioNode;
+        if (audio.mixer != defaults.mixer) audioNode["mixer"] = audio.mixer;
+        if (audio.maxRealVoices != defaults.maxRealVoices) audioNode["maxRealVoices"] = audio.maxRealVoices;
+        if (audio.maxVoices != defaults.maxVoices) audioNode["maxVoices"] = audio.maxVoices;
+        if (audio.sampleRate != defaults.sampleRate) audioNode["sampleRate"] = audio.sampleRate;
+        if (audio.defaultOutputGroup != defaults.defaultOutputGroup) audioNode["defaultOutputGroup"] = audio.defaultOutputGroup;
+        if (audioNode.size()) root["audio"] = audioNode;
+    }
+
+    // Project Settings > Debug: what differs from the defaults (its reflection table)
+    {
+        const YAML::Node debugNode = reflect::encode(reflect::debugSettingsStruct(), &project->getDebugSettings(), reflect::EncodeContext{});
+        if (debugNode.IsMap() && debugNode.size()) root["debug"] = debugNode;
     }
 
     if (!project->getStandalonePrefabs().empty()) {
@@ -2397,6 +3061,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setScalingMode(decodeEnum(node, "scalingMode", StreamSchema::scalingMode()));
     }
 
+    project->setUIScale(decodeCanvasScaler(node["uiScale"]));
+
     if (node["textureStrategy"]) {
         project->setTextureStrategy(decodeEnum(node, "textureStrategy", StreamSchema::textureStrategy()));
     }
@@ -2421,9 +3087,29 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     {
         const YAML::Node input = node["input"];
-        const bool map = input.IsDefined() && input.IsMap();
-        project->setInputActionsAsset(map && input["actions"].IsDefined() ? fs::path(input["actions"].as<std::string>()) : fs::path());
-        project->setInputDeadzone(map && input["deadzone"].IsDefined() ? YamlNumbers::as<float>(input["deadzone"]) : Project::defaultInputDeadzone);
+        project->setUnreadableInputNode("");
+        project->setInputActionsMigration(InputActionsMigration());
+        if (input.IsDefined() && !input.IsNull() && isInputManagerNode(input)) {
+            // an older editor's Input Manager actions: the Input Manager map of an actions asset
+            std::vector<InputManagerAction> actions;
+            std::string error;
+            if (InputManagerFormat::parseActionsJson(inputYamlToJson(input).dump(), actions, &error)) {
+                const InputActionsMigration migration = convertInputManagerNode(project, actions);
+                project->setInputActionsMigration(migration);
+                project->setInputActionsAsset(migration.asset);
+            } else {
+                Out::error("Project Settings > Input could not be read from project.yaml (%s): Unity's default "
+                           "actions are used, and the input node is kept as it is until an actions asset is set",
+                           error.c_str());
+                project->setUnreadableInputNode(YAML::Dump(input));
+                project->setInputActionsAsset(fs::path());
+            }
+            project->setInputDeadzone(Project::defaultInputDeadzone);
+        } else {
+            const bool map = input.IsDefined() && input.IsMap();
+            project->setInputActionsAsset(map && input["actions"].IsDefined() ? fs::path(input["actions"].as<std::string>()) : fs::path());
+            project->setInputDeadzone(map && input["deadzone"].IsDefined() ? YamlNumbers::as<float>(input["deadzone"]) : Project::defaultInputDeadzone);
+        }
     }
 
     {
@@ -2656,6 +3342,47 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             decodeIgnoredPairs(isMap ? ignoredNode["physics2D"] : YAML::Node(), "physics2D"));
     }
 
+    {
+        // Project Settings > Graphics > Shader Globals; an entry that cannot be read is left out
+        // (with an error), the others are kept
+        std::vector<ShaderGlobalDecl> globals;
+        const YAML::Node globalsNode = node["shaderGlobals"];
+        if (globalsNode && globalsNode.IsSequence()) {
+            for (const YAML::Node& entry : globalsNode) {
+                ShaderGlobalDecl decl;
+                std::string error;
+                std::vector<ShaderGlobalDecl> candidate = globals;
+                if (ShaderGlobalsJson::declFromJson(yamlToJson(entry), decl, error)) {
+                    candidate.push_back(decl);
+                    error = ShaderGlobals::validate(candidate);
+                }
+                if (!error.empty()) {
+                    Out::error("Project Settings > Graphics > Shader Globals: %s (left out)", error.c_str());
+                    continue;
+                }
+                globals = candidate;
+            }
+        } else if (globalsNode && !globalsNode.IsNull()) {
+            Out::error("Project Settings > Graphics > Shader Globals: shaderGlobals in project.yaml is not a list (ignored)");
+        }
+        project->setShaderGlobals(globals);
+    }
+
+    {
+        // Project Settings > Physics > 3D World Capacity; missing: the defaults
+        Physics3DWorldSettings world;
+        const YAML::Node physicsNode = node["physics3DWorld"];
+        if (physicsNode && physicsNode.IsMap()) {
+            if (physicsNode["maxBodies"]) world.maxBodies = YamlNumbers::as<unsigned int>(physicsNode["maxBodies"]);
+            if (physicsNode["maxBodyPairs"]) world.maxBodyPairs = YamlNumbers::as<unsigned int>(physicsNode["maxBodyPairs"]);
+            if (physicsNode["maxContactConstraints"]) world.maxContactConstraints = YamlNumbers::as<unsigned int>(physicsNode["maxContactConstraints"]);
+        } else if (physicsNode) {
+            Out::warning("Ignoring physics3DWorld in project settings: not a map");
+        }
+        project->setPhysics3DWorldSettings(world);
+    }
+
+
     if (node["export"] && node["export"].IsMap()) {
         const YAML::Node& exportNode = node["export"];
 
@@ -2696,6 +3423,26 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
     }
 
+    // a project saved with Player > Resolution and Presentation no longer has android.orientation
+    const bool hasPresentationOrientation = node["presentation"] && node["presentation"].IsMap() &&
+        (node["presentation"]["defaultOrientation"] || node["presentation"]["allowedOrientations"]);
+    if (node["presentation"] && node["presentation"].IsMap()) {
+        const YAML::Node& presentationNode = node["presentation"];
+        PresentationSettings& presentation = project->getPresentationSettings();
+        if (presentationNode["defaultOrientation"]) {
+            ScreenOrientation orientation;
+            if (PlatformRules::parseOrientationName(presentationNode["defaultOrientation"].as<std::string>(), orientation)) {
+                presentation.defaultOrientation = orientation;
+            }
+        }
+        presentation.allowedOrientations = nodeToOrientationMask(presentationNode["allowedOrientations"], presentation.allowedOrientations);
+        if (presentationNode["keepScreenOn"].IsDefined()) presentation.keepScreenOn = YamlNumbers::as<bool>(presentationNode["keepScreenOn"]);
+        if (presentationNode["targetFrameRate"].IsDefined()) {
+            const int fps = YamlNumbers::as<int>(presentationNode["targetFrameRate"]);
+            presentation.targetFrameRate = fps <= 0 ? -1 : std::min(fps, 1000);
+        }
+    }
+
     if (node["application"] && node["application"].IsMap()) {
         const YAML::Node& applicationNode = node["application"];
         ApplicationSettings& application = project->getApplicationSettings();
@@ -2703,6 +3450,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (applicationNode["identifier"]) application.identifier = applicationNode["identifier"].as<std::string>();
         if (applicationNode["version"]) application.version = applicationNode["version"].as<std::string>();
         if (applicationNode["build"]) application.build = std::max(1u, YamlNumbers::as<unsigned int>(applicationNode["build"]));
+        if (applicationNode["allowInsecureHttp"].IsDefined()) application.allowInsecureHttp = YamlNumbers::as<bool>(applicationNode["allowInsecureHttp"]);
     }
 
     if (node["web"] && node["web"].IsMap()) {
@@ -2714,6 +3462,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (webNode["headInclude"]) web.headInclude = webNode["headInclude"].as<std::string>();
         if (webNode["resizeCanvasToWindow"].IsDefined()) web.resizeCanvasToWindow = YamlNumbers::as<bool>(webNode["resizeCanvasToWindow"]);
         if (webNode["hideEmscriptenUI"].IsDefined()) web.hideEmscriptenUI = YamlNumbers::as<bool>(webNode["hideEmscriptenUI"]);
+        web.scriptUrls = decodeStringList(webNode["scriptUrls"]);
+        if (webNode["viewportFitCover"].IsDefined()) web.viewportFitCover = YamlNumbers::as<bool>(webNode["viewportFitCover"]);
     }
 
     if (node["linux"] && node["linux"].IsMap()) {
@@ -2742,6 +3492,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (macOSNode["buildNumber"]) macOS.buildNumber = macOSNode["buildNumber"].as<std::string>();
         if (macOSNode["icon"]) macOS.icon = macOSNode["icon"].as<std::string>();
         if (macOSNode["highDpi"].IsDefined()) macOS.highDpi = YamlNumbers::as<bool>(macOSNode["highDpi"]);
+        macOS.plistEntries = decodePlistEntries(macOSNode["plistEntries"]);
+        macOS.frameworks = decodeStringList(macOSNode["frameworks"]);
     }
 
     if (node["ios"] && node["ios"].IsMap()) {
@@ -2762,6 +3514,33 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             const std::string method = iosNode["exportMethod"].as<std::string>();
             if (method == "development" || method == "ad-hoc" || method == "app-store") ios.exportMethod = method;
         }
+        ios.plistEntries = decodePlistEntries(iosNode["plistEntries"]);
+        if (iosNode["plistXml"]) ios.plistXml = iosNode["plistXml"].as<std::string>();
+        ios.frameworks = decodeStringList(iosNode["frameworks"]);
+        ios.cocoapods.clear();
+        if (iosNode["cocoapods"] && iosNode["cocoapods"].IsSequence()) {
+            for (const YAML::Node& podNode : iosNode["cocoapods"]) {
+                if (!podNode.IsMap() || !podNode["name"]) continue;
+                NativeCocoaPod pod;
+                pod.name = podNode["name"].as<std::string>();
+                if (podNode["version"]) pod.version = podNode["version"].as<std::string>();
+                if (podNode["source"]) pod.source = podNode["source"].as<std::string>();
+                ios.cocoapods.push_back(pod);
+            }
+        }
+        ios.swiftPackages.clear();
+        if (iosNode["swiftPackages"] && iosNode["swiftPackages"].IsSequence()) {
+            for (const YAML::Node& packageNode : iosNode["swiftPackages"]) {
+                if (!packageNode.IsMap() || !packageNode["url"]) continue;
+                NativeSwiftPackage package;
+                package.url = packageNode["url"].as<std::string>();
+                if (packageNode["version"]) package.version = packageNode["version"].as<std::string>();
+                package.products = decodeStringList(packageNode["products"]);
+                ios.swiftPackages.push_back(package);
+            }
+        }
+        if (iosNode["entitlementsXml"]) ios.entitlementsXml = iosNode["entitlementsXml"].as<std::string>();
+        if (iosNode["deploymentTarget"]) ios.deploymentTarget = iosNode["deploymentTarget"].as<std::string>();
     }
 
     if (node["android"] && node["android"].IsMap()) {
@@ -2777,7 +3556,12 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["adaptiveIconBackground"]) android.adaptiveIconBackground = androidNode["adaptiveIconBackground"].as<std::string>();
         if (androidNode["minSdk"]) android.minSdk = std::max(1u, YamlNumbers::as<unsigned int>(androidNode["minSdk"]));
         if (androidNode["targetSdk"]) android.targetSdk = std::max(android.minSdk, YamlNumbers::as<unsigned int>(androidNode["targetSdk"]));
-        if (androidNode["orientation"]) android.orientation = decodeEnum(androidNode, "orientation", StreamSchema::androidOrientation());
+        // the Android-only orientation of older projects becomes the shared one (Player >
+        // Resolution and Presentation), unless the project already has it; written back as
+        // presentation on the next save
+        if (androidNode["orientation"] && !hasPresentationOrientation) {
+            migrateAndroidOrientation(androidNode["orientation"].as<std::string>(), project->getPresentationSettings());
+        }
 
         if (androidNode["architectures"] && androidNode["architectures"].IsMap()) {
             const YAML::Node& abiNode = androidNode["architectures"];
@@ -2794,9 +3578,14 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
 
+        if (androidNode["internetAccess"]) {
+            android.internetAccess = androidNode["internetAccess"].as<std::string>() == "require"
+                ? AndroidInternetAccess::Require : AndroidInternetAccess::Auto;
+        }
         if (androidNode["allowBackup"].IsDefined()) android.allowBackup = YamlNumbers::as<bool>(androidNode["allowBackup"]);
         if (androidNode["fullscreen"].IsDefined()) android.fullscreen = YamlNumbers::as<bool>(androidNode["fullscreen"]);
-        if (androidNode["keepScreenOn"].IsDefined()) android.keepScreenOn = YamlNumbers::as<bool>(androidNode["keepScreenOn"]);
+        // android.keepScreenOn is dropped: exported games always kept the screen on (the native
+        // window flag), which presentation.keepScreenOn (default true) keeps doing
         if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
         if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
         if (androidNode["packageFormat"]) {
@@ -2809,6 +3598,12 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (androidNode["keystore"]["path"]) android.keystorePath = androidNode["keystore"]["path"].as<std::string>();
             if (androidNode["keystore"]["alias"]) android.keystoreAlias = androidNode["keystore"]["alias"].as<std::string>();
         }
+        android.gradleDependencies = decodeStringList(androidNode["gradleDependencies"]);
+        android.gradleRepositories = decodeStringList(androidNode["gradleRepositories"]);
+        android.gradleProperties = decodeStringList(androidNode["gradleProperties"]);
+        android.extraPermissions = decodeStringList(androidNode["extraPermissions"]);
+        if (androidNode["manifestXml"]) android.manifestXml = androidNode["manifestXml"].as<std::string>();
+        if (androidNode["manifestApplicationXml"]) android.manifestApplicationXml = androidNode["manifestApplicationXml"].as<std::string>();
     }
 
     if (node["startSceneId"]) {
@@ -2861,6 +3656,33 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         TextureProjectSettings textureSettings;
         decodeTextureProjectSettings(node["texture"], textureSettings);
         project->setTextureSettings(textureSettings);
+        AudioSettings audio;
+        if (node["audio"] && node["audio"].IsMap()) {
+            const YAML::Node audioNode = node["audio"];
+            if (audioNode["mixer"]) audio.mixer = audioNode["mixer"].as<std::string>();
+            if (audioNode["maxRealVoices"]) audio.maxRealVoices = YamlNumbers::as<int>(audioNode["maxRealVoices"]);
+            if (audioNode["maxVoices"]) audio.maxVoices = YamlNumbers::as<int>(audioNode["maxVoices"]);
+            if (audioNode["sampleRate"]) audio.sampleRate = YamlNumbers::as<int>(audioNode["sampleRate"]);
+            if (audioNode["defaultOutputGroup"]) audio.defaultOutputGroup = audioNode["defaultOutputGroup"].as<std::string>();
+        }
+        // also without a node: a project opened after another one does not keep its mixer
+        project->setAudioSettings(audio);
+    }
+
+    // Project Settings > Debug by its reflection table; a value that does not read keeps its
+    // default (an enum's fallback is its default; reported)
+    {
+        DebugSettings debug;
+        if (node["debug"] && node["debug"].IsMap()) {
+            reflect::DecodeContext ctx;
+            ctx.component = "debug";
+            reflect::decode(reflect::debugSettingsStruct(), node["debug"], &debug, ctx);
+            debug.sanitize([](const std::string& key, const std::string& value) {
+                Out::warning("Ignoring debug.%s \"%s\" in project settings: not a key name", key.c_str(), value.c_str());
+            });
+        }
+        // a project without the node (older ones) gets the defaults
+        project->setDebugSettings(debug);
     }
 
     if (node["standalonePrefabs"]) {
@@ -2879,8 +3701,10 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->getTerrainEditorSettings() = workspace.getTerrainEditorSettings();
     }
     project->getPhysicsPlacementSettings() = workspace.getPhysicsPlacementSettings();
+    project->getSpriteNormalsSettings() = workspace.getSpriteNormalsSettings();
 
     project->setSimulateTouch(workspace.isSimulateTouch());
+    project->setCustomResolutions(workspace.getCustomResolutions());
 
     // Which scenes are open is a per-user choice, so the tab list decides it. With no
     // workspace yet, the first scene opens, as it does for a fresh clone.
@@ -3010,11 +3834,12 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     maxValuesNode["maxExternalBuffers"] = sceneProject->maxValues.maxExternalBuffers;
     maxValuesNode["maxSpriteFrames"] = sceneProject->maxValues.maxSpriteFrames;
     maxValuesNode["maxBones"] = sceneProject->maxValues.maxBones;
-    maxValuesNode["maxColliders2D"] = sceneProject->maxValues.maxColliders2D;
-    maxValuesNode["maxColliderPoints2D"] = sceneProject->maxValues.maxColliderPoints2D;
-    maxValuesNode["maxColliders3D"] = sceneProject->maxValues.maxColliders3D;
-    maxValuesNode["maxColliderVertices3D"] = sceneProject->maxValues.maxColliderVertices3D;
-    maxValuesNode["maxColliderIndices3D"] = sceneProject->maxValues.maxColliderIndices3D;
+    // read from an older scene: written back unchanged (no churn in users' files)
+    if (sceneProject->maxValues.legacyMaxColliders2D) maxValuesNode["maxColliders2D"] = *sceneProject->maxValues.legacyMaxColliders2D;
+    if (sceneProject->maxValues.legacyMaxColliderPoints2D) maxValuesNode["maxColliderPoints2D"] = *sceneProject->maxValues.legacyMaxColliderPoints2D;
+    if (sceneProject->maxValues.legacyMaxColliders3D) maxValuesNode["maxColliders3D"] = *sceneProject->maxValues.legacyMaxColliders3D;
+    if (sceneProject->maxValues.legacyMaxColliderVertices3D) maxValuesNode["maxColliderVertices3D"] = *sceneProject->maxValues.legacyMaxColliderVertices3D;
+    if (sceneProject->maxValues.legacyMaxColliderIndices3D) maxValuesNode["maxColliderIndices3D"] = *sceneProject->maxValues.legacyMaxColliderIndices3D;
     root["maxValues"] = maxValuesNode;
 
     YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
@@ -3281,11 +4106,13 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
         if (maxValuesNode["maxExternalBuffers"]) sceneProject->maxValues.maxExternalBuffers = YamlNumbers::as<unsigned int>(maxValuesNode["maxExternalBuffers"]);
         if (maxValuesNode["maxSpriteFrames"]) sceneProject->maxValues.maxSpriteFrames = YamlNumbers::as<unsigned int>(maxValuesNode["maxSpriteFrames"]);
         if (maxValuesNode["maxBones"]) sceneProject->maxValues.maxBones = YamlNumbers::as<unsigned int>(maxValuesNode["maxBones"]);
-        if (maxValuesNode["maxColliders2D"]) sceneProject->maxValues.maxColliders2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders2D"]);
-        if (maxValuesNode["maxColliderPoints2D"]) sceneProject->maxValues.maxColliderPoints2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderPoints2D"]);
-        if (maxValuesNode["maxColliders3D"]) sceneProject->maxValues.maxColliders3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders3D"]);
-        if (maxValuesNode["maxColliderVertices3D"]) sceneProject->maxValues.maxColliderVertices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderVertices3D"]);
-        if (maxValuesNode["maxColliderIndices3D"]) sceneProject->maxValues.maxColliderIndices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderIndices3D"]);
+        // the collider caps of older editors: colliders have no caps any more; kept only to
+        // write them back as they were
+        if (maxValuesNode["maxColliders2D"]) sceneProject->maxValues.legacyMaxColliders2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders2D"]);
+        if (maxValuesNode["maxColliderPoints2D"]) sceneProject->maxValues.legacyMaxColliderPoints2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderPoints2D"]);
+        if (maxValuesNode["maxColliders3D"]) sceneProject->maxValues.legacyMaxColliders3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders3D"]);
+        if (maxValuesNode["maxColliderVertices3D"]) sceneProject->maxValues.legacyMaxColliderVertices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderVertices3D"]);
+        if (maxValuesNode["maxColliderIndices3D"]) sceneProject->maxValues.legacyMaxColliderIndices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderIndices3D"]);
     }
 
     sceneProject->shaderKeys.clear();
@@ -3531,11 +4358,19 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["gravity3D"] = encodeVector3(scene->getGravity3D());
     if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
         sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
+    if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
+        sceneNode["physics2DSubSteps"] = scene->getPhysics2DSubSteps();
     sceneNode["fixedResolutionEnabled"] = scene->isFixedResolutionEnabled();
     sceneNode["fixedResolutionWidth"] = scene->getFixedResolutionWidth();
     sceneNode["fixedResolutionHeight"] = scene->getFixedResolutionHeight();
     sceneNode["fixedResolutionFilter"] = textureFilterToString(scene->getFixedResolutionFilter());
     sceneNode["enableUIEvents"] = uiEventStateToString(scene->getEnableUIEvents());
+    // absent = the project's UI Scale (scenes from before the Canvas Scaler stay unchanged)
+    if (!scene->isCanvasScalerUseProjectDefault() || scene->getCanvasScaler() != CanvasScalerSettings()) {
+        YAML::Node scaler = encodeCanvasScaler(scene->getCanvasScaler());
+        scaler["useProjectDefault"] = scene->isCanvasScalerUseProjectDefault();
+        sceneNode["canvasScaler"] = scaler;
+    }
 
     if (!scene->getDefaultMeshShader().empty())
         encodeShaderRef(sceneNode, "defaultMeshShader", scene->getDefaultShaderRef(ShaderType::MESH));
@@ -3561,6 +4396,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         }
         if (pass.scale != 1.0f)
             passNode["scale"] = pass.scale;
+        if (!pass.shaderGlobalBindings.empty())
+            passNode["shaderGlobalBindings"] = encodeShaderGlobalBindings(pass.shaderGlobalBindings);
         sceneNode["postProcess"].push_back(passNode);
     }
 
@@ -3688,7 +4525,12 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setGravity2D(node["gravity2D"] ? decodeVector2(node["gravity2D"]) : Vector2(0.0f, -9.81f));
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
     scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
+    scene->setPhysics2DSubSteps(node["physics2DSubSteps"] ? YamlNumbers::as<int>(node["physics2DSubSteps"]) : SceneSettings().physics2DSubSteps);
 
+    // absent restores the defaults, so decoding into a reused scene (play restore) is exact
+    scene->setCanvasScaler(decodeCanvasScaler(node["canvasScaler"]));
+    scene->setCanvasScalerUseProjectDefault(node["canvasScaler"] && node["canvasScaler"]["useProjectDefault"]
+        ? YamlNumbers::as<bool>(node["canvasScaler"]["useProjectDefault"]) : true);
     if (node["fixedResolutionEnabled"]) {
         scene->setFixedResolutionEnabled(YamlNumbers::as<bool>(node["fixedResolutionEnabled"]));
     }
@@ -3723,6 +4565,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
             pass.uniforms = decodeShaderUniforms(passNode["uniforms"]);
             pass.textures = decodeShaderTextures(passNode["textures"]);
             pass.scale = decodeFinite(passNode["scale"], 1.0f);
+            pass.shaderGlobalBindings = decodeShaderGlobalBindings(passNode["shaderGlobalBindings"]);
             postProcess.push_back(pass);
         }
     }
@@ -4277,6 +5120,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
         if (textures.size() > 0) node["shaderTextures"] = textures;
     }
     if (!material.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(material.shaderFeatures);
+    if (!material.shaderGlobalBindings.empty()) node["shaderGlobalBindings"] = encodeShaderGlobalBindings(material.shaderGlobalBindings);
     if (material.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(material.blendMode);
     if (material.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(material.cullMode);
     if (material.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(material.depthWrite);
@@ -4420,6 +5264,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.shaderParams = decodeShaderUniforms(node["shaderParams"]);
     material.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     material.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
+    material.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     material.blendMode = node["blendMode"] ? decodeEnum(node, "blendMode", StreamSchema::materialBlendMode()) : MaterialBlendMode::AUTO;
     material.cullMode = node["cullMode"] ? decodeEnum(node, "cullMode", StreamSchema::materialCullMode()) : MaterialCullMode::AUTO;
     material.depthWrite = node["depthWrite"] ? decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite()) : MaterialDepthWrite::AUTO;
@@ -4588,4 +5433,396 @@ YAML::Node editor::Stream::encodeTransform(const Transform& transform) {
 
 Transform editor::Stream::decodeTransform(const YAML::Node& node, const Transform* oldTransform) {
     return reflect::decodeValue<Transform>(ComponentType::Transform, node, oldTransform);
+}
+
+// ---- upstream's codecs of its new components (safe-area, ui-scaling-text, video-mp4, camera
+// shake): the reflection tables' codecs of those components (editor/reflect)
+
+YAML::Node editor::Stream::encodeSafeAreaComponent(const SafeAreaComponent& safeArea) {
+    // an empty map when every field is the default: `safearea: {}`
+    YAML::Node node(YAML::NodeType::Map);
+    const SafeAreaComponent defaults;
+    if (safeArea.enabled != defaults.enabled) node["enabled"] = YamlNumbers::text(safeArea.enabled);
+    if (safeArea.left != defaults.left) node["left"] = YamlNumbers::text(safeArea.left);
+    if (safeArea.top != defaults.top) node["top"] = YamlNumbers::text(safeArea.top);
+    if (safeArea.right != defaults.right) node["right"] = YamlNumbers::text(safeArea.right);
+    if (safeArea.bottom != defaults.bottom) node["bottom"] = YamlNumbers::text(safeArea.bottom);
+    if (safeArea.includeExtraInsets != defaults.includeExtraInsets) node["includeExtraInsets"] = YamlNumbers::text(safeArea.includeExtraInsets);
+    if (node.size() == 0) node.SetStyle(YAML::EmitterStyle::Flow);
+    return node;
+}
+
+SafeAreaComponent editor::Stream::decodeSafeAreaComponent(const YAML::Node& node, const SafeAreaComponent* oldSafeArea) {
+    // from the defaults (a field left out is the default), the runtime state kept
+    SafeAreaComponent safeArea;
+    if (oldSafeArea) safeArea.appliedRevision = oldSafeArea->appliedRevision;
+    if (!node.IsMap()) return safeArea;
+    if (node["enabled"]) safeArea.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["left"]) safeArea.left = YamlNumbers::as<bool>(node["left"]);
+    if (node["top"]) safeArea.top = YamlNumbers::as<bool>(node["top"]);
+    if (node["right"]) safeArea.right = YamlNumbers::as<bool>(node["right"]);
+    if (node["bottom"]) safeArea.bottom = YamlNumbers::as<bool>(node["bottom"]);
+    if (node["includeExtraInsets"]) safeArea.includeExtraInsets = YamlNumbers::as<bool>(node["includeExtraInsets"]);
+    return safeArea;
+}
+
+YAML::Node editor::Stream::encodeTextEffectLayer(const TextEffectLayer& layer) {
+    const TextEffectLayer d;
+    YAML::Node node(YAML::NodeType::Map);
+    node["type"] = TextEffects::typeName(layer.type);
+    if (layer.enabled != d.enabled) node["enabled"] = layer.enabled;
+    // (the default amplitude is the type's: 1 for Grow and Unfold)
+    if (layer.amplitude != TextEffects::defaultAmplitude(layer.type)) node["amplitude"] = layer.amplitude;
+    if (layer.duration != d.duration) node["duration"] = layer.duration;
+    if (layer.spread != d.spread) node["spread"] = layer.spread;
+    if (layer.phaseStep != d.phaseStep) node["phaseStep"] = layer.phaseStep;
+    if (layer.frequency != d.frequency) node["frequency"] = layer.frequency;
+    if (layer.charactersPerSecond != d.charactersPerSecond) node["charactersPerSecond"] = layer.charactersPerSecond;
+    if (layer.fadeTime != d.fadeTime) node["fadeTime"] = layer.fadeTime;
+    if (!layer.gradient.empty()) {
+        YAML::Node stops(YAML::NodeType::Sequence);
+        for (const TextEffectGradientStop& stop : layer.gradient) {
+            YAML::Node entry;
+            entry["color"] = encodeVector4(stop.color);
+            entry["position"] = stop.position;
+            stops.push_back(entry);
+        }
+        node["gradient"] = stops;
+    }
+    if (layer.mix != d.mix) node["mix"] = TextEffects::mixName(layer.mix);
+    if (layer.saturation != d.saturation) node["saturation"] = layer.saturation;
+    if (layer.lightness != d.lightness) node["lightness"] = layer.lightness;
+    return node;
+}
+
+TextEffectLayer editor::Stream::decodeTextEffectLayer(const YAML::Node& node) {
+    TextEffectLayer layer;
+    if (!node || !node.IsMap()) return layer;
+    if (node["type"] && !TextEffects::parseType(node["type"].as<std::string>().c_str(), layer.type)) {
+        Log::warn("Unknown Text Effect type '%s'", node["type"].as<std::string>().c_str());
+    }
+    if (node["enabled"]) layer.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    layer.amplitude = TextEffects::defaultAmplitude(layer.type);
+    if (node["amplitude"]) layer.amplitude = decodeFinite(node["amplitude"], layer.amplitude);
+    if (node["duration"]) layer.duration = decodeFinite(node["duration"], layer.duration);
+    if (node["spread"]) layer.spread = decodeFinite(node["spread"], layer.spread);
+    if (node["phaseStep"]) layer.phaseStep = decodeFinite(node["phaseStep"], layer.phaseStep);
+    if (node["frequency"]) layer.frequency = decodeFinite(node["frequency"], layer.frequency);
+    if (node["charactersPerSecond"]) layer.charactersPerSecond = decodeFinite(node["charactersPerSecond"], layer.charactersPerSecond);
+    if (node["fadeTime"]) layer.fadeTime = decodeFinite(node["fadeTime"], layer.fadeTime);
+    if (node["gradient"] && node["gradient"].IsSequence()) {
+        for (const YAML::Node& entry : node["gradient"]) {
+            TextEffectGradientStop stop;
+            if (entry["color"]) stop.color = decodeVector4(entry["color"]);
+            if (entry["position"]) stop.position = decodeFinite(entry["position"], 0.0f);
+            layer.gradient.push_back(stop);
+        }
+    }
+    if (node["mix"] && !TextEffects::parseMix(node["mix"].as<std::string>().c_str(), layer.mix)) {
+        Log::warn("Unknown Text Effect mix '%s'", node["mix"].as<std::string>().c_str());
+    }
+    if (node["saturation"]) layer.saturation = decodeFinite(node["saturation"], layer.saturation);
+    if (node["lightness"]) layer.lightness = decodeFinite(node["lightness"], layer.lightness);
+    return layer;
+}
+
+YAML::Node editor::Stream::encodeTextEffectComponent(const TextEffectComponent& effect) {
+    const TextEffectComponent d;
+    YAML::Node node(YAML::NodeType::Map);
+    if (effect.enabled != d.enabled) node["enabled"] = effect.enabled;
+    // the layers in use, up to the last one that is not None
+    size_t used = 0;
+    for (size_t i = 0; i < effect.layers.size(); i++) {
+        if (effect.layers[i] != TextEffectLayer()) used = i + 1;
+    }
+    if (used > 0) {
+        YAML::Node layers(YAML::NodeType::Sequence);
+        for (size_t i = 0; i < used; i++) layers.push_back(encodeTextEffectLayer(effect.layers[i]));
+        node["layers"] = layers;
+    }
+    if (effect.autoPlay != d.autoPlay) node["autoPlay"] = effect.autoPlay;
+    if (effect.loop != d.loop) node["loop"] = effect.loop;
+    if (effect.useUnscaledTime != d.useUnscaledTime) node["useUnscaledTime"] = effect.useUnscaledTime;
+    if (effect.startIndex != d.startIndex) node["startIndex"] = effect.startIndex;
+    if (effect.length != d.length) node["length"] = effect.length;
+    if (!effect.forWords.empty()) node["forWords"] = effect.forWords;
+    return node;
+}
+
+TextEffectComponent editor::Stream::decodeTextEffectComponent(const YAML::Node& node, const TextEffectComponent* oldEffect) {
+    TextEffectComponent effect;
+    if (oldEffect) {
+        effect = *oldEffect;
+    }
+    if (!node || !node.IsMap()) return effect;
+    // absent = the default, also over an old effect (fields are written only when set)
+    const TextEffectComponent d;
+    effect.enabled = node["enabled"] ? YamlNumbers::as<bool>(node["enabled"]) : d.enabled;
+    effect.layers = d.layers;
+    if (node["layers"] && node["layers"].IsSequence()) {
+        for (size_t i = 0; i < node["layers"].size() && i < effect.layers.size(); i++) {
+            effect.layers[i] = decodeTextEffectLayer(node["layers"][i]);
+        }
+    }
+    for (size_t i = 0; i < effect.layers.size(); i++)
+        effect.editedTypes[i] = effect.layers[i].type;
+    effect.autoPlay = node["autoPlay"] ? YamlNumbers::as<bool>(node["autoPlay"]) : d.autoPlay;
+    effect.loop = node["loop"] ? YamlNumbers::as<bool>(node["loop"]) : d.loop;
+    effect.useUnscaledTime = node["useUnscaledTime"] ? YamlNumbers::as<bool>(node["useUnscaledTime"]) : d.useUnscaledTime;
+    effect.startIndex = node["startIndex"] ? std::max(YamlNumbers::as<int>(node["startIndex"]), 0) : d.startIndex;
+    effect.length = node["length"] ? std::max(YamlNumbers::as<int>(node["length"]), -1) : d.length;
+    effect.forWords = node["forWords"] ? node["forWords"].as<std::string>() : d.forWords;
+    effect.needApply = true;
+    return effect;
+}
+
+namespace {
+
+    const char* videoPlayerSourceName(VideoPlayerSource value){
+        return value == VideoPlayerSource::URL ? "url" : "clip";
+    }
+    VideoPlayerSource videoPlayerSourceOf(const std::string& text, VideoPlayerSource fallback){
+        if (text == "url") return VideoPlayerSource::URL;
+        if (text == "clip") return VideoPlayerSource::CLIP;
+        return fallback;
+    }
+    const char* videoTimeUpdateModeName(VideoTimeUpdateMode value){
+        return value == VideoTimeUpdateMode::UNSCALED_GAME_TIME ? "unscaled_game_time" : "game_time";
+    }
+    VideoTimeUpdateMode videoTimeUpdateModeOf(const std::string& text, VideoTimeUpdateMode fallback){
+        if (text == "unscaled_game_time") return VideoTimeUpdateMode::UNSCALED_GAME_TIME;
+        if (text == "game_time") return VideoTimeUpdateMode::GAME_TIME;
+        return fallback;
+    }
+    const char* videoRenderModeName(VideoRenderMode value){
+        switch (value){
+            case VideoRenderMode::CAMERA_FAR_PLANE: return "camera_far_plane";
+            case VideoRenderMode::CAMERA_NEAR_PLANE: return "camera_near_plane";
+            case VideoRenderMode::RENDER_TEXTURE: return "render_texture";
+            case VideoRenderMode::MATERIAL_OVERRIDE: return "material_override";
+            case VideoRenderMode::API_ONLY: return "api_only";
+        }
+        return "render_texture";
+    }
+    VideoRenderMode videoRenderModeOf(const std::string& text, VideoRenderMode fallback){
+        for (VideoRenderMode mode : {VideoRenderMode::CAMERA_FAR_PLANE, VideoRenderMode::CAMERA_NEAR_PLANE, VideoRenderMode::RENDER_TEXTURE,
+                                     VideoRenderMode::MATERIAL_OVERRIDE, VideoRenderMode::API_ONLY}){
+            if (text == videoRenderModeName(mode)) return mode;
+        }
+        return fallback;
+    }
+    const char* videoAspectRatioName(VideoAspectRatio value){
+        switch (value){
+            case VideoAspectRatio::NO_SCALING: return "no_scaling";
+            case VideoAspectRatio::FIT_VERTICALLY: return "fit_vertically";
+            case VideoAspectRatio::FIT_HORIZONTALLY: return "fit_horizontally";
+            case VideoAspectRatio::FIT_INSIDE: return "fit_inside";
+            case VideoAspectRatio::FIT_OUTSIDE: return "fit_outside";
+            case VideoAspectRatio::STRETCH: return "stretch";
+        }
+        return "fit_inside";
+    }
+    VideoAspectRatio videoAspectRatioOf(const std::string& text, VideoAspectRatio fallback){
+        for (VideoAspectRatio fit : {VideoAspectRatio::NO_SCALING, VideoAspectRatio::FIT_VERTICALLY, VideoAspectRatio::FIT_HORIZONTALLY,
+                                     VideoAspectRatio::FIT_INSIDE, VideoAspectRatio::FIT_OUTSIDE, VideoAspectRatio::STRETCH}){
+            if (text == videoAspectRatioName(fit)) return fit;
+        }
+        return fallback;
+    }
+    const char* videoAudioOutputModeName(VideoAudioOutputMode value){
+        switch (value){
+            case VideoAudioOutputMode::NONE: return "none";
+            case VideoAudioOutputMode::AUDIO_SOURCE: return "audio_source";
+            case VideoAudioOutputMode::DIRECT: return "direct";
+        }
+        return "direct";
+    }
+    VideoAudioOutputMode videoAudioOutputModeOf(const std::string& text, VideoAudioOutputMode fallback){
+        if (text == "none") return VideoAudioOutputMode::NONE;
+        if (text == "audio_source") return VideoAudioOutputMode::AUDIO_SOURCE;
+        if (text == "direct") return VideoAudioOutputMode::DIRECT;
+        return fallback;
+    }
+
+}
+
+YAML::Node editor::Stream::encodeVideoPlayerComponent(const VideoPlayerComponent& player) {
+    YAML::Node node;
+    node["enabled"] = player.enabled;
+
+    // only what differs from the defaults (Unity's); decode restores the defaults
+    const VideoPlayerComponent defaults;
+    if (player.source != defaults.source) node["source"] = videoPlayerSourceName(player.source);
+    if (player.clip != defaults.clip) node["clip"] = player.clip;
+    if (player.url != defaults.url) node["url"] = player.url;
+    if (player.playOnAwake != defaults.playOnAwake) node["playOnAwake"] = player.playOnAwake;
+    if (player.waitForFirstFrame != defaults.waitForFirstFrame) node["waitForFirstFrame"] = player.waitForFirstFrame;
+    if (player.isLooping != defaults.isLooping) node["isLooping"] = player.isLooping;
+    if (player.skipOnDrop != defaults.skipOnDrop) node["skipOnDrop"] = player.skipOnDrop;
+    if (player.playbackSpeed != defaults.playbackSpeed) encodeFinite(node, "playbackSpeed", player.playbackSpeed);
+    if (player.timeUpdateMode != defaults.timeUpdateMode) node["timeUpdateMode"] = videoTimeUpdateModeName(player.timeUpdateMode);
+    if (player.renderMode != defaults.renderMode) node["renderMode"] = videoRenderModeName(player.renderMode);
+    if (player.targetCamera != defaults.targetCamera) node["targetCamera"] = player.targetCamera;
+    if (player.targetCameraAlpha != defaults.targetCameraAlpha) encodeFinite(node, "targetCameraAlpha", player.targetCameraAlpha);
+    if (player.aspectRatio != defaults.aspectRatio) node["aspectRatio"] = videoAspectRatioName(player.aspectRatio);
+    if (player.targetMaterialRenderer != defaults.targetMaterialRenderer) node["targetMaterialRenderer"] = player.targetMaterialRenderer;
+    if (player.targetMaterialProperty != defaults.targetMaterialProperty) node["targetMaterialProperty"] = player.targetMaterialProperty;
+    if (player.targetSubmesh != defaults.targetSubmesh) node["targetSubmesh"] = player.targetSubmesh;
+    if (player.renderTextureWidth != defaults.renderTextureWidth) node["renderTextureWidth"] = player.renderTextureWidth;
+    if (player.renderTextureHeight != defaults.renderTextureHeight) node["renderTextureHeight"] = player.renderTextureHeight;
+    if (player.audioOutputMode != defaults.audioOutputMode) node["audioOutputMode"] = videoAudioOutputModeName(player.audioOutputMode);
+    if (player.directVolume != defaults.directVolume) encodeFinite(node, "directVolume", player.directVolume);
+    if (player.directMute != defaults.directMute) node["directMute"] = player.directMute;
+    if (player.targetAudioSource != defaults.targetAudioSource) node["targetAudioSource"] = player.targetAudioSource;
+    return node;
+}
+
+VideoPlayerComponent editor::Stream::decodeVideoPlayerComponent(const YAML::Node& node, const VideoPlayerComponent* oldPlayer) {
+    // the old one's runtime state (its render texture, which textures linked to "video|<entity>"
+    // show, and its listeners) stays
+    VideoPlayerComponent player;
+    if (oldPlayer) {
+        player = *oldPlayer;
+    }
+
+    if (node["enabled"]) player.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    // keys are omitted at their defaults: a missing key is the default, not the old value
+    const VideoPlayerComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    player.source = given("source") ? videoPlayerSourceOf(node["source"].as<std::string>(), defaults.source) : defaults.source;
+    player.clip = given("clip") ? node["clip"].as<std::string>() : defaults.clip;
+    player.url = given("url") ? node["url"].as<std::string>() : defaults.url;
+    player.playOnAwake = given("playOnAwake") ? YamlNumbers::as<bool>(node["playOnAwake"]) : defaults.playOnAwake;
+    player.waitForFirstFrame = given("waitForFirstFrame") ? YamlNumbers::as<bool>(node["waitForFirstFrame"]) : defaults.waitForFirstFrame;
+    player.isLooping = given("isLooping") ? YamlNumbers::as<bool>(node["isLooping"]) : defaults.isLooping;
+    player.skipOnDrop = given("skipOnDrop") ? YamlNumbers::as<bool>(node["skipOnDrop"]) : defaults.skipOnDrop;
+    player.playbackSpeed = given("playbackSpeed") ? std::clamp(decodeFinite(node["playbackSpeed"], defaults.playbackSpeed), 0.0625f, 16.0f) : defaults.playbackSpeed;
+    player.timeUpdateMode = given("timeUpdateMode") ? videoTimeUpdateModeOf(node["timeUpdateMode"].as<std::string>(), defaults.timeUpdateMode) : defaults.timeUpdateMode;
+    player.renderMode = given("renderMode") ? videoRenderModeOf(node["renderMode"].as<std::string>(), defaults.renderMode) : defaults.renderMode;
+    player.targetCamera = given("targetCamera") ? YamlNumbers::as<Entity>(node["targetCamera"]) : defaults.targetCamera;
+    player.targetCameraAlpha = given("targetCameraAlpha") ? std::clamp(decodeFinite(node["targetCameraAlpha"], defaults.targetCameraAlpha), 0.0f, 1.0f) : defaults.targetCameraAlpha;
+    player.aspectRatio = given("aspectRatio") ? videoAspectRatioOf(node["aspectRatio"].as<std::string>(), defaults.aspectRatio) : defaults.aspectRatio;
+    player.targetMaterialRenderer = given("targetMaterialRenderer") ? YamlNumbers::as<Entity>(node["targetMaterialRenderer"]) : defaults.targetMaterialRenderer;
+    player.targetMaterialProperty = given("targetMaterialProperty") ? node["targetMaterialProperty"].as<std::string>() : defaults.targetMaterialProperty;
+    player.targetSubmesh = given("targetSubmesh") ? YamlNumbers::as<int>(node["targetSubmesh"]) : defaults.targetSubmesh;
+    player.renderTextureWidth = given("renderTextureWidth") ? YamlNumbers::as<unsigned int>(node["renderTextureWidth"]) : defaults.renderTextureWidth;
+    player.renderTextureHeight = given("renderTextureHeight") ? YamlNumbers::as<unsigned int>(node["renderTextureHeight"]) : defaults.renderTextureHeight;
+    player.audioOutputMode = given("audioOutputMode") ? videoAudioOutputModeOf(node["audioOutputMode"].as<std::string>(), defaults.audioOutputMode) : defaults.audioOutputMode;
+    player.directVolume = given("directVolume") ? std::clamp(decodeFinite(node["directVolume"], defaults.directVolume), 0.0f, 1.0f) : defaults.directVolume;
+    player.directMute = given("directMute") ? YamlNumbers::as<bool>(node["directMute"]) : defaults.directMute;
+    player.targetAudioSource = given("targetAudioSource") ? YamlNumbers::as<Entity>(node["targetAudioSource"]) : defaults.targetAudioSource;
+    return player;
+}
+
+YAML::Node editor::Stream::encodeCameraShakerComponent(const CameraShakerComponent& shaker) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(shaker.enabled);
+    node["global"] = YamlNumbers::text(shaker.global);
+    node["unscaledTime"] = YamlNumbers::text(shaker.unscaledTime);
+    node["mode"] = CameraShaker::modeToString(shaker.mode);
+    encodeFinite(node, "positionScale", shaker.positionScale);
+    encodeFinite(node, "rotationScale", shaker.rotationScale);
+    node["startPreset"] = shaker.startPreset;
+    encodeFinite(node, "traumaDecay", shaker.traumaDecay);
+    encodeFinite(node, "traumaPower", shaker.traumaPower);
+    node["traumaMaxOffset"] = encodeVector3(shaker.traumaMaxOffset);
+    node["traumaMaxAngle"] = encodeVector3(shaker.traumaMaxAngle);
+    encodeFinite(node, "traumaFrequency", shaker.traumaFrequency);
+    return node;
+}
+
+CameraShakerComponent editor::Stream::decodeCameraShakerComponent(const YAML::Node& node, const CameraShakerComponent* oldShaker) {
+    // a missing key is the default; an old component's shakes play on
+    CameraShakerComponent shaker;
+    if (oldShaker) {
+        shaker.runtime = oldShaker->runtime;
+    }
+    if (node["enabled"]) shaker.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["global"]) shaker.global = YamlNumbers::as<bool>(node["global"]);
+    if (node["unscaledTime"]) shaker.unscaledTime = YamlNumbers::as<bool>(node["unscaledTime"]);
+    if (node["mode"]) {
+        CameraShakeMode mode;
+        if (CameraShaker::modeFromString(node["mode"].as<std::string>(), mode)) shaker.mode = mode;
+    }
+    if (node["positionScale"]) shaker.positionScale = std::max(0.0f, decodeFinite(node["positionScale"], shaker.positionScale));
+    if (node["rotationScale"]) shaker.rotationScale = std::max(0.0f, decodeFinite(node["rotationScale"], shaker.rotationScale));
+    if (node["startPreset"]) shaker.startPreset = node["startPreset"].as<std::string>();
+    if (node["traumaDecay"]) shaker.traumaDecay = std::max(0.0f, decodeFinite(node["traumaDecay"], shaker.traumaDecay));
+    if (node["traumaPower"]) shaker.traumaPower = std::max(1.0f, std::min(4.0f, decodeFinite(node["traumaPower"], shaker.traumaPower)));
+    if (node["traumaMaxOffset"]) shaker.traumaMaxOffset = decodeVector3(node["traumaMaxOffset"]);
+    if (node["traumaMaxAngle"]) shaker.traumaMaxAngle = decodeVector3(node["traumaMaxAngle"]);
+    if (node["traumaFrequency"]) shaker.traumaFrequency = std::max(0.0f, decodeFinite(node["traumaFrequency"], shaker.traumaFrequency));
+    return shaker;
+}
+
+YAML::Node editor::Stream::encodeCameraFollowComponent(const CameraFollowComponent& follow) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(follow.enabled);
+    node["target"] = follow.target;
+    node["offset"] = encodeVector3(follow.offset);
+    node["offsetSpace"] = CameraFollow::offsetSpaceToString(follow.offsetSpace);
+    node["damping"] = encodeVector3(follow.damping);
+    encodeFinite(node, "maxSpeed", follow.maxSpeed);
+    node["lookAt"] = YamlNumbers::text(follow.lookAt);
+    node["lookAtOffset"] = encodeVector3(follow.lookAtOffset);
+    encodeFinite(node, "rotationDamping", follow.rotationDamping);
+    node["deadZone"] = encodeVector2(follow.deadZone);
+    node["useBounds"] = YamlNumbers::text(follow.useBounds);
+    node["boundsMin"] = encodeVector3(follow.boundsMin);
+    node["boundsMax"] = encodeVector3(follow.boundsMax);
+    node["unscaledTime"] = YamlNumbers::text(follow.unscaledTime);
+    return node;
+}
+
+CameraFollowComponent editor::Stream::decodeCameraFollowComponent(const YAML::Node& node, const CameraFollowComponent* oldFollow) {
+    // a missing key is the default; an old component's motion (velocity, placement) goes on
+    CameraFollowComponent follow;
+    if (oldFollow) {
+        follow = *oldFollow;
+        const CameraFollowComponent defaults;
+        follow.enabled = defaults.enabled;
+        follow.target = defaults.target;
+        follow.offset = defaults.offset;
+        follow.offsetSpace = defaults.offsetSpace;
+        follow.damping = defaults.damping;
+        follow.maxSpeed = defaults.maxSpeed;
+        follow.lookAt = defaults.lookAt;
+        follow.lookAtOffset = defaults.lookAtOffset;
+        follow.rotationDamping = defaults.rotationDamping;
+        follow.deadZone = defaults.deadZone;
+        follow.useBounds = defaults.useBounds;
+        follow.boundsMin = defaults.boundsMin;
+        follow.boundsMax = defaults.boundsMax;
+        follow.unscaledTime = defaults.unscaledTime;
+        // a scene file names a GameObject of its own scene
+        follow.targetPersistent = false;
+    }
+    if (node["enabled"]) follow.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["target"]) follow.target = YamlNumbers::as<Entity>(node["target"]);
+    if (node["offset"]) follow.offset = decodeVector3(node["offset"]);
+    if (node["offsetSpace"]) {
+        FollowOffsetSpace space;
+        if (CameraFollow::offsetSpaceFromString(node["offsetSpace"].as<std::string>(), space)) follow.offsetSpace = space;
+    }
+    if (node["damping"]) {
+        const Vector3 damping = decodeVector3(node["damping"]);
+        follow.damping = Vector3(std::max(0.0f, damping.x), std::max(0.0f, damping.y), std::max(0.0f, damping.z));
+    }
+    if (node["maxSpeed"]) follow.maxSpeed = std::max(0.0f, decodeFinite(node["maxSpeed"], follow.maxSpeed));
+    if (node["lookAt"]) follow.lookAt = YamlNumbers::as<bool>(node["lookAt"]);
+    if (node["lookAtOffset"]) follow.lookAtOffset = decodeVector3(node["lookAtOffset"]);
+    if (node["rotationDamping"]) follow.rotationDamping = std::max(0.0f, decodeFinite(node["rotationDamping"], follow.rotationDamping));
+    if (node["deadZone"]) {
+        const Vector2 zone = decodeVector2(node["deadZone"]);
+        follow.deadZone = Vector2(std::max(0.0f, zone.x), std::max(0.0f, zone.y));
+    }
+    if (node["useBounds"]) follow.useBounds = YamlNumbers::as<bool>(node["useBounds"]);
+    if (node["boundsMin"]) follow.boundsMin = decodeVector3(node["boundsMin"]);
+    if (node["boundsMax"]) follow.boundsMax = decodeVector3(node["boundsMax"]);
+    if (node["unscaledTime"]) follow.unscaledTime = YamlNumbers::as<bool>(node["unscaledTime"]);
+    return follow;
 }

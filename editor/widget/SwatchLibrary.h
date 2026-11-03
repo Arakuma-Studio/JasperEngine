@@ -56,7 +56,8 @@ namespace jasperengine::editor {
         std::filesystem::path userDirectory(const std::filesystem::path& settingsDirectory);
         std::filesystem::path projectDirectory(const std::filesystem::path& projectPath);
 
-        // the library "Default": black, white, grey and a 16-hue spectrum
+        // the library "Default": black, white, grey and a 16-hue spectrum; the gradients White,
+        // Fade Out, Fade In, Black to White, White to Black and Rainbow
         SwatchLibrary defaultLibrary();
 
         std::string toJson(const SwatchLibrary& library);

@@ -9,6 +9,7 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
 #include "animation/CompiledController.h"
+#include "component/AnimationPlayerComponent.h"
 #include "component/CameraComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/MeshComponent.h"
@@ -217,7 +218,8 @@ void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim
                             inRig = false;
                             break;
                         }
-                        if (track.channel == ClipChannel::Morph || track.channel == ClipChannel::Lattice) inRig = false;
+                        if (track.channel == ClipChannel::Morph || track.channel == ClipChannel::Lattice ||
+                            track.channel == ClipChannel::Property) inRig = false;
                     }
                 }
                 if (inRig) instance.bindClip(i, component);
@@ -458,6 +460,26 @@ void AnimatorSystem::writePose(const AnimatorComponent& component, anim::Animato
             }
         }
     }
+    // properties (anim-properties): the blended key-space values, a discrete one rounded (the
+    // heavier side of a two-way blend), written when they changed; deferred rows (GameObject
+    // active, a script's enabled: user callbacks) after every other write
+    for (int pass = 0; pass < 2; pass++){
+        for (const anim::RigProperty& property : rig.properties){
+            if (property.binding.deferred != (pass == 1)) continue;
+            const size_t width = property.binding.width;
+            if (width == 0 || width > 16 || !scene->isEntityCreated(property.entity)) continue;
+            if (anim::scriptBindingStale(scene, property.entity, property.binding)) continue;
+            float values[16];
+            float current[16];
+            for (size_t k = 0; k < width; k++){
+                const float value = channels[(size_t)property.firstChannel + k];
+                values[k] = property.binding.discrete ? std::floor(value + 0.5f) : value;
+            }
+            if (anim::readPropertyKeySpace(scene, property.entity, property.binding, current) &&
+                std::equal(values, values + width, current)) continue;
+            anim::writePropertyKeySpace(scene, property.entity, property.binding, values);
+        }
+    }
     // skin matrices: inv(mesh in rig space) * joint in rig space * inverse bind (D7)
     const std::vector<anim::Affine>& world = instance.rigWorld();
     for (const anim::RigSkin& skin : rig.skins){
@@ -580,8 +602,16 @@ void AnimatorSystem::finalize(Job& job, float dt){
             event.time = def.time;
             source = &slot.path;
         }
-        const bool subscribed = component->onEvent.hasSubscribers();
+        AnimationPlayerComponent* player = scene->findComponent<AnimationPlayerComponent>(entity);
+        // upstream's controller players (a disabled Animation Player beside the Animator) get
+        // the controller's events too (object/AnimationPlayer.h)
+        const bool forwarded = player && !player->enabled && player->onEvent.hasSubscribers();
+        const bool subscribed = component->onEvent.hasSubscribers() || forwarded;
         component->onEvent.call(event);
+        if (forwarded){
+            player = scene->isEntityCreated(entity) ? scene->findComponent<AnimationPlayerComponent>(entity) : nullptr;
+            if (player) player->onEvent.call(event);
+        }
         component = scene->isEntityCreated(entity) ? scene->findComponent<AnimatorComponent>(entity) : nullptr;
         if (!component) return;
         const bool scripted = component->sendEventsToScripts && LuaBinding::callLuaScriptMethod(scene, entity, event.functionName, event.args);
@@ -595,6 +625,22 @@ void AnimatorSystem::finalize(Job& job, float dt){
         if (!subscribed && !scripted && instance->warnOnce(key)){
             Log::warn("Animator '%s': event '%s' of '%s' has no handler (no onEvent subscriber, no script method)",
                       scene->getEntityName(entity).c_str(), event.functionName.c_str(), source->c_str());
+        }
+    }
+    // upstream's controller callbacks on the GameObject's Animation Player (layer index, state
+    // name), after the update's events; a player that hands over to the Animator (disabled)
+    // also calls its scripts' onStateEnter / onStateExit methods, as upstream's player did
+    for (const anim::AnimatorStateNote& note : stateNotes){
+        AnimationPlayerComponent* player = scene->isEntityCreated(entity) ? scene->findComponent<AnimationPlayerComponent>(entity) : nullptr;
+        if (!player || !instance->controller || note.state < 0 || (size_t)note.state >= instance->controller->states.size()) break;
+        const bool scripts = !player->enabled;
+        if (!scripts && !player->onStateEnter.hasSubscribers() && !player->onStateExit.hasSubscribers()) break;
+        const std::string name = instance->controller->states[(size_t)note.state].name;
+        if (note.enter) player->onStateEnter.call(note.layer, name);
+        else player->onStateExit.call(note.layer, name);
+        if (scripts && scene->isEntityCreated(entity)){
+            LuaBinding::callLuaScriptMethod(scene, entity, note.enter ? "onStateEnter" : "onStateExit",
+                                            {AnimationEvent::numberArg(note.layer), AnimationEvent::stringArg(name)}, true);
         }
     }
     // ended montages go once their notes are out
@@ -743,6 +789,18 @@ void AnimatorSystem::restorePreview(Entity entity){
             if (LatticeComponent* lattice = scene->findComponent<LatticeComponent>(entry.first)){
                 lattice->offsets = rest.lattice;
                 lattice->revision++;
+            }
+        }
+    }
+    // properties after the transforms, deferred rows (GameObject active, enabled) last
+    for (int pass = 0; pass < 2; pass++){
+        for (const auto& entry : instance.rest){
+            if (!scene->isEntityCreated(entry.first)) continue;
+            for (const auto& property : entry.second.properties){
+                const anim::RigPropertyRest& rest = property.second;
+                if (rest.binding.deferred != (pass == 1) || rest.values.size() != rest.binding.width) continue;
+                if (anim::scriptBindingStale(scene, entry.first, rest.binding)) continue;
+                anim::writePropertyKeySpace(scene, entry.first, rest.binding, rest.values.data());
             }
         }
     }

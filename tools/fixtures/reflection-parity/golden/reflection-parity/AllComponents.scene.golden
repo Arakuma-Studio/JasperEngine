@@ -1,4 +1,4 @@
-formatVersion: 5
+formatVersion: 7
 guid: 32bfd2ae1a9d56a8dc83ae0fc8537f39
 id: 2026080800
 name: AllComponents
@@ -54,6 +54,8 @@ shaderKeys:
     properties: 13
   - type: lines
     properties: 2
+  - type: lines
+    properties: 42
   - type: sky
   - type: ui
     properties: 2
@@ -610,6 +612,19 @@ entities:
         enabled: false
         type: dynamic
         numColliders: 0
+        gravityScale: 1
+        linearDamping: 0
+        angularDamping: 0
+        fixedRotation: false
+        collisionDetection: discrete
+        sleepingMode: start_awake
+        useAutoMass: true
+        mass: 1
+        autoCenterOfMass: true
+        centerOfMass: [0, 0]
+        autoInertia: true
+        inertia: 0
+        material: ""
         colliders: ~
   - type: Entity
     entity: 1018
@@ -635,6 +650,21 @@ entities:
         buoyancy: 4.4
         waterDrag: 8.3
         waterAngularDrag: 3.1
+        material: ""
+        linearDamping: 0.05
+        angularDamping: 0.05
+        maxLinearVelocity: 500
+        maxAngularVelocity: 47.12389
+        automaticMass: true
+        mass: 1
+        automaticCenterOfMass: true
+        centerOfMass: [0, 0, 0]
+        automaticInertiaTensor: true
+        inertiaTensor: [1, 1, 1]
+        inertiaTensorRotation: [1, 0, 0, 0]
+        allowSleeping: true
+        collideKinematicVsNonDynamic: false
+        interpolation: scene
         allowedDOFs:
           translationX: true
           translationY: true
@@ -643,7 +673,8 @@ entities:
           rotationY: true
           rotationZ: true
         numColliders: 0
-        colliders: ~
+        colliders:
+          []
   - type: Entity
     entity: 1019
     name: BoneComponent
@@ -887,12 +918,41 @@ entities:
         type: motor
         bodyA: 0
         bodyB: 0
+        anchorSpace: world
         anchorA: [3.7, 6.1]
         anchorB: [5.4, 6.4]
         axis: [7.5, 6.5]
         target: [2.2, 8.3]
         autoAnchors: false
         rope: true
+        enableCollision: false
+        breakAction: destroy
+        useLimits: false
+        lowerAngle: 0
+        upperAngle: 0
+        lowerTranslation: 0
+        upperTranslation: 0
+        useMotor: false
+        motorSpeed: 0
+        maxMotorTorque: 0
+        maxMotorForce: 0
+        enableSpring: false
+        frequency: 0
+        dampingRatio: 0
+        length: 0
+        autoLength: true
+        minLength: 0
+        maxLength: 0
+        linearFrequency: 0
+        angularFrequency: 0
+        linearDampingRatio: 0
+        angularDampingRatio: 0
+        linearOffset: [0, 0]
+        angularOffset: 0
+        autoOffset: false
+        maxForce: 1
+        maxTorque: 1
+        correctionFactor: 0.3
   - type: Entity
     entity: 1028
     name: Joint3DComponent
@@ -941,6 +1001,46 @@ entities:
         pathPosition: [1.9, 4.4, 8.4]
         isLooping: true
         autoAnchors: false
+        anchorSpace: world
+        enableCollision: true
+        breakAction: destroy
+        useLimits: false
+        limitsSpringFrequency: 0
+        limitsSpringDamping: 0
+        useMotor: false
+        motorTargetVelocity: 0
+        motorMaxForce: 1000
+        useSpring: false
+        springStiffness: 0
+        springDamper: 0
+        springTargetPosition: 0
+        maxFriction: 0
+        minDistance: -1
+        maxDistance: -1
+        coneHalfAngle: 45
+        swingType: cone
+        motorTargetRotation: [1, 0, 0, 0]
+        motorSpringFrequency: 20
+        motorSpringDamping: 1
+        xMotion: free
+        yMotion: free
+        zMotion: free
+        angularXMotion: free
+        angularYMotion: free
+        angularZMotion: free
+        linearLimitMin: [0, 0, 0]
+        linearLimitMax: [0, 0, 0]
+        angularLimitMin: [0, 0, 0]
+        angularLimitMax: [0, 0, 0]
+        useDrive: false
+        driveStiffness: 0
+        driveDamping: 0
+        angularDriveStiffness: 0
+        angularDriveDamping: 0
+        targetPosition: [0, 0, 0]
+        targetRotation: [1, 0, 0, 0]
+        targetVelocity: [0, 0, 0]
+        targetAngularVelocity: [0, 0, 0]
   - type: Entity
     entity: 1029
     name: KeyframeTracksComponent
@@ -2228,3 +2328,268 @@ entities:
         defaultFadeTime: 1.5
         instanceEvents: true
         attachments: []
+  - type: Entity
+    entity: 1080
+    name: TrailRendererComponent
+    components:
+      transform:
+        position: [79, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      trailrenderer:
+        enabled: false
+        time: 6.8
+        minVertexDistance: 7.9
+        widthMultiplier: 7.8
+        emitting: false
+        autodestruct: true
+        widthUnit: pixels
+        numCornerVertices: 5
+        numCapVertices: 2
+        alignment: transform_z
+        textureMode: repeat_per_segment
+        textureScale: [6.8, 3]
+        blendMode: MULTIPLY
+        depthWrite: DISABLED
+  - type: Entity
+    entity: 1081
+    name: CanvasGroupComponent
+    components:
+      transform:
+        position: [80, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      canvasgroup:
+        enabled: false
+        alpha: 0.5
+        interactable: false
+        blocksRaycasts: false
+        ignoreParentGroups: true
+        renderMode: FLATTEN
+  - type: Entity
+    entity: 1082
+    name: OnScreenStickComponent
+    components:
+      transform:
+        position: [81, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      onscreenstick:
+        enabled: false
+        mode: dynamic
+        background: 0
+        handle: 0
+        handleRange: 2.2
+        deadZone: 1
+        moveThreshold: 8.4
+        axes: vertical
+        snapX: true
+        snapY: true
+        hideWhenReleased: false
+        clampToArea: false
+        horizontalAction: Reflection parity
+        verticalAction: "text: [1, 2]"
+        visibility: touch_devices_only
+  - type: Entity
+    entity: 1083
+    name: OnScreenButtonComponent
+    components:
+      transform:
+        position: [82, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      onscreenbutton:
+        enabled: false
+        action: Reflection parity
+        value: 1
+        pressWhenPointerEnters: true
+        releaseWhenPointerLeaves: true
+        visibility: touch_devices_only
+  - type: Entity
+    entity: 1084
+    name: TouchAreaComponent
+    components:
+      transform:
+        position: [83, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      toucharea:
+        enabled: false
+        horizontalAction: "text: [1, 2]"
+        verticalAction: "text: [1, 2]"
+        sensitivity: 8.9
+        invertX: true
+        invertY: true
+        visibility: touch_devices_only
+  - type: Entity
+    entity: 1085
+    name: RagdollComponent
+    components:
+      transform:
+        position: [84, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ragdoll:
+        enabled: false
+        simulated: true
+        root: 0
+        animator: 0
+        inheritVelocity: false
+        selfCollision: false
+        totalMass: 8.1
+  - type: Entity
+    entity: 1086
+    name: CameraShakerComponent
+    components:
+      transform:
+        position: [85, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camerashaker:
+        enabled: false
+        global: false
+        unscaledTime: true
+        mode: 2d
+        positionScale: 6.7
+        rotationScale: 3.6
+        startPreset: "text: [1, 2]"
+        traumaDecay: 2.5
+        traumaPower: 4
+        traumaMaxOffset: [7.9, 6.1, 5.4]
+        traumaMaxAngle: [4.9, 4.9, 7]
+        traumaFrequency: 1.6
+  - type: Entity
+    entity: 1087
+    name: CameraFollowComponent
+    components:
+      transform:
+        position: [86, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camerafollow:
+        enabled: false
+        target: 0
+        offset: [2.6, 3.7, 6.4]
+        offsetSpace: target_yaw
+        damping: [0.3, 5.8, 3.3]
+        maxSpeed: 7.5
+        lookAt: false
+        lookAtOffset: [2.8, 5.7, 0.7]
+        rotationDamping: 5.8
+        deadZone: [0.7, 4.1]
+        useBounds: true
+        boundsMin: [9, 5, 6.9]
+        boundsMax: [9, 6.1, 2.4]
+        unscaledTime: true
+  - type: Entity
+    entity: 1088
+    name: TextEffectComponent
+    components:
+      transform:
+        position: [87, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      texteffect:
+        enabled: false
+        autoPlay: false
+        loop: false
+        useUnscaledTime: false
+        startIndex: 4
+        forWords: "text: [1, 2]"
+  - type: Entity
+    entity: 1089
+    name: VideoPlayerComponent
+    components:
+      transform:
+        position: [88, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      videoplayer:
+        enabled: false
+        source: url
+        clip: "text: [1, 2]"
+        url: Reflection parity
+        playOnAwake: false
+        waitForFirstFrame: false
+        isLooping: true
+        skipOnDrop: false
+        playbackSpeed: 8.3
+        timeUpdateMode: unscaled_game_time
+        renderMode: api_only
+        targetCameraAlpha: 0.5
+        aspectRatio: stretch
+        targetMaterialProperty: Reflection parity
+        targetSubmesh: 3
+        renderTextureWidth: 6
+        renderTextureHeight: 7
+        directMute: true
+  - type: Entity
+    entity: 1090
+    name: SafeAreaComponent
+    components:
+      transform:
+        position: [89, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      safearea:
+        enabled: false
+        left: false
+        top: false
+        right: false
+        bottom: false
+        includeExtraInsets: false

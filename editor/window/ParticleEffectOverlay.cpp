@@ -175,7 +175,9 @@ void ParticleEffectOverlay::draw(Project* project, SceneProject* sceneProject, c
         if (const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(scene->getComponent<ParticleSystemComponent>(now[i]))) {
             // looping effects scrub over a minute, one-shots over four durations
             const double span = document->looping ? 60.0 : std::max(1.0, (double)document->duration * 4.0);
-            range = std::max(range, span + document->startDelay);
+            float delayLo = 0.0f, delayHi = 0.0f;
+            document->startDelay.range(delayLo, delayHi);
+            range = std::max(range, span + (double)std::max(delayHi, 0.0f));
         }
     }
 
