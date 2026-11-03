@@ -363,6 +363,16 @@ void EffectRenderer::clearImage(EffectStateImage& image){
         image.cleared = true;
 }
 
+void EffectRenderer::restartReplay(EffectSimulation& simulation){
+    for (auto& images : simulation.states){
+        for (auto& image : images.image)
+            if (image)
+                clearImage(*image);
+        images.current = 0;
+    }
+    simulation.replayUnit = 0;
+}
+
 bool EffectRenderer::allocateStates(EffectInstance& instance, EffectSimulation& simulation, bool resample){
     const EffectManifest& m = *instance.manifest;
     EffectStatePool& pool = EffectStatePool::get();
@@ -428,8 +438,10 @@ bool EffectRenderer::runPass(EffectInstance& instance, EffectSimulation& simulat
     const EffectManifest& m = *instance.manifest;
     const bool scatter = pass.scatterState >= 0;
     Program* program = formProgram(instance, scatter ? 4u : 2u);
-    if (!program)
+    if (!program){
+        simulation.passWaiting = true;
         return false;
+    }
     EffectSimulation::Images& target = simulation.states[(size_t)pass.state];
     const EffectStateDef& def = m.states[(size_t)pass.state];
     const int writeIndex = def.single ? 0 : 1 - target.current;
@@ -466,8 +478,12 @@ bool EffectRenderer::runPass(EffectInstance& instance, EffectSimulation& simulat
     state.target.sampleCount = 1;
     state.blend = pass.additive ? BlendMode::ADDITIVE_PREMULTIPLIED : BlendMode::NONE;
     const uint64_t misses = SystemRender::getPipelineCacheMisses();
-    if (!program->object.beginDraw(state))
+    if (!program->object.beginDraw(state)){
+        // each target format and blend is a pipeline of its own, made off the render thread on a
+        // GPU (llvmpipe's are ready at once): a step without this pass would lose what it writes
+        simulation.passWaiting = program->object.isDrawWaiting();
         return false;
+    }
     EffectRuntime& runtime = EffectRuntime::get();
     const uint64_t createdPipelines = SystemRender::getPipelineCacheMisses() - misses;
     runtime.mutableStats().pipelinesCreated += createdPipelines;
@@ -895,6 +911,7 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
             // the units of the replay, until the frame's uniform budget is spent (one at least)
             while (simulation.replayUnit <= warm + count){
                 const int64_t unit = simulation.replayUnit;
+                simulation.passWaiting = false;
                 if (unit == 0){
                     runInit(instance, simulation, drawProgram, filter, start);
                     simulation.replayPreviousKnown = pointerAt(start, simulation.replayPrevious);
@@ -931,6 +948,10 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
                     simulation.steps = k + 1;
                     simulation.replayPrevious = input.pointer;
                     simulation.replayPreviousKnown = input.known;
+                }
+                if (simulation.passWaiting){
+                    restartReplay(simulation);
+                    break;
                 }
                 simulation.replayUnit++;
                 if (simulation.replayUnit <= warm + count && runtime.simulationUniformBytes() >= EffectRuntime::kSimulationUniformBudget)
@@ -1003,10 +1024,15 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
     if (simulation.replaying){
         const int64_t warm = m.warmupSteps;
         while (simulation.replayUnit <= warm){
+            simulation.passWaiting = false;
             if (simulation.replayUnit == 0)
                 runInit(instance, simulation, drawProgram, filter, simulation.replayStart);
             else
                 runWarmStep(instance, simulation, drawProgram, filter, simulation.replayStart, (int)(simulation.replayUnit - 1));
+            if (simulation.passWaiting){
+                restartReplay(simulation);
+                break;
+            }
             simulation.replayUnit++;
             if (simulation.replayUnit <= warm && runtime.simulationUniformBytes() >= EffectRuntime::kSimulationUniformBudget)
                 break;
@@ -1062,11 +1088,15 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
         input.down = pointerDown;
         input.pressed = k == 0 && pressed;
         input.released = k == 0 && released;
-        if (k == 0){
+        if (k == 0)
             input.splats = simulation.pending;
-            simulation.pending.clear();
-        }
+        simulation.passWaiting = false;
         runStep(instance, simulation, drawProgram, filter, input, false);
+        // (a pipeline first used by this step: the step again next frame, its splats kept)
+        if (simulation.passWaiting)
+            break;
+        if (k == 0)
+            simulation.pending.clear();
         simulation.steps++;
         simulation.simTime = input.time;
     }
