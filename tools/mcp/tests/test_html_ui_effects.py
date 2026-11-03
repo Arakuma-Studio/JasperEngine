@@ -357,14 +357,16 @@ async def test_stateful_effects(ed: Editor):
     # the variants compile on first use (async in the editor), each simulation's its own, and a pass's
     # pipeline is made when it first runs (on a GPU the fog can be done while the trail still waits):
     # wait for all three to have replayed, then for the fog
-    deadline = time.monotonic() + 90
+    # (a replay's frame on a loaded runner with llvmpipe can take tens of seconds, as state_shot says)
+    deadline = time.monotonic() + 300
     for selector in (".fog", ".ink", ".trail"):
         while True:
             r = await ed.call("inspect_ui", scene=S["state-scene"], entity=S["state-entity"], selector=selector, depth=0)
             state = r["elements"][0]["effects"][0].get("state") or {}
             if (state.get("steps", 0) > 0 and not state.get("replaying", True)) or time.monotonic() > deadline:
                 break
-            await ed.call("wait", frames=5)
+            await ed.call("wait", frames=5, timeout_seconds=300)
+    deadline = time.monotonic() + 90
     while True:
         first = await state_shot(ed, "state-t1")
         _, sd = stats(first, STATE_REGIONS["fog"])
