@@ -8,13 +8,16 @@
 #include "sokol/SokolShader.h"
 
 #include <atomic>
+#include <memory>
 
 namespace jasperengine{
-    class JASPERENGINE_API ShaderRender{
+    class JASPERENGINE_API ShaderRender : public std::enable_shared_from_this<ShaderRender>{
 
     private:
         // render callback clean function
         static void cleanupShader(void* data);
+        // the same off the main thread, for a queued batch that holds the shader
+        static void cleanupHeldShader(void* data);
 
     public:
         //***Backend***

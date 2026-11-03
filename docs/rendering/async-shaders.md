@@ -60,7 +60,8 @@ It does not keep it off what the main thread does outside a frame, so two things
 their own, around their containers' operations alone:
 
 - `ShaderPool`'s map and key sets: never while a builder runs or a GPU shader is made or destroyed.
-  `get()` holds its entry for what it does next, and `remove()` leaves what someone holds.
+  `get()` holds its entry for what it does next, and `remove()` leaves what someone holds, a queued
+  batch making that variant included (it reads the variant's sources when it runs).
   A steady frame of 100 meshes asks for none, and a variant asked for again costs 18 ns where it
   cost 10.5 (`ShaderPoolBenchGpu.GetOfAMadeVariant`; 108 ns against 91 among 2000 variants still
   building, `ShaderPoolBench.Get`).

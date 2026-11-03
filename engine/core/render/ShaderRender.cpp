@@ -41,7 +41,15 @@ bool ShaderRender::createShader(ShaderData& shaderData){
 
         // Via the command stream so cleanup runs after MAKE_SHADER (a frame-counted
         // scheduleCleanup could fire before the build -> empty source on async path).
-        SystemRender::addQueueCommand(ShaderRender::cleanupShader, this);
+        // That batch holds the shader (one of ShaderPool's: every one off the main thread):
+        // MAKE_SHADER reads its sources and this writes to it, whoever lets it go meanwhile, and
+        // ShaderPool::remove leaves it while it is held.
+        const std::shared_ptr<ShaderRender> self = Engine::isAsyncThread() ? weak_from_this().lock() : nullptr;
+        if (self){
+            SystemRender::addQueueCommand(ShaderRender::cleanupHeldShader, new std::shared_ptr<ShaderRender>(self));
+        }else{
+            SystemRender::addQueueCommand(ShaderRender::cleanupShader, this);
+        }
 
         return ret;
     }else{
@@ -63,6 +71,12 @@ bool ShaderRender::isPending(){
 
 bool ShaderRender::isFailed(){
     return backend.isFailed();
+}
+
+void ShaderRender::cleanupHeldShader(void* data){
+    std::shared_ptr<ShaderRender>* held = static_cast<std::shared_ptr<ShaderRender>*>(data);
+    cleanupShader(held->get());
+    delete held;
 }
 
 void ShaderRender::cleanupShader(void* data){
