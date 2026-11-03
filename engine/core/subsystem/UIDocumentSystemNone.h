@@ -48,6 +48,9 @@ namespace jasperengine{
         bool eventOnPointerUp(int, int, float, float, int, bool, bool = true) { return false; }
         bool eventOnPointerMove(int, float, float, int, bool, bool = true) { return false; }
         bool eventOnTouchCancel(int) { return false; }
+        bool eventOnMouseCancel(int) { return false; }
+        void cancelAllPointers() {}
+        bool isPointerOverUI(int) const { return false; }
         bool eventOnWheel(float, float, int) { return false; }
         void eventOnMouseLeave() {}
         bool eventOnKeyDown(int, bool, int) { return false; }

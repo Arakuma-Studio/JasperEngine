@@ -268,6 +268,7 @@ namespace {
                 for (const std::string& module : player::allModules()) add(module, "Project Settings", "Strip Engine Code is off");
                 return std::move(usage);
             }
+            if (scan.debugOverlayInBuilds) add("htmlui", "Project Settings", "Debug > Overlay (an HTML UI document)");
             if (scan.navigationInBuilds) add("navigation", "Project Settings", "Navigation > Include in Builds");
             for (const std::string& source : scan.cppScripts)
                 for (const std::string& module : detectedModules()) add(module, source, "C++ script (it can use any engine code)");
@@ -371,6 +372,7 @@ namespace {
                     if (member || tables.globalNames.count(token.text)) lookUp(token.text, where(token.line));
                     if (!member) dynamicAccess(tokens, i, where(token.line));
                     if (lower(token.text).find("videoplayer") != std::string::npos) addVideoPlayer(where(token.line), token.text);
+                    if (token.text == "DebugOverlay") add("htmlui", where(token.line), "DebugOverlay (an HTML UI document)");
                     if (lower(token.text).find("video") != std::string::npos) addVideo(where(token.line), token.text);
                 } else if (token.kind == LuaToken::String) {
                     for (const std::string& word : wordsOf(token.text)) {
@@ -546,6 +548,9 @@ ModuleScan ModuleUsageDetector::collect(Project* project) {
     ModuleScan scan;
     scan.stripEngineCode = project->isStripEngineCode();
     scan.navigationInBuilds = project->getNavigationSettings().includeInBuilds;
+    const DebugSettings::Mode overlay = project->getDebugSettings().overlay;
+    scan.debugOverlayInBuilds = overlay == DebugSettings::Mode::AllBuilds ||
+                                (overlay == DebugSettings::Mode::Development && project->isDevelopmentBuild());
     for (const SceneScriptSource& script : project->getBuildCppScripts())
         if (!script.path.empty()) scan.cppScripts.push_back(script.path.generic_string());
     for (SceneProject& scene : project->getScenes()) {

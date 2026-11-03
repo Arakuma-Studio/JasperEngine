@@ -221,6 +221,15 @@ TEST(ModuleUsage, AVideoPlayerNeedsVideoAndTheHtmlUI) {
     EXPECT_TRUE(byLua.needs("htmlui"));
 }
 
+// the debug overlay is an HTML UI document: a project that ships it, or asks for it, keeps the module
+TEST(ModuleUsage, TheDebugOverlayNeedsTheHtmlUI) {
+    ModuleScan scan = empty();
+    EXPECT_FALSE(ModuleUsageDetector::analyze(scan).needs("htmlui"));
+    scan.debugOverlayInBuilds = true;
+    EXPECT_TRUE(ModuleUsageDetector::analyze(scan).needs("htmlui"));
+    EXPECT_TRUE(withLua("DebugOverlay.showConsole()").needs("htmlui"));
+}
+
 TEST(ModuleUsage, VideoNeedsTheHtmlUIAndAVideo) {
     auto withDocument = [](const std::string& html, bool component) {
         OneEntity one;

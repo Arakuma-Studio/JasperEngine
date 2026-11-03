@@ -3,6 +3,10 @@
 
 #include "DebugOverlay.h"
 
+// The overlay is an HTML UI document: a build without the module has none (docs/specs/S34-player-size.md,
+// and editor/players/ModuleUsage keeps the module for a project that ships the overlay)
+#if JASPERENGINE_HTMLUI
+
 #include "DebugOverlayResources.h"
 #include "DebugStats.h"
 
@@ -1873,3 +1877,51 @@ void DebugOverlay::shutdown(){
     s.loadFailed = false;
     s.warnedDisabled = false;
 }
+
+#else // !JASPERENGINE_HTMLUI
+
+using namespace jasperengine;
+
+namespace {
+
+    DebugOverlaySettings& settingsOfNoOverlay(){
+        static DebugOverlaySettings settings;
+        return settings;
+    }
+
+}
+
+void DebugOverlay::configure(const DebugOverlaySettings& settings){ settingsOfNoOverlay() = settings; }
+void DebugOverlay::updateSettings(const DebugOverlaySettings& settings){ settingsOfNoOverlay() = settings; }
+const DebugOverlaySettings& DebugOverlay::getSettings(){ return settingsOfNoOverlay(); }
+void DebugOverlay::setEnabled(bool){}
+bool DebugOverlay::isEnabled(){ return false; }
+void DebugOverlay::showConsole(){}
+void DebugOverlay::hideConsole(){}
+void DebugOverlay::toggleConsole(){}
+bool DebugOverlay::isConsoleVisible(){ return false; }
+void DebugOverlay::setStatsMode(DebugOverlaySettings::Stats){}
+DebugOverlaySettings::Stats DebugOverlay::getStatsMode(){ return DebugOverlaySettings::Stats::Off; }
+void DebugOverlay::cycleStatsMode(){}
+void DebugOverlay::setSafeAreaInsetsProvider(InsetsFunction){}
+bool DebugOverlay::addCommand(const std::string&, const std::string&, std::function<void(const std::vector<std::string>&)>, const std::string&){ return false; }
+void DebugOverlay::removeCommand(const std::string&){}
+bool DebugOverlay::hasCommand(const std::string&){ return false; }
+std::vector<std::pair<std::string, std::string>> DebugOverlay::getCommands(){ return {}; }
+void DebugOverlay::executeCommand(const std::string&){}
+void DebugOverlay::removeCommandsByTag(const std::string&){}
+void DebugOverlay::removeOwnedCommands(){}
+void DebugOverlay::handleKey(int, int, bool, bool){}
+void DebugOverlay::handleTouch(int, float, float, int){}
+void DebugOverlay::cancelGestures(){}
+bool DebugOverlay::needsUpdate(){ return false; }
+void DebugOverlay::update(double){}
+void DebugOverlay::draw(){}
+bool DebugOverlay::isDrawn(){ return false; }
+Scene* DebugOverlay::getScene(){ return nullptr; }
+Entity DebugOverlay::getDocumentEntity(){ return NULL_ENTITY; }
+bool DebugOverlay::hasTextFocus(){ return false; }
+void DebugOverlay::viewDestroyed(){}
+void DebugOverlay::shutdown(){}
+
+#endif // JASPERENGINE_HTMLUI

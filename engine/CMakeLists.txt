@@ -1873,12 +1873,6 @@ else()
 endif()
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NATIVE_PLATFORM})
 
-# HTML/CSS compatibility layer (phase 2): globbed per directory
-include(core/htmlui/compat/CompatSources.cmake)
-list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
-# HTML UI widgets (S17): virtual views, tooltips, drag and drop, Markdown
-include(core/htmlui/widgets/WidgetsSources.cmake)
-list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
 # The video module (docs/specs/S34-player-size.md R1): <video>, its decoders and its Lua API
 if(NOT JASPERENGINE_VIDEO)
     # what links dav1d, Opus and libwebm, and the platform decoders (FFmpeg's headers on Linux). The
@@ -1898,7 +1892,7 @@ if(JASPERENGINE_HTMLUI)
     list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
 else()
     list(FILTER JASPERENGINE_SRCS EXCLUDE REGEX
-        "^core/(htmlui/|subsystem/UIDocumentSystem|object/ui/(UIDocument|UIElement|UIEvent|UIDataModel|UIValue|HtmlUI)|script/binding/HtmlUI|input/InputVirtualControls|util/ThorVGRuntime)")
+        "^core/(htmlui/|debug/DebugOverlayResources|subsystem/UIDocumentSystem|object/ui/(UIDocument|UIElement|UIEvent|UIDataModel|UIValue|HtmlUI)|script/binding/HtmlUI|input/InputVirtualControls|util/ThorVGRuntime)")
     list(APPEND JASPERENGINE_SRCS core/htmlui/HtmlUIClock.cpp)
 endif()
 # Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
