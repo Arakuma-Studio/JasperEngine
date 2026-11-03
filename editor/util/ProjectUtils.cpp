@@ -138,6 +138,16 @@ bool splitTrailingDuplicateNumber(const std::string& name, std::string& baseName
 
 }
 
+// An RGBA square written to a project file through the atomic writer (docs/data-safety.md)
+static bool writePngFile(const fs::path& file, int size, const std::vector<unsigned char>& pixels) {
+    std::string png;
+    auto append = [](void* context, void* data, int count) {
+        static_cast<std::string*>(context)->append(static_cast<const char*>(data), static_cast<size_t>(count));
+    };
+    if (!stbi_write_png_to_func(append, &png, size, size, 4, pixels.data(), size * 4)) return false;
+    return editor::FileUtils::writeFile(file, png) != editor::FileUtils::WriteResult::Failed;
+}
+
 void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
     static const char* const id = "editor:resources:default_sky";
     // Decoded once per process, and the pixels stay reachable from here: the texture pool keeps
@@ -1841,7 +1851,7 @@ std::string editor::ProjectUtils::ensureOnScreenControlTexture(const std::filesy
             p[3] = static_cast<unsigned char>(std::lround(255.0f * alpha * coverage));
         }
     }
-    if (!stbi_write_png(file.string().c_str(), size, size, 4, pixels.data(), size * 4)) {
+    if (!writePngFile(file, size, pixels)) {
         Out::error("Could not write %s", file.string().c_str());
         return "";
     }
@@ -1955,7 +1965,7 @@ std::string editor::ProjectUtils::ensureSoftParticleTexture(Project* project) {
         }
     }
     fs::create_directories(file.parent_path(), ec);
-    if (!stbi_write_png(FileUtils::pathToUtf8(file).c_str(), size, size, 4, pixels.data(), size * 4)) {
+    if (!writePngFile(file, size, pixels)) {
         Out::warning("Could not write %s", FileUtils::pathToUtf8(file).c_str());
         return "";
     }

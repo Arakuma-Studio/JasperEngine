@@ -3700,9 +3700,7 @@ int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const cha
     }
     std::cout << result.report.dump(2) << "\n";
     if (!reportPath.empty()) {
-        std::ofstream out(reportPath, std::ios::binary | std::ios::trunc);
-        out << result.report.dump(2) << "\n";
-        if (!out) {
+        if (FileUtils::writeFile(reportPath, result.report.dump(2) + "\n") == FileUtils::WriteResult::Failed) {
             std::cerr << "error: cannot write the report to " << reportPath.string() << "\n";
             return 1;
         }
