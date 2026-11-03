@@ -425,3 +425,53 @@ TEST(ShaderPoolThreadsGpu, TwoThreadsLoadScenesThatMakeTheSameNewVariant){
     EXPECT_EQ(aliveShaders(), aliveBefore) << "a GPU shader was left over";
     Engine::removeScene(&scene);
 }
+
+// A thread looks at a variant it holds while the main thread destroys it outside a frame (a shader
+// hot reload, ShaderPool::destroyCustomShaders; a failed one retired by get()) and then makes it
+// again. (The frames only between the rounds, with the thread waiting: on the real path it looks
+// from inside Engine::executeSceneOnce, which the frames' semaphore keeps off them.)
+TEST(ShaderPoolThreadsGpu, AThreadLooksAtAVariantTheMainThreadDestroys){
+    JASPER_REQUIRE_GPU();
+    std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::BLIT, 0);
+    ASSERT_TRUE(shader);
+    ASSERT_TRUE(GpuEnvironment::runFrames([]{ return ShaderPool::get(ShaderType::BLIT, 0)->isCreated(); }, 600));
+
+    constexpr int rounds = 20;
+    std::atomic<int> looking{0};
+    std::atomic<int> looked{0};
+    std::atomic<bool> stop{false};
+    std::thread strand([&](){
+        Engine::AsyncThreadScope scope;
+        int round = 0;
+        while (!stop.load()){
+            if (looking.load() <= round){
+                std::this_thread::yield();
+                continue;
+            }
+            round++;
+            for (int i = 0; i < 200; i++){
+                (void)shader->isCreated();
+                (void)shader->isFailed();
+                (void)shader->isPending();
+                (void)shader->backend.get();
+            }
+            looked.store(round);
+        }
+    });
+    for (int round = 1; round <= rounds; round++){
+        looking.store(round);
+        shader->destroyShader();
+        while (looked.load() < round)
+            std::this_thread::yield();
+        EXPECT_FALSE(shader->isCreated());
+        // made again, by the frames' get()
+        ASSERT_TRUE(GpuEnvironment::runFrames([]{ return ShaderPool::get(ShaderType::BLIT, 0)->isCreated(); }, 600));
+    }
+    stop.store(true);
+    // (its scope's end commits: a batch nobody executes would wait)
+    GpuEnvironment::drawFrames(1);
+    strand.join();
+    GpuEnvironment::drawFrames(2);
+    shader.reset();
+    ShaderPool::remove(ShaderType::BLIT, 0);
+}
