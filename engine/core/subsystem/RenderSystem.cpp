@@ -569,6 +569,15 @@ std::mutex RenderSystem::zeroVertexBuffersMutex;
 bool RenderSystem::emptyTexturesCreated = false;
 int RenderSystem::emptyTextureUsers = 0;
 
+namespace {
+    // Who uses the static textures below, and their making. Never waits for another thread: a
+    // creation off the main thread is queued, one on it is the driver's.
+    std::mutex& emptyTexturesMutex(){
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
+    }
+}
+
 TextureRender* RenderSystem::frameBlurredScene = nullptr;
 blurred_scene_t RenderSystem::frameBlurredSceneBlock;
 
@@ -675,10 +684,14 @@ void RenderSystem::load(){
     hasShadows2D = false;
     numLights2D = 0;
 
-    createEmptyTextures();
-    if (!usesEmptyTextures){
-        usesEmptyTextures = true;
-        emptyTextureUsers++;
+    {
+        // (scenes of two threads may load at once: a preview off the main thread's)
+        std::lock_guard<std::mutex> lock(emptyTexturesMutex());
+        createEmptyTextures();
+        if (!usesEmptyTextures){
+            usesEmptyTextures = true;
+            emptyTextureUsers++;
+        }
     }
 
     update(0); // first update
@@ -697,12 +710,15 @@ void RenderSystem::destroy(){
     // handles: a scene going while others draw keeps them. With the view (every scene reloads)
     // or the last RenderSystem they are destroyed, and the next load makes them again (before,
     // only the flag was reset and the next load made new images over the old handles).
-    if (usesEmptyTextures){
-        usesEmptyTextures = false;
-        emptyTextureUsers--;
-    }
-    if (reloadView || emptyTextureUsers <= 0){
-        destroyEmptyTextures();
+    {
+        std::lock_guard<std::mutex> lock(emptyTexturesMutex());
+        if (usesEmptyTextures){
+            usesEmptyTextures = false;
+            emptyTextureUsers--;
+        }
+        if (reloadView || emptyTextureUsers <= 0){
+            destroyEmptyTextures();
+        }
     }
 
 #ifdef JASPERENGINE_EDITOR
