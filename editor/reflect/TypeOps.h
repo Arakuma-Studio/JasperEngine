@@ -163,6 +163,7 @@ namespace jasperengine::editor::reflect {
         std::string intLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string uintLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string floatLiteral(const FieldDesc&, const void*, const CodegenContext&);
+        std::string floatOrInfinityLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string positiveFloatLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string doubleLiteral(const FieldDesc&, const void*, const CodegenContext&);
         std::string vector2Literal(const FieldDesc&, const void*, const CodegenContext&);
@@ -258,7 +259,10 @@ namespace jasperengine::editor::reflect {
             &detail::finiteFloat}, &detail::floatScalar);
         // a float whose infinity is a value (a joint's break force and torque, a drive's force limits:
         // none): MCP reads an infinite one as null, which its schema takes too
-        inline constexpr TypeOps FloatOrInfinity = detail::withSchema(Float, &detail::numberOrNullSchema);
+        // (and generated code keeps it: formatFloat makes what is not finite 0, which would break a joint
+        // at its first step)
+        inline constexpr TypeOps FloatOrInfinity = detail::withLiteral(detail::withSchema(Float, &detail::numberOrNullSchema),
+                                                                       &detail::floatOrInfinityLiteral);
         // written only when finite (Stream::encodeFinite); a non-finite or unreadable value keeps
         // the base (made finite: Stream::decodeFinite)
         inline constexpr TypeOps FiniteFloat = detail::withScalar(TypeOps{"float", Kind::Float, PropertyType::Float, sizeof(float),

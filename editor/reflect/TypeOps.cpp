@@ -468,6 +468,12 @@ std::string reflect::detail::floatLiteral(const FieldDesc&, const void* value, c
     return Factory::formatFloat(*static_cast<const float*>(value));
 }
 
+std::string reflect::detail::floatOrInfinityLiteral(const FieldDesc& field, const void* value, const CodegenContext& ctx) {
+    const float number = *static_cast<const float*>(value);
+    if (std::isinf(number)) return number > 0 ? "std::numeric_limits<float>::infinity()" : "-std::numeric_limits<float>::infinity()";
+    return floatLiteral(field, value, ctx);
+}
+
 std::string reflect::detail::positiveFloatLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
     return Factory::formatPositiveFloat(*static_cast<const float*>(value));
 }
