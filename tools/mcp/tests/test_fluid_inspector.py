@@ -338,7 +338,8 @@ async def test_paint_dye_brush(ed: Editor):
     await ui.frames(10)
     sprite = await sprite_rect(ed)
     quads = quadrants(sprite)
-    black = region(await shot(ed, "paint-black"), inset(sprite))
+    black_image = await shot(ed, "paint-black")
+    black = region(black_image, inset(sprite))
     ed.check(brightness(black) < 6, f"restarted without the start burst it is black ({brightness(black):.1f})")
     start = await position(ed, fluid)
 
@@ -376,8 +377,11 @@ async def test_paint_dye_brush(ed: Editor):
     await ui.settle(0.5, frames=4)
     image = await shot(ed, "paint-stroke")
     lit = {name: brightness(region(image, box)) for name, box in quads.items()}
-    ed.check(lit["ul"] > 4 and lit["ul"] > 3 * max(lit["ur"], lit["ll"], lit["lr"]),
-             f"the dye is where it was painted, the upper-left quadrant: {lit}")
+    # against the same quadrant before the stroke: how much dye a stroke leaves follows the frames the
+    # drag took (3.6 on an RTX 3080 Ti, where its moves arrive in few of them), its place does not
+    painted = {name: lit[name] - brightness(region(black_image, box)) for name, box in quads.items()}
+    ed.check(painted["ul"] > 2 and painted["ul"] > 3 * max(painted["ur"], painted["ll"], painted["lr"]),
+             f"the dye is where it was painted, the upper-left quadrant: {lit}, added {painted}")
     ed.check(close(await position(ed, fluid), start), "the stroke did not move the Sprite")
     ed.check_eq(await selection(ed), [fluid], "nor change the selection")
 

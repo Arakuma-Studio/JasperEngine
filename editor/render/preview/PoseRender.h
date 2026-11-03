@@ -67,6 +67,8 @@ namespace jasperengine::editor{
 
         // frames a queued render waits for the scene to load (meshes, shaders) before it fails
         static constexpr int RENDER_TIMEOUT_FRAMES = 600;
+        // and seconds for pipelines being created (hundreds of frames go by on a GPU meanwhile)
+        static constexpr double RENDER_TIMEOUT_SECONDS = 120.0;
         // frame time processFrame spends on queued renders once the first one ran
         static constexpr double FRAME_BUDGET_SECONDS = 0.025;
         // margin of the default framing (fraction of the framed box's half extents)
@@ -201,8 +203,11 @@ namespace jasperengine::editor{
             RenderState state;
             RenderCallback done;
             int frames = 0;
+            double firstTry = 0.0;
         };
 
+        // the last tryRender drew nothing of what waits for its pipelines (spec S32)
+        bool drawsWaiting = false;
         Scene* scene = nullptr;
         Camera* camera = nullptr;
         Light* keyLight = nullptr;

@@ -353,8 +353,17 @@ async def test_job_progress_and_cancel(ed: Editor):
     check(len(stepping) >= 3, f"progress while it ran (\"step k/n, a of b asleep\"): {progress[:5]}")
     check(all(0.0 <= p <= 1.0 for p, _ in stepping) and stepping[-1][0] >= stepping[0][0], f"progress grows: {stepping}")
     check(any("asleep" in m for _, m in stepping), f"{stepping[:3]}")
-    # wait with a short timeout_seconds: the call returns the running job
-    r = await ed.call_raw("place_with_physics", {**args, "seed": 4, "timeout_seconds": 1})
+    # wait with a short timeout_seconds: the call returns the running job. How long a run takes is the
+    # machine's (on a fast CPU the rain can settle within the 1 s): more rain until one outlasts it,
+    # and the runs below get the same rain to be stopped in
+    for more in range(5):
+        r = await ed.call_raw("place_with_physics", {**args, "seed": 4, "timeout_seconds": 1})
+        if r.structured.get("status") == "running":
+            break
+        rain = [{"name": f"Rain{i}", "type": "cube", "position": [15 + (i % 6) * 1.5, 4 + i * 1.2, 12 + (i // 6) * 1.5]}
+                for i in range(len(names), len(names) * 2)]
+        await ed.batch([("create_entity", item) for item in rain])
+        names += [item["name"] for item in rain]   # (args holds the same list)
     check(r.structured.get("status") == "running" and r.structured.get("job_id"), f"a run longer than the timeout: {r.structured}")
     await wait_job(ed, r.structured["job_id"], 600)
 
@@ -413,18 +422,22 @@ async def test_screenshot(ed: Editor):
     w, _, _, _ = decode_png(r.images[0][0])
     check(w <= 320, f"max_width: {w}")
 
-    # a save while the preview poses are shown: the file gets the real poses
+    # a save while the preview poses are shown: the file gets the real poses. The capture lasts a few
+    # frames, milliseconds on a GPU, so the call runs until a save lands in it: its result says so
+    # (the poses were put back for the save, "the current scene")
     scene_file = ed.project / "scenes" / "Placement.scene"
-    shot = asyncio.ensure_future(ed.call_raw("place_with_physics", {"entities": ["Crate"], "screenshot": True}, timeout=600))
-    saves = 0
-    while not shot.done():
-        await ed.call("save_scene")
-        saves += 1
-        check(saved_position(scene_file, "Crate") == [-10, 3, 0], f"save {saves}: the file holds the Crate's own pose")
-        await asyncio.sleep(0.01)
-    r = await shot
-    check(not r.is_error, r.text)
-    check(saves >= 2, f"saved while the call ran: {saves}")
+    landed = False
+    for attempt in range(100):
+        shot = asyncio.ensure_future(ed.call_raw("place_with_physics", {"entities": ["Crate"], "screenshot": True}, timeout=600))
+        while not shot.done():
+            await ed.call("save_scene")
+            check(saved_position(scene_file, "Crate") == [-10, 3, 0], f"attempt {attempt}: the file holds the Crate's own pose")
+        r = await shot
+        check(not r.is_error, r.text)
+        landed = r.structured["screenshot"]["shows"] == "the current scene"
+        if landed:
+            break
+    check(landed, f"a save landed in the capture: {r.structured['screenshot']}")
     check(near((await world(ed, "Crate"))[0], [-10, 3, 0], 1e-6), "the Crate is where it was")
 
     # the call cancelled while the image is taken: the job still ends and the poses go back
