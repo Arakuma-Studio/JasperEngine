@@ -338,6 +338,7 @@ namespace {
     }
 
     // a convex polygon pushed out by `offset` (mitred corners)
+#ifdef JASPERENGINE_PHYSICS_2D
     std::vector<Vector2> offsetPolygon(const std::vector<Vector2>& polygon, float offset) {
         if (offset <= 0.0f || polygon.size() < 3)
             return polygon;
@@ -362,6 +363,7 @@ namespace {
         }
         return out;
     }
+#endif
 
     // a component's area (an int) as an area index
     uint8_t areaIndex(int area) {
@@ -424,7 +426,9 @@ namespace {
         void collectVolumes();
         void collectLinks();
         void addVolume(const Matrix4& worldOf, const Vector3& center, const Vector3& size, uint8_t recastArea);
+#ifdef JASPERENGINE_PHYSICS_2D
         void addFootprint(const std::vector<Vector2>& worldPolygon, uint8_t recastArea);
+#endif
     };
 
     bool Collector::isDescendant(Entity entity, Entity ancestor) const {
@@ -780,6 +784,7 @@ namespace {
 #endif
     }
 
+#ifdef JASPERENGINE_PHYSICS_2D
     void Collector::addFootprint(const std::vector<Vector2>& worldPolygon, uint8_t recastArea) {
         if (worldPolygon.size() < 3)
             return;
@@ -802,6 +807,7 @@ namespace {
         volume.recastArea = recastArea;
         input->volumes.push_back(std::move(volume));
     }
+#endif
 
     void Collector::collectColliders2D() {
 #ifdef JASPERENGINE_PHYSICS_2D

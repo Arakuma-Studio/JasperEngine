@@ -47,10 +47,12 @@ namespace {
         return JoltShapeBuilder::entityWorldScale(scene, entity);
     }
 
+#ifdef JASPERENGINE_PHYSICS_2D
     Vector2 entityWorldScale2D(Scene* scene, Entity entity){
         const Vector3 scale = entityWorldScale(scene, entity);
         return Vector2(scale.x, scale.y);
     }
+#endif
 
     // world pose of a transform the render pass has not updated yet, parents first
     void resolveWorldTransform(Scene* scene, Transform& transform, Entity entity, int depth = 0){
