@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "System.h"
+#include "io/AtomicFile.h"
 #include "pool/ShaderPool.h"
 #include "pool/TextureDataPool.h"
 #include "log/LogSink.h"
@@ -92,6 +93,10 @@ namespace {
         const char* name() const override { return "fail-on-error"; }
     };
 
+    void appendPng(void* context, void* data, int size) {
+        static_cast<std::string*>(context)->append(static_cast<const char*>(data), static_cast<size_t>(size));
+    }
+
     bool writePng(const std::filesystem::path& path, const std::vector<uint8_t>& rgba, int width, int height, std::string& error) {
         if (width <= 0 || height <= 0 || rgba.size() != static_cast<size_t>(width) * height * 4) {
             error = "no frame pixels";
@@ -100,8 +105,18 @@ namespace {
         // opaque: the swap chain shows no alpha, and a cleared target's alpha would show through
         std::vector<uint8_t> opaque(rgba);
         for (size_t i = 3; i < opaque.size(); i += 4) opaque[i] = 255;
-        if (!stbi_write_png(path.string().c_str(), width, height, 4, opaque.data(), width * 4)) {
-            error = "cannot write " + path.string();
+        std::string png;
+        if (!stbi_write_png_to_func(&appendPng, &png, width, height, 4, opaque.data(), width * 4)) {
+            error = "cannot encode " + path.string();
+            return false;
+        }
+        // the path may hold an earlier run's image: it stays whole if this write fails
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        options.createDirectories = false;
+        const io::WriteResult written = io::writeFileAtomic(path, png, options);
+        if (!written.ok()) {
+            error = written.message;
             return false;
         }
         return true;
