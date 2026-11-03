@@ -10,7 +10,7 @@ using namespace jasperengine;
 
 ShaderRender::ShaderRender(){ }
 
-ShaderRender::ShaderRender(const ShaderRender& rhs): backend(rhs.backend), shaderData(rhs.shaderData), loading(rhs.loading.load()){ }
+ShaderRender::ShaderRender(const ShaderRender& rhs): std::enable_shared_from_this<ShaderRender>(), backend(rhs.backend), shaderData(rhs.shaderData), loading(rhs.loading.load()){ }
 
 ShaderRender& ShaderRender::operator=(const ShaderRender& rhs){
     backend = rhs.backend;
