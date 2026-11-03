@@ -54,6 +54,8 @@ namespace {
     // (six images, embedded, and few enough submeshes for a preview's one mesh)
     const char* const PREVIEW_MODEL = JASPER_TEST_REPO_DIR "/engine/tests/render/assets/khronos/AnisotropyRotationTest/glTF-Binary/AnisotropyRotationTest.glb";
 
+    const char* const UNCLAIMED_IMAGE = JASPER_TEST_REPO_DIR "/engine/tests/core/fixtures/particles/textures/spark.png";
+
     // a one-face image whose pixels the pool's copy owns
     std::shared_ptr<std::array<TextureData, 6>> onePixelImage(uint8_t value){
         unsigned char* pixels = static_cast<unsigned char*>(std::malloc(4));
@@ -181,6 +183,42 @@ TEST(TextureDataPoolThreads, AModelLoadingOnItsThreadSharesThePoolsWithTheMainTh
         TextureDataPool::invalidate(id);
     }
     strand.join();
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// A build nobody takes: its job ended with pixels nobody owns yet, and the id is invalidated or
+// removed before a load comes for them. They go with it: under SANITIZE=address a leak of them
+// fails the run at its end (a generator's pixels, a decoded file's).
+TEST(TextureDataPoolThreads, ABuildNobodyTakesFreesItsPixels){
+    const bool wasAsync = Engine::isAsyncLoading();
+    Engine::setAsyncLoading(true);
+    const auto jobEnds = [](){
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(1);
+        while (TextureDataPool::getLoadingCount() > 0 && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        EXPECT_EQ(TextureDataPool::getLoadingCount(), 0u);
+    };
+    for (int round = 0; round < 4; round++){
+        const std::string id = "bf18-unclaimed-" + std::to_string(round);
+        registerOnePixel(id, (uint8_t)round);
+        EXPECT_EQ(TextureDataPool::loadGenerated(id).state, ResourceLoadState::Loading);
+        jobEnds();
+        if (round % 2)
+            TextureDataPool::invalidate(id);
+        else
+            TextureDataPool::remove(id);
+
+        const std::string fileId = "bf18-unclaimed-file-" + std::to_string(round);
+        std::array<std::string, 6> paths;
+        paths[0] = UNCLAIMED_IMAGE;
+        EXPECT_EQ(TextureDataPool::loadFromFile(fileId, paths, 1).state, ResourceLoadState::Loading);
+        jobEnds();
+        if (round % 2)
+            TextureDataPool::invalidate(fileId);
+        else
+            TextureDataPool::remove(fileId);
+    }
+    Engine::setAsyncLoading(wasAsync);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
