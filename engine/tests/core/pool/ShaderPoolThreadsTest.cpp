@@ -348,3 +348,80 @@ TEST(ShaderPoolThreadsGpu, APreviewLoadsWhileTheMainThreadFreesGpuObjectsOutside
     Engine::removeScene(&scene);
     // (no look at the engine's errors: TexturePoolThreadsTest.cpp says why)
 }
+
+// Two threads make the same new variant at once, as neither knows of the other: the main thread
+// loads a scene outside a frame, which the frames' semaphore does not keep off a preview's strand
+// loading its own. One makes the variant, the other finds it being made, and no GPU shader is left
+// over by the one that lost (without a sanitizer too).
+TEST(ShaderPoolThreadsGpu, TwoThreadsLoadScenesThatMakeTheSameNewVariant){
+    JASPER_REQUIRE_GPU();
+    struct LeavesNoShaders {
+        ~LeavesNoShaders(){
+            GpuEnvironment::drawFrames(2);
+            ShaderPool::clearUnused();
+        }
+    } leavesNoShaders;
+    Scene scene;
+    Camera camera(&scene);
+    camera.setType(CameraType::CAMERA_PERSPECTIVE);
+    camera.activate();
+    Engine::setScene(&scene);
+    ASSERT_TRUE(GpuEnvironment::runFrames(nullptr, 4));
+
+    struct Loaded {
+        Scene scene{EntityPool::System};
+        Camera camera{&scene};
+        Primitive plane{&scene};
+        Loaded(){
+            scene.setCamera(&camera);
+            camera.setType(CameraType::CAMERA_PERSPECTIVE);
+            camera.setFramebufferSize(16, 16);
+            camera.setRenderToTexture(true);
+            plane.createPlane(1.0f, 1.0f);
+        }
+    };
+    const auto aliveShaders = [](){ return sg_query_stats().total.shaders.alive; };
+    const auto settle = [](){
+        ShaderPool::clearUnused();
+        // (what is destroyed goes when its creation ended, frames later)
+        EXPECT_TRUE(GpuEnvironment::runFrames(nullptr, 4));
+    };
+    settle();
+    const uint32_t aliveBefore = aliveShaders();
+
+    constexpr int rounds = 12;
+    for (int round = 0; round < rounds; round++){
+        std::atomic<int> arrived{0};
+        std::atomic<bool> done{false};
+        Loaded* preview = nullptr;
+        std::thread strand([&](){
+            {
+                Engine::AsyncThreadScope loadScope;
+                preview = new Loaded();
+                arrived.fetch_add(1);
+                while (arrived.load() < 2)
+                    std::this_thread::yield();
+                Engine::executeSceneOnce(&preview->scene);
+            }
+            done.store(true);
+        });
+        {
+            Loaded own;
+            arrived.fetch_add(1);
+            while (arrived.load() < 2)
+                std::this_thread::yield();
+            Engine::executeSceneOnce(&own.scene);
+            // (a commit of the strand's queue waits for a frame)
+            while (!done.load())
+                GpuEnvironment::drawFrames(1);
+            strand.join();
+            GpuEnvironment::drawFrames(2);
+            Engine::removeScene(&own.scene);
+            Engine::removeScene(&preview->scene);
+            delete preview;
+        }
+        settle();
+    }
+    EXPECT_EQ(aliveShaders(), aliveBefore) << "a GPU shader was left over";
+    Engine::removeScene(&scene);
+}

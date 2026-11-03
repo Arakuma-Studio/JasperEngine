@@ -65,6 +65,17 @@ TEST(LoggerTest, MacroRecordsCarryTheirSource) {
     EXPECT_EQ(found[0].line, line);
 }
 
+// A Fatal reaches an Async sink from the calling thread, under the sink's lock with a deadline.
+// (Under SANITIZE=thread, that lock taken through std::timed_mutex reports an unlock of an unlocked
+// mutex: GCC 11's TSan does not intercept what try_lock_until calls.)
+TEST(LoggerTest, FatalReachesAnAsyncSinkFromTheCallingThread) {
+    auto sink = recordingSink();
+    JE_LOG_FATAL(logCategoryLoggerTest(), "the end %d", 7);
+    EXPECT_EQ(sink->containing("the end 7").size(), 1u) << "before any flush";
+    Logger::flush();
+    EXPECT_EQ(sink->containing("the end 7").size(), 1u);
+}
+
 TEST(LoggerTest, LegacyCallsMapToLevels) {
     // a game's default: Info (the test binary records everything)
     const LogLevel previous = Logger::categoryLevel(logCategoryEngine());
