@@ -673,14 +673,15 @@ namespace je_logger {
     }
 
     // The summaries of windows that ended with records held back
-    void sweepValve(LoggerState& s, int64_t nowMs) {
+    // (every window with `all`: over or not. How many summaries went out: the rest are for the next)
+    size_t sweepValve(LoggerState& s, int64_t nowMs, bool all = false) {
         ValveSummary summaries[16];
         size_t count = 0;
         for (size_t stripe = 0; stripe < kValveStripes && count < 16; stripe++) {
             std::lock_guard<std::mutex> lock(s.valveMutexes[stripe]);
             for (size_t i = 0; i < kValveStripeSlots; i++) {
                 ValveSlot& slot = s.valve[stripe * kValveStripeSlots + i];
-                if (slot.key == 0 || nowMs - slot.windowStartMs < kValveWindowMs) continue;
+                if (slot.key == 0 || (!all && nowMs - slot.windowStartMs < kValveWindowMs)) continue;
                 if (slot.suppressed > 0) {
                     if (count == 16) break;
                     ValveSummary& summary = summaries[count++];
@@ -694,6 +695,7 @@ namespace je_logger {
         }
         s.nextValveSweepMs.store(nowMs + kValveWindowMs / 4, std::memory_order_relaxed);
         emitSummaries(summaries, count);
+        return count;
     }
 
     // ---- the drain thread
@@ -1434,6 +1436,13 @@ void Logger::flush() {
     jasperengine::jobs::detail::timedWait(s.drainedCv, lock, std::chrono::seconds(5), [&s, target]() {
         return s.drainedSeq.load(std::memory_order_acquire) >= target || s.stopping;
     });
+}
+
+void Logger::flushSummaries() {
+    LoggerState& s = logState();
+    if (!s.initialized.load(std::memory_order_acquire)) return;
+    while (sweepValve(s, logMonotonicMs(), true) > 0) {}
+    flush();
 }
 
 bool Logger::flushForCrash(std::chrono::milliseconds timeout, uint64_t* unwritten) noexcept {
