@@ -136,7 +136,10 @@ async def test_a_preview_of_the_model_leaves_the_scene_its_images(ed: Editor):
 async def test_a_many_node_models_thumbnail_is_drawn_with_no_error(ed: Editor):
     """Off the main thread a model's nodes bake into one mesh, and these models' nodes are over what
     a build without the editor gives one mesh (ModelCapacityGpuTest). The editor's arrays grow: the
-    thumbnail shows the model, and the Console has no error of it."""
+    thumbnail shows the model, and the Console has no error of it. With the Game view in front of the
+    stopped scene too (a view of its own draws the frames then, which saved no thumbnail)."""
+    await new_scene(ed, "ManyNodeThumbnails")
+    await shot(ed, frames=2)  # (the Game view in front)
     await ed.console_since("last", limit=1000)  # (moves the cursor past what came before)
     for name in ("AnisotropyRotationTest", "AnisotropyStrengthTest"):
         source = model_file(name)
