@@ -75,14 +75,6 @@ namespace {
         fs::remove_all(path, ec);
     }
 
-    // a free folder name in `parent` for a staging copy (".<name>.importing", then numbered)
-    fs::path stagingFolder(const fs::path& parent, const std::string& name) {
-        std::error_code ec;
-        fs::path staging = parent / (name + ".importing");
-        for (int n = 2; fs::exists(staging, ec); n++) staging = parent / (name + ".importing" + std::to_string(n));
-        return staging;
-    }
-
 }
 
 bool importer::extractZip(const fs::path& zip, const fs::path& destination, const ZipLimits& limits, const ImportProgress& progress,
@@ -160,6 +152,12 @@ bool importer::extractZip(const fs::path& zip, const fs::path& destination, cons
         Sink sink{&out, &stop};
         if (!mz_zip_reader_extract_to_callback(&z.archive, i, &writeEntry, &sink, 0)) {
             error = stop ? std::string("cancelled") : std::string("cannot extract ") + stat.m_filename;
+            return false;
+        }
+        // what the stream still holds: a full disk here would otherwise publish a short file
+        out.close();
+        if (!out) {
+            error = "cannot write " + target.string();
             return false;
         }
         done += stat.m_uncomp_size;

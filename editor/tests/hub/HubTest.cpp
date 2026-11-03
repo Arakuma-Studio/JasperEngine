@@ -310,7 +310,9 @@ TEST(ProjectTemplatesDeathTest, ACrashMidCopyLeavesTheTargetAsItWas) {
                 std::_Exit(0);
             }, ::testing::ExitedWithCode(42), "") << target;
             EXPECT_EQ(fs::exists(target), existing) << target;
-            if (existing) EXPECT_TRUE(emptyFolder(target)) << target;
+            if (existing) {
+                EXPECT_TRUE(emptyFolder(target)) << target;
+            }
             EXPECT_TRUE(templates::materialize(*info, target, error)) << error;
             EXPECT_TRUE(fs::exists(target / "project.yaml")) << target;
         }

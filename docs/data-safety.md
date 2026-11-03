@@ -141,7 +141,7 @@ message), `FileUtils::writeFile` / `writeIfChanged` (Cache, skip if unchanged),
 `util/AtomicFileStream.h` (an `ostringstream` written atomically when it goes out of scope).
 `tools/check_raw_writes.py` fails CI on a new `std::ofstream`, `fopen("w")`, `stbi_write_*` to a
 path or `copy_file(..., overwrite_existing)` under `editor/` and `engine/core/`; the few raw
-writes left (append-only logs, private temp files, export staging) are listed with a reason in
+writes left (append-only logs, private temp files, export and import staging) are listed with a reason in
 `tools/raw_writes_allowlist.txt`. A file watcher ignores `io::isTemporarySiblingName()` names
 and subscribes to `io::setPublishListener` for its own writes (S05; nothing else may).
 `io::ScopedFileLock` is the cross-process lock (shared or exclusive, blocking or not).

@@ -9,6 +9,7 @@
 
 #include "hub/HubPaths.h"
 #include "io/AtomicFile.h"
+#include "util/FileUtils.h"
 
 #include "json.hpp"
 #include "project_templates.h"
@@ -56,6 +57,14 @@ namespace {
         std::error_code ec;
         fs::remove_all(dir, ec);
         return !ec;
+    }
+
+    // one file of a copy, whole or not at all. Its source remains, and the copy may have thousands
+    // of files: not synced one by one
+    bool copyOneFile(const fs::path& from, const fs::path& to, std::error_code& ec) {
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        return FileUtils::copyFileAtomic(from, to, ec, options);
     }
 
 }
@@ -170,21 +179,30 @@ bool templates::materialize(const ProjectTemplate& info, const fs::path& target,
         return false;
     }
     std::error_code ec;
-    const bool existed = fs::exists(target, ec);
-    fs::create_directories(target, ec);
+    // built next to the target and renamed to it whole: a crash or a failure midway leaves the
+    // target as it was (absent, or the empty folder the user made)
+    fs::path place = fs::absolute(target, ec).lexically_normal();
+    if (!place.has_filename()) place = place.parent_path();
+    const fs::path staging = stagingFolder(place.parent_path(), place.filename().string());
+    fs::create_directories(staging, ec);
     if (ec) {
-        error = "cannot create " + target.string() + ": " + ec.message();
+        error = "cannot create " + staging.string() + ": " + ec.message();
         return false;
     }
     auto fail = [&](const std::string& why) {
-        // what this wrote goes; a folder the user had made stays (empty)
-        if (existed) {
-            for (const fs::directory_entry& entry : fs::directory_iterator(target, ec)) fs::remove_all(entry.path(), ec);
-        } else {
-            removeAll(target);
-        }
+        removeAll(staging);
         error = why;
         return false;
+    };
+    auto publish = [&]() {
+        const bool existed = fs::exists(place, ec);
+        if (existed) fs::remove(place, ec);   // an empty folder
+        if (!io::renameWithRetry(staging, place, ec)) {
+            const std::string why = "cannot move the project to " + place.string() + ": " + ec.message();
+            if (existed) fs::create_directory(place, ec);
+            return fail(why);
+        }
+        return true;
     };
     auto skipped = [&](const std::string& relative) { return relative == kInfoFile || relative == info.thumbnail; };
     if (info.builtIn) {
@@ -193,10 +211,10 @@ bool templates::materialize(const ProjectTemplate& info, const fs::path& target,
             if (skipped(file.relative)) continue;
             if (!isSafeRelativePath(file.relative)) return fail("unsafe path in the template: " + file.relative);
             const io::WriteResult written =
-                io::writeFileAtomic(target / fs::path(file.relative), std::string_view(reinterpret_cast<const char*>(file.data), file.size));
+                io::writeFileAtomic(staging / fs::path(file.relative), std::string_view(reinterpret_cast<const char*>(file.data), file.size));
             if (!written.ok()) return fail(written.message);
         }
-        return true;
+        return publish();
     }
     if (info.directory.empty() || !fs::is_directory(info.directory, ec)) return fail("the template's folder is gone: " + info.directory.string());
     for (fs::recursive_directory_iterator it(info.directory, fs::directory_options::none, ec), end; it != end; it.increment(ec)) {
@@ -208,12 +226,12 @@ bool templates::materialize(const ProjectTemplate& info, const fs::path& target,
         if (it->is_directory(ec)) continue;
         if (skipped(rel)) continue;
         if (!isSafeRelativePath(rel)) return fail("unsafe path in the template: " + rel);
-        fs::create_directories((target / relative).parent_path(), ec);
-        if (!fs::copy_file(it->path(), target / relative, fs::copy_options::overwrite_existing, ec)) {
+        fs::create_directories((staging / relative).parent_path(), ec);
+        if (!copyOneFile(it->path(), staging / relative, ec)) {
             return fail("cannot copy " + rel + ": " + ec.message());
         }
     }
-    return true;
+    return publish();
 }
 
 bool templates::excludedFromTemplate(const std::string& name) {
@@ -235,13 +253,18 @@ bool templates::saveProjectAsTemplate(const fs::path& project, const fs::path& u
         error = "a template \"" + id + "\" exists (" + target.string() + ")";
         return false;
     }
-    fs::create_directories(target, ec);
+    // built where the catalog does not look (it reads <userDir>/*/template.json) and renamed in
+    // whole: a crash midway leaves no half template, and the name stays free
+    const fs::path stagingRoot = userDir / ".staging";
+    const fs::path staging = stagingFolder(stagingRoot, id);
+    fs::create_directories(staging, ec);
     if (ec) {
-        error = "cannot create " + target.string() + ": " + ec.message();
+        error = "cannot create " + staging.string() + ": " + ec.message();
         return false;
     }
     auto fail = [&](const std::string& why) {
-        removeAll(target);
+        removeAll(staging);
+        fs::remove(stagingRoot, ec);   // when nothing else is in it
         error = why;
         return false;
     };
@@ -258,10 +281,10 @@ bool templates::saveProjectAsTemplate(const fs::path& project, const fs::path& u
             continue;
         }
         if (it->is_directory(ec)) {
-            fs::create_directories(target / relative, ec);
+            fs::create_directories(staging / relative, ec);
             continue;
         }
-        if (!fs::copy_file(it->path(), target / relative, fs::copy_options::overwrite_existing, ec)) {
+        if (!copyOneFile(it->path(), staging / relative, ec)) {
             return fail("cannot copy " + relative.generic_string() + ": " + ec.message());
         }
     }
@@ -273,11 +296,13 @@ bool templates::saveProjectAsTemplate(const fs::path& project, const fs::path& u
     info.order = 100;
     info.startScene = startScene.empty() ? "Main" : startScene;
     info.thumbnail = thumbnailPng.empty() ? std::string() : "thumbnail.png";
-    io::WriteResult written = io::writeFileAtomic(target / kInfoFile, infoJson(info));
+    io::WriteResult written = io::writeFileAtomic(staging / kInfoFile, infoJson(info));
     if (!written.ok()) return fail(written.message);
     if (!thumbnailPng.empty()) {
-        written = io::writeFileAtomic(target / "thumbnail.png", std::string_view(reinterpret_cast<const char*>(thumbnailPng.data()), thumbnailPng.size()));
+        written = io::writeFileAtomic(staging / "thumbnail.png", std::string_view(reinterpret_cast<const char*>(thumbnailPng.data()), thumbnailPng.size()));
         if (!written.ok()) return fail(written.message);
     }
+    if (!io::renameWithRetry(staging, target, ec)) return fail("cannot move the template to " + target.string() + ": " + ec.message());
+    fs::remove(stagingRoot, ec);   // when nothing else is in it
     return true;
 }
