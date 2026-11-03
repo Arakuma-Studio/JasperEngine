@@ -10,6 +10,7 @@
 #include "Log.h"
 #include "System.h"
 #include "io/AtomicFile.h"
+#include "jobs/detail/TimedWait.h"
 #include "profiler/Profile.h"
 #include "render/GpuWorkerContext.h"
 
@@ -326,7 +327,7 @@ namespace {
             {
                 std::unique_lock<std::mutex> lock(s.mutex);
                 // (bounded: a render thread that stopped updating does not hold it forever)
-                s.firstDrawsDone.wait_for(lock, std::chrono::milliseconds(200),
+                jobs::detail::timedWait(s.firstDrawsDone, lock, std::chrono::milliseconds(200),
                     [&s, job]{ return s.stopping || !s.firstDrawn.count(job->program); });
                 s.warmingProgram = job->program;
             }

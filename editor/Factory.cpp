@@ -37,6 +37,17 @@
 
 using namespace jasperengine;
 
+// A path is exported whatever became of its load (empty() turns true once a load failed, on the
+// first draw that asked for it): the generated code never depends on what was drawn before it
+// (Stream::encodeTexture, the same way)
+static bool isTextureExported(const Texture& texture) {
+    if (!texture.empty()) return true;
+    for (size_t face = 0; face < 6; face++) {
+        if (!texture.getPath(face).empty()) return true;
+    }
+    return false;
+}
+
 template <typename T>
 static T sanitizeFiniteNumber(T value) {
     return std::isfinite(value) ? value : static_cast<T>(0);
@@ -255,7 +266,7 @@ std::string editor::Factory::formatShaderTextures(int indentSpaces, const std::v
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
     for (const auto& [uniform, texture] : textures) {
-        if (texture.empty()) continue; // binds the manifest default, like no entry
+        if (!isTextureExported(texture)) continue; // binds the manifest default, like no entry
         code << ind << "{\n";
         code << ind << "    Texture texture;\n";
         code << formatTexture(indentSpaces + 4, texture, "texture", projectPath);
@@ -855,7 +866,7 @@ std::string editor::Factory::formatAtlasSampler(int indentSpaces, const Texture&
 }
 
 std::string editor::Factory::formatTexture(int indentSpaces, const Texture& texture, const std::string& variableName, const fs::path& projectPath) {
-    if (texture.empty()) return "";
+    if (!isTextureExported(texture)) return "";
     std::ostringstream code;
     std::string ind = indentation(indentSpaces);
 

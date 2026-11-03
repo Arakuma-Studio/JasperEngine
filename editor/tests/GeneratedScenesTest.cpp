@@ -9,15 +9,18 @@
 
 #include "Factory.h"
 #include "Generator.h"
+#include "texture/Texture.h"
 
 #include <unistd.h>
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -115,6 +118,22 @@ TEST(GeneratedScenes, SceneNamedMainLeavesMainCppAlone) {
     EXPECT_EQ(readFile(generated / "main.cpp"), mainCpp);
 
     fs::remove_all(project);
+}
+
+// The first draw that asks for a missing file makes the texture read as empty() (test_reflection.py:
+// a volumetric clouds' weather map came and went from the generated scene with the frames before the
+// save): the code of a scene does not follow what was drawn
+TEST(GeneratedScenes, ATexturePathStaysWhenItsLoadFailed) {
+    Texture texture;
+    texture.setPath("no-such-texture.png");
+    const std::string before = Factory::formatTexture(8, texture, "clouds.weatherMap", fs::path());
+    EXPECT_NE(before.find("clouds.weatherMap.setPath(\"no-such-texture.png\")"), std::string::npos) << before;
+    for (int attempt = 0; attempt < 2000 && !texture.empty(); attempt++) {
+        texture.load();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    ASSERT_TRUE(texture.empty());
+    EXPECT_EQ(Factory::formatTexture(8, texture, "clouds.weatherMap", fs::path()), before);
 }
 
 // A Lua script's string property is generated as an assignment to a ScriptPropertyValue. Since

@@ -63,3 +63,26 @@ counts them):
 
 Status: JasperEngine-specific (upstream has no asynchronous creation API); every sokol update
 re-applies the marked lines.
+
+## A lock on the resource pools
+
+A thread with a command queue of its own (`SokolCmdQueue`, the editor's thumbnail strand, a game's
+`Engine.startAsyncThread`) allocates the handles of the GPU objects it asks for with `sg_alloc_*`,
+when the main thread may be running `sg_make_*` or `sg_destroy_*`: the frames' semaphore keeps it
+off the frames, not off what the main thread frees outside one. Upstream's pools are not thread
+safe. Every changed line in `sokol_gfx.h` carries `JasperEngine: pool lock`
+(`SokolPatchMarkers.PoolLock` counts them):
+
+- `static std::mutex _sgj_pool_mutex`, and `_SGJ_POOL_LOCK()` taking it (`sokol.cpp` includes
+  `<mutex>`).
+- `_sg_alloc_{buffer,image,sampler,shader,pipeline,view}` and `_sg_dealloc_*` hold it for their whole
+  body: a free list's top and queue, a slot's id and state, and the `allocated` and `deallocated`
+  counters. A dealloc frees the index before it resets the slot, so a thread allocating has to wait
+  for both.
+- `_sg_update_stats` and `sg_query_stats` hold it: they read those counters and the free lists' tops.
+- `sg_destroy_*` no longer assert the slot's state after the dealloc: from there the slot may be the
+  other thread's.
+
+A draw takes no lock: a resource's lookup reads only the slot of a handle the caller owns.
+
+Status: local. Upstream's single-thread contract is intended; nothing to offer.

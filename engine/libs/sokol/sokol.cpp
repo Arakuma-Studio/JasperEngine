@@ -1,4 +1,5 @@
 #include "Log.h"
+#include <mutex>  // the pools' lock in sokol_gfx.h (PATCHES.md)
 #define SOKOL_LOG(s) { SOKOL_ASSERT(s); jasperengine::Log::error(s); }
 
 #define SOKOL_IMPL
@@ -92,6 +93,7 @@ extern "C" void jasperengine_sg_pool_usage(int kind, int* used, int* free){
     *free = 0;
     if (kind < 0 || kind >= 6 || !_sg.valid)
         return;
+    _SGJ_POOL_LOCK();
     const _sg_pool_t* pool = pools[kind];
     *free = pool->queue_top;
     *used = (pool->size - 1) - pool->queue_top;
