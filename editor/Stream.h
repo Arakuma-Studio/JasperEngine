@@ -249,6 +249,9 @@ namespace jasperengine::editor {
         static bool getEmbeddedTextureData(const Texture& texture, TextureData*& data);
         static bool setEmbeddedTextureData(Texture& texture, const std::string& preferredId, int width, int height, ColorFormat format, int channels, const std::vector<unsigned char>& pixels);
 
+        // A texture whose file is missing (its load failed) is empty() but keeps its path: a save,
+        // a copy or an undo snapshot must keep the reference (S04 R15)
+        static bool hasTexturePath(const Texture& texture);
         static YAML::Node encodeTexture(const Texture& texture, bool embedData = true);
         static Texture decodeTexture(const YAML::Node& node);
 

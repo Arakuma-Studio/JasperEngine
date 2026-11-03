@@ -193,15 +193,11 @@ ColorFormat editor::Stream::stringToColorFormat(const std::string& value, int ch
     return channels == 1 ? ColorFormat::RED : ColorFormat::RGBA;
 }
 
-namespace {
-    // A texture whose file is missing (its load failed) is empty() but keeps its path: a save,
-    // a copy or an undo snapshot must keep the reference (S04 R15)
-    bool hasTexturePath(const Texture& texture) {
-        for (size_t face = 0; face < 6; face++) {
-            if (!texture.getPath(face).empty()) return true;
-        }
-        return false;
+bool editor::Stream::hasTexturePath(const Texture& texture) {
+    for (size_t face = 0; face < 6; face++) {
+        if (!texture.getPath(face).empty()) return true;
     }
+    return false;
 }
 
 bool editor::Stream::getEmbeddedTextureData(const Texture& texture, TextureData*& data){
@@ -4342,7 +4338,8 @@ YAML::Node editor::Stream::encodeMaterialPbr(const MaterialPbrExtensions& pbr, b
                 case PbrFieldType::Texture:
                     // a map packed from a model's images (TexturePack) is made again when the
                     // model loads: not written
-                    if (!((const Texture*)value)->empty() && !TexturePack::isPackedId(((const Texture*)value)->getId()))
+                    if ((!((const Texture*)value)->empty() || hasTexturePath(*(const Texture*)value)) &&
+                            !TexturePack::isPackedId(((const Texture*)value)->getId()))
                         lobeNode[field.name] = encodeTexture(*(const Texture*)value, embedTextureData);
                     break;
                 case PbrFieldType::TexCoord:
