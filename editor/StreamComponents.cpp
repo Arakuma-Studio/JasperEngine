@@ -470,7 +470,7 @@ YAML::Node editor::Stream::encodeTerrainSurfaceLayer(const TerrainSurfaceLayer& 
     node["pbr"] = layer.pbr;
     // An unassigned map writes nothing, so a plain color layer stays a two-line entry
     auto texture = [&](const char* name, const Texture& value) {
-        if (!value.empty()) node[name] = encodeTexture(value);
+        if (!value.empty() || hasTexturePath(value)) node[name] = encodeTexture(value);
     };
     texture("colorTexture", layer.colorTexture);
     texture("normalTexture", layer.normalTexture);

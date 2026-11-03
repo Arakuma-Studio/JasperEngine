@@ -767,9 +767,13 @@ namespace jasperengine{
 			// sampled instead of the capture once made
 			TextureRender filteredMap;
 			bool needFilter = false;
+			// the image the authored maps were made of, and its TextureDataPool::generation
+			std::string environmentId;
+			uint32_t environmentGeneration = 0;
 		};
 
 		std::unordered_map<Entity, std::unique_ptr<ReflectionProbeRuntime>> reflectionProbeRuntimes;
+		uint32_t probeImagesEpochSeen = 0;
 
 		// the prefilter of finished runtime captures (probe_filter.frag), shared by the probes
 		bool probeFilterLoaded = false;
@@ -1949,7 +1953,7 @@ namespace jasperengine{
 		TextureRender* getDefaultShaderTexture(int fallback, bool cube);
 
 		bool checkPBRFrabebufferUpdate(Material& material);
-		bool checkPBRTextures(Material& material, bool receiveLights);
+		bool checkPBRTextures(Material& material, bool receiveLights, bool receiveIBL);
 		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
 		// A material's binding takes a stand-in for an image it names that has no GPU texture yet
 		// (Texture::getStandInCount): taken around the binding, noted on the submesh, which binds
@@ -2580,6 +2584,9 @@ namespace jasperengine{
 		void needUpdatePostProcessUniforms();
 		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)
 		void needUpdatePostProcessing();
+		// an image of a terrain's painted layers changed on disk (the editor's file pick-up): the
+		// array read from the files is built again
+		void invalidateTerrainDetailArray(Entity entity);
 		// the images post-processing reads changed on disk (the editor's file pick-up): the LUT
 		// strip (read by path, cached while the path stays) is read again and the user chain
 		// reloads, taking its pass textures again from the scene

@@ -1174,7 +1174,7 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
 
     bool hasTerrain = false;
     if (scene->findComponent<TerrainComponent>(entity)) {
-        hasTerrain = !scene->getComponent<TerrainComponent>(entity).heightMap.empty();
+        hasTerrain = isTextureExported(scene->getComponent<TerrainComponent>(entity).heightMap);
     }
 
     const bool hasRuntimeGeometrySource = hasModel || hasTerrain;

@@ -376,6 +376,96 @@ TEST(TextureLobeMapEnvironmentGpu, ALobesMapAloneIsBoundUnderImageBasedLightingA
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// A core map as a material's only image, under image based lighting alone. The variant asked for UVs
+// for the other core maps under a scene light only (RenderSystem::checkPBRTextures), and without UVs
+// no map is sampled. Each case draws with a white base colour image beside the map (the reference)
+// and with the map alone, which must draw the same.
+namespace {
+    struct CoreMapCase {
+        const char* name;
+        Texture Material::*map;
+        // the map's left half (what changes the surface) and right half (where its factors stay)
+        uint8_t changed[4];
+        uint8_t plain[4];
+    };
+
+    std::ostream& operator << (std::ostream& os, const CoreMapCase& c){
+        return os << c.name;
+    }
+
+    class CoreMapEnvironmentGpu : public ::testing::TestWithParam<CoreMapCase> {};
+}
+
+TEST_P(CoreMapEnvironmentGpu, ACoreMapAloneIsBoundUnderImageBasedLightingAlone){
+    JASPER_REQUIRE_GPU();
+    const CoreMapCase& c = GetParam();
+    const std::string id = std::string("bf19-core|") + c.name;
+    registerSplitImage(id, c.changed, c.plain);
+
+    Scene scene;
+    Camera camera(&scene);
+    camera.setType(CameraType::CAMERA_PERSPECTIVE);
+    camera.setPosition(0.0f, 2.2f, 2.6f);
+    camera.setTarget(0.0f, 0.0f, 0.0f);
+    camera.activate();
+
+    TempDir dir;
+    const auto face = [&dir](const char* name, uint8_t value){
+        std::vector<uint8_t> pixels(16 * 16 * 4, value);
+        for (size_t i = 3; i < pixels.size(); i += 4)
+            pixels[i] = 255;
+        const std::string path = dir.file(std::string(name) + ".png").generic_string();
+        EXPECT_TRUE(stbi_write_png(path.c_str(), 16, 16, 4, pixels.data(), 16 * 4));
+        return path;
+    };
+    Skybox sky(&scene);
+    sky.setTextures(face("px", 90), face("nx", 90), face("py", 255), face("ny", 40), face("pz", 90), face("nz", 90));
+    Engine::setScene(&scene);
+
+    Scene* current = &scene;
+    const auto draw = [&](const Material& material){
+        Primitive plane(&scene);
+        plane.createPlane(3.0f, 3.0f);
+        plane.setMaterial(material);
+        scene.getComponent<MeshComponent>(plane.getEntity()).receiveIBL = true;
+        EXPECT_TRUE(GpuEnvironment::runFrames([current](){
+            return current->getSystem<RenderSystem>()->isAllLoaded();
+        })) << "the scene never finished loading";
+        // (ShaderPool::getMeshProperties: 'Ibl')
+        EXPECT_NE(scene.getComponent<MeshComponent>(plane.getEntity()).submeshes[0].shaderProperties & (1u << 19), 0u) << "the sky does not light the plane";
+        GpuEnvironment::drawFrames(3);
+        return readTarget();
+    };
+
+    Material plain;
+    plain.baseColorFactor = Vector4(0.6f, 0.6f, 0.65f, 1.0f);
+    plain.metallicFactor = 1.0f;
+    plain.roughnessFactor = 1.0f;
+    if (c.map == &Material::emissiveTexture)
+        plain.emissiveFactor = Vector3(0.5f, 0.5f, 0.5f);
+    Material mapAlone = plain;
+    mapAlone.*(c.map) = namedTexture(id);
+    Material withWhite = mapAlone;
+    addWhiteBaseColor(withWhite);
+
+    const std::vector<uint8_t> noMap = draw(plain);
+    const std::vector<uint8_t> reference = draw(withWhite);
+    const std::vector<uint8_t> alone = draw(mapAlone);
+    Engine::removeScene(&scene);
+
+    ASSERT_GT(meanDifference(reference, noMap), 0.5) << "the map changes nothing (the case shows nothing)";
+    EXPECT_LT(meanDifference(alone, reference), 0.25) << "the map alone does not draw as with a base colour image beside it";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+INSTANTIATE_TEST_SUITE_P(CoreMaps, CoreMapEnvironmentGpu, ::testing::Values(
+    // (roughness in green, metallic in blue: the left half a smooth dielectric)
+    CoreMapCase{"MetallicRoughness", &Material::metallicRoughnessTexture, {0, 30, 0, 255}, {255, 255, 255, 255}},
+    CoreMapCase{"Occlusion", &Material::occlusionTexture, {0, 0, 0, 255}, {255, 255, 255, 255}},
+    CoreMapCase{"Emissive", &Material::emissiveTexture, {0, 0, 0, 255}, {255, 255, 255, 255}},
+    CoreMapCase{"Normal", &Material::normalTexture, {230, 128, 180, 255}, {128, 128, 255, 255}}),
+    [](const ::testing::TestParamInfo<CoreMapCase>& info){ return std::string(info.param.name); });
+
 namespace {
     // a quad facing up with two UV sets, the second one mirrored: a glTF of its own, its lobe map
     // an external image read by UV set `texCoord`

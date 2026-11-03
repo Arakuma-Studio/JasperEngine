@@ -3879,6 +3879,10 @@ void editor::App::engineRender(){
             } else {
                 // no Scene view frame to share (its tab is hidden): the preview is the frame
                 renderGameViewPass(sceneProject);
+                // (and what it drew for the Project window is taken here)
+                projectWindow->processMaterialThumbnails();
+                projectWindow->processModelThumbnails();
+                projectWindow->processPrefabThumbnails();
             }
         }
     }
