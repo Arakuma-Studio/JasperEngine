@@ -60,6 +60,16 @@ namespace {
         }
     };
 
+    // an entry spelled exactly so: where the file system doesn't tell cases apart (APFS), fs::exists of
+    // PROJECT.yaml finds the project's own project.yaml
+    bool hasEntryNamed(const fs::path& path) {
+        std::error_code ec;
+        for (const fs::directory_entry& entry : fs::directory_iterator(path.parent_path(), ec)) {
+            if (entry.path().filename() == path.filename()) return true;
+        }
+        return false;
+    }
+
     std::string readAll(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -861,8 +871,9 @@ TEST(SafeWrite, AStrictScopeMakesNoSecondProjectFile) {
         EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "project.yaml", "name: q\n")) << "no token: refused";
         for (const char* rel : {"sub/project.yaml", "PROJECT.yaml", "project.yaml.", "sub/Project.Yaml", "project.yaml:alt"}) {
             EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / fs::path(rel), "assetsDir: /etc\n")) << rel;
-            EXPECT_FALSE(fs::exists(d.root / fs::path(rel))) << rel;
+            EXPECT_FALSE(hasEntryNamed(d.root / fs::path(rel))) << rel;
         }
+        EXPECT_EQ(readAll(d.root / "project.yaml"), "name: p\n") << "the project's own stays as the editor saved it";
         std::string error;
         EXPECT_FALSE(sw::writeFileBeneath(d.root, "deep/er/project.yaml", "x", error));
         EXPECT_NE(error.find("project.yaml"), std::string::npos) << error;

@@ -35,8 +35,6 @@ namespace {
     namespace fs = std::filesystem;
 
     constexpr unsigned int kRate = 44100;
-    // the mono output's gain of a voice at pan 0
-    const float kPanGain = (float)std::cos(M_PI / 4);
 
     std::string fixture(const char* name) {
         return std::string(JASPER_TEST_REPO_DIR) + "/engine/tests/core/fixtures/audio/" + name;

@@ -479,7 +479,7 @@ void SpriteNormalsWindow::refreshProblems(Item& item) {
     for (int v : {g.tileWidth, g.tileHeight, g.columns, g.rows, g.count, g.offsetX, g.offsetY, g.paddingX, g.paddingY}) key += "," + std::to_string(v);
     for (const sn::Cell& c : f.cells) key += ";" + std::to_string(c.x) + "," + std::to_string(c.y) + "," + std::to_string(c.width) + "," + std::to_string(c.height);
     key += "|" + spec.output.normal + "|" + spec.output.atlas + "|" + spec.output.height + "|" + (spec.settings.height ? "h" : "-");
-    key += "|" + std::to_string(item.stampTime.time_since_epoch().count()) + ":" + std::to_string(item.stampSize);
+    key += "|" + std::to_string(static_cast<int64_t>(item.stampTime.time_since_epoch().count())) + ":" + std::to_string(item.stampSize);
     // a GameObject source: whether it is there, the texture it draws and its frame rects
     if (spec.hasSprite()) {
         const Scene* scene = sceneFor(spec);

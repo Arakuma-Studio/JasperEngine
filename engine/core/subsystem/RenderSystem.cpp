@@ -11462,12 +11462,6 @@ void RenderSystem::updateLinesGeometry(Entity entity, LineRendererComponent& lin
     }
 }
 
-namespace {
-    // a ribbon's custom shader: the Line Renderer's ShaderRef (S04), the Trail Renderer's path
-    inline const std::string& ribbonShaderPath(const ShaderRef& ref){ return ref.path; }
-    inline const std::string& ribbonShaderPath(const std::string& path){ return path; }
-}
-
 template<typename T>
 bool RenderSystem::loadRibbonRender(Entity entity, T& component, uint16_t pipelines, uint64_t ribbonVariant, BufferUsage usage){
     (void)entity;
@@ -11476,7 +11470,7 @@ bool RenderSystem::loadRibbonRender(Entity entity, T& component, uint16_t pipeli
     render.beginLoad(PrimitiveType::TRIANGLES);
 
     component.shaderProperties = ribbonVariant | postColorProperty(ShaderType::LINES);
-    const std::string& shaderBase = component.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : ribbonShaderPath(component.customShader);
+    const std::string& shaderBase = component.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : component.customShader.path;
     const std::string shaderSrc = getComponentShaderReference(shaderBase, component.shaderFeatures, component.blendMode);
     component.customShaderId = ShaderPool::registerCustomShader(shaderSrc);
     component.shader = ShaderPool::get(ShaderType::LINES, component.shaderProperties, component.customShaderId);

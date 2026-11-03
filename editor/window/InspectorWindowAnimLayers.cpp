@@ -97,8 +97,6 @@ namespace{
     constexpr double COVERAGE_SECONDS = 0.5;
     constexpr size_t MAX_ROWS = 24;
 
-    const ImVec4 OK_COLOR(0.45f, 0.8f, 0.45f, 1.0f);
-
     float iconButtonWidth(const char* icon){
         return ImGui::CalcTextSize(icon).x + ImGui::GetStyle().FramePadding.x * 2;
     }

@@ -40,13 +40,9 @@ namespace {
     }
 
     // the shader a component draws with (its own, else the scene's default of its type)
-    // a component's custom shader: a ShaderRef (S04) or upstream's plain path
-    inline const std::string& shaderPathOf(const ShaderRef& ref) { return ref.path; }
-    inline const std::string& shaderPathOf(const std::string& path) { return path; }
-
     template<typename T>
     std::string componentShader(Scene* scene, const T& component, ShaderType type) {
-        return component.customShader.empty() ? scene->getDefaultCustomShader(type) : shaderPathOf(component.customShader);
+        return component.customShader.empty() ? scene->getDefaultCustomShader(type) : component.customShader.path;
     }
 
     // what a loaded program reads of the globals (its layouts' members, its texture slots)

@@ -219,7 +219,14 @@ TEST_F(HttpTest, GetTextHasStatusBodyHeadersAndFinalUrl) {
         EXPECT_EQ(name, HttpUtil::lower(name));
         if (name == "x-test") xtest++;
     }
+#if defined(__APPLE__)
+    // NSHTTPURLResponse joins a repeated header
+    EXPECT_EQ(xtest, 1);
+    ASSERT_NE(r.header("X-Test"), nullptr);
+    EXPECT_EQ(*r.header("X-Test"), "one, two");
+#else
     EXPECT_EQ(xtest, 2);
+#endif
     EXPECT_EQ(r.method, "GET");
 }
 
@@ -230,7 +237,11 @@ TEST_F(HttpTest, DefaultUserAgentAndCustomHeaders) {
     EXPECT_EQ(echo["headers"]["x-one"], "1");
     EXPECT_EQ(echo["headers"]["x-two"], "two words");
     EXPECT_EQ(echo["headers"]["user-agent"].get<std::string>().rfind("JasperEngine", 0), 0u);
+#if defined(__APPLE__)
+    EXPECT_NE(echo["headers"]["user-agent"].get<std::string>().find("(macOS)"), std::string::npos);
+#else
     EXPECT_NE(echo["headers"]["user-agent"].get<std::string>().find("(Linux)"), std::string::npos);
+#endif
 
     Http::setUserAgent("MyGame/2.0");
     echo = json(run(get("/echo")));
@@ -990,6 +1001,9 @@ TEST_F(HttpTest, GzipIsDecodedTransparently) {
 TEST_F(HttpTest, AvailableAndTheMissingLibrarySeam) {
     EXPECT_TRUE(Http::isAvailable());
     EXPECT_EQ(Http::unavailableReason(), "");
+#if defined(__APPLE__) || defined(_WIN32)
+    GTEST_SKIP() << "the missing library is the curl backend's (Linux): this platform's backend is its system's own stack";
+#else
     HttpTesting::setCurlLibraryNames({"libjasper-no-such-curl.so.4"});
     EXPECT_FALSE(Http::isAvailable());
     const HttpResponse r = run(get("/text"));
@@ -1000,6 +1014,7 @@ TEST_F(HttpTest, AvailableAndTheMissingLibrarySeam) {
     HttpTesting::setCurlLibraryNames({});
     EXPECT_TRUE(Http::isAvailable());
     EXPECT_TRUE(run(get("/text")).ok);
+#endif
 }
 
 TEST_F(HttpTest, ManagedHeadersAreIgnoredWithOneWarning) {
