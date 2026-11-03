@@ -525,19 +525,19 @@ CurveEditorResult CurveEditor::draw(const char* id, std::vector<CurveBinding>& c
     // keys: F frames, Delete removes, Ctrl+C / Ctrl+V copy and paste at the cursor's time
     const bool keyboard = hovered || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
     if (keyboard && !ImGui::GetIO().WantTextInput && drag == Drag::None) {
-        if (ImGui::IsKeyPressed(ImGuiKey_F, false) && !io.KeyCtrl) frame(curves);  // shortcut-lint: allow the curve editor's own keys while it is hovered or focused, on its selection
-        if ((ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) && !selection.empty()) {  // shortcut-lint: allow the curve editor's own keys while it is hovered or focused, on its selection
+        if (ImGui::IsKeyPressed(ImGuiKey_F, false) && !io.KeyCtrl) frame(curves);   // shortcut-lint: allow a key of this widget's own curves, selection and clipboard, while it has focus or the mouse (docs/editor/curves.md)
+        if ((ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) && !selection.empty()) {   // shortcut-lint: allow a key of this widget's own curves, selection and clipboard, while it has focus or the mouse (docs/editor/curves.md)
             beginGesture(curves, result);
             std::vector<Curve*> targets = mutableCurves(curves);
             curveops::deleteKeys(targets, selection);
             result.changed = true;
             result.ended = true;
         }
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) {  // shortcut-lint: allow the curve editor's own keys while it is hovered or focused, on its selection
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) {   // shortcut-lint: allow a key of this widget's own curves, selection and clipboard, while it has focus or the mouse (docs/editor/curves.md)
             const int active = activeCurve(curves);
             if (active >= 0) clipboard = curveops::copyKeys(*curves[(size_t)active].curve, selection, active);
         }
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false) && !clipboard.empty()) {  // shortcut-lint: allow the curve editor's own keys while it is hovered or focused, on its selection
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false) && !clipboard.empty()) {   // shortcut-lint: allow a key of this widget's own curves, selection and clipboard, while it has focus or the mouse (docs/editor/curves.md)
             const int active = activeCurve(curves);
             if (active >= 0) {
                 beginGesture(curves, result);

@@ -482,9 +482,8 @@ the GPU. `tools/mcp/gpu_lane.json` classes every graphics test file:
 
 | Class | Files | What |
 |---|---|---|
-| (a) `gpu` | 34 | relative or structural checks (a change between two renders, no black or NaN pixels, values, undo, saved files); each passed twice on the RTX; together 7,259 s of test time on llvmpipe under load, 1,223 s on the RTX: `animation_clip`, `animation_inspector`, `animation_record`, `animation_window`, `animator`, `async_shaders`, `atmosphere`, `atmosphere_editor`, `autosync`, `bake_vertex_animation`, `buoyancy`, `core_utilities`, `ecs`, `ecs_collision`, `fluid_agent`, `fluid_fixed`, `hot_reload`, `html_ui_docs`, `html_ui_tools`, `html_ui_video`, `html_ui_widgets`, `play`, `play_stop_gizmos`, `pose_animation`, `pose_runtime`, `post_fx_settings`, `scene_view_ui`, `shader_library_phase2_review`, `shadows_ui`, `stochastic_tiling`, `undo_ui`, `vat_baker_window`, `vat_inspector`, `water` |
+| (a) `gpu` | 43 | relative or structural checks (a change between two renders, no black or NaN pixels, values, undo, saved files); each passed twice on the RTX; BF16's 34 together 7,259 s of test time on llvmpipe under load, 1,223 s on the RTX: `animation_clip`, `animation_inspector`, `animation_record`, `animation_window`, `animator`, `async_shaders`, `atmosphere`, `atmosphere_editor`, `autosync`, `bake_vertex_animation`, `buoyancy`, `core_utilities`, `ecs`, `ecs_collision`, `fluid_agent`, `fluid_fixed`, `hot_reload`, `html_ui_docs`, `html_ui_tools`, `html_ui_video`, `html_ui_widgets`, `play`, `play_stop_gizmos`, `pose_animation`, `pose_runtime`, `post_fx_settings`, `scene_view_ui`, `shader_library_phase2_review`, `shadows_ui`, `stochastic_tiling`, `undo_ui`, `vat_baker_window`, `vat_inspector`, `water`; since BF20: `fluid_effect`, `fluid_inspector`, `html_ui_effects`, `lattice_bake`, `place_with_physics`, `pose_render`, `pose_window`, `reflection`, `upgrade_from_main` |
 | (b) `llvmpipe` | 8 | compare with goldens drawn by llvmpipe, and the MCP suite has no per-renderer goldens (the unit tests' `isReferenceRenderer` and `hardwareTolerance` are C++ only), so they stay the reference: `html_ui_examples`, `lattice`, `materials_pbr`, `navigation`, `particles_tools`, `post_fx_golden`, `scene_view`, `shadows` |
-| (c) `other`, failed on the RTX | 9 | `fluid_inspector`, `fluid_effect`, `html_ui_effects`, `pose_render`, `upgrade_from_main`, `pose_window` (2/2), `reflection`, `place_with_physics`, `lattice_bake` (1/2): absolute thresholds, frame races, or real GPU differences not yet looked at; each file's reason is in `gpu_lane.json` |
 | (c) `other`, not on the lane | 77 | budgets or frame times of the software renderer, game builds, no renderer in use, or under a minute with nothing to gain (not validated) |
 
 Lane files run on one display per chunk, two at a time; a file holding one test that is not GPU-OK stays on llvmpipe whole, because its tests share an editor. Files not listed render nothing that matters and stay on llvmpipe.
@@ -735,7 +734,10 @@ GCC 11's TSan (the Linux image) does not intercept `pthread_cond_clockwait` or
 through on the steady clock: one such wait makes its mutex look held, reports double locks there,
 and, since a `std::mutex` never tells TSan it is gone, breaks the next mutex at its address (reports
 of races under a mutex both sides hold). Core timed waits go through `jobs::detail::timedWait`
-(`jobs/detail/TimedWait.h`), and `Crash*` and `HangWatchdog.*` run under TSan with the rest. A budget
+(`jobs/detail/TimedWait.h`), a lock with a deadline is a `try_lock` loop (`Logger.cpp`, `lockUntil`;
+`io/watch/backends/Backends.h`, `lockWithin`; the editor's timed waits are not moved yet), and
+`Crash*` and `HangWatchdog.*` run under TSan with the rest. The GPU suites run with
+`halt_on_error=1` too: `tsan.supp` has Mesa's `swrast_dri.so`, whose reports are about its own mutexes. A budget
 in wall clock is printed under a sanitizer, never enforced there: `perfSlack()`, or the build's
 `JASPERENGINE_SANITIZE_*` where a test's own limit is unconditional.
 
@@ -1127,10 +1129,20 @@ Found on the way:
   `RigidbodyComponent::solidBoxDensity` has no initialiser, so the generated C++ prints garbage
   (`-95312802931886636396528534812354412544.000000f`). BF14 gives it one.
 - The same test failed once on the RTX on `clouds.weatherMap.setPath(...)`: whether a generated scene
-  sets a texture's path depends on when its load finished.
-- The nine files that fail on the RTX (`gpu_lane.json`) may hide real GPU differences:
-  `test_pose_render.py`'s model does not draw, `test_html_ui_effects.py`'s fog has no variation,
-  `test_fluid_effect.py`'s burst peaks at 13 of 255. Nobody has looked at them yet.
+  sets a texture's path depends on when its load finished. Fixed in `Factory::formatTexture` (BF20).
+- Nine files failed on the RTX (BF20 has them all on the lane now):
+  - Pipelines are made off the render thread on a GPU and at once on llvmpipe, so whatever draws
+    once and keeps the result must wait for them. A stateful UI effect ran its passes without the
+    ones whose pipeline was not ready (`test_html_ui_effects.py`'s fog, `test_fluid_effect.py`'s
+    burst): the passes now start over until each has its pipeline. A pose sheet read back a target
+    the model had not been drawn into (`test_pose_render.py`): it now waits for `getWaitingDrawCount`
+    to stand still. `MeshSystem::loadGLTF` left a reload's `vertexCount`s to `RenderSystem::loadMesh`,
+    seconds later on a GPU, and a save meanwhile wrote those of the reversed slots
+    (`test_pose_window.py`).
+  - Tests: `test_fluid_inspector.py`'s dye amount follows how many frames a drag takes, and
+    `test_place_with_physics.py` raced a job against a CPU and frames faster than llvmpipe's.
+  - Not reproduced on af184d8f1: `test_upgrade_from_main.py`'s rewritten `Level1.scene` and
+    `test_lattice_bake.py`'s 1.9%; BF16's runs predate BF15's late image binds.
 - `tools/build.sh linux`'s LTO link prints 11 `-Wodr` warnings about `spv::` enums, the two vendored
   copies of `spirv.hpp` (glslang, spirv-cross), since S34. No warning from our own targets.
 - `NavAgentTest.CharacterControllerDriver` depended on the order of the tests: `NavSceneTest::step()` ran

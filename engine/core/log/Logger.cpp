@@ -79,7 +79,7 @@ namespace je_logger {
         bool resident = false;       // LogSink::resident (Inline only)
         bool afterWrite = false;     // LogSink::wantsAfterWrite (Inline only)
         // held while the sink writes: the drain thread's batch, a Fatal record
-        std::timed_mutex writeMutex;
+        std::mutex writeMutex;
         std::array<std::atomic<uint8_t>, kMaxCategories> categoryLevels;
 
         SinkEntry() {
@@ -706,14 +706,15 @@ namespace je_logger {
     }
 
     // The summaries of windows that ended with records held back
-    void sweepValve(LoggerState& s, int64_t nowMs) {
+    // (every window with `all`: over or not. How many summaries went out: the rest are for the next)
+    size_t sweepValve(LoggerState& s, int64_t nowMs, bool all = false) {
         ValveSummary summaries[16];
         size_t count = 0;
         for (size_t stripe = 0; stripe < kValveStripes && count < 16; stripe++) {
             std::lock_guard<std::mutex> lock(s.valveMutexes[stripe]);
             for (size_t i = 0; i < kValveStripeSlots; i++) {
                 ValveSlot& slot = s.valve[stripe * kValveStripeSlots + i];
-                if (slot.key == 0 || nowMs - slot.windowStartMs < kValveWindowMs) continue;
+                if (slot.key == 0 || (!all && nowMs - slot.windowStartMs < kValveWindowMs)) continue;
                 if (slot.suppressed > 0) {
                     if (count == 16) break;
                     ValveSummary& summary = summaries[count++];
@@ -727,6 +728,7 @@ namespace je_logger {
         }
         s.nextValveSweepMs.store(nowMs + kValveWindowMs / 4, std::memory_order_relaxed);
         emitSummaries(summaries, count);
+        return count;
     }
 
     // ---- the drain thread
@@ -773,7 +775,7 @@ namespace je_logger {
             for (size_t i = 0; i < sinkCount; i++) {
                 SinkEntry& entry = *sinks[i];
                 if (entry.inlineDelivery) continue;
-                std::lock_guard<std::timed_mutex> sinkLock(entry.writeMutex);
+                std::lock_guard<std::mutex> sinkLock(entry.writeMutex);
                 size_t position = start;
                 size_t consumed = 0;
                 while (consumed < bytes) {
@@ -852,6 +854,17 @@ namespace je_logger {
         return record.frameCount > 0;
     }
 
+    // Locks `mutex` by `deadline` (false: it did not). A try_lock loop, not std::timed_mutex:
+    // libstdc++'s try_lock_until locks through pthread_mutex_clocklock, which GCC 11's
+    // ThreadSanitizer does not intercept (io/watch/backends/Backends.h, lockWithin)
+    bool lockUntil(std::mutex& mutex, std::chrono::steady_clock::time_point deadline) {
+        while (!mutex.try_lock()) {
+            if (std::chrono::steady_clock::now() >= deadline) return false;
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+        }
+        return true;
+    }
+
     void deliverFatal(LoggerState& s, const LogRecord& record) {
         // what was queued before it goes first, then the record to every Async sink from here
         if (s.async.load(std::memory_order_relaxed)) {
@@ -877,7 +890,7 @@ namespace je_logger {
             SinkEntry& entry = *sinks[i];
             // the sink this thread is inside of (a Fatal from a sink) holds its own lock
             if (entry.inlineDelivery || entry.id == current || !entry.accepts(record.level, *record.category)) continue;
-            if (!entry.writeMutex.try_lock_until(deadline)) continue;
+            if (!lockUntil(entry.writeMutex, deadline)) continue;
             dispatchToSink(entry, record);
             entry.sink->flush();
             entry.writeMutex.unlock();
@@ -1331,7 +1344,7 @@ void Logger::shutdown() {
         recomputeGatesLocked(s);
     }
     for (size_t i = 0; i < sinkCount; i++) {
-        std::lock_guard<std::timed_mutex> sinkLock(sinks[i]->writeMutex);
+        std::lock_guard<std::mutex> sinkLock(sinks[i]->writeMutex);
         sinks[i]->sink->flush();
     }
 }
@@ -1376,7 +1389,7 @@ void Logger::removeSink(SinkId id) {
     }
     if (removed) {
         // what it was given is written before it goes
-        std::lock_guard<std::timed_mutex> sinkLock(removed->writeMutex);
+        std::lock_guard<std::mutex> sinkLock(removed->writeMutex);
         removed->sink->flush();
     }
 }
@@ -1520,6 +1533,13 @@ void Logger::flush() {
     jasperengine::jobs::detail::timedWait(s.drainedCv, lock, std::chrono::seconds(5), [&s, target]() {
         return s.drainedSeq.load(std::memory_order_acquire) >= target || s.stopping;
     });
+}
+
+void Logger::flushSummaries() {
+    LoggerState& s = logState();
+    if (!s.initialized.load(std::memory_order_acquire)) return;
+    while (sweepValve(s, logMonotonicMs(), true) > 0) {}
+    flush();
 }
 
 bool Logger::flushForCrash(std::chrono::milliseconds timeout, uint64_t* unwritten) noexcept {

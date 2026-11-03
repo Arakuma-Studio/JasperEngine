@@ -171,8 +171,10 @@ bool publish::stageCompileNotices(const fs::path& target, const std::vector<std:
         }
         for (size_t i = 0; i < files.size(); i++) {
             const std::string name = stagedNoticeName(library.name, i, files[i]);
-            fs::copy_file(files[i], target / "licenses" / name, fs::copy_options::overwrite_existing, ec);
-            if (ec) {
+            // a Compile build's folder itself, where the last build's notices are: not a staging folder
+            io::AtomicWriteOptions cache;
+            cache.durability = io::Durability::Cache;
+            if (!FileUtils::copyFileAtomic(files[i], target / "licenses" / name, ec, cache)) {
                 error = "cannot stage " + name + ": " + ec.message();
                 return false;
             }

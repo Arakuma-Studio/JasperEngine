@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "log/LogTestSupport.h"
+#include "LogCapture.h"
 #include "support/AllocationCounter.h"
 #include "TempDir.h"
 
@@ -63,6 +64,36 @@ TEST(LoggerTest, MacroRecordsCarryTheirSource) {
     EXPECT_EQ(found[0].category, "logger-test");
     EXPECT_NE(found[0].file.find("LoggerTest.cpp"), std::string::npos) << found[0].file;
     EXPECT_EQ(found[0].line, line);
+}
+
+// A Fatal reaches an Async sink from the calling thread, under the sink's lock with a deadline.
+// (Under SANITIZE=thread, that lock taken through std::timed_mutex reports an unlock of an unlocked
+// mutex: GCC 11's TSan does not intercept what try_lock_until calls.)
+TEST(LoggerTest, FatalReachesAnAsyncSinkFromTheCallingThread) {
+    auto sink = recordingSink();
+    JE_LOG_FATAL(logCategoryLoggerTest(), "the end %d", 7);
+    EXPECT_EQ(sink->containing("the end 7").size(), 1u) << "before any flush";
+    Logger::flush();
+    EXPECT_EQ(sink->containing("the end 7").size(), 1u);
+}
+
+// A burst of errors in one test: its summary comes when the second is over, in whichever test is
+// running by then. A test's capture starts after it, and the rate limit starts anew for that test.
+TEST(LoggerTest, ASummaryOfAnEarlierTestIsNotInTheNextTestsCapture) {
+    const auto burst = []() { JE_LOG_ERROR(logCategoryLoggerTest(), "an earlier test's burst"); };
+    for (int i = 0; i < 500; i++)
+        burst();
+    LogCapture::markTestStart();
+    Logger::flushSummaries();
+    const LogCapture capture = LogCapture::sinceTestStart();
+    EXPECT_FALSE(capture.contains("similar messages")) << capture.describeErrors();
+    EXPECT_TRUE(capture.errors().empty()) << capture.describeErrors();
+    // its own errors still count: the first of a burst from here on goes through
+    burst();
+    Logger::flush();
+    EXPECT_EQ(capture.count(D_LOG_ERROR, "an earlier test's burst"), 1u);
+    // (what was logged on purpose is not this test's failure, nor a later one's)
+    LogCapture::markTestStart();
 }
 
 TEST(LoggerTest, LegacyCallsMapToLevels) {

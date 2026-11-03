@@ -1,6 +1,6 @@
 {
  "about": "The MCP suite's graphics test files on the real-GPU lane (docs/testing.md, 'The real-GPU lane'). gpu: runs on the lane's GPU. llvmpipe: compares with goldens drawn by llvmpipe; the MCP suite has no per-renderer goldens. other: stays on llvmpipe, for the reason given. A file not listed renders nothing that matters and stays on llvmpipe.",
- "validated": "run twice on H (RTX 3080 Ti, 1600x900 headless Xorg), BF16 2026-11-02",
+ "validated": "run twice on H (RTX 3080 Ti, 1600x900 headless Xorg), BF16 2026-11-02; the nine it left failing, BF20 2026-11-03",
  "tests": {
   "test_animation_clip.py": {
    "class": "gpu",
@@ -115,16 +115,16 @@
    "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
   "test_fluid_effect.py": {
-   "class": "other",
-   "why": "fails on the RTX 2/2: test_pinned_burst, the start burst's peak 13 against >= 150 (and the tests after it)"
+   "class": "gpu",
+   "why": "its checks are relative or structural (BF20: a stateful effect's passes wait for their pipelines); passes 2/2 on the RTX 3080 Ti"
   },
   "test_fluid_fixed.py": {
    "class": "gpu",
    "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
   "test_fluid_inspector.py": {
-   "class": "other",
-   "why": "fails on the RTX 2/2: test_paint_dye_brush's dye amount, an absolute threshold measured on llvmpipe (3.6 against > 4)"
+   "class": "gpu",
+   "why": "its checks are relative or structural (BF20: the dye against the quadrant before the stroke); passes 2/2 on the RTX 3080 Ti"
   },
   "test_hot_reload.py": {
    "class": "gpu",
@@ -143,8 +143,8 @@
    "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
   },
   "test_html_ui_effects.py": {
-   "class": "other",
-   "why": "fails on the RTX 2/2: test_stateful_effects, the fog's standard deviation 0.0 against >= 4"
+   "class": "gpu",
+   "why": "its checks are relative or structural (BF20: a stateful effect's passes wait for their pipelines); passes 2/2 on the RTX 3080 Ti"
   },
   "test_html_ui_effects_export.py": {
    "class": "other",
@@ -227,8 +227,8 @@
    "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
   },
   "test_lattice_bake.py": {
-   "class": "other",
-   "why": "fails on the RTX 1/2: test_ball_bake, baked against live render 1.9% of the pixels apart"
+   "class": "gpu",
+   "why": "compares two renders of the same run; passes 2/2 on the RTX 3080 Ti (BF20; BF16's 1.9% apart not seen again)"
   },
   "test_lattice_lua.py": {
    "class": "other",
@@ -295,8 +295,8 @@
    "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
   },
   "test_place_with_physics.py": {
-   "class": "other",
-   "why": "fails on the RTX 1/2: test_screenshot and test_job_progress_and_cancel, which race a job against frames"
+   "class": "gpu",
+   "why": "its checks are relative or structural (BF20: no race of a job against frames); passes 2/2 on the RTX 3080 Ti"
   },
   "test_play.py": {
    "class": "gpu",
@@ -323,16 +323,16 @@
    "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
   "test_pose_render.py": {
-   "class": "other",
-   "why": "fails on the RTX 2/2: test_poses_without_overlay, the model is not drawn"
+   "class": "gpu",
+   "why": "its checks are relative or structural (BF20: a pose sheet waits for its model's pipelines); passes 2/2 on the RTX 3080 Ti"
   },
   "test_pose_runtime.py": {
    "class": "gpu",
    "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
   "test_pose_window.py": {
-   "class": "other",
-   "why": "fails on the RTX 2/2: test_save_while_previewing_writes_rest (at frame rates llvmpipe never reaches)"
+   "class": "gpu",
+   "why": "its checks are relative or structural (BF20: a reload's vertex counts are right at once); passes 2/2 on the RTX 3080 Ti"
   },
   "test_post_fx_golden.py": {
    "class": "llvmpipe",
@@ -383,8 +383,8 @@
    "why": "not on the lane: under a minute on llvmpipe, nothing to gain; not validated on a GPU"
   },
   "test_reflection.py": {
-   "class": "other",
-   "why": "fails on the RTX 1/2: test_codegen_golden, the generated C++ differs from the goldens"
+   "class": "gpu",
+   "why": "text goldens of what the editor saves and generates, no pixels (BF20: the generated code keeps a texture's path); passes 2/2 on the RTX 3080 Ti"
   },
   "test_render_perf.py": {
    "class": "other",
@@ -491,8 +491,8 @@
    "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti"
   },
   "test_upgrade_from_main.py": {
-   "class": "other",
-   "why": "fails on the RTX 2/2: one upgrade check against the old editor's transcripts"
+   "class": "gpu",
+   "why": "its checks are relative or structural; passes 2/2 on the RTX 3080 Ti (BF20; BF16's rewritten Level1.scene not seen again)"
   },
   "test_vat_baker_window.py": {
    "class": "gpu",

@@ -12,6 +12,11 @@ editor/vcs/SvnProvider.cpp :: std::ofstream out(messageFile, std::ios::binary | 
 editor/vcs/GitProvider.cpp :: std::ofstream out(file, std::ios::binary | std::ios::trunc); :: private temporary --pathspec-from-file list for one git call, removed after it
 editor/vcs/VcsEditorOps.cpp :: if (!fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec)) { :: the revert's backup copy of a file into the editor's internal folder, never a project document
 editor/util/EditorScripts.cpp :: fs::copy_file(built, copy, fs::copy_options::overwrite_existing, ec); :: S23 hot-reload copy of the C++ editor-script library under a unique generation name (build output, not a document)
+editor/Exporter.cpp :: std::ofstream(fs::path(path.string() + ".held")) :: the marker holdForTest writes next to the hold file a test names in JASPER_TEST_EXPORT_HOLD; no other run reaches it
+editor/platform/AndroidPackager.cpp :: std::ofstream out(path, std::ios::binary); :: SecretFile: a signing password's file in the package's work folder, created empty so it is owner-only before the secret goes in (a temporary sibling would hold it with default permissions), removed after the signing
+editor/platform/AndroidPackager.cpp :: std::ofstream out(path, std::ios::binary | std::ios::trunc); :: SecretFile: the same file, now owner-only, takes the secret
+editor/recorder/RecorderSession.cpp :: void writeWavHeader(std::ofstream& out, uint32_t dataBytes) { :: the stream of the Sink's audio file below
+editor/recorder/RecorderSession.cpp :: std::ofstream wav; :: a movie's audio, streamed for the mux to the hidden .<movie>.audio.wav and its sizes patched at the end; FFmpeg's mux writes the movie and this file is removed, never published
 
 # output to a path the user named on the command line
 editor/App.cpp :: std::ofstream file(benchmarkOut); :: --benchmark-out report
@@ -42,6 +47,17 @@ editor/Exporter.cpp :: fs::copy_file(src / "shaderlib.h" :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(resolveProjectFile(project, source), target :: export staging (S30)
 editor/Exporter.cpp :: if (!ec) fs::copy_file(source, target :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(glbPath, importPath :: export staging (S30): the FBX imports a build ships
+editor/ExporterPrebuilt.cpp :: fs::copy_file(icon, contentDir / "icon.png" :: prebuilt staging: <dest>.staging-<pid>, or the build cache's content/ for Web and Android, both emptied when the build starts; <dest> only changes in swapStagingIntoPlace
+editor/ExporterPrebuilt.cpp :: fs::copy_file(player->dir / "THIRD-PARTY-NOTICES.txt", contentDir :: prebuilt staging, as the icon above
+editor/ExporterPrebuilt.cpp :: fs::copy_file(contentDir / "THIRD-PARTY-NOTICES.txt", stagingDir :: prebuilt staging: <dest>.staging-<pid>, discarded on failure, swapped in whole
+editor/ExporterPrebuilt.cpp :: fs::copy_file(favicon, stagingDir / "favicon.png" :: prebuilt staging: <dest>.staging-<pid>, discarded on failure, swapped in whole
+editor/ExporterPrebuilt.cpp :: fs::copy_file(contentDir / "icon.png", stagingDir / "favicon.png" :: prebuilt staging: <dest>.staging-<pid>, discarded on failure, swapped in whole
+editor/platform/IosProject.cpp :: stbi_write_png((set / "AppIcon-1024.png") :: the Xcode project's icon, in finalizeIOS's <dest>.staging-<pid>/<app>, discarded on failure, swapped in whole
+editor/platform/AndroidPackager.cpp :: fs::copy_file(file, target, fs::copy_options::overwrite_existing, ec); :: an icon into the package's work folder, in the build cache and emptied when the package starts
+
+# zip import staging: a free <name>.importing folder, removed on failure and renamed to the target whole
+editor/hub/ProjectImporter.cpp :: std::ofstream* out; :: the sink of the extraction below
+editor/hub/ProjectImporter.cpp :: std::ofstream out(target, std::ios::binary | std::ios::trunc); :: a zip entry into importZip's .importing folder; the target is only reached by the final rename
 
 # the game's own file API (File::open for writing, used by scripts): it streams
 engine/core/io/File.cpp :: platformFopen(systemPath.c_str(), "w+b") :: File, the engine's public read/write file API used by game code

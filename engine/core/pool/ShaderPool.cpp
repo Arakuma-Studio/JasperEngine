@@ -1648,7 +1648,10 @@ void ShaderPool::destroyCustomShaders(const std::function<bool(const std::string
         failed.assign(failedShaders().begin(), failedShaders().end());
     }
     for (auto& entry : entries){
-        if (isFork(entry.first) && entry.second && entry.second->isCreated()){
+        // being made as well (queued off the main thread, or created off the render thread): what
+        // would come of it is the old source. A queued make finds its handle gone and makes nothing
+        if (isFork(entry.first) && entry.second &&
+                (entry.second->isCreated() || entry.second->isPending() || entry.second->loading.load())){
             entry.second->destroyShader();
         }
     }

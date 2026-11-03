@@ -108,6 +108,10 @@ namespace jasperengine{
             jobs::Task<LoadResult> task;
             jobs::CancelToken cancel;
         };
+        // Its job waited for (asked to stop first with `cancel`); what it ended with, nobody will
+        // take: its pixels are nobody's yet (the pool's copy owns them once a load took them), so
+        // they go here
+        static void discardPending(const std::string& id, PendingTexture& pending, bool cancel = true);
 
         static std::unordered_map<std::string, Resident>& getResidents();
         static texturesdata_t& getMap();

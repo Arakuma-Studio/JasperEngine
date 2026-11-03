@@ -104,6 +104,9 @@ namespace jasperengine::htmlui {
         bool replayPointerValid = false, replayPointerDown = false;
         Rml::Vector2f replayPrevious{0.f, 0.f};
         bool replayPreviousKnown = false;
+        // the last unit's pass found its pipeline (or its shader) still being created or warmed
+        // (spec S32): it did not run
+        bool passWaiting = false;
         // the pointer at the last step (area-local CSS px)
         Rml::Vector2f pointer{0.f, 0.f};
         bool pointerKnown = false;
