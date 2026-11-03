@@ -76,7 +76,7 @@ namespace je_logger {
         std::unique_ptr<LogSink> sink;
         bool inlineDelivery = false;
         // held while the sink writes: the drain thread's batch, a Fatal record
-        std::timed_mutex writeMutex;
+        std::mutex writeMutex;
         std::array<std::atomic<uint8_t>, kMaxCategories> categoryLevels;
 
         SinkEntry() {
@@ -740,7 +740,7 @@ namespace je_logger {
             for (size_t i = 0; i < sinkCount; i++) {
                 SinkEntry& entry = *sinks[i];
                 if (entry.inlineDelivery) continue;
-                std::lock_guard<std::timed_mutex> sinkLock(entry.writeMutex);
+                std::lock_guard<std::mutex> sinkLock(entry.writeMutex);
                 size_t position = start;
                 size_t consumed = 0;
                 while (consumed < bytes) {
@@ -814,6 +814,17 @@ namespace je_logger {
         return record.frameCount > 0;
     }
 
+    // Locks `mutex` by `deadline` (false: it did not). A try_lock loop, not std::timed_mutex:
+    // libstdc++'s try_lock_until locks through pthread_mutex_clocklock, which GCC 11's
+    // ThreadSanitizer does not intercept (io/watch/backends/Backends.h, lockWithin)
+    bool lockUntil(std::mutex& mutex, std::chrono::steady_clock::time_point deadline) {
+        while (!mutex.try_lock()) {
+            if (std::chrono::steady_clock::now() >= deadline) return false;
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+        }
+        return true;
+    }
+
     void deliverFatal(LoggerState& s, const LogRecord& record) {
         // what was queued before it goes first, then the record to every Async sink from here
         if (s.async.load(std::memory_order_relaxed)) {
@@ -837,7 +848,7 @@ namespace je_logger {
             SinkEntry& entry = *sinks[i];
             // the sink this thread is inside of (a Fatal from a sink) holds its own lock
             if (entry.inlineDelivery || entry.id == current || !entry.accepts(record.level, *record.category)) continue;
-            if (!entry.writeMutex.try_lock_until(deadline)) continue;
+            if (!lockUntil(entry.writeMutex, deadline)) continue;
             dispatchToSink(entry, record);
             entry.sink->flush();
             entry.writeMutex.unlock();
@@ -1238,7 +1249,7 @@ void Logger::shutdown() {
         recomputeGatesLocked(s);
     }
     for (size_t i = 0; i < sinkCount; i++) {
-        std::lock_guard<std::timed_mutex> sinkLock(sinks[i]->writeMutex);
+        std::lock_guard<std::mutex> sinkLock(sinks[i]->writeMutex);
         sinks[i]->sink->flush();
     }
 }
@@ -1279,7 +1290,7 @@ void Logger::removeSink(SinkId id) {
     }
     if (removed) {
         // what it was given is written before it goes
-        std::lock_guard<std::timed_mutex> sinkLock(removed->writeMutex);
+        std::lock_guard<std::mutex> sinkLock(removed->writeMutex);
         removed->sink->flush();
     }
 }
