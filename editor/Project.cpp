@@ -3596,8 +3596,19 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         }
     }
 
+    // The scene's own GameObjects only (user ids, and a GameObject an old file gave a system id):
+    // the Scene view makes its icons (Sprites of one submesh), grid and gizmos in the scene's
+    // registry as system entities when it draws, so a save would otherwise depend on whether the
+    // scene was drawn
+    const std::unordered_set<Entity> tracked(sceneProject->entities.begin(), sceneProject->entities.end());
+    auto own = [&tracked](auto& array, size_t i) {
+        const Entity entity = array->getEntity(i);
+        return entity > EntityManager::lastSystemEntity() || tracked.count(entity) > 0;
+    };
+
     auto meshes = sceneProject->scene->getComponentArray<MeshComponent>();
     for (size_t i = 0; i < meshes->size(); ++i) {
+        if (!own(meshes, i)) continue;
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
         maxValues.maxSubmeshes = std::max(maxValues.maxSubmeshes, mesh.numSubmeshes);
         maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, mesh.numExternalBuffers);
@@ -3623,6 +3634,7 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
 
     auto models = sceneProject->scene->getComponentArray<ModelComponent>();
     for (size_t i = 0; i < models->size(); ++i) {
+        if (!own(models, i)) continue;
         const ModelComponent& model = models->getComponentFromIndex(i);
         addModelFile(model.filename, model.mergeStaticMeshes);
     }
@@ -3630,6 +3642,7 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
     // Spline Instantiate model pools (their pieces are merged models), also where none loaded
     auto instantiates = sceneProject->scene->getComponentArray<SplineInstantiateComponent>();
     for (size_t i = 0; i < instantiates->size(); ++i) {
+        if (!own(instantiates, i)) continue;
         const SplineInstantiateComponent& instantiate = instantiates->getComponentFromIndex(i);
         for (const std::vector<SplinePoolEntry>* pool : {&instantiate.items, &instantiate.posts, &instantiate.spans,
                                                          &instantiate.gates, &instantiate.crests, &instantiate.caps}) {
@@ -3642,6 +3655,7 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
     // foliage chunks are merged models
     auto terrains = sceneProject->scene->getComponentArray<TerrainComponent>();
     for (size_t i = 0; i < terrains->size(); ++i) {
+        if (!own(terrains, i)) continue;
         for (const TerrainFoliageLayer& layer : terrains->getComponentFromIndex(i).foliageLayers) {
             addModelFile(layer.meshPath, true);
         }
@@ -3649,12 +3663,14 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
 
     auto sprites = sceneProject->scene->getComponentArray<SpriteComponent>();
     for (size_t i = 0; i < sprites->size(); ++i) {
+        if (!own(sprites, i)) continue;
         const SpriteComponent& sprite = sprites->getComponentFromIndex(i);
         maxValues.maxSpriteFrames = std::max(maxValues.maxSpriteFrames, sprite.numFramesRect);
     }
 
     auto points = sceneProject->scene->getComponentArray<PointsComponent>();
     for (size_t i = 0; i < points->size(); ++i) {
+        if (!own(points, i)) continue;
         const PointsComponent& pointsComponent = points->getComponentFromIndex(i);
         maxValues.maxSpriteFrames = std::max(maxValues.maxSpriteFrames, pointsComponent.numFramesRect);
     }
@@ -3665,6 +3681,7 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
     // operator[], so they must factor into MAX_SPRITE_FRAMES too.
     auto spriteAnims = sceneProject->scene->getComponentArray<SpriteAnimationComponent>();
     for (size_t i = 0; i < spriteAnims->size(); ++i) {
+        if (!own(spriteAnims, i)) continue;
         const SpriteAnimationComponent& spriteAnim = spriteAnims->getComponentFromIndex(i);
         maxValues.maxSpriteFrames = std::max(maxValues.maxSpriteFrames, spriteAnim.framesSize);
         maxValues.maxSpriteFrames = std::max(maxValues.maxSpriteFrames, spriteAnim.framesTimeSize);
@@ -3672,6 +3689,7 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
 
     auto tilemaps = sceneProject->scene->getComponentArray<TilemapComponent>();
     for (size_t i = 0; i < tilemaps->size(); ++i) {
+        if (!own(tilemaps, i)) continue;
         const TilemapComponent& tilemap = tilemaps->getComponentFromIndex(i);
         maxValues.maxTilemapTilesRect = std::max(maxValues.maxTilemapTilesRect, tilemap.numTilesRect);
         maxValues.maxTilemapTiles = std::max(maxValues.maxTilemapTiles, tilemap.numTiles);
@@ -5646,6 +5664,7 @@ void editor::Project::resetConfigs() {
     playerCrash = PlayerCrashSettings();
     buildMethod = "auto";
     packContent = false;
+    stripEngineCode = true;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
@@ -7269,7 +7288,16 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
             sceneProject->isModified = true;
             return false;
         }
-        sceneProject->isModified = false;
+        markSceneSaved(sceneProject);
+    } catch (const Stream::IncompleteSave& e) {
+        // the encode would have lost a GameObject: nothing written, the scene stays modified
+        const std::string message = "Couldn't save \"" + FileUtils::pathToUtf8(relPath) + "\": " + e.what() +
+            ". Your changes are still in the editor.";
+        Out::error(message);
+        editor::getEditorHost().enqueueMainThreadTask([this, message]() {
+            alertUser("Error", message);
+        });
+        return false;
     } catch (const std::exception& e) {
         Out::error("Failed to save scene file: %s", e.what());
         return false;
@@ -7279,6 +7307,23 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         *outcome = SaveResult::Saved;
     }
     return true;
+}
+
+void editor::Project::markSceneSaved(SceneProject* sceneProject) {
+    sceneProject->isModified = false;
+    sceneProject->savedAt = CommandHistory::stampSave();
+    // the history is the main thread's (a background save tells it from there)
+    const uint32_t sceneId = sceneProject->id;
+    auto tell = [sceneId]() {
+        if (CommandHistory* history = CommandHandle::find(sceneId)) {
+            history->markSaved();
+        }
+    };
+    if (editor::getEditorHost().isMainThread()) {
+        tell();
+    } else {
+        editor::getEditorHost().enqueueMainThreadTask(tell);
+    }
 }
 
 bool editor::Project::saveSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews,
@@ -7413,6 +7458,12 @@ void editor::Project::updateGeneratedSources() {
     if (!generatedSourcesDirty.load() || isAnyScenePlaying()) {
         return;
     }
+    // An export clears, rewrites and copies the folder from its own thread: the flag stays set
+    // until it has finished, so the change is regenerated after the build
+    std::lock_guard<std::mutex> lock(generatedMutex);
+    if (generatedExports > 0) {
+        return;
+    }
     generatedSourcesDirty.store(false);
 
     // nothing to update until a save or play creates the build
@@ -7431,6 +7482,16 @@ void editor::Project::updateGeneratedSources() {
 
 void editor::Project::markGeneratedSourcesDirty() {
     generatedSourcesDirty.store(true);
+}
+
+void editor::Project::beginGeneratedExport() {
+    std::lock_guard<std::mutex> lock(generatedMutex);
+    generatedExports++;
+}
+
+void editor::Project::endGeneratedExport() {
+    std::lock_guard<std::mutex> lock(generatedMutex);
+    if (generatedExports > 0) generatedExports--;
 }
 
 void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesystem::path& path, std::function<void(bool)> callback,

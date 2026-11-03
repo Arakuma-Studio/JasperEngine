@@ -8,6 +8,7 @@
 #include "pose/PoseEditSession.h"
 #include "subsystem/RenderSystem.h"
 #include "util/ProjectUtils.h"
+#include "component/SkyboxComponent.h"
 
 using namespace jasperengine;
 
@@ -91,6 +92,7 @@ bool editor::MoveEntityOrderCmd::execute(){
             prepareReparent(sceneProject->scene, sourceTransform->parent, newParent);
         }
     }
+    trackedBefore = sceneProject->entities;
     ProjectUtils::moveEntityOrderByTarget(sceneProject->scene, sceneProject->entities, source, target, type, oldParent, oldIndex, hasTransform);
 
     if (!executed){
@@ -119,6 +121,11 @@ void editor::MoveEntityOrderCmd::undo(){
     PlayerModelLayout::undoReloads(layoutReloads);
 
     ProjectUtils::moveEntityOrderByIndex(sceneProject->scene, sceneProject->entities, source, oldParent, oldIndex, hasTransform);
+    if (hasTransform){
+        ProjectUtils::keepUntransformedPlaces(sceneProject->scene, trackedBefore, sceneProject->entities);
+        // the scene's sky is the first skybox in this order
+        sceneProject->scene->sortComponentsByEntityOrder<SkyboxComponent>(sceneProject->entities);
+    }
 
     sceneProject->isModified = wasModified;
 }

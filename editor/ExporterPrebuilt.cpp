@@ -22,6 +22,7 @@
 #include "platform/WindowsResources.h"
 #include "player/ContentManifest.h"
 #include "player/PlayerConfig.h"
+#include "player/PlayerModules.h"
 #include "players/PlayerRuntimes.h"
 #include "publish/Notices.h"
 #include "publish/PayloadValidator.h"
@@ -72,15 +73,6 @@ namespace {
             return false;
         }
         return true;
-    }
-
-    // the features a player of this project needs (the notices of a Compile build follow them)
-    std::vector<std::string> projectFeatures(const Project* project) {
-        std::vector<std::string> features = {"runtimeshaders"};
-        if (project->isPhysics2DEnabled()) features.push_back("physics2d");
-        if (project->isPhysics3DEnabled()) features.push_back("physics3d");
-        if (project->getNavigationSettings().includeInBuilds) features.push_back("navigation");
-        return features;
     }
 
     // the content-relative paths of every regular file below `root`
@@ -196,9 +188,15 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
 }
 
 bool editor::Exporter::resolvePlayer() {
+    // the full player, else any installed variant of it (the method only needs one: every variant
+    // has the same capacities); selectPlayerVariant picks the build's once its modules are known
     const std::string id = playerIdFor(config, config.developmentBuild);
     std::string error;
     std::optional<PlayerInfo> found = PlayerRuntimes::find(id, config.playersDir, config.allowPlayerMismatch, error);
+    if (!found) {
+        std::vector<PlayerInfo> variants = PlayerRuntimes::findVariants(id, config.playersDir, config.allowPlayerMismatch);
+        if (!variants.empty()) found = variants.front();
+    }
     {
         std::lock_guard<std::mutex> lock(progressMutex);
         result.playerId = id;
@@ -287,7 +285,9 @@ void editor::Exporter::runPlayerBuild() {
         // a Compile build ships the same notices and manifest, so publish treats both alike
         std::string error;
         std::vector<std::string> staged;
-        if (!publish::stageCompileNotices(config.destinationDir, projectFeatures(project), staged, error)) {
+        const std::vector<std::string> compiled = compiledModules();
+        reportModules(compiled);
+        if (!publish::stageCompileNotices(config.destinationDir, compiled, staged, error)) {
             setError("Notices: " + error);
             return;
         }
@@ -353,6 +353,68 @@ void editor::Exporter::discardStaging() {
     fs::remove_all(stagingDir, ec);
 }
 
+bool editor::Exporter::selectPlayerVariant() {
+    if (!moduleUsageKnown) {
+        setError("the modules the project needs are not known (its scenes did not load)");
+        return false;
+    }
+    const std::vector<std::string> needed = moduleUsage.list();
+    const std::string baseId = playerIdFor(config, config.developmentBuild);
+    const std::vector<PlayerInfo> installed = PlayerRuntimes::findVariants(baseId, config.playersDir, config.allowPlayerMismatch);
+    const PlayerInfo* best = PlayerRuntimes::smallestWith(installed, needed);
+    // (a development build is always the full player: its variants are release ones)
+    const PlayerVariant& fitting = config.developmentBuild ? PlayerRuntimes::variants().front() : PlayerRuntimes::variantFor(needed);
+    const std::string fittingId = fitting.suffix.empty() ? baseId : baseId + "-" + fitting.suffix;
+    if (!best) {
+        std::string names;
+        for (const std::string& module : needed) names += (names.empty() ? "" : " ") + module;
+        setError("no installed " + baseId + " player runtime has the modules this project needs (" + names + "): install " + fittingId +
+                 (PlayerRuntimes::isReleaseEditor() ? " (Build Settings > Download)" : " (tools/build.sh players)"));
+        return false;
+    }
+    // only when a variant of fewer modules than the chosen one holds the project and is missing
+    // (of two that hold it with as many modules, the installed one is as good)
+    const size_t bestModules = std::count_if(player::allModules().begin(), player::allModules().end(), [&](const std::string& module) {
+        return std::find(best->features.begin(), best->features.end(), module) != best->features.end();
+    });
+    const bool fittingInstalled = std::any_of(installed.begin(), installed.end(), [&](const PlayerInfo& info) { return info.id == fittingId; });
+    if (!fittingInstalled && fitting.modules.size() < bestModules && best->shippedBytes > 0) {
+        warn("W-PLAYER-VARIANT", "the smaller player " + fittingId + " fits this project (modules: " + [&]() {
+                 std::string list;
+                 for (const std::string& module : fitting.modules) list += (list.empty() ? "" : " ") + module;
+                 return list;
+             }() + ") but is not installed: the build uses " + best->id + ". Install it (Build Settings > Download, `jasperengine-editor players download " +
+             fittingId + "`) for a smaller game.");
+    }
+    player = std::make_shared<PlayerInfo>(*best);
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        result.playerId = player->id;
+    }
+    std::vector<std::string> shipped;
+    for (const std::string& module : player::allModules())
+        if (std::find(player->features.begin(), player->features.end(), module) != player->features.end()) shipped.push_back(module);
+    reportModules(shipped);
+    return true;
+}
+
+void editor::Exporter::reportModules(const std::vector<std::string>& shipped) {
+    std::vector<std::string> leftOut;
+    for (const std::string& module : player::allModules())
+        if (std::find(shipped.begin(), shipped.end(), module) == shipped.end()) leftOut.push_back(module);
+    std::string kept, out;
+    for (const std::string& module : shipped) {
+        const std::string why = moduleUsage.firstEvidence(module);
+        kept += (kept.empty() ? "" : ", ") + module + (why.empty() ? std::string() : " (" + why + ")");
+    }
+    for (const std::string& module : leftOut) out += (out.empty() ? "" : ", ") + module;
+    Out::info("Engine modules: %s; left out: %s", kept.empty() ? "none" : kept.c_str(), out.empty() ? "none" : out.c_str());
+    std::lock_guard<std::mutex> lock(progressMutex);
+    result.modules = shipped;
+    result.modulesLeftOut = leftOut;
+    result.moduleEvidence = moduleUsage.evidence;
+}
+
 bool editor::Exporter::runPrebuilt() {
     progressScale = 1.0f;
     if (config.destinationDir.empty()) {
@@ -402,6 +464,7 @@ bool editor::Exporter::runPrebuilt() {
 
     if (!loadAndSaveAllScenes()) return false;
     if (!checkMissingAssets()) return false;
+    if (!selectPlayerVariant()) return false;
     resolveShaderKeys();
     if (cancelled()) return false;
     if (!copyLua()) return false;
@@ -713,7 +776,17 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
     manifest.method = prebuilt ? "prebuilt" : "compile";
     manifest.backend = config.graphicBackend.empty() ? getCMakeGraphicBackend(*config.selectedBackends.begin()) : normalizeBackend(config.graphicBackend);
     manifest.allowPlayerMismatch = config.allowPlayerMismatch;
+    // the start scene game.json names (writeGameConfig): the first scene when the project's start
+    // scene is none of its scenes (a project.yaml without startScene)
     manifest.startScene = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
+    {
+        const std::vector<SceneProject>& scenes = project->getScenes();
+        const bool known = std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& scene) { return scene.id == manifest.startScene; });
+        if (!known && !scenes.empty()) manifest.startScene = scenes.front().id;
+    }
+    // the modules the content needs (S34 R3): a player without one of them refuses to start
+    manifest.modules = prebuilt ? moduleUsage.list() : compiledModules();
+    manifest.hasModules = true;
     if (prebuilt && player) {
         manifest.notices = player->notices;
         manifest.playerId = player->id;

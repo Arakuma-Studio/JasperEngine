@@ -102,7 +102,17 @@ namespace jasperengine {
         int getLevelCount() const;
         uint64_t getGpuBytes() const;
 
+        // TexturePool: its image's pixels were replaced and it was not made again yet (it still
+        // draws the old ones); and how many times it was made again in place, which takes the old
+        // view away from the bindings holding it (Texture::isRenderOutdated)
+        void setStale(bool stale) { this->stale = stale; }
+        bool isStale() const { return stale; }
+        void noteRebuilt() { revision++; }
+        uint32_t getRevision() const { return revision; }
+
     private:
+        bool stale = false;
+        uint32_t revision = 0;
         bool transparent = false;
         GpuTextureFormat gpuFormat = GpuTextureFormat::RGBA8;
         int levelCount = 1;

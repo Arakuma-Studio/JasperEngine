@@ -1116,7 +1116,13 @@ NavFrame NavBakeCollector::frameOf(Scene* scene, Entity surface) {
 float NavBakeCollector::unitScaleOf(Scene* scene, const NavMeshSurfaceComponent& surface) {
     if (surface.plane != NavPlane::XY)
         return 1.0f;
+#ifdef JASPERENGINE_PHYSICS_2D
     const float scale = scene->getSystem<PhysicsSystem>()->getPointsToMeterScale2D();
+#else
+    // without 2D physics nothing sets the scale (Lua's PhysicsSystem.pointsToMeterScale2D is a 2D
+    // physics binding): its default
+    const float scale = 0.0f;
+#endif
     return scale > 0.0f ? scale : 64.0f;
 }
 

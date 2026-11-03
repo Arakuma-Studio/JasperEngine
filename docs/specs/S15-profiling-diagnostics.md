@@ -471,7 +471,7 @@ path (`ViewTools.cpp` `w3::captureView`) on that target.
 | AC1 (R13, R26) | `ProfilerCompileOut.MacrosEvaluateNothing`: a TU built with `-DJASPERENGINE_PROFILER=0` passes a side-effecting expression to every macro; a counter stays 0. CI step: `nm` on a Release export of the fixture finds no `jasperengine::profiler::` symbols. |
 | AC2 (R14, R15) | `Profiler.NestedScopesBuildTree`: 3 levels across 2 frames; totals and self times are consistent (self = total − Σchildren ±1 µs); calls merge by name. `Profiler.ScopeSplitAtFrameBoundary`. `Profiler.RingOverflowDropsAndCounts`: 100k events into a 1k ring → no block, `dropped>0`. |
 | AC3 (R17) | `Profiler.WorkerThreadsAppear`: S06 `ParallelFor` over 8 jobs with scopes → ≥2 thread lanes named "Job Worker #n" with the job scopes; TSan job in S02 CI is clean. |
-| AC4 (R27, R28) | `jasperengine-editor benchmark` on the fixture, 3 runs each with the profiler compiled in + disabled, enabled, and enabled + GPU timers, against a `JASPERENGINE_PROFILER=0` build: median CPU frame time overhead ≤0.5% / ≤3% / ≤3.5%. Micro-bench `ProfilerBench.ScopePair` ≤50 ns (x86-64 server). Thresholds asserted by `tools/perf/profiler_overhead.py`. |
+| AC4 (R27, R28) | `jasperengine-editor benchmark` on the fixture, 3 runs each with the profiler compiled in + disabled, enabled, and enabled + GPU timers, against a `JASPERENGINE_PROFILER=0` build: median CPU frame time overhead ≤0.5% / ≤3% / ≤3.5% of the frame **or** ≤ 5 / 30 / 40 µs a frame, whichever is larger (the absolute floor approved by the user 2026-11-01: on a GPU's ~1 ms frame 0.5 % is 5 µs, under the measurement's resolution). Micro-bench `ProfilerBench.ScopePair` ≤50 ns (x86-64 server). Thresholds asserted by `tools/perf/profiler_overhead.py`. |
 | AC5 (R1–R4, R21–R23) | `test_profiler.py::test_gpu_passes_glcore` and `::test_gpu_passes_vulkan` (smoke backends, llvmpipe/lavapipe): `get_gpu_passes` after 10 frames → every pass `valid`, `gpuMs>0`, the frame sum within 0..`frameMs`·1.05. On a forced-unsupported device (`JASPERENGINE_GPU_TIMER=off`) → `availability.state=="unavailable"`, reason `disabled`, and no crash. |
 | AC6 (R22, R24, R21-web) | Manual check, recorded in the PR: on a Windows D3D11 box, a macOS Apple-silicon Metal box, Android GLES3 and Chrome WebGL2, open Profiler → GPU Usage, see per-pass ms (Metal reads "encoder spans"). Firefox WebGL2 shows "unavailable: extension_missing". Screenshots attached. |
 | AC7 (R25) | Every CI platform build compiles the extension. `SokolPatchMarkers` unit test: `sokol_gfx.h` contains exactly 4 `JasperEngine: gpu timer hook` markers. |
@@ -672,7 +672,8 @@ alternative to what the text above asks.
     flush, so it stays; one availability query a commit instead of one a pass (queries complete in
     order) and counters that look their monitor up once: no measurable change (+0.13 % [-0.46,
     +0.73]), kept as they do less;
-  - **proposed revision (pending approval):** the relative bounds were set on llvmpipe's ~100 ms
-    frame; on a GPU's ~1 ms frame 0.5 % is 5 µs, under the confidence interval of 30 rounds
-    (±0.5-0.7 points). Proposed: ≤ 0.5 % / 3 % / 3.5 % of the frame **or** ≤ 5 / 30 / 40 µs a frame,
-    whichever is larger; GL meets it (idle within noise, recording ~4 µs, GPU timers ~34 µs).
+  - **revision, approved by the user 2026-11-01 (AC4 above):** the relative bounds were set on
+    llvmpipe's ~100 ms frame; on a GPU's ~1 ms frame 0.5 % is 5 µs, under the confidence interval
+    of 30 rounds (±0.5-0.7 points). AC4 is now ≤ 0.5 % / 3 % / 3.5 % of the frame **or** ≤ 5 / 30 /
+    40 µs a frame, whichever is larger (`tools/perf/profiler_overhead.py` checks it); GL meets it
+    (idle within noise, recording ~4 µs, GPU timers ~34 µs).

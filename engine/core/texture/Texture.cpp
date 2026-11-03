@@ -17,7 +17,7 @@ namespace {
 
     void cleanupTextureFace(void* cleanupData){
         TextureFaceCleanup* cleanup = static_cast<TextureFaceCleanup*>(cleanupData);
-        TextureData::cleanupTexture(&cleanup->data->at(cleanup->face));
+        TextureDataPool::releasePixels(cleanup->data, cleanup->face);
         delete cleanup;
     }
 
@@ -67,6 +67,8 @@ Texture::Texture(const std::string& id, TextureData data): Texture(){
 
 namespace {
     TextureRender* destroyedFramebufferFallback = nullptr;
+    // getRender's stand-ins on this thread (getStandInCount)
+    thread_local uint32_t standInCount = 0;
 
     // a framebuffer owned by a std::shared_ptr is shared with the textures showing it
     std::shared_ptr<Framebuffer> ownerOf(Framebuffer* framebuffer){
@@ -85,6 +87,7 @@ Texture::Texture(Framebuffer* framebuffer): Texture(){
 
 Texture::Texture(const Texture& rhs){
     render = rhs.render;
+    renderRevision = rhs.renderRevision;
     framebuffer = rhs.framebuffer;
     framebufferOwner = rhs.framebufferOwner;
     type = rhs.type;
@@ -112,6 +115,7 @@ Texture::Texture(const Texture& rhs){
 Texture& Texture::operator=(const Texture& rhs){
     if (this != &rhs) {
         render = rhs.render;
+        renderRevision = rhs.renderRevision;
         framebuffer = rhs.framebuffer;
         framebufferOwner = rhs.framebufferOwner;
         type = rhs.type;
@@ -586,6 +590,7 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     // Fast path: GPU texture already created and cached.
     render = TexturePool::get(getRenderId());
     if (render){
+        renderRevision = render->getRevision();
         return render.get();
     }
 
@@ -596,6 +601,14 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     }
 
     if (texResult.state != ResourceLoadState::Finished || !hasTexturePixels(data, numFaces)){
+        if (!id.empty())
+            standInCount++;
+        // nothing newer to make it of: a stale GPU texture keeps drawing what it has
+        if (std::shared_ptr<TextureRender> kept = TexturePool::getKept(getRenderId())){
+            render = std::move(kept);
+            renderRevision = render->getRevision();
+            return render.get();
+        }
         return fallBackTexture;
     }
 
@@ -610,10 +623,21 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     }
 
     if (render){
+        renderRevision = render->getRevision();
         return render.get();
     }
 
+    if (!id.empty())
+        standInCount++;
     return fallBackTexture;
+}
+
+bool Texture::isRenderOutdated() const{
+    return render && (render->isStale() || render->getRevision() != renderRevision);
+}
+
+uint32_t Texture::getStandInCount(){
+    return standInCount;
 }
 
 std::string Texture::getPath(size_t index) const{
@@ -757,7 +781,9 @@ void Texture::releaseData(){
 }
 
 bool Texture::empty() const{
-    if (!needLoad && !data && !render && !framebuffer)
+    // an id that is not a file path names a pooled or generated image (setId, setData,
+    // setGenerated): it is there while its pixels and GPU texture come and go
+    if (!needLoad && !data && !render && !framebuffer && (id.empty() || loadFromPath))
         return true;
 
     return false;

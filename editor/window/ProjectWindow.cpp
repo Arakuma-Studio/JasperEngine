@@ -3711,52 +3711,71 @@ bool editor::ProjectWindow::isVariantFile(const fs::path& path) {
     return Util::isPrefabFile(path.string()) && !project->getPrefabFileBase(path).empty();
 }
 
+// Never throws: it runs at every project open, also after a failed one (a first project whose
+// project.yaml does not parse leaves no project path), so a missing project or an unreadable
+// folder only skips the cleanup.
 void editor::ProjectWindow::cleanupThumbnails() {
+    const fs::path projectPath = project->getProjectPath();
+    std::error_code ec;
+    if (projectPath.empty() || !fs::is_directory(projectPath, ec)) {
+        return;
+    }
+    const fs::directory_options options = fs::directory_options::skip_permission_denied;
+
     // 1. Collect all valid thumbnail paths of existing files
     std::unordered_set<std::string> validThumbPaths;
 
     // Recursively scan project directory for files that have thumbnails
-    for (auto& p : fs::recursive_directory_iterator(project->getProjectPath())) {
-        if (!fs::is_regular_file(p.status()))
+    std::error_code walk;
+    for (fs::recursive_directory_iterator it(projectPath, options, walk), end; !walk && it != end; it.increment(walk)) {
+        std::error_code entry;
+        if (!it->is_regular_file(entry))
             continue;
 
-        std::string ext = p.path().extension().string();
+        std::string ext = it->path().extension().string();
         if (Util::isImageFile(ext) || Util::isMaterialFile(ext) || Util::isModelFile(ext) || Util::isPrefabFile(ext)) {
-            fs::path thumbnailPath = project->getThumbnailPath(p.path());
+            fs::path thumbnailPath = project->getThumbnailPath(it->path());
             validThumbPaths.insert(thumbnailPath.string());
             // a prefab's thumbnail keeps its dependency stamp beside it
             validThumbPaths.insert(prefabStampPath(thumbnailPath).string());
         }
+    }
+    // a scan that stopped part way knows only some of the files: removing would drop valid thumbnails
+    if (walk) {
+        return;
     }
 
     // 2. Walk .jasperengine/thumbs/ and remove any orphaned thumbnails. Never through a link: a
     // thumbnails folder resolving outside the project is not swept, and the removals go beneath
     // the project (util/SafeWrite.h)
     fs::path thumbsDir = project->getThumbsDir();
-    if (!fs::exists(thumbsDir)) return;
+    if (!fs::is_directory(thumbsDir, ec)) return;
     if (!safewrite::isInsideResolved(thumbsDir, project->getProjectPath())) return;
     safewrite::Scope removalScope(project->getProjectPath());
 
-    // Recursively iterate through the thumbnails directory to handle subdirectories
-    for (auto& p : fs::recursive_directory_iterator(thumbsDir)) {
-        if (!fs::is_regular_file(p.status())) continue;
-
-        std::string thumbnailPath = p.path().string();
-        if (validThumbPaths.find(thumbnailPath) == validThumbPaths.end()) {
+    // Recursively iterate through the thumbnails directory to handle subdirectories, then remove
+    // what it found (never while iterating)
+    std::vector<fs::path> orphans;
+    std::vector<fs::path> folders;
+    for (fs::recursive_directory_iterator it(thumbsDir, options, walk), end; !walk && it != end; it.increment(walk)) {
+        std::error_code entry;
+        if (it->is_directory(entry)) {
+            folders.push_back(it->path());
+        } else if (it->is_regular_file(entry) && validThumbPaths.find(it->path().string()) == validThumbPaths.end()) {
             // This thumbnail file doesn't correspond to any existing image/material file
-            std::error_code ec;
-            FileUtils::removePath(p, ec);
-
-            // Also remove from the loaded thumbnails cache
-            evictThumbnailTexture(thumbnailPath);
+            orphans.push_back(it->path());
         }
     }
+    for (const fs::path& orphan : orphans) {
+        FileUtils::removePath(orphan, ec);
+        // Also remove from the loaded thumbnails cache
+        evictThumbnailTexture(orphan.string());
+    }
 
-    // 3. Remove empty directories in the thumbnails folder
-    for (auto& p : fs::recursive_directory_iterator(thumbsDir)) {
-        if (fs::is_directory(p.status()) && fs::is_empty(p.path())) {
-            std::error_code ec;
-            FileUtils::removePath(p, ec);
+    // 3. Remove empty directories in the thumbnails folder, the deepest first
+    for (auto it = folders.rbegin(); it != folders.rend(); ++it) {
+        if (fs::is_empty(*it, ec) && !ec) {
+            FileUtils::removePath(*it, ec);
         }
     }
 }

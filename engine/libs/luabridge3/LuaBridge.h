@@ -87,6 +87,20 @@
 #define LUABRIDGE_ON_OBJECTIVE_C 1
 #endif
 
+// JasperEngine (S34 D6, docs/specs/S34-player-size.md): the registration code (run once, when a Lua
+// state is made) is optimised for size, and the thunks' failure paths are out of line, so each
+// bound function, property and class keeps its fast path only. Messages and behaviour are unchanged.
+#if defined(__GNUC__) || defined(__clang__)
+#define LUABRIDGE_COLD __attribute__((cold))
+#define LUABRIDGE_COLD_NOINLINE __attribute__((cold, noinline))
+#elif defined(_MSC_VER)
+#define LUABRIDGE_COLD
+#define LUABRIDGE_COLD_NOINLINE __declspec(noinline)
+#else
+#define LUABRIDGE_COLD
+#define LUABRIDGE_COLD_NOINLINE
+#endif
+
 #if !defined(LUABRIDGE_SAFE_STACK_CHECKS)
 #define LUABRIDGE_SAFE_STACK_CHECKS 1
 #endif
@@ -600,6 +614,35 @@ inline int raise_lua_error(lua_State* L, const char* fmt, ...)
     lua_concat(L, 2);
 
     return lua_error_x(L);
+}
+
+// JasperEngine (S34 D6): the thunks' failures, raised from one place each. The message text goes
+// onto the Lua stack before raise_lua_error formats it, so no std::string is alive when the error
+// leaves the function.
+[[noreturn]] LUABRIDGE_COLD_NOINLINE inline void raise_error_code(lua_State* L, std::error_code ec)
+{
+    {
+        const std::string message = ec.message();
+        lua_pushlstring(L, message.data(), message.size());
+    }
+    raise_lua_error(L, "%s", lua_tostring(L, -1));
+    std::abort();
+}
+
+[[noreturn]] LUABRIDGE_COLD_NOINLINE inline void raise_argument_error(lua_State* L, int argument, std::error_code ec)
+{
+    {
+        const std::string message = ec.message();
+        lua_pushlstring(L, message.data(), message.size());
+    }
+    raise_lua_error(L, "Error decoding argument #%d: %s", argument, lua_tostring(L, -1));
+    std::abort();
+}
+
+[[noreturn]] LUABRIDGE_COLD_NOINLINE inline void raise_exception_error(lua_State* L, const std::exception& e)
+{
+    raise_exception_error(L, e);
+    std::abort();
 }
 
 template <class U = lua_Integer, class T>
@@ -5934,7 +5977,7 @@ auto unwrap_argument_or_error(lua_State* L, std::size_t index, std::size_t start
 {
     auto result = Stack<T>::get(L, static_cast<int>(index + start));
     if (! result)
-        raise_lua_error(L, "Error decoding argument #%d: %s", static_cast<int>(index + 1), result.message().c_str());
+        raise_argument_error(L, static_cast<int>(index + 1), result.error());
 
     return std::move(*result);
 }
@@ -6409,8 +6452,8 @@ inline int read_only_error(lua_State* L)
     return 0;
 }
 
-template <class C>
-int tostring_metamethod(lua_State* L)
+// JasperEngine (S34 D6): one function for every class (it never used its class parameter)
+inline int tostring_metamethod(lua_State* L)
 {
     const void* ptr = lua_topointer(L, 1);
 
@@ -6481,7 +6524,7 @@ struct property_getter<T, void>
 
         auto result = Stack<T&>::push(L, *ptr);
         if (! result)
-            raise_lua_error(L, "%s", result.message().c_str());
+            raise_error_code(L, result.error());
 
         return 1;
     }
@@ -6508,12 +6551,12 @@ struct property_getter
         }
         catch (const std::exception& e)
         {
-            raise_lua_error(L, "%s", e.what());
+            raise_exception_error(L, e);
         }
 #endif
 
         if (! result)
-            raise_lua_error(L, "%s", result.message().c_str());
+            raise_error_code(L, result.error());
 
         return 1;
     }
@@ -6550,7 +6593,7 @@ struct property_setter<T, void>
 
         auto result = Stack<T>::get(L, 1);
         if (! result)
-            raise_lua_error(L, "%s", result.error().message().c_str());
+            raise_error_code(L, result.error());
 
         *ptr = std::move(*result);
 
@@ -6573,7 +6616,7 @@ struct property_setter
 #endif
             auto result = Stack<T>::get(L, 2);
             if (! result)
-                raise_lua_error(L, "%s", result.error().message().c_str());
+                raise_error_code(L, result.error());
 
             c->** mp = std::move(*result);
 
@@ -6581,7 +6624,7 @@ struct property_setter
         }
         catch (const std::exception& e)
         {
-            raise_lua_error(L, "%s", e.what());
+            raise_exception_error(L, e);
         }
 #endif
 
@@ -6623,12 +6666,12 @@ struct function
         }
         catch (const std::exception& e)
         {
-            raise_lua_error(L, "%s", e.what());
+            raise_exception_error(L, e);
         }
 #endif
 
         if (! result)
-            raise_lua_error(L, "%s", result.message().c_str());
+            raise_error_code(L, result.error());
 
         return 1;
     }
@@ -6650,12 +6693,12 @@ struct function
         }
         catch (const std::exception& e)
         {
-            raise_lua_error(L, "%s", e.what());
+            raise_exception_error(L, e);
         }
 #endif
 
         if (! result)
-            raise_lua_error(L, "%s", result.message().c_str());
+            raise_error_code(L, result.error());
 
         return 1;
     }
@@ -6677,7 +6720,7 @@ struct function<void, ArgsPack, Start>
         }
         catch (const std::exception& e)
         {
-            raise_lua_error(L, "%s", e.what());
+            raise_exception_error(L, e);
         }
 #endif
 
@@ -6699,7 +6742,7 @@ struct function<void, ArgsPack, Start>
         }
         catch (const std::exception& e)
         {
-            raise_lua_error(L, "%s", e.what());
+            raise_exception_error(L, e);
         }
 #endif
 
@@ -6759,7 +6802,7 @@ int invoke_member_cfunction(lua_State* L)
     }
     catch (const std::exception& e)
     {
-        raise_lua_error(L, "%s", e.what());
+        raise_exception_error(L, e);
     }
     
     return 0;
@@ -6788,7 +6831,7 @@ int invoke_const_member_cfunction(lua_State* L)
     }
     catch (const std::exception& e)
     {
-        raise_lua_error(L, "%s", e.what());
+        raise_exception_error(L, e);
     }
     
     return 0;
@@ -6833,7 +6876,7 @@ inline int invoke_safe_cfunction(lua_State* L)
     }
     catch (const std::exception& e)
     {
-        raise_lua_error(L, "%s", e.what());
+        raise_exception_error(L, e);
     }
 
     return 0;
@@ -7528,13 +7571,13 @@ int constructor_container_proxy(lua_State* L)
     }
     catch (const std::exception& e)
     {
-        raise_lua_error(L, "%s", e.what());
+        raise_exception_error(L, e);
     }
 #endif
 
     auto result = UserdataSharedHelper<C, false>::push(L, object);
     if (! result)
-        raise_lua_error(L, "%s", result.message().c_str());
+        raise_error_code(L, result.error());
 
     return 1;
 }
@@ -7560,7 +7603,7 @@ int constructor_placement_proxy(lua_State* L)
     }
     catch (const std::exception& e)
     {
-        raise_lua_error(L, "%s", e.what());
+        raise_exception_error(L, e);
     }
 #endif
         
@@ -7601,7 +7644,7 @@ struct constructor_forwarder
         }
         catch (const std::exception& e)
         {
-            raise_lua_error(L, "%s", e.what());
+            raise_exception_error(L, e);
         }
 #endif
 
@@ -7661,7 +7704,7 @@ struct factory_forwarder
         }
         catch (const std::exception& e)
         {
-            raise_lua_error(L, "%s", e.what());
+            raise_exception_error(L, e);
         }
 #endif
 
@@ -7703,13 +7746,13 @@ struct container_forwarder
         }
         catch (const std::exception& e)
         {
-            raise_lua_error(L, "%s", e.what());
+            raise_exception_error(L, e);
         }
 #endif
 
         auto result = UserdataSharedHelper<C, false>::push(L, object);
         if (! result)
-            raise_lua_error(L, "%s", result.message().c_str());
+            raise_error_code(L, result.error());
 
         return object;
     }
@@ -9216,7 +9259,7 @@ class Namespace : public detail::Registrar
     {
     public:
         
-        Class(const char* name, Namespace parent, Options options)
+        LUABRIDGE_COLD Class(const char* name, Namespace parent, Options options)
             : ClassBase(name, std::move(parent))
         {
             LUABRIDGE_ASSERT(name != nullptr);
@@ -9234,7 +9277,7 @@ class Namespace : public detail::Registrar
                 lua_pushcfunction_x(L, &detail::gc_metamethod<T>, "__gc"); 
                 rawsetfield(L, -2, "__gc"); 
 #endif
-                lua_pushcfunction_x(L, &detail::tostring_metamethod<T>, "__tostring");
+                lua_pushcfunction_x(L, &detail::tostring_metamethod, "__tostring");
                 rawsetfield(L, -2, "__tostring");
 
                 createClassTable(name, options); 
@@ -9244,7 +9287,7 @@ class Namespace : public detail::Registrar
                 rawsetfield(L, -2, "__gc"); 
 #endif
 
-                lua_pushcfunction_x(L, &detail::tostring_metamethod<T>, "__tostring");
+                lua_pushcfunction_x(L, &detail::tostring_metamethod, "__tostring");
                 rawsetfield(L, -2, "__tostring");
 
                 createStaticTable(name, options); 
@@ -9295,7 +9338,7 @@ class Namespace : public detail::Registrar
             lua_pushcfunction_x(L, &detail::gc_metamethod<T>, "__gc"); 
             rawsetfield(L, -2, "__gc"); 
 #endif
-            lua_pushcfunction_x(L, &detail::tostring_metamethod<T>, "__tostring");
+            lua_pushcfunction_x(L, &detail::tostring_metamethod, "__tostring");
             rawsetfield(L, -2, "__tostring");
 
             createClassTable(name, options); 
@@ -9304,7 +9347,7 @@ class Namespace : public detail::Registrar
             lua_pushcfunction_x(L, &detail::gc_metamethod<T>, "__gc"); 
             rawsetfield(L, -2, "__gc"); 
 #endif
-            lua_pushcfunction_x(L, &detail::tostring_metamethod<T>, "__tostring");
+            lua_pushcfunction_x(L, &detail::tostring_metamethod, "__tostring");
             rawsetfield(L, -2, "__tostring");
 
             createStaticTable(name, options); 
@@ -9344,7 +9387,7 @@ class Namespace : public detail::Registrar
             lua_rawsetp(L, LUA_REGISTRYINDEX, detail::getConstRegistryKey<T>()); 
         }
 
-        Namespace endClass()
+        LUABRIDGE_COLD Namespace endClass()
         {
             LUABRIDGE_ASSERT(m_stackSize > 3);
 
@@ -9358,7 +9401,7 @@ class Namespace : public detail::Registrar
         Class<T>& addStaticProperty(const char* name, Getter get, bool) = delete;
 
         template <class Getter>
-        Class<T>& addStaticProperty(const char* name, Getter get)
+        LUABRIDGE_COLD Class<T>& addStaticProperty(const char* name, Getter get)
         {
             LUABRIDGE_ASSERT(name != nullptr);
             assertStackState(); 
@@ -9373,7 +9416,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class Getter, class Setter>
-        Class<T>& addStaticProperty(const char* name, Getter get, Setter set)
+        LUABRIDGE_COLD Class<T>& addStaticProperty(const char* name, Getter get, Setter set)
         {
             LUABRIDGE_ASSERT(name != nullptr);
             assertStackState(); 
@@ -9388,7 +9431,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class... Functions>
-        auto addStaticFunction(const char* name, Functions... functions)
+        LUABRIDGE_COLD auto addStaticFunction(const char* name, Functions... functions)
             -> std::enable_if_t<(detail::is_callable_v<Functions> && ...) && (sizeof...(Functions) > 0), Class<T>&>
         {
             LUABRIDGE_ASSERT(name != nullptr);
@@ -9439,7 +9482,7 @@ class Namespace : public detail::Registrar
         Class<T>& addProperty(const char* name, Getter getter, bool) = delete;
 
         template <class Getter>
-        Class<T>& addProperty(const char* name, Getter getter)
+        LUABRIDGE_COLD Class<T>& addProperty(const char* name, Getter getter)
         {
             LUABRIDGE_ASSERT(name != nullptr);
             assertStackState(); 
@@ -9456,7 +9499,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class Getter, class Setter>
-        Class<T>& addProperty(const char* name, Getter getter, Setter setter)
+        LUABRIDGE_COLD Class<T>& addProperty(const char* name, Getter getter, Setter setter)
         {
             LUABRIDGE_ASSERT(name != nullptr);
             assertStackState(); 
@@ -9473,7 +9516,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class... Functions>
-        auto addFunction(const char* name, Functions... functions)
+        LUABRIDGE_COLD auto addFunction(const char* name, Functions... functions)
             -> std::enable_if_t<(detail::is_callable_v<Functions> && ...) && (sizeof...(Functions) > 0), Class<T>&>
         {
             LUABRIDGE_ASSERT(name != nullptr);
@@ -9580,7 +9623,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class... Functions>
-        auto addConstructor()
+        LUABRIDGE_COLD auto addConstructor()
             -> std::enable_if_t<(sizeof...(Functions) > 0), Class<T>&>
         {
             assertStackState(); 
@@ -9623,7 +9666,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class... Functions>
-        auto addConstructor(Functions... functions)
+        LUABRIDGE_COLD auto addConstructor(Functions... functions)
             -> std::enable_if_t<(detail::is_callable_v<Functions> && ...) && (sizeof...(Functions) > 0), Class<T>&>
         {
             static_assert(((detail::function_arity_excluding_v<Functions, lua_State*> >= 1) && ...));
@@ -9678,7 +9721,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class C, class... Functions>
-        auto addConstructorFrom()
+        LUABRIDGE_COLD auto addConstructorFrom()
             -> std::enable_if_t<(sizeof...(Functions) > 0), Class<T>&>
         {
             assertStackState(); 
@@ -9721,7 +9764,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class C, class... Functions>
-        auto addConstructorFrom(Functions... functions)
+        LUABRIDGE_COLD auto addConstructorFrom(Functions... functions)
             -> std::enable_if_t<(detail::is_callable_v<Functions> && ...) && (sizeof...(Functions) > 0), Class<T>&>
         {
             static_assert(((std::is_same_v<detail::function_result_t<Functions>, C>) && ...));
@@ -9775,7 +9818,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class Function>
-        auto addDestructor(Function function)
+        LUABRIDGE_COLD auto addDestructor(Function function)
             -> std::enable_if_t<detail::is_callable_v<Function>, Class<T>&>
         {
             static_assert(detail::function_arity_excluding_v<Function, lua_State*> == 1);
@@ -9794,7 +9837,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class Allocator, class Deallocator>
-        Class<T>& addFactory(Allocator allocator, Deallocator deallocator)
+        LUABRIDGE_COLD Class<T>& addFactory(Allocator allocator, Deallocator deallocator)
         {
             assertStackState(); 
 
@@ -9808,7 +9851,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class Function>
-        auto addIndexMetaMethod(Function function)
+        LUABRIDGE_COLD auto addIndexMetaMethod(Function function)
             -> std::enable_if_t<!std::is_pointer_v<Function>
                 && std::is_invocable_v<Function, T&, const LuaRef&, lua_State*>, Class<T>&>
         {
@@ -9823,7 +9866,7 @@ class Namespace : public detail::Registrar
             return *this;
         }
 
-        Class<T>& addIndexMetaMethod(LuaRef (*idxf)(T&, const LuaRef&, lua_State*))
+        LUABRIDGE_COLD Class<T>& addIndexMetaMethod(LuaRef (*idxf)(T&, const LuaRef&, lua_State*))
         {
             using FnType = decltype(idxf);
 
@@ -9836,7 +9879,7 @@ class Namespace : public detail::Registrar
             return *this;
         }
 
-        Class<T>& addIndexMetaMethod(LuaRef (T::* idxf)(const LuaRef&, lua_State*))
+        LUABRIDGE_COLD Class<T>& addIndexMetaMethod(LuaRef (T::* idxf)(const LuaRef&, lua_State*))
         {
             using MemFnPtr = decltype(idxf);
 
@@ -9850,7 +9893,7 @@ class Namespace : public detail::Registrar
         }
 
         template <class Function>
-        auto addNewIndexMetaMethod(Function function)
+        LUABRIDGE_COLD auto addNewIndexMetaMethod(Function function)
             -> std::enable_if_t<!std::is_pointer_v<Function>
                 && std::is_invocable_v<Function, T&, const LuaRef&, const LuaRef&, lua_State*>, Class<T>&>
         {
@@ -9865,7 +9908,7 @@ class Namespace : public detail::Registrar
             return *this;
         }
 
-        Class<T>& addNewIndexMetaMethod(LuaRef (*idxf)(T&, const LuaRef&, const LuaRef&, lua_State*))
+        LUABRIDGE_COLD Class<T>& addNewIndexMetaMethod(LuaRef (*idxf)(T&, const LuaRef&, const LuaRef&, lua_State*))
         {
             using FnType = decltype(idxf);
 
@@ -9878,7 +9921,7 @@ class Namespace : public detail::Registrar
             return *this;
         }
 
-        Class<T>& addNewIndexMetaMethod(LuaRef (T::* idxf)(const LuaRef&, const LuaRef&, lua_State*))
+        LUABRIDGE_COLD Class<T>& addNewIndexMetaMethod(LuaRef (T::* idxf)(const LuaRef&, const LuaRef&, lua_State*))
         {
             using MemFnPtr = decltype(idxf);
 
@@ -9941,7 +9984,7 @@ class Namespace : public detail::Registrar
             return *this;
         }
 
-        Namespace endTable()
+        LUABRIDGE_COLD Namespace endTable()
         {
             LUABRIDGE_ASSERT(m_stackSize > 2);
 
@@ -10056,13 +10099,13 @@ public:
         return Namespace(L, options, FromStack{});
     }
 
-    Namespace beginNamespace(const char* name, Options options = defaultOptions)
+    LUABRIDGE_COLD Namespace beginNamespace(const char* name, Options options = defaultOptions)
     {
         assertIsActive();
         return Namespace(name, std::move(*this), options);
     }
 
-    Namespace endNamespace()
+    LUABRIDGE_COLD Namespace endNamespace()
     {
         if (m_stackSize == 1)
         {
@@ -10079,7 +10122,7 @@ public:
     }
 
     template <class T>
-    Namespace& addVariable(const char* name, const T& value)
+    LUABRIDGE_COLD Namespace& addVariable(const char* name, const T& value)
     {
         LUABRIDGE_ASSERT(name != nullptr);
         LUABRIDGE_ASSERT(lua_istable(L, -1)); 
@@ -10103,7 +10146,7 @@ public:
     }
 
     template <class Getter>
-    Namespace& addProperty(const char* name, Getter getter)
+    LUABRIDGE_COLD Namespace& addProperty(const char* name, Getter getter)
     {
         LUABRIDGE_ASSERT(name != nullptr);
         LUABRIDGE_ASSERT(lua_istable(L, -1)); 
@@ -10125,7 +10168,7 @@ public:
     }
 
     template <class Getter, class Setter>
-    Namespace& addProperty(const char* name, Getter getter, Setter setter)
+    LUABRIDGE_COLD Namespace& addProperty(const char* name, Getter getter, Setter setter)
     {
         LUABRIDGE_ASSERT(name != nullptr);
         LUABRIDGE_ASSERT(lua_istable(L, -1)); 
@@ -10147,7 +10190,7 @@ public:
     }
 
     template <class... Functions>
-    auto addFunction(const char* name, Functions... functions)
+    LUABRIDGE_COLD auto addFunction(const char* name, Functions... functions)
         -> std::enable_if_t<(detail::is_callable_v<Functions> && ...) && (sizeof...(Functions) > 0), Namespace&>
     {
         LUABRIDGE_ASSERT(name != nullptr);
@@ -10201,14 +10244,14 @@ public:
     }
 
     template <class T>
-    Class<T> beginClass(const char* name, Options options = defaultOptions)
+    LUABRIDGE_COLD Class<T> beginClass(const char* name, Options options = defaultOptions)
     {
         assertIsActive();
         return Class<T>(name, std::move(*this), options);
     }
 
     template <class Derived, class Base>
-    Class<Derived> deriveClass(const char* name, Options options = defaultOptions)
+    LUABRIDGE_COLD Class<Derived> deriveClass(const char* name, Options options = defaultOptions)
     {
         assertIsActive();
         return Class<Derived>(name, std::move(*this), detail::getStaticRegistryKey<Base>(), options);

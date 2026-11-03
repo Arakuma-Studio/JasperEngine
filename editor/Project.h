@@ -231,6 +231,9 @@ namespace jasperengine::editor{
         // Bumped on structural changes so the Hierarchy window can cache its tree.
         uint64_t structureVersion = 0;
         bool isModified = false;
+        // CommandHistory::stampSave of its last write (Project::markSceneSaved), 0 = none since it
+        // loaded: a capture that restores isModified compares it with the one it saw
+        uint64_t savedAt = 0;
         // True while the id has never reached disk, so a scene replacing this one
         // can take it over instead of drawing a new one
         bool transientId = false;
@@ -478,12 +481,14 @@ namespace jasperengine::editor{
             YAML::Node node;          // Project::encodePrefabNode
             bool isModified = false;
             bool needsUpgrade = false;
+            uint64_t savedAt = 0;        // Prefab::savedAt: a write since makes the restore modified
         };
         struct InstanceState {
             uint32_t sceneId = NULL_PROJECT_SCENE;
             Entity root = NULL_ENTITY;   // an outermost instance root
             YAML::Node rootNode;         // the root as the scene file writes it
             bool sceneModified = false;
+            uint64_t sceneSavedAt = 0;   // SceneProject::savedAt, as the asset's
         };
         std::vector<Asset> assets;
         std::vector<InstanceState> instances;
@@ -909,6 +914,9 @@ namespace jasperengine::editor{
         bool developmentBuild = false;
         std::string buildMethod = "auto";
         bool packContent = false;
+        // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
+        // out the engine modules the project cannot reach (export: stripEngineCode, default on)
+        bool stripEngineCode = true;
         ApplicationSettings applicationSettings;
         PresentationSettings presentationSettings;
         WebProjectSettings webProjectSettings;
@@ -998,6 +1006,10 @@ namespace jasperengine::editor{
 
         // True when the standalone build sources need an update on the main thread
         std::atomic<bool> generatedSourcesDirty{false};
+        // An export and updateGeneratedSources never write .jasperengine/generated at once: the
+        // exports running (beginGeneratedExport), and the lock the regeneration writes under
+        std::mutex generatedMutex;
+        int generatedExports = 0;
 
         std::vector<SceneProject> scenes;
 
@@ -1101,6 +1113,8 @@ namespace jasperengine::editor{
         friend class SceneViewController;
         // the cooked scenes and prefabs of a prebuilt build read what the generated sources do (S30)
         friend class cook::SceneCooker;
+        // and the modules a build needs, what the build ships (S34)
+        friend class ModuleUsageDetector;
         std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
         Entity getSceneCamera(const SceneProject* sceneProject) const;
         void cleanupPlaySession(const std::shared_ptr<PlaySession>& session);
@@ -1170,6 +1184,10 @@ namespace jasperengine::editor{
         void waitForAssetScan();
         // Found while resolving references (in the middle of an import), applied on refresh
         std::vector<AssetDatabase::Change> pendingAssetChanges;
+        // A tracked prefab file a read found gone before the database's walk did: the database
+        // forgets it now (the file put back is then new to it, an Added that relinks the Missing
+        // instances the read made), its removal waits for the next refresh
+        void forgetGonePrefabFile(const std::filesystem::path& filepath);
         // Who references what (S04): closed files from disk, documents with unsaved edits from memory
         AssetIndex assetIndex;
         MissingAssetTracker missingAssets;
@@ -1366,6 +1384,10 @@ namespace jasperengine::editor{
                      const std::string& alertTitle = "", const std::string& alertMessage = "");
         bool saveSceneFile(SceneProject* sceneProject, const std::filesystem::path& path, bool stopTransientPreviews = true,
                 DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
+        // Its file holds it now: not modified, stamped (savedAt), and its history learns it
+        // (CommandHistory::markSaved, on the main thread): an undo of a step in the file leaves it
+        // modified
+        void markSceneSaved(SceneProject* sceneProject);
         bool saveSceneForPlayStartup(SceneProject* sceneProject);
         bool saveLoadedSceneOnStop(SceneProject* loadedSceneProject, SceneProject* editorScene, bool keepModified);
         // Only the shaderKeys of the file on disk: what Stop saves of a scene that ran as a Play copy
@@ -1755,7 +1777,8 @@ namespace jasperengine::editor{
         static std::function<bool(const std::filesystem::path& file, std::string& why)> documentOpenGuard;
         static std::function<void(const std::filesystem::path& file, std::function<void()> retrySave)> readOnlySaveHandler;
         // What saving an open scene or prefab stage would write (its unsaved edits included): a
-        // scene's encodeSceneProject, a stage's prefab document; undefined for no such document
+        // scene's encodeSceneProject, a stage's prefab document; undefined for no such document,
+        // or one whose encode would leave a GameObject out (Stream::SavedEntitiesCheck)
         YAML::Node encodeDocument(uint32_t sceneId);
 
         ShaderOverrides& getShaderOverrides();
@@ -1771,6 +1794,8 @@ namespace jasperengine::editor{
         void setBuildMethod(const std::string& method) { buildMethod = method; }
         bool isPackContent() const { return packContent; }
         void setPackContent(bool enabled) { packContent = enabled; }
+        bool isStripEngineCode() const { return stripEngineCode; }
+        void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
         // S30: what the generated main.cpp gives SceneManager::registerScene, for game.json
         void collectInvolvedScenesForExport(uint32_t sceneId, std::vector<uint32_t>& involvedSceneIds) {
             collectInvolvedScenes(sceneId, involvedSceneIds);
@@ -1992,6 +2017,11 @@ namespace jasperengine::editor{
 
         void updateGeneratedSources();
         void markGeneratedSourcesDirty();
+        // Exporter::runExport, around its whole run (any thread): updateGeneratedSources waits until
+        // the export has finished, keeping the dirty flag, so what changed meanwhile is regenerated
+        // after it. Waits for a regeneration in progress.
+        void beginGeneratedExport();
+        void endGeneratedExport();
 
         //=== Linked Material part ===
 
@@ -2876,6 +2906,10 @@ namespace jasperengine::editor{
         // Whether an instance of prefabPath may go into the scene: never into the stage of a
         // prefab it holds (a prefab cannot contain itself)
         bool canInstantiatePrefabIn(uint32_t sceneId, const std::filesystem::path& prefabPath);
+        // Whether a GameObject (with its branch) may go into the prefab at target (add_to_prefab,
+        // an added GameObject applied): not when an instance in the branch is of target or of a
+        // prefab holding it, at any depth (the prefab would contain itself)
+        bool canAddToPrefab(uint32_t sceneId, Entity entity, const std::filesystem::path& target, std::string* reason = nullptr);
         // Once a frame: Auto Save (when the user is not in the middle of an edit), changes the
         // asset got from outside the stage, the stage root kept single, lost contexts
         void updatePrefabStages(bool userEditing);

@@ -100,3 +100,4 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S30 | Shipping: prebuilt-player export (no compiler), headless player flags, publish/verify pipeline | 3 |
 | S31 | Agent tooling: `jasperengine-editor call <tool>` CLI, contributor AGENTS.md/CLAUDE.md | 3 |
 | S32 | Asynchronous shader and pipeline creation: GL worker context + warm draws, KHR_parallel_shader_compile, Vulkan pipeline cache, Metal/D3D11 async, stand-ins, warm-up list | 3 |
+| S34 | Player size: per-project engine modules (prebuilt variants, Compile switches, Strip Engine Code), smaller Lua bindings, Linux LTO, measured -Os/-Oz | 4 |

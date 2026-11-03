@@ -19,6 +19,7 @@
 #include "component/VideoPlayerComponent.h"
 
 #include <filesystem>
+#include <stdexcept>
 #include <set>
 #include <vector>
 #include <unordered_map>
@@ -367,6 +368,13 @@ namespace jasperengine::editor {
             const Project* project, const SceneProject* sceneProject, const Prefab* prefab);
         // The GameObject keys of an entity node, the ones a Missing Prefab does not keep raw
         static bool isGameObjectKey(const std::string& key);
+        // YAML read from a file and kept to be written again as it was (a Missing Prefab's instance
+        // data, decodePrefabInstance): its empty sequences and maps get back the style they were
+        // written in. yaml-cpp reads every empty one back in flow style, and writes a default-style
+        // one (every encoder's) on the line below its key ("key:\n  []"), a flow one on the key's
+        // line ("key: []"); so an empty value on its key's line is flow, one below it default.
+        // Nodes without a mark (not read from a file) keep their style
+        static void restoreWrittenStyles(YAML::Node node);
 
         // True when a mesh's geometry is regenerated from a model's source file on load
         // (the ModelComponent root or one of a multi-node model's generated child meshes),
@@ -426,7 +434,41 @@ namespace jasperengine::editor {
         // separates a pre-split file from one that only lists the scene.
         static bool hasSceneDisplaySettings(const YAML::Node& node);
 
+        // Throws std::runtime_error, and writes nothing, when the encode would leave out a GameObject
+        // of the scene (SavedEntitiesCheck): a save, an autosave, a Play snapshot never lose one in
+        // silence (docs/data-safety.md)
         static YAML::Node encodeSceneProject(const Project* project, const SceneProject* sceneProject);
+
+        // What encodeSceneProject and a prefab stage's encode throw for a GameObject they would
+        // leave out (a save refused, S03: the document stays modified)
+        class IncompleteSave : public std::runtime_error {
+        public:
+            using std::runtime_error::runtime_error;
+        };
+
+        // Is a scene's (or prefab stage's) encode complete? While one lives, the encodes made on its
+        // thread record the GameObjects of its scene they write a node for. leftOut() lists the
+        // scene's GameObjects in none of them, but the members of a prefab instance whose root was
+        // written (with the project: the prefab holds them)
+        class SavedEntitiesCheck {
+        public:
+            explicit SavedEntitiesCheck(const SceneProject* sceneProject);
+            ~SavedEntitiesCheck();
+            SavedEntitiesCheck(const SavedEntitiesCheck&) = delete;
+            SavedEntitiesCheck& operator=(const SavedEntitiesCheck&) = delete;
+
+            std::vector<Entity> leftOut(const Project* project) const;
+            // "N GameObject(s) of <where> would be left out ('Name' id, ...)", and the branch the
+            // Transform order splits when one does
+            std::string describe(const std::vector<Entity>& left, const std::string& where) const;
+            // records a node written for entity of registry (encodeEntityAux), into the innermost check
+            static void written(const EntityRegistry* registry, Entity entity);
+
+        private:
+            const SceneProject* sceneProject;
+            std::unordered_set<Entity> recorded;
+            SavedEntitiesCheck* outer;
+        };
         static void decodeSceneProject(SceneProject* sceneProject, const YAML::Node& node, bool loadScene);
         static void decodeSceneCppScripts(SceneProject* sceneProject, const YAML::Node& node);
         // reservedBelow: user ids under it are reserved too and new ones start above it (a
@@ -472,8 +514,15 @@ namespace jasperengine::editor {
         static YAML::Node encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers = true, bool embedTextureData = true, bool encodeBones = true);
         static MeshComponent decodeMeshComponent(const YAML::Node& node, const MeshComponent* oldMesh = nullptr);
 
-        static YAML::Node encodeUIComponent(const UIComponent& ui, bool encodeBuffers = true, bool embedTextureData = true);
-        static UIComponent decodeUIComponent(const YAML::Node& node, const UIComponent* oldUI = nullptr);
+        // textureIsAtlas: a Text's UI, whose texture is the font atlas the UISystem publishes once the
+        // glyphs are built (a new id at each atlas change): only its sampler settings are written,
+        // and the decode keeps the atlas the live component shows
+        static YAML::Node encodeUIComponent(const UIComponent& ui, bool encodeBuffers = true, bool embedTextureData = true, bool textureIsAtlas = false);
+        static UIComponent decodeUIComponent(const YAML::Node& node, const UIComponent* oldUI = nullptr, bool textureIsAtlas = false);
+        // A Text's font atlas: only its sampler settings (authored, they outlive each atlas the
+        // UISystem publishes), null when they are a new texture's; never the atlas itself
+        static YAML::Node encodeAtlasSampler(const Texture& texture);
+        static void decodeAtlasSampler(const YAML::Node& node, Texture& texture);
 
         // upstream (safe-area, ui-scaling-text): their codecs, the reflection tables' codec functions
         // only what differs from the defaults (every edge on, extras included)

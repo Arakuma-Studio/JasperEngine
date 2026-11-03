@@ -33,7 +33,8 @@ import harness
 from harness import Editor, build_jobs, skip, REPO
 from htmlui_pixels import decode_png, near
 
-EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+# its compile: a fixed compile-tree path and ccache (harness.compile_env)
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui", "env": harness.compile_env("test_html_ui_effects_export")}
 CI = True
 
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))

@@ -111,6 +111,12 @@ project opens, and cached in `.jasperengine/assetdb/index.json` (a deletable cac
   GUID is added; with the GUID of a file that is gone, it is that file moved; with the GUID of
   a file that is still there, it is a copy and gets a new GUID. A gone file is removed. A file
   edited so that its GUID line disappeared gets it back.
+- **A read that finds a tracked prefab file gone** (`loadPrefabAsset`, the import making a
+  Missing Prefab instance from that, before a walk noticed) makes the database forget it at once
+  (`forgetGonePrefabFile`); the removal is applied by the next refresh, unless the file is back by
+  then (the same GUID at the same path: nothing went). So the file put back is new to the
+  database, an Added that relinks the instance, whether or not a walk fell between the delete and
+  the put-back (one watcher batch for both, a file moved out and back with its stamp).
 - **Editor file operations** keep it up to date, all through `AssetOps`
   (`editor/asset/AssetOps.cpp`: `RenameFileCmd`, `CopyFileCmd`, `DeleteFileCmd`, MCP
   `move_asset` / `delete_asset`), which hands the database's changes to
@@ -405,6 +411,16 @@ else holds that id. A legacy nested root (prefab file older than v3) is converte
 `nestedAssetLayer`: its values in the containing registry diffed against the nested prefab's
 root become that prefab's asset-level overrides (written on its next save); the copies of
 the nested prefab's GameObjects such files held below it are dropped when read.
+
+**The Transform order.** Every GameObject the import makes below one already in the scene is
+decoded by `Stream::decodeEntity`, which appends its Transform at the end of the array and then
+moves its branch to the end of its parent's (`ProjectUtils::keepInParentBranch`): a re-import
+(an apply, Add to Prefab and its undo, Replace Prefab, a relinked Missing Prefab, a reverted
+removal) leaves every branch in one run, which the moves, the encoders and `placeAtChildIndex`
+read; the save refuses a file that would still leave a GameObject out (`docs/data-safety.md`).
+**The scene's added GameObjects** (`decodeSceneAddedGameObjects`) are decoded with the
+import's held paths set aside: they are the scene's, so an instance of this prefab among them
+(below a GameObject of this instance) is no cycle, and imports as the scene's own instances do.
 
 ## 10. APIs
 
@@ -869,6 +885,10 @@ target), or to a prefab holding that instance (`getPrefabApplyTargets(parent)`; 
 Overrides dropdown offers them, Apply All uses the instance's own prefab):
 `addEntityToOuterPrefab` makes it a GameObject that prefab adds to its nested instance
 (below the nested root, `addedTo` the parent's stripped id, at its `childIndex`).
+Neither takes a GameObject whose branch holds an instance of the target prefab or of a prefab
+holding it (nested instances, a variant's bases, at any depth: `canAddToPrefab`): the prefab
+would contain itself. Add to Prefab refuses it ("... so the prefab would contain itself"), and
+Apply All leaves it an override (counted in `remaining`).
 
 ### Out of an asset: Unpack
 

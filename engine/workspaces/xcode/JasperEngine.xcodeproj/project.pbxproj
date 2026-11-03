@@ -4367,6 +4367,11 @@
 		4A534E4700C2B06C425C31F7 /* DebugOverlay.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470614F67155D9E9FC /* DebugOverlay.h */; };
 		4A534E47EBF20FD2B6EA0602 /* DebugOverlayResources.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */; };
 		4A534E47CA764B3433135B26 /* DebugStats.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FC23B0CE0C82B758 /* DebugStats.h */; };
+		4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */; };
+		4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */; };
+		4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A4609FEFF72DC9EF /* PlayerModules.h */; };
+		4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4760C1D1328627EB69 /* UIDocumentInput.h */; };
+		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8563,6 +8568,10 @@
 		4A534E470614F67155D9E9FC /* DebugOverlay.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DebugOverlay.h; sourceTree = "<group>"; };
 		4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DebugOverlayResources.h; sourceTree = "<group>"; };
 		4A534E47FC23B0CE0C82B758 /* DebugStats.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DebugStats.h; sourceTree = "<group>"; };
+		4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlayerModules.cpp; sourceTree = "<group>"; };
+		4A534E47A4609FEFF72DC9EF /* PlayerModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerModules.h; sourceTree = "<group>"; };
+		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
+		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10194,6 +10203,8 @@
 				4A534E47CB6DD4DE98FB3C90 /* LaunchOptions.h */,
 				4A534E47B90A7E226F42E9D1 /* PlayerConfig.h */,
 				4A534E47C484ACD2846CB3C2 /* RunControl.h */,
+				4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */,
+				4A534E47A4609FEFF72DC9EF /* PlayerModules.h */,
 			);
 			path = player;
 			sourceTree = "<group>";
@@ -10945,6 +10956,8 @@
 				4A534E47433C8BF3A3471BA4 /* CameraControlSystem.h */,
 				4A534E47456C3BFEBD9D2182 /* VideoPlayerSystem.cpp */,
 				4A534E47D88DB63824966935 /* VideoPlayerSystem.h */,
+				4A534E4760C1D1328627EB69 /* UIDocumentInput.h */,
+				4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -15222,6 +15235,9 @@
 				4A534E4700C2B06C425C31F7 /* DebugOverlay.h in Headers */,
 				4A534E47EBF20FD2B6EA0602 /* DebugOverlayResources.h in Headers */,
 				4A534E47CA764B3433135B26 /* DebugStats.h in Headers */,
+				4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */,
+				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
+				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17719,6 +17735,7 @@
 				4A534E47363D69401D2B349E /* DebugOverlayResources.cpp in Sources */,
 				4A534E4775EA0FE24B50FD95 /* DebugStats.cpp in Sources */,
 				4A534E47A6F7345580E0D892 /* ProcessMemory.cpp in Sources */,
+				4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18508,6 +18525,7 @@
 				4A534E47880AD33FCC731DA0 /* DebugOverlayResources.cpp in Sources */,
 				4A534E470E64957D3C296FB5 /* DebugStats.cpp in Sources */,
 				4A534E4702E0F1BB649CA319 /* ProcessMemory.cpp in Sources */,
+				4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

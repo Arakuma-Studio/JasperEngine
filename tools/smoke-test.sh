@@ -310,6 +310,22 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         echo "== run editor"
         : > editor.log
         run editor editor-console.log 20 dbus-run-session -- "$EDITOR"
+        # llvmpipe compiles a variant at its first draw, on the render thread (no worker context on
+        # a software GL), so a scene of many Lit variants can hold its first frame past the 3 s of
+        # the watchdog: only that, on the first open, and then a clean open with the Mesa disk
+        # cache warm (tools/ci/smoke_jit_hangs.py, docs/testing.md). Any other hang fails as ever.
+        if grep -aq "JASPERENGINE HANG:" editor-console.log && python3 /src/tools/ci/smoke_jit_hangs.py editor-console.log; then
+            echo "note: the first open stalled in the llvmpipe JIT: $(grep -a "recovered after" editor-console.log | sed "s/.*recovered after //" | paste -sd, -); opening again with its cache warm"
+            # (run stops the D-Bus session; the editor it started holds the project lock: by its PID)
+            first="$(python3 -c "import json; print(json.load(open(\"project/.jasperengine/user/editor.lock\"))[\"pid\"])")"
+            kill "$first"
+            for _ in $(seq 1 40); do kill -0 "$first" 2>/dev/null || break; sleep 0.5; done
+            kill -9 "$first" 2>/dev/null || true
+            cp editor-console.log editor-first-console.log
+            cp editor.log editor-first.log
+            : > editor.log
+            run editor editor-console.log 20 dbus-run-session -- "$EDITOR"
+        fi
         check_log editor editor.log editor-console.log
 
         # S19: a NavMesh Surface baked and a path queried through the MCP tools, in a new project

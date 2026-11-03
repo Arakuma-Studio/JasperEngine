@@ -201,6 +201,9 @@ public:
     std::map<Entity, AddedObject> addedObjects;
 
     bool isModified = false;
+    // CommandHistory::stampSave when its file was last written or read back (0: since it loaded):
+    // an undo that captured another one gives back a state the file does not hold
+    uint64_t savedAt = 0;
     // Read from a file older than FILE_VERSION: written again the next time a scene using it
     // is saved, even if nothing changed
     bool needsUpgrade = false;

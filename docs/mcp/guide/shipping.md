@@ -25,11 +25,15 @@ as a job. `mode: desktop` is this computer's platform and `mode: web` the web (t
   keystore the debug key signs it (warning `W-ANDROID-DEBUG-KEY`).
 - iOS needs a Mac with Xcode; elsewhere the result is the Xcode project and a note.
 
-The result adds `player_id`, `content_manifest`, `executable`, `artifacts` and
+The result adds `player_id`, `modules` (the engine modules the game ships: Strip Engine Code
+leaves out the HTML UI, video, the runtime shader compiler, 3D or 2D physics when nothing reaches
+them), `module_reasons` (the first evidence of each), `content_manifest`, `executable`, `artifacts` and
 `warnings[{code, message}]` (`W-MAC-UNSIGNED`, `W-ICON-NONWINDOWS`, ...). The output folder is
 replaced only when the build succeeds (the previous build stays until then).
 
-A prebuilt build needs the player runtime `<platform>-<arch>-<backend>-<flavour>`:
+A prebuilt build needs the player runtime `<platform>-<arch>-<backend>-<flavour>` (a release one
+also comes in variants of fewer modules, `-ui`, `-core`, `-lite3d`, `-lite2d`: the build takes the
+smallest installed one that has its modules, `W-PLAYER-VARIANT` names a smaller one to install):
 `get_build_info players[]` lists them with `installed`; `install_player_runtime {id}` downloads
 one (a release editor), `{archive}` installs a local `.zip`. A development editor uses local
 runtimes (`tools/build.sh players`, then `JASPER_PLAYERS_DIR`). Without the runtime, `auto`

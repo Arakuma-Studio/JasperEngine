@@ -2,3 +2,6 @@
 # Only third-party code may be listed: Mesa (llvmpipe, lavapipe), X11, fontconfig and the vendored
 # libraries under libs/ and engine/libs/. Engine and editor code is never suppressed: fix it.
 # Every entry has a comment line above it giving the reason.
+# stb_image's failure reason is one global in this build: decoders on several threads write it (a
+# failed format probe does on every decode), and a wrong message of a failed decode is all it can do
+race:stbi__err

@@ -29,6 +29,10 @@ from harness import Editor, find_key
 
 CI = True
 EDITOR = {"create": True, "name": "Materials PBR"}
+# the Khronos sample models' tests (test_khronos_<model>) each make their own scene and use nothing
+# the file's other tests leave, nor do those use theirs: the runner may give each an editor of its
+# own (run_tests.py --split-seconds, tools/mcp/shard.py); the other tests share one, in order
+TESTS_INDEPENDENT = ("each Khronos model test makes its own scene", ["test_khronos_*"])
 TIMEOUT = 5400
 
 REPO = harness.REPO
@@ -630,12 +634,14 @@ async def studio_sky(ed: Editor):
         await ed.call("set_properties", entity=sky, values={"skybox": {"texture": {"cube": faces}}})
 
 
-async def test_khronos_models(ed: Editor):
-    missing_goldens = []
-    only = [m for m in os.environ.get("JASPER_S11_MODELS", "").split(",") if m]
-    for model, lobes in MODELS.items():
+def _make_khronos_test(model: str, lobes: list[str]) -> None:
+    """test_khronos_<model>: one Khronos sample model, a test of its own (TESTS_INDEPENDENT: each
+    makes its own scene, so the runner may give each an editor of its own)."""
+
+    async def khronos_model(ed: Editor):
+        only = [m for m in os.environ.get("JASPER_S11_MODELS", "").split(",") if m]
         if only and model not in only:
-            continue
+            harness.skip(f"JASPER_S11_MODELS={','.join(only)} leaves {model} out")
         print(f"     [khronos] {model}", flush=True)
         position, target = framing(model_file(model))
         source = model_file(model)
@@ -682,15 +688,14 @@ async def test_khronos_models(ed: Editor):
             out = Path(os.environ.get("JASPER_S11_GOLDEN_OUT") or GOLDEN_DIR)
             out.mkdir(parents=True, exist_ok=True)
             (out / golden.name).write_bytes(pngdiff.encode(small))
-        elif golden.is_file():
+        else:
+            ed.check(golden.is_file(), f"no golden for {model} (JASPER_TEST_UPDATE_GOLDEN=1 writes it)")
             ok, fraction, diff = pngdiff.compare(small, pngdiff.load(golden))
             if not ok:
                 (ed.scratch.root / f"{model}.actual.png").write_bytes(pngdiff.encode(small))
                 (ed.scratch.root / f"{model}.diff.png").write_bytes(diff or b"")
                 ed.keep = True
             ed.check(ok, f"{model}: {fraction * 100:.2f}% of the pixels differ from {golden}")
-        else:
-            missing_goldens.append(model)
 
         # the lobe-off twin differs from it by more than 2% of the pixels
         off_lobes = lobes or []
@@ -707,7 +712,14 @@ async def test_khronos_models(ed: Editor):
             # (EmissiveStrengthTest's glowing cubes are 2% of its frame: 1% of it changes)
             ed.check(fraction > (0.01 if model == "EmissiveStrengthTest" else 0.02), f"{model}: its lobe(s) {off_lobes or ['emissive strength']} change "
                                       f"{fraction * 100:.2f}% of the pixels (more than 2%)")
-    ed.check(not missing_goldens, f"no golden for {missing_goldens} (JASPER_TEST_UPDATE_GOLDEN=1 writes them)")
+
+    khronos_model.__name__ = khronos_model.__qualname__ = f"test_khronos_{model}"
+    khronos_model.__doc__ = f"the Khronos sample {model}: its golden, and its lobe-off twin"
+    globals()[khronos_model.__name__] = khronos_model
+
+
+for _model, _lobes in MODELS.items():
+    _make_khronos_test(_model, _lobes)
 
 
 # ------------------------------------------------------------------ old files

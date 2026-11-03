@@ -300,6 +300,16 @@ namespace {
 
 }
 
+bool IBLEnvironment::canGenerate(std::array<TextureData,6>& faces){
+    for (int f = 0; f < 6; f++){
+        const FaceView view = faceView(faces, f);
+        if (!view.data || view.width <= 0 || view.height <= 0 || view.channels <= 0){
+            return false;
+        }
+    }
+    return true;
+}
+
 bool IBLEnvironment::generate(const std::string& label, std::array<TextureData,6>& faces, TextureRender& irradianceMap, TextureRender& prefilteredMap,
                               HorizonRing* horizonRing){
 

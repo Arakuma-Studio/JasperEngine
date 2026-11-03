@@ -366,12 +366,51 @@ MeshSystem::MeshSystem(Scene* scene): SubSystem(scene){
     declareHookType(scene->getComponentId<InstancedMeshComponent>());
 }
 
+// the scenes that loaded a model in the background, for JASPER_MESH_LOAD_HOLD_FILE
+static const std::string& meshLoadHoldFile(){
+    static const std::string file = [](){
+        const char* value = std::getenv("JASPER_MESH_LOAD_HOLD_FILE");
+        return std::string(value ? value : "");
+    }();
+    return file;
+}
+
+static std::mutex& getMeshLoadHoldMutex(){
+    static std::mutex* mutex = new std::mutex();
+    return *mutex;
+}
+
+static std::set<const Scene*>& getMeshLoadHoldScenes(){
+    static std::set<const Scene*>* scenes = new std::set<const Scene*>();
+    return *scenes;
+}
+
+bool MeshSystem::isMeshLoadHeld(const Scene* scene){
+    if (meshLoadHoldFile().empty())
+        return false;
+    {
+        std::lock_guard<std::mutex> lock(getMeshLoadHoldMutex());
+        if (!getMeshLoadHoldScenes().count(scene))
+            return false;
+    }
+    std::error_code ec;
+    return std::filesystem::exists(meshLoadHoldFile(), ec);
+}
+
 MeshSystem::~MeshSystem(){
     cancelAsyncModelLoads();
+    if (!meshLoadHoldFile().empty()){
+        std::lock_guard<std::mutex> lock(getMeshLoadHoldMutex());
+        getMeshLoadHoldScenes().erase(scene);
+    }
 }
 
 void MeshSystem::setImageDecodeMaxDimension(int dimension){
     g_imageDecodeMaxDimension = dimension;
+}
+
+std::string MeshSystem::getImageKeySuffix(){
+    return g_imageDecodeMaxDimension > 0 ? "|max" + std::to_string(g_imageDecodeMaxDimension) : std::string();
 }
 
 void MeshSystem::applyDefaultObjMaterial(Submesh& submesh) {
@@ -1656,6 +1695,14 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
     return result;
 }
 
+namespace {
+    std::atomic<int> modelLoadTestDelayMs{0};
+}
+
+void MeshSystem::setModelLoadDelayForTest(int milliseconds){
+    modelLoadTestDelayMs.store(std::max(0, milliseconds));
+}
+
 std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncModelLoad(const Scene* scene, const std::string& filename, bool obj){
     const std::string key = getAsyncModelLoadKey(scene, filename);
     const uint64_t buildId = std::hash<std::string>{}(key);
@@ -1679,6 +1726,9 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncMo
             };
             pendingModelLoads[key] = AssetIOService::instance().submitRead(request,
                 [filename, obj, buildId](std::vector<uint8_t>&& bytes) {
+                    if (const int delay = modelLoadTestDelayMs.load(); delay > 0){
+                        std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+                    }
                     return MeshSystem::loadModelFileOnWorker(filename, obj, buildId, bytes);
                 }
             );
@@ -2708,11 +2758,38 @@ bool MeshSystem::loadGLTFTexture(int textureIndex, ModelComponent& model, Textur
             return true;
         }
 
-        std::string id = gltfTextureDedupKey(getModelTextureKey(model.filename), *model.gltfModel, textureIndex);
+        // a preview's images (decoded smaller) are keyed apart from the model's (getImageKeySuffix)
+        const std::string imageKeySuffix = getImageKeySuffix();
+        std::string id = gltfTextureDedupKey(getModelTextureKey(model.filename), *model.gltfModel, textureIndex) + imageKeySuffix;
 
-        auto existingData = TextureDataPool::get(id);
-        const bool canReuse = existingData && existingData->at(0).getData() && existingData->at(0).getSize() >= imageSize;
-        if (canReuse) {
+        // The pooled CPU copy goes once a GPU texture is made of it (setReleaseDataAfterLoad
+        // below), and a Texture of this image that makes its own GPU texture later (another
+        // sampler, or one remade after its GPU copy went) found no pixels and drew white. It
+        // makes them again from the model's decoded image (ModelPool keeps the model while it is
+        // used), as the packed lobe maps do (loadGLTFLobeMap). A full-resolution image whose
+        // parse went (a reload replaced it) makes them from the pooled parse of the file.
+        std::weak_ptr<tinygltf::Model> source = model.gltfModel;
+        const int imageIndex = tex.source;
+        const std::string poolKey = imageKeySuffix.empty() ? getModelFilenameKey(model.filename) : std::string();
+        TextureDataPool::setGenerator(id, [source, poolKey, imageIndex, colorFormat]() -> TextureData {
+            std::shared_ptr<tinygltf::Model> gltf = source.lock();
+            if (!gltf && !poolKey.empty())
+                gltf = ModelPool::getGLTF(poolKey);
+            if (!gltf || imageIndex < 0 || (size_t)imageIndex >= gltf->images.size())
+                return TextureData();
+            const tinygltf::Image& decoded = gltf->images[imageIndex];
+            const size_t size = (size_t)decoded.component * decoded.width * decoded.height;
+            if (decoded.width <= 0 || decoded.height <= 0 || decoded.image.size() < size)
+                return TextureData();
+            unsigned char* pixels = static_cast<unsigned char*>(std::malloc(size));
+            if (!pixels)
+                return TextureData();
+            std::memcpy(pixels, decoded.image.data(), size);
+            // not owned: the pool's copy owns the pixels (TextureDataPool::loadGenerated)
+            return TextureData(decoded.width, decoded.height, (unsigned int)size, colorFormat, decoded.component, pixels);
+        });
+
+        if (TextureDataPool::hasPixelsOfSize(id, imageSize)) {
             texture.setId(id);
         } else {
             unsigned char* imageCopy = static_cast<unsigned char*>(std::malloc(imageSize));
@@ -5029,6 +5106,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     bool res = false;
 
     if (asyncLoad){
+        if (!meshLoadHoldFile().empty()){
+            std::lock_guard<std::mutex> lock(getMeshLoadHoldMutex());
+            getMeshLoadHoldScenes().insert(scene);
+        }
         // Async loader already produced a parsed model; reuse it (and cache it).
         auto cached = ModelPool::getGLTF(poolKey);
         if (cached){

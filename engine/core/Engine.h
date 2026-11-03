@@ -553,8 +553,10 @@ namespace jasperengine {
         static void setTextureDefaults(const TexturePlatformDefaults& desktop, const TexturePlatformDefaults& mobile,
                                        const TexturePlatformDefaults& web);
 
-        // every scene drawn is loaded (its HTML UI documents too) and no shader build is pending
-        static bool areScenesLoaded();
+        // every scene drawn is loaded (its HTML UI documents too), no shader build is pending and
+        // no texture is still loading (textures false: whatever the texture loads, as the texture
+        // pool's own frame budget asks)
+        static bool areScenesLoaded(bool textures = true);
         // what keeps areScenesLoaded() false, for a person: the shaders still building, each
         // scene's objects not loaded yet (a few, then how many more), its HTML UI documents
         static std::string describeNotLoaded();

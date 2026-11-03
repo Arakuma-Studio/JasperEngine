@@ -6,6 +6,7 @@
 #include "Project.h"
 #include "ShippingTypes.h"
 #include "cook/SceneCooker.h"
+#include "players/ModuleUsage.h"
 #include "shader/ShaderBuilder.h"
 #include "ShaderDataSerializer.h"
 #include "util/CommandRunner.h"
@@ -118,6 +119,11 @@ namespace jasperengine::editor {
         std::vector<BuildWarning> warnings;
         // what the user does next ("Open on a Mac with Xcode")
         std::vector<std::string> notes;
+        // S34: the engine modules the build ships (a prebuilt player's: the ones the project
+        // needs; a Compile build's: the ones it compiled), why each is needed, and the rest
+        std::vector<std::string> modules;
+        std::vector<ModuleEvidence> moduleEvidence;
+        std::vector<std::string> modulesLeftOut;
     };
 
     struct ExportProgress {
@@ -187,6 +193,15 @@ namespace jasperengine::editor {
         std::vector<cook::CookedFileBytes> cookedFiles;
         std::vector<cook::CookedPrefabInfo> cookedPrefabs;
         std::shared_ptr<PlayerInfo> player;
+        // S34: what the project reaches of the optional modules, found while every scene was
+        // loaded (loadAndSaveAllScenes); a source export has no such answer (every module allowed)
+        ModuleUsage moduleUsage;
+        bool moduleUsageKnown = false;
+        // the prebuilt build's player: the smallest installed variant with every needed module
+        bool selectPlayerVariant();
+        // the modules a Compile build compiles: those Project Settings allow, of the needed ones
+        std::vector<std::string> compiledModules() const;
+        void reportModules(const std::vector<std::string>& shipped);
         // the staging directory the build is written to, and its content root inside it
         fs::path stagingDir;
         fs::path contentDir;
@@ -289,6 +304,8 @@ namespace jasperengine::editor {
         bool removeResourcePack(const fs::path& packPath);
         bool writeNativeResourcePack(const fs::path& outputPath, bool& created);
         bool clearGenerated();
+        // Test hook (JASPER_TEST_EXPORT_HOLD=<path>): waits after the clear while <path> exists
+        void holdForTest();
         bool loadAndSaveAllScenes();
         // runs checkHtmlUIReferences(...) on htmlUIDocuments; setError on a broken reference
         bool checkHtmlUIReferences();

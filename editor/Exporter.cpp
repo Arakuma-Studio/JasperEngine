@@ -5,6 +5,7 @@
 #include "Exporter.h"
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderVariantCollector.h"
+#include "player/PlayerModules.h"
 #include "util/EditorScripts.h"
 #include "util/ExportFeatureScan.h"
 #include "yaml-cpp/yaml.h"
@@ -1021,6 +1022,14 @@ bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
 }
 
 void editor::Exporter::runExport() {
+    // The editor's regeneration of .jasperengine/generated (a change picked up meanwhile, a
+    // setting) waits for the whole export, which clears, rewrites and copies that folder
+    struct GeneratedExportGuard {
+        Project* project;
+        explicit GeneratedExportGuard(Project* p) : project(p) { if (project) project->beginGeneratedExport(); }
+        ~GeneratedExportGuard() { if (project) project->endGeneratedExport(); }
+    } generatedGuard(project);
+
     // a player for a target: prebuilt, or this export's Desktop/Web build (S30 D1)
     if (project && config.mode == ExportMode::Player) {
         if (config.method == BuildMethod::Auto) {
@@ -1090,6 +1099,7 @@ void editor::Exporter::runExport() {
     }
 
     if (!clearGenerated()) return;
+    holdForTest();
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!loadAndSaveAllScenes()) return;
     if (!checkMissingAssets()) return;
@@ -1287,6 +1297,22 @@ fs::path editor::Exporter::buildCacheDirFor(Project* project, ExportMode mode) {
 
 fs::path editor::Exporter::getBuildCacheDir() const {
     return project->getProjectInternalPath() / "export" / (config.mode == ExportMode::Desktop ? "desktop" : "web");
+}
+
+std::vector<std::string> editor::Exporter::compiledModules() const {
+    // what Project Settings allow (the HTML UI and its video have no switch of their own)
+    std::vector<std::string> modules = {"htmlui", "video"};
+    if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
+    if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
+    if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
+    if (project->getNavigationSettings().includeInBuilds) modules.push_back("navigation");
+    // of them, those the project reaches (a source export: all of them)
+    if (moduleUsageKnown)
+        modules.erase(std::remove_if(modules.begin(), modules.end(), [this](const std::string& m) { return !moduleUsage.needs(m); }), modules.end());
+    std::vector<std::string> ordered;
+    for (const std::string& module : player::allModules())
+        if (std::find(modules.begin(), modules.end(), module) != modules.end()) ordered.push_back(module);
+    return ordered;
 }
 
 fs::path editor::Exporter::getSharedBuildCacheDir() const {
@@ -2185,6 +2211,20 @@ bool editor::Exporter::clearGenerated() {
     return true;
 }
 
+// The harness holds an export at its most exposed point, the generated folder just cleared: while
+// <path> exists, after creating <path>.held to say the export got here
+void editor::Exporter::holdForTest() {
+    const char* hold = std::getenv("JASPER_TEST_EXPORT_HOLD");
+    if (!hold || !*hold) return;
+    const fs::path path(hold);
+    std::error_code ec;
+    if (!fs::exists(path, ec)) return;
+    std::ofstream(fs::path(path.string() + ".held")) << "held\n";
+    while (fs::exists(path, ec) && !isCancelled()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+}
+
 bool editor::Exporter::loadAndSaveAllScenes() {
     setProgress("Saving scene sources...", 0.1f);
 
@@ -2223,8 +2263,11 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             imported = imported && project->prepareFbxModelsForExport(importError);
 
             // Save all scenes to regenerate their .cpp sources; one that did not load completely
-            // stops the export (its save would drop data)
+            // stops the export (its save would drop data). One not saved has its old source (the
+            // save writes it after the file): the export would build what the editor no longer
+            // shows, so it stops too (a save refused for a GameObject it would lose)
             std::string degraded;
+            std::string notSaved;
             for (size_t i = 0; imported && i < scenes.size(); i++) {
                 auto& sceneProject = scenes[i];
                 if (sceneProject.filepath.empty() || !sceneProject.scene) {
@@ -2235,7 +2278,9 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                     continue;
                 }
                 project->warnPreservedNotInBuild(sceneProject);
-                project->saveSceneToPath(sceneProject.id, sceneProject.filepath);
+                if (!project->saveSceneToPath(sceneProject.id, sceneProject.filepath)) {
+                    notSaved += (notSaved.empty() ? "'" : ", '") + sceneProject.name + "'";
+                }
             }
 
             // S30: a prebuilt player's cooked scenes and prefabs, from the scenes as they are
@@ -2326,6 +2371,15 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 }
             }
 
+            // S34: the engine modules the build needs, from what it ships while every scene is
+            // loaded (a source export keeps every module its settings allow: its user's code may
+            // use any)
+            moduleUsageKnown = false;
+            if (imported && config.mode != ExportMode::SourceCode) {
+                moduleUsage = ModuleUsageDetector::analyze(ModuleUsageDetector::collect(project));
+                moduleUsageKnown = true;
+            }
+
             // Unload all scenes that were not loaded before export
             for (uint32_t sceneId : temporarilyLoaded) {
                 SceneProject* sp = project->getScene(sceneId);
@@ -2334,6 +2388,9 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 }
             }
 
+            if (!notSaved.empty()) {
+                throw std::runtime_error("scene " + notSaved + " could not be saved (see the console)");
+            }
             if (!degraded.empty()) {
                 throw std::runtime_error("these scenes did not load completely and exporting saves them: " + degraded +
                                          ". Save them first (Save Anyway drops what this editor could not read, Save As keeps the original).");
@@ -3527,10 +3584,18 @@ bool editor::Exporter::copyEngine() {
             projectSettings += indent + "set(JASPERENGINE_WINDOW_ICON ON)";
         }
         projectSettings += indent + "set(JASPERENGINE_CXX_STANDARD " + std::to_string(project->getCxxStandard()) + ")";
-        projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
-        projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
-        projectSettings += indent + std::string("set(JASPERENGINE_NAVIGATION ") + (project->getNavigationSettings().includeInBuilds ? "ON" : "OFF") + ")";
-        projectSettings += indent + std::string("set(JASPERENGINE_RUNTIME_SHADERS ") + (project->isRuntimeShadersEnabled() ? "ON" : "OFF") + ")";
+        // the optional modules (S34 R6): those Project Settings allow, of the ones the project needs
+        const std::vector<std::string> modules = compiledModules();
+        auto moduleSwitch = [&](const char* option, const char* module) {
+            const bool on = std::find(modules.begin(), modules.end(), module) != modules.end();
+            projectSettings += indent + "set(" + option + (on ? " ON)" : " OFF)");
+        };
+        moduleSwitch("JASPERENGINE_PHYSICS_2D", "physics2d");
+        moduleSwitch("JASPERENGINE_PHYSICS_3D", "physics3d");
+        moduleSwitch("JASPERENGINE_NAVIGATION", "navigation");
+        moduleSwitch("JASPERENGINE_RUNTIME_SHADERS", "runtimeshaders");
+        moduleSwitch("JASPERENGINE_HTMLUI", "htmlui");
+        moduleSwitch("JASPERENGINE_VIDEO", "video");
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
             projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";

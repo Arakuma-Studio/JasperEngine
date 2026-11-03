@@ -44,6 +44,10 @@ a machine whose editor a person is using.
 
 ## Test
 
+- **The gate per commit is `tools/check-changed`**, on a build server: the builds and the unit and
+  MCP tests the change can affect (docs/testing.md, "Gates"). The full suite (across the servers,
+  with the WERROR build and every unit test) is the gate of batch landings and of the merge to
+  main, not of each commit.
 - Unit tests (gtest): `tools/build.sh unit-tests` (`jasperengine-core-tests`,
   `jasperengine-editor-tests`; `UNIT_TEST_ARGS=--gtest_filter=...`).
 - MCP tests: `tools/mcp/run-tests.sh -k <filter> -j <n>` (needs a linux build first).

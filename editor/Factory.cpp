@@ -952,6 +952,21 @@ std::string editor::Factory::formatScriptPropertyValue(const ScriptPropertyValue
     return "ScriptPropertyValue{}";
 }
 
+std::string editor::Factory::formatAtlasSampler(int indentSpaces, const Texture& texture, const std::string& variableName) {
+    const YAML::Node sampler = Stream::encodeAtlasSampler(texture);
+    if (!sampler.IsMap()) return "";
+    std::ostringstream code;
+    std::string ind = indentation(indentSpaces);
+    if (texture.getAlphaBorder() != TextureAlphaBorder::AUTO) {
+        code << ind << variableName << ".setAlphaBorder(" << formatTextureAlphaBorder(texture.getAlphaBorder()) << ");\n";
+    }
+    code << ind << variableName << ".setMinFilter(" << formatTextureFilter(texture.getMinFilter()) << ");\n";
+    code << ind << variableName << ".setMagFilter(" << formatTextureFilter(texture.getMagFilter()) << ");\n";
+    code << ind << variableName << ".setWrapU(" << formatTextureWrap(texture.getWrapU()) << ");\n";
+    code << ind << variableName << ".setWrapV(" << formatTextureWrap(texture.getWrapV()) << ");\n";
+    return code.str();
+}
+
 std::string editor::Factory::formatTexture(int indentSpaces, const Texture& texture, const std::string& variableName, const fs::path& projectPath) {
     if (texture.empty()) return "";
     std::ostringstream code;
@@ -1400,7 +1415,11 @@ std::string editor::Factory::createUIComponent(int indentSpaces, EntityRegistry*
         code << ind << "ui.shaderGlobalBindings = " << formatShaderGlobalBindings(ui.shaderGlobalBindings) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, "ui", projectPath);
     code << formatStencilAndColorWrite(indentSpaces, ui.stencil, ui.colorWrite, "ui");
-    code << formatTexture(indentSpaces, ui.texture, "ui.texture", projectPath);
+    // a Text's texture is its font atlas, which the game builds (Stream::encodeUIComponent)
+    if (scene->findComponent<TextComponent>(entity))
+        code << formatAtlasSampler(indentSpaces, ui.texture, "ui.texture");
+    else
+        code << formatTexture(indentSpaces, ui.texture, "ui.texture", projectPath);
     // flipY is worked out from the camera unless automaticFlipY is off
     code << ind << "ui.automaticFlipY = " << formatBool(ui.automaticFlipY) << ";\n";
     if (!ui.automaticFlipY)
@@ -2573,7 +2592,7 @@ std::string editor::Factory::createVertexAnimatorComponent(int indentSpaces, Ent
     return code.str();
 }
 
-std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames, bool defaultCamera) {
     // the component's exported code from its reflection table (editor/reflect/Codegen.cpp), or
     // its own writer for those the table does not describe
     const reflect::ComponentDesc* desc = reflect::find(componentType);
@@ -2587,6 +2606,14 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
     ctx.entityName = entityName;
     ctx.assignExisting = assignExisting;
     ctx.entityVarNames = entityVarNames;
+    // A scene's Default Camera (not one of its GameObjects) follows the editor's view (its clips
+    // and aspect are the editor window's at export time); the game's setCamera sizes it from the
+    // game's canvas before anything draws, so they are left out
+    static constexpr const char* kCanvasSizedCameraFields[] = {"left", "right", "bottom", "top", "aspect"};
+    if (defaultCamera && componentType == ComponentType::CameraComponent) {
+        const CameraComponent* camera = static_cast<const CameraComponent*>(comp);
+        if (camera->autoResize && !camera->renderToTexture) ctx.omit = kCanvasSizedCameraFields;
+    }
     std::string code;
     if (desc->codegen) {
         code = desc->codegen(scene, entity, ctx);
@@ -2601,7 +2628,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
     return desc->codegenGuard ? guardPhysicsCode(code, desc->codegenGuard) : code;
 }
 
-std::string editor::Factory::createAllComponents(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, const std::unordered_map<Entity, std::string>* entityVarNames) {
+std::string editor::Factory::createAllComponents(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, const std::unordered_map<Entity, std::string>* entityVarNames, bool defaultCamera) {
     // Find all components for this entity
     std::vector<ComponentType> components = Catalog::findComponents(scene, entity);
 
@@ -2611,7 +2638,7 @@ std::string editor::Factory::createAllComponents(int indentSpaces, EntityRegistr
 
     bool first = true;
     for (ComponentType componentType : components) {
-        std::string componentCode = createComponent(indentSpaces, scene, entity, componentType, projectPath, sceneName, entityName, false, entityVarNames);
+        std::string componentCode = createComponent(indentSpaces, scene, entity, componentType, projectPath, sceneName, entityName, false, entityVarNames, defaultCamera);
         if (!componentCode.empty()) {
             if (!first) {
                 code << "\n";
@@ -2872,7 +2899,7 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
             cameraCode << ind2 << "// Default Camera " << camera << "\n";
             cameraCode << ind2 << "Entity cameraEntity = scene->createSystemEntity();\n";
             cameraCode << "\n";
-            cameraCode << createAllComponents(indentSpaces+4, scene, camera, projectPath, "scene", "cameraEntity");
+            cameraCode << createAllComponents(indentSpaces+4, scene, camera, projectPath, "scene", "cameraEntity", nullptr, true);
         }else{
             cameraCode << "\n";
             cameraCode << ind2 << "Entity cameraEntity = " << formatEntity(camera, &memberVarNames) << ";\n";

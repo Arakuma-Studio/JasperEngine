@@ -95,11 +95,15 @@ namespace jasperengine {
         static void registerNavigationClasses(lua_State *L);
         static void registerSplineClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
+#if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);
         static void registerHtmlUIAnimeClasses(lua_State *L);
         static void registerHtmlUIVectorClasses(lua_State *L);
+#if JASPERENGINE_VIDEO
         static void registerHtmlUIMediaClasses(lua_State *L);
+#endif
         static void registerHtmlUIWidgetClasses(lua_State *L);
+#endif
         static void registerCoroutineClasses(lua_State *L);
         static void registerScriptClasses(lua_State *L);
 

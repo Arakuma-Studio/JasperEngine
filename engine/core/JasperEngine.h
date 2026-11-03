@@ -9,7 +9,9 @@
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 #include "input/InputControlPath.h"
+#if JASPERENGINE_HTMLUI
 #include "input/InputVirtualControls.h"
+#endif
 #include "Log.h"
 #include "debug/DebugOverlay.h"
 #include "debug/DebugStats.h"
@@ -235,8 +237,10 @@
 #include "object/ui/PointerEventData.h"
 #include "object/ui/Text.h"
 #include "object/ui/RectTransform.h"
+#if JASPERENGINE_HTMLUI
 #include "object/ui/UIDocument.h"
 #include "object/ui/UIElement.h"
+#endif
 
 #include "pool/ShaderPool.h"
 #include "pool/SoundPool.h"

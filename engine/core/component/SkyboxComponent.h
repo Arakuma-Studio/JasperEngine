@@ -72,6 +72,9 @@ namespace jasperengine{
         std::shared_ptr<TextureRender> irradianceMap;
         std::shared_ptr<TextureRender> prefilteredMap;
         bool envMapsLoaded = false;
+        // the image the environment maps were made of, and its TextureDataPool::generation
+        std::string environmentId;
+        uint32_t environmentGeneration = 0;
         bool needUpdateEnvironment = true;
 
         bool needUpdateTexture = false;

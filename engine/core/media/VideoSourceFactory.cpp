@@ -9,7 +9,9 @@
 #include "Mp4Probe.h"
 #include "PlatformVideoBackend.h"
 #include "VideoFormats.h"
+#if JASPERENGINE_VIDEO
 #include "VideoStream.h"
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -117,6 +119,19 @@ namespace {
         error.code = code;
         error.message = message;
         return std::make_unique<FailedSource>(std::move(error));
+    }
+
+    const char* const kNoVideoModule = "this build has no video (the export left the video module out)";
+
+    // WebM AV1/Opus in software: the part of the pipeline the video module brings (S34)
+    std::unique_ptr<IVideoSource> softwareSource(const std::string& path, const VideoSourceFactory::Options& options){
+#if JASPERENGINE_VIDEO
+        return std::make_unique<VideoStream>(path, options.threaded, options.audio);
+#else
+        (void)path;
+        (void)options;
+        return failed(MediaErrorCode::SRC_NOT_SUPPORTED, kNoVideoModule);
+#endif
     }
 
     std::unique_ptr<IVideoSource> createLocal(const std::string& path, const VideoSourceFactory::Options& options);
@@ -293,7 +308,7 @@ namespace {
         std::shared_ptr<MediaByteSource> bytes = MediaByteSource::openFile(path, openError);
         // what cannot be read fails as the WebM path always did (its messages)
         if (!bytes)
-            return std::make_unique<VideoStream>(path, options.threaded, options.audio);
+            return softwareSource(path, options);
         uint8_t head[12] = {};
         const int64_t got = bytes->readAt(0, head, sizeof(head));
         const bool ebml = got >= 4 && head[0] == 0x1A && head[1] == 0x45 && head[2] == 0xDF && head[3] == 0xA3;
@@ -320,7 +335,7 @@ namespace {
 #endif
                 }
             }
-            return std::make_unique<VideoStream>(path, options.threaded, options.audio);
+            return softwareSource(path, options);
         }
 
         const Mp4ProbeResult probe = Mp4Probe::probe(*bytes);
@@ -633,3 +648,27 @@ void VideoSourceFactory::setPlatformBackendForTesting(PlatformBackendFactory fac
 void VideoSourceFactory::setSourceOverrideForTesting(SourceOverride override){
     testing().override = std::move(override);
 }
+
+#if !JASPERENGINE_VIDEO
+// A build without the video module has no platform decoders either
+namespace jasperengine::platformvideo {
+
+    const char* backendName(){ return "none"; }
+    bool isAvailable(std::string* reason){
+        if (reason) *reason = kNoVideoModule;
+        return false;
+    }
+    std::unique_ptr<PlatformDecoderBackend> createBackend(){ return nullptr; }
+    Support supports(const std::string&){ return Support::No; }
+    bool readsContainer(const std::string&){ return false; }
+    bool supportsGrowingSources(){ return false; }
+    std::string unsupportedHint(const std::string&){ return kNoVideoModule; }
+#if defined(__EMSCRIPTEN__)
+    std::unique_ptr<IVideoSource> createBrowserSource(const std::string&, bool, bool){
+        return failed(MediaErrorCode::SRC_NOT_SUPPORTED, kNoVideoModule);
+    }
+    Support browserSupports(const std::string&, const std::string&){ return Support::No; }
+#endif
+
+}
+#endif

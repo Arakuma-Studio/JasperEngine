@@ -141,6 +141,45 @@ def masked_view_code(text: str) -> str:
     return "".join(out)
 
 
+# what one Scene view icon (a Sprite: one submesh, a Mesh's MAX_BONES bone matrices) gives
+ICON_MAX_VALUES = {"maxSubmeshes": "1", "maxBones": "128"}
+
+
+def max_values_as_now(golden: str, actual: str) -> str:
+    """A golden scene's maxValues as this editor counts them: the editor that captured the goldens
+    counted the Scene view's icons (a light's, a camera's: Sprites made when the view draws), this
+    one only the scene's own GameObjects, so a golden icon's value is an actual 0"""
+    for key, icon in ICON_MAX_VALUES.items():
+        line = re.compile(r"(?m)^(  " + key + r": )(\d+)$")
+        now, was = line.search(actual), line.search(golden)
+        if now and was and now.group(2) == "0" and was.group(2) == icon:
+            golden = line.sub(lambda m: m.group(1) + "0", golden, count=1)
+    return golden
+
+
+def default_camera_as_now(golden: str) -> str:
+    """Golden scene code without its Default Camera's view-derived assignments: this editor leaves
+    them out (the game sizes that camera from its own canvas), the goldens' editor wrote them"""
+    lines = golden.splitlines(keepends=True)
+    out: list[str] = []
+    default_camera = False
+    name = None
+    for line in lines:
+        if "// Default Camera" in line:
+            default_camera = True
+        declared = CODE_CAMERA.match(line.rstrip("\n"))
+        if default_camera and declared:
+            name = declared.group(1)
+            default_camera = False
+        elif name and not line.lstrip().startswith(name + "."):
+            name = None
+        if name and re.match(r"^\s*" + re.escape(name) + r"\.(?:" + "|".join(CAMERA_VIEW_KEYS) + r") = " + re.escape(VIEW_MASKED) + ";$",
+                             line.rstrip("\n")):
+            continue
+        out.append(line)
+    return "".join(out)
+
+
 def normalized_scene(text: str) -> str:
     """The scene text with its shaderKeys entries sorted: the set is ordered by keys holding
     custom shader ids, which each editor session hands out in its own order"""
@@ -186,6 +225,10 @@ def compare_or_update(path: Path, actual: str, what: str, mismatches: list[str],
         expected = golden_filter(expected)
     if expected != actual:
         mismatches.append(f"{what} differs from {path.relative_to(harness.REPO)}: {first_difference(actual, expected)}")
+        # what this editor wrote, beside the test results, for a look at the whole difference
+        kept = harness.REPO / "build" / "test-results" / "reflection-actual" / path.relative_to(GOLDEN)
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        kept.write_text(actual, encoding="utf-8", newline="")
 
 
 def fixture_projects() -> list[Path]:
@@ -240,8 +283,9 @@ async def resave(ed: Editor, project: Path, name: str, mismatches: list[str], so
             previous, text = text, (project / rel).read_text(encoding="utf-8")
             if text == previous:
                 break
-        compare_or_update(GOLDEN / name / (rel + ".golden"), normalized_scene(text), f"{name}/{rel}", mismatches,
-                          golden_filter=masked_view)
+        actual = normalized_scene(text)
+        compare_or_update(GOLDEN / name / (rel + ".golden"), actual, f"{name}/{rel}", mismatches,
+                          golden_filter=lambda golden: max_values_as_now(masked_view(golden), actual))
     prefabs = sorted(p.relative_to(project).as_posix() for p in project.rglob("*.prefab")
                      if ".jasperengine" not in p.parts)
     for rel in prefabs:
@@ -297,7 +341,8 @@ async def test_codegen_golden():
     check(SOURCES, "test_golden_resave generated no scene sources")
     mismatches: list[str] = []
     for key, text in sorted(SOURCES.items()):
-        compare_or_update(GOLDEN / "codegen" / (key + ".golden"), text, f"generated {key}", mismatches)
+        compare_or_update(GOLDEN / "codegen" / (key + ".golden"), text, f"generated {key}", mismatches,
+                          golden_filter=default_camera_as_now)
     check(not mismatches, "generated C++ differs from the goldens:\n" + "\n".join(mismatches[:20]))
 
 

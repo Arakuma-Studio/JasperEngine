@@ -303,6 +303,10 @@ bool EntityRegistry::isEntityCreated(Entity entity) const {
     return entityManager.isCreated(entity);
 }
 
+bool EntityRegistry::isPooledSystemEntity(Entity entity) const {
+    return entityManager.isPooledSystemEntity(entity);
+}
+
 bool EntityRegistry::recreateEntity(Entity entity) {
     if (structuralLocked("recreateEntity")) {
         return false;

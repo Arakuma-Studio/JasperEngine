@@ -61,6 +61,10 @@ namespace jasperengine{
 
         // bit e set: system id e is taken (bit 0 and the bits past 1000 always are)
         uint64_t systemUsed[SYSTEM_MASK_WORDS];
+        // bit e set: system id e was handed out by createSystemEntity (the engine's and the editor's
+        // own entities: a Default Camera, the Scene view's grid, gizmos and icons), not recreated
+        // from a file that saved a GameObject with that id
+        uint64_t systemPooled[SYSTEM_MASK_WORDS] = {};
 
         uint32_t nextSerial = 0;
 
@@ -200,6 +204,7 @@ namespace jasperengine{
                 if (free){
                     const Entity entity = (Entity)(word * 64 + ecs::countTrailingZeros(free));
                     add(entity);
+                    systemPooled[entity >> 6] |= uint64_t(1) << (entity & 63);
                     return entity;
                 }
             }
@@ -231,6 +236,12 @@ namespace jasperengine{
             return idToSlot.contains(entity);
         }
 
+        // made by createSystemEntity (and alive): an engine or editor entity, never one of a
+        // scene's GameObjects, whatever its id
+        bool isPooledSystemEntity(Entity entity) const {
+            return isSystemId(entity) && (systemPooled[entity >> 6] >> (entity & 63) & 1u) && idToSlot.contains(entity);
+        }
+
         void destroy(Entity entity) {
             const uint32_t slot = idToSlot.find(entity);
             if (slot == ecs::SparseIndex::kNone){
@@ -246,6 +257,7 @@ namespace jasperengine{
             idToSlot.erase(entity);
             if (isSystemId(entity)){
                 systemUsed[entity >> 6] &= ~(uint64_t(1) << (entity & 63));
+                systemPooled[entity >> 6] &= ~(uint64_t(1) << (entity & 63));
                 systemCount--;
             }
             liveCount--;

@@ -2373,10 +2373,24 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
         return;
     }
 
-    // generation is expensive (cosine + GGX convolution), reuse cached maps
+    // generation is expensive (cosine + GGX convolution), reuse cached maps; those of the image's
+    // pixels as they are: a hot reload's new pixels light the scene otherwise
     const std::string texId = sky.texture.getId();
-    const std::string irradianceId = texId + "|ibl|irradiance";
-    const std::string prefilteredId = texId + "|ibl|prefiltered";
+    const uint32_t imageGeneration = TextureDataPool::generation(texId);
+    const auto environmentId = [&texId](uint32_t generation, const char* map){
+        return texId + "|ibl|" + map + (generation > 0 ? "|" + std::to_string(generation) : std::string());
+    };
+    const std::string irradianceId = environmentId(imageGeneration, "irradiance");
+    const std::string prefilteredId = environmentId(imageGeneration, "prefiltered");
+    // the maps are this image's pixels' now: those of the pixels before go with their last holder
+    const auto noteMapsMade = [&](){
+        if (sky.environmentId == texId && sky.environmentGeneration != imageGeneration){
+            TexturePool::remove(environmentId(sky.environmentGeneration, "irradiance"));
+            TexturePool::remove(environmentId(sky.environmentGeneration, "prefiltered"));
+        }
+        sky.environmentId = texId;
+        sky.environmentGeneration = imageGeneration;
+    };
 
     if (!texId.empty()){
         std::shared_ptr<TextureRender> irradiance = TexturePool::get(irradianceId);
@@ -2390,6 +2404,7 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
                 sky.envMapsLoaded = true;
                 needReloadMeshes();
             }
+            noteMapsMade();
             sky.needUpdateEnvironment = false;
             return;
         }
@@ -2402,6 +2417,13 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
     }
 
     if (texResult.state == ResourceLoadState::Finished && texResult.data){
+        // a cook of six files swapped in: nothing the CPU can read (a cube's cook has its copy), and
+        // the same image as the source the maps were made of
+        if (sky.envMapsLoaded && sky.environmentId == texId && !IBLEnvironment::canGenerate(*(texResult.data))){
+            sky.needUpdateEnvironment = false;
+            return;
+        }
+
         releaseSkyEnvironment(sky);
 
         std::shared_ptr<TextureRender> irradiance = std::make_shared<TextureRender>();
@@ -2415,6 +2437,7 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
             sky.envMapsLoaded = true;
             TexturePool::add(irradianceId, irradiance);
             TexturePool::add(prefilteredId, prefiltered);
+            noteMapsMade();
             needReloadMeshes();
         }
     }
@@ -3130,6 +3153,7 @@ SubmeshShaderInputs RenderSystem::getExtraPassShaderInputs(const SubmeshShaderIn
     inputs.material = nullptr;
     inputs.pbrTransmission = false;
     inputs.terrainHex = false;
+    inputs.terrainHexStochastic = false;
     return inputs;
 }
 
@@ -3186,7 +3210,8 @@ PbrVariant RenderSystem::getLoadedPbrVariant(const Submesh& submesh, PbrTier tie
 
 bool RenderSystem::pbrVariantMatches(const Submesh& submesh) const{
     const PbrVariant expected = getLoadedPbrVariant(submesh, loadedPbrTier);
-    const uint32_t environmentBits = MaterialPbr::getDefineBit(MaterialPbr::LIT_QUALITY_DEFINE) | MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE);
+    const uint32_t environmentBits = MaterialPbr::getDefineBit(MaterialPbr::LIT_QUALITY_DEFINE) | MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE) |
+                                     MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE);
     if (MaterialPbr::getDefineBits(expected.defines) != (submesh.litDefineBits & ~environmentBits))
         return false;
     for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
@@ -3567,6 +3592,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
         inputs.pbrTransmission = !terrain && submesh.material.pbr->transmission.enabled;
     }
     inputs.terrainHex = terrain && hasTerrainHexLayers(*terrain);
+    inputs.terrainHexStochastic = inputs.terrainHex && hasTerrainStochasticLayers(*terrain);
 
     return inputs;
 }
@@ -3715,6 +3741,19 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         }
     }
 
+    // the built-in Lit's lobes and hex tiling (a fork's of it too, which has no manifest). Lobes
+    // are lighting: an unlit variant keeps hex tiling only. A 2D shadow atlas takes one extension
+    // map slot (16 fragment textures at most). A lobe's map samples the mesh's UVs as the core maps
+    // do, and has no slot without them (includes/pbr_ext_slots.glsl).
+    if (!manifest && inputs.material){
+        const MaterialLighting pbrLighting = p_unlit ? MaterialLighting::NONE : lighting;
+        variant.pbr = MaterialPbr::getPbrVariant(*inputs.material, pbrLighting, inputs.terrain, environment.pbrTier, p_shadows2d ? 1 : 0);
+        if (!variant.pbr.maps.empty() && inputs.texCoord1){
+            p_hasTexture1 = true;
+            p_hasTexture2 = inputs.texCoord2;
+        }
+    }
+
     // Shader library (section 7.3): a manifest's @require forces the inputs it names when
     // the mesh has them, whatever the lights and textures, and only those (the varyings
     // surface_vs.glsl writes follow @require). A lit mode adds the normals the lights need
@@ -3807,16 +3846,14 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
 
     // the built-in Lit's defines beyond the property bits (and a fork's of it, which has no
     // manifest): the material's lobes and hex tiling, the Terrain's hex tiled layers, the High
-    // Lit Quality. Lobes are lighting: an unlit variant keeps hex tiling only. A 2D shadow
-    // atlas takes one extension map slot (16 fragment textures at most).
+    // Lit Quality
     if (!manifest){
-        if (inputs.material){
-            const MaterialLighting pbrLighting = p_unlit ? MaterialLighting::NONE : lighting;
-            variant.pbr = MaterialPbr::getPbrVariant(*inputs.material, pbrLighting, inputs.terrain, environment.pbrTier, p_shadows2d ? 1 : 0);
-            variant.litDefines = variant.pbr.defines;
-        }
-        if (p_terrainSurface && inputs.terrainHex)
+        variant.litDefines = variant.pbr.defines;
+        if (p_terrainSurface && inputs.terrainHex){
             variant.litDefines.push_back(MaterialPbr::TERRAIN_HEX_DEFINE);
+            if (inputs.terrainHexStochastic)
+                variant.litDefines.push_back(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE);
+        }
         if (environment.litQualityHigh && !p_unlit)
             variant.litDefines.push_back(MaterialPbr::LIT_QUALITY_DEFINE);
         std::sort(variant.litDefines.begin(), variant.litDefines.end());
@@ -4019,7 +4056,9 @@ bool RenderSystem::bindShaderTextures(const ShaderLibraryBindings& bindings, Obj
         TextureRender* textureRender = fallback;
         if (textureSlot.source >= 0 && textureSlot.source < (int)textures.size()){
             Texture& texture = textures[textureSlot.source].second;
-            if (!texture.empty()){
+            // (one naming a file that failed too: another load of it may have made its GPU
+            // texture, or a stand-in is noted for a later binding)
+            if (!texture.empty() || !texture.getId().empty()){
                 textureRender = texture.getRender(fallback);
                 if (!textureRender){
                     textureRender = fallback;
@@ -5037,6 +5076,37 @@ void RenderSystem::applyLitMaterialBlock(ObjectRender& render, int slot, const M
     render.applyUniformBlock(slot, size, prefix);
 }
 
+RenderSystem::TextureBindMark RenderSystem::markTextureBinding(){
+    return {Texture::getStandInCount(), TexturePool::getReadyEpoch()};
+}
+
+void RenderSystem::noteTextureBinding(Submesh& submesh, const TextureBindMark& mark){
+    // the epochs as they were before the binding: an image made during it is looked at again
+    submesh.textureStandInEpoch = Texture::getStandInCount() != mark.standIns ? mark.readyEpoch : 0;
+}
+
+bool RenderSystem::shaderTexturesRenderOutdated(const std::vector<std::pair<std::string, Texture>>& textures){
+    for (const auto& texture : textures){
+        if (texture.second.isRenderOutdated())
+            return true;
+    }
+    return false;
+}
+
+bool RenderSystem::materialRendersOutdated(const Submesh& submesh){
+    const Material& material = submesh.material;
+    if (material.baseColorTexture.isRenderOutdated() || material.metallicRoughnessTexture.isRenderOutdated() ||
+            material.occlusionTexture.isRenderOutdated() || material.emissiveTexture.isRenderOutdated() ||
+            material.normalTexture.isRenderOutdated() || shaderTexturesRenderOutdated(material.shaderTextures) ||
+            shaderTexturesRenderOutdated(material.extraPass->shaderTextures))
+        return true;
+    for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
+        if (submesh.pbrMaps[k] != PbrMap::COUNT && MaterialPbr::getMap(material.pbr.get(), submesh.pbrMaps[k]).isRenderOutdated())
+            return true;
+    }
+    return false;
+}
+
 bool RenderSystem::loadPbrExtTextures(Submesh& submesh, ShaderData& shaderData, ObjectRender& render){
     static const char* const slotNames[MaterialPbr::MAX_EXTENSION_MAPS] = {"u_pbrExtTexture0", "u_pbrExtTexture1", "u_pbrExtTexture2"};
     MaterialPbrExtensions* pbr = submesh.material.pbr.editIfSet();
@@ -5071,7 +5141,9 @@ bool RenderSystem::loadPBRTextures(Material& material, ShaderData& shaderData, O
         render.addTexture(slotTex, ShaderStageType::FRAGMENT, &emptyWhite);
     }
 
-    if (hasLights && receiveLights){
+    // (a lit variant with UVs samples them under image based lighting alone too: addTexture
+    // no-ops when the compiled variant has no slot)
+    if ((hasLights || hasIBL || hasReflectionProbes) && receiveLights){
         textureRender = material.metallicRoughnessTexture.getRender(&emptyWhite);
         slotTex = shaderData.getTextureIndex(TextureShaderType::METALLICROUGHNESS);
         if (textureRender){
@@ -5711,9 +5783,9 @@ bool RenderSystem::updateTerrainRenderTextures(Entity entity, TerrainComponent& 
     // a render target its maps show was made again (a fluid's output, a camera's after a view
     // loss): bound again, as meshes do (checkPBRFrabebufferUpdate)
     if (!terrain.needUpdateTexture){
-        bool outdated = terrain.heightMap.isFramebufferOutdated();
+        bool outdated = terrain.heightMap.isFramebufferOutdated() || terrain.heightMap.isRenderOutdated();
         for (const Texture& blendMap : terrain.blendMaps)
-            outdated = outdated || blendMap.isFramebufferOutdated();
+            outdated = outdated || blendMap.isFramebufferOutdated() || blendMap.isRenderOutdated();
         if (outdated)
             terrain.needUpdateTexture = true;
     }
@@ -5964,6 +6036,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         return false;
 
     if (terrain && !terrain->heightMapLoaded)
+        return false;
+
+    // tests: JASPER_MESH_LOAD_HOLD_FILE holds it (MeshSystem::isMeshLoadHeld)
+    if (MeshSystem::isMeshLoadHeld(scene))
         return false;
 
     // a Spline Extrude's Mesh is the template of its chunks (SplineSystem): never drawn itself
@@ -6470,6 +6546,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].customFSParams.resolve(shaderData, "u_fs_customParams");
         writeSubmeshCustomUniforms(mesh, mesh.submeshes[i]);
 
+        // what the binding below takes stand-ins for (noteTextureBinding)
+        const TextureBindMark bindMark = markTextureBinding();
         if (!loadPBRTextures(mesh.submeshes[i].material, shaderData, mesh.submeshes[i].render, mesh.receiveLights)){
             return false;
         }
@@ -6523,6 +6601,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].needUpdateTexture = false;
         mesh.submeshes[i].needUpdateDepthTexture = false;
         mesh.submeshes[i].needUpdateGBufferTexture = false;
+        noteTextureBinding(mesh.submeshes[i], bindMark);
 
         // render state: the material's, the manifest's @state, else the legacy state
         // (alpha blended materials go to the transparent queue and write no depth)
@@ -8580,10 +8659,12 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
             if (mesh.submeshes[i].needUpdateTexture || needUpdateFramebuffer){
                 ShaderData& shaderData = mesh.submeshes[i].shader.get()->shaderData;
+                const TextureBindMark bindMark = markTextureBinding();
                 if (loadPBRTextures(mesh.submeshes[i].material, shaderData, mesh.submeshes[i].render, mesh.receiveLights) &&
                         loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render) &&
                         bindShaderTextures(libraryBindings, render, mesh.submeshes[i].material.shaderTextures)){
                     mesh.submeshes[i].needUpdateTexture = false;
+                    noteTextureBinding(mesh.submeshes[i], bindMark);
                 }
             }
             // a FluidSimulation shown on this mesh (output MATERIAL): its image as submesh 0's
@@ -14173,6 +14254,11 @@ void RenderSystem::update(double dt){
     if (paused) {
         return;
     }
+
+    // a GPU texture went stale or was made again since the last update: whoever bound one looks
+    const uint32_t rebindEpoch = TexturePool::getRebindEpoch();
+    const bool rendersMayBeOutdated = rebindEpoch != rebindEpochSeen;
+    rebindEpochSeen = rebindEpoch;
     // the clock of the shadow caches (ShadowCache): one tick per update that samples the casters
     shadowFrame++;
 
@@ -14480,6 +14566,11 @@ void RenderSystem::update(double dt){
             }
         }
 
+        // its image has new pixels or a new view (TexturePool::getRebindEpoch)
+        if (rendersMayBeOutdated && (sky.texture.isRenderOutdated() || shaderTexturesRenderOutdated(sky.shaderTextures))){
+            sky.needUpdateTexture = true;
+        }
+
         if (sky.needUpdateTexture){
             if (sky.texture.empty()){
                 sky.needReload = true;
@@ -14646,9 +14737,24 @@ void RenderSystem::update(double dt){
                         // so can a layer's hex tiling, a define of the built-in Lit's variant
                         // (as asked for: the plain variant standing in for it reloads on its own)
                         const bool shaderHex = (mesh.submeshes[s].litDefineBits & MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE)) != 0;
-                        if (shaderHex != hasTerrainHexLayers(*terrain)){
+                        // and whether that variant carries Stochastic Tiling beside it
+                        const bool shaderHexStochastic = (mesh.submeshes[s].litDefineBits &
+                                                          MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE)) != 0;
+                        const bool hex = hasTerrainHexLayers(*terrain);
+                        if (shaderHex != hex || shaderHexStochastic != (hex && hasTerrainStochasticLayers(*terrain))){
                             mesh.needVariantReload = true;
                         }
+                    }
+                }
+
+                // An image the material names that had no GPU texture when it was bound (it drew a
+                // stand-in) may be made now, and one it drew has new pixels or a new view: an image
+                // ready, or assigned, after the binding (BF15)
+                if (mesh.loaded && !mesh.needReload && !mesh.submeshes[s].needUpdateTexture){
+                    const uint32_t standIn = mesh.submeshes[s].textureStandInEpoch;
+                    if ((standIn != 0 && standIn != TexturePool::getReadyEpoch()) ||
+                            (rendersMayBeOutdated && materialRendersOutdated(mesh.submeshes[s]))){
+                        mesh.submeshes[s].needUpdateTexture = true;
                     }
                 }
 
@@ -14669,7 +14775,9 @@ void RenderSystem::update(double dt){
                         if (!(mesh.submeshes[s].shaderProperties & (1 << 1)) && !(mesh.submeshes[s].shaderProperties & (1 << 2))){ // not 'Uv1' and not 'Uv2'
                             mesh.needReload = true;
                         }
-                    }else{
+                    }else if (mesh.submeshes[s].pbrMaps[0] == PbrMap::COUNT){
+                        // (a lobe's map the variant binds asked for its UVs: when it goes or
+                        // another comes, pbrVariantMatches below builds the variant it takes)
                         if ((mesh.submeshes[s].shaderProperties & (1 << 1)) || (mesh.submeshes[s].shaderProperties & (1 << 2))){ // 'Uv1' or 'Uv2'
                             mesh.needReload = true;
                         }
@@ -14803,6 +14911,10 @@ void RenderSystem::update(double dt){
                 isText = true;
             }
 
+            if (rendersMayBeOutdated && (ui.texture.isRenderOutdated() || shaderTexturesRenderOutdated(ui.shaderTextures))){
+                ui.needUpdateTexture = true;
+            }
+
             if (ui.needUpdateTexture){
                 // a text samples its atlas as 'Ftx', everything else its texture as 'Tex'
                 const uint64_t textureProperty = isText ? (1 << 1) : (1 << 0);
@@ -14830,6 +14942,10 @@ void RenderSystem::update(double dt){
             }
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
+
+            if (rendersMayBeOutdated && (points.texture.isRenderOutdated() || shaderTexturesRenderOutdated(points.shaderTextures))){
+                points.needUpdateTexture = true;
+            }
 
             if (points.needUpdateTexture){
                 if (!points.texture.empty()){

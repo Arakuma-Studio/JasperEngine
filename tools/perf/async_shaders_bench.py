@@ -25,6 +25,8 @@ results:
                         nothing), the frames that ran an MCP tool (the edit, this bench's own calls)
                         apart; edit_worst_frame_ms, tool_worst_frame_ms and worker_worst_frame_ms
                         (the frames the worker created in) are reported beside it
+  r22_worst_over_bound  that worst frame over R22's bound, max(2x the idle median, the idle median
+                        + 4 ms) (checked: <= 1; measured with the driver cache warm, --driver-cache)
 
 Controls: --control (the same edits between variants built before), --idle (the same recording
 with no edit: the editor's own frame-time noise) and --driver-cache DIR (the drivers' shader disk
@@ -257,6 +259,9 @@ async def one_run(args: argparse.Namespace, run: int) -> dict:
         result["windowed_worst_frame_ms"] = max((f["frame_ms"] for f in creation), default=0.0)
         result["spikes"] = sorted(round(ms, 1) for ms in continuous)
         result["r22_worst_frame_ratio"] = result["r22_worst_frame_ms"] / idle_median if idle_median > 0 else 0.0
+        # R22's bound (approved 2026-11-01): max(2x idle, idle + 4 ms), the worst frame over it
+        result["r22_bound_ms"] = max(2.0 * idle_median, idle_median + 4.0)
+        result["r22_worst_over_bound"] = result["r22_worst_frame_ms"] / result["r22_bound_ms"]
         result["edit_worst_frame_ms"] = max((f["frame_ms"] for f in edits), default=0.0)
         # the frames an MCP tool ran in (the edit, this bench's captures and queries): apart
         result["tool_worst_frame_ms"] = max(tool_frames, default=0.0)
@@ -270,7 +275,8 @@ async def one_run(args: argparse.Namespace, run: int) -> dict:
         print(f"run {run}: {result['device']}, mode {mode}, warm draws done {result['warm_draw_count']}, idle median {idle_median:.1f} ms, max main creation {result['max_main_ms']:.2f} ms, "
               f"worst frame {result['worst_frame_ms']:.1f} ms ({result['worst_frame_ratio']:.2f}x), "
               f"{len(toggled)} toggle frames; worst frame's scopes {worst['top']}", flush=True)
-        print(f"  R22 (edit frames apart): worst {result['r22_worst_frame_ms']:.1f} ms ({result['r22_worst_frame_ratio']:.2f}x); "
+        print(f"  R22 (edit frames apart): worst {result['r22_worst_frame_ms']:.1f} ms ({result['r22_worst_frame_ratio']:.2f}x, "
+              f"{result['r22_worst_over_bound']:.2f} of the bound {result['r22_bound_ms']:.1f} ms); "
               f"{result['edit_frames']} edit frames, worst {result['edit_worst_frame_ms']:.1f} ms; "
               f"{result['worker_frames']} frames with the worker creating, worst {result['worker_worst_frame_ms']:.1f} ms", flush=True)
         if args.tree:
@@ -294,6 +300,7 @@ async def main_async(args: argparse.Namespace) -> int:
             "max_main_ms": statistics.median(r["max_main_ms"] for r in runs),
             "worst_frame_ratio": statistics.median(r["worst_frame_ratio"] for r in runs),
             "r22_worst_frame_ratio": statistics.median(r["r22_worst_frame_ratio"] for r in runs),
+            "r22_worst_over_bound": statistics.median(r["r22_worst_over_bound"] for r in runs),
             "edit_worst_frame_ms": statistics.median(r["edit_worst_frame_ms"] for r in runs),
             "tool_worst_frame_ms": statistics.median(r["tool_worst_frame_ms"] for r in runs),
             "worker_worst_frame_ms": statistics.median(r["worker_worst_frame_ms"] for r in runs),

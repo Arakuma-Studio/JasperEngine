@@ -15,6 +15,8 @@ def jasperengineRootAbs = file(jasperengineRoot).toString()
 def jasperPlayer = project.findProperty("jasperPlayer") == "true"
 // -PjasperBackend=gles3|vulkan: the player's graphics backend (the engine's default otherwise)
 def jasperBackend = project.findProperty("jasperBackend")
+// -PjasperPlayerVariant=<name>: the release player variant (full when not given)
+def jasperPlayerVariant = project.findProperty("jasperPlayerVariant")
 
 // The assets the APK packs: the project's, without the cooked textures desktop and web load
 // (S14 R9: assets/je-cooked/<family>), synced into the build directory before every build
@@ -64,6 +66,10 @@ android {
                     arguments "-DJASPERENGINE_PLAYER=ON", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
                     if (jasperBackend) {
                         arguments "-DGRAPHIC_BACKEND="+jasperBackend
+                    }
+                    // a release variant of engine/player/variants.json (docs/specs/S34-player-size.md R4)
+                    if (jasperPlayerVariant) {
+                        arguments "-DJASPERENGINE_PLAYER_VARIANT="+jasperPlayerVariant
                     }
                 } else {
                     arguments "-DPROJECT_ROOT="+projectSourceRootAbs

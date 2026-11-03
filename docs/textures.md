@@ -124,6 +124,26 @@ window badges queued, cooking and failed textures.
 - **Sizes**: `Texture.width` / `height` stay the source's (layout never moves);
   `getStoredWidth()` / `getStoredHeight()` are the GPU image's.
 - **CPU data**: `Texture:getData()` of a compressed texture is empty and logs once.
+- **Late images**: a material whose image has no GPU texture yet and nothing loading it (no pixels
+  pooled, no generator) binds a stand-in (white, a flat normal) and binds again once an image can
+  be made (pixels pooled or replaced, a generator registered, a GPU texture made:
+  `TexturePool::getReadyEpoch`), in every slot (the five core maps, the extension lobe maps, a
+  shader's own textures). An image whose pixels are replaced (a hot reload, a cook swapped in, the
+  rest of a progressive load) is bound again by every mesh, UI image, Points, sky and terrain holding
+  it (`TexturePool::getRebindEpoch`); the old one draws until the new one is made. A model's embedded images are made again from the model once their pixels
+  were freed after the upload; a preview's (a thumbnail's 256 px load) are keyed apart
+  (`|max256`) and never share or replace the scene's. A sky's image lights the scene too: replaced
+  pixels make its environment maps again (the maps' ids carry the image's generation).
+- **A lobe's map** samples the mesh's UVs as the core maps do: a variant that binds one takes the UV
+  sets whatever else the material has (`RenderSystem::getSubmeshShaderVariant`), and a mesh with no
+  UVs draws the lobe's factors alone (`includes/pbr_ext_slots.glsl` has no slot then).
+- **Threads**: a model may load off the main thread next to the frames (the thumbnail strand, a
+  game's `Engine.startAsyncThread`). `TextureDataPool` and `TexturePool` keep their maps under a lock
+  of their own, held around the containers' operations alone; it costs nothing a frame reaches: a
+  steady frame makes no lookup in either, a binding a handful (`TextureDataPoolBench.Lookup`, 2000 ids: 159-163 ns
+  a lookup without a lock, 164-174 ns with one uncontended; 100 meshes of 3 images each make 103 lookups
+  in a frame replacing one image). The GPU objects stay the frame's: that thread makes them
+  only inside `Engine::executeSceneOnce`, under the frames' semaphore.
 
 ## Command line
 
