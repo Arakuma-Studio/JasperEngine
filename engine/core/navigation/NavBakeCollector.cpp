@@ -61,6 +61,7 @@ namespace {
         std::vector<uint32_t> indices;
     };
 
+#ifdef JASPERENGINE_PHYSICS_3D
     void addBox(Mesh& mesh, const Vector3& half) {
         const uint32_t base = (uint32_t)mesh.vertices.size();
         for (int i = 0; i < 8; i++)
@@ -80,8 +81,10 @@ namespace {
             mesh.indices.push_back(base + f[2]);
         }
     }
+#endif
 
     // a closed surface of revolution about y: rings from bottom to top (radius, y)
+#ifdef JASPERENGINE_PHYSICS_3D
     void addRevolution(Mesh& mesh, const std::vector<std::pair<float, float>>& profile) {
         const uint32_t base = (uint32_t)mesh.vertices.size();
         const int rings = (int)profile.size();
@@ -115,7 +118,9 @@ namespace {
             mesh.indices.insert(mesh.indices.end(), {top, d, c});
         }
     }
+#endif
 
+#ifdef JASPERENGINE_PHYSICS_3D
     void addSphere(Mesh& mesh, float radius) {
         std::vector<std::pair<float, float>> profile;
         for (int r = 1; r < ROUND_RINGS; r++) {
@@ -124,8 +129,10 @@ namespace {
         }
         addRevolution(mesh, profile);
     }
+#endif
 
     // two half spheres (radii bottom and top) joined over 2 * halfHeight
+#ifdef JASPERENGINE_PHYSICS_3D
     void addCapsule(Mesh& mesh, float halfHeight, float bottomRadius, float topRadius) {
         std::vector<std::pair<float, float>> profile;
         const int half = ROUND_RINGS / 2;
@@ -139,12 +146,16 @@ namespace {
         }
         addRevolution(mesh, profile);
     }
+#endif
 
+#ifdef JASPERENGINE_PHYSICS_3D
     void addCylinder(Mesh& mesh, float halfHeight, float radius) {
         addRevolution(mesh, {{radius, -halfHeight}, {radius, halfHeight}});
     }
+#endif
 
     // ---- a 3D convex hull (QuickHull) of a point cloud, its faces wound outwards
+#ifdef JASPERENGINE_PHYSICS_3D
     Mesh convexHull(const std::vector<Vector3>& points) {
         Mesh hull;
         if (points.size() < 4)
@@ -312,6 +323,7 @@ namespace {
         }
         return hull;
     }
+#endif
 
     // ---- a 2D convex hull (Andrew's monotone chain), counter-clockwise
     std::vector<Vector2> convexHull2D(std::vector<Vector2> points) {

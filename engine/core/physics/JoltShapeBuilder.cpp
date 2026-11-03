@@ -42,18 +42,24 @@
 using namespace jasperengine;
 
 namespace {
+#ifdef JASPERENGINE_PHYSICS_3D
 
     Vector3 absScale(const Vector3& scale){
         return Vector3(std::fabs(scale.x), std::fabs(scale.y), std::fabs(scale.z));
     }
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
 
     float maxScaleXZ(const Vector3& scale){
         return std::max(scale.x, scale.z);
     }
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
 
     float maxScaleXYZ(const Vector3& scale){
         return std::max(scale.x, std::max(scale.y, scale.z));
     }
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
     // Jolt's default convex radius, or half the thinnest extent when that is thinner: a box
@@ -64,10 +70,12 @@ namespace {
         return fits ? JPH::cDefaultConvexRadius : std::max(0.0f, 0.5f * thinnestHalfExtent);
     }
 #endif
+#ifdef JASPERENGINE_PHYSICS_3D
 
     void setError(std::string* error, const std::string& message){
         if (error) *error = message;
     }
+#endif
 
 }
 
