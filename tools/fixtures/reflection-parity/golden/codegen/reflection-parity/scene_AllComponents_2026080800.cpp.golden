@@ -943,8 +943,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         joint2d.rope = true;
         joint2d.anchorSpace = JointAnchorSpace::WORLD;
         joint2d.enableCollision = false;
-        joint2d.breakForce = std::numeric_limits<float>::infinity();
-        joint2d.breakTorque = std::numeric_limits<float>::infinity();
         joint2d.breakAction = JointBreakAction::DESTROY;
         joint2d.useLimits = false;
         joint2d.lowerAngle = 0.000000f;
@@ -1032,8 +1030,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         joint3d.autoAnchors = false;
         joint3d.anchorSpace = JointAnchorSpace::WORLD;
         joint3d.enableCollision = true;
-        joint3d.breakForce = std::numeric_limits<float>::infinity();
-        joint3d.breakTorque = std::numeric_limits<float>::infinity();
         joint3d.breakAction = JointBreakAction::DESTROY;
         joint3d.useLimits = false;
         joint3d.limitsSpringFrequency = 0.000000f;
@@ -1068,8 +1064,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         joint3d.driveDamping = 0.000000f;
         joint3d.angularDriveStiffness = 0.000000f;
         joint3d.angularDriveDamping = 0.000000f;
-        joint3d.driveMaxForce = std::numeric_limits<float>::infinity();
-        joint3d.driveMaxTorque = std::numeric_limits<float>::infinity();
         joint3d.targetPosition = Vector3(0.000000f, 0.000000f, 0.000000f);
         joint3d.targetRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
         joint3d.targetVelocity = Vector3(0.000000f, 0.000000f, 0.000000f);

@@ -258,6 +258,13 @@ TEST(ModuleUsage, DocumentScriptsAreScanned) {
     EXPECT_EQ(usage.firstEvidence("runtimeshaders"), "ui/menu.html:3: Mesh");
 }
 
+// the debug drawing's lines are a LineRenderer's, made at runtime; a physics query draws nothing
+TEST(ModuleUsage, PhysicsDebugDrawingNeedsRuntimeShaders) {
+    EXPECT_TRUE(withLua("Physics.debugDraw = true").needs("runtimeshaders"));
+    EXPECT_TRUE(withLua("Physics.debugDrawContacts = true").needs("runtimeshaders"));
+    EXPECT_FALSE(withLua("local hit = Physics.raycast(self.scene, Ray(Vector3(0, 0, 0), Vector3(0, 1, 0)))").needs("runtimeshaders"));
+}
+
 TEST(ModuleUsage, RuntimeShadersFollowShaderRelevantNames) {
     // moves, spawns prefabs, plays sounds and animations, reads input: every variant is cooked
     const std::string neutral =
