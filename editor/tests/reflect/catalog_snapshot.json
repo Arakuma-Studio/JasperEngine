@@ -10814,6 +10814,7 @@
     "indices",
     "lodBias",
     "lodEnabled",
+    "mirroredWinding",
     "morphTargetCount",
     "morphWeights",
     "normAdjustJoint",
@@ -33136,6 +33137,7 @@
    "key": "animationplayer",
    "known_keys": [
     "clips",
+    "controller",
     "defaultClip",
     "defaultFadeTime",
     "enabled",
