@@ -29,7 +29,8 @@ keeps 30 projects (pinned ones are never dropped); File > Recent Projects shows 
 Pick a template, a **Project Name** (default "New Project") and a **Location** (the last one
 used, else `~/JasperEngine Projects`). **Create** stays disabled while `<location>/<name>` exists
 and is not empty, with the reason. The project is created off the main thread and opens on the
-template's start scene; a failure removes the partly created folder.
+template's start scene. It is built next to the target (`<name>.importing`) and moved there whole:
+a failure or a crash midway leaves `<location>/<name>` as it was, and a failure removes the rest.
 
 Built-in templates:
 

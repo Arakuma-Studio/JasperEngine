@@ -122,7 +122,8 @@ namespace jasperengine{
         static void applyDefaultObjMaterial(Submesh& submesh);
         std::vector<std::pair<MeshComponent*, unsigned int>> getSubmeshRuns(Entity entity, const ModelComponent& model) const;
         void addSubmeshAttribute(Submesh& submesh, const std::string& bufferName, AttributeType attribute, unsigned int elements, AttributeDataType dataType, size_t size, size_t offset, bool normalized);
-        bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers);
+        // false as well when the view has no buffer to add; capacityReached: the mesh has no room for it
+        bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers, bool& capacityReached);
         int convertGLTFByteIndicesToShort(const tinygltf::Accessor& indexAccessor, ModelComponent& model);
         int materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, ModelComponent& model);
         int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model);
@@ -308,6 +309,17 @@ namespace jasperengine{
         // Caps the resolution glTF images are decoded to on the CALLING thread (0 = full resolution).
         // Used by the thumbnail worker so previews don't decode/upload full-size 4K maps.
         static void setImageDecodeMaxDimension(int dimension);
+        // What a load on the calling thread adds to the ids of a model's embedded images: ""
+        // at full resolution, "|max<N>" for a load capped by setImageDecodeMaxDimension (a
+        // thumbnail's preview). The preview's pixels are another image than the scene's: under
+        // the scene's ids it shared (and freed) the scene's pooled pixels and took over the
+        // generator that makes them again, bound to the preview's model (BF15).
+        static std::string getImageKeySuffix();
+
+        // tests: JASPER_MESH_LOAD_HOLD_FILE=<path> holds the first load (RenderSystem::loadMesh)
+        // of the meshes of a scene that loaded a model in the background, while that file exists:
+        // what else loads the same model meanwhile (a Project window thumbnail) comes first
+        static bool isMeshLoadHeld(const Scene* scene);
 
         void createInstancedMesh(Entity entity);
         void removeInstancedMesh(Entity entity);
@@ -336,6 +348,9 @@ namespace jasperengine{
         static float sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ);
 
         bool hasPendingAsyncModelLoads() const;
+        // Test hook: each asynchronous parse of a model file waits this long first, so a load is still
+        // running when a test acts (0, the default: none)
+        static void setModelLoadDelayForTest(int milliseconds);
         void cancelAsyncModelLoads();
         static void cancelAllAsyncModelLoads();
         bool isAsyncModelLoadPending(Entity entity, const std::string& filename) const;

@@ -9,6 +9,8 @@
 #     so the host's console and desktop session are never touched;
 #   - its socket goes to <worktree>/build/.x11/X<display>, which the build image sees as
 #     /src/build/.x11; tools/gpu/env.sh (sourced inside the image) points DISPLAY at it.
+# JE_GPU_SCREEN=WxH sets its screen (default 3840x2160; the MCP suite's GPU lane uses 1600x900, the
+# size of the Xvfb an editor makes itself, so a test's windows and views come out the same size).
 # Default display :97. Run it on the GPU host from the worktree (rb.sh H tools/gpu/xorg-headless.sh start),
 # then: JIMG_GPU=1 rb.sh H --img '. tools/gpu/env.sh && <command>'. Stop it when done.
 set -euo pipefail
@@ -29,10 +31,14 @@ case "$ACTION" in
     IMG="jasperengine/gpu-xorg:$HASH"
     docker image inspect "$IMG" >/dev/null 2>&1 || docker build -q -t "$IMG" -f "$ROOT/docker/gpu-xorg.Dockerfile" "$ROOT/docker" >/dev/null
     mkdir -p "$SOCKDIR"; rm -f "$SOCKDIR/X$DISP" "$SOCKDIR/xorg-$DISP.log"
+    SCREEN="${JE_GPU_SCREEN:-3840x2160}"
+    [[ "$SCREEN" =~ ^[0-9]+x[0-9]+$ ]] || { echo "[xorg-headless] JE_GPU_SCREEN must be WxH (got $SCREEN)" >&2; exit 2; }
+    CONF="$SOCKDIR/xorg-$DISP.conf"
+    sed "s/Virtual 3840 2160/Virtual ${SCREEN%x*} ${SCREEN#*x}/" "$ROOT/tools/gpu/xorg-nvidia-headless.conf" > "$CONF"
     docker rm -f "$NAME" >/dev/null 2>&1 || true
     docker run -d --rm --name "$NAME" --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all \
       -v "$NVXORG:/nvidia-xorg:ro" \
-      -v "$ROOT/tools/gpu/xorg-nvidia-headless.conf:/etc/X11/xorg-headless.conf:ro" \
+      -v "$CONF:/etc/X11/xorg-headless.conf:ro" \
       -v "$SOCKDIR:/tmp/.X11-unix" \
       "$IMG" Xorg ":$DISP" -config /etc/X11/xorg-headless.conf -noreset -nolisten tcp -ac \
         -sharevts -novtswitch -keeptty -logfile "/tmp/.X11-unix/xorg-$DISP.log" >/dev/null
@@ -48,6 +54,7 @@ case "$ACTION" in
   stop)
     docker rm -f "$NAME" >/dev/null 2>&1 && echo "[xorg-headless] $NAME stopped" || echo "[xorg-headless] $NAME not running"
     # the socket and the log belong to the container's root (and Xorg made the directory sticky)
+    rm -f "$SOCKDIR/xorg-$DISP.conf"
     if [[ -e "$SOCKDIR/X$DISP" || -e "$SOCKDIR/xorg-$DISP.log" ]]; then
         IMG="jasperengine/gpu-xorg:$(sha256sum "$ROOT/docker/gpu-xorg.Dockerfile" | cut -c1-12)"
         docker run --rm -v "$SOCKDIR:/x" "$IMG" rm -f "/x/X$DISP" "/x/xorg-$DISP.log" 2>/dev/null || rm -f "$SOCKDIR/X$DISP"

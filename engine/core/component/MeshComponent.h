@@ -330,6 +330,10 @@ namespace jasperengine{
         bool needUpdateTexture = false;
         bool needUpdateDepthTexture = false;
         bool needUpdateGBufferTexture = false;
+        // runtime (RenderSystem): TexturePool::getReadyEpoch when the material was bound with a
+        // stand-in for an image it names (0: every image bound is its own). When it moves on, the
+        // material binds again.
+        uint32_t textureStandInEpoch = 0;
 
         bool generated = false;
 
@@ -386,6 +390,9 @@ namespace jasperengine{
         // which, once): not drawn and counted as settled (RenderSystem::isAllLoaded), not as
         // loading; loaded again when the pools have room (SystemRender::hasResourcePoolRoom)
         bool loadFailed = false;
+        // a submesh's attribute names a buffer the mesh does not have: not drawn and settled as
+        // above, and not tried again until the mesh is reloaded
+        bool loadMissingBuffer = false;
 
         InterleavedBuffer buffer;
         IndexBuffer indices;

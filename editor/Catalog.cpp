@@ -331,8 +331,12 @@ bool editor::Catalog::mayHoldReferences(EntityRegistry* registry, Entity entity,
     // property list, so a reference property added to one later turns the shortcut off
     // instead of being skipped.
     static const bool shortcutsHold = []() {
-        for (ComponentType type : {ComponentType::Transform, ComponentType::SpriteComponent, ComponentType::MeshComponent}) {
-            for (const auto& [name, property] : getProperties(type, nullptr)) {
+        // A line renderer lists its lines only with a component: one with a line
+        LineRendererComponent lines;
+        lines.lines.resize(1);
+        for (ComponentType type : {ComponentType::Transform, ComponentType::SpriteComponent, ComponentType::MeshComponent,
+                                   ComponentType::LineRendererComponent}) {
+            for (const auto& [name, property] : getProperties(type, type == ComponentType::LineRendererComponent ? &lines : nullptr)) {
                 if (property.type == PropertyType::Entity || property.type == PropertyType::EntityReference) {
                     return false;
                 }
@@ -353,7 +357,11 @@ bool editor::Catalog::mayHoldReferences(EntityRegistry* registry, Entity entity,
     switch (component) {
         case ComponentType::Transform:
         case ComponentType::SpriteComponent:
-            // Only values (kTransformProperties, enumerateSpriteProperties)
+        case ComponentType::LineRendererComponent:
+            // Only values (the Transform's, the Sprite's; a line renderer's lines, its shader
+            // textures being one Custom property, which no reference walk reads). The Scene view's
+            // own line renderers (grid, gizmos) list thousands of lines: walking them was most of a
+            // whole-scene CameraTextureLink::resolve
             return false;
         case ComponentType::MeshComponent: {
             // No entity properties; a texture of each submesh material (enumerateMeshProperties)

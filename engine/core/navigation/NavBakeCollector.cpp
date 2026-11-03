@@ -61,6 +61,7 @@ namespace {
         std::vector<uint32_t> indices;
     };
 
+#ifdef JASPERENGINE_PHYSICS_3D
     void addBox(Mesh& mesh, const Vector3& half) {
         const uint32_t base = (uint32_t)mesh.vertices.size();
         for (int i = 0; i < 8; i++)
@@ -80,8 +81,10 @@ namespace {
             mesh.indices.push_back(base + f[2]);
         }
     }
+#endif
 
     // a closed surface of revolution about y: rings from bottom to top (radius, y)
+#ifdef JASPERENGINE_PHYSICS_3D
     void addRevolution(Mesh& mesh, const std::vector<std::pair<float, float>>& profile) {
         const uint32_t base = (uint32_t)mesh.vertices.size();
         const int rings = (int)profile.size();
@@ -115,7 +118,9 @@ namespace {
             mesh.indices.insert(mesh.indices.end(), {top, d, c});
         }
     }
+#endif
 
+#ifdef JASPERENGINE_PHYSICS_3D
     void addSphere(Mesh& mesh, float radius) {
         std::vector<std::pair<float, float>> profile;
         for (int r = 1; r < ROUND_RINGS; r++) {
@@ -124,8 +129,10 @@ namespace {
         }
         addRevolution(mesh, profile);
     }
+#endif
 
     // two half spheres (radii bottom and top) joined over 2 * halfHeight
+#ifdef JASPERENGINE_PHYSICS_3D
     void addCapsule(Mesh& mesh, float halfHeight, float bottomRadius, float topRadius) {
         std::vector<std::pair<float, float>> profile;
         const int half = ROUND_RINGS / 2;
@@ -139,12 +146,16 @@ namespace {
         }
         addRevolution(mesh, profile);
     }
+#endif
 
+#ifdef JASPERENGINE_PHYSICS_3D
     void addCylinder(Mesh& mesh, float halfHeight, float radius) {
         addRevolution(mesh, {{radius, -halfHeight}, {radius, halfHeight}});
     }
+#endif
 
     // ---- a 3D convex hull (QuickHull) of a point cloud, its faces wound outwards
+#ifdef JASPERENGINE_PHYSICS_3D
     Mesh convexHull(const std::vector<Vector3>& points) {
         Mesh hull;
         if (points.size() < 4)
@@ -312,6 +323,7 @@ namespace {
         }
         return hull;
     }
+#endif
 
     // ---- a 2D convex hull (Andrew's monotone chain), counter-clockwise
     std::vector<Vector2> convexHull2D(std::vector<Vector2> points) {
@@ -338,6 +350,7 @@ namespace {
     }
 
     // a convex polygon pushed out by `offset` (mitred corners)
+#ifdef JASPERENGINE_PHYSICS_2D
     std::vector<Vector2> offsetPolygon(const std::vector<Vector2>& polygon, float offset) {
         if (offset <= 0.0f || polygon.size() < 3)
             return polygon;
@@ -362,6 +375,7 @@ namespace {
         }
         return out;
     }
+#endif
 
     // a component's area (an int) as an area index
     uint8_t areaIndex(int area) {
@@ -424,7 +438,9 @@ namespace {
         void collectVolumes();
         void collectLinks();
         void addVolume(const Matrix4& worldOf, const Vector3& center, const Vector3& size, uint8_t recastArea);
+#ifdef JASPERENGINE_PHYSICS_2D
         void addFootprint(const std::vector<Vector2>& worldPolygon, uint8_t recastArea);
+#endif
     };
 
     bool Collector::isDescendant(Entity entity, Entity ancestor) const {
@@ -780,6 +796,7 @@ namespace {
 #endif
     }
 
+#ifdef JASPERENGINE_PHYSICS_2D
     void Collector::addFootprint(const std::vector<Vector2>& worldPolygon, uint8_t recastArea) {
         if (worldPolygon.size() < 3)
             return;
@@ -802,6 +819,7 @@ namespace {
         volume.recastArea = recastArea;
         input->volumes.push_back(std::move(volume));
     }
+#endif
 
     void Collector::collectColliders2D() {
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -1116,7 +1134,13 @@ NavFrame NavBakeCollector::frameOf(Scene* scene, Entity surface) {
 float NavBakeCollector::unitScaleOf(Scene* scene, const NavMeshSurfaceComponent& surface) {
     if (surface.plane != NavPlane::XY)
         return 1.0f;
+#ifdef JASPERENGINE_PHYSICS_2D
     const float scale = scene->getSystem<PhysicsSystem>()->getPointsToMeterScale2D();
+#else
+    // without 2D physics nothing sets the scale (Lua's PhysicsSystem.pointsToMeterScale2D is a 2D
+    // physics binding): its default
+    const float scale = 0.0f;
+#endif
     return scale > 0.0f ? scale : 64.0f;
 }
 

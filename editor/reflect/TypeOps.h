@@ -258,6 +258,8 @@ namespace jasperengine::editor::reflect {
             &detail::finiteFloat}, &detail::floatScalar);
         // a float whose infinity is a value (a joint's break force and torque, a drive's force limits:
         // none): MCP reads an infinite one as null, which its schema takes too
+        // Its fields are CodegenIfChanged, as they default to infinity: Factory::formatFloat makes what is
+        // not finite 0, which would break a joint at its first step
         inline constexpr TypeOps FloatOrInfinity = detail::withSchema(Float, &detail::numberOrNullSchema);
         // written only when finite (Stream::encodeFinite); a non-finite or unreadable value keeps
         // the base (made finite: Stream::decodeFinite)

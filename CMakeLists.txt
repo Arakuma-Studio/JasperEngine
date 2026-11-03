@@ -697,7 +697,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cook/SceneCooker.cpp
     ${EDITOR_DIR}/cook/JPakWriter.cpp
     ${EDITOR_DIR}/util/ZipArchive.cpp
+    ${EDITOR_DIR}/players/ModuleUsage.cpp
     ${EDITOR_DIR}/players/PlayerRuntimes.cpp
+    ${EDITOR_DIR}/players/ShaderNeutralApi.cpp
     ${EDITOR_DIR}/publish/Notices.cpp
     ${EDITOR_DIR}/publish/BinaryInfo.cpp
     ${EDITOR_DIR}/publish/TreeManifest.cpp

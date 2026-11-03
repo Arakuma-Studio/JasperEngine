@@ -391,6 +391,12 @@ async def test_animator_window_live_parameters(ed: Editor):
                 break
         ed.check(live["parameters"]["Go"] in (True, 1), f"the checkbox set the runtime's Go: {live['parameters']} "
                  f"(file unchanged: {(ed.project / CONTROLLER).read_text() == S['text']})")
+        # (on a loaded machine the click lands late in that wait: the transition has only just begun)
+        for _ in range(50):
+            if live["layers"][0]["state"] == "Base Layer.Run":
+                break
+            await ed.call("wait", game_seconds=0.1)
+            live = (await ed.call("get_animator", entity="Hero"))["live"]
         ed.check_eq(live["layers"][0]["state"], "Base Layer.Run", f"Go moved Idle to Run: {live}")
         await shot(ed, "11-live-run")
         ed.check_eq((ed.project / CONTROLLER).read_text(), S["text"], "the file is unchanged")

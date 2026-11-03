@@ -4,7 +4,15 @@
 #ifndef UIDOCUMENTSYSTEM_H
 #define UIDOCUMENTSYSTEM_H
 
+#include "Export.h"
+
+#if !JASPERENGINE_HTMLUI
+// a build without the HTML UI: its scenes' document system has no documents
+#include "UIDocumentSystemNone.h"
+#else
+
 #include "SubSystem.h"
+#include "UIDocumentInput.h"
 #include "math/Rect.h"
 #include "render/Render.h"
 #include "component/UIDocumentComponent.h"
@@ -50,20 +58,6 @@ namespace jasperengine{
     struct HtmlUIReloadState;   // p1-editor  (UIDocumentSystemReload.cpp)
     struct HtmlUITextureState;  // p1-rtt     (UIDocumentSystemTexture.cpp)
     struct HtmlUICompatState;   // p2-html    (UIDocumentSystemCompat.cpp)
-
-    // phase of a pointer event handed to texture-mode documents (dispatchWorldPointer)
-    enum class PointerPhase { DOWN, MOVE, UP, CANCEL };
-
-    // What a gamepad gives documents (phase-4 p4-input; Engine::systemGamepad*): its buttons, the four
-    // directions of the left stick and the two triggers, each a key of keydown/keyup events (DOM `code`
-    // "GamepadDPadUp", "GamepadA", ...; RmlKeyMap::gamepadDomCode)
-    enum class GamepadUIKey {
-        DPAD_UP, DPAD_DOWN, DPAD_LEFT, DPAD_RIGHT,
-        LEFT_STICK_UP, LEFT_STICK_DOWN, LEFT_STICK_LEFT, LEFT_STICK_RIGHT,
-        A, B, X, Y, LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_TRIGGER, RIGHT_TRIGGER,
-        VIEW, MENU, GUIDE, LEFT_THUMB, RIGHT_THUMB,
-        COUNT   // none
-    };
 
     enum class HtmlUIMessageLevel { Info, Warning, Error };
 
@@ -428,5 +422,7 @@ namespace jasperengine{
     };
 
 }
+
+#endif // JASPERENGINE_HTMLUI
 
 #endif //UIDOCUMENTSYSTEM_H

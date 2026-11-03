@@ -162,8 +162,9 @@ editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::applyAll(Project* projec
     // Added GameObjects first: each reads where it is when made
     std::vector<std::unique_ptr<Command>> steps;
     for (const PrefabOverrideEntry& entry : entries) {
-        if (entry.kind == Kind::AddedGameObject) {
-            // into the instance's own prefab, also below its nested instances (PREFABS.md 17)
+        // into the instance's own prefab, also below its nested instances (PREFABS.md 17); not one
+        // holding an instance of that prefab, which would make it contain itself: it stays an override
+        if (entry.kind == Kind::AddedGameObject && project->canAddToPrefab(sceneId, entry.entity, rootPath)) {
             steps.emplace_back(new AddEntityToPrefabCmd(project, sceneId, entry.entity, entry.parent, rootPath));
         }
     }

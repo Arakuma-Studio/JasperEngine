@@ -121,6 +121,11 @@ public:
         if (fs::exists(bundled, ec)) {
             return bundled;
         }
+        // a test binary sits beside the bundle in the build tree, and exeDir/engine there is only CMake's output
+        const fs::path beside = exeDir / "JasperEngine.app" / "Contents" / "Resources" / "engine";
+        if (fs::exists(beside, ec)) {
+            return beside;
+        }
 #endif
         return exeDir / "engine";
     }
@@ -262,7 +267,8 @@ public:
 
     // Copies a file over another the atomic way: into a temporary sibling, then published
     // (io::publishFile), so the target is the old file or the whole new one, never a part
-    static bool copyFileAtomic(const std::filesystem::path& from, const std::filesystem::path& to, std::error_code& ec) {
+    static bool copyFileAtomic(const std::filesystem::path& from, const std::filesystem::path& to, std::error_code& ec,
+                               const io::AtomicWriteOptions& options = {}) {
         const std::filesystem::path temp = io::makeTemporarySiblingPath(to);
         std::filesystem::copy_file(from, temp, std::filesystem::copy_options::none, ec);
         if (ec) {
@@ -270,7 +276,7 @@ public:
             std::filesystem::remove(temp, ignored);
             return false;
         }
-        const io::WriteResult published = io::publishFile(temp, to);
+        const io::WriteResult published = io::publishFile(temp, to, options);
         ec = published.code;
         return published.ok();
     }

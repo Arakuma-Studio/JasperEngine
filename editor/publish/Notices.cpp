@@ -55,7 +55,9 @@ std::vector<publish::NoticeLibrary> publish::shippedLibraries(const std::vector<
 }
 
 std::vector<fs::path> publish::licenceFiles(const fs::path& libraryDir) {
-    static const std::regex licence(R"(^(licen[cs]e|copying|unlicense)(-[\w-]+)?(\.(txt|md|rst))?$)", std::regex::icase);
+    // (as tools/ci/check-notices.py's LICENCE_FILE; the extension may name the licence and its version, as
+    // FFmpeg's COPYING.LGPLv2.1 does)
+    static const std::regex licence(R"(^(licen[cs]e|copying|unlicense)(-[\w-]+)?(\.(txt|md|rst|[al]?gplv\d(\.\d)?))?$)", std::regex::icase);
     static const std::regex primary(R"(^(licen[cs]e|copying)(\.(txt|md))?$)", std::regex::icase);
     static const std::regex notice(R"(^notice(\.(txt|md))?$)", std::regex::icase);
     std::vector<fs::path> files;
@@ -169,8 +171,10 @@ bool publish::stageCompileNotices(const fs::path& target, const std::vector<std:
         }
         for (size_t i = 0; i < files.size(); i++) {
             const std::string name = stagedNoticeName(library.name, i, files[i]);
-            fs::copy_file(files[i], target / "licenses" / name, fs::copy_options::overwrite_existing, ec);
-            if (ec) {
+            // a Compile build's folder itself, where the last build's notices are: not a staging folder
+            io::AtomicWriteOptions cache;
+            cache.durability = io::Durability::Cache;
+            if (!FileUtils::copyFileAtomic(files[i], target / "licenses" / name, ec, cache)) {
                 error = "cannot stage " + name + ": " + ec.message();
                 return false;
             }

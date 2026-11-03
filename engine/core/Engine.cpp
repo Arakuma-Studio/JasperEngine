@@ -33,7 +33,9 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUIClock.h"
+#if JASPERENGINE_HTMLUI
 #include "htmlui/anim/AnimEngine.h"
+#endif
 #include "util/StringUtils.h"
 #include "util/Utf16Combiner.h"
 #include "util/PlatformRules.h"
@@ -1092,6 +1094,14 @@ bool Engine::isAsyncLoading(){
     return asyncLoading;
 }
 
+void Engine::updateGpuCreation(){
+    // under the frames' semaphore: a thread loading a scene asks for the states this publishes
+    drawSemaphore.acquire();
+    SystemRender::updateGpuCreation();
+    ShaderWarmup::update();
+    drawSemaphore.release();
+}
+
 void Engine::startAsyncThread(){
     #ifndef NO_THREAD_SUPPORT
         getAsyncThreadDepthStorage()++;
@@ -1990,9 +2000,11 @@ namespace{
     }
 }
 
-bool Engine::areScenesLoaded(){
-    // and no shader, pipeline or GL warm draw still being created (spec S32 R9)
-    bool ready = ShaderPool::getPendingShaderCount() == 0 && SystemRender::isGpuCreationIdle() && !scenes.empty();
+bool Engine::areScenesLoaded(bool textures){
+    // and no shader, pipeline or GL warm draw still being created (spec S32 R9), and no texture
+    // still loading: a frame drawn meanwhile shows a stand-in for it
+    bool ready = ShaderPool::getPendingShaderCount() == 0 && SystemRender::isGpuCreationIdle() && !scenes.empty() &&
+                 (!textures || TextureDataPool::getLoadingCount() == 0);
     // a game replaying its warm-up list holds its first scene until the list is ready (spec S32 R12)
     if (ready && SystemRender::getShaderCreationSettings().holdFirstSceneForWarmup)
         ready = ShaderWarmup::isDone();
@@ -2012,6 +2024,11 @@ std::string Engine::describeNotLoaded(){
     auto add = [&out](const std::string& part){ out += (out.empty() ? "" : "; ") + part; };
     if (scenes.empty()) add("no scene");
     if (const size_t pending = ShaderPool::getPendingShaderCount()) add(std::to_string(pending) + " shader build(s) pending");
+    if (const size_t textures = TextureDataPool::getLoadingCount()){
+        std::string list;
+        for (const std::string& id : TextureDataPool::getLoadingIds(8)) list += (list.empty() ? "" : ", ") + id;
+        add(std::to_string(textures) + " texture load(s) pending: " + list);
+    }
     for (Scene* scene : scenes){
         const std::vector<std::string> waiting = scene->getSystem<RenderSystem>()->describeNotLoaded();
         if (!waiting.empty()){
@@ -2112,8 +2129,7 @@ void Engine::runFrame(bool draw){
         latchShaderTime();
         // the shaders and pipelines created off the render thread that are ready, and a step of
         // the warm-up list (spec S32)
-        SystemRender::updateGpuCreation();
-        ShaderWarmup::update();
+        updateGpuCreation();
     }
     JE_PROFILE_SCOPE("Frame");
     SystemRender::setViewTag(SystemRender::FRAME_STATS_FRAME);
@@ -2371,6 +2387,9 @@ void Engine::runFrame(bool draw){
     if (DebugOverlay::needsUpdate())
         DebugOverlay::update(paused ? 0.0 : frameTime);
 
+    // what is still being created off the render thread (spec S32) does not draw this frame
+    const bool gpuCreationIdleForDraw = SystemRender::isGpuCreationIdle();
+
     if (draw){
         Engine::onDraw.call();
 
@@ -2402,8 +2421,9 @@ void Engine::runFrame(bool draw){
     frameCpuTime = stm_sec(stm_since(frameStart));
     FrameTimes::setDrawCalls(currentFrameStats.drawCalls);
 
-    // a one-shot stays until a frame draws it
-    if (draw){
+    // a one-shot stays until a frame draws it: loaded means its objects are made or asked for, and
+    // one whose program or pipeline was still being made draws nothing (a thumbnail, blank on Vulkan)
+    if (draw && gpuCreationIdleForDraw){
         std::lock_guard<std::mutex> lock(sceneListMutex);
 
         // Retire one-shots that finished loading: they got the frame they asked for.
@@ -2560,7 +2580,9 @@ void Engine::systemShutdown(){
 
     // anime's, the timers', the script coroutines' and the input actions' Lua references go
     // while the Lua state still exists
+#if JASPERENGINE_HTMLUI
     AnimEngine::instance().reset();
+#endif
     Scheduler::game().clear();
     ScriptScheduler::clear();
     InputActions::unload();

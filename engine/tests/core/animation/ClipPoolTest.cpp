@@ -19,7 +19,9 @@
 
 #include <atomic>
 #include <map>
+#include <mutex>
 #include <set>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -218,6 +220,13 @@ TEST_F(ClipPool, ConcurrentAccess){
     }
 
     std::atomic<bool> failed(false);
+    std::mutex whyMutex;
+    std::string why;
+    const auto fail = [&](const std::string& reason){
+        failed = true;
+        std::lock_guard<std::mutex> lock(whyMutex);
+        if (why.empty()) why = reason;
+    };
     std::atomic<int> loads(0);
     std::vector<std::thread> threads;
     for (int t = 0; t < 6; t++){
@@ -236,16 +245,16 @@ TEST_F(ClipPool, ConcurrentAccess){
                         if (clip){
                             loads++;
                             float x = endX(clip);
-                            if (f != 3 && x != (float)(f + 1)) failed = true;
-                            if (f == 3 && x != 4.0f && x != 40.0f) failed = true;
+                            if (f != 3 && x != (float)(f + 1)) fail("file " + std::to_string(f) + " read as " + std::to_string(x));
+                            if (f == 3 && x != 4.0f && x != 40.0f) fail("the rewritten file read as " + std::to_string(x));
                         }else if (f != 3){
-                            failed = true;
+                            fail("file " + std::to_string(f) + " did not load: " + error);
                         }
                         break;
                     }
                     case 2:{
                         std::shared_ptr<const AnimationClip> clip = AnimationClipPool::get(path);
-                        if (clip && endX(clip) < 0) failed = true;
+                        if (clip && endX(clip) < 0) fail("a cached clip of file " + std::to_string(f) + " is partial");
                         break;
                     }
                     case 3:
@@ -256,7 +265,8 @@ TEST_F(ClipPool, ConcurrentAccess){
                         break;
                 }
                 uint64_t generation = AnimationClipPool::getGeneration(path);
-                if (generation < lastGeneration[f]) failed = true;
+                if (generation < lastGeneration[f])
+                    fail("file " + std::to_string(f) + "'s generation went from " + std::to_string(lastGeneration[f]) + " back to " + std::to_string(generation));
                 lastGeneration[f] = generation;
                 (void)AnimationClipPool::revision();
                 (void)AnimationClipPool::size();
@@ -273,7 +283,7 @@ TEST_F(ClipPool, ConcurrentAccess){
     });
     for (std::thread& thread : threads) thread.join();
     writer.join();
-    EXPECT_FALSE(failed.load());
+    EXPECT_FALSE(failed.load()) << why;
     EXPECT_GT(loads.load(), 0);
 
     // settled: every file loads with its final content

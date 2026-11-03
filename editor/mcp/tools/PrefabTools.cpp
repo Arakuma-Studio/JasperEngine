@@ -1499,7 +1499,7 @@ void prefabOverridesTool(const CallPtr& call) {
         if (prefabWrites.refused()) return;
         call->ok(std::string(apply ? "Applied all " : "Reverted all ") + std::to_string(count) + " override(s)" +
                  (apply ? " to the instance's own prefab (nested instances' overrides become its overrides of them)" : "") +
-                 "; " + std::to_string(remaining) + " left (overrides referencing GameObjects outside the instance cannot be applied). "
+                 "; " + std::to_string(remaining) + " left (overrides referencing GameObjects outside the instance, and added GameObjects holding an instance of the prefab, cannot be applied). "
                  "One undo step." + (apply ? " Save the scene to write the prefab files." : ""),
                  Json{{"scene_id", sceneId}, {"action", action}, {"instances", rootList}, {"operations", done}, {"remaining", remaining}});
         return;

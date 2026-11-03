@@ -540,6 +540,8 @@ namespace jasperengine{
 		bool pbrTransmission = false;
 		// a painted layer of the Terrain hex tiles (TERRAIN_HEX_TILING)
 		bool terrainHex = false;
+		// and a layer takes Stochastic Tiling (TERRAIN_HEX_STOCHASTIC, with terrainHex only)
+		bool terrainHexStochastic = false;
 	};
 
 	// The shaders one submesh draws with
@@ -787,9 +789,13 @@ namespace jasperengine{
 			// sampled instead of the capture once made
 			TextureRender filteredMap;
 			bool needFilter = false;
+			// the image the authored maps were made of, and its TextureDataPool::generation
+			std::string environmentId;
+			uint32_t environmentGeneration = 0;
 		};
 
 		std::unordered_map<Entity, std::unique_ptr<ReflectionProbeRuntime>> reflectionProbeRuntimes;
+		uint32_t probeImagesEpochSeen = 0;
 
 		// the prefilter of finished runtime captures (probe_filter.frag), shared by the probes
 		bool probeFilterLoaded = false;
@@ -2024,8 +2030,23 @@ namespace jasperengine{
 		TextureRender* getDefaultShaderTexture(int fallback, bool cube);
 
 		bool checkPBRFrabebufferUpdate(Material& material);
-		bool checkPBRTextures(Material& material, bool receiveLights);
+		bool checkPBRTextures(Material& material, bool receiveLights, bool receiveIBL);
 		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
+		// A material's binding takes a stand-in for an image it names that has no GPU texture yet
+		// (Texture::getStandInCount): taken around the binding, noted on the submesh, which binds
+		// again once an image could be made since (TexturePool::getReadyEpoch)
+		struct TextureBindMark{
+			uint32_t standIns = 0;
+			uint32_t readyEpoch = 0;
+		};
+		static TextureBindMark markTextureBinding();
+		static void noteTextureBinding(Submesh& submesh, const TextureBindMark& mark);
+		// A material bound to an image whose pixels were replaced, or whose GPU texture was made
+		// again in place (Texture::isRenderOutdated), binds again: looked at when
+		// TexturePool::getRebindEpoch moved (rebindEpochSeen), never otherwise
+		static bool materialRendersOutdated(const Submesh& submesh);
+		static bool shaderTexturesRenderOutdated(const std::vector<std::pair<std::string, Texture>>& textures);
+		uint32_t rebindEpochSeen = 0;
 		// whether the loaded variant has the lobes, maps and hex tiling the material asks for now
 		bool pbrVariantMatches(const Submesh& submesh) const;
 		// LightComponent::resolvedColor and resolvedIntensity of every light (photometric units,
@@ -2717,6 +2738,9 @@ namespace jasperengine{
 		void needUpdatePostProcessUniforms();
 		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)
 		void needUpdatePostProcessing();
+		// an image of a terrain's painted layers changed on disk (the editor's file pick-up): the
+		// array read from the files is built again
+		void invalidateTerrainDetailArray(Entity entity);
 		// the images post-processing reads changed on disk (the editor's file pick-up): the LUT
 		// strip (read by path, cached while the path stays) is read again and the user chain
 		// reloads, taking its pass textures again from the scene

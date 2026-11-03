@@ -13,9 +13,12 @@ of the same round (paired: a drift of the machine cancels), from the mean frame 
 (the measured frames' wall time over their count); the report is the mean of those overheads
 with its 95 % confidence interval (Student's t) and the medians:
 
-    compiled in, off        the editor as shipped (the profiler idle)       <= 0.5 %
-    recording               --profile                                       <= 3 %
-    recording + GPU timers  --profile --gpu-passes                          <= 3.5 %
+    compiled in, off        the editor as shipped (the profiler idle)       <= 0.5 % or 5 us
+    recording               --profile                                       <= 3 % or 30 us
+    recording + GPU timers  --profile --gpu-passes                          <= 3.5 % or 40 us
+
+each "or" taken as whichever is larger (AC4's absolute floor a frame, approved 2026-11-01: on a GPU's
+~1 ms frame 0.5 % is 5 us, under the measurement's resolution).
 
 The baseline is an editor built without S15 (the commit before it: the editor itself always has
 the profiler, so "compiled out" is that build). Run it on an otherwise idle machine (the benchmark
@@ -36,6 +39,8 @@ import sys
 import tempfile
 
 THRESHOLDS = {"off": 0.5, "recording": 3.0, "recording_gpu": 3.5}
+# the absolute floor a frame of each configuration (us): the bound is whichever is larger
+FLOORS_US = {"off": 5.0, "recording": 30.0, "recording_gpu": 40.0}
 
 
 def run(editor: str, args: list[str], project: str, scene: str | None, frames: int, warmup: int) -> dict:
@@ -106,10 +111,14 @@ def main() -> int:
         mean, half = mean_ci(paired)
         report["overheadPercent"][name] = mean
         report["ci95Percent"][name] = [mean - half, mean + half]
-        ok = mean <= THRESHOLDS[name]
+        # the larger of the relative bound and the floor, as a percentage of this baseline's frame
+        bound = max(THRESHOLDS[name], FLOORS_US[name] / 1000.0 * 100.0 / statistics.fmean(base))
+        report.setdefault("boundPercent", {})[name] = bound
+        ok = mean <= bound
         failed = failed or not ok
         print(f"{name:14} mean {statistics.fmean(results[name]):.4f} ms  overhead {mean:+.3f} % "
-              f"(95 % CI {mean - half:+.3f} .. {mean + half:+.3f}; <= {THRESHOLDS[name]} %) {'ok' if ok else 'OVER'}")
+              f"(95 % CI {mean - half:+.3f} .. {mean + half:+.3f}; <= {bound:.3f} %: {THRESHOLDS[name]} % or "
+              f"{FLOORS_US[name]:.0f} us) {'ok' if ok else 'OVER'}")
     if a.json:
         with open(a.json, "w") as f:
             json.dump(report, f, indent=1)

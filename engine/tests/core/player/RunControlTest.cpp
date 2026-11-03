@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "player/RunControl.h"
+#include "io/AtomicFile.h"
 #include "Engine.h"
 #include "Log.h"
 #include "TempDir.h"
@@ -188,6 +189,25 @@ TEST_F(RunControlFixture, FailedCaptureExitsFour) {
         error = "no GPU";
         return false;
     });
+    EXPECT_EQ(RunControl::finish(), EXIT_SCREENSHOT_FAILED);
+}
+
+// --screenshot over an earlier run's image: a write that fails leaves that image whole
+TEST_F(RunControlFixture, ScreenshotThatFailsToWriteKeepsTheEarlierImage) {
+    test::TempDir dir;
+    const std::filesystem::path shot = dir.write("shot.png", "the earlier image");
+    LaunchOptions options;
+    options.quitAfter = 1;
+    options.screenshot = shot;
+    configureIdle(options);
+    io::setAtomicFileFaultInjector([](std::string_view step, const std::filesystem::path&) -> std::error_code {
+        return step == "rename" ? std::make_error_code(std::errc::no_space_on_device) : std::error_code();
+    });
+    int reads = 0;
+    RunControl::frameDrawn(false, fakeFrame(&reads));
+    io::setAtomicFileFaultInjector(nullptr);
+    EXPECT_EQ(reads, 1);
+    EXPECT_EQ(dir.read("shot.png"), "the earlier image");
     EXPECT_EQ(RunControl::finish(), EXIT_SCREENSHOT_FAILED);
 }
 

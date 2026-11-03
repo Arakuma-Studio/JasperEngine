@@ -12,48 +12,22 @@ extern "C" void initScripts(jasperengine::Scene* scene);
 
 void create_scene_Prefab_Scene_1(Scene* scene){
     // Scene entities
-    scene->recreateEntity(1060);
-    scene->recreateEntity(1061);
     scene->recreateEntity(1001);
+    scene->recreateEntity(1101);
     scene->recreateEntity(1010);
     scene->recreateEntity(1020);
+    scene->recreateEntity(1102);
     scene->recreateEntity(1030);
     scene->recreateEntity(1040);
     scene->recreateEntity(1050);
-    scene->recreateEntity(1101);
-    scene->recreateEntity(1102);
+    scene->recreateEntity(1060);
+    scene->recreateEntity(1061);
     scene->setLastEntity(1102);
 
     // Prefab instance members, by index
     std::vector<Entity> prefabMembers_1001;
     std::vector<Entity> prefabMembers_1020;
     std::vector<Entity> prefabMembers_1030;
-
-    {
-        // Entity 1060 (Pointer)
-        scene->setEntityName(1060, "Pointer");
-
-        // Entity components initialization
-        ActionComponent actioncomp;
-        actioncomp.state = ActionState::Stopped;
-        actioncomp.speed = 1.000000f;
-        actioncomp.target = 1050;
-        actioncomp.ownedTarget = false;
-        scene->addComponent<ActionComponent>(1060, actioncomp);
-    }
-
-    {
-        // Entity 1061 (Pebble Pointer)
-        scene->setEntityName(1061, "Pebble Pointer");
-
-        // Entity components initialization
-        ActionComponent actioncomp;
-        actioncomp.state = ActionState::Stopped;
-        actioncomp.speed = 1.000000f;
-        actioncomp.target = NULL_ENTITY;
-        actioncomp.ownedTarget = false;
-        scene->addComponent<ActionComponent>(1061, actioncomp);
-    }
 
     {
         // Prefab instance: prefabs/Rock.prefab (Rock A)
@@ -86,6 +60,116 @@ void create_scene_Prefab_Scene_1(Scene* scene){
             if (index < prefabMembers_1001.size() && scene->isEntityCreated(prefabMembers_1001[index]))
                 scene->destroyEntity(prefabMembers_1001[index]);
         }
+    }
+
+    {
+        // Entity 1101 (Flag)
+        scene->setEntityName(1101, "Flag");
+
+        // Entity components initialization
+        auto meshStorage = std::make_unique<MeshComponent>();
+        MeshComponent& mesh = *meshStorage;
+        mesh.receiveLights = false;
+        mesh.receiveIBL = false;
+        mesh.castShadows = false;
+        mesh.receiveShadows = false;
+        mesh.shadowsBillboard = true;
+        mesh.lodEnabled = true;
+        mesh.lodBias = 1.000000f;
+        mesh.renderInReflectionProbes = true;
+        mesh.transparent = true;
+        mesh.autoTransparency = true;
+        mesh.cullingMode = CullingMode::BACK;
+        mesh.windingOrder = WindingOrder::CCW;
+        mesh.vertexCount = 4;
+        mesh.numSubmeshes = 1;
+        mesh.submeshes[0].material.name = "";
+        mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].material.metallicFactor = 1.000000f;
+        mesh.submeshes[0].material.roughnessFactor = 1.000000f;
+        mesh.submeshes[0].material.alphaCutoff = 0.500000f;
+        mesh.submeshes[0].material.foliageTransmission = 0.000000f;
+        mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
+        mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
+        mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
+        mesh.submeshes[0].vertexCount = 6;
+        mesh.submeshes[0].faceCulling = false;
+        mesh.submeshes[0].textureShadow = true;
+        mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.buffer.clearAll();
+        mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+        mesh.buffer.getAttribute(AttributeType::POSITION)->setDataType(AttributeDataType::FLOAT);
+        mesh.buffer.getAttribute(AttributeType::POSITION)->setOffset(0);
+        mesh.buffer.getAttribute(AttributeType::POSITION)->setCount(4);
+        mesh.buffer.getAttribute(AttributeType::POSITION)->setNormalized(true);
+        mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
+        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setDataType(AttributeDataType::FLOAT);
+        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setOffset(12);
+        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setCount(4);
+        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setNormalized(true);
+        mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
+        mesh.buffer.getAttribute(AttributeType::NORMAL)->setDataType(AttributeDataType::FLOAT);
+        mesh.buffer.getAttribute(AttributeType::NORMAL)->setOffset(20);
+        mesh.buffer.getAttribute(AttributeType::NORMAL)->setCount(4);
+        mesh.buffer.getAttribute(AttributeType::NORMAL)->setNormalized(true);
+        mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
+        mesh.buffer.getAttribute(AttributeType::TANGENT)->setDataType(AttributeDataType::FLOAT);
+        mesh.buffer.getAttribute(AttributeType::TANGENT)->setOffset(32);
+        mesh.buffer.getAttribute(AttributeType::TANGENT)->setCount(4);
+        mesh.buffer.getAttribute(AttributeType::TANGENT)->setNormalized(true);
+        mesh.buffer.addAttribute(AttributeType::COLOR, 4);
+        mesh.buffer.getAttribute(AttributeType::COLOR)->setDataType(AttributeDataType::FLOAT);
+        mesh.buffer.getAttribute(AttributeType::COLOR)->setOffset(48);
+        mesh.buffer.getAttribute(AttributeType::COLOR)->setCount(4);
+        mesh.buffer.getAttribute(AttributeType::COLOR)->setNormalized(true);
+        mesh.buffer.setVertexSize(64);
+        mesh.buffer.setUsage(BufferUsage::DYNAMIC);
+        {
+            static const unsigned char data[] = {
+                0x0, 0x0, 0x30, 0xc2, 0x0, 0x0, 0x0, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 
+                0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x30, 0x42, 0x0, 0x0, 0x0, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 
+                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x30, 0x42, 0x0, 0x0, 0x92, 0x42, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 
+                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x30, 0xc2, 0x0, 0x0, 0x92, 0x42, 
+                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 
+                0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, };
+            mesh.buffer.importData(data, sizeof(data));
+        }
+        mesh.buffer.setStride(64);
+        mesh.buffer.setCount(4);
+        mesh.indices.clearAll();
+        {
+            static const unsigned char data[] = {
+                0x0, 0x0, 0x1, 0x0, 0x2, 0x0, 0x0, 0x0, 0x2, 0x0, 0x3, 0x0, };
+            mesh.indices.importData(data, sizeof(data));
+        }
+        mesh.indices.getAttribute(AttributeType::INDEX)->setDataType(AttributeDataType::UNSIGNED_SHORT);
+        mesh.indices.getAttribute(AttributeType::INDEX)->setOffset(0);
+        mesh.indices.getAttribute(AttributeType::INDEX)->setCount(6);
+        mesh.indices.getAttribute(AttributeType::INDEX)->setNormalized(true);
+        mesh.indices.setStride(2);
+        mesh.indices.setCount(6);
+        scene->addComponent<MeshComponent>(1101, std::move(*meshStorage));
+
+        SpriteComponent sprite;
+        sprite.width = 88;
+        sprite.height = 73;
+        sprite.automaticFlipY = true;
+        sprite.flipY = true;
+        sprite.pivotPreset = PivotPreset::BOTTOM_CENTER;
+        sprite.textureScaleFactor = 0.000000f;
+        scene->addComponent<SpriteComponent>(1101, sprite);
+
+        Transform transform;
+        transform.position = Vector3(-60.000000f, 320.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(0.600000f, 0.600000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = prefabMembers_1001[0];
+        scene->addComponent<Transform>(1101, transform);
     }
 
     {
@@ -148,6 +232,64 @@ void create_scene_Prefab_Scene_1(Scene* scene){
             if (index < prefabMembers_1020.size() && scene->isEntityCreated(prefabMembers_1020[index]))
                 scene->destroyEntity(prefabMembers_1020[index]);
         }
+    }
+
+    {
+        // Entity 1102 (Leaf)
+        scene->setEntityName(1102, "Leaf");
+
+        // Entity components initialization
+        auto meshStorage = std::make_unique<MeshComponent>();
+        MeshComponent& mesh = *meshStorage;
+        mesh.receiveLights = false;
+        mesh.receiveIBL = false;
+        mesh.castShadows = false;
+        mesh.receiveShadows = false;
+        mesh.shadowsBillboard = true;
+        mesh.lodEnabled = true;
+        mesh.lodBias = 1.000000f;
+        mesh.renderInReflectionProbes = true;
+        mesh.transparent = true;
+        mesh.autoTransparency = true;
+        mesh.cullingMode = CullingMode::BACK;
+        mesh.windingOrder = WindingOrder::CCW;
+        mesh.vertexCount = 0;
+        mesh.numSubmeshes = 1;
+        mesh.submeshes[0].material.name = "";
+        mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].material.metallicFactor = 1.000000f;
+        mesh.submeshes[0].material.roughnessFactor = 1.000000f;
+        mesh.submeshes[0].material.alphaCutoff = 0.500000f;
+        mesh.submeshes[0].material.foliageTransmission = 0.000000f;
+        mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
+        mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
+        mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
+        mesh.submeshes[0].vertexCount = 6;
+        mesh.submeshes[0].faceCulling = false;
+        mesh.submeshes[0].textureShadow = true;
+        mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        scene->addComponent<MeshComponent>(1102, std::move(*meshStorage));
+
+        SpriteComponent sprite;
+        sprite.width = 88;
+        sprite.height = 73;
+        sprite.automaticFlipY = true;
+        sprite.flipY = true;
+        sprite.pivotPreset = PivotPreset::BOTTOM_CENTER;
+        sprite.textureScaleFactor = 0.000000f;
+        scene->addComponent<SpriteComponent>(1102, sprite);
+
+        Transform transform;
+        transform.position = Vector3(0.000000f, 120.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(0.500000f, 0.500000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = prefabMembers_1020[3];
+        scene->addComponent<Transform>(1102, transform);
     }
 
     {
@@ -321,182 +463,29 @@ void create_scene_Prefab_Scene_1(Scene* scene){
     }
 
     {
-        // Entity 1101 (Flag)
-        scene->setEntityName(1101, "Flag");
+        // Entity 1060 (Pointer)
+        scene->setEntityName(1060, "Pointer");
 
         // Entity components initialization
-        auto meshStorage = std::make_unique<MeshComponent>();
-        MeshComponent& mesh = *meshStorage;
-        mesh.receiveLights = false;
-        mesh.receiveIBL = false;
-        mesh.castShadows = false;
-        mesh.receiveShadows = false;
-        mesh.shadowsBillboard = true;
-        mesh.lodEnabled = true;
-        mesh.lodBias = 1.000000f;
-        mesh.renderInReflectionProbes = true;
-        mesh.transparent = true;
-        mesh.autoTransparency = true;
-        mesh.cullingMode = CullingMode::BACK;
-        mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 4;
-        mesh.numSubmeshes = 1;
-        mesh.submeshes[0].material.name = "";
-        mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
-        mesh.submeshes[0].material.metallicFactor = 1.000000f;
-        mesh.submeshes[0].material.roughnessFactor = 1.000000f;
-        mesh.submeshes[0].material.alphaCutoff = 0.500000f;
-        mesh.submeshes[0].material.foliageTransmission = 0.000000f;
-        mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
-        mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
-        mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
-        mesh.submeshes[0].vertexCount = 6;
-        mesh.submeshes[0].faceCulling = false;
-        mesh.submeshes[0].textureShadow = true;
-        mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
-        mesh.buffer.clearAll();
-        mesh.buffer.addAttribute(AttributeType::POSITION, 3);
-        mesh.buffer.getAttribute(AttributeType::POSITION)->setDataType(AttributeDataType::FLOAT);
-        mesh.buffer.getAttribute(AttributeType::POSITION)->setOffset(0);
-        mesh.buffer.getAttribute(AttributeType::POSITION)->setCount(4);
-        mesh.buffer.getAttribute(AttributeType::POSITION)->setNormalized(true);
-        mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
-        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setDataType(AttributeDataType::FLOAT);
-        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setOffset(12);
-        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setCount(4);
-        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setNormalized(true);
-        mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
-        mesh.buffer.getAttribute(AttributeType::NORMAL)->setDataType(AttributeDataType::FLOAT);
-        mesh.buffer.getAttribute(AttributeType::NORMAL)->setOffset(20);
-        mesh.buffer.getAttribute(AttributeType::NORMAL)->setCount(4);
-        mesh.buffer.getAttribute(AttributeType::NORMAL)->setNormalized(true);
-        mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
-        mesh.buffer.getAttribute(AttributeType::TANGENT)->setDataType(AttributeDataType::FLOAT);
-        mesh.buffer.getAttribute(AttributeType::TANGENT)->setOffset(32);
-        mesh.buffer.getAttribute(AttributeType::TANGENT)->setCount(4);
-        mesh.buffer.getAttribute(AttributeType::TANGENT)->setNormalized(true);
-        mesh.buffer.addAttribute(AttributeType::COLOR, 4);
-        mesh.buffer.getAttribute(AttributeType::COLOR)->setDataType(AttributeDataType::FLOAT);
-        mesh.buffer.getAttribute(AttributeType::COLOR)->setOffset(48);
-        mesh.buffer.getAttribute(AttributeType::COLOR)->setCount(4);
-        mesh.buffer.getAttribute(AttributeType::COLOR)->setNormalized(true);
-        mesh.buffer.setVertexSize(64);
-        mesh.buffer.setUsage(BufferUsage::DYNAMIC);
-        {
-            static const unsigned char data[] = {
-                0x0, 0x0, 0x30, 0xc2, 0x0, 0x0, 0x0, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 
-                0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x30, 0x42, 0x0, 0x0, 0x0, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x30, 0x42, 0x0, 0x0, 0x92, 0x42, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x30, 0xc2, 0x0, 0x0, 0x92, 0x42, 
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 
-                0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, };
-            mesh.buffer.importData(data, sizeof(data));
-        }
-        mesh.buffer.setStride(64);
-        mesh.buffer.setCount(4);
-        mesh.indices.clearAll();
-        {
-            static const unsigned char data[] = {
-                0x0, 0x0, 0x1, 0x0, 0x2, 0x0, 0x0, 0x0, 0x2, 0x0, 0x3, 0x0, };
-            mesh.indices.importData(data, sizeof(data));
-        }
-        mesh.indices.getAttribute(AttributeType::INDEX)->setDataType(AttributeDataType::UNSIGNED_SHORT);
-        mesh.indices.getAttribute(AttributeType::INDEX)->setOffset(0);
-        mesh.indices.getAttribute(AttributeType::INDEX)->setCount(6);
-        mesh.indices.getAttribute(AttributeType::INDEX)->setNormalized(true);
-        mesh.indices.setStride(2);
-        mesh.indices.setCount(6);
-        scene->addComponent<MeshComponent>(1101, std::move(*meshStorage));
-
-        SpriteComponent sprite;
-        sprite.width = 88;
-        sprite.height = 73;
-        sprite.automaticFlipY = true;
-        sprite.flipY = true;
-        sprite.pivotPreset = PivotPreset::BOTTOM_CENTER;
-        sprite.textureScaleFactor = 0.000000f;
-        scene->addComponent<SpriteComponent>(1101, sprite);
-
-        Transform transform;
-        transform.position = Vector3(-60.000000f, 320.000000f, 0.000000f);
-        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
-        transform.scale = Vector3(0.600000f, 0.600000f, 1.000000f);
-        transform.visible = true;
-        transform.billboard = false;
-        transform.fakeBillboard = false;
-        transform.cylindricalBillboard = false;
-        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
-        transform.parent = prefabMembers_1001[0];
-        scene->addComponent<Transform>(1101, transform);
+        ActionComponent actioncomp;
+        actioncomp.state = ActionState::Stopped;
+        actioncomp.speed = 1.000000f;
+        actioncomp.target = 1050;
+        actioncomp.ownedTarget = false;
+        scene->addComponent<ActionComponent>(1060, actioncomp);
     }
 
-    {
-        // Entity 1102 (Leaf)
-        scene->setEntityName(1102, "Leaf");
-
-        // Entity components initialization
-        auto meshStorage = std::make_unique<MeshComponent>();
-        MeshComponent& mesh = *meshStorage;
-        mesh.receiveLights = false;
-        mesh.receiveIBL = false;
-        mesh.castShadows = false;
-        mesh.receiveShadows = false;
-        mesh.shadowsBillboard = true;
-        mesh.lodEnabled = true;
-        mesh.lodBias = 1.000000f;
-        mesh.renderInReflectionProbes = true;
-        mesh.transparent = true;
-        mesh.autoTransparency = true;
-        mesh.cullingMode = CullingMode::BACK;
-        mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
-        mesh.numSubmeshes = 1;
-        mesh.submeshes[0].material.name = "";
-        mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
-        mesh.submeshes[0].material.metallicFactor = 1.000000f;
-        mesh.submeshes[0].material.roughnessFactor = 1.000000f;
-        mesh.submeshes[0].material.alphaCutoff = 0.500000f;
-        mesh.submeshes[0].material.foliageTransmission = 0.000000f;
-        mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
-        mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
-        mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
-        mesh.submeshes[0].vertexCount = 6;
-        mesh.submeshes[0].faceCulling = false;
-        mesh.submeshes[0].textureShadow = true;
-        mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
-        scene->addComponent<MeshComponent>(1102, std::move(*meshStorage));
-
-        SpriteComponent sprite;
-        sprite.width = 88;
-        sprite.height = 73;
-        sprite.automaticFlipY = true;
-        sprite.flipY = true;
-        sprite.pivotPreset = PivotPreset::BOTTOM_CENTER;
-        sprite.textureScaleFactor = 0.000000f;
-        scene->addComponent<SpriteComponent>(1102, sprite);
-
-        Transform transform;
-        transform.position = Vector3(0.000000f, 120.000000f, 0.000000f);
-        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
-        transform.scale = Vector3(0.500000f, 0.500000f, 1.000000f);
-        transform.visible = true;
-        transform.billboard = false;
-        transform.fakeBillboard = false;
-        transform.cylindricalBillboard = false;
-        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
-        transform.parent = prefabMembers_1020[3];
-        scene->addComponent<Transform>(1102, transform);
-    }
-
-    // References to members of instances built after the entity
     {
         // Entity 1061 (Pebble Pointer)
+        scene->setEntityName(1061, "Pebble Pointer");
+
+        // Entity components initialization
         ActionComponent actioncomp;
         actioncomp.state = ActionState::Stopped;
         actioncomp.speed = 1.000000f;
         actioncomp.target = prefabMembers_1001[1];
         actioncomp.ownedTarget = false;
-        scene->getComponent<ActionComponent>(1061) = actioncomp;
+        scene->addComponent<ActionComponent>(1061, actioncomp);
     }
 
     // Prefab member overrides
@@ -704,12 +693,7 @@ void create_scene_Prefab_Scene_1(Scene* scene){
     camera.type = CameraType::CAMERA_ORTHO;
     camera.target = Vector3(0.000000f, 0.000000f, 0.000000f);
     camera.up = Vector3(0.000000f, 1.000000f, 0.000000f);
-    camera.leftClip = <view>;
-    camera.rightClip = <view>;
-    camera.bottomClip = <view>;
-    camera.topClip = <view>;
     camera.yfov = 0.750000f;
-    camera.aspect = <view>;
     camera.nearClip = -10.000000f;
     camera.farClip = 10.000000f;
     camera.renderToTexture = false;

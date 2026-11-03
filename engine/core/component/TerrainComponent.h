@@ -259,6 +259,17 @@ namespace jasperengine{
         return false;
     }
 
+    // a layer takes Stochastic Tiling: a hex tiled terrain's variant then carries that path too
+    // (TERRAIN_HEX_STOCHASTIC)
+    inline bool hasTerrainStochasticLayers(const TerrainComponent& terrain){
+        for (const TerrainSurfaceLayer& layer : terrain.surfaceLayers){
+            if (layer.stochasticTiling){
+                return true;
+            }
+        }
+        return false;
+    }
+
 }
 
 #endif //TERRAIN_COMPONENT_H

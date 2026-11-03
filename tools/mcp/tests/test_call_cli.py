@@ -307,7 +307,7 @@ async def test_wait_job_build(ed: Editor):
     with ed.busy():
         p = await cli.arun("call", *ATTACH, "--json", "--timeout", "7200", "--wait-job", "build_project",
                            '{"mode": "desktop", "build_type": "Release", "method": "prebuilt", "wait": false, "output_dir": "' +
-                           str(cli.root / "build") + '"}',
+                           str(ed.scratch.root / "call-cli-build") + '"}',
                            timeout=7300)
     env = envelopes(p)
     ed.check(p.returncode == 0 and env[-1]["structured"]["status"] == "succeeded", f"build: {p.stdout[-800:]}")

@@ -27,12 +27,16 @@ from pathlib import Path
 import build_cache
 import yaml
 
+import harness
 import pbxproj
 from harness import (Editor, build_jobs, make_native_player as make_player, project_player_name as player_name, record_built_player,
                      skip, symlinks_permitted)
 
 CI = True
-EDITOR = {"create": True, "name": "Build Test"}
+# its compiles: a fixed compile-tree path and ccache (harness.compile_env); a shipped game's release
+# link with GCC's LTO, as shipped: test_desktop_build_and_run is the suite's check of the LTO link
+# (the other compiled games and the prebuilt test runtimes link without it)
+EDITOR = {"create": True, "name": "Build Test", "env": harness.compile_env("test_build", lto=True)}
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 # the container's CPU allowance (harness.build_jobs: JOBS, else docker's --cpus quota): Docker's
 # cap is what shares the host, so the compile needs no cap of its own
@@ -753,6 +757,12 @@ async def test_desktop_build_and_run(ed: Editor):
     ed.check(isinstance(recorded, dict) and "desktop" in recorded, f"record: {recorded}")
     with tempfile.TemporaryDirectory() as tmp:
         ed.check_eq(recorded["desktop"], record_built_player(tmp, exe), "the build's record = the fixture's")
+    # the suite's check of a shipped game's release link with GCC's LTO (the other compiled games and
+    # the prebuilt test runtimes link without it): the compile tree was configured with both
+    caches = [p.read_text(errors="replace") for p in (Path(EDITOR["env"]["XDG_CACHE_HOME"]) / "jasperengine" /
+                                                      "compile-builds").rglob("CMakeCache.txt")]
+    ed.check(any("JASPERENGINE_RELEASE_LINK:BOOL=ON" in c and "JASPERENGINE_RELEASE_LTO:BOOL=ON" in c for c in caches),
+             f"the game's release link with LTO (CMakeCache.txt of the compile tree, {len(caches)} found)")
 
     # the player's own frame, 60 frames of 1/60 s after the one that logs "Engine ready:", not a
     # window grab 6 s after the launch: how far a loaded machine's player has got by then is

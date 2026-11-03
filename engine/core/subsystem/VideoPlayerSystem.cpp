@@ -19,7 +19,9 @@
 #include "media/VideoFormats.h"
 #include "media/VideoPlayback.h"
 #include "media/VideoSourceFactory.h"
+#if JASPERENGINE_VIDEO
 #include "media/VideoStream.h"
+#endif
 #include "media/VideoTextureConverter.h"
 #include "subsystem/AudioSystem.h"
 #include "texture/Material.h"
@@ -290,7 +292,9 @@ void VideoPlayerSystem::prepare(Entity entity){
     if (entry.source)
         return;
     VideoSourceFactory::Options options;
+#if JASPERENGINE_VIDEO
     options.threaded = VideoStream::platformHasThreads();
+#endif
     options.audio = player->audioOutputMode != VideoAudioOutputMode::NONE;
     entry.source = VideoSourceFactory::create(path, options);
     entry.openedPath = path;

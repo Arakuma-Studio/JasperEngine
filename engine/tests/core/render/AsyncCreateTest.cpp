@@ -34,6 +34,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -176,6 +177,14 @@ TEST(SokolPatchMarkers, AsyncCreationHooks){
     ASSERT_FALSE(header.empty());
     EXPECT_EQ(countOf(header, "JasperEngine: async creation"), 11u);
     EXPECT_NE(readRepoFile("libs/sokol/PATCHES.md").find("## Asynchronous creation (spec S32)"), std::string::npos);
+}
+
+// (one on the lock's own definition, 6 + 6 + 2 where it is taken, 6 asserts of sg_destroy_* gone)
+TEST(SokolPatchMarkers, PoolLock){
+    const std::string header = readRepoFile("libs/sokol/sokol_gfx.h");
+    ASSERT_FALSE(header.empty());
+    EXPECT_EQ(countOf(header, "JasperEngine: pool lock"), 21u);
+    EXPECT_NE(readRepoFile("libs/sokol/PATCHES.md").find("## A lock on the resource pools"), std::string::npos);
 }
 
 TEST(PipelineIntern, EveryFieldChangesTheDescription){
@@ -378,6 +387,119 @@ TEST_F(AsyncCreateGpu, AShaderIsPendingUntilItsCreationIsPublished){
     EXPECT_FALSE(shader.isPending());
     EXPECT_EQ(SystemRender::getGpuCreationStats().createdShaders, before.createdShaders + 1);
     shader.destroyShader();
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// A strand has asked for a new variant: its MAKE_SHADER is queued, and the main thread gets there
+// first, closing a project or reloading its shaders.
+namespace {
+    template<class MainThread>
+    void withAVariantsMakeQueued(uint64_t properties, uint16_t customId, const MainThread& mainThread){
+        std::atomic<bool> queued{false};
+        std::atomic<bool> letGo{false};
+        std::atomic<bool> done{false};
+        std::thread strand([&](){
+            {
+                Engine::AsyncThreadScope scope;
+                {
+                    std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::POSTPROCESS, properties, customId);
+                    EXPECT_TRUE(shader->loading.load()) << "not queued";
+                }
+                queued.store(true);
+                while (!letGo.load())
+                    std::this_thread::yield();
+            }
+            done.store(true);
+        });
+        while (!queued.load())
+            std::this_thread::yield();
+        mainThread();
+        letGo.store(true);
+        while (!done.load())
+            GpuEnvironment::drawFrames(1);
+        strand.join();
+        GpuEnvironment::drawFrames(2);
+        ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
+        GpuEnvironment::drawFrames(2);
+    }
+}
+
+// ShaderPool::clear (a project closing) destroys the handle: its MAKE_SHADER finds it gone. Nothing
+// is made, nothing left over, in the slot's next owner either, on each way of creating (sync too).
+TEST_F(AsyncCreateGpu, ClearWhileAVariantsMakeIsQueued){
+    JASPER_REQUIRE_GPU();
+    for (const char* mode : {(const char*)nullptr, "sync"}){
+        if (mode)
+            restartCreation(mode, nullptr);
+        ShaderData data;
+        std::string error;
+        ASSERT_TRUE(compileFlat("tests/async_queued_clear.frag", data, error)) << error;
+        const uint16_t id = ShaderPool::registerCustomShader("tests/async_queued_clear.frag");
+        ShaderPool::setShaderBuilder([data](ShaderKey){ return ShaderBuildResult(data, ResourceLoadState::Finished); });
+        const uint32_t aliveBefore = sg_query_stats().total.shaders.alive;
+        std::shared_ptr<ShaderRender> kept;
+        withAVariantsMakeQueued(0, id, [&](){
+            kept = ShaderPool::get(ShaderType::POSTPROCESS, 0, id);
+            ShaderPool::clear();
+            EXPECT_FALSE(kept->isCreated());
+        });
+        EXPECT_FALSE(kept->isCreated()) << "made after it was destroyed";
+        EXPECT_FALSE(kept->isPending());
+        EXPECT_FALSE(kept->loading.load()) << "its cleanup ran";
+        kept.reset();
+        ShaderPool::setShaderBuilder(nullptr);
+        EXPECT_LE(sg_query_stats().total.shaders.alive, aliveBefore) << "a GPU shader was left over";
+        EXPECT_TRUE(SystemRender::isGpuCreationIdle());
+
+        // the pool works on: the same source from a new id, and the slot its handle had is not it
+        ShaderData again;
+        ASSERT_TRUE(compileFlat("tests/async_queued_clear.frag", again, error)) << error;
+        const uint16_t newId = ShaderPool::registerCustomShader("tests/async_queued_clear.frag");
+        ShaderPool::setShaderBuilder([again](ShaderKey){ return ShaderBuildResult(again, ResourceLoadState::Finished); });
+        std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::POSTPROCESS, 0, newId);
+        ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
+        EXPECT_TRUE(shader->isCreated());
+        shader.reset();
+        ShaderPool::remove(ShaderType::POSTPROCESS, 0, newId);
+        ShaderPool::setShaderBuilder(nullptr);
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// ShaderPool::destroyCustomShaders (a shader's source edited) means what was asked for before is
+// not what draws: a variant still queued, or being created, is built again from the new source.
+TEST_F(AsyncCreateGpu, DestroyCustomShadersWhileAVariantsMakeIsQueuedBuildsItAgain){
+    JASPER_REQUIRE_GPU();
+    ShaderData data;
+    std::string error;
+    ASSERT_TRUE(compileFlat("tests/async_queued_custom.frag", data, error)) << error;
+    const uint16_t id = ShaderPool::registerCustomShader("tests/async_queued_custom.frag");
+    std::atomic<int> builds{0};
+    ShaderPool::setShaderBuilder([data, &builds](ShaderKey){
+        builds.fetch_add(1);
+        return ShaderBuildResult(data, ResourceLoadState::Finished);
+    });
+    withAVariantsMakeQueued(0, id, [](){ ShaderPool::destroyCustomShaders(); });
+    EXPECT_EQ(builds.load(), 1);
+    std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::POSTPROCESS, 0, id);
+    EXPECT_EQ(builds.load(), 2) << "the edit is not in what draws: the queued make went through";
+    ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
+    EXPECT_TRUE(shader->isCreated());
+
+    // and one being created on the main thread's side
+    shader->destroyShader();
+    ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
+    builds.store(0);
+    shader = ShaderPool::get(ShaderType::POSTPROCESS, 0, id);
+    EXPECT_EQ(builds.load(), 1);
+    ShaderPool::destroyCustomShaders();
+    EXPECT_FALSE(shader->isCreated());
+    EXPECT_FALSE(shader->isPending());
+    ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
+    EXPECT_FALSE(shader->isCreated()) << "made after it was destroyed";
+    shader.reset();
+    ShaderPool::remove(ShaderType::POSTPROCESS, 0, id);
+    ShaderPool::setShaderBuilder(nullptr);
     EXPECT_NO_ENGINE_ERRORS();
 }
 

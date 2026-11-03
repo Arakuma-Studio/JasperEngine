@@ -17,6 +17,9 @@
 #include "object/ui/UIElement.h"
 #include "object/ui/HtmlUIScriptInternal.h"
 
+// the video module (docs/specs/S34-player-size.md R1): the Lua API description reads this condition
+#if JASPERENGINE_VIDEO
+
 using namespace jasperengine;
 
 namespace {
@@ -119,3 +122,5 @@ void LuaBinding::registerHtmlUIMediaClasses(lua_State *L){
 
 #endif //DISABLE_LUA_BINDINGS
 }
+
+#endif // JASPERENGINE_VIDEO

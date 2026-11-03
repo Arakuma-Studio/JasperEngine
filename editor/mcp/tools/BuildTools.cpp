@@ -636,6 +636,14 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         result["method_used"] = buildMethodName(report.methodUsed);
         result["compile_reasons"] = report.compileReasons;
         result["player_id"] = report.playerId;
+        // S34: the engine modules the build ships, and the first reason of each
+        result["modules"] = report.modules;
+        for (const std::string& module : report.modules)
+            for (const ModuleEvidence& item : report.moduleEvidence)
+                if (item.module == module) {
+                    result["module_reasons"][module] = item.where + ": " + item.what;
+                    break;
+                }
         if (!report.contentManifest.empty()) result["content_manifest"] = FileUtils::pathToGenericUtf8(report.contentManifest);
         for (const BuildWarning& warning : report.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
         if (!report.notes.empty()) result["notes"] = report.notes;
@@ -652,6 +660,8 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
             for (const std::string& note : report.notes) message += " " + note + ".";
             if (r.config.platform == hostBuildPlatform() && !report.executable.empty()) {
                 message += " Try it with run_build.";
+                // its full identity, as the Desktop mode's below: run_build runs only this file, unchanged
+                builtplayers::record(r.projectPath / ".jasperengine", report.executable, modeName(ExportMode::Desktop));
                 std::lock_guard<std::mutex> lock(manager().mutex);
                 manager().lastExecutable = report.executable;
             }

@@ -51,6 +51,39 @@ The render thread finishes what the worker or the driver created within a per-fr
 - The scenes count as loaded (the READY signal, a game's loading screen, the editor's loading state)
   only once nothing is being created.
 
+## Threads
+
+A model may load off the main thread (the editor's thumbnail strand, a game's
+`Engine.startAsyncThread`). Its GPU objects are the frames' to make (`SokolCmdQueue`, executed on the
+main thread), and `Engine::executeSceneOnce` keeps that thread off the frames with their semaphore.
+It does not keep it off what the main thread does outside a frame, so two things take a lock of
+their own, around their containers' operations alone:
+
+- `ShaderPool`'s map and key sets: never while a builder runs or a GPU shader is made or destroyed.
+  `get()` holds its entry for what it does next, and `remove()` leaves what someone holds, a queued
+  batch making that variant included (it reads the variant's sources when it runs).
+  A steady frame of 100 meshes asks for none, and a variant asked for again costs 18 ns where it
+  cost 10.5 (`ShaderPoolBenchGpu.GetOfAMadeVariant`; 108 ns against 91 among 2000 variants still
+  building, `ShaderPoolBench.Get`).
+- sokol's resource pools (`engine/libs/sokol/PATCHES.md`): the free lists and a slot's hands, which
+  `sg_alloc_*` on that thread and `sg_make_*` and `sg_destroy_*` on the main one share. A draw takes
+  no lock, a steady frame allocates no slot, and a slot allocated and freed costs 18 ns where it
+  cost 7.5 (`SokolPoolBenchGpu.AllocAndFree`).
+
+`Engine::updateGpuCreation` publishes what was created off the render thread under the frames'
+semaphore, since that thread asks for those states inside it.
+
+The main thread may load a scene outside a frame next to that thread loading one, so both can make
+the same new variant. `ShaderRender::createShader`'s `loading` flag is the claim (an atomic exchange,
+with the look at the handle after it): one makes the variant, the other finds it being made and
+asks again, as for any variant not ready. `SokolShader`'s handle is atomic, and a mutex of its own
+keeps that thread's looks at the slot off the main thread's destroy. No draw takes it: the main
+thread looks without it, since only it frees a slot. A variant asked for again still costs 18 ns.
+Those locks never wait for another thread, so they cannot deadlock. The frames' semaphore around
+the main thread's load was not an option: a script's `Engine.setScene` inside a frame already holds
+it, and it is neither recursive nor owned; a load may wait for a job that needs it; and `get()` has
+callers outside a load (the inspector, the MCP tools, `warmUp`).
+
 ## The shader warm-up list
 
 **Project Settings > Graphics > Shader Warm-up**:

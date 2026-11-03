@@ -3,8 +3,10 @@
 
 #include "HtmlUIInspector.h"
 #include "HtmlUIInspectorInternal.h"
+#if JASPERENGINE_VIDEO
 #include "media/UIVideoControls.h"
 #include "media/UIVideoElement.h"
+#endif
 #include "widgets/DragDropSession.h"
 #include "widgets/ItemsViewElement.h"
 #include "widgets/TooltipManager.h"
@@ -1255,6 +1257,7 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
         }
         out.effects.push_back(std::move(effect));
     }
+#if JASPERENGINE_VIDEO
     if (UIVideoElement* video = rmlui_dynamic_cast<UIVideoElement*>(element)){
         auto media = std::make_shared<InspectMedia>();
         media->currentSrc = video->getCurrentSrc();
@@ -1299,6 +1302,7 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
         }
         out.media = std::move(media);
     }
+#endif
     if (const ItemsViewElement* view = rmlui_dynamic_cast<const ItemsViewElement*>(element)){
         const ItemsViewElement::State state = view->getState();
         auto widget = std::make_shared<InspectWidget>();

@@ -11,6 +11,7 @@
 
 #include "CrashHandler.h"
 #include "jobs/JobStats.h"
+#include "jobs/detail/TimedWait.h"
 #include "thread/ThreadUtil.h"
 
 #include <algorithm>
@@ -394,7 +395,7 @@ namespace je_hang {
         Shared& s = shared();
         std::unique_lock<std::mutex> lock(s.mutex);
         while (s.running.load(std::memory_order_relaxed)) {
-            s.wake.wait_for(lock, std::chrono::milliseconds(s.config.pollMs));
+            jobs::detail::timedWait(s.wake, lock, std::chrono::milliseconds(s.config.pollMs));
             if (!s.running.load(std::memory_order_relaxed)) break;
             tick(s, lock);
         }

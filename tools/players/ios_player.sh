@@ -8,13 +8,15 @@
 #                                    (engine/platform/apple/ios/player-template, its storyboards
 #                                    and the asset catalog)
 #
-#   tools/players/ios_player.sh <release|development> [OUT]
+#   tools/players/ios_player.sh <release|development> [OUT] [variant]
 #
+# variant: a release variant of engine/player/variants.json (default full; S34 R4).
 # Then tools/players/package_player.py --platform ios --arch arm64 --backend metal --ios-dir OUT.
 set -euo pipefail
 
 FLAVOUR="${1:?release or development}"
 OUT="${2:-build/players-build/ios-$FLAVOUR}"
+VARIANT="${3:-full}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 case "$FLAVOUR" in
     release) DEV=OFF ;;
@@ -30,10 +32,10 @@ LIBS=()
 for sdk in iphoneos iphonesimulator; do
     archs="arm64"
     [[ "$sdk" == iphonesimulator ]] && archs="arm64;x86_64"
-    tree="$ROOT/build/players-build/ios-$sdk-$FLAVOUR"
+    tree="$ROOT/build/players-build/ios-$sdk-$FLAVOUR-$VARIANT"
     cmake -S "$ROOT/engine" -B "$tree" -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT="$sdk" \
         -DCMAKE_OSX_ARCHITECTURES="$archs" -DJASPERENGINE_PLAYER=ON -DGRAPHIC_BACKEND=metal \
-        -DJASPERENGINE_DEVELOPMENT_BUILD="$DEV"
+        -DJASPERENGINE_DEVELOPMENT_BUILD="$DEV" -DJASPERENGINE_PLAYER_VARIANT="$VARIANT"
     cmake --build "$tree" --config Release --target jasperengine-player -- CODE_SIGNING_ALLOWED=NO
     # every static library of the tree (the engine's and its libraries'), merged into one
     mapfile -t archives < <(find "$tree" -path "*Release-$sdk*" -name '*.a' | sort)

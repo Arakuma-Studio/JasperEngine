@@ -8,6 +8,7 @@
 // does, with the project's navigation settings reset for each test.
 
 #include "Engine.h"
+#include "Input.h"
 #include "Scene.h"
 #include "component/NavMeshModifierComponent.h"
 #include "navigation/NavTypes.h"
@@ -54,11 +55,15 @@ namespace jasperengine::navtest {
             return result;
         }
 
+        // one engine fixed step, in the fixed phase: outside it a CharacterController moves by
+        // Engine::getDeltatime(), which is whatever frame an earlier test of the process last ran
         void step(const std::function<void()>& scripts = nullptr) {
             resolveTransforms(*scene);
+            Input::beginFixedStep();
             if (scripts)
                 scripts();
             scene->fixedUpdate(DT);
+            Input::endFixedStep();
             resolveTransforms(*scene);
         }
 

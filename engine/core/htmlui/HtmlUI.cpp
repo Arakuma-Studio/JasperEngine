@@ -10,7 +10,9 @@
 #include "RmlFontEngine.h"
 #include "RmlSystem.h"
 #include "vector/UILottieElement.h"
+#if JASPERENGINE_VIDEO
 #include "media/UIVideoElement.h"
+#endif
 #include "controls/OnScreenControls.h"
 #include "compat/runtime/RuntimeRegistry.h"
 #include "widgets/WidgetsRuntime.h"
@@ -97,7 +99,9 @@ bool HtmlUI::acquire(){
     LunaSVGRuntime::ensureFonts();
     ThorVGRuntime::acquire();
     UILottieElement::registerInstancer();
+#if JASPERENGINE_VIDEO
     UIVideoElement::registerInstancer();
+#endif
     UIParticleSystemElement::registerInstancer();
     // text-effect (per-character animation): the fork's text effect provider
     htmlui::HtmlTextEffects::install();
@@ -144,7 +148,9 @@ void HtmlUI::release(){
 
     // after Rml::Shutdown: the documents (and their ThorVG animations) are gone
     UILottieElement::releaseInstancer();
+#if JASPERENGINE_VIDEO
     UIVideoElement::releaseInstancer();
+#endif
     UIParticleSystemElement::releaseInstancer();
     UIOnScreenControl::releaseInstancers();
     htmlui::compat::releaseRuntime();

@@ -1065,11 +1065,16 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             }
         };
         if (name == "save") {
+            // a save refused (one that would lose a GameObject) fails the run
+            bool saved = true;
             for (SceneProject& sceneProject : project.getScenes()) {
-                if (sceneProject.scene && !sceneProject.filepath.empty()) {
-                    project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false, sceneDumpSavePolicy);
+                if (sceneProject.scene && !sceneProject.filepath.empty() &&
+                        !project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false, sceneDumpSavePolicy)) {
+                    std::cout << "  (scene " << sceneProject.name << " not saved)\n";
+                    saved = false;
                 }
             }
+            if (!saved) return false;
             continue;
         }
         if (name == "dump") {
@@ -1098,7 +1103,13 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             for (SceneProject& played : project.getScenes()) {
                 if (!played.scene || (op["scene"] && played.name != op["scene"].as<std::string>())) continue;
                 if (name == "playStart") {
-                    played.playStateSnapshot = Stream::encodeSceneProject(nullptr, &played);
+                    // Play does not start on a snapshot that would lose a GameObject
+                    try {
+                        played.playStateSnapshot = Stream::encodeSceneProject(nullptr, &played);
+                    } catch (const std::exception& e) {
+                        Out::error("Failed to start scene: %s", e.what());
+                        return false;
+                    }
                     played.playPrefabState = project.capturePlayPrefabState(&played);
                     const std::vector<Entity> alive = played.scene->getEntityList();
                     played.playStateEntities = std::set<Entity>(alive.begin(), alive.end());
@@ -1776,19 +1787,29 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
 
     if (save) {
         bool refused = false;
+        bool failed = false;
         for (SceneProject& sceneProject : scenes) {
             if (sceneProject.scene && !sceneProject.filepath.empty()) {
                 SaveResult result = SaveResult::Failed;
-                project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false, sceneDumpSavePolicy, &result);
+                if (project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false, sceneDumpSavePolicy, &result)) {
+                    continue;
+                }
                 if (result == SaveResult::RefusedDegraded) {
                     std::cerr << "scene-dump: not saved: " << sceneProject.filepath.generic_string() << " did not load completely "
                               << "(--allow-data-loss writes it anyway)\n";
                     refused = true;
+                } else {
+                    // written nowhere (the console says why: a GameObject it would lose, a write error)
+                    std::cerr << "scene-dump: not saved: " << sceneProject.filepath.generic_string() << "\n";
+                    failed = true;
                 }
             }
         }
         if (refused) {
             return 4;
+        }
+        if (failed) {
+            return 1;
         }
     }
     return 0;
@@ -3679,9 +3700,7 @@ int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const cha
     }
     std::cout << result.report.dump(2) << "\n";
     if (!reportPath.empty()) {
-        std::ofstream out(reportPath, std::ios::binary | std::ios::trunc);
-        out << result.report.dump(2) << "\n";
-        if (!out) {
+        if (FileUtils::writeFile(reportPath, result.report.dump(2) + "\n") == FileUtils::WriteResult::Failed) {
             std::cerr << "error: cannot write the report to " << reportPath.string() << "\n";
             return 1;
         }

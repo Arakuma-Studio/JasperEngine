@@ -219,7 +219,35 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     return mesh;
 }
 
-YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeBuffers, bool embedTextureData) {
+YAML::Node editor::Stream::encodeAtlasSampler(const Texture& texture) {
+    YAML::Node node;
+    const Texture defaults;
+    const bool samplerSet = texture.getMinFilter() != defaults.getMinFilter() || texture.getMagFilter() != defaults.getMagFilter() ||
+        texture.getWrapU() != defaults.getWrapU() || texture.getWrapV() != defaults.getWrapV() ||
+        texture.getAlphaBorder() != defaults.getAlphaBorder();
+    if (!samplerSet)
+        return node;
+    // the keys and order of encodeTexture's sampler part
+    node["minFilter"] = textureFilterToString(texture.getMinFilter());
+    node["magFilter"] = textureFilterToString(texture.getMagFilter());
+    node["wrapU"] = textureWrapToString(texture.getWrapU());
+    node["wrapV"] = textureWrapToString(texture.getWrapV());
+    if (texture.getAlphaBorder() != TextureAlphaBorder::AUTO) node["alphaBorder"] = textureAlphaBorderToString(texture.getAlphaBorder());
+    return node;
+}
+
+void editor::Stream::decodeAtlasSampler(const YAML::Node& node, Texture& texture) {
+    // a key left out (or a null node) is a new texture's value
+    const Texture defaults;
+    const bool map = node.IsMap();
+    texture.setMinFilter(map && node["minFilter"] ? stringToTextureFilter(node["minFilter"].as<std::string>()) : defaults.getMinFilter());
+    texture.setMagFilter(map && node["magFilter"] ? stringToTextureFilter(node["magFilter"].as<std::string>()) : defaults.getMagFilter());
+    texture.setWrapU(map && node["wrapU"] ? stringToTextureWrap(node["wrapU"].as<std::string>()) : defaults.getWrapU());
+    texture.setWrapV(map && node["wrapV"] ? stringToTextureWrap(node["wrapV"].as<std::string>()) : defaults.getWrapV());
+    texture.setAlphaBorder(map && node["alphaBorder"] ? stringToTextureAlphaBorder(node["alphaBorder"].as<std::string>()) : defaults.getAlphaBorder());
+}
+
+YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeBuffers, bool embedTextureData, bool textureIsAtlas) {
     YAML::Node node;
     node["enabled"] = ui.enabled;
     if (encodeBuffers){
@@ -235,7 +263,10 @@ YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeB
     node["aabb"] = encodeAABB(ui.aabb);
     node["worldAABB"] = encodeAABB(ui.worldAABB);
 
-    node["texture"] = encodeTexture(ui.texture, embedTextureData);
+    // A Text's texture is its font atlas, published by the UISystem once the glyphs are
+    // rasterized, under a new id at each atlas change: the file does not depend on whether
+    // the Text was drawn
+    node["texture"] = textureIsAtlas ? encodeAtlasSampler(ui.texture) : encodeTexture(ui.texture, embedTextureData);
     node["color"] = encodeVector4(ui.color);
     // FunctionSubscribe fields are not serializable
 
@@ -257,7 +288,7 @@ YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeB
     return node;
 }
 
-UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UIComponent* oldUI) {
+UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UIComponent* oldUI, bool textureIsAtlas) {
     UIComponent ui;
 
     // Use old values as defaults if provided
@@ -276,7 +307,13 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
     if (node["aabb"]) ui.aabb = decodeAABB(node["aabb"]);
     if (node["worldAABB"]) ui.worldAABB = decodeAABB(node["worldAABB"]);
 
-    if (node["texture"]) ui.texture = decodeTexture(node["texture"]);
+    // A Text keeps the atlas it shows (the UISystem publishes it once built). An atlas id an older
+    // editor saved after drawing ("font|20#7") named an atlas of that run and is not read, only
+    // the sampler settings beside it
+    if (node["texture"]) {
+        if (textureIsAtlas) decodeAtlasSampler(node["texture"], ui.texture);
+        else ui.texture = decodeTexture(node["texture"]);
+    }
     if (node["color"]) ui.color = decodeVector4(node["color"]);
 
     if (node["automaticFlipY"]) ui.automaticFlipY = YamlNumbers::as<bool>(node["automaticFlipY"]);
@@ -440,7 +477,7 @@ YAML::Node editor::Stream::encodeTerrainSurfaceLayer(const TerrainSurfaceLayer& 
     node["pbr"] = layer.pbr;
     // An unassigned map writes nothing, so a plain color layer stays a two-line entry
     auto texture = [&](const char* name, const Texture& value) {
-        if (!value.empty()) node[name] = encodeTexture(value);
+        if (!value.empty() || hasTexturePath(value)) node[name] = encodeTexture(value);
     };
     texture("colorTexture", layer.colorTexture);
     texture("normalTexture", layer.normalTexture);

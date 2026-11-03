@@ -20,6 +20,8 @@ using namespace jasperengine;
 namespace {
 
     std::atomic<uint64_t> nextEntryId{1};
+    // CommandHistory::stampSave
+    std::atomic<uint64_t> saveClock{0};
     std::atomic<uint64_t> nextLinkId{1};
     uint64_t nextSerial = 1;
     int applyingDepth = 0;
@@ -71,6 +73,7 @@ namespace {
 }
 
 std::function<void(size_t, bool)> editor::CommandHistory::onSceneModified = nullptr;
+std::function<void(size_t)> editor::CommandHistory::onUndoPastSave = nullptr;
 std::function<void(size_t)> editor::CommandHistory::beforeStep = nullptr;
 std::function<bool(std::string&)> editor::CommandHistory::beforeMutation = nullptr;
 std::function<bool(size_t, editor::CommandHistory::Change)> editor::CommandHistory::beforeChange = nullptr;
@@ -200,6 +203,23 @@ size_t editor::CommandHistory::totalBytes(){
 
 bool editor::CommandHistory::isApplying(){
     return applyingDepth > 0;
+}
+
+uint64_t editor::CommandHistory::stampSave(){
+    return ++saveClock;
+}
+
+void editor::CommandHistory::markSaved(){
+    for (size_t i = 0; i < list.size(); i++){
+        list[i].info.savedApplied = i < index;
+    }
+    // what Play set aside is not applied
+    for (UndoEntry& entry : editRedo){
+        entry.info.savedApplied = false;
+    }
+    if (index > 0){
+        list[index - 1].cmd->setNoMerge();
+    }
 }
 
 uint64_t editor::CommandHistory::peekNextId(){
@@ -412,6 +432,7 @@ void editor::CommandHistory::recordEntry(std::unique_ptr<Command> cmd, const Sel
         UndoEntry older = std::move(list.back());
         list.pop_back();
         entry.info.id = older.info.id;
+        entry.info.savedApplied = older.info.savedApplied;
         entry.info.linkId = older.info.linkId;
         entry.info.selectionBefore = older.info.selectionBefore;
         entry.info.hasSelection = older.info.hasSelection;
@@ -574,6 +595,10 @@ bool editor::CommandHistory::undo(){
     if (undoProblemText.empty()) undoProblemText = safewrite::scopedFailureSince(failuresBefore);
     if (!undoProblemText.empty()) safewrite::warn("Undo incomplete: " + undoProblemText);
     index--;
+    // the undo put back the modified flag it found, which a save since has made stale
+    if (entry.info.savedApplied && onUndoPastSave){
+        onUndoPastSave(sceneId);
+    }
     restoreSelection(entry, false);
     notifyModified(structural, entry.info.selectionOnly);
 
@@ -829,6 +854,7 @@ void editor::CommandHistory::fold(size_t localStart, const std::string& label, b
     for (auto it = list.begin() + localStart; it != list.end(); ++it){
         entry.info.bytes += it->info.bytes;
         entry.info.selectionOnly = entry.info.selectionOnly && it->info.selectionOnly;
+        entry.info.savedApplied = entry.info.savedApplied || it->info.savedApplied;
         if (it->info.linkId != 0 && entry.info.linkId == 0) entry.info.linkId = it->info.linkId;
         commands.push_back(std::move(it->cmd));
     }
@@ -1033,12 +1059,14 @@ void editor::CommandHistory::cancelInteractive(uint64_t serial){
     const size_t local = edit.start - trimmedCount;
     std::vector<UndoEntry> collected;
     bool structural = false;
+    bool pastSave = false;
     {
         Applying applying;
         while (list.size() > local){
             UndoEntry entry = std::move(list.back());
             list.pop_back();
             structural = structural || entry.cmd->affectsStructure();
+            pastSave = pastSave || entry.info.savedApplied;
             {
                 StepScope scope(entry.cmd.get());
                 entry.cmd->undo();
@@ -1058,6 +1086,9 @@ void editor::CommandHistory::cancelInteractive(uint64_t serial){
     }
     index = local;
     recount();
+    if (pastSave && onUndoPastSave){
+        onUndoPastSave(sceneId);
+    }
     if (!collected.empty()){
         notifyModified(structural);
     }

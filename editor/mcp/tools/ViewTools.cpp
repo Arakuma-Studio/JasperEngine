@@ -30,6 +30,7 @@
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
 #include "pool/ShaderPool.h"
+#include "pool/TextureDataPool.h"
 #include "render/SystemRender.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -105,7 +106,43 @@ bool sceneContentLoaded(SceneProject* sp) {
     if (UIDocument::getPendingEffectReplays() > 0) return false;
     auto ms = sp->scene->getSystem<MeshSystem>();
     if (ms && ms->hasPendingAsyncModelLoads()) return false;
+    // a frame drawn while a texture loads shows a stand-in for it (the texture before, or none)
+    if (TextureDataPool::getLoadingCount() > 0) return false;
     return true;
+}
+
+// The asset loads a screenshot always waits for (a texture, a model): it never shows a stand-in
+// for one, and past the call's timeout it fails naming them
+bool assetsLoading(SceneProject* sp) {
+    if (TextureDataPool::getLoadingCount() > 0) return true;
+    auto ms = sp && sp->scene ? sp->scene->getSystem<MeshSystem>() : nullptr;
+    return ms && ms->hasPendingAsyncModelLoads();
+}
+
+// The shaders, textures and scene objects a screenshot is still waiting for, for its error
+std::string describeLoading(SceneProject* sp) {
+    std::string out;
+    auto add = [&out](const std::string& part) { out += (out.empty() ? "" : "; ") + part; };
+    if (!ShaderPool::isCreationIdle()) add("shaders or pipelines being made");
+    if (const size_t textures = TextureDataPool::getLoadingCount()) {
+        std::string list;
+        for (const std::string& id : TextureDataPool::getLoadingIds(8)) list += (list.empty() ? "" : ", ") + id;
+        add(std::to_string(textures) + " texture load(s): " + list);
+    }
+    if (sp && sp->scene) {
+        if (auto rs = sp->scene->getSystem<RenderSystem>()) {
+            const std::vector<std::string> waiting = rs->describeNotLoaded();
+            std::string list;
+            for (size_t i = 0; i < waiting.size() && i < 8; i++) list += (i ? ", " : "") + waiting[i];
+            if (waiting.size() > 8) list += " and " + std::to_string(waiting.size() - 8) + " more";
+            if (!list.empty()) add("not loaded: " + list);
+        }
+        if (auto us = sp->scene->getSystem<UISystem>(); us && us->hasPendingImages()) add("UI images loading");
+        if (auto ds = sp->scene->getSystem<UIDocumentSystem>(); ds && !ds->isAllLoaded()) add("HTML UI documents loading or not drawn yet");
+        if (UIDocument::getPendingEffectReplays() > 0) add("UI effects replaying their state");
+        if (auto ms = sp->scene->getSystem<MeshSystem>(); ms && ms->hasPendingAsyncModelLoads()) add("models loading");
+    }
+    return out.empty() ? std::string("nothing (it settled as the wait ended)") : out;
 }
 
 bool isTransitional(ScenePlayState state) {
@@ -179,8 +216,9 @@ void whenSceneViewReady(const CallPtr& call, uint32_t sceneId, bool focus, int t
 
 // ------------------------------------------------------------------ capture
 
-// How long a screenshot waits for loading assets before it shoots anyway
-constexpr long long LOAD_WAIT_MS = 6000;
+// How long a screenshot waits for the rest of the scene's content to settle (objects, HTML UI
+// documents drawn once, stateful effects replaying: some never report it) before it shoots
+constexpr long long SETTLE_WAIT_MS = 6000;
 
 struct CaptureJob {
     CallPtr call;
@@ -188,24 +226,26 @@ struct CaptureJob {
     std::function<void(w3::CaptureResult)> done;
     Clock::time_point deadline;
     bool finished = false;
-    // assets were still loading when the wait for them gave up (some never report loaded)
-    bool stillLoading = false;
-    Clock::time_point loadWaitStart;
-    bool loadWaitStarted = false;
+    // the rest of the content had not settled when the wait for it gave up
+    bool stillSettling = false;
+    Clock::time_point settleWaitStart;
+    bool settleWaitStarted = false;
 
-    // True once the scene's content is loaded, or after waiting long enough for it
+    // Its asset loads done (always waited for: up to the call's timeout_seconds, then the
+    // screenshot fails naming them), and the rest settled or waited for SETTLE_WAIT_MS
     bool contentReady(SceneProject* sp) {
+        if (assetsLoading(sp)) return false;
         if (sceneContentLoaded(sp)) {
-            stillLoading = false;
+            stillSettling = false;
             return true;
         }
-        if (!loadWaitStarted) {
-            loadWaitStarted = true;
-            loadWaitStart = Clock::now();
+        if (!settleWaitStarted) {
+            settleWaitStarted = true;
+            settleWaitStart = Clock::now();
         }
-        const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - loadWaitStart).count();
-        stillLoading = true;
-        return waited >= LOAD_WAIT_MS;
+        const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - settleWaitStart).count();
+        stillSettling = true;
+        return waited >= SETTLE_WAIT_MS;
     }
 
     int remainingMs() const {
@@ -293,11 +333,11 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         info["flat_colour"] = colour;
         result.note = "The image is one flat colour (" + colour + "): nothing visible rendered there yet?";
     }
-    if (job->stillLoading) {
+    if (job->stillSettling) {
         info["assets_loading"] = true;
         result.note += std::string(result.note.empty() ? "" : " ") +
-                       "Some assets were still loading after " + std::to_string(LOAD_WAIT_MS / 1000) +
-                       " s (missing files or a slow load); parts of the scene may be missing.";
+                       "Some content was still settling after " + std::to_string(SETTLE_WAIT_MS / 1000) +
+                       " s (objects, HTML UI documents or effects not drawn yet); parts of the scene may be missing.";
     }
 
     if (!job->req.savePath.empty()) {
@@ -447,7 +487,11 @@ void captureGame(const CaptureJobPtr& job) {
             McpContext& c = call->ctx();
             SceneProject* s = c.project()->getScene(playId);
             if (!s || c.project()->getPlaySessionSceneId() != playId) return true;
-            return ++*frames >= 2 && c.gameWindow()->getFramebuffer()->isCreated();
+            if (s->playState == ScenePlayState::PAUSED) s->needUpdateRender = true;
+            // (two frames after its textures and shaders are in: drawn with them)
+            const bool loading = TextureDataPool::getLoadingCount() > 0 || !ShaderPool::isCreationIdle();
+            *frames = loading ? 0 : *frames + 1;
+            return *frames >= 2 && c.gameWindow()->getFramebuffer()->isCreated();
         }, job->remainingMs(), [job, playId](bool timedOut) {
             McpContext& c = job->call->ctx();
             if (c.project()->getPlaySessionSceneId() != playId) {
@@ -456,7 +500,11 @@ void captureGame(const CaptureJobPtr& job) {
                 return;
             }
             if (timedOut) {
-                job->fail("The running game did not render a frame in time.");
+                if (TextureDataPool::getLoadingCount() > 0 || !ShaderPool::isCreationIdle())
+                    job->fail("The running game was not shot: still loading after the call's timeout_seconds (a screenshot "
+                              "never shows a stand-in for it): " + describeLoading(nullptr) + ". Retry, or raise timeout_seconds.");
+                else
+                    job->fail("The running game did not render a frame in time.");
                 return;
             }
             readGameView(job, playId, true);
@@ -510,6 +558,9 @@ void captureGame(const CaptureJobPtr& job) {
         GameWindow* g = c.gameWindow();
         SceneProject* s = c.project()->getScene(sceneId);
         if (!s || c.project()->getPlaySessionSceneId() != NULL_PROJECT_SCENE) return true;
+        // drawn again each frame of the wait: a texture that finished loading shows from the
+        // frame that draws it next (an idle editor would not)
+        s->needUpdateRender = true;
         if (++*frames < 2) return false;
         if (*frames % 15 == 0 && !g->isVisible()) g->requestFocus();
         const bool ready = g->isVisible() && g->getWidth() > 0 && g->getHeight() > 0 && !g->isEditPassDirty() &&
@@ -528,9 +579,13 @@ void captureGame(const CaptureJobPtr& job) {
             else if (g->getWidth() <= 0 || g->getHeight() <= 0) job->fail("The Game view has no size (too small or collapsed).");
             else {
                 SceneProject* s = c.project()->getScene(sceneId);
-                job->fail("The Game view preview did not finish rendering in time (assets still loading?). (preview current " +
-                          std::to_string(!g->isEditPassDirty()) + ", assets loaded " + std::to_string(sceneContentLoaded(s)) +
-                          ", UI effect replays pending " + std::to_string(UIDocument::getPendingEffectReplays()) + ")");
+                if (assetsLoading(s))
+                    job->fail("The Game view was not shot: still loading after the call's timeout_seconds (a screenshot never "
+                              "shows a stand-in for it): " + describeLoading(s) + ". Retry, or raise timeout_seconds.");
+                else
+                    job->fail("The Game view preview did not finish rendering in time (preview current " +
+                              std::to_string(!g->isEditPassDirty()) + ", content loaded " + std::to_string(sceneContentLoaded(s)) +
+                              ", UI effect replays pending " + std::to_string(UIDocument::getPendingEffectReplays()) + ")");
             }
             return;
         }
@@ -578,6 +633,9 @@ void captureScene(const CaptureJobPtr& job) {
             McpContext& cx = c->ctx();
             SceneProject* sc = cx.project()->getScene(sceneId);
             if (!sc) return true;
+            // drawn again each frame of the wait: a texture that finished loading shows from the
+            // frame that draws it next (an idle editor would not)
+            sc->needUpdateRender = true;
             if (++*frames < 2) return false;
             // The view redraws on the frame after it is flagged (needUpdateRender) and keeps
             // redrawing for a few settle frames, so a few shown frames in a row mean the
@@ -596,10 +654,15 @@ void captureScene(const CaptureJobPtr& job) {
             }
             if (timedOut) {
                 SceneWindow* sw = cx.sceneWindow();
+                if (sceneViewShown(cx, sc) && assetsLoading(sc)) {
+                    job->fail("The Scene view was not shot: still loading after the call's timeout_seconds (a screenshot never "
+                              "shows a stand-in for it): " + describeLoading(sc) + ". Retry, or raise timeout_seconds.");
+                    return;
+                }
                 job->fail(std::string(sceneViewShown(cx, sc) ? "The Scene view did not finish rendering in time."
                                                              : "The Scene view is not shown.") +
                           " (visible " + std::to_string(sc->isVisible) + ", size " + std::to_string(sw->getWidth(sceneId)) + "x" +
-                          std::to_string(sw->getHeight(sceneId)) + ", assets loaded " + std::to_string(sceneContentLoaded(sc)) + ")");
+                          std::to_string(sw->getHeight(sceneId)) + ", content loaded " + std::to_string(sceneContentLoaded(sc)) + ")");
                 return;
             }
             Json info = {{"scene", McpRefs::sceneJson(p, *sc)}};
@@ -723,14 +786,22 @@ void captureView(const CallPtr& call, const CaptureRequest& request, std::functi
         else if (job->req.view == "scene") captureScene(job);
         else captureEditor(job);
     };
-    // shaders still building, and shaders and pipelines still being created off the render thread
-    // (spec S32), are not drawn yet: the image waits for them (up to 30 s), then shows what is there
-    if (ShaderPool::isCreationIdle()) {
+    // shaders still building, shaders and pipelines still being created off the render thread
+    // (spec S32) and textures still loading are not drawn yet (stand-ins are): the image waits
+    // for them, up to the call's timeout_seconds, then fails naming them
+    auto idle = []() { return ShaderPool::isCreationIdle() && TextureDataPool::getLoadingCount() == 0; };
+    if (idle()) {
         capture();
         return;
     }
-    call->waitUntil([]() { return ShaderPool::isCreationIdle(); },
-                    std::min(job->remainingMs(), 30000), [capture](bool) { capture(); });
+    call->waitUntil(idle, job->remainingMs(), [job, capture](bool timedOut) {
+        if (timedOut) {
+            job->fail("The " + job->req.view + " view was not shot: still loading after the call's timeout_seconds (a "
+                      "screenshot never shows a stand-in for it): " + describeLoading(nullptr) + ". Retry, or raise timeout_seconds.");
+            return;
+        }
+        capture();
+    });
 }
 
 bool parseScreenshotOption(const Json& args, CaptureRequest& request, bool& wanted, std::string& error) {

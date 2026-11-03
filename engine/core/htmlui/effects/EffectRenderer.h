@@ -110,6 +110,9 @@ namespace jasperengine::htmlui {
         bool clippedOut(const EffectInstance& instance) const;
         bool allocateStates(EffectInstance& instance, EffectSimulation& simulation, bool resample);
         void clearImage(EffectStateImage& image);
+        // a pass waited for its pipeline: the images are part-written, the units start over (the
+        // pipelines asked for so far are there sooner each time)
+        void restartReplay(EffectSimulation& simulation);
         void runInitAndWarmup(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter, double resetTime);
         void runInit(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter, double resetTime);
         void runWarmStep(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter, double resetTime,

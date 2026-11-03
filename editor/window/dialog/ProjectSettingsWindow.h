@@ -95,6 +95,7 @@ namespace jasperengine::editor {
         // S30: Build Settings' method (auto, prebuilt, compile) and the content pack
         int m_buildMethodIndex = 0;
         bool m_packContent = false;
+        bool m_stripEngineCode = true;
         int m_androidPackageFormatIndex = 0;   // apk, aab
         fs::path m_androidKeystorePath;
         char m_androidKeystoreAliasBuffer[128] = {0};

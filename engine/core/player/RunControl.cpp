@@ -6,7 +6,9 @@
 #include "Engine.h"
 #include "Log.h"
 #include "System.h"
+#include "io/AtomicFile.h"
 #include "pool/ShaderPool.h"
+#include "pool/TextureDataPool.h"
 #include "log/LogSink.h"
 #include "log/Logger.h"
 
@@ -16,6 +18,7 @@
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <string>
 
 using namespace jasperengine;
 using namespace jasperengine::player;
@@ -36,9 +39,10 @@ namespace {
         // start at the ready frame, so a run's frames are the same every time (how many frames
         // come before it depends on how long shaders take). Loading and drawing go on meanwhile.
         bool heldUntilReady = false;
-        // the screenshot's frame came with shaders still compiling at runtime, or shaders or
-        // pipelines still being created off the render thread (spec S32): the game is held and
-        // the capture waits for them (as the editor's screenshots do), up to CAPTURE_WAIT_SECONDS
+        // the screenshot's frame came with shaders still compiling at runtime, shaders or
+        // pipelines still being created off the render thread (spec S32), or textures still
+        // loading: the game is held and the capture waits for them (as the editor's screenshots
+        // do), up to CAPTURE_WAIT_SECONDS; then it fails, naming them (never a stand-in image)
         bool captureWaiting = false;
         bool captureHeldGame = false;
         std::chrono::steady_clock::time_point captureWaitStarted;
@@ -51,12 +55,24 @@ namespace {
         return *s;
     }
 
-    constexpr double CAPTURE_WAIT_SECONDS = 30.0;
+    constexpr double CAPTURE_WAIT_SECONDS = 120.0;
 
     bool (*gpuCreationIdleProbe)() = nullptr;
 
+    // nothing drawn as a stand-in: no shader or pipeline being made, no texture loading
     bool gpuCreationIdle() {
-        return gpuCreationIdleProbe ? gpuCreationIdleProbe() : ShaderPool::isCreationIdle();
+        return gpuCreationIdleProbe ? gpuCreationIdleProbe() : ShaderPool::isCreationIdle() && TextureDataPool::getLoadingCount() == 0;
+    }
+
+    std::string describeCreation() {
+        std::string out;
+        if (!ShaderPool::isCreationIdle()) out = "shaders or pipelines being made";
+        if (const size_t textures = TextureDataPool::getLoadingCount()) {
+            std::string list;
+            for (const std::string& id : TextureDataPool::getLoadingIds(8)) list += (list.empty() ? "" : ", ") + id;
+            out += (out.empty() ? "" : "; ") + std::to_string(textures) + " texture load(s): " + list;
+        }
+        return out.empty() ? std::string("nothing named (a test probe)") : out;
     }
 
     // the frame a screenshot is taken at: --screenshot-frame, else --quit-after's last
@@ -77,6 +93,10 @@ namespace {
         const char* name() const override { return "fail-on-error"; }
     };
 
+    void appendPng(void* context, void* data, int size) {
+        static_cast<std::string*>(context)->append(static_cast<const char*>(data), static_cast<size_t>(size));
+    }
+
     bool writePng(const std::filesystem::path& path, const std::vector<uint8_t>& rgba, int width, int height, std::string& error) {
         if (width <= 0 || height <= 0 || rgba.size() != static_cast<size_t>(width) * height * 4) {
             error = "no frame pixels";
@@ -85,8 +105,18 @@ namespace {
         // opaque: the swap chain shows no alpha, and a cleared target's alpha would show through
         std::vector<uint8_t> opaque(rgba);
         for (size_t i = 3; i < opaque.size(); i += 4) opaque[i] = 255;
-        if (!stbi_write_png(path.string().c_str(), width, height, 4, opaque.data(), width * 4)) {
-            error = "cannot write " + path.string();
+        std::string png;
+        if (!stbi_write_png_to_func(&appendPng, &png, width, height, 4, opaque.data(), width * 4)) {
+            error = "cannot encode " + path.string();
+            return false;
+        }
+        // the path may hold an earlier run's image: it stays whole if this write fails
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        options.createDirectories = false;
+        const io::WriteResult written = io::writeFileAtomic(path, png, options);
+        if (!written.ok()) {
+            error = written.message;
             return false;
         }
         return true;
@@ -211,10 +241,14 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
         const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.captureWaitStarted).count();
         const bool idle = gpuCreationIdle();
         if (!idle && waited < CAPTURE_WAIT_SECONDS) return;
-        if (!idle)
-            Log::warn("Screenshot: shaders still being created after %.0f s; the image shows what is drawn", CAPTURE_WAIT_SECONDS);
         s.captureWaiting = false;
-        capture();
+        if (idle) {
+            capture();
+        } else {
+            Log::error("Screenshot %s not taken: still loading after %.0f s: %s", s.options.screenshot.string().c_str(),
+                       CAPTURE_WAIT_SECONDS, describeCreation().c_str());
+            requestQuit(EXIT_SCREENSHOT_FAILED);
+        }
         if (s.captureHeldGame) {
             Engine::pauseGameEvents(false);
             s.captureHeldGame = false;
@@ -232,7 +266,7 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
                     Engine::pauseGameEvents(true);
                     s.captureHeldGame = true;
                 }
-                Log::print("Screenshot: frame %llu waits for shaders being created", (unsigned long long)s.counted);
+                Log::print("Screenshot: frame %llu waits for %s", (unsigned long long)s.counted, describeCreation().c_str());
                 return;
             }
             if (due) capture();

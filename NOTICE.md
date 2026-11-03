@@ -15,7 +15,7 @@ Libraries of the engine, the editor and the tools:
 |---|---|---|---|---|
 | [sokol](https://github.com/floooh/sokol) | upstream `master`, with local changes (git history) | `engine/libs/sokol/` (`LICENSE`) | zlib | graphics (sokol_gfx: GL, GLES3/WebGL2, Metal, D3D11, Vulkan), time, logging |
 | [Lua](https://www.lua.org) | 5.4.7 | `engine/libs/lua/` (`LICENSE`, from `lua.h`) | MIT | the scripting runtime |
-| [LuaBridge3](https://github.com/kunitoki/LuaBridge3) | 3.0.1 | `engine/libs/luabridge3/` (`LICENSE.txt`) | MIT | the C++ bindings of the Lua API |
+| [LuaBridge3](https://github.com/kunitoki/LuaBridge3) | 3.0.1, with the size changes of docs/specs/S34-player-size.md D6 (marked "JasperEngine (S34") | `engine/libs/luabridge3/` (`LICENSE.txt`) | MIT | the C++ bindings of the Lua API |
 | [JSON for Modern C++](https://github.com/nlohmann/json) | 3.11.3 | `engine/libs/json/` (`LICENSE`, from `json.hpp`) | MIT | JSON reading and writing |
 | [stb](https://github.com/nothings/stb) | stb_image 2.30, stb_truetype 1.26, stb_image_write, stb_image_resize2, stb_rect_pack | `engine/libs/stb/` (`LICENSE`, from the headers) | MIT or public domain | image decoding and encoding, font rasterisation |
 | [SoLoud](https://github.com/jarikomppa/soloud) | 202002 (`SOLOUD_VERSION`) | `engine/libs/soloud/` (`LICENSE`) | zlib/libpng (its bundled parts as listed in `LICENSE`) | audio (Ogg Vorbis through its bundled stb_vorbis 1.22, public domain or MIT as in the file) |
@@ -60,7 +60,7 @@ Video of the HTML/CSS UI (`<video>`: AV1 + Opus in WebM, decoded in software; FF
 | Library | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [dav1d](https://code.videolan.org/videolan/dav1d) | 1.5.4 | `engine/libs/dav1d/` (`COPYING`; what is vendored: `README.jasper.md`) | BSD-2-Clause | AV1 decoding (`engine/core/media/Av1Decoder`), C and the x86-64/aarch64/armv7 asm |
-| [FFmpeg](https://ffmpeg.org) public headers | 4.4.5, 5.1.6, 6.1.2, 7.1.1, 8.0 | `engine/libs/ffmpeg-headers/<avcodec major>/` (`COPYING.LGPLv2.1`; what is vendored: `README.jasper.md`) | LGPL-2.1-or-later | declarations only: the Linux video backend loads the system's FFmpeg libraries with `dlopen` (nothing of FFmpeg is compiled, linked or shipped) |
+| [FFmpeg](https://ffmpeg.org) public headers | 4.4.5, 5.1.6, 6.1.2, 7.1.1, 8.0 | `engine/libs/ffmpeg-headers/`, one folder per avcodec major (`COPYING.LGPLv2.1`; what is vendored: `README.jasper.md`) | LGPL-2.1-or-later | declarations only: the Linux video backend, in the Linux editor and every Linux game, is compiled against these headers and loads the system's FFmpeg libraries with `dlopen` (no FFmpeg library is linked or shipped) |
 | x86inc.asm ([x264](https://code.videolan.org/videolan/x264), bundled with dav1d) | dav1d 1.5.4's copy | `engine/libs/dav1d/src/ext/x86/x86inc.asm` (licence in its header) | ISC | the macro layer of dav1d's NASM code |
 | [libopus](https://opus-codec.org) | 1.6.1 (decoder sources) | `engine/libs/opus/` (`COPYING`, `README.jasper.md`) | BSD-3-Clause (with the codec's patent licences referenced in `COPYING`) | Opus audio of videos (`OpusAudioDecoder`) |
 | [libwebm](https://chromium.googlesource.com/webm/libwebm) | 1.0.0.32 (`mkvparser`) | `engine/libs/libwebm/` (`LICENSE.TXT`, `PATENTS.TXT`, `README.jasper.md`) | BSD-3-Clause, plus Google's WebM patent grant | WebM/Matroska demuxing (`VideoDemuxer`) |

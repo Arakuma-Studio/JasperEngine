@@ -8,6 +8,7 @@
 #include "htmlui/HttpClient.h"
 #include "io/AtomicFile.h"
 #include "util/CommandRunner.h"
+#include "util/FileUtils.h"
 #include "util/Sha256.h"
 
 #include <algorithm>
@@ -113,8 +114,9 @@ fs::path AndroidTools::bundletoolJar(bool download, std::string& error) {
         return {};
     }
     fs::create_directories(jar.parent_path(), ec);
-    fs::copy_file(response.bodyFile, jar, fs::copy_options::overwrite_existing, ec);
-    if (ec) {
+    io::AtomicWriteOptions cache;
+    cache.durability = io::Durability::Cache;
+    if (!FileUtils::copyFileAtomic(response.bodyFile, jar, ec, cache)) {
         error = "cannot keep bundletool in " + jar.string() + ": " + ec.message();
         return {};
     }

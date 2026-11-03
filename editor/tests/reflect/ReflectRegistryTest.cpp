@@ -6,6 +6,7 @@
 #include "reflect/Reflect.h"
 #include "reflect/ReflectIndex.h"
 
+#include "component/Joint2DComponent.h"
 #include "mcp/McpJson.h"
 
 #include <gtest/gtest.h>
@@ -93,4 +94,21 @@ TEST(ReflectRegistry, OrdersListEveryComponent) {
     EXPECT_EQ(reflect::serializationOrder().front()->type, ComponentType::Transform);
 }
 
+}
+
+// a joint's default break force is infinite: as 0 (what formatFloat makes of it) every joint of an
+// exported game breaks at its first step, which a golden made with the bug does not show. It stays at the
+// component's default, and a finite one is written
+TEST(ReflectRegistry, GeneratedCodeLeavesAnInfiniteBreakForceAtTheDefault) {
+    const reflect::ComponentDesc* desc = reflect::find(ComponentType::Joint2DComponent);
+    ASSERT_NE(desc, nullptr);
+    Joint2DComponent joint;
+    reflect::CodegenContext ctx;
+    ctx.variable = "joint2d";
+    std::string code = reflect::cppAssignments(*desc, &joint, ctx);
+    EXPECT_EQ(code.find("joint2d.breakForce"), std::string::npos) << code;
+    EXPECT_EQ(code.find("joint2d.breakTorque"), std::string::npos) << code;
+    joint.breakForce = 5.0f;
+    code = reflect::cppAssignments(*desc, &joint, ctx);
+    EXPECT_NE(code.find("joint2d.breakForce = 5.000000f;"), std::string::npos) << code;
 }

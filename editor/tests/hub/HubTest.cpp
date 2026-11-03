@@ -8,6 +8,7 @@
 #include "hub/ProjectImporter.h"
 #include "hub/RecentProjects.h"
 #include "hub/TemplateCatalog.h"
+#include "io/AtomicFile.h"
 
 #include "support/TestTempDir.h"
 
@@ -16,8 +17,16 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <cstdlib>
 #include <fstream>
 
+#ifndef _WIN32
+    #include <signal.h>
+    #include <sys/resource.h>
+#endif
+
+using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::hub;
 using jasperengine::test::TestTempDir;
@@ -72,6 +81,24 @@ namespace {
     bool emptyFolder(const fs::path& dir) {
         std::error_code ec;
         return fs::directory_iterator(dir, ec) == fs::directory_iterator();
+    }
+
+    // a project of a few files, the source of the template tests below
+    fs::path writeGameProject(const fs::path& project) {
+        for (const char* file : {"project.yaml", "Main.scene", "scripts/Rotator.lua", "scripts/Other.lua"}) {
+            fs::create_directories((project / file).parent_path());
+            std::ofstream(project / file) << file;
+        }
+        return project;
+    }
+
+    // the process ends at its `nth` publish of a file: a crash in the middle of a copy
+    void dieAtPublish(int nth) {
+        auto count = std::make_shared<int>(0);
+        io::setAtomicFileFaultInjector([count, nth](std::string_view step, const fs::path&) -> std::error_code {
+            if (step == "rename" && ++*count == nth) std::_Exit(42);
+            return {};
+        });
     }
 
 }
@@ -179,6 +206,34 @@ TEST(ZipImport, NestedProject) {
     EXPECT_FALSE(importer::importZip(zip, parent, ZipLimits(), nullptr, projectDir, error));
 }
 
+#ifndef _WIN32
+// the disk fills up when an entry's last buffer is flushed: a failed import, not a project with a
+// short file. The entry is under 1 KiB, which the stream holds back (it writes more than that at once)
+TEST(ZipImport, AWriteThatFailsAtTheLastFlushFailsTheImport) {
+    TestTempDir dir("zip-flush");
+    const fs::path parent = dir.path() / "Projects";
+    fs::create_directories(parent);
+    const fs::path zip = dir.path() / "Game.zip";
+    writeZip(zip, {{"Game/project.yaml", std::string(500, 'a')}});
+
+    rlimit limit{};
+    ASSERT_EQ(getrlimit(RLIMIT_FSIZE, &limit), 0);
+    const rlimit unlimited = limit;
+    limit.rlim_cur = 100;
+    void (*const previous)(int) = signal(SIGXFSZ, SIG_IGN);
+    ASSERT_EQ(setrlimit(RLIMIT_FSIZE, &limit), 0);
+    fs::path projectDir;
+    std::string error;
+    const bool imported = importer::importZip(zip, parent, ZipLimits(), nullptr, projectDir, error);
+    setrlimit(RLIMIT_FSIZE, &unlimited);
+    signal(SIGXFSZ, previous);
+
+    EXPECT_FALSE(imported) << "imported to " << projectDir;
+    EXPECT_NE(error.find("cannot write"), std::string::npos) << error;
+    EXPECT_TRUE(emptyFolder(parent));
+}
+#endif
+
 TEST(ZipImport, RefusedArchivesLeaveNothing) {
     TestTempDir dir("zip-refused");
     const fs::path parent = dir.path() / "Projects";
@@ -220,6 +275,116 @@ TEST(ZipImport, RefusedArchivesLeaveNothing) {
     EXPECT_FALSE(importer::importZip(big, parent, ZipLimits(), [](float, const std::string&) { return false; }, projectDir, error));
     EXPECT_EQ(error, "cancelled");
     EXPECT_TRUE(emptyFolder(parent));
+}
+
+// the copy dies midway, the editor with it: nothing half made at the target, and the same copy
+// works afterwards. A built-in template and a user's; a new folder and an empty one the user made
+TEST(ProjectTemplatesDeathTest, ACrashMidCopyLeavesTheTargetAsItWas) {
+    TestTempDir dir("templates-crash");
+    const fs::path project = writeGameProject(dir.path() / "Game");
+    const fs::path user = templates::userDirectory(dir.path() / "settings");
+    std::string id, error;
+
+    EXPECT_EXIT({
+        dieAtPublish(2);
+        templates::saveProjectAsTemplate(project, user, "Saved", "", "Main", {}, id, error);
+        std::_Exit(0);
+    }, ::testing::ExitedWithCode(42), "");
+    EXPECT_FALSE(fs::exists(user / "saved"));
+    EXPECT_EQ(templates::find(templates::all(user), "saved"), nullptr);
+    EXPECT_TRUE(templates::saveProjectAsTemplate(project, user, "Saved", "", "Main", {}, id, error)) << error;
+
+    const std::vector<ProjectTemplate> list = templates::all(user);
+    size_t saved = 0;
+    for (const ProjectTemplate& t : list) saved += t.id == "saved" ? 1 : 0;
+    EXPECT_EQ(saved, 1u) << "only the published template is in the catalog";
+    for (const char* name : {"3d", "saved"}) {
+        const ProjectTemplate* info = templates::find(list, name);
+        ASSERT_NE(info, nullptr) << name;
+        for (const bool existing : {false, true}) {
+            const fs::path target = dir.path() / "Projects" / (std::string(name) + (existing ? "-existing" : "-new"));
+            if (existing) fs::create_directories(target);
+            EXPECT_EXIT({
+                dieAtPublish(2);
+                templates::materialize(*info, target, error);
+                std::_Exit(0);
+            }, ::testing::ExitedWithCode(42), "") << target;
+            EXPECT_EQ(fs::exists(target), existing) << target;
+            if (existing) {
+                EXPECT_TRUE(emptyFolder(target)) << target;
+            }
+            EXPECT_TRUE(templates::materialize(*info, target, error)) << error;
+            EXPECT_TRUE(fs::exists(target / "project.yaml")) << target;
+        }
+    }
+}
+
+// a failure midway: the folder keeps what the user put there (the copy never wrote in it), and none
+// of the copy stays behind. The publish itself failing is one too
+TEST(ProjectTemplates, AFailedCopyLeavesTheTargetAsItWas) {
+    TestTempDir dir("templates-failed");
+    const fs::path project = writeGameProject(dir.path() / "Game");
+    const fs::path user = templates::userDirectory(dir.path() / "settings");
+    std::string id, error;
+    ASSERT_TRUE(templates::saveProjectAsTemplate(project, user, "Saved", "", "Main", {}, id, error)) << error;
+    const std::vector<ProjectTemplate> list = templates::all(user);
+    const fs::path parent = dir.path() / "Projects";
+    const fs::path target = parent / "New";
+    const std::error_code full = std::make_error_code(std::errc::no_space_on_device);
+    struct InjectorOff {
+        ~InjectorOff() { io::setAtomicFileFaultInjector(nullptr); }
+    } injectorOff;
+
+    for (const char* name : {"3d", "saved"}) {
+        const ProjectTemplate* info = templates::find(list, name);
+        ASSERT_NE(info, nullptr) << name;
+        fs::remove_all(parent);
+        fs::create_directories(target);
+
+        // the second file fails, and the user dropped a file in the empty folder meanwhile
+        auto renames = std::make_shared<int>(0);
+        io::setAtomicFileFaultInjector([renames, full, target](std::string_view step, const fs::path&) -> std::error_code {
+            if (step != "rename" || ++*renames < 2) return {};
+            std::ofstream(target / "mine.txt") << "mine";
+            return full;
+        });
+        EXPECT_FALSE(templates::materialize(*info, target, error)) << name;
+        EXPECT_TRUE(fs::exists(target / "mine.txt")) << name;
+        EXPECT_FALSE(fs::exists(target / "project.yaml")) << name;
+        fs::remove(target / "mine.txt");
+
+        // the whole copy's rename fails: the user's empty folder is back
+        io::setAtomicFileFaultInjector([full, target](std::string_view step, const fs::path& path) -> std::error_code {
+            return step == "rename" && path == target ? full : std::error_code();
+        });
+        EXPECT_FALSE(templates::materialize(*info, target, error)) << name;
+        io::setAtomicFileFaultInjector(nullptr);
+        EXPECT_TRUE(fs::is_directory(target)) << name;
+        EXPECT_TRUE(emptyFolder(target)) << name;
+
+        // a cancel
+        const std::atomic<bool> cancelled{true};
+        EXPECT_FALSE(templates::materialize(*info, target, error, &cancelled)) << name;
+        EXPECT_EQ(error, "cancelled") << name;
+        EXPECT_TRUE(emptyFolder(target)) << name;
+
+        // nothing else in the location, and a path with a trailing separator is the same target
+        size_t folders = 0;
+        for (const fs::directory_entry& entry : fs::directory_iterator(parent)) folders += entry.exists() ? 1 : 0;
+        EXPECT_EQ(folders, 1u) << name << ": a staging folder stayed behind";
+        EXPECT_TRUE(templates::materialize(*info, target / "", error)) << error;
+        EXPECT_TRUE(fs::exists(target / "project.yaml")) << name;
+    }
+
+    // saving a template: same, and the catalog's folder has nothing left
+    auto renames = std::make_shared<int>(0);
+    io::setAtomicFileFaultInjector([renames, full](std::string_view step, const fs::path&) -> std::error_code {
+        return step == "rename" && ++*renames == 2 ? full : std::error_code();
+    });
+    EXPECT_FALSE(templates::saveProjectAsTemplate(project, user, "Other", "", "Main", {}, id, error));
+    io::setAtomicFileFaultInjector(nullptr);
+    EXPECT_FALSE(fs::exists(user / "other"));
+    EXPECT_FALSE(fs::exists(user / ".staging"));
 }
 
 TEST(ProjectTemplates, CatalogAndSaveAsTemplate) {

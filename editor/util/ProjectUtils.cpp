@@ -28,6 +28,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "component/ActionComponent.h"
@@ -135,6 +136,16 @@ bool splitTrailingDuplicateNumber(const std::string& name, std::string& baseName
     return true;
 }
 
+}
+
+// An RGBA square written to a project file through the atomic writer (docs/data-safety.md)
+static bool writePngFile(const fs::path& file, int size, const std::vector<unsigned char>& pixels) {
+    std::string png;
+    auto append = [](void* context, void* data, int count) {
+        static_cast<std::string*>(context)->append(static_cast<const char*>(data), static_cast<size_t>(count));
+    };
+    if (!stbi_write_png_to_func(append, &png, size, size, 4, pixels.data(), size * 4)) return false;
+    return editor::FileUtils::writeFile(file, png) != editor::FileUtils::WriteResult::Failed;
 }
 
 void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
@@ -872,19 +883,124 @@ size_t editor::ProjectUtils::getTransformIndex(EntityRegistry* registry, Entity 
     return 0;
 }
 
-void editor::ProjectUtils::sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities) {
-    // Key: Transform index, 0 without a Transform. Stable, so equal keys (the flat
-    // GameObjects) keep the order they are listed in.
+bool editor::ProjectUtils::keepInParentBranch(EntityRegistry* registry, Entity entity) {
+    const ComponentId transformId = registry->getComponentId<Transform>();
+    const Transform* transform = registry->findComponent<Transform>(entity);
+    if (!transform) {
+        return false;
+    }
+    // read before the index queries, which settle the array (and can move its components)
+    const Entity parent = transform->parent;
+    if (parent == NULL_ENTITY || !registry->isEntityCreated(parent) || !registry->getSignature(parent).test(transformId)) {
+        return false;
+    }
+    auto transforms = registry->getComponentArray<Transform>();
+    const size_t index = transforms->getIndex(entity);
+    if (index > transforms->getIndex(parent)) {
+        // The array before it is in order, so it is in its parent's branch when the GameObject
+        // just before it is the parent or below it (a walk up that GameObject's parents, not
+        // along the branch: a decode places each of its children so)
+        Entity before = transforms->getEntity(index - 1);
+        for (size_t depth = 0; before != NULL_ENTITY && depth <= transforms->size(); depth++) {
+            if (before == parent) {
+                return false;
+            }
+            const Transform* beforeTransform = registry->findComponent<Transform>(before);
+            before = beforeTransform ? beforeTransform->parent : NULL_ENTITY;
+        }
+    }
+
+    // the whole branch moves, and the arrays kept in Transform order follow it
+    registry->moveChildToIndex(entity, registry->findBranchLastIndex(parent) + 1);
+    return true;
+}
+
+Entity editor::ProjectUtils::findSplitBranch(EntityRegistry* registry) {
+    const ComponentId transformId = registry->getComponentId<Transform>();
+    auto transforms = registry->getComponentArray<Transform>();
+    // The GameObject just read and its parents, outermost first: in order, the next one's parent
+    // is among them, or it has none
+    std::vector<Entity> path;
+    const size_t count = transforms->size();
+    for (size_t i = 0; i < count; i++) {
+        const Entity parent = transforms->getComponentFromIndex(i).parent;
+        if (parent == NULL_ENTITY || !registry->isEntityCreated(parent) || !registry->getSignature(parent).test(transformId)) {
+            path.clear();
+        } else {
+            while (!path.empty() && path.back() != parent) {
+                path.pop_back();
+            }
+            if (path.empty()) {
+                return parent;
+            }
+        }
+        path.push_back(transforms->getEntity(i));
+    }
+    return NULL_ENTITY;
+}
+
+bool editor::ProjectUtils::isBranchPlace(EntityRegistry* registry, Entity entity) {
+    const ComponentId transformId = registry->getComponentId<Transform>();
+    auto parentOf = [&](Entity of) {
+        const Transform* transform = registry->findComponent<Transform>(of);
+        return transform ? transform->parent : NULL_ENTITY;
+    };
+    const Entity parent = parentOf(entity);
+    auto transforms = registry->getComponentArray<Transform>();
+    const size_t first = transforms->getIndex(entity);
+    const size_t last = registry->findBranchLastIndex(entity);
+    // in its parent's branch: the GameObject before it is the parent or below it
+    if (parent != NULL_ENTITY && registry->isEntityCreated(parent) && registry->getSignature(parent).test(transformId)) {
+        bool inBranch = false;
+        Entity before = first > 0 ? transforms->getEntity(first - 1) : NULL_ENTITY;
+        for (size_t depth = 0; before != NULL_ENTITY && depth <= transforms->size(); depth++) {
+            if (before == parent) {
+                inBranch = true;
+                break;
+            }
+            before = parentOf(before);
+        }
+        if (!inBranch) {
+            return false;
+        }
+    }
+    // and not between a GameObject and its children: the next one's parent is none, the parent
+    // or one of the parent's parents
+    if (last + 1 < transforms->size()) {
+        const Entity nextParent = transforms->getComponentFromIndex(last + 1).parent;
+        Entity up = parent;
+        for (size_t depth = 0; nextParent != NULL_ENTITY && depth <= transforms->size(); depth++) {
+            if (up == nextParent) {
+                return true;
+            }
+            if (up == NULL_ENTITY) {
+                return false;
+            }
+            up = parentOf(up);
+        }
+    }
+    return true;
+}
+
+void editor::ProjectUtils::sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities, Entity moved) {
+    // The GameObjects with a Transform go in Transform order. One without (a Skybox) has no
+    // place there: it stays in its gap among the top-level GameObjects, after the branch of
+    // the top-level one it followed (the front when none), which is where the scene and
+    // prefab files write it. They keep their order among themselves (the Hierarchy lists
+    // them in it, and the first Skybox is the sky). A GameObject just moved is not one they
+    // follow: it is listed where it was, and they stay with the others.
     auto transforms = registry->getComponentArray<Transform>();
     const ComponentId transformId = registry->getComponentId<Transform>();
-    std::vector<std::pair<size_t, Entity>> keyed;
+    std::vector<std::pair<size_t, Entity>> keyed;  // (Transform index, GameObject), listed order
     keyed.reserve(entities.size());
+    std::vector<std::pair<size_t, Entity>> loose;  // (how many with a Transform before it, GameObject)
     bool sorted = true;
     for (Entity entity : entities) {
-        size_t key = 0;
-        if (registry->isEntityCreated(entity) && registry->getSignature(entity).test(transformId)) {
-            key = transforms->getIndex(entity);
+        if (!registry->isEntityCreated(entity) || !registry->getSignature(entity).test(transformId)) {
+            loose.emplace_back(keyed.size(), entity);
+            continue;
         }
+        const size_t key = transforms->getIndex(entity);
         if (!keyed.empty() && key < keyed.back().first) {
             sorted = false;
         }
@@ -893,12 +1009,104 @@ void editor::ProjectUtils::sortEntitiesByTransformOrder(EntityRegistry* registry
     if (sorted) {
         return;
     }
+
+    // Top level as the files write it: no listed parent
+    const std::unordered_set<Entity> listed(entities.begin(), entities.end());
+    std::unordered_map<Entity, bool> topLevelOf;
+    topLevelOf.reserve(keyed.size());
+    for (const auto& item : keyed) {
+        topLevelOf[item.second] = listed.count(registry->getComponent<Transform>(item.second).parent) == 0;
+    }
+    std::vector<Entity> anchors;  // per loose GameObject: the top-level one listed before it
+    anchors.reserve(loose.size());
+    Entity top = NULL_ENTITY;
+    size_t scanned = 0;
+    for (const auto& item : loose) {
+        for (; scanned < item.first; scanned++) {
+            if (keyed[scanned].second != moved && topLevelOf[keyed[scanned].second]) {
+                top = keyed[scanned].second;
+            }
+        }
+        anchors.push_back(top);
+    }
+
     std::stable_sort(keyed.begin(), keyed.end(), [](const auto& a, const auto& b) {
         return a.first < b.first;
     });
+
+    // Where each top-level GameObject's branch ends in Transform order
+    std::unordered_map<Entity, size_t> branchEnd;
+    top = NULL_ENTITY;
     for (size_t i = 0; i < keyed.size(); i++) {
-        entities[i] = keyed[i].second;
+        if (topLevelOf[keyed[i].second]) {
+            if (top != NULL_ENTITY) {
+                branchEnd[top] = i;
+            }
+            top = keyed[i].second;
+        }
     }
+    if (top != NULL_ENTITY) {
+        branchEnd[top] = keyed.size();
+    }
+
+    std::vector<Entity> result;
+    result.reserve(entities.size());
+    size_t placed = 0;
+    for (size_t i = 0; i < loose.size(); i++) {
+        // never ahead of one that was listed before it
+        if (anchors[i] != NULL_ENTITY) {
+            const size_t at = branchEnd[anchors[i]];
+            for (; placed < at; placed++) {
+                result.push_back(keyed[placed].second);
+            }
+        }
+        result.push_back(loose[i].second);
+    }
+    for (; placed < keyed.size(); placed++) {
+        result.push_back(keyed[placed].second);
+    }
+    entities = std::move(result);
+}
+
+void editor::ProjectUtils::keepUntransformedPlaces(EntityRegistry* registry, const std::vector<Entity>& before, std::vector<Entity>& entities) {
+    const ComponentId transformId = registry->getComponentId<Transform>();
+    auto untransformed = [&](Entity entity) {
+        return !registry->isEntityCreated(entity) || !registry->getSignature(entity).test(transformId);
+    };
+    const std::unordered_set<Entity> listed(entities.begin(), entities.end());
+    std::unordered_set<Entity> loose;
+    for (Entity entity : before) {
+        if (listed.count(entity) && untransformed(entity)) {
+            loose.insert(entity);
+        }
+    }
+    if (loose.empty()) {
+        return;
+    }
+    std::vector<Entity> result;
+    result.reserve(entities.size());
+    for (Entity entity : entities) {
+        if (!loose.count(entity)) {
+            result.push_back(entity);
+        }
+    }
+    // In the old order, so each one's predecessor is already back (a run of them keeps its order)
+    Entity previous = NULL_ENTITY;
+    for (Entity entity : before) {
+        if (!listed.count(entity)) {
+            continue;
+        }
+        if (loose.count(entity)) {
+            auto at = result.begin();
+            if (previous != NULL_ENTITY) {
+                at = std::find(result.begin(), result.end(), previous);
+                at = at == result.end() ? result.end() : at + 1;
+            }
+            result.insert(at, entity);
+        }
+        previous = entity;
+    }
+    entities = std::move(result);
 }
 
 bool editor::ProjectUtils::moveEntityOrderByTarget(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity target, InsertionType type, Entity& oldParent, size_t& oldIndex, bool& hasTransform) {
@@ -919,13 +1127,20 @@ bool editor::ProjectUtils::moveEntityOrderByTarget(EntityRegistry* registry, std
 
         auto transforms = registry->getComponentArray<Transform>();
 
-        size_t sourceTransformIndex = transforms->getIndex(source);
-        size_t targetTransformIndex = transforms->getIndex(target);
+        oldIndex = transforms->getIndex(source);
 
-        oldIndex = sourceTransformIndex;
-
-        if (type == InsertionType::AFTER || type == InsertionType::INTO){
-            targetTransformIndex++;
+        // Below its new parent first (that can move its branch, and so the target's place), then
+        // the place read from the target as it is now: after it means after its whole branch, as
+        // a sibling of it. Right after the target itself went between a GameObject with children
+        // and them, which split its branch and lost them from the saved file
+        registry->addEntityChild(newParent, source, true);
+        size_t targetTransformIndex;
+        if (type == InsertionType::AFTER){
+            targetTransformIndex = registry->findBranchLastIndex(target) + 1;
+        }else if (type == InsertionType::INTO){
+            targetTransformIndex = transforms->getIndex(target) + 1;
+        }else{
+            targetTransformIndex = transforms->getIndex(target);
         }
 
         moveEntityOrderByTransform(registry, entities, source, newParent, targetTransformIndex);
@@ -973,6 +1188,13 @@ bool editor::ProjectUtils::moveEntityOrderByTarget(EntityRegistry* registry, std
 void editor::ProjectUtils::moveEntityOrderByIndex(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity parent, size_t index, bool hasTransform, bool sortEntities){
     if (hasTransform){
 
+        // Below its parent first, then its place read where that left it: the reparent moves the
+        // branch to the end of the parent's, so a place read before it (where the move had put it)
+        // was one branch length off when the move had taken it to an earlier index, out of a
+        // parent it was not the last child of. It came back past its next sibling, or between
+        // that sibling and its children, which split the sibling's branch
+        registry->addEntityChild(parent, source, true);
+
         auto transforms = registry->getComponentArray<Transform>();
         size_t sourceTransformIndex = transforms->getIndex(source);
 
@@ -980,8 +1202,18 @@ void editor::ProjectUtils::moveEntityOrderByIndex(EntityRegistry* registry, std:
         if (sourceTransformIndex < index){
             index += sizeOfSourceBranch;
         }
+        index = std::min(index, transforms->size());
 
-        moveEntityOrderByTransform(registry, entities, source, parent, index, true, sortEntities);
+        moveEntityOrderByTransform(registry, entities, source, parent, index, true, false);
+        // An index the array no longer fits (something outside the history changed it since)
+        // never splits a branch: the GameObject goes to the end of its parent's instead
+        if (!isBranchPlace(registry, source)){
+            registry->moveChildToIndex(source, parent != NULL_ENTITY && registry->findComponent<Transform>(parent) ?
+                registry->findBranchLastIndex(parent) + 1 : transforms->size());
+        }
+        if (sortEntities){
+            ProjectUtils::sortEntitiesByTransformOrder(registry, entities, source);
+        }
 
     }else{
 
@@ -1014,7 +1246,7 @@ void editor::ProjectUtils::moveEntityOrderByTransform(EntityRegistry* registry, 
     }
 
     if (sortEntities){
-        ProjectUtils::sortEntitiesByTransformOrder(registry, entities);
+        ProjectUtils::sortEntitiesByTransformOrder(registry, entities, source);
     }
 }
 
@@ -1036,7 +1268,8 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
     }
     desc->add(registry, entity, value.get());
     if (componentType == ComponentType::Transform) {
-        ProjectUtils::sortEntitiesByTransformOrder(registry, entities);
+        // last in Transform order now, listed where it was
+        ProjectUtils::sortEntitiesByTransformOrder(registry, entities, entity);
     }
 
     Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(componentType));
@@ -1618,7 +1851,7 @@ std::string editor::ProjectUtils::ensureOnScreenControlTexture(const std::filesy
             p[3] = static_cast<unsigned char>(std::lround(255.0f * alpha * coverage));
         }
     }
-    if (!stbi_write_png(file.string().c_str(), size, size, 4, pixels.data(), size * 4)) {
+    if (!writePngFile(file, size, pixels)) {
         Out::error("Could not write %s", file.string().c_str());
         return "";
     }
@@ -1732,7 +1965,7 @@ std::string editor::ProjectUtils::ensureSoftParticleTexture(Project* project) {
         }
     }
     fs::create_directories(file.parent_path(), ec);
-    if (!stbi_write_png(FileUtils::pathToUtf8(file).c_str(), size, size, 4, pixels.data(), size * 4)) {
+    if (!writePngFile(file, size, pixels)) {
         Out::warning("Could not write %s", FileUtils::pathToUtf8(file).c_str());
         return "";
     }

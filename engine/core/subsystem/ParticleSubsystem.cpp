@@ -497,8 +497,10 @@ void ParticleSubsystem::prepareInput(Entity entity, ParticleSystemComponent& par
     if (prog && prog->gravitySource == GravitySource::Physics2D){
         const Vector2 g2 = scene->getGravity2D();
         float pointsPerMeter = 64.0f;
+#ifdef JASPERENGINE_PHYSICS_2D
         if (PhysicsSystem* physics = scene->findSystem<PhysicsSystem>().get())
             pointsPerMeter = physics->getPointsToMeterScale2D();
+#endif
         gravity = Vector3(g2.x * pointsPerMeter, g2.y * pointsPerMeter, 0.0f);
     }
     input.gravity[0] = gravity.x;

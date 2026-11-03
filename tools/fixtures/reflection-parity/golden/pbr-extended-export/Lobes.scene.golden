@@ -85,28 +85,52 @@ shaderKeys:
     properties: 1112
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
+    properties: 1114
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
     properties: 8589935704
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 8589935706
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
   - type: mesh
+    properties: 1114
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
     properties: 33554776
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 33554778
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 8589935704
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
   - type: mesh
+    properties: 8589935706
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
     properties: 8623489368
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
   - type: mesh
+    properties: 8623489370
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
     properties: 33554776
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 33554778
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 33554906
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 8623489368
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 8623489370
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 8623489498

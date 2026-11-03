@@ -20,7 +20,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Web gate | the web build in headless Chrome (WebGL2 on SwiftShader) | `tools/build.sh web`, then `tools/build.sh web-gate` | `build/test-results/web/` |
 | Android render gate | an APK on the Android emulator: logcat, GLES errors, and the screen against goldens (a lit 3D scene, 2D/UI, HTML UI) | `ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh` (below; KVM servers A and C) | `build/android-emulator/<scene>/` |
 | Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
-| Tool checks | the CI scripts' own tests, the notices, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/check-notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
+| Tool checks | the CI scripts' own tests, the notices, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/check-notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
@@ -58,6 +58,11 @@ the picking suites a second time with `scalar`); `MeshPose.MatchesGpuSkinning` i
 CPU pose against the skinned shaders, glcore and Vulkan). `JASPER_PICK_BUILD_DELAY_MS=<ms>` holds
 every background mesh BVH build pending that long: the MCP tests use it to see the Scene view's
 waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
+`JASPER_TEXTURE_LOAD_DELAY_MS=<ms>` holds every async texture decode that long: a screenshot must
+then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screenshot_waits.py`).
+`JASPER_MESH_LOAD_HOLD_FILE=<path>` holds the first load (the binding) of the meshes of a scene that
+loaded a model in the background while that file exists, so what else loads the same model meanwhile
+(a Project window thumbnail's preview) comes first (`tools/mcp/tests/test_model_texture_bind.py`).
 
 ### HTML UI, MCP, smoke, web
 
@@ -87,8 +92,8 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 - An MCP test asserts behaviour; a wall-clock budget (a CLI start in 300 ms, a reload frame under
   16 ms, ...) goes through `harness.over_budget(what, measures, budget)`, which prints a `[bench]`
   line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
-  misses those budgets. The benchmark run enforces them on the benchmark-only server E:
-  `rb.sh E --img 'JASPER_MCP_PERF_SLACK=1 dbus-run-session -- tools/mcp/run-tests.sh
+  misses those budgets. The benchmark run enforces them on a quiet server, with the box to itself (C, `RB_SLOTS=2`):
+  `RB_SLOTS=2 rb.sh C --img 'JASPER_MCP_PERF_SLACK=1 dbus-run-session -- tools/mcp/run-tests.sh
   tools/mcp/tests/test_call_cli.py tools/mcp/tests/test_hot_reload.py tools/mcp/tests/test_checks.py'`.
 - Compiled and prebuilt game builds: see the next section.
 - With `-j N` the runner starts the longest files first. It orders them by each file's wall time
@@ -97,6 +102,11 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
   scratch directory, so the order changes nothing a test sees.
 - `tools/smoke-test.sh <project>`: see its header. It also checks that the exported project
   configures as a user's game does: no presets file, no warnings as errors, no sanitizer.
+  A hang watchdog report fails it, with one exception: on a project's first editor open, when every
+  report's stack is llvmpipe's JIT inside a draw (`tools/ci/smoke_jit_hangs.py`), it opens the editor
+  again with the Mesa disk cache warm, and that open must have no hang at all. A software GL compiles
+  a program's variant at its first draw on the render thread (S32 deviation 6), and a scene of many Lit
+  variants holds that frame 7-9 s (`tools/fixtures/pbr-extended-export`; S32, Progress).
 - `tools/build.sh web-gate` serves `build/web` with cross-origin isolation, opens
   `jasperengine-project.html?jasperengine_ready_signal=1` in the web image's pinned Chrome for
   Testing headless shell, and fails on an uncaught exception, a console error, an engine error
@@ -127,7 +137,7 @@ takes about a second. So an MCP test compiles only when the compile path is what
   | Test | Why it compiles |
   |---|---|
   | `test_build.py::test_desktop_build_and_run` | the compile path end to end (CMake, the engine, the link, a player that runs), and a broken C++ source's errors parsed as `file:line` (only a compiler produces them) |
-  | `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` | `graphics.runtime_shaders: false`: only a compiled game ships without the runtime shader compiler (every prebuilt runtime has it), so only it shows the exported UI effect variants are all the game needs |
+  | `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` | `graphics.runtime_shaders: false`: a compiled game ships without the runtime shader compiler whatever its scripts do (a prebuilt variant leaves it out only when no script can need it, S34), so it shows the exported UI effect variants are all the game needs |
   | `test_build.py::test_cancel_desktop_build`, `test_busy.py::test_export_job_refusals` | a compile runs long enough to cancel, and to refuse other tools while it runs (a prebuilt build ends first); both are cancelled within seconds |
 
 - **(b) Prebuilt** (`method="prebuilt"`, and it checks `method_used` and the `player_id` it
@@ -153,20 +163,48 @@ The cache cannot hide a bug:
 
 - Its key covers everything a runtime is built from. That is the content (not the commit or the
   file times) of every file under `engine/`, `tools/players/` and `tools/performance/`, plus
-  `tools/ci/check-notices.py`, `NOTICE.md`, `LICENSE` and the cache's own source. It also covers
-  the exact CMake arguments, the compiler, linker, CMake and Ninja versions, the compiler
-  environment (`CC`, `CXX`, `CFLAGS`, ...), and the editor version the runtime is locked to.
-  `python3 tools/mcp/build_cache.py key glcore release` prints it.
-- It lives under the run's build directory, next to the editor under test:
-  `build/linux/mcp-build-cache/<runtime id>/` (`players/`, `key.json`, `build.log`).
-  `JASPER_MCP_BUILD_CACHE` moves it.
-- An entry whose key differs from the current one is deleted before anything is built. So a
-  runtime of other sources (another commit, an uncommitted edit) is never reused.
-- Each build starts from an empty CMake tree, through `tools/players/build_linux_player.sh`
-  (what `tools/build.sh players` runs). Below it, ccache (`CCACHE_DIR`, as for the editor itself)
-  keys each object on its preprocessed source, compiler and flags.
+  `tools/ci/check-notices.py`, `NOTICE.md`, `LICENSE`, the Linux image's `docker/linux.Dockerfile`
+  and the cache's own source. It also covers the exact CMake arguments, the compiler, linker,
+  CMake and Ninja versions, the compiler environment (`CC`, `CXX`, `CFLAGS`, ...), and the editor
+  version the runtime is locked to. `python3 tools/mcp/build_cache.py key glcore release` prints it.
+- The runtimes are a test's: no GCC link-time optimisation (`-DJASPERENGINE_RELEASE_LTO=OFF`, in
+  the key); the rest of the release link (sections, hidden visibility, split symbols) is as
+  shipped. LTO was most of a release runtime's build (its link alone a quarter of an hour on a
+  loaded server) and changes nothing a test of the game checks. The suite keeps one LTO check:
+  `test_build.py::test_desktop_build_and_run` compiles a shipped game's release link with LTO, runs
+  the player and checks its compile tree was configured with `JASPERENGINE_RELEASE_LINK` and
+  `JASPERENGINE_RELEASE_LTO` on; CI's `tools/build.sh players` and `tools/build.sh linux`'s sample
+  project (the gate's WERROR build) link with LTO too.
+- **Shared per machine** (`JASPER_MCP_SHARED_BUILD_CACHE=<dir>`; the build servers' rb.sh sets
+  `~/je/mcp-build-cache`, which `tools/build.sh mcp-tests` and `jimg` mount at `/mcp-build-cache`):
+  one entry per runtime and key, `<dir>/v1/<runtime id>/<key>/`, used by every worktree, stream and
+  run of the machine. One process builds a key (an exclusive lock), every other one that needs it
+  waits for that build; the build goes to a staging directory renamed into place complete, so no
+  reader sees half an entry. A run holds a shared lock on each entry it uses for as long as it
+  runs; the size limit (`JASPER_MCP_BUILD_CACHE_MAX_GB`, default 15) evicts the least recently
+  used entries nobody holds, and the staging directories of builds that died.
+  `python3 tools/mcp/build_cache.py list` (or `evict`) shows them; `status` says whether this
+  checkout's runtimes are built. The run's `build/linux/mcp-build-cache/<runtime id>/players` is a
+  link to its entry's.
+- Without a shared cache it lives under the run's build directory, next to the editor under test:
+  `build/linux/mcp-build-cache/<runtime id>/` (`players/`, `key.json`, `build.log`;
+  `JASPER_MCP_BUILD_CACHE` moves it), and an entry whose key differs from the current one is
+  deleted before anything is built.
+- Either way a runtime of other sources (another commit, an uncommitted edit) is never reused.
+- Each build starts from an empty CMake tree at a fixed path (`build/linux/mcp-build-cache/<runtime
+  id>/tree`, `/src/...` in the image whatever the worktree), through
+  `tools/players/build_linux_player.sh` (what `tools/build.sh players` runs). Below it, ccache
+  (`CCACHE_DIR`, as for the editor itself) keys each object on its preprocessed source, compiler,
+  flags and directory; the build's hits and misses go in its `key.json` and in the run's output.
 - A failed build fails every test that needs it, with its log, for the rest of the run. The next
   run tries again.
+- The compiled games (`method="compile"`) build through ccache too: their editors get
+  `harness.compile_env(name)`, a user cache (where the kit's compile tree goes) at the fixed path
+  `build/mcp-compile-home/<file>/`, emptied as the file starts, and ccache as CMake's compiler
+  launcher. Each run still configures and compiles a fresh tree and links; an object comes from
+  ccache only when its preprocessed source, flags and directory are those it was made from. They
+  link without LTO (`JASPERENGINE_RELEASE_LTO=OFF` in the editor's environment, which an exported
+  game's first configure takes as the option's default) except `test_build.py`'s (`lto=True`).
 
 A new test that needs a game that runs builds it prebuilt. One that needs what only a compiled
 game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, AdMob, no runtime
@@ -292,6 +330,164 @@ The opt-in flag requires the engine report **and** a matching debuggerd tombston
 under the emulator result directory, and accepts that deliberate crash. Ordinary emulator tests
 continue to fail on any native crash.
 
+## Gates: per commit, batch landings, main
+
+- **Per commit of a stream: `tools/check-changed`** (on a build server: `rb.sh <S>
+  tools/check-changed`). It builds and runs what the change can affect: the Linux editor and the
+  unit test binaries for C++ under `engine/` or `editor/` (web for the engine, Android for its own
+  code), the gtest suites whose test units include a changed file (Ninja's dependency database:
+  a changed `Foo.cpp` counts through `Foo.h` and everything that includes it), and the MCP test
+  files the coverage map ties to the change (below). Everything for the root CMake, `docker/`,
+  `tools/build.sh`, the toolchain and the lockfiles; the whole MCP suite for a change of its harness
+  (`harness.py`, `run_tests.py`, `build_cache.py`); nothing for docs.
+- **Batch landings, and before main: the full suite** (`MCP_SUITE=all JASPER_SLOW_BUILD=1
+  JASPER_SLOW_TESTS=1`), sharded across servers by `je-remote/mcp-shard.sh`, plus the WERROR Linux
+  build (with the engine sample project's LTO link) and every unit test. check-changed is a
+  selection; it never replaces this gate, and says so in every summary.
+
+### `tools/check-changed`
+
+```sh
+rb.sh A tools/check-changed              # build and test what the change touches
+rb.sh A tools/check-changed --dry-run    # the plan only
+rb.sh A tools/check-changed --base main  # another base (default: the merge base with oe-port, else main, origin/main)
+rb.sh A --img tools/check-changed        # inside the Linux image (no web or Android build there)
+```
+
+- The change: committed since the base, staged, unstaged and untracked files. A server's worktree
+  has no history of the stream, so rb.sh sends the stream's diff (`build/.rb-changes.json`, with
+  every file's sha256: a diff that does not match the synced files is refused).
+- Unit tests: the gtest suites (`TEST`, `TEST_F`, `TEST_P`, typed) of the test units that see the
+  change, in `jasperengine-core-tests` and `jasperengine-editor-tests` (`--gtest_filter`, through
+  `tools/build.sh unit-tests` and its no-silent-green gate); a changed test file always runs; a
+  CMake change, or test trees not built yet, run them all.
+- MCP tests: the files that executed the functions the diff's hunks touch (coverage map: the whole
+  file when a changed line is outside every function, a declaration or a type; a header then also
+  through its `.cpp`; only new lines outside the functions touch nothing old, a new function counts
+  through its callers' changes; the lines reach the map's through the diff from its commit; a
+  function nearly every editor runs selects the 10 quickest files that run it), the changed test files, the files that call a
+  changed MCP tool (by its tool names), that load a changed fixture, test project, Lua script,
+  shader, HTML, scene or material (by path), and, for an engine change, the files that run a prebuilt
+  game (`GAME_BUILD_FILES`: it runs engine code no editor coverage sees), and those that compile a
+  game when what the compile path reads changes (`COMPILE_PATHS`).
+  No map, a map older than 14 days or 400 commits, or a changed source the map does not know (new
+  code), or a file no test names adds the CI suite; code the map knows that no test executes
+  selects nothing, and the summary says so. A selected test that skips
+  could not run: that fails the check.
+- The diff is the stream's, so a long or wide stream selects most of the suite (a tool like
+  `create_entity` or the frame reaches most test files). `--base HEAD~1` checks one commit, when the
+  one before it passed.
+- A pass is cached in `build/.cache/check-changed.json`, keyed by the base, the content of every
+  changed and untracked file, the images' Dockerfiles, the coverage map's version and the script
+  itself: the same inputs reprint the last summary (`--no-cache` runs again); a run during which
+  the files changed caches nothing. Exit 1 when a step fails or a selected test cannot run.
+- Output: the plan, then each step's result; a failed step's output (`CHECK_CHANGED_VERBOSE=1`:
+  everything).
+- Inside the Linux image `tools/build.sh` has no Docker to call and runs the image's own targets
+  directly, with the same environment (`rb.sh <S> --img 'tools/build.sh ...'`, and so `rb.sh L --img`
+  on this host); a target of another image (web, Android) exits 3; check-changed there leaves those
+  builds out, says so in its summary and caches no pass.
+- Its tests: `python3 -I tools/test_check_changed.py` (the diff and its fallbacks, the build plan,
+  the suites from a synthetic `ninja -t deps`, the MCP selection from a synthetic map, the gcda
+  reader, the cache and its invalidation, the exit codes).
+
+**The coverage map** (`tools/mcp/coverage_map.py`): for each MCP test file, the engine and editor
+sources its editors executed. A full run of a coverage-instrumented editor records it, off the
+critical path (a batch landing's run, a quiet server); it is stored with its commit in the server's
+`~/je/mcp-build-cache/coverage-map.json` (check-changed finds it there, or
+`JASPER_MCP_COVERAGE_MAP`):
+
+```sh
+rb.sh A env COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux          # build/linux/editor-coverage-install
+rb.sh A --img 'JASPER_EDITOR=/src/build/linux/editor-coverage-install/bin/jasperengine-editor \
+  JASPER_MCP_COVERAGE_DIR=/src/build/coverage/runs JASPER_SLOW_TESTS=1 \
+  dbus-run-session -- tools/mcp/run-tests.sh -j 4 --split-seconds 900; \
+  python3 tools/mcp/coverage_map.py collect build/coverage/runs build/linux/editor-coverage \
+  --commit <the commit> --out /mcp-build-cache/coverage-map.json'
+```
+
+Each test file's (and chunk's) editors write their GCC counts under their own `GCOV_PREFIX`; a
+function counts for a test file when a counter of it is above zero; the object's `.gcno` says which file
+and lines it is written in (a header's for an inline function), which takes check-changed from a
+diff's hunks to functions. The run leaves out the slow builds
+(no `JASPER_SLOW_BUILD`): what a compile or a prebuilt game runs is not the editor's code, and the
+files that build games are selected by path (`GAME_BUILD_FILES`, `COMPILE_PATHS`). The server's
+`rb.sh` puts the map where check-changed looks; copy it to the other servers' `~/je/mcp-build-cache/`.
+
+### The full suite across servers: `je-remote/mcp-shard.sh`
+
+```sh
+cd <worktree> && ../../je-remote/mcp-shard.sh --pin-builds A A:7:2 H:8:2:gpu B:6:2 C:3
+```
+
+It builds each server's editor at once (`WERROR=1 SKIP_ENGINE=1 tools/build.sh linux`), lists the
+suite as `MCP_SUITE=all` collects it (`run_tests.py --list`), plans the shards
+(`tools/mcp/shard.py plan`: longest processing time first by the earlier runs' test times, the
+files that build games on `--pin-builds`, where the shared player cache and ccache are warm),
+checks the union (every listed test in exactly one chunk of one shard), runs the shards at once
+(`tools/build.sh mcp-tests --plan`), fetches their results and merges them into one report in the
+runner's format (`shard.py merge`: every planned test reported exactly once, nothing else). It
+exits non-zero on a failure, a crash, an unexpected skip (`--allow-skip`) or a broken union.
+`SERVER:WORKERS:SLOTS` takes `SLOTS` rb.sh slots (`RB_SLOTS`), whose CPUs the shard's editors share.
+
+A file's tests share an editor and run in order, so a file is one piece of work, unless it declares
+`TESTS_INDEPENDENT = "why"` (each test sets up what it needs and runs in an editor of its own, in
+any order) or `TESTS_INDEPENDENT = ("why", ["test_x_*"])` for some of its tests (those use nothing
+the file's other tests leave, nor do the others use theirs): their tests may be split into chunks,
+each with its own worker process and editor (`run_tests.py --split-seconds N` on one server,
+`--chunk-seconds` across servers). `test_html_ui_examples.py` (each example's golden) and the
+Khronos models of `test_materials_pbr.py` (`test_khronos_<Model>`) declare it.
+
+### Caches and CPU caps
+
+- **ccache** is shared by every worktree of a server (`<main checkout>/build/.cache/ccache`), and
+  every worktree is `/src` in the image, so a tree another worktree built is a hit:
+  an editor build of oe-port in a new worktree on A, 2,144 direct hits of 2,150 compiles, 158 s.
+  What a merge changes is compiled once per server.
+- **The prebuilt player runtimes**: once per content key per server (above).
+- **Mesa's shader cache**: llvmpipe and lavapipe compile every shader to machine code; the editors
+  keep that cache (`MESA_SHADER_CACHE_DIR`) in the server's shared MCP cache (or the checkout's
+  `build/.cache/mesa-shader-cache`) instead of a fresh one in every scratch HOME. It is Mesa's own
+  cache, keyed by the shader and the driver build, on by default for every Mesa user.
+- **`LP_NUM_THREADS`**: Mesa's llvmpipe gives every editor a rasterizer thread per CPU of the host,
+  not of the container's quota; at `-j N` that is N times the host's CPUs inside the quota, which
+  throttles them all at once, main threads included (the 3-13 s stalls on A). The harness gives
+  each editor (and the players it runs) 4 threads (`harness.render_threads()`: fewer, down to 2,
+  only at under half a CPU per thread; `JASPER_MCP_RENDER_THREADS`, or `LP_NUM_THREADS` in the
+  run's environment, overrides). Measured on A, the same 36 tests at `-j 4` in an 8-CPU container
+  (the host shared with other jobs; the last run's host was the busiest):
+
+  | `LP_NUM_THREADS` | Wall | Median s per frame | Host load, median / peak | Result |
+  |---|---|---|---|---|
+  | Mesa's default (16) | 2,009 s | 1.63 | 21 / 53 | 36 passed |
+  | 4 | 1,772 s | 1.46 | 12 / 23 | 36 passed |
+  | 2 | 2,517 s | 2.22 | not sampled | 35 passed, a screenshot timed out |
+
+  An editor averages about 2 CPUs and holds 1 to 2.4 GB (seven at once: 6.8 GB), so memory does not
+  bound `-j`: CPUs do, at about one editor per 2 CPUs of quota (`-j 4` on 8, `-j 7` on 16).
+- **Slots**: rb.sh's per-server slot locks are its heavy-job cap; a slot is `DEFJOBS` CPUs of
+  container quota (`JOBS`). An MCP shard takes the slots its editors need (`RB_SLOTS`).
+
+### The real-GPU lane (server H)
+
+The GPU lane runs the tests whose checks hold on any renderer on H's RTX 3080 Ti, through headless
+NVIDIA X servers in their own containers (`tools/gpu/xorg-headless.sh`, `JE_GPU_SCREEN=1600x900`,
+the size of an editor's own Xvfb; the desktop session is never touched): `DOCKER_GPU=1
+tools/build.sh mcp-tests --plan ...` sources `tools/gpu/env.sh`, and the runner gives a chunk of
+the lane `gpu` the NVIDIA display (one display per chunk at a time, `JASPER_MCP_GPU_DISPLAYS`; the
+harness's own X server is that display too, for the xdotool tests) and every other chunk llvmpipe
+as anywhere. Each editor checks it renders where its chunk says (`JASPER_MCP_EXPECT_DEVICE`:
+NVIDIA, or llvmpipe), so a lane test never runs on llvmpipe unnoticed and no golden test runs on
+the GPU. `tools/mcp/gpu_lane.json` classes every graphics test file:
+
+| Class | Files | What |
+|---|---|---|
+| (a) `gpu` | 43 | relative or structural checks (a change between two renders, no black or NaN pixels, values, undo, saved files); each passed twice on the RTX; BF16's 34 together 7,259 s of test time on llvmpipe under load, 1,223 s on the RTX: `animation_clip`, `animation_inspector`, `animation_record`, `animation_window`, `animator`, `async_shaders`, `atmosphere`, `atmosphere_editor`, `autosync`, `bake_vertex_animation`, `buoyancy`, `core_utilities`, `ecs`, `ecs_collision`, `fluid_agent`, `fluid_fixed`, `hot_reload`, `html_ui_docs`, `html_ui_tools`, `html_ui_video`, `html_ui_widgets`, `play`, `play_stop_gizmos`, `pose_animation`, `pose_runtime`, `post_fx_settings`, `scene_view_ui`, `shader_library_phase2_review`, `shadows_ui`, `stochastic_tiling`, `undo_ui`, `vat_baker_window`, `vat_inspector`, `water`; since BF20: `fluid_effect`, `fluid_inspector`, `html_ui_effects`, `lattice_bake`, `place_with_physics`, `pose_render`, `pose_window`, `reflection`, `upgrade_from_main` |
+| (b) `llvmpipe` | 8 | compare with goldens drawn by llvmpipe, and the MCP suite has no per-renderer goldens (the unit tests' `isReferenceRenderer` and `hardwareTolerance` are C++ only), so they stay the reference: `html_ui_examples`, `lattice`, `materials_pbr`, `navigation`, `particles_tools`, `post_fx_golden`, `scene_view`, `shadows` |
+| (c) `other`, not on the lane | 77 | budgets or frame times of the software renderer, game builds, no renderer in use, or under a minute with nothing to gain (not validated) |
+
+Lane files run on one display per chunk, two at a time; a file holding one test that is not GPU-OK stays on llvmpipe whole, because its tests share an editor. Files not listed render nothing that matters and stay on llvmpipe.
+
 ## Where a test goes
 
 | Code under test | Test file | Target |
@@ -344,7 +540,8 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   enforced with: `JASPER_TEST_PERF_SLACK`, unset (0) by default and under a sanitizer, where the
   budgets are only printed. `*Bench` suites (`LoggerBench`, `SchedulerBench`, `SignalBench`, S10's
   `ShadowBench`), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
-  their budgets that way and print `[bench]` lines; the
+  their budgets that way and print `[bench]` lines (S34's `LuaBindingBench` prints the cost of a call
+  through the Lua bindings, with no budget: builds are compared with it on the benchmark server); the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),
   `AutosaveEncodeBench` (S03), `VcsBench` (S29: status poll, snapshot swap, scene diff; the
   main-thread encode is reported) and `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
@@ -354,11 +551,11 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   E's 4 vCPU measure a storm p95 of 1.7x the idle frame against the 1.5x budget, so it runs there
   only with a slack above that. A
   shared build server's load alone misses them (10k timers in 20 ms instead of 2), so an ordinary
-  unit test run never fails on wall-clock time; the benchmark run enforces them on the
-  benchmark-only server E, which runs one job at a time:
+  unit test run never fails on wall-clock time; the benchmark run enforces them on a
+  quiet server, with the box to itself (C, `RB_SLOTS=2`):
 
   ```bash
-  rb.sh E env JASPER_TEST_PERF_SLACK=1 \
+  RB_SLOTS=2 rb.sh C env JASPER_TEST_PERF_SLACK=1 \
       UNIT_TEST_ARGS='--gtest_filter=*Bench*:SchedulerTest.Process10kUnder2ms:AtmosphereNoise.*' tools/build.sh unit-tests
   ```
 
@@ -434,6 +631,10 @@ hides real regressions behind re-runs. So (BF12):
   `test_lattice_anim.py` sampled clip time 0.3 to 0.5 s, which 4 fps stepped over. A player:
   `run_build` with `after_ready`, `fixed_fps` and `quit_after` (or `screenshot_frame`) captures
   the player's own frame N frames after it got ready, not a window N seconds after the launch.
+- **A screenshot is of loaded content.** The editor's `screenshot`, the player's `--screenshot`
+  and the readiness line wait for shaders being made and textures loading (a frame drawn while a
+  texture loads shows a stand-in for it) and fail naming them past their timeout, so a golden
+  comparison never meets a stand-in.
 - **Make preconditions explicit.** Background work a test relies on finishes first:
   `HotReloadServiceTests.ExternalRenameKeepsTheGuidThroughTheWatcher` calls
   `AssetDatabase::waitForBackgroundWork()` before the rename, because R5 matches a file moved
@@ -444,16 +645,16 @@ hides real regressions behind re-runs. So (BF12):
 - **Keep random parts out of assertions.** Match file names, not full paths under a random temp
   folder (`FileWatcherTests`: `je-watch-<random>` holds "4913", vim's probe name, one time in 600).
 - **A budget is a benchmark.** MCP tests report wall-clock budgets with `harness.over_budget`,
-  units with `perfSlack()` (`JASPER_TEST_PERF_SLACK`); both are enforced by the benchmark run on
-  server E. The HTML UI gates take the least of several CPU-time measurements of the calling
+  units with `perfSlack()` (`JASPER_TEST_PERF_SLACK`); both are enforced by the benchmark run
+  (C, `RB_SLOTS=2`). The HTML UI gates take the least of several CPU-time measurements of the calling
   thread (`PerfFixtures.h`: `gatedCpuMs`); one whose budget is near the step's cost on a build
-  server (`MarkdownHtml.Perf20KB`: 1.3 ms of 2 there, 0.27 ms on E) is enforced only when
+  server (`MarkdownHtml.Perf20KB`: 1.3 ms of 2 there, 0.27 ms on a quiet one) is enforced only when
   `JASPER_HTMLUI_PERF_SLACK` is set (`benchmarkPerfSlack()`):
-  `rb.sh E env JASPER_HTMLUI_PERF_SLACK=1 HTMLUI_TEST_ARGS='--gtest_filter=MarkdownHtml.Perf20KB' tools/build.sh htmlui-tests`.
+  `RB_SLOTS=2 rb.sh C env JASPER_HTMLUI_PERF_SLACK=1 HTMLUI_TEST_ARGS='--gtest_filter=MarkdownHtml.Perf20KB' tools/build.sh htmlui-tests`.
   Scaling a timeout with a load factor is the last resort, and a test never asserts less to pass.
 - **Prove it under load.** Run the test where it failed, under deliberate load, before and after:
   `--gtest_repeat=50` for a unit test, 20 runs for an MCP test, in parallel lanes next to busy
-  loops in the image (`rb.sh G --img '...'`; the container's `--cpus` keeps the load off the
+  loops in the image (`rb.sh A --img '...'`; the container's `--cpus` keeps the load off the
   other jobs) or next to a full build. The run on the unchanged branch is the red control.
 
 ## How a spec adds tests
@@ -527,6 +728,18 @@ drops `/RTC1`, links with `/INCREMENTAL:NO`, defines `_DISABLE_STL_ANNOTATION`, 
 `TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:suppressions=tools/sanitizers/tsan.supp`.
 The suppression files list third-party code only (Mesa, X11, fontconfig, vendored libraries),
 each entry with its reason. Engine and editor code is never suppressed: fix it.
+
+GCC 11's TSan (the Linux image) does not intercept `pthread_cond_clockwait` or
+`pthread_mutex_clocklock`, which `std::condition_variable::wait_for` and `std::timed_mutex` lock
+through on the steady clock: one such wait makes its mutex look held, reports double locks there,
+and, since a `std::mutex` never tells TSan it is gone, breaks the next mutex at its address (reports
+of races under a mutex both sides hold). Core timed waits go through `jobs::detail::timedWait`
+(`jobs/detail/TimedWait.h`), a lock with a deadline is a `try_lock` loop (`Logger.cpp`, `lockUntil`;
+`io/watch/backends/Backends.h`, `lockWithin`; the editor's timed waits are not moved yet), and
+`Crash*` and `HangWatchdog.*` run under TSan with the rest. The GPU suites run with
+`halt_on_error=1` too: `tsan.supp` has Mesa's `swrast_dri.so`, whose reports are about its own mutexes. A budget
+in wall clock is printed under a sanitizer, never enforced there: `perfSlack()`, or the build's
+`JASPERENGINE_SANITIZE_*` where a test's own limit is unconditional.
 
 ### Warnings
 
@@ -857,3 +1070,85 @@ because Docker's cap is what shares the host. Re-run alone on D, at `-j 2` and l
 The compile path's missing executable is fixed: the Compile fallback holds its finish until the
 content manifest and the executable are set. S30 made the same fix (9d854d51e, `holdFinish`),
 which this branch now uses.
+
+### BF16 (test speed, tools/check-changed)
+
+The baseline is `int-mcp-a6701ba45` on A: 5.2 h of tests at `-j 2` in an 8-CPU container (10.3
+test-hours, A at load 30 to 52), after 2.2 h of builds.
+
+Where the 2.2 h went: S34's merge changed flags and widely included headers on a server that had not
+compiled them, so the editor (2,238 steps), the sample project (1,646, a 19-minute LTO link, 976 s
+on A at load 15 to 24) and the mesh-raycast web build (1,482) all missed. ccache across worktrees
+already works: every worktree is `/src` in the image, so `base_dir` is not needed. An editor build of
+oe-port in a new worktree: 2,144 direct hits of 2,150 compiles, 158 s.
+
+What the slow tests spent ("now": the coverage run below, or the warm run of the files that build games):
+
+| Test | Before | Now | What it was |
+|---|---|---|---|
+| `test_html_ui_effects_export::test_desktop_player_draws_the_effects` | 3,977 s | 302 s | a compile without ccache and an LTO link; ccache 1,237 hits, 8 misses, no LTO |
+| `test_build::test_desktop_build_and_run` | 2,476 s | 929 s | a compile without ccache; now 601 hits, 8 misses; keeps LTO (the suite's LTO check) |
+| `test_hub::test_create_from_templates` | 1,542 s | 177 s | a compile at 3 jobs; now 593 hits, 6 misses, no LTO |
+| `test_materials_pbr::test_khronos_models` | 2,310 s | 13 tests, 19 to 491 s | polling every mesh, each call a frame; now a test per model, in chunks of their own |
+| `test_shader_library::test_cli_library_matrix_all_backends` | 1,639 s | 249 s | one process compiling one variant at a time; now a process per backend |
+| `test_fluid_inspector::test_preview_bar_on_a_play_created_fluid` | 1,815 s | 642 s | 3 to 5 s frames: a software-rendered fluid in the Inspector |
+
+The seven files that build games, warm, `-j 4` in an 8-CPU container on A: 1,038 s, 42 passed, both
+runtimes reused from the shared cache. The same files with a new runtime key: 5,284 s, of which 3,744
+and 4,223 s of runtime builds at nice 15 (172 and 254 misses). The prebuild does not wait for its
+turn: when only files that need a runtime are left, a worker builds the second one at once.
+
+A runtime build with an empty ccache, no LTO, both at once at nice 15 in an 8-CPU container: 2,414 s
+(Development) and 2,388 s (release), against 6,624 s and 4,816 s (with LTO) in the baseline.
+
+The coverage run (the suite without the slow builds, an instrumented editor, `-j 4` in an 8-CPU
+container, H at load 30 to 37): 4,822 s, 5.2 test-hours, longest test 642 s, 1,181 passed, 1 failed (below),
+7 skipped by design (the slow builds; the web latency gate).
+
+Editors on the RTX 3080 Ti: the 34 lane files, 7,259 s of test time on llvmpipe under load, take
+1,223 s, two at a time. `test_fluid_inspector.py`'s 2,296 s took 53 s there, and one absolute dye
+threshold keeps it on llvmpipe.
+
+`tools/check-changed` on past streams, each its own tree and diff, with this tool (`--root`), in 8-CPU
+containers. The trees predate the caps and the caches, so their MCP times are not this branch's.
+
+| Stream | Changed | Selected | Result |
+|---|---|---|---|
+| fix/mac-test-engine-dir | 1 header | 10 of 188 MCP files, 16 tests; 19 editor suites | passed: units 25 s, MCP 164 s (of which the web build 148 s) |
+| BF12 fix/screenshot-texture-wait | 15 files | 160 files, 1,055 tests; 113 core and 211 editor suites | units passed; MCP 8,986 s, 1,048 passed, 7 failed: frame or preview timeouts and a 4.5 s hang report at high load, no Mesa thread cap in that tree. Its red test (`test_screenshot_waits.py`) and `GltfTexturePixels` were selected and passed |
+| BF13 fix/bf13-editor-dataloss | 63 files | 187 files, 1,174 tests; 72 core and 211 editor suites | MCP 8,055 s, 1,173 passed, 1 failed (a 3.7 s hang report at load 40 to 54). The tests that failed in its logs (`test_camera_texture_cost.py`) were selected and passed. `NavAgentTest` failed: below |
+| S34 feat/s34-player-size (dry run) | 75 files | everything: the root `CMakeLists.txt` | not run |
+
+So a narrow change selects few tests and a stream that touches `create_entity`, `screenshot` or the
+frame selects most of the suite (of 1,189 tests, the CI suite alone is 1,131, so its fallback is
+nearly the full suite too).
+
+Found on the way:
+
+- `test_reflection.py::test_codegen_golden` is flaky on oe-port, on llvmpipe and on the RTX:
+  `RigidbodyComponent::solidBoxDensity` has no initialiser, so the generated C++ prints garbage
+  (`-95312802931886636396528534812354412544.000000f`). BF14 gives it one.
+- The same test failed once on the RTX on `clouds.weatherMap.setPath(...)`: whether a generated scene
+  sets a texture's path depends on when its load finished. Fixed in `Factory::formatTexture` (BF20).
+- Nine files failed on the RTX (BF20 has them all on the lane now):
+  - Pipelines are made off the render thread on a GPU and at once on llvmpipe, so whatever draws
+    once and keeps the result must wait for them. A stateful UI effect ran its passes without the
+    ones whose pipeline was not ready (`test_html_ui_effects.py`'s fog, `test_fluid_effect.py`'s
+    burst): the passes now start over until each has its pipeline. A pose sheet read back a target
+    the model had not been drawn into (`test_pose_render.py`): it now waits for `getWaitingDrawCount`
+    to stand still. `MeshSystem::loadGLTF` left a reload's `vertexCount`s to `RenderSystem::loadMesh`,
+    seconds later on a GPU, and a save meanwhile wrote those of the reversed slots
+    (`test_pose_window.py`).
+  - Tests: `test_fluid_inspector.py`'s dye amount follows how many frames a drag takes, and
+    `test_place_with_physics.py` raced a job against a CPU and frames faster than llvmpipe's.
+  - Not reproduced on af184d8f1: `test_upgrade_from_main.py`'s rewritten `Level1.scene` and
+    `test_lattice_bake.py`'s 1.9%; BF16's runs predate BF15's late image binds.
+- `tools/build.sh linux`'s LTO link prints 11 `-Wodr` warnings about `spv::` enums, the two vendored
+  copies of `spirv.hpp` (glslang, spirv-cross), since S34. No warning from our own targets.
+- `NavAgentTest.CharacterControllerDriver` depended on the order of the tests: `NavSceneTest::step()` ran
+  outside the fixed phase, where a CharacterController moves by `Engine::getDeltatime()`, the last frame
+  of whatever earlier test ran one. A selection (with `AnimatorGpu.ThreeControllerPosesAndARetargetedWalk`)
+  failed it every time, alone it passed. The fixture now steps in the fixed phase. A filtered run can
+  show such a test up; a full run's order hides it.
+- A killed local `rb.sh` does not stop its job: ssh has no tty, so the remote shell, its
+  container, or a job still waiting for its slot goes on. Stop the remote process too.

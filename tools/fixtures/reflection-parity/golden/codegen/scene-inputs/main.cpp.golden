@@ -181,7 +181,7 @@ JASPERENGINE_INIT void init() {
 #ifdef JASPERENGINE_PHYSICS_3D
     PhysicsSystem::setWorldCapacity3D(8192, 8192, 8192);
 #endif
-#if defined(JASPERENGINE_DEVELOPMENT_BUILD) || defined(DEBUG)
+#if JASPERENGINE_DEVELOPMENT_BUILD || defined(DEBUG)
     Engine::setDevelopmentBuild(true);
 #endif
     {

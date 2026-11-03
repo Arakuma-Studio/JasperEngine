@@ -107,7 +107,7 @@ namespace {
     const ComponentCodec kAnimationPlayerCodec = JE_STREAM_CODEC(AnimationPlayerComponent, encodeAnimationPlayerComponent,
                                                                  decodeAnimationPlayerComponent);
 
-    constexpr const char* kAnimationPlayerKnownKeys[] = {"clips", "defaultClip", "defaultFadeTime", "enabled", "layers", "playAutomatically", "speed"};
+    constexpr const char* kAnimationPlayerKnownKeys[] = {"controller", "clips", "defaultClip", "defaultFadeTime", "enabled", "layers", "playAutomatically", "speed"};
 
 }
 

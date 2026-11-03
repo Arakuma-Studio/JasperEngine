@@ -11,6 +11,7 @@
 #include "AppSettings.h"
 #include "player/ContentManifest.h"
 #include "publish/BinaryInfo.h"
+#include "publish/Notices.h"
 #include "publish/PayloadValidator.h"
 #include "publish/Publishing.h"
 #include "publish/TreeManifest.h"
@@ -125,6 +126,33 @@ TEST(PayloadValidator, FindsWhatCannotShip) {
     EXPECT_TRUE(hasFinding(findings, "steam_appid.txt")) << join(findings);
     EXPECT_TRUE(hasFinding(findings, "licenses/lua-LICENSE")) << join(findings);
     EXPECT_TRUE(hasFinding(findings, "scenes/1.jscn")) << join(findings);
+}
+
+// S34 R3: the content of a player variant names the modules it needs; one the variant leaves out
+// is refused before the build ships (the player would exit 5)
+TEST(PayloadValidator, RefusesContentNeedingAModuleTheVariantLeavesOut) {
+    TestTempDir dir("payload");
+    writeLinuxBuild(dir.path());
+    auto withModules = [&](const std::string& playerId, const std::vector<std::string>& modules) {
+        player::ContentManifest manifest;
+        std::string error;
+        EXPECT_TRUE(player::ContentManifest::parse(TestTempDir::read(dir / "content-manifest.json"), manifest, error)) << error;
+        manifest.playerId = playerId;
+        manifest.modules = modules;
+        manifest.hasModules = true;
+        TestTempDir::write(dir / "content-manifest.json", manifest.toJson().dump(2));
+        ValidationTarget target;
+        target.platform = BuildPlatform::Linux;
+        target.executable = "game";
+        std::vector<std::string> findings;
+        validatePayload(dir.path(), target, findings);
+        return findings;
+    };
+    EXPECT_TRUE(withModules("linux-x64-glcore-release-lite3d", {"physics3d", "navigation"}).empty());
+    const std::vector<std::string> findings = withModules("linux-x64-glcore-release-lite3d", {"htmlui", "physics3d"});
+    EXPECT_TRUE(hasFinding(findings, "needs the HTML UI (htmlui), which the player linux-x64-glcore-release-lite3d leaves out")) << join(findings);
+    // the full player has every module
+    EXPECT_TRUE(withModules("linux-x64-glcore-release", {"htmlui", "video", "runtimeshaders"}).empty());
 }
 
 TEST(PayloadValidator, RefusesCaseCollisionsAndEscapingSymlinks) {
@@ -511,3 +539,14 @@ TEST(PublishDeck, DeployRollbackSmoke) {
 }
 
 #endif
+
+TEST(Notices, ALicenceMayNameItselfInItsExtension) {
+    // FFmpeg's COPYING.LGPLv2.1, which the exporter stages as tools/ci/check-notices.py does
+    TestTempDir directory("notices");
+    TestTempDir::write(directory.path() / "COPYING.LGPLv2.1", "LGPL\n");
+    TestTempDir::write(directory.path() / "COPYING.bak", "no\n");
+    TestTempDir::write(directory.path() / "README.md", "no\n");
+    const std::vector<fs::path> files = licenceFiles(directory.path());
+    ASSERT_EQ(files.size(), 1u);
+    EXPECT_EQ(files[0].filename().string(), "COPYING.LGPLv2.1");
+}

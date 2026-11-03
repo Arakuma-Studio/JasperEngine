@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace jasperengine::editor{
 
@@ -31,6 +32,10 @@ namespace jasperengine::editor{
         Entity oldParent;
 
         bool wasModified;
+        // The tracked list before the move: its undo puts the GameObjects without a Transform
+        // back where they were (the sort keeps them with the GameObject they followed, which the
+        // move can take past others)
+        std::vector<Entity> trackedBefore;
 
         // A model moved on or under an Animation Player reloads in the node hierarchy (animation
         // clips spec 9.R3), in this same step

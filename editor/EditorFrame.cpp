@@ -170,10 +170,9 @@ bool EditorFrame::run(EditorFrameState& state){
         // one shader clock for every view the frame draws (each draws through Engine::systemDraw)
         Engine::latchShaderTime();
         // the shaders and pipelines created off the render thread that are ready (spec S32); the
-        // loop keeps drawing while any is pending (renderRequested), so they show up unprompted
-        SystemRender::updateGpuCreation();
-        // what Play recorded for the shader warm-up list
-        ShaderWarmup::update();
+        // loop keeps drawing while any is pending (renderRequested), so they show up unprompted;
+        // and what Play recorded for the shader warm-up list
+        Engine::updateGpuCreation();
     }
 
     renderer->newFrame();

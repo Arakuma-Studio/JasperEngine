@@ -6,6 +6,8 @@
 
 #include "texture/Material.h"
 #include "texture/MaterialPbr.h"
+#include "component/TerrainComponent.h"
+#include "subsystem/RenderSystem.h"
 
 #include <gtest/gtest.h>
 
@@ -282,6 +284,126 @@ TEST(PbrVariant, BasenameIsShort){
     EXPECT_EQ(MaterialPbr::getVariantBasename({"PBR_CLEARCOAT"}), "lit_Cc");
 }
 
+// A lobe's map samples the mesh's UVs as the core maps do (includes/pbr_ext_slots.glsl has no slot
+// for it without them), whichever lobe and whatever else the material has; a lobe's map the variant
+// leaves out (an unlit variant) asks for none (BF17)
+TEST(PbrVariant, ALobesMapAsksForTheMeshsUVs){
+    const uint64_t uv1 = 1u << 1, uv2 = 1u << 2;
+    MeshShaderEnvironment lit;
+    lit.lights = true;
+    MeshShaderEnvironment unlit;
+    Texture map;
+    map.setId("bf17-lobe-map");
+
+    for (int m = 0; m < (int)PbrMap::COUNT; m++){
+        const PbrMap kind = (PbrMap)m;
+        Material material;
+        MaterialPbrExtensions& pbr = material.pbr.edit();
+        pbr.clearcoat.enabled = kind == PbrMap::CLEARCOAT || kind == PbrMap::CLEARCOAT_NORMAL;
+        pbr.specular.enabled = kind == PbrMap::SPECULAR;
+        pbr.transmission.enabled = kind == PbrMap::TRANSMISSION;
+        pbr.sheen.enabled = kind == PbrMap::SHEEN;
+        pbr.anisotropy.enabled = kind == PbrMap::ANISOTROPY;
+        pbr.iridescence.enabled = kind == PbrMap::IRIDESCENCE;
+        MaterialPbr::getMap(pbr, kind) = map;
+
+        SubmeshShaderInputs inputs;
+        inputs.normal = true;
+        inputs.receiveLights = true;
+        inputs.material = &material;
+        inputs.texCoord1 = true;
+        const char* name = MaterialPbr::getMapName(kind);
+        EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lit, inputs).properties & (uv1 | uv2), uv1) << name;
+        inputs.texCoord2 = true;
+        EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lit, inputs).properties & (uv1 | uv2), uv1 | uv2) << name;
+        EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(unlit, inputs).properties & (uv1 | uv2), 0u) << name;
+        // a mesh without UVs has none to give
+        inputs.texCoord1 = inputs.texCoord2 = false;
+        EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lit, inputs).properties & (uv1 | uv2), 0u) << name;
+    }
+
+    // a lobe without a map keeps the program it always was
+    Material factors;
+    factors.pbr.edit().sheen.enabled = true;
+    SubmeshShaderInputs inputs;
+    inputs.normal = true;
+    inputs.receiveLights = true;
+    inputs.material = &factors;
+    inputs.texCoord1 = true;
+    EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lit, inputs).properties & (uv1 | uv2), 0u);
+}
+
+// A core map other than the base colour asks for the UVs under whatever lights the surface: a scene
+// light, a sky or a reflection probe. A mesh the environment does not light (its receiveIBL) draws
+// none of them, as a mesh that takes no lights.
+TEST(PbrVariant, ACoreMapAsksForTheMeshsUVsUnderImageBasedLighting){
+    const uint64_t uv1 = 1u << 1;
+    MeshShaderEnvironment sky;
+    sky.ibl = true;
+    MeshShaderEnvironment probes;
+    probes.reflectionProbes = true;
+    const auto properties = [](const MeshShaderEnvironment& environment, bool SubmeshShaderInputs::*map, bool receiveIBL, bool receiveLights){
+        SubmeshShaderInputs inputs;
+        inputs.normal = true;
+        inputs.texCoord1 = true;
+        inputs.receiveLights = receiveLights;
+        inputs.receiveIBL = receiveIBL;
+        inputs.*map = true;
+        return RenderSystem::getSubmeshShaderVariant(environment, inputs).properties;
+    };
+    for (bool SubmeshShaderInputs::*map : {&SubmeshShaderInputs::metallicRoughnessTexture, &SubmeshShaderInputs::normalTexture,
+                                           &SubmeshShaderInputs::occlusionTexture, &SubmeshShaderInputs::emissiveTexture}){
+        EXPECT_NE(properties(sky, map, true, true) & uv1, 0u);
+        EXPECT_NE(properties(probes, map, true, true) & uv1, 0u);
+        EXPECT_EQ(properties(sky, map, false, true) & uv1, 0u);
+        EXPECT_EQ(properties(sky, map, true, false) & uv1, 0u);
+    }
+}
+
+// A hex tiled Terrain's variant carries the Stochastic Tiling path only when a layer takes it
+// (TERRAIN_HEX_STOCHASTIC): without one the path is compiled out of the hex variant, which
+// otherwise holds the lattices' registers for nothing (docs/perf/gpu-campaign.md, S11 perf3)
+TEST(PbrVariant, TerrainHexLeavesStochasticOut){
+    MeshShaderEnvironment environment;
+    environment.lights = true;
+    SubmeshShaderInputs inputs;
+    inputs.normal = true;
+    inputs.baseColorTexture = true;
+    inputs.terrain = true;
+    inputs.terrainBlendMaps = true;
+    inputs.terrainSurface = true;
+    inputs.terrainHex = true;
+    const auto has = [](const std::vector<std::string>& defines, const char* define){
+        return std::find(defines.begin(), defines.end(), define) != defines.end();
+    };
+    const SubmeshShaderVariant hex = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+    EXPECT_TRUE(has(hex.litDefines, MaterialPbr::TERRAIN_HEX_DEFINE));
+    EXPECT_FALSE(has(hex.litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
+
+    inputs.terrainHexStochastic = true;
+    const SubmeshShaderVariant both = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+    EXPECT_TRUE(has(both.litDefines, MaterialPbr::TERRAIN_HEX_DEFINE));
+    EXPECT_TRUE(has(both.litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
+    EXPECT_EQ(MaterialPbr::getVariantBasename(both.litDefines), "lit_ThTs");
+    std::vector<std::string> parsed;
+    ASSERT_TRUE(MaterialPbr::parseVariantBasename("lit_ThTs", parsed));
+    EXPECT_EQ(parsed, both.litDefines);
+    EXPECT_TRUE(MaterialPbr::isBuiltinLitDefine(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
+
+    // without a hex layer the define never comes (the plain surface path keeps Stochastic Tiling)
+    inputs.terrainHex = false;
+    EXPECT_FALSE(has(RenderSystem::getSubmeshShaderVariant(environment, inputs).litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
+
+    // what the render system asks the Terrain
+    TerrainComponent terrain;
+    terrain.surfaceLayers.resize(2);
+    terrain.surfaceLayers[0].hexTiling = true;
+    EXPECT_TRUE(hasTerrainHexLayers(terrain));
+    EXPECT_FALSE(hasTerrainStochasticLayers(terrain));
+    terrain.surfaceLayers[1].stochasticTiling = true;
+    EXPECT_TRUE(hasTerrainStochasticLayers(terrain));
+}
+
 TEST(PbrVariant, UniformBlockLayout){
     MaterialPbrExtensions pbr;
     pbr.clearcoat.factor = 0.5f;
@@ -299,4 +421,18 @@ TEST(PbrVariant, UniformBlockLayout){
     pbr.specular.ior = 1.33f;
     MaterialPbr::getUniformBlock(pbr, block);
     EXPECT_EQ(block[28], 1.33f);
+
+    // the lobe's dielectric f0, made once a draw in the vec4s' free floats (includes/pbr_ext.glsl)
+    const float ratio = (1.33f - 1.0f) / (1.33f + 1.0f);
+    EXPECT_EQ(block[23], ratio * ratio);                        // attenuation.w: the IOR's term
+    pbr.specular.color = Vector3(1.0f, 0.5f, 100.0f);
+    MaterialPbr::getUniformBlock(pbr, block);
+    EXPECT_EQ(block[3], ratio * ratio * 0.25f);                 // clearcoat.w: f0.r
+    EXPECT_EQ(block[11], (ratio * ratio * 0.5f) * 0.25f);       // anisotropy.w: f0.g
+    EXPECT_EQ(block[19], 0.25f);                                // transmission.w: f0.b, at most the factor
+    // an IOR under 1 (glTF's 0): a full mirror
+    pbr.specular.ior = 0.0f;
+    MaterialPbr::getUniformBlock(pbr, block);
+    EXPECT_EQ(block[23], 1.0f);
+    EXPECT_EQ(block[3], 0.25f);
 }

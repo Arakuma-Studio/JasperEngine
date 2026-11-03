@@ -336,7 +336,7 @@ void ColorPickerWindow::show() {
             if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) {
                 open = false;
             }
-            if (options.eyedropper && ImGui::IsKeyPressed(ImGuiKey_I, false) && !ImGui::GetIO().WantTextInput) startSampling();  // shortcut-lint: allow the picker window's own eyedropper key while it is focused (Unity's picker)
+            if (options.eyedropper && ImGui::IsKeyPressed(ImGuiKey_I, false) && !ImGui::GetIO().WantTextInput) startSampling();   // shortcut-lint: allow the eyedropper of this window, while it has focus (docs/editor/color-picker.md)
         }
     }
     ImGui::End();

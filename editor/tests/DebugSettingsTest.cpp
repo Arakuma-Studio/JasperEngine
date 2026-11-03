@@ -122,7 +122,7 @@ TEST(DebugSettingsTest, Names) {
 // the generated init: the development flag from the build type, the log, DebugOverlay::configure
 TEST(DebugSettingsTest, GeneratedInit) {
     const std::string defaults = Generator::debugInitSource(DebugSettings());
-    EXPECT_NE(defaults.find("#if defined(JASPERENGINE_DEVELOPMENT_BUILD) || defined(DEBUG)\n    Engine::setDevelopmentBuild(true);\n#endif"), std::string::npos) << defaults;
+    EXPECT_NE(defaults.find("#if JASPERENGINE_DEVELOPMENT_BUILD || defined(DEBUG)\n    Engine::setDevelopmentBuild(true);\n#endif"), std::string::npos) << defaults;
     EXPECT_NE(defaults.find("debugOverlay.enabled = Engine::isDevelopmentBuild();"), std::string::npos) << defaults;
     EXPECT_NE(defaults.find("debugOverlay.allowLua = Engine::isDevelopmentBuild();"), std::string::npos) << defaults;
     EXPECT_NE(defaults.find("DebugOverlay::configure(debugOverlay);"), std::string::npos);

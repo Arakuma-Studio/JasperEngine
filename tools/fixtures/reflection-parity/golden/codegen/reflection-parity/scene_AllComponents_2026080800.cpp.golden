@@ -310,6 +310,11 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         pointscomp.autoTransparency = false;
         pointscomp.blendMode = MaterialBlendMode::MULTIPLY;
         pointscomp.depthWrite = MaterialDepthWrite::DISABLED;
+        pointscomp.texture.setPath("textures/parity.png");
+        pointscomp.texture.setMinFilter(TextureFilter::LINEAR);
+        pointscomp.texture.setMagFilter(TextureFilter::LINEAR);
+        pointscomp.texture.setWrapU(TextureWrap::REPEAT);
+        pointscomp.texture.setWrapV(TextureWrap::REPEAT);
         pointscomp.enabled = false;
         scene->addComponent<PointsComponent>(1007, pointscomp);
 
@@ -332,6 +337,11 @@ void create_scene_AllComponents_2026080800(Scene* scene){
 
         // Entity components initialization
         SkyboxComponent sky;
+        sky.texture.setPath("textures/parity.png");
+        sky.texture.setMinFilter(TextureFilter::LINEAR);
+        sky.texture.setMagFilter(TextureFilter::LINEAR);
+        sky.texture.setWrapU(TextureWrap::REPEAT);
+        sky.texture.setWrapV(TextureWrap::REPEAT);
         sky.color = Vector4(0.088889f, 0.244444f, 0.544444f, 1.000000f);
         sky.rotation = 0.700000f;
         sky.visible = false;
@@ -933,8 +943,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         joint2d.rope = true;
         joint2d.anchorSpace = JointAnchorSpace::WORLD;
         joint2d.enableCollision = false;
-        joint2d.breakForce = 0.000000f;
-        joint2d.breakTorque = 0.000000f;
         joint2d.breakAction = JointBreakAction::DESTROY;
         joint2d.useLimits = false;
         joint2d.lowerAngle = 0.000000f;
@@ -1022,8 +1030,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         joint3d.autoAnchors = false;
         joint3d.anchorSpace = JointAnchorSpace::WORLD;
         joint3d.enableCollision = true;
-        joint3d.breakForce = 0.000000f;
-        joint3d.breakTorque = 0.000000f;
         joint3d.breakAction = JointBreakAction::DESTROY;
         joint3d.useLimits = false;
         joint3d.limitsSpringFrequency = 0.000000f;
@@ -1058,8 +1064,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         joint3d.driveDamping = 0.000000f;
         joint3d.angularDriveStiffness = 0.000000f;
         joint3d.angularDriveDamping = 0.000000f;
-        joint3d.driveMaxForce = 0.000000f;
-        joint3d.driveMaxTorque = 0.000000f;
         joint3d.targetPosition = Vector3(0.000000f, 0.000000f, 0.000000f);
         joint3d.targetRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
         joint3d.targetVelocity = Vector3(0.000000f, 0.000000f, 0.000000f);
@@ -1990,6 +1994,11 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         clouds.earthCurvature = 5.700000f;
         clouds.windDirection = 5.400000f;
         clouds.windSpeed = 3.100000f;
+        clouds.weatherMap.setPath("textures/parity.png");
+        clouds.weatherMap.setMinFilter(TextureFilter::LINEAR);
+        clouds.weatherMap.setMagFilter(TextureFilter::LINEAR);
+        clouds.weatherMap.setWrapU(TextureWrap::REPEAT);
+        clouds.weatherMap.setWrapV(TextureWrap::REPEAT);
         clouds.weatherMapScale = 4.500000f;
         clouds.sunLightDimmer = 6.900000f;
         clouds.ambientLightDimmer = 4.100000f;
@@ -3111,6 +3120,11 @@ SceneResources resources_scene_AllComponents_2026080800(){
     }
     {
         Texture texture;
+        texture.setPath("textures/parity.png");
+        texture.setMinFilter(TextureFilter::LINEAR);
+        texture.setMagFilter(TextureFilter::LINEAR);
+        texture.setWrapU(TextureWrap::REPEAT);
+        texture.setWrapV(TextureWrap::REPEAT);
         resources.textures.push_back(texture);
     }
     resources.models.push_back("models/parity.gltf");

@@ -50,6 +50,10 @@ namespace jasperengine::editor{
         SelectionState selectionAfter;
         // A selection change alone (SelectionCmd)
         bool selectionOnly = false;
+        // Applied when its document was last saved (markSaved): its undo leaves the document
+        // unlike its file, whatever modified flag the step puts back. A merged or grouped step's
+        // when any part's is
+        bool savedApplied = false;
     };
 
     // One undo step of a history
@@ -169,6 +173,19 @@ namespace jasperengine::editor{
     public:
         // Called after any command apply/undo/redo with the scene id and affectsStructure().
         static std::function<void(size_t, bool)> onSceneModified;
+        // Called after an undo of a step that was applied when the history's document was last
+        // saved (markSaved), with the scene id: the scene now differs from its file, whatever
+        // modified flag the step put back
+        static std::function<void(size_t)> onUndoPastSave;
+
+        // The clock of the document writes, over every document: one compares the stamp of its
+        // last write with the one it had at a capture (PrefabUndoState). Any thread; never the
+        // same twice.
+        static uint64_t stampSave();
+        // The history's document was written as it is now (main thread): the applied steps are
+        // in the file, the redo tail is not, and the newest applied step stops merging with the
+        // next one
+        void markSaved();
         // Called before an undo() or redo() step, with the history's scene id (the Pose Animation
         // window puts a posed character's rest bones back: the step runs on the rest, which the
         // pose saves again afterwards)
