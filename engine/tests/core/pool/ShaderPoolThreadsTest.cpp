@@ -475,3 +475,58 @@ TEST(ShaderPoolThreadsGpu, AThreadLooksAtAVariantTheMainThreadDestroys){
     shader.reset();
     ShaderPool::remove(ShaderType::BLIT, 0);
 }
+
+// A variant asked for off the main thread is made by that thread's queue, later, on the main thread:
+// the queued MAKE_SHADER reads the variant's sources and a queued cleanup writes to the variant. Let
+// go before that batch runs, by that thread or by the main thread, the variant has to be there for
+// them. (Under SANITIZE=address a heap-use-after-free stops the run.)
+TEST(ShaderPoolThreadsGpu, AVariantLetGoBeforeTheQueueThatMakesItRuns){
+    JASPER_REQUIRE_GPU();
+    GpuEnvironment::drawFrames(1);
+    for (const bool mainThreadLetsGo : {false, true}){
+        ShaderPool::remove(ShaderType::BLIT, 0);
+        ASSERT_EQ(ShaderPool::getShaderState(ShaderPool::getShaderKey(ShaderType::BLIT, 0)), ResourceLoadState::NotStarted);
+        std::atomic<bool> queued{false};
+        std::atomic<bool> letGo{false};
+        std::atomic<bool> done{false};
+        std::thread strand([&](){
+            {
+                Engine::AsyncThreadScope scope;
+                // (compiled at runtime on some backends: a later get() queues it)
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(1);
+                {
+                    std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::BLIT, 0);
+                    while (!shader->loading.load() && std::chrono::steady_clock::now() < deadline){
+                        std::this_thread::yield();
+                        shader = ShaderPool::get(ShaderType::BLIT, 0);
+                    }
+                    EXPECT_TRUE(shader->loading.load());
+                }
+                if (mainThreadLetsGo){
+                    queued.store(true);
+                    while (!letGo.load())
+                        std::this_thread::yield();
+                }else{
+                    ShaderPool::remove(ShaderType::BLIT, 0);
+                }
+            }
+            done.store(true);
+        });
+        if (mainThreadLetsGo){
+            while (!queued.load())
+                std::this_thread::yield();
+            ShaderPool::remove(ShaderType::BLIT, 0);
+            letGo.store(true);
+        }
+        // the batch runs here
+        while (!done.load())
+            GpuEnvironment::drawFrames(1);
+        strand.join();
+        GpuEnvironment::drawFrames(2);
+        // whatever became of it, the pool still works and it goes when asked now
+        ASSERT_TRUE(GpuEnvironment::runFrames([]{ return ShaderPool::get(ShaderType::BLIT, 0)->isCreated(); }, 600));
+        ShaderPool::remove(ShaderType::BLIT, 0);
+        EXPECT_EQ(ShaderPool::getShaderState(ShaderPool::getShaderKey(ShaderType::BLIT, 0)), ResourceLoadState::NotStarted);
+    }
+    GpuEnvironment::drawFrames(2);
+}
