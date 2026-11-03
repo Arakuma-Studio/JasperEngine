@@ -354,8 +354,17 @@ async def test_stateful_effects(ed: Editor):
     ed.check_eq(r["diagnostics"], [], "the stateful document loads clean")
     await ed.call("save_scene", scene=S["state-scene"], path="scenes/HtmlUiStateful")
     await ed.call("set_ui_effect_time", time=1.5)
-    # the variants compile on first use (async in the editor): wait for the fog
+    # the variants compile on first use (async in the editor), each simulation's its own, and a pass's
+    # pipeline is made when it first runs (on a GPU the fog can be done while the trail still waits):
+    # wait for all three to have replayed, then for the fog
     deadline = time.monotonic() + 90
+    for selector in (".fog", ".ink", ".trail"):
+        while True:
+            r = await ed.call("inspect_ui", scene=S["state-scene"], entity=S["state-entity"], selector=selector, depth=0)
+            state = r["elements"][0]["effects"][0].get("state") or {}
+            if (state.get("steps", 0) > 0 and not state.get("replaying", True)) or time.monotonic() > deadline:
+                break
+            await ed.call("wait", frames=5)
     while True:
         first = await state_shot(ed, "state-t1")
         _, sd = stats(first, STATE_REGIONS["fog"])
