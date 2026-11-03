@@ -11,18 +11,13 @@ the preset's BUILTIN_TEXTURES alone picks the engine's ripples and noise)."""
 from __future__ import annotations
 
 import asyncio
-import importlib.util
-from pathlib import Path
 
 from harness import Editor, find_key
 
-# test_play.py's PNG decoder (the tests are not a package)
-_spec = importlib.util.spec_from_file_location("water_test_play", Path(__file__).with_name("test_play.py"))
-_play = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_play)
-decode_png = _play.decode_png
+from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "WaterTest"}
+CI = True
 TIMEOUT = 900
 
 SCENE = "scenes/Water.scene"
@@ -38,13 +33,11 @@ async def lua(ed: Editor, code: str):
     return (await ed.call("eval_lua", code=code))["values"]
 
 
-async def test_setup(ed: Editor):
+async def test_menu_entry_creates_water(ed: Editor):
     ed.require_tools("create_scene", "create_entity", "get_entity", "get_scene_settings", "undo", "redo",
                      "edit_colliders", "play", "eval_lua", "wait", "screenshot", "set_main_camera", "set_transform")
     await ed.call("create_scene", name="Water", path=SCENE)
 
-
-async def test_menu_entry_creates_water(ed: Editor):
     made = await ed.call("create_entity", type="water")
     water = find_key(made, "entity_id", "id")
     ed.check(water is not None, f"create_entity returned no id: {made!r}")
@@ -122,9 +115,13 @@ async def test_play_floats_and_queries(ed: Editor):
     ed.check(isinstance(normal, list) and len(normal) == 3 and normal[1] > 0.9, f"normal nearly up: {normal!r}")
     ed.check(outside is None, f"no water at x 50: {outside!r}")
     ed.check(under is True and over is False, f"isUnderwater: {under!r} {over!r}")
-    # on the shader's clock: the waves move
-    first, second = await lua(ed, "local a = Water.getHeight(scene, 1, 2); local t = Water.getTime(); "
-                                  "while Water.getTime() < t + 0.3 do end; return a, Water.getHeight(scene, 1, 2)")
+    # on the shader's clock, latched once a frame (S22 R29): still within a frame, moving over frames
+    first, time, same = await lua(ed, "local a = Water.getHeight(scene, 1, 2); local t = Water.getTime(); "
+                                      "local s = os.clock(); while os.clock() < s + 0.05 do end; return a, t, Water.getTime()")
+    ed.check_eq(same, time, "one shader time within a frame")
+    await ed.call("wait", frames=20)
+    second, later = await lua(ed, "return Water.getHeight(scene, 1, 2), Water.getTime()")
+    ed.check(later > time, f"the clock moves frame to frame: {time} {later}")
     ed.check(first != second, f"the waves move: {first} {second}")
 
 

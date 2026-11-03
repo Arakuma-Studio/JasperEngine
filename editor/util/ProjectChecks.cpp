@@ -2,6 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectChecks.h"
+#include "io/AtomicFile.h"
+#include "component/ActionComponent.h"
+#include "component/PointsComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "particles/ParticleEffectCodec.h"
+#include "particles/ParticleWorld.h"
+#include "util/ParticleEffectEdit.h"
+#include "shader/ShaderGlobals.h"
+#include "util/FileUtils.h"
 
 #include "AppSettings.h"
 #include "Catalog.h"
@@ -32,6 +41,7 @@
 
 #include "lua.hpp"
 #include "yaml-cpp/yaml.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -65,6 +75,8 @@ int toolOrder(const std::string& tool) {
     if (tool == "shader") return 1;
     if (tool == "cpp") return 2;
     if (tool == "ui") return 3;
+    // sprite normal maps after every other tool (texture, anim, vat)
+    if (tool == "normals") return 5;
     return 4;
 }
 
@@ -172,9 +184,12 @@ bool editor::ProjectChecks::isSkippedDir(const fs::path& dir) {
 
 bool editor::ProjectChecks::isInSkippedDir(const fs::path& relative) {
     const fs::path parent = relative.lexically_normal().parent_path();
+    bool top = true;
     for (const fs::path& part : parent) {
         if (part == ".") continue;
-        if (isSkippedDir(part)) return true;
+        // at the project's top Recordings and EditorSettings hold no assets either (S27 R31)
+        if (top ? Project::isNonAssetTopLevelDir(part.string()) : isSkippedDir(part)) return true;
+        top = false;
     }
     return false;
 }
@@ -424,7 +439,7 @@ editor::ProjectChecks::CppPrepare editor::ProjectChecks::prepareCppBuild(Project
         error = std::string("Generating the build files failed: ") + e.what();
         return CppPrepare::Failed;
     }
-    if (plan.scripts.empty() && project->getScriptDirs().empty()) {
+    if (plan.scripts.empty() && project->getBuildScriptDirs().empty()) {
         return CppPrepare::NothingToBuild;
     }
     const LocalBuildSettings settings = AppSettings::getBuildSettings(project->getProjectPath() / "project.yaml");
@@ -530,14 +545,14 @@ namespace compat = jasperengine::htmlui::compat;
 std::string assetRelative(const fs::path& assetsRoot, const fs::path& absolute) {
     const fs::path rel = absolute.lexically_normal().lexically_relative(assetsRoot.lexically_normal());
     if (rel.empty() || rel == "." || *rel.begin() == "..") return {};
-    return rel.generic_u8string();
+    return editor::FileUtils::pathToGenericUtf8(rel);
 }
 
 // compat's asset-relative path under the assets directory; empty when it is absolute or climbs
 // out of it
 fs::path assetFile(const fs::path& assetsRoot, const std::string& assetPath) {
     if (assetPath.empty() || assetPath[0] == '/' || assetPath[0] == '\\') return {};
-    const fs::path rel = fs::u8path(assetPath);
+    const fs::path rel = editor::FileUtils::pathFromUtf8(assetPath);
     if (rel.is_absolute() || rel.has_root_name() || rel.has_root_directory()) return {};
     const fs::path normal = rel.lexically_normal();
     if (normal.empty() || normal == "." || *normal.begin() == "..") return {};
@@ -557,7 +572,7 @@ YAML::Node loadProjectYaml(const fs::path& projectRoot) {
 fs::path webShellFile(const fs::path& projectRoot, const YAML::Node& node) {
     try {
         if (node && node["web"] && node["web"]["customHtmlShell"]) {
-            const fs::path shell = fs::u8path(node["web"]["customHtmlShell"].as<std::string>());
+            const fs::path shell = editor::FileUtils::pathFromUtf8(node["web"]["customHtmlShell"].as<std::string>());
             if (!shell.empty()) return (shell.is_absolute() ? shell : projectRoot / shell).lexically_normal();
         }
     } catch (const std::exception&) {
@@ -621,7 +636,7 @@ bool startsWith(std::string_view text, std::string_view prefix) {
 } // namespace
 
 bool editor::ProjectChecks::isUiFile(const std::string& path) {
-    const std::string ext = lowerExtension(fs::u8path(path));
+    const std::string ext = lowerExtension(editor::FileUtils::pathFromUtf8(path));
     return ext == ".html" || ext == ".htm" || ext == ".css";
 }
 
@@ -632,7 +647,7 @@ fs::path editor::ProjectChecks::assetsRootFromProjectFile(const fs::path& projec
         if (node && node["assetsDir"]) assetsDir = node["assetsDir"].as<std::string>();
     } catch (const std::exception&) {
     }
-    const fs::path dir = fs::u8path(assetsDir);
+    const fs::path dir = editor::FileUtils::pathFromUtf8(assetsDir);
     fs::path out;
     if (dir.empty() || dir == ".") out = projectRoot;
     else if (dir.is_absolute()) out = dir;
@@ -1076,6 +1091,7 @@ bool editor::ProjectChecks::shaderTypeForComponent(ComponentType component, Shad
         case ComponentType::UIComponent: out = ShaderType::UI; return true;
         case ComponentType::PointsComponent: out = ShaderType::POINTS; return true;
         case ComponentType::LineRendererComponent: out = ShaderType::LINES; return true;
+        case ComponentType::TrailRendererComponent: out = ShaderType::LINES; return true;
         case ComponentType::SkyboxComponent: out = ShaderType::SKYBOX; return true;
         default: return false;
     }
@@ -1139,6 +1155,7 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity)) addComponent(ui->customShader, ui->shaderFeatures, ShaderType::UI, ui->blendMode);
             if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)) addComponent(points->customShader, points->shaderFeatures, ShaderType::POINTS, points->blendMode);
             if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)) addComponent(lines->customShader, lines->shaderFeatures, ShaderType::LINES, lines->blendMode);
+            if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity)) addComponent(trail->customShader, trail->shaderFeatures, ShaderType::LINES, trail->blendMode);
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)) addComponent(sky->customShader, sky->shaderFeatures, ShaderType::SKYBOX, MaterialBlendMode::AUTO);
         }
         const std::pair<const char*, ShaderType> defaults[] = {
@@ -1172,7 +1189,7 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
             continue;
         }
         // a UI effect: its own forms (not a fork's half)
-        if (ext == ".frag" && isUiEffectFile(project->getProjectPath() / fs::u8path(file))) {
+        if (ext == ".frag" && isUiEffectFile(project->getProjectPath() / editor::FileUtils::pathFromUtf8(file))) {
             addUses(uiEffectUses(project, file));
             continue;
         }
@@ -1229,7 +1246,7 @@ bool editor::ProjectChecks::isUiEffectFile(const fs::path& absolute) {
 
 std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::uiEffectUses(Project* project, const std::string& relativeFile) {
     const fs::path root = project->getProjectPath();
-    const fs::path file = (root / fs::u8path(relativeFile)).lexically_normal();
+    const fs::path file = (root / editor::FileUtils::pathFromUtf8(relativeFile)).lexically_normal();
     // the name @effect registers: the asset path
     std::string base = fs::path(relativeFile).generic_string();
     const fs::path inAssets = file.lexically_relative(project->getAssetsPath().lexically_normal());
@@ -1262,9 +1279,9 @@ std::vector<std::string> editor::ProjectChecks::uiEffectFiles(Project* project) 
 
 fs::path editor::ProjectChecks::uiEffectFile(Project* project, const std::string& base) {
     std::error_code ec;
-    const fs::path inAssets = (project->getAssetsPath() / fs::u8path(base)).lexically_normal();
+    const fs::path inAssets = (project->getAssetsPath() / editor::FileUtils::pathFromUtf8(base)).lexically_normal();
     if (fs::is_regular_file(inAssets, ec)) return inAssets;
-    return (project->getProjectPath() / fs::u8path(base)).lexically_normal();
+    return (project->getProjectPath() / editor::FileUtils::pathFromUtf8(base)).lexically_normal();
 }
 
 int editor::ProjectChecks::guessShaderType(Project* project, const std::string& base) {
@@ -1414,8 +1431,8 @@ std::string uiEffectSourcePath(editor::Project* project, const editor::ProjectCh
     if (!ShaderVariantCompiler::isSafeRelativePath(source)) return source;
     std::error_code ec;
     for (const fs::path& dir : {frag.parent_path(), root, project->getAssetsPath()}) {
-        if (fs::is_regular_file(dir / fs::u8path(source), ec)) {
-            return editor::ProjectChecks::projectRelative(root, (dir / fs::u8path(source)).lexically_normal());
+        if (fs::is_regular_file(dir / editor::FileUtils::pathFromUtf8(source), ec)) {
+            return editor::ProjectChecks::projectRelative(root, (dir / editor::FileUtils::pathFromUtf8(source)).lexically_normal());
         }
     }
     if (ShaderVariantCompiler::getLibrarySources().count(source)) return "engine/shaderlib/" + source;
@@ -1457,7 +1474,7 @@ bool checkUiEffectManifest(editor::Project* project, const editor::ProjectChecks
 
 } // namespace
 
-editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey) {
+editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey, ShaderData* built) {
     ShaderCheck check;
     check.use = use;
     const bool effect = isUiEffectUse(use);
@@ -1476,6 +1493,22 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
         ShaderBuilder builder;
         ShaderData data = builder.buildShaderForExport(shaderKey, project, ShaderPool::getShaderBackend());
         check.ok = true;
+        if (built) *built = data;
+        // a fork written before the fragment-stage shadows (docs/rendering/shadows.md): it still
+        // works for directional and spot lights, its point lights cast no shadows. Read from its
+        // sources: the blocks are only in the variants that receive shadows.
+        if (!effect && !ShaderReference::isLibrary(use.base) && use.shaderType == static_cast<int>(ShaderType::MESH)) {
+            const Util::CustomShaderPaths files = project->resolveCustomShaderFiles(use.base);
+            for (const std::string& file : {files.frag, files.vert}) {
+                std::string source;
+                if (!file.empty() && readFile(project->getProjectPath() / file, source) &&
+                        (source.find("u_fs_shadows") != std::string::npos || source.find("v_lightProjPos") != std::string::npos)) {
+                    check.findings.push_back({"shader", file, 0, 0, "warning",
+                                              "legacy shadow interface: re-fork to get point shadows, blend and PCSS"});
+                    break;
+                }
+            }
+        }
         if (effect) {
             // the parameter block the shader declares is the manifest's
             std::vector<std::string> mismatches;
@@ -1498,7 +1531,34 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
                     check.log += rel + ":" + std::to_string(line) + ": " + mismatch + "\n";
                 }
             }
-        } else if (use.shaderType != static_cast<int>(ShaderType::DEPTH)) {
+        }
+        if (!effect) {
+            // the global shader values it reads, against Project Settings > Graphics > Shader
+            // Globals, at its fragment shader (vertex when only the vertex stage reads them)
+            const Util::CustomShaderPaths paths = ShaderReference::isLibrary(use.base) ? Util::CustomShaderPaths()
+                                                                                        : project->resolveCustomShaderFiles(use.base);
+            const std::string file = ShaderReference::isLibrary(use.base)
+                ? "engine/shaderlib/library/" + ShaderReference::getLibraryName(use.base) + ".frag"
+                : (paths.frag.empty() ? paths.vert : paths.frag);
+            for (const ShaderGlobalDiagnostic& d : ShaderGlobals::checkShader(data, project->getShaderGlobals())) {
+                check.findings.push_back({"shader", file, 0, 0, d.error ? "error" : "warning", d.code + ": " + d.message, d.code});
+                if (!d.error) continue;
+                check.ok = false;
+                check.errors.push_back({{"severity", "error"}, {"source", file}, {"line", 0}, {"message", d.code + ": " + d.message}});
+                check.log += file + ": error: " + d.code + ": " + d.message + "\n";
+            }
+            // sokol binds at most 8 uniform blocks a stage (a globals block counts)
+            for (const ShaderStage& stage : data.stages) {
+                if (stage.uniformblocks.size() <= 8) continue;
+                const std::string message = std::string("uniform-block-limit: the ") + (stage.type == ShaderStageType::VERTEX ? "vertex" : "fragment") +
+                    " stage declares " + std::to_string(stage.uniformblocks.size()) + " uniform blocks, over the 8 a stage binds";
+                check.findings.push_back({"shader", file, 0, 0, "error", message, "uniform-block-limit"});
+                check.ok = false;
+                check.errors.push_back({{"severity", "error"}, {"source", file}, {"line", 0}, {"message", message}});
+                check.log += file + ": error: " + message + "\n";
+            }
+        }
+        if (!effect && use.shaderType != static_cast<int>(ShaderType::DEPTH)) {
             // a shader-library manifest (a UI effect's comment header is its own manifest,
             // checked above): its syntax, and its @property/@texture rows against what compiled
             for (const ShaderManifestDiagnostic& d : validateShaderManifest(use.base, {&data}, true)) {
@@ -1557,8 +1617,11 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
                 : ShaderReference::isLibrary(use.base)
                 ? "engine/shaderlib/library/" + ShaderReference::getLibraryName(use.base) + ".frag"
                 : project->resolveCustomShaderFiles(use.base).frag;
-            check.findings.push_back({"shader", entry, 0, 0, "error", first.empty() ? std::string(e.what()) : first,
-                                      effect ? fx::compat::codes::EffectShaderCompile.id() : std::string()});
+            // a globals block over its size fails the compile with its own code
+            const std::string what = e.what();
+            const bool globalsTooLarge = what.rfind("globals-block-too-large", 0) == 0;
+            check.findings.push_back({"shader", entry, 0, 0, "error", globalsTooLarge ? what : (first.empty() ? what : first),
+                                      effect ? fx::compat::codes::EffectShaderCompile.id() : globalsTooLarge ? std::string("globals-block-too-large") : std::string()});
         }
     }
     return check;
@@ -1657,18 +1720,13 @@ void loadSynthesisCache(SynthesisCache& cache, const fs::path& projectRoot) {
 void saveSynthesisCache(const SynthesisCache& cache) {
     if (cache.file.empty() || !cache.dirty) return;
     const Json j = {{"version", 1}, {"pngs", cache.pngs}, {"hashes", cache.hashes}};
-    fs::path temporary = cache.file;
-    temporary += ".partial";
     // the keys are valid UTF-8 (cacheable() keeps the others out), so nothing is lost; replace
     // only makes sure a dump never throws
     const std::string text = editor::texsynth::jsonTextLossy(j);
-    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-    if (!out) return;
-    out << text;
-    out.close();
-    std::error_code ec;
-    fs::rename(temporary, cache.file, ec);
-    if (ec) fs::remove(temporary, ec);
+    // a cache: atomic, never synced (a failed write leaves the old one, read again next scan)
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    io::writeFileAtomic(cache.file, text, options);
 }
 
 // JSON keys are UTF-8 text: a path that is not (a Latin-1 file name) is not cached, it is read
@@ -1706,7 +1764,8 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
         check.pngs++;
         if (cache.pngs.contains(key) && cachedStamp(cache.pngs[key], time, size) && cache.pngs[key][2] == 0) return std::nullopt;
         std::string readError;
-        const std::optional<std::string> text = editor::texsynth::readRecipeTextHead(png, &readError);
+        editor::texsynth::RecipeReadError origin = editor::texsynth::RecipeReadError::None;
+        const std::optional<std::string> text = editor::texsynth::readRecipeTextHead(png, &readError, editor::texsynth::kRecipeKeyword, &origin);
         std::optional<Json> recipe;
         if (text) {
             Json parsed = Json::parse(*text, nullptr, false);
@@ -1714,8 +1773,10 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
             if (parsed.is_discarded()) recipe = Json("the jasper.synthesis chunk is not JSON");
             else if (!editor::texsynth::validateRecipe(parsed, invalid)) recipe = Json(invalid);
             else recipe = parsed;
-        } else if (!readError.empty() && readError.find("jasper.synthesis") != std::string::npos) {
-            recipe = Json(readError);   // garbled chunk (CRC mismatch, compressed, malformed)
+        } else if (origin == editor::texsynth::RecipeReadError::Chunk) {
+            // garbled chunk (CRC mismatch, compressed, malformed); a file that is not a PNG or
+            // can't be read has no recipe (decided on the error's origin, not its text)
+            recipe = Json(readError);
         }
         if (cacheable(key)) {
             cache.pngs[key] = Json::array({time, size, recipe ? 1 : 0});
@@ -1802,7 +1863,7 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
         // a companion / uncertainty output: its primary output reports the set
         if (files.empty() && role != "primary" && recipe.contains("outputs") && recipe["outputs"].is_object() &&
             recipe["outputs"].contains("primary") && recipe["outputs"]["primary"].is_string()) {
-            const fs::path recorded = fs::u8path(recipe["outputs"]["primary"].get<std::string>());
+            const fs::path recorded = editor::FileUtils::pathFromUtf8(recipe["outputs"]["primary"].get<std::string>());
             const bool fromProject = editor::texsynth::jsonString(recipe, "pathBase", "file") == "project";
             const fs::path primary = recorded.is_absolute() ? recorded : (fromProject ? projectRoot : item.png.parent_path()) / recorded;
             std::error_code ec;
@@ -1839,7 +1900,7 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
     if (files.empty()) {
         for (auto it = cache.pngs.begin(); it != cache.pngs.end();) {
             std::error_code ec;
-            if (!fs::exists(projectRoot / fs::u8path(it.key()), ec)) {
+            if (!fs::exists(projectRoot / editor::FileUtils::pathFromUtf8(it.key()), ec)) {
                 it = cache.pngs.erase(it);
                 cache.dirty = true;
             } else {
@@ -1861,7 +1922,7 @@ namespace {
         if (texture.empty() || texture.isFramebuffer()) return false;
         const std::string path = texture.getPath(0);
         if (path.empty()) return false;
-        file = project->resolveAssetPath(fs::u8path(path));
+        file = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(path));
         const editor::NormalMapTiltResult tilt = editor::NormalMapTilt::measure(file);
         degrees = tilt.degrees;
         return tilt.ready && tilt.valid && tilt.degrees >= editor::NormalMapTilt::WARNING_DEGREES;
@@ -1981,6 +2042,86 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::stochasticTil
                     warn(where + ": " + NormalMapTilt::describe(file, degrees) + ", and Stochastic Tiling turns its cells (Rotation " +
                          formatValue(material.stochasticRotation) + "): the rotated cells look tilted", tiltCode, tiltFix);
                 }
+            }
+        }
+    }
+    return findings;
+}
+
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::lineTrailFindings(Project* project) {
+    std::vector<Finding> findings;
+    const fs::path root = project->getProjectPath();
+
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        Scene* scene = sceneProject->scene;
+        const std::string path = sceneProject->filepath.empty() ? std::string() : projectRelative(root, root / sceneProject->filepath);
+        for (Entity entity : sceneProject->entities) {
+            const std::string name = "GameObject '" + scene->getEntityName(entity) + "'";
+
+            if (const LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)) {
+                if (lines->widthMultiplier <= 0.0f) {
+                    const std::string& shader = lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader.path;
+                    const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+                    bool samples = RenderSystem::getLinesBaseTexture(lines->shaderTextures) != nullptr;
+                    if (manifest && manifest->present) {
+                        samples = samples || !manifest->textures.empty() || (manifest->getPossibleRequire() & ShaderRequire_UV1);
+                    }
+                    if (samples) {
+                        findings.push_back({"lines", path, 0, 0, "warning",
+                            name + ": its Line Renderer has no width (a 1-pixel hairline, without texture coordinates) but its shader " +
+                            (shader.empty() ? std::string("samples a base texture") : "'" + shader + "' samples a texture") +
+                            ": the texture reads one texel", "line-texture-no-uv",
+                            "give it a width (widthMultiplier > 0, e.g. 0.1) so it draws a textured ribbon, or remove the texture"});
+                    }
+                }
+            }
+            if (const TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity)) {
+                if (!(trail->time > 0.0f)) {
+                    findings.push_back({"lines", path, 0, 0, "warning",
+                        name + ": its Trail Renderer's Time is 0, so it keeps no point and draws nothing", "trail-zero-time",
+                        "set time to how long a point lives in seconds (Unity's default is 5; a bullet trail ~0.3)"});
+                }
+            }
+        }
+    }
+    return findings;
+}
+
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::particleFindings(Project* project) {
+    std::vector<Finding> findings;
+    const fs::path root = project->getProjectPath();
+
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        Scene* scene = sceneProject->scene;
+        const std::string path = sceneProject->filepath.empty() ? std::string() : projectRelative(root, root / sceneProject->filepath);
+        for (Entity entity : sceneProject->entities) {
+            const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
+            if (!ps) continue;
+            const std::string name = "GameObject '" + scene->getEntityName(entity) + "'";
+            // the effect it plays: its asset, or the inline one
+            particles::ParticleEffectDocument document;
+            std::vector<particles::Diagnostic> readDiagnostics;
+            if (!ParticleEffectEdit::read(*ps, document, &readDiagnostics)) {
+                findings.push_back({"particles", path, 0, 0, "error",
+                    name + ": its Particle System's effect " + ps->effect.path + " cannot be read (" +
+                    particles::ParticleEffectCodec::format(readDiagnostics) + "): it draws nothing", "particles-effect-invalid",
+                    "fix or reassign the effect (get_particle_effect lists its diagnostics)"});
+                continue;
+            }
+            std::vector<particles::Diagnostic> diagnostics;
+            if (!particles::ParticleEffectCodec::validate(document, diagnostics)) {
+                findings.push_back({"particles", path, 0, 0, "error",
+                    name + ": its Particle System's effect does not compile (" + particles::ParticleEffectCodec::format(diagnostics) + "): it draws nothing",
+                    "particles-effect-invalid", "edit_particle_effect with the fields the diagnostics name"});
+                continue;
+            }
+            if (document.maxParticles > particles::kBudgetMobile) {
+                findings.push_back({"particles", path, 0, 0, "warning",
+                    name + ": its Particle System allows " + std::to_string(document.maxParticles) + " particles, past a mobile build's " +
+                    "world budget of " + std::to_string(particles::kBudgetMobile) + " (its emission is thinned there)",
+                    "particles-max-exceeded-budget", "lower maxParticles (and the emission rate), or keep the system off mobile builds"});
             }
         }
     }

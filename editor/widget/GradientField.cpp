@@ -1,0 +1,532 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#include "GradientField.h"
+#include "GradientEditorOps.h"
+
+#include "AppSettings.h"
+#include "Theme.h"
+#include "external/IconsFontAwesome6.h"
+#include "widget/ColorField.h"
+#include "widget/ColorMath.h"
+#include "widget/ColorPickerWindow.h"
+
+#include "imgui_internal.h"
+
+#include <algorithm>
+#include <cmath>
+
+using namespace jasperengine;
+using namespace jasperengine::editor;
+using namespace jasperengine::editor::ui;
+
+namespace {
+
+    constexpr int kBarSamples = 48;
+
+    ImU32 srgbColor(const Vector3& srgb, float alpha) {
+        return IM_COL32(colormath::toByte(srgb.x), colormath::toByte(srgb.y), colormath::toByte(srgb.z), colormath::toByte(alpha));
+    }
+
+    void checker(ImDrawList* drawList, ImVec2 min, ImVec2 max) {
+        const float cell = std::max(4.0f, (max.y - min.y) * 0.5f);
+        for (float y = min.y; y < max.y; y += cell) {
+            for (float x = min.x; x < max.x; x += cell) {
+                const bool dark = ((int)((x - min.x) / cell) + (int)((y - min.y) / cell)) % 2 == 0;
+                drawList->AddRectFilled(ImVec2(x, y), ImVec2(std::min(x + cell, max.x), std::min(y + cell, max.y)),
+                                        dark ? IM_COL32(110, 110, 110, 255) : IM_COL32(170, 170, 170, 255));
+            }
+        }
+    }
+
+    // the key nearest to `time` within `radius` (in time units); -1 for none
+    template <class Keys>
+    int nearestKey(const Keys& keys, float time, float radius) {
+        int best = -1;
+        float bestDistance = radius;
+        for (size_t i = 0; i < keys.size(); i++) {
+            const float d = std::fabs(keys[i].time - time);
+            if (d <= bestDistance) {
+                bestDistance = d;
+                best = (int)i;
+            }
+        }
+        return best;
+    }
+
+}
+
+void ui::drawGradientBar(ImDrawList* drawList, ImVec2 min, ImVec2 max, const Gradient& gradient) {
+    checker(drawList, min, max);
+    for (int i = 0; i < kBarSamples; i++) {
+        const float t0 = (float)i / kBarSamples, t1 = (float)(i + 1) / kBarSamples;
+        const float x0 = min.x + t0 * (max.x - min.x), x1 = min.x + t1 * (max.x - min.x);
+        const Vector3 c0 = gradient.evaluateEncoded(t0), c1 = gradient.evaluateEncoded(t1);
+        const float a0 = gradient.evaluateAlpha(t0), a1 = gradient.evaluateAlpha(t1);
+        drawList->AddRectFilledMultiColor(ImVec2(x0, min.y), ImVec2(x1, max.y), srgbColor(c0, a0), srgbColor(c1, a1), srgbColor(c1, a1),
+                                          srgbColor(c0, a0));
+    }
+    drawList->AddRect(min, max, IM_COL32(0, 0, 0, 200));
+}
+
+EditPhase ui::gradientField(const char* id, Gradient& gradient, const GradientFieldOptions& options) {
+    ImGui::PushID(id);
+    const ImGuiID fieldId = ImGui::GetID("##gradientField");
+    ImGuiContext& g = *GImGui;
+    const float width = (g.NextItemData.HasFlags & ImGuiNextItemDataFlags_HasWidth) ? ImGui::CalcItemWidth()
+                                                                                     : std::max(ImGui::GetContentRegionAvail().x, 8.0f);
+    const ImVec2 size(std::max(width, 8.0f), options.height > 0.0f ? options.height : ImGui::GetFrameHeight());
+    const ImVec2 min = ImGui::GetCursorScreenPos();
+    const bool clicked = ImGui::InvisibleButton("##gradientField", size);
+    const ImVec2 max(min.x + size.x, min.y + size.y);
+    GradientWindow& window = GradientWindow::get();
+    EditPhase phase = window.consume(fieldId, gradient);
+    drawGradientBar(ImGui::GetWindowDrawList(), min, max, gradient);
+    if (options.mixed) ImGui::GetWindowDrawList()->AddText(ImVec2(min.x + 4.0f, min.y), IM_COL32(255, 255, 255, 220), "-");
+    if (window.targets(fieldId)) ImGui::GetWindowDrawList()->AddRect(min, max, ImGui::GetColorU32(ImGuiCol_NavCursor));
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to edit the gradient");
+    if (clicked && !window.targets(fieldId)) {
+        window.open(fieldId, gradient, options);
+        phase = EditPhase::Begin;
+    }
+    ImGui::PopID();
+    return phase;
+}
+
+EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& value, const GradientFieldOptions& options) {
+    using particles::GradientValueMode;
+    ImGui::PushID(id);
+    EditPhase phase = EditPhase::None;
+    auto take = [&](EditPhase p) {
+        if (p != EditPhase::None) phase = p;
+    };
+    const float button = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
+    const float avail = std::max(8.0f, ImGui::GetContentRegionAvail().x - button);
+    ColorFieldOptions colorOptions;
+    colorOptions.alpha = true;
+    colorOptions.linearStorage = false;   // the particle colours are sRGB as picked
+    colorOptions.label = options.label;
+    colorOptions.mixed = options.mixed;
+    switch (value.mode) {
+        case GradientValueMode::Color: {
+            colorOptions.width = avail;
+            const EditPhase p = colorField("##color", value.color, colorOptions);
+            if (p == EditPhase::Changing || p == EditPhase::Cancelled) value.colorMax = value.color;
+            take(p);
+            break;
+        }
+        case GradientValueMode::TwoColors: {
+            colorOptions.width = std::max(4.0f, avail * 0.5f - ImGui::GetStyle().ItemSpacing.x * 0.5f);
+            take(colorField("##min", value.color, colorOptions));
+            ImGui::SameLine();
+            take(colorField("##max", value.colorMax, colorOptions));
+            break;
+        }
+        case GradientValueMode::Gradient:
+        case GradientValueMode::RandomColor:
+        case GradientValueMode::TwoGradients: {
+            const bool two = value.mode == GradientValueMode::TwoGradients;
+            GradientFieldOptions bar = options;
+            const float height = ImGui::GetFrameHeight();
+            bar.height = two ? height * 0.5f : height;
+            ImGui::SetNextItemWidth(avail);
+            const ImVec2 start = ImGui::GetCursorPos();
+            take(gradientField("##gradient", value.gradient, bar));
+            if (two) {
+                ImGui::SetCursorPos(ImVec2(start.x, start.y + bar.height));
+                ImGui::SetNextItemWidth(avail);
+                take(gradientField("##gradientMax", value.gradientMax, bar));
+                ImGui::SetCursorPos(ImVec2(start.x + avail, start.y));
+                ImGui::Dummy(ImVec2(0.0f, height));
+            }
+            break;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_CARET_DOWN "##mode")) ImGui::OpenPopup("##minMaxGradientMode");
+    if (ImGui::BeginPopup("##minMaxGradientMode")) {
+        struct ModeItem {
+            const char* label;
+            GradientValueMode mode;
+        };
+        for (const ModeItem& item : {ModeItem{"Color", GradientValueMode::Color}, ModeItem{"Gradient", GradientValueMode::Gradient},
+                                     ModeItem{"Random Between Two Colors", GradientValueMode::TwoColors},
+                                     ModeItem{"Random Between Two Gradients", GradientValueMode::TwoGradients},
+                                     ModeItem{"Random Color", GradientValueMode::RandomColor}}) {
+            if (ImGui::MenuItem(item.label, nullptr, value.mode == item.mode) && value.mode != item.mode) {
+                // a gradient starts from the colour it replaces
+                const Vector3 rgb(value.color.x, value.color.y, value.color.z);
+                if ((item.mode == GradientValueMode::Gradient || item.mode == GradientValueMode::TwoGradients ||
+                     item.mode == GradientValueMode::RandomColor) && value.gradient.colorKeys.empty()) {
+                    value.gradient = Gradient::constant(rgb, value.color.w);
+                }
+                if (item.mode == GradientValueMode::TwoGradients && value.gradientMax.colorKeys.empty()) value.gradientMax = value.gradient;
+                value.mode = item.mode;
+                phase = EditPhase::Applied;
+            }
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
+    return phase;
+}
+
+// ---- the window
+
+GradientWindow& GradientWindow::get() {
+    static GradientWindow window;
+    return window;
+}
+
+void GradientWindow::beginEdit(CommandHistory* history, const char* label) {
+    GradientWindow& window = get();
+    window.history = history;
+    window.stepName = std::string("Change ") + (label && *label ? label : "Gradient");
+}
+
+void GradientWindow::open(ImGuiID id, const Gradient& value, const GradientFieldOptions& fieldOptions) {
+    if (target != 0) close();
+    setBeginEditHandler(&GradientWindow::beginEdit);
+    target = id;
+    options = fieldOptions;
+    gradient = value;
+    title = options.label ? options.label : "Gradient Editor";
+    focusOnOpen = true;
+    lastSeenFrame = ImGui::GetFrameCount();
+    history = nullptr;
+    stepName = "Change Gradient";
+    changed = false;
+    gestureOpen = false;
+    commitAfterDelivery = false;
+    closeAfterDelivery = false;
+    selectedColor = gradient.colorKeys.empty() ? -1 : 0;
+    selectedAlpha = -1;
+    drag = Drag::None;
+    warning.clear();
+}
+
+EditPhase GradientWindow::consume(ImGuiID id, Gradient& value) {
+    if (id == 0) return EditPhase::None;
+    if (endedTarget == id && id != target) {
+        endedTarget = 0;
+        return EditPhase::Committed;
+    }
+    if (id != target) return EditPhase::None;
+    lastSeenFrame = ImGui::GetFrameCount();
+    if (changed) {
+        changed = false;
+        value = gradient;
+        return EditPhase::Changing;
+    }
+    if (endedTarget == id) {
+        endedTarget = 0;
+        return EditPhase::Committed;
+    }
+    // between gestures the window follows the field (an undo, another edit)
+    if (!gestureOpen && !commitAfterDelivery && drag == Drag::None) gradient = value;
+    return EditPhase::None;
+}
+
+void GradientWindow::beginGesture() {
+    if (gestureOpen) return;
+    if (history) FieldEditSession::begin(history, stepName, this);
+    gestureOpen = true;
+}
+
+void GradientWindow::deliver(bool ends) {
+    changed = true;
+    if (ends) commitAfterDelivery = true;
+}
+
+void GradientWindow::close() {
+    if (target == 0) return;
+    if (gestureOpen || commitAfterDelivery) {
+        FieldEditSession::commit(this);
+        gestureOpen = false;
+        commitAfterDelivery = false;
+    }
+    endedTarget = target;
+    target = 0;
+    changed = false;
+}
+
+void GradientWindow::drawKeys(ImVec2 barMin, ImVec2 barMax) {
+    ImGuiIO& io = ImGui::GetIO();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const float width = barMax.x - barMin.x;
+    const float strip = Theme::dpi(14.0f);
+    const float timeRadius = Theme::dpi(6.0f) / std::max(width, 1.0f);
+    auto timeAt = [&](float x) { return std::clamp((x - barMin.x) / std::max(width, 1.0f), 0.0f, 1.0f); };
+
+    for (int row = 0; row < 2; row++) {
+        const bool alphaRow = row == 0;
+        const ImVec2 min(barMin.x - strip * 0.5f, alphaRow ? barMin.y - strip : barMax.y);
+        const ImVec2 max(barMax.x + strip * 0.5f, alphaRow ? barMin.y : barMax.y + strip);
+        ImGui::SetCursorScreenPos(min);
+        ImGui::InvisibleButton(alphaRow ? "##alphaKeys" : "##colorKeys", ImVec2(max.x - min.x, max.y - min.y));
+        const bool hovered = ImGui::IsItemHovered();
+        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            const float t = timeAt(io.MousePos.x);
+            const int hit = alphaRow ? nearestKey(gradient.alphaKeys, t, timeRadius) : nearestKey(gradient.colorKeys, t, timeRadius);
+            beforeDrag = gradient;
+            if (hit >= 0) {
+                if (alphaRow) {
+                    selectedAlpha = hit;
+                    selectedColor = -1;
+                } else {
+                    selectedColor = hit;
+                    selectedAlpha = -1;
+                }
+                drag = alphaRow ? Drag::Alpha : Drag::Color;
+                dragIndex = hit;
+                dragOffset = (alphaRow ? gradient.alphaKeys[(size_t)hit].time : gradient.colorKeys[(size_t)hit].time) - t;
+            } else if (alphaRow ? gradient.alphaKeys.size() < Gradient::kMaxKeys : gradient.colorKeys.size() < Gradient::kMaxKeys) {
+                // a click on the strip adds a key with the gradient's value there
+                beginGesture();
+                if (alphaRow) {
+                    selectedAlpha = gradientops::addAlphaKey(gradient, t);
+                    selectedColor = -1;
+                } else {
+                    selectedColor = gradientops::addColorKey(gradient, t);
+                    selectedAlpha = -1;
+                }
+                deliver(true);
+            } else {
+                warning = "A gradient has at most 8 colour and 8 alpha keys.";
+            }
+        }
+        // the markers: alpha keys point down at the bar, colour keys up
+        const size_t count = alphaRow ? gradient.alphaKeys.size() : gradient.colorKeys.size();
+        for (size_t i = 0; i < count; i++) {
+            const float t = alphaRow ? gradient.alphaKeys[i].time : gradient.colorKeys[i].time;
+            const float x = barMin.x + t * width;
+            const bool selectedKey = alphaRow ? (int)i == selectedAlpha : (int)i == selectedColor;
+            const ImU32 fill = alphaRow ? IM_COL32(colormath::toByte(gradient.alphaKeys[i].alpha), colormath::toByte(gradient.alphaKeys[i].alpha),
+                                                   colormath::toByte(gradient.alphaKeys[i].alpha), 255)
+                                        : srgbColor(gradient.colorKeys[i].color, 1.0f);
+            const float h = strip;
+            const ImVec2 tip(x, alphaRow ? barMin.y : barMax.y);
+            const ImVec2 a(x - h * 0.45f, alphaRow ? barMin.y - h : barMax.y + h);
+            const ImVec2 b(x + h * 0.45f, a.y);
+            drawList->AddTriangleFilled(tip, a, b, fill);
+            drawList->AddTriangle(tip, a, b, selectedKey ? IM_COL32(255, 220, 80, 255) : IM_COL32(0, 0, 0, 255), selectedKey ? 2.0f : 1.0f);
+        }
+    }
+
+    // a key's drag: along the bar; off the bar (far up or down) it is deleted while held there
+    if (drag != Drag::None) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+            if (gestureOpen) {
+                gradient = beforeDrag;
+                if (history) {
+                    FieldEditSession::cancel(this);
+                    gestureOpen = false;
+                } else {
+                    deliver(true);
+                }
+            }
+            drag = Drag::None;
+        } else if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            const float t = timeAt(io.MousePos.x + dragOffset * width);
+            const bool off = io.MousePos.y < barMin.y - strip * 3.0f || io.MousePos.y > barMax.y + strip * 3.0f;
+            Gradient next = beforeDrag;
+            if (drag == Drag::Alpha && dragIndex >= 0 && (size_t)dragIndex < next.alphaKeys.size()) {
+                if (off && gradientops::removeAlphaKey(next, (size_t)dragIndex)) {
+                    selectedAlpha = -1;
+                } else {
+                    selectedAlpha = gradientops::moveAlphaKey(next, (size_t)dragIndex, t);
+                }
+            } else if (drag == Drag::Color && dragIndex >= 0 && (size_t)dragIndex < next.colorKeys.size()) {
+                if (off && gradientops::removeColorKey(next, (size_t)dragIndex)) {
+                    selectedColor = -1;
+                } else {
+                    selectedColor = gradientops::moveColorKey(next, (size_t)dragIndex, t);
+                }
+            }
+            if (next != gradient) {
+                beginGesture();
+                gradient = next;
+                deliver(false);
+            }
+        } else {
+            drag = Drag::None;
+            if (gestureOpen) deliver(true);
+        }
+    }
+}
+
+void GradientWindow::drawSelected() {
+    const float labelWidth = ImGui::CalcTextSize("Location").x + ImGui::GetStyle().ItemSpacing.x * 2.0f;
+    if (selectedColor >= 0 && (size_t)selectedColor < gradient.colorKeys.size()) {
+        GradientColorKey& key = gradient.colorKeys[(size_t)selectedColor];
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Color");
+        ImGui::SameLine(labelWidth);
+        ColorFieldOptions colorOptions;
+        colorOptions.alpha = false;
+        colorOptions.linearStorage = false;   // the keys are sRGB
+        colorOptions.label = "Gradient Color Key";
+        colorOptions.width = Theme::dpi(140.0f);
+        Vector3 color = key.color;
+        const EditPhase phase = colorField("##keyColor", color, colorOptions);
+        // the Color window's session is this window's gesture (one step), ended once the
+        // gradient reached the field
+        if (phase == EditPhase::Begin) {
+            beginGesture();
+        } else if (phase == EditPhase::Changing) {
+            beginGesture();
+            key.color = color;
+            deliver(false);
+        } else if (phase == EditPhase::Committed) {
+            if (gestureOpen) deliver(true);
+        } else if (phase == EditPhase::Cancelled) {
+            key.color = color;
+            if (gestureOpen && history) {
+                FieldEditSession::cancel(this);
+                gestureOpen = false;
+                changed = false;
+            } else {
+                deliver(true);
+            }
+        }
+    } else if (selectedAlpha >= 0 && (size_t)selectedAlpha < gradient.alphaKeys.size()) {
+        GradientAlphaKey& key = gradient.alphaKeys[(size_t)selectedAlpha];
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Alpha");
+        ImGui::SameLine(labelWidth);
+        int alpha = colormath::toByte(key.alpha);
+        ImGui::SetNextItemWidth(Theme::dpi(140.0f));
+        if (ImGui::SliderInt("##keyAlpha", &alpha, 0, 255)) {
+            beginGesture();
+            key.alpha = colormath::fromByte((uint8_t)alpha);
+            deliver(false);
+        }
+        if (ImGui::IsItemDeactivated() && gestureOpen) deliver(true);
+    } else {
+        ImGui::TextDisabled("Select a key: alpha keys above the bar, colour keys below.");
+        return;
+    }
+    ImGui::SameLine();
+    ImGui::TextUnformatted("Location");
+    ImGui::SameLine();
+    float* time = selectedColor >= 0 ? &gradient.colorKeys[(size_t)selectedColor].time : &gradient.alphaKeys[(size_t)selectedAlpha].time;
+    float percent = *time * 100.0f;
+    ImGui::SetNextItemWidth(Theme::dpi(80.0f));
+    if (ImGui::DragFloat("##keyLocation", &percent, 0.2f, 0.0f, 100.0f, "%.1f%%", ImGuiSliderFlags_AlwaysClamp)) {
+        beginGesture();
+        *time = std::clamp(percent / 100.0f, 0.0f, 1.0f);
+        const float moved = *time;
+        gradient.sortKeys();
+        if (selectedColor >= 0) selectedColor = nearestKey(gradient.colorKeys, moved, 1e-6f);
+        else selectedAlpha = nearestKey(gradient.alphaKeys, moved, 1e-6f);
+        deliver(false);
+    }
+    if (ImGui::IsItemDeactivated() && gestureOpen) deliver(true);
+}
+
+void GradientWindow::drawPresets() {
+    ColorPickerWindow& colors = ColorPickerWindow::get();
+    const std::vector<SwatchLibrary>& libraries = colors.libraries();
+    ImGui::TextUnformatted("Presets");
+    for (size_t l = 0; l < libraries.size(); l++) {
+        const SwatchLibrary& library = libraries[l];
+        for (size_t i = 0; i < library.gradients.size(); i++) {
+            ImGui::PushID((int)(l * 1000 + i));
+            const ImVec2 min = ImGui::GetCursorScreenPos();
+            const ImVec2 size(Theme::dpi(56.0f), ImGui::GetFrameHeight());
+            if (ImGui::InvisibleButton("##gradientPreset", size)) {
+                beginGesture();
+                gradient = library.gradients[i].gradient;
+                selectedColor = gradient.colorKeys.empty() ? -1 : 0;
+                selectedAlpha = -1;
+                deliver(true);
+            }
+            drawGradientBar(ImGui::GetWindowDrawList(), min, ImVec2(min.x + size.x, min.y + size.y), library.gradients[i].gradient);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s (%s)", library.gradients[i].name.c_str(), library.name.c_str());
+            ImGui::PopID();
+            ImGui::SameLine();
+        }
+    }
+    // the current gradient into the first library that can be written
+    if (ImGui::Button("+##saveGradient")) {
+        std::string error = "no writable swatch library";
+        for (size_t l = 0; l < libraries.size(); l++) {
+            if (libraries[l].readOnly) continue;
+            SwatchLibrary library = libraries[l];
+            library.gradients.push_back({"Gradient " + std::to_string(library.gradients.size() + 1), gradient});
+            if (swatches::write(library, error)) {
+                error.clear();
+                colors.reloadLibraries();
+            }
+            break;
+        }
+        if (!error.empty()) warning = error;
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Save the gradient as a preset (the first user swatch library)");
+}
+
+void GradientWindow::show() {
+    if (target != 0 && ImGui::GetFrameCount() - lastSeenFrame > 1) close();
+    if (target != 0 && commitAfterDelivery && !changed) {
+        FieldEditSession::commit(this);
+        gestureOpen = false;
+        commitAfterDelivery = false;
+        endedTarget = target;
+    }
+    if (target != 0 && closeAfterDelivery && !changed) {
+        closeAfterDelivery = false;
+        close();
+    }
+    if (target == 0) return;
+
+    bool open = true;
+    ImGui::SetNextWindowSize(ImVec2(Theme::dpi(420.0f), Theme::dpi(200.0f)), ImGuiCond_FirstUseEver);
+    if (focusOnOpen) {
+        ImGui::SetNextWindowFocus();
+        focusOnOpen = false;
+    }
+    const std::string windowTitle = title + "###" + WINDOW_NAME;
+    if (ImGui::Begin(windowTitle.c_str(), &open, ImGuiWindowFlags_NoCollapse)) {
+        // Mode and the blend space
+        static const char* const kModes[] = {"Blend", "Fixed"};
+        int mode = (int)gradient.mode;
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Mode");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+        if (ImGui::Combo("##mode", &mode, kModes, 2)) {
+            beginGesture();
+            gradient.mode = (GradientMode)mode;
+            deliver(true);
+        }
+        ImGui::SameLine();
+        bool linear = gradient.linear;
+        if (ImGui::Checkbox("Blend in Linear Space", &linear)) {
+            beginGesture();
+            gradient.linear = linear;
+            deliver(true);
+        }
+        const float strip = Theme::dpi(14.0f);
+        ImGui::Dummy(ImVec2(0.0f, strip));
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+        const float width = ImGui::GetContentRegionAvail().x - strip;
+        const ImVec2 barMin(cursor.x + strip * 0.5f, cursor.y);
+        const ImVec2 barMax(barMin.x + std::max(width, 16.0f), barMin.y + Theme::dpi(24.0f));
+        drawGradientBar(ImGui::GetWindowDrawList(), barMin, barMax, gradient);
+        drawKeys(barMin, barMax);
+        ImGui::SetCursorScreenPos(ImVec2(cursor.x, barMax.y + strip + ImGui::GetStyle().ItemSpacing.y));
+        ImGui::Dummy(ImVec2(0.0f, 0.0f));
+        drawSelected();
+        ImGui::Separator();
+        drawPresets();
+        ImGui::NewLine();
+        ImGui::TextDisabled("%zu / %zu colour keys, %zu / %zu alpha keys", gradient.colorKeys.size(), Gradient::kMaxKeys,
+                            gradient.alphaKeys.size(), Gradient::kMaxKeys);
+        if (!warning.empty()) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%s", warning.c_str());
+    }
+    ImGui::End();
+    if (!open) {
+        if (changed) closeAfterDelivery = true;
+        else close();
+    }
+}

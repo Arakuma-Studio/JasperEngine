@@ -16,6 +16,8 @@ namespace jasperengine::editor {
 // Public DEFLATE (zlib) compressor from the stb_image_write implementation TU
 // (engine/libs/stb/stb_image_write.c), reused so we don't hand-roll a compressor.
 extern "C" unsigned char* stbi_zlib_compress(unsigned char* data, int data_len, int* out_len, int quality);
+extern "C" int stbi_write_png_to_func(void (*func)(void* context, void* data, int size), void* context,
+                                      int w, int h, int comp, const void* data, int stride_in_bytes);
 
 namespace {
 
@@ -145,11 +147,22 @@ bool writeGray16Png(const fs::path& path, int width, int height,
     std::vector<unsigned char> out;
     if (!encodePng16(width, height, 1, pixels, pixelByteCount, out)) return false;
 
-    FILE* f = std::fopen(path.string().c_str(), "wb");
-    if (!f) return false;
-    const size_t wrote = std::fwrite(out.data(), 1, out.size(), f);
-    std::fclose(f);
-    return wrote == out.size();
+    const io::WriteResult written = io::writeFileAtomic(path,
+            std::string_view(reinterpret_cast<const char*>(out.data()), out.size()));
+    return written.ok();
+}
+
+bool writePng(const fs::path& path, int width, int height, int channels, const void* pixels, int strideBytes, io::Durability durability) {
+    std::string bytes;
+    auto append = [](void* context, void* data, int size) {
+        static_cast<std::string*>(context)->append(static_cast<const char*>(data), static_cast<size_t>(size));
+    };
+    if (!stbi_write_png_to_func(append, &bytes, width, height, channels, pixels, strideBytes) || bytes.empty()) {
+        return false;
+    }
+    io::AtomicWriteOptions options;
+    options.durability = durability;
+    return io::writeFileAtomic(path, bytes, options).ok();
 }
 
 } // namespace jasperengine::editor

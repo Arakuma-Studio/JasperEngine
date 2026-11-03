@@ -1,0 +1,153 @@
+formatVersion: 7
+guid: 0a0a075220cf4d05f700ac24562aab37
+id: 1
+name: Main
+scene:
+  backgroundColor: [0.16, 0.18, 0.24, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: auto
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 1
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 2
+  maxSpriteFrames: 0
+  maxBones: 128
+shaderKeys:
+  - type: mesh
+    properties: 33554433
+  - type: mesh
+    properties: 33554504
+  - type: blit
+prefabs:
+  - path: prefabs/Lamp.prefab
+    guid: 30aeaad93c80be96b89030fe283e7a8b
+entities:
+  - type: Entity
+    entity: 1001
+    name: Ship
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      model:
+        enabled: true
+        filename: models/ship.gltf
+        filenameGuid: df3f31641adc07a75bea73a881800d5e
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1002
+    name: Speaker
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      audiosource:
+        enabled: true
+        state: stopped
+        filename: sounds/beep.wav
+        filenameGuid: ccd87ef5ac681a009d0942b057a683f6
+        enableClocked: false
+        volume: 1
+        speed: 1
+        pan: 0
+        looping: false
+        loopingPoint: 0
+        protectVoice: false
+        inaudibleBehaviorMustTick: false
+        inaudibleBehaviorKill: false
+        minDistance: 1
+        maxDistance: 1000
+        attenuationModel: no_attenuation
+        attenuationRolloffFactor: 1
+        dopplerFactor: 1
+      script:
+        scripts:
+          - type: lua
+            path: Spinner.lua
+            pathGuid: 3bed4857fd69d5e40a54baed37e18634
+            className: Spinner
+            enabled: true
+            properties:
+              - name: portrait
+                displayName: Portrait
+                type: Asset
+                assetType: texture
+                value:
+                  guid: 92a36f3a96dfd54f20523c694d9a5872
+                  path: assets/textures/rock.png
+                defaultValue:
+                  {}
+  - type: Entity
+    entity: 1003
+    name: Lamp
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      prefab:
+        name: Lamp
+        path: prefabs/Lamp.prefab
+        guid: 30aeaad93c80be96b89030fe283e7a8b
+    prefabInstance:
+      version: 8
+      overrides:
+        - registryEntity: 1001
+          removedComponents:
+            - light

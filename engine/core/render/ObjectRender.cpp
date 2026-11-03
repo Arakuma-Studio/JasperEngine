@@ -34,6 +34,10 @@ void ObjectRender::addAttribute(int slot, BufferRender* buffer, unsigned int ele
     backend.addAttribute(slot, buffer, elements, dataType, stride, offset, normalized, perInstance);
 }
 
+void ObjectRender::addInterleavedAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance){
+    backend.addInterleavedAttribute(slot, buffer, elements, dataType, stride, offset, normalized, perInstance);
+}
+
 void ObjectRender::addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer){
     backend.addStorageBuffer(slot, stage, buffer);
 }
@@ -58,6 +62,30 @@ void ObjectRender::addTexture(std::pair<int, int> slot, ShaderStageType stage, T
     backend.addTexture(slot, stage, texture, samplerOf);
 }
 
+bool ObjectRender::isReady() const{
+    return backend.isReady();
+}
+
+bool ObjectRender::isDrawWaiting() const{
+    return backend.isDrawWaiting();
+}
+
+uint32_t ObjectRender::getWaitingDrawCount(){
+    return SokolObject::getWaitingDrawCount();
+}
+
+bool ObjectRender::prewarmWith(ShaderRender* shader){
+    return backend.prewarmWith(shader);
+}
+
+uint32_t ObjectRender::getPipelineId(PipelineType pipType) const{
+    return backend.getPipelineId(pipType);
+}
+
+void ObjectRender::setImmediatePipelines(bool immediate){
+    backend.setImmediatePipelines(immediate);
+}
+
 void ObjectRender::setBlendState(const BlendState& state){
     backend.setBlendState(state);
 }
@@ -79,8 +107,8 @@ bool ObjectRender::beginDraw(const PipelineState& state){
     return backend.beginDraw(state);
 }
 
-bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling){
-    return backend.beginDraw(pipType, disableFaceCulling);
+bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored){
+    return backend.beginDraw(pipType, disableFaceCulling, mirrored);
 }
 
 void ObjectRender::applyUniformBlock(int slot, unsigned int count, void* data){
@@ -88,7 +116,9 @@ void ObjectRender::applyUniformBlock(int slot, unsigned int count, void* data){
 }
 
 void ObjectRender::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
-    backend.draw(baseElement, vertexCount, instanceCount);
+    // a draw skipped for want of uniform or descriptor buffer space is not counted
+    if (!backend.draw(baseElement, vertexCount, instanceCount))
+        return;
 
     uint64_t triangles = 0;
     if (primitiveType == PrimitiveType::TRIANGLES)
@@ -103,6 +133,14 @@ void ObjectRender::destroy(){
 
 }
 
+size_t ObjectRender::getSharedVariantCount(){
+    return SokolObject::getSharedVariantCount();
+}
+
 int ObjectRender::getLivePipelineCount(){
     return SokolObject::getLivePipelineCount();
+}
+
+int ObjectRender::getUnfedVertexInputLoads(){
+    return SokolObject::getUnfedVertexInputLoads();
 }

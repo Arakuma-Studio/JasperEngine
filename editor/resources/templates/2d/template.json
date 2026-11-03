@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "2d",
+  "name": "2D",
+  "description": "A 2D scene with a sprite moved by the arrow keys or WASD, on a 1280x720 letterboxed canvas.",
+  "category": "Core",
+  "order": 2,
+  "accentColor": "#C27C2C",
+  "thumbnail": "thumbnail.png",
+  "startScene": "Main"
+}

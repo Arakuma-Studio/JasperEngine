@@ -4,10 +4,13 @@
 #include "ActionSystem.h"
 
 #include "Scene.h"
+#include "Engine.h"
 #include "util/Color.h"
 #include "util/Angle.h"
-#include "math/Interpolation.h"
+#include "animation/AnimationPlayerRuntime.h"
+#include "animation/KeyframeSampling.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/ParticleSubsystem.h"
 #include "lattice/LatticeSolver.h"
 #include "subsystem/UISystem.h"
 
@@ -19,260 +22,11 @@
 
 using namespace jasperengine;
 
-float ActionSystem::getParticleInverseScale(float value){
-    if (value == 0.0f)
-        return 1.0f;
-
-    return 1.0f / value;
-}
-
-Vector3 ActionSystem::getParticleDisplayScale(Vector3 scale, Transform* targetTransform){
-    if (!targetTransform)
-        return scale;
-
-    return Vector3(
-        scale.x * getParticleInverseScale(targetTransform->worldScale.x),
-        scale.y * getParticleInverseScale(targetTransform->worldScale.y),
-        scale.z * getParticleInverseScale(targetTransform->worldScale.z));
-}
-
-bool ActionSystem::isParticleWorldSpace(ParticleSystemComponent& particles, Transform* targetTransform){
-    return !particles.localSpace && targetTransform;
-}
-
-void ActionSystem::updateParticleTargetTransform(Transform& transform){
-    Matrix4 translateMatrix = Matrix4::translateMatrix(transform.position);
-    Matrix4 rotationMatrix = transform.rotation.getRotationMatrix();
-    Matrix4 scaleMatrix = Matrix4::scaleMatrix(transform.scale);
-
-    transform.localMatrix = translateMatrix * rotationMatrix * scaleMatrix;
-
-    if (transform.parent != NULL_ENTITY){
-        Transform* transformParent = scene->findComponent<Transform>(transform.parent);
-        if (transformParent){
-            updateParticleTargetTransform(*transformParent);
-
-            transform.modelMatrix = transformParent->modelMatrix * transform.localMatrix;
-            transform.worldPosition = transformParent->modelMatrix * transform.position;
-            transform.worldScale = transformParent->worldScale * transform.scale;
-            transform.worldRotation = transformParent->worldRotation * transform.rotation;
-            return;
-        }
-    }
-
-    transform.modelMatrix = transform.localMatrix;
-    transform.worldPosition = transform.position;
-    transform.worldScale = transform.scale;
-    transform.worldRotation = transform.rotation;
-}
-
-Vector3 ActionSystem::getParticleSimulationPosition(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 position){
-    if (isParticleWorldSpace(particles, targetTransform))
-        return targetTransform->modelMatrix * position;
-
-    return position;
-}
-
-Vector3 ActionSystem::getParticleSimulationDirection(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 direction){
-    if (isParticleWorldSpace(particles, targetTransform))
-        return targetTransform->worldRotation * direction;
-
-    return direction;
-}
-
-Quaternion ActionSystem::getParticleSimulationRotation(ParticleSystemComponent& particles, Transform* targetTransform, Quaternion rotation){
-    if (isParticleWorldSpace(particles, targetTransform))
-        return targetTransform->worldRotation * rotation;
-
-    return rotation;
-}
-
-Vector3 ActionSystem::getParticleDisplayPosition(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 position){
-    if (isParticleWorldSpace(particles, targetTransform))
-        return particles.cachedTargetModelInv * position;
-
-    return position;
-}
-
-Quaternion ActionSystem::getParticleDisplayRotation(ParticleSystemComponent& particles, Transform* targetTransform, Quaternion rotation){
-    if (isParticleWorldSpace(particles, targetTransform))
-        return particles.cachedTargetWorldRotInv * rotation;
-
-    return rotation;
-}
-
-Vector3 ActionSystem::getParticleDisplayScale(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 scale){
-    if (isParticleWorldSpace(particles, targetTransform))
-        return Vector3(
-            scale.x * particles.cachedTargetInvScale.x,
-            scale.y * particles.cachedTargetInvScale.y,
-            scale.z * particles.cachedTargetInvScale.z);
-
-    return scale;
-}
-
-void ActionSystem::updateParticleTargetCache(ParticleSystemComponent& particles, Transform* targetTransform){
-    if (!isParticleWorldSpace(particles, targetTransform))
-        return;
-
-    updateParticleTargetTransform(*targetTransform);
-
-    particles.cachedTargetModelInv = targetTransform->modelMatrix.inverse();
-    particles.cachedTargetWorldRotInv = targetTransform->worldRotation.inverse();
-    particles.cachedTargetInvScale = Vector3(
-        getParticleInverseScale(targetTransform->worldScale.x),
-        getParticleInverseScale(targetTransform->worldScale.y),
-        getParticleInverseScale(targetTransform->worldScale.z));
-}
-
-Vector3 ActionSystem::samplePositionInitializer(ParticlePositionInitializer& init){
-    auto frand = [](){ return (float)rand() / (float)RAND_MAX; };
-    const float twoPi = 6.28318530717958647692f;
-    const float degToRad = 0.01745329251994329577f;
-    float outerRadius = std::max(0.0f, init.radius);
-    float innerRadius = std::min(std::max(0.0f, init.innerRadius), outerRadius);
-
-    auto sampleVolumeRadius = [&](){
-        float inner3 = innerRadius * innerRadius * innerRadius;
-        float outer3 = outerRadius * outerRadius * outerRadius;
-        return std::pow(inner3 + frand() * (outer3 - inner3), 1.0f / 3.0f);
-    };
-
-    auto sampleDiscRadius = [&](){
-        float inner2 = innerRadius * innerRadius;
-        float outer2 = outerRadius * outerRadius;
-        return std::sqrt(inner2 + frand() * (outer2 - inner2));
-    };
-
-    switch (init.shape){
-        case ParticleEmitterShape::Sphere:{
-            float u = frand() * 2.0f - 1.0f;
-            float theta = frand() * twoPi;
-            float r = sampleVolumeRadius();
-            float s = std::sqrt(std::max(0.0f, 1.0f - u*u));
-            return Vector3(r * s * std::cos(theta), r * u, r * s * std::sin(theta));
-        }
-        case ParticleEmitterShape::Hemisphere:{
-            float u = frand();
-            float theta = frand() * twoPi;
-            float r = sampleVolumeRadius();
-            float s = std::sqrt(std::max(0.0f, 1.0f - u*u));
-            return Vector3(r * s * std::cos(theta), r * u, r * s * std::sin(theta));
-        }
-        case ParticleEmitterShape::Circle:{
-            float theta = frand() * twoPi;
-            float r = sampleDiscRadius();
-            return Vector3(r * std::cos(theta), 0.0f, r * std::sin(theta));
-        }
-        case ParticleEmitterShape::Cone:{
-            float coneHeight = std::max(0.0f, init.coneHeight);
-            float coneAngle = std::min(std::max(0.0f, init.coneAngle), 89.0f);
-            float h = coneHeight * std::pow(frand(), 1.0f / 3.0f);
-            float angleRad = coneAngle * degToRad;
-            float maxR = h * std::tan(angleRad);
-            float theta = frand() * twoPi;
-            float r = maxR * std::sqrt(frand());
-            return Vector3(r * std::cos(theta), h, r * std::sin(theta));
-        }
-        case ParticleEmitterShape::Box:
-        default:
-            return getVector3InitializerValue(init.minPosition, init.maxPosition, false);
-    }
-}
-
-int ActionSystem::sampleBurstCount(ParticleBurst& burst){
-    int minCount = std::max(0, burst.minCount);
-    int maxCount = std::max(minCount, burst.maxCount);
-    if (maxCount <= minCount)
-        return minCount;
-    int span = maxCount - minCount + 1;
-    return minCount + (int)((float)span * (float)rand() / (float)(RAND_MAX + 1.0));
-}
-
-void ActionSystem::sortParticleBursts(ParticleSystemComponent& particles){
-    std::sort(particles.bursts.begin(), particles.bursts.end(), [](const ParticleBurst& a, const ParticleBurst& b){
-        return a.time < b.time;
-    });
-}
-
-void ActionSystem::sortParticleColorGradient(ParticleSystemComponent& particles){
-    particles.colorGradient.normalize();
-}
-
-Vector3 ActionSystem::sampleParticleColorGradient(const ParticleColorGradient& gradient, float time, float life){
-    const std::vector<ParticleColorGradientStop>& stops = gradient.stops;
-    if (stops.empty()){
-        return Vector3(1,1,1);
-    }
-
-    float normalizedTime = (life > 0.0f) ? (time / life) : 0.0f;
-    if (normalizedTime < 0.0f) normalizedTime = 0.0f;
-    if (normalizedTime > 1.0f) normalizedTime = 1.0f;
-
-    const ParticleColorGradientStop* previousStop = nullptr;
-    const ParticleColorGradientStop* nextStop = nullptr;
-    float previousTime = 0.0f;
-    float nextTime = 0.0f;
-
-    for (const ParticleColorGradientStop& stop : stops){
-        float stopTime = stop.time;
-        if (stopTime < 0.0f) stopTime = 0.0f;
-        if (stopTime > 1.0f) stopTime = 1.0f;
-
-        if (stopTime <= normalizedTime && (!previousStop || stopTime >= previousTime)){
-            previousStop = &stop;
-            previousTime = stopTime;
-        }
-        if (stopTime >= normalizedTime && (!nextStop || stopTime <= nextTime)){
-            nextStop = &stop;
-            nextTime = stopTime;
-        }
-    }
-
-    Vector3 color;
-    if (!previousStop){
-        color = nextStop ? nextStop->color : stops.front().color;
-    } else if (!nextStop){
-        color = previousStop->color;
-    } else {
-        float span = nextTime - previousTime;
-        float value = (span > 0.0f) ? (normalizedTime - previousTime) / span : 0.0f;
-        color = previousStop->color + (nextStop->color - previousStop->color) * value;
-    }
-    if (gradient.useSRGB) color = Color::sRGBToLinear(color);
-    return color;
-}
-
-float ActionSystem::getParticleCycleDuration(ParticleSystemComponent& particles){
-    float cycleDuration = 0.0f;
-    if (particles.rate > 0){
-        cycleDuration = std::max(cycleDuration, (float)particles.maxParticles / (float)particles.rate);
-    }
-    for (ParticleBurst& burst : particles.bursts){
-        cycleDuration = std::max(cycleDuration, burst.time);
-    }
-    if (cycleDuration <= 0.0f && !particles.bursts.empty()){
-        cycleDuration = std::max(0.0001f, particles.lifeInitializer.maxLife);
-    }
-    return cycleDuration;
-}
-
-void ActionSystem::syncParticleInstance(size_t idx, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, Transform* targetTransform){
-    ParticleData& particle = particles.particles[idx];
-    InstanceData& instance = instmesh.instances[idx];
-
-    instance.position = getParticleDisplayPosition(particles, targetTransform, particle.position);
-    instance.rotation = getParticleDisplayRotation(particles, targetTransform, particle.rotation);
-    instance.scale = getParticleDisplayScale(particles, targetTransform, particle.scale);
-}
-
-void ActionSystem::syncParticlePoint(size_t idx, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform){
-    points.points[idx].position = getParticleDisplayPosition(particles, targetTransform, particles.particles[idx].position);
-}
-
-
 ActionSystem::ActionSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<ActionComponent>());
+    // the types onComponentRemoved handles
+    declareHookType(scene->getComponentId<ActionComponent>());
+    declareHookType(scene->getComponentId<AnimationComponent>());
 }
 
 void ActionSystem::actionStart(Entity entity, bool newRun){
@@ -329,26 +83,26 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
             }
         }
 
-        if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
-            ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
-            if (targetSignature.test(scene->getComponentId<MeshComponent>())) {
-                MeshComponent& mesh = scene->getComponent<MeshComponent>(target);
-
-                scene->getSystem<MeshSystem>()->createInstancedMesh(target);
-                targetSignature = scene->getSignature(target);
-
-                InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(target);
-
-                particleActionStart(particles, instmesh, mesh);
-            }
-            if (targetSignature.test(scene->getComponentId<PointsComponent>()) ){
-                PointsComponent& points = scene->getComponent<PointsComponent>(target);
-
-                particleActionStart(particles, points);
-
-            }
+        // a controller of a particle system (D1): it plays the system
+        if (isParticleController(entity, *started)){
+            scene->getSystem<ParticleSubsystem>()->play(target);
         }
     }
+}
+
+bool ActionSystem::isParticleController(Entity entity, const ActionComponent& action){
+    if (action.target == NULL_ENTITY || !scene->isEntityCreated(action.target) ||
+            !scene->getSignature(action.target).test(scene->getComponentId<ParticleSystemComponent>())){
+        return false;
+    }
+    const Signature signature = scene->getSignature(entity);
+    return !signature.test(scene->getComponentId<TweenComponent>()) && !signature.test(scene->getComponentId<SpriteAnimationComponent>()) &&
+           !signature.test(scene->getComponentId<AnimationComponent>()) && !signature.test(scene->getComponentId<KeyframeTracksComponent>());
+}
+
+void ActionSystem::previewParticleController(double dt, Entity entity, const ActionComponent& action){
+    if (isParticleController(entity, action))
+        scene->getSystem<ParticleSubsystem>()->previewAdvance(action.target, dt);
 }
 
 void ActionSystem::actionComponentStart(ActionComponent& action){
@@ -359,6 +113,8 @@ void ActionSystem::actionComponentStart(ActionComponent& action){
     action.state = ActionState::Running;
     action.startTrigger = false;
 
+    // what the Lua callbacks destroy goes when they are done (StructuralDeferScope)
+    StructuralDeferScope deferScope(*scene);
     onStart.call();
 }
 
@@ -398,6 +154,13 @@ void ActionSystem::actionStop(Entity entity){
         tweenStop(*tween);
     }
 
+    // a particle system's controller stops its emission (what was emitted lives on)
+    if (ActionComponent* stopped = scene->findComponent<ActionComponent>(entity)){
+        if (isParticleController(entity, *stopped)){
+            scene->getSystem<ParticleSubsystem>()->stop(target, false);
+        }
+    }
+
     if (target != NULL_ENTITY && scene->isEntityCreated(target)){
         SpriteAnimationComponent* spriteanim = scene->findComponent<SpriteAnimationComponent>(entity);
         SpriteComponent* sprite = scene->findComponent<SpriteComponent>(target);
@@ -416,6 +179,7 @@ void ActionSystem::actionComponentStop(ActionComponent& action){
 
     // not from a copy, which would still call the scripts unsubscribed meanwhile: call()
     // keeps its subscriber list even when a callback destroys the component
+    StructuralDeferScope deferScope(*scene);
     action.onStop.call();
 }
 
@@ -437,12 +201,19 @@ void ActionSystem::actionPause(Entity entity){
 
     actionComponentPause(*action);
     animationPauseChildren(animationChildren);
+
+    if (ActionComponent* paused = scene->findComponent<ActionComponent>(entity)){
+        if (isParticleController(entity, *paused)){
+            scene->getSystem<ParticleSubsystem>()->pause(paused->target);
+        }
+    }
 }
 
 void ActionSystem::actionComponentPause(ActionComponent& action){
     action.state = ActionState::Paused;
     action.pauseTrigger = false;
 
+    StructuralDeferScope deferScope(*scene);
     action.onPause.call();
 }
 
@@ -453,6 +224,7 @@ void ActionSystem::actionUpdate(double dt, ActionComponent& action){
         action.timecount = 0;
     }
 
+    StructuralDeferScope deferScope(*scene);
     action.onStep.call();
 }
 
@@ -750,7 +522,7 @@ bool ActionSystem::tweenUpdate(double dt, Entity entity, ActionComponent& action
         finished = !tween.loop;
     }
 
-    tween.value = tween.function.call(tween.time);
+    tween.value = tween.function.getType() == EaseType::CURVE ? tween.curve.evaluate(tween.time) : tween.function.call(tween.time);
 
     return finished;
 }
@@ -796,684 +568,29 @@ void ActionSystem::alphaTweenUpdate(TweenComponent& tween, AlphaTweenComponent& 
     targetColor.w = alphatween.startAlpha + alpha;
 }
 
-int ActionSystem::findUnusedParticle(ParticleSystemComponent& particles){
-
-    for (int i=particles.lastUsedParticle; i<particles.particles.size(); i++){
-        if (particles.particles[i].life <= particles.particles[i].time){
-            particles.lastUsedParticle = i;
-            return i;
-        }
-    }
-
-    if (particles.loop){
-        for (int i=0; i<particles.lastUsedParticle; i++){
-            if (particles.particles[i].life <= particles.particles[i].time){
-                particles.lastUsedParticle = i;
-                return i;
-            }
-        }
-    }
-
-    return -1;
-}
-
-float ActionSystem::getFloatInitializerValue(float& min, float& max){
-    if (min != max) {
-        return min + ((max - min) * (float) rand() / (float) RAND_MAX);
-    }
-    return max;
-}
-
-Vector3 ActionSystem::getVector3InitializerValue(Vector3& min, Vector3& max, bool linearSort){
-    if (min != max) {
-        if (!linearSort){
-            return Vector3( min.x + ((max.x - min.x) * (float) rand() / (float) RAND_MAX),
-                            min.y + ((max.y - min.y) * (float) rand() / (float) RAND_MAX),
-                            min.z + ((max.z - min.z) * (float) rand() / (float) RAND_MAX));
-        }else{
-            float factor = (float) rand() / (float) RAND_MAX;
-
-            return Vector3( min.x + ((max.x - min.x) * factor),
-                            min.y + ((max.y - min.y) * factor),
-                            min.z + ((max.z - min.z) * factor));
-        }
-    }
-    return max;
-}
-
-Quaternion ActionSystem::getQuaternionInitializerValue(Quaternion& min, Quaternion& max, bool shortestPath){
-    if (min != max) {
-        return Quaternion::slerp((float) rand() / (float) RAND_MAX, min, max, shortestPath);
-    }
-    return max;
-}
-
-Rect ActionSystem::getSpriteInitializerValue(std::vector<int>& frames, SpriteComponent& sprite){
-    if (frames.size() > 0){
-        int id = frames[int(frames.size()*rand()/(RAND_MAX + 1.0))];
-
-        if (sprite.framesRect.validIndex(id) && (unsigned int)id < sprite.numFramesRect){
-            return sprite.framesRect[id].rect;
-        }
-    }
-
-    return Rect(0,0,1,1);
-}
-
-Rect ActionSystem::getSpriteInitializerValue(std::vector<int>& frames, PointsComponent& points){
-    if (frames.size() > 0){
-        int id = frames[int(frames.size()*rand()/(RAND_MAX + 1.0))];
-
-        if (points.framesRect.validIndex(id) && (unsigned int)id < points.numFramesRect){
-            return points.framesRect[id].rect;
-        }
-    }
-
-    return Rect(0,0,1,1);
-}
-
-void ActionSystem::applyParticleInitializers(size_t idx, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform){
-    ParticleLifeInitializer& lifeInit = particles.lifeInitializer;
-    particles.particles[idx].life = getFloatInitializerValue(lifeInit.minLife, lifeInit.maxLife);
-
-    ParticlePositionInitializer& posInit = particles.positionInitializer;
-    Vector3 position = samplePositionInitializer(posInit);
-    particles.particles[idx].position = getParticleSimulationPosition(particles, targetTransform, position);
-
-    ParticleVelocityInitializer& velInit = particles.velocityInitializer;
-    Vector3 velocity = getVector3InitializerValue(velInit.minVelocity, velInit.maxVelocity, false);
-    particles.particles[idx].velocity = getParticleSimulationDirection(particles, targetTransform, velocity);
-
-    ParticleAccelerationInitializer& accInit = particles.accelerationInitializer;
-    Vector3 acceleration = getVector3InitializerValue(accInit.minAcceleration, accInit.maxAcceleration, false);
-    particles.particles[idx].acceleration = getParticleSimulationDirection(particles, targetTransform, acceleration);
-
-    ParticleColorInitializer& colInit = particles.colorInitializer;
-    instmesh.instances[idx].color = getVector3InitializerValue(colInit.minColor, colInit.maxColor, false);
-    if (colInit.useSRGB){
-        instmesh.instances[idx].color = Color::sRGBToLinear(instmesh.instances[idx].color);
-    }
-
-    ParticleAlphaInitializer& alpInit = particles.alphaInitializer;
-    instmesh.instances[idx].color.w = getFloatInitializerValue(alpInit.minAlpha, alpInit.maxAlpha);
-
-    // size initializer is not applicable to instanced meshes
-
-    if (sprite){
-        ParticleSpriteInitializer& spriteInit = particles.spriteInitializer;
-        instmesh.instances[idx].textureRect = getSpriteInitializerValue(spriteInit.frames, *sprite);
-    }
-
-    ParticleRotationInitializer& rotInit = particles.rotationInitializer;
-    Quaternion rotation = getQuaternionInitializerValue(rotInit.minRotation, rotInit.maxRotation, rotInit.shortestPath);
-    particles.particles[idx].rotation = getParticleSimulationRotation(particles, targetTransform, rotation);
-
-    ParticleScaleInitializer& scaInit = particles.scaleInitializer;
-    particles.particles[idx].scale = getVector3InitializerValue(scaInit.minScale, scaInit.maxScale, scaInit.linearSort);
-
-    syncParticleInstance(idx, particles, instmesh, targetTransform);
-
-}
-
-void ActionSystem::applyParticleInitializers(size_t idx, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform){
-    ParticleLifeInitializer& lifeInit = particles.lifeInitializer;
-    particles.particles[idx].life = getFloatInitializerValue(lifeInit.minLife, lifeInit.maxLife);
-
-    ParticlePositionInitializer& posInit = particles.positionInitializer;
-    Vector3 position = samplePositionInitializer(posInit);
-    particles.particles[idx].position = getParticleSimulationPosition(particles, targetTransform, position);
-
-    ParticleVelocityInitializer& velInit = particles.velocityInitializer;
-    Vector3 velocity = getVector3InitializerValue(velInit.minVelocity, velInit.maxVelocity, false);
-    particles.particles[idx].velocity = getParticleSimulationDirection(particles, targetTransform, velocity);
-
-    ParticleAccelerationInitializer& accInit = particles.accelerationInitializer;
-    Vector3 acceleration = getVector3InitializerValue(accInit.minAcceleration, accInit.maxAcceleration, false);
-    particles.particles[idx].acceleration = getParticleSimulationDirection(particles, targetTransform, acceleration);
-
-    ParticleColorInitializer& colInit = particles.colorInitializer;
-    points.points[idx].color = getVector3InitializerValue(colInit.minColor, colInit.maxColor, false);
-    if (colInit.useSRGB){
-        points.points[idx].color = Color::sRGBToLinear(points.points[idx].color);
-    }
-
-    ParticleAlphaInitializer& alpInit = particles.alphaInitializer;
-    points.points[idx].color.w = getFloatInitializerValue(alpInit.minAlpha, alpInit.maxAlpha);
-
-    ParticleSizeInitializer& sizeInit = particles.sizeInitializer;
-    points.points[idx].size = getFloatInitializerValue(sizeInit.minSize, sizeInit.maxSize);
-
-    ParticleSpriteInitializer& spriteInit = particles.spriteInitializer;
-    points.points[idx].textureRect = getSpriteInitializerValue(spriteInit.frames, points);
-
-    ParticleRotationInitializer& rotInit = particles.rotationInitializer;
-    points.points[idx].rotation = Angle::defaultToRad(getQuaternionInitializerValue(rotInit.minRotation, rotInit.maxRotation, rotInit.shortestPath).getRoll());
-
-    syncParticlePoint(idx, particles, points, targetTransform);
-
-    // scale initializer is not applicable to points
-}
-
-float ActionSystem::getTimeFromParticleTime(float& time, float& fromTime, float& toTime){
-    if ((fromTime != toTime) && (time >= fromTime) && (time <= toTime)) {
-        return (time - fromTime) / (toTime - fromTime);
-    }
-
-    return -1;
-}
-
-bool ActionSystem::getParticleModifierValue(float& particleTime, float& fromTime, float& toTime, Ease& function, float& value){
-    float time = getTimeFromParticleTime(particleTime, fromTime, toTime);
-    if (time < 0 || time > 1){
-        return false;
-    }
-
-    value = function.call(time);
-    return value >= 0 && value <= 1;
-}
-
-float ActionSystem::getFloatModifierValue(float& value, float& fromValue, float& toValue){
-    return fromValue + ((toValue - fromValue) * value);
-}
-
-Vector3 ActionSystem::getVector3ModifierValue(float& value, Vector3& fromValue, Vector3& toValue){
-    return fromValue + ((toValue - fromValue) * value);
-}
-
-Quaternion ActionSystem::getQuaternionModifierValue(float& value, Quaternion& fromValue, Quaternion& toValue, bool shortestPath){
-    return Quaternion::slerp(value, fromValue, toValue, shortestPath);
-}
-
-Rect ActionSystem::getSpriteModifierValue(float& value, std::vector<int>& frames, SpriteComponent& sprite){
-    if (frames.size() > 0){
-        // value 1 is the modifier's end: the last frame, not one past it (and an ease
-        // overshooting below 0 the first: a negative float cast to size_t is undefined)
-        float position = std::min(std::max(value, 0.0f), 1.0f) * (float)frames.size();
-        size_t frameIndex = std::min(static_cast<size_t>(position), frames.size() - 1);
-        int id = frames[frameIndex];
-
-        if (sprite.framesRect.validIndex(id) && (unsigned int)id < sprite.numFramesRect){
-            return sprite.framesRect[id].rect;
-        }
-    }
-
-    return Rect(0,0,1,1);
-}
-
-Rect ActionSystem::getSpriteModifierValue(float& value, std::vector<int>& frames, PointsComponent& points){
-    if (frames.size() > 0){
-        // value 1 is the modifier's end: the last frame, not one past it (and an ease
-        // overshooting below 0 the first: a negative float cast to size_t is undefined)
-        float position = std::min(std::max(value, 0.0f), 1.0f) * (float)frames.size();
-        size_t frameIndex = std::min(static_cast<size_t>(position), frames.size() - 1);
-        int id = frames[frameIndex];
-
-        if (points.framesRect.validIndex(id) && (unsigned int)id < points.numFramesRect){
-            return points.framesRect[id].rect;
-        }
-    }
-
-    return Rect(0,0,1,1);
-}
-
-void ActionSystem::applyParticleModifiers(size_t idx, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform){
-    float particleTime = particles.particles[idx].time;
-    float value;
-
-    ParticlePositionModifier& posMod = particles.positionModifier;
-    if (getParticleModifierValue(particleTime, posMod.fromTime, posMod.toTime, posMod.function, value)){
-        particles.particles[idx].position = getParticleSimulationPosition(particles, targetTransform, getVector3ModifierValue(value, posMod.fromPosition, posMod.toPosition));
-    }
-
-    ParticleVelocityModifier& velMod = particles.velocityModifier;
-    if (getParticleModifierValue(particleTime, velMod.fromTime, velMod.toTime, velMod.function, value)){
-        particles.particles[idx].velocity = getParticleSimulationDirection(particles, targetTransform, getVector3ModifierValue(value, velMod.fromVelocity, velMod.toVelocity));
-    }
-
-    ParticleAccelerationModifier& accMod = particles.accelerationModifier;
-    if (getParticleModifierValue(particleTime, accMod.fromTime, accMod.toTime, accMod.function, value)){
-        particles.particles[idx].acceleration = getParticleSimulationDirection(particles, targetTransform, getVector3ModifierValue(value, accMod.fromAcceleration, accMod.toAcceleration));
-    }
-
-    if (!particles.colorGradient.stops.empty()){
-        instmesh.instances[idx].color = sampleParticleColorGradient(particles.colorGradient, particleTime, particles.particles[idx].life);
-    } else {
-        ParticleColorModifier& colMod = particles.colorModifier;
-        if (getParticleModifierValue(particleTime, colMod.fromTime, colMod.toTime, colMod.function, value)){
-            instmesh.instances[idx].color = getVector3ModifierValue(value, colMod.fromColor, colMod.toColor);
-            if (colMod.useSRGB){
-                instmesh.instances[idx].color = Color::sRGBToLinear(instmesh.instances[idx].color);
-            }
-        }
-    }
-
-    ParticleAlphaModifier& alpMod = particles.alphaModifier;
-    if (getParticleModifierValue(particleTime, alpMod.fromTime, alpMod.toTime, alpMod.function, value)){
-        instmesh.instances[idx].color.w = getFloatModifierValue(value, alpMod.fromAlpha, alpMod.toAlpha);
-    }
-
-    // size modifier is not applicable to instanced meshes
-
-    if (sprite){
-        ParticleSpriteModifier& spriteMod = particles.spriteModifier;
-        if (getParticleModifierValue(particleTime, spriteMod.fromTime, spriteMod.toTime, spriteMod.function, value)){
-            instmesh.instances[idx].textureRect = getSpriteModifierValue(value, spriteMod.frames, *sprite);
-        }
-    }
-
-    ParticleRotationModifier& rotMod = particles.rotationModifier;
-    if (getParticleModifierValue(particleTime, rotMod.fromTime, rotMod.toTime, rotMod.function, value)){
-        particles.particles[idx].rotation = getParticleSimulationRotation(particles, targetTransform, getQuaternionModifierValue(value, rotMod.fromRotation, rotMod.toRotation, rotMod.shortestPath));
-    }
-
-    ParticleScaleModifier& scaMod = particles.scaleModifier;
-    if (getParticleModifierValue(particleTime, scaMod.fromTime, scaMod.toTime, scaMod.function, value)){
-        particles.particles[idx].scale = getVector3ModifierValue(value, scaMod.fromScale, scaMod.toScale);
-    }
-
-}
-
-void ActionSystem::applyParticleModifiers(size_t idx, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform){
-    float particleTime = particles.particles[idx].time;
-    float value;
-
-    ParticlePositionModifier& posMod = particles.positionModifier;
-    if (getParticleModifierValue(particleTime, posMod.fromTime, posMod.toTime, posMod.function, value)){
-        particles.particles[idx].position = getParticleSimulationPosition(particles, targetTransform, getVector3ModifierValue(value, posMod.fromPosition, posMod.toPosition));
-    }
-
-    ParticleVelocityModifier& velMod = particles.velocityModifier;
-    if (getParticleModifierValue(particleTime, velMod.fromTime, velMod.toTime, velMod.function, value)){
-        particles.particles[idx].velocity = getParticleSimulationDirection(particles, targetTransform, getVector3ModifierValue(value, velMod.fromVelocity, velMod.toVelocity));
-    }
-
-    ParticleAccelerationModifier& accMod = particles.accelerationModifier;
-    if (getParticleModifierValue(particleTime, accMod.fromTime, accMod.toTime, accMod.function, value)){
-        particles.particles[idx].acceleration = getParticleSimulationDirection(particles, targetTransform, getVector3ModifierValue(value, accMod.fromAcceleration, accMod.toAcceleration));
-    }
-
-    if (!particles.colorGradient.stops.empty()){
-        points.points[idx].color = sampleParticleColorGradient(particles.colorGradient, particleTime, particles.particles[idx].life);
-    } else {
-        ParticleColorModifier& colMod = particles.colorModifier;
-        if (getParticleModifierValue(particleTime, colMod.fromTime, colMod.toTime, colMod.function, value)){
-            points.points[idx].color = getVector3ModifierValue(value, colMod.fromColor, colMod.toColor);
-            if (colMod.useSRGB){
-                points.points[idx].color = Color::sRGBToLinear(points.points[idx].color);
-            }
-        }
-    }
-
-    ParticleAlphaModifier& alpMod = particles.alphaModifier;
-    if (getParticleModifierValue(particleTime, alpMod.fromTime, alpMod.toTime, alpMod.function, value)){
-        points.points[idx].color.w = getFloatModifierValue(value, alpMod.fromAlpha, alpMod.toAlpha);
-    }
-
-    ParticleSizeModifier& sizeMod = particles.sizeModifier;
-    if (getParticleModifierValue(particleTime, sizeMod.fromTime, sizeMod.toTime, sizeMod.function, value)){
-        points.points[idx].size = getFloatModifierValue(value, sizeMod.fromSize, sizeMod.toSize);
-    }
-
-    ParticleSpriteModifier& spriteMod = particles.spriteModifier;
-    if (getParticleModifierValue(particleTime, spriteMod.fromTime, spriteMod.toTime, spriteMod.function, value)){
-        points.points[idx].textureRect = getSpriteModifierValue(value, spriteMod.frames, points);
-    }
-
-    ParticleRotationModifier& rotMod = particles.rotationModifier;
-    if (getParticleModifierValue(particleTime, rotMod.fromTime, rotMod.toTime, rotMod.function, value)){
-        points.points[idx].rotation = Angle::defaultToRad(getQuaternionModifierValue(value, rotMod.fromRotation, rotMod.toRotation, rotMod.shortestPath).getRoll());
-    }
-
-    // scale modifier is not applicable to points
-}
-
-void ActionSystem::advanceParticle(size_t idx, float dt, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform){
-    float life = particles.particles[idx].life;
-    float time = particles.particles[idx].time;
-
-    if (life <= time){
-        instmesh.instances[idx].visible = false;
-        return;
-    }
-
-    applyParticleModifiers(idx, particles, instmesh, sprite, targetTransform);
-
-    Vector3 velocity = particles.particles[idx].velocity;
-    Vector3 position = particles.particles[idx].position;
-    Vector3 acceleration = particles.particles[idx].acceleration;
-
-    velocity += acceleration * dt * 0.5f;
-    position += velocity * dt;
-    velocity += acceleration * dt * 0.5f;
-    time += dt;
-
-    particles.particles[idx].time = time;
-    particles.particles[idx].velocity = velocity;
-    particles.particles[idx].position = position;
-
-    syncParticleInstance(idx, particles, instmesh, targetTransform);
-
-    instmesh.instances[idx].visible = true;
-    instmesh.needUpdateInstances = true;
-}
-
-void ActionSystem::advanceParticle(size_t idx, float dt, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform){
-    float life = particles.particles[idx].life;
-    float time = particles.particles[idx].time;
-
-    if (life <= time){
-        points.points[idx].visible = false;
-        return;
-    }
-
-    applyParticleModifiers(idx, particles, points, targetTransform);
-
-    Vector3 velocity = particles.particles[idx].velocity;
-    Vector3 position = particles.particles[idx].position;
-    Vector3 acceleration = particles.particles[idx].acceleration;
-
-    velocity += acceleration * dt * 0.5f;
-    position += velocity * dt;
-    velocity += acceleration * dt * 0.5f;
-    time += dt;
-
-    particles.particles[idx].time = time;
-    particles.particles[idx].velocity = velocity;
-    particles.particles[idx].position = position;
-
-    syncParticlePoint(idx, particles, points, targetTransform);
-
-    points.points[idx].visible = true;
-    points.needUpdate = true;
-}
-
-void ActionSystem::particleActionStart(ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, MeshComponent& mesh){
-    // Creating particles
-    particles.particles.clear();
-    instmesh.instances.clear();
-    for (int i = 0; i < particles.maxParticles; i++){
-        particles.particles.push_back({});
-        particles.particles.back().life = 0;
-        particles.particles.back().time = 0;
-
-        instmesh.instances.push_back({});
-        instmesh.instances.back().visible = false;
-
-        instmesh.needUpdateInstances = true;
-    }
-
-    if (instmesh.maxInstances != particles.maxParticles){
-        instmesh.maxInstances = particles.maxParticles;
-        if (mesh.loaded)
-            mesh.needReload = true;
-    }
-
-    particles.emitter = true;
-    particles.newParticlesCount = 0;
-    particles.lastUsedParticle = 0;
-    sortParticleBursts(particles);
-    sortParticleColorGradient(particles);
-    particles.currentBurst = 0;
-}
-
-void ActionSystem::particleActionStart(ParticleSystemComponent& particles, PointsComponent& points){
-    if (particles.sizeInitializer.minSize == 0 && particles.sizeInitializer.maxSize == 0){
-        float size = std::max(points.texture.getWidth(), points.texture.getHeight());
-        particles.sizeInitializer.minSize = size;
-        particles.sizeInitializer.maxSize = size;
-    }
-
-    // Creating particles
-    particles.particles.clear();
-    points.points.clear();
-    for (int i = 0; i < particles.maxParticles; i++){
-        particles.particles.push_back({});
-        particles.particles.back().life = 0;
-        particles.particles.back().time = 0;
-
-        points.points.push_back({});
-        points.points.back().visible = false;
-
-        points.needUpdate = true;
-    }
-
-    if (points.maxPoints != particles.maxParticles){
-        points.maxPoints = particles.maxParticles;
-
-        points.needReload = true;
-    }
-
-    particles.emitter = true;
-    particles.newParticlesCount = 0;
-    particles.lastUsedParticle = 0;
-    sortParticleBursts(particles);
-    sortParticleColorGradient(particles);
-    particles.currentBurst = 0;
-}
-
-void ActionSystem::particleActionReset(Entity entity){
-    ActionComponent* action = scene->findComponent<ActionComponent>(entity);
-    ParticleSystemComponent* particles = scene->findComponent<ParticleSystemComponent>(entity);
-    if (!action || !particles) {
-        return;
-    }
-
-    action->state = ActionState::Stopped;
-    action->timecount = 0.0f;
-    action->startTrigger = false;
-    action->stopTrigger = false;
-    action->pauseTrigger = false;
-
-    particles->particles.clear();
-    particles->newParticlesCount = 0.0f;
-    particles->lastUsedParticle = 0;
-    particles->currentBurst = 0;
-    particles->emitter = false;
-
-    if (action->target == NULL_ENTITY) {
-        return;
-    }
-
-    if (PointsComponent* points = scene->findComponent<PointsComponent>(action->target)) {
-        points->points.clear();
-        points->renderPoints.clear();
-        points->numVisible = 0;
-        points->needUpdate = true;
-        points->needUpdateBuffer = true;
-    }
-
-    if (InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(action->target)) {
-        for (InstanceData& instance : instmesh->instances) {
-            instance.visible = false;
-        }
-        instmesh->renderInstances.clear();
-        instmesh->numVisible = 0;
-        instmesh->needUpdateInstances = true;
-    }
-}
-
-void ActionSystem::particlesActionUpdate(double dt, Entity entity, Entity target, ActionComponent& action, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh){
-    SpriteComponent* sprite = scene->findComponent<SpriteComponent>(target);
-    Transform* targetTransform = scene->findComponent<Transform>(target);
-    updateParticleTargetCache(particles, targetTransform);
-
-    bool existParticles = false;
-    for(int i=0; i<particles.particles.size(); i++){
-        if (particles.particles[i].life > particles.particles[i].time){
-            advanceParticle(i, dt, particles, instmesh, sprite, targetTransform);
-            existParticles = true;
-        }else if (instmesh.instances[i].visible){
-            // the last particles to die would otherwise stay drawn
-            instmesh.instances[i].visible = false;
-            instmesh.needUpdateInstances = true;
-        }
-    }
-
-    if (particles.emitter){
-        // Bursts (process all bursts whose scheduled time has been reached)
-        while (particles.currentBurst < (int)particles.bursts.size() &&
-               particles.bursts[particles.currentBurst].time <= action.timecount){
-            int count = sampleBurstCount(particles.bursts[particles.currentBurst]);
-            for (int b = 0; b < count; b++){
-                int particleIndex = findUnusedParticle(particles);
-                if (particleIndex < 0) break;
-                particles.particles[particleIndex].time = 0;
-                applyParticleInitializers(particleIndex, particles, instmesh, sprite, targetTransform);
-                existParticles = true;
-            }
-            particles.currentBurst++;
-        }
-
-        particles.newParticlesCount += dt * particles.rate;
-
-        int newparticles = (int)particles.newParticlesCount;
-        particles.newParticlesCount -= newparticles;
-        if (newparticles > particles.maxPerUpdate)
-            newparticles = particles.maxPerUpdate;
-
-        for(int i=0; i<newparticles; i++){
-            int particleIndex = findUnusedParticle(particles);
-
-            if (particleIndex >= 0){
-                particles.particles[particleIndex].time = 0;
-                applyParticleInitializers(particleIndex, particles, instmesh, sprite, targetTransform);
-
-                float spawnDt = (float)dt * (float)(newparticles - i) / (float)(newparticles + 1);
-                if (spawnDt > 0.0f){
-                    advanceParticle(particleIndex, spawnDt, particles, instmesh, sprite, targetTransform);
-                }
-
-                existParticles = true;
-            }else{
-                if (!particles.loop)
-                    particles.emitter = false;
-                break;
-            }
-        }
-    }
-
-    if (!existParticles && !particles.emitter){
-        actionStop(entity);
-    } else if (particles.loop) {
-        float cycleDuration = getParticleCycleDuration(particles);
-        if (cycleDuration > 0.0f){
-            while (action.timecount >= cycleDuration) {
-                action.timecount -= cycleDuration;
-                particles.currentBurst = 0;
-            }
-        }
-    }
-}
-
-void ActionSystem::particlesActionUpdate(double dt, Entity entity, Entity target, ActionComponent& action, ParticleSystemComponent& particles, PointsComponent& points){
-    Transform* targetTransform = scene->findComponent<Transform>(target);
-    updateParticleTargetCache(particles, targetTransform);
-
-    bool existParticles = false;
-    for(int i=0; i<particles.particles.size(); i++){
-        if (particles.particles[i].life > particles.particles[i].time){
-            advanceParticle(i, dt, particles, points, targetTransform);
-            existParticles = true;
-        }else if (points.points[i].visible){
-            // the last particles to die would otherwise stay drawn
-            points.points[i].visible = false;
-            points.needUpdate = true;
-        }
-    }
-
-    if (particles.emitter){
-        // Bursts (process all bursts whose scheduled time has been reached)
-        while (particles.currentBurst < (int)particles.bursts.size() &&
-               particles.bursts[particles.currentBurst].time <= action.timecount){
-            int count = sampleBurstCount(particles.bursts[particles.currentBurst]);
-            for (int b = 0; b < count; b++){
-                int particleIndex = findUnusedParticle(particles);
-                if (particleIndex < 0) break;
-                particles.particles[particleIndex].time = 0;
-                applyParticleInitializers(particleIndex, particles, points, targetTransform);
-                existParticles = true;
-            }
-            particles.currentBurst++;
-        }
-
-        particles.newParticlesCount += dt * particles.rate;
-
-        int newparticles = (int)particles.newParticlesCount;
-        particles.newParticlesCount -= newparticles;
-        if (newparticles > particles.maxPerUpdate)
-            newparticles = particles.maxPerUpdate;
-
-        for(int i=0; i<newparticles; i++){
-            int particleIndex = findUnusedParticle(particles);
-
-            if (particleIndex >= 0){
-                particles.particles[particleIndex].time = 0;
-                applyParticleInitializers(particleIndex, particles, points, targetTransform);
-
-                float spawnDt = (float)dt * (float)(newparticles - i) / (float)(newparticles + 1);
-                if (spawnDt > 0.0f){
-                    advanceParticle(particleIndex, spawnDt, particles, points, targetTransform);
-                }
-
-                existParticles = true;
-            }else{
-                if (!particles.loop)
-                    particles.emitter = false;
-                break;
-            }
-        }
-    }
-
-    if (!existParticles && !particles.emitter){
-        actionStop(entity);
-    } else if (particles.loop) {
-        float cycleDuration = getParticleCycleDuration(particles);
-        if (cycleDuration > 0.0f){
-            while (action.timecount >= cycleDuration) {
-                action.timecount -= cycleDuration;
-                particles.currentBurst = 0;
-            }
-        }
-    }
-}
-
 void ActionSystem::keyframeUpdate(double dt, ActionComponent& action, KeyframeTracksComponent& keyframe){
     if (keyframe.times.size() == 0)
         return;
 
-    float currentTime = action.timecount;
-
-    keyframe.interpolation = 0;
-
-    keyframe.index = 0;
-    while (keyframe.index < (keyframe.times.size()-1) && keyframe.times[keyframe.index] < currentTime){
-        keyframe.index++;
-    }
-
-    float previousTime = 0;
-    float nextTime = keyframe.times[keyframe.index];
-
-    if (keyframe.index > 0){
-        previousTime = keyframe.times[keyframe.index-1];
-    }
-
-    if (nextTime > previousTime){
-        keyframe.interpolation = (currentTime - previousTime) / (nextTime - previousTime);
-    }
-
-    if (keyframe.interpolation > 1){
-        keyframe.interpolation = 1;
-    }
-
     // Per-segment easing: easings[i] shapes the segment from key i to key i+1.
     // Empty easings (e.g. GLTF LINEAR clips) keep pure linear interpolation;
     // GLTF STEP clips use EaseType::STEP here.
-    if (keyframe.index > 0){
-        size_t segment = (size_t)keyframe.index - 1;
-        if (segment < keyframe.easings.size() && keyframe.easings[segment] != EaseType::LINEAR){
-            keyframe.interpolation = Ease::getFunction(keyframe.easings[segment])(keyframe.interpolation);
-        }
+    anim::KeyLocation at = anim::locateKey(keyframe.times.data(), keyframe.times.size(),
+                                           keyframe.easings.data(), keyframe.easings.size(), action.timecount);
+    keyframe.index = (int)at.index;
+    keyframe.interpolation = at.interpolation;
+}
+
+// The sampler location of the keyframe's current index and interpolation (keyframeUpdate,
+// or the clip end that processRunningAction forces)
+static anim::KeyLocation keyLocation(const KeyframeTracksComponent& keyframe){
+    anim::KeyLocation at;
+    at.index = (size_t)keyframe.index;
+    at.interpolation = keyframe.interpolation;
+    if (keyframe.index > 0 && (size_t)keyframe.index < keyframe.times.size()){
+        at.segmentDuration = keyframe.times[keyframe.index] - keyframe.times[keyframe.index-1];
     }
+    return at;
 }
 
 // Tangent presence is what marks a track as GLTF CUBICSPLINE; editor-authored
@@ -1489,23 +606,16 @@ static bool hasCubicSplineTangents(const KeyframeTracksComponent& keyframe, cons
 // instead of reading out of bounds.
 template<typename TracksComp>
 static bool trackIndexValid(const KeyframeTracksComponent& keyframe, const TracksComp& tracks){
-    return !tracks.values.empty() && (size_t)keyframe.index < tracks.values.size();
+    return anim::keyIndexValid(keyLocation(keyframe), tracks.values.size());
 }
 
 // Sample a vector track at the current playhead: cubic Hermite when tangents
 // are present, lerp otherwise.
 template<typename TracksComp>
 static Vector3 sampleVectorTrack(const KeyframeTracksComponent& keyframe, const TracksComp& tracks){
-    Vector3 previous = tracks.values[(keyframe.index > 0) ? keyframe.index - 1 : 0];
-
-    if (hasCubicSplineTangents(keyframe, tracks.values, tracks.inTangents, tracks.outTangents)){
-        float td = keyframe.times[keyframe.index] - keyframe.times[keyframe.index-1];
-        return Interpolation::cubicSpline(keyframe.interpolation, td,
-                previous, tracks.outTangents[keyframe.index-1],
-                tracks.values[keyframe.index], tracks.inTangents[keyframe.index]);
-    }
-
-    return previous + keyframe.interpolation * (tracks.values[keyframe.index] - previous);
+    bool cubic = hasCubicSplineTangents(keyframe, tracks.values, tracks.inTangents, tracks.outTangents);
+    return anim::sampleVector3(keyLocation(keyframe), tracks.values.data(),
+                               cubic ? tracks.inTangents.data() : nullptr, cubic ? tracks.outTangents.data() : nullptr);
 }
 
 void ActionSystem::translateTracksUpdate(KeyframeTracksComponent& keyframe, TranslateTracksComponent& translatetracks, Entity target, float weight){
@@ -1540,25 +650,11 @@ void ActionSystem::rotateTracksUpdate(KeyframeTracksComponent& keyframe, RotateT
     if (weight <= 0.0f || !trackIndexValid(keyframe, rotatetracks))
         return;
 
-    Quaternion previousRotation = rotatetracks.values[(keyframe.index > 0) ? keyframe.index - 1 : 0];
-
-    Quaternion value;
-    if (hasCubicSplineTangents(keyframe, rotatetracks.values, rotatetracks.inTangents, rotatetracks.outTangents)){
-        float td = keyframe.times[keyframe.index] - keyframe.times[keyframe.index-1];
-        value = Interpolation::cubicSpline(keyframe.interpolation, td,
-                previousRotation, rotatetracks.outTangents[keyframe.index-1],
-                rotatetracks.values[keyframe.index], rotatetracks.inTangents[keyframe.index]);
-        // spec: the interpolated quaternion MUST be normalized before applying.
-        // Guard the all-zero result the spec warns exporters about (v_k == -v_k+1):
-        // normalizing it would spread NaN through the pose blend.
-        if (value.norm() > FLT_EPSILON){
-            value.normalize();
-        }else{
-            value = (keyframe.interpolation < 0.5f) ? previousRotation : rotatetracks.values[keyframe.index];
-        }
-    }else{
-        value = Quaternion::slerp(keyframe.interpolation, previousRotation, rotatetracks.values[keyframe.index]);
-    }
+    // slerp, or Hermite normalized with the zero-norm guard (KeyframeSampling)
+    bool cubic = hasCubicSplineTangents(keyframe, rotatetracks.values, rotatetracks.inTangents, rotatetracks.outTangents);
+    Quaternion value = anim::sampleQuaternion(keyLocation(keyframe), rotatetracks.values.data(),
+                                              cubic ? rotatetracks.inTangents.data() : nullptr,
+                                              cubic ? rotatetracks.outTangents.data() : nullptr);
     if (keyframe.relative){
         value = keyframe.baseRotation * value;
     }
@@ -1581,23 +677,20 @@ void ActionSystem::morphTracksUpdate(KeyframeTracksComponent& keyframe, MorphTra
         return;
 
     const std::vector<float>& previousMorph = morpthtracks.values[(keyframe.index > 0) ? keyframe.index - 1 : 0];
+    const std::vector<float>& nextMorph = morpthtracks.values[keyframe.index];
 
-    if ((keyframe.index == 0) || (morpthtracks.values[keyframe.index].size() == morpthtracks.values[keyframe.index-1].size())) {
+    if ((keyframe.index == 0) || (nextMorph.size() == previousMorph.size())) {
         bool cubic = hasCubicSplineTangents(keyframe, morpthtracks.values, morpthtracks.inTangents, morpthtracks.outTangents) &&
                      morpthtracks.outTangents[keyframe.index-1].size() == previousMorph.size() &&
-                     morpthtracks.inTangents[keyframe.index].size() == morpthtracks.values[keyframe.index].size();
-        float td = cubic ? keyframe.times[keyframe.index] - keyframe.times[keyframe.index-1] : 0;
+                     morpthtracks.inTangents[keyframe.index].size() == nextMorph.size();
+        size_t count = std::min(nextMorph.size(), (size_t)MAX_MORPHTARGETS);
+        float values[MAX_MORPHTARGETS];
+        anim::sampleFloatRow(keyLocation(keyframe), previousMorph.data(), nextMorph.data(), count,
+                             cubic ? morpthtracks.outTangents[keyframe.index-1].data() : nullptr,
+                             cubic ? morpthtracks.inTangents[keyframe.index].data() : nullptr, values);
         MorphBlendAccum& accum = morphBlend[target];
-        for (int morphIndex = 0; morphIndex < morpthtracks.values[keyframe.index].size() && morphIndex < MAX_MORPHTARGETS; morphIndex++) {
-            float value;
-            if (cubic){
-                value = Interpolation::cubicSpline(keyframe.interpolation, td,
-                        previousMorph[morphIndex], morpthtracks.outTangents[keyframe.index-1][morphIndex],
-                        morpthtracks.values[keyframe.index][morphIndex], morpthtracks.inTangents[keyframe.index][morphIndex]);
-            }else{
-                value = previousMorph[morphIndex] + keyframe.interpolation * (morpthtracks.values[keyframe.index][morphIndex] - previousMorph[morphIndex]);
-            }
-            accum.sums[morphIndex] += value * weight;
+        for (size_t morphIndex = 0; morphIndex < count; morphIndex++) {
+            accum.sums[morphIndex] += values[morphIndex] * weight;
             accum.weights[morphIndex] += weight;
         }
     }else{
@@ -1621,7 +714,9 @@ void ActionSystem::latticeTracksUpdate(KeyframeTracksComponent& keyframe, Lattic
     bool cubic = hasCubicSplineTangents(keyframe, latticetracks.values, latticetracks.inTangents, latticetracks.outTangents) &&
                  latticetracks.outTangents[keyframe.index-1].size() == previous.size() &&
                  latticetracks.inTangents[keyframe.index].size() == next.size();
-    float td = cubic ? keyframe.times[keyframe.index] - keyframe.times[keyframe.index-1] : 0;
+    const Vector3* previousOut = cubic ? latticetracks.outTangents[keyframe.index-1].data() : nullptr;
+    const Vector3* nextIn = cubic ? latticetracks.inTangents[keyframe.index].data() : nullptr;
+    anim::KeyLocation at = keyLocation(keyframe);
 
     int pointCount = lattice::pointCount(latticecomp.resolutionX, latticecomp.resolutionY, latticecomp.resolutionZ);
 
@@ -1642,42 +737,81 @@ void ActionSystem::latticeTracksUpdate(KeyframeTracksComponent& keyframe, Lattic
             continue;
 
         Vector3 value;
-        if (cubic){
-            value = Interpolation::cubicSpline(keyframe.interpolation, td,
-                    previous[n], latticetracks.outTangents[keyframe.index-1][n],
-                    next[n], latticetracks.inTangents[keyframe.index][n]);
-        }else{
-            value = previous[n] + keyframe.interpolation * (next[n] - previous[n]);
-        }
+        anim::sampleVector3Row(at, &previous[n], &next[n], 1,
+                               cubic ? previousOut + n : nullptr, cubic ? nextIn + n : nullptr, &value);
         accum.sums[point] += value * weight;
         accum.weights[point] += weight;
     }
 }
 
 void ActionSystem::clearPoseBlend(){
-    transformBlend.clear();
+    // the nodes stay for the next frame (no allocation per animated entity and frame); the
+    // entries of destroyed entities go
+    for (auto it = transformBlend.begin(); it != transformBlend.end();){
+        if (!scene->isEntityCreated(it->first)){
+            it = transformBlend.erase(it);
+        }else{
+            it->second.reset();
+            ++it;
+        }
+    }
     morphBlend.clear();
+    for (auto it = propertyBlend.begin(); it != propertyBlend.end();){
+        if (!scene->isEntityCreated(it->second.target)){
+            it = propertyBlend.erase(it);
+        }else{
+            it->second.active = false;
+            it->second.rest = nullptr;
+            ++it;
+        }
+    }
     for (auto it = latticeBlend.begin(); it != latticeBlend.end();){
         if (!scene->isEntityCreated(it->first)){
             it = latticeBlend.erase(it);
         }else{
             it->second.active = false;
+            if (!it->second.hasRest.empty()){
+                std::fill(it->second.hasRest.begin(), it->second.hasRest.end(), 0);
+            }
             ++it;
         }
     }
 }
 
 void ActionSystem::flushPoseBlend(){
-    for (auto& entry : transformBlend){
-        Entity target = entry.first;
-        TransformBlendAccum& accum = entry.second;
-
-        if (!scene->isEntityCreated(target))
+    for (auto it = transformBlend.begin(); it != transformBlend.end();){
+        // kept from an earlier frame, nothing this one: dropped (the nodes of what animates
+        // every frame stay; the rest does not cost later frames)
+        if (it->second.empty()){
+            it = transformBlend.erase(it);
             continue;
+        }
+        Entity target = it->first;
+        TransformBlendAccum& accum = it->second;
+        ++it;
 
+        // one lookup: a destroyed entity has no components
         Transform* transform = scene->findComponent<Transform>(target);
         if (!transform)
             continue;
+
+        // an Animation Player's rest fills the weight the contributors leave (spec 9.R1)
+        if (accum.hasRestPosition && accum.positionWeight > 0.0f && accum.positionWeight < 1.0f){
+            accum.positionSum = accum.positionSum + accum.restPosition * (1.0f - accum.positionWeight);
+            accum.positionWeight = 1.0f;
+        }
+        if (accum.hasRestScale && accum.scaleWeight > 0.0f && accum.scaleWeight < 1.0f){
+            accum.scaleSum = accum.scaleSum + accum.restScale * (1.0f - accum.scaleWeight);
+            accum.scaleWeight = 1.0f;
+        }
+        if (accum.hasRestRotation && accum.rotationWeight > 0.0f && accum.rotationWeight < 1.0f){
+            Quaternion rest = accum.restRotation;
+            if (accum.hasRotationRef && accum.rotationRef.dot(rest) < 0.0f){
+                rest = -rest;
+            }
+            accum.rotationSum = accum.rotationSum + rest * (1.0f - accum.rotationWeight);
+            accum.rotationWeight = 1.0f;
+        }
 
         bool changed = false;
         if (accum.positionWeight > 0.0f){
@@ -1719,7 +853,11 @@ void ActionSystem::flushPoseBlend(){
 
         for (int i = 0; i < MAX_MORPHTARGETS; i++){
             if (accum.weights[i] > 0.0f){
-                mesh->morphWeights[i] = accum.sums[i] / accum.weights[i];
+                if (accum.hasRest[i] && accum.weights[i] < 1.0f){
+                    mesh->morphWeights[i] = accum.sums[i] + accum.rest[i] * (1.0f - accum.weights[i]);
+                }else{
+                    mesh->morphWeights[i] = accum.sums[i] / accum.weights[i];
+                }
             }
         }
     }
@@ -1741,7 +879,9 @@ void ActionSystem::flushPoseBlend(){
         bool changed = false;
         for (size_t i = 0; i < count; i++){
             if (accum.weights[i] > 0.0f){
-                Vector3 value = accum.sums[i] / accum.weights[i];
+                Vector3 value = (i < accum.hasRest.size() && accum.hasRest[i] && accum.weights[i] < 1.0f) ?
+                                accum.sums[i] + accum.rest[i] * (1.0f - accum.weights[i]) :
+                                accum.sums[i] / accum.weights[i];
                 if (latticecomp->offsets.size() < pointCount){
                     latticecomp->offsets.resize(pointCount, Vector3(0, 0, 0));
                 }
@@ -1756,7 +896,113 @@ void ActionSystem::flushPoseBlend(){
         }
     }
 
+    // properties after the transforms (anim-properties spec 5.6); the writes that run user
+    // callbacks (GameObject active, a script's enabled) wait for the end of the flush, and in
+    // update() for the end of its pose blend scope (an onEnable may sample a player)
+    flushPropertyBlend(deferredPropertyWrites);
+
     clearPoseBlend();
+
+    if (!poseBlendScope) applyDeferredPropertyWrites();
+}
+
+size_t ActionSystem::hierarchyIndex(Scene* scene, Entity entity){
+    if (!scene || !scene->isEntityCreated(entity) || !scene->findComponent<Transform>(entity)) return SIZE_MAX;
+    return scene->getComponentArray<Transform>()->getIndex(entity);
+}
+
+void ActionSystem::applyDeferredPropertyWrites(){
+    if (deferredPropertyWrites.empty()) return;
+    // taken out first: a callback sampling a player flushes (and applies) its own
+    std::vector<DeferredPropertyWrite> writes;
+    writes.swap(deferredPropertyWrites);
+    // hierarchy order (parents first, siblings in order); every one re-checked (an onEnable /
+    // onDisable before it may have destroyed GameObjects or added components: nothing is held
+    // across these writes)
+    std::vector<std::pair<size_t, size_t>> order;
+    order.reserve(writes.size());
+    for (size_t i = 0; i < writes.size(); i++) order.push_back({hierarchyIndex(scene, writes[i].target), i});
+    std::stable_sort(order.begin(), order.end(), [](const auto& a, const auto& b){ return a.first < b.first; });
+    for (const auto& entry : order){
+        const DeferredPropertyWrite& write = writes[entry.second];
+        if (!scene->isEntityCreated(write.target)) continue;
+        anim::writePropertyKeySpace(scene, write.target, write.binding, &write.value);
+    }
+}
+
+ActionSystem::PropertyBlendAccum& ActionSystem::propertyAccum(Entity target, uint32_t key, const anim::PropertyRest* rest){
+    PropertyBlendAccum& accum = propertyBlend[((uint64_t)target << 32) | key];
+    if (!accum.active){
+        accum.active = true;
+        accum.target = target;
+        accum.rest = rest;
+        for (int k = 0; k < 4; k++){
+            accum.sums[k] = 0.0f;
+            accum.weights[k] = 0.0f;
+        }
+        accum.total = 0.0f;
+        accum.bestWeight = -1.0f;
+        accum.bestValue = 0.0f;
+    }
+    return accum;
+}
+
+void ActionSystem::flushPropertyBlend(std::vector<DeferredPropertyWrite>& deferred){
+    for (auto& entry : propertyBlend){
+        PropertyBlendAccum& accum = entry.second;
+        if (!accum.active || !accum.rest) continue;
+        const Entity target = accum.target;
+        const anim::PropertyRest& rest = *accum.rest;
+        const anim::PropertyBinding& binding = rest.binding;
+        const size_t width = std::min<size_t>(binding.width, 4);
+        if (width == 0 || !scene->isEntityCreated(target)) continue;
+
+        float stored[4] = {0, 0, 0, 0};
+        const bool known = anim::readPropertyStored(scene, target, binding, stored);
+        float current[4] = {stored[0], stored[1], stored[2], stored[3]};
+        anim::storedToKey(binding.kind, binding.display, current, width);
+
+        // the value in key space: the rest fills what the contributors leave (R1)
+        float value[4] = {0, 0, 0, 0};
+        if (binding.discrete){
+            value[0] = accum.bestValue;
+            if (accum.total < 1.0f && rest.has && 1.0f - accum.total > accum.bestWeight) value[0] = rest.value[0];
+        }else{
+            for (size_t k = 0; k < width; k++){
+                const float w = accum.weights[k];
+                if (w > 0.0f){
+                    value[k] = (rest.has && w < 1.0f) ? accum.sums[k] + rest.value[k] * (1.0f - w) : accum.sums[k] / w;
+                }else{
+                    // a component no track keys keeps its value
+                    value[k] = known ? current[k] : rest.value[k];
+                }
+            }
+        }
+
+        // written only when the stored value changes; a component no track keys keeps its stored
+        // value exactly (no key-space round trip: a ui.color.a fade leaves r, g, b alone)
+        float next[4] = {value[0], value[1], value[2], value[3]};
+        anim::keyToStored(binding.kind, binding.display, binding.discrete || binding.interpolateInt, next, width);
+        if (known && !binding.discrete){
+            for (size_t k = 0; k < width; k++){
+                if (!(accum.weights[k] > 0.0f)) next[k] = stored[k];
+            }
+        }
+        bool changed = !known;
+        for (size_t k = 0; k < width && !changed; k++){
+            if (next[k] != stored[k]) changed = true;
+        }
+        if (!changed) continue;
+        if (binding.deferred){
+            DeferredPropertyWrite write;
+            write.target = target;
+            write.value = value[0];
+            write.binding = binding;
+            deferred.push_back(std::move(write));
+            continue;
+        }
+        anim::writePropertyStored(scene, target, binding, next);
+    }
 }
 
 float ActionSystem::getDuration(Entity entity) {
@@ -1867,15 +1113,15 @@ float ActionSystem::getDuration(Entity entity, int depth) {
             totalMs += spriteanim->framesTime[i];
         }
         duration = totalMs / 1000.0f;
-    } else if (ParticleSystemComponent* parts = scene->findComponent<ParticleSystemComponent>(entity)) {
-        float emitDuration = getParticleCycleDuration(*parts);
-        if (emitDuration > 0.0f) {
-            if (parts->loop) {
-                // One emission cycle: used for timeline wrapping
-                duration = emitDuration;
-            } else {
-                // Full system lifetime: emit phase + last particle dies
-                duration = emitDuration + parts->lifeInitializer.maxLife;
+    } else if (ActionComponent* action = scene->findComponent<ActionComponent>(entity)) {
+        // a particle system's controller: one cycle of a looping effect (timeline wrapping),
+        // else until its last particle dies
+        if (isParticleController(entity, *action)) {
+            if (const particles::ParticleEffectDocument* effect = ParticleSubsystem::getDocument(scene->getComponent<ParticleSystemComponent>(action->target))) {
+                float lifetimeLo = 0.0f, lifetimeHi = 0.0f, delayLo = 0.0f, delayHi = 0.0f;
+                effect->main.startLifetime.range(lifetimeLo, lifetimeHi);
+                effect->startDelay.range(delayLo, delayHi);
+                duration = std::max(delayHi, 0.0f) + effect->duration + (effect->looping ? 0.0f : lifetimeHi);
             }
         }
     }
@@ -1981,22 +1227,13 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
         }
     }
 
-    //Particles (a disabled Particle System holds its particles until enabled again)
-    if (signature.test(scene->getComponentId<ParticleSystemComponent>()) &&
-            scene->getComponent<ParticleSystemComponent>(entity).enabled){
-        ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
-
-        if (targetSignature.test(scene->getComponentId<InstancedMeshComponent>())){
-            InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(action.target);
-
-            particlesActionUpdate(dt, entity, action.target, action, particles, instmesh);
-            if (action.state != ActionState::Running) return;
-        }
-        if (targetSignature.test(scene->getComponentId<PointsComponent>())){
-            PointsComponent& points = scene->getComponent<PointsComponent>(action.target);
-
-            particlesActionUpdate(dt, entity, action.target, action, particles, points);
-            if (action.state != ActionState::Running) return;
+    // a particle system's controller runs until the system has stopped and its last particle died
+    if (isParticleController(entity, action)){
+        std::shared_ptr<ParticleSubsystem> particleSystem = scene->getSystem<ParticleSubsystem>();
+        if (!particleSystem->isPlaying(action.target) && !particleSystem->isPaused(action.target) &&
+                particleSystem->getParticleCount(action.target) == 0){
+            actionStop(entity);
+            return;
         }
     }
 
@@ -2122,12 +1359,26 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
         if (signature.test(scene->getComponentId<AlphaTweenComponent>())){
             AlphaTweenComponent& alphatween = scene->getComponent<AlphaTweenComponent>(entity);
 
-            if (targetSignature.test(scene->getComponentId<MeshComponent>())){
+            // AUTO: the target's enabled Canvas Group when it has one, else its colour alpha
+            CanvasGroupComponent* group = targetSignature.test(scene->getComponentId<CanvasGroupComponent>())
+                ? &scene->getComponent<CanvasGroupComponent>(action.target) : nullptr;
+            const bool toGroup = alphatween.alphaTarget == AlphaTweenTarget::CANVAS_GROUP ||
+                                 (alphatween.alphaTarget == AlphaTweenTarget::AUTO && group && group->enabled);
+
+            if (toGroup){
+                if (group){
+                    const float alpha = alphatween.startAlpha + (alphatween.endAlpha - alphatween.startAlpha) * tween.value;
+                    // clamped (an overshooting ease stays in range), NaN rejected
+                    if (!std::isnan(alpha)){
+                        group->alpha = std::clamp(alpha, 0.0f, 1.0f);
+                    }
+                }
+            }else if (targetSignature.test(scene->getComponentId<MeshComponent>())){
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
 
                 alphaTweenUpdate(tween, alphatween, mesh.submeshes[0].material.baseColorFactor);
             }
-            if (targetSignature.test(scene->getComponentId<UIComponent>())){
+            if (!toGroup && targetSignature.test(scene->getComponentId<UIComponent>())){
                 UIComponent& ui = scene->getComponent<UIComponent>(action.target);
 
                 alphaTweenUpdate(tween, alphatween, ui.color);
@@ -2200,6 +1451,7 @@ void ActionSystem::updateAnimationPreview(double dt, const std::vector<Entity>& 
             if (childSig.test(scene->getComponentId<AnimationComponent>())) {
                 previewAnimation(childEntity);
             } else {
+                previewParticleController(dt, childEntity, *childAction);
                 processRunningAction(dt, childEntity, *childAction);
             }
         }
@@ -2234,10 +1486,35 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
     ActionComponent* action = actionStateChange(entity, scene->getComponent<ActionComponent>(entity));
 
     if (action && action->state == ActionState::Running){
+        previewParticleController(dt, entity, *action);
         clearPoseBlend();
         processRunningAction(dt, entity, *action);
         flushPoseBlend();
     }
+}
+
+// The unscaled frame delta of an update given the scaled one. While the time scale is above 0
+// it is dt / timeScale (the frame delta before the scale, exact for any dt a caller steps
+// with); at time scale 0 it is the frame delta the engine measured (the fixed frame delta
+// when set, else the last frame's, capped like Engine::deltatime): Engine::getUnscaledDeltatime(),
+// or, for an update stepped outside an engine frame, the same value worked out here.
+double ActionSystem::unscaledDeltatime(double dt){
+    const double timeScale = Engine::getTimeScale();
+    if (timeScale > 0.0){
+        return dt / timeScale;
+    }
+    const double frameUnscaled = Engine::getUnscaledDeltatime();
+    if (frameUnscaled > 0.0){
+        return frameUnscaled;
+    }
+    if (Engine::getFixedDeltatime() > 0.0){
+        return Engine::getFixedDeltatime();
+    }
+    const float framerate = Engine::getFramerate();
+    if (framerate <= 0.0f){
+        return 0.0;
+    }
+    return std::min(1.0 / (double)framerate, (double)Engine::getMaxDeltatime());
 }
 
 void ActionSystem::update(double dt){
@@ -2246,6 +1523,7 @@ void ActionSystem::update(double dt){
     }
 
     clearPoseBlend();
+    poseBlendScope = true;
 
     //Animations actions
     auto animations = scene->getComponentArray<AnimationComponent>();
@@ -2270,6 +1548,8 @@ void ActionSystem::update(double dt){
     }
 
     //All actions
+    // a tween with useUnscaledTime advances with the frame delta before the time scale
+    const double unscaledDt = unscaledDeltatime(dt);
     auto actions = scene->getComponentArray<ActionComponent>();
     for (int i = 0; i < actions->size(); i++){
 		Entity entity = actions->getEntity(i);
@@ -2282,13 +1562,23 @@ void ActionSystem::update(double dt){
 
         // Action update
         if (action && action->state == ActionState::Running){
-            processRunningAction(dt, entity, *action);
+            const TweenComponent* timed = scene->findComponent<TweenComponent>(entity);
+            processRunningAction((timed && timed->useUnscaledTime) ? unscaledDt : dt, entity, *action);
         }
 
 	}
 
+    // Animation Players add their states to the same blend
+    updatePlayers(dt);
+
     // Write the blended (weighted-average) pose to each animated target.
     flushPoseBlend();
+    poseBlendScope = false;
+    // the writes that run onEnable / onDisable, now that a callback may sample a player
+    applyDeferredPropertyWrites();
+
+    // clip events and onFinish, after the pose is written
+    dispatchPlayerCallbacks();
 }
 
 void ActionSystem::onComponentAdded(Entity entity, ComponentId componentId) {
@@ -2315,7 +1605,8 @@ void ActionSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 			}
 		}
 
-		if (ownedTarget && target != NULL_ENTITY && scene->isEntityCreated(target)) {
+		// (a system drawing on its own GameObject owns no other)
+		if (ownedTarget && target != NULL_ENTITY && target != entity && scene->isEntityCreated(target)) {
 			scene->destroyEntity(target);
 		}
 	} else if (componentId == scene->getComponentId<AnimationComponent>()) {

@@ -14,6 +14,9 @@
 #include "sokol_gfx.h"
 
 #include <map>
+#include <memory>
+#include <utility>
+#include <vector>
 
 
 namespace jasperengine{
@@ -31,9 +34,41 @@ namespace jasperengine{
         }
     };
 
+    // References to SokolPipelineCache's shared pipeline variants (acquireVariant): a copy takes
+    // references of its own, clear() and the destructor release them. A reference made in an
+    // earlier render context (SystemRender::getContextId) is neither retained nor released (the
+    // context's shutdown destroyed the variants; sokol may hand their ids out again) and is not found
+    class SokolVariantRefs{
+    public:
+        struct Variant {
+            uint8_t kind;
+            uint8_t type; // pipeline type, by bit index
+            sg_pipeline pipeline;
+            uint64_t context; // SystemRender::getContextId it was acquired in
+        };
+
+        SokolVariantRefs() = default;
+        SokolVariantRefs(const SokolVariantRefs& rhs);
+        SokolVariantRefs& operator=(const SokolVariantRefs& rhs);
+        ~SokolVariantRefs();
+
+        // the variant of that kind and type this object holds in the current context (its
+        // pipeline SG_INVALID_ID when it could not be made), null when it holds none
+        const Variant* find(uint8_t kind, uint8_t type) const;
+        // a reference acquired by the caller in the current context (replaces one of that kind
+        // and type from an earlier context)
+        void add(uint8_t kind, uint8_t type, sg_pipeline pipeline);
+        void clear();
+
+    private:
+        std::vector<Variant> list;
+    };
+
     class SokolObject{
 
     private:
+        void addAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset,
+                          bool normalized, bool perInstance, bool interleaved);
 
         sg_bindings bind;
         sg_buffer loadIndexBuffer;
@@ -56,20 +91,53 @@ namespace jasperengine{
         sg_pipeline lastDynamicPipeline;
         uint32_t lastDynamicGeneration;
 
+        // GL warm draws (spec S32): per pipeline type, the pipeline confirmed warm with this
+        // object's bindings and the warm draw requested for it; the dynamic path's the same per
+        // pipeline. A draw waits for its warm draw (beginDraw is false until then)
+        // created at once and never waiting for a warm draw (ObjectRender::setImmediatePipelines)
+        bool immediatePipelines = false;
+        // the last beginDraw drew nothing because its pipeline (or shader) is still being created
+        // or warmed, not because it failed: the object needs no reload (isDrawWaiting)
+        bool drawWaiting = false;
+        // the pipelines made ahead for another variant of the shader (prewarmWith), per type
+        struct Prewarmed {
+            uint32_t shader;
+            int index;
+            sg_pipeline pipeline;
+        };
+        std::vector<Prewarmed> prewarmed;
+        uint32_t warmedPipeline[PIPELINE_TYPES];
+        uint64_t warmKey[PIPELINE_TYPES];
+        std::vector<std::pair<uint32_t, uint64_t>> dynamicWarm;
+        bool isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key);
+        bool isDynamicWarm(sg_pipeline pipeline);
+        void resetWarm();
+
         // the render state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
         RenderState loadState;
         // the sample count of the PIP_MSAA* pipelines (endLoad's)
         int msaaSamples;
 
-#ifdef JASPERENGINE_EDITOR
-        // Editor-only variants of the pipelines that cull no face, one per pipeline type,
-        // created on the first draw that asks for one and destroyed with the others
-        sg_pipeline noCullPipelines[PIPELINE_TYPES];
-        // types whose pipeline already culls nothing, by bit index
+        // Variants of the pipelines, made on the first draw that asks for one: VARIANT_MIRRORED has
+        // the face winding reversed (a draw whose transform mirrors the mesh, so its front faces
+        // stay front: culling and gl_FrontFacing), VARIANT_NO_CULL culls no face (editor-only
+        // debug views), VARIANT_MIRRORED_NO_CULL both. They are SokolPipelineCache's shared
+        // variants (interned pipelines, spec S32: every object with the same description draws with one): this object
+        // holds a reference to each it uses, its own also in a copy (taken again on copy),
+        // released by beginLoad, destroy and the destructor
+        static constexpr uint8_t VARIANT_MIRRORED = 0;
+        static constexpr uint8_t VARIANT_NO_CULL = 1;
+        static constexpr uint8_t VARIANT_MIRRORED_NO_CULL = 2;
+        SokolVariantRefs variants;
+        // types whose pipeline already culls nothing (its no-cull variant is itself), by bit index
         uint16_t noCullSame;
-#endif
 
         size_t bindSlotIndex;
+        // the vertex inputs (locations) the shader declares, set by setShader
+        uint32_t shaderInputs;
+        // the shader's vertex inputs, names at their locations (setShader): prewarmWith makes another
+        // variant's pipelines on this object's layout only when that variant takes the same inputs
+        uint64_t shaderInputSignature = 0;
 
         // color blending of the color pipelines when set (setBlendState)
         bool blendOverride;
@@ -94,11 +162,17 @@ namespace jasperengine{
         // the description endLoad creates the pipeline of one type from
         sg_pipeline_desc makePipelineDesc(PipelineType pipType) const;
         sg_pipeline& pipelineOf(PipelineType pipType);
+        // counts (and reports) a load leaving a vertex input of its shader without a buffer
+        void checkVertexInputs();
         void resetPipelines();
 
     public:
         // pipelines made by every object and not destroyed yet (diagnostics)
         static int getLivePipelineCount();
+        // the shared pipeline variants alive (SokolPipelineCache::variantCount)
+        static size_t getSharedVariantCount();
+        // loads that left a vertex input of their shader without a buffer (diagnostics)
+        static int getUnfedVertexInputLoads();
 
         SokolObject();
         SokolObject(const SokolObject& rhs);
@@ -108,6 +182,10 @@ namespace jasperengine{
         void setShader(ShaderRender* shader);
         void setIndex(BufferRender* buffer, AttributeDataType dataType, size_t offset);
         void addAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance);
+        // an attribute of an interleaved buffer that stays one bind slot on every backend: the
+        // offset (inside the stride, below 2048) is the attribute's, not the buffer binding's
+        // (a layout of more attributes than sokol has vertex buffer bind slots)
+        void addInterleavedAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance);
         // rebind every vertex bind-slot that was filled from fromBufferId to toBuffer,
         // keeping the same per-slot layout/offset (used to swap a per-view instance
         // buffer in just before draw). Affects only the bindings, not the pipeline.
@@ -118,24 +196,30 @@ namespace jasperengine{
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf);
         void setBlendState(const BlendState& state);
+        void setImmediatePipelines(bool immediate);
+        bool isReady() const;
+        uint32_t getPipelineId(PipelineType pipType) const;
+        bool prewarmWith(ShaderRender* shader);
+        bool isDrawWaiting() const;
+        static uint32_t getWaitingDrawCount();
         bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
         // records shader, vertex layout and index type for beginDraw(PipelineState); creates no pipeline
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face
-        // (editor-only debug views; ignored elsewhere)
-        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false);
+        // (editor-only debug views; ignored elsewhere); mirrored with one whose face winding is
+        // reversed (a draw whose transform mirrors the mesh)
+        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false);
         // the cached pipeline of that state (SokolPipelineCache), applied unless it is the one
         // applied last in this pass
         bool beginDraw(const PipelineState& state);
         void applyUniformBlock(int slot, unsigned int count, void* data);
-        void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
+        // false: skipped, its uniforms did not fit the frame's uniform buffer (SokolSystem::reserveUniformBytes)
+        // or its descriptor sets the descriptor buffer (SokolSystem::reserveDescriptorBytes)
+        bool draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 
         void destroy();
 
-        // test/debug use: the sg_pipeline_desc endLoad creates (or created) the pipeline
-        // of that type from, with the current load description
-        sg_pipeline_desc describePipeline(PipelineType pipType) const;
 
     };
 }

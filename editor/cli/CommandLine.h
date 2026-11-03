@@ -4,6 +4,8 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
+#include <vector>
 
 namespace jasperengine::editor {
 
@@ -22,7 +24,14 @@ namespace jasperengine::editor {
         // Developer check: dumps every scene's GameObjects of a project (see CommandLine.cpp)
         static int runSceneDumpCommand(int argc, char** argv, const char* executableName);
 
+        // Asset identity: assets check (missing references, JSON) and assets migrate (GUIDs written)
+        static int runAssetsCommand(int argc, char** argv, const char* executableName);
+
         static int runBenchmarkHelp(const char* executableName);
+
+        // Cooks a project's textures into its texture cache and reports them, or decodes a KTX2
+        // to PNG (editor/texture/TextureCli.h)
+        static int runCookTexturesCommand(int argc, char** argv, const char* executableName);
 
         // Checks a project's Lua scripts, shader forks, C++ scripts and HTML/CSS UI files (see docs/mcp/checks.md)
         static int runCheckCommand(int argc, char** argv, const char* executableName);
@@ -42,6 +51,15 @@ namespace jasperengine::editor {
         // Places GameObjects with an edit-time physics simulation, no window (editor/physics/PlacementCli.h)
         static int runPlacePhysicsCommand(int argc, char** argv, const char* executableName);
 
+        // Bakes or imports a Vertex Animation (.vat + .vat.glb), no window (editor/vat/VatCli.h)
+        static int runBakeVatCommand(int argc, char** argv, const char* executableName);
+
+        // Imports Unity Particle Systems (.prefab / .unity) as engine prefabs, no window (editor/unity/UnityParticleImport.h)
+        static int runImportUnityParticlesCommand(int argc, char** argv, const char* executableName);
+
+        // Generates sprite normal maps (sprites, sheets, GIF/APNG, tiles), no window (editor/spritenormals/SpriteNormalsCli.h)
+        static int runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName);
+
         // Prints the top level usage, or reports an unrecognized argument.
         static int runHelpCommand(int argc, char** argv, const char* executableName);
 
@@ -57,6 +75,13 @@ namespace jasperengine::editor {
         // A --project argument (a project directory or its project.yaml) as the absolute,
         // normalized project directory (absoluteArgPath)
         static std::filesystem::path projectArgPath(const std::filesystem::path& path);
+
+        // The profiler's options (--profile, --profile-capture <path>, --profile-frames <n>, also
+        // with "="), anywhere on the command line: main() removes them before the subcommands
+        // parse theirs, and the engine gets them at start (App::engineInit); the capture path is
+        // made absolute. False with a message on stderr for a flag without its value.
+        static bool takeProfilerFlags(std::vector<char*>& args);
+        static const std::vector<std::string>& takenProfilerFlags();
     };
 
 }

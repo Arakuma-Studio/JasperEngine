@@ -6,8 +6,9 @@
 - A missing reference, a path outside the assets directory and a remote URL fail the export
   (Exporter::checkHtmlUIReferences; for .html documents the compat layer's checkDocument,
   phase-2 hook H14) with project-relative file:line:column in the message.
-- JASPER_SLOW_BUILD=1 also builds the Desktop player and runs it (run_build) with the document
-  on screen.
+- JASPER_SLOW_BUILD=1 also builds the Desktop game and runs it (run_build) with the document
+  on screen: built with the prebuilt glcore player runtime the run builds once (what runs is the
+  same player; compiling the engine for it is test_build.py's check).
 
 Runs on a scratch copy of the fixture project.
 """
@@ -18,11 +19,16 @@ import time
 import asyncio
 from pathlib import Path
 
+import build_cache
 from harness import Editor, REPO, skip
 from htmlui_pixels import count_near
 
+# the Desktop player test builds with the run's prebuilt glcore runtime (tools/mcp/build_cache.py)
+PREBUILT_PLAYERS = ["glcore-release"]
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui", "env": build_cache.player_env("glcore", "release")}
+CI = True
+
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
-JOBS = 2
 
 S: dict = {}
 
@@ -90,7 +96,9 @@ async def export_source(ed: Editor, out: Path, **args):
     return raw, r
 
 
-async def test_project_with_document(ed: Editor):
+async def _setup_document(ed: Editor):
+    if "scene" in S:
+        return
     ui = ed.project / "assets" / "ui"
     for sub in ("img", "icons", "anim", "fonts"):
         (ui / sub).mkdir(parents=True, exist_ok=True)
@@ -111,30 +119,19 @@ async def test_project_with_document(ed: Editor):
     await ed.call("edit_build_scenes", action="add", scene=S["path"])
     await ed.call("edit_build_scenes", action="set_start", scene=S["path"])
 
-    # the document draws (its font loads) before anything is exported
-    shot = await ed.call_raw("screenshot", {"view": "game", "scene": S["scene"], "max_width": 640})
-    ed.check(not shot.is_error and count_near(shot.images[0][0], (255, 0, 0)) > 500, "the document is on screen")
-    entries = await ed.console_since(None, types=["error"], limit=1000)
-    errors = [e.get("message", "") for e in entries if "[HTML UI]" in e.get("message", "")]
-    ed.check(not errors, f"[HTML UI] errors: {errors}")
-
 
 async def test_source_export_ships_everything(ed: Editor):
+    await _setup_document(ed)
     out = ed.scratch.root / "export-html-ui"
-    await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": 8})
     raw, r = await export_source(ed, out)
-    # the HTML UI MSAA project setting reaches the game's init code
-    inits = [p for p in out.rglob("*.cpp") if "UIDocumentSystem::setPreferredSampleCount(8);" in p.read_text(errors="ignore")]
-    ed.check(inits, "no UIDocumentSystem::setPreferredSampleCount(8) in the exported sources")
-    await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": 4})
     ed.check_eq(r["status"], "succeeded", f"{raw.text[:2000]}")
     assets = out / "project" / "assets"
     for rel in SHIPPED:
         ed.check((assets / rel).is_file(), f"{rel} exported to {assets}")
-    S["out"] = out
 
 
 async def test_resource_pack_ships_everything(ed: Editor):
+    await _setup_document(ed)
     await ed.call("set_project_settings", values={"player.pack_native_resources": True})
     try:
         out = ed.scratch.root / "export-html-ui-pack"
@@ -151,6 +148,7 @@ async def test_resource_pack_ships_everything(ed: Editor):
 
 
 async def test_broken_references_fail_the_export(ed: Editor):
+    await _setup_document(ed)
     await ed.call("write_file", path="assets/ui/broken.html", content=BROKEN)
     await ed.call("set_properties", scene=S["scene"], entity=S["menu"], values={"uidocument": {"filename": "assets/ui/broken.html"}})
     await ed.call("save_scene", scene=S["scene"])
@@ -176,6 +174,7 @@ async def test_broken_references_fail_the_export(ed: Editor):
 
 
 async def test_missing_document_fails_the_export(ed: Editor):
+    await _setup_document(ed)
     await ed.call("set_properties", scene=S["scene"], entity=S["menu"], values={"uidocument": {"filename": "assets/ui/gone.html"}})
     await ed.call("save_scene", scene=S["scene"])
     try:
@@ -190,14 +189,23 @@ async def test_missing_document_fails_the_export(ed: Editor):
 
 async def test_desktop_build_runs_the_document(ed: Editor):
     if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
-        skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (compiles the engine)")
+        skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (the run builds its prebuilt runtime once)")
+    await _setup_document(ed)
+    # what runs is the game: the prebuilt player (the compile path is test_build.py's)
+    runtime = await build_cache.player_runtime(ed, "glcore", "release")
     out = ed.scratch.root / "export-html-ui-desktop"
-    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30)
-    job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=15.0)
+    r = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=600)
+    job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=5.0)
     ed.check_eq(job["status"], "succeeded", f"{job}")
-    raw = await ed.call_raw("run_build", {"seconds": 8, "screenshot_after_seconds": 6})
+    ed.check_eq((job["result"]["method_used"], job["result"]["player_id"]), ("prebuilt", runtime.name), f"{job}")
+    # the player's own frame, 120 frames of 1/60 s after the one that logs "Engine ready:" (the capture
+    # also waits for shaders still being made), not a window grab 6 s after the launch: how far a
+    # loaded machine's player has got by then is anyone's guess
+    raw = await ed.call_raw("run_build", {"after_ready": True, "fixed_fps": 60, "quit_after": 120})
     ed.check(not raw.is_error, raw.text)
     ed.check(not raw.value["crashed"], f"the player crashed: {raw.value}")
+    ed.check_eq(raw.value.get("exit_code"), 0, f"the player got ready and quit after its frames: {raw.value}")
+    ed.check(raw.images, f"the player's own screenshot: {raw.text[:2000]}")
     png = raw.images[0][0]
     (ed.scratch.root / "html-ui-player.png").write_bytes(png)
     ed.check(count_near(png, (255, 0, 0)) > 500, "the player shows the document")

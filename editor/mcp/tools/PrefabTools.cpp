@@ -8,6 +8,7 @@
 // Every edit runs through the editor's commands (one undo step per call).
 #include "McpTools.h"
 
+#include "mcp/McpDataSafety.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpRefs.h"
@@ -32,6 +33,7 @@
 #include "command/type/RemoveEntityFromPrefabCmd.h"
 #include "command/type/ReplacePrefabCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
+#include "pose/PoseEditSession.h"
 #include "util/FileUtils.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
@@ -222,8 +224,10 @@ bool entitiesArg(const CallPtr& call, SceneProject* scene, std::vector<Entity>& 
 }
 
 // A project-relative .prefab path. mustExist: the file is there (a prefab to use);
-// otherwise ".prefab" is added when missing (a prefab to create).
-bool prefabPathArg(Project* project, const std::string& text, bool mustExist, fs::path& relative, std::string& error) {
+// otherwise ".prefab" is added when missing (a prefab to create). A prefab the tool writes (created,
+// or `write`: changed) must stay inside the project once links are resolved
+// (McpRefs::resolveProjectWritePath); one it only reads may be reached through a link.
+bool prefabPathArg(Project* project, const std::string& text, bool mustExist, fs::path& relative, std::string& error, bool write = false) {
     if (text.empty()) {
         error = "A project-relative .prefab path is required.";
         return false;
@@ -231,7 +235,10 @@ bool prefabPathArg(Project* project, const std::string& text, bool mustExist, fs
     fs::path rel = FileUtils::pathFromUtf8(text).lexically_normal();
     if (!mustExist && rel.extension() != ".prefab") rel += ".prefab";
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, generic(rel), absolute, error, false)) return false;
+    if ((!mustExist || write) ? !McpRefs::resolveProjectWritePath(project, generic(rel), absolute, error, false)
+                            : !McpRefs::resolveProjectPath(project, generic(rel), absolute, error, false)) {
+        return false;
+    }
     if (!Util::isPrefabFile(rel.string())) {
         error = "\"" + text + "\" is not a .prefab file.";
         return false;
@@ -642,6 +649,8 @@ void createPrefabTool(const CallPtr& call) {
     std::vector<Entity> exportEntities = tops;
     const std::vector<Entity> virtualChildren = ProjectUtils::getVirtualChildren(registry, tops);
     exportEntities.insert(exportEntities.end(), virtualChildren.begin(), virtualChildren.end());
+    // a posed character's prefab gets its rest bones (the pose comes back on the next frame)
+    PoseEditSession::suspendActiveFor(sceneId, exportEntities);
     YAML::Node payload = exportEntities.size() == 1
         ? Stream::encodeEntity(tops[0], registry, project, scene)
         : Stream::encodeEntitySelection(exportEntities, registry, project, scene);
@@ -689,7 +698,7 @@ void createPrefabTool(const CallPtr& call) {
     if (pathArg.empty()) {
         fs::path absolute;
         std::string error;
-        if (!McpRefs::resolveProjectPath(project, generic(dir), absolute, error, false)) {
+        if (!McpRefs::resolveProjectWritePath(project, generic(dir), absolute, error, false)) {
             call->fail("directory: " + error);
             return;
         }
@@ -728,7 +737,7 @@ void createPrefabTool(const CallPtr& call) {
         }
         taken.insert(generic(relative));
         std::error_code ec;
-        fs::create_directories((project->getProjectPath() / relative).parent_path(), ec);
+        FileUtils::createDirectories((project->getProjectPath() / relative).parent_path(), ec);
         prefabs.emplace_back(relative, prefabNode);
         const Entity root = roots[i]["entity"] ? roots[i]["entity"].as<Entity>() : NULL_ENTITY;
         results.push_back({{"path", generic(relative)}, {"root_id", root}});
@@ -781,7 +790,7 @@ void createPrefabVariantTool(const CallPtr& call) {
             call->fail("A file already exists at \"" + generic(relative) + "\". Pick another path.");
             return;
         }
-        fs::create_directories((project->getProjectPath() / relative).parent_path(), ec);
+        FileUtils::createDirectories((project->getProjectPath() / relative).parent_path(), ec);
     }
 
     const uint64_t since = Out::lastLogId();
@@ -817,6 +826,8 @@ void createPrefabVariantTool(const CallPtr& call) {
     }
     const fs::path base = rootPrefabPath(project, scene, root);
     if (relative.empty()) relative = CreatePrefabVariantAssetCmd::defaultPath(project, base);
+    // a posed character's prefab gets its rest bones
+    PoseEditSession::suspendActiveFor(scene->id, {root});
     std::vector<std::pair<fs::path, YAML::Node>> items = {{relative, Stream::encodeEntity(root, scene->scene, project, scene)}};
     if (!runCommand(CommandHandle::get(scene->id), new CreatePrefabCmd(project, scene->id, items, true))) {
         const std::string why = problemsSince(since);
@@ -1002,7 +1013,39 @@ void unpackPrefabTool(const CallPtr& call) {
 }
 
 // add_to_prefab
+// The prefab asset saves of one tool call: a degraded asset is written only with allow_data_loss
+// (docs/data-safety.md); refused() fails the call with degraded_document
+class PrefabWriteScope {
+public:
+    explicit PrefabWriteScope(const CallPtr& call): call(call), project(call->ctx().project()) {
+        if (project) {
+            project->beginPrefabSaveScope(call->args().value("allow_data_loss", false) ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse);
+        }
+    }
+    ~PrefabWriteScope() {
+        if (project && open) project->endPrefabSaveScope();
+    }
+    bool refused() {
+        if (!project || !open) return false;
+        open = false;
+        const std::vector<fs::path> paths = project->endPrefabSaveScope();
+        if (paths.empty()) return false;
+        const Prefab* prefab = project->getPrefab(paths.front());
+        LoadReport report = prefab ? prefab->loadReport : LoadReport();
+        Json data = degradedDocumentError(generic(paths.front()), report);
+        call->fail("The change is made in the editor, but the prefab asset " + generic(paths.front()) + " was not written: it did not "
+                   "load completely and saving it would remove " + std::to_string(report.dropped()) + " value(s) this editor could not "
+                   "read. Pass allow_data_loss=true to write anyway.", data);
+        return true;
+    }
+private:
+    CallPtr call;
+    Project* project;
+    bool open = true;
+};
+
 void addToPrefabTool(const CallPtr& call) {
+    PrefabWriteScope prefabWrites(call);
     Project* project = requireProject(call);
     if (!project) return;
     SceneProject* scene = sceneArg(call, project);
@@ -1030,7 +1073,7 @@ void addToPrefabTool(const CallPtr& call) {
     fs::path target;
     const std::string targetArg = call->args().value("target", std::string());
     std::string error;
-    if (!targetArg.empty() && !prefabPathArg(project, targetArg, true, target, error)) {
+    if (!targetArg.empty() && !prefabPathArg(project, targetArg, true, target, error, true)) {
         call->fail("target: " + error);
         return;
     }
@@ -1051,6 +1094,7 @@ void addToPrefabTool(const CallPtr& call) {
         return;
     }
     const fs::path into = target.empty() ? project->findPrefabPathFor(sceneId, parent) : target;
+    if (prefabWrites.refused()) return;
     call->ok("Added " + McpRefs::entityPath(scene, entity) + " to prefab " + generic(into) + " below " + McpRefs::entityPath(scene, parent) +
              "; every instance gets it (one undo step; the prefab file is written when the scene is saved).",
              Json{{"scene_id", sceneId}, {"entity", McpRefs::entityJson(scene, entity)}, {"parent", McpRefs::entityJson(scene, parent)},
@@ -1059,6 +1103,7 @@ void addToPrefabTool(const CallPtr& call) {
 
 // remove_from_prefab
 void removeFromPrefabTool(const CallPtr& call) {
+    PrefabWriteScope prefabWrites(call);
     Project* project = requireProject(call);
     if (!project) return;
     SceneProject* scene = sceneArg(call, project);
@@ -1084,6 +1129,7 @@ void removeFromPrefabTool(const CallPtr& call) {
         call->fail("Remove from Prefab failed" + (why.empty() ? std::string(".") : ": " + why));
         return;
     }
+    if (prefabWrites.refused()) return;
     call->ok("Removed " + McpRefs::entityPath(scene, entity) + " from prefab " + generic(ref.path) +
              ": every other instance loses it, here it stays as a plain GameObject (one undo step).",
              Json{{"scene_id", sceneId}, {"entity", McpRefs::entityJson(scene, entity)}, {"prefab", generic(ref.path)}});
@@ -1316,6 +1362,7 @@ bool selectorMatches(const Selector& s, const PrefabOverrideEntry& entry) {
 }
 
 void prefabOverridesTool(const CallPtr& call) {
+    PrefabWriteScope prefabWrites(call);
     Project* project = requireProject(call);
     if (!project) return;
     const Json& args = call->args();
@@ -1337,7 +1384,7 @@ void prefabOverridesTool(const CallPtr& call) {
             call->fail("target is for apply only (revert always goes back to what the prefab gives).");
             return;
         }
-        if (!prefabPathArg(project, targetArg, true, target, error)) {
+        if (!prefabPathArg(project, targetArg, true, target, error, true)) {
             call->fail("target: " + error);
             return;
         }
@@ -1407,6 +1454,19 @@ void prefabOverridesTool(const CallPtr& call) {
         call->fail("Pass entity (a GameObject of the instance) so the removed GameObjects can be found.");
         return;
     }
+    // an apply without target writes each instance's own prefab: inside the project once links are
+    // resolved (the write itself goes beneath the project too: the call's write scope)
+    if (apply && target.empty()) {
+        for (Entity root : roots) {
+            PrefabObjectRef ref;
+            if (!project->findPrefabObject(sceneId, root, ref) || ref.path.empty()) continue;
+            const fs::path file = ref.path.is_absolute() ? ref.path : project->getProjectPath() / ref.path;
+            if (const std::string escape = McpRefs::writeEscape(project, file); !escape.empty()) {
+                call->fail(escape);
+                return;
+            }
+        }
+    }
 
     const uint64_t since = Out::lastLogId();
     CommandHistory* history = CommandHandle::get(sceneId);
@@ -1436,9 +1496,10 @@ void prefabOverridesTool(const CallPtr& call) {
         for (Entity root : roots) remaining += project->getPrefabOverrideEntries(sceneId, root).size();
         Json rootList = Json::array();
         for (Entity root : roots) rootList.push_back(McpRefs::entityJson(scene, root));
+        if (prefabWrites.refused()) return;
         call->ok(std::string(apply ? "Applied all " : "Reverted all ") + std::to_string(count) + " override(s)" +
                  (apply ? " to the instance's own prefab (nested instances' overrides become its overrides of them)" : "") +
-                 "; " + std::to_string(remaining) + " left (overrides referencing GameObjects outside the instance cannot be applied). "
+                 "; " + std::to_string(remaining) + " left (overrides referencing GameObjects outside the instance, and added GameObjects holding an instance of the prefab, cannot be applied). "
                  "One undo step." + (apply ? " Save the scene to write the prefab files." : ""),
                  Json{{"scene_id", sceneId}, {"action", action}, {"instances", rootList}, {"operations", done}, {"remaining", remaining}});
         return;
@@ -1598,6 +1659,7 @@ void prefabOverridesTool(const CallPtr& call) {
     text += "\nOne undo step; " + std::to_string(remaining) + " override(s) left." + (apply ? " Save the scene to write the prefab files." : "");
     Json data = {{"scene_id", sceneId}, {"action", action}, {"operations", operations}, {"remaining", remaining}};
     if (!skipped.empty()) data["skipped"] = skipped;
+    if (prefabWrites.refused()) return;
     call->ok(text, data);
 }
 
@@ -1681,8 +1743,14 @@ void prefabModeTool(const CallPtr& call) {
             call->fail("Not a prefab stage. Open one with prefab_mode action=open; scene must be a stage's scene id.");
             return;
         }
+        const bool allowDataLoss = call->args().value("allow_data_loss", false);
+        if (!allowDataLoss && project->isPrefabStageDegraded(stageId)) {
+            const Prefab* prefab = project->getPrefab(stage->assetPath);
+            failDegraded(*call, generic(stage->assetPath), prefab ? prefab->loadReport : LoadReport());
+            return;
+        }
         const uint64_t since = Out::lastLogId();
-        if (!project->savePrefabStage(stageId)) {
+        if (!project->savePrefabStage(stageId, allowDataLoss ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse)) {
             const std::string why = problemsSince(since);
             call->fail("Saving the prefab failed" + (why.empty() ? std::string(".") : ": " + why));
             return;
@@ -1850,7 +1918,7 @@ void setStandalonePrefabTool(const CallPtr& call) {
     const Json& args = call->args();
     fs::path relative;
     std::string error;
-    if (!prefabPathArg(project, args.value("prefab", std::string()), true, relative, error)) {
+    if (!prefabPathArg(project, args.value("prefab", std::string()), true, relative, error, true)) {
         call->fail("prefab: " + error);
         return;
     }
@@ -1876,7 +1944,7 @@ void setStandalonePrefabTool(const CallPtr& call) {
 void registerPrefabTools(McpRegistry& registry) {
     using namespace schema;
 
-    const Json prefabRef = assetPath(".prefab asset.");
+    const Json prefabRef = assetPath("");
 
     {
         ToolDef tool;
@@ -1891,7 +1959,7 @@ void registerPrefabTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
-            {"path", assetPath("One root only. Default <directory>/<name>.prefab.")},
+            {"path", assetPath("One root only.")},
             {"directory", withDefault(assetPath("Folder used when path is omitted."), "prefabs")}
         });
         tool.allowedWhilePlaying = false;
@@ -1908,7 +1976,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "GameObjects. From base: the asset only (undo scope=project).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Outermost instance root.")},
+            {"entity", entityRef("")},
             {"base", assetPath("Base .prefab (instead of entity).")},
             {"path", assetPath("Default \"<base> Variant.prefab\" next to base.")}
         });
@@ -1946,7 +2014,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "by name path (name), sibling-index path (hierarchy) or root only (none); dropped ones are logged.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Instance root or Missing Prefab root.")},
+            {"entity", entityRef("")},
             {"entities", entities()},
             {"prefab", assetPath("New .prefab.")},
             {"match", withDefault(stringEnum("", {"name", "hierarchy", "none"}), "name")},
@@ -1986,8 +2054,9 @@ void registerPrefabTools(McpRegistry& registry) {
             "gets it. target: one of parent's apply_targets (an outer prefab gets it as an override of its "
             "nested instance). Written when the scene is saved.";
         tool.inputSchema = object({
+            {"allow_data_loss", boolean("")},
             {"scene", sceneRef()},
-            {"entity", entityRef("GameObject to add (with children).")},
+            {"entity", entityRef("")},
             {"parent", entityRef("Instance GameObject (default: current parent).")},
             {"target", assetPath("Default: parent's own prefab.")}
         }, {"entity"});
@@ -2004,6 +2073,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "(a nested instance root leaves the outer prefab). For this instance only, delete it. Written when the "
             "scene is saved.";
         tool.inputSchema = object({
+            {"allow_data_loss", boolean("")},
             {"scene", sceneRef()},
             {"entity", entityRef("Instance member (not the root).")}
         }, {"entity"});
@@ -2051,6 +2121,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "target: one of the entry's apply_targets (default the innermost; an outer one applies it as an "
             "override there). Written when a scene using the prefab is saved.";
         tool.inputSchema = object({
+            {"allow_data_loss", boolean("")},
             {"action", stringEnum("", {"apply", "revert"})},
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -2079,11 +2150,12 @@ void registerPrefabTools(McpRegistry& registry) {
             "prefab root). Edits change the asset; nested instances record overrides. auto_save (default on) "
             "writes ~0.35 s after an edit; save writes now. close keeps depth stages. status lists stages.";
         tool.inputSchema = object({
+            {"allow_data_loss", boolean("")},
             {"action", withDefault(stringEnum("", {"open", "close", "save", "status"}), "status")},
             {"prefab", assetPath("open: .prefab; with entity: another level of its chain.")},
             {"scene", sceneRef("open: entity's scene; save: stage (default: shown).")},
-            {"entity", entityRef("open: an instance GameObject.")},
-            {"in_context", withDefault(boolean("open from entity."), true)},
+            {"entity", entityRef("")},
+            {"in_context", withDefault(boolean(""), true)},
             {"depth", withDefault(integer("close: stages kept.", 0, 64), 0)},
             {"unsaved", withDefault(stringEnum("cancel: error.", {"save", "discard", "cancel"}), "save")},
             {"auto_save", boolean("")},

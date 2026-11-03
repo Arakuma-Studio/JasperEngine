@@ -26,6 +26,8 @@
 
 namespace jasperengine::editor {
 
+    class MultiPropertyCmd;
+
 // ProjectUtils::makeUniqueEntityName for many names in a row, each then taken. Remembers,
 // per base name, the run of numbered names found taken, so naming a thousand copies of
 // "Sprite 1".."Sprite 1000" does not rescan the run for each: same names, linear time.
@@ -39,10 +41,39 @@ private:
     std::unordered_map<std::string, std::pair<size_t, size_t>> takenRuns; // base -> [first, last] all taken
 };
 
+// ProjectUtils::getLockedEntityParent for many entities of one scene (a delete of many): the
+// models' and panels' references indexed once instead of scanned for each entity (O(1) an
+// entity instead of O(the scene's model nodes)). The same answers while the scene is unchanged.
+class LockedParentIndex {
+public:
+    explicit LockedParentIndex(Scene* scene);
+    Entity get(Entity entity) const;
+
+private:
+    struct ModelReference {
+        Entity owner;
+        bool byTransformParent; // a bone or node: its Transform parent when it has one
+    };
+    Scene* scene;
+    std::unordered_map<Entity, ModelReference> modelReferences;
+    std::unordered_map<Entity, Entity> panelParts;
+};
+
 class ProjectUtils {
 public:
+    // the editor's new Line Renderer (GameObject > Effects > Line, Add Component,
+    // create_entity, add_component): Unity's, a world-space polyline (0,0,0)-(0,0,1) of width
+    // 0.1, in a 2D scene (pixel units) (0,0)-(100,0) of width 4. The component's own defaults
+    // stay the old hairline (scenes and scripts unchanged)
+    static void setupNewLineRenderer(LineRendererComponent& lines, bool scene2D);
+    // the editor's new Trail Renderer: width 0.2 (8 in a 2D scene, whose minimum vertex
+    // distance is 2 pixels), thinning (1 -> 0) and fading out (alpha 1 -> 0) to the tail
+    static void setupNewTrailRenderer(TrailRendererComponent& trail, bool scene2D);
 
     static Entity getLockedEntityParent(Scene* scene, Entity entity);
+    // getLockedEntityParent's UI part (a control's label, bar, ... below it); `checkPanels`
+    // when the panels' header parts are still to look at
+    static Entity lockedByParentUI(Scene* scene, Entity entity, Signature signature, bool& checkPanels);
     static bool isEntityLocked(Scene* scene, Entity entity);
     static Entity getParentModel(Scene* scene, Entity entity);
     // Model owning the imported parts an entity is or contains, never a model itself
@@ -54,10 +85,37 @@ public:
     static Entity getEffectiveParent(Scene* scene, Entity entity);
     static bool canMoveLockedEntityOrder(Scene* scene, Entity source, Entity target, InsertionType type, std::string* reason = nullptr);
     static std::string makeUniqueEntityName(const std::string& baseName, const std::unordered_set<std::string>& existingNames);
+    // the soft round particle image the UI Particle System starts with ("ui/particle_soft.png"
+    // in the assets, made once); its project-relative path ("assets/ui/particle_soft.png", as
+    // Texture paths are), "" when it cannot be written
+    static std::string ensureSoftParticleTexture(Project* project);
+    // The on-screen controls' circle images (ui-multitouch), written once into the project's
+    // assets as assets/ui/onscreen/stick_base.png and stick_knob.png (generated, not bundled);
+    // the assets-relative path a Texture stores, "" when it could not be written
+    static std::string ensureOnScreenControlTexture(const std::filesystem::path& assetsPath, bool knob);
     static std::string makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities = {});
 
     static size_t getTransformIndex(EntityRegistry* registry, Entity entity);
-    static void sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities);
+    // The Transform array holds each branch in one run, a GameObject after its parent and
+    // before the next GameObject outside the parent's branch (findBranchLastIndex, the moves and
+    // the scene and prefab encoders read it so). A GameObject decoded with a Transform under a
+    // parent already placed (a prefab instance imported again, a GameObject put back below one)
+    // is appended at the end of the array: this moves its branch to the end of its parent's
+    // branch, as its last child, when it is not in it. Returns whether it moved.
+    static bool keepInParentBranch(EntityRegistry* registry, Entity entity);
+    // The parent whose branch the Transform array splits (a GameObject of it comes after one
+    // outside it), the first one found; NULL_ENTITY when every branch is in one run
+    static Entity findSplitBranch(EntityRegistry* registry);
+    // Whether a GameObject's branch sits where it belongs: in its parent's branch, and not between
+    // another GameObject and that one's children
+    static bool isBranchPlace(EntityRegistry* registry, Entity entity);
+    // Transform order; a GameObject without a Transform stays after the branch of the top-level
+    // GameObject it followed (not `moved`, which a move just placed elsewhere), in its order
+    static void sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities, Entity moved = NULL_ENTITY);
+    // Puts each GameObject without a Transform back after the GameObject it followed in `before`
+    // (the first one still listed; the front when none), the others as they are: an undo that
+    // cannot tell from the list what moved gives it back as it was
+    static void keepUntransformedPlaces(EntityRegistry* registry, const std::vector<Entity>& before, std::vector<Entity>& entities);
 
     static bool moveEntityOrderByTarget(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity target, InsertionType type, Entity& oldParent, size_t& oldIndex, bool& hasTransform);
     // sortEntities false leaves the tracked list to one sortEntitiesByTransformOrder by the
@@ -120,7 +178,9 @@ public:
     // Returns entity type name (e.g. "Mesh", "Camera", "Light") based on its components
     static std::string getEntityTypeName(Scene* scene, Entity entity);
 
-    static void removeDynamicInstmesh(Entity entity, const YAML::Node& savedComponents, EntityRegistry* registry);
+    // An editor preview (an action's, an animation's) restored the GameObject: its particles go
+    // with it (a re-decoded Particle System keeps its runtime)
+    static void clearPreviewParticles(Scene* scene, Entity entity);
 
     // Fills a Texture with the editor built-in default skybox cubemap.
     static void setDefaultSkyTexture(Texture& outTexture);

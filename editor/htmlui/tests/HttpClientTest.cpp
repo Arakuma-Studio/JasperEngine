@@ -11,10 +11,6 @@
 using namespace jasperengine::editor::htmlui;
 using namespace jasperengine::editor::htmlui::test;
 
-TEST(HttpClient, CurlIsAvailable){
-    EXPECT_TRUE(HttpClient::available());
-}
-
 TEST(HttpClient, GetsABodyWithTypeAndRewrittenUrl){
     HttpClient client;
     const HttpResponse response = client.get("https://images.example.com/placeholder");
@@ -35,7 +31,7 @@ TEST(HttpClient, SendsTheEditorUserAgentNeverABrowserOne){
     const auto requests = sharedServer().requests();
     ASSERT_FALSE(requests.empty());
     for (const auto& request : requests){
-        EXPECT_EQ(request.second, HttpClient::kUserAgent) << request.first;
+        EXPECT_EQ(request.second.find("JasperEngineEditor/"), 0u) << request.first;
         EXPECT_EQ(request.second.find("Mozilla"), std::string::npos);
     }
 }

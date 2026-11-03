@@ -5,6 +5,7 @@
 #define SCENEMANAGER_H
 
 #include "Export.h"
+#include "Entity.h"
 #include "texture/Texture.h"
 #include <string>
 #include <functional>
@@ -24,6 +25,17 @@ namespace jasperengine {
         std::vector<Texture> textures;
         std::vector<std::string> sounds;
         std::vector<std::string> models;
+        // animation clips (.anim, asset-relative) and model sub-clips ("<model>#<name>"), loaded
+        // into AnimationClipPool; a sub-clip waits for its model in `models`
+        std::vector<std::string> clips;
+        // Vertex Animation assets (.vat, asset-relative), loaded into VertexAnimationPool; their
+        // .vat.glb meshes are Models, in `models`
+        std::vector<std::string> vats;
+        // Avatar Masks (.mask) and Animator Controllers (.controller), asset-relative, loaded into
+        // AnimatorAssetPool (S21); a controller's clips and masks are listed in `clips` and
+        // `masks` too
+        std::vector<std::string> masks;
+        std::vector<std::string> controllers;
     };
 
     // SceneManager allows registering named scene stacks and switching between them at runtime.
@@ -77,6 +89,8 @@ namespace jasperengine {
         static std::map<uint32_t, Scene*> scenePtrs;
         // a load factory is building its scenes (and running their scripts' init)
         static bool factoryRunning;
+        // the scenes the running load replaced (getUnloadingScenes)
+        static std::vector<Scene*> unloadingScenes;
 
         static uint32_t loadingSceneId;
         static float loadingDelay;
@@ -91,6 +105,23 @@ namespace jasperengine {
         static int loadingHolds;
 
         static std::vector<Preload> preloads;
+
+        // A GameObject waiting for its move to another scene (dontDestroyOnLoad,
+        // moveGameObjectToScene): the move runs at the next safe point (flushPersistentMoves)
+        struct PendingMove {
+            Scene* from;
+            Entity root;
+            Scene* to;
+        };
+        static Scene* persistentScene;
+        static std::function<Scene*()> persistentCreate;
+        static std::function<void(Scene*)> persistentDestroy;
+        static std::vector<PendingMove> pendingMoves;
+        static bool flushingMoves;
+        static int startingScenes;
+
+        static void raisePersistentScene();
+        static bool queueMove(Scene* from, Entity root, Scene* to, const char* caller);
 
         static std::vector<uint32_t> buildSceneStackIds(uint32_t id, const std::vector<uint32_t>& sceneIds);
         static SceneEntry* findEntry(uint32_t id);
@@ -175,6 +206,13 @@ namespace jasperengine {
         // Tracks the loading of a stack started without loadScene(), as the editor's Play does.
         static void setCurrentScene(uint32_t id);
 
+        // True while a load factory runs (it builds the new stack and starts its scripts)
+        static bool isFactoryRunning();
+        // While a load factory runs: the scenes it replaces, whose scripts were unloaded
+        // (onDisable, onDestroy) before it started; the factory deletes or reuses them. A scene
+        // loaded again is among them: it is built anew (also in the editor's Play).
+        static const std::vector<Scene*>& getUnloadingScenes();
+
         // Loads the files of a scene stack in the background while the game runs, so a later
         // loadScene() finds them ready. They are held until that load or cancelPreload().
         // Without async loading one file loads per frame, and models are skipped.
@@ -209,6 +247,9 @@ namespace jasperengine {
         // Return the name of the scene at the given id, or "" if not found.
         static std::string getSceneName(uint32_t id);
 
+        // The name of a stored scene pointer's scene (setScenePtr), or "" (messages)
+        static std::string getSceneNameOf(const Scene* scene);
+
         // Return all registered scene names in registration order.
         static std::vector<std::string> getSceneNames();
 
@@ -221,7 +262,8 @@ namespace jasperengine {
         // Return the name of the scene most recently loaded via loadScene(), or "" if none.
         static std::string getCurrentSceneName();
 
-        // Remove all registered scenes. Intended for editor use when resetting state.
+        // Remove all registered scenes. Intended for editor use when resetting state. The
+        // persistent scene goes too (destroyPersistentScene); its factory stays.
         static void clearAll();
 
         // Store a scene pointer associated with a scene ID for cross-scene entity resolution.
@@ -236,6 +278,61 @@ namespace jasperengine {
         // Every stored scene pointer (the game's created scenes, also while their scripts
         // start, before they run), by scene ID.
         static std::vector<Scene*> getScenePtrs();
+
+        // ---- Persistent objects (Unity's DontDestroyOnLoad)
+        //
+        // A root GameObject marked with dontDestroyOnLoad() moves, with its children, components
+        // and running state (script instances, sounds, bodies, actions), into the persistent scene:
+        // a scene layer named "DontDestroyOnLoad" that no loadScene() unloads, drawn above the
+        // loaded scenes and below the loading scene. It is created on the first call and deleted
+        // at quit (destroyPersistentScene, after ScriptRuntime::quitAll) or by clearAll().
+        //
+        // The move itself waits for a safe point, never inside a script callback or a system's
+        // loop: the end of the outermost scene start (ScriptRuntime::awakeScene, before the
+        // scene's documents start), ObjectManager::update (after this frame's update), the start
+        // of the next frame, and always before a loadScene() tears the scenes down. isPersistent()
+        // is true from the call on; the script instances' scene and entity change with the move.
+
+        // The persistent scene's id in getScenePtr() (never a project scene id)
+        static constexpr uint32_t PERSISTENT_SCENE_ID = 0xFFFFFFFEu;
+        static constexpr const char* PERSISTENT_SCENE_NAME = "DontDestroyOnLoad";
+
+        // Who makes and deletes the persistent scene: by default a new Scene (deleted with
+        // `delete`); the editor's Play makes a runtime scene of its session (which deletes it at
+        // Stop: its destroy only lets go). A create returning null refuses (logged by the
+        // caller): the editor outside Play. Null functions bring back the default.
+        static void setPersistentSceneFactory(std::function<Scene*()> create, std::function<void(Scene*)> destroy);
+        static Scene* getPersistentScene();
+        // Creates it if needed (and adds it as a running scene layer); null when refused
+        static Scene* ensurePersistentScene();
+        // Releases its scripts (their onDestroy ran at quit), takes it off the screen and deletes
+        // it through the factory. Moves still pending are dropped.
+        static void destroyPersistentScene();
+
+        // Marks the root GameObject `root` of `scene` to persist. A GameObject with a parent is
+        // refused with a warning (Unity), as is a missing one; one already persistent (or
+        // queued) is a no-op. Returns true when the GameObject is (or will be) persistent.
+        static bool dontDestroyOnLoad(Scene* scene, Entity root);
+        // In the persistent scene, or below a root queued to move there
+        static bool isPersistent(Scene* scene, Entity entity);
+        // Unity's SceneManager.MoveGameObjectToScene: the root GameObject goes to `to`, a running
+        // scene or the persistent scene (out of the persistent scene it stops persisting).
+        // Errors (logged, false): not a root, missing, "target scene is not loaded".
+        static bool moveGameObjectToScene(Scene* from, Entity root, Scene* to);
+        // The queued moves now (the safe points above call it)
+        static void flushPersistentMoves();
+        // A queued move from or to this scene (the scene's GameObjects are still where they were)
+        static bool hasPendingMoves(Scene* scene = nullptr);
+        // The root GameObjects queued to move to the persistent scene, with their scenes
+        static std::vector<std::pair<Scene*, Entity>> getPendingPersistentRoots();
+        // A scene being deleted: its queued moves are dropped (ObjectManager::forgetScene)
+        static void forgetPendingMoves(Scene* scene);
+        // Scenes start outside a load factory (the editor's Play start): the end of each scene's
+        // ScriptRuntime::awakeScene is a safe point for the moves, as it is inside a factory
+        static void beginStartingScenes();
+        static void endStartingScenes();
+        // A load factory runs, or the scenes of a Play start
+        static bool isStartingScenes();
     };
 
 } // namespace jasperengine

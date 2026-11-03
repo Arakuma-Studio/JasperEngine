@@ -7,8 +7,14 @@
 #include "LinuxInputRouter.h"
 #include "SystemLinux.h"
 #include "WindowLinux.h"
+#if !defined(SOKOL_VULKAN)
+#include "GlxWorkerContext.h"
+#endif
 
 #include "Engine.h"
+#include "PlatformConfig.h"
+#include "player/RunControl.h"
+#include "util/FrameLimiter.h"
 
 #if defined(SOKOL_VULKAN)
 // After WindowLinux.h: the Xlib surface entry points come from <X11/Xlib.h>
@@ -22,27 +28,6 @@
 
 #include <cstdio>
 #include <cstring>
-
-#ifndef JASPERENGINE_VSYNC_ENABLED
-#define JASPERENGINE_VSYNC_ENABLED 1
-#endif
-
-// 0 = windowed, 1 = maximized, 2 = fullscreen
-#ifndef JASPERENGINE_WINDOW_MODE
-#define JASPERENGINE_WINDOW_MODE 0
-#endif
-
-#ifndef JASPERENGINE_WINDOW_RESIZABLE
-#define JASPERENGINE_WINDOW_RESIZABLE 1
-#endif
-
-#ifndef JASPERENGINE_WINDOW_TITLE
-#define JASPERENGINE_WINDOW_TITLE "JasperEngine"
-#endif
-
-#ifndef JASPERENGINE_APP_ID
-#define JASPERENGINE_APP_ID "JasperEngine"
-#endif
 
 using namespace jasperengine;
 
@@ -60,8 +45,11 @@ bool glxContextError = false;
 
 GamepadLinux gamepads;
 LinuxInputRouter inputRouter;
+// Engine.targetFrameRate without vsync (Engine::getFramePacing().limiterFps)
+FrameLimiter frameLimiter;
 
 bool shouldClose = false;
+bool contextReady = false;
 
 double monotonicSeconds() {
     timespec now{};
@@ -151,7 +139,7 @@ bool createContext() {
         std::fprintf(stderr, "Error: GLX_EXT_create_context_es2_profile is required.\n");
         return false;
     }
-    const int attributes[] = {
+    static const int attributes[] = {
         GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
         GLX_CONTEXT_MINOR_VERSION_ARB, 2,
         GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_ES2_PROFILE_BIT_EXT,
@@ -159,7 +147,7 @@ bool createContext() {
     };
     const char* contextName = "OpenGL ES 3.2";
 #else
-    const int attributes[] = {
+    static const int attributes[] = {
         GLX_CONTEXT_MAJOR_VERSION_ARB, 4,
         GLX_CONTEXT_MINOR_VERSION_ARB, 1,
         GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
@@ -191,16 +179,29 @@ bool createContext() {
         return false;
     }
 
-    if (hasGlxExtension(display, screen, "GLX_EXT_swap_control")) {
-        const auto swapIntervalEXT = glxProc<SwapIntervalProc>("glXSwapIntervalEXT");
-        if (swapIntervalEXT)
-            swapIntervalEXT(display, WindowLinux::handle(),
-                            JASPERENGINE_VSYNC_ENABLED ? 1 : 0);
-    }
+    // the shader creation thread's context (spec S32), with the same attributes
+    static const int* workerAttributes = attributes;
+    setGpuWorkerContextFactory([]() {
+        return GlxWorkerContext::create(WindowLinux::display(), framebufferConfig, glContext, workerAttributes);
+    });
+    // the swap interval of the frame pacing (vSyncCount, from the project's VSync)
+    contextReady = true;
+    JasperEngineLinux::applySwapInterval(Engine::getFramePacing().swapInterval);
     return true;
 }
 
+void setSwapInterval(int interval) {
+    Display* display = WindowLinux::display();
+    if (!glContext || !display) return;
+    if (!hasGlxExtension(display, WindowLinux::screen(), "GLX_EXT_swap_control")) return;
+    const auto swapIntervalEXT = glxProc<SwapIntervalProc>("glXSwapIntervalEXT");
+    if (swapIntervalEXT)
+        swapIntervalEXT(display, WindowLinux::handle(), interval);
+}
+
 void destroyContext() {
+    setGpuWorkerContextFactory(nullptr);
+    contextReady = false;
     Display* display = WindowLinux::display();
     if (glContext && display) {
         glXMakeCurrent(display, None, nullptr);
@@ -231,11 +232,18 @@ bool createContext() {
     VulkanContextConfig config;
     config.surfaceExtension = VK_KHR_XLIB_SURFACE_EXTENSION_NAME;
     config.createSurface = createWindowSurface;
-    config.vsync = JASPERENGINE_VSYNC_ENABLED != 0;
-    return VulkanContext::create(config);
+    config.vsync = Engine::getFramePacing().swapInterval > 0;
+    contextReady = VulkanContext::create(config);
+    return contextReady;
+}
+
+void setSwapInterval(int interval) {
+    // FIFO presents every vblank; longer intervals come from the limiter (getMaxSwapInterval)
+    VulkanContext::setVSync(interval > 0);
 }
 
 void destroyContext() {
+    contextReady = false;
     VulkanContext::destroy();
 }
 
@@ -280,11 +288,20 @@ void processEvents() {
                 // the window loses focus so it can never be trapped.
                 WindowLinux::releasePointerGrab();
                 inputRouter.setFocus(false);
+                // held keys and buttons come up, so none stays pressed (a grab's too: its
+                // key ups go to the window manager)
+                Engine::systemFocusChanged(false);
+                // the grabs of a window manager's own shortcuts come and go: no real change
+                if (event.xfocus.mode != NotifyGrab && event.xfocus.mode != NotifyUngrab)
+                    Engine::systemFocus(false);
                 break;
             case FocusIn:
                 if (WindowLinux::isRelativeMouse())
                     WindowLinux::setMouseMode(MouseMode::CAPTURED);
                 inputRouter.setFocus(true);
+                Engine::systemFocusChanged(true);
+                if (event.xfocus.mode != NotifyGrab && event.xfocus.mode != NotifyUngrab)
+                    Engine::systemFocus(true);
                 break;
             default:
                 break;
@@ -294,18 +311,28 @@ void processEvents() {
 
 }
 
+void JasperEngineLinux::applySwapInterval(int interval) {
+    if (contextReady) setSwapInterval(interval);
+}
+
 int JasperEngineLinux::init(int argc, char **argv) {
+    const PlatformConfig& platform = platformConfig();
     Engine::systemInit(argc, argv, new SystemLinux(&inputRouter));
 
-    if (!WindowLinux::openDisplay())
-        return -1;
+    if (!WindowLinux::openDisplay()) {
+        // a CI machine or a container without a display server (R19)
+        std::fprintf(stderr, "No X display (DISPLAY is unset or cannot be reached): run the game under "
+                     "xvfb-run (xvfb-run ./game --headless ...) or set DISPLAY.\n");
+        Engine::systemShutdown();
+        return player::EXIT_NO_DISPLAY;
+    }
 
     WindowLinuxConfig config;
-    config.title = JASPERENGINE_WINDOW_TITLE;
-    config.appId = JASPERENGINE_APP_ID;
-    config.width = DEFAULT_WINDOW_WIDTH;
-    config.height = DEFAULT_WINDOW_HEIGHT;
-    config.resizable = JASPERENGINE_WINDOW_RESIZABLE;
+    config.title = platform.title;
+    config.appId = platform.appId;
+    config.width = platform.width;
+    config.height = platform.height;
+    config.resizable = platform.resizable;
 
 #if defined(SOKOL_VULKAN)
     // A Vulkan surface presents to any drawable, so the window keeps the
@@ -330,8 +357,11 @@ int JasperEngineLinux::init(int argc, char **argv) {
         WindowLinux::destroy();
         return -1;
     }
-    WindowLinux::show();
-    inputRouter.openInputMethod(WindowLinux::display(), WindowLinux::handle());
+    // --headless: never mapped; frames render offscreen all the same
+    if (!platform.headless) {
+        WindowLinux::show();
+        inputRouter.openInputMethod(WindowLinux::display(), WindowLinux::handle());
+    }
 
     if (!createContext()) {
         destroyContext();
@@ -352,9 +382,9 @@ int JasperEngineLinux::init(int argc, char **argv) {
     Engine::systemViewLoaded();
     Engine::systemViewChanged();
 
-    if (JASPERENGINE_WINDOW_MODE == 1)
+    if (platform.windowMode == 1)
         WindowLinux::maximize();
-    else if (JASPERENGINE_WINDOW_MODE == 2)
+    else if (platform.windowMode == 2)
         WindowLinux::requestFullscreen();
 
     while (!shouldClose) {
@@ -362,11 +392,15 @@ int JasperEngineLinux::init(int argc, char **argv) {
         if (shouldClose)
             break;
 
-        gamepads.poll(monotonicSeconds());
+        // a headless run takes no input
+        if (!platform.headless)
+            gamepads.poll(monotonicSeconds());
 
         beginFrame();
         Engine::systemDraw();
         endFrame();
+
+        frameLimiter.wait(Engine::getFramePacing().limiterFps);
     }
 
     Engine::systemViewDestroyed();
@@ -374,7 +408,8 @@ int JasperEngineLinux::init(int argc, char **argv) {
 
     gamepads.shutdown();
     destroyContext();
-    inputRouter.closeInputMethod();
+    if (!platform.headless)
+        inputRouter.closeInputMethod();
     WindowLinux::destroy();
-    return 0;
+    return player::RunControl::finish();
 }

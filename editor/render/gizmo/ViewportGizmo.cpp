@@ -170,24 +170,7 @@ editor::ViewportGizmoAxis editor::ViewportGizmo::hitTest(float normalizedX, floa
         AABB cubeAABB(cubeMin, cubeMax);
         RayReturn result = localRay.intersects(cubeAABB);
         if (result) {
-            // Determine which face was hit from the normal or hit point
-            Vector3 n = result.normal;
-            if (n == Vector3::ZERO) {
-                // Fallback: determine face from hit point's dominant axis
-                Vector3 p = result.point;
-                float ax = std::abs(p.x);
-                float ay = std::abs(p.y);
-                float az = std::abs(p.z);
-                if (ax >= ay && ax >= az) n = Vector3(p.x > 0 ? 1.0f : -1.0f, 0, 0);
-                else if (ay >= ax && ay >= az) n = Vector3(0, p.y > 0 ? 1.0f : -1.0f, 0);
-                else n = Vector3(0, 0, p.z > 0 ? 1.0f : -1.0f);
-            }
-            if (n.x > 0.5f)       closestAxis = ViewportGizmoAxis::POSITIVE_X;
-            else if (n.x < -0.5f) closestAxis = ViewportGizmoAxis::NEGATIVE_X;
-            else if (n.y > 0.5f)  closestAxis = ViewportGizmoAxis::POSITIVE_Y;
-            else if (n.y < -0.5f) closestAxis = ViewportGizmoAxis::NEGATIVE_Y;
-            else if (n.z > 0.5f)  closestAxis = ViewportGizmoAxis::POSITIVE_Z;
-            else if (n.z < -0.5f) closestAxis = ViewportGizmoAxis::NEGATIVE_Z;
+            closestAxis = ViewportGizmoAxis::CENTER;
         }
     }
 

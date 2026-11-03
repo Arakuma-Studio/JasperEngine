@@ -39,13 +39,16 @@ namespace jasperengine::editor::mcp::w3 {
         bool onlyProblems = false;       // warnings, errors and build output (compiler messages)
         bool includeNoise = false;       // "Shader ... generated successfully" build lines
         std::vector<LogType> types;      // empty: every type
+        std::vector<LogLevel> levels;    // empty: every level
+        std::vector<std::string> categories;  // empty: every category
+        int hasSource = -1;              // 1: only entries with a source, 0: only without, -1: both
         std::string contains;            // case-insensitive substring
         std::string regex;               // ECMAScript regex (case-insensitive), already validated
         size_t maxMessageChars = 4000;   // longer messages are cut (the tail is kept for build output)
     };
 
     struct ConsoleResult {
-        Json entries = Json::array();    // [{id, type, message, time}]
+        Json entries = Json::array();    // [{id, type, level, category, message, time, frame, source?}]
         uint64_t nextCursor = 0;         // pass as `since` to continue
         bool more = false;               // the limit cut the read: call again with nextCursor
         size_t skippedNoise = 0;
@@ -60,6 +63,8 @@ namespace jasperengine::editor::mcp::w3 {
     std::string formatConsoleText(const Json& entries, size_t maxChars = 6000);
     // Parses "info"/"warning"/... ; false for an unknown name
     bool parseLogType(const std::string& name, LogType& out);
+    // An entry as read_console returns it
+    Json consoleEntryJson(const LogEntry& entry, size_t maxChars);
 
     // ------------------------------------------------------------ views (ViewTools.cpp)
 
@@ -70,6 +75,7 @@ namespace jasperengine::editor::mcp::w3 {
         std::string savePath;            // also write the PNG here (project-relative or absolute)
         bool focus = true;               // bring the view's tab to the front when it must render
         int timeoutMs = 20000;
+        bool deviceOverlay = true;       // game view with a simulated device: its screen drawn over the image
     };
 
     struct CaptureResult {
@@ -91,14 +97,23 @@ namespace jasperengine::editor::mcp::w3 {
     inline Json screenshotArgSchema() {
         return Json{
             {"description", "Also return an image (true: game)."},
-            {"oneOf", Json::array({Json{{"type", "boolean"}}, Json{{"type", "string"}, {"enum", {"game", "scene", "editor"}}}})}
+            {"anyOf", Json::array({Json{{"type", "boolean"}}, Json{{"type", "string"}, {"enum", {"game", "scene", "editor"}}}})}
         };
     }
     inline Json maxWidthArgSchema(int maximum, int defaultWidth) {
-        // "0 = full size" is in the server instructions (Addressing), not in every tool
         return Json{{"type", "integer"},
                     {"minimum", 0}, {"maximum", maximum}, {"default", defaultWidth}};
     }
+
+    // The scene the Scene view tools act on (given, else the playing one, else the selected
+    // one; open and loaded), and a run once its view is laid out (focus: brought forward)
+    SceneProject* resolveSceneViewScene(Project* project, const Json& ref, std::string& error);
+    void whenSceneViewShown(const CallPtr& call, uint32_t sceneId, bool focus, int timeoutMs,
+                            std::function<void(bool ready, const std::string& error)> then);
+    // text + data, with a Scene view image when the call asked for one (screenshot: true)
+    void replyWithSceneShot(const CallPtr& call, uint32_t sceneId, const std::string& text, Json data);
+    // the Scene view camera as set_scene_camera returns it
+    Json sceneViewCameraJson(SceneProject* sceneProject);
 
     // ------------------------------------------------------------ play (PlayTools.cpp)
 

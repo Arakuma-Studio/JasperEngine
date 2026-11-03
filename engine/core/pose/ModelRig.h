@@ -1,0 +1,149 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// The pose rig of a loaded Model (spec: pose animation phase 2, section 3.1): its skeleton from
+// the bone entities, a CPU skinning sample from the glTF data the ModelComponent keeps, the
+// humanoid map (auto-detect, then the .humanoid sidecar's overrides, then validation) and a cache
+// that shares rigs between the animators and previews of the same model.
+//
+// Model space is the Model entity's local space: bones whose Transform parent is not a bone (the
+// glTF scene root node, an armature node) have those ancestors' current local transforms folded
+// into their rest local TRS, and a bone under a non-bone node below its parent bone gets that
+// node folded in as well. `bridges` (optional) gives, per skeleton bone, the folded transform
+// (identity when there is none): skeleton local = bridge * Transform local.
+
+#ifndef POSE_MODEL_RIG_H
+#define POSE_MODEL_RIG_H
+
+#include "Export.h"
+#include "ecs/Entity.h"
+#include "math/Matrix4.h"
+#include "pose/HumanoidMap.h"
+#include "pose/HumanoidMapIO.h"
+#include "pose/PoseRig.h"
+#include "pose/PoseSkin.h"
+
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
+namespace jasperengine{
+    class Scene;
+}
+
+namespace tinygltf{
+    class Model;
+}
+
+namespace jasperengine::pose {
+
+    // Skeleton of the Model entity `model`: one bone per bone entity (ModelComponent bones, glTF
+    // node order), BoneComponent bind TRS as the rest local TRS, entity names as bone names,
+    // parents from the Transform hierarchy restricted to bones. `boneEntities[i]` is the entity
+    // of skeleton bone i. False when the entity has no Model or the Model has no bones yet.
+    JASPERENGINE_API bool buildSkeleton(Scene* scene, Entity model, Skeleton& skeleton, std::vector<Entity>& boneEntities);
+    JASPERENGINE_API bool buildSkeleton(Scene* scene, Entity model, Skeleton& skeleton, std::vector<Entity>& boneEntities,
+                                        std::vector<Matrix4>* bridges);
+
+    // The same skeleton from the glTF data alone (anim-retarget 7.1, no scene): the bones are the
+    // union of all skins' joints in node order, named node.name or "Node <i>", parented to the
+    // nearest bone ancestor (the node that lists them as a child, as loadGLTF builds the
+    // hierarchy), rest TRS from the node, non-bone ancestors folded into the rest and `bridges`
+    // exactly as buildSkeleton does on a loaded model. `bonePaths[i]` is bone i's path from the
+    // model root (ModelSubClips' node paths), `boneNodes[i]` (optional) its glTF node index.
+    JASPERENGINE_API bool buildSkeletonFromGltf(const tinygltf::Model& gltf, Skeleton& skeleton, std::vector<std::string>& bonePaths,
+                                                std::vector<Matrix4>* bridges, std::vector<int>* boneNodes = nullptr);
+    // a glTF node's local TRS as the loader's entity gets it (its matrix, or T R S, decomposed)
+    JASPERENGINE_API void gltfNodeLocal(const tinygltf::Model& gltf, int node, Vector3& position, Quaternion& rotation, Vector3& scale);
+    // buildSkin from the glTF data (the inverse bind matrices of the first skin that lists each
+    // joint, as the loader's BoneComponents): the same sample buildSkin takes from the scene
+    JASPERENGINE_API std::shared_ptr<PoseSkin> buildSkinFromGltf(const tinygltf::Model& gltf, const Skeleton& skeleton,
+                                                                 const std::vector<int>& boneNodes);
+
+    // CPU skinning sample of the Model's skinned meshes, from the glTF positions, JOINTS_0 and
+    // WEIGHTS_0 the ModelComponent keeps loaded (at most PoseSkin::MAX_VERTICES vertices,
+    // PoseSkin::sampleStride over all skinned vertices). Inverse bind matrices from the bones'
+    // BoneComponent. nullptr when there is no glTF skin data (OBJ, no skinned mesh): the rig then
+    // uses its sole estimate.
+    JASPERENGINE_API std::shared_ptr<PoseSkin> buildSkin(Scene* scene, Entity model, const Skeleton& skeleton,
+                                                         const std::vector<Entity>& boneEntities);
+
+    // Auto-detect, then the sidecar overrides (a bone name forces the slot, "" unmaps it), then
+    // validation. `notes` gets the auto-detect notes and one line per override applied. False
+    // (with `error`) when an override names a bone the skeleton does not have or the map is not
+    // a valid humanoid.
+    JASPERENGINE_API bool resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
+                                          std::string* error, std::vector<std::string>* notes = nullptr);
+    // the same, then the extra bones (fingers, eyes, jaw: resolveExtraBones with the sidecar's
+    // extra_bones). False only when the body map fails: invalid extra_bones overrides fall back to
+    // auto-detect (`extraError` and a note say why), as the editor shows them, so one bad finger
+    // never costs a model its rig in Play or an export. Strict callers (Apply, set_humanoid)
+    // refuse a non-empty `extraError`.
+    JASPERENGINE_API bool resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
+                                          HumanExtraMap& extra, std::string* error, std::vector<std::string>* notes = nullptr,
+                                          std::string* extraError = nullptr);
+
+    // The sidecar's content in `stamp`, "" when there is none: what decides whether a cached rig
+    // is current (the engine file API has no modification times in exported games, the text is
+    // tiny). False with `error` when the sidecar exists but cannot be read (as the editor fails).
+    JASPERENGINE_API bool humanoidSidecarStamp(const std::string& modelPath, std::string& stamp, std::string* error);
+
+    // A cached rig is shared: read-only (const) for everyone
+    struct JASPERENGINE_API ModelRigInfo {
+        std::shared_ptr<const PoseRig> rig;    // built, skin set (when there is one), twist corrections applied
+        std::shared_ptr<const PoseSkin> skin;  // may be nullptr
+        HumanoidMap humanoid;
+        HumanExtraMap extra;                   // fingers, eyes, jaw (anim-retarget 6.3)
+        // the sidecar's Animation Type and overrides the rig was built with
+        AnimationType animationType = AnimationType::Generic;
+        HumanoidOverrides overrides;
+        std::vector<std::string> notes;
+        std::string extraError;                // the sidecar's extra_bones did not validate (auto-detect used)
+    };
+
+    // Rigs shared by model file and sidecar: get() returns the cached rig when the model path, the
+    // sidecar stamp, the model's loaded data (`source`: the ModelComponent's gltfModel/objModel,
+    // held weakly, so a reloaded file is new data) and the skeleton (names, parents, rest TRS)
+    // all match, else builds it (resolveHumanoid with the extra bones + setSkin + PoseRig::build
+    // with the sidecar's twist corrections) outside the lock and caches it. Entries whose source data is gone (model reloaded or unloaded) are dropped on
+    // every get and by prune() (a scene's PoseAnimatorSystem prunes when the scene goes).
+    // Thread safe. The editor clears it when a project closes.
+    class JASPERENGINE_API PoseRigCache {
+    public:
+        static PoseRigCache& shared();
+
+        // `skinFactory` builds the skin when a new rig is needed (may return nullptr); `source`
+        // nullptr: no content identity (the path, stamp and skeleton decide)
+        bool get(const std::string& modelPath, const std::string& sidecarStamp, const std::shared_ptr<const void>& source,
+                 const Skeleton& skeleton, const HumanoidOverrides& overrides,
+                 const std::function<std::shared_ptr<PoseSkin>()>& skinFactory, ModelRigInfo& out, std::string* error);
+
+        void prune();
+        void clear();
+
+    private:
+        struct Entry {
+            std::string modelPath;
+            std::string stamp;
+            std::weak_ptr<const void> source;
+            bool hasSource = false;
+            Skeleton skeleton;
+            ModelRigInfo info;
+        };
+        void pruneLocked();
+        bool find(const std::string& modelPath, const std::string& sidecarStamp, const std::shared_ptr<const void>& source,
+                  const Skeleton& skeleton, ModelRigInfo& out);
+        mutable std::mutex mutex;
+        std::vector<Entry> entries;
+    };
+
+    // The whole path for a Model entity of a scene: skeleton, sidecar (next to the model file),
+    // cached rig. `modelPath` is the ModelComponent's file. False with `error` on any failure.
+    JASPERENGINE_API bool buildModelRig(Scene* scene, Entity model, ModelRigInfo& out, std::vector<Entity>& boneEntities,
+                                        std::vector<Matrix4>* bridges, std::string* error);
+
+}
+
+#endif // POSE_MODEL_RIG_H

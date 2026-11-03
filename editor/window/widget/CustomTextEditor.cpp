@@ -11,6 +11,8 @@
 #include "App.h"
 #include "Backend.h"
 #include "Theme.h"
+#include "htmlui/compat/SupportTables.h"
+#include <set>
 
 #include <algorithm>
 #include <cctype>
@@ -107,7 +109,6 @@ CustomTextEditor::CustomTextEditor()
     , scrollX(0)
     , scrollY(0)
     , showAutoComplete(false)
-    , suggestionIndex(0)
     , suggestionsHovered(false)
     , showParamHint(false)
     , paramHintActiveParam(0)
@@ -129,6 +130,7 @@ CustomTextEditor::CustomTextEditor()
     , maxLineWidth(0)
     , maxLineWidthDirty(true)
     , suggestions(std::make_unique<SemanticSuggestions>())
+    , suggestionIndex(0)
     , scrollToSuggestion(false)
 {
     lines.push_back("");
@@ -374,6 +376,24 @@ void CustomTextEditor::initializeSuggestions() {
     if (isHtmlOrCss()) {
         for (size_t i = 0; i < kRcssPropertyCount; ++i) {
             suggestions->AddSymbol(kRcssProperties[i], SuggestionKind::Property, "RCSS property");
+        }
+    }
+    // HTML element and attribute names from the compat layer's support tables, so new elements
+    // (<list-view>, <markdown>, ...) and attributes (dropzone, tooltip, ...) come with them (S17 R38).
+    // Offered only where a tag or an attribute name goes, see updateSuggestions
+    if (language == SyntaxLanguage::Html) {
+        using ::jasperengine::htmlui::compat::Support;
+        for (const ::jasperengine::htmlui::compat::ElementSupport& row : ::jasperengine::htmlui::compat::elementTable()) {
+            if (row.support == Support::Unsupported || row.support == Support::Ignored) continue;
+            suggestions->AddSymbol(row.name, SuggestionKind::Class, "HTML element");
+        }
+        std::set<std::string> attributes;
+        for (const ::jasperengine::htmlui::compat::AttributeSupport& row : ::jasperengine::htmlui::compat::attributeTable()) {
+            const std::string name = row.name;
+            if (row.support == Support::Unsupported || row.support == Support::Ignored) continue;
+            if (name.find('*') != std::string::npos || !attributes.insert(name).second) continue;
+            const std::string element = row.element;
+            suggestions->AddSymbol(name, SuggestionKind::Field, element == "*" ? "HTML attribute" : "<" + element + "> attribute");
         }
     }
 }
@@ -791,7 +811,8 @@ int CustomTextEditor::scanOpenToken(const std::string& line, int i, OpenToken& o
 void CustomTextEditor::tokenizeAll() {
     // Every edit retokenizes, so this is also where cached widths expire
     maxLineWidthDirty = true;
-    lineTokens.clear();
+    // tokenizeText clears each line's tokens. Keep their buffers across edits
+    // instead of allocating every token vector again for the whole document.
     lineTokens.resize(lines.size());
     // Every line is retokenized after an edit, so a changed end state reaches the lines below
     lineEndStates.clear();
@@ -817,6 +838,17 @@ bool CustomTextEditor::atCssPropertyName(const TextPosition& wordStart) const {
     // The state right before the word tells where it is
     HtmlCssLexer::lexLine(htmlCssLanguage(), lines[wordStart.line].substr(0, wordStart.column), state);
     return HtmlCssLexer::expectsCssProperty(htmlCssLanguage(), state);
+}
+
+HtmlCssLexer::NamePosition CustomTextEditor::htmlNamePosition(const TextPosition& wordStart) const {
+    if (language != SyntaxLanguage::Html || wordStart.line < 0 || wordStart.line >= static_cast<int>(lines.size())) {
+        return HtmlCssLexer::NamePosition::None;
+    }
+    HtmlCssLexer::State state;
+    if (wordStart.line > 0 && wordStart.line - 1 < static_cast<int>(lineEndStates.size())) {
+        state = lineEndStates[wordStart.line - 1];
+    }
+    return HtmlCssLexer::htmlNamePosition(lines[wordStart.line], wordStart.column, state);
 }
 
 TokenType CustomTextEditor::classifyWord(const std::string& word) const {
@@ -2239,15 +2271,22 @@ char CustomTextEditor::findMatchingBracket(const TextPosition& pos, TextPosition
 std::string CustomTextEditor::inferTypeOfVariable(const std::string& varName, int currentLine) const {
     if (varName.empty()) return "";
 
-    // [const] Type [*&] varName
-    std::regex cppDeclRegex("(?:const\\s+)?([A-Za-z0-9_:]+)(?:<[^>]*>)?\\s*(?:[*&]+\\s*)?" + varName + "\\b");
-    // auto varName = new Type(...)
-    std::regex cppNewRegex("\\bauto\\s*[*&]*\\s*" + varName + "\\s*=\\s*new\\s+([A-Za-z0-9_:]+)");
-    // auto varName = Type(...) or Type{...}
-    std::regex cppAutoCtorRegex("\\bauto\\s*[*&]*\\s*" + varName + "\\s*=\\s*([A-Z][A-Za-z0-9_:]*)\\s*[({]");
-
-    std::regex luaVarRegex("\\b" + varName + "\\s*=\\s*([A-Za-z0-9_\\.:]+)(?:\\(|\\{)");
-    std::regex luaLocalVarRegex("\\blocal\\s+" + varName + "\\s*=\\s*([A-Za-z0-9_\\.:]+)(?:\\(|\\{)");
+    // Only compile patterns for the language being searched. These expressions
+    // depend on varName and are rebuilt for each autocomplete lookup.
+    std::regex cppDeclRegex, cppNewRegex, cppAutoCtorRegex, luaVarRegex, luaLocalVarRegex;
+    if (language == SyntaxLanguage::Cpp) {
+        // [const] Type [*&] varName
+        cppDeclRegex.assign("(?:const\\s+)?([A-Za-z0-9_:]+)(?:<[^>]*>)?\\s*(?:[*&]+\\s*)?" + varName + "\\b");
+        // auto varName = new Type(...)
+        cppNewRegex.assign("\\bauto\\s*[*&]*\\s*" + varName + "\\s*=\\s*new\\s+([A-Za-z0-9_:]+)");
+        // auto varName = Type(...) or Type{...}
+        cppAutoCtorRegex.assign("\\bauto\\s*[*&]*\\s*" + varName + "\\s*=\\s*([A-Z][A-Za-z0-9_:]*)\\s*[({]");
+    } else if (language == SyntaxLanguage::Lua) {
+        luaVarRegex.assign("\\b" + varName + "\\s*=\\s*([A-Za-z0-9_\\.:]+)(?:\\(|\\{)");
+        luaLocalVarRegex.assign("\\blocal\\s+" + varName + "\\s*=\\s*([A-Za-z0-9_\\.:]+)(?:\\(|\\{)");
+    } else {
+        return "";
+    }
 
     for (int i = currentLine; i >= 0; --i) {
         if (i >= static_cast<int>(lines.size())) continue;
@@ -2815,6 +2854,17 @@ void CustomTextEditor::updateSuggestions(bool manualInvoke) {
     if (isHtmlOrCss() && !atCssPropertyName(autoCompleteAnchor)) {
         currentSuggestions.erase(std::remove_if(currentSuggestions.begin(), currentSuggestions.end(),
                                                 [](const SuggestionItem& item) { return item.kind == SuggestionKind::Property; }),
+                                 currentSuggestions.end());
+    }
+    // HTML element names right after "<" or "</", attribute names inside a tag
+    if (language == SyntaxLanguage::Html) {
+        const HtmlCssLexer::NamePosition where = htmlNamePosition(autoCompleteAnchor);
+        currentSuggestions.erase(std::remove_if(currentSuggestions.begin(), currentSuggestions.end(),
+                                                [where](const SuggestionItem& item) {
+                                                    if (item.kind == SuggestionKind::Class) return where != HtmlCssLexer::NamePosition::Tag;
+                                                    if (item.kind == SuggestionKind::Field) return where != HtmlCssLexer::NamePosition::Attribute;
+                                                    return false;
+                                                }),
                                  currentSuggestions.end());
     }
 

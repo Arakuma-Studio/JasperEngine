@@ -54,6 +54,7 @@ namespace jasperengine::editor{
         uint32_t runtimeSceneId = 0;        // Child scene nodes while the game runs: the running copy listed
         bool isRuntimeLayer = false;        // A running scene the game layered that is no child scene of this one
         bool isNotRunning = false;          // A child scene the running game does not show
+        bool isPersistent = false;          // The DontDestroyOnLoad scene while the game runs (last row)
         std::list<TreeNode> children;
     };
 
@@ -78,13 +79,16 @@ namespace jasperengine::editor{
         uint8_t scenes;                 // CreateSceneMask
         bool separatorBefore = false;   // Within its menu level
         bool rootOnly = false;          // Only offered when creating at the scene root
-        const char* shortcut = nullptr; // Shown in the main menu bar
+        const char* command = nullptr;  // its command catalog id when it has its own (a shortcut)
     };
 
     struct EntitySelectionEntry {
         uint32_t sceneId = NULL_PROJECT_SCENE;
         Entity entity = NULL_ENTITY;
     };
+
+    // tests (PlayStartupScenesTest.cpp): the tree the panel draws
+    struct HierarchyTestAccess;
 
     class HierarchyWindow{
     private:
@@ -160,6 +164,12 @@ namespace jasperengine::editor{
         void showPrefabStageMenu(SceneProject* sceneProject);
         void showOpenPrefabItems(const TreeNode& node);
         void drawPrefabRowButtons(const TreeNode& node, bool renaming);
+        // S26 R23 (HierarchyVisibilityGutter.cpp): the left gutter's eye (Scene view
+        // visibility) and hand (pick lock) of a row, shown on hover or when set; a click sets
+        // the row and its children, Alt+click the row alone
+        static constexpr float VISIBILITY_GUTTER_ICONS = 2.0f;
+        float visibilityGutterWidth() const;
+        void drawVisibilityGutter(const TreeNode& node, float rowMinY, float rowMaxY);
         // The prefab asset and instance root a row opens in Prefab Mode (false if none)
         bool getOpenPrefabTarget(const TreeNode& node, std::filesystem::path& path, Entity& instanceRoot) const;
         void beginRename(RenameTarget target, uint32_t sceneId, Entity entity, const std::string& currentName);
@@ -167,6 +177,7 @@ namespace jasperengine::editor{
         void drawRenameField();
         void commitRename();
         void revealInProject(const std::filesystem::path& path);
+        friend struct HierarchyTestAccess;
         void rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet);
         void showToolbar();
         void showTreeNode(TreeNode& node);
@@ -175,7 +186,8 @@ namespace jasperengine::editor{
         void pushNodeImGuiId(const TreeNode& node);
         void popNodeImGuiId(const TreeNode& node);
         void drawInsertionMarker(const ImVec2& p1, const ImVec2& p2);
-        // A model file (.gltf, .glb, .obj, .fbx) dropped here makes a Model GameObject of the selected 3D scene
+        // A model file (.gltf, .glb, .obj, .fbx) dropped here makes a Model GameObject of the selected 3D scene;
+        // a Vertex Animation (.vat) a GameObject playing it (Model = its .vat.glb + Vertex Animator)
         bool acceptsModelDrop(const std::string& filePath) const;
         void handleEntityFilesDrop(const std::vector<std::string>& filePaths, Entity parent = NULL_ENTITY);
         void handleSceneFilesDropAsChildScenes(const std::vector<std::string>& filePaths, uint32_t ownerSceneId);
@@ -202,6 +214,12 @@ namespace jasperengine::editor{
         void markPrefabRows(TreeNode& root);
         // The "+" badge on an added GameObject's icon, right after its row was drawn
         void drawPrefabRowOverlay(const TreeNode& node, const ImVec2& rowMin, const ImVec2& rowMax);
+        // S29 (HierarchyVcs.cpp): the version control state of a row, the toolbar's Show VCS
+        // Changes toggle and the scene row's Version Control menu
+        void drawVcsRowOverlay(const TreeNode& node, const ImVec2& rowMin, const ImVec2& rowMax);
+        void showVcsToolbarToggle();
+        void showVcsMenu(const SceneProject* sceneProject);
+        bool showsVcsChanges() const;
         // The ">" button at the right end of an instance root's row
         void showPrefabRowArrow(const TreeNode& node);
         // Missing Prefab rows: the Prefab submenu
@@ -237,8 +255,6 @@ namespace jasperengine::editor{
         void createLatticeAround(const std::vector<Entity>& targets);
 
         // Search-related methods
-        bool nodeMatchesSearch(const TreeNode& node, const std::string& searchLower);
-        void markMatchingNodes(TreeNode& node, const std::string& searchLower);
         void updateSearchAndSelectionOrder(TreeNode& root, bool treeRebuilt);
 
     public:
@@ -260,6 +276,10 @@ namespace jasperengine::editor{
         HierarchyWindow(Project* project, SceneWindow* sceneWindow);
 
         void show();
+
+        // "This scene did not load completely" above the tree, when the scene has dropped load issues
+
+        void showPartialLoadBanner(const SceneProject& sceneProject);
         void revealEntity(uint32_t sceneId, Entity entity);
         void setOpen(bool open);
         bool isOpen() const;

@@ -1,0 +1,45 @@
+id: 2
+name: Closed
+scene:
+  backgroundColor: [0.16, 0.18, 0.24, 1]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Spot
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      light:
+        type: spot
+        spotMask: {textureType: 2D, source: path, path: textures/mask.png, minFilter: linear, magFilter: linear, wrapU: repeat, wrapV: repeat, releaseDataAfterLoad: true}
+  - type: Entity
+    entity: 1002
+    name: Hud
+    components:
+      uidocument:
+        filename: ui/hud.html
+  - type: Entity
+    entity: 1003
+    name: Lantern
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      light:
+        type: spot
+        spotMask: {textureType: 2D, source: path, path: textures/brick.png, minFilter: linear, magFilter: linear, wrapU: repeat, wrapV: repeat, releaseDataAfterLoad: true}
+  - type: Entity
+    entity: 1004
+    name: Boat
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      model:
+        filename: models/ship.gltf

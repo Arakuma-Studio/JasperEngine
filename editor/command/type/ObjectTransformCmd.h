@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/EntityEdit.h"
 #include "Project.h"
 #include "command/PrefabEditUndo.h"
 #include <cstdint>
@@ -20,13 +21,14 @@ namespace jasperengine::editor{
         Quaternion oldRotation;
         Vector3 oldScale;
 
+        bool applied = false;   // the entity had a Transform when it ran
         // The old values were given (addEntity with old values) instead of read from the live
         // Transform at execute: a tool that previewed the move in the Transform commits without
         // putting the old pose back first
         bool explicitOld = false;
     };
 
-    class ObjectTransformCmd: public Command{
+    class ObjectTransformCmd: public Command, public EntityEdit{
 
     private:
         Project* project;
@@ -57,6 +59,18 @@ namespace jasperengine::editor{
 
         // Only position/rotation/scale, and a gizmo drag issues one per frame.
         bool affectsStructure() const override { return false; }
+
+        // "Move Player", "Rotate 3 Objects", "Scale Cube"; "Set Transform" when several change
+        std::string describe() const override;
+        const char* typeName() const override { return "ObjectTransformCmd"; }
+        bool isNoOp() const override;
+        // A fresh ObjectTransformCmd per GameObject, with its position, rotation and scale now
+        void collectKeepCommands(KeepContext& context) const override;
+
+        Project* editedProject() const override { return project; }
+        uint32_t editedSceneId() const override { return (uint32_t)sceneId; }
+        std::vector<Entity> editedEntities() const override;
+        std::string editedLabel() const override { return "Transform"; }
     };
 
 }

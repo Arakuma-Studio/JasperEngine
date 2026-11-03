@@ -187,19 +187,12 @@ TEST_F(HtmlUIClockTest, RmlUiAnimationsFollowTheClock){
     fixture.addDocument("p1/clock_animation.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
-    // 10 s linear fade. RmlUi 6.3 advances an animation by at most 0.1 s per update
-    // (ElementAnimation::UpdateAndGetProperty, removed by phase 3), so the pinned clock steps
-    // in 50 ms updates like frames would
-    auto stepTo = [&scene](double from, double to){
-        const int steps = (int)std::lround((to - from) / 0.05);
-        for (int i = 1; i <= steps; i++){
-            HtmlUIClock::setFixedTime(from + 0.05 * i);
-            updateDocuments(scene);
-        }
-    };
-    stepTo(10.0, 12.5);
+    // A 10-second linear fade must follow the clock even when a frame jumps forward.
+    HtmlUIClock::setFixedTime(12.5);
+    updateDocuments(scene);
     EXPECT_NEAR(opacityOf(scene, "box"), 0.25f, 2e-3f);
-    stepTo(12.5, 15.0);
+    HtmlUIClock::setFixedTime(15.0);
+    updateDocuments(scene);
     EXPECT_NEAR(opacityOf(scene, "box"), 0.5f, 2e-3f);
 
     // a pinned time does not move the animation

@@ -118,6 +118,14 @@ namespace SoLoud
 		}
 	}
 
+	// JasperEngine local patch: a playing bus stops its voices while it is still a Bus, as Wav and
+	// the other sources do (AudioSource's destructor stopped them once the Bus part was gone:
+	// ~BusInstance then read mParent->mChannelHandle of a destroyed Bus)
+	Bus::~Bus()
+	{
+		stop();
+	}
+
 	Bus::Bus()
 	{
 		mChannelHandle = 0;

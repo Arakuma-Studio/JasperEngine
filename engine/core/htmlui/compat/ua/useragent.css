@@ -909,6 +909,68 @@ videocontrols, videobutton, videotime, videotimeline, videotrack, videoprogress,
     height: 54px;
 }
 
+/* 9a. the engine's on-screen controls (ui-multitouch): <onscreen-stick>, <onscreen-button>,
+   <touch-area> feed Input actions; a touch on them never pans (touch-action: none) ---------- */
+
+onscreen-stick, onscreen-button, touch-area {
+    display: block;
+    touch-action: none;
+}
+
+onscreen-stick {
+    position: relative;
+    width: 200px;
+    height: 200px;
+}
+
+onscreen-stick .stick-base {
+    box-sizing: border-box;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 160px;
+    height: 160px;
+    margin-left: -80px;
+    margin-top: -80px;
+    border-radius: 9999px;   /* a circle on the square boxes, in every fork state */
+    border: 2px solid rgba(255, 255, 255, 0.55);
+    background-color: rgba(255, 255, 255, 0.22);
+}
+
+onscreen-stick .stick-knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 64px;
+    height: 64px;
+    margin-left: -32px;
+    margin-top: -32px;
+    border-radius: 9999px;   /* a circle on the square boxes, in every fork state */
+    background-color: rgba(255, 255, 255, 0.8);
+}
+
+onscreen-stick[mode="floating"] .stick-base, onscreen-stick[mode="dynamic"] .stick-base {
+    visibility: hidden;
+}
+
+onscreen-stick[mode="floating"][data-pressed="true"] .stick-base, onscreen-stick[mode="dynamic"][data-pressed="true"] .stick-base {
+    visibility: visible;
+}
+
+onscreen-button {
+    width: 96px;
+    height: 96px;
+    border-radius: 9999px;   /* a circle on the square boxes, in every fork state */
+    background-color: rgba(255, 255, 255, 0.3);
+    color: white;
+    text-align: center;
+    line-height: 96px;
+}
+
+onscreen-button:active {
+    background-color: rgba(255, 255, 255, 0.55);
+}
+
 /* 9b. <video> (phase 6): the replaced element (HTML's rendering: object-fit contain) and the
    default controls, the parts UIVideoControls builds (docs/html-ui/phase-6-video.md 3.10) ------ */
 
@@ -1025,4 +1087,176 @@ videothumb {
 selection {
     background-color: #3390ff;
     color: #ffffff;
+}
+
+/* 11. Virtual views, tooltips, drag and drop, Markdown (S17) ------------------------------- */
+
+/* A virtual view is a positioned scroll container holding a sizer as tall as every row and the
+   pooled rows, absolutely placed in it (the view sets those); one Tab stop. A definite height
+   (height, max-height, flex in a container of a definite height) lets it scroll its rows and
+   makes it a layout boundary. */
+list-view, grid-view, tree-view, table-view {
+    display: block;
+    position: relative;
+    overflow-x: hidden;
+    overflow-y: auto;
+    tab-index: auto;
+}
+
+table-view {
+    overflow-x: auto;
+}
+
+table-column {
+    display: none;
+}
+
+.htmlui-row {
+    box-sizing: border-box;
+}
+
+.htmlui-row.selected {
+    background-color: #cce4ff;
+}
+
+table-view .htmlui-row, .htmlui-table-header {
+    white-space: nowrap;
+}
+
+.htmlui-table-header {
+    /* opaque (rows scroll under it) and readable on any page: style it to the game's theme */
+    color: #1e1e1e;
+    background-color: #f2f2f2;
+    border-bottom: 1px solid #c8c8c8;
+}
+
+.htmlui-header-cell, .htmlui-cell {
+    display: inline-block;
+    box-sizing: border-box;
+    padding: 2px 6px;
+    overflow: hidden;
+    vertical-align: top;
+}
+
+.htmlui-header-cell {
+    position: relative;
+    font-weight: bold;
+}
+
+.htmlui-header-cell.sortable {
+    cursor: pointer;
+}
+
+.htmlui-column-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: ew-resize;
+    drag: drag;
+}
+
+.htmlui-drop-indicator {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    margin-top: -1px;
+    background-color: #3390ff;
+    pointer-events: none;
+}
+
+.htmlui-drop-indicator.htmlui-drop-on {
+    margin-top: 0;
+    box-sizing: border-box;
+    border: 2px solid #3390ff;
+    background-color: transparent;
+}
+
+/* A tooltip (title, tooltip="#id", el:setTooltip) is appended to its source's body; the
+   runtime positions it (fixed, or absolute in the body without the fork's Fixed) above the page. Chromium draws
+   title tooltips as small light boxes with a thin grey border. */
+.htmlui-tooltip {
+    display: block;
+    z-index: 1000000;
+    box-sizing: border-box;
+    max-width: 360px;
+    padding: 2px 6px;
+    border: 1px solid #767676;
+    background-color: #ffffff;
+    color: #000000;
+    font-size: 12px;
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1.3;
+    text-align: left;
+    white-space: pre-wrap;
+    pointer-events: none;
+}
+
+.htmlui-tooltip.htmlui-tooltip-interactive {
+    pointer-events: auto;
+}
+
+.htmlui-tooltip-arrow {
+    display: block;
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border: 1px solid #767676;
+    background-color: #ffffff;
+    transform: rotate(45deg);
+}
+
+/* A drag's ghost: a clone of the source (or setDragImage's element) the runtime moves with the
+   pointer */
+.htmlui-drag-ghost {
+    z-index: 1000000;
+    margin: 0;
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+/* <markdown>: div.markdown-body holds what the Markdown renders to */
+markdown {
+    display: block;
+}
+
+.markdown-body pre {
+    padding: 8px;
+    /* translucent grey: readable on light and dark pages */
+    background-color: rgba(128, 128, 128, 0.18);
+    white-space: pre;
+    overflow-x: auto;
+}
+
+.markdown-body code {
+    background-color: rgba(128, 128, 128, 0.18);
+}
+
+.markdown-body pre code {
+    background-color: transparent;
+}
+
+.markdown-body blockquote {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 12px;
+    border-left: 4px solid rgba(128, 128, 128, 0.5);
+    opacity: 0.8;
+}
+
+.markdown-body table {
+    border-spacing: 0;
+    padding: 0;
+}
+
+.markdown-body th, .markdown-body td {
+    padding: 4px 10px;
+    border: 1px solid rgba(128, 128, 128, 0.5);
+}
+
+.markdown-body img {
+    max-width: 100%;
 }

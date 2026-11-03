@@ -12,11 +12,12 @@ namespace jasperengine::detail {
 
 // Keep the index sort (including equal-depth ordering) shared by instances and
 // their bounds. Project each position once instead of twice per comparison.
+// Into caller-kept buffers (no allocation once they have grown: a sort every frame)
 template <typename Instance>
-std::vector<unsigned int> instanceDepthOrder(const std::vector<Instance>& instances,
-        const Matrix4& modelMatrix, const Vector3& cameraDirection) {
-    std::vector<unsigned int> order(instances.size());
-    std::vector<float> depths(instances.size());
+void instanceDepthOrder(const std::vector<Instance>& instances, const Matrix4& modelMatrix, const Vector3& cameraDirection,
+        std::vector<unsigned int>& order, std::vector<float>& depths) {
+    order.resize(instances.size());
+    depths.resize(instances.size());
     for (unsigned int i = 0; i < order.size(); ++i) {
         order[i] = i;
         const Matrix4& matrix = instances[i].instanceMatrix;
@@ -26,6 +27,14 @@ std::vector<unsigned int> instanceDepthOrder(const std::vector<Instance>& instan
     std::sort(order.begin(), order.end(), [&](unsigned int a, unsigned int b) {
         return depths[a] < depths[b];
     });
+}
+
+template <typename Instance>
+std::vector<unsigned int> instanceDepthOrder(const std::vector<Instance>& instances,
+        const Matrix4& modelMatrix, const Vector3& cameraDirection) {
+    std::vector<unsigned int> order;
+    std::vector<float> depths;
+    instanceDepthOrder(instances, modelMatrix, cameraDirection, order, depths);
     return order;
 }
 

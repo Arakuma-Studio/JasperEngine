@@ -2170,6 +2170,11 @@ typedef enum sg_pixel_format {
     SG_PIXELFORMAT_RGBA32SI,
     SG_PIXELFORMAT_RGBA32F,
 
+    // JasperEngine: 16-bit packed formats (GL/GLES3/WebGL2 core formats; every other backend
+    // reports them unsupported), the low-memory fallback of cooked textures (PATCHES.md)
+    SG_PIXELFORMAT_RGB565,
+    SG_PIXELFORMAT_RGBA4,
+
     SG_PIXELFORMAT_DEPTH,
     SG_PIXELFORMAT_DEPTH_STENCIL,
 
@@ -2198,6 +2203,17 @@ typedef enum sg_pixel_format {
 
     SG_PIXELFORMAT_ASTC_4x4_RGBA,
     SG_PIXELFORMAT_ASTC_4x4_SRGBA,
+    // JasperEngine: the square ASTC LDR block sizes (PATCHES.md)
+    SG_PIXELFORMAT_ASTC_5x5_RGBA,
+    SG_PIXELFORMAT_ASTC_5x5_SRGBA,
+    SG_PIXELFORMAT_ASTC_6x6_RGBA,
+    SG_PIXELFORMAT_ASTC_6x6_SRGBA,
+    SG_PIXELFORMAT_ASTC_8x8_RGBA,
+    SG_PIXELFORMAT_ASTC_8x8_SRGBA,
+    SG_PIXELFORMAT_ASTC_10x10_RGBA,
+    SG_PIXELFORMAT_ASTC_10x10_SRGBA,
+    SG_PIXELFORMAT_ASTC_12x12_RGBA,
+    SG_PIXELFORMAT_ASTC_12x12_SRGBA,
 
     _SG_PIXELFORMAT_NUM,
     _SG_PIXELFORMAT_FORCE_U32 = 0x7FFFFFFF
@@ -6072,6 +6088,52 @@ inline int sg_append_buffer(sg_buffer buf_id, const sg_range& data) { return sg_
     #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR
     #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR 0x93D0
     #endif
+    // JasperEngine: the square ASTC block sizes and the 16-bit packed formats (PATCHES.md)
+    #ifndef GL_COMPRESSED_RGBA_ASTC_5x5_KHR
+    #define GL_COMPRESSED_RGBA_ASTC_5x5_KHR 0x93B2
+    #endif
+    #ifndef GL_COMPRESSED_RGBA_ASTC_6x6_KHR
+    #define GL_COMPRESSED_RGBA_ASTC_6x6_KHR 0x93B4
+    #endif
+    #ifndef GL_COMPRESSED_RGBA_ASTC_8x8_KHR
+    #define GL_COMPRESSED_RGBA_ASTC_8x8_KHR 0x93B7
+    #endif
+    #ifndef GL_COMPRESSED_RGBA_ASTC_10x10_KHR
+    #define GL_COMPRESSED_RGBA_ASTC_10x10_KHR 0x93BB
+    #endif
+    #ifndef GL_COMPRESSED_RGBA_ASTC_12x12_KHR
+    #define GL_COMPRESSED_RGBA_ASTC_12x12_KHR 0x93BD
+    #endif
+    #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR 0x93D2
+    #endif
+    #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR 0x93D4
+    #endif
+    #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR 0x93D7
+    #endif
+    #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR 0x93DB
+    #endif
+    #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR 0x93DD
+    #endif
+    #ifndef GL_RGB565
+    #define GL_RGB565 0x8D62
+    #endif
+    #ifndef GL_RGB5
+    #define GL_RGB5 0x8050
+    #endif
+    #ifndef GL_RGBA4
+    #define GL_RGBA4 0x8056
+    #endif
+    #ifndef GL_UNSIGNED_SHORT_5_6_5
+    #define GL_UNSIGNED_SHORT_5_6_5 0x8363
+    #endif
+    #ifndef GL_UNSIGNED_SHORT_4_4_4_4
+    #define GL_UNSIGNED_SHORT_4_4_4_4 0x8033
+    #endif
     #ifndef GL_DEPTH24_STENCIL8
     #define GL_DEPTH24_STENCIL8 0x88F0
     #endif
@@ -7477,6 +7539,12 @@ _SOKOL_PRIVATE void _sg_strcpy(_sg_str_t* dst, const char* src) {
 // ██       ██████   ██████  ███████
 //
 // >>pool
+// JasperEngine: pool lock (PATCHES.md): a free list's and a slot's hands change on one lock: the
+// thread with a queue of its own allocates its GPU objects' handles (sg_alloc_*), next to the
+// main thread's sg_make_* and sg_destroy_*. Taken for these few writes alone, never by a draw.
+static std::mutex _sgj_pool_mutex;
+#define _SGJ_POOL_LOCK() std::lock_guard<std::mutex> _sgj_pool_lock(_sgj_pool_mutex)
+
 _SOKOL_PRIVATE void _sg_pool_init(_sg_pool_t* pool, int num) {
     SOKOL_ASSERT(pool && (num >= 1));
     // slot 0 is reserved for the 'invalid id', so bump the pool size by 1
@@ -8023,6 +8091,7 @@ _SOKOL_PRIVATE void _sg_update_alive_free_resource_stats(sg_total_resource_stats
 }
 
 _SOKOL_PRIVATE void _sg_update_stats(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock (the frame's allocations)
     _sg.stats.cur_frame.frame_index = _sg.frame_index;
     _sg.stats.prev_frame = _sg.stats.cur_frame;
     _sg_clear(&_sg.stats.cur_frame, sizeof(_sg.stats.cur_frame));
@@ -8600,6 +8669,16 @@ _SOKOL_PRIVATE bool _sg_is_compressed_pixel_format(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_EAC_RG11SN:
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA:
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:
             return true;
         default:
             return false;
@@ -8648,6 +8727,8 @@ _SOKOL_PRIVATE int _sg_pixelformat_bytesize(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_RG8SN:
         case SG_PIXELFORMAT_RG8UI:
         case SG_PIXELFORMAT_RG8SI:
+        case SG_PIXELFORMAT_RGB565:
+        case SG_PIXELFORMAT_RGBA4:
             return 2;
         case SG_PIXELFORMAT_R32UI:
         case SG_PIXELFORMAT_R32SI:
@@ -8691,10 +8772,25 @@ _SOKOL_PRIVATE int _sg_pixelformat_bytesize(sg_pixel_format fmt) {
 
 // return the texture block width/height of an image format
 _SOKOL_PRIVATE int _sg_block_dim(sg_pixel_format fmt) {
-    if (_sg_is_compressed_pixel_format(fmt)) {
-        return 4;
-    } else {
-        return 1;
+    switch (fmt) {
+        // JasperEngine: the square ASTC block sizes (PATCHES.md)
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:
+            return 5;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:
+            return 6;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:
+            return 8;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:
+            return 10;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:
+            return 12;
+        default:
+            return _sg_is_compressed_pixel_format(fmt) ? 4 : 1;
     }
 }
 
@@ -8725,6 +8821,16 @@ _SOKOL_PRIVATE int _sg_block_bytesize(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_EAC_RG11SN:
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA:
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:
             return 16;
         default:
             return _sg_pixelformat_bytesize(fmt);
@@ -9602,6 +9708,10 @@ _SOKOL_PRIVATE GLenum _sg_gl_teximage_type(sg_pixel_format fmt) {
             return GL_UNSIGNED_INT_10F_11F_11F_REV;
         case SG_PIXELFORMAT_RGB9E5:
             return GL_UNSIGNED_INT_5_9_9_9_REV;
+        case SG_PIXELFORMAT_RGB565:
+            return GL_UNSIGNED_SHORT_5_6_5;
+        case SG_PIXELFORMAT_RGBA4:
+            return GL_UNSIGNED_SHORT_4_4_4_4;
         case SG_PIXELFORMAT_DEPTH:
             return GL_FLOAT;
         case SG_PIXELFORMAT_DEPTH_STENCIL:
@@ -9649,6 +9759,7 @@ _SOKOL_PRIVATE GLenum _sg_gl_teximage_format(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_RGBA16F:
         case SG_PIXELFORMAT_RGBA32F:
         case SG_PIXELFORMAT_RGB10A2:
+        case SG_PIXELFORMAT_RGBA4:
             return GL_RGBA;
         case SG_PIXELFORMAT_RGBA8UI:
         case SG_PIXELFORMAT_RGBA8SI:
@@ -9659,6 +9770,7 @@ _SOKOL_PRIVATE GLenum _sg_gl_teximage_format(sg_pixel_format fmt) {
             return GL_RGBA_INTEGER;
         case SG_PIXELFORMAT_RG11B10F:
         case SG_PIXELFORMAT_RGB9E5:
+        case SG_PIXELFORMAT_RGB565:
             return GL_RGB;
         case SG_PIXELFORMAT_DEPTH:
             return GL_DEPTH_COMPONENT;
@@ -9710,6 +9822,16 @@ _SOKOL_PRIVATE GLenum _sg_gl_teximage_format(sg_pixel_format fmt) {
             return GL_COMPRESSED_RGBA_ASTC_4x4_KHR;
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA:
             return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR;
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:      return GL_COMPRESSED_RGBA_ASTC_5x5_KHR;
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:      return GL_COMPRESSED_RGBA_ASTC_6x6_KHR;
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:      return GL_COMPRESSED_RGBA_ASTC_8x8_KHR;
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:    return GL_COMPRESSED_RGBA_ASTC_10x10_KHR;
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:   return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:    return GL_COMPRESSED_RGBA_ASTC_12x12_KHR;
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:   return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR;
         default:
             SOKOL_UNREACHABLE; return 0;
     }
@@ -9788,6 +9910,23 @@ _SOKOL_PRIVATE GLenum _sg_gl_teximage_internal_format(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_EAC_RG11SN:         return GL_COMPRESSED_SIGNED_RG11_EAC;
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:      return GL_COMPRESSED_RGBA_ASTC_4x4_KHR;
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR;
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:      return GL_COMPRESSED_RGBA_ASTC_5x5_KHR;
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:      return GL_COMPRESSED_RGBA_ASTC_6x6_KHR;
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:      return GL_COMPRESSED_RGBA_ASTC_8x8_KHR;
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:    return GL_COMPRESSED_RGBA_ASTC_10x10_KHR;
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:   return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:    return GL_COMPRESSED_RGBA_ASTC_12x12_KHR;
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:   return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR;
+        // JasperEngine: GL_RGB565 is a sized format from GL 4.1 / GLES 2 on; GL 3.3 core takes GL_RGB5
+        #if defined(SOKOL_GLCORE)
+            case SG_PIXELFORMAT_RGB565:         return GL_RGB5;
+        #else
+            case SG_PIXELFORMAT_RGB565:         return GL_RGB565;
+        #endif
+        case SG_PIXELFORMAT_RGBA4:              return GL_RGBA4;
         default: SOKOL_UNREACHABLE; return 0;
     }
 }
@@ -9850,6 +9989,12 @@ _SOKOL_PRIVATE void _sg_gl_init_pixelformats(bool has_bgra) {
     _sg_pixelformat_srm(&_sg.formats[SG_PIXELFORMAT_RGBA32SI]);
     _sg_pixelformat_srmd(&_sg.formats[SG_PIXELFORMAT_DEPTH]);
     _sg_pixelformat_srmd(&_sg.formats[SG_PIXELFORMAT_DEPTH_STENCIL]);
+    // JasperEngine: core 16-bit packed formats of GL 3.3, GLES 3.0 and WebGL2 (PATCHES.md); GL 3.3
+    // core stores RGB565 as GL_RGB5 (5-bit green, lossy), so only GLES / WebGL2 report it
+    #if !defined(SOKOL_GLCORE)
+    _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_RGB565]);
+    #endif
+    _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_RGBA4]);
 }
 
 // FIXME: OES_half_float_blend
@@ -9935,6 +10080,10 @@ _SOKOL_PRIVATE void _sg_gl_init_pixelformats_etc2(void) {
 _SOKOL_PRIVATE void _sg_gl_init_pixelformats_astc(void) {
      _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_RGBA]);
      _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_SRGBA]);
+     // JasperEngine: KHR_texture_compression_astc_ldr has every block size (PATCHES.md)
+     for (int fmt = SG_PIXELFORMAT_ASTC_5x5_RGBA; fmt <= SG_PIXELFORMAT_ASTC_12x12_SRGBA; fmt++) {
+         _sg_pixelformat_sf(&_sg.formats[fmt]);
+     }
 }
 
 _SOKOL_PRIVATE void _sg_gl_init_limits(void) {
@@ -10743,6 +10892,16 @@ _SOKOL_PRIVATE void _sg_gl_texstorage(const _sg_image_t* img) {
                 glTexStorage3D(tgt, num_mips, ifmt, w, h, depth);
             #endif
         }
+        // JasperEngine fix: the levels the texture has are stated as its max level too. sokol's
+        // samplers always use a mipmapped min filter, and GL then needs every level from base to
+        // max level; immutable storage clamps that range to its levels (GLES 3.0 3.8.14), but a GL
+        // that ignores TEXTURE_IMMUTABLE_LEVELS there (the Android emulator's GLES translator on
+        // legacy SwiftShader, -gpu swiftshader_indirect) calls a one-level texture incomplete and
+        // samples zeros: no text, no HTML UI, no post-processing. A multisample texture has no
+        // levels to state.
+        if (!msaa) {
+            glTexParameteri(tgt, GL_TEXTURE_MAX_LEVEL, num_mips - 1);
+        }
     #else
         glTexParameteri(tgt, GL_TEXTURE_MAX_LEVEL, num_mips - 1);
     #endif
@@ -11026,7 +11185,8 @@ _SOKOL_PRIVATE bool _sg_gl_ensure_glsl_bindslot_ranges(const sg_shader_desc* des
 
 _SOKOL_PRIVATE sg_resource_state _sg_gl_create_shader(_sg_shader_t* shd, const sg_shader_desc* desc) {
     SOKOL_ASSERT(shd && desc);
-    SOKOL_ASSERT(!shd->gl.prog);
+    // JasperEngine: async creation (PATCHES.md): a program sokol_async compiled and linked is adopted
+    const GLuint adopted_prog = shd->gl.prog; shd->gl.prog = 0;
     _SG_GL_CHECK_ERROR();
 
     // perform a fatal range-check on GLSL bindslots that's also active
@@ -11044,8 +11204,10 @@ _SOKOL_PRIVATE sg_resource_state _sg_gl_create_shader(_sg_shader_t* shd, const s
     const bool has_fs = desc->fragment_func.source;
     const bool has_cs = desc->compute_func.source;
     SOKOL_ASSERT((has_vs && has_fs) || has_cs);
-    GLuint gl_prog = glCreateProgram();
-    if (has_vs && has_fs) {
+    GLuint gl_prog = adopted_prog ? adopted_prog : glCreateProgram();  // JasperEngine: async creation
+    if (adopted_prog) {
+        // JasperEngine: async creation: compiled and linked already, only the link status is read below
+    } else if (has_vs && has_fs) {
         GLuint gl_vs = _sg_gl_compile_shader(SG_SHADERSTAGE_VERTEX, desc->vertex_func.source);
         GLuint gl_fs = _sg_gl_compile_shader(SG_SHADERSTAGE_FRAGMENT, desc->fragment_func.source);
         if (!(gl_vs && gl_fs)) {
@@ -14803,6 +14965,17 @@ _SOKOL_PRIVATE MTLPixelFormat _sg_mtl_pixel_format(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_EAC_RG11SN:             return MTLPixelFormatEAC_RG11Snorm;
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:          return MTLPixelFormatASTC_4x4_LDR;
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA:         return MTLPixelFormatASTC_4x4_sRGB;
+        // JasperEngine: the square ASTC block sizes (PATCHES.md)
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:          return MTLPixelFormatASTC_5x5_LDR;
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:         return MTLPixelFormatASTC_5x5_sRGB;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:          return MTLPixelFormatASTC_6x6_LDR;
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:         return MTLPixelFormatASTC_6x6_sRGB;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:          return MTLPixelFormatASTC_8x8_LDR;
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:         return MTLPixelFormatASTC_8x8_sRGB;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:        return MTLPixelFormatASTC_10x10_LDR;
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:       return MTLPixelFormatASTC_10x10_sRGB;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:        return MTLPixelFormatASTC_12x12_LDR;
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:       return MTLPixelFormatASTC_12x12_sRGB;
         #endif
         default: return MTLPixelFormatInvalid;
     }
@@ -15288,6 +15461,10 @@ _SOKOL_PRIVATE void _sg_mtl_init_caps(void) {
         _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_EAC_RG11SN]);
         _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_RGBA]);
         _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_SRGBA]);
+        // JasperEngine: every ASTC LDR block size on iOS GPUs (PATCHES.md)
+        for (int fmt = SG_PIXELFORMAT_ASTC_5x5_RGBA; fmt <= SG_PIXELFORMAT_ASTC_12x12_SRGBA; fmt++) {
+            _sg_pixelformat_sf(&_sg.formats[fmt]);
+        }
     #endif
 
     // compute shader access
@@ -15659,11 +15836,18 @@ _SOKOL_PRIVATE id<MTLLibrary> _sg_mtl_library_from_bytecode(const void* ptr, siz
     return lib;
 }
 
+// JasperEngine: async creation (PATCHES.md): what sokol_async (sokol_async_impl.h) created ahead
+static id<MTLLibrary> _sgj_mtl_prebuilt_library(const sg_shader_function* func);
+static bool _sgj_mtl_capture_pipeline(MTLRenderPipelineDescriptor* rp_desc);
+static id<MTLRenderPipelineState> _sgj_mtl_prebuilt_pipeline_state(void);
+
 _SOKOL_PRIVATE bool _sg_mtl_create_shader_func(const sg_shader_function* func, const char* label, const char* label_ext, _sg_mtl_shader_func_t* res) {
     SOKOL_ASSERT(res->mtl_lib == _SG_MTL_INVALID_SLOT_INDEX);
     SOKOL_ASSERT(res->mtl_func == _SG_MTL_INVALID_SLOT_INDEX);
-    id<MTLLibrary> mtl_lib = nil;
-    if (func->bytecode.ptr) {
+    id<MTLLibrary> mtl_lib = _sgj_mtl_prebuilt_library(func);  // JasperEngine: async creation
+    if (nil != mtl_lib) {
+        // JasperEngine: async creation: compiled with the completion handler
+    } else if (func->bytecode.ptr) {
         SOKOL_ASSERT(func->bytecode.size > 0);
         mtl_lib = _sg_mtl_library_from_bytecode(func->bytecode.ptr, func->bytecode.size);
     } else if (func->source) {
@@ -15945,7 +16129,10 @@ _SOKOL_PRIVATE sg_resource_state _sg_mtl_create_pipeline(_sg_pipeline_t* pip, co
             }
         #endif
         NSError* err = NULL;
-        id<MTLRenderPipelineState> mtl_rps = [_sg.mtl.device newRenderPipelineStateWithDescriptor:rp_desc error:&err];
+        // JasperEngine: async creation: sokol_async takes the descriptor (the slot stays ALLOC) or gives the state it made
+        if (_sgj_mtl_capture_pipeline(rp_desc)) { _SG_OBJC_RELEASE(rp_desc); return SG_RESOURCESTATE_ALLOC; }
+        id<MTLRenderPipelineState> mtl_rps = _sgj_mtl_prebuilt_pipeline_state();  // JasperEngine: async creation
+        if (nil == mtl_rps) { mtl_rps = [_sg.mtl.device newRenderPipelineStateWithDescriptor:rp_desc error:&err]; }
         _SG_OBJC_RELEASE(rp_desc);
         if (nil == mtl_rps) {
             SOKOL_ASSERT(err);
@@ -16231,6 +16418,7 @@ _SOKOL_PRIVATE void _sg_mtl_begin_render_pass(const sg_pass* pass, const _sg_att
     // render command encoder is also returned in a minimized window
     // ===
     // create a render command encoder, this might return nil if window is minimized
+    if (_sg_jasper_hooks.mtl_begin_render_pass) { _sg_jasper_hooks.mtl_begin_render_pass((__bridge void*)pass_desc); }  // JasperEngine: gpu timer hook
     _sg.mtl.render_cmd_encoder = [_sg.mtl.cmd_buffer renderCommandEncoderWithDescriptor:pass_desc];
     if (nil == _sg.mtl.render_cmd_encoder) {
         _sg.cur_pass.valid = false;
@@ -17069,6 +17257,20 @@ _SOKOL_PRIVATE WGPUTextureFormat _sg_wgpu_textureformat(sg_pixel_format p) {
         case SG_PIXELFORMAT_EAC_RG11SN:     return WGPUTextureFormat_EACRG11Snorm;
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:  return WGPUTextureFormat_ASTC4x4Unorm;
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA: return WGPUTextureFormat_ASTC4x4UnormSrgb;
+        // JasperEngine: the square ASTC block sizes; the 16-bit packed formats are GL only (PATCHES.md)
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:      return WGPUTextureFormat_ASTC5x5Unorm;
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:     return WGPUTextureFormat_ASTC5x5UnormSrgb;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:      return WGPUTextureFormat_ASTC6x6Unorm;
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:     return WGPUTextureFormat_ASTC6x6UnormSrgb;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:      return WGPUTextureFormat_ASTC8x8Unorm;
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:     return WGPUTextureFormat_ASTC8x8UnormSrgb;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:    return WGPUTextureFormat_ASTC10x10Unorm;
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:   return WGPUTextureFormat_ASTC10x10UnormSrgb;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:    return WGPUTextureFormat_ASTC12x12Unorm;
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:   return WGPUTextureFormat_ASTC12x12UnormSrgb;
+        case SG_PIXELFORMAT_RGB565:
+        case SG_PIXELFORMAT_RGBA4:
+            return WGPUTextureFormat_Undefined;
         default:
             SOKOL_UNREACHABLE;
             return WGPUTextureFormat_Force32;
@@ -17299,6 +17501,10 @@ _SOKOL_PRIVATE void _sg_wgpu_init_caps(void) {
     if (wgpuDeviceHasFeature(_sg.wgpu.dev, WGPUFeatureName_TextureCompressionASTC)) {
         _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_RGBA]);
         _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_SRGBA]);
+        // JasperEngine: texture-compression-astc has every block size (PATCHES.md)
+        for (int fmt = SG_PIXELFORMAT_ASTC_5x5_RGBA; fmt <= SG_PIXELFORMAT_ASTC_12x12_SRGBA; fmt++) {
+            _sg_pixelformat_sf(&_sg.formats[fmt]);
+        }
     }
 
     // see: https://github.com/gpuweb/gpuweb/issues/513
@@ -18028,8 +18234,9 @@ _SOKOL_PRIVATE void _sg_wgpu_copy_image_data(const _sg_image_t* img, const sg_im
         const int row_pitch = _sg_row_pitch(img->cmn.pixel_format, mip_width, 1);
         const int num_rows = _sg_num_rows(img->cmn.pixel_format, mip_height);
         if (_sg_is_compressed_pixel_format(img->cmn.pixel_format)) {
-            mip_width = _sg_roundup(mip_width, 4);
-            mip_height = _sg_roundup(mip_height, 4);
+            // JasperEngine: the format's block size, not always 4 (ASTC, PATCHES.md)
+            mip_width = _sg_roundup(mip_width, _sg_block_dim(img->cmn.pixel_format));
+            mip_height = _sg_roundup(mip_height, _sg_block_dim(img->cmn.pixel_format));
         }
         wgpu_layout.bytesPerRow = (uint32_t)row_pitch;
         wgpu_layout.rowsPerImage = (uint32_t)num_rows;
@@ -20347,6 +20554,18 @@ _SOKOL_PRIVATE VkFormat _sg_vk_format(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_EAC_RG11SN:     return VK_FORMAT_EAC_R11G11_SNORM_BLOCK;
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:  return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA: return VK_FORMAT_ASTC_4x4_SRGB_BLOCK;
+        // JasperEngine: the square ASTC block sizes, queried per format like the others; the
+        // 16-bit packed formats stay undefined (unsupported) outside GL (PATCHES.md)
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:  return VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA: return VK_FORMAT_ASTC_5x5_SRGB_BLOCK;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:  return VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA: return VK_FORMAT_ASTC_6x6_SRGB_BLOCK;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:  return VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA: return VK_FORMAT_ASTC_8x8_SRGB_BLOCK;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:  return VK_FORMAT_ASTC_10x10_UNORM_BLOCK;
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA: return VK_FORMAT_ASTC_10x10_SRGB_BLOCK;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:  return VK_FORMAT_ASTC_12x12_UNORM_BLOCK;
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA: return VK_FORMAT_ASTC_12x12_SRGB_BLOCK;
         default:                            return VK_FORMAT_UNDEFINED;
     };
 }
@@ -21301,6 +21520,9 @@ _SOKOL_PRIVATE void _sg_vk_discard_shader(_sg_shader_t* shd) {
     }
 }
 
+// JasperEngine: async creation (PATCHES.md): the device's pipeline cache, made and saved by sokol_async
+static VkPipelineCache _sgj_vk_pipeline_cache = VK_NULL_HANDLE;
+
 _SOKOL_PRIVATE sg_resource_state _sg_vk_create_pipeline(_sg_pipeline_t* pip, const sg_pipeline_desc* desc) {
     SOKOL_ASSERT(pip && desc);
     SOKOL_ASSERT(_sg.vk.dev);
@@ -21318,7 +21540,7 @@ _SOKOL_PRIVATE sg_resource_state _sg_vk_create_pipeline(_sg_pipeline_t* pip, con
         pip_create_info.stage.module = shd->vk.compute_func.module;
         pip_create_info.stage.pName = shd->vk.compute_func.entry.buf;
         pip_create_info.layout = shd->vk.pip_layout;
-        res = vkCreateComputePipelines(_sg.vk.dev, VK_NULL_HANDLE, 1, &pip_create_info, 0, &pip->vk.pip);
+        res = vkCreateComputePipelines(_sg.vk.dev, _sgj_vk_pipeline_cache, 1, &pip_create_info, 0, &pip->vk.pip);  // JasperEngine: async creation
         if (res != VK_SUCCESS) {
             _SG_ERROR(VULKAN_CREATE_COMPUTE_PIPELINE_FAILED);
             return SG_RESOURCESTATE_FAILED;
@@ -21489,7 +21711,7 @@ _SOKOL_PRIVATE sg_resource_state _sg_vk_create_pipeline(_sg_pipeline_t* pip, con
         pip_create_info.pDynamicState = &dyn_state;
         pip_create_info.layout = shd->vk.pip_layout;
 
-        res = vkCreateGraphicsPipelines(_sg.vk.dev, VK_NULL_HANDLE, 1, &pip_create_info, 0, &pip->vk.pip);
+        res = vkCreateGraphicsPipelines(_sg.vk.dev, _sgj_vk_pipeline_cache, 1, &pip_create_info, 0, &pip->vk.pip);  // JasperEngine: async creation
         if (res != VK_SUCCESS) {
             _SG_ERROR(VULKAN_CREATE_GRAPHICS_PIPELINE_FAILED);
             return SG_RESOURCESTATE_FAILED;
@@ -24324,6 +24546,7 @@ _SOKOL_PRIVATE sg_view_desc _sg_view_desc_defaults(const sg_view_desc* desc) {
 }
 
 _SOKOL_PRIVATE sg_buffer _sg_alloc_buffer(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_buffer res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.buffer_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24337,6 +24560,7 @@ _SOKOL_PRIVATE sg_buffer _sg_alloc_buffer(void) {
 }
 
 _SOKOL_PRIVATE sg_image _sg_alloc_image(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_image res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.image_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24350,6 +24574,7 @@ _SOKOL_PRIVATE sg_image _sg_alloc_image(void) {
 }
 
 _SOKOL_PRIVATE sg_sampler _sg_alloc_sampler(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_sampler res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.sampler_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24363,6 +24588,7 @@ _SOKOL_PRIVATE sg_sampler _sg_alloc_sampler(void) {
 }
 
 _SOKOL_PRIVATE sg_shader _sg_alloc_shader(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_shader res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.shader_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24376,6 +24602,7 @@ _SOKOL_PRIVATE sg_shader _sg_alloc_shader(void) {
 }
 
 _SOKOL_PRIVATE sg_pipeline _sg_alloc_pipeline(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_pipeline res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.pipeline_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24389,6 +24616,7 @@ _SOKOL_PRIVATE sg_pipeline _sg_alloc_pipeline(void) {
 }
 
 _SOKOL_PRIVATE sg_view _sg_alloc_view(void) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     sg_view res;
     int slot_index = _sg_pool_alloc_index(&_sg.pools.view_pool);
     if (_SG_INVALID_SLOT_INDEX != slot_index) {
@@ -24402,6 +24630,7 @@ _SOKOL_PRIVATE sg_view _sg_alloc_view(void) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_buffer(_sg_buffer_t* buf) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(buf && (buf->slot.state == SG_RESOURCESTATE_ALLOC) && (buf->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.buffer_pool, _sg_slot_index(buf->slot.id));
     _sg_slot_reset(&buf->slot);
@@ -24409,6 +24638,7 @@ _SOKOL_PRIVATE void _sg_dealloc_buffer(_sg_buffer_t* buf) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_image(_sg_image_t* img) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(img && (img->slot.state == SG_RESOURCESTATE_ALLOC) && (img->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.image_pool, _sg_slot_index(img->slot.id));
     _sg_slot_reset(&img->slot);
@@ -24416,6 +24646,7 @@ _SOKOL_PRIVATE void _sg_dealloc_image(_sg_image_t* img) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_sampler(_sg_sampler_t* smp) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(smp && (smp->slot.state == SG_RESOURCESTATE_ALLOC) && (smp->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.sampler_pool, _sg_slot_index(smp->slot.id));
     _sg_slot_reset(&smp->slot);
@@ -24423,6 +24654,7 @@ _SOKOL_PRIVATE void _sg_dealloc_sampler(_sg_sampler_t* smp) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_shader(_sg_shader_t* shd) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(shd && (shd->slot.state == SG_RESOURCESTATE_ALLOC) && (shd->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.shader_pool, _sg_slot_index(shd->slot.id));
     _sg_slot_reset(&shd->slot);
@@ -24430,6 +24662,7 @@ _SOKOL_PRIVATE void _sg_dealloc_shader(_sg_shader_t* shd) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_pipeline(_sg_pipeline_t* pip) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(pip && (pip->slot.state == SG_RESOURCESTATE_ALLOC) && (pip->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.pipeline_pool, _sg_slot_index(pip->slot.id));
     _sg_slot_reset(&pip->slot);
@@ -24437,6 +24670,7 @@ _SOKOL_PRIVATE void _sg_dealloc_pipeline(_sg_pipeline_t* pip) {
 }
 
 _SOKOL_PRIVATE void _sg_dealloc_view(_sg_view_t* view) {
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock
     SOKOL_ASSERT(view && (view->slot.state == SG_RESOURCESTATE_ALLOC) && (view->slot.id != SG_INVALID_ID));
     _sg_pool_free_index(&_sg.pools.view_pool, _sg_slot_index(view->slot.id));
     _sg_slot_reset(&view->slot);
@@ -24864,6 +25098,7 @@ SOKOL_API_IMPL int sg_query_surface_pitch(sg_pixel_format fmt, int width, int he
 
 SOKOL_API_IMPL sg_stats sg_query_stats(void) {
     SOKOL_ASSERT(_sg.valid);
+    _SGJ_POOL_LOCK();  // JasperEngine: pool lock (the free lists' tops, the allocations)
     _sg_update_alive_free_resource_stats(&_sg.stats.total.buffers, &_sg.pools.buffer_pool);
     _sg_update_alive_free_resource_stats(&_sg.stats.total.images, &_sg.pools.image_pool);
     _sg_update_alive_free_resource_stats(&_sg.stats.total.views, &_sg.pools.view_pool);
@@ -25403,8 +25638,7 @@ SOKOL_API_IMPL void sg_destroy_buffer(sg_buffer buf_id) {
             SOKOL_ASSERT(buf->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (buf->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_buffer(buf);
-            SOKOL_ASSERT(buf->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_buffer(buf);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }
@@ -25419,8 +25653,7 @@ SOKOL_API_IMPL void sg_destroy_image(sg_image img_id) {
             SOKOL_ASSERT(img->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (img->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_image(img);
-            SOKOL_ASSERT(img->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_image(img);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }
@@ -25435,8 +25668,7 @@ SOKOL_API_IMPL void sg_destroy_sampler(sg_sampler smp_id) {
             SOKOL_ASSERT(smp->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (smp->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_sampler(smp);
-            SOKOL_ASSERT(smp->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_sampler(smp);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }
@@ -25451,8 +25683,7 @@ SOKOL_API_IMPL void sg_destroy_shader(sg_shader shd_id) {
             SOKOL_ASSERT(shd->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (shd->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_shader(shd);
-            SOKOL_ASSERT(shd->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_shader(shd);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }
@@ -25467,8 +25698,7 @@ SOKOL_API_IMPL void sg_destroy_pipeline(sg_pipeline pip_id) {
             SOKOL_ASSERT(pip->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (pip->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_pipeline(pip);
-            SOKOL_ASSERT(pip->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_pipeline(pip);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }
@@ -25483,8 +25713,7 @@ SOKOL_API_IMPL void sg_destroy_view(sg_view view_id) {
             SOKOL_ASSERT(view->slot.state == SG_RESOURCESTATE_ALLOC);
         }
         if (view->slot.state == SG_RESOURCESTATE_ALLOC) {
-            _sg_dealloc_view(view);
-            SOKOL_ASSERT(view->slot.state == SG_RESOURCESTATE_INITIAL);
+            _sg_dealloc_view(view);  // JasperEngine: pool lock (its slot is free now: no look at it after this)
         }
     }
 }
@@ -25531,6 +25760,7 @@ SOKOL_API_IMPL void sg_begin_pass(const sg_pass* pass) {
         return;
     }
     _sg_begin_pass(&pass_def, &atts_ptrs);
+    if (_sg_jasper_hooks.begin_pass) { _sg_jasper_hooks.begin_pass(pass_def.label); }  // JasperEngine: gpu timer hook
 }
 
 SOKOL_API_IMPL void sg_apply_viewport(int x, int y, int width, int height, bool origin_top_left) {
@@ -25764,6 +25994,7 @@ SOKOL_API_IMPL void sg_end_pass(void) {
     // NOTE: don't exit early if !_sg.cur_pass.valid
     if (!_sg.cur_pass.swapchain.invalid) {
         const _sg_attachments_ptrs_t atts_ptrs = _sg_attachments_ptrs(&_sg.cur_pass.atts);
+        if (_sg_jasper_hooks.end_pass) { _sg_jasper_hooks.end_pass(); }  // JasperEngine: gpu timer hook
         _sg_end_pass(&atts_ptrs);
     }
     _sg.cur_pip = _sg_pipeline_ref(0);
@@ -25774,6 +26005,7 @@ SOKOL_API_IMPL void sg_commit(void) {
     SOKOL_ASSERT(_sg.valid);
     SOKOL_ASSERT(!_sg.cur_pass.valid);
     SOKOL_ASSERT(!_sg.cur_pass.in_pass);
+    if (_sg_jasper_hooks.commit) { _sg_jasper_hooks.commit(); }  // JasperEngine: gpu timer hook
     _sg_commit();
     _sg_update_stats();
     _sg_notify_commit_listeners();

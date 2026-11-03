@@ -48,7 +48,10 @@ std::string Matrix3::toString() const{
 }
 
 Matrix3& Matrix3::operator=(const Matrix3 &m) {
-    memcpy(this->matrix, m.matrix, sizeof(matrix));
+    // element by element: GCC's -Wstringop-overflow takes a memcpy of the 2D array for one row
+    for (int col = 0; col < 3; col++)
+        for (int row = 0; row < 3; row++)
+            matrix[col][row] = m.matrix[col][row];
 
     return *this;
 }

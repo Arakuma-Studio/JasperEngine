@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "HtmlUITemplates.h"
+#include "io/AtomicFile.h"
+#include "util/FileUtils.h"
 
 #include <fstream>
 
@@ -74,23 +76,24 @@ bool editor::HtmlUITemplates::createDocument(const fs::path& directory, const st
     const fs::path html = directory / (name + ".html");
     const fs::path css = directory / (name + ".css");
 
-    std::ofstream cssFile(css, std::ios::trunc | std::ios::binary);
-    if (!cssFile){
-        error = "could not write " + css.string();
-        return false;
-    }
-    cssFile << styleSheetText();
-    cssFile.close();
+    // created into the folder the Project window shows: a folder that is gone (deleted or
+    // renamed meanwhile) is an error, not a new folder
+    io::AtomicWriteOptions options;
+    options.createDirectories = false;
 
-    std::ofstream htmlFile(html, std::ios::trunc | std::ios::binary);
-    if (!htmlFile){
-        std::error_code ignored;
-        fs::remove(css, ignored);
-        error = "could not write " + html.string();
+    const io::WriteResult cssWritten = io::writeFileAtomic(css, styleSheetText(), options);
+    if (!cssWritten.ok()){
+        error = "could not write " + css.string() + ": " + io::describeWriteError(cssWritten);
         return false;
     }
-    htmlFile << documentText(name);
-    htmlFile.close();
+
+    const io::WriteResult htmlWritten = io::writeFileAtomic(html, documentText(name), options);
+    if (!htmlWritten.ok()){
+        std::error_code ignored;
+        FileUtils::removePath(css, ignored);
+        error = "could not write " + html.string() + ": " + io::describeWriteError(htmlWritten);
+        return false;
+    }
 
     return true;
 }

@@ -3,6 +3,9 @@
 
 #include "CodeEditor.h"
 
+#include "reload/HotReloadService.h"
+#include "DocumentFile.h"
+
 #include "Backend.h"
 #include "AppSettings.h"
 #include "util/FileUtils.h"
@@ -464,14 +467,12 @@ void collectProjectSources(const fs::path& projectPath, const std::unordered_set
 
 }
 
-editor::CodeEditor::CodeEditor(Project* project) : lastScriptWatchTime(0.0), isFileChangePopupOpen(false), windowFocused(false), lastFocused(nullptr) {
+editor::CodeEditor::CodeEditor(Project* project) : isFileChangePopupOpen(false), windowFocused(false), lastFocused(nullptr) {
     this->project = project;
 }
 
 editor::CodeEditor::~CodeEditor() {
-    if (symbolParseThread.joinable()) {
-        symbolParseThread.join();
-    }
+    symbolParseTask.wait();
 }
 
 fs::path editor::CodeEditor::resolveFilepath(const fs::path& relPath) const {
@@ -535,12 +536,13 @@ void editor::CodeEditor::updateAllProjectSymbols() {
     fs::path projectPath = project->getProjectPath();
 
     isParsingSymbols = true;
-    if (symbolParseThread.joinable()) {
-        symbolParseThread.join();
-    }
+    symbolParseTask.wait();
 
-    symbolParseThread = std::thread([this, projectPath, openFiles = std::move(openFiles),
-                                     luaContents = std::move(luaContents), cppContents = std::move(cppContents)]() mutable {
+    jobs::SubmitOptions options;
+    options.lane = jobs::Lane::Background;
+    options.name = "code-symbols";
+    symbolParseTask = jobs::submit([this, projectPath, openFiles = std::move(openFiles),
+                                    luaContents = std::move(luaContents), cppContents = std::move(cppContents)]() mutable {
         collectProjectSources(projectPath, openFiles, luaContents, cppContents);
 
         std::vector<ProjectSymbol> parsedLua;
@@ -562,7 +564,7 @@ void editor::CodeEditor::updateAllProjectSymbols() {
             newSymbolsReady = true;
         }
         isParsingSymbols = false;
-    });
+    }, options);
 }
 
 void editor::CodeEditor::applyParsedProjectSymbols() {
@@ -589,106 +591,41 @@ void editor::CodeEditor::applyParsedProjectSymbols() {
     }
 }
 
-void editor::CodeEditor::invalidateShadersForFile(const EditorInstance& instance) {
-    // The build cache resolves sources through an in-memory snapshot, so without this
-    // an external edit would never reach the renderer
-    if (Util::isShaderFile(instance.filepath.string())) {
-        project->invalidateCustomShaders();
+bool editor::CodeEditor::reloadIfChangedOnDisk(EditorInstance& instance) {
+    std::error_code ec;
+    const fs::path fullPath = resolveFilepath(instance.filepath);
+    const fs::file_time_type currentWriteTime = fs::last_write_time(fullPath, ec);
+    // gone, or this buffer's own save (save() took its stamp; the file watcher drops the echo)
+    if (ec || currentWriteTime == instance.lastWriteTime) return false;
+
+    if (!instance.isModified) {
+        loadFileContent(instance);
+        updateScriptProperties(instance);
+        return true;
     }
+
+    auto it = std::find_if(changedFilesQueue.begin(), changedFilesQueue.end(),
+        [&](const PendingFileChange& change) {
+            return change.filepath == instance.filepath;
+        });
+    if (it == changedFilesQueue.end()) {
+        changedFilesQueue.push_back({instance.filepath, currentWriteTime});
+    }
+    return false;
 }
 
-void editor::CodeEditor::checkFileChanges(EditorInstance& instance) {
-    try {
-        fs::path fullPath = resolveFilepath(instance.filepath);
-        auto currentWriteTime = fs::last_write_time(fullPath);
-        if (currentWriteTime == instance.lastWriteTime) return;
-
-        std::string content;
-        if (readFile(fullPath, content) && content == instance.editor->GetText()) {
-            // Same content, this is our own save
-            instance.lastWriteTime = currentWriteTime;
-            return;
+void editor::CodeEditor::onFilesChanged(const std::vector<fs::path>& files, std::vector<std::string>& reloaded, std::vector<std::string>& conflicts) {
+    for (const fs::path& file : files) {
+        auto it = editors.find(toRelativePath(file.string()));
+        if (it == editors.end() || !it->second.editor) continue;
+        EditorInstance& instance = it->second;
+        instance.isModified = instance.editor->GetUndoIndex() != instance.savedUndoIndex;
+        if (reloadIfChangedOnDisk(instance)) {
+            reloaded.push_back(it->first);
+        } else if (std::any_of(changedFilesQueue.begin(), changedFilesQueue.end(),
+                               [&](const PendingFileChange& change) { return change.filepath == instance.filepath; })) {
+            conflicts.push_back(it->first);
         }
-
-        if (!instance.isModified) {
-            loadFileContent(instance);
-            updateScriptProperties(instance);
-            invalidateShadersForFile(instance);
-            return;
-        }
-
-        auto it = std::find_if(changedFilesQueue.begin(), changedFilesQueue.end(),
-            [&](const PendingFileChange& change) {
-                return change.filepath == instance.filepath;
-            });
-
-        if (it == changedFilesQueue.end()) {
-            changedFilesQueue.push_back({instance.filepath, currentWriteTime});
-        }
-    } catch (const std::exception&) {
-        // File gone or unreadable this tick
-    }
-}
-
-void editor::CodeEditor::checkExternalScriptChanges() {
-    // Play mutates the live scene in-process and restores it from a snapshot on stop, so a
-    // background property refresh would fight it. External edits are picked up after stop.
-    for (const auto& sceneProject : project->getScenes()) {
-        if (sceneProject.playState != ScenePlayState::STOPPED)
-            return;
-    }
-
-    std::unordered_set<std::string> referenced;
-    for (SceneProject* sceneProjectPtr : project->getScenesAndPrefabStages()) {
-        SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene)
-            continue;
-
-        auto scriptsArray = sceneProject.scene->getComponentArray<ScriptComponent>();
-        for (size_t i = 0; i < scriptsArray->size(); i++) {
-            const ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
-            for (const auto& scriptEntry : scriptComponent.scripts) {
-                if (scriptEntry.type == ScriptType::CPP && !scriptEntry.headerPath.empty()) {
-                    referenced.insert(scriptEntry.headerPath);
-                } else if (scriptEntry.type == ScriptType::LUA && !scriptEntry.path.empty()) {
-                    // Stored relative to the Lua root, the watch list is project-relative
-                    referenced.insert(toRelativePath(project->resolveLuaPath(scriptEntry.path).string()));
-                }
-            }
-        }
-    }
-
-    for (const std::string& relPath : referenced) {
-        fs::file_time_type currentWriteTime;
-        try {
-            currentWriteTime = fs::last_write_time(resolveFilepath(relPath));
-        } catch (const std::exception&) {
-            continue;
-        }
-
-        auto it = watchedScriptFiles.find(relPath);
-        if (it == watchedScriptFiles.end()) {
-            // First sighting, record the baseline without refreshing
-            watchedScriptFiles[relPath] = currentWriteTime;
-            continue;
-        }
-        if (it->second == currentWriteTime)
-            continue;
-
-        // checkFileChanges owns open files, including the unsaved-edit conflict prompt
-        it->second = currentWriteTime;
-        if (editors.find(relPath) != editors.end())
-            continue;
-
-        updateScriptPropertiesForPath(relPath);
-    }
-
-    // Forget unreferenced files so a re-added one gets a fresh baseline
-    for (auto it = watchedScriptFiles.begin(); it != watchedScriptFiles.end();) {
-        if (referenced.find(it->first) == referenced.end())
-            it = watchedScriptFiles.erase(it);
-        else
-            ++it;
     }
 }
 
@@ -734,9 +671,9 @@ void editor::CodeEditor::handleFileChangePopup() {
             for (const auto& change : changedFilesQueue) {
                 auto it = editors.find(change.filepath.string());
                 if (it != editors.end()) {
+                    // (the shaders and scenes took the disk version when it changed)
                     loadFileContent(it->second);
                     updateScriptProperties(it->second);
-                    invalidateShadersForFile(it->second);
                 }
             }
             changedFilesQueue.clear();
@@ -1029,8 +966,9 @@ void editor::CodeEditor::addScriptEvent(const std::string& filepath, size_t even
             }
             if (isTarget) target = &open->second;
         } else if (change.texts[i] != texts[i]) {
-            if (!FileUtils::writeFileReplacing(resolveFilepath(paths[i]), change.texts[i], FileUtils::LineEndings::KeepExisting)) {
-                Out::error("Could not write file: %s", key.c_str());
+            const io::WriteResult written = DocumentFiles::write(resolveFilepath(paths[i]), FileUtils::withLineEndings(resolveFilepath(paths[i]), change.texts[i]));
+            if (!written.ok()) {
+                Out::error(DocumentFiles::saveFailureMessage(paths[i], written));
                 continue;
             }
         }
@@ -1327,9 +1265,11 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
             }
         }
 
-        if (!FileUtils::writeFileReplacing(resolveFilepath(headerPath), headerText.substr(0, insertPos) + propCode + headerText.substr(insertPos),
-                                           FileUtils::LineEndings::KeepExisting)) {
-            Out::error("Could not write header file: %s", headerPath.string().c_str());
+        const fs::path headerFile = resolveFilepath(headerPath);
+        const io::WriteResult written = DocumentFiles::write(headerFile,
+                FileUtils::withLineEndings(headerFile, headerText.substr(0, insertPos) + propCode + headerText.substr(insertPos)));
+        if (!written.ok()) {
+            Out::error(DocumentFiles::saveFailureMessage(headerPath, written));
             return;
         }
     }
@@ -1381,9 +1321,7 @@ bool editor::CodeEditor::isFocused() const {
 }
 
 void editor::CodeEditor::closeAll() {
-    if (symbolParseThread.joinable()) {
-        symbolParseThread.join();
-    }
+    symbolParseTask.wait();
     editors.clear();
     changedFilesQueue.clear();
     pendingEventFile.clear();
@@ -1393,8 +1331,10 @@ void editor::CodeEditor::closeAll() {
 bool editor::CodeEditor::save(EditorInstance& instance) {
     try {
         fs::path fullPath = resolveFilepath(instance.filepath);
-        // A failed write keeps the script as it was on disk
-        if (!FileUtils::writeFileReplacing(fullPath, instance.editor->GetText(), FileUtils::LineEndings::KeepExisting)) {
+        // a script of a Windows checkout keeps its \r\n; a failed write keeps it as it was on disk
+        const io::WriteResult written = DocumentFiles::write(fullPath, FileUtils::withLineEndings(fullPath, instance.editor->GetText()));
+        if (!written.ok()) {
+            Out::error(DocumentFiles::saveFailureMessage(instance.filepath, written));
             return false;
         }
 
@@ -1403,14 +1343,13 @@ bool editor::CodeEditor::save(EditorInstance& instance) {
         instance.propertyInsertUndoIndex = -1;
         instance.lastWriteTime = fs::last_write_time(fullPath);
 
-        updateScriptProperties(instance);
         updateAllProjectSymbols();
-        invalidateShadersForFile(instance);
-        if (Util::isLuaFile(fullPath.string())) {
-            Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {fullPath});
-        }
-        // HTML UI documents depending on it reload now instead of at the next poll
-        project->notifyHtmlUIFileSaved(fullPath);
+        // what reads the file follows now, as with any change on disk: script properties, Lua
+        // syntax and stubs, the shader forks it is part of, HTML UI documents (S05)
+        ApplyOptions options;
+        options.force = true;
+        options.quiet = true;
+        HotReloadService::get().apply(ChangeSet::fromPaths({fullPath}), options);
 
         return true;
     } catch (const std::exception&) {
@@ -1544,31 +1483,9 @@ std::vector<editor::CodeEditor::BufferState> editor::CodeEditor::getBufferStates
 }
 
 void editor::CodeEditor::syncWithDisk(std::vector<std::string>& reloaded, std::vector<std::string>& conflicts) {
-    for (auto& [key, instance] : editors) {
-        if (!instance.editor) continue;
-        instance.isModified = instance.editor->GetUndoIndex() != instance.savedUndoIndex;
-        const fs::file_time_type before = instance.lastWriteTime;
-        const size_t queued = changedFilesQueue.size();
-        checkFileChanges(instance);
-        instance.lastCheckTime = ImGui::GetTime();
-        if (changedFilesQueue.size() != queued ||
-            std::any_of(changedFilesQueue.begin(), changedFilesQueue.end(),
-                        [&](const PendingFileChange& change) { return change.filepath == instance.filepath; })) {
-            conflicts.push_back(key);
-        } else if (instance.lastWriteTime != before) {
-            reloaded.push_back(key);
-        }
-    }
-}
-
-void editor::CodeEditor::markScriptFilesCurrent(const std::vector<fs::path>& files) {
-    for (const fs::path& file : files) {
-        auto it = watchedScriptFiles.find(toRelativePath(file.string()));
-        if (it == watchedScriptFiles.end()) continue;
-        std::error_code ec;
-        const fs::file_time_type time = fs::last_write_time(file, ec);
-        if (!ec) it->second = time;
-    }
+    std::vector<fs::path> files;
+    for (const auto& [key, instance] : editors) files.push_back(resolveFilepath(instance.filepath));
+    onFilesChanged(files, reloaded, conflicts);
 }
 
 bool editor::CodeEditor::saveFile(const std::string& filepath) {
@@ -1586,7 +1503,6 @@ bool editor::CodeEditor::reloadFile(const std::string& filepath) {
     changedFilesQueue.erase(changeIt, changedFilesQueue.end());
     if (!loadFileContent(it->second)) return false;
     updateScriptProperties(it->second);
-    invalidateShadersForFile(it->second);
     return true;
 }
 
@@ -1669,22 +1585,10 @@ bool editor::CodeEditor::handleFileRename(const fs::path& oldPath, const fs::pat
 void editor::CodeEditor::show() {
     applyParsedProjectSymbols();
 
-    double currentTime = ImGui::GetTime();
-
     windowFocused = false;
-
-    if (currentTime - lastScriptWatchTime >= 1.0) {
-        checkExternalScriptChanges();
-        lastScriptWatchTime = currentTime;
-    }
 
     for (auto it = editors.begin(); it != editors.end();) {
         auto& instance = it->second;
-
-        if (currentTime - instance.lastCheckTime >= 1.0) {
-            checkFileChanges(instance);
-            instance.lastCheckTime = currentTime;
-        }
 
         std::string windowTitle = getWindowTitle(instance);
 

@@ -12,6 +12,7 @@
 #include "htmlui/RmlKeyMap.h"
 #include "htmlui/RmlSystem.h"
 #include "htmlui/RmlTextInputHandler.h"
+#include "htmlui/widgets/ItemsViewElement.h"
 #include "util/StringUtils.h"
 
 #include <RmlUi/Core/ComputedValues.h>
@@ -22,6 +23,7 @@
 #include <RmlUi/Core/ScrollTypes.h>
 
 #include <bitset>
+#include <climits>
 #include <set>
 #include <vector>
 
@@ -124,7 +126,7 @@ namespace {
     }
 
     // <input> of a text type or <textarea>; withSelect adds <select>, which takes keys but no text
-    bool isTextControl(Rml::Element* element, bool withSelect){
+    bool inputIsTextControl(Rml::Element* element, bool withSelect){
         if (!element)
             return false;
 
@@ -179,12 +181,14 @@ namespace {
     // that use them while focused (a range adjusts, an open select moves through its options);
     // everywhere else they navigate, so a text field or a closed select does not keep the d-pad.
     // A is Space on a checkbox or radio (it toggles on release), nothing on a text field (no line
-    // break, no submit), else Enter (a click on press); B is Escape (a modal <dialog> closes)
+    // break, no submit), else Enter (a click on press); B is Escape (a modal <dialog> closes). Inside
+    // a virtual view (S17 R8) the directions are its arrow keys; at its edges it leaves them to the
+    // spatial navigation
     Rml::Input::KeyIdentifier gamepadControlKey(GamepadUIKey key, Rml::Element* focus, bool selectOpen){
         if (isGamepadDirection(key))
-            return (selectOpen || isInputOfType(focus, {"range"})) ? arrowKey(key) : Rml::Input::KI_UNKNOWN;
+            return (selectOpen || isInputOfType(focus, {"range"}) || htmlui::ItemsViewElement::closestView(focus)) ? arrowKey(key) : Rml::Input::KI_UNKNOWN;
         if (key == GamepadUIKey::A){
-            if (isTextControl(focus, false))
+            if (inputIsTextControl(focus, false))
                 return Rml::Input::KI_UNKNOWN;
             return isInputOfType(focus, {"checkbox", "radio"}) ? Rml::Input::KI_SPACE : Rml::Input::KI_RETURN;
         }
@@ -226,10 +230,13 @@ namespace {
     // The element a gamepad navigates from: a focused element Tab reaches (a button, a link, a
     // form control, tabindex="0"). An element a click or a script focused that is not in the Tab
     // order (a clicked panel, tabindex="-1") has the keys but not the gamepad, so a click on a HUD
-    // does not take the d-pad from the game
+    // does not take the d-pad from the game. A virtual view's rows have it too: the view is the Tab
+    // stop, its active row the focus (S17 R8)
     Rml::Element* gamepadFocusElement(Rml::Context* context){
         Rml::Element* focus = focusedElement(context);
-        return (focus && focus->GetComputedValues().tab_index() == Rml::Style::TabIndex::Auto) ? focus : nullptr;
+        if (!focus)
+            return nullptr;
+        return (focus->GetComputedValues().tab_index() == Rml::Style::TabIndex::Auto || htmlui::ItemsViewElement::closestView(focus)) ? focus : nullptr;
     }
 
 }
@@ -241,6 +248,8 @@ HtmlUIInputState& UIDocumentSystem::getInputState(){
 }
 
 bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, float y, int mods, bool touch, bool world){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (isWorldPointerCaptured(pointer, button, touch)) return dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::DOWN, touch);
     HtmlUIInputState& state = getInputState();
     bool consumed = false;
@@ -251,8 +260,8 @@ bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, floa
         const int rmlMods = RmlKeyMap::toRmlModifiers(mods);
 
         if (touch){
-            getContext()->processTouchStart(pointer, Rml::Vector2f(cx, cy), rmlMods);
-            consumed = getContext()->isPointerOverContent();
+            // each finger its own pointer: over content (or its press) it is the documents'
+            consumed = getContext()->processTouchStart(pointer, Rml::Vector2f(cx, cy), rmlMods);
             if (consumed) state.capturedTouches.insert(pointer);
             else state.capturedTouches.erase(pointer);
         }else{
@@ -277,6 +286,8 @@ bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, floa
 }
 
 bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float y, int mods, bool touch, bool world){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (isWorldPointerCaptured(pointer, button, touch)) return dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::UP, touch);
     HtmlUIInputState& state = getInputState();
     std::set<int>& captures = touch ? state.capturedTouches : state.capturedButtons;
@@ -311,6 +322,8 @@ bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float 
 }
 
 bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mods, bool touch, bool world){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (isWorldPointerCaptured(pointer, -1, touch)) return dispatchWorldPointer(pointer, -1, x, y, mods, PointerPhase::MOVE, touch);
     HtmlUIInputState& state = getInputState();
     bool consumed = false;
@@ -336,6 +349,8 @@ bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mod
 }
 
 bool UIDocumentSystem::eventOnTouchCancel(int pointer){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     HtmlUIInputState& state = getInputState();
     const bool captured = state.capturedTouches.erase(pointer) > 0;
 
@@ -345,7 +360,41 @@ bool UIDocumentSystem::eventOnTouchCancel(int pointer){
     return dispatchWorldPointer(pointer, -1, 0.0f, 0.0f, 0, PointerPhase::CANCEL, true) || captured;
 }
 
+bool UIDocumentSystem::eventOnMouseCancel(int button){
+    HtmlUIInputState& state = getInputState();
+    // one DOM pointer: its cancel lets go of every button
+    const bool captured = !state.capturedButtons.empty();
+    state.capturedButtons.clear();
+
+    if (getContext())
+        getContext()->processMouseCancel();
+
+    bool consumed = captured;
+    if (isWorldPointerCaptured(0, button, false))
+        consumed = dispatchWorldPointer(0, button, 0.0f, 0.0f, 0, PointerPhase::CANCEL, false) || consumed;
+    return consumed;
+}
+
+void UIDocumentSystem::cancelAllPointers(){
+    HtmlUIInputState& state = getInputState();
+
+    std::set<int> fingers = state.capturedTouches;
+    if (getContext()){
+        for (int pointer : getContext()->getTouches())
+            fingers.insert(pointer);
+    }
+    for (int pointer : fingers)
+        eventOnTouchCancel(pointer);
+
+    state.capturedButtons.clear();
+    if (getContext())
+        getContext()->processMouseCancel();
+    textureCancelAll();
+}
+
 bool UIDocumentSystem::eventOnWheel(float dx, float dy, int mods){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (!hasVisibleDocument())
         return dispatchWorldWheel(dx, dy, mods);
 
@@ -355,12 +404,16 @@ bool UIDocumentSystem::eventOnWheel(float dx, float dy, int mods){
 }
 
 void UIDocumentSystem::eventOnMouseLeave(){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (getContext())
         getContext()->processMouseLeave();
     textureMouseLeave();
 }
 
 bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     (void)repeat;   // RmlUi has no repeat flag: every repeat is a key down, as in a browser
     HtmlUIContext* keys = keyContext();   // p1-rtt: the screen's, or the texture document that took the last press
     if (!keys){
@@ -382,7 +435,7 @@ bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
         // false: propagation was stopped (a text field handling the key) or the default prevented
         const bool propagated = rmlContext->ProcessKeyDown(RmlKeyMap::toRmlKey(key), RmlKeyMap::toRmlModifiers(mods));
 
-        if (isTextControl(focus, true)){
+        if (inputIsTextControl(focus, true)){
             // a text field takes every key but Escape and the function keys. RmlUi's text
             // widget stops the propagation of every key it sees, so that cannot tell here
             consumed = key != D_KEY_ESCAPE && !(key >= D_KEY_F1 && key <= D_KEY_F25);
@@ -398,6 +451,8 @@ bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
 }
 
 bool UIDocumentSystem::eventOnKeyUp(int key, int mods){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     bool consumed = false;
     if (inputState && key >= 0 && key <= D_KEY_LAST){
         consumed = inputState->consumedKeys.test(key);
@@ -411,6 +466,8 @@ bool UIDocumentSystem::eventOnKeyUp(int key, int mods){
 }
 
 bool UIDocumentSystem::eventOnTextInput(const std::string& utf8){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (!hasFocusedTextInput())
         return false;
 
@@ -445,6 +502,8 @@ bool UIDocumentSystem::eventOnTextInput(const std::string& utf8){
 }
 
 bool UIDocumentSystem::eventOnImeComposition(const std::string& utf8, int cursor){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (!hasFocusedTextInput())
         return false;
 
@@ -452,6 +511,8 @@ bool UIDocumentSystem::eventOnImeComposition(const std::string& utf8, int cursor
 }
 
 void UIDocumentSystem::eventOnImeCancel(){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (getContext())
         getContext()->getTextInputHandler().cancelComposition();
     if (HtmlUIContext* keys = keyContext())
@@ -463,7 +524,7 @@ bool UIDocumentSystem::hasFocusedTextInput() const{
     if (!keys)
         return false;
 
-    return isTextControl(focusedElement(keys->getRmlContext()), false);
+    return inputIsTextControl(focusedElement(keys->getRmlContext()), false);
 }
 
 bool UIDocumentSystem::hasPointerCapture(int pointer, int button, bool touch) const{
@@ -471,6 +532,24 @@ bool UIDocumentSystem::hasPointerCapture(int pointer, int button, bool touch) co
     if (!inputState)
         return false;
     return touch ? inputState->capturedTouches.count(pointer) > 0 : inputState->capturedButtons.count(button) > 0;
+}
+
+bool UIDocumentSystem::isPointerOverUI(int pointerId) const{
+    const bool mouse = pointerId == INT_MIN || pointerId < 0;
+    const bool fingers = pointerId == INT_MIN || pointerId >= 0;
+    if (mouse){
+        if (inputState && !inputState->capturedButtons.empty())
+            return true;
+        if (hasVisibleDocument() && getContext() && getContext()->isPointerOverContent())
+            return true;
+    }
+    if (fingers && inputState){
+        if (pointerId == INT_MIN ? !inputState->capturedTouches.empty() : inputState->capturedTouches.count(pointerId) > 0)
+            return true;
+    }
+    if (fingers && pointerId != INT_MIN && hasVisibleDocument() && getContext() && getContext()->isTouchOverContent(pointerId))
+        return true;
+    return false;
 }
 
 CursorType UIDocumentSystem::getPointerCursor() const{
@@ -485,6 +564,8 @@ CursorType UIDocumentSystem::getPointerCursor() const{
 }
 
 bool UIDocumentSystem::eventOnGamepadKeyDown(int gamepad, GamepadUIKey key, bool repeat){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     HtmlUIContext* keys = keyContext();   // the context keys go to (a texture document's after its press)
     if (!keys || key == GamepadUIKey::COUNT)
         return false;
@@ -532,7 +613,7 @@ bool UIDocumentSystem::eventOnGamepadKeyDown(int gamepad, GamepadUIKey key, bool
         }else if (key == GamepadUIKey::A){
             consumed = true;
             // a text field: the virtual keyboard (Android, iOS, Web), as a tap on it
-            if (!prevented && isTextControl(focus, false))
+            if (!prevented && inputIsTextControl(focus, false))
                 keys->getTextInputHandler().requestKeyboard();
         }else if (key == GamepadUIKey::B){
             // an open select closes, as on Escape in a browser
@@ -562,6 +643,8 @@ bool UIDocumentSystem::eventOnGamepadKeyDown(int gamepad, GamepadUIKey key, bool
 }
 
 bool UIDocumentSystem::eventOnGamepadKeyUp(int gamepad, GamepadUIKey key){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (!inputState)
         return false;
     HtmlUIInputState& state = *inputState;

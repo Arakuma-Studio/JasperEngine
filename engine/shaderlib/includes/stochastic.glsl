@@ -56,15 +56,17 @@
 //     (of the values as stored, as the reference). For the base colour.
 //   vec3 stochasticNormal(texture2D tex, sampler smp, StochasticTiling st, float strength, float greenSign)
 //   vec3 stochasticNormalArray(texture2DArray tex, sampler smp, float layer, StochasticTiling st, float strength, float greenSign)
-//     a tangent-space normal map (rgb * 2 - 1): the taps become height derivatives, are
-//     turned back by their cell's rotation, blended with st.weights and made a unit normal
-//     again whose xy are then scaled by strength, as the plain
-//     `n = texture(...).rgb * 2.0 - 1.0; n.xy *= strength;` (which it equals for one tap).
+//     a tangent-space normal map (decodeNormalMap for the 2D map, so a two-channel cook decodes
+//     like its source; rgb * 2 - 1 for the array, built from the source files): the taps become
+//     height derivatives, are turned back by their cell's rotation, blended with st.weights and
+//     made a unit normal again whose xy are then scaled by strength, as the plain
+//     `n = decodeNormalMap(texture(...)); n.xy *= strength;` (which it equals for one tap).
 //     greenSign is the way the caller's tangent frame reads green against +v, which decides
 //     the way a rotation turns the slopes back (a tap must read as the texel a turned copy of
 //     the map would hold):
-//       STOCHASTIC_NORMAL_GL (-1): green read against +v. Lit and the library shaders (their
-//         bitangent points up the image while images load top row first).
+//       STOCHASTIC_NORMAL_GL (-1): green read against +v. Lit, the library shaders and the 2D
+//         meshes (Sprite, Polygon, Tilemap) (their bitangent points up the image while images
+//         load top row first).
 //       STOCHASTIC_NORMAL_DX (+1): green read along +v. The terrain layers, whose whiteout
 //         blend takes green as +v on the flat and side projections.
 //     Rotation 0 makes it irrelevant (the taps are not turned).
@@ -83,6 +85,12 @@
 
 #ifndef STOCHASTIC_GLSL
 #define STOCHASTIC_GLSL
+
+// how stochasticNormal reads a tap: includes/normal_map.glsl, included before this file where a
+// normal map is sampled, makes it decodeNormalMap (a two-channel cook decodes like its source)
+#ifndef STOCHASTIC_DECODE_NORMAL
+    #define STOCHASTIC_DECODE_NORMAL(texel) texel.rgb * 2.0 - 1.0
+#endif
 
 // Below this a tap's weight is dropped and the others renormalised: at most a 1/255 change
 // of the blend, and most pixels then fetch one or two taps instead of three
@@ -302,9 +310,9 @@ vec3 stochasticNormal(texture2D tex, sampler smp, StochasticTiling st, float str
     vec3 n0 = vec3(0.0, 0.0, 1.0);
     vec3 n1 = vec3(0.0, 0.0, 1.0);
     vec3 n2 = vec3(0.0, 0.0, 1.0);
-    if (st.weights.x > 0.0) n0 = stochasticGrad(tex, smp, st, 0).rgb * 2.0 - 1.0;
-    if (st.weights.y > 0.0) n1 = stochasticGrad(tex, smp, st, 1).rgb * 2.0 - 1.0;
-    if (st.weights.z > 0.0) n2 = stochasticGrad(tex, smp, st, 2).rgb * 2.0 - 1.0;
+    if (st.weights.x > 0.0) n0 = STOCHASTIC_DECODE_NORMAL(stochasticGrad(tex, smp, st, 0));
+    if (st.weights.y > 0.0) n1 = STOCHASTIC_DECODE_NORMAL(stochasticGrad(tex, smp, st, 1));
+    if (st.weights.z > 0.0) n2 = STOCHASTIC_DECODE_NORMAL(stochasticGrad(tex, smp, st, 2));
     return stochasticBlendNormals(st, n0, n1, n2, strength, greenSign);
 }
 

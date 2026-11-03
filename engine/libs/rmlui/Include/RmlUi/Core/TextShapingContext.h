@@ -40,6 +40,22 @@ struct TextShapingContext {
 	// character, only at the first code point of a grapheme cluster; empty when the string is not justified). A font engine
 	// applies it in GetStringWidth and GenerateString.
 	Span<const JustificationSpacing> justification = {};
+	// Fork (S16-F3): the device pixels per document pixel the glyphs are rasterized at; 0: the font engine's own scale for the
+	// render manager. Elements pass their on-screen scale (FontEngineInterface::GetBaseRasterScale times their transform's).
+	float raster_scale = 0.0f;
+	// Fork (S16-F3): the glyphs come from the font engine's distance-field atlas (scale-independent), not its bitmaps; only
+	// after FontEngineInterface::PrepareDistanceGlyphs answered true for the string.
+	bool distance_field = false;
+	// Fork (S16-F3): a blurred text-shadow the font engine draws itself (its blur radius, px), after
+	// FontEngineInterface::SupportsGpuTextShadow answered true; 0: none.
+	float shadow_blur = 0.0f;
+	// A per-character text animation (fork, T21-2): the state the engine's text effect provider gave the text (null: none,
+	// see ElementText::SetTextEffectProvider), and the index of the first visible character (not white space) of the string
+	// in the text's inline formatting context, so an effect runs on across elements and lines.
+	const void* text_effect = nullptr;
+	int glyph_index_base = 0;
+	// The string is a text-shadow of the text: the effect moves and fades its glyphs, its colour stays the shadow's.
+	bool text_effect_shadow = false;
 };
 
 } // namespace Rml

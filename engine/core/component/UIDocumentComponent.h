@@ -4,10 +4,17 @@
 #ifndef UIDOCUMENT_COMPONENT_H
 #define UIDOCUMENT_COMPONENT_H
 
+#include "asset/AssetRef.h"
 #include "Engine.h"
+#include "object/ui/UIReloadReport.h"
+
+#include <functional>
+#include <memory>
 #include <string>
 
 namespace jasperengine{
+
+    struct HtmlUILuaRef;   // HtmlUIScriptInternal.h
 
     // SCREEN: drawn over the scene in its camera pass; TEXTURE: rendered into its own
     // target texture (UIDocument::getTargetTexture), shown on a mesh or an Image
@@ -17,7 +24,7 @@ namespace jasperengine{
     // loaded into the scene's UIDocumentSystem; sortOrder orders the scene's documents.
     struct JASPERENGINE_API UIDocumentComponent{
         // phase 0
-        std::string filename;     // asset-relative .html/.htm/.rml (asset path rules of FileData); MCP validates it
+        AssetRef filename;        // asset-relative .html/.htm/.rml (asset path rules of FileData); MCP validates it
         int sortOrder = 0;        // higher draws on top (document z-index)
         bool enabled = true;      // shown and receiving pointer input (Inspector header checkbox, UIDocument::setVisible)
 
@@ -30,6 +37,9 @@ namespace jasperengine{
         float pixelRatio = 0.0f;                                    // 0 = automatic (phase-0 dp ratio); TEXTURE mode default 1
         FunctionSubscribe<void()> onLoad;                           // after every (re)load
         FunctionSubscribe<void()> onUnload;
+        // S17: after a live patch reload, which keeps the document (onLoad and onUnload do not fire then)
+        std::function<void(const UIReloadReport&)> onReload;
+        std::shared_ptr<HtmlUILuaRef> onReloadLua;                  // the Lua function behind onReload, when a script set it
 
         // runtime, not serialized (phase 0; phase-1 runtime state lives in UIDocumentSystem)
         bool needReload = true;   // filename changed or reload() requested

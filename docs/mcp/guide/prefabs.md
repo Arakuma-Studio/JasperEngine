@@ -40,13 +40,18 @@ local go = GameObject.instantiate(prefab, self.scene, Vector3(0, 5, 0), Quaterni
 GameObject.destroy(go, 2.0)          -- after 2 seconds; destroyImmediate(go) right away
 ```
 
-- The new root is named `<name>(Clone)`; the scripts of every new GameObject have already run
-  `init` (Lua) / their constructor (C++). Without a scene or parent it goes to the active scene.
+- The new root is named `<name>(Clone)`; the scripts of every new active GameObject have already
+  run `init` and `onEnable` (Lua and C++); `start` runs at the next frame. Without a scene or
+  parent it goes to the active scene.
 - A copy keeps components and script property values; references among the copied
   GameObjects point to the copies.
 - `destroy` removes the GameObject and its children after the frame's update (or after
-  `delay`), calling Lua `onDestroy` and C++ destructors first.
+  `delay`), calling `onDisable` and `onDestroy` (Lua and C++), then the C++ destructors, first.
 - `instantiate` returns nil when the prefab is not in the build.
+- Into the persistent scene (survives scene loads, `DontDestroyOnLoad`):
+  `GameObject.instantiate(prefab, SceneManager.persistentScene)` once it exists (it is nil
+  until the first `DontDestroyOnLoad`), or `DontDestroyOnLoad(go)` on the new root. See
+  [lua-api.md](lua-api.md) 2.8.1.
 
 ## Which prefabs are in the build
 

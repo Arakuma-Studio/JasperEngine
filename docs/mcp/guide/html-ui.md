@@ -74,8 +74,9 @@ page written for Chrome at the canvas size looks the same.
 
 Parity stops at:
 
-- **No JavaScript, no network at run time, no `<canvas>` or `<iframe>`** (by design).
-  `<video>` plays AV1 + Opus WebM only (see "Video"). Remote fonts, images and videos are
+- **No JavaScript, no network access from documents, no `<canvas>` or `<iframe>`** (by design;
+  Lua's `Http` makes requests, `jasper://docs/networking`).
+  `<video>` plays AV1 + Opus WebM everywhere and MP4 through the platform's decoders (see "Video"). Remote fonts, images and videos are
   imported into the project by the editor.
 - **The unsupported CSS** listed under "CSS that differs": container queries, blend modes,
   vertical text, multi-column layout, `subgrid`, scroll snapping, ... Each use is reported.
@@ -132,7 +133,7 @@ return Terminal
   from the scene's camera; the nearest texture document whose surface it hits gets it at the
   hit's texture coordinate, with the usual rules (an element, or a page with a background,
   takes it; a transparent page passes it on). A press keeps the pointer until the release
-  (drags); touch works per finger; the wheel goes to the document under the mouse; keys go to
+  (drags); every finger is its own pointer (Pointer Events); the wheel goes to the document under the mouse; keys go to
   the document that took the last press. The hit test reads the mesh's CPU geometry
   (primitives, sprites, imported models), ignores other objects in front of the surface and
   tests skinned or morph-target meshes in their bind pose. The mouse cursor shape follows
@@ -306,9 +307,8 @@ pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`, `::placeholder
 | `<script>` (JavaScript) | `<script type="text/lua">` or a Lua script on the GameObject (`HTMLUI-HTML-0006`, error) |
 | `onclick="..."` and every `on*` attribute | `el:addEventListener("click", fn)` in Lua, or `data-event-click` with a data model (`HTMLUI-HTML-0005`, error) |
 | `<canvas>` | a Lottie animation or an image sequence; 3D content drawn by the game behind a transparent part of the page, or the document on a mesh in texture mode (`HTMLUI-HTML-0002`: a placeholder box) |
-| `<video src="clip.mp4">` (H.264, VP9, ...) | `<video src="clip.webm">` with AV1 + Opus: `import_files` converts the file with FFmpeg (`HTMLUI-HTML-0027`) |
+| `<video src="clip.avi">` (Ogg/Theora, AVI, ...) | `<video src="clip.webm">` with AV1 + Opus (`HTMLUI-HTML-0027`); MP4 (H.264, HEVC) plays through the platform's decoders |
 | `<iframe>` | another UI Document (`HTMLUI-HTML-0002`) |
-| `title="tooltip"` | a tooltip element shown on `mouseover` from Lua (`HTMLUI-HTML-0004`, info) |
 | `<div/>` | `<div></div>`: in HTML a non-void element does not self-close (`HTMLUI-HTML-0026`) |
 | Tailwind's Play CDN, GSAP, jQuery `<script>`s | a built stylesheet (Tailwind CLI output), the Lua `anime` API, Lua (`HTMLUI-HTML-0007`) |
 
@@ -424,6 +424,11 @@ Native or exactly rewritten, as in Chrome:
   (several, blurred: a glow), `-webkit-text-stroke` (drawn outside the glyphs), soft hyphens
   (`&shy;`) and zero-width spaces as break opportunities, right-to-left text with
   `direction: rtl` (Arabic shaping built in).
+- **Native Canvas Groups compared** (`jasper://docs/ui`): CSS `opacity` composites the element
+  and its children as one layer (a native group does that only in its `FLATTEN` mode; the default
+  fades each element, as Unity), and a child can undo `pointer-events: none` with `auto`, while
+  a native child re-enables blocking only with a group of its own with `ignoreParentGroups`. A
+  UI Document under a Canvas Group is not affected by it.
 - **Details that match Chrome** and surprise people: `opacity: 0` still receives the mouse
   (use `visibility: hidden` or `pointer-events: none`); `outline` paints above the element's
   content but below its positioned children; `will-change: transform` (or `opacity`, `filter`)
@@ -539,8 +544,43 @@ colour is multiplied by the element's `opacity`):
 .ready { font-effect: glow(2px 6px 0px 0px #40ff40); }
 ```
 
-Each blurred shadow, glow or blur of a text draws through an offscreen layer: fine for titles
-and counters, not for long body text.
+Shadows, outlines, glows, blurs and blurred `text-shadow`s up to 0.3 em are drawn on the GPU
+from distance-field glyphs, sharp at any pixel ratio and without layers; larger ones (and the
+first frame before those glyphs exist) are drawn the old way, through an offscreen layer or CPU
+glyphs.
+
+### Animated text: `text-effect`
+
+The engine's `text-effect` (inherited) animates each character, with the formulas of the native
+Text Effect component (`jasper://docs/ui`): a comma list of functions, applied in order, omitted
+trailing arguments taking their defaults:
+
+| Function | Arguments (defaults) |
+|---|---|
+| `wave()` | amplitude `<length>` (0.15em), period `<time>` (1.5s), phase step `<angle>` (0.3rad) |
+| `bounce()` | `<length>` (0.3em), `<time>` (1s), spread 0..1 (0.5) |
+| `shake()` | `<length>` (0.05em), frequency Hz (12) |
+| `pulse()` | scale change (0.15), `<time>` (1s), spread (0.5) |
+| `typewriter()` | characters per second (30), fade `<time>` (0s) |
+| `fade-in()` | `<time>` (0.5s), spread (0.5): one-shot |
+| `grow()`, `unfold()` | `<time>` (0.5s), spread (0.5), amplitude (1: the whole change, TMP's Amplitude): one-shot |
+| `rainbow()` | `<time>` (2s), hue step `<angle>` (20deg), saturation `%` (80%), lightness `%` (60%) |
+| `gradient()` | `<time>` (1.5s), `multiply` / `add` / `replace` (multiply), colour stops `<color> [<percentage>]` |
+
+```css
+h1 { text-effect: wave(0.12em 1.5s), gradient(1.5s add #ffffff, #ffd040); }
+.dialog p { text-effect: typewriter(40 0.05s); text-effect-iteration: 1; }
+```
+
+The index runs on across elements (`Hello <b>World</b>` waves as one text) and lines; outlines and
+shadows (`font-effect`, `text-shadow`) follow each glyph. `text-effect-iteration: infinite |
+<integer>` repeats the one-shot functions (typewriter, fade-in, grow, unfold), then `texteffectend`
+(bubbles) fires at the element that declares the effect; `text-effect-time: ui` (default, unscaled:
+runs at `Engine.timeScale = 0`) or `game`. `doc:setReducedMotion(true)` holds the motion functions
+still (wave, bounce, shake, pulse, grow, unfold; an effect of only those still ends). Lua:
+`el.style.textEffect = "bounce()"` (set, changed or `none` at runtime; new content types again, a
+new line wrap does not), `el:restartTextEffect()` (on any element of the effect: all of it). An animating text regenerates its glyphs each frame (never its layout):
+cheap for titles and dialog lines.
 
 ### CSS units, fonts and icons
 
@@ -589,7 +629,7 @@ is the global `document`.
 
 | Group | Members |
 |---|---|
-| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (CSS selectors, rewritten like the stylesheet), `doc.body`, `doc.documentElement` (`<html>`), `doc.title`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:show()`, `doc:hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc.onLoad`, `doc.onUnload`, `doc:getDiagnostics()`, `doc:setColorScheme("dark")`, `doc:setReducedMotion(true)`, `doc:getTargetTexture()`, `doc:getUIDocumentComponent()`, `UIDocument.setDebuggerVisible(bool)` |
+| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (CSS selectors, rewritten like the stylesheet), `doc.body`, `doc.documentElement` (`<html>`), `doc.title`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:show()`, `doc:hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc.onLoad`, `doc.onUnload`, `doc:getDiagnostics()`, `doc:getRenderStats()` (the last frame's draw, batching and atlas counters: `drawCalls`, `runsMerged`, `stencilDraws`, `atlasBytes`, ...), `doc:setColorScheme("dark")`, `doc:setReducedMotion(true)`, `doc:getTargetTexture()`, `doc:getUIDocumentComponent()`, `UIDocument.setDebuggerVisible(bool)` |
 | Tree | `id`, `tagName` (`"DIV"`; lower case in `.rml`), `localName` (`"div"`), `className`, `parentElement`, `children` (array), `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`, `childElementCount`, `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains` |
 | Mutation | `appendChild(el)`, `insertBefore(el, ref)` (nil appends), `removeChild(el)`, `replaceChild(new, old)`, `remove()`, `cloneNode(deep)` |
 | Content | `textContent` (text, never parsed), `innerHTML`/`outerHTML` (HTML, parsed and rewritten like the document), `insertAdjacentHTML(position, html)`, `content` (`<template>`: `tpl.content:cloneNode(true)`, then `appendChild` it) |
@@ -610,7 +650,9 @@ get no input). Create elements with `createElement` or `innerHTML`, then `append
 
 | DOM name | Fired by |
 |---|---|
-| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout` | the pointer (mouse and touch) |
+| `pointerdown`, `pointermove`, `pointerup`, `pointercancel`, `pointerover`, `pointerout` (bubble), `pointerenter`, `pointerleave` (do not bubble) | every pointer: the mouse (`pointerId` 1, every button) and each finger (`pointerType` `"touch"`, `pointerId` = `fingerId` + 2); "Pointer events" below |
+| `gotpointercapture`, `lostpointercapture` | `setPointerCapture` and the end of a capture |
+| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `mouseenter`, `mouseleave` | every pointer too (compatibility events, with its `pointerId`): each finger clicks on its own |
 | `wheel` | the mouse wheel (`deltaX`, `deltaY` in steps, positive down/right) |
 | `keydown`, `keyup` | the keyboard and gamepads, to the focused element ("Input and focus") |
 | `textinput` | typed text, to the focused element |
@@ -619,22 +661,27 @@ get no input). Create elements with `createElement` or `innerHTML`, then `append
 | `change` | a text field on blur when its value changed; checkboxes, radios, selects, ranges when they change |
 | `submit`, `reset` | forms |
 | `scroll`, `resize`, `load`, `unload`, `show`, `hide` | the element or document |
-| `dragstart`, `drag`, `dragend`, `dragover`, `dragmove`, `dragout`, `dragdrop` | elements with `drag="drag"` or `drag="drag-drop"` |
+| `dragstart`, `drag`, `dragend`, `dragenter`, `dragover`, `dragleave`, `drop` | HTML5 drag and drop: `draggable="true"` sources, any element under the drag ("Drag and drop") |
+| `dragmove`, `dragout`, `dragdrop` | RmlUi's own drag events, still sent to elements with `drag="drag"` or `drag="drag-drop"` |
+| `select`, `activate`, `expand`, `collapse`, `sort`, `columnresize` | virtual views ("Long lists"; `event.detail` / parameters say which item or column) |
+| `tooltipshow`, `tooltiphide` | an element whose tooltip shows or hides |
 | `animationstart`, `animationiteration`, `animationend`, `animationcancel`, `transitionrun`, `transitionstart`, `transitionend`, `transitioncancel` | CSS animations and transitions (`animationName`, `propertyName`, `elapsedTime` in seconds) |
 | `toggle`, `close`, `cancel`, `htmlnavigate` | `<details>`, `<dialog>`, links |
 | `play`, `pause`, `loop`, `complete`, `error`, `load` | `<lottie>` (they do not bubble) |
 | any other name | `dispatchEvent` |
 
-`mouseenter`, `mouseleave`, `pointer*`, `touch*`, `contextmenu`, `beforeinput` and
-`composition*` never reach documents: `addEventListener` logs a warning listing the supported
-events (use `mouseover`/`mouseout` and `mousedown`).
+`touch*` (Touch Events: use the pointer events, `pointerType == "touch"`), `contextmenu`,
+`beforeinput` and `composition*` never reach documents: `addEventListener` logs a warning
+listing the supported events.
 
 A listener gets a `UIEvent`: `type`, `target`, `currentTarget`, `eventPhase` (1 capture,
 2 target, 3 bubble), `button` (0 left, 1 middle, 2 right), `clientX`/`clientY` (document px),
 `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`, `key` (browser key names:
 `"Enter"`, `"Escape"`, `"ArrowUp"`, `"a"`), `code` (`"KeyA"`; a gamepad's `"GamepadA"`, ...),
 `keyCode` (`Input.KEY_*`), `repeat` (`event["repeat"]`), `gamepad` (the pad's id, -1 for the
-keyboard), `data` (`textinput`), `animationName`, `propertyName`,
+keyboard), `pointerId`, `pointerType` (`"mouse"`, `"touch"`, `"pen"`), `isPrimary`, `buttons` (1
+left, 2 right, 4 middle), `pressure` (0.5 while pressed), `width`, `height`, `fingerId` (the
+`Input` finger id, -1 for the mouse), `data` (`textinput`), `animationName`, `propertyName`,
 `elapsedTime`, `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`, and
 `stopPropagation()`, `stopImmediatePropagation()`, `preventDefault()`. The event is valid only
 while the listener runs. `preventDefault()` skips the element's own action (a checkbox does not
@@ -645,20 +692,40 @@ is logged with its traceback; the other listeners still run.
 ### Reloads, `onLoad` and lifetimes
 
 Documents load with their scene, so `init` can query elements, in the editor and in exported
-games (layout needs no GPU). Then:
+games (layout needs no GPU). A later change of the document reloads it in one of two ways:
 
-- **Hot reload** (a saved file, `doc:reload()`, a late `createDataModel`) keeps, for every
-  element with an `id`, its listeners (moved to the new element, also the document's own),
-  scroll position, form value and focus. Everything else comes from the file again: classes,
-  inline styles, attributes and elements a script (or `anime`) changed, and animations of the
-  replaced elements are cancelled. Listeners of elements without an id are dropped with one
-  warning. A stylesheet-only change restyles in place and keeps everything.
-- `doc.onLoad` runs after every later load and reload, `doc.onUnload` before every unload:
-  `RegisterEvent(self, doc.onLoad, "bind")` or `doc.onLoad = function() ... end`. Redo there
-  what a reload does not keep. A method that adds listeners from both `init` and `onLoad`
-  must pass the **same functions** each time (adding one twice is ignored), or moved
+- **Patch** (the default for `.html` documents; Preferences > HTML UI > Hot Reload, or
+  `doc:reload{mode = "patch"}`): the live document is reconciled with the new file. Elements
+  the edit did not touch are the same elements: Lua handles stay valid, every listener (with
+  or without an `id`), Lua state, scroll positions, form values, focus, running animations and
+  the nodes scripts added stay. An attribute, class, inline style or text takes the file's new
+  value only where the **file** changed it, so what a script changed live stays unless you edit
+  that same value. An element whose tag or data binding (`data-model`, `data-for`, `data-if`,
+  `{{ }}` text, ...) changed is replaced with its subtree, as are removed and added elements.
+  `<script type="text/lua">` blocks run again only when their text changed. `doc.onReload`
+  runs (with the report), **not** `onLoad`/`onUnload`.
+- **Rebuild** (`.rml` documents always; a patch that cannot apply: a changed `<body>` tag or
+  binding, a data model created after the load; `doc:reload{mode = "rebuild"}`; the Inspector's
+  *Reload (Rebuild)*): the document loads again. For every
+  element with an `id` it keeps its listeners (moved to the new element), scroll position,
+  form value and focus; the rest comes from the file again, animations of the replaced
+  elements are cancelled and listeners of elements without an id are dropped with one warning.
+  `onUnload` then `onLoad` fire.
+
+A stylesheet-only change restyles in place and keeps everything. Each reload logs one Console
+line, `[HTML UI] Patched ui/menu.html: 3 updated, 1 inserted, 0 removed, 0 replaced, 12
+runtime nodes kept (2.1 ms)` (click it for the full report), and `doc.lastReloadReport` holds
+it: `mode`, `kept`, `updated`, `inserted`, `removed`, `replaced`, `runtimeKept`,
+`scriptsRerun`, `fallbackReason` (why a patch became a rebuild), `ms`, `causes` (each replaced
+element and why). `inspect_ui {"reload": true}` reports it too.
+
+- `doc.onLoad` runs after every later load and rebuild, `doc.onUnload` before every unload,
+  `doc.onReload = function(report) ... end` after every patch:
+  `RegisterEvent(self, doc.onLoad, "bind")` or `doc.onLoad = function() ... end`. Redo in
+  `onLoad` what a rebuild does not keep. A method that adds listeners from both `init` and
+  `onLoad` must pass the **same functions** each time (adding one twice is ignored), or moved
   listeners run twice.
-- Element handles are weak: after a reload or removal, `el:isValid()` is false and other uses
+- Element handles are weak: after a rebuild or removal, `el:isValid()` is false and other uses
   raise `UIElement: element no longer exists`. Inside a listener use `event.currentTarget` or
   query again, not a handle captured before.
 - Elements from `createElement`, `removeChild` or `cloneNode` are **detached**: they live while
@@ -674,7 +741,9 @@ script runs after every load and reload **while the game plays** (never in edit 
 own environment (globals readable, its definitions local; `_G.x = 1` shares a value) with
 `document` and `anime` bound. Its listeners go with the old elements on reload, so a handler
 runs once however often the file was saved; what it started outside its elements (an
-`anime.createTimer`, globals) is not undone: guard it. Errors point at the HTML line
+`anime.createTimer`, a `Timer.after` / `Coroutine.start`, globals) is not undone: guard it. The
+document script is no script instance: `self:invoke` / `self:startCoroutine` do not exist
+there, `Timer.after` and `Coroutine.start` do (unowned: they end at Play stop, lua-api 2.13 and 2.17). Errors point at the HTML line
 (`ui/menu.html:45: ... [HTMLUI-HTML-0022]`).
 
 ```html
@@ -875,6 +944,150 @@ return HudUI
 - **From a test** (play mode), set values with `eval_lua`:
   `object('HUD', 'UIDocument'):getDataModel('hud').health = 25`; read them back with
   `inspect_ui {"models": true}`.
+
+## Widgets
+
+Engine elements and behaviours a browser leaves to JavaScript libraries: virtual lists, tooltips,
+drag and drop, Markdown.
+
+### Long lists (virtual views)
+
+`data-for` makes one element per item: fine for dozens, slow for thousands (more than 500
+reports `HTMLUI-HTML-0031`). A virtual view makes only the rows on screen, plus a few
+(`overscan`, default 4), and rebinds them as you scroll: a 10 000-row list scrolls in under a
+millisecond per frame.
+
+```html
+<div data-model="inv">
+  <list-view id="items" items="items" as="item, i" item-height="48" key="id" selection="multiple">
+    <template><div class="row" data-event-click="pick(i)">{{item.name}} <span>{{item.count}}</span></div></template>
+  </list-view>
+</div>
+```
+
+| Element | Lays out |
+|---|---|
+| `<list-view>` | one column of rows |
+| `<grid-view item-width="96" item-height="96" gap="8">` | as many columns as fit, recomputed on resize |
+| `<tree-view children-key="children" indent="16">` | the expanded nodes of a tree, flattened; the template also sees `depth`, `expanded`, `hasChildren`; an element with `tree-toggle` inside a row expands and collapses it |
+| `<table-view>` + `<table-column key="name" width="200" min-width="40" sortable resizable>Name</table-column>` | rows of cells under a sticky header; a column's `<template>` makes its cells (default `{{item.<key>}}`); dragging a header edge resizes (`columnresize`), a click on a sortable header fires `sort` `{key, direction}` and sets `sorted-asc`/`sorted-desc`: you sort the data |
+
+- **Give the view a height** (`height`, or a flex/grid parent that sets one) and an
+  `overflow` is not needed: the view scrolls. Without one it lays out 20 rows and reports
+  `HTMLUI-HTML-0029`.
+- `items="expr"` and `as="item, i"` (as `data-for`; `i` is 0-based) bind the rows to a data
+  model; the `<template>` is the row. `item-height="48"` (fixed, fastest) or `"auto"` with
+  `estimated-height="40"` (each row measured once; rows above the visible one that change height
+  do not move what you are looking at). `key="id"` names items for the selection (default: the
+  index).
+- `anchor="end"` (chat logs): while scrolled to the end, appended items keep the view at the end.
+- `selection="none|single|multiple"`: click, Shift+click, Ctrl+click; `select` fires. Each row
+  is a `div.htmlui-row` around a copy of your template; it gets `selected`, `odd`/`even` (not
+  `:nth-child`: rows are reused), `aria-selected`, and in a tree `expanded`, `has-children`
+  (style `.htmlui-row.selected .name`). Up/Down/PageUp/PageDown/Home/End move the active
+  row, Enter and double-click fire `activate`; the gamepad's d-pad does the same while focus is in
+  the view, and leaves it at an edge.
+- From Lua, `el.itemsView` (1-based indices): `setProvider{count, bind = function(row, i) end,
+  unbind, key, height, children = function(key) end (nil: the roots), hasChildren}` for data outside a model
+  (a tree asks `children` and `hasChildren` once per key: call `refresh()` after its structure changes), `setCount(n)`,
+  `refresh()`, `refreshItems{3, 7}`, `scrollToIndex(i, "start|center|end|nearest")`,
+  `getVisibleRange()`, `setSelection{...}` / `getSelection()`, `getSelectedKeys()`, `activeIndex`,
+  `activate(i)`, `getRow(i)`, `indexOf(el)`, `keyOf(i)`, `indexOfKey(key)`,
+  `expand/collapse/toggle(key)`, `isExpanded(key)`, `getNode(i)`, `getColumns()`,
+  `setColumnWidth(key, w)`, `sortBy(key, "asc|desc")`, `getState()`.
+- A row element is reused for another item as you scroll: keep state in the data, not in the
+  row (a class set from Lua on a row moves to whatever item it shows next); style with
+  `.selected` and data bindings. Rows are absolutely positioned inside the view: margins between
+  rows do nothing, use `gap` (grid) or padding inside the row.
+- MCP: `inspect_ui` reports each view's `widget` (kind, count, first..last, pool, selection),
+  `assert_ui`'s `{"type": "virtual_window", "max": 30}` and `{"type": "selected", ...}` check
+  it, and `edit_ui_view` drives it in play (`scroll_to`, `select`, `activate`, `expand`, `collapse`,
+  `sort`; 0-based indices).
+
+### Tooltips
+
+`title="..."` shows its text after 0.5 s of hover, 16 px below the pointer (above when there is
+no room), as in a browser. Moving to another element with a tooltip within 0.5 s shows the next
+one at once. Keyboard and gamepad focus show the focused element's tooltip too. A tooltip hides
+on leave, press, wheel, a key, a drag start and removal.
+
+- `tooltip="#tip"`: a rich tooltip, a copy of the element (or `<template>`) with that id;
+  `tooltip-delay="100ms"` per element.
+- Lua: `el:setTooltip("text" | element | function() return "Sell for " .. price end, {placement
+  = "top|bottom|left|right|auto", delay = 0.25, arrow = true, interactive = false})` (a function
+  runs on every show), `el:clearTooltip()`; `doc.tooltip` has `visible`, `source`, `element`,
+  `text`, `show(el)`, `hide()`, `configure{enabled = false, delay = 0.5, hopWindow = 0.5}`.
+- Style `div.htmlui-tooltip` (and `.htmlui-tooltip-arrow`; the side is a class,
+  `.htmlui-tooltip-top` ...): it is the document's own element, positioned by the engine on top of
+  everything. `tooltipshow` / `tooltiphide` fire on the source.
+- MCP: `inspect_ui` reports `tooltip`, `assert_ui {"kind": "tooltip", "text": "..."}`.
+
+### Drag and drop
+
+HTML5 drag and drop: `draggable="true"` sources, `event.dataTransfer`, `dropzone` targets.
+
+```html
+<div class="grid" data-model="inv">
+  <div class="slot" draggable="true" dropzone="item move" data-for="item, i : items"
+       data-event-dragstart="pick(i)" data-event-drop="drop(i)">{{item.name}}</div>
+</div>
+```
+
+```lua
+-- functions of the data model ("inv"); i is data-for's 0-based index
+local handlers = {
+    pick = function(event, i) event.dataTransfer:setData("item", { from = i + 1 }); event.dataTransfer.effectAllowed = "move" end,
+    drop = function(event, i) swap(event.dataTransfer:getData("item").from, i + 1) end,
+}
+```
+
+- Events, in order: `dragstart` and `drag` on the source; `dragenter`, `dragover` (on entry and on
+  every move, at most once per frame), `dragleave` on the elements under the pointer; `drop` on
+  a target that accepts; `dragend` on the source with the final `dataTransfer.dropEffect`
+  (`none` when cancelled or not accepted). `event:preventDefault()` in `dragstart` starts no
+  drag. **Changed:** `dragover` used to be RmlUi's (once, on entry: now `dragenter`); old
+  handlers on `dragover` now run on every move.
+- A target accepts when a `dragover` listener calls `event:preventDefault()`, or its nearest
+  `dropzone="item weapon [copy|move|link]"` lists one of the drag's types. Unlike a browser,
+  `getData` works in `dragenter`/`dragover`, so a target can accept by content.
+- `dataTransfer`: `setData(type, value)` (any Lua value, a table by reference), `getData(type)`,
+  `types`, `clearData(type?)`, `effectAllowed` (`none copy move link copyMove copyLink linkMove
+  all`), `dropEffect`, `setDragImage(el, x, y)` / `setDragImage(nil)`.
+- Feedback: the source gets `htmlui-drag-source`, the body `htmlui-dragging`, the target under
+  the pointer `htmlui-drop-allowed` or `htmlui-drop-denied`; the ghost (a copy of the source at
+  0.7 opacity) is `.htmlui-drag-ghost` (like every `htmlui-*` class, for CSS: `classList` does
+  not show them to scripts). Escape or the gamepad's B cancels. Within 32 px of a
+  scroll container's edge it scrolls, up to 600 px/s.
+- Touch: inside a scroll container (a virtual view's rows), a swipe scrolls and a press of
+  400 ms (moving at most 8 px) starts the drag; elsewhere a touch drags at once.
+- In a virtual view a row drag carries `getData("htmlui/row")` = `{view, index, key}`, and over
+  a view `event.dropIndex` / `event.dropPosition` (`before`, `after`, `on`) say where; the view
+  draws `.htmlui-drop-indicator`. A source row scrolled out of view does not end the drag.
+- Gamepad or scripted: `UIDrag.begin(el, {data = {item = ...}, effectAllowed = "move"})`,
+  `UIDrag.over(target)`, `UIDrag.drop(target)`, `UIDrag.cancel()`, `UIDrag.isActive()`: the same
+  events in the same order.
+- MCP: `send_input` drags with `to_target`; `inspect_ui` reports `drag` (source, target, types,
+  allowed).
+
+### Markdown
+
+```html
+<markdown>
+  ## Patch notes
+  - **Faster** loading, see <https://example.com/notes>
+</markdown>
+<markdown src="notes/journal.md"></markdown>
+<div data-model="chat"><div data-markdown="message.text"></div></div>
+```
+
+- The inline source is the text between the tags, as written (dedented); `src` follows the
+  `<img src>` path rules and reloads the document when the file changes. From Lua:
+  `el:setMarkdown(text)` (any element) and `UIDocument.markdownToHtml(text)`.
+- Supported: headings, paragraphs, emphasis, `code`, fenced code (`pre > code[data-lang]`; an
+  unclosed fence renders as code, so streamed text works), lists to any depth, quotes, rules,
+  tables, links and autolinks, images. The output is a `div.markdown-body` you can style.
+- HTML inside Markdown is shown as text, never run: text from players or servers is safe (an
+  inline source with markup notes `HTMLUI-HTML-0032`).
 
 ## Animation
 
@@ -1096,19 +1309,26 @@ transforms, clipping and filters apply to them as to `<img>`.
 <video src="video/trailer.webm" poster="video/trailer.png" controls></video>
 ```
 
-**Format: WebM with AV1 video and Opus audio, nothing else.** The engine decodes it itself (dav1d,
-libopus, libwebm: BSD licences, no patents to license, the same on every platform) instead of
-using each platform's decoders, so a video plays identically on desktop, mobile and Web.
-`.mkv` with the same codecs plays too. MP4/H.264, MOV, VP8/VP9 WebM, Ogg/Theora, AVI and the
-rest are reported (`HTMLUI-HTML-0027`, the fix is the conversion) and show their poster or nothing.
+**Formats**: WebM with AV1 video and Opus audio plays everywhere, decoded by the engine itself
+(dav1d, libopus, libwebm: BSD licences, no patents to license, identical frames on desktop, mobile
+and Web); `.mkv` with the same codecs too. **MP4/MOV** (H.264 + AAC, HEVC where the platform has
+it) and VP8/VP9 WebM play through each platform's decoders (Android MediaCodec, AVFoundation,
+Media Foundation, the browser, Linux with the system's FFmpeg): jasper://docs/video has the
+per-platform matrix. `src` may be an `https://` URL (downloaded into the media cache, played while
+it downloads when the MP4 is fast start; the browser streams it on the Web).
+`canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')` answers for the platform it runs on;
+`element.videoBackend` (and `inspect_ui`'s media `backend`) says what decodes it (`webm`,
+`ffmpeg`, `mediacodec`, `avfoundation`, `mediafoundation`, `browser`). Ogg/Theora, AVI and the rest
+are reported (`HTMLUI-HTML-0027`, the fix is the conversion) and show their poster or nothing.
 
-**Converting**: `import_files {"sources": ["/abs/clip.mp4"], "to_dir": "assets/ui/video"}` writes
+**Converting** (for WebM AV1 everywhere; MP4s are imported as they are): the Project window's
+*Convert to WebM (AV1)...* on a video, or `import_files` on a non-MP4 file (e.g. `"/abs/clip.avi"`), writes
 `clip.webm` (AV1 with SVT-AV1, libaom or rav1e, keyframes every 2 s, 8-bit 4:2:0, at most 4096
 px; Opus 128 kb/s stereo) and does not copy the original; files dropped on the Project window
 and video URLs (in `import_files`, or a document's remote `<video src>` when the editor imports
 its references) are converted the same way. It runs your own FFmpeg as a separate program:
-`JASPER_FFMPEG`, else Preferences > External Tools > FFmpeg (`preferences.ffmpeg_path`), else
-`ffmpeg` on `PATH` (never shipped or linked). Without FFmpeg, or
+`JASPER_FFMPEG`, else Preferences > External Tools > FFmpeg (`preferences.ffmpeg_path`: the user sets it;
+read-only over MCP), else `ffmpeg` on `PATH` (never shipped or linked). Without FFmpeg, or
 without an AV1 encoder in it, the file is copied unconverted with `HTMLUI-IMP-0010` and the
 exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
 `ffmpeg -i in.mp4 -c:v libsvtav1 -preset 6 -crf 32 -g 60 -pix_fmt yuv420p -c:a libopus -b:a 128k out.webm`.
@@ -1140,7 +1360,7 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
   `canPlayType(type)`, `fastSeek(t)`; properties `currentTime` (set = seek), `duration`
   (NaN before the metadata), `paused`, `ended`, `seeking`, `loop`, `autoplay`, `controls`,
   `muted`, `defaultMuted`, `volume`, `playbackRate`, `defaultPlaybackRate`, `readyState`,
-  `networkState`, `videoWidth`, `videoHeight`, `currentSrc`, `poster`, `preload`, `error` (`nil`
+  `networkState`, `videoWidth`, `videoHeight`, `currentSrc`, `videoBackend` (what decodes it: `webm`, `ffmpeg`, `mediacodec`, `avfoundation`, `mediafoundation`, `browser`), `poster`, `preload`, `error` (`nil`
   or `{code, message}`); constants `UIElement.HAVE_ENOUGH_DATA`, `UIElement.MEDIA_ERR_SRC_NOT_SUPPORTED`, ...
   Out of range values (`volume = 2`) warn and leave the value (HTML throws).
 - Events (they do not bubble): `loadstart`, `durationchange`, `loadedmetadata`, `loadeddata`,
@@ -1164,6 +1384,41 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
   captions (`HTMLUI-HTML-0002`), `playsinline`/`crossorigin` and the like (dropped, info
   `HTMLUI-HTML-0028`), picture-in-picture, `preservesPitch` (pitch follows `playbackRate`),
   `::-webkit-media-controls-*`, HDR (8-bit SDR is shown; 10-bit is decoded and rounded).
+
+### Particles: `<particle-system>`
+
+`<particle-system src="fx/confetti.prefab" autoplay loop time="ui" scale="1">` plays a prefab's
+Particle System (the first of its GameObjects with one; its billboards as they look: the Renderer's
+texture or soft disc, sprite sheet frames, additive or alpha blending, sizes, rotations, colours)
+and draws its particles in document order: above what comes before it,
+below what comes after, inside the element's clip (`overflow: hidden`) and transform. The emitter
+is at the centre of its content box (0 x 0 by default: give it a size or position it), one prefab
+unit is `scale` CSS px, y up. `time="ui"` (default: the system's `useUnscaledTime`) plays while
+the game is paused, `game` follows `Engine.timeScale` (the effect's own Unscaled Time off too);
+`loop="false"` plays once, `loop` loops (the effect's Looping on the GameObject's own copy; the
+prefab's own setting otherwise); without `autoplay` it waits for `el:play()`.
+
+```html
+<div class="panel" style="overflow: hidden">
+  <particle-system id="confetti" src="fx/confetti.prefab" autoplay scale="40" style="position: absolute; left: 50%; top: 30%"></particle-system>
+  <button id="again">Play again</button>
+</div>
+```
+
+Lua: `el:play()`, `el:pause()`, `el:stop()`, `el:clear()`, `el:isPlaying()`,
+`el:getParticleSystem()` (the system of its hidden GameObject: every `ParticleSystem` API works;
+`nil` until the element's first update made the prefab, e.g. in `onLoad`, in edit mode, or when its
+`src` failed); `el:clear()` removes the particles (the system plays on), `el:stop()` stops
+emitting (what is alive dies out; `el:isPlaying()` until then, as Unity's), `el:isPlaying()` is
+false while paused; event `complete` when a system that does not loop has stopped (its last
+particle died). `play()` / `pause()` /
+`stop()` before the prefab exists are queued (the last one applies, over `autoplay`). The prefab is
+made on a hidden GameObject of the document's scene (not in the Hierarchy, not saved; none of its
+renderers draws) and goes, with all its children, with the element, its document or a new `src`.
+Screen and texture-mode (world) documents both work. Prefabs exist in Play and in exported games: in
+edit mode the element is empty. A `src` that names no prefab with a Particle System logs
+`HTMLUI-HTML-0029` and adds it to the document's diagnostics (`inspect_ui`). Keep a system under
+about 1000 particles (one mesh is rebuilt each frame).
 
 ### Fonts
 
@@ -1326,11 +1581,63 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
 
 ### Touch, text fields and the cursor
 
-**Touch.** Every finger is a pointer; taps are clicks. Hover-only affordances do not exist on
-touch: show them by default or on `:focus`/`:active`, or use `@media (hover: hover)`, evaluated
-once at load (false on touch devices). Each pressed element gets `:active`, but lifting any
-finger clears it on all of them, and only the last pressed element can be clicked. Linux
-desktops have no multi-touch.
+**Touch.** Every finger is a pointer of its own: its own `:hover` (only while it is down),
+`:active`, capture, drag and click. Two fingers press two buttons; lifting one releases and
+clicks only its own. Hover-only affordances do not exist on touch: show them by default or on
+`:focus`/`:active`, or use `@media (hover: hover)`, evaluated once at load (false on touch
+devices). A finger that starts on a scrollable box pans it once it moves past a few pixels,
+where `touch-action` allows (then it gets `pointercancel` and loses `:active`); on-screen
+controls and game surfaces use `touch-action: none`. Linux desktops have no multi-touch: the
+Game view's Simulate Touch with an Alt-pinned finger and `send_input` cover testing.
+
+**Pointer events.** As in a browser (W3C Pointer Events 3): per pointer `pointerover` →
+`pointerenter` → `pointerdown` → `pointermove`s → `pointerup` → `click` → `pointerout` →
+`pointerleave` (a finger leaves with its release), and the compatibility mouse events after the
+pointer event of the same moment (`mousedown` after `pointerdown`). `preventDefault()` on
+`pointerdown` suppresses the `mousedown` and the focus change. A finger is captured by the
+element it pressed (implicit capture): its moves, up and cancel go there wherever it is, while
+`:hover` follows what is under it. `el:setPointerCapture(event.pointerId)` captures the mouse
+or a finger for a drag (a custom slider, a joystick); `el:releasePointerCapture(id)`,
+`el:hasPointerCapture(id)`; `gotpointercapture` / `lostpointercapture` fire before the
+pointer's next event, and the capture ends with the release. Deviation from browsers: the
+compatibility mouse events fire for every finger, not only the first (the engine's earlier
+advice was `mousedown` for touch, which keeps working with two fingers). `touch-action`: `auto`
+(default), `none`, `pan-x`, `pan-y`, `pan-x pan-y`, `manipulation` (= auto: no zoom here); not
+inherited, the effective value is the intersection from the touched element up to its scroll
+box. Gestures (pinch, rotate) are two pointers: keep each `pointerId`'s position.
+
+```lua
+-- a custom slider: the knob follows the finger or mouse that grabbed it
+knob:addEventListener("pointerdown", function(e)
+    knob:setPointerCapture(e.pointerId)
+end)
+knob:addEventListener("pointermove", function(e)
+    if knob:hasPointerCapture(e.pointerId) then setValue(e.clientX) end
+end)
+```
+
+**On-screen controls.** `<onscreen-stick>`, `<onscreen-button>` and `<touch-area>` feed the
+input actions (`jasper://docs/input` 4.1), so `Input.getAxis("Horizontal")` reads the stick and
+mouse-look code reading `Mouse X`/`Mouse Y` works with the touch area. Each takes the first
+pointer that presses it; three fingers on three controls work at once.
+
+```html
+<onscreen-stick mode="floating" dead-zone="0.1" horizontal-action="Horizontal" vertical-action="Vertical"></onscreen-stick>
+<touch-area sensitivity="0.1" invert-y></touch-area>
+<onscreen-button action="Jump" value="1" press-on-enter>Jump</onscreen-button>
+```
+
+| Element | Attributes (defaults) | State and events |
+|---|---|---|
+| `onscreen-stick` | `mode` (`fixed`, `floating`: the base appears under the finger, `dynamic`: it follows past `move-threshold`), `handle-range` (1), `dead-zone` (0), `move-threshold` (1), `axes` (`both`, `horizontal`, `vertical`), `snap-x`, `snap-y`, `horizontal-action` (`Horizontal`), `vertical-action` (`Vertical`), `visibility` (`always`, `touch-devices-only`) | `data-pressed`, `data-x`, `data-y` (-1..1, y up); `:active` while held; `stickstart`, `stickmove`, `stickend` (`event.detail.x` / `.y`) |
+| `onscreen-button` | `action` (`Fire1`), `value` (1; -1 on an axis), `press-on-enter`, `release-on-leave`, `visibility` | `data-pressed`, `:active`; the usual pointer and click events |
+| `touch-area` | `horizontal-action` (`Mouse X`), `vertical-action` (`Mouse Y`), `sensitivity` (0.1), `invert-x`, `invert-y`, `visibility` | `data-pressed`; `areadrag` (`event.detail.dx` / `.dy`, document px) |
+
+A stick without children gets `<div class="stick-base"><div class="stick-knob"></div></div>`
+(a 160 px translucent circle and a 64 px knob from the UA sheet; give your own children these
+classes to restyle). The stick maths is Joystick Pack's in document px: the base's half width is
+the radius; the knob moves with `transform: translate(...)`. Released, removed, hidden with
+`display: none`, or with its document hidden or unloaded, a control clears what it wrote.
 
 **Text fields.** Focusing one opens the virtual keyboard (Android, iOS, Web) and places the IME
 window at the caret. Composition shows inside the field on Windows, macOS, iOS, Android and
@@ -1378,6 +1685,34 @@ The page is the canvas, so responsiveness is about the canvas size:
   [1920, 1080], [1024, 768], [720, 1280]]}` runs every check at each size, and
   `inspect_ui {"viewport": [720, 1280]}` returns the tree laid out at that size (both restore
   the real size). For a screenshot at another aspect, `configure_game_view {"aspect": "9:16"}`.
+
+### UI scaling (Canvas Scaler)
+
+Screen documents lay out in the scene's **UI size** when a Canvas Scaler scales it
+(`graphics.ui_scale`, the scene setting `canvas_scaler`; modes and formulas: `jasper://docs/ui`),
+the canvas above otherwise (the default, Follow Game Canvas). With Scale With Screen Size 1920 x
+1080 and `match_mode: expand`, `100vw` x `100vh` is 1920 x 1440 on a 4:3 screen and 2400 x 1080 on
+a 20:9 one: design for the reference, let flex and `%` take the extra room. Text is rasterized at
+the screen's pixels either way. Preview real devices with `configure_game_view {"resolution":
+"2400x1080"}` (or a preset, `"WxH@dpi"`, `"free"`), then `screenshot`; `getBoundingClientRect()`
+of `body` is the UI size.
+
+### Safe areas (notches)
+
+`env(safe-area-inset-top|right|bottom|left[, fallback])` is the live safe-area inset of the
+screen (`Screen.safeAreaInsets`, the app's extra insets such as a banner included), in the
+document's CSS px, as in a mobile browser with `viewport-fit=cover`:
+
+```css
+.hud { padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.bottom-bar { position: absolute; left: 0; right: 0; bottom: max(12px, env(safe-area-inset-bottom)); }
+```
+
+It is a runtime variable (`var(--jasper-safe-area-inset-<edge>, <fallback or 0px>)`): a rotation or
+`Screen.setExtraInsets` lays the document out again without a reload; `calc()`, `min()`, `max()`
+and `clamp()` keep it. `--jasper-device-safe-area-inset-*` leave the extras out. Documents on meshes
+get 0. Try it with a phone in the Game view (`configure_game_view {"device": "iphone_15_pro"}`);
+details in jasper://docs/safe-area.
 
 ## The loop in detail
 
@@ -1427,7 +1762,8 @@ play:
 |---|---|
 | a `.css`, linked or `@import`ed | restyled in place: elements, listeners, scroll and focus stay |
 | an image | redrawn with the new file; the document stays |
-| the `.html`, an SVG, a Lottie file, a font, a `<script src>` Lua file | the document reloads (keeping what "Reloads, `onLoad` and lifetimes" lists), its `<script type="text/lua">` runs again in play, `onUnload` then `onLoad` fire |
+| the `.html` | patched in place (or rebuilt, see "Reloads, `onLoad` and lifetimes"); a changed `<script type="text/lua">` runs again in play; `onReload` (patch) or `onUnload` then `onLoad` (rebuild) fire |
+| an SVG, a Lottie file, a font, a `<script src>` Lua file, a `<markdown src>` file | the document reloads; its scripts run again in play |
 | `assets/htmlui-imports/manifest.json` | documents using the imported URL restyle or reload |
 
 Files that did not exist yet count too (creating a missing stylesheet loads it), and a save in
@@ -1465,11 +1801,25 @@ Read-only, edit mode and play. Returns:
 - `"styles": ["color", "font-size"]`: those computed values on every element;
 - `"screenshot": true`: the Game view cropped to the matches, outlined;
 - `"file": "assets/ui/x.css"`: a file's diagnostics without a live document;
-- a `<video>`'s entry has `media`: `currentSrc`, `currentTime`, `duration`, `paused`, `ended`,
+- `"render_stats": true`: the last frame of the document's context, every counter by its name
+  (`drawCalls`, `geometrySubmitted`, `runsMerged`, `runCacheHits`, `instancesDrawn`,
+  `stencilDraws`, `stencilClipsElided`, `analyticClips`, `boxShadowTextures`, `layersPushed`,
+  `glyphsRasterized`, `msdfGlyphsPending`, `textRegenerations`, `textEffectFallbacks`,
+  `atlasBytes`, `atlasEvictions`, ...); with `"detail": "full"` each element also has
+  `paint: {path: "primitive" | "mesh", reason}` and, with text, `raster: {mode: "bitmap" | "msdf" |
+  "stretched", scale}`;
+- a `<video>`'s entry has `media`: `currentSrc`, `backend`, `currentTime`, `duration`, `paused`, `ended`,
   `seeking`, `loop`, `muted`, `volume`, `playbackRate`, `readyState`, `networkState`,
   `videoWidth`/`videoHeight`, `frame` (the index on screen), `droppedFrames`, `decodeMs`,
   `memoryBytes`, `poster` (showing it), `error`, and with `controls` their rectangles
-  (`controls: {visible, bar, play, timeline, mute}`, for `send_input` clicks).
+  (`controls: {visible, bar, play, timeline, mute}`, for `send_input` clicks);
+- a virtual view's entry has `widget`: `kind`, `count`, `first`/`last` (the items shown,
+  0-based), `pool` and `pool_bound` (row elements), `overscan`, `lanes`, `selection`, `selected`,
+  `selected_keys`, `active`, `scrollTop`, `totalHeight`, `source` (`model:<name>` or `lua`),
+  `sort`; its text line reads `list[0..12 of 10000, pool 22]`;
+- `tooltip` (`{visible, source, text, rect, side}`) and `drag` (`{active, source, target, types,
+  allowed, effect, programmatic}`) of the document, and with `"reload": true` the last hot reload's
+  report (`mode`, the counts, `fallbackReason`, `ms`, `causes`).
 
 Use it to answer "why is this element there / this size / this colour" before editing CSS.
 
@@ -1481,7 +1831,9 @@ container amber). A failed check is not a tool error. Checks: `exists`, `count` 
 `min`, `max`), `visible` (`unobstructed`: nothing of another document covers it), `text_fits`
 (`single_line`, `allow_scroll`), `no_overlap` (`with`), `within_parent` (`container`),
 `within_viewport`, `contrast` (`min_ratio`, default WCAG AA; `background` where the page is
-transparent), `min_size` (`width`, `height`). Zero matches fail. `viewports` repeats the checks
+transparent), `min_size` (`width`, `height`), `virtual_window` (a view's rows within `max`,
+default its own bound), `tooltip` (the selector's tooltip is showing; `text`: it contains that),
+`selected` (a view's selection: `count`, `min`, `max`). Zero matches fail. `viewports` repeats the checks
 at other sizes. Typical sets:
 
 | Screen | Checks |
@@ -1492,6 +1844,16 @@ at other sizes. Typical sets:
 | Dialog, modal, pause | `visible` + `unobstructed` after opening it, `within_viewport`, `min_size` of its buttons |
 | Settings, forms | `text_fits` of labels, `within_parent` of rows, `min_size` of controls |
 | Toasts, lists | `no_overlap`, `within_viewport` with the most entries shown |
+
+### `edit_ui_view`
+
+In the `html_ui` tool group (`tool_groups {"enable": ["html_ui"]}` lists it; a call by name
+works either way). Drives a virtual view of a playing document (runtime only, not undoable): `{"selector": "#servers",
+"action": "scroll_to" | "select" | "activate" | "expand" | "collapse" | "sort", "index": 0-based
+| "key": "...", "column": "ping", "direction": "asc" | "desc", "align": "start" | "center" | "end"
+| "nearest"}`. `activate` and `sort` fire the view's events, so the script reacts as to a player;
+it returns the items shown and the selection. Hover with `send_input` (`target`, then
+`frames_after`) to show a tooltip; drag with `to_target` for drag and drop.
 
 ### UI screenshots
 
@@ -1528,9 +1890,9 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | `doc.getElementById("x")`, `el.classList.add("x")` | colon calls: `doc:getElementById("x")`, `el.classList:add("x")` | LuaLS `param-type-mismatch` / `missing-parameter` |
 | `el.innerText = "x"`, `el.onclick = fn` | `el.textContent = "x"`, `el:addEventListener("click", fn)` | LuaLS `inject-field` |
 | `getElementByID`, other misspelt members | the DOM names (`getElementById`) | LuaLS `undefined-field` |
-| `addEventListener("onclick")`, `"mouseenter"`, `"pointerdown"` | `"click"`, `"mouseover"`/`"mouseout"`, `"mousedown"` | LuaLS `param-type-mismatch` (`UIEventType`); a warning at run time |
-| `setTimeout`, `setInterval`, `requestAnimationFrame` | `anime.createTimer({ duration = 2000, onComplete = fn })`, or `RegisterEngineEvent(self, "onUpdate")` | none (Lua has no such globals) |
-| `fetch`, `XMLHttpRequest` | no network at run time: ship data as Lua modules (`require`) or files | none |
+| `addEventListener("onclick")`, `"touchstart"` | `"click"`, `"pointerdown"` (`event.pointerType == "touch"`) | LuaLS `param-type-mismatch` (`UIEventType`); a warning at run time |
+| `setTimeout`, `setInterval`, `requestAnimationFrame` | `anime.createTimer({ duration = 2000, onComplete = fn })` (UI clock, milliseconds), gameplay `Timer.after(2, fn)` / `Timer.every(0.5, fn)` (seconds, game time; `{unscaled = true}`), `Coroutine.start(function() Coroutine.wait(2) ... end)`, or `RegisterEngineEvent(self, "onUpdate")` | none (Lua has no such globals) |
+| `fetch`, `XMLHttpRequest` | call Lua `Http` (`jasper://docs/networking`): in the document's `<script type="text/lua">` `Http.get(url, {owner = document}, function(res) ... end)` (no `self` there; the document's GameObject owns it), in the GameObject's script `{owner = self}`; documents themselves load nothing from the network | none |
 | `localStorage` | `UserSettings.setStringForKey(key, value)` / `getStringForKey` | none |
 | `alert()`, `confirm()` | a `<dialog>` with `showModal()`, or a modal element | `HTMLUI-HTML-0006` (inside JavaScript) |
 | JS animation libraries (GSAP, anime.js `<script>`) | the Lua `anime` API | `HTMLUI-HTML-0007` |
@@ -1545,7 +1907,8 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | `line-clamp: 2` (the standard shorthand) | `display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden` | `HTMLUI-CSS-0002` |
 | `height: 100dvh`, `-webkit-fill-available` fixes for mobile browser bars | `100vh` is the canvas, exact | none |
 | hover-only affordances on touch | visible by default or on `:focus`/`:active`; `@media (hover: hover)` is false on touch devices | `HTMLUI-AT-0006` (info) |
-| `title="..."` tooltips | a tooltip element shown on `mouseover` | `HTMLUI-HTML-0004` (info) |
+| `data-for` over thousands of items | `<list-view>` / `<grid-view>` / `<table-view>` ("Long lists") | `HTMLUI-HTML-0031` (info) |
+| a JavaScript Markdown library | `<markdown>`, `data-markdown`, `el:setMarkdown` | none |
 | `<canvas>`, `<iframe>` | Lottie, images, another UI Document, a texture-mode document | `HTMLUI-HTML-0002` |
 | an MP4 / MOV / VP9 `<video>` | AV1 + Opus WebM (`import_files` converts it) | `HTMLUI-HTML-0027` |
 | `background: url(clip.webm)` | a `<video>` with `object-fit: cover` behind the content | `HTMLUI-CSS-0004` |
@@ -1554,9 +1917,20 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | 0-based `data-for` index in Lua | `model.items[i + 1]` | none |
 | a white page by default | the page is transparent: set a background for full-screen menus | none |
 
+### Changes for existing documents (S17 widgets)
+
+- `dragover` follows HTML5: it fires on entry **and on every move** over the element (at most
+  once per frame). RmlUi's enter-once event is `dragenter` now; move a handler that should run
+  once there. `dragmove`, `dragout` and `dragdrop` are unchanged.
+- `title="..."` shows a tooltip (it was ignored with `HTMLUI-HTML-0004`). Turn tooltips off with
+  `doc.tooltip:configure{enabled = false}`.
+- Hot reloads of `.html` documents patch the live document: `onReload` runs instead of
+  `onUnload`/`onLoad`. Preferences > HTML UI > Hot Reload > Rebuild (or `doc:reload{mode =
+  "rebuild"}`) brings the old behaviour back.
+
 ## Examples
 
-Ten polished examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
+Thirteen polished examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
 `assets/`), compat-clean, tested at several viewports. Get them with
 `create_ui_document {"html": "assets/ui/<name>.html", "template": "<name>"}` (files renamed to
 your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read them in
@@ -1569,13 +1943,16 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `main_menu` | title screen: animated gradient backdrop, icon buttons, keyboard navigation, a slide-in settings panel; flex, grid areas, transitions, keyframes, `backdrop-filter`, anime timeline + stagger, built-in Lucide icons (`data-lucide`), `:focus-visible` | count, visible, text_fits, no_overlap, within_viewport, contrast, min_size of `.menu-button` / `.menu` |
 | `pause_menu` | Escape toggles a blurred overlay (`backdrop-filter`) and `Engine.timeScale`; anime entrance | visible, text_fits, no_overlap, within_viewport, contrast, min_size |
 | `hud` | health and shield bars, score and timer, minimap, ammo, ability cooldowns, damage flash; data binding (`{{ }}`, `data-style-width`, `data-class-*`) | within_viewport, no_overlap, text_fits, contrast with background, visible |
-| `inventory` | a CSS grid of slots from `data-for`, drag and drop, a hover tooltip, equipment | count, no_overlap, within_parent, within_viewport, text_fits, visible |
+| `inventory` | a CSS grid of slots from `data-for`, HTML5 drag and drop (`draggable`, `dropzone`, `dataTransfer`, the ghost and drop classes), rich tooltips from `setTooltip`, equipment | count, no_overlap, within_parent, within_viewport, text_fits, visible |
 | `settings` | tabs, sliders, switches, selects, key bindings; two-way `data-value`/`data-checked` | visible, no_overlap, min_size, text_fits, within_parent, within_viewport |
 | `dialogue` | portrait, typewriter text, choices; `onUpdate` timing | text_fits, within_viewport, contrast, no_overlap, min_size |
 | `shop` | filter chips, cards with `data-for` + `data-if`, buy buttons disabled by `data-attr-disabled`, a quantity dialog, an animated gold counter | text_fits, no_overlap, within_parent, contrast, min_size, within_viewport |
 | `toasts` | toasts created from Lua (`createElement`, `appendChild`), enter and exit animations | within_viewport, no_overlap, text_fits, contrast |
 | `loading` | progress bar, Lottie spinner, rotating tips, "press any key" | visible, text_fits, within_viewport |
 | `video_menu` | a title screen over a looping `<video autoplay muted loop>` (`object-fit: cover`) under a gradient scrim; a toggle pauses the video from Lua, its label follows the `play`/`pause` events, an `error` leaves the gradient | count, visible, text_fits, no_overlap, within_viewport, contrast, min_size |
+| `server_browser` | 10 000 servers in a `<table-view>`: sort, resizable columns, region chips, keyboard and gamepad selection, row and header tooltips, a details panel | min_size, no_overlap, text_fits, virtual_window, visible, within_viewport |
+| `chat_log` | Markdown messages of any height in a `<list-view item-height="auto" anchor="end">`, a composer, teammates writing on game time | contrast, min_size, text_fits, virtual_window, visible, within_viewport |
+| `quest_log` | chapters and quests in a `<tree-view>` with keyboard and gamepad navigation, a `<markdown src>` journal | text_fits, virtual_window, visible, within_viewport |
 | `blank` | an empty page with a heading (the default template; no script) | visible |
 
 Each example's Lua class is `<Name>UI`, gets the document with
@@ -1588,12 +1965,28 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   `font-size`): transforms and opacity change one value per frame, layout properties lay the
   document out again. For a bar animated every frame, `transform: scaleX()` beats `width`; a
   width set once per event (the HUD above) is fine.
-- **Layers cost passes.** A static document without filters, masks or shadows is one offscreen
-  pass and uploads nothing per frame. Every `filter`, `backdrop-filter`, `mask-image`, blurred
-  `box-shadow` and blurred `text-shadow` draws through extra offscreen passes (a blur 4 to 6, a
-  backdrop blur a few more), and `opacity` below 1 on an element with several children draws
-  it into a layer: keep them on the few elements that need them, and do not blur long body
-  text.
+- **Layers cost passes.** A static document without filters or masks is one offscreen pass and
+  uploads nothing per frame. Every `filter`, `backdrop-filter` and `mask-image` draws through
+  extra offscreen passes (a blur 4 to 6, a backdrop blur a few more), and `opacity` below 1 on an
+  element with several children draws it into a layer: keep them on the few elements that need
+  them. Box shadows, blurred `text-shadow`s and `font-effect`s do not need layers (below).
+- **Draws are batched.** Consecutive boxes and text of the same clip and transform are one draw:
+  a list of 500 cards with rounded borders, box shadows and two labels each is a handful of draws.
+  Solid backgrounds, `solid` borders (one colour per rounded corner), `solid` and `auto` outlines
+  and every `box-shadow` (blur, spread, inset, several) are drawn as antialiased shapes, without
+  shadow textures. What keeps the old (still correct, slower) mesh path: gradients and images as
+  backgrounds, `dashed`/`dotted`/`double`/... borders, borders of two colours meeting on a curve,
+  `background-clip` other than `border-box`, a `box-shadow` under `opacity` (`inspect_ui` detail
+  full says why per element: `paint`). Rounded `overflow` clips whose content stays clear of the
+  corners (padding at least the radius) cost nothing; one or two rounded clips the content reaches
+  are clipped in the shaders; deeper nesting uses the stencil (more draws).
+- **Text follows its on-screen size.** Text under `transform: scale()`, at a fractional pixel
+  ratio or on a scaled canvas is rasterized at its real size (as sharp as that font size); while
+  a scale animates it draws from distance-field glyphs and is rasterized again once it rests
+  (6 frames later). `text-rendering: optimizeSpeed` keeps the old stretched bitmap (cheapest),
+  `geometricPrecision` always draws distance fields (any size, 3D, no re-rasterization).
+  `text-shadow` blurs and `font-effect` outlines, glows and blurs up to 0.3 em are drawn from the
+  distance glyphs without layers; larger ones fall back to layers (or CPU glyphs).
 - **Keep documents small**: hundreds of elements, not thousands. Long lists: page or window
   them in Lua. One document per screen; hide the screens you do not show (`doc:hide()`, or a
   class with `display: none`) instead of destroying and rebuilding them.
@@ -1604,9 +1997,19 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   documents redraw only when they change.
 - Anti-aliasing: Project Settings > Graphics > HTML UI MSAA (`graphics.html_ui_msaa_samples`:
   1, 2, 4 or 8, default 4; devices that cannot multisample use 1).
+- Project Settings > Graphics > HTML UI also has *Glyph Atlas Budget (MiB)*
+  (`graphics.html_ui_glyph_atlas_mib`: 0 = the platform's default, 24 MiB on desktop and 12 on
+  Android, iOS and the web, else 4-256; pages of glyphs not drawn lately are cleared when text needs
+  more, and a warning `HTMLUI-GEN-0007` says when that happens all the time), *SDF Primitives*
+  (`graphics.html_ui_sdf_primitives`) and *Transform-Aware Text*
+  (`graphics.html_ui_transform_aware_text`), both on by default; all three are undoable and go
+  into exports.
 - Measure: the Game view's statistics overlay (`configure_game_view {"show_stats": true}`)
-  shows the documents' passes, draws and pipeline switches of the last frame
-  (`UIDocumentSystem::getRenderStats()` in C++).
+  shows the documents' passes, draws (merged), instances, stencil draws and the glyph atlas of
+  the last frame; `inspect_ui {"render_stats": true}` returns every counter of the document's
+  context, `doc:getRenderStats()` the same table in Lua (an in-game HUD),
+  `UIDocumentSystem::getRenderStats()` in C++, and `jasperengine-editor benchmark --ui-stats`
+  their averages.
 
 ## C++
 

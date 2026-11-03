@@ -56,7 +56,8 @@ namespace jasperengine{
         GRAY,
         NORMAL, // flat tangent-space normal (0.5, 0.5, 1)
         RIPPLES, // a seamless ripple normal map (library:water's, Water::makeRipplesTexture)
-        NOISE    // seamless grey value noise (Water::makeNoiseTexture)
+        NOISE,   // seamless grey value noise (Water::makeNoiseTexture)
+        PARTICLE // a white soft disc fading to transparent (particles::makeParticleTexture)
     };
 
     // vertex inputs of @require: forced on when the mesh has them, and the varyings
@@ -84,7 +85,13 @@ namespace jasperengine{
         // the reflection environment Lit reflects (includes/environment.glsl,
         // SURFACE_ENVIRONMENT, u_environmentTexture): the sky's prefiltered map or the
         // reflection probe around the object. Mesh shaders only; bound per draw, no pass.
-        ShaderRequire_Environment = 1 << 10
+        ShaderRequire_Environment = 1 << 10,
+        // the material's own normal map (Material::normalTexture) on the 2D light path
+        // (SURFACE_NORMAL_MAP): under 2D lights, with a normal texture, on a mesh with normals,
+        // tangents and uv1, the variant samples it (HAS_NORMAL_MAP) and the shader lights
+        // through includes/lighting2d.glsl's getNormal2D (it must include that file, which
+        // reads the tangent frame surface_vs.glsl writes then). Mesh shaders only
+        ShaderRequire_NormalMap = 1 << 11
     };
 
     struct JASPERENGINE_API ShaderManifestProperty{
@@ -272,6 +279,8 @@ namespace jasperengine{
         // may require: @require plus every feature= rule, whatever the features (the shader
         // picker's cost mark, list_shaders)
         uint32_t getPossibleSceneInputs() const;
+        // Every input some variant of the shader may require: @require plus every feature= rule
+        uint32_t getPossibleRequire() const;
 
         // the SURFACE_* defines a variant compiles with (one per required input, see
         // includes/surface_vs.glsl), for its enabled defines
@@ -279,7 +288,7 @@ namespace jasperengine{
         static std::vector<std::string> getRequireDefines(uint32_t require);
 
         // the @require input names of a mask: position, normals, tangents, uv1, uv2, color,
-        // rawcolor, smoothnormals, scenedepth, scenecolor (in that order)
+        // rawcolor, smoothnormals, scenedepth, scenecolor, environment, normalmap (in that order)
         static std::vector<std::string> getRequireNames(uint32_t require);
 
         // the source declares manifest lines (a fork the runtime needs the file of)
@@ -309,11 +318,18 @@ namespace jasperengine{
     // A shader reference string (section 3.1): "" built-in, "library:<name>" an engine
     // library shader, anything else a project fork. A variant's reference may end in
     // "#A,B" (its enabled feature defines, sorted), which compiles them as #defines.
+    // "builtin:lit#A,B" is a variant of the built-in Lit with defines its property bits have
+    // no room for (the extended lobes, hex tiling, the High Lit Quality: MaterialPbr); it is
+    // only made by the renderer, never set on a material.
     class JASPERENGINE_API ShaderReference{
     public:
         static const char* const LIBRARY_PREFIX; // "library:"
+        static const char* const BUILTIN_PREFIX; // "builtin:"
+        static const char* const BUILTIN_LIT;    // "builtin:lit"
 
         static bool isLibrary(const std::string& reference);
+        // "builtin:..." (the built-in shader with defines)
+        static bool isBuiltin(const std::string& reference);
         // "library:toon#RIM" -> "toon"
         static std::string getLibraryName(const std::string& reference);
         // without the "#..." feature suffix
@@ -386,6 +402,8 @@ namespace jasperengine{
         static bool readForkFile(const std::string& path, std::string& content);
         // Forgets the fork manifests (their sources changed); library ones stay
         static void clearForks();
+        // Only the forks `which` names (a hot reload of some shader files, S05)
+        static void clearForks(const std::function<bool(const std::string& fork)>& which);
 
         // the library shaders the build has, by name, sorted
         static std::vector<std::string> getLibraryShaderNames();

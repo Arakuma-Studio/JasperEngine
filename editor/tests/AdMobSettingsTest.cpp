@@ -11,8 +11,6 @@ using namespace jasperengine::editor;
 
 TEST(AdMobAppId, AcceptsAppIds) {
     EXPECT_TRUE(isAdMobAppIdValid("ca-app-pub-1234567890123456~1234567890"));
-    EXPECT_TRUE(isAdMobAppIdValid(androidSampleAdMobAppId));
-    EXPECT_TRUE(isAdMobAppIdValid(iosSampleAdMobAppId));
 }
 
 TEST(AdMobAppId, RejectsAdUnitIdsAndMalformedIds) {

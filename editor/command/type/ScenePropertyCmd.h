@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Scene.h"
 #include "Catalog.h"
 
@@ -28,6 +29,14 @@ namespace jasperengine::editor {
 
         bool wasModified;
 
+        // what a setting changes beyond the scene: the Canvas Scaler relays the edit-mode UI out
+        void applied(SceneProject* sceneProject) {
+            if (propertyName == "canvas_scaler" && sceneProject->playState == ScenePlayState::STOPPED) {
+                project->applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
+                sceneProject->needUpdateRender = true;
+            }
+        }
+
     public:
         ScenePropertyCmd(Project* project, uint32_t sceneId, const std::string& propertyName, const T& newValue) {
             this->project = project;
@@ -48,6 +57,7 @@ namespace jasperengine::editor {
             // Store the old value before changing it
             value.oldValue = Catalog::getSceneProperty<T>(sceneProject->scene, propertyName);
             Catalog::setSceneProperty<T>(sceneProject->scene, propertyName, value.newValue);
+            applied(sceneProject);
 
             sceneProject->isModified = true;
 
@@ -61,12 +71,17 @@ namespace jasperengine::editor {
             }
 
             Catalog::setSceneProperty<T>(sceneProject->scene, propertyName, value.oldValue);
+            applied(sceneProject);
 
             sceneProject->isModified = wasModified;
         }
 
         // Render/physics settings only; scene names belong to SceneNameCmd.
         bool affectsStructure() const override { return false; }
+
+        // "Set Ambient Light (Level1)": the scene's name
+        std::string describe() const override { return "Set " + CommandNames::property(propertyName) + " (" + CommandNames::scene(project, sceneId) + ")"; }
+        const char* typeName() const override { return "ScenePropertyCmd"; }
 
         bool mergeWith(editor::Command* otherCommand) override {
             ScenePropertyCmd* otherCmd = dynamic_cast<ScenePropertyCmd*>(otherCommand);

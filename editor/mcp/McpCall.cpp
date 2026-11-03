@@ -49,6 +49,8 @@ McpCall::McpCall(McpServer& server, std::string tool, Json args, Completion comp
     , arguments(args.is_object() ? std::move(args) : Json::object())
     , completion(std::move(completion))
     , startTime(std::chrono::steady_clock::now()) {
+    static std::atomic<uint64_t> nextSerial{1};
+    callSerial = nextSerial++;
 }
 
 bool McpCall::cancelled() const {
@@ -113,6 +115,26 @@ void McpCall::progress(double done, double total, const std::string& message) {
 void McpCall::setProgressSink(ProgressSink sink) {
     std::lock_guard<std::mutex> lock(progressMutex);
     progressSink = std::move(sink);
+}
+
+SessionPtr McpCall::session() const {
+    if (callSession) return callSession;
+    const std::shared_ptr<McpCall> parent = parentCall.lock();
+    return parent ? parent->session() : nullptr;
+}
+
+void McpCall::setNotifier(std::function<bool(const Json&)> fn) {
+    std::lock_guard<std::mutex> lock(progressMutex);
+    notifier = std::move(fn);
+}
+
+bool McpCall::notifyClient(const Json& notification) {
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        if (notifier) return !isCompleted.load() && notifier(notification);
+    }
+    const std::shared_ptr<McpCall> parent = parentCall.lock();
+    return parent && parent->notifyClient(notification);
 }
 
 double McpCall::elapsedMs() const {

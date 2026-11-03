@@ -21,6 +21,26 @@ The editor writes these files when it creates or opens a project and again on ev
 `.clangd` hold only project-relative paths and may be committed. None of these files is
 exported with the game.
 
+## Paths and symbolic links
+
+Tools take project-relative paths. Reads follow symbolic links (and Windows junctions) wherever
+they lead, so an assets folder linked in from a shared library reads, lists and previews like any
+other. The project folder and its configured assets and Lua scripts folders are trusted even when
+they are links themselves (an assets folder on a shared drive): writes go there. A tool that writes, creates,
+deletes, moves or renames a file refuses a path that a link BELOW those folders leads out of them
+(an asset root can't be set to a folder outside the project either) (isError: the path, where the link leads, and the fix:
+use a path that is not behind a link to elsewhere, or replace the link with a real folder). Links
+that point inside the project work, and so does a project opened through a link. Deleting or
+moving a link moves the link itself, never what it points at. A folder that becomes a link to
+elsewhere after a write was made blocks its undo (`undo` fails with the file and "remove the link,
+then undo again"; the history keeps its place). No tool writes, moves, copies or imports a file named
+project.yaml (any folder, any letter case): settings go through `set_project_settings`, whose asset
+roots are plain project folders (no absolute path, no `..`). `open_project` refuses a project whose
+assets_dir or lua_dir points outside its folder (the user opens that one in the editor), and the
+machine-level preferences (tool paths, compilers, the default export folder) are read-only: the user
+changes them in Edit > Preferences. `run_build` runs only this project's built player (build it
+first), and `create_project` makes a project beside the current one, not inside it.
+
 ## Reading the API
 
 The stubs are plain Lua files meant to be read and grepped:
@@ -138,8 +158,66 @@ with clangd 18 it printed the same diagnostics and count, so it is not needed fo
 
 Headers and C++ files created after the editor last wrote the compile database get the flags
 of the closest listed source, so a new script checks right away; the editor lists it on its
-next open or build. The C++ standard is Project Settings > Build > C++ Standard
-(`set_project_settings` `scripting.cxx_standard`).
+next open or build. The C++ standard is Project Settings > Scripting > C++ Standard
+(`set_project_settings` `scripting.cxx_standard`: 20, the default, or 23).
 
 The CMake build of the scripts (Play, `compile_scripts`) also exports its own
 `compile_commands.json` in `.jasperengine/build`, for IDEs that read that one.
+
+# Editor search, shortcuts and organisation (S25)
+
+The `editor_ux` group (`tool_groups {enable: ["editor_ux"]}`; a call works without enabling it)
+drives what a human reaches with Ctrl+K, Edit > Shortcuts..., Window > Layouts, the Project
+window's search and the Bookmarks window.
+
+## Search palette and commands
+
+`search_editor {query, scopes?, limit?}` ranks what Edit > Search All... (Ctrl+K) shows:
+commands, windows, settings, GameObjects of the open scenes, components and assets. A prefix
+keeps one kind: `>` commands, `/` windows, `:` settings, `@` GameObjects, `+` components,
+`asset:` assets (the Project grammar below). Each result has a `key`; `run_command {key}` runs
+it as Enter in the palette does (a GameObject is selected, an asset pinged, a setting's page
+opened at its row, a component added to the selection); `alternate: true` is Ctrl+Enter (frame
+the GameObject, open the asset).
+
+`run_command {id}` runs a catalog command (`list_shortcuts` lists the ids:
+`edit.duplicate`, `window.console`, `window.layouts.apply` with `payload` the layout's name...)
+through its menu item. It refuses disabled commands and the ones that quit, create or open a
+project, or empty the trash.
+
+## Shortcuts
+
+`list_shortcuts {group?, context?, conflicts_only?}` is the command catalog: each command's
+`chords`, `default_chords`, `context` (`global`, `editor`, `scene_view`, `hierarchy`,
+`project`, `console`, `animation`, `pose_animation`), `menu_path` and the `menu_shortcut` its menu item shows, and
+`conflicts` / `shadowed_by` (a Global or Editor key over a window's own). `set_shortcut {id,
+chords}` rebinds (`[]` unbinds, `null` resets); a chord another command has in the same context
+fails unless `force: true`, which takes it from that command. Rebindings are the user's, in
+`shortcuts.yaml` next to the editor settings, for every project. `docs/editor/keyboard-shortcuts.md`
+lists the defaults.
+
+## Window layouts
+
+`edit_layout_presets {action, name?, new_name?, path?}`: `list`, `apply`, `save` (the current
+docking, sizes and open panels as a named preset, user-wide), `rename`, `delete`, `export` /
+`import` (a `.layout.yaml` file; `export` without name writes every preset), `reset` (Default).
+The project keeps its own working layout in `.jasperengine/user/layout.yaml`. A preset file
+that cannot be read applies Default and logs why.
+
+## Project search, labels, saved searches
+
+`list_assets {search}` takes the Project window's grammar: words match names (typos forgiven),
+`"a phrase"` a part of the name, `t:texture` (or Unity's `t:Texture2D`, `t:AudioClip`,
+`t:Prefab`...), `l:Hero` a label, `ext:png`, `path:levels/`, `re:^tile_\d+$` (on the name),
+`ref:<path|guid>` assets that reference it, `missing:` assets with broken references. The same
+key twice ORs (`t:texture t:model`), different keys AND, and ` OR ` joins whole groups.
+
+`edit_asset_labels` sets labels (`set`/`add`/`remove` on `assets` paths or GUIDs, `get`,
+`list`) and edits them project-wide (`rename_label`, `delete_label`, `set_color "#RRGGBB"`).
+Labels live in the asset's `.meta` (or, for scenes, prefabs and materials, a `labels:` key of the
+file); colours in `project.yaml`. `edit_saved_searches` keeps named queries (`scope: user` in
+`.jasperengine/user/organisation.yaml`, `project` in `project.yaml`), `run` returns what
+`list_assets` would. `edit_bookmarks` adds assets, folders and GameObjects to the Bookmarks
+window; a bookmark follows its asset's GUID through moves and renames. Every edit of labels,
+saved searches and bookmarks is one undo step of the project history (`undo {scope: "project"}`)
+and reports `files_written`.

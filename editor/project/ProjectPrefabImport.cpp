@@ -5,6 +5,8 @@
 // removed branches back, prefab order placement, and the Play-mode prefab factories.
 
 #include "Project.h"
+#include "util/FileUtils.h"
+#include "util/WorldTransforms.h"
 #include "ProjectPrefabInternal.h"
 #include "Factory.h"
 #include "Out.h"
@@ -14,6 +16,8 @@
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
+#include "component/MeshComponent.h"
+#include <cstdlib>
 
 #include <algorithm>
 #include <functional>
@@ -100,6 +104,9 @@ namespace jasperengine::editor::prefabinternal {
         switch (a.type) {
             case PropertyType::Bool: return *static_cast<bool*>(a.ref) == *static_cast<bool*>(b.ref);
             case PropertyType::String: return *static_cast<std::string*>(a.ref) == *static_cast<std::string*>(b.ref);
+            case PropertyType::Asset: return *static_cast<AssetRef*>(a.ref) == *static_cast<AssetRef*>(b.ref);
+            case PropertyType::Shader: return *static_cast<ShaderRef*>(a.ref) == *static_cast<ShaderRef*>(b.ref);
+            case PropertyType::Curve: return *static_cast<Curve*>(a.ref) == *static_cast<Curve*>(b.ref);
             case PropertyType::Float: return *static_cast<float*>(a.ref) == *static_cast<float*>(b.ref);
             case PropertyType::Double: return *static_cast<double*>(a.ref) == *static_cast<double*>(b.ref);
             case PropertyType::Vector2: return *static_cast<Vector2*>(a.ref) == *static_cast<Vector2*>(b.ref);
@@ -115,6 +122,7 @@ namespace jasperengine::editor::prefabinternal {
                 const EntityReference* rb = static_cast<EntityReference*>(b.ref);
                 return ra->entity == rb->entity && ra->sceneId == rb->sceneId;
             }
+            case PropertyType::Gradient: return *static_cast<Gradient*>(a.ref) == *static_cast<Gradient*>(b.ref);
             default: return false;
         }
     }
@@ -192,7 +200,21 @@ namespace jasperengine::editor::prefabinternal {
                 continue;
             }
             Catalog::copyPropertyValue(from.registry.get(), from.entity, target, entity, type, *it);
+            // an overridden blend shape weight is the instance's own, also past the targets the
+            // asset's weights cover: a model load keeps it (MeshComponent::morphTargetCount)
+            if (type == ComponentType::MeshComponent && it->compare(0, 13, "morphWeights[") == 0) {
+                if (MeshComponent* mesh = target->findComponent<MeshComponent>(entity)) {
+                    const int index = std::atoi(it->c_str() + 13);
+                    mesh->morphWeightsSet = true;
+                    mesh->morphTargetCount = std::max(mesh->morphTargetCount, std::min(index + 1, MAX_MORPHTARGETS));
+                }
+            }
             ++it;
+        }
+        // prefab override applied: a change of the component (the whole-component path is
+        // stamped by Stream::decodeComponents)
+        if (!names.empty()) {
+            Catalog::markChanged(target, entity, type);
         }
     }
 
@@ -724,9 +746,23 @@ bool editor::Project::isPrefabRootDefaultOverride(ComponentType type, const std:
 
 bool editor::Project::readPrefabFile(const std::filesystem::path& filepath, Prefab& prefab) {
     try {
-        const YAML::Node node = loadPrefabFile(getProjectPath() / filepath);
-        std::string rootName = filepath.stem().string();
-        prefab.loadRegistry(node, rootName.empty() ? std::string("Prefab") : rootName);
+        // what the asset's file holds that this editor cannot read gates its saves
+        LoadReport loadReport;
+        loadReport.documentPath = FileUtils::pathToUtf8(filepath);
+        {
+            ScopedLoadReport reportScope(loadReport);
+            bool migrated = false;
+            const YAML::Node node = loadPrefabFile(getProjectPath() / filepath, &prefab.diskSha1, &migrated);
+            std::string rootName = filepath.stem().string();
+            prefab.loadRegistry(node, rootName.empty() ? std::string("Prefab") : rootName);
+            // the migrations stamped the current version into the node, so its header no longer
+            // says the file is older: the file still is, and is written again with its next save
+            if (migrated) {
+                prefab.needsUpgrade = true;
+            }
+        }
+        prefab.loadReport = std::move(loadReport);
+        logLoadReport(prefab.loadReport);
         resolveRegistryPrefabRefs(prefab.registry.get());
         if (prefab.root == NULL_ENTITY) {
             Out::error("Prefab %s has no GameObject", filepath.string().c_str());
@@ -749,6 +785,7 @@ editor::Prefab* editor::Project::loadPrefabAsset(const std::filesystem::path& fi
     }
     Prefab loaded;
     if (!readPrefabFile(filepath, loaded)) {
+        forgetGonePrefabFile(filepath);
         return nullptr;
     }
     if (it != prefabAssets.end()) {
@@ -802,6 +839,8 @@ editor::PrefabInstanceData* editor::Project::nestedAssetLayer(Prefab& prefab, co
 std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& requestedPath, Entity rootEntity,
         bool needSaveScene, const PrefabInstanceData* instanceData, std::unordered_map<Entity, Entity>* entityRemap, const PrefabMemberIds* preferredIds,
         const std::vector<PrefabInstanceData*>& assetLayers) {
+    // the instance's world values, computed when the outermost import (or the scene's load) ends
+    WorldTransformScope worldTransforms(sceneProject ? sceneProject->scene : nullptr);
     const bool deferred = nextImportDeferred;
     nextImportDeferred = false;
     // The base of a variant imported onto the variant's root (by the variant's import)
@@ -1399,6 +1438,16 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
 
     // ---- GameObjects added to this instance (and the nested ones) in the scene ----
     if (instanceData) {
+        // They are the scene's, not the prefab's: an instance of this prefab among them (one
+        // placed below a GameObject of this instance) is no cycle. With this import's path still
+        // held it was taken for one and loaded as a Missing Prefab, its GameObjects lost when the
+        // scene opened. They import as the scene's own instances do (put back on a throw too).
+        struct OuterImports {
+            std::unordered_set<std::string>& paths;
+            std::unordered_set<std::string> held;
+            explicit OuterImports(std::unordered_set<std::string>& paths) : paths(paths) { held.swap(paths); }
+            ~OuterImports() { paths.swap(held); }
+        } outerImports{loadingPaths};
         decodeSceneAddedGameObjects(sceneProject, entities, rootEntity, *instanceData, entityRemap, allResult, 0, filepath);
     }
 

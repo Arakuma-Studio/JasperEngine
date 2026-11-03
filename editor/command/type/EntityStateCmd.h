@@ -3,7 +3,12 @@
 
 #pragma once
 
+#include "animation/ClipRecordHooks.h"
+
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "command/EntityEdit.h"
+#include "command/PlayChangeReview.h"
 #include "Project.h"
 #include "command/PrefabEditUndo.h"
 #include <cstdint>
@@ -26,7 +31,7 @@ namespace jasperengine::editor{
     };
 
     // Sets one GameObject field on one or more entities as a single undo step
-    class EntityStateCmd: public Command{
+    class EntityStateCmd: public Command, public EntityEdit{
 
     private:
         Project* project;
@@ -35,6 +40,7 @@ namespace jasperengine::editor{
         EntityStateValue newValue;
         std::map<Entity, EntityStateValue> oldValues;
         bool wasModified = false;
+        bool differs = false;   // the last execute changed a GameObject
         // Unity: a prefab instance's GameObject state edited is an override of it
         PrefabEditUndo prefabUndo;
 
@@ -48,7 +54,13 @@ namespace jasperengine::editor{
 
         void write(Scene* scene, Entity entity, const EntityStateValue& value) const{
             switch (field){
-                case EntityStateField::Active: scene->setEntityActive(entity, value.active); break;
+                case EntityStateField::Active:
+                    // a clip preview showing gameobject.active puts its rest back first and takes
+                    // the new value as its rest after (anim-properties, R6)
+                    ClipRecordHooks::beforePropertyWrite(sceneId, entity, ClipRecordHooks::activeProperty());
+                    scene->setEntityActive(entity, value.active);
+                    ClipRecordHooks::afterPropertyWrite(sceneId, entity, ClipRecordHooks::activeProperty());
+                    break;
                 case EntityStateField::Tag: scene->setEntityTag(entity, value.tag); break;
                 case EntityStateField::Layer: scene->setEntityLayer(entity, value.layer); break;
             }
@@ -101,25 +113,29 @@ namespace jasperengine::editor{
             wasModified = sceneProject->isModified;
 
             bool changed = false;
+            differs = false;
             for (auto& [entity, oldValue] : oldValues){
                 // a Play-created entity is gone after Stop
                 if (!sceneProject->scene->isEntityCreated(entity)){
                     continue;
                 }
+                // (a previewed active state reads its rest: the undo puts that back)
+                if (field == EntityStateField::Active) ClipRecordHooks::beforePropertyWrite(sceneId, entity, ClipRecordHooks::activeProperty());
                 oldValue = read(sceneProject->scene, entity);
                 prefabUndo.capture(project, sceneId, entity);
                 write(sceneProject->scene, entity, newValue);
                 const EntityStateValue now = read(sceneProject->scene, entity);
-                const bool differs = (field == EntityStateField::Active && now.active != oldValue.active) ||
+                const bool entityDiffers = (field == EntityStateField::Active && now.active != oldValue.active) ||
                     (field == EntityStateField::Tag && now.tag != oldValue.tag) ||
                     (field == EntityStateField::Layer && now.layer != oldValue.layer);
-                if (differs){
+                if (entityDiffers){
                     project->recordPrefabStateEdit(sceneId, entity, stateBit());
+                    differs = true;
                 }
                 changed = true;
             }
 
-            if (changed){
+            if (differs){
                 sceneProject->isModified = true;
             }
 
@@ -145,6 +161,75 @@ namespace jasperengine::editor{
         // the Hierarchy greys out inactive GameObjects
         bool affectsStructure() const override{
             return field == EntityStateField::Active;
+        }
+
+        // "Set Active (Player)", "Set Tag (3 Objects)", "Set Layer (Sun)"
+        std::string describe() const override{
+            return "Set " + editedLabel() + " (" + CommandNames::entities(project, sceneId, editedEntities()) + ")";
+        }
+        const char* typeName() const override{ return "EntityStateCmd"; }
+        bool isNoOp() const override{ return !differs; }
+
+        Project* editedProject() const override{ return project; }
+        uint32_t editedSceneId() const override{ return sceneId; }
+        std::vector<Entity> editedEntities() const override{
+            std::vector<Entity> entities;
+            entities.reserve(oldValues.size());
+            for (auto const& [entity, value] : oldValues){
+                entities.push_back(entity);
+            }
+            return entities;
+        }
+        std::string editedLabel() const override{
+            switch (field){
+                case EntityStateField::Active: return "Active";
+                case EntityStateField::Tag: return "Tag";
+                case EntityStateField::Layer: return "Layer";
+            }
+            return "State";
+        }
+
+        EntityStateField getField() const{ return field; }
+
+        // A fresh EntityStateCmd per GameObject, with the state it has now
+        void collectKeepCommands(KeepContext& context) const override{
+            SceneProject* sceneProject = project->getScene(sceneId);
+            if (!sceneProject){
+                return;
+            }
+            for (auto const& [entity, oldValue] : oldValues){
+                if (!sceneProject->scene->isEntityCreated(entity)){
+                    continue;
+                }
+                const EntityStateValue current = read(sceneProject->scene, entity);
+                KeepRow row;
+                row.kind = KeepRow::Kind::State;
+                row.entity = entity;
+                row.property = editedLabel();
+                row.playValue = textOf(field, current);
+                Project* target = project;
+                const uint32_t id = sceneId;
+                const Entity edited = entity;
+                const EntityStateField stateField = field;
+                row.factory = [target, id, edited, stateField, current]() -> std::unique_ptr<Command> {
+                    return std::make_unique<EntityStateCmd>(target, id, std::vector<Entity>{edited}, stateField, current);
+                };
+                // runs after Stop, when this play-time command is gone
+                row.readEditValue = [target, id, edited, stateField]() -> std::string {
+                    SceneProject* restored = target->getScene(id);
+                    return restored && restored->scene->isEntityCreated(edited) ? textOf(stateField, read(restored->scene, edited)) : std::string("(none)");
+                };
+                context.add(std::move(row));
+            }
+        }
+
+        static std::string textOf(EntityStateField field, const EntityStateValue& value){
+            switch (field){
+                case EntityStateField::Active: return KeepContext::text(value.active);
+                case EntityStateField::Tag: return KeepContext::text(value.tag);
+                case EntityStateField::Layer: return KeepContext::text(value.layer);
+            }
+            return std::string();
         }
     };
 

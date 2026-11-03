@@ -3,6 +3,7 @@
 
 
 #include "Polygon.h"
+#include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 
 #include "util/Color.h"
@@ -48,6 +49,7 @@ void Polygon::addVertex(Vector3 vertex){
     pcomp.points.push_back({vertex, Vector4(1.0f, 1.0f, 1.0f, 1.0f)});
 
     pcomp.needUpdatePolygon = true;
+    markChanged<PolygonComponent>();
 }
 
 void Polygon::addVertex(float x, float y){
@@ -60,6 +62,7 @@ void Polygon::clearVertices(){
     pcomp.points.clear();
 
     pcomp.needUpdatePolygon = true;
+    markChanged<PolygonComponent>();
 }
 
 void Polygon::setTexture(const std::string& path){
@@ -68,6 +71,7 @@ void Polygon::setTexture(const std::string& path){
     ui.texture.setPath(path);
 
     ui.needUpdateTexture = true;
+    markChanged<UIComponent>();
 }
 
 void Polygon::setTexture(const std::string& id, TextureData data){
@@ -76,6 +80,7 @@ void Polygon::setTexture(const std::string& id, TextureData data){
     ui.texture.setData(id, data);
 
     ui.needUpdateTexture = true;
+    markChanged<UIComponent>();
 }
 
 void Polygon::setTexture(Framebuffer* framebuffer){
@@ -84,6 +89,7 @@ void Polygon::setTexture(Framebuffer* framebuffer){
     ui.texture.setFramebuffer(framebuffer);
 
     ui.needUpdateTexture = true;
+    markChanged<UIComponent>();
 }
 
 void Polygon::setColor(Vector4 color){
@@ -124,6 +130,7 @@ void Polygon::setFlipY(bool flipY){
         ui.flipY = flipY;
 
         pcomp.needUpdatePolygon = true;
+        markChanged<PolygonComponent>();
     }
 }
 
@@ -164,8 +171,10 @@ std::string Polygon::getCustomShader() const{
 void Polygon::setShaderUniform(const std::string& name, const Vector4& value){
     UIComponent& ui = getComponent<UIComponent>();
 
-    if (ShaderUniforms::set(ui.shaderUniforms, name, value))
+    if (ShaderUniforms::set(ui.shaderUniforms, name, value)){
         ui.needUpdateShaderUniforms = true;
+        markChanged<UIComponent>();
+    }
 }
 
 void Polygon::setShaderUniform(const std::string& name, const Vector3& value){
@@ -193,13 +202,29 @@ bool Polygon::removeShaderUniform(const std::string& name){
         return false;
 
     ui.needUpdateShaderUniforms = true;
+    markChanged<UIComponent>();
     return true;
 }
 
 Vector4 Polygon::getShaderParam(const std::string& name) const{
     UIComponent& ui = getComponent<UIComponent>();
 
-    return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, name);
+    return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, name);
+}
+
+bool Polygon::setShaderGlobalBinding(const std::string& member, const std::string& global){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (!ShaderGlobals::setBinding(ui.shaderGlobalBindings, member, global))
+        return false;
+    ui.needUpdateShaderUniforms = true;
+    return true;
+}
+
+std::string Polygon::getShaderGlobalBinding(const std::string& member) const{
+    const UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderGlobals::getBinding(ui.shaderGlobalBindings, member);
 }
 
 void Polygon::setShaderTexture(const std::string& name, const std::string& path){
@@ -220,14 +245,14 @@ void Polygon::setShaderFeature(const std::string& define, bool enabled){
     UIComponent& ui = getComponent<UIComponent>();
 
     // features are compiled in: another shader variant
-    if (ShaderLibraryValues::setFeature(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define, enabled))
+    if (ShaderLibraryValues::setFeature(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, define, enabled))
         ui.needReload = true;
 }
 
 bool Polygon::isShaderFeatureEnabled(const std::string& define) const{
     UIComponent& ui = getComponent<UIComponent>();
 
-    return ShaderLibraryValues::isFeatureEnabled(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define);
+    return ShaderLibraryValues::isFeatureEnabled(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, define);
 }
 
 void Polygon::setBlendMode(MaterialBlendMode blendMode){

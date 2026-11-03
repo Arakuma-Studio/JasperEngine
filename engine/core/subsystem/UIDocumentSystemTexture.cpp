@@ -96,7 +96,7 @@ namespace {
     constexpr int maxTextureSize = 8192;
 
     // engine mouse buttons to RmlUi's (0 left, 1 right, 2 middle); -1 for the others
-    int toRmlButton(int button){
+    int textureToRmlButton(int button){
         switch (button){
             case D_MOUSE_BUTTON_LEFT: return 0;
             case D_MOUSE_BUTTON_RIGHT: return 1;
@@ -198,6 +198,8 @@ Rml::ElementDocument* UIDocumentSystem::textureLoadDocument(Entity entity, UIDoc
         // p1-lua: DOM change events, and the data models this document's scripts made
         Rml::Context* rmlContext = entry.context->getRmlContext();
         HtmlUIEventNames::installChangeSynthesizer(rmlContext);
+        // its elements find the scene too (<particle-system> makes its prefab there)
+        contextScenes()[rmlContext] = scene;
         if (scriptState){
             for (auto& pair : scriptState->models){
                 if (pair.second->owner == entity)
@@ -271,6 +273,7 @@ void UIDocumentSystem::textureRemoveEntity(Entity entity){
     }
     HtmlUIElementRegistry::freeContext(rmlContext);
     HtmlUIFileLog::forgetRenderer(&entry.context->getRenderer());
+    contextScenes().erase(rmlContext);
 
     // the target object stays (consumers may still point at it), its GPU texture goes
     if (entry.target)
@@ -479,13 +482,28 @@ void UIDocumentSystem::textureMouseLeave(){
     }
 }
 
+void UIDocumentSystem::textureCancelAll(){
+    if (!textureState)
+        return;
+
+    // ui-multitouch D6: every finger and the mouse of every texture document end without a click
+    for (auto& pair : textureState->entries){
+        HtmlUIContext& context = *pair.second.context;
+        const std::vector<int> touches = context.getTouches();
+        for (int pointer : touches)
+            context.processTouchCancel(pointer);
+        context.processMouseCancel();
+    }
+    textureState->captured.clear();
+}
+
 bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canvasX, float canvasY, int mods, PointerPhase phase, bool touch, bool covered){
     if (!textureState || textureState->entries.empty())
         return false;
     HtmlUITextureState& state = *textureState;
 
     const int rmlMods = RmlKeyMap::toRmlModifiers(mods);
-    const int rmlButton = touch ? 0 : toRmlButton(button);
+    const int rmlButton = touch ? 0 : textureToRmlButton(button);
     if (!touch && (phase == PointerPhase::DOWN || phase == PointerPhase::UP) && rmlButton < 0)
         return false;
 
@@ -517,15 +535,15 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
                 case PointerPhase::UP: consumed = context.processTouchEnd(pointer, point, rmlMods); break;
                 case PointerPhase::CANCEL: context.processTouchCancel(pointer); break;
             }
+        }else if (phase == PointerPhase::CANCEL){
+            // ui-multitouch D6: the held buttons let go without a click
+            context.processMouseCancel();
         }else{
             consumed = context.processMouseMove(point, rmlMods);
             if (phase == PointerPhase::DOWN){
                 consumed = context.processMouseButtonDown(rmlButton, rmlMods);
             }else if (phase == PointerPhase::UP){
                 consumed = context.processMouseButtonUp(rmlButton, rmlMods) || consumed;
-            }else if (phase == PointerPhase::CANCEL){
-                context.processMouseLeave();
-                consumed = false;
             }
         }
         entry.hovered = (phase != PointerPhase::CANCEL) && !(touch && phase == PointerPhase::UP);

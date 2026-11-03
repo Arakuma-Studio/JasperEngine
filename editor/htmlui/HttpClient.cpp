@@ -6,6 +6,7 @@
 #include "util/CommandRunner.h"
 
 #include "htmlui/compat/ImportManifest.h"
+#include "util/FileUtils.h"
 
 #include <atomic>
 #include <cctype>
@@ -46,13 +47,6 @@ namespace {
         return instance;
     }
 
-    // CommandRunner logs a non-zero exit code to the Console: curl's own exit code is not
-    // needed (its write-out and error lines say everything), so the shell always succeeds
-#ifdef _WIN32
-    constexpr const char* kAlwaysSucceed = " || (call )";
-#else
-    constexpr const char* kAlwaysSucceed = " || true";
-#endif
 
     std::string lower(std::string text){
         for (char& c : text){
@@ -174,7 +168,7 @@ bool HttpClient::available(){
 
     bool found = false;
     CommandRunner runner;
-    runner.run(std::string("curl --version") + kAlwaysSucceed, fs::path(), [&found](const std::string& line){
+    runner.run({"curl", "--version"}, fs::path(), [&found](const std::string& line){
         if (line.compare(0, 5, "curl ") == 0)
             found = true;
     });
@@ -184,6 +178,10 @@ bool HttpClient::available(){
 
 void HttpClient::setHostRewrite(std::map<std::string, std::string> rewrites){
     hostRewrite = std::move(rewrites);
+}
+
+void HttpClient::setMaxFileSize(long long bytes){
+    maxFileSize = bytes > 0 ? bytes : kMaxFileSize;
 }
 
 void HttpClient::setTimeoutSeconds(int seconds){
@@ -203,11 +201,6 @@ std::map<std::string, std::string> HttpClient::getDefaultHostRewrite(){
 void HttpClient::setDefaultTimeoutSeconds(int seconds){
     std::lock_guard<std::mutex> lock(defaults().mutex);
     defaults().timeoutSeconds = seconds > 0 ? seconds : kDefaultTimeoutSeconds;
-}
-
-int HttpClient::getDefaultTimeoutSeconds(){
-    std::lock_guard<std::mutex> lock(defaults().mutex);
-    return defaults().timeoutSeconds;
 }
 
 void HttpClient::cancelAll(){
@@ -327,7 +320,7 @@ HttpResponse HttpClient::getFromMirror(const std::string& mirror, const std::str
         response.error = "not found: " + url + " (the import mirror serves http(s) URLs only)";
         return response;
     }
-    const fs::path file = fs::path(mirror) / fs::u8path(relative);
+    const fs::path file = fs::path(mirror) / editor::FileUtils::pathFromUtf8(relative);
     std::error_code ec;
     if (!fs::is_regular_file(file, ec)){
         response.status = 404;
@@ -338,6 +331,19 @@ HttpResponse HttpClient::getFromMirror(const std::string& mirror, const std::str
     response.contentType = mirrorContentType(url);
     response.bodyFile = file;
     return response;
+}
+
+void HttpClient::cancel(){
+    cancelRequested.store(true);
+    runner->cancel();
+}
+
+unsigned long long HttpClient::receivedBytes() const{
+    std::lock_guard<std::mutex> lock(bodyMutex);
+    std::error_code ec;
+    if (currentBody.empty()) return 0;
+    const uintmax_t size = fs::file_size(currentBody, ec);
+    return ec ? 0 : static_cast<unsigned long long>(size);
 }
 
 HttpResponse HttpClient::get(const std::string& url){
@@ -352,14 +358,22 @@ HttpResponse HttpClient::get(const std::string& url){
     const fs::path body = newTempFile(".body");
     const fs::path config = newTempFile(".curlrc");
     {
+        std::lock_guard<std::mutex> lock(bodyMutex);
+        currentBody = body;
+    }
+    {
         std::ofstream out(config, std::ios::binary);
         out << "url = " << configValue(requestUrl) << "\n"
             << "output = " << configValue(body.string()) << "\n"
             << "user-agent = " << configValue(kUserAgent) << "\n"
+            // http(s) only, also after a redirect: remote content (a Lottie image ref, a Google
+            // Fonts src) can't make curl read file:// or another scheme
+            << "proto = \"=https,http\"\n"
+            << "proto-redir = \"=https,http\"\n"
             << "location\n"
             << "max-redirs = 5\n"
             << "max-time = " << timeoutSeconds << "\n"
-            << "max-filesize = " << kMaxFileSize << "\n"
+            << "max-filesize = " << maxFileSize << "\n"
             << "fail-with-body\n"
             << "write-out = \"%{http_code} %{content_type} %{url_effective}\\n\"\n"
             << "silent\n"
@@ -373,22 +387,29 @@ HttpResponse HttpClient::get(const std::string& url){
     std::vector<std::string> lines;
     {
         std::lock_guard<std::mutex> lock(active().mutex);
-        if (active().cancelled){
+        if (active().cancelled || cancelRequested.load()){
             response.error = "cancelled";
             return response;
         }
         active().runners.insert(runner.get());
     }
-    runner->run("curl -K \"" + config.string() + "\"" + kAlwaysSucceed, fs::path(), [&lines](const std::string& line){
+    // argv, no shell: the config file path is one literal argument (its contents — URL, headers —
+    // are curl's own config syntax, written by newCurlConfig). curl's non-zero exit is expected on a
+    // network error and is read from `lines`, not the return code.
+    runner->run({"curl", "-K", config.string()}, fs::path(), [&lines](const std::string& line){
         lines.push_back(line);
     });
     {
         std::lock_guard<std::mutex> lock(active().mutex);
         active().runners.erase(runner.get());
     }
+    {
+        std::lock_guard<std::mutex> lock(bodyMutex);
+        currentBody.clear();
+    }
     std::error_code ec;
     fs::remove(config, ec);
-    if (active().cancelled){
+    if (active().cancelled || cancelRequested.load()){
         response.error = "cancelled";
         return response;
     }

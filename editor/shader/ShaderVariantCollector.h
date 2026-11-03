@@ -5,6 +5,7 @@
 
 #include "Scene.h"
 #include "shader/ShaderBuildTypes.h"
+#include "texture/MaterialPbr.h"
 
 #include <filesystem>
 #include <set>
@@ -34,7 +35,9 @@ namespace jasperengine::editor {
     //
     // A mesh bound to a lattice (its own Lattice Modifier or an ancestor's with
     // includeChildren, LatticeRender::isLatticeTarget) adds its lattice variants ('Ltc') to
-    // the ones it draws with unbound.
+    // the ones it draws with unbound. A mesh with a Vertex Animator adds its Vertex Animation
+    // variants ('Vat' or 'Vab', by its asset's mode; both when the asset cannot be read) to the
+    // ones it draws with at rest.
     //
     // A scene's lighting decides the variants (lights, shadows, 2D lights, fog, IBL), and a
     // prefab a script spawns can bring its own: every combination the scene's content and the
@@ -56,19 +59,36 @@ namespace jasperengine::editor {
     // allLightCapacities (the project's scripts set maxLightsPerObject) every tier is
     // collected, else only the scene's own.
     //
+    // The built-in Lit's variants follow the scene's Lit Quality (both with scriptsSetLitQuality:
+    // a script sets scene.litQuality) and the material lobes for desktop and, with a mobile
+    // tier other than FULL, the lobes Android, iOS and HTML5 draw (MaterialPbr::resolveTier).
+    //
     // The post-processing colour (phase 4, one global variant bit of mesh, points, lines and
     // sky variants) follows the scene's PostProcessingSettings; with scriptsSetPostProcessing
     // (a project script mentions postProcessing) both states are collected. The uber pass's
     // variants (BLIT features) and the bloom chain's programs: the scene settings', and with
     // scripts setting post-processing the plausible ones (plausibleUberFeatures); any other a
     // script reaches compiles at runtime.
+    //
+    // The High shadow filters (S10, the 'Shq' bit of variants receiving shadows) follow the
+    // scene's shadow Quality: High and Ultra have them, Low, Medium and Hard Only not, Auto
+    // (the platform's tier) both, and so does a scene whose scripts set the quality
+    // (scriptsSetShadowQuality). An export drops them for the backends no platform of which
+    // has a High tier (ShadowTiers::cooksHighFilters).
     class ShaderVariantCollector {
     public:
+        // The variants every build ships whatever its scenes hold (added by the Exporter, never
+        // to a scene's saved shaderKeys): the FLATTEN Canvas Group composite (the HTML UI
+        // passthrough, a few KB), since a script can add a group or switch one to FLATTEN in any scene
+        static void addBuildRequiredKeys(std::set<ShaderKey>& keys);
+
         static void collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                  const std::vector<ShaderVariantContent>& prefabContents,
                                  std::set<ShaderKey>& keys, const std::filesystem::path& projectRoot = {},
                                  bool allLightCapacities = false, bool scriptsSetPostProcessing = false,
-                                 const std::vector<std::string>& scriptPostProcessingFields = {});
+                                 const std::vector<std::string>& scriptPostProcessingFields = {},
+                                 bool scriptsSetShadowQuality = false, bool scriptsSetLitQuality = false,
+                                 PbrTier mobilePbrTier = PbrTier::FULL);
 
         // the UI effect variants of documents (asset-relative .html/.htm/.rml paths) of a project
         static void collectUiEffects(const std::vector<std::string>& documents, const std::filesystem::path& projectRoot,

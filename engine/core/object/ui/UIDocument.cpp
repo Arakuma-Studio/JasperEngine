@@ -81,6 +81,19 @@ void UIDocument::reload(){
     scene->getSystem<UIDocumentSystem>()->reloadDocument(entity, true);
 }
 
+void UIDocument::reload(UIReloadMode mode){
+    scene->getSystem<UIDocumentSystem>()->reloadDocument(entity, true, mode);
+}
+
+void UIDocument::setOnReload(std::function<void(const UIReloadReport&)> callback){
+    getComponent<UIDocumentComponent>().onReload = std::move(callback);
+    getComponent<UIDocumentComponent>().onReloadLua.reset();
+}
+
+UIReloadReport UIDocument::getLastReloadReport() const{
+    return scene->getSystem<UIDocumentSystem>()->getLastReloadReport(entity);
+}
+
 bool UIDocument::isLoaded() const{
     return getComponent<UIDocumentComponent>().loaded;
 }
@@ -272,6 +285,10 @@ UIElement UIDocument::getDocumentElement() const{
 std::vector<htmlui::compat::Diagnostic> UIDocument::getDiagnostics() const{
     loadedDocument(scene, entity);
     return scene->getSystem<UIDocumentSystem>()->getDiagnostics(entity);
+}
+
+HtmlUIRenderStats UIDocument::getRenderStats() const{
+    return scene->getSystem<UIDocumentSystem>()->getRenderStats(entity);
 }
 
 void UIDocument::setColorScheme(const std::string& scheme){

@@ -15,6 +15,7 @@
 
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
+#include "LuaComponentSetters.h"
 
 #include "Log.h"
 #include "Scene.h"
@@ -35,6 +36,9 @@
 #include <cstdio>
 #include <cstring>
 #include <optional>
+
+// the HTML UI module (docs/specs/S34-player-size.md R1): the Lua API description reads this condition
+#if JASPERENGINE_HTMLUI
 
 using namespace jasperengine;
 
@@ -232,7 +236,7 @@ namespace {
         return listenerCall(L, self ? UIElementAccess::get(*self) : nullptr, false);
     }
 
-    Rml::ElementDocument* documentOf(UIDocument* document){
+    Rml::ElementDocument* luaDocumentOf(UIDocument* document){
         return document ? document->getScene()->getSystem<UIDocumentSystem>()->getDocument(document->getEntity()) : nullptr;
     }
 
@@ -241,7 +245,7 @@ namespace {
         if (!document)
             return nullptr;
         document->getBody();
-        return documentOf(document);
+        return luaDocumentOf(document);
     }
 
     int documentAddEventListener(lua_State* L){
@@ -254,7 +258,7 @@ namespace {
 
     int documentRemoveEventListener(lua_State* L){
         UIDocument* self = luabridge::detail::Userdata::get<UIDocument>(L, 1, false);
-        Rml::Element* element = documentOf(self);
+        Rml::Element* element = luaDocumentOf(self);
         if (!element)
             return 0;
         return listenerCall(L, element, false);
@@ -990,9 +994,10 @@ namespace {
 
 // ---- HtmlUILuaRef ----
 
-HtmlUILuaRef::HtmlUILuaRef(lua_State* L, int index): L(L){
-    lua_pushvalue(L, index);
-    ref = luaL_ref(L, LUA_REGISTRYINDEX);
+HtmlUILuaRef::HtmlUILuaRef(lua_State* from, int index): L(LuaBinding::mainThread(from)){
+    // the main thread is kept, never a coroutine's (it ends long before a listener fires)
+    lua_pushvalue(from, index);
+    ref = luaL_ref(from, LUA_REGISTRYINDEX);
     liveRefs++;
 }
 
@@ -1022,9 +1027,10 @@ bool HtmlUILuaRef::isSet() const{
 
 bool HtmlUILuaRef::push(lua_State* current) const{
     // the state closes before the scenes are destroyed (Engine::systemShutdown)
-    if (!isSet() || !current || current != L || LuaBinding::getLuaState() != L)
+    if (!isSet() || !current || LuaBinding::getLuaState() != L || LuaBinding::mainThread(current) != L)
         return false;
-    lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+    // on the thread running now (a coroutine's, or the main one)
+    lua_rawgeti(current, LUA_REGISTRYINDEX, ref);
     return true;
 }
 
@@ -1201,6 +1207,14 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("button", &UIEvent::getButton)
         .addProperty("deltaX", &UIEvent::getDeltaX)
         .addProperty("deltaY", &UIEvent::getDeltaY)
+        .addProperty("pointerId", &UIEvent::getPointerId)
+        .addProperty("pointerType", &UIEvent::getPointerType)
+        .addProperty("isPrimary", &UIEvent::isPrimary)
+        .addProperty("buttons", &UIEvent::getButtons)
+        .addProperty("pressure", &UIEvent::getPressure)
+        .addProperty("width", &UIEvent::getWidth)
+        .addProperty("height", &UIEvent::getHeight)
+        .addProperty("fingerId", &UIEvent::getFingerId)
         .addProperty("data", &UIEvent::getData)
         .addProperty("animationName", &UIEvent::getAnimationName)
         .addProperty("propertyName", &UIEvent::getPropertyName)
@@ -1342,6 +1356,9 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("focus", &UIElement::focus)
         .addFunction("blur", &UIElement::blur)
         .addFunction("click", &UIElement::click)
+        .addFunction("setPointerCapture", &UIElement::setPointerCapture)
+        .addFunction("releasePointerCapture", &UIElement::releasePointerCapture)
+        .addFunction("hasPointerCapture", &UIElement::hasPointerCapture)
         .addFunction("scrollIntoView", [](UIElement* self, std::optional<bool> alignToTop) { self->scrollIntoView(alignToTop.value_or(true)); })
         .addFunction("scrollTo", [](UIElement* self, float x, float y, std::optional<bool> smooth) { self->scrollTo(x, y, smooth.value_or(false)); })
         .addFunction("scrollBy", [](UIElement* self, float dx, float dy, std::optional<bool> smooth) { self->scrollBy(dx, dy, smooth.value_or(false)); })
@@ -1459,18 +1476,18 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
     // the component of a UIDocument (UIDocument:getUIDocumentComponent())
     luabridge::getGlobalNamespace(L)
         .beginClass<UIDocumentComponent>("UIDocumentComponent")
-        .addProperty("filename", &UIDocumentComponent::filename, &UIDocumentComponent::filename)
-        .addProperty("sortOrder", &UIDocumentComponent::sortOrder, &UIDocumentComponent::sortOrder)
-        .addProperty("enabled", &UIDocumentComponent::enabled, &UIDocumentComponent::enabled)
-        .addProperty("interactive", &UIDocumentComponent::interactive, &UIDocumentComponent::interactive)
+        .addProperty("filename", &UIDocumentComponent::filename, &setTrackedMember<&UIDocumentComponent::filename>)
+        .addProperty("sortOrder", &UIDocumentComponent::sortOrder, &setTrackedMember<&UIDocumentComponent::sortOrder>)
+        .addProperty("enabled", &UIDocumentComponent::enabled, &setTrackedMember<&UIDocumentComponent::enabled>)
+        .addProperty("interactive", &UIDocumentComponent::interactive, &setTrackedMember<&UIDocumentComponent::interactive>)
         .addProperty("loaded", &UIDocumentComponent::loaded)
-        .addProperty("needReload", &UIDocumentComponent::needReload, &UIDocumentComponent::needReload)
+        .addProperty("needReload", &UIDocumentComponent::needReload, &setTrackedMember<&UIDocumentComponent::needReload>)
         // p1-rtt: a mode change takes effect at the next (re)load; size and ratio at once
-        .addProperty("renderMode", &UIDocumentComponent::renderMode, &UIDocumentComponent::renderMode)
-        .addProperty("textureWidth", &UIDocumentComponent::textureWidth, &UIDocumentComponent::textureWidth)
-        .addProperty("textureHeight", &UIDocumentComponent::textureHeight, &UIDocumentComponent::textureHeight)
-        .addProperty("inputSurface", &UIDocumentComponent::inputSurface, &UIDocumentComponent::inputSurface)
-        .addProperty("pixelRatio", &UIDocumentComponent::pixelRatio, &UIDocumentComponent::pixelRatio)
+        .addProperty("renderMode", &UIDocumentComponent::renderMode, &setTrackedMember<&UIDocumentComponent::renderMode>)
+        .addProperty("textureWidth", &UIDocumentComponent::textureWidth, &setTrackedMember<&UIDocumentComponent::textureWidth>)
+        .addProperty("textureHeight", &UIDocumentComponent::textureHeight, &setTrackedMember<&UIDocumentComponent::textureHeight>)
+        .addProperty("inputSurface", &UIDocumentComponent::inputSurface, &setTrackedMember<&UIDocumentComponent::inputSurface>)
+        .addProperty("pixelRatio", &UIDocumentComponent::pixelRatio, &setTrackedMember<&UIDocumentComponent::pixelRatio>)
         .addProperty("onLoad", [] (UIDocumentComponent* self, lua_State* L) { return &self->onLoad; }, [] (UIDocumentComponent* self, lua_State* L) { self->onLoad = L; })
         .addProperty("onUnload", [] (UIDocumentComponent* self, lua_State* L) { return &self->onUnload; }, [] (UIDocumentComponent* self, lua_State* L) { self->onUnload = L; })
         .endClass();
@@ -1481,7 +1498,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("filename", &UIDocument::getFilename, &UIDocument::setFilename)
         .addFunction("getUIDocumentComponent", &UIDocument::getComponent<UIDocumentComponent>)
         .addFunction("load", &UIDocument::load)
-        .addFunction("reload", &UIDocument::reload)
+        .addFunction("reload", (void (UIDocument::*)())&UIDocument::reload)
         .addFunction("isLoaded", &UIDocument::isLoaded)
         .addProperty("loaded", &UIDocument::isLoaded)
         .addFunction("show", &UIDocument::show)
@@ -1511,6 +1528,12 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("getDataModel", &documentGetDataModel)
         .addFunction("removeDataModel", &UIDocument::removeDataModel)
         .addFunction("getTargetTexture", &UIDocument::getTargetTexture)
+        // S16 R28: the HtmlUIRenderStats of the last frame as a table of numbers
+        .addFunction("getRenderStats", [](const UIDocument* self, lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            self->getRenderStats().forEachField([&table](const char* name, uint32_t value){ table[name] = (lua_Integer)value; });
+            return table;
+        })
         .addStaticFunction("setDebuggerVisible", &UIDocument::setDebuggerVisible)
         .addStaticFunction("isDebuggerVisible", &UIDocument::isDebuggerVisible)
         // diagnostics: Lua functions held by documents (listeners, data-model callbacks); 0 once
@@ -1549,3 +1572,5 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
 
 #endif //DISABLE_LUA_BINDINGS
 }
+
+#endif // JASPERENGINE_HTMLUI

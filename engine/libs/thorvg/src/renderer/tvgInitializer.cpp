@@ -21,6 +21,7 @@
  */
 
 #include "tvgCommon.h"
+#include <new>
 #include "tvgTaskScheduler.h"
 #include "tvgLoaderMgr.h"
 
@@ -132,26 +133,9 @@ uint16_t THORVG_VERSION_NUMBER()
     return _version;
 }
 
-
-void* operator new(std::size_t size)
-{
-    return tvg::malloc(size);
-}
-
-
-void operator delete(void* ptr) noexcept
-{
-    tvg::free(ptr);
-}
-
-
-void* operator new[](std::size_t size)
-{
-    return tvg::malloc(size);
-}
-
-
-void operator delete[](void* ptr) noexcept
-{
-    tvg::free(ptr);
-}
+// JasperEngine patch: upstream replaces the global operator new / delete (and the [] forms) here
+// with tvg::malloc / tvg::free (std::malloc / std::free). Linked into the engine library, that
+// replacement covered every `new` of the engine but not the sized delete (libstdc++'s), returned
+// nullptr on out-of-memory instead of throwing, and made ASan report every new/delete pair as an
+// alloc-dealloc mismatch. Removed: thorvg allocates with the standard operators, as everything else.
+// See engine/libs/thorvg/CMakeLists.txt.

@@ -3,17 +3,21 @@
 
 #pragma once
 
+#include "render/GpuCreation.h"
 #include <array>
 #include <functional>
 #include <string>
 #include <filesystem>
-#include <future>
+#include "util/Signal.h"
 #include <vector>
 #include <atomic>
 #include <mutex>
 #include <unordered_set>
 #include <map>
+
+#include "jobs/JobSystem.h"
 #include "Scene.h"
+#include "DebugSettings.h"
 #include "registry/TagManager.h"
 #include "Factory.h"
 #include "util/Prefab.h"
@@ -95,6 +99,84 @@ namespace jasperengine::editor {
         bool asyncLoading = false;
     };
 
+    // Project Settings > Player > Threading (project.yaml `threading:`): baked into the
+    // generated main as Engine::setThreadingSettings. -1 is Auto.
+    // Project Settings > Graphics > Shader Creation (spec S32): the engine's ShaderCreationSettings
+    // and the editor's shader warm-up options, on a reflection table (editor/reflect/
+    // ShaderCreationReflect.cpp: the project file's shaderCreation block, the settings rows)
+    struct ShaderCreationProjectSettings {
+        bool asyncCreation = true;
+        float mainThreadBudgetMs = 2.0f;     // 0.5-16
+        bool glWarmDraws = true;             // desktop hardware GL (S32, GPU campaign)
+        bool recordDuringPlay = false;       // the editor's Play records the warm-up list
+        bool includeInBuilds = true;         // exports build and ship the list's variants
+        bool holdFirstScene = true;          // a game's first scene waits for the list
+
+        // the budget into its range (a hand-edited project.yaml)
+        void clamp(){
+            if (!(mainThreadBudgetMs >= 0.5f)) mainThreadBudgetMs = 0.5f;
+            if (mainThreadBudgetMs > 16.0f) mainThreadBudgetMs = 16.0f;
+        }
+        ShaderCreationSettings engineSettings() const{
+            ShaderCreationSettings settings;
+            settings.asyncCreation = asyncCreation;
+            settings.mainThreadBudgetMs = mainThreadBudgetMs;
+            settings.glWarmDraws = glWarmDraws;
+            settings.holdFirstSceneForWarmup = holdFirstScene;
+            return settings;
+        }
+        bool operator==(const ShaderCreationProjectSettings& other) const{
+            return asyncCreation == other.asyncCreation && mainThreadBudgetMs == other.mainThreadBudgetMs &&
+                   glWarmDraws == other.glWarmDraws && recordDuringPlay == other.recordDuringPlay &&
+                   includeInBuilds == other.includeInBuilds && holdFirstScene == other.holdFirstScene;
+        }
+        bool operator!=(const ShaderCreationProjectSettings& other) const{ return !(*this == other); }
+    };
+
+    struct ThreadingProjectSettings {
+        int workers = -1;                // 1-15
+        int reservedFrameWorkers = -1;   // 0-4
+        int ioThreads = -1;              // 0-4
+        float webPumpBudgetMs = 4.0f;    // single-thread web: Background work per frame
+        bool webMultithreaded = false;   // web export: also a pthreads build (cross-origin isolation)
+
+        bool operator==(const ThreadingProjectSettings& other) const{
+            return workers == other.workers && reservedFrameWorkers == other.reservedFrameWorkers && ioThreads == other.ioThreads
+                && webPumpBudgetMs == other.webPumpBudgetMs && webMultithreaded == other.webMultithreaded;
+        }
+        bool operator!=(const ThreadingProjectSettings& other) const{ return !(*this == other); }
+    };
+
+    // Project Settings > Graphics > HTML UI (S16): the glyph atlas budget in MiB (0: the
+    // platform's default), SDF primitives and transform-aware text
+    struct HtmlUiRenderSettings {
+        int glyphAtlasMiB = 0;           // 0, or 4-256
+        bool sdfPrimitives = true;
+        bool transformAwareText = true;
+
+        bool operator==(const HtmlUiRenderSettings& other) const{
+            return glyphAtlasMiB == other.glyphAtlasMiB && sdfPrimitives == other.sdfPrimitives &&
+                   transformAwareText == other.transformAwareText;
+        }
+        bool operator!=(const HtmlUiRenderSettings& other) const{ return !(*this == other); }
+    };
+
+    // Project Settings > Audio (audio-mixer spec 9): the exported init configures the voices and
+    // loads the mixer before the first scene
+    struct AudioSettings {
+        std::string mixer;              // asset-relative path of the project's .mixer ("" = none: an implicit Master)
+        int maxRealVoices = 32;
+        int maxVoices = 256;
+        int sampleRate = 0;             // 0 = the device's
+        std::string defaultOutputGroup; // the group new Audio Sources get ("" = Master)
+
+        bool operator==(const AudioSettings& other) const {
+            return mixer == other.mixer && maxRealVoices == other.maxRealVoices && maxVoices == other.maxVoices &&
+                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup;
+        }
+        bool operator!=(const AudioSettings& other) const { return !(*this == other); }
+    };
+
     // Layer Collision Matrix of Project Settings > Physics or Physics 2D: index = layer,
     // bit j set when that layer and layer j collide (kept symmetric)
     using LayerCollisionRows = std::array<uint32_t, MAX_LAYERS>;
@@ -112,13 +194,81 @@ namespace jasperengine::editor {
         std::vector<std::string> layerNames;  // index = layer, empty when built-in or unnamed
         LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
+        // Project Settings > Physics > 3D World Capacity (PhysicsSystem::setWorldCapacity3D)
+        unsigned int maxBodies3D = 8192;
+        unsigned int maxBodyPairs3D = 8192;
+        unsigned int maxContactConstraints3D = 8192;
     };
 
+    // A script build's state, published by every Generator (Play, compile_scripts, C++ reload,
+    // the C++ editor scripts) through Generator::buildEvents(), from the build's thread
+    struct ScriptBuildEvent {
+        enum class Kind { Started, Progress, Finished };
+        Kind kind = Kind::Started;
+        std::string row;                     // "cpp" (the scripts) or "editor" (C++ editor scripts)
+        float fraction = -1.0f;              // Progress: 0..1, -1 unknown
+        bool success = false;                // Finished
+        bool cancelled = false;
+        double seconds = 0.0;
+        fs::path projectPath;
+        std::vector<std::string> output;     // Finished: the build's lines (diagnostics are read from them)
+    };
+
+    // Player > Resolution and Presentation and the application, baked into the generated
+    // init() (Screen::initialize, Engine::setTargetFrameRate, System::setApplicationInfo)
+    struct PlayerSettings {
+        ScreenOrientation defaultOrientation = ScreenOrientation::AutoRotation;
+        uint8_t allowedOrientations = (1u << 1) | (1u << 3) | (1u << 4);
+        bool keepScreenOn = true;
+        int targetFrameRate = -1;
+        // what System.getAppName/Identifier/Version/Build return on each desktop and the web
+        // (with their platform overrides); Android and iOS read their package and bundle
+        ApplicationInfo linuxApp, windowsApp, macosApp, webApp;
+    };
+
+    // editor/tests/PlatformServicesTest.cpp: the generated platform source lists
+    struct GeneratorTestAccess;
+
     class Generator {
+        std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
+        std::string inputActionsAsset;
+        float inputDeadzone = 0.15f;
+        // Project Settings > Navigation: the statements main.cpp runs (nav::setSettings), "" defaults
+        std::string navigationSettingsCode;
+        // Project Settings > Texture per platform group (desktop, mobile, web; S14 R12)
+        std::array<int, 3> textureQuality = {0, 0, 0};
+        std::array<int, 3> textureBudgetMB = {0, 512, 384};
+        std::array<bool, 3> textureLowMemory = {false, false, true};
+        friend struct GeneratorTestAccess;
     private:
-        std::future<void> buildFuture;
+        // what the build's events name (setStatusRow)
+        std::string statusRow = "cpp";
+        // the arguments of the last writeSourceFiles, for rewriteScriptSources
+        struct SourceFileArgs {
+            bool valid = false;
+            fs::path projectPath, projectInternalPath, assetsPath, luaPath;
+            std::string libName;
+            std::vector<SceneScriptSource> scriptFiles;
+            std::vector<SceneBuildInfo> scenes;
+            std::vector<PrefabSceneInfo> prefabs;
+            bool vsyncEnabled = true;
+            WindowSettings windowSettings;
+            std::vector<fs::path> scriptDirs;
+            int cxxStandard = 20;
+        };
+        SourceFileArgs lastSourceArgs;
+        // the script sources' toolchain fingerprint (S23 R15): the marker and the export
+        static std::string scriptFingerprintSource();
+        // the build on the process channel, or one running inline in a channel job
+        jobs::Task<void> buildTask;
+        std::atomic<int> inlineBuilds{0};
+        // macos.frameworks (Project Settings > Native Plugins): linked with the Objective-C plugins
+        std::vector<std::string> macOSFrameworks;
         std::atomic<bool> lastBuildSucceeded;
         CommandRunner commandRunner;
+        // the project's UI Scale, emitted by configure (setUIScale before it)
+        CanvasScalerSettings uiScale;
 
         static fs::path getGeneratedPath(const fs::path& projectInternalPath);
         static std::string getEditorPluginAbiCheck();
@@ -141,6 +291,7 @@ namespace jasperengine::editor {
         void writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<SceneBuildInfo>& scenes, const std::vector<PrefabSceneInfo>& prefabs, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard);
 
     public:
+        void setMacOSFrameworks(std::vector<std::string> frameworks) { macOSFrameworks = std::move(frameworks); }
         // AGENTS.md at the project root, written only when the project has none (then CLAUDE.md likewise)
         static void writeAgentsFile(const fs::path& projectPath, const fs::path& projectInternalPath);
         // CLAUDE.md importing AGENTS.md, written only when the project has none
@@ -160,6 +311,9 @@ namespace jasperengine::editor {
         // those (absolute paths; a deleted script drops its class).
         static void writeLuaScriptStubs(const fs::path& projectPath, const fs::path& projectInternalPath,
                                         const std::vector<fs::path>& changedFiles = {});
+        // CMake that fails a plugin configure below the compiler floors of the engine build
+        // (engine/cmake/JasperEngineToolchain.cmake), for the generated CMakeLists.txt
+        static std::string getToolchainFloorCheck();
         // Engine API include directories of a project's C++ scripts, relative to <internal>/engine-api
         static const std::vector<std::string>& engineApiIncludeDirs();
         Generator();
@@ -175,6 +329,10 @@ namespace jasperengine::editor {
         // cmake for a command line: the configured path (quoted) or plain
         // "cmake" for PATH to resolve.
         static std::string cmakeExecutable();
+        // The CMake program path for an argv launch (unquoted; "cmake" when none is configured)
+        static std::string cmakeProgram();
+        // Whether `generator` is a CMake generator name the editor will pass to CMake (allow-list)
+        static bool isKnownGenerator(const std::string& generator);
         // A file dialog pick turned into a cmake executable, "" when it holds none.
         static std::string resolveCMakePath(const std::string& userPath);
         // Version a cmake executable reports, "" when it is not one.
@@ -192,13 +350,61 @@ namespace jasperengine::editor {
         void writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const;
-        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4);
+        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED, const ShaderCreationProjectSettings& shaderCreation = ShaderCreationProjectSettings(), bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = {}, const AudioSettings& audioSettings = AudioSettings(), const DebugSettings& debugSettings = DebugSettings());
+        // main.cpp's init lines of Project Settings > Input: the default deadzone (when not 0.15)
+        // and InputActions::loadDefault of the actions asset (none: the engine keeps Unity's
+        // Input Manager defaults)
+        // the Canvas Scaler project default the next configure() writes into the generated main
+        void setUIScale(const CanvasScalerSettings& settings) { uiScale = settings; }
+        static std::string inputSettingsInitSource(const std::string& actionsAsset, float deadzone);
+        // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations
+        // (with their defaults) before any scene loads; "" when the project declares none
+        static std::string shaderGlobalsInitSource(const std::vector<ShaderGlobalDecl>& shaderGlobals);
+        // AudioSystem::configure / AudioMixer::load lines of main.cpp ("" for the defaults)
+        static std::string audioInitSource(const AudioSettings& audioSettings);
+        // The generated init's lines of Project Settings > Debug: the development build flag
+        // (JASPERENGINE_DEVELOPMENT_BUILD of a Debug-type export, DEBUG of Xcode's Debug
+        // configuration), the log buffer and stack traces, DebugOverlay::configure
+        static std::string debugInitSource(const DebugSettings& debugSettings);
         void build(const fs::path projectPath, const fs::path buildPath, const std::string& cCompiler = "", const std::string& cxxCompiler = "", const std::string& generator = "", unsigned int parallelJobs = 0);
+        // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
+        // starts with; set before configure()
+        void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
+        // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
+        void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
+        // the navigation settings the game starts with (generateNavigationSettingsCode); set before configure()
+        void setNavigationSettingsCode(const std::string& code) { navigationSettingsCode = code; }
+        void setTextureDefaults(const std::array<int, 3>& quality, const std::array<int, 3>& budgetMB, const std::array<bool, 3>& lowMemory) {
+            textureQuality = quality;
+            textureBudgetMB = budgetMB;
+            textureLowMemory = lowMemory;
+        }
+        // Configures and builds on the process channel; called from a channel job (the Play
+        // startup), it builds on that thread instead and returns when done.
+        void runBuild(const fs::path& projectPath, const fs::path& buildPath, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs);
         bool isBuildInProgress() const;
         void waitForBuildToComplete();
         bool didLastBuildSucceed() const;
-        // Request cancellation asynchronously. Returns a future you can wait on.
-        std::future<void> cancelBuild();
+        // Requests cancellation without blocking: the running process is terminated, a build
+        // not started yet never runs. waitForBuildToComplete() then returns once it ended.
+        void cancelBuild();
+
+        // The script builds' events (any thread; ScriptStatus subscribes)
+        static ThreadSafeSignal<const ScriptBuildEvent&>& buildEvents();
+        // "cpp" (default) or "editor": the status row this generator's builds update
+        void setStatusRow(const std::string& row) { statusRow = row; }
+        // A C++ reload during Play (S23 R10): the init/cleanup script sources and SCRIPT_SOURCES
+        // written again for these scripts (their classes or DPROPERTYs changed), everything
+        // else as the last configure() wrote it. False before any configure().
+        bool rewriteScriptSources(const std::vector<SceneScriptSource>& scriptFiles);
+        // PluginGeneration.cmake: the reload generation the next plugin build links (its MSVC PDB name)
+        static std::string pluginGenerationCMake(size_t generation) {
+            return "set(JASPERENGINE_PLUGIN_GENERATION " + std::to_string(generation) + ")\n";
+        }
+        // The script sources of the last configure() (what the loaded library was built from)
+        const std::vector<SceneScriptSource>& lastScriptSources() const { return lastSourceArgs.scriptFiles; }
+        // A build output line's progress: "[12/50]" (Ninja), "[ 45%]" (Make); false otherwise
+        static bool parseBuildProgress(const std::string& line, float& fraction);
     };
 }
 

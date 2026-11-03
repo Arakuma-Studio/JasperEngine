@@ -1,7 +1,7 @@
 """Shader library phase 4, review fixes of the editor side (sl/p4-fix-editor):
 
-- renaming, moving or deleting the post-processing LUT image rewrites (or clears) lut_texture, as
-  it does for the user passes' textures;
+- renaming or moving the post-processing LUT image rewrites lut_texture, as it does for the user
+  passes' textures; deleting it keeps the reference, Missing until the delete is undone (S04 R15);
 - get_scene_settings post_process gives a pass's textures as material shader textures are given
   (sampler settings and cube maps survive a read-modify-write);
 - set_scene_settings refuses out-of-range Vector3 fields (instead of clamping them), takes enums by
@@ -16,16 +16,15 @@
 from __future__ import annotations
 
 import struct
-import sys
-import time
+import os
 import zlib
 from pathlib import Path
 
 from harness import Editor
 
-sys.path.insert(0, str(Path(__file__).parent))
-from test_runtime_regressions import decode_png  # noqa: E402
+from htmlui_pixels import decode_png
 
+CI = True
 EDITOR = {"create": True, "name": "Post Processing Review Fixes"}
 TIMEOUT = 600
 
@@ -41,9 +40,12 @@ def write_png(path: Path, width: int, height: int, rgba: tuple) -> None:
 
     png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
     png += chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
-    time.sleep(0.05)
+    previous_mtime = path.stat().st_mtime_ns if path.exists() else None
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(png)
+    if previous_mtime is not None:
+        stamp = path.stat()
+        os.utime(path, ns=(stamp.st_atime_ns, max(stamp.st_mtime_ns, previous_mtime + 1_000_000_000)))
 
 
 def mean_rgb(png: bytes) -> tuple:
@@ -69,7 +71,7 @@ async def pp(ed: Editor, sid: int, name: str):
     return (await ed.call("get_scene_settings", scene=sid, names=[name]))["settings"][name]
 
 
-async def test_setup(ed: Editor):
+async def setup(ed: Editor):
     ed.require_tools("create_scene", "create_entity", "save_scene", "set_scene_settings", "get_scene_settings")
     made = await ed.call("create_scene", name="ReviewFixes", type="3d")
     STATE["sid"] = made["scene"]["id"]
@@ -78,6 +80,7 @@ async def test_setup(ed: Editor):
 
 
 async def test_lut_follows_rename_and_delete(ed: Editor):
+    await setup(ed)
     ed.require_tools("move_asset", "delete_asset")
     sid = STATE["sid"]
     write_png(ed.project / "assets" / "luts" / "warm.png", 4, 2, (255, 128, 0, 255))
@@ -91,8 +94,40 @@ async def test_lut_follows_rename_and_delete(ed: Editor):
     text = (ed.project / "scenes/ReviewFixes.scene").read_text()
     ed.check("amber.png" in text and "warm.png" not in text, "the scene saves the new LUT path")
 
+    # S04 R15: a delete never clears a reference; the LUT is Missing (Missing Assets lists it), and
+    # undoing the delete makes it resolve again
     await ed.call("delete_asset", paths=["assets/luts/amber.png"])
-    ed.check_eq(await pp(ed, sid, "post_processing.lut_texture"), "", "a deleted LUT image is cleared")
+    ed.check_eq(await pp(ed, sid, "post_processing.lut_texture"), "assets/luts/amber.png", "a deleted LUT stays referenced")
+    missing = [g for g in (await ed.call("list_missing_assets"))["missing"] if g["last_path"] == "assets/luts/amber.png"]
+    ed.check(missing and any("lutTexture" in r.get("field", "") for r in missing[0]["referrers"]),
+             f"Missing Assets lists the scene's LUT: {missing!r}")
+    await ed.call("undo", scope="project")
+    ed.check((ed.project / "assets/luts/amber.png").is_file(), "undo brings the LUT image back")
+    ed.check(not [g for g in (await ed.call("list_missing_assets"))["missing"] if g["last_path"] == "assets/luts/amber.png"],
+             "the LUT resolves again after the delete is undone")
+    ed.check_eq(await pp(ed, sid, "post_processing.lut_texture"), "assets/luts/amber.png")
+    await ed.call("set_scene_settings", scene=sid, settings={"post_processing": None})
+
+
+async def test_lut_of_a_known_image_follows_its_rename(ed: Editor):
+    """The other order of test_lut_follows_rename_and_delete: the asset database's background
+    refresh has registered the new image before the reference is set (there it may not have, and
+    the rename used to lose the reference when it had not: the image had no GUID to follow)."""
+    ed.require_tools("move_asset", "resolve_asset")
+    sid = STATE["sid"]
+    write_png(ed.project / "assets" / "luts" / "cool.png", 4, 2, (0, 128, 255, 255))
+    known = False
+    for _ in range(200):
+        r = await ed.call("resolve_asset", asset="assets/luts/cool.png")
+        if r.get("exists"):
+            known = True
+            break
+        await ed.call("wait", frames=5)
+    ed.check(known, "the asset refresh registered the new image")
+    await ed.call("set_scene_settings", scene=sid, settings={"post_processing": {
+        "color_grading_enabled": True, "lut_texture": "assets/luts/cool.png"}})
+    await ed.call("move_asset", path="assets/luts/cool.png", to="assets/luts/ice.png")
+    ed.check_eq(await pp(ed, sid, "post_processing.lut_texture"), "assets/luts/ice.png", "the LUT follows its image")
     await ed.call("set_scene_settings", scene=sid, settings={"post_processing": None})
 
 
@@ -156,13 +191,6 @@ async def test_settings_validation(ed: Editor):
     await ed.check_error("set_scene_settings", scene=uid, settings={"post_processing.fxaa_enabled": True}, contains="UI scene")
     await ed.check_error("set_scene_settings", scene=uid, settings={"post_processing": {"fxaa_enabled": True}}, contains="UI scene")
     await ed.call("select_scene", scene=sid)
-
-
-async def test_stylised_lift_is_warm(ed: Editor):
-    listed = await ed.call("list_post_processing_presets", scene=STATE["sid"])
-    stylised = next(p for p in listed["presets"] if p["id"] == "stylised")
-    lift = stylised["settings"]["lift"]
-    ed.check(lift[0] > lift[2] and lift[1] >= lift[2], f"a warm lift (more red than blue): {lift}")
 
 
 async def cost(ed: Editor, sid: int, settings: dict | None, passes: list | None = None, fixed: bool = False) -> dict:

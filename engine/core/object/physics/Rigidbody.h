@@ -11,6 +11,7 @@
 #include "EntityHandle.h"
 #include "math/Vector2.h"
 #include "component/RigidbodyComponent.h"
+#include "physics/PhysicsMaterial.h"
 
 #include "Jolt/Jolt.h"
 #include "Jolt/Physics/Body/Body.h"
@@ -26,6 +27,17 @@ namespace jasperengine{
 
         void applyAllowedDOFs(JPH::EAllowedDOFs allowedDOFs);
 
+        // the collider at index; out of range: an error (a Lua error)
+        Collider3D& colliderAt(size_t index) const;
+        // a collider's geometry changed: its shape is made again, the body's swapped (D13)
+        void colliderChanged(size_t index);
+        // a trigger or material change: the body's shape and mass again, no leaf rebuilt
+        void collidersChanged();
+        // the mass fields changed: applied now when the body lives (else at its creation)
+        void massChanged();
+        // the body fields (damping...): applied to the live body
+        void parametersChanged();
+
         const JPH::BodyLockInterface& getBodyLockInterface() const;
         JPH::BodyInterface& getBodyInterface() const;
 
@@ -36,6 +48,10 @@ namespace jasperengine{
         bool isEnabled() const;
         Rigidbody(Scene* scene, Entity entity);
         virtual ~Rigidbody();
+
+        // the entity has a RigidbodyComponent (a contact's other side may be a
+        // CharacterController's inner body, which has none)
+        bool isValid() const;
 
         Rigidbody(const Rigidbody& rhs);
         Rigidbody& operator=(const Rigidbody& rhs);
@@ -64,21 +80,75 @@ namespace jasperengine{
         int createConvexHullCollider(std::vector<Vector3> vertices);
         int createConvexHullCollider(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices);
         int createMeshCollider();
+        int createMeshCollider(std::vector<Vector3> vertices, std::vector<uint32_t> indices);
+        int createMeshCollider(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices, std::vector<uint32_t> indices);
+        // the 16-bit indices of before, widened
         int createMeshCollider(std::vector<Vector3> vertices, std::vector<uint16_t> indices);
         int createMeshCollider(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices, std::vector<uint16_t> indices);
         int createHeightFieldCollider();
         int createHeightFieldCollider(unsigned int samplesSize);
 
         size_t getNumColliders() const;
+        size_t getColliderCount() const;
         Collider3DType getColliderType(size_t index) const;
+
+        // Collider edits (index from 0): that collider's shape is made again and the body's shape
+        // swapped at the next step; the body keeps its id, velocities, joints and other contacts.
+        // false when the index is out of range (removeCollider); later colliders shift down.
+        bool removeCollider(size_t index);
+        void removeAllColliders();
+        void setColliderPosition(size_t index, Vector3 position);
+        Vector3 getColliderPosition(size_t index) const;
+        void setColliderRotation(size_t index, Quaternion rotation);
+        Quaternion getColliderRotation(size_t index) const;
+        // BOX: width, height, depth
+        void setColliderBoxSize(size_t index, Vector3 size);
+        Vector3 getColliderBoxSize(size_t index) const;
+        // SPHERE, CAPSULE, CYLINDER
+        void setColliderRadius(size_t index, float radius);
+        float getColliderRadius(size_t index) const;
+        // CAPSULE, TAPERED_CAPSULE, CYLINDER
+        void setColliderHalfHeight(size_t index, float halfHeight);
+        float getColliderHalfHeight(size_t index) const;
+        // TAPERED_CAPSULE
+        void setColliderTaperedRadii(size_t index, float topRadius, float bottomRadius);
+        // CONVEX_HULL (points) or MESH (points and triangles), any size; the source becomes
+        // RAW_VERTICES / RAW_MESH
+        void setColliderVertices(size_t index, std::vector<Vector3> vertices);
+        void setColliderVertices(size_t index, std::vector<Vector3> vertices, std::vector<uint32_t> indices);
+        std::vector<Vector3> getColliderVertices(size_t index) const;
+        std::vector<uint32_t> getColliderIndices(size_t index) const;
+        // Unity isTrigger: overlaps reported, nothing pushed
+        void setColliderTrigger(size_t index, bool trigger);
+        bool isColliderTrigger(size_t index) const;
+        // a .physicsmaterial path ("" = none) or a script's material, over the body's
+        void setColliderMaterial(size_t index, const std::string& path);
+        void setColliderMaterial(size_t index, const PhysicsMaterial& material);
+        void clearColliderMaterial(size_t index);
+        // the material the collider uses (its own, else the body's); invalid when none
+        PhysicsMaterial getColliderMaterial(size_t index) const;
+        std::string getColliderMaterialPath(size_t index) const;
+        // Unity collider.material: a collider using an asset gets its own copy of it (the asset
+        // and its other users keep theirs); one without a material gets one of its own with the
+        // body's surface and the legacy combine rule
+        void setColliderFriction(size_t index, float friction);
+        void setColliderBounciness(size_t index, float bounciness);
+        // what it touches with (its material's, else the body's friction / restitution)
+        float getColliderFriction(size_t index) const;
+        float getColliderBounciness(size_t index) const;
 
         void setColliderDensity(float density);
         void setColliderDensity(size_t index, float density);
         float getColliderDensity() const;
         float getColliderDensity(size_t index) const;
 
-        void setType(BodyType type);
+        // false (and an error naming the collider) when a static-only collider (mesh,
+        // heightfield) is asked to move
+        bool setType(BodyType type);
         BodyType getType() const;
+        // Unity isKinematic: true = KINEMATIC, false = DYNAMIC
+        bool isKinematic() const;
+        void setKinematic(bool kinematic);
 
         void setMotionQuality(RigidbodyMotionQuality motionQuality);
         RigidbodyMotionQuality getMotionQuality() const;
@@ -98,9 +168,53 @@ namespace jasperengine{
         void setAllowedDOFs2DPlane();
         void setAllowedDOFs(bool translationX, bool translationY, bool translationZ, bool rotationX, bool rotationY, bool rotationZ);
 
+        // kg: the explicit mass (automaticMass off), else the colliders' volume x density
         float getMass() const;
-        // Live body only, lost on reload; persist mass via Collider3D::density.
+        // turns automaticMass off and keeps the mass (saved, applied at once)
         void setMass(float mass);
+        bool isAutomaticMass() const;
+        void setAutomaticMass(bool automaticMass);
+        // body-local, world units; setting it turns automaticCenterOfMass off (Unity)
+        Vector3 getCenterOfMass() const;
+        void setCenterOfMass(Vector3 centerOfMass);
+        bool isAutomaticCenterOfMass() const;
+        void setAutomaticCenterOfMass(bool automaticCenterOfMass);
+        void resetCenterOfMass();
+        // the principal moments (kg m^2) and their frame; setting them turns
+        // automaticInertiaTensor off
+        Vector3 getInertiaTensor() const;
+        void setInertiaTensor(Vector3 inertiaTensor);
+        Quaternion getInertiaTensorRotation() const;
+        void setInertiaTensorRotation(Quaternion rotation);
+        bool isAutomaticInertiaTensor() const;
+        void setAutomaticInertiaTensor(bool automaticInertiaTensor);
+        void resetInertiaTensor();
+
+        // Unity drag / angularDrag (linearDamping / angularDamping in Unity 6); Jolt's 0.05 default
+        float getLinearDamping() const;
+        void setLinearDamping(float linearDamping);
+        float getAngularDamping() const;
+        void setAngularDamping(float angularDamping);
+        // m/s and rad/s
+        float getMaxLinearVelocity() const;
+        void setMaxLinearVelocity(float maxLinearVelocity);
+        float getMaxAngularVelocity() const;
+        void setMaxAngularVelocity(float maxAngularVelocity);
+
+        RigidbodyInterpolation getInterpolation() const;
+        void setInterpolation(RigidbodyInterpolation interpolation);
+
+        // Unity IsSleeping / Sleep / WakeUp
+        bool isSleeping() const;
+        void sleep();
+        void wakeUp();
+
+        // default material of the colliders without one
+        void setMaterial(const std::string& path);
+        void setMaterial(const PhysicsMaterial& material);
+        void clearMaterial();
+        PhysicsMaterial getMaterial() const;
+        std::string getMaterialPath() const;
 
         void setOverrideMassAndInertia(Vector3 solidBoxSize, float solidBoxDensity);
 

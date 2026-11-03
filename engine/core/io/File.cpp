@@ -10,6 +10,7 @@
 #include "File.h"
 
 #include "System.h"
+#include "watch/SharedFileReader.h"
 
 using namespace jasperengine;
 
@@ -22,6 +23,7 @@ File::File(FILE *fp) {
 }
 
 File::File(const char *aFilename, bool write){
+    fileHandle = NULL;   // open() leaves it untouched on an invalid filename
     open(aFilename, write);
 }
 
@@ -78,9 +80,15 @@ unsigned int File::open(const char *aFilename, bool write){
     if (!aFilename)
         return FileErrors::INVALID_PARAMETER;
     std::string systemPath = FileData::getSystemPath(aFilename);
-    if (!write)
+    if (!write){
+#ifdef _WIN32
+        // shares delete too, so another program's safe-save (rename over the file) does not
+        // fail while this read is open (S05 R17)
+        fileHandle = SharedFileReader::openStream(systemPath.c_str());
+        if (!fileHandle)
+#endif
         fileHandle = System::instance().platformFopen(systemPath.c_str(), "rb");
-    else{
+    }else{
         fileHandle = System::instance().platformFopen(systemPath.c_str(), "w+b");
     }
     if (!fileHandle)
@@ -93,5 +101,9 @@ void File::flush(){
 }
 
 void File::close(){
-    fclose(fileHandle);
+    // idempotent: an explicit close() followed by the destructor must not fclose twice
+    if (fileHandle){
+        fclose(fileHandle);
+        fileHandle = NULL;
+    }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "IBLEnvironment.h"
+#include "profiler/Profile.h"
 
 #include "Log.h"
 #include "render/SystemRender.h"
@@ -122,12 +123,52 @@ namespace {
         fetchFaceBilinear(level, face, u * 0.5f + 0.5f, v * 0.5f + 0.5f, out);
     }
 
+    // An 8-bit view of one face: the decoded face, a face of levels that hold all six (cooked
+    // and prepared cubes), or the RGBA8 copy a compressed or float cube carries for CPU readers
+    struct FaceView {
+        const unsigned char* data = nullptr;
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+    };
+
+    FaceView faceView(std::array<TextureData,6>& faces, int f){
+        FaceView view;
+        TextureData& first = faces[0];
+        if (first.getCpuCopy()){
+            TextureData& copy = first.getCpuCopy()->at(f);
+            view.data = (const unsigned char*)copy.getData();
+            view.width = copy.getWidth();
+            view.height = copy.getHeight();
+            view.channels = copy.getChannels();
+            return view;
+        }
+        if (first.hasLevels() && first.getFaceCount() == 6){
+            if (!first.getData() || first.getColorFormat() != ColorFormat::RGBA)
+                return view;
+            const size_t faceBytes = (size_t)first.getWidth() * (size_t)first.getHeight() * 4;
+            view.data = (const unsigned char*)first.getData() + faceBytes * (size_t)f;
+            view.width = first.getWidth();
+            view.height = first.getHeight();
+            view.channels = 4;
+            return view;
+        }
+        TextureData& face = faces[f];
+        if (TextureData::getBytesPerChannel(face.getColorFormat()) != 1)
+            return view;
+        view.data = (const unsigned char*)face.getData();
+        view.width = face.getWidth();
+        view.height = face.getHeight();
+        view.channels = face.getChannels();
+        return view;
+    }
+
     // resample one input face to dstSize, converting to linear float RGB
-    bool resampleFaceLinear(TextureData& src, int dstSize, std::vector<float>& out){
-        unsigned char* data = (unsigned char*)src.getData();
-        int srcWidth = src.getWidth();
-        int srcHeight = src.getHeight();
-        int channels = src.getChannels();
+    bool resampleFaceLinear(const FaceView& src, int dstSize, std::vector<float>& out){
+        const unsigned char* data = src.data;
+        int srcWidth = src.width;
+        int srcHeight = src.height;
+        int channels = src.channels;
 
         if (!data || srcWidth <= 0 || srcHeight <= 0 || channels <= 0){
             return false;
@@ -259,19 +300,53 @@ namespace {
 
 }
 
-bool IBLEnvironment::generate(const std::string& label, std::array<TextureData,6>& faces, TextureRender& irradianceMap, TextureRender& prefilteredMap){
+bool IBLEnvironment::canGenerate(std::array<TextureData,6>& faces){
+    for (int f = 0; f < 6; f++){
+        const FaceView view = faceView(faces, f);
+        if (!view.data || view.width <= 0 || view.height <= 0 || view.channels <= 0){
+            return false;
+        }
+    }
+    return true;
+}
+
+bool IBLEnvironment::generate(const std::string& label, std::array<TextureData,6>& faces, TextureRender& irradianceMap, TextureRender& prefilteredMap,
+                              HorizonRing* horizonRing){
 
     // ---- build a linear float mip chain of the environment ----
     std::vector<CubeLevel> chain(SPECULAR_MIPS);
     chain[0].size = SPECULAR_BASE_SIZE;
     for (int f = 0; f < 6; f++){
-        if (!resampleFaceLinear(faces[f], SPECULAR_BASE_SIZE, chain[0].faces[f])){
+        if (!resampleFaceLinear(faceView(faces, f), SPECULAR_BASE_SIZE, chain[0].faces[f])){
             Log::error("Cannot generate IBL environment of %s: invalid texture data", label.c_str());
             return false;
         }
     }
     for (int level = 1; level < SPECULAR_MIPS; level++){
         downsampleLevel(chain[level - 1], chain[level]);
+    }
+
+    // ---- the horizon ring: 0 to 5 degrees of elevation, per azimuth sector ----
+    if (horizonRing){
+        const CubeLevel& ringSource = chain[2]; // 32 texels a face: about 2.8 degrees a texel
+        const int azimuthSamples = 8;
+        const int elevationSamples = 4;
+        for (int k = 0; k < HORIZON_AZIMUTHS; k++){
+            float sum[3] = {0.0f, 0.0f, 0.0f};
+            for (int a = 0; a < azimuthSamples; a++){
+                const float azimuth = 2.0f * IBL_PI * ((float)k + ((float)a + 0.5f) / (float)azimuthSamples - 0.5f) / (float)HORIZON_AZIMUTHS;
+                for (int e = 0; e < elevationSamples; e++){
+                    const float elevation = (5.0f * IBL_PI / 180.0f) * ((float)e + 0.5f) / (float)elevationSamples;
+                    Vec3f dir = {sinf(azimuth) * cosf(elevation), sinf(elevation), cosf(azimuth) * cosf(elevation)};
+                    float color[3];
+                    sampleCube(ringSource, dir, color);
+                    for (int c = 0; c < 3; c++)
+                        sum[c] += color[c];
+                }
+            }
+            const float count = (float)(azimuthSamples * elevationSamples);
+            (*horizonRing)[k] = Vector3(sum[0] / count, sum[1] / count, sum[2] / count);
+        }
     }
 
     // ---- lambertian (irradiance) map: cosine convolution divided by PI ----
@@ -424,6 +499,7 @@ bool IBLEnvironment::generate(const std::string& label, std::array<TextureData,6
     }
 
     // ---- create GPU textures ----
+    JE_GPU_ALLOC_SCOPE(Textures, "IBL environment");
     bool irrCreated = irradianceMap.createTexture(
             label + "|irradiance", IRRADIANCE_SIZE, IRRADIANCE_SIZE,
             ColorFormat::RGBA, TextureType::TEXTURE_CUBE, 6, irrData, irrSize,

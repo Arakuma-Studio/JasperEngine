@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "Text.h"
+#include "shader/ShaderGlobals.h"
+
+#include <algorithm>
+#include <cmath>
 #include "shader/ShaderManifest.h"
 
 #include "Log.h"
@@ -51,6 +55,7 @@ void Text::setFixedSize(bool fixedSize){
         textcomp.fixedHeight = fixedSize;
 
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -61,6 +66,7 @@ void Text::setFixedWidth(bool fixedWidth){
         textcomp.fixedWidth = fixedWidth;
 
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -77,6 +83,7 @@ void Text::setFixedHeight(bool fixedHeight){
         textcomp.fixedHeight = fixedHeight;
 
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -95,6 +102,7 @@ void Text::setMaxTextSize(unsigned int maxTextSize){
 
         textcomp.needReloadAtlas = true;
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
         ui.needReload = true;
     }
 }
@@ -111,6 +119,7 @@ void Text::setText(const std::string &text){
     if (textcomp.text != text){
         textcomp.text = text;
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -137,6 +146,7 @@ void Text::setFont(unsigned int index, const std::string &font){
 
         textcomp.needReloadAtlas = true;
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -165,6 +175,7 @@ void Text::setFontSize(unsigned int fontSize){
 
         textcomp.needReloadAtlas = true;
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -179,6 +190,7 @@ void Text::setMultiline(bool multiline){
 
     textcomp.multiline = multiline;
     textcomp.needUpdateText = true;
+    markChanged<TextComponent>();
 }
 
 bool Text::getMultiline() const{
@@ -261,7 +273,7 @@ unsigned int Text::getNumChars() const{
 Vector2 Text::getCharPosition(unsigned int index) const{
     TextComponent& textcomp = getComponent<TextComponent>();
 
-    if (index >= 0 && index < textcomp.charPositions.size()){
+    if (index < textcomp.charPositions.size()){
         return textcomp.charPositions[index];
     }
 
@@ -286,6 +298,7 @@ void Text::setFlipY(bool flipY){
         ui.flipY = flipY;
 
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -300,6 +313,7 @@ void Text::setPivotBaseline(bool pivotBaseline){
 
     textcomp.pivotBaseline = pivotBaseline;
     textcomp.needUpdateText = true;
+    markChanged<TextComponent>();
 }
 
 bool Text::isPivotBaseline() const{
@@ -313,6 +327,7 @@ void Text::setPivotCentered(bool pivotCentered){
 
     textcomp.pivotCentered = pivotCentered;
     textcomp.needUpdateText = true;
+    markChanged<TextComponent>();
 }
 
 bool Text::isPivotCentered() const{
@@ -352,8 +367,10 @@ std::string Text::getCustomShader() const{
 void Text::setShaderUniform(const std::string& name, const Vector4& value){
     UIComponent& ui = getComponent<UIComponent>();
 
-    if (ShaderUniforms::set(ui.shaderUniforms, name, value))
+    if (ShaderUniforms::set(ui.shaderUniforms, name, value)){
         ui.needUpdateShaderUniforms = true;
+        markChanged<UIComponent>();
+    }
 }
 
 void Text::setShaderUniform(const std::string& name, const Vector3& value){
@@ -381,13 +398,29 @@ bool Text::removeShaderUniform(const std::string& name){
         return false;
 
     ui.needUpdateShaderUniforms = true;
+    markChanged<UIComponent>();
     return true;
 }
 
 Vector4 Text::getShaderParam(const std::string& name) const{
     UIComponent& ui = getComponent<UIComponent>();
 
-    return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, name);
+    return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, name);
+}
+
+bool Text::setShaderGlobalBinding(const std::string& member, const std::string& global){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (!ShaderGlobals::setBinding(ui.shaderGlobalBindings, member, global))
+        return false;
+    ui.needUpdateShaderUniforms = true;
+    return true;
+}
+
+std::string Text::getShaderGlobalBinding(const std::string& member) const{
+    const UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderGlobals::getBinding(ui.shaderGlobalBindings, member);
 }
 
 void Text::setShaderTexture(const std::string& name, const std::string& path){
@@ -408,14 +441,14 @@ void Text::setShaderFeature(const std::string& define, bool enabled){
     UIComponent& ui = getComponent<UIComponent>();
 
     // features are compiled in: another shader variant
-    if (ShaderLibraryValues::setFeature(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define, enabled))
+    if (ShaderLibraryValues::setFeature(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, define, enabled))
         ui.needReload = true;
 }
 
 bool Text::isShaderFeatureEnabled(const std::string& define) const{
     UIComponent& ui = getComponent<UIComponent>();
 
-    return ShaderLibraryValues::isFeatureEnabled(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define);
+    return ShaderLibraryValues::isFeatureEnabled(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, define);
 }
 
 void Text::setBlendMode(MaterialBlendMode blendMode){
@@ -476,4 +509,83 @@ int Text::getColorWrite() const{
     UIComponent& ui = getComponent<UIComponent>();
 
     return ui.colorWrite;
+}
+
+// colours and offsets reach the shader each frame; a width the atlas padding does not cover
+// rebuilds the atlas (UISystem::getTextOptions)
+void Text::setOutlineWidth(float outlineWidth){
+    TextComponent& textcomp = getComponent<TextComponent>();
+    if (textcomp.outlineWidth != outlineWidth){
+        textcomp.outlineWidth = std::isfinite(outlineWidth) ? std::max(outlineWidth, 0.0f) : 0.0f;
+        textcomp.needUpdateText = true;
+    }
+}
+
+float Text::getOutlineWidth() const{
+    return getComponent<TextComponent>().outlineWidth;
+}
+
+void Text::setOutlineColor(Vector4 color){
+    getComponent<TextComponent>().outlineColor = Color::sRGBToLinear(color);
+}
+
+Vector4 Text::getOutlineColor() const{
+    return Color::linearTosRGB(getComponent<TextComponent>().outlineColor);
+}
+
+void Text::setShadowEnabled(bool shadowEnabled){
+    TextComponent& textcomp = getComponent<TextComponent>();
+    if (textcomp.shadowEnabled != shadowEnabled){
+        textcomp.shadowEnabled = shadowEnabled;
+        textcomp.needUpdateText = true;
+    }
+}
+
+bool Text::isShadowEnabled() const{
+    return getComponent<TextComponent>().shadowEnabled;
+}
+
+void Text::setShadowColor(Vector4 color){
+    getComponent<TextComponent>().shadowColor = Color::sRGBToLinear(color);
+}
+
+Vector4 Text::getShadowColor() const{
+    return Color::linearTosRGB(getComponent<TextComponent>().shadowColor);
+}
+
+void Text::setShadowOffset(Vector2 offset){
+    getComponent<TextComponent>().shadowOffset = offset;
+}
+
+Vector2 Text::getShadowOffset() const{
+    return getComponent<TextComponent>().shadowOffset;
+}
+
+void Text::setShadowSoftness(float softness){
+    getComponent<TextComponent>().shadowSoftness = std::isfinite(softness) ? std::max(softness, 0.0f) : 0.0f;
+}
+
+float Text::getShadowSoftness() const{
+    return getComponent<TextComponent>().shadowSoftness;
+}
+
+void Text::setShadowDilate(float dilate){
+    getComponent<TextComponent>().shadowDilate = std::isfinite(dilate) ? std::max(dilate, 0.0f) : 0.0f;
+}
+
+float Text::getShadowDilate() const{
+    return getComponent<TextComponent>().shadowDilate;
+}
+
+void Text::setVisibleCharacters(int visibleCharacters){
+    TextComponent& textcomp = getComponent<TextComponent>();
+    visibleCharacters = std::max(visibleCharacters, -1);
+    if (textcomp.visibleCharacters != visibleCharacters){
+        textcomp.visibleCharacters = visibleCharacters;
+        textcomp.needUpdateText = true;
+    }
+}
+
+int Text::getVisibleCharacters() const{
+    return getComponent<TextComponent>().visibleCharacters;
 }

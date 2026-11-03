@@ -8,6 +8,7 @@
 #include "System.h"
 #include "io/Data.h"
 #include "io/FileData.h"
+#include "jobs/JobSystem.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderDataSerializer.h"
 #include "shader/ShaderManifest.h"
@@ -24,11 +25,6 @@
 #include <mutex>
 #include <system_error>
 
-#ifndef NO_THREAD_SUPPORT
-#include <condition_variable>
-#include <thread>
-#endif
-
 using namespace jasperengine;
 
 namespace {
@@ -40,6 +36,9 @@ struct Variant {
     std::string log;
     // reported once, when the variant is first handed over
     bool reported = false;
+    // the frame a worker (or beginFrame) settled it in, for getPendingCount; none when settled
+    // where it was asked for
+    uint64_t settledFrame = UINT64_MAX;
     bool fromDisk = false;
     bool cacheWritten = false;
     double milliseconds = 0.0;
@@ -68,18 +67,19 @@ struct State {
     std::string cacheDirectory; // empty when the cache is not usable
 
     std::atomic<bool> stopping{false};
-
-#ifndef NO_THREAD_SUPPORT
-    std::condition_variable condition;
-    std::deque<Job> workerJobs;
-    std::thread worker;
-#endif
 };
 
-// Never destroyed: the worker may still finish a compile while statics are torn down
+// Never destroyed: a compile job may still finish while statics are torn down
 State& state(){
     static State* s = new State();
     return *s;
+}
+
+// The compiles off the main thread: one at a time (the compiler's globals are not proven
+// thread-safe), as Background Heavy jobs on the pool's workers, never a thread of their own.
+jobs::SerialQueue& compileQueue(){
+    static jobs::SerialQueue* queue = new jobs::SerialQueue("runtime-shader-compile", jobs::Lane::Background, jobs::GateClass::Heavy);
+    return *queue;
 }
 
 std::string getCacheRoot(){
@@ -141,22 +141,9 @@ const std::string& prepareCacheDirectory(State& s){
 
 
 bool writeCacheFile(ShaderKey key, const std::string& path, const ShaderData& data){
-    // written aside and renamed into place: a run reading the cache never sees half a file
-    static std::atomic<unsigned> counter{0};
-    const std::string temporary = path + "." + std::to_string(counter++) + ".tmp";
+    // atomic (io::writeFileAtomic): a run reading the cache never sees half a file
     std::string err;
-    if (!ShaderDataSerializer::writeToFile(temporary, ShaderPool::getStorageKey(key), data, &err)){
-        std::error_code ec;
-        std::filesystem::remove(temporary, ec);
-        return false;
-    }
-    std::error_code ec;
-    std::filesystem::rename(temporary, path, ec);
-    if (ec){
-        std::filesystem::remove(temporary, ec);
-        return false;
-    }
-    return true;
+    return ShaderDataSerializer::writeToFile(path, ShaderPool::getStorageKey(key), data, &err);
 }
 
 // Compiles a job's variant. Any thread, without the state lock.
@@ -184,39 +171,26 @@ Variant compileJob(const Job& job, const std::atomic<bool>& stopping){
     return variant;
 }
 
-#ifndef NO_THREAD_SUPPORT
-void workerLoop(){
+void compileOnStrand(const Job& job){
     State& s = state();
-    for (;;){
-        Job job;
-        {
-            std::unique_lock<std::mutex> lock(s.mutex);
-            s.condition.wait(lock, [&s](){ return s.stopping.load() || !s.workerJobs.empty(); });
-            if (s.stopping.load())
-                return;
-            job = s.workerJobs.front();
-            s.workerJobs.pop_front();
-        }
+    if (s.stopping.load())
+        return;
 
-        Variant variant = compileJob(job, s.stopping);
+    Variant variant = compileJob(job, s.stopping);
 
-        std::lock_guard<std::mutex> lock(s.mutex);
-        if (s.stopping.load())
-            return;
-        if (variant.cacheWritten)
-            s.fileSystemSyncPending = true;
-        s.variants[job.key] = std::move(variant);
-    }
+    std::lock_guard<std::mutex> lock(s.mutex);
+    if (s.stopping.load())
+        return;
+    if (variant.cacheWritten)
+        s.fileSystemSyncPending = true;
+    variant.settledFrame = s.frame;
+    s.variants[job.key] = std::move(variant);
 }
-#endif
 
+// Off the main thread when async and the job system has workers; in single-thread mode the
+// main thread compiles one variant a frame (beginFrame)
 bool useWorker(const State& s){
-#ifndef NO_THREAD_SUPPORT
-    return s.async;
-#else
-    (void)s;
-    return false;
-#endif
+    return s.async && !jobs::system().isSingleThreaded();
 }
 
 // Hands a settled variant over, logging it the first time. Under the state lock.
@@ -331,17 +305,10 @@ ShaderBuildResult RuntimeShaderCompiler::request(ShaderKey key){
 
     s.variants[key].state = ResourceLoadState::Loading;
 
-#ifndef NO_THREAD_SUPPORT
     if (useWorker(s)){
-        if (!s.worker.joinable()){
-            s.stopping = false;
-            s.worker = std::thread(workerLoop);
-        }
-        s.workerJobs.push_back(job);
-        s.condition.notify_one();
+        compileQueue().push([job]() { compileOnStrand(job); });
         return ShaderBuildResult({}, ResourceLoadState::Loading);
     }
-#endif
 
     // Main thread: at most one compile per frame, the rest wait for beginFrame
     if (s.lastMainThreadCompileFrame == s.frame){
@@ -378,7 +345,10 @@ size_t RuntimeShaderCompiler::getPendingCount(){
     std::lock_guard<std::mutex> lock(s.mutex);
     size_t pending = 0;
     for (const auto& entry : s.variants){
-        if (entry.second.state == ResourceLoadState::Loading)
+        // and one settled off the draws this frame, not handed over yet: the next frame's draw
+        // takes it (its GPU creation is counted from then), so a screenshot of this frame waits
+        const Variant& variant = entry.second;
+        if (variant.state == ResourceLoadState::Loading || (!variant.reported && variant.settledFrame == s.frame))
             pending++;
     }
     return pending;
@@ -410,24 +380,17 @@ void RuntimeShaderCompiler::beginFrame(){
 
         if (variant.cacheWritten)
             s.fileSystemSyncPending = true;
+        variant.settledFrame = s.frame;
         s.variants[job.key] = std::move(variant);
     }
 }
 
 void RuntimeShaderCompiler::shutdown(){
     State& s = state();
-#ifndef NO_THREAD_SUPPORT
-    std::thread worker;
-    {
-        std::lock_guard<std::mutex> lock(s.mutex);
-        s.stopping = true;
-        s.workerJobs.clear();
-        worker = std::move(s.worker);
-    }
-    s.condition.notify_all();
-    if (worker.joinable())
-        worker.join();
-#endif
+    s.stopping = true;
+    // the compiles not started never run; the running one sees `stopping`
+    compileQueue().cancelPending();
+    compileQueue().waitIdle();
 
     std::lock_guard<std::mutex> lock(s.mutex);
     s.stopping = false;

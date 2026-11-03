@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "LatticeBakeGltf.h"
+#include "io/AtomicFile.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -318,7 +320,7 @@ bool LatticeBakeGltf::load(const fs::path& file, std::string& error){
                         return false;
                     }
                 }else{
-                    const fs::path path = file.parent_path() / fs::u8path(decodeUri(value));
+                    const fs::path path = file.parent_path() / editor::FileUtils::pathFromUtf8(decodeUri(value));
                     if (!readFile(path, data)){
                         error = "cannot read '" + path.generic_string() + "', buffer " + std::to_string(b) + " of '" + file.generic_string() + "'";
                         return false;
@@ -879,21 +881,24 @@ bool LatticeBakeGltf::saveBinary(const fs::path& file, std::string& error){
             continue;
         }
 
+        // the new accessors go at the end of the list: a reference into it would dangle after
+        // the first one (a second group of a shared accessor read freed memory)
+        const Json source = accessor;
         for (const auto& group : groups){
             const Data& data = *group.first;
             const Slot& slot = group.second[0]->slot;
             Json created = Json::object();
-            if (accessor.contains("name")){
-                created["name"] = accessor["name"];
+            if (source.contains("name")){
+                created["name"] = source["name"];
             }
 
             // a sparse morph target without a base keeps its sparsity: the displacement of a
             // vertex the target does not move stays exactly zero
             bool sparse = false;
-            if (slot.target >= 0 && accessor.contains("sparse") && !accessor.contains("bufferView")){
+            if (slot.target >= 0 && source.contains("sparse") && !source.contains("bufferView")){
                 std::vector<bool> listed(count, false);
                 std::vector<uint32_t> indices;
-                const Json& sparseJson = accessor["sparse"];
+                const Json& sparseJson = source["sparse"];
                 size_t sparseCount = 0, indexView = 0, indexType = 0, viewStart = 0, viewLength = 0;
                 if (getIndex(sparseJson, "count", sparseCount) && sparseJson.contains("indices") &&
                         getIndex(sparseJson["indices"], "bufferView", indexView) && getIndex(sparseJson["indices"], "componentType", indexType) &&
@@ -1001,21 +1006,16 @@ bool LatticeBakeGltf::saveBinary(const fs::path& file, std::string& error){
     out.insert(out.end(), bin.begin(), bin.end());
 
     std::error_code ec;
-    if (fs::exists(file, ec)){
+    if (fs::exists(fs::symlink_status(file, ec))){
         error = "'" + file.generic_string() + "' already exists";
         return false;
     }
-    {
-        std::ofstream stream(file, std::ios::binary | std::ios::trunc);
-        if (stream.is_open()){
-            stream.write(reinterpret_cast<const char*>(out.data()), (std::streamsize)out.size());
-        }
-        if (!stream.is_open() || !stream.good()){
-            stream.close();
-            fs::remove(file, ec);
-            error = "cannot write '" + file.generic_string() + "'";
-            return false;
-        }
+    // a new asset of the project: an atomic Document write (a failure leaves no half file)
+    const io::WriteResult written = io::writeFileAtomic(file,
+            std::string_view(reinterpret_cast<const char*>(out.data()), out.size()));
+    if (!written.ok()){
+        error = "cannot write '" + file.generic_string() + "': " + io::describeWriteError(written);
+        return false;
     }
     return true;
 }

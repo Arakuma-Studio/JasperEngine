@@ -3,6 +3,12 @@
 
 #pragma once
 
+#include "io/AtomicFile.h"
+
+#include "io/watch/FileWatchService.h"
+
+#include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cstdlib>
@@ -10,8 +16,8 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <system_error>
-#include <thread>
 #include <vector>
 
 #ifdef _WIN32
@@ -26,6 +32,7 @@
     #include <sys/sysctl.h>
 #endif
 #ifndef _WIN32
+    #include <fcntl.h>
     #include <unistd.h>
 #endif
 
@@ -34,6 +41,11 @@ namespace jasperengine::editor {
 class FileUtils {
 public:
     static std::filesystem::path getExecutableDir() {
+        return getExecutablePath().parent_path();
+    }
+
+    // The running editor's executable, absolute (the scene merge driver git runs, S29 R22)
+    static std::filesystem::path getExecutablePath() {
         namespace fs = std::filesystem;
 
         fs::path executablePath;
@@ -94,7 +106,7 @@ public:
             normalizedPath = executablePath;
         }
 
-        return normalizedPath.parent_path();
+        return normalizedPath;
     }
 
     // Inside JasperEngine.app the SDK sits in Contents/Resources: codesign treats
@@ -108,6 +120,11 @@ public:
         const fs::path bundled = exeDir.parent_path() / "Resources" / "engine";
         if (fs::exists(bundled, ec)) {
             return bundled;
+        }
+        // a test binary sits beside the bundle in the build tree, and exeDir/engine there is only CMake's output
+        const fs::path beside = exeDir / "JasperEngine.app" / "Contents" / "Resources" / "engine";
+        if (fs::exists(beside, ec)) {
+            return beside;
         }
 #endif
         return exeDir / "engine";
@@ -128,38 +145,143 @@ public:
 
     enum class WriteResult { Unchanged, Written, Failed };
 
-    // Writes newContent only when the file does not already hold it.
-    static WriteResult writeFile(const std::filesystem::path& filePath, const std::string& newContent) {
-        std::error_code ec;
-        if (std::filesystem::exists(filePath, ec) && !ec) {
-            std::ifstream ifs(filePath, std::ios::in | std::ios::binary);
-            if (ifs) {
-                std::string currentContent(
-                    (std::istreambuf_iterator<char>(ifs)),
-                    std::istreambuf_iterator<char>()
-                );
-                if (currentContent == newContent) {
-                    return WriteResult::Unchanged;
-                }
-            }
-        }
+    // While a write scope is active (util/SafeWrite.h, safewrite::Scope: an MCP tool call), these
+    // route the writes of paths inside its root beneath it (no symbolic link followed out of it;
+    // installed by the first Scope). Each returns -1 when `path` is not in an active scope (then
+    // the plain std::filesystem call runs), 1 when done, 0 when it failed (`ec` set; why:
+    // safewrite::lastScopedError()).
+    struct ScopedOps {
+        int (*write)(const std::filesystem::path& path, const std::string& content, std::error_code& ec);
+        int (*createDirectories)(const std::filesystem::path& path, std::error_code& ec);
+        int (*remove)(const std::filesystem::path& path, std::error_code& ec);
+        int (*removeAll)(const std::filesystem::path& path, std::error_code& ec);
+        int (*rename)(const std::filesystem::path& from, const std::filesystem::path& to, std::error_code& ec);
+        int (*copy)(const std::filesystem::path& from, const std::filesystem::path& to, bool overwrite, std::error_code& ec);
+    };
+    static std::atomic<const ScopedOps*>& scopedOpsSlot() {
+        static std::atomic<const ScopedOps*> ops{nullptr};
+        return ops;
+    }
+    static const ScopedOps* scopedOps() { return scopedOpsSlot().load(std::memory_order_acquire); }
+    static void installScopedOps(const ScopedOps* ops) { scopedOpsSlot().store(ops, std::memory_order_release); }
 
-        if (filePath.has_parent_path()) {
-            std::filesystem::create_directories(filePath.parent_path(), ec);
-            if (ec) {
-                return WriteResult::Failed;
-            }
+    // std::filesystem::create_directories / remove / remove_all / rename / copy (recursive, with
+    // overwrite_existing when `overwrite`), beneath the active write scope's root when the path is
+    // inside it (see ScopedOps). Never throw.
+    static bool createDirectories(const std::filesystem::path& path, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->createDirectories(path, ec);
+            if (r >= 0) return r == 1;
         }
-
-        std::ofstream ofs(filePath, std::ios::out | std::ios::binary | std::ios::trunc);
-        if (!ofs) {
-            return WriteResult::Failed;
+        std::filesystem::create_directories(path, ec);
+        return !ec;
+    }
+    static bool removePath(const std::filesystem::path& path, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->remove(path, ec);
+            if (r >= 0) return r == 1;
         }
-        ofs.write(newContent.data(), static_cast<std::streamsize>(newContent.size()));
-        return ofs ? WriteResult::Written : WriteResult::Failed;
+        std::filesystem::remove(path, ec);
+        return !ec;
+    }
+    static bool removeAll(const std::filesystem::path& path, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->removeAll(path, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::remove_all(path, ec);
+        return !ec;
+    }
+    static bool renamePath(const std::filesystem::path& from, const std::filesystem::path& to, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->rename(from, to, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::rename(from, to, ec);
+        return !ec;
+    }
+    static bool copyPath(const std::filesystem::path& from, const std::filesystem::path& to, bool overwrite, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->copy(from, to, overwrite, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::copy(from, to, std::filesystem::copy_options::recursive |
+                                            (overwrite ? std::filesystem::copy_options::overwrite_existing
+                                                       : std::filesystem::copy_options::none), ec);
+        return !ec;
     }
 
-    // How writeFileReplacing() treats the line endings of the content
+    // Writes newContent only when the file does not already hold it (its mtime stays then).
+    // Atomic (io::writeFileAtomic, Cache durability): a crash leaves the old file or the new
+    // one, never a truncation. Generated output; user documents use DocumentFiles::write.
+    static WriteResult writeFile(const std::filesystem::path& filePath, const std::string& newContent) {
+        // inside an active write scope: beneath its root (its missing folders made the same way)
+        if (const ScopedOps* ops = scopedOps()) {
+            std::error_code ec;
+            const int r = ops->write(filePath, newContent, ec);
+            if (r >= 0) return r == 1 ? WriteResult::Written : WriteResult::Failed;
+        }
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        options.skipIfUnchanged = true;
+        const io::WriteResult result = io::writeFileAtomic(filePath, newContent, options);
+        if (result.error == io::WriteError::Unchanged) {
+            return WriteResult::Unchanged;
+        }
+        return result.ok() ? WriteResult::Written : WriteResult::Failed;
+    }
+
+    // std::filesystem::rename with the publish retry policy (a file another program holds open
+    // on Windows, an indexer): io::renameWithRetry, throwing like the original on failure
+    // The rename is the editor's own: the file watcher does not report it back (S05 R10).
+    static void renameWithRetry(const std::filesystem::path& from, const std::filesystem::path& to) {
+        std::error_code ec;
+        ScopedExpectedWrite write(to);
+        if (!io::renameWithRetry(from, to, ec)) {
+            throw std::filesystem::filesystem_error("rename", from, to, ec);
+        }
+        write.reportedMoved(from, to);
+    }
+
+    // What the editor made at `path` (a file, or a folder and what it holds) or removed from
+    // it: its own writes, which the file watcher does not report back (S05 R10)
+    static void reportWritten(const std::filesystem::path& path) {
+        ScopedExpectedWrite write(path, true);
+        write.reported(path);
+        std::error_code ec;
+        if (!std::filesystem::is_directory(path, ec)) return;
+        for (std::filesystem::recursive_directory_iterator it(path, std::filesystem::directory_options::skip_permission_denied, ec), end;
+             !ec && it != end; it.increment(ec)) {
+            write.reported(it->path());
+        }
+    }
+    static void reportRemoved(const std::filesystem::path& path) {
+        ScopedExpectedWrite write(path, true);
+        write.reportedRemoved(path);
+    }
+
+    // Copies a file over another the atomic way: into a temporary sibling, then published
+    // (io::publishFile), so the target is the old file or the whole new one, never a part
+    static bool copyFileAtomic(const std::filesystem::path& from, const std::filesystem::path& to, std::error_code& ec,
+                               const io::AtomicWriteOptions& options = {}) {
+        const std::filesystem::path temp = io::makeTemporarySiblingPath(to);
+        std::filesystem::copy_file(from, temp, std::filesystem::copy_options::none, ec);
+        if (ec) {
+            std::error_code ignored;
+            std::filesystem::remove(temp, ignored);
+            return false;
+        }
+        const io::WriteResult published = io::publishFile(temp, to, options);
+        ec = published.code;
+        return published.ok();
+    }
+
+    // How a document write treats the line endings of the content
     enum class LineEndings {
         AsGiven,        // the bytes as they are (binary files, content that is already final)
         KeepExisting    // text the editor makes with \n: a file there already written with
@@ -193,83 +315,101 @@ public:
         return out;
     }
 
-    // Writes a temporary file next to the target and renames it over the target, so a save
-    // that fails (a full disk, a crash halfway) keeps the old file whole. rename() replaces an
-    // existing target on Windows too (MoveFileExW with MOVEFILE_REPLACE_EXISTING). As with a
-    // plain write, a symlink is written through and a file the user may not write (read-only,
-    // a locked file) is refused; an existing file keeps its permissions.
-    static bool writeFileReplacing(const std::filesystem::path& filePath, const std::string& content,
-                                   LineEndings lineEndings = LineEndings::AsGiven) {
-        namespace fs = std::filesystem;
-
+    // The bytes a document's text is written as: with \r\n when the file it replaces (through
+    // a symlink too) has them and lineEndings is KeepExisting, else the text as it is. Hash
+    // what this returns (SceneProject::diskSha1): it is what lands on disk.
+    static std::string withLineEndings(const std::filesystem::path& filePath, const std::string& text,
+                                       LineEndings lineEndings = LineEndings::KeepExisting) {
+        if (lineEndings != LineEndings::KeepExisting) {
+            return text;
+        }
         std::error_code ec;
-        fs::path target = filePath;
-        if (fs::is_symlink(target, ec)) {
-            fs::path resolved = fs::canonical(target, ec);
-            if (!ec) {
-                target = resolved;
-            }
+        if (!std::filesystem::is_regular_file(filePath, ec) || !fileUsesCrlf(filePath)) {
+            return text;
         }
-
-        const fs::file_status status = fs::status(target, ec);
-        const bool exists = !ec && fs::exists(status);
-        const bool existingFile = exists && fs::is_regular_file(status);
-#ifndef _WIN32
-        // The directory's permissions would let the rename through
-        if (exists && ::access(target.c_str(), W_OK) != 0) {
-            return false;
-        }
-#endif
-
-        const bool crlf = lineEndings == LineEndings::KeepExisting && existingFile && fileUsesCrlf(target);
-
-        // Same directory, so the rename never crosses a file system
-        fs::path tempName(".");
-        tempName += target.filename();
-        tempName += ".tmp";
-        const fs::path tempPath = target.parent_path() / tempName;
-
-        bool written = false;
-        {
-            std::ofstream ofs(tempPath, std::ios::out | std::ios::binary | std::ios::trunc);
-            if (ofs) {
-                const std::string converted = crlf ? toCrlf(content) : std::string();
-                const std::string& data = crlf ? converted : content;
-                ofs.write(data.data(), static_cast<std::streamsize>(data.size()));
-                ofs.flush();
-                ofs.close();
-                written = !ofs.fail();
-            }
-        }
-
-        if (written) {
-            if (existingFile) {
-                fs::permissions(tempPath, status.permissions(), fs::perm_options::replace, ec);
-            }
-            // Windows cannot replace a file that a reader, the indexer or a virus scan
-            // briefly holds, so the rename is tried again for a while
-            for (int attempt = 0; attempt < renameAttempts; attempt++) {
-                if (attempt > 0) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(renameRetryMs));
-                }
-                ec.clear();
-                fs::rename(tempPath, target, ec);
-                if (!ec) {
-                    return true;
-                }
-            }
-        }
-
-        // errno still tells why the write failed
-        const int writeErrno = errno;
-        fs::remove(tempPath, ec);
-        errno = writeErrno;
-        return false;
+        return toCrlf(text);
     }
 
-    // writeFileReplacing(): renames tried before it fails, and the wait between them
-    static constexpr int renameAttempts = 10;
-    static constexpr int renameRetryMs = 50;
+    // Creates `path` and writes `size` bytes to it; fails when anything is there already (a
+    // file, a symbolic link: O_EXCL / CREATE_NEW, so a link planted at the name is never
+    // followed). errno tells why (EEXIST when something was there).
+    static bool writeNewFile(const std::filesystem::path& path, const char* data, size_t size) {
+#ifdef _WIN32
+        // FILE_FLAG_OPEN_REPARSE_POINT: a reparse point already at the name (a symlink, a
+        // junction) is the entry itself, so CREATE_NEW fails with ERROR_FILE_EXISTS instead of
+        // following it
+        const HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (file == INVALID_HANDLE_VALUE) {
+            const DWORD code = GetLastError();
+            errno = (code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS) ? EEXIST
+                  : code == ERROR_ACCESS_DENIED ? EACCES
+                  : (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND) ? ENOENT
+                  : code == ERROR_SHARING_VIOLATION ? EBUSY
+                  : code == ERROR_INVALID_NAME ? EINVAL : EIO;
+            return false;
+        }
+        size_t done = 0;
+        bool ok = true;
+        while (ok && done < size) {
+            const DWORD chunk = static_cast<DWORD>(std::min<size_t>(size - done, 1u << 30));
+            DWORD wrote = 0;
+            ok = WriteFile(file, data + done, chunk, &wrote, nullptr) && wrote > 0;
+            if (!ok) {
+                const DWORD code = GetLastError();
+                errno = (code == ERROR_DISK_FULL || code == ERROR_HANDLE_DISK_FULL) ? ENOSPC : EIO;
+            }
+            done += wrote;
+        }
+        if (!CloseHandle(file) && ok) {
+            errno = EIO;
+            ok = false;
+        }
+        return ok;
+#else
+        const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
+        if (fd < 0) {
+            return false;
+        }
+        size_t done = 0;
+        while (done < size) {
+            const ssize_t wrote = ::write(fd, data + done, size - done);
+            if (wrote < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                const int code = errno;
+                ::close(fd);
+                errno = code;
+                return false;
+            }
+            done += static_cast<size_t>(wrote);
+        }
+        return ::close(fd) == 0;
+#endif
+    }
+
+    // A document written the atomic way (io::writeFileAtomic, Document durability: fsync, mode
+    // and symlink kept, a read-only file refused, retried publish), with its line endings
+    // (withLineEndings). A failed write leaves the old file whole. DocumentFiles::write is the
+    // same with the reason of a failure.
+    static bool writeFileReplacing(const std::filesystem::path& filePath, const std::string& content,
+                                   LineEndings lineEndings = LineEndings::AsGiven) {
+        const std::string data = withLineEndings(filePath, content, lineEndings);
+        // inside an active write scope (an MCP call): beneath its root, no link on the way followed
+        // out of it (util/SafeWrite.h); errno tells why it failed
+        if (const ScopedOps* ops = scopedOps()) {
+            std::error_code scopedError;
+            const int r = ops->write(filePath, data, scopedError);
+            if (r >= 0) {
+                if (r == 0) errno = scopedError.value() ? scopedError.value() : EACCES;
+                return r == 1;
+            }
+        }
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Document;
+        return io::writeFileAtomic(filePath, data, options).ok();
+    }
 
     // True when the file holds newContent afterwards, written or already up to date.
     // Use writeFile() when a no-op has to be told apart from a failure.
@@ -277,24 +417,20 @@ public:
         return writeFile(filePath, newContent) != WriteResult::Failed;
     }
 
-    // path's UTF-8 conversions changed shape in C++20: u8string() returns std::u8string
-    // and u8path() is deprecated. These keep the call sites on std::string either way.
-    static std::filesystem::path pathFromUtf8(const std::string& text) {
-#ifdef __cpp_lib_char8_t
+    // path's UTF-8 conversions in C++20: u8string() returns std::u8string and u8path() is
+    // deprecated. These keep the call sites on std::string.
+    static std::filesystem::path pathFromUtf8(std::string_view text) {
         return std::filesystem::path(std::u8string(text.begin(), text.end()));
-#else
-        return std::filesystem::u8path(text);
-#endif
     }
 
     static std::string pathToUtf8(const std::filesystem::path& path) {
-        const auto utf8 = path.u8string();
+        const std::u8string utf8 = path.u8string();
         return std::string(utf8.begin(), utf8.end());
     }
 
     // generic_string() in UTF-8: '/' separators on every platform
     static std::string pathToGenericUtf8(const std::filesystem::path& path) {
-        const auto utf8 = path.generic_u8string();
+        const std::u8string utf8 = path.generic_u8string();
         return std::string(utf8.begin(), utf8.end());
     }
 };

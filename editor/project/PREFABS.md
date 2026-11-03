@@ -87,12 +87,12 @@ So an id, once handed out, is never given to another GameObject of that prefab.
 
 ## 3. Asset GUIDs: `editor/util/AssetDatabase.{h,cpp}`
 
-`Project::getAssetDatabase()` maps GUID <-> project-relative path for the GUID-tracked
-asset types (`AssetDatabase::isTrackedFile`: `.prefab` now; add a type there, scenes may
-follow). The GUID lives in the asset file (top-level `guid:` key); the database is the
-index, rebuilt by a scan when the project opens, and cached in
-`.jasperengine/assetdb.yaml` (only used to decide which of two files with the same GUID keeps
-it).
+`Project::getAssetDatabase()` maps GUID <-> project-relative path for every asset of the
+project: the general contract (all types, `.meta` sidecars, former GUIDs, sub-assets, the
+dependency index, Missing Assets, `AssetOps`) is `docs/specs/S04-asset-identity.md`; this
+section is what prefabs add to it. A prefab's GUID lives in the file (top-level `guid:` key,
+and `formerGuids:` right after it); the database is the index, rebuilt by a scan when the
+project opens, and cached in `.jasperengine/assetdb/index.json` (a deletable cache).
 
 - **Scan on project load** (`AssetDatabase::open`, before any scene or prefab is read):
   every tracked file gets a GUID. A legacy file gets `legacyGuid(path)` (SHA-1 of its
@@ -100,21 +100,33 @@ it).
   reference written before GUIDs, by path only, still finds the file after it moves). A
   GUID found in two files stays with the file the cache says had it, else the older one;
   the other file gets a new random GUID written into it.
-- **Refresh** (`Project::refreshAssetDatabase`, every 2 s from `App::engineRender`, not
-  while playing): external changes. A new file with an unknown GUID is added; with the
-  GUID of a file that is gone, it is that file moved; with the GUID of a file that is still
-  there, it is a copy and gets a new GUID. A gone file is removed. A file edited so that its
-  GUID line disappeared gets it back.
-- **Editor file operations** keep it up to date (all through `Project`):
-  - rename / move (`RenameFileCmd`, `CopyFileCmd` move, and their undo) ->
-    `remapPrefabFilePath` -> `AssetDatabase::moveAssets` (GUIDs kept; a file renamed away
-    from `.prefab` is removed, one renamed to it is imported),
-  - delete (`DeleteFileCmd`) -> `cleanupPrefabFilePath` -> `removeAssets`; undo ->
-    `importPrefabFiles` (the file keeps its GUID),
-  - copy / paste / import from outside (`CopyFileCmd` copy) -> `importPrefabFiles(path,
-    copy=true, &copyGuids)`: a copy gets a new GUID unless its GUID is unknown (an import
-    from another project keeps it), and a redo gives it the same GUID again; undo ->
-    `cleanupPrefabFilePath`,
+- **External changes** come from the file watcher (`Project::applyFileChanges`, through the
+  hot reload, docs/hot-reload.md). A batch asks for a walk of the disk (`AssetDatabase::scanDisk`
+  on a Background job, applied by `refresh(scan)` on the main thread; no poll), so S04's rules
+  decide what happened: a move that carried its meta or its in-file GUID keeps the GUID, a file
+  renamed without its meta adopts the orphan meta (R5), a copy gets a new GUID, an edit is
+  Modified. While a scene plays they wait, and a full **Refresh**
+  (`Project::refreshAssetDatabase(true)`: Assets > Refresh, `sync_files` full, a tool that
+  answers from the database) runs when Play stops. The refresh: A new file with an unknown
+  GUID is added; with the GUID of a file that is gone, it is that file moved; with the GUID of
+  a file that is still there, it is a copy and gets a new GUID. A gone file is removed. A file
+  edited so that its GUID line disappeared gets it back.
+- **A read that finds a tracked prefab file gone** (`loadPrefabAsset`, the import making a
+  Missing Prefab instance from that, before a walk noticed) makes the database forget it at once
+  (`forgetGonePrefabFile`); the removal is applied by the next refresh, unless the file is back by
+  then (the same GUID at the same path: nothing went). So the file put back is new to the
+  database, an Added that relinks the instance, whether or not a walk fell between the delete and
+  the put-back (one watcher batch for both, a file moved out and back with its stamp).
+- **Editor file operations** keep it up to date, all through `AssetOps`
+  (`editor/asset/AssetOps.cpp`: `RenameFileCmd`, `CopyFileCmd`, `DeleteFileCmd`, MCP
+  `move_asset` / `delete_asset`), which hands the database's changes to
+  `Project::onAssetFilesChanged` (`applyAssetChanges` below for the prefab files):
+  - rename / move -> `AssetDatabase::moveAssets` (GUIDs kept; a file renamed away from
+    `.prefab` is removed, one renamed to it is imported),
+  - delete (to the trash) -> `removeAssets`; undo -> `importAssets` (the file keeps its GUID),
+  - copy / paste / import from outside -> `importAssets(path, copy=true, &copyGuids)`: a
+    copy gets a new GUID unless its GUID is unknown (an import from another project keeps
+    it), and a redo gives it the same GUID again; undo -> `removeAssets`,
   - Create Prefab (`createPrefab`, redo keeps the GUID via `CreatePrefabCmd`) ->
     `registerAsset`; every `savePrefabToDisk` re-registers the file.
 - Changes reach the rest of the editor through `Project::applyAssetChanges`: Moved ->
@@ -400,6 +412,16 @@ else holds that id. A legacy nested root (prefab file older than v3) is converte
 root become that prefab's asset-level overrides (written on its next save); the copies of
 the nested prefab's GameObjects such files held below it are dropped when read.
 
+**The Transform order.** Every GameObject the import makes below one already in the scene is
+decoded by `Stream::decodeEntity`, which appends its Transform at the end of the array and then
+moves its branch to the end of its parent's (`ProjectUtils::keepInParentBranch`): a re-import
+(an apply, Add to Prefab and its undo, Replace Prefab, a relinked Missing Prefab, a reverted
+removal) leaves every branch in one run, which the moves, the encoders and `placeAtChildIndex`
+read; the save refuses a file that would still leave a GameObject out (`docs/data-safety.md`).
+**The scene's added GameObjects** (`decodeSceneAddedGameObjects`) are decoded with the
+import's held paths set aside: they are the scene's, so an instance of this prefab among them
+(below a GameObject of this instance) is no cycle, and imports as the scene's own instances do.
+
 ## 10. APIs
 
 On `Project` (`ProjectPrefabOverrideModel.cpp` unless noted); `sceneId, entity` is any
@@ -557,9 +579,9 @@ PropertyCmd per GameObject, `also` for a multi-selection), `setName`, `setState`
 `addComponent` / `removeComponent`, `delete`, `revertComponent`, `revertAll` / `applyAll`,
 `canApply` (prints whether and the targets), `playStart` / `playStop` (Play's snapshot and
 Stop's restore without running the game), `undo` / `redo`. The dump lists each
-GameObject's `overrides`. `tools/prefab-instance-edit-test.py` (FIXTURE=<TappyPlane
-fixture>) runs these checks on the `legacy` fixture (tools/prefab-fixtures.py): a member
-edit is recorded on that instance only and the asset file stays the same until Apply; Apply
+GameObject's `overrides`. `tools/prefab-instance-edit-test.py` runs on an owned, asset-free `legacy` fixture
+(tools/prefab-fixtures.py): an explicit override remains explicit when its value equals
+the base; the asset file stays the same until Apply; Apply
 to the inner prefab or as an override in the outer one reaches exactly the instances it
 should; Revert, undo and redo restore values and overrides; edits while playing are gone
 after `playStop`; overrides survive a save and a reload.
@@ -863,6 +885,10 @@ target), or to a prefab holding that instance (`getPrefabApplyTargets(parent)`; 
 Overrides dropdown offers them, Apply All uses the instance's own prefab):
 `addEntityToOuterPrefab` makes it a GameObject that prefab adds to its nested instance
 (below the nested root, `addedTo` the parent's stripped id, at its `childIndex`).
+Neither takes a GameObject whose branch holds an instance of the target prefab or of a prefab
+holding it (nested instances, a variant's bases, at any depth: `canAddToPrefab`): the prefab
+would contain itself. Add to Prefab refuses it ("... so the prefab would contain itself"), and
+Apply All leaves it an override (counted in `remaining`).
 
 ### Out of an asset: Unpack
 
@@ -916,6 +942,9 @@ of another prefab: a nested root (`Prefab::isNestedRoot`), or the root of a Pref
 
 ### Tests
 
+These scripts author their own project and scene files; they need no sample game or assets.
+Set `JASPER_EDITOR` to an editor command, or use the default Linux install from `tools/build.sh linux`.
+
 `tools/prefab-fixtures.py nested <dir>` writes a project of plain GameObjects four levels
 deep and `<dir>.ops/build.yaml`, the scene-dump ops making Leaf, Branch (holding Leaf), Tree
 and Forest bottom-up with overrides of every kind, added / removed GameObjects and
@@ -929,7 +958,7 @@ an exported game's log). Scene-dump ops added for this: `createPrefabs`, `addToP
 `create`, `setRef`, `setStateLocal`, `addLocalComponent` / `removeLocalComponent`, `spawn`
 (Play's factory: a bare root imported), `bake`; `@/x` in a path is next to the ops file.
 
-`FIXTURE=<TappyPlane fixture> tools/prefab-nested-test.py [work-dir]` runs all of it and
+`tools/prefab-nested-test.py [work-dir]` runs all of it and
 checks: a fresh instance of each level equals what it was made from (by
 `prefab-dump-compare.py --subtree`), the references at every level, a reload equal with
 member ids, a second save byte for byte the same, Play's spawn equal to an instantiated
@@ -937,7 +966,7 @@ instance, Apply of a reference into a nested prefab to the owning and to an oute
 undo / redo of Create Prefab holding an instance, a nested prefab going missing and coming
 back, Revert of a nested root after its prefab changed, an added GameObject applied to an
 outer prefab, Prefab Mode (open and save changes nothing; a GameObject added below a nested
-GameObject and a reference into a nested prefab are kept), and the generated sources.
+GameObject and a reference into a nested prefab are kept).
 `tools/smoke-test.sh <work-dir>/project` exports, builds and runs that project.
 
 ## 18. Runtime: Instantiate, Destroy, Prefab properties
@@ -1339,13 +1368,13 @@ Fixtures (`tools/prefab-fixtures.py`):
 
 - `variant <dir>` writes Engine and Ship (Engine nested), plus the build ops that make Ship
   Variant and Ship Variant 2 from instances with overrides of every kind at both levels.
-- `variant_export <dir>` writes a copy of the TappyPlane fixture with Badge, Badge Red (a
-  variant) and Badge Green (a variant of it) placed in the scene, for the smoke test. A
+- `variant_export <dir>` writes a minimal 2D project with untextured Badge, Badge Red (a
+  variant) and Badge Green (a variant of it), for the smoke test. A
   `BadgeSpawner.lua` instantiates Badge Red and Badge Green at runtime by path, checks
   their GameObjects and colours, and logs `[VARIANT] PASS` (or `[ERROR] [VARIANT] ...`,
   which fails the smoke test).
 
-`FIXTURE=<TappyPlane fixture> tools/prefab-variant-test.py [work-dir]` checks:
+`tools/prefab-variant-test.py [work-dir]` checks:
 
 - Creation changes nothing, and fresh instances equal what they were made from at every
   level.
@@ -1361,7 +1390,6 @@ Fixtures (`tools/prefab-fixtures.py`):
 - The base deleted (Missing Prefab with its data kept; the Prefab Mode save keeps the file)
   and put back.
 - A cycle of bases edited in by hand.
-- The generated sources.
 
 `tools/smoke-test.sh` on the `variant_export` project exports, builds and runs it. The
 game's screenshot matches the editor's Game view, plus the two runtime copies.

@@ -1,15 +1,14 @@
 """Test harness for the JasperEngine editor's MCP server.
 
-Run with:  uv run --no-project --with mcp --with pyyaml python <script>
+Run with:  uv run --no-project --with-requirements tools/mcp/requirements.txt python <script>
 
     from harness import Editor, ToolError
 
-    async with Editor() as ed:                       # copy of build/fixture-unity
+    async with Editor(create=True) as ed:            # a new isolated project
         status = await ed.call("editor_status")
         made = await ed.call("create_entity", name="Box", type="box")
         await ed.screenshot(view="game", path="game.png")
 
-    async with Editor(create=True) as ed: ...        # a new empty project
     async with Editor(project="/path/proj") as ed: ...   # a copy of that project
     async with Editor(url="http://127.0.0.1:47615/mcp", token="...") as ed: ...   # attach over HTTP
 
@@ -26,12 +25,19 @@ or always kept with keep=True / JASPER_KEEP_SCRATCH=1.
 Environment:
     JASPER_EDITOR    editor command (shell-split; default: build/linux/editor-install/bin/jasperengine-editor
                      of this checkout, else of the main checkout)
-    JASPER_FIXTURE   default fixture project (default: build/fixture-unity)
+    JASPER_FIXTURE   default fixture project (default: build/fixture-unity of this or the main
+                     checkout, /fixture, ~/je/fixture-unity: default_fixture(); without one, the
+                     tests that need it skip)
     JASPER_XVFB      editor | harness | none   (see Editor's xvfb argument)
     JASPER_FAKE=1    use tools/mcp/fake_server.py instead of the editor (harness self-test)
     JASPER_KEEP_SCRATCH=1   keep scratch directories
     JASPER_MCP_URL   when set, Editor() with no project/url attaches to this URL instead
+    JASPER_MCP_PERF_SLACK   the factor wall-clock budgets are enforced with (over_budget); unset
+                     or 0: budgets are printed only (the benchmark run sets it, docs/testing.md)
     JASPER_MCP_TOKEN bearer token for url mode (the editor's MCP window copies it)
+    JASPER_MCP_CALL_LOG  a directory: every tool call's tool, test, arguments (shortened) and
+                     seconds, one JSON line per call in <dir>/<file stem>.jsonl (where a slow
+                     test's time goes: tools/mcp/call_profile.py sums it up)
 """
 
 from __future__ import annotations
@@ -106,6 +112,74 @@ def skip(reason: str) -> None:
     raise Skip(reason)
 
 
+def make_native_player(path: Path, c_body: str) -> Path:
+    """Compile a native fake player at `path`. run_build runs only the player recorded by the
+    project's last Desktop build: record it with record_built_player first. Skips the test without
+    a C compiler."""
+    if not shutil.which("cc"):
+        skip("no C compiler (cc) to build a fake player")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    src = path.parent / (path.name + ".c")
+    src.write_text("#include <stdio.h>\n#include <stdlib.h>\n#include <unistd.h>\n" + c_body)
+    subprocess.run(["cc", "-o", str(path), str(src)], check=True)
+    src.unlink()
+    return path
+
+
+def record_built_player(project_dir: str | Path, player_path: str | Path, mode: str = "desktop") -> dict:
+    """Record `player_path` (as it is now) as the player built for `mode` in `project_dir`, in
+    .jasperengine/user/runbuild.yaml, exactly as the editor's own Desktop build does
+    (editor/util/BuiltPlayers.cpp): one entry per mode, keys resolved (realpath), dev, ino, size,
+    mtime (st_mtime_ns), sha256 (lowercase hex); other modes' entries are kept.
+
+    A TEST FIXTURE standing in for build_project mode=desktop (a multi-minute engine build), so the
+    run_build tests can run a small fake player. run_build only runs a recorded file that is still
+    unchanged, so record it after the last change to it. Returns the entry written."""
+    import hashlib
+
+    player = Path(player_path)
+    resolved = Path(os.path.realpath(player))
+    st = os.stat(resolved)
+    sha = hashlib.sha256(resolved.read_bytes()).hexdigest()
+    record = Path(project_dir) / ".jasperengine" / "user" / "runbuild.yaml"
+    root: Any = None
+    if record.is_file():
+        try:
+            root = yaml.safe_load(record.read_text())
+        except yaml.YAMLError:
+            root = None
+    if not isinstance(root, dict):
+        root = {}
+    entry = {"resolved": str(resolved), "dev": st.st_dev, "ino": st.st_ino, "size": st.st_size,
+             "mtime": st.st_mtime_ns, "sha256": sha}
+    root[mode] = entry
+    record.parent.mkdir(parents=True, exist_ok=True)
+    tmp = record.with_name(record.name + ".tmp")
+    tmp.write_text(yaml.safe_dump(root, sort_keys=False, default_flow_style=False) + "\n")
+    os.replace(tmp, record)
+    return entry
+
+
+async def project_player_name(ed: "Editor") -> str:
+    """The player executable name run_build expects for this project (from its own message)."""
+    empty = ed.scratch.root / "fake-players" / "empty-dir-for-name"
+    empty.mkdir(parents=True, exist_ok=True)
+    msg = await ed.call("run_build", path=str(empty), expect_error=True)
+    return msg.split("(expected ")[1].split(")")[0]
+
+
+def symlinks_permitted() -> bool:
+    """Whether this process may create symbolic links (Windows may not): the symlink tests skip without."""
+    probe = Path(tempfile.mkdtemp(prefix="jasper-symlink-probe-"))
+    try:
+        os.symlink(probe / "missing", probe / "link")
+        return True
+    except (OSError, NotImplementedError):
+        return False
+    finally:
+        shutil.rmtree(probe, ignore_errors=True)
+
+
 # ---------------------------------------------------------------------------
 # Locations
 
@@ -149,14 +223,39 @@ def fake_editor_command() -> list[str]:
     return [sys.executable, str(HERE / "fake_server.py")]
 
 
+# Where the default fixture project (not in git: its licence is unknown) is looked for when
+# JASPER_FIXTURE is not set: build/fixture-unity of this checkout or of the main checkout, the
+# mount point of the linux build image (rb.sh --img, tools/build.sh mcp-tests: /fixture), and the
+# build servers' copy (~/je/fixture-unity). tools/build.sh mcp-tests looks in the same places.
+FIXTURE_HOME = Path("je") / "fixture-unity"
+FIXTURE_MOUNT = Path("/fixture")
+
+
+class FixtureMissing(HarnessError, Skip):
+    """No default fixture project anywhere: the tests that need it skip (run_tests.py)."""
+
+
+def fixture_candidates() -> list[Path]:
+    found = [root / "build" / "fixture-unity" for root in (REPO, _main_checkout()) if root]
+    found.append(FIXTURE_MOUNT)
+    with contextlib.suppress(RuntimeError):
+        found.append(Path.home() / FIXTURE_HOME)
+    return found
+
+
 def default_fixture() -> Path:
+    """The default fixture project: JASPER_FIXTURE, else the first of fixture_candidates() that
+    holds a project.yaml. Raises FixtureMissing (a Skip) when there is none."""
     env = os.environ.get("JASPER_FIXTURE")
     if env:
+        if not (Path(env) / "project.yaml").exists():
+            raise HarnessError(f"JASPER_FIXTURE={env} has no project.yaml")
         return Path(env)
-    found = _first_existing("build/fixture-unity")
-    if not found:
-        raise HarnessError("No fixture project at build/fixture-unity; set JASPER_FIXTURE or pass project=")
-    return found
+    for candidate in fixture_candidates():
+        if (candidate / "project.yaml").exists():
+            return candidate
+    raise FixtureMissing("needs the default fixture project, found nowhere: set JASPER_FIXTURE, or put it at "
+                         + ", ".join(str(c) for c in fixture_candidates()))
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +278,12 @@ class Xvfb:
         self.display: str | None = None
 
     def start(self, timeout: float = 15.0) -> str:
+        # the real-GPU lane (run_tests.py): the chunk's own headless NVIDIA X display, the same size,
+        # instead of a Mesa Xvfb (an editor of the chunk renders on the GPU, and xdotool input still
+        # goes to that chunk's display only)
+        if os.environ.get("JASPER_MCP_GPU_DISPLAY"):
+            self.display = os.environ["JASPER_MCP_GPU_DISPLAY"]
+            return self.display
         if not shutil.which("Xvfb"):
             raise HarnessError("Xvfb is not installed")
         r, w = os.pipe()
@@ -238,7 +343,7 @@ class Scratch:
 
     @classmethod
     def make(cls, project: str | Path | None = None, create: bool = False,
-             prefix: str = "jasper-mcp-") -> "Scratch":
+             prefix: str = "jasper-mcp-", settings: dict[str, Any] | None = None) -> "Scratch":
         root = Path(tempfile.mkdtemp(prefix=prefix))
         home = root / "home"
         home.mkdir()
@@ -250,13 +355,18 @@ class Scratch:
             if not (src / "project.yaml").exists():
                 raise HarnessError(f"{src} has no project.yaml")
             shutil.copytree(src, proj, symlinks=True, ignore=shutil.ignore_patterns(".git"))
-        settings: dict[str, Any] = {
+        extra_settings = settings
+        settings = {
             "window": {"width": 1600, "height": 900, "maximized": True},
             "mcp": {"http_token": HTTP_TOKEN},
+            # builds an agent starts go to the default export location (or the project's chosen
+            # export folder): the scratch dir, so the tests' output_dir under it is allowed
+            "export": {"default_dir": str(root)},
         }
         if not create:
             settings["last_project_path"] = str(proj)
             settings["recent_projects"] = [str(proj)]
+        settings.update(extra_settings or {})
         (root / "settings.yaml").write_text(yaml.safe_dump(settings, sort_keys=False))
         return cls(root=root, project=proj, home=home, stderr_log=root / "editor.stderr.log")
 
@@ -267,7 +377,8 @@ class Scratch:
 def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch",
                 command: list[str] | None = None, display: str | None = None,
                 headless: bool = True, extra_args: list[str] | None = None,
-                inherit_display: bool = False, ui_probe: bool = False) -> tuple[list[str], dict[str, str], Path]:
+                inherit_display: bool = False, extra_env: dict[str, str] | None = None,
+                ui_probe: bool = False) -> tuple[list[str], dict[str, str], Path]:
     """argv, environment and cwd of `<editor> mcp ...` for this scratch dir.
 
     Also used by tests that need a raw subprocess (e.g. the stdout purity test).
@@ -291,6 +402,17 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
         env["DISPLAY"] = display
     env["HOME"] = str(scratch.home)
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+    # llvmpipe's and lavapipe's rasterizer threads (Mesa: one per CPU it sees, the host's, not the
+    # container's quota): render_threads()
+    threads = render_threads()
+    if threads and "LP_NUM_THREADS" not in os.environ:
+        env["LP_NUM_THREADS"] = str(threads)
+    # Mesa's own disk cache of the shaders llvmpipe and lavapipe compile to machine code (on for every
+    # Mesa user; its key is the shader and the driver's build): kept across editors and runs
+    # instead of in each scratch HOME, where every editor compiled every shader again
+    if "MESA_SHADER_CACHE_DIR" not in os.environ:
+        env["MESA_SHADER_CACHE_DIR"] = str(mesa_shader_cache())
+        env.setdefault("MESA_SHADER_CACHE_MAX_SIZE", "4G")
     # the engine's Lua state used off the main thread aborts the editor (LuaBinding::ThreadCheck)
     env.setdefault("JASPER_LUA_THREAD_CHECK", "abort")
     # test-only widget locator (editor/util/UIProbe.h): the editor writes the rectangles of the
@@ -299,6 +421,7 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
         env["JASPER_UI_PROBE"] = str(scratch.root / "ui-probe.json")
     else:
         env.pop("JASPER_UI_PROBE", None)
+    env.update(extra_env or {})
     return cmd + args, env, scratch.root
 
 
@@ -345,6 +468,135 @@ class CallResult:
 
 
 # ---------------------------------------------------------------------------
+# Wall-clock budgets
+
+# What one compile job of an engine source can take (cc1plus on the Lua bindings: 1.8 GB resident)
+COMPILE_JOB_BYTES = 2 << 30
+
+
+def _memory_available() -> int | None:
+    """Bytes this process can still allocate: the host's MemAvailable, and the container's
+    memory.max less its memory.current when it has a limit (None when neither is readable)."""
+    found = []
+    with contextlib.suppress(OSError, ValueError):
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                found.append(int(line.split()[1]) * 1024)
+    with contextlib.suppress(OSError, ValueError):
+        limit = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        if limit != "max":
+            found.append(int(limit) - int(Path("/sys/fs/cgroup/memory.current").read_text()))
+    return min(found) if found else None
+
+
+def build_jobs() -> int:
+    """The parallel jobs a game build of a test uses: JOBS when set, else the CPUs this process may
+    use, a container's CPU quota included (docker --cpus, which tools/build.sh sets from JOBS and
+    which is what shares a build server; nproc does not see the quota, cgroup cpu.max does). Either
+    way at most one job per COMPILE_JOB_BYTES of the memory available now: on a loaded server (other
+    editors, another test's compile) a job per CPU ran out of memory and the kernel killed cc1plus."""
+    if os.environ.get("JOBS", "").isdigit() and int(os.environ["JOBS"]) > 0:
+        cpus = int(os.environ["JOBS"])
+    else:
+        cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 2)
+        with contextlib.suppress(OSError, ValueError):
+            quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+            if quota != "max":
+                cpus = min(cpus, max(1, int(quota) // int(period)))
+    available = _memory_available()
+    if available is not None:
+        cpus = min(cpus, available // COMPILE_JOB_BYTES)
+    return max(1, cpus)
+
+
+def compile_env(name: str, lto: bool = False) -> dict[str, str]:
+    """The environment of an editor whose tests compile games (build_project method "compile"):
+    the user cache (XDG_CACHE_HOME, where the kit's compile tree goes) at a fixed path,
+    build/mcp-compile-home/<name> of the checkout (/src/... in the Linux image whatever the
+    worktree), emptied now, and ccache as the compiler launcher (CMAKE_<LANG>_COMPILER_LAUNCHER,
+    which CMake takes from the environment) when the run has one (CCACHE_DIR, as tools/build.sh's
+    containers do). Every run still compiles from an empty tree, its configure, every compile
+    command and the link: an object comes from ccache only when its preprocessed source, compiler,
+    flags and directory are those it was compiled with. Without ccache a run compiles as before.
+    lto=False: the release game links without GCC's link-time optimisation (JASPERENGINE_RELEASE_LTO=OFF,
+    engine/CMakeLists.txt), which costs a quarter of an hour of link and changes nothing the test
+    checks; the suite's LTO check is test_build.py's compiled game (lto=True, docs/testing.md)."""
+    home = REPO / "build" / "mcp-compile-home" / name
+    shutil.rmtree(home, ignore_errors=True)
+    home.mkdir(parents=True, exist_ok=True)
+    env = {"XDG_CACHE_HOME": str(home)}
+    if not lto:
+        env["JASPERENGINE_RELEASE_LTO"] = "OFF"
+    if shutil.which("ccache") and os.environ.get("CCACHE_DIR"):
+        # (its hits and misses: <home>/ccache-stats.log, ccache's stats_log)
+        env.update({"CMAKE_C_COMPILER_LAUNCHER": "ccache", "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+                    "CCACHE_STATSLOG": str(home / "ccache-stats.log")})
+    return env
+
+
+# llvmpipe threads per editor when nothing says otherwise (docs/testing.md, "Caches and CPU caps";
+# the same four files at -j 4 on 8 CPUs: Mesa's default 2,009 s, median load 21, peak 53; 4 threads 1,772 s,
+# median load 12, peak 23; 2 threads 2,517 s and a screenshot timeout)
+RENDER_THREADS_MAX = 4
+RENDER_THREADS_MIN = 2
+
+
+def cpu_allowance() -> int:
+    """The CPUs this process may use: its affinity, and a container's quota (cgroup cpu.max)."""
+    cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 2)
+    with contextlib.suppress(OSError, ValueError):
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        if quota != "max":
+            cpus = min(cpus, max(1, int(quota) // int(period)))
+    return max(1, cpus)
+
+
+def render_threads() -> int:
+    """LP_NUM_THREADS for an editor (and the players it runs): JASPER_MCP_RENDER_THREADS when set
+    (0: Mesa's own default, a thread per CPU of the host), else 4, or fewer down to 2 when the run's
+    CPU allowance gives its editors (JASPER_MCP_WORKERS, the runner's -j) less than half a CPU per
+    thread. Mesa's default gives every editor of a -j run as many threads as the host has CPUs, all
+    inside the container's quota: the quota throttles them all at once, the editors' main threads
+    included (seconds-long stalls on a loaded server). LP_NUM_THREADS in the run's environment wins."""
+    value = os.environ.get("JASPER_MCP_RENDER_THREADS", "")
+    if value.isdigit():
+        return int(value)
+    workers = int(os.environ["JASPER_MCP_WORKERS"]) if os.environ.get("JASPER_MCP_WORKERS", "").isdigit() else 1
+    return max(RENDER_THREADS_MIN, min(RENDER_THREADS_MAX, 2 * cpu_allowance() // max(1, workers)))
+
+
+def mesa_shader_cache() -> Path:
+    """Where the editors' Mesa shader cache lives: the machine's shared MCP cache when there is one
+    (JASPER_MCP_SHARED_BUILD_CACHE, a build server's ~/je/mcp-build-cache: every worktree and run of
+    the machine), else the checkout's build/.cache/mesa-shader-cache."""
+    shared = os.environ.get("JASPER_MCP_SHARED_BUILD_CACHE", "")
+    return Path(shared) / "mesa-shader-cache" if shared else REPO / "build" / ".cache" / "mesa-shader-cache"
+
+
+def perf_slack() -> float:
+    """The factor wall-clock budgets are enforced with: JASPER_MCP_PERF_SLACK, 0 (not enforced)
+    unless set. A shared build server's load alone misses them, so a functional run asserts the
+    behaviour and prints the times; the benchmark run on a quiet server enforces them."""
+    try:
+        return max(0.0, float(os.environ.get("JASPER_MCP_PERF_SLACK", "") or 0))
+    except ValueError:
+        return 0.0
+
+
+def over_budget(what: str, measured: dict[str, float], budget: float, unit: str = "s") -> dict[str, float]:
+    """Prints `[bench] what: name value, ... (budget B)` and returns the measures over budget x
+    perf_slack(): always empty in a functional run (perf_slack() 0), for the benchmark run to fail
+    on. The measures and the budget are in `unit`."""
+    shown = ", ".join(f"{name} {value:.4g} {unit}" for name, value in measured.items())
+    slack = perf_slack()
+    enforced = f", enforced x{slack:g}" if slack > 0 else ", not enforced"
+    print(f"     [bench] {what}: {shown} (budget {budget:g} {unit}{enforced})", flush=True)
+    if slack <= 0:
+        return {}
+    return {name: value for name, value in measured.items() if value > budget * slack}
+
+
+# ---------------------------------------------------------------------------
 # Editor
 
 
@@ -356,6 +608,23 @@ def _env_flag(name: str) -> bool:
 # advancing, so the client only guards against a hung editor (Editor.call_raw)
 FRAME_TOOLS = frozenset({"wait", "send_input", "play"})
 FRAME_CALL_TIMEOUT = 3600.0
+
+# The test the runner is running (run_tests.py sets it), for JASPER_MCP_CALL_LOG
+current_test = ""
+
+
+def _log_call(label: str, tool: str, args: dict | None, seconds: float, error: bool) -> None:
+    """One line of JASPER_MCP_CALL_LOG (a profile of where the tests' time goes)."""
+    root = os.environ.get("JASPER_MCP_CALL_LOG")
+    if not root:
+        return
+    with contextlib.suppress(OSError, TypeError, ValueError):
+        text = json.dumps(args or {}, default=str, sort_keys=True)
+        line = json.dumps({"test": current_test, "editor": label, "tool": tool, "seconds": round(seconds, 3),
+                           "error": error, "args": text[:300], "t": round(time.time(), 3)})
+        Path(root).mkdir(parents=True, exist_ok=True)
+        with open(Path(root) / f"{(current_test.split('::')[0] or label).removesuffix('.py')}.jsonl", "a") as f:
+            f.write(line + "\n")
 
 
 class Editor:
@@ -371,6 +640,8 @@ class Editor:
               "none"    inherit the caller's DISPLAY (a visible editor on a desktop)
     command   editor command (default: editor_command()); fake=True uses tools/mcp/fake_server.py
     extra_args  appended to the `mcp` command line
+    env       extra environment variables of the editor (stdio mode)
+    settings  extra top-level keys of the scratch settings.yaml (stdio mode), e.g. {"mcp": {...}}
     startup_timeout  seconds for the editor to answer initialize
     call_timeout     default seconds per tool call
     keep      keep the scratch dir even on success
@@ -381,7 +652,8 @@ class Editor:
     def __init__(self, project: str | Path | None = None, *, create: bool = False, name: str = "Scratch",
                  url: str | None = None, token: str | None = None, xvfb: str | None = None,
                  command: list[str] | None = None, fake: bool | None = None,
-                 extra_args: list[str] | None = None, startup_timeout: float = 180.0,
+                 extra_args: list[str] | None = None, env: dict[str, str] | None = None,
+                 settings: dict[str, Any] | None = None, startup_timeout: float = 180.0,
                  call_timeout: float = 300.0, keep: bool | None = None, label: str = "",
                  scratch_prefix: str | None = None, ui_probe: bool = False):
         if url is None and project is None and not create and os.environ.get("JASPER_MCP_URL"):
@@ -398,6 +670,8 @@ class Editor:
             raise HarnessError(f"xvfb must be editor, harness or none, not {self.xvfb_mode!r}")
         self.command = command or (fake_editor_command() if fake else None)
         self.extra_args = extra_args or []
+        self.extra_env = env or {}
+        self.extra_settings = settings or {}
         self.startup_timeout = startup_timeout
         self.call_timeout = call_timeout
         self.keep = _env_flag("JASPER_KEEP_SCRATCH") if keep is None else keep
@@ -449,7 +723,7 @@ class Editor:
             streams = await self._stack.enter_async_context(streamable_http_client(self.url, http_client=http))
         else:
             extra = {"prefix": self.scratch_prefix} if self.scratch_prefix else {}
-            self.scratch = Scratch.make(self.project_src, create=self.create, **extra)
+            self.scratch = Scratch.make(self.project_src, create=self.create, settings=self.extra_settings, **extra)
             display = None
             inherit = self.xvfb_mode == "none"
             if self.xvfb_mode == "harness":
@@ -457,7 +731,8 @@ class Editor:
                 display = self._xvfb.start()
             argv, env, cwd = launch_spec(
                 self.scratch, create=self.create, name=self.name, command=self.command,
-                display=display, extra_args=self.extra_args, inherit_display=inherit, ui_probe=self.ui_probe)
+                display=display, extra_args=self.extra_args, inherit_display=inherit, extra_env=self.extra_env,
+                ui_probe=self.ui_probe)
             self.argv = argv
             self._stderr_file = open(self.scratch.stderr_log, "w", buffering=1)
             params = StdioServerParameters(command=argv[0], args=argv[1:], env=env, cwd=str(cwd))
@@ -474,6 +749,25 @@ class Editor:
             raise HarnessError(f"initialize failed: {e!r}\n" + self._tail_block()) from e
         self.instructions = self.session.instructions or ""
         await self.tools()
+        await self._check_device()
+
+    async def _check_device(self) -> None:
+        """JASPER_MCP_EXPECT_DEVICE (the runner sets it on the GPU lane's server: "NVIDIA" for a GPU
+        chunk's editors, "llvmpipe" for the others): the editor renders on that device, or it does
+        not start (a test of the lane never runs on llvmpipe unnoticed, nor a golden on the GPU)."""
+        expected = os.environ.get("JASPER_MCP_EXPECT_DEVICE", "")
+        if not expected or self.url or not self.has_tool("get_render_stats"):
+            return
+        device = ""
+        for _ in range(3):
+            stats = await self.call("get_render_stats")
+            device = str((stats.get("gpu") or {}).get("device") or "")
+            if device:
+                break
+            await self.call("wait", frames=2)
+        if expected.lower() not in device.lower():
+            raise HarnessError(f"the editor renders on {device or 'an unnamed device'!r}, not on {expected!r} "
+                               "(JASPER_MCP_EXPECT_DEVICE)\n" + self._tail_block())
 
     async def close(self) -> None:
         if self._stack:
@@ -495,18 +789,24 @@ class Editor:
 
     # -- tools -------------------------------------------------------------
 
-    async def tools(self) -> list[Any]:
-        """tools/list (all pages). Items are mcp Tool objects (.name, .description, .input_schema)."""
+    async def tools(self, groups: str | list[str] | None = "all") -> list[Any]:
+        """tools/list (all pages). Items are mcp Tool objects (.name, .description, .input_schema, .meta).
+
+        groups: the tool groups to list (params._meta["jasper/groups"]): "all" (default: every
+        registered tool, so tests never need tool_groups first), a list of group names, or None
+        for what the session lists by default (core plus the groups it enabled)."""
         tools: list[Any] = []
         cursor = None
+        meta = {"jasper/groups": groups} if groups is not None else None
         while True:
-            params = types.PaginatedRequestParams(cursor=cursor) if cursor else None
+            params = types.PaginatedRequestParams(cursor=cursor, _meta=meta) if cursor or meta else None
             r = await self.session.list_tools(params=params)
             tools += list(r.tools)
             cursor = getattr(r, "next_cursor", None)
             if not cursor:
                 break
-        self.tool_list = tools
+        if groups == "all":
+            self.tool_list = tools
         return tools
 
     @property
@@ -541,19 +841,34 @@ class Editor:
         if timeout is None:
             timeout = max(self.call_timeout, FRAME_CALL_TIMEOUT) if tool in FRAME_TOOLS else self.call_timeout
         self.in_flight += 1
+        started, error = time.monotonic(), True
         try:
             r = await self.session.call_tool(
                 tool, args or {}, read_timeout_seconds=timeout, progress_callback=progress)
+            error = bool(getattr(r, "is_error", False))
         except MCPError as e:
             raise ProtocolError(f"tools/call {tool}", e) from e
         finally:
             self.in_flight -= 1
             self.last_activity = time.monotonic()
+            _log_call(self.label, tool, args, self.last_activity - started, error)
         return CallResult.from_mcp(tool, r)
 
     def idle_seconds(self) -> float:
         """Seconds since the last tool call ended; 0 while one is in flight."""
         return 0.0 if self.in_flight else time.monotonic() - self.last_activity
+
+    @contextlib.contextmanager
+    def busy(self):
+        """Work with a timeout of its own that drives this editor some other way (a CLI run
+        attached to it, polling a build for minutes) counts as a call in flight: the runner's hang
+        guard (TIMEOUT) does not cut it short."""
+        self.in_flight += 1
+        try:
+            yield
+        finally:
+            self.in_flight -= 1
+            self.last_activity = time.monotonic()
 
     async def call(self, tool: str, _args: dict | None = None, *, expect_error: bool = False,
                    timeout: float | None = None, **args: Any) -> Any:
@@ -609,6 +924,16 @@ class Editor:
         path = self.scratch.root / "ui-probe.json"
         with contextlib.suppress(OSError, ValueError):
             return json.loads(path.read_text()).get("items", {})
+        return {}
+
+    def ui_probe_state(self) -> dict:
+        """The whole UI probe of the editor's last frame: {"frame", "items", "scroll": {name: [y, max_y]}}
+        ({} before the first frame or without ui_probe)."""
+        if not self.scratch:
+            return {}
+        path = self.scratch.root / "ui-probe.json"
+        with contextlib.suppress(OSError, ValueError):
+            return json.loads(path.read_text())
         return {}
 
     async def ui_rect(self, name: str, timeout: float = 10.0) -> list[float] | None:
@@ -713,8 +1038,11 @@ class RawEditor:
 
     def __init__(self, project: str | Path | None = None, *, create: bool = False, name: str = "Scratch",
                  xvfb: str | None = None, command: list[str] | None = None, keep: bool | None = None,
-                 extra_args: list[str] | None = None):
+                 extra_args: list[str] | None = None, env: dict[str, str] | None = None,
+                 settings: dict[str, Any] | None = None):
         self.project_src, self.create, self.name = project, create, name
+        self.extra_env = env or {}
+        self.extra_settings = settings or {}
         self.xvfb_mode = xvfb or os.environ.get("JASPER_XVFB", "editor")
         self.command = command
         self.extra_args = extra_args or []
@@ -731,14 +1059,14 @@ class RawEditor:
         self._new = asyncio.Event()
 
     async def __aenter__(self) -> "RawEditor":
-        self.scratch = Scratch.make(self.project_src, create=self.create)
+        self.scratch = Scratch.make(self.project_src, create=self.create, settings=self.extra_settings)
         display = None
         if self.xvfb_mode == "harness":
             self._xvfb = Xvfb()
             display = self._xvfb.start()
         argv, env, cwd = launch_spec(self.scratch, create=self.create, name=self.name, command=self.command,
                                      display=display, extra_args=self.extra_args,
-                                     inherit_display=self.xvfb_mode == "none")
+                                     inherit_display=self.xvfb_mode == "none", extra_env=self.extra_env)
         self._stderr = open(self.scratch.stderr_log, "w")
         self.proc = await asyncio.create_subprocess_exec(
             *argv, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=self._stderr,
@@ -845,6 +1173,138 @@ class RawEditor:
                 print(f"[harness] scratch kept: {self.scratch.root}", file=sys.stderr)
             else:
                 self.scratch.remove()
+
+
+# ---------------------------------------------------------------------------
+# Raw Streamable HTTP access (transport-level tests)
+
+
+def free_port() -> int:
+    """A TCP port on 127.0.0.1 that nothing listens on right now."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@dataclass
+class HttpAnswer:
+    status: int
+    headers: dict[str, str]           # lower-case names
+    messages: list[dict]              # JSON-RPC messages of the body (one, or the SSE events)
+    body: str
+
+    @property
+    def sse(self) -> bool:
+        return self.headers.get("content-type", "").startswith("text/event-stream")
+
+    @property
+    def response(self) -> dict | None:
+        """The JSON-RPC response (the last message with an id)."""
+        for m in reversed(self.messages):
+            if "id" in m and ("result" in m or "error" in m):
+                return m
+        return None
+
+    def notifications(self, method: str | None = None) -> list[dict]:
+        return [m for m in self.messages if "id" not in m and (method is None or m.get("method") == method)]
+
+
+class HttpSession:
+    """The editor's MCP over Streamable HTTP with no client library in between: one JSON-RPC
+    message per POST (http.client), the Mcp-Session-Id kept after initialize.
+
+        http = HttpSession(port)
+        http.initialize()
+        a = http.request("tools/call", {"name": "tool_groups", "arguments": {}}, sse=True)
+        a.sse, a.notifications("notifications/tools/list_changed"), a.response["result"]
+    """
+
+    def __init__(self, port: int, *, token: str | None = None, host: str = "127.0.0.1"):
+        self.port, self.token, self.host = port, token, host
+        self.session_id: str | None = None
+        self._next_id = 0
+
+    def post(self, message: dict | str, *, sse: bool = True, headers: dict[str, str] | None = None,
+             timeout: float = 120.0) -> HttpAnswer:
+        import http.client
+        conn = http.client.HTTPConnection(self.host, self.port, timeout=timeout)
+        try:
+            h = {"Content-Type": "application/json",
+                 "Accept": "application/json, text/event-stream" if sse else "application/json"}
+            if self.token:
+                h["Authorization"] = f"Bearer {self.token}"
+            if self.session_id:
+                h["Mcp-Session-Id"] = self.session_id
+            h.update(headers or {})
+            body = message if isinstance(message, str) else json.dumps(message)
+            conn.request("POST", "/mcp", body=body.encode(), headers=h)
+            r = conn.getresponse()
+            text = r.read().decode("utf-8", errors="replace")
+            hdrs = {k.lower(): v for k, v in r.getheaders()}
+        finally:
+            conn.close()
+        msgs: list[dict] = []
+        if hdrs.get("content-type", "").startswith("text/event-stream"):
+            for event in text.replace("\r\n", "\n").split("\n\n"):
+                data = "\n".join(line[5:].lstrip() for line in event.split("\n") if line.startswith("data:"))
+                if data:
+                    msgs.append(json.loads(data))
+        elif text.strip():
+            with contextlib.suppress(ValueError):
+                value = json.loads(text)
+                if isinstance(value, dict):
+                    msgs.append(value)
+        return HttpAnswer(r.status, hdrs, msgs, text)
+
+    def request(self, method: str, params: dict | None = None, *, sse: bool = True,
+                timeout: float = 120.0) -> HttpAnswer:
+        self._next_id += 1
+        msg: dict[str, Any] = {"jsonrpc": "2.0", "id": self._next_id, "method": method}
+        if params is not None:
+            msg["params"] = params
+        return self.post(msg, sse=sse, timeout=timeout)
+
+    def notify(self, method: str, params: dict | None = None) -> HttpAnswer:
+        msg: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            msg["params"] = params
+        return self.post(msg)
+
+    def initialize(self, version: str = "2025-11-25") -> dict:
+        a = self.request("initialize", {"protocolVersion": version, "capabilities": {},
+                                        "clientInfo": {"name": "jasper-harness-http", "version": "1"}})
+        if a.status != 200 or not a.response or "result" not in a.response:
+            raise HarnessError(f"HTTP initialize failed: {a.status} {a.body[:300]}")
+        self.session_id = a.headers.get("mcp-session-id")
+        self.notify("notifications/initialized")
+        return a.response["result"]
+
+
+async def wait_for_port(port: int, timeout: float = 60.0) -> None:
+    """Until something accepts connections on 127.0.0.1:port."""
+    import socket
+    deadline = time.monotonic() + timeout
+    while True:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1.0)
+            if s.connect_ex(("127.0.0.1", port)) == 0:
+                return
+        if time.monotonic() > deadline:
+            raise HarnessError(f"nothing listens on port {port} after {timeout}s")
+        await asyncio.sleep(0.2)
+
+
+def tool_meta(tool: Any) -> dict:
+    """A listed tool's _meta as a dict ({"jasper/group", "jasper/module"} from this editor)."""
+    meta = getattr(tool, "meta", None)
+    if meta is None:
+        return {}
+    if isinstance(meta, dict):
+        return meta
+    with contextlib.suppress(Exception):
+        return dict(meta.model_dump(by_alias=True))
+    return {}
 
 
 # ---------------------------------------------------------------------------

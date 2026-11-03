@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include "Catalog.h"
 #include "command/PrefabEditUndo.h"
@@ -21,6 +22,11 @@ namespace jasperengine::editor {
         Entity entity = NULL_ENTITY;
         YAML::Node oldComponent;
         bool removed = false;
+        // A Transform removed: where it was (its children went to its parent), so the undo
+        // puts it back there and takes them back
+        Entity transformParent = NULL_ENTITY;
+        size_t transformIndex = 0;
+        std::vector<Entity> transformChildren;
     };
 
     class RemoveComponentCmd : public Command {
@@ -34,9 +40,15 @@ namespace jasperengine::editor {
         bool ownedEntitiesCaptured = false;
 
         bool wasModified;
+        // A Transform removed: the tracked list before it, so the undo puts the GameObjects
+        // without a Transform back where they were
+        std::vector<Entity> trackedBefore;
         // Unity: a component removed from a prefab instance's GameObject is a removed
         // component override of that instance (one the instance added is simply gone)
         PrefabEditUndo prefabUndo;
+
+        static void recordTransformPlace(Scene* scene, RemoveComponentData& entityData);
+        static void restoreTransformPlace(Scene* scene, const RemoveComponentData& entityData);
 
     public:
         RemoveComponentCmd(Project* project, size_t sceneId, Entity entity, ComponentType componentType);
@@ -46,5 +58,15 @@ namespace jasperengine::editor {
         void undo() override;
 
         bool mergeWith(Command* otherCommand) override;
+
+        // "Remove Component Light (Sun)"
+        std::string describe() const override;
+        const char* typeName() const override { return "RemoveComponentCmd"; }
+        size_t memoryBytes() const override;
+        void collectKeepCommands(KeepContext& context) const override;
+
+        uint32_t getSceneId() const { return (uint32_t)sceneId; }
+        ComponentType getComponentType() const { return componentType; }
+        std::vector<Entity> getEntities() const;
     };
 }

@@ -6,7 +6,10 @@
 #include "imgui.h"
 #include "Project.h"
 #include "object/Camera.h"
+#include "sceneview/SceneViewController.h"
+#include "window/ParticleEffectOverlay.h"
 #include <map>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
@@ -18,6 +21,9 @@ namespace jasperengine::editor {
 
     class SceneWindow {
     private:
+        // the Particle Effect panel and the Edit-mode particle preview it drives
+        ParticleEffectOverlay particleOverlay;
+        bool sceneScriptMenuPending = false;   // a short right click opens the editor scripts' Scene view menu
         Project* project;
         bool windowFocused;
 
@@ -49,6 +55,8 @@ namespace jasperengine::editor {
         std::map<uint32_t, int> width;
         std::map<uint32_t, int> height;
         std::map<uint32_t, ImVec2> framebufferScale;
+        // The view's rect in the editor window's client area (x, y, width, height), last frame
+        std::map<uint32_t, ImVec4> viewRect;
         std::map<uint32_t, float> canvasDpiScale;
 
         std::map<uint32_t, bool> hasNotification;
@@ -59,6 +67,9 @@ namespace jasperengine::editor {
 
         std::vector<uint32_t> closeSceneQueue;
 
+        // S26: picking flow, camera, bookmarks, panes, measures, Layers (SceneViewController.cpp)
+        std::unique_ptr<SceneViewController> viewController;
+
         // Prefab Mode: the stage the Prefab Mode tab showed last frame (a new one takes focus,
         // leaving it gives the focus back to the scene)
         uint32_t shownPrefabStage = NULL_PROJECT_SCENE;
@@ -66,6 +77,8 @@ namespace jasperengine::editor {
         // Prefab Mode's bar over its Scene view: breadcrumbs, Save, Auto Save, Context
         // (PrefabStageBar.cpp)
         void drawPrefabStageBar(SceneProject& sceneProject);
+        // a scene, prefab or project.yaml another program changed on disk: Reload / Keep Mine (S05)
+        void drawExternalChangeBar(SceneProject& sceneProject);
         std::string getPrefabStageWindowTitle(const SceneProject& sceneProject) const;
         // Leaves Prefab Mode down to `depth` stages, asking to save (deferred to the next frame)
         void requestExitPrefabStages(size_t depth);
@@ -75,7 +88,8 @@ namespace jasperengine::editor {
         void sceneEventHandler(SceneProject* sceneProject);
         void endLook(uint32_t sceneId);
         void handleResourceFileDragDrop(SceneProject* sceneProject);
-        Vector3 getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity);
+        // R16: what a drop at (x, y) lands on (the preview's own entities ignored)
+        SceneSurfaceHit getDropSurface(SceneProject* sceneProject, float x, float y, const std::unordered_set<Entity>& ignore);
         void handleTileRectDragDrop(SceneProject* sceneProject);
 
         // Prefab dragged from the Project window over a Scene view (Unity's way): an instance
@@ -87,13 +101,14 @@ namespace jasperengine::editor {
         std::unordered_set<Entity> prefabDragEntities;
         void updatePrefabDrag(SceneProject* sceneProject, const std::vector<std::string>& paths, float x, float y, bool delivery);
         void cancelPrefabDrag();
-        Vector3 getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ);
+        Vector3 getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ, SceneSurfaceHit* surface = nullptr);
         bool handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth);
         // the Paint Dye brush's circle (splatRadius) over the image, under the pointer
         void drawFluidBrushCursor(SceneProject* sceneProject);
         // UI tests (UIProbe): the view's rectangle and the selected fluid's Sprite on it
         void probeSceneView(SceneProject* sceneProject);
-        void snapCameraToDirection(Camera* camera, const Vector3& direction);
+        // the pointer was over a Scene view's canvas this frame (the SceneView shortcut context)
+        bool viewHovered = false;
         void focusSceneWindow(const SceneProject& sceneProject) const;
         void requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId);
         void drawParentSceneButton(const SceneProject& sceneProject);
@@ -105,20 +120,34 @@ namespace jasperengine::editor {
         std::string getWindowTitle(const SceneProject& sceneProject) const;
         Entity resolveStructureSelection(uint32_t viewportSceneId, uint32_t sceneId, Entity entity) const;
         Entity findSelectableObjectByRay(uint32_t sceneId, float x, float y, uint32_t* outSceneId = nullptr);
-        bool selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed);
+        bool selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed, bool ctrlPressed = false);
         ImVec2 canvasFramebufferScale(uint32_t sceneId) const;
         ImVec2 canvasEngineScale(uint32_t sceneId) const;
         float canvasDpi(uint32_t sceneId) const;
         void toEngineCanvas(uint32_t sceneId, float& x, float& y) const;
-        
+
+
     public:
         // The ImGui id of Prefab Mode's tab: one tab, whichever stage it shows
         static constexpr const char* PREFAB_STAGE_WINDOW_ID = "###PrefabMode";
 
         SceneWindow(Project* project);
+        ~SceneWindow();
+
+        SceneViewController& getViewController() { return *viewController; }
+        // after the frame's draw of a scene: its inactive Split/Quad panes that need it
+        void renderInactivePanes(SceneProject& sceneProject);
 
         void show();
         bool isFocused() const;
+        ParticleEffectOverlay& getParticleOverlay() { return particleOverlay; }
+        // a camera drag (look, orbit, pan) is running in a Scene view
+        bool isNavigatingCamera() const;
+        // A left click (no drag, no pose handle) at engine canvas (x, y) of a posing Scene view:
+        // a click off the posed character leaves posing (PoseViewport::clicked with the selection
+        // pick and the raw hit). True when posing ended. Also the MCP test hook's click.
+        // `picked` / `rawHit` (optional) receive the two picks.
+        bool poseClick(uint32_t sceneId, float x, float y, Entity* picked = nullptr, Entity* rawHit = nullptr);
         void resetProjectState();
         void clearSceneState(uint32_t sceneId);
         void requestPlayFocus(uint32_t sceneId);
@@ -135,9 +164,18 @@ namespace jasperengine::editor {
         void frameEntities(uint32_t viewSceneId, uint32_t entitySceneId, const std::vector<Entity>& entities);
         // The selection Frame Selected works on in the Scene view of sceneId
         bool hasFrameableSelection(uint32_t sceneId);
+        // Frame All (Alt+F, Home): what the view shows and can pick, in any scene type (S26 R18)
+        void frameAll(uint32_t sceneId);
+        // The numpad views (3D): the camera looks along direction (Front: +Z)
+        void viewFrom(uint32_t sceneId, const Vector3& direction);
+        // A Scene view's canvas was under the pointer last frame
+        bool isHovered() const;
         bool viewThroughCamera(uint32_t sceneId, Entity cameraEntity);
         void stopViewingCamera(uint32_t sceneId);
 
+        // Where the scene's view sits in the editor window (client-area pixels, as the OS
+        // pointer sees them): false before it was drawn
+        bool getViewRect(uint32_t sceneId, float& x, float& y, float& w, float& h) const;
         int getWidth(uint32_t sceneId) const;
         int getHeight(uint32_t sceneId) const;
         float getOverlayScale(uint32_t sceneId) const;

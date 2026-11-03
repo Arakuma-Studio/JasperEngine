@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "ComponentValuesCmd.h"
+#include "animation/ClipRecordHooks.h"
 
 #include "Stream.h"
+#include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
+#include "util/YamlFootprint.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ModelClearCmd.h"
 #include "command/type/ModelLoadCmd.h"
@@ -66,6 +70,10 @@ namespace {
                 break;
             case editor::ComponentType::ProgressbarComponent:
                 keep("fill");
+                break;
+            case editor::ComponentType::OnScreenStickComponent:
+                keep("background");
+                keep("handle");
                 break;
             case editor::ComponentType::PanelComponent:
                 keep("headerimage");
@@ -168,6 +176,7 @@ namespace {
         bool enabled = true;
         std::string filename;
         bool mergeStaticMeshes = false;
+        bool animationEntities = true;
     };
 
     ModelValue readModelValue(const YAML::Node& value) {
@@ -175,6 +184,8 @@ namespace {
         if (value["enabled"]) model.enabled = value["enabled"].as<bool>();
         if (value["filename"]) model.filename = value["filename"].as<std::string>();
         if (value["mergeStaticMeshes"]) model.mergeStaticMeshes = value["mergeStaticMeshes"].as<bool>();
+        // written only when false (Stream::encodeModelComponent)
+        if (value["animationEntities"]) model.animationEntities = value["animationEntities"].as<bool>();
         return model;
     }
 
@@ -185,13 +196,20 @@ namespace {
     // references the user can set on an empty Model, its skeleton and animations.
     void addModelCommands(editor::MultiPropertyCmd* multi, editor::Project* project, uint32_t sceneId, Scene* scene, Entity entity,
                           const ModelValue& model, const ModelComponent* current, bool reset = false) {
-        const std::string currentFile = current ? current->filename : std::string();
+        const std::string currentFile = current ? current->filename.path : std::string();
         const bool currentMerge = current ? current->mergeStaticMeshes : false;
-        if (!model.filename.empty() && (model.filename != currentFile || model.mergeStaticMeshes != currentMerge)) {
+        const bool currentAnimationEntities = current ? current->animationEntities : true;
+        // the loader makes (or skips) the animation entities by the flag (spec 9.R15): set before
+        // the load in the same step, and a changed flag on the same file reloads it
+        if (!model.filename.empty() && (model.filename != currentFile || model.mergeStaticMeshes != currentMerge ||
+                                        model.animationEntities != currentAnimationEntities)) {
             for (editor::ComponentType needed : {editor::ComponentType::Transform, editor::ComponentType::MeshComponent}) {
                 if (!hasComponent(scene, entity, needed)) {
                     multi->addCommand(std::make_unique<editor::AddComponentCmd>(project, sceneId, entity, needed));
                 }
+            }
+            if (model.animationEntities != currentAnimationEntities) {
+                multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "animationEntities", model.animationEntities);
             }
             multi->addCommand(std::make_unique<editor::ModelLoadCmd>(project, sceneId, entity, model.filename, model.mergeStaticMeshes));
         } else if (model.filename.empty()) {
@@ -199,6 +217,7 @@ namespace {
                 multi->addCommand(std::make_unique<editor::ModelClearCmd>(project, sceneId, entity));
             }
             multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "mergeStaticMeshes", model.mergeStaticMeshes);
+            multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "animationEntities", model.animationEntities);
             if (reset) {
                 multi->addPropertyCmd<Entity>(project, sceneId, entity, editor::ComponentType::ModelComponent, "skeleton", NULL_ENTITY);
                 multi->addPropertyCmd<std::vector<Entity>>(project, sceneId, entity, editor::ComponentType::ModelComponent, "animations", std::vector<Entity>());
@@ -242,12 +261,16 @@ bool editor::ComponentValuesCmd::execute(){
 
     wasModified = sceneProject->isModified;
     bool changed = false;
+    differs = false;
 
     YAML::Node defaults;
     if (!clip && type != ComponentType::ScriptComponent) {
         defaults = EntityClipboard::encodeDefaultComponent(type);
     }
 
+    // a posed bone's Transform (paste values, reset; Pose window) and previewed channels (clip
+    // preview) go back to their rest: recorded and edited on it (animation clips 9.R5/R6)
+    for (const Target& target : targets) ClipRecordHooks::beforeComponentWrite(sceneId, target.entity, type, "");
     for (Target& target : targets) {
         target.before = YAML::Node();
         if (!hasComponent(scene, target.entity, type)) {
@@ -261,6 +284,7 @@ bool editor::ComponentValuesCmd::execute(){
         YAML::Node source = clip ? clip->value :
             (type == ComponentType::ScriptComponent ? scriptDefaults(scene, target.entity) : defaults);
         EntityClipboard::applyComponentValue(scene, target.entity, type, prepareValue(scene, target.entity, type, source, skip));
+        Catalog::markChanged(scene, target.entity, type);
 
         if (clip) {
             // The copied GameObject becomes this one; other references follow the paste rules
@@ -281,7 +305,13 @@ bool editor::ComponentValuesCmd::execute(){
         before[Catalog::getComponentName(type, true)] = target.before;
         project->recordPrefabComponentEdit(sceneId, target.entity, type, before);
         changed = true;
+        // the same values again are no edit (the history then drops the command)
+        if (!differs) {
+            differs = !yamlEqual(EntityClipboard::encodeComponent(scene, target.entity, type), target.before);
+        }
     }
+
+    for (const Target& target : targets) ClipRecordHooks::afterComponentWrite(sceneId, target.entity, type, "");
 
     if (!changed) {
         return false;
@@ -290,8 +320,44 @@ bool editor::ComponentValuesCmd::execute(){
     if (CameraTextureLink::isLinkSourceType(type)) {
         CameraTextureLink::resolve(scene);
     }
-    sceneProject->isModified = true;
+    if (differs) {
+        sceneProject->isModified = true;
+    }
     return true;
+}
+
+std::string editor::ComponentValuesCmd::describe() const{
+    const std::string subject = " (" + CommandNames::entities(project, sceneId, editedEntities()) + ")";
+    if (!clip) {
+        return "Reset " + editedLabel() + subject;
+    }
+    const bool ownValues = targets.size() == 1 && targets.front().entity == clip->entity && clip->sceneId == sceneId &&
+        clip->project == EntityClipboard::projectKey(project);
+    return (ownValues ? "Set " : "Paste Component Values ") + editedLabel() + subject;
+}
+
+size_t editor::ComponentValuesCmd::memoryBytes() const{
+    size_t bytes = sizeof(*this) + targets.capacity() * sizeof(Target);
+    for (const Target& target : targets) {
+        bytes += yamlFootprint(target.before);
+    }
+    if (clip) {
+        bytes += yamlFootprint(clip->value);
+    }
+    return bytes;
+}
+
+std::vector<Entity> editor::ComponentValuesCmd::editedEntities() const{
+    std::vector<Entity> entities;
+    entities.reserve(targets.size());
+    for (const Target& target : targets) {
+        entities.push_back(target.entity);
+    }
+    return entities;
+}
+
+std::string editor::ComponentValuesCmd::editedLabel() const{
+    return CommandNames::component(type);
 }
 
 void editor::ComponentValuesCmd::undo(){
@@ -301,11 +367,13 @@ void editor::ComponentValuesCmd::undo(){
     }
     Scene* scene = sceneProject->scene;
 
+    for (const Target& target : targets) ClipRecordHooks::beforeComponentWrite(sceneId, target.entity, type, "");
     for (auto it = targets.rbegin(); it != targets.rend(); ++it) {
         if (!it->before.IsMap() || !hasComponent(scene, it->entity, type)) {
             continue;
         }
         EntityClipboard::applyComponentValue(scene, it->entity, type, it->before);
+        Catalog::markChanged(scene, it->entity, type);
         if (uint64_t updateFlags = EntityClipboard::bindCameraTextures(scene, it->entity, type)) {
             Catalog::updateEntity(scene, it->entity, updateFlags);
         }
@@ -317,6 +385,8 @@ void editor::ComponentValuesCmd::undo(){
         CameraTextureLink::resolve(scene);
     }
     sceneProject->isModified = wasModified;
+
+    for (const Target& target : targets) ClipRecordHooks::afterComponentWrite(sceneId, target.entity, type, "");
 }
 
 bool editor::ComponentValuesCmd::canPasteValues(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
@@ -456,4 +526,10 @@ editor::Command* editor::ComponentValuesCmd::buildReset(Project* project, uint32
         addModelCommands(multi, project, sceneId, scene, entity, ModelValue(), &scene->getComponent<ModelComponent>(entity), true);
     }
     return multi;
+}
+
+void editor::ComponentValuesCmd::collectKeepCommands(KeepContext& context) const{
+    for (const Target& target : targets){
+        context.addComponentValues(target.entity, type);
+    }
 }

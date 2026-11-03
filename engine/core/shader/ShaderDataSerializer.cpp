@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderDataSerializer.h"
+#include "io/AtomicFile.h"
+#include "io/FileData.h"
+#include "System.h"
 
 #include "io/Data.h"
 #include "io/File.h"
@@ -673,22 +676,16 @@ bool ShaderDataSerializer::writeToFile(const std::string& filepath, ShaderKey sh
         return false;
     }
 
-    File out;
-    errno = 0;
-    if (out.open(filepath.c_str(), true) != FileErrors::FILEDATA_OK) {
-        std::string detail = errno != 0 ? std::string(" (") + std::strerror(errno) + ")" : "";
-        return setErr(err, "Cannot open file for writing: " + filepath + detail);
+    // atomic: a run reading the cache, or a crash mid-write, never sees half a file
+    const std::string systemPath = FileData::getSystemPath(filepath);
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    const io::WriteResult result = io::writeFileAtomic(systemPath,
+            std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()), options);
+    if (!result.ok()) {
+        return setErr(err, "Cannot write shader file " + filepath + ": " + io::describeWriteError(result));
     }
-
-    if (bytes.size() > std::numeric_limits<unsigned int>::max()) {
-        return setErr(err, "Shader data is too large to write: " + filepath);
-    }
-
-    if (!bytes.empty() && out.write(bytes.data(), static_cast<unsigned int>(bytes.size())) != bytes.size()) {
-        return setErr(err, "Failed to write shader file: " + filepath);
-    }
-
-    out.flush();
+    System::instance().syncFileSystem();
 
     return true;
 }

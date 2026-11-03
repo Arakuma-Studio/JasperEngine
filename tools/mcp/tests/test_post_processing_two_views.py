@@ -21,6 +21,7 @@ from harness import Editor, Scratch
 os.environ["JASPERENGINE_READY_SIGNAL"] = "1"
 os.environ["JASPERENGINE_FRAME_STATS"] = "all"
 
+CI = True
 EDITOR = {"create": True, "name": "Post Processing Two Views"}
 TIMEOUT = 900
 
@@ -82,8 +83,8 @@ DockSpace       ID=0xFB305400 Window=0x1BBC0F80 Pos=0,54 Size=1600,825 Split=X
 _make = Scratch.make.__func__
 
 
-def _make_with_layout(cls, project=None, create=False, prefix="jasper-mcp-"):
-    scratch = _make(cls, project, create, prefix)
+def _make_with_layout(cls, *args, **kwargs):
+    scratch = _make(cls, *args, **kwargs)
     (scratch.root / "editor_layout_v2.ini").write_text(LAYOUT)
     return scratch
 
@@ -125,12 +126,12 @@ async def measure(ed: Editor, what: str, ball: int, moves: int = 30) -> None:
         await ed.call("set_transform", entity=ball, position=[0.2 * (i % 3), 0, 0])
         await ed.call("wait", frames=2)
     lines: list[dict] = []
-    deadline = time.time() + 30
-    while time.time() < deadline:
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
         lines = stats_lines(ed, start)
         if len([x for x in lines if x["view"] == 0]) >= 20 and len([x for x in lines if x["view"] != 0]) >= 20:
             break
-        time.sleep(1)
+        await ed.call("wait", frames=1)
     frame_lines = [x for x in lines if x["view"] == 0 and x["uber"]]
     view_lines = [x for x in lines if x["view"] != 0 and x["uber"]]
     ed.check(len(frame_lines) >= 20 and len(view_lines) >= 20,

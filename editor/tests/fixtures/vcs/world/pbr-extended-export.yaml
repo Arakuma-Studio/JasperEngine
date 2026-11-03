@@ -1,0 +1,238 @@
+Lobes:
+  Anisotropy:
+    position: [-2.1, 1.2, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -2.1, 1.2, 0, 1]
+  Camera:
+    position: [0, 0, 13]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 13, 1]
+  ClearCoatTest:
+    position: [0, -1.8, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, -1.8, -2, 1]
+  ClearCoatTest/BaseLayerSample:
+    position: [-1.05, 0.82500005, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -1.05, 0.82500005, -2, 1]
+  ClearCoatTest/ClearCoatSample:
+    position: [0, 0.82500005, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, 0.82500005, -2, 1]
+  ClearCoatTest/CoatOnlySample:
+    position: [1.05, 0.82500005, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 1.05, 0.82500005, -2, 1]
+  ClearCoatTest/R1_BaseLayerSample:
+    position: [-1.05, -0.2249999, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -1.05, -0.2249999, -2, 1]
+  ClearCoatTest/R1_ClearCoatSample:
+    position: [0, -0.2249999, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, -0.2249999, -2, 1]
+  ClearCoatTest/R1_CoatOnlySample:
+    position: [1.05, -0.2249999, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 1.05, -0.2249999, -2, 1]
+  ClearCoatTest/R2_BaseLayerSample:
+    position: [-1.05, -1.275, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -1.05, -1.275, -2, 1]
+  ClearCoatTest/R2_ClearCoatSample:
+    position: [0, -1.275, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, -1.275, -2, 1]
+  ClearCoatTest/R2_CoatOnlySample:
+    position: [1.05, -1.275, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 1.05, -1.275, -2, 1]
+  ClearCoatTest/R3_BaseLayerSample:
+    position: [-1.05, -2.3249998, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -1.05, -2.3249998, -2, 1]
+  ClearCoatTest/R3_ClearCoatSample:
+    position: [0, -2.3249998, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, -2.3249998, -2, 1]
+  ClearCoatTest/R3_CoatOnlySample:
+    position: [1.05, -2.3249998, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 1.05, -2.3249998, -2, 1]
+  ClearCoatTest/R4_BaseLayerSample:
+    position: [-1.05, -4.425, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -1.05, -4.425, -2, 1]
+  ClearCoatTest/R4_ClearCoatSample:
+    position: [0, -4.425, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, -4.425, -2, 1]
+  ClearCoatTest/R4_CoatOnlySample:
+    position: [1.05, -4.425, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 1.05, -4.425, -2, 1]
+  ClearCoatTest/R5_BaseLayerSample:
+    position: [-1.05, -3.375, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -1.05, -3.375, -2, 1]
+  ClearCoatTest/R5_ClearCoatSample:
+    position: [0, -3.375, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, -3.375, -2, 1]
+  ClearCoatTest/R5_CoatOnlySample:
+    position: [1.05, -3.375, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 1.05, -3.375, -2, 1]
+  ClearCoatTest/X0_Label_BaseLayer:
+    position: [-1.0435158, 1.508115, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -1.0435158, 1.508115, -2, 1]
+  ClearCoatTest/X1_Label_Coated:
+    position: [0, 1.5070751, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, 1.5070751, -2, 1]
+  ClearCoatTest/X2_Label_CoatingOnly:
+    position: [1.0356402, 1.5097501, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 1.0356402, 1.5097501, -2, 1]
+  ClearCoatTest/Y0_Label_SimpleCoating:
+    position: [-2.6789017, 0.82500005, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -2.6789017, 0.82500005, -2, 1]
+  ClearCoatTest/Y1_Label_PartialCoating:
+    position: [-2.6789017, -0.21633995, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -2.6789017, -0.21633995, -2, 1]
+  ClearCoatTest/Y2_Label_Roughness:
+    position: [-2.6789017, -1.2308049, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -2.6789017, -1.2308049, -2, 1]
+  ClearCoatTest/Y3_Label_BaseNormals:
+    position: [-2.6789017, -2.349715, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -2.6789017, -2.349715, -2, 1]
+  ClearCoatTest/Y4_Label_CoatNormals:
+    position: [-2.6789017, -4.42625, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -2.6789017, -4.42625, -2, 1]
+  ClearCoatTest/Y5_Label_SharedNormals:
+    position: [-2.6789017, -3.39815, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [0.5, 0.5, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, -2.6789017, -3.39815, -2, 1]
+  Clearcoat:
+    position: [-6.3, 1.2, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -6.3, 1.2, 0, 1]
+  Directional Light:
+    position: [0, 10, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 10, 0, 1]
+  Hex:
+    position: [6.3, 1.2, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 6.3, 1.2, 0, 1]
+  Iridescence:
+    position: [8.881784e-16, 1.2, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 8.881784e-16, 1.2, 0, 1]
+  Lamp:
+    position: [0, 2.5, 2]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 2.5, 2, 1]
+  SceneSelect:
+    position: [0, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+  Sheen:
+    position: [-4.2, 1.2, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -4.2, 1.2, 0, 1]
+  Specular:
+    position: [4.2, 1.2, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 4.2, 1.2, 0, 1]
+  Transmission:
+    position: [2.1, 1.2, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2.1, 1.2, 0, 1]
+Transmission:
+  Camera:
+    position: [0, 1, 5]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 5, 1]
+  Directional Light:
+    position: [0, 10, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 10, 0, 1]
+  Glass:
+    position: [0, 1, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [2, 2, 2]
+    modelMatrix: [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 1, 0, 1]
+  Wall:
+    position: [0, 1, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [8, 4, 0.1]
+    modelMatrix: [8, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0.1, 0, 0, 1, -2, 1]
+Hex:
+  Camera:
+    position: [0, 40, 60]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 40, 60, 1]
+  Directional Light:
+    position: [0, 10, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 10, 0, 1]
+  Floor:
+    position: [0, 8, 30]
+    rotation: [1, 0, 0, 0]
+    scale: [6, 1, 6]
+    modelMatrix: [6, 0, 0, 0, 0, 1, 0, 0, 0, 0, 6, 0, 0, 8, 30, 1]
+  Terrain:
+    position: [0, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]

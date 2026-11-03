@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include "util/TerrainMapUtils.h"
 
@@ -33,6 +34,21 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+        // the map file each apply rewrites in full (beneath the step's write scope)
+        std::vector<Touched> touchedPaths(bool undo) const override;
+
+        // "Sculpt Terrain (Island)", "Paint Terrain (Island)", "Paint Details (Island)"
+        std::string describe() const override {
+            const char* verb = ref.target == TerrainMapTarget::HeightMap ? "Sculpt Terrain" :
+                (ref.target == TerrainMapTarget::BlendMap ? "Paint Terrain" : "Paint Details");
+            return std::string(verb) + " (" + CommandNames::entity(project, sceneId, entity) + ")";
+        }
+        const char* typeName() const override { return "TerrainMapPatchCmd"; }
+        size_t memoryBytes() const override {
+            return sizeof(*this) + patch.path.size() + patch.beforePixels.capacity() + patch.afterPixels.capacity();
+        }
+        // Off-thread release: the destructor only frees pixel buffers and strings; no editor/engine/GPU state (S24 R8).
+        bool releaseOffThread() const override { return true; }
 
     };
 

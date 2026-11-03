@@ -218,9 +218,6 @@ namespace jasperengine::editor {
         void SetFontZoomCallback(FontZoomCallback callback) { onFontZoom = callback; }
 
     private:
-        // editor/tests/CustomTextEditorTest.cpp reads the tokens and types as handleTextInput does
-        friend struct CustomTextEditorTestAccess;
-
         // Text data
         std::vector<std::string> lines;
         std::vector<std::vector<Token>> lineTokens;
@@ -356,6 +353,8 @@ namespace jasperengine::editor {
         HtmlCssLexer::Language htmlCssLanguage() const;
         // Html and Css: the word starting at wordStart goes where a CSS property name does
         bool atCssPropertyName(const TextPosition& wordStart) const;
+        // where an HTML word starts: an element name (after "<", "</"), an attribute name
+        HtmlCssLexer::NamePosition htmlNamePosition(const TextPosition& wordStart) const;
         // Start of the word completion replaces; in Html and Css it spans hyphens (background-color)
         TextPosition findCompletionWordStart(const TextPosition& pos) const;
         TokenType classifyWord(const std::string& word) const;

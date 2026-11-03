@@ -7,9 +7,11 @@
 #include "render/Render.h"
 #include "shader/ShaderUniforms.h"
 #include "texture/Texture.h"
+#include "asset/AssetRef.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
+#include "util/CanvasScaler.h"
 #include <string>
 #include <vector>
 
@@ -21,14 +23,38 @@ namespace jasperengine{
         AUTO
     };
 
-    // PCF filter quality of shadow edges, uniform-driven (no shader rebuild).
-    // 3D shadows (shadowQuality): NONE = 1 tap, LOW = 3x3, MEDIUM = 5x5, HIGH = 7x7.
-    // 2D shadows (shadow2DQuality): NONE = 1 tap, LOW = 5, MEDIUM = 9, HIGH = 13 taps
-    // along the 1D polar map, smoothing the penumbra set by Light2D shadowSoftness.
+    // Shadow quality, uniform-driven (no shader rebuild). Stored as ints: append only.
+    // 3D shadows (shadowQuality) pick the quality tier (ShadowTiers.h): AUTO the platform's
+    // (project graphics.shadowTier.<platform>), LOW, MEDIUM, HIGH, ULTRA that tier, NONE ("Hard
+    // Only") the platform's tier with every light's shadows hard.
+    // 2D shadows (shadow2DQuality): NONE = 1 tap, LOW = 5, MEDIUM = 9, HIGH (and ULTRA) = 13 taps
+    // along the 1D polar map, smoothing the penumbra set by Light2D shadowSoftness (AUTO = LOW).
     enum class ShadowQuality {
-        NONE,   // 1 tap, no filtering (hard edges)
+        NONE,   // 3D: Hard Only; 2D: 1 tap, no filtering (hard edges)
         LOW,
         MEDIUM,
+        HIGH,
+        AUTO,
+        ULTRA
+    };
+
+    // The Scene view's shadow debug views (editor only, never saved): what the shading of lit
+    // surfaces is replaced with
+    enum class ShadowDebugView {
+        NONE,
+        CASCADES,       // the cascade of each pixel tinted, the blend band hatched
+        SHADOW_FACTOR,  // the main light's lit fraction, grey
+        TEXEL_DENSITY,  // a checker of its shadow texels
+        CACHE,          // green skipped, yellow restored, red redrawn this frame
+        ATLAS           // the shadow atlases and static caches drawn over the view
+    };
+
+    // Shading quality of the built-in Lit (docs/specs/S11-materials-lighting.md). STANDARD is the
+    // shader as it always was; HIGH adds geometric specular anti-aliasing (roughness widened by
+    // the normal's screen-space variance, against shimmering highlights) and multiscatter energy
+    // compensation of the direct lights (rough metals keep their energy). One variant bit.
+    enum class LitQuality {
+        STANDARD,
         HIGH
     };
 
@@ -53,6 +79,37 @@ namespace jasperengine{
     enum class MonochromeMode : int {
         GRAYSCALE,
         SEPIA
+    };
+
+    // The pattern of the film grain (PostProcessingSettings::filmGrainType): the uber pass's
+    // classic per-pixel hash, or one of the film simulation's (S13), held per film frame
+    enum class FilmGrainType : int {
+        CLASSIC,    // a new hash per pixel and frame (the original grain)
+        LENS,       // FidelityFX Lens-derived simplex cells of filmGrainSize pixels
+        FILMIC      // a 5x5 lattice of grain particles (desktop / high-end)
+    };
+
+    // The frame of the film gate (PostProcessingSettings::filmGateMask): the image's aspect
+    // ratio inside the output, black outside it, with a feathered edge
+    enum class FilmGateMask : int {
+        NONE,
+        ROUNDED,         // the output's frame with rounded corners
+        ACADEMY_137,     // 1.37:1
+        WIDESCREEN_185,  // 1.85:1
+        ANAMORPHIC_239   // 2.39:1
+    };
+
+    // What the colour of a .cube LUT's input is (PostProcessingSettings::lutInputEncoding).
+    // Display encodings apply the LUT to the graded display colour, scene encodings to the
+    // exposed linear scene colour before the tone mapping (CubeLut.h)
+    enum class LutInputEncoding : int {
+        AUTO,                   // proposed from the LUT's title and input range
+        SRGB,                   // display: sRGB / Rec. 709
+        LINEAR,                 // display with an input range up to 1, else scene-linear
+        LOGC3,                  // scene: ARRI LogC3 (EI 800), ARRI Wide Gamut 3
+        ACESCCT,                // scene: ACEScct, AP1
+        CINEON,                 // scene: Cineon film log, Rec. 709 primaries
+        DAVINCI_INTERMEDIATE    // scene: DaVinci Intermediate, DaVinci Wide Gamut
     };
 
     // Fast post-processing of the main camera (shader library phase 4). Every effect has an
@@ -84,8 +141,11 @@ namespace jasperengine{
         Vector3 lift = Vector3(0.0f, 0.0f, 0.0f);
         Vector3 gamma = Vector3(1.0f, 1.0f, 1.0f);
         Vector3 gain = Vector3(1.0f, 1.0f, 1.0f);
-        std::string lutTexture;
+        AssetRef lutTexture;
         float lutContribution = 1.0f;
+        // what a .cube LUT's input is (AUTO: from its title and input range); a PNG strip is
+        // always display colour
+        LutInputEncoding lutInputEncoding = LutInputEncoding::AUTO;
         // size of the engine's colour LUT (16 or 32 per side): 16 is lighter on low-end GPUs and
         // bands under strong grades
         int lutSize = 32;
@@ -131,6 +191,42 @@ namespace jasperengine{
         bool filmGrainEnabled = false;
         float filmGrainIntensity = 0.2f;            // 0..1
         float filmGrainResponse = 0.8f;             // 0..1, less grain in bright areas
+        // the film simulation's grain (S13): LENS and FILMIC are cells of about filmGrainSize
+        // pixels, held for a film frame (filmFrameRate, shared with the film damage), and never
+        // push a pixel past black or white; FILMIC may be coloured (one grain per channel)
+        FilmGrainType filmGrainType = FilmGrainType::CLASSIC;
+        float filmGrainSize = 1.5f;                 // 0.25..8 pixels
+        bool filmGrainColored = false;
+        float filmFrameRate = 24.0f;                // 1..120 film frames per second
+
+        // VHS tape (T1, S13): replaces the scene tap with the tape's colour bleed, warps the
+        // lines (wobble, tracking) and adds tape noise, chroma streaks, dropouts and scanlines;
+        // FXAA and sharpen do not run with it. Each part 0..2 (1 the tape's own amount),
+        // intensity 0..1 mixes the whole, speed 0..4 scales its animation
+        bool vhsEnabled = false;
+        float vhsIntensity = 1.0f;
+        float vhsWobble = 0.5f;
+        float vhsTracking = 0.5f;
+        float vhsColorBleed = 1.0f;
+        float vhsTapeNoise = 0.6f;
+        float vhsChromaStreaks = 0.4f;
+        float vhsDropouts = 0.3f;
+        float vhsScanlines = 0.5f;
+        float vhsInterference = 0.0f;
+        float vhsGlitches = 0.0f;
+        float vhsSpeed = 1.0f;
+
+        // film damage (T1, S13): hairs, scratches and dust (each up to 8 candidates per film
+        // frame, 0 none), the gate's weave (0..1 of a projector's) and its mask
+        bool filmDamageEnabled = false;
+        float filmDamageIntensity = 1.0f;           // 0..4
+        float filmHairAmount = 0.1f;
+        float filmScratchAmount = 0.25f;
+        float filmDustAmount = 2.5f;
+        float filmDustSize = 3.0f;                  // 0.5..24 pixels
+        float filmGateWeave = 0.3f;
+        FilmGateMask filmGateMask = FilmGateMask::NONE;
+        float filmGateMaskFeather = 3.0f;           // 0..256 pixels
 
         bool sharpenEnabled = false;
         float sharpenIntensity = 0.5f;              // 0..1
@@ -152,6 +248,15 @@ namespace jasperengine{
         float blurRadius = 1.0f;
         float blurIntensity = 1.0f;
 
+        // T2 (S13): halation, the red-orange glow film shows around bright highlights.
+        // threshold on the display brightness (0..1; bloom's when bloom is on, whose chain it
+        // reuses), radius 0..1 mixes the 1/4 and 1/8 levels, tint sRGB. LDR like bloom
+        bool halationEnabled = false;
+        float halationIntensity = 0.6f;             // 0..2
+        float halationThreshold = 0.85f;
+        float halationRadius = 0.5f;
+        Vector3 halationTint = Vector3(1.0f, 0.25f, 0.08f);
+
         // resolution of the 3D scene, 0.5..1 of the output, upscaled by the uber pass (UI the main
         // camera draws is part of its image and scales too; a layer scene's HUD stays at the
         // output's resolution)
@@ -161,12 +266,20 @@ namespace jasperengine{
         // nothing else offscreen an exported game blits that target to the screen (one pass)
         int msaaSamples = 1;
 
+        // dynamic resolution (S13): in Play and exported games the main camera's render scale
+        // moves between dynamicResolutionMinScale and renderScale to hold the target frame
+        // rate (0: the display's refresh rate, else 60). Off with fixed resolution; the scale
+        // it applies is never written back here
+        bool dynamicResolutionEnabled = false;
+        float dynamicResolutionMinScale = 0.6f;     // 0.5..1
+        int dynamicResolutionTargetFps = 0;         // 0..240
+
         bool operator==(const PostProcessingSettings& o) const;
         bool operator!=(const PostProcessingSettings& o) const { return !(*this == o); }
 
         // the field table (name, type, accessor) every consumer iterates: serialization,
         // exported scene code, the editor's Catalog paths (post_processing.<snake name>) and MCP
-        enum class FieldType { Bool, Int, Float, Vector3, Enum, String };
+        enum class FieldType { Bool, Int, Float, Vector3, Enum, String, Asset };
         struct Field {
             const char* name;       // camelCase, the member and YAML key
             const char* snakeName;  // snake_case, the Catalog path after "post_processing."
@@ -195,12 +308,15 @@ namespace jasperengine{
     struct PostProcessPass {
         // a project fork base path, "library:<name>" (a library post-process shader,
         // @shader postprocess), or empty: the built-in passthrough
-        std::string shader;
+        ShaderRef shader;
         bool enabled = true;
         ShaderUniformValues uniforms;
         // the shader's textures by uniform (its manifest's @texture, or any it declares when it
         // has no manifest); one it declares and has none of binds the manifest default (white)
         std::vector<std::pair<std::string, Texture>> textures;
+        // u_fs_postParams members that follow a global shader value (Shader.setGlobal*):
+        // member -> global name, over uniforms and the manifest default
+        ShaderGlobalBindings shaderGlobalBindings;
         // the pass's output resolution, a fraction of the chain's (0.1..1): the next pass (or a
         // copy to the destination, after the last) samples it bilinearly
         float scale = 1.0f;
@@ -226,7 +342,13 @@ namespace jasperengine{
     // and reset "default" values without building a full Scene (which owns a physics runtime).
     struct SceneSettings {
         Vector4 backgroundColor = Vector4(0.0, 0.0, 0.0, 1.0); // sRGB
-        ShadowQuality shadowQuality = ShadowQuality::LOW;
+        ShadowQuality shadowQuality = ShadowQuality::AUTO;
+        // directional shadows end this far from the camera (metres; 0: the quality tier's), fading
+        // to lit over its last shadowFadeFraction; cascades blend into each other over a band
+        // before each split (dithered on the Low tier) unless shadowCascadeBlend is off
+        float shadowDistance = 0.0f;
+        float shadowFadeFraction = 0.1f;
+        bool shadowCascadeBlend = true;
 
         // off builds no levels at all; a detail level is drawn once its error projects below this many pixels
         bool meshLodEnabled = false;
@@ -246,6 +368,13 @@ namespace jasperengine{
         // lights evaluated per object (1..16); the rest of the lights reaching it are folded
         // into its spherical-harmonics ambient
         int maxLightsPerObject = 8;
+
+        // new scenes shade at HIGH; a scene file without the key is STANDARD (as it was drawn)
+        LitQuality litQuality = LitQuality::HIGH;
+        // the camera exposure lights authored in physical units (lux, candela, lumen) are drawn
+        // at (util/LightPhotometry.h): Sunny 15, Overcast 12, Interior 7, Night 2. Lights in
+        // engine units ignore it.
+        float physicalLightEV100 = 15.0f;
 
         // default 1.0 keeps 2D scenes visually unchanged until the user dims it
         Vector3 ambientLight2DColor = Vector3(1.0, 1.0, 1.0); // stored linear
@@ -272,6 +401,8 @@ namespace jasperengine{
         Vector3 gravity3D = Vector3(0.0f, -9.81f, 0.0f);
         // bodies drawn between their last two fixed steps (owned by PhysicsSystem as gravity)
         bool physicsInterpolation = true;
+        // Box2D sub-steps of each fixed step, 1..16 (more: stiffer joint chains and stacks)
+        int physics2DSubSteps = 4;
 
         // fixed game resolution: when enabled and this scene is the Engine main scene, the main
         // camera renders into an offscreen framebuffer of this size, upscaled to the view rect
@@ -281,13 +412,18 @@ namespace jasperengine{
         unsigned int fixedResolutionHeight = 360;
         TextureFilter fixedResolutionFilter = TextureFilter::NEAREST;
 
+        // the UI's own space (Canvas Scaler): the project default (Engine::setDefaultCanvasScaler)
+        // unless this scene overrides it
+        bool canvasScalerUseProjectDefault = true;
+        CanvasScalerSettings canvasScaler;
+
         // scene-wide custom shaders, used when a component's customShader is empty
         // (project-relative base or "a.vert|b.frag"; empty = engine built-in)
-        std::string defaultMeshShader;
-        std::string defaultUIShader;
-        std::string defaultSkyShader;
-        std::string defaultPointsShader;
-        std::string defaultLinesShader;
+        ShaderRef defaultMeshShader;
+        ShaderRef defaultUIShader;
+        ShaderRef defaultSkyShader;
+        ShaderRef defaultPointsShader;
+        ShaderRef defaultLinesShader;
 
         // ordered user post-process chain (main camera only), applied after SSR
         std::vector<PostProcessPass> postProcess;

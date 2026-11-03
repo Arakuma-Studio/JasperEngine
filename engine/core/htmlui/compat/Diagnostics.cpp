@@ -234,8 +234,10 @@ void jasperengine::htmlui::compat::logDiagnostics(std::string_view documentPath,
                 Log::warn("[HTML UI] %s", text.c_str());
                 break;
             case Severity::Info:
+                // the notes are asked for (Verbose Diagnostics): Info, as the summary, since
+                // Log::verbose is Trace (S09), below every sink's default level
                 if (verbose)
-                    Log::verbose("[HTML UI] %s", text.c_str());
+                    Log::print("[HTML UI] %s", text.c_str());
                 break;
         }
     }

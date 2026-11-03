@@ -11,8 +11,10 @@
 
 #include "Project.h"
 #include "EditorHost.h"
+#include "StreamPreserved.h"
 #include "Out.h"
 #include "Stream.h"
+#include "reflect/Reflect.h"
 #include "Factory.h"
 #include "command/CommandHandle.h"
 #include "render/SceneRender.h"
@@ -23,6 +25,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <stdexcept>
 #include <unordered_set>
 
 using namespace jasperengine;
@@ -161,6 +164,19 @@ std::vector<editor::SceneProject*> editor::Project::getScenesAndPrefabStages() {
     return result;
 }
 
+void editor::Project::compactAllComponents() {
+    for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
+        if (sceneProject->scene) {
+            sceneProject->scene->compactComponents();
+        }
+    }
+    for (auto& [path, prefab] : prefabAssets) {
+        if (prefab.registry) {
+            prefab.registry->compactComponents();
+        }
+    }
+}
+
 bool editor::Project::isPrefabStage(uint32_t sceneId) const {
     return findPrefabStageScene(sceneId) != nullptr;
 }
@@ -289,6 +305,14 @@ bool editor::Project::openPrefabStage(const std::filesystem::path& path, uint32_
         editor::getEditorHost().registerAlert("Open Prefab", "The prefab \"" + relative.generic_string() + "\" does not exist.");
         return false;
     }
+    // S29 R19: a prefab in conflict opens once it is resolved
+    if (documentOpenGuard) {
+        std::string why;
+        if (!documentOpenGuard(getProjectPath() / relative, why)) {
+            editor::getEditorHost().registerAlert("Open Prefab", why);
+            return false;
+        }
+    }
 
     // From an instance inside a stage the new stage goes on top of that one; from anywhere
     // else it replaces the whole stack
@@ -379,7 +403,7 @@ bool editor::Project::pushPrefabStage(const std::filesystem::path& relative, uin
             EntityRegistry* registry = levelPrefab->registry.get();
             ui = ui || hasAnyComponent(this, registry, {levelPrefab->root}, {ComponentType::RectTransformComponent, ComponentType::UIComponent});
             twoD = twoD || hasAnyComponent(this, registry, levelPrefab->registryEntities, {ComponentType::SpriteComponent, ComponentType::TilemapComponent,
-                ComponentType::Rigidbody2DComponent, ComponentType::Joint2DComponent, ComponentType::Light2DComponent,
+                ComponentType::Rigidbody2DComponent, ComponentType::Joint2DComponent, ComponentType::CharacterController2DComponent, ComponentType::Light2DComponent,
                 ComponentType::ShadowCaster2DComponent, ComponentType::SpriteAnimationComponent});
         }
         if (ui) {
@@ -606,6 +630,8 @@ void editor::Project::fixPrefabStageRoots(PrefabStage& stage) {
 }
 
 YAML::Node editor::Project::encodePrefabStage(PrefabStage& stage) {
+    // the prefab file Prefab Mode saves: without the values loading computes (S29 R20)
+    reflect::DocumentEncodeScope document;
     SceneProject& sceneProject = stage.sceneProject;
     Scene* scene = sceneProject.scene;
     fixPrefabStageRoots(stage);
@@ -622,8 +648,16 @@ YAML::Node editor::Project::encodePrefabStage(PrefabStage& stage) {
     topLevel.insert(topLevel.begin(), stage.root);
 
     YAML::Node membersNode(YAML::NodeType::Sequence);
-    for (Entity entity : topLevel) {
-        membersNode.push_back(Stream::encodeEntity(entity, scene, this, &sceneProject));
+    {
+        // Every GameObject of the stage in the asset, or no save (savePrefabStage)
+        Stream::SavedEntitiesCheck check(&sceneProject);
+        for (Entity entity : topLevel) {
+            membersNode.push_back(Stream::encodeEntity(entity, scene, this, &sceneProject));
+        }
+        const std::vector<Entity> left = check.leftOut(this);
+        if (!left.empty()) {
+            throw Stream::IncompleteSave(check.describe(left, "the stage") + " (an editor fault: please report it); nothing was written");
+        }
     }
     stripSceneOnlyKeys(membersNode, false);
 
@@ -644,21 +678,82 @@ YAML::Node editor::Project::encodePrefabStage(PrefabStage& stage) {
     node["nextEntity"] = nextEntity;
     node["root"] = stage.root;
     node["members"] = membersNode;
+    // the asset's header keys this editor does not know go with it (docs/data-safety.md)
+    if (prefab && prefab->registry) {
+        StreamSave::applyRootKeys(prefab->registry.get(), NULL_ENTITY, node);
+    }
     return node;
 }
 
-bool editor::Project::savePrefabStage(uint32_t sceneId) {
+YAML::Node editor::Project::encodeDocument(uint32_t sceneId) {
+    // a document whose encode would leave a GameObject out has no encoding (the save says why)
+    try {
+        if (PrefabStage* stage = getPrefabStage(sceneId)) return encodePrefabStage(*stage);
+    } catch (const std::exception&) {
+        return YAML::Node(YAML::NodeType::Undefined);
+    }
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) return YAML::Node(YAML::NodeType::Undefined);
+    YAML::Node root;
+    try {
+        root = Stream::encodeSceneProject(this, sceneProject);
+    } catch (const std::exception&) {
+        return YAML::Node(YAML::NodeType::Undefined);
+    }
+    StreamMigrations::stampCurrentVersion(DocumentKind::Scene, root);
+    // the identity keys a save puts in (guid, formerGuids, labels)
+    if (!sceneProject->filepath.empty()) prepareDocumentIdentity(root, sceneProject->filepath);
+    return root;
+}
+
+bool editor::Project::isPrefabStageDegraded(uint32_t sceneId) const {
+    const PrefabStage* stage = getPrefabStage(sceneId);
+    if (!stage) {
+        return false;
+    }
+    auto it = prefabAssets.find(stage->assetPath);
+    return it != prefabAssets.end() && it->second.loadReport.dropped() > 0;
+}
+
+bool editor::Project::savePrefabStage(uint32_t sceneId, DegradedSavePolicy policy) {
     PrefabStage* stage = getPrefabStage(sceneId);
     if (!stage) {
         return false;
     }
     // previews (a physics gesture's poses) settle or go back before the asset is written
     editor::getEditorHost().stopTransientPreviews();
-    stage->changePending = false;
     SceneProject& sceneProject = stage->sceneProject;
     const std::filesystem::path path = stage->assetPath;
 
-    const YAML::Node node = encodePrefabStage(*stage);
+    // the asset did not load completely: the host decides (Refuse when headless)
+    if (policy == DegradedSavePolicy::Refuse && isPrefabStageDegraded(sceneId)) {
+        DegradedSaveRequest request;
+        request.documentName = path.filename().string();
+        request.path = path;
+        for (const LoadIssue& issue : prefabAssets.at(path).loadReport.issues) {
+            if (issue.fate == LoadIssueFate::Dropped) {
+                request.dropped.push_back(issue);
+            }
+        }
+        request.saveAnyway = [this, sceneId]() {
+            savePrefabStage(sceneId, DegradedSavePolicy::SaveAnyway);
+        };
+        policy = editor::getEditorHost().confirmDegradedSave(request);
+        if (policy == DegradedSavePolicy::Refuse) {
+            Out::warning("Prefab %s not saved: it did not load completely and saving it would remove %zu value(s) "
+                         "this editor could not read.", path.generic_string().c_str(), request.dropped.size());
+            return false;
+        }
+    }
+    stage->changePending = false;
+
+    YAML::Node node;
+    try {
+        node = encodePrefabStage(*stage);
+    } catch (const std::exception& e) {
+        Out::error("Prefab %s not saved: %s", path.generic_string().c_str(), e.what());
+        return false;
+    }
     if (!node || !node.IsMap()) {
         Out::error("Prefab %s not saved: a prefab needs its root GameObject", path.generic_string().c_str());
         return false;
@@ -686,7 +781,7 @@ bool editor::Project::savePrefabStage(uint32_t sceneId) {
     }
     prefab->needsUpgrade = false;
     prefab->isModified = true;
-    savePrefabToDisk(path);
+    savePrefabToDisk(path, policy);
     if (prefab->isModified) {
         return false; // could not be written (logged)
     }
@@ -712,7 +807,7 @@ bool editor::Project::savePrefabStage(uint32_t sceneId) {
         prefabsSavedWhilePlaying.insert(nestedChanged.begin(), nestedChanged.end());
     }
 
-    sceneProject.isModified = false;
+    markSceneSaved(&sceneProject);
     stage->outsideChangeWarned = false;
     if (Prefab* saved = getPrefab(path)) {
         (void)saved;
@@ -955,7 +1050,9 @@ void editor::Project::updatePrefabStages(bool userEditing) {
             stage.changePending = true;
             stage.lastChange = now;
         }
-        if (prefabAutoSave && unsaved && stage.changePending && !userEditing && now - stage.lastChange >= AUTO_SAVE_DELAY) {
+        // never for an asset that did not load completely (the stage bar says Auto Save is paused)
+        if (prefabAutoSave && unsaved && stage.changePending && !userEditing && now - stage.lastChange >= AUTO_SAVE_DELAY &&
+                !isPrefabStageDegraded(sceneId)) {
             // a save that fails (no root) is tried again after the next change only
             stage.autoSaveFailed = !savePrefabStage(sceneId);
         }
@@ -989,7 +1086,9 @@ void editor::Project::updatePrefabStages(bool userEditing) {
                                     kept.push_back(entity);
                                 }
                             }
-                            sceneProject.selectedEntities = kept;
+                            SelectionState keptSelection;
+                            keptSelection.entities = kept;
+                            setSelection(sceneId, keptSelection, SelectionCause::Forced);
                             CommandHandle::get(sceneId)->clear();
                             Out::info("Prefab \"%s\" changed outside Prefab Mode: reloaded", stage.assetPath.generic_string().c_str());
                         } else {

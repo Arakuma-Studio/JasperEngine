@@ -5,6 +5,7 @@
 #include "HtmlUIEventListener.h"
 #include "HtmlUIScriptInternal.h"
 #include "htmlui/RmlKeyMap.h"
+#include "htmlui/widgets/DragDropSession.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/Event.h>
@@ -190,6 +191,42 @@ int UIEvent::getButton() const{
     }
 }
 
+int UIEvent::getPointerId() const{
+    return intParameter(state, "pointer_id", 0);
+}
+
+std::string UIEvent::getPointerType() const{
+    Rml::Event* event = liveEvent(state);
+    return event ? event->GetParameter<Rml::String>("pointer_type", "") : std::string();
+}
+
+bool UIEvent::isPrimary() const{
+    return intParameter(state, "is_primary", 0) != 0;
+}
+
+int UIEvent::getButtons() const{
+    // RmlUi's mask is the DOM's (1 left, 2 right, 4 middle)
+    return intParameter(state, "buttons", 0);
+}
+
+float UIEvent::getPressure() const{
+    return floatParameter(state, "pressure");
+}
+
+float UIEvent::getWidth() const{
+    return floatParameter(state, "width");
+}
+
+float UIEvent::getHeight() const{
+    return floatParameter(state, "height");
+}
+
+int UIEvent::getFingerId() const{
+    // D1: a finger is pointer fingerId + 2 (HtmlUIContext::touchPointerId)
+    const int pointerId = getPointerId();
+    return (getPointerType() == "touch" && pointerId >= 2) ? pointerId - 2 : -1;
+}
+
 float UIEvent::getDeltaX() const{
     return floatParameter(state, "wheel_delta_x");
 }
@@ -221,4 +258,27 @@ UIValue UIEvent::getDetail() const{
     if (!isValid() || !state->detail)
         return UIValue();
     return *state->detail;
+}
+
+UIDataTransfer UIEvent::getDataTransfer() const{
+    static const char* const dragEvents[] = {"dragstart", "drag", "dragend", "dragenter", "dragover", "dragleave", "drop",
+                                             "dragmove", "dragdrop", "dragout"};
+    Rml::Event* event = liveEvent(state);
+    if (!event)
+        return UIDataTransfer();
+    bool drag = false;
+    for (const char* name : dragEvents)
+        drag |= state->type == name;
+    if (!drag)
+        return UIDataTransfer();
+    return UIDataTransferAccess::make(htmlui::DragDropSession::transferOf(event->GetTargetElement()));
+}
+
+int UIEvent::getDropIndex() const{
+    return intParameter(state, htmlui::DragDropSession::kDropIndexParameter, 0);
+}
+
+std::string UIEvent::getDropPosition() const{
+    Rml::Event* event = liveEvent(state);
+    return event ? event->GetParameter<Rml::String>(htmlui::DragDropSession::kDropPositionParameter, "") : std::string();
 }

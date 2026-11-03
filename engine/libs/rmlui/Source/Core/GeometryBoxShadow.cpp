@@ -129,6 +129,39 @@ BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, ColourbPremul
 	return geometry_info;
 }
 
+CornerSizes2 GeometryBoxShadow::SpreadRadii(CornerSizes2 radii, float spread_distance, bool inset)
+{
+	for (Vector2f& corner : radii)
+	{
+		if (corner.x <= 0.f || corner.y <= 0.f)
+		{
+			corner = Vector2f(0.f);
+			continue;
+		}
+		for (int axis = 0; axis < 2; axis++)
+		{
+			float& radius = corner[axis];
+			float spread_factor = (inset ? -1.f : 1.f);
+			if (radius < spread_distance)
+			{
+				const float ratio_minus_one = (radius / spread_distance) - 1.f;
+				spread_factor *= 1.f + ratio_minus_one * ratio_minus_one * ratio_minus_one;
+			}
+			radius = Math::Max(radius + spread_factor * spread_distance, 0.f);
+		}
+	}
+	return radii;
+}
+
+RenderBox GeometryBoxShadow::SpreadBox(RenderBox render_box, float spread_distance, bool inset)
+{
+	const float signed_spread_distance = (inset ? -spread_distance : spread_distance);
+	render_box.SetFillSize(Math::Max(render_box.GetFillSize() + Vector2f(2.f * signed_spread_distance), Vector2f{0.001f}));
+	render_box.SetBorderRadius(SpreadRadii(render_box.GetBorderRadius(), spread_distance, inset));
+	render_box.SetBorderOffset(render_box.GetBorderOffset() - Vector2f(signed_spread_distance));
+	return render_box;
+}
+
 void GeometryBoxShadow::GenerateTexture(CallbackTexture& out_shadow_texture, Geometry& out_background_border_geometry, RenderManager& render_manager,
 	const BoxShadowGeometryInfo& info)
 {
@@ -208,42 +241,12 @@ void GeometryBoxShadow::GenerateTexture(CallbackTexture& out_shadow_texture, Geo
 				const float spread_distance = shadow.spread_distance.number;
 				const float blur_radius = shadow.blur_radius.number;
 
-				// The radii of the shadow's shape (CSS Backgrounds 3, 6.1.1): each horizontal and vertical radius of the box grows
-				// (shrinks when inset) by the spread distance, by less when it is smaller than the spread so that a square corner
-				// stays square. A corner without a curve in one axis has none at all.
-				auto spread_radii = [&](CornerSizes2 radii) {
-					for (Vector2f& corner : radii)
-					{
-						if (corner.x <= 0.f || corner.y <= 0.f)
-						{
-							corner = Vector2f(0.f);
-							continue;
-						}
-						for (int axis = 0; axis < 2; axis++)
-						{
-							float& radius = corner[axis];
-							float spread_factor = (inset ? -1.f : 1.f);
-							if (radius < spread_distance)
-							{
-								const float ratio_minus_one = (radius / spread_distance) - 1.f;
-								spread_factor *= 1.f + ratio_minus_one * ratio_minus_one * ratio_minus_one;
-							}
-							radius = Math::Max(radius + spread_factor * spread_distance, 0.f);
-						}
-					}
-					return radii;
-				};
-
 				Mesh mesh_shadow;
 
 				// Generate the shadow geometry. For outer box-shadows it is rendered normally, while for inset box-shadows it is used as a clipping mask.
 				for (size_t i = 0; i < num_boxes; i++)
 				{
-					const float signed_spread_distance = (inset ? -spread_distance : spread_distance);
-					RenderBox render_box = (inset ? info.padding_render_boxes : info.border_render_boxes)[i];
-					render_box.SetFillSize(Math::Max(render_box.GetFillSize() + Vector2f(2.f * signed_spread_distance), Vector2f{0.001f}));
-					render_box.SetBorderRadius(spread_radii(render_box.GetBorderRadius()));
-					render_box.SetBorderOffset(render_box.GetBorderOffset() - Vector2f(signed_spread_distance));
+					const RenderBox render_box = SpreadBox((inset ? info.padding_render_boxes : info.border_render_boxes)[i], spread_distance, inset);
 					MeshUtilities::GenerateBackground(mesh_shadow, render_box, shadow.color);
 				}
 

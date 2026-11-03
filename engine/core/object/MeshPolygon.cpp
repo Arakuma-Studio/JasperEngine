@@ -43,6 +43,7 @@ void MeshPolygon::addVertex(Vector3 vertex){
     pcomp.points.push_back({vertex, Vector4(1.0f, 1.0f, 1.0f, 1.0f)});
 
     pcomp.needUpdatePolygon = true;
+    markChanged<MeshPolygonComponent>();
 }
 
 void MeshPolygon::addVertex(float x, float y){
@@ -55,6 +56,7 @@ void MeshPolygon::clearVertices(){
     pcomp.points.clear();
 
     pcomp.needUpdatePolygon = true;
+    markChanged<MeshPolygonComponent>();
 }
 
 unsigned int MeshPolygon::getWidth(){
@@ -77,6 +79,7 @@ void MeshPolygon::setFlipY(bool flipY){
         pcomp.flipY = flipY;
 
         pcomp.needUpdatePolygon = true;
+        markChanged<MeshPolygonComponent>();
     }
 }
 

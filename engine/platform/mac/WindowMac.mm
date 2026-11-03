@@ -67,6 +67,19 @@ void WindowMac::setupApplication() {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 }
 
+void WindowMac::setupHeadlessApplication() {
+    [NSApplication sharedApplication];
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
+}
+
+void WindowMac::showHeadless() {
+    if (!gWindow) return;
+    [gWindow setAlphaValue:0.0];
+    [gWindow setIgnoresMouseEvents:YES];
+    [gWindow setHasShadow:NO];
+    [gWindow orderBack:nil];
+}
+
 void WindowMac::installMinimalMenuBar(const std::string& applicationName) {
     NSMenu* menuBar = [[NSMenu alloc] init];
     NSMenuItem* appMenuItem = [[NSMenuItem alloc] init];
@@ -221,7 +234,12 @@ void WindowMac::setTitle(const std::string& title) {
 }
 
 void WindowMac::quit() {
-    [NSApp terminate:nil];
+    // On the next turn of the main queue, never inside the frame that asked: a quit comes from
+    // Engine::runFrame (a script's Engine.quit, the player's --quit-after), and terminate: runs
+    // applicationWillTerminate:, whose Engine::systemViewDestroyed waits for that frame to end
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSApp terminate:nil];
+    });
 }
 
 void WindowMac::setMouseCursor(CursorType type) {

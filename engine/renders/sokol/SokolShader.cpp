@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SokolShader.h"
+#include "SokolAsyncCreate.h"
 #include "SokolPipelineCache.h"
 
 #include "math/Vector3.h"
@@ -15,12 +16,15 @@
 using namespace jasperengine;
 
 SokolShader::SokolShader(){
-    shader.id = SG_INVALID_ID;
 }
 
-SokolShader::SokolShader(const SokolShader& rhs) = default;
+SokolShader::SokolShader(const SokolShader& rhs): shaderId(rhs.shaderId.load(std::memory_order_acquire)){
+}
 
-SokolShader& SokolShader::operator=(const SokolShader& rhs) = default;
+SokolShader& SokolShader::operator=(const SokolShader& rhs){
+    shaderId.store(rhs.shaderId.load(std::memory_order_acquire), std::memory_order_release);
+    return *this;
+}
 
 int SokolShader::roundup(int val, int round_to) {
     return (val + (round_to - 1)) & ~(round_to - 1);
@@ -123,7 +127,7 @@ sg_sampler_type SokolShader::samplerToSokolType(SamplerType type){
 bool SokolShader::createShader(ShaderData& shaderData){
     // A failed shader still holds its Sokol pool slot, so release the old handle
     // instead of overwriting it and leaking the slot on every retry.
-    if (shader.id != SG_INVALID_ID) {
+    if (shaderId.load(std::memory_order_acquire) != SG_INVALID_ID) {
         destroyShader();
     }
 
@@ -306,16 +310,18 @@ bool SokolShader::createShader(ShaderData& shaderData){
             Log::error("Shader '%s' uses %d texture-sampler pairs but the limit is %d", nm, pairCount, SG_MAX_TEXTURE_SAMPLER_PAIRS);
     }
 
-    if (Engine::isAsyncThread()){
-        shader = SokolCmdQueue::add_command_make_shader(shader_desc);
-    }else{
-        shader = sg_make_shader(shader_desc);
-    }
+    // created off the render thread where the backend allows (spec S32): pending until then
+    const sg_shader shader = Engine::isAsyncThread() ? SokolCmdQueue::add_command_make_shader(shader_desc) : SokolAsyncCreate::makeShader(shader_desc);
+    shaderId.store(shader.id, std::memory_order_release);
 
-    return isCreated();
+    return shader.id != SG_INVALID_ID && (isCreated() || isPending());
 }
 
 void SokolShader::destroyShader(){
+    std::lock_guard<std::mutex> lock(destroyMutex);
+    // (one thread's: another's destroy of the same shader finds it gone)
+    const sg_shader shader = {shaderId.exchange(SG_INVALID_ID, std::memory_order_acq_rel)};
+
     // the dynamic pipelines made with it first (they reference the shader)
     SokolPipelineCache::releaseShader(shader);
 
@@ -323,29 +329,39 @@ void SokolShader::destroyShader(){
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_shader(shader);
         }else{
-            sg_destroy_shader(shader);
+            SokolAsyncCreate::destroyShader(shader);
         }
     }
-    
-    shader.id = SG_INVALID_ID;
+}
+
+sg_resource_state SokolShader::queryState(){
+    const sg_shader shader = get();
+    if (shader.id == SG_INVALID_ID || !sg_isvalid())
+        return SG_RESOURCESTATE_INVALID;
+    return sg_query_shader_state(shader);
 }
 
 bool SokolShader::isCreated(){
-    if (shader.id != SG_INVALID_ID && sg_isvalid()) {
-        return sg_query_shader_state(shader) == SG_RESOURCESTATE_VALID;
+    if (Engine::isAsyncThread()){
+        std::lock_guard<std::mutex> lock(destroyMutex);
+        return queryState() == SG_RESOURCESTATE_VALID;
     }
+    return queryState() == SG_RESOURCESTATE_VALID;
+}
 
-    return false;
+bool SokolShader::isPending(){
+    const sg_shader shader = get();
+    return shader.id != SG_INVALID_ID && sg_isvalid() && SokolAsyncCreate::isPending(shader);
 }
 
 bool SokolShader::isFailed(){
-    if (shader.id != SG_INVALID_ID && sg_isvalid()) {
-        return sg_query_shader_state(shader) == SG_RESOURCESTATE_FAILED;
+    if (Engine::isAsyncThread()){
+        std::lock_guard<std::mutex> lock(destroyMutex);
+        return queryState() == SG_RESOURCESTATE_FAILED;
     }
-
-    return false;
+    return queryState() == SG_RESOURCESTATE_FAILED;
 }
 
 sg_shader SokolShader::get(){
-    return shader;
+    return {shaderId.load(std::memory_order_acquire)};
 }

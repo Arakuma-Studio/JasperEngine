@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LatticeBakeCmd.h"
+#include "command/CommandNames.h"
 
 #include "Log.h"
 #include "command/type/ModelLoadCmd.h"
@@ -131,4 +132,23 @@ void editor::LatticeBakeCmd::undo(){
     }
 
     sceneProject->isModified = wasModified;
+}
+
+std::string editor::LatticeBakeCmd::describe() const{
+    std::vector<Entity> entities;
+    for (const ModelState& model : models){
+        entities.push_back(model.entity);
+    }
+    return entities.empty() ? std::string("Bake Lattice") : "Bake Lattice (" + CommandNames::entities(project, sceneId, entities) + ")";
+}
+
+size_t editor::LatticeBakeCmd::memoryBytes() const{
+    size_t bytes = sizeof(*this) + models.capacity() * sizeof(ModelState);
+    for (const ModelState& model : models){
+        bytes += model.newFilename.capacity() + model.oldFilename.capacity();
+    }
+    for (const std::unique_ptr<LatticeBindingsCmd>& cmd : bindingCmds){
+        bytes += cmd->memoryBytes();
+    }
+    return bytes;
 }

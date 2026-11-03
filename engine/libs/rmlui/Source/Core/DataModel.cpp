@@ -222,6 +222,66 @@ void DataModel::CopyAliases(Element* from_element, Element* to_element)
 	}
 }
 
+int DataModel::InsertRowAlias(Element* row, const String& alias_name, DataAddress target)
+{
+	if (!row || target.empty() || target.front().name.empty())
+	{
+		Log::Message(Log::LT_WARNING, "Could not add row alias '%s' to data model, target address invalid.", alias_name.c_str());
+		return -1;
+	}
+
+	int handle = -1;
+	if (!free_row_aliases.empty())
+	{
+		handle = free_row_aliases.back();
+		free_row_aliases.pop_back();
+	}
+	else
+	{
+		handle = (int)row_aliases.size();
+		row_aliases.emplace_back();
+	}
+
+	// What the views under the row resolve the alias to: the target's first name (its variable, which dirties them)
+	// and the entry that reads the row's current target.
+	DataAddress replacement;
+	replacement.emplace_back(target.front().name);
+	DataAddressEntry entry{String(RowAliasEntryName)};
+	entry.index = handle;
+	replacement.push_back(std::move(entry));
+
+	row_aliases[handle].row = row;
+	row_aliases[handle].target = std::move(target);
+	row_alias_handles[row].push_back(handle);
+
+	InsertAlias(row, alias_name, std::move(replacement));
+	return handle;
+}
+
+void DataModel::SetRowAlias(int handle, DataAddress target)
+{
+	if (handle < 0 || handle >= (int)row_aliases.size() || !row_aliases[handle].row || target.empty() || target.front().name.empty())
+		return;
+
+	RowAlias& alias = row_aliases[handle];
+	bool same = (alias.target.size() == target.size());
+	for (size_t i = 0; same && i < target.size(); i++)
+		same = (alias.target[i].index == target[i].index && alias.target[i].name == target[i].name);
+	if (same)
+		return;
+
+	alias.target = std::move(target);
+	dirty_rows.insert(alias.row);
+}
+
+const DataAddress& DataModel::GetRowAlias(int handle) const
+{
+	static const DataAddress empty;
+	if (handle < 0 || handle >= (int)row_aliases.size() || !row_aliases[handle].row)
+		return empty;
+	return row_aliases[handle].target;
+}
+
 DataAddress DataModel::ResolveAddress(const String& address_str, Element* element) const
 {
 	DataAddress address = ParseAddress(address_str);
@@ -277,14 +337,35 @@ DataVariable DataModel::GetVariable(const DataAddress& address) const
 	if (address.empty())
 		return DataVariable();
 
-	auto it = variables.find(address.front().name);
+	// Fork (P7-D): [name, row entry, rest...] reads the row alias's current target, then the rest.
+	if (address.size() > 1 && address[1].index >= 0 && address[1].name == RowAliasEntryName)
+	{
+		const DataAddress& target = GetRowAlias(address[1].index);
+		if (target.empty())
+			return DataVariable();
+		return GetVariable(target, address, 2);
+	}
+
+	static const DataAddress no_head;
+	return GetVariable(no_head, address, 0);
+}
+
+DataVariable DataModel::GetVariable(const DataAddress& head, const DataAddress& address, size_t address_begin) const
+{
+	// The entries of `head`, then those of `address` from address_begin.
+	const size_t count = head.size() + (address.size() - address_begin);
+	auto Entry = [&](size_t i) -> const DataAddressEntry& { return i < head.size() ? head[i] : address[address_begin + i - head.size()]; };
+	if (count == 0)
+		return DataVariable();
+
+	auto it = variables.find(Entry(0).name);
 	if (it != variables.end())
 	{
 		DataVariable variable = it->second;
 
-		for (int i = 1; i < (int)address.size() && variable; i++)
+		for (size_t i = 1; i < count && variable; i++)
 		{
-			variable = variable.Child(address[i]);
+			variable = variable.Child(Entry(i));
 			if (!variable)
 				return DataVariable();
 		}
@@ -292,10 +373,10 @@ DataVariable DataModel::GetVariable(const DataAddress& address) const
 		return variable;
 	}
 
-	if (address[0].name == "literal")
+	if (Entry(0).name == "literal")
 	{
-		if (address.size() > 2 && address[1].name == "int")
-			return MakeLiteralIntVariable(address[2].index);
+		if (count > 2 && Entry(1).name == "int")
+			return MakeLiteralIntVariable(Entry(2).index);
 	}
 
 	return DataVariable();
@@ -364,6 +445,19 @@ ElementList DataModel::GetAttachedModelRootElements() const
 
 void DataModel::OnElementRemove(Element* element)
 {
+	// Fork (P7-D): the row's aliases are free again.
+	auto it_handles = row_alias_handles.find(element);
+	if (it_handles != row_alias_handles.end())
+	{
+		for (int handle : it_handles->second)
+		{
+			row_aliases[handle] = RowAlias();
+			free_row_aliases.push_back(handle);
+		}
+		row_alias_handles.erase(it_handles);
+	}
+	dirty_rows.erase(element);
+
 	EraseAliases(element);
 	views->OnElementRemove(element);
 	controllers->OnElementRemove(element);
@@ -372,7 +466,10 @@ void DataModel::OnElementRemove(Element* element)
 
 bool DataModel::Update(bool clear_dirty_variables)
 {
-	const bool result = views->Update(*this, dirty_variables);
+	// Fork (P7-D): the rows re-pointed since the last update are updated with the dirty variables' views.
+	SmallUnorderedSet<Element*> rows;
+	rows.swap(dirty_rows);
+	const bool result = views->Update(*this, dirty_variables, rows);
 
 	if (clear_dirty_variables)
 		dirty_variables.clear();

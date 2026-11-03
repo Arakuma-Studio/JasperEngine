@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "DuplicateEntityCmd.h"
+#include "pose/PoseEditSession.h"
+
+#include "command/PlayChangeReview.h"
 
 #include "Stream.h"
 #include "Out.h"
@@ -29,6 +32,8 @@ bool editor::DuplicateEntityCmd::execute(){
     if (!sceneProject || sourceEntities.empty()){
         return false;
     }
+    // a posed character goes back to its rest bones first: they are what the copies get (also on redo)
+    PoseEditSession::suspendActiveFor(sceneId, sourceEntities);
 
     Scene* scene = sceneProject->scene;
 
@@ -128,8 +133,14 @@ bool editor::DuplicateEntityCmd::execute(){
     for (size_t i = 0; i < pairs; i++) {
         Entity duplicated = createdTopLevel[i];
 
-        if (sourceParents[i] != NULL_ENTITY)
+        if (sourceParents[i] != NULL_ENTITY) {
             scene->addEntityChild(sourceParents[i], duplicated, false);
+        } else if (scene->findComponent<Transform>(duplicated) && scene->findComponent<Transform>(topLevel[i])) {
+            // A copy at the root goes right after its source's branch in the Transform order too,
+            // where the tracked list (below) and so the file put it: decoded at the end of the
+            // array, the Hierarchy showed it last and the scene opened again with it after its source
+            scene->moveChildToIndex(duplicated, scene->findBranchLastIndex(topLevel[i]) + 1);
+        }
 
         scene->setEntityName(duplicated, uniqueNames.make(scene->getEntityName(topLevel[i])));
         // Distinct copies of top-level sources: none holds another, so none drops out of
@@ -222,4 +233,14 @@ void editor::DuplicateEntityCmd::undo(){
 
 std::vector<Entity> editor::DuplicateEntityCmd::getCreatedEntities() const{
     return createdEntities;
+}
+
+void editor::DuplicateEntityCmd::collectKeepCommands(KeepContext& context) const{
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject){
+        return;
+    }
+    for (Entity root : Project::getTopLevelEntities(sceneProject->scene, createdEntities)){
+        context.addCreated(root);
+    }
 }

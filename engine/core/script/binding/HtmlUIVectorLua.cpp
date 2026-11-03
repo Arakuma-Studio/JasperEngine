@@ -18,6 +18,9 @@
 #include "object/ui/UIElement.h"
 #include "object/ui/HtmlUIScriptInternal.h"
 
+// the HTML UI module (docs/specs/S34-player-size.md R1): the Lua API description reads this condition
+#if JASPERENGINE_HTMLUI
+
 using namespace jasperengine;
 
 namespace {
@@ -37,6 +40,16 @@ void LuaBinding::registerHtmlUIVectorClasses(lua_State *L){
         .addFunction("play", [](UIElement* self, lua_State* L) { checkElement(self, L); self->play(); })
         .addFunction("pause", [](UIElement* self, lua_State* L) { checkElement(self, L); self->pause(); })
         .addFunction("stop", [](UIElement* self, lua_State* L) { checkElement(self, L); self->stop(); })
+        // <particle-system> and text-effect (ui-scaling-text)
+        .addFunction("clear", [](UIElement* self, lua_State* L) { checkElement(self, L); self->clear(); })
+        // nil before the prefab is made (document scripts, onLoad, edit mode) or when its src failed
+        .addFunction("getParticleSystem", [](UIElement* self, lua_State* L) -> luabridge::LuaRef {
+            checkElement(self, L);
+            if (!self->hasParticleSystem())
+                return luabridge::LuaRef(L);
+            return luabridge::LuaRef(L, self->getParticleSystem());
+        })
+        .addFunction("restartTextEffect", [](UIElement* self, lua_State* L) { checkElement(self, L); self->restartTextEffect(); })
         .addFunction("seek", [](UIElement* self, float seconds, lua_State* L) { checkElement(self, L); self->seek(seconds); })
         .addFunction("setFrame", [](UIElement* self, float frame, lua_State* L) { checkElement(self, L); self->setFrame(frame); })
         .addFunction("setSpeed", [](UIElement* self, float speed, lua_State* L) { checkElement(self, L); self->setSpeed(speed); })
@@ -53,3 +66,5 @@ void LuaBinding::registerHtmlUIVectorClasses(lua_State *L){
 
 #endif //DISABLE_LUA_BINDINGS
 }
+
+#endif // JASPERENGINE_HTMLUI

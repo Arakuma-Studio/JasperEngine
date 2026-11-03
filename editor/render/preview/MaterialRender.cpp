@@ -5,6 +5,7 @@
 
 #include "Configs.h"
 #include "PreviewEnvironment.h"
+#include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
 #include "shader/ShaderManifest.h"
 #include "util/CameraTextureLink.h"
@@ -46,13 +47,23 @@ editor::MaterialRender::MaterialRender(){
     // thumbnail keeps a transparent background (clean sphere icon on drag and drop)
     SkyboxComponent& skyComp = sky->getComponent<SkyboxComponent>();
     skyComp.visible = false;
-    skyComp.texture.setCubeDatas("preview|environment",
-        TextureData((unsigned char*)preview_env_pz, preview_env_pz_len),  // front (+Z)
-        TextureData((unsigned char*)preview_env_nz, preview_env_nz_len),  // back  (-Z)
-        TextureData((unsigned char*)preview_env_nx, preview_env_nx_len),  // left  (-X)
-        TextureData((unsigned char*)preview_env_px, preview_env_px_len),  // right (+X)
-        TextureData((unsigned char*)preview_env_py, preview_env_py_len),  // up    (+Y)
-        TextureData((unsigned char*)preview_env_ny, preview_env_ny_len)); // down  (-Y)
+    // the pool's faces while it has them (every MaterialRender, one per previewed material,
+    // shares this id): setCubeDatas keeps those and drops new ones, whose pixels a TextureData
+    // does not own, so decoding again leaked six images per preview (faces 4, 5, 1, 0, 2, 3 are
+    // front, back, left, right, up, down)
+    const std::shared_ptr<std::array<TextureData, 6>> cached = TextureDataPool::get("preview|environment");
+    if (cached && TextureDataPool::hasTexturePixels(cached, 6)) {
+        skyComp.texture.setCubeDatas("preview|environment",
+            cached->at(4), cached->at(5), cached->at(1), cached->at(0), cached->at(2), cached->at(3));
+    } else {
+        skyComp.texture.setCubeDatas("preview|environment",
+            TextureData((unsigned char*)preview_env_pz, preview_env_pz_len),  // front (+Z)
+            TextureData((unsigned char*)preview_env_nz, preview_env_nz_len),  // back  (-Z)
+            TextureData((unsigned char*)preview_env_nx, preview_env_nx_len),  // left  (-X)
+            TextureData((unsigned char*)preview_env_px, preview_env_px_len),  // right (+X)
+            TextureData((unsigned char*)preview_env_py, preview_env_py_len),  // up    (+Y)
+            TextureData((unsigned char*)preview_env_ny, preview_env_ny_len)); // down  (-Y)
+    }
 
     light->setDirection(-0.4, -0.5, -0.5);
     light->setIntensity(2.0);
@@ -78,7 +89,7 @@ void editor::MaterialRender::applyMaterial(const Material& material, const std::
     // the material's shader, its parameters, textures, features and render state are the
     // sphere's (Mesh::setMaterial reloads what the variant depends on)
     Material drawn = material;
-    drawn.colorWrite = previewColorWrite(material.colorWrite, material.shader.empty() ? meshShader : material.shader,
+    drawn.colorWrite = previewColorWrite(material.colorWrite, material.shader.empty() ? meshShader : material.shader.path,
                                          material.shaderFeatures);
     if (MaterialPass* pass = drawn.extraPass.editIfSet(); pass && !pass->shader.empty())
         pass->colorWrite = previewColorWrite(pass->colorWrite, pass->shader, pass->shaderFeatures);

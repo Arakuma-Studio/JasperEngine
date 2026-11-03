@@ -96,9 +96,11 @@ namespace jasperengine {
 
     class JASPERENGINE_API ShaderData {
     public:
-        ShaderLang lang;
-        unsigned int version;
-        bool es;
+        // initialized: a default ShaderData (a failed build) is copied, and copying an
+        // indeterminate bool is undefined (UBSan stops the sanitizer editor there)
+        ShaderLang lang{};
+        unsigned int version = 0;
+        bool es = false;
         std::vector<ShaderStage> stages;
 
 
@@ -116,6 +118,7 @@ namespace jasperengine {
         // Same lookups by reflected name, for shaders whose bindings are not a fixed
         // enum (user post-process passes). Missing names give -1.
         int getUniformBlockIndexByName(const std::string& name);
+        int getAttrIndexByName(const std::string& name);
         std::pair<int, int> getTextureIndexByName(const std::string& name);
 
         // block members, to build its byte blob by name

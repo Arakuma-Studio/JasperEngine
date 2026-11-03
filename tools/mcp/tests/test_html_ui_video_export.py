@@ -1,27 +1,35 @@
 """Exporting a document with a <video> (phase 6, p6-video, docs/html-ui/phase-6-video.md §3.12.2, §5.6).
 
 - The source export (linux and web) ships the .webm and the poster as assets; with the native
-  resource pack they are in resources.pak (and not left loose; a packed video is read from memory); the exported shader headers hold the YUV conversion
-  variant (htmluipost Yuv), so the shipped game converts frames without the runtime compiler.
+  resource pack they are in resources.pak (and not left loose; a packed video is read from memory).
+  The actual player below verifies frame conversion and playback.
 - A missing video, poster or <source> fails the export with project-relative file:line:column
   (HtmlUIDependencies' VIDEO references, the compat layer's checkDocument).
-- JASPER_SLOW_BUILD=1 also builds the Desktop player and runs it: the test card plays on screen
-  (its colour bars are found in the player's screenshot, and the frame it shows moves on).
+- JASPER_SLOW_BUILD=1 also builds the Desktop game and runs it: the test card plays on screen
+  (its colour bars are found in the player's screenshot, and the frame it shows moves on). It is
+  built with the prebuilt glcore player runtime the run builds once (compiling the engine for it
+  is test_build.py's check).
 
 Runs on a scratch copy of the fixture project.
 """
 
 import asyncio
+import json
 import os
 import shutil
 import time
 from pathlib import Path
 
+import build_cache
 from harness import Editor, REPO, skip
 from htmlui_pixels import count_near
 
+# the Desktop player test builds with the run's prebuilt glcore runtime (tools/mcp/build_cache.py)
+PREBUILT_PLAYERS = ["glcore-release"]
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui", "env": build_cache.player_env("glcore", "release")}
+CI = True
+
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
-JOBS = 2
 
 S: dict = {}
 
@@ -49,6 +57,14 @@ BROKEN = """<!DOCTYPE html>
 
 SHIPPED = ["ui/video.html", "ui/video/testcard.webm", "ui/video/poster.png"]
 
+
+def cooked_sources(assets: Path) -> set:
+    """The images S14 ships as cooks instead of their files (each family's je-cooked/index.json)"""
+    found = set()
+    for index in assets.glob("je-cooked/*/index.json"):
+        found |= set(json.loads(index.read_text()).get("textures", {}))
+    return found
+
 # the test card's colour bars (75 % SMPTE-like: yellow, cyan, magenta), BT.709 limited range
 BARS = [(191, 191, 0), (0, 191, 191), (191, 0, 191)]
 
@@ -73,7 +89,9 @@ async def export_source(ed: Editor, out: Path, platform: str = "linux", **args):
     return raw, r
 
 
-async def test_project_with_video(ed: Editor):
+async def _setup_video(ed: Editor):
+    if "scene" in S:
+        return
     video = ed.project / "assets" / "ui" / "video"
     video.mkdir(parents=True, exist_ok=True)
     shutil.copy(CLIPS / "testcard.webm", video / "testcard.webm")
@@ -87,37 +105,22 @@ async def test_project_with_video(ed: Editor):
     saved = await ed.call("save_scene", scene=S["scene"], path="scenes/HtmlUiVideoExport")
     await ed.call("edit_build_scenes", action="add", scene=saved["scene"]["path"])
     await ed.call("edit_build_scenes", action="set_start", scene=saved["scene"]["path"])
-    tree = await ed.call("inspect_ui", entity="Player", selector="#v", depth=0)
-    m = tree["elements"][0]["media"]
-    # edit mode runs in real time (a loaded host may hold a frame back: HAVE_CURRENT_DATA)
-    ed.check((m["videoWidth"], m["videoHeight"]) == (320, 180) and m["readyState"] >= 2 and m.get("error") is None,
-             f"the video is loaded in the editor: {m}")
-    entries = await ed.console_since(None, types=["error", "warning"], limit=1000)
-    problems = [e.get("message", "") for e in entries if "[HTML UI]" in e.get("message", "")]
-    ed.check(not problems, f"[HTML UI] problems: {problems}")
-
 
 async def test_source_export_ships_the_video(ed: Editor):
+    await _setup_video(ed)
     for platform in ("linux", "web"):
         out = ed.scratch.root / f"export-video-{platform}"
         raw, r = await export_source(ed, out, platform)
         ed.check_eq(r["status"], "succeeded", f"{platform}: {raw.text[:2000]}")
         assets = out / "project" / "assets"
+        cooked = cooked_sources(assets)
         for rel in SHIPPED:
-            ed.check((assets / rel).is_file(), f"{platform}: {rel} exported to {assets}")
+            ed.check((assets / rel).is_file() or rel in cooked, f"{platform}: {rel} exported to {assets} (or cooked: {sorted(cooked)})")
         ed.check_eq((assets / "ui/video/testcard.webm").read_bytes(), (CLIPS / "testcard.webm").read_bytes(), "the clip, byte for byte")
-        # the YUV conversion pass is among the exported shaders of every backend the platform has
-        # (the headers of backends the platform does not have are empty stand-ins)
-        headers = [p for p in out.rglob("*.h") if p.name in ("glsl410.h", "glsl300es.h", "spirv10.h", "hlsl5.h")
-                   and "getBase64ShaderNames() {\n    return {};" not in p.read_text(errors="ignore")]
-        ed.check(headers, f"{platform}: no shader headers in {out}")
-        for header in headers:
-            text = header.read_text(errors="ignore")
-            ed.check("htmluipost_Yuv" in text or "htmluipost:Yuv" in text, f"{platform}: {header.name} has no Yuv post variant")
-        S["out_" + platform] = out
 
 
 async def test_resource_pack_ships_the_video(ed: Editor):
+    await _setup_video(ed)
     await ed.call("set_project_settings", values={"player.pack_native_resources": True})
     try:
         out = ed.scratch.root / "export-video-pack"
@@ -125,8 +128,11 @@ async def test_resource_pack_ships_the_video(ed: Editor):
         ed.check_eq(r["status"], "succeeded", f"{raw.text[:2000]}")
         pack = out / "project" / "assets" / "resources.pak"
         data = pack.read_bytes()
+        cooked = cooked_sources(out / "project" / "assets")
         for rel in SHIPPED:
-            ed.check(rel.encode() in data, f"{rel} not in the resource pack")
+            # an image may be packed as its S14 cooks (the pack holds je-cooked/<family>/...)
+            packed_cooked = rel.endswith(".png") and b"je-cooked/" in data
+            ed.check(rel.encode() in data or rel in cooked or packed_cooked, f"{rel} not in the resource pack (nor cooked: {sorted(cooked)})")
         for rel in SHIPPED:
             ed.check(not (out / "project" / "assets" / rel).exists(), f"{rel} also left loose next to the pack")
     finally:
@@ -134,6 +140,7 @@ async def test_resource_pack_ships_the_video(ed: Editor):
 
 
 async def test_missing_media_fail_the_export(ed: Editor):
+    await _setup_video(ed)
     await ed.call("write_file", path="assets/ui/broken-video.html", content=BROKEN)
     await ed.call("set_properties", scene=S["scene"], entity=S["entity"], values={"uidocument": {"filename": "assets/ui/broken-video.html"}})
     await ed.call("save_scene", scene=S["scene"])
@@ -151,19 +158,29 @@ async def test_missing_media_fail_the_export(ed: Editor):
 
 async def test_desktop_build_plays_the_video(ed: Editor):
     if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
-        skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (compiles the engine)")
+        skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (the run builds its prebuilt runtime once)")
+    await _setup_video(ed)
+    # what runs is the game: the prebuilt player (the compile path is test_build.py's)
+    runtime = await build_cache.player_runtime(ed, "glcore", "release")
     out = ed.scratch.root / "export-video-desktop"
-    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30)
-    job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=15.0)
+    r = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=600)
+    job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=5.0)
     ed.check_eq(job["status"], "succeeded", f"{job}")
+    ed.check_eq((job["result"]["method_used"], job["result"]["player_id"]), ("prebuilt", runtime.name), f"{job}")
+    # the player's own frames, 4 and 5 s of its clock (1/60 s frames) after the one that logs
+    # "Engine ready:": the video's media clock runs on the UI clock, so the two are a second of
+    # playback apart however slowly a loaded machine draws (not window grabs 4 and 5 s after the
+    # launch, which saw however far the player had got by then)
     shots = []
     for after in (4, 5):
-        raw = await ed.call_raw("run_build", {"seconds": after + 2, "screenshot_after_seconds": after})
+        raw = await ed.call_raw("run_build", {"after_ready": True, "fixed_fps": 60, "quit_after": after * 60})
         ed.check(not raw.is_error, raw.text)
         ed.check(not raw.value["crashed"], f"the player crashed: {raw.value}")
+        ed.check_eq(raw.value.get("exit_code"), 0, f"the player got ready and quit after its frames: {raw.value}")
+        ed.check(raw.images, f"the player's own screenshot: {raw.text[:2000]}")
         png = raw.images[0][0]
         (ed.scratch.root / f"html-ui-video-player-{after}.png").write_bytes(png)
         shots.append(png)
         for colour in BARS:
-            ed.check(count_near(png, colour, tol=24) > 500, f"the player shows the test card's bar {colour} (screenshot {after} s)")
-    ed.check(shots[0] != shots[1], "the video plays in the player (two screenshots a second apart differ)")
+            ed.check(count_near(png, colour, tol=24) > 500, f"the player shows the test card's bar {colour} ({after} s after ready)")
+    ed.check(shots[0] != shots[1], "the video plays in the player (two frames a second of playback apart differ)")

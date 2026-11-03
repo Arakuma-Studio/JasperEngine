@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "ImportManifestWriter.h"
+#include "io/AtomicFile.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include "json.hpp"
+#include "util/FileUtils.h"
 
 #include <atomic>
 #include <chrono>
@@ -31,7 +35,7 @@ namespace {
 ImportManifestWriter::ImportManifestWriter(fs::path assetsDir): assetsDir(std::move(assetsDir)) {}
 
 fs::path ImportManifestWriter::path() const{
-    return assetsDir / fs::u8path(ImportManifest::kPath);
+    return assetsDir / editor::FileUtils::pathFromUtf8(ImportManifest::kPath);
 }
 
 ImportManifest ImportManifestWriter::read() const{
@@ -97,35 +101,11 @@ bool ImportManifestWriter::write(const ImportManifest& manifest, std::string* er
 }
 
 bool ImportManifestWriter::writeFileAtomic(const fs::path& file, const std::string& content, std::string* error){
-    static std::atomic<unsigned> counter{0};
-    std::error_code ec;
-    fs::create_directories(file.parent_path(), ec);
-    if (ec){
+    // the engine's primitive (io/AtomicFile.h): fsync, retry, mode and read-only rules
+    const io::WriteResult result = io::writeFileAtomic(file, content);
+    if (!result.ok()){
         if (error)
-            *error = "cannot create " + file.parent_path().generic_string() + ": " + ec.message();
-        return false;
-    }
-
-    std::ostringstream suffix;
-    suffix << ".tmp-" << std::hash<std::thread::id>()(std::this_thread::get_id()) << "-" << counter++;
-    const fs::path temp = file.parent_path() / (file.filename().string() + suffix.str());
-    {
-        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        out.write(content.data(), (std::streamsize)content.size());
-        out.close();
-        if (!out){
-            fs::remove(temp, ec);
-            if (error)
-                *error = "cannot write " + temp.generic_string();
-            return false;
-        }
-    }
-    fs::rename(temp, file, ec);
-    if (ec){
-        // Windows refuses to rename over a file another process holds open
-        fs::remove(temp, ec);
-        if (error)
-            *error = "cannot replace " + file.generic_string() + ": " + ec.message();
+            *error = "cannot write " + file.generic_string() + ": " + io::describeWriteError(result);
         return false;
     }
     return true;

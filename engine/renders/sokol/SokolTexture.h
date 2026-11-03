@@ -5,38 +5,80 @@
 #define SokolTexture_h
 
 #include "render/Render.h"
+#include "texture/TextureFormat.h"
 #include "sokol_gfx.h"
+#include <memory>
+#include <span>
 #include <string>
 
 namespace jasperengine{
+    struct RenderFeatures;
+
     class SokolTexture{
 
     private:
         sg_image image;
         sg_sampler sampler;
         sg_view view;
+        // held while `sampler` is the one every float data texture shares (createDynamicTexture)
+        std::shared_ptr<void> sharedSampler;
         size_t streamBytes;   // RGBA8/R8 dynamic textures: the size every update must have (0 = not checked)
+        bool aliasImage = false;   // the image is another texture's (createAliasView): never destroyed here
 
         sg_image_type getTextureType(TextureType textureType);
         sg_filter getFilter(TextureFilter textureFilter);
         sg_filter getFilterMipmap(TextureFilter textureFilter);
         sg_wrap getWrap(TextureWrap textureWrap);
 
-        sg_image generateMipmaps(const sg_image_desc* desc_);
         void createTextureView(const char* label);
 
         static const void* getVulkanView(sg_view view);
         static const void* getVulkanImage(sg_image image);
 
     public:
+        // The image format and bytes per texel of a texture made from data (createTexture):
+        // RGBA -> RGBA8, RED -> R8, RED16 -> R16 (uploaded as float where unorm16 isn't sampled),
+        // and the float formats RGBA16F, RGBA32F, R32F, RG16F, R16F (half data as IEEE binary16,
+        // float data as binary32, channels interleaved, rows tightly packed, top row first).
+        // False for a format a texture can't be made from (SRGB8A8: render targets only)
+        static bool getDataPixelFormat(ColorFormat colorFormat, sg_pixel_format& pixelFormat, size_t& bytesPerTexel);
+        // Whether a texture of the format may be sampled with a linear filter: always for the 8-
+        // and 16-bit unorm formats, per the device's RenderFeatures filter flags for the float
+        // ones (RGBA32F/R32F are not filterable on GLES3/WebGL2 without OES_texture_float_linear)
+        static bool isLinearFilterable(ColorFormat colorFormat, const RenderFeatures& features);
+
         SokolTexture();
         SokolTexture(const SokolTexture& rhs);
         SokolTexture& operator=(const SokolTexture& rhs);
 
+        // An immutable texture from data (one block per face), level 0 only (mipmaps come as
+        // levels, createTextureLevels). Float formats need data of exactly width * height *
+        // bytesPerTexel per face and fall back to NEAREST (min, mag and mip) where the device
+        // can't filter them linearly. False (with an error) for an unsupported format, a float
+        // format the device can't sample, a size over the device limit or a data size that
+        // doesn't match
         bool createTexture(
                     const std::string& label, int width, int height,
                     ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[],
                     TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
+
+        // the levels as given, level 0 first, each holding every face (or array slice); the
+        // sampler's mip filter applies when there are several
+        bool createTextureLevels(
+                    const std::string& label, TextureType type, GpuTextureFormat format,
+                    int width, int height, int numFaces, std::span<const TextureLevel> levels,
+                    TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
+
+        // the one sokol format of each cooked format (colour stays UNORM: shaders decode sRGB)
+        static sg_pixel_format toSokol(GpuTextureFormat format, bool srgb);
+        // sampled with linear filtering on this device (after sg_setup)
+        static bool isFormatSupported(GpuTextureFormat format);
+
+        // a 3D texture of width x height x depth RGBA8 texels (data: x fastest, then y, then
+        // the depth slices), no mipmaps, one filter and wrap on every axis
+        bool createTexture3D(
+                    const std::string& label, int width, int height, int depth, const void* data, size_t size,
+                    TextureFilter filter, TextureWrap wrap);
 
         // creates a cubemap with custom (pre-filtered) mipmap data,
         // data[level] must contain all 6 faces in one contiguous block
@@ -58,10 +100,17 @@ namespace jasperengine{
         bool createDynamicTexture(const std::string& label, int width, int height);
         bool createDynamicTexture(const std::string& label, int width, int height,
                     ColorFormat colorFormat, TextureFilter filter);
+        // a second view of source's image with a nearest, non-comparison sampler: the raw
+        // depths of a shadow atlas (sampled as unfilterable_float). It does not own the image,
+        // which must outlive it.
+        bool createAliasView(const SokolTexture& source, const char* label);
+        // a view of any image (by id) at one mip level, every slice, with a nearest sampler:
+        // the Frame Debugger's preview of a pass attachment. It does not own the image.
+        bool createImageAliasView(uint32_t imageId, int mipLevel, const char* label);
         // RGBA8, linear filtering, clamped, rewritten whole by updateTexture at most once a frame
         // (the post-processing colour LUTs)
         bool createDynamicColorTexture(const std::string& label, int width, int height);
-        void updateTexture(const void* data, size_t size);
+        bool updateTexture(const void* data, size_t size);
 
         void destroyTexture();
 

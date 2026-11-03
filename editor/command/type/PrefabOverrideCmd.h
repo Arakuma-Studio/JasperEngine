@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "command/CommandMemory.h"
 #include "Project.h"
 
 #include <filesystem>
@@ -34,6 +36,7 @@ namespace jasperengine::editor{
         std::vector<std::string> properties;  // empty: the whole component
         uint8_t stateBits;                    // PrefabObjectOverrides::State bits
         std::filesystem::path target;         // apply: the prefab (empty: the owning one)
+        std::vector<std::filesystem::path> writtenTargets;   // the prefabs the last execute wrote
         PrefabUndoState before;
 
         bool isApply() const;
@@ -44,7 +47,14 @@ namespace jasperengine::editor{
             uint8_t stateBits = 0, const std::filesystem::path& target = {});
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
+
+        // "Revert Intensity (Sun)", "Apply Added Component Light (Sun)", "Revert GameObject State (Sun)"
+        std::string describe() const override;
+        const char* typeName() const override { return "PrefabOverrideCmd"; }
+        size_t memoryBytes() const override { return sizeof(*this) + CommandMemory::of(before); }
     };
 
 }

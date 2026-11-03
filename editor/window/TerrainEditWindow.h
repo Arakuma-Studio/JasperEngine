@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "command/CommandHistory.h"
 #include "Project.h"
 #include "math/Ray.h"
 #include "util/TerrainMapUtils.h"
@@ -107,6 +108,11 @@ namespace jasperengine::editor{
 
     struct ActiveStroke{
         bool active = false;
+        // The stroke as one undo step: Esc (or Ctrl+Z) before the mouse is released puts the
+        // map back and drops what a placement stroke made (S24 R12)
+        InteractiveEdit edit;
+        bool editStarted = false;
+        bool wasModified = false;
         uint32_t sceneId = NULL_PROJECT_SCENE;
         Entity entity = NULL_ENTITY;
         TerrainMapRef ref;
@@ -288,6 +294,10 @@ namespace jasperengine::editor{
         bool applyPlacement(SceneProject* sceneProject, Entity entity, const Vector3& localPoint);
         bool applyObjectErase(SceneProject* sceneProject, Entity entity, const Vector3& localPoint);
         void clearStroke();
+        // The stroke's undo step opens with it (mouse strokes); false once Esc cancelled it,
+        // the map then put back as it was
+        void openStrokeEdit(SceneProject* sceneProject);
+        bool strokeCancelled();
 
         bool createMapForTarget(const TerrainMapRef& ref, int width, int height);
         bool deleteMapForTarget(const TerrainMapRef& ref);
@@ -311,6 +321,10 @@ namespace jasperengine::editor{
 
         TerrainEditWindow(Project* project);
         ~TerrainEditWindow();
+
+        // An 8-bit heightmap rewritten as 16-bit with the same heights, one undo step (the
+        // spline bake's "Convert heightmap to 16-bit", S18 R24)
+        bool convertHeightMapTo16Bit(uint32_t sceneId, Entity terrain, std::string& error);
 
         void show();
         void open();

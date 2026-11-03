@@ -4,6 +4,7 @@
 #include "RectTransform.h"
 
 #include "util/Color.h"
+#include "subsystem/UISystem.h"
 
 using namespace jasperengine;
 
@@ -29,6 +30,7 @@ void RectTransform::setSize(unsigned int width, unsigned int height){
     layout.height = height;
 
     layout.needUpdateSizes = true;
+    markChanged<RectTransformComponent>();
 }
 
 void RectTransform::setWidth(unsigned int width){
@@ -37,6 +39,7 @@ void RectTransform::setWidth(unsigned int width){
     layout.width = width;
 
     layout.needUpdateSizes = true;
+    markChanged<RectTransformComponent>();
 }
 
 void RectTransform::setHeight(unsigned int height){
@@ -45,6 +48,7 @@ void RectTransform::setHeight(unsigned int height){
     layout.height = height;
 
     layout.needUpdateSizes = true;
+    markChanged<RectTransformComponent>();
 }
 
 unsigned int RectTransform::getWidth() const{
@@ -247,6 +251,7 @@ void RectTransform::setPivot(Vector2 pivot){
         layout.pivot = pivot;
 
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -309,4 +314,29 @@ void RectTransform::setEnabled(bool enabled){
 bool RectTransform::isEnabled() const{
     UIComponent* ui = scene->findComponent<UIComponent>(entity);
     return !ui || ui->enabled;
+}
+
+float RectTransform::getInheritedAlpha() const{
+    return scene->getSystem<UISystem>()->getCanvasGroupState(entity).alpha;
+}
+
+bool RectTransform::getGroupsAllowInteraction() const{
+    return scene->getSystem<UISystem>()->getCanvasGroupState(entity).interactable;
+}
+
+bool RectTransform::getGroupsBlockRaycasts() const{
+    return scene->getSystem<UISystem>()->getCanvasGroupState(entity).blocksRaycasts;
+}
+
+bool RectTransform::isInteractable() const{
+    if (!getGroupsAllowInteraction()){
+        return false;
+    }
+    if (const ButtonComponent* button = scene->findComponent<ButtonComponent>(entity)){
+        if (button->disabled) return false;
+    }
+    if (const InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity)){
+        if (inputfield->disabled) return false;
+    }
+    return true;
 }

@@ -35,6 +35,10 @@ bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale
     // so the mouse follows window focus like the keyboard below.
     const bool capturedMouse = Engine::getMouseMode() == MouseMode::CAPTURED;
     bool forwardMouse = capturedMouse ? focused : hovered;
+    // the game's pointer is locked while the Game view has the focus (Input::getPointerLockState)
+    if (capturedMouse) {
+        Engine::systemPointerLockChanged(focused);
+    }
 
     // The pointer belongs to an MCP agent until the real mouse does something here
     if (pointerInjected) {
@@ -100,16 +104,29 @@ bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale
         }
 
         if (project->isSimulateTouch()) {
-            // the left button is one finger, which never hovers
+            // the left button is one finger, which never hovers. Released with Alt held, finger 0
+            // stays down where it is (pinned) and the next press is finger 1: one mouse holds a
+            // stick and looks around. Releasing Alt lifts the pinned finger.
+            if (fingerPinned && !io.KeyAlt) {
+                Engine::systemTouchEnd(0, pinnedPos.x, pinnedPos.y);
+                fingerPinned = false;
+            }
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-                Engine::systemTouchStart(0, x, y);
+                touchFinger = fingerPinned ? 1 : 0;
+                Engine::systemTouchStart(touchFinger, x, y);
                 if (accepted) pressedMouseButtons.insert(ImGuiMouseButton_Left);
             } else if (pressedMouseButtons.count(ImGuiMouseButton_Left) && (mouseDelta.x != 0 || mouseDelta.y != 0)) {
-                Engine::systemTouchMove(0, x, y);
+                Engine::systemTouchMove(touchFinger, x, y);
             }
             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && pressedMouseButtons.count(ImGuiMouseButton_Left)) {
-                Engine::systemTouchEnd(0, x, y);
+                if (touchFinger == 0 && io.KeyAlt && !fingerPinned) {
+                    fingerPinned = true;
+                    pinnedPos = ImVec2(x, y);
+                } else {
+                    Engine::systemTouchEnd(touchFinger, x, y);
+                }
                 if (accepted) pressedMouseButtons.erase(ImGuiMouseButton_Left);
+                touchFinger = 0;
             }
         } else {
             Engine::systemMouseMove(x, y, mods);
@@ -171,6 +188,9 @@ void editor::PlayInput::release(uint32_t sceneId) {
 void editor::PlayInput::releaseAll() {
     releaseKeys(0);
     releaseMouseButtons(0);
+    // and whatever else the game holds (keys pressed by an agent, gamepad buttons, touches):
+    // their ups are seen by the next frame
+    Input::releaseAll();
 }
 
 void editor::PlayInput::forwardCharacters(ImGuiIO& io){
@@ -308,10 +328,93 @@ void editor::PlayInput::releaseMouseButtons(int mods){
     const float y = std::clamp(mousePos.y, view.getY(), view.getY() + std::max(0.0f, view.getHeight()));
     for (int button : pressedMouseButtons){
         if (project->isSimulateTouch()) {
-            Engine::systemTouchEnd(0, x, y);
+            Engine::systemTouchEnd(touchFinger, x, y);
         } else {
             Engine::systemMouseUp(button, x, y, mods);
         }
     }
     pressedMouseButtons.clear();
+    touchFinger = 0;
+    if (fingerPinned) {
+        Engine::systemTouchEnd(0, pinnedPos.x, pinnedPos.y);
+        fingerPinned = false;
+    }
+}
+
+int editor::PlayInput::engineKey(ImGuiKey key) {
+    if (key >= ImGuiKey_0 && key <= ImGuiKey_9) return D_KEY_0 + (key - ImGuiKey_0);
+    if (key >= ImGuiKey_A && key <= ImGuiKey_Z) return D_KEY_A + (key - ImGuiKey_A);
+    if (key >= ImGuiKey_F1 && key <= ImGuiKey_F24) return D_KEY_F1 + (key - ImGuiKey_F1);
+    if (key >= ImGuiKey_Keypad0 && key <= ImGuiKey_Keypad9) return D_KEY_KP_0 + (key - ImGuiKey_Keypad0);
+    switch (key) {
+        case ImGuiKey_Tab: return D_KEY_TAB;
+        case ImGuiKey_Backspace: return D_KEY_BACKSPACE;
+        case ImGuiKey_Enter: return D_KEY_ENTER;
+        case ImGuiKey_KeypadEnter: return D_KEY_KP_ENTER;
+        case ImGuiKey_Escape: return D_KEY_ESCAPE;
+        case ImGuiKey_Space: return D_KEY_SPACE;
+        case ImGuiKey_LeftArrow: return D_KEY_LEFT;
+        case ImGuiKey_RightArrow: return D_KEY_RIGHT;
+        case ImGuiKey_UpArrow: return D_KEY_UP;
+        case ImGuiKey_DownArrow: return D_KEY_DOWN;
+        case ImGuiKey_Insert: return D_KEY_INSERT;
+        case ImGuiKey_Home: return D_KEY_HOME;
+        case ImGuiKey_End: return D_KEY_END;
+        case ImGuiKey_PageUp: return D_KEY_PAGE_UP;
+        case ImGuiKey_PageDown: return D_KEY_PAGE_DOWN;
+        case ImGuiKey_Delete: return D_KEY_DELETE;
+        case ImGuiKey_Apostrophe: return D_KEY_APOSTROPHE;
+        case ImGuiKey_Comma: return D_KEY_COMMA;
+        case ImGuiKey_Minus: return D_KEY_MINUS;
+        case ImGuiKey_Period: return D_KEY_PERIOD;
+        case ImGuiKey_Slash: return D_KEY_SLASH;
+        case ImGuiKey_Semicolon: return D_KEY_SEMICOLON;
+        case ImGuiKey_Equal: return D_KEY_EQUAL;
+        case ImGuiKey_LeftBracket: return D_KEY_LEFT_BRACKET;
+        case ImGuiKey_Backslash: return D_KEY_BACKSLASH;
+        case ImGuiKey_RightBracket: return D_KEY_RIGHT_BRACKET;
+        case ImGuiKey_GraveAccent: return D_KEY_GRAVE_ACCENT;
+        case ImGuiKey_CapsLock: return D_KEY_CAPS_LOCK;
+        case ImGuiKey_ScrollLock: return D_KEY_SCROLL_LOCK;
+        case ImGuiKey_NumLock: return D_KEY_NUM_LOCK;
+        case ImGuiKey_PrintScreen: return D_KEY_PRINT_SCREEN;
+        case ImGuiKey_Pause: return D_KEY_PAUSE;
+        case ImGuiKey_LeftShift: return D_KEY_LEFT_SHIFT;
+        case ImGuiKey_LeftCtrl: return D_KEY_LEFT_CONTROL;
+        case ImGuiKey_LeftAlt: return D_KEY_LEFT_ALT;
+        case ImGuiKey_LeftSuper: return D_KEY_LEFT_SUPER;
+        case ImGuiKey_RightShift: return D_KEY_RIGHT_SHIFT;
+        case ImGuiKey_RightCtrl: return D_KEY_RIGHT_CONTROL;
+        case ImGuiKey_RightAlt: return D_KEY_RIGHT_ALT;
+        case ImGuiKey_RightSuper: return D_KEY_RIGHT_SUPER;
+        case ImGuiKey_Menu: return D_KEY_MENU;
+        case ImGuiKey_KeypadDecimal: return D_KEY_KP_DECIMAL;
+        case ImGuiKey_KeypadDivide: return D_KEY_KP_DIVIDE;
+        case ImGuiKey_KeypadMultiply: return D_KEY_KP_MULTIPLY;
+        case ImGuiKey_KeypadSubtract: return D_KEY_KP_SUBTRACT;
+        case ImGuiKey_KeypadAdd: return D_KEY_KP_ADD;
+        case ImGuiKey_KeypadEqual: return D_KEY_KP_EQUAL;
+        default: return D_KEY_UNKNOWN;
+    }
+}
+
+int editor::PlayInput::engineGamepadButton(ImGuiKey key) {
+    // ImGui names the face buttons by position: Down = A, Right = B, Left = X, Up = Y
+    switch (key) {
+        case ImGuiKey_GamepadFaceDown: return D_GAMEPAD_BUTTON_A;
+        case ImGuiKey_GamepadFaceRight: return D_GAMEPAD_BUTTON_B;
+        case ImGuiKey_GamepadFaceLeft: return D_GAMEPAD_BUTTON_X;
+        case ImGuiKey_GamepadFaceUp: return D_GAMEPAD_BUTTON_Y;
+        case ImGuiKey_GamepadL1: return D_GAMEPAD_BUTTON_LEFT_BUMPER;
+        case ImGuiKey_GamepadR1: return D_GAMEPAD_BUTTON_RIGHT_BUMPER;
+        case ImGuiKey_GamepadBack: return D_GAMEPAD_BUTTON_BACK;
+        case ImGuiKey_GamepadStart: return D_GAMEPAD_BUTTON_START;
+        case ImGuiKey_GamepadL3: return D_GAMEPAD_BUTTON_LEFT_THUMB;
+        case ImGuiKey_GamepadR3: return D_GAMEPAD_BUTTON_RIGHT_THUMB;
+        case ImGuiKey_GamepadDpadUp: return D_GAMEPAD_BUTTON_DPAD_UP;
+        case ImGuiKey_GamepadDpadRight: return D_GAMEPAD_BUTTON_DPAD_RIGHT;
+        case ImGuiKey_GamepadDpadDown: return D_GAMEPAD_BUTTON_DPAD_DOWN;
+        case ImGuiKey_GamepadDpadLeft: return D_GAMEPAD_BUTTON_DPAD_LEFT;
+        default: return -1;
+    }
 }

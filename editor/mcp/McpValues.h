@@ -89,6 +89,9 @@ namespace jasperengine::editor::mcp {
 
         // Without context (no enum names, no custom values): kept for callers that have none
         static Json toJson(Project* project, const std::string& propertyName, const PropertyData& property);
+        // The same knowing the component (its enum names; an Animation Player's clip list with
+        // project-relative paths), still without the component's scene-file encoding
+        static Json toJson(Project* project, ComponentType component, const std::string& propertyName, const PropertyData& property);
 
         // ---- writing -------------------------------------------------------------------
 
@@ -101,12 +104,23 @@ namespace jasperengine::editor::mcp {
         // editedKeys: for a shaderParams / shaderUniforms / shaderTextures collection, the
         // entries this edit names (only those are checked against the shader's manifest);
         // null checks every entry of `value`.
+        // A field of a submesh material linked to a .material file (submeshes[N].material.<field>)
+        // makes it the GameObject's own material first (unlinked, as an edit of the whole material
+        // does): left linked, the edit would be replaced by the file's value the next time the
+        // scene opens.
         static Command* buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity, ComponentType component,
                                              const std::string& propertyName, const PropertyData& property,
                                              const Json& value, std::string& error,
                                              std::function<void()> onChanged = nullptr,
                                              const std::string* shaderReference = nullptr,
                                              const std::set<std::string>* editedKeys = nullptr);
+
+    private:
+        static Command* buildPropertyCommandUnlinked(Project* project, uint32_t sceneId, Entity entity, ComponentType component,
+                                                     const std::string& propertyName, const PropertyData& property,
+                                                     const Json& value, std::string& error, std::function<void()> onChanged,
+                                                     const std::string* shaderReference, const std::set<std::string>* editedKeys);
+    public:
 
         // One edit of set_properties / create_entity / add_component
         struct Change {
@@ -122,6 +136,17 @@ namespace jasperengine::editor::mcp {
         // it expands in place (in the object form before the component's other values, which
         // then override it)
         static bool parseChanges(const Json& changes, std::vector<Change>& out, std::string& error);
+        // The changes as the components' reflection tables see them (docs/specs/S08-reflection.md
+        // R26): a property named by an alias is renamed to its field, with a warning ("light.old
+        // is now light.new"); one that is read-only, or a value outside its hard range, is refused.
+        // Properties no table describes are left to the edit.
+        static bool checkReflectedChanges(std::vector<Change>& changes, std::vector<std::string>& warnings, std::string& error);
+        // A RectTransform property the entity's Safe Area component drives (anchors, offsets,
+        // size): the error that refuses setting it, "" when it is free
+        static std::string safeAreaDrivenError(Scene* scene, Entity entity, const std::string& property);
+
+        // parseChanges without the renamed names mapped to the current ones
+        static bool parseChangesAsGiven(const Json& changes, std::vector<Change>& out, std::string& error);
         // The commands for `changes` on each entity, added to `multi`: per entity and
         // component, the custom (YAML) edits first as one component rewrite, then the typed
         // PropertyCmds. False with `error` (multi may hold part of the commands then).
@@ -164,14 +189,33 @@ namespace jasperengine::editor::mcp {
         static Json toJson(const Quaternion& value);
         static Vector3 eulerDegrees(const Quaternion& value);
 
+        // Animation references as MCP passes them (project-relative; the stored form of an existing
+        // file is taken too) to the stored (asset-relative) form and the file's GUID: a clip (.anim
+        // that exists, or "<model>#<animation>" of an existing model, checked against its
+        // animations), a .mask / .controller (it must exist and parse). Empty clears. The error
+        // names what is wrong with an example (no field prefix).
+        static bool clipReferenceFromJson(Project* project, const std::string& text, std::string& stored, std::string& guid, std::string& error);
+        static bool animAssetReferenceFromJson(Project* project, const std::string& text, bool mask, std::string& stored, std::string& guid,
+                                               std::string& error);
+        // a stored clip reference shown project-relative ("assets/anim/walk.anim", "assets/hero.gltf#Walk")
+        static std::string clipReferenceToJson(Project* project, const std::string& stored);
+
         // Recomputes every Transform's world matrix and values now (the transform system only runs
         // between frames, so a GameObject made or moved this frame reads stale world values)
         static void refreshTransforms(SceneProject* scene);
+
+        // A Canvas Scaler as {mode, scale_factor, reference, match_mode, match, physical_unit,
+        // fallback_dpi} (enums by snake name). FromJson changes the fields the object names on
+        // `out` (aliases reference_resolution, screen_match_mode, match_width_or_height,
+        // fallback_screen_dpi accepted); false with `error` on an unknown key or a bad value
+        static Json canvasScalerToJson(const CanvasScalerSettings& settings);
+        static bool canvasScalerFromJson(const Json& value, CanvasScalerSettings& out, std::string& error);
 
         static Json entityToJson(SceneProject* scene, Entity entity);
         static bool entityFromJson(SceneProject* scene, const Json& value, Entity& out, std::string& error);
         static Json entityReferenceToJson(Project* project, SceneProject* scene, const EntityReference& value);
         static bool entityReferenceFromJson(Project* project, SceneProject* scene, const Json& value, EntityReference& out, std::string& error);
+
 
         static Json textureToJson(Project* project, SceneProject* scene, const Texture& texture);
         // `camera` gets the camera entity of a {"camera": ...} value (NULL_ENTITY otherwise; a
@@ -181,6 +225,12 @@ namespace jasperengine::editor::mcp {
         static Json materialToJson(Project* project, SceneProject* scene, const Material& material, const std::string& linkedFile = {});
         // Inline values onto `out` (holding the current material); "file" is not handled here
         static bool materialFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error);
+        // Material::pbr, the built-in Lit's extended lobes and hex tiling (docs/mcp/guide/materials.md):
+        // {"<lobe>": {"<field>": value}} with every lobe away from its defaults, each with all its
+        // fields; a write merges a partial object into `out` (null clears a map) and checks each
+        // value against its range, an error naming the field ("pbr.clearcoat.roughness: ...")
+        static Json materialPbrToJson(Project* project, SceneProject* scene, const MaterialPbrExtensions& pbr);
+        static bool materialPbrFromJson(Project* project, SceneProject* scene, const Json& value, MaterialPbrExtensions& out, std::string& error);
 
         // ShaderUniformValues (shaderUniforms, post-process pass uniforms): {name: [x,y,z,w]};
         // writes also take a number or 1-3 numbers per uniform (the rest 0)
@@ -222,6 +272,14 @@ namespace jasperengine::editor::mcp {
         // only: FluidStats in snake_case plus the matching preset, the device's support and the
         // simulator's last error; null when the entity has no FluidSimulationComponent
         static Json fluidStatsToJson(Scene* scene, Entity entity);
+        // A Video Player's playback state (get_entity, get_runtime_entity: "video"): prepared,
+        // playing, time, frame, frameCount, length, backend, codecs, error, prepareProgress; null
+        // when the entity has none or nothing was opened yet (edit mode)
+        static Json videoStatusToJson(Scene* scene, Entity entity);
+        // A UI element's Canvas Group chain (ui canvas group spec 7.8): {inherited_alpha,
+        // interactable, blocks_raycasts, group: "<path>"}; null outside any group or without a
+        // RectTransform; a FLATTEN group adds flatten {layered, layer_alpha, the scene's layer stats}
+        static Json canvasGroupStateToJson(Scene* scene, Entity entity);
 
         static Json shaderParamsToJson(const ShaderUniformValues& values);
         // `out` replaced by `value` (null clears); `manifest` (may be null) types colour hex
@@ -316,12 +374,27 @@ namespace jasperengine::editor::mcp {
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override { return true; }
+        // its steps' files and refusals (Command::touchedPaths; a step's own canUndo / canRedo)
+        std::vector<Touched> touchedPaths(bool undo) const override;
+        std::string undoRefusal() const override;
+        std::string redoRefusal() const override;
+        std::string failure() const override { return !redoFailure.empty() ? redoFailure : error ? *error : std::string(); }
+
+        // Its first step's name, "(+N more)" for the others
+        std::string describe() const override;
+        const char* typeName() const override { return "McpStepsCmd"; }
+        void collectKeepCommands(KeepContext& context) const override;
+        bool isNoOp() const override;
+        size_t memoryBytes() const override;
+        // The commands it ran
+        const std::vector<std::unique_ptr<Command>>& getDone() const { return done; }
 
     private:
         std::vector<Step> steps;
         std::vector<std::unique_ptr<Command>> done;
         bool built = false;
         std::shared_ptr<std::string> error = std::make_shared<std::string>();
+        std::string redoFailure;   // why the last redo failed (a step's own failure, or a refused scoped write)
         Project* transformProject = nullptr;
         uint32_t transformSceneId = 0;
         void refresh();

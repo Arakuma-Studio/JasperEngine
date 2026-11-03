@@ -5,6 +5,7 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "shader/ShaderGlobals.h"
 
 using namespace jasperengine;
 
@@ -25,6 +26,8 @@ Framebuffer::Framebuffer(){
 }
 
 Framebuffer::~Framebuffer(){
+    // a global shader texture (Shader.setGlobalTexture) holding this render target lets go of it
+    ShaderGlobals::forgetFramebuffer(this);
     destroy();
 }
 

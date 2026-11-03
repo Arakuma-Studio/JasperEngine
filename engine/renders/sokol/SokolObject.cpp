@@ -7,18 +7,29 @@
 #include "math/Vector4.h"
 #include "math/Matrix4.h"
 #include "Log.h"
+#include "SokolAsyncCreate.h"
 #include "SokolCmdQueue.h"
 #include "SokolPipelineCache.h"
 #include "SokolShader.h"
+#include "SokolSystem.h"
 #include "Engine.h"
+#include "render/SystemRender.h"
 
 #include <atomic>
+#include <cstring>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 
 using namespace jasperengine;
 
 namespace {
     // pipelines made and not destroyed yet (SokolObject::getLivePipelineCount)
     std::atomic<int> livePipelines(0);
+    // loads with an unfed vertex input (SokolObject::getUnfedVertexInputLoads)
+    std::atomic<int> unfedVertexInputLoads(0);
+    // a uniform block of the draw being set up did not fit the frame's uniform buffer
+    bool uniformsDropped = false;
 
     // the bit index of a pipeline type
     int pipelineIndex(PipelineType pipType){
@@ -29,24 +40,27 @@ namespace {
         return index;
     }
 
-    sg_pipeline makePipeline(const sg_pipeline_desc& desc){
-        const sg_pipeline pipeline = Engine::isAsyncThread() ? SokolCmdQueue::add_command_make_pipeline(desc) : sg_make_pipeline(desc);
-        // an invalid handle (pool full) is never destroyed, so it is not counted
+    // interned (spec S32 R3): an object with the description of another shares its pipeline,
+    // which is created asynchronously where that compiles. Counted per reference
+    sg_pipeline makePipeline(const sg_pipeline_desc& desc, bool immediate){
+        const sg_pipeline pipeline = SokolPipelineCache::acquire(desc, immediate);
+        // an invalid handle (pool full) is never released, so it is not counted
         if (pipeline.id != SG_INVALID_ID)
             livePipelines++;
         return pipeline;
     }
 
+    // draws that waited for a pipeline being created or warmed (spec S32), ever: a pass whose
+    // result is kept (a cached shadow slot, a probe capture) draws again when it grew meanwhile
+    uint32_t waitingDraws = 0;
+
     void destroyPipeline(sg_pipeline pipeline){
         if (pipeline.id == SG_INVALID_ID)
             return;
         livePipelines--;
-        if (Engine::isAsyncThread()){
-            SokolCmdQueue::add_command_destroy_pipeline(pipeline);
-        }else{
-            sg_destroy_pipeline(pipeline);
-        }
+        SokolPipelineCache::release(pipeline);
     }
+
 }
 
 SokolObject::SokolObject(){
@@ -65,29 +79,136 @@ SokolObject::SokolObject(){
     lastDynamicGeneration = 0;
     loadState = RenderState();
     bindSlotIndex = 0;
+    shaderInputs = 0;
+    shaderInputSignature = 0;
     blendOverride = false;
     blendState = BlendState();
     resetPipelines();
+    resetWarm();
 }
 
-// Forgets the variants without destroying them: a copy of this object shares the
-// handles, as it shares the pipelines, and destroy() releases them once
-void SokolObject::resetPipelines(){
-#ifdef JASPERENGINE_EDITOR
-    for (sg_pipeline& variant : noCullPipelines){
-        variant.id = SG_INVALID_ID;
+void SokolObject::resetWarm(){
+    for (int i = 0; i < PIPELINE_TYPES; i++){
+        warmedPipeline[i] = SG_INVALID_ID;
+        warmKey[i] = 0;
     }
+    dynamicWarm.clear();
+}
+
+// GL with a worker context (spec S32 R4): the first draw of a pipeline with this object's
+// bindings waits for its warm draw on the worker, which makes the driver compile the program for
+// this state there. warmed holds the pipeline confirmed, key the warm draw asked for
+bool SokolObject::isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key){
+    if (warmed == pipeline.id || immediatePipelines || !SokolAsyncCreate::warmDrawsActive())
+        return true;
+    if (key == 0)
+        key = SokolAsyncCreate::requestWarmDraw(pipeline, bind);
+    if (!SokolAsyncCreate::isWarm(key) || !SokolAsyncCreate::beginFirstDraw(pipeline_desc.shader))
+        return false;
+    warmed = pipeline.id;
+    key = 0;
+    return true;
+}
+
+bool SokolObject::isDynamicWarm(sg_pipeline pipeline){
+    if (immediatePipelines || !SokolAsyncCreate::warmDrawsActive())
+        return true;
+    for (std::pair<uint32_t, uint64_t>& entry : dynamicWarm){
+        if (entry.first == pipeline.id){
+            if (entry.second == 0)
+                return true;
+            if (!SokolAsyncCreate::isWarm(entry.second) || !SokolAsyncCreate::beginFirstDraw(baseDesc.shader))
+                return false;
+            entry.second = 0;
+            return true;
+        }
+    }
+    const uint64_t key = SokolAsyncCreate::requestWarmDraw(pipeline, bind);
+    // (warm already: the first draw still waits while the worker warms the program)
+    dynamicWarm.emplace_back(pipeline.id, key);
+    if (!SokolAsyncCreate::isWarm(key) || !SokolAsyncCreate::beginFirstDraw(baseDesc.shader))
+        return false;
+    dynamicWarm.back().second = 0;
+    return true;
+}
+
+// Releases this object's references to the shared pipeline variants (SokolPipelineCache
+// destroys a variant with its last reference) and forgets which pipelines already cull nothing
+void SokolObject::resetPipelines(){
+    variants.clear();
     noCullSame = 0;
-#endif
+}
+
+size_t SokolObject::getSharedVariantCount(){
+    return SokolPipelineCache::variantCount();
 }
 
 int SokolObject::getLivePipelineCount(){
     return livePipelines.load();
 }
 
+int SokolObject::getUnfedVertexInputLoads(){
+    return unfedVertexInputLoads.load();
+}
+
 SokolObject::SokolObject(const SokolObject& rhs) = default;
 
 SokolObject& SokolObject::operator=(const SokolObject& rhs) = default;
+
+SokolVariantRefs::SokolVariantRefs(const SokolVariantRefs& rhs): list(rhs.list){
+    const uint64_t context = SystemRender::getContextId();
+    for (const Variant& variant : list){
+        if (variant.context == context)
+            SokolPipelineCache::retainVariant(variant.pipeline);
+    }
+}
+
+SokolVariantRefs& SokolVariantRefs::operator=(const SokolVariantRefs& rhs){
+    if (this != &rhs){
+        const uint64_t context = SystemRender::getContextId();
+        for (const Variant& variant : rhs.list){
+            if (variant.context == context)
+                SokolPipelineCache::retainVariant(variant.pipeline);
+        }
+        clear();
+        list = rhs.list;
+    }
+    return *this;
+}
+
+SokolVariantRefs::~SokolVariantRefs(){
+    clear();
+}
+
+const SokolVariantRefs::Variant* SokolVariantRefs::find(uint8_t kind, uint8_t type) const{
+    const uint64_t context = SystemRender::getContextId();
+    for (const Variant& variant : list){
+        if (variant.kind == kind && variant.type == type && variant.context == context)
+            return &variant;
+    }
+    return nullptr;
+}
+
+void SokolVariantRefs::add(uint8_t kind, uint8_t type, sg_pipeline pipeline){
+    for (Variant& variant : list){
+        if (variant.kind == kind && variant.type == type){
+            // one from an earlier context (find skips it): nothing to release
+            variant.pipeline = pipeline;
+            variant.context = SystemRender::getContextId();
+            return;
+        }
+    }
+    list.push_back({kind, type, pipeline, SystemRender::getContextId()});
+}
+
+void SokolVariantRefs::clear(){
+    const uint64_t context = SystemRender::getContextId();
+    for (const Variant& variant : list){
+        if (variant.context == context)
+            SokolPipelineCache::releaseVariant(variant.pipeline);
+    }
+    list.clear();
+}
 
 sg_vertex_format SokolObject::getVertexFormat(unsigned int elements, AttributeDataType dataType, bool normalized){
     if (dataType == AttributeDataType::BYTE){
@@ -109,6 +230,12 @@ sg_vertex_format SokolObject::getVertexFormat(unsigned int elements, AttributeDa
             return SG_VERTEXFORMAT_USHORT2N;
         if (elements == 4)
             return SG_VERTEXFORMAT_USHORT4N;
+    }
+    if (dataType == AttributeDataType::HALF){
+        if (elements == 2)
+            return SG_VERTEXFORMAT_HALF2;
+        if (elements == 4)
+            return SG_VERTEXFORMAT_HALF4;
     }
     if (dataType == AttributeDataType::FLOAT){
         if (elements == 1)
@@ -211,6 +338,13 @@ void SokolObject::applyBlend(sg_color_target_state& target, bool offscreen) cons
             target.blend.src_factor_rgb = SG_BLENDFACTOR_DST_COLOR;
             target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
             break;
+        case BlendMode::SUBTRACT_PREMULTIPLIED:
+            target.blend.op_rgb = SG_BLENDOP_REVERSE_SUBTRACT;
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+            target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+            return;
         default:
             target.blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
             target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
@@ -291,13 +425,43 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
 
     bindSlotIndex = 0;
     bufferToBindSlot.clear();
+    shaderInputs = 0;
+    shaderInputSignature = 0;
 
     blendOverride = false;
     blendState = BlendState();
 }
 
+namespace {
+    // the vertex inputs of a shader, each name at its location (FNV-1a), whatever their order
+    uint64_t vertexInputSignature(const ShaderData& data){
+        uint64_t signature = 0;
+        for (const ShaderStage& stage : data.stages){
+            if (stage.type != ShaderStageType::VERTEX)
+                continue;
+            for (const ShaderAttr& attr : stage.attributes){
+                uint64_t h = 1469598103934665603ull ^ (uint64_t)(uint32_t)attr.location;
+                for (const char c : attr.name)
+                    h = (h ^ (uint8_t)c) * 1099511628211ull;
+                signature += h * 1099511628211ull;
+            }
+        }
+        return signature;
+    }
+}
+
 void SokolObject::setShader(ShaderRender* shader){
     pipeline_desc.shader = shader->backend.get();
+    shaderInputs = 0;
+    for (const ShaderStage& stage : shader->shaderData.stages){
+        if (stage.type != ShaderStageType::VERTEX)
+            continue;
+        for (const ShaderAttr& attr : stage.attributes){
+            if (attr.location >= 0 && attr.location < SG_MAX_VERTEX_ATTRIBUTES)
+                shaderInputs |= (1u << attr.location);
+        }
+    }
+    shaderInputSignature = vertexInputSignature(shader->shaderData);
 }
 
 void SokolObject::setIndex(BufferRender* buffer, AttributeDataType dataType, size_t offset){
@@ -317,6 +481,14 @@ void SokolObject::setIndex(BufferRender* buffer, AttributeDataType dataType, siz
 }
 
 void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance){
+    addAttribute(slot, buffer, elements, dataType, stride, offset, normalized, perInstance, false);
+}
+
+void SokolObject::addInterleavedAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance){
+    addAttribute(slot, buffer, elements, dataType, stride, offset, normalized, perInstance, true);
+}
+
+void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance, bool interleaved){
     if (slot != -1){
         sg_buffer vbuf = buffer->backend.get();
 
@@ -326,7 +498,7 @@ void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elem
         size_t bufferOffset = 0;
         size_t attrOffset = 0;
 
-        if (Engine::isOpenGL()){
+        if (Engine::isOpenGL() || interleaved){
             bufferOffset = 0;
             attrOffset = offset;
         }else{
@@ -434,13 +606,91 @@ sg_blend_op SokolObject::getBlendOp(BlendOperation operation){
     return _SG_BLENDOP_DEFAULT;
 }
 
+bool SokolObject::isReady() const{
+    for (const sg_pipeline& pipeline : pipelines){
+        if (pipeline.id != SG_INVALID_ID && sg_query_pipeline_state(pipeline) != SG_RESOURCESTATE_VALID)
+            return false;
+    }
+    return true;
+}
+
+// The pipelines this object will have on another variant of its shader (spec S32 R4, R8), made
+// ahead with its description and warmed with its bindings: it keeps drawing until they are ready,
+// and once it loads again on that variant its pipelines are these (interned), so it switches
+// without a frame left empty. Held until destroy()
+bool SokolObject::prewarmWith(ShaderRender* shader){
+    if (immediatePipelines || !shader)
+        return true;
+    const sg_shader target = shader->backend.get();
+    if (target.id == SG_INVALID_ID || target.id == pipeline_desc.shader.id || sg_query_shader_state(target) != SG_RESOURCESTATE_VALID)
+        return true;
+    // A variant with other vertex inputs (the right variant of an object that loaded on a
+    // stand-in: a_tangent where the stand-in had a_color) needs the layout its own load binds.
+    // Made on this one, its pipelines read inputs no buffer feeds: zero on GL, undefined on
+    // Vulkan, and Metal fails them ("Vertex attribute a_color(3) is missing from the vertex
+    // descriptor", SplineGpu.RoadOnTerrain). Nothing to make ahead: the load makes them.
+    if (vertexInputSignature(shader->shaderData) != shaderInputSignature)
+        return true;
+    // what was made for another variant goes (the shader asked for changed meanwhile)
+    for (size_t i = 0; i < prewarmed.size();){
+        if (prewarmed[i].shader != target.id){
+            destroyPipeline(prewarmed[i].pipeline);
+            prewarmed.erase(prewarmed.begin() + (std::ptrdiff_t)i);
+        }else{
+            i++;
+        }
+    }
+    const bool warmDraws = SokolAsyncCreate::warmDrawsActive();
+    bool ready = true;
+    for (int index = 0; index < PIPELINE_TYPES; index++){
+        if (pipelines[index].id == SG_INVALID_ID || sg_query_pipeline_state(pipelines[index]) != SG_RESOURCESTATE_VALID)
+            continue;
+        Prewarmed* entry = nullptr;
+        for (Prewarmed& made : prewarmed){
+            if (made.index == index)
+                entry = &made;
+        }
+        if (!entry){
+            sg_pipeline_desc desc = makePipelineDesc((PipelineType)(1 << index));
+            desc.shader = target;
+            const sg_pipeline pipeline = makePipeline(desc, false);
+            if (pipeline.id == SG_INVALID_ID)
+                continue;
+            prewarmed.push_back(Prewarmed{target.id, index, pipeline});
+            entry = &prewarmed.back();
+        }
+        const sg_resource_state state = sg_query_pipeline_state(entry->pipeline);
+        if (state == SG_RESOURCESTATE_ALLOC){
+            ready = false;
+        }else if (state == SG_RESOURCESTATE_VALID && warmDraws &&
+                !SokolAsyncCreate::isWarm(SokolAsyncCreate::requestWarmDraw(entry->pipeline, bind))){
+            ready = false;
+        }
+        // (a failed one is not waited for: the load shows it)
+    }
+    return ready;
+}
+
+bool SokolObject::isDrawWaiting() const{
+    return drawWaiting;
+}
+
+uint32_t SokolObject::getWaitingDrawCount(){
+    return waitingDraws;
+}
+
+uint32_t SokolObject::getPipelineId(PipelineType pipType) const{
+    const int index = pipelineIndex(pipType);
+    return index < PIPELINE_TYPES ? pipelines[index].id : (uint32_t)SG_INVALID_ID;
+}
+
+void SokolObject::setImmediatePipelines(bool immediate){
+    immediatePipelines = immediate;
+}
+
 void SokolObject::setBlendState(const BlendState& state){
     blendOverride = true;
     blendState = state;
-}
-
-sg_pipeline_desc SokolObject::describePipeline(PipelineType pipType) const{
-    return makePipelineDesc(pipType);
 }
 
 sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
@@ -664,8 +914,26 @@ sg_pipeline& SokolObject::pipelineOf(PipelineType pipType){
     return pipelines[index < PIPELINE_TYPES ? index : 0];
 }
 
+// An input the vertex shader declares with no buffer behind it reads zero on OpenGL but is
+// undefined on Vulkan (and invalid on Metal and D3D11): a morph mesh with fewer targets than
+// the shader declares drew nothing on NVIDIA once earlier draws had left garbage there.
+// The callers bind every input (RenderSystem::bindUnfedMorphInputs); one left out is
+// reported here, and counted for the tests.
+void SokolObject::checkVertexInputs(){
+    uint32_t unfed = 0;
+    for (int slot = 0; slot < SG_MAX_VERTEX_ATTRIBUTES; slot++){
+        if ((shaderInputs & (1u << slot)) && pipeline_desc.layout.attrs[slot].format == SG_VERTEXFORMAT_INVALID)
+            unfed |= (1u << slot);
+    }
+    if (unfed){
+        unfedVertexInputLoads++;
+        Log::warn("A pipeline leaves vertex inputs of its shader (locations mask 0x%x) without a buffer: undefined on Vulkan", unfed);
+    }
+}
+
 bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples){
     loadState = state;
+    checkVertexInputs();
     // the PIP_MSAA* types' sample count, given by the RenderSystem loading the object (never
     // shared state: another scene or the editor's thumbnail thread loads with its own)
     msaaSamples = samples > 1 ? samples : 1;
@@ -686,7 +954,7 @@ bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples)
             continue;
         }
         sg_pipeline& pipeline = pipelineOf(type);
-        pipeline = makePipeline(makePipelineDesc(type));
+        pipeline = makePipeline(makePipelineDesc(type), immediatePipelines);
         if (pipeline.id == SG_INVALID_ID){
             return false;
         }
@@ -696,6 +964,7 @@ bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples)
 }
 
 bool SokolObject::endLoadDynamic(PrimitiveType primitiveType, IndexType indexType){
+    checkVertexInputs();
     baseDesc = pipeline_desc;
     baseDesc.primitive_type = getPrimitiveType(primitiveType);
     switch (indexType){
@@ -711,64 +980,122 @@ bool SokolObject::endLoadDynamic(PrimitiveType primitiveType, IndexType indexTyp
 }
 
 bool SokolObject::beginDraw(const PipelineState& state){
+    uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
-    if (!dynamicLoaded || sg_query_shader_state(baseDesc.shader) != SG_RESOURCESTATE_VALID)
+    drawWaiting = false;
+    if (!dynamicLoaded || sg_query_shader_state(baseDesc.shader) != SG_RESOURCESTATE_VALID){
+        drawWaiting = dynamicLoaded && sg_query_shader_state(baseDesc.shader) == SG_RESOURCESTATE_ALLOC;
+        waitingDraws += drawWaiting ? 1 : 0;
         return false;
+    }
 
     sg_pipeline pipeline;
     const uint32_t generation = SokolPipelineCache::generation();
     if (lastDynamicPipeline.id != SG_INVALID_ID && lastDynamicGeneration == generation && lastDynamicState == state){
         pipeline = lastDynamicPipeline;
     }else{
-        pipeline = SokolPipelineCache::get(baseDesc, dynamicBaseHash, state);
+        pipeline = SokolPipelineCache::get(baseDesc, dynamicBaseHash, state, immediatePipelines);
         lastDynamicPipeline = pipeline;
         lastDynamicState = state;
         lastDynamicGeneration = generation;
     }
-    // a failed creation is never applied (see beginDraw(PipelineType))
-    if (pipeline.id == SG_INVALID_ID || sg_query_pipeline_state(pipeline) != SG_RESOURCESTATE_VALID)
+    // a failed creation is never applied (see beginDraw(PipelineType)), nor one still being
+    // created (spec S32) or warmed
+    if (pipeline.id == SG_INVALID_ID || sg_query_pipeline_state(pipeline) != SG_RESOURCESTATE_VALID){
+        drawWaiting = pipeline.id != SG_INVALID_ID && sg_query_pipeline_state(pipeline) == SG_RESOURCESTATE_ALLOC;
+        waitingDraws += drawWaiting ? 1 : 0;
         return false;
+    }
+    if (!isDynamicWarm(pipeline)){
+        drawWaiting = true;
+        waitingDraws++;
+        return false;
+    }
 
     SokolPipelineCache::apply(pipeline);
     return true;
 }
 
-bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
+bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored){
+    uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_pipeline selectedPipeline = pipelineOf(pipType);
+    drawWaiting = false;
 
     // Deferred resource creation can leave an allocated handle in FAILED state.
     // Never apply it: doing so would turn one creation error into a cascade of
-    // invalid pipeline, uniform, binding, and draw validation failures.
+    // invalid pipeline, uniform, binding, and draw validation failures. One still being
+    // created (spec S32: off the render thread, or a queued command) only waits.
     if (selectedPipeline.id == SG_INVALID_ID ||
         sg_query_pipeline_state(selectedPipeline) != SG_RESOURCESTATE_VALID){
+        drawWaiting = selectedPipeline.id != SG_INVALID_ID && sg_query_pipeline_state(selectedPipeline) == SG_RESOURCESTATE_ALLOC;
+        waitingDraws += drawWaiting ? 1 : 0;
+        return false;
+    }
+    // A pipeline outlives the shader it was built on when the shader goes before the objects
+    // drawing with it load again (a shader reloaded or released while a mesh keeps its old
+    // pipelines for a frame): sokol keeps such a pipeline valid, and applying it and its bindings
+    // reads the dead shader (a crash in sg_apply_bindings without the validation layer). Such an
+    // object draws nothing until its reload builds pipelines on the live shader.
+    if (pipeline_desc.shader.id == SG_INVALID_ID ||
+        sg_query_shader_state(pipeline_desc.shader) != SG_RESOURCESTATE_VALID){
         return false;
     }
 
-#ifdef JASPERENGINE_EDITOR
-    if (disableFaceCulling){
-        const int index = pipelineIndex(pipType);
-        if (index < PIPELINE_TYPES){
-            sg_pipeline& variant = noCullPipelines[index];
-            if (variant.id == SG_INVALID_ID && !(noCullSame & (1u << index))){
-                sg_pipeline_desc desc = makePipelineDesc(pipType);
-                if (desc.cull_mode == SG_CULLMODE_BACK || desc.cull_mode == SG_CULLMODE_FRONT){
-                    desc.cull_mode = SG_CULLMODE_NONE;
-                    variant = makePipeline(desc);
-                }else{
-                    // already culls nothing: the pipeline is its own variant
-                    noCullSame |= (uint16_t)(1u << index);
-                }
+#ifndef JASPERENGINE_EDITOR
+    disableFaceCulling = false;
+#endif
+
+    const int index = pipelineIndex(pipType);
+    if ((disableFaceCulling || mirrored) && index < PIPELINE_TYPES){
+        const int kind = mirrored ? (disableFaceCulling ? VARIANT_MIRRORED_NO_CULL : VARIANT_MIRRORED) : VARIANT_NO_CULL;
+        const bool sameAsPipeline = (kind == VARIANT_NO_CULL) && (noCullSame & (1u << index));
+        const SokolVariantRefs::Variant* held = variants.find((uint8_t)kind, (uint8_t)index);
+        if (!held && !sameAsPipeline){
+            sg_pipeline_desc desc = makePipelineDesc(pipType);
+            const bool culls = desc.cull_mode == SG_CULLMODE_BACK || desc.cull_mode == SG_CULLMODE_FRONT;
+            if (disableFaceCulling){
+                desc.cull_mode = SG_CULLMODE_NONE;
             }
-            // a variant that failed to build leaves the pipeline as it is
-            if (variant.id != SG_INVALID_ID && sg_query_pipeline_state(variant) == SG_RESOURCESTATE_VALID){
-                selectedPipeline = variant;
+            if (mirrored){
+                // the winding of the front faces on screen turns with the mirror (sokol's
+                // default winding is CW)
+                desc.face_winding = (desc.face_winding == SG_FACEWINDING_CCW) ? SG_FACEWINDING_CW : SG_FACEWINDING_CCW;
+            }
+            if (kind == VARIANT_NO_CULL && !culls){
+                // already culls nothing: the pipeline is its own variant
+                noCullSame |= (uint16_t)(1u << index);
+            }else{
+                // shared by every object with the same description, an interned pipeline made
+                // through the asynchronous creation (spec S32; a failed one is kept as invalid,
+                // so it is not tried again each frame)
+                const sg_pipeline variant = SokolPipelineCache::acquireVariant(desc);
+                // the passes of the frame wait for theirs (setImmediatePipelines)
+                if (immediatePipelines && !Engine::isAsyncThread() && SokolAsyncCreate::isPending(variant))
+                    SokolAsyncCreate::waitFor(variant);
+                variants.add((uint8_t)kind, (uint8_t)index, variant);
+                held = variants.find((uint8_t)kind, (uint8_t)index);
             }
         }
+        if (held && held->pipeline.id != SG_INVALID_ID && sg_query_pipeline_state(held->pipeline) == SG_RESOURCESTATE_VALID){
+            selectedPipeline = held->pipeline;
+        }else if (mirrored && held && held->pipeline.id != SG_INVALID_ID && sg_query_pipeline_state(held->pipeline) == SG_RESOURCESTATE_ALLOC){
+            // a mirrored draw waits for its variant (the plain pipeline would cull its front faces)
+            drawWaiting = true;
+            waitingDraws++;
+            return false;
+        }
+        // a variant that failed to build (or a no-cull one still being made) leaves the pipeline as it is
     }
-#else
-    (void)disableFaceCulling;
-#endif
+
+    {
+        const int index = pipelineIndex(pipType);
+        if (index < PIPELINE_TYPES && !isWarm(selectedPipeline, warmedPipeline[index], warmKey[index])){
+            drawWaiting = true;
+            waitingDraws++;
+            return false;
+        }
+    }
 
     sg_apply_pipeline(selectedPipeline);
     // the dynamic path's "applied last" no longer holds
@@ -779,32 +1106,50 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
 void SokolObject::applyUniformBlock(int slot, unsigned int count, void* data){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (slot != -1){
+        // past the frame's uniform buffer (Vulkan, Metal, WebGPU): not applied, and the draw it
+        // is for is skipped (SokolSystem logs it), not drawn with another draw's uniforms
+        if (!SokolSystem::reserveUniformBytes(count)){
+            uniformsDropped = true;
+            return;
+        }
         sg_apply_uniforms(slot, {data, count});
     }
 }
 
-void SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
+bool SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
+    if (uniformsDropped){
+        uniformsDropped = false;
+        SokolSystem::countSkippedDraw();
+        return false;
+    }
+    // past the frame's descriptor buffer (Vulkan): skipped (SokolSystem counts and logs it),
+    // where sokol would drop it and every draw after it in the frame
+    if (!SokolSystem::reserveDescriptorBytes())
+        return false;
     sg_apply_bindings(bind);
     sg_draw(baseElement, vertexCount, instanceCount);
+    return true;
 }
 
 void SokolObject::destroy(){
+    // let go of its pipelines and their shared variants (resetPipelines): each is destroyed
+    // with its last holder
     if (sg_isvalid()){
         for (sg_pipeline& pipeline : pipelines){
             destroyPipeline(pipeline);
         }
-#ifdef JASPERENGINE_EDITOR
-        for (sg_pipeline& variant : noCullPipelines){
-            destroyPipeline(variant);
+        for (Prewarmed& made : prewarmed){
+            destroyPipeline(made.pipeline);
         }
-#endif
     }
+    prewarmed.clear();
 
     for (sg_pipeline& pipeline : pipelines){
         pipeline.id = SG_INVALID_ID;
     }
     resetPipelines();
+    resetWarm();
     bind = {};
     pipeline_desc = {};
     // dynamic pipelines stay in SokolPipelineCache until their shader goes

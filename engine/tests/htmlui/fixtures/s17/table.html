@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>table</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; font-size: 14px; }
+    #servers { height: 300px; width: 500px; }
+  </style>
+</head>
+<body>
+  <div data-model="browser">
+    <table-view id="servers" items="servers" item-height="24" key="id">
+      <table-column key="name" width="200" sortable resizable>Name</table-column>
+      <table-column key="ping" width="80" min-width="40" sortable resizable>Ping</table-column>
+      <table-column key="map" width="120"><template><b class="map">{{item.map}}</b></template>Map</table-column>
+    </table-view>
+  </div>
+</body>
+</html>

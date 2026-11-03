@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: colour-filtered children of rounded overflow clips</title>
+<style>
+  html, body { margin: 0; }
+  .clip { position: absolute; top: 10px; width: 80px; height: 60px; border-radius: 20px; overflow: hidden; }
+  .fill { position: absolute; left: -10px; top: -10px; width: 100px; height: 80px; background-color: #e04020; }
+  .mark { position: absolute; left: 30px; top: 20px; width: 20px; height: 20px; background-color: #20a040; }
+  #a { left: 10px; }
+  #a > .fill { filter: brightness(0.5); }
+  #b { left: 110px; }
+  #b > .fill { left: -20px; top: -20px; width: 80px; height: 60px; filter: invert(1); }
+  #c { left: 210px; }
+  #c > .fill { filter: grayscale(1); }
+  #d { left: 310px; }
+  #d > .fill { filter: sepia(1); }
+</style>
+</head>
+<body><div id="a" class="clip"><div class="fill"></div></div><div id="b" class="clip"><div class="fill"></div></div><div id="c" class="clip"><div class="fill"></div><div class="mark"></div></div><div id="d" class="clip"><div class="mark"></div><div class="fill"></div></div></body>
+</html>

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>tree</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; font-size: 14px; }
+    #tree { height: 300px; width: 300px; }
+  </style>
+</head>
+<body>
+  <div data-model="quests">
+    <tree-view id="tree" items="roots" item-height="24" key="id">
+      <template><div class="node"><span class="label">{{item.title}}</span> <span class="depth">{{depth}}</span></div></template>
+    </tree-view>
+  </div>
+</body>
+</html>

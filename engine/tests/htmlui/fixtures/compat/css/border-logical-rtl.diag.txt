@@ -1,4 +1,0 @@
-compat/css/border-logical-rtl.css:2:11: info: 'border-inline-start' is mapped right-to-left (the document root is rtl) [HTMLUI-CSS-0005]
-compat/css/border-logical-rtl.css:2:47: info: 'border-inline-end-width' is mapped right-to-left (the document root is rtl) [HTMLUI-CSS-0005]
-compat/css/border-logical-rtl.css:3:11: info: 'margin-inline-start' is mapped right-to-left (the document root is rtl) [HTMLUI-CSS-0005]
-compat/css/border-logical-rtl.css:3:38: info: 'padding-inline' is mapped right-to-left (the document root is rtl) [HTMLUI-CSS-0005]

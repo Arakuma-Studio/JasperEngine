@@ -40,9 +40,12 @@
 //   them, and the engine's own work is within kStatefulFrameBudget of document B's.
 //
 // The timings are gated like the compat performance tests (PerfFixtures.h): the least of up to 5
-// measurements is compared, since a loaded host only ever adds time to one.
+// measurements is compared, since a loaded host only ever adds time to one, and the budgets are
+// scaled by JASPER_HTMLUI_PERF_SLACK (3 on the shared builders and CI; unset, 1, on the benchmark
+// server).
 
 #include "EffectTestCommon.h"
+#include "../compat/PerfFixtures.h"
 
 #include "htmlui/HtmlUIClock.h"
 #include "htmlui/compat/runtime/RuntimeRegistry.h"
@@ -532,8 +535,9 @@ TEST(EffectPerfTest, GridSteadyStateAndBudgets){
     const Least c = gated("C", 0.0, [&](int){ return measure(grid); }, {});
 
     ASSERT_TRUE(grid.load(gridDocument(true, false))) << "document A";
-    const double budgetA = 1.5 * b.gate(gateEngine) + 1.0;
-    const double budgetA2 = 3.0 * b.gate(gateEngine) + 4.0;
+    const double slack = jasperengine::test::compat::perfSlack();
+    const double budgetA = (1.5 * b.gate(gateEngine) + 1.0) * slack;
+    const double budgetA2 = (3.0 * b.gate(gateEngine) + 4.0) * slack;
     const Least a = gated("A", budgetA, [&](int){ return measure(grid); }, [](const PerfRun& run){
         EXPECT_EQ(run.delta.instancesCreated, 0u) << "no effect instance is created in the steady state";
         EXPECT_EQ(run.delta.compileCalls, 0u) << "no variant is compiled in the steady state";
@@ -632,7 +636,7 @@ TEST(EffectPerfTest, StatefulSteadyState){
     ASSERT_TRUE(grid.load(gridDocument(false, false))) << "document B";
     const double b = least("B", 0.0, {});
     ASSERT_TRUE(grid.load(statefulDocument())) << "the stateful document";
-    const double budget = b + kStatefulFrameBudget;
+    const double budget = (b + kStatefulFrameBudget) * jasperengine::test::compat::perfSlack();
     const double s = least("S (six stateful effects)", budget, [&](const PerfRun& run){
         // a step a frame (the clock moves 1/60 s a frame): every pass of every effect, nothing created
         EXPECT_EQ(run.delta.instancesCreated, 0u) << "no effect instance is created in the steady state";
@@ -747,57 +751,5 @@ TEST(EffectPerfTest, CostTable){
     EXPECT_TRUE((bool)out) << "written: " << costFile();
 }
 
-
-// The profiling driver of 5.4 (not a gate): with JASPER_EFFECT_PERF_PROFILE=A, B or A2 it loads that
-// document, renders 30 warm-up frames and then JASPER_EFFECT_PERF_FRAMES (default 10) frames inside
-// profiledFrames(), the function callgrind collects (valgrind --tool=callgrind
-// --toggle-collect='*profiledFrames*'). Without the variable it does nothing.
-namespace {
-    __attribute__((noinline)) void profiledFrames(Grid& grid, double& clock, int frames, const std::function<void(int)>& perFrame){
-        for (int i = 0; i < frames; i++){
-            clock += 1.0 / 60.0;
-            HtmlUIClock::setFixedTime(clock);
-            if (perFrame)
-                perFrame(i);
-            grid.frame();
-        }
-    }
-}
-
-TEST(EffectPerfProfile, Frames){
-    const char* which = std::getenv("JASPER_EFFECT_PERF_PROFILE");
-    if (!which)
-        GTEST_SKIP() << "set JASPER_EFFECT_PERF_PROFILE=A, B or A2 to profile a document of 5.4";
-    const std::string doc = which;
-    Grid grid;
-    if (!grid.gpu || !grid.r.isValid())
-        GTEST_SKIP() << "no GPU";
-    ASSERT_TRUE(warmUpReferenceEffects());
-    HtmlUIClock::setFixedTime(10.0);
-    ASSERT_TRUE(grid.load(gridDocument(doc != "B", doc == "A2"))) << doc;
-    Rml::Element* parent = grid.document->GetElementById("grid");
-    int counter = 0;
-    std::function<void(int)> perFrame;
-    if (doc == "A2"){
-        perFrame = [&](int){
-            char value[32];
-            std::snprintf(value, sizeof(value), "%.4f", 0.05 + 0.85 * (double)((counter++ * 37) % 1000) / 1000.0);
-            parent->SetProperty("--k", value);
-        };
-    }
-    double clock = 10.0;
-    for (int i = 0; i < 30; i++){   // warm-up, outside the collected function
-        clock += 1.0 / 60.0;
-        HtmlUIClock::setFixedTime(clock);
-        if (perFrame)
-            perFrame(i);
-        grid.frame();
-    }
-    const char* framesText = std::getenv("JASPER_EFFECT_PERF_FRAMES");
-    const int frames = framesText ? std::max(1, std::atoi(framesText)) : 10;
-    profiledFrames(grid, clock, frames, perFrame);
-    std::printf("[ effects  ] profiled document %s: 30 + %d frames\n", doc.c_str(), frames);
-    HtmlUIClock::setFixedTime(0.0);
-}
 
 #endif

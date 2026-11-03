@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
+#include "Screen.h"
+#include "registry/PhysicsLayers.h"
 #include "McpTools.h"
+#include "texture/TextureCookQueue.h"
+#include "window/dialog/EditorSettingsWindow.h"
+#include "Out.h"
+#include "io/AtomicFile.h"
 #include "PlayViewCommon.h"
 
 #include "mcp/McpCall.h"
@@ -13,22 +19,45 @@
 #include "mcp/McpValues.h"
 
 #include "App.h"
+#include "Backend.h"
 #include "AppSettings.h"
 #include "Engine.h"
+#include "Screen.h"
+#include "Platform.h"
 #include "Project.h"
+#include "net/Http.h"
 #include "mcp/McpActivityWindow.h"
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
+#include "pool/ShaderPool.h"
+#include "pool/TextureDataPool.h"
+#include "render/SystemRender.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "object/ui/UIDocument.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/GraphicUtils.h"
+#include "util/PlatformRules.h"
+#include "window/DeviceProfiles.h"
+#include "window/GameResolutions.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
+#include "window/JobsMemoryWindow.h"
+#include "window/profiler/FrameDebuggerWindow.h"
+#include "window/profiler/ProfilerWindow.h"
+#include "window/PlayModeChangesWindow.h"
+#include "window/PoseAnimationWindow.h"
 #include "window/SceneWindow.h"
+#include "window/SystemsWindow.h"
+#include "window/UndoHistoryWindow.h"
+#include "util/UiItemLocator.h"
+#include "pose/PoseAnimationDocument.h"
+#include "pose/PoseViewport.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -49,6 +78,7 @@
 #endif
 
 #include <algorithm>
+#include <cstdio>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -68,11 +98,51 @@ bool sceneContentLoaded(SceneProject* sp) {
     if (rs && !rs->isAllLoaded()) return false;
     auto us = sp->scene->getSystem<UISystem>();
     if (us && us->hasPendingImages()) return false;
+    // its HTML documents loaded (or failed) and drawn once: the first frame waits for the HTML UI
+    // shaders, which are made when a document first draws (on a software rasterizer, seconds)
+    auto ds = sp->scene->getSystem<UIDocumentSystem>();
+    if (ds && !ds->isAllLoaded()) return false;
     // pinned stateful UI effects still replaying their state (phase 6): drawn a few frames later
     if (UIDocument::getPendingEffectReplays() > 0) return false;
     auto ms = sp->scene->getSystem<MeshSystem>();
     if (ms && ms->hasPendingAsyncModelLoads()) return false;
+    // a frame drawn while a texture loads shows a stand-in for it (the texture before, or none)
+    if (TextureDataPool::getLoadingCount() > 0) return false;
     return true;
+}
+
+// The asset loads a screenshot always waits for (a texture, a model): it never shows a stand-in
+// for one, and past the call's timeout it fails naming them
+bool assetsLoading(SceneProject* sp) {
+    if (TextureDataPool::getLoadingCount() > 0) return true;
+    auto ms = sp && sp->scene ? sp->scene->getSystem<MeshSystem>() : nullptr;
+    return ms && ms->hasPendingAsyncModelLoads();
+}
+
+// The shaders, textures and scene objects a screenshot is still waiting for, for its error
+std::string describeLoading(SceneProject* sp) {
+    std::string out;
+    auto add = [&out](const std::string& part) { out += (out.empty() ? "" : "; ") + part; };
+    if (!ShaderPool::isCreationIdle()) add("shaders or pipelines being made");
+    if (const size_t textures = TextureDataPool::getLoadingCount()) {
+        std::string list;
+        for (const std::string& id : TextureDataPool::getLoadingIds(8)) list += (list.empty() ? "" : ", ") + id;
+        add(std::to_string(textures) + " texture load(s): " + list);
+    }
+    if (sp && sp->scene) {
+        if (auto rs = sp->scene->getSystem<RenderSystem>()) {
+            const std::vector<std::string> waiting = rs->describeNotLoaded();
+            std::string list;
+            for (size_t i = 0; i < waiting.size() && i < 8; i++) list += (i ? ", " : "") + waiting[i];
+            if (waiting.size() > 8) list += " and " + std::to_string(waiting.size() - 8) + " more";
+            if (!list.empty()) add("not loaded: " + list);
+        }
+        if (auto us = sp->scene->getSystem<UISystem>(); us && us->hasPendingImages()) add("UI images loading");
+        if (auto ds = sp->scene->getSystem<UIDocumentSystem>(); ds && !ds->isAllLoaded()) add("HTML UI documents loading or not drawn yet");
+        if (UIDocument::getPendingEffectReplays() > 0) add("UI effects replaying their state");
+        if (auto ms = sp->scene->getSystem<MeshSystem>(); ms && ms->hasPendingAsyncModelLoads()) add("models loading");
+    }
+    return out.empty() ? std::string("nothing (it settled as the wait ended)") : out;
 }
 
 bool isTransitional(ScenePlayState state) {
@@ -146,8 +216,9 @@ void whenSceneViewReady(const CallPtr& call, uint32_t sceneId, bool focus, int t
 
 // ------------------------------------------------------------------ capture
 
-// How long a screenshot waits for loading assets before it shoots anyway
-constexpr long long LOAD_WAIT_MS = 6000;
+// How long a screenshot waits for the rest of the scene's content to settle (objects, HTML UI
+// documents drawn once, stateful effects replaying: some never report it) before it shoots
+constexpr long long SETTLE_WAIT_MS = 6000;
 
 struct CaptureJob {
     CallPtr call;
@@ -155,24 +226,26 @@ struct CaptureJob {
     std::function<void(w3::CaptureResult)> done;
     Clock::time_point deadline;
     bool finished = false;
-    // assets were still loading when the wait for them gave up (some never report loaded)
-    bool stillLoading = false;
-    Clock::time_point loadWaitStart;
-    bool loadWaitStarted = false;
+    // the rest of the content had not settled when the wait for it gave up
+    bool stillSettling = false;
+    Clock::time_point settleWaitStart;
+    bool settleWaitStarted = false;
 
-    // True once the scene's content is loaded, or after waiting long enough for it
+    // Its asset loads done (always waited for: up to the call's timeout_seconds, then the
+    // screenshot fails naming them), and the rest settled or waited for SETTLE_WAIT_MS
     bool contentReady(SceneProject* sp) {
+        if (assetsLoading(sp)) return false;
         if (sceneContentLoaded(sp)) {
-            stillLoading = false;
+            stillSettling = false;
             return true;
         }
-        if (!loadWaitStarted) {
-            loadWaitStarted = true;
-            loadWaitStart = Clock::now();
+        if (!settleWaitStarted) {
+            settleWaitStarted = true;
+            settleWaitStart = Clock::now();
         }
-        const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - loadWaitStart).count();
-        stillLoading = true;
-        return waited >= LOAD_WAIT_MS;
+        const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - settleWaitStart).count();
+        stillSettling = true;
+        return waited >= SETTLE_WAIT_MS;
     }
 
     int remainingMs() const {
@@ -197,7 +270,7 @@ void captureGame(const CaptureJobPtr& job);
 void captureScene(const CaptureJobPtr& job);
 
 // RGB(A) rows → PNG, scaled down to maxWidth; analyses flatness on the way
-bool encodePixels(const uint8_t* pixels, int width, int height, int channels, int maxWidth,
+[[maybe_unused]] bool encodePixels(const uint8_t* pixels, int width, int height, int channels, int maxWidth,
                   std::vector<uint8_t>& png, int& outWidth, int& outHeight) {
     std::vector<uint8_t> rgb(static_cast<size_t>(width) * height * 3);
     for (int i = 0; i < width * height; i++) {
@@ -260,27 +333,32 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         info["flat_colour"] = colour;
         result.note = "The image is one flat colour (" + colour + "): nothing visible rendered there yet?";
     }
-    if (job->stillLoading) {
+    if (job->stillSettling) {
         info["assets_loading"] = true;
         result.note += std::string(result.note.empty() ? "" : " ") +
-                       "Some assets were still loading after " + std::to_string(LOAD_WAIT_MS / 1000) +
-                       " s (missing files or a slow load); parts of the scene may be missing.";
+                       "Some content was still settling after " + std::to_string(SETTLE_WAIT_MS / 1000) +
+                       " s (objects, HTML UI documents or effects not drawn yet); parts of the scene may be missing.";
     }
 
     if (!job->req.savePath.empty()) {
         Project* project = job->call->ctx().project();
         fs::path target;
         std::string error;
-        // Inside the project only, like every file a tool writes
-        if (!McpRefs::resolveProjectPath(project, job->req.savePath, target, error)) {
+        // Inside the project only, like every file a tool writes (also once links are resolved),
+        // and written beneath it: no link planted on the way since the check is followed
+        if (!McpRefs::resolveProjectWritePath(project, job->req.savePath, target, error)) {
             job->fail("save_path: " + error);
             return;
         }
-        std::error_code ec;
-        if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
-        std::ofstream file(target, std::ios::binary | std::ios::trunc);
-        if (!file || !file.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()))) {
-            job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ".");
+        // not an editor-owned or hidden file (project.yaml, .jasperengine, CMakeLists.txt ...): a
+        // screenshot is an asset, never a path the editor owns
+        if (const std::string owned = McpRefs::protectedPlace(project, target); !owned.empty()) {
+            job->fail("save_path: " + owned);
+            return;
+        }
+        // beneath the project: no link planted on the way since the check is followed
+        if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, target), target, std::string(png.begin(), png.end()), error)) {
+            job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ": " + error);
             return;
         }
         info["saved_to"] = FileUtils::pathToGenericUtf8(target);
@@ -342,6 +420,33 @@ void readGameView(const CaptureJobPtr& job, uint32_t sceneId, bool running) {
                                       project->getScalingMode(), canvasWidth, canvasHeight, viewRect);
             addCanvasInfo(info, canvasWidth, canvasHeight, viewRect, fbWidth, job->req.maxWidth);
         }
+        // a simulated device: where its safe area is in the image, and its screen drawn over it
+        const DeviceProfile* device = Platform::getSimulation().device;
+        Rect safe;
+        if (device && gw->getSafeAreaInImage((float)fbWidth, (float)fbHeight, safe)) {
+            const double scale = (job->req.maxWidth > 0 && fbWidth > job->req.maxWidth) ? double(job->req.maxWidth) / fbWidth : 1.0;
+            info["device"] = device->id;
+            info["safe_area_in_image"] = rectJson(safe, scale);
+            if (job->req.deviceOverlay && (gw->getSettings().deviceOverlay || gw->getSettings().safeAreaOutline)) {
+                std::vector<uint8_t> rgba;
+                if (!GraphicUtils::readFramebufferRGBA(fb, rgba)) {
+                    job->fail("Reading the view's framebuffer back failed.");
+                    return;
+                }
+                rasterizeDeviceOverlay(rgba.data(), fbWidth, fbHeight, *device, gw->getLayoutOrientation(),
+                                       gw->getSettings().safeAreaOutline, &safe, gw->getSettings().deviceOverlay);
+                std::vector<uint8_t> png;
+                int width = 0, height = 0;
+                if (!encodePixels(rgba.data(), fbWidth, fbHeight, 4, job->req.maxWidth, png, width, height)) {
+                    job->fail("Encoding the screenshot failed.");
+                    return;
+                }
+                // the device's screen drawn (false: the safe-area outline only)
+                info["device_overlay"] = gw->getSettings().deviceOverlay;
+                finishWithPng(job, std::move(png), width, height, fbWidth, fbHeight, std::move(info));
+                return;
+            }
+        }
     }
     readFramebuffer(job, fb, std::move(info));
 }
@@ -382,7 +487,11 @@ void captureGame(const CaptureJobPtr& job) {
             McpContext& c = call->ctx();
             SceneProject* s = c.project()->getScene(playId);
             if (!s || c.project()->getPlaySessionSceneId() != playId) return true;
-            return ++*frames >= 2 && c.gameWindow()->getFramebuffer()->isCreated();
+            if (s->playState == ScenePlayState::PAUSED) s->needUpdateRender = true;
+            // (two frames after its textures and shaders are in: drawn with them)
+            const bool loading = TextureDataPool::getLoadingCount() > 0 || !ShaderPool::isCreationIdle();
+            *frames = loading ? 0 : *frames + 1;
+            return *frames >= 2 && c.gameWindow()->getFramebuffer()->isCreated();
         }, job->remainingMs(), [job, playId](bool timedOut) {
             McpContext& c = job->call->ctx();
             if (c.project()->getPlaySessionSceneId() != playId) {
@@ -391,7 +500,11 @@ void captureGame(const CaptureJobPtr& job) {
                 return;
             }
             if (timedOut) {
-                job->fail("The running game did not render a frame in time.");
+                if (TextureDataPool::getLoadingCount() > 0 || !ShaderPool::isCreationIdle())
+                    job->fail("The running game was not shot: still loading after the call's timeout_seconds (a screenshot "
+                              "never shows a stand-in for it): " + describeLoading(nullptr) + ". Retry, or raise timeout_seconds.");
+                else
+                    job->fail("The running game did not render a frame in time.");
                 return;
             }
             readGameView(job, playId, true);
@@ -445,6 +558,9 @@ void captureGame(const CaptureJobPtr& job) {
         GameWindow* g = c.gameWindow();
         SceneProject* s = c.project()->getScene(sceneId);
         if (!s || c.project()->getPlaySessionSceneId() != NULL_PROJECT_SCENE) return true;
+        // drawn again each frame of the wait: a texture that finished loading shows from the
+        // frame that draws it next (an idle editor would not)
+        s->needUpdateRender = true;
         if (++*frames < 2) return false;
         if (*frames % 15 == 0 && !g->isVisible()) g->requestFocus();
         const bool ready = g->isVisible() && g->getWidth() > 0 && g->getHeight() > 0 && !g->isEditPassDirty() &&
@@ -461,7 +577,16 @@ void captureGame(const CaptureJobPtr& job) {
             GameWindow* g = c.gameWindow();
             if (!g->isVisible()) job->fail("The Game view did not become visible.");
             else if (g->getWidth() <= 0 || g->getHeight() <= 0) job->fail("The Game view has no size (too small or collapsed).");
-            else job->fail("The Game view preview did not finish rendering in time (assets still loading?).");
+            else {
+                SceneProject* s = c.project()->getScene(sceneId);
+                if (assetsLoading(s))
+                    job->fail("The Game view was not shot: still loading after the call's timeout_seconds (a screenshot never "
+                              "shows a stand-in for it): " + describeLoading(s) + ". Retry, or raise timeout_seconds.");
+                else
+                    job->fail("The Game view preview did not finish rendering in time (preview current " +
+                              std::to_string(!g->isEditPassDirty()) + ", content loaded " + std::to_string(sceneContentLoaded(s)) +
+                              ", UI effect replays pending " + std::to_string(UIDocument::getPendingEffectReplays()) + ")");
+            }
             return;
         }
         readGameView(job, sceneId, false);
@@ -508,6 +633,9 @@ void captureScene(const CaptureJobPtr& job) {
             McpContext& cx = c->ctx();
             SceneProject* sc = cx.project()->getScene(sceneId);
             if (!sc) return true;
+            // drawn again each frame of the wait: a texture that finished loading shows from the
+            // frame that draws it next (an idle editor would not)
+            sc->needUpdateRender = true;
             if (++*frames < 2) return false;
             // The view redraws on the frame after it is flagged (needUpdateRender) and keeps
             // redrawing for a few settle frames, so a few shown frames in a row mean the
@@ -526,10 +654,15 @@ void captureScene(const CaptureJobPtr& job) {
             }
             if (timedOut) {
                 SceneWindow* sw = cx.sceneWindow();
+                if (sceneViewShown(cx, sc) && assetsLoading(sc)) {
+                    job->fail("The Scene view was not shot: still loading after the call's timeout_seconds (a screenshot never "
+                              "shows a stand-in for it): " + describeLoading(sc) + ". Retry, or raise timeout_seconds.");
+                    return;
+                }
                 job->fail(std::string(sceneViewShown(cx, sc) ? "The Scene view did not finish rendering in time."
                                                              : "The Scene view is not shown.") +
                           " (visible " + std::to_string(sc->isVisible) + ", size " + std::to_string(sw->getWidth(sceneId)) + "x" +
-                          std::to_string(sw->getHeight(sceneId)) + ", assets loaded " + std::to_string(sceneContentLoaded(sc)) + ")");
+                          std::to_string(sw->getHeight(sceneId)) + ", content loaded " + std::to_string(sceneContentLoaded(sc)) + ")");
                 return;
             }
             Json info = {{"scene", McpRefs::sceneJson(p, *sc)}};
@@ -539,6 +672,12 @@ void captureScene(const CaptureJobPtr& job) {
                 if (sc->sceneType != SceneType::SCENE_3D) {
                     info["camera"]["zoom"] = static_cast<SceneRender2D*>(sc->sceneRender)->getZoom();
                 }
+            }
+            // where the view sits in the editor window: maps the image to pointer positions
+            float vx = 0.0f, vy = 0.0f, vw = 0.0f, vh = 0.0f;
+            if (SceneWindow* sw = cx.sceneWindow(); sw && sw->getViewRect(sceneId, vx, vy, vw, vh)) {
+                info["view_rect_in_window"] = {{"x", std::round(vx)}, {"y", std::round(vy)},
+                                               {"width", std::round(vw)}, {"height", std::round(vh)}};
             }
             readFramebuffer(job, sc->sceneRender->getFramebuffer(), std::move(info));
         });
@@ -595,9 +734,10 @@ void captureEditor(const CaptureJobPtr& job) {
         // a frame that was not rendered (idle, minimized) drops the callback: ask again
         if (++*attempts % 2 == 0) request();
         return false;
-    }, std::min(job->remainingMs(), 10000), [job, readback](bool timedOut) {
+    // up to the call's own timeout (timeout_seconds): a loaded host can take seconds per frame
+    }, job->remainingMs(), [job, readback](bool timedOut) {
         if (timedOut || !readback->done) {
-            job->fail("The editor window did not render a frame to read (minimized?).");
+            job->fail("The editor window did not render a frame to read within the call's timeout_seconds (minimized?).");
             return;
         }
         const int width = readback->width;
@@ -637,10 +777,31 @@ void captureView(const CallPtr& call, const CaptureRequest& request, std::functi
         job->fail("No project is open.");
         return;
     }
-    if (request.view == "game") captureGame(job);
-    else if (request.view == "scene") captureScene(job);
-    else if (request.view == "editor") captureEditor(job);
-    else job->fail("view must be game, scene or editor.");
+    if (request.view != "game" && request.view != "scene" && request.view != "editor") {
+        job->fail("view must be game, scene or editor.");
+        return;
+    }
+    auto capture = [job]() {
+        if (job->req.view == "game") captureGame(job);
+        else if (job->req.view == "scene") captureScene(job);
+        else captureEditor(job);
+    };
+    // shaders still building, shaders and pipelines still being created off the render thread
+    // (spec S32) and textures still loading are not drawn yet (stand-ins are): the image waits
+    // for them, up to the call's timeout_seconds, then fails naming them
+    auto idle = []() { return ShaderPool::isCreationIdle() && TextureDataPool::getLoadingCount() == 0; };
+    if (idle()) {
+        capture();
+        return;
+    }
+    call->waitUntil(idle, job->remainingMs(), [job, capture](bool timedOut) {
+        if (timedOut) {
+            job->fail("The " + job->req.view + " view was not shot: still loading after the call's timeout_seconds (a "
+                      "screenshot never shows a stand-in for it): " + describeLoading(nullptr) + ". Retry, or raise timeout_seconds.");
+            return;
+        }
+        capture();
+    });
 }
 
 bool parseScreenshotOption(const Json& args, CaptureRequest& request, bool& wanted, std::string& error) {
@@ -676,6 +837,7 @@ void screenshotTool(const CallPtr& call) {
     request.savePath = args.value("save_path", "");
     request.focus = args.value("focus", true);
     request.timeoutMs = static_cast<int>(std::clamp(args.value("timeout_seconds", 30.0), 1.0, 600.0) * 1000.0);
+    request.deviceOverlay = args.value("device_overlay", true);
     if (request.view != "game" && request.view != "scene" && request.view != "editor") {
         call->fail("view must be \"game\" (the Game view: the running game, or the scene through its game camera), "
                    "\"scene\" (a Scene view with gizmos) or \"editor\" (the whole editor window).");
@@ -703,6 +865,11 @@ void screenshotTool(const CallPtr& call) {
                     std::to_string(result.info["canvas"].value("height", 0)) + " drawn at x=" + r["x"].dump() +
                     " y=" + r["y"].dump() + " w=" + r["width"].dump() + " h=" + r["height"].dump() + " in the image.";
         }
+        if (result.info.contains("safe_area_in_image")) {
+            const Json& r = result.info["safe_area_in_image"];
+            text += " Safe area at x=" + r["x"].dump() + " y=" + r["y"].dump() + " w=" + r["width"].dump() + " h=" +
+                    r["height"].dump() + " (" + result.info.value("device", std::string()) + ").";
+        }
         if (result.info.contains("saved_to")) text += " Saved to " + result.info["saved_to"].get<std::string>() + ".";
         if (!result.note.empty()) text += " Note: " + result.note;
         ToolResult reply = ToolResult::success(text, result.info);
@@ -721,6 +888,25 @@ Json sceneCameraJson(SceneProject* sp) {
     if (sp->sceneType == SceneType::SCENE_3D) {
         out["distance"] = camera->getDistanceFromTarget();
         out["mode"] = "3d";
+        // S26: projection, axis view and the Scene Camera settings
+        if (SceneWindow* sw = Backend::getApp().getSceneWindow()) {
+            SceneViewController& view = sw->getViewController();
+            const SceneCameraPose pose = view.currentPose(*sp);
+            const SceneCameraSettings& settings = sp->viewState.camera;
+            out["projection"] = pose.orthographic ? "orthographic" : "perspective";
+            out["ortho_size"] = pose.orthoSize;
+            out["fov"] = settings.fieldOfView;
+            out["near"] = camera->getNearClip();
+            out["far"] = camera->getFarClip();
+            const SceneViewAxis axis = view.viewAxis(*sp);
+            out["view"] = SceneViewStateStream::axisName(axis);
+            out["camera_settings"] = {{"speed", settings.speed}, {"speed_min", settings.speedMin}, {"speed_max", settings.speedMax},
+                                      {"shift_multiplier", settings.shiftMultiplier}, {"acceleration", settings.acceleration},
+                                      {"easing", settings.easing}, {"dynamic_clipping", settings.dynamicClipping},
+                                      {"near", settings.nearClip}, {"far", settings.farClip}};
+            out["layout"] = SceneViewStateStream::layoutName(sp->viewState.layout);
+            out["active_pane"] = sp->viewState.activePane;
+        }
     } else {
         out["zoom"] = static_cast<SceneRender2D*>(sp->sceneRender)->getZoom();
         out["mode"] = "2d";
@@ -766,6 +952,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"hide_container_guides", &SceneDisplaySettings::hideContainerGuides},
         {"hide_selection_outline", &SceneDisplaySettings::hideSelectionOutline},
         {"disable_fog", &SceneDisplaySettings::disableFog},
+        {"disable_clouds", &SceneDisplaySettings::disableClouds},
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
     };
     return flags;
@@ -825,10 +1012,67 @@ void setSceneCameraTool(const CallPtr& call) {
         }
     }
 
+    for (const char* key : {"projection", "ortho_size", "view", "camera_settings"}) {
+        if (!is3D && args.contains(key)) {
+            call->fail(std::string(key) + " is for 3D scenes; \"" + sp->name + "\" is " + McpRefs::sceneTypeName(sp->sceneType) + ".");
+            return;
+        }
+    }
+    SceneViewAxis viewAxis = SceneViewAxis::FREE;
+    if (args.contains("view") && (!args["view"].is_string() || !SceneViewStateStream::parseAxis(args["view"].get<std::string>(), viewAxis) ||
+                                  viewAxis == SceneViewAxis::FREE)) {
+        call->fail("view must be top, bottom, front, back, left or right.");
+        return;
+    }
+    if (args.contains("projection") && args["projection"] != "perspective" && args["projection"] != "orthographic") {
+        call->fail("projection must be \"perspective\" or \"orthographic\".");
+        return;
+    }
+    // the Scene Camera settings (Unity's camera popup): one object, checked here
+    if (args.contains("camera_settings")) {
+        const Json& cs = args["camera_settings"];
+        if (!cs.is_object()) {
+            call->fail("camera_settings must be an object {fov, near, far, speed, acceleration, easing, dynamic_clipping}.");
+            return;
+        }
+        struct Range {
+            const char* key;
+            double min;
+            double max;
+        };
+        static const Range ranges[] = {{"fov", 4, 120}, {"near", 0.001, 1000}, {"far", 1, 1000000}, {"speed", 0.01, 1000}};
+        for (auto it = cs.begin(); it != cs.end(); ++it) {
+            const std::string& key = it.key();
+            const Range* range = nullptr;
+            for (const Range& r : ranges) {
+                if (key == r.key) range = &r;
+            }
+            if (range) {
+                if (!it.value().is_number() || it.value().get<double>() < range->min || it.value().get<double>() > range->max) {
+                    call->fail("camera_settings." + key + " must be a number in " + Json(range->min).dump() + ".." + Json(range->max).dump() + ".");
+                    return;
+                }
+            } else if (key == "acceleration" || key == "easing" || key == "dynamic_clipping") {
+                if (!it.value().is_boolean()) {
+                    call->fail("camera_settings." + key + " must be true or false.");
+                    return;
+                }
+            } else {
+                call->fail("camera_settings: unknown \"" + key + "\" (fov, near, far, speed, acceleration, easing, dynamic_clipping).");
+                return;
+            }
+        }
+        if (cs.contains("near") && cs.contains("far") && cs.value("near", 0.0) >= cs.value("far", 0.0)) {
+            call->fail("camera_settings: near must be less than far.");
+            return;
+        }
+    }
+
     const uint32_t sceneId = sp->id;
-    whenSceneViewReady(call, sceneId, true, 10000, [call, sceneId, is3D, position, target, center](bool ready, const std::string& err) {
+    whenSceneViewReady(call, sceneId, true, 10000, [call, sceneId, is3D, position, target, center, viewAxis](bool ready, const std::string& err) {
         const Json& a = call->args();
-        Project* p = call->ctx().project();
+        McpContext& c = call->ctx();
+        Project* p = c.project();
         SceneProject* s = p->getScene(sceneId);
         if (!s || !s->sceneRender || !s->sceneRender->getCamera()) {
             call->fail("The scene closed.");
@@ -868,6 +1112,40 @@ void setSceneCameraTool(const CallPtr& call) {
                 const Vector3 dir = (camera->getTarget() - camera->getPosition()).normalize();
                 if (std::abs(dir.y) < 0.99f) camera->setUp(0, 1, 0);
             }
+            // S26 (R17, R18, R21): the Scene Camera settings, projection, axis view, framing;
+            // an agent's camera moves land at once (Camera Easing is for the user's)
+            SceneViewController& view = c.sceneWindow()->getViewController();
+            view.ensureApplied(*s);
+            SceneCameraSettings settings = s->viewState.camera;
+            bool settingsChanged = false;
+            if (a.contains("camera_settings") && a["camera_settings"].is_object()) {
+                const Json& cs = a["camera_settings"];
+                settings.fieldOfView = cs.value("fov", settings.fieldOfView);
+                settings.nearClip = cs.value("near", settings.nearClip);
+                settings.farClip = cs.value("far", settings.farClip);
+                settings.speed = cs.value("speed", settings.speed);
+                settings.acceleration = cs.value("acceleration", settings.acceleration);
+                settings.easing = cs.value("easing", settings.easing);
+                settings.dynamicClipping = cs.value("dynamic_clipping", settings.dynamicClipping);
+                settingsChanged = true;
+            }
+            if (settingsChanged) {
+                view.applyCameraSettings(*s, settings);
+                changed.push_back("camera_settings");
+            }
+            if (a.contains("projection")) {
+                view.setProjection(*s, a["projection"] == "orthographic");
+                changed.push_back("projection");
+            }
+            if (a.contains("view")) {
+                view.setAxisView(*s, viewAxis);
+                view.finishTween(*s);
+                changed.push_back("view");
+            }
+            if (a.contains("ortho_size")) {
+                view.setOrthoSize(*s, a.value("ortho_size", 10.0f));
+                changed.push_back("ortho_size");
+            }
         } else {
             auto* render2D = static_cast<SceneRender2D*>(s->sceneRender);
             SceneWindow* sw = call->ctx().sceneWindow();
@@ -898,6 +1176,17 @@ void setSceneCameraTool(const CallPtr& call) {
                 camera->setTarget(x, y, t.z);
             }
         }
+        if (a.value("frame_all", false)) {
+            SceneViewController& view = c.sceneWindow()->getViewController();
+            view.ensureApplied(*s);
+            if (!view.frameAll(*s)) {
+                call->fail("Nothing in \"" + s->name + "\" to frame.");
+                return;
+            }
+            view.finishTween(*s);
+            changed.push_back("frame_all");
+        }
+        if (!changed.empty()) p->saveWorkspaceFile();
         if (a.contains("display")) {
             for (auto it = a["display"].begin(); it != a["display"].end(); ++it) {
                 if (it.key() == "grid_spacing_2d" && it.value().is_number()) s->displaySettings.gridSpacing2D = it.value().get<float>();
@@ -964,6 +1253,8 @@ void frameEntityTool(const CallPtr& call) {
         }
         if (entities.empty()) w->frameSelection(sceneId);
         else w->frameEntities(sceneId, sceneId, entities);
+        // an agent's framing lands at once (Camera Easing animates the user's)
+        w->getViewController().finishTween(*s);
         s->needUpdateRender = true;
         Json data = {{"scene", McpRefs::sceneJson(p, *s)}, {"camera", sceneCameraJson(s)}};
         data["framed"] = entities.empty() ? Json("selection") : framed;
@@ -971,6 +1262,171 @@ void frameEntityTool(const CallPtr& call) {
             "Framed " + (entities.empty() ? std::string("the selection") : std::to_string(entities.size()) + " GameObject(s)") +
             " in the Scene view of \"" + s->name + "\".", data);
     });
+}
+
+// The Console as it shows: rows after its filters (the newest 50), categories, the selection's origin
+Json consoleStateJson(ConsoleWindow& console) {
+    const ConsoleWindow::ViewState state = console.viewState(50);
+    Json rows = Json::array();
+    for (const ConsoleWindow::ViewRow& row : state.rows) {
+        Json item = {{"id", row.id}, {"type", Out::logTypeName(row.type)}, {"category", row.category}, {"text", row.text}};
+        if (row.grey) item["grey"] = true;
+        if (row.count > 1) item["count"] = row.count;
+        rows.push_back(std::move(item));
+    }
+    Json json = {{"rows_shown", state.rowCount}, {"rows", rows}, {"categories", state.categories},
+                 {"hidden_categories", state.hiddenCategories}, {"collapse", state.collapse},
+                 {"clear_on_play", state.clearOnPlay}, {"error_pause", state.errorPause}};
+    if (state.hasSelection) json["selected"] = {{"id", state.selectedId}, {"origin", state.selectedOrigin}};
+    return json;
+}
+
+// Where an editor control is drawn now, for tests that click it with real input: the items of
+// the next frames drawn with the label (UiItemLocator)
+void locateUiItemTool(const CallPtr& call) {
+    const Json& args = call->args();
+    const std::string label = args.value("label", std::string());
+    if (label.empty()) {
+        call->fail("label: the item's label (its text, or the whole label with its ## id).");
+        return;
+    }
+    UiItemLocator::start(label, args.value("window", std::string()));
+    call->afterFrames(2, [call, label]() {
+        Json items = Json::array();
+        for (const UiItemLocator::Item& item : UiItemLocator::stop()) {
+            items.push_back({{"label", item.label}, {"window", item.window}, {"visible", item.visible}, {"enabled", item.enabled},
+                             {"rect", {{"x", std::round(item.x)}, {"y", std::round(item.y)},
+                                       {"width", std::round(item.width)}, {"height", std::round(item.height)}}},
+                             {"window_rect", {{"x", std::round(item.windowX)}, {"y", std::round(item.windowY)},
+                                              {"width", std::round(item.windowWidth)}, {"height", std::round(item.windowHeight)}}}});
+        }
+        const std::string text = items.empty() ? "No item \"" + label + "\" is drawn (scrolled away, closed or another label)."
+                                               : std::to_string(items.size()) + " item(s) \"" + label + "\".";
+        call->ok(text, Json{{"items", items}});
+    });
+}
+
+// The Scene view of the posed scene and its pose handles (phase 5), null when not posing there
+PoseViewport* posedViewport(Project* project, PoseEditSession& session) {
+    if (!session.bound()) return nullptr;
+    SceneProject* sp = project->getScene(session.sceneId());
+    if (!sp || !sp->sceneRender) return nullptr;
+    return sp->sceneRender->getPoseViewport();
+}
+
+// focus_window pose_animation's `pose` object: {entity, path, index, play}, applied in that order
+bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window) {
+    const Json& args = call->args();
+    const Json& pose = args["pose"];
+    if (!pose.is_object()) {
+        call->fail("pose must be an object {entity, path, index, play, tab}.");
+        return false;
+    }
+    for (auto it = pose.begin(); it != pose.end(); ++it) {
+        const std::string& key = it.key();
+        if (key != "entity" && key != "path" && key != "index" && key != "play" && key != "tab") {
+            call->fail("pose." + key + ": unknown key (valid: entity, path, index, play, tab).");
+            return false;
+        }
+    }
+    Project* project = call->ctx().project();
+    std::string error;
+    if (pose.contains("entity")) {
+        SceneProject* sp = resolveViewScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+        if (!sp) {
+            call->fail(error);
+            return false;
+        }
+        const Entity entity = w3::resolveLiveEntity(project, sp, pose["entity"], error);
+        if (entity == NULL_ENTITY) {
+            call->fail("pose.entity: " + error);
+            return false;
+        }
+        if (!window->bindCharacter(sp->id, entity, &error)) {
+            call->fail("pose.entity: " + error);
+            return false;
+        }
+    }
+    if (pose.contains("path")) {
+        if (!pose["path"].is_string() || !window->openAnimation(pose["path"].get<std::string>(), &error)) {
+            call->fail("pose.path: " + (error.empty() ? std::string("a .poseanim path (string)") : error));
+            return false;
+        }
+    }
+    PoseEditSession& session = window->getSession();
+    if (pose.contains("index")) {
+        const int count = session.document() ? static_cast<int>(session.document()->data().poses.size()) : 0;
+        if (!pose["index"].is_number_integer() || pose["index"].get<int>() < 0 || pose["index"].get<int>() >= count) {
+            call->fail("pose.index: a pose index 0.." + std::to_string(count - 1) + " of the open animation.");
+            return false;
+        }
+        window->selectPose(pose["index"].get<int>());
+    }
+    if (pose.contains("play")) {
+        if (!pose["play"].is_boolean()) {
+            call->fail("pose.play: true plays the preview, false stops it.");
+            return false;
+        }
+        if (!session.bound() || !session.document()) {
+            call->fail("pose.play: bind a character (pose.entity) and open an animation (pose.path) first.");
+            return false;
+        }
+        if (pose["play"].get<bool>()) window->play();
+        else window->stop();
+    }
+    if (pose.contains("tab")) {
+        if (!pose["tab"].is_string()) {
+            call->fail("pose.tab: Pose, Feel, Humanize, Templates or map_bones (the bone mapping popup).");
+            return false;
+        }
+        const std::string tab = pose["tab"].get<std::string>();
+        if (tab == "map_bones") {
+            if (!window->openMappingFor(&error)) {
+                call->fail("pose.tab: " + error);
+                return false;
+            }
+        } else {
+            window->selectTab(tab);
+        }
+    }
+    return true;
+}
+
+Json poseWindowState(const CallPtr& call) {
+    PoseAnimationWindow::State state = call->ctx().app().getPoseAnimationWindow()->getState();
+    Json data = {{"character", state.character.empty() ? Json() : Json(state.character)},
+                 {"rig", state.rig.empty() ? Json() : Json(state.rig)},
+                 {"animation", state.animation.empty() ? Json() : Json(state.animation)},
+                 {"pose_count", state.poseCount}, {"primary", state.primary}, {"selection", state.selection},
+                 {"mode", state.mode}, {"time", state.time}, {"length", state.length}, {"playing", state.playing},
+                 {"tab", state.tab}, {"scene_keys", state.sceneKeys}, {"editable", state.editable},
+                 {"layout", state.layout}, {"thumbnail_height", state.thumbnailHeight},
+                 {"menu", state.menu.empty() ? Json() : Json(state.menu)}};
+    if (state.entity != NULL_ENTITY) {
+        if (SceneProject* sp = call->ctx().project()->getScene(state.sceneId)) {
+            if (sp->scene && sp->scene->isEntityCreated(state.entity)) data["entity"] = McpRefs::entityJson(sp, state.entity);
+        }
+    }
+    if (!state.emptyState.empty()) data["empty_state"] = state.emptyState;
+    if (!state.status.empty()) data["status"] = state.status;
+    // the Templates tab (phase 6) while it shows: the cards after the filter
+    if (state.templates.shown) {
+        data["templates"] = {{"cards", state.templates.cards}, {"user", state.templates.user},
+                             {"visible", state.templates.visible}, {"thumbnails", state.templates.thumbnails}, {"hint", state.templates.hint},
+                             {"category", state.templates.category}, {"search", state.templates.search}};
+    }
+    // the Scene view posing the character (phase 5): handles in Scene view pixels, ghosts, floor
+    PoseEditSession& session = call->ctx().app().getPoseAnimationWindow()->getSession();
+    if (PoseViewport* viewport = posedViewport(call->ctx().project(), session)) {
+        const PoseViewport::State view = viewport->getState();
+        data["viewport"] = {{"posing", view.posing}, {"previewing", view.previewing}, {"handle_count", view.visibleHandles},
+                            {"active_joint", view.activeJoint.empty() ? Json() : Json(view.activeJoint)},
+                            {"ghosts", view.ghosts}, {"floor", view.floor}, {"contacts", view.contacts},
+                            {"balanced", view.balanceShown ? Json(view.balanced) : Json()},
+                            {"global_edit", session.globalEditActive()},
+                            {"view", Json::array({view.viewWidth, view.viewHeight})}};
+    }
+    return data;
 }
 
 void focusWindowTool(const CallPtr& call) {
@@ -993,8 +1449,39 @@ void focusWindowTool(const CallPtr& call) {
         }
         imguiName = sceneTabName(project, sp->id);
     } else if (window == "console") {
-        ctx.consoleWindow()->setOpen(true);
+        ConsoleWindow* console = ctx.consoleWindow();
+        console->setOpen(true);
         imguiName = ConsoleWindow::WINDOW_NAME;
+        // what a user does in the Console: the Category menu, Collapse, a click on a row
+        const Json options = args.value("console", Json::object());
+        if (options.contains("hidden_categories") && options["hidden_categories"].is_array()) {
+            std::vector<std::string> hidden;
+            for (const Json& item : options["hidden_categories"]) {
+                if (item.is_string()) hidden.push_back(item.get<std::string>());
+            }
+            console->setHiddenCategories(hidden);
+        }
+        if (options.contains("collapse") && options["collapse"].is_boolean()) {
+            console->setCollapse(options["collapse"].get<bool>());
+        }
+        if (options.contains("select") && options["select"].is_number_integer() && !console->selectLog(options["select"].get<uint64_t>())) {
+            call->fail("console.select: no row with id " + options["select"].dump() + " is shown (filtered out, or cleared).");
+            return;
+        }
+    } else if (window == "preferences") {
+        EditorSettingsWindow& preferences = app.getEditorSettingsWindow();
+        if (args.value("close", false)) {
+            preferences.close();
+            call->ok("Closed Preferences.", Json{{"window", window}, {"shown", false}});
+            return;
+        }
+        if (!preferences.isOpen()) preferences.open(project);
+        const std::string page = args.value("page", "");
+        if (!page.empty() && !preferences.showPage(page)) {
+            call->fail("page must be one of: General, Code Editor, Undo, External Tools, Logging, Shader Cache.");
+            return;
+        }
+        imguiName = "Preferences##EditorSettingsModal";
     } else if (window == "hierarchy") {
         ctx.hierarchyWindow()->setOpen(true);
         imguiName = HierarchyWindow::WINDOW_NAME;
@@ -1007,27 +1494,103 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "animation") {
         ctx.animationWindow()->setOpen(true);
         imguiName = AnimationWindow::WINDOW_NAME;
+    } else if (window == "animator") {
+        // it shows the selected GameObject's controller (or the .controller opened last)
+        app.getAnimatorWindow()->setOpen(true);
+        imguiName = AnimatorWindow::WINDOW_NAME;
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;
     } else if (window == "mcp") {
         imguiName = McpActivityWindow::WINDOW_NAME;
+    } else if (window == "systems") {
+        ctx.systemsWindow()->setOpen(true);
+        imguiName = SystemsWindow::WINDOW_NAME;
+    } else if (window == "jobs_memory") {
+        app.getJobsMemoryWindow()->setOpen(true);
+        imguiName = JobsMemoryWindow::WINDOW_NAME;
+    } else if (window == "profiler") {
+        ProfilerWindow* profiler = app.getProfilerWindow();
+        profiler->setOpen(true);
+        imguiName = ProfilerWindow::WINDOW_NAME;
+        // what Load does, without the file dialog
+        const Json options = args.value("profiler", Json::object());
+        if (options.contains("load") && options["load"].is_string()) {
+            std::string error;
+            if (!profiler->loadCapture(options["load"].get<std::string>(), error)) {
+                call->fail("profiler.load: " + error);
+                return;
+            }
+        }
+    } else if (window == "frame_debugger") {
+        app.getFrameDebuggerWindow()->setOpen(true);
+        imguiName = FrameDebuggerWindow::WINDOW_NAME;
+    } else if (window == "undo_history") {
+        app.getUndoHistoryWindow()->setOpen(true);
+        imguiName = UndoHistoryWindow::WINDOW_NAME;
+    } else if (window == "play_mode_changes") {
+        app.getPlayModeChangesWindow()->setOpen(true);
+        imguiName = PlayModeChangesWindow::WINDOW_NAME;
+    } else if (window == "pose_animation") {
+        PoseAnimationWindow* pw = app.getPoseAnimationWindow();
+        pw->requestFocus();
+        imguiName = PoseAnimationWindow::WINDOW_NAME;
+        if (args.contains("pose") && !focusPoseAnimation(call, pw)) return;
     } else if (window == "texture_synthesis") {
         app.getTextureSynthesisWindow()->open();
         imguiName = TextureSynthesisWindow::WINDOW_NAME;
+    } else if (window == "vertex_animation_baker") {
+        app.getVertexAnimationBakerWindow()->open();
+        imguiName = VertexAnimationBakerWindow::WINDOW_NAME;
+    } else if (window == "sprite_normals") {
+        app.getSpriteNormalsWindow()->open();
+        imguiName = SpriteNormalsWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
-                   "texture_synthesis.");
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp, "
+                   "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
+                   "vertex_animation_baker, sprite_normals.");
         return;
     }
-    // A window opened just now exists after its next draw
+    if (args.contains("pose") && window != "pose_animation") {
+        call->fail("pose: only for window \"pose_animation\".");
+        return;
+    }
+    // A window opened just now exists after its next draw.
     call->afterFrames(1, [call, imguiName, window]() {
         if (window != "game") ImGui::SetWindowFocus(imguiName.c_str());
         call->afterFrames(2, [call, imguiName, window]() {
             ImGuiWindow* w = ImGui::FindWindowByName(imguiName.c_str());
             const bool shown = w && w->WasActive && !w->Hidden;
             Json data = {{"window", window}, {"shown", shown}};
-            if (w) data["size"] = {w->Size.x, w->Size.y};
+            if (w) {
+                data["size"] = {w->Size.x, w->Size.y};
+                // in the editor window's client area, as the OS pointer sees it
+                const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+                data["rect"] = {{"x", std::round(w->Pos.x - origin.x)}, {"y", std::round(w->Pos.y - origin.y)},
+                                {"width", std::round(w->Size.x)}, {"height", std::round(w->Size.y)}};
+            }
+            if (window == "console") data["console"] = consoleStateJson(*call->ctx().consoleWindow());
+            if (window == "preferences") data["page"] = call->ctx().app().getEditorSettingsWindow().pageName();
+            if (window == "profiler") {
+                const ProfilerWindow* profiler = call->ctx().app().getProfilerWindow();
+                data["profiler"] = {{"target", profiler->getTarget()}, {"frames", profiler->targetFrameCount()},
+                                    {"recording", profiler->isRecording()}};
+            }
+            if (window == "systems") {
+                // each row's Enabled checkbox, as the OS pointer sees it; visible: inside the table's scroll view
+                const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+                Json rows = Json::array();
+                for (const SystemsWindow::RowRect& row : call->ctx().systemsWindow()->getRowRects()) {
+                    rows.push_back({{"phase", row.phase}, {"system", row.system}, {"visible", row.visible},
+                                    {"enabled_checkbox", {{"x", std::round(row.x - origin.x)}, {"y", std::round(row.y - origin.y)},
+                                                          {"width", std::round(row.width)}, {"height", std::round(row.height)}}}});
+                }
+                data["rows"] = rows;
+            }
+            if (window == "pose_animation") {
+                data["state"] = poseWindowState(call);
+                if (w) data["pos"] = {w->Pos.x - ImGui::GetMainViewport()->Pos.x, w->Pos.y - ImGui::GetMainViewport()->Pos.y};
+            }
             if (!w) {
                 call->fail("The " + window + " window does not exist (closed panel?).", data);
                 return;
@@ -1042,6 +1605,8 @@ const std::vector<std::string>& aspectNames() {
     static const std::vector<std::string> names = {"free", "project", "16:9", "16:10", "4:3", "9:16"};
     return names;
 }
+
+void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& changed);
 
 void configureGameViewTool(const CallPtr& call) {
     const Json& args = call->args();
@@ -1059,6 +1624,12 @@ void configureGameViewTool(const CallPtr& call) {
             return;
         }
         settings.aspect = static_cast<int>(it - aspectNames().begin());
+        // an aspect replaces a fixed resolution, as the toolbar's Aspect entries do (a
+        // resolution given in the same call still wins: it is applied below)
+        settings.resolution.clear();
+        settings.resolutionWidth = 0;
+        settings.resolutionHeight = 0;
+        settings.resolutionDpi = 0.0f;
         changed.push_back("aspect");
     }
     if (args.contains("scale")) {
@@ -1085,7 +1656,213 @@ void configureGameViewTool(const CallPtr& call) {
         }
         changed.push_back("simulate_touch");
     }
+    static const std::vector<std::string> atmosphereNames = {"project", "off", "low", "medium", "high"};
+    if (args.contains("atmosphere_quality")) {
+        const std::string quality = args.value("atmosphere_quality", "");
+        auto it = std::find(atmosphereNames.begin(), atmosphereNames.end(), quality);
+        if (it == atmosphereNames.end()) {
+            call->fail("atmosphere_quality must be project, off, low, medium or high.");
+            return;
+        }
+        settings.atmosphereQuality = (int)(it - atmosphereNames.begin()) - 1;
+        changed.push_back("atmosphere_quality");
+    }
+    // S14 R26: the family of cooked textures every view renders with
+    if (args.contains("simulate_textures")) {
+        TextureFamily family;
+        if (!args["simulate_textures"].is_string() || !textureFamilyFromName(args["simulate_textures"].get<std::string>(), family)) {
+            call->fail("simulate_textures must be desktop, mobile, android_etc2 or web.");
+            return;
+        }
+        TextureCookQueue::get().setViewFamily(family);
+        changed.push_back("simulate_textures");
+    }
+    if (args.contains("custom_device")) {
+        const Json& custom = args["custom_device"];
+        if (!custom.is_object()) {
+            call->fail("custom_device must be {width, height, insets: {top, right, bottom, left}, corner_radius} (pixels, portrait).");
+            return;
+        }
+        CustomDeviceSettings& c = settings.custom;
+        auto number = [&](const Json& object, const char* key, float& out, float low, float high) {
+            if (!object.contains(key)) return true;
+            if (!object[key].is_number() || !std::isfinite(object[key].get<double>())) return false;
+            out = std::clamp(object[key].get<float>(), low, high);
+            return true;
+        };
+        float width = (float)c.width, height = (float)c.height;
+        bool ok = number(custom, "width", width, 16.0f, 16384.0f) && number(custom, "height", height, 16.0f, 16384.0f) &&
+                  number(custom, "corner_radius", c.cornerRadius, 0.0f, 8192.0f) && number(custom, "dpi", c.dpi, 0.0f, 2000.0f);
+        if (ok && custom.contains("insets")) {
+            const Json& insets = custom["insets"];
+            ok = insets.is_object() && number(insets, "top", c.top, 0.0f, 16384.0f) && number(insets, "right", c.right, 0.0f, 16384.0f) &&
+                 number(insets, "bottom", c.bottom, 0.0f, 16384.0f) && number(insets, "left", c.left, 0.0f, 16384.0f);
+        }
+        if (!ok) {
+            call->fail("custom_device: width, height, corner_radius, dpi and insets {top, right, bottom, left} are numbers (pixels).");
+            return;
+        }
+        c.width = (int)std::lround(width);
+        c.height = (int)std::lround(height);
+        // a custom screen is meant to be shown
+        if (!args.contains("device")) settings.device = "custom";
+        changed.push_back("custom_device");
+    }
+    // the runtime collider / joint wireframes (Physics.debugDraw): every scene, Play and exports
+    if (args.contains("physics_debug")) {
+        Physics::setDebugDraw(args.value("physics_debug", false));
+        changed.push_back("physics_debug");
+    }
+    if (args.contains("physics_debug_contacts")) {
+        Physics::setDebugDrawContacts(args.value("physics_debug_contacts", false));
+        changed.push_back("physics_debug_contacts");
+    }
+    if (args.contains("network")) {
+        const std::string network = args.value("network", "");
+        if (network != "online" && network != "offline") {
+            call->fail("network must be online or offline (simulated: Http requests to hosts other than localhost fail with "
+                       "errorCode \"offline\").");
+            return;
+        }
+        Http::setOfflineSimulated(network == "offline");
+        changed.push_back("network");
+    }
+
+    if (args.contains("device")) {
+        const std::string device = args["device"].is_string() ? args["device"].get<std::string>() : std::string();
+        if (device == "none" || device.empty()) {
+            settings.device.clear();
+        } else if (findDeviceProfile(device)) {
+            settings.device = device;
+        } else {
+            std::string ids;
+            for (const DeviceProfile& profile : deviceProfiles()) ids += std::string(" ") + profile.id;
+            call->fail("device must be none, custom (with custom_device) or one of:" + ids + ".");
+            return;
+        }
+        changed.push_back("device");
+    }
+    if (args.contains("device_overlay")) {
+        settings.deviceOverlay = args.value("device_overlay", true);
+        changed.push_back("device_overlay");
+    }
+    if (args.contains("safe_area_outline")) {
+        settings.safeAreaOutline = args.value("safe_area_outline", false);
+        changed.push_back("safe_area_outline");
+    }
+    if (args.contains("language")) {
+        const std::string language = args["language"].is_string() ? args["language"].get<std::string>() : std::string();
+        const std::string tag = (language == "system" || language.empty()) ? std::string() : LocaleRules::normalize(language);
+        if (!language.empty() && language != "system" && LocaleRules::languageCode(tag).size() < 2) {
+            call->fail("language must be \"system\" or a BCP 47 tag like es-MX, pt-BR, zh-Hant.");
+            return;
+        }
+        settings.language = tag;
+        changed.push_back("language");
+    }
+
     if (!changed.empty()) gw->applySettings(settings);
+
+    // a fixed resolution: a preset or custom name, "WxH[@dpi]", {width, height, dpi[, name]} (a
+    // name saves it as a custom one), "free" back to the aspect
+    if (args.contains("resolution")) {
+        const Json& value = args["resolution"];
+        std::string error;
+        bool ok = false;
+        if (value.is_string()) {
+            ok = gw->setResolution(value.get<std::string>(), &error);
+        } else if (value.is_object()) {
+            GameResolution resolution;
+            resolution.width = value.value("width", 0);
+            resolution.height = value.value("height", 0);
+            resolution.dpi = value.value("dpi", 0.0f);
+            resolution.name = value.value("name", std::string());
+            if (!isValidGameResolution(resolution.width, resolution.height, resolution.dpi)) {
+                error = "resolution {width, height} must be 16..16384, dpi 0..2000";
+            } else if (!resolution.name.empty()) {
+                ok = gw->addCustomResolution(resolution, &error) && gw->setResolution(resolution.name, &error);
+            } else {
+                char text[64];
+                std::snprintf(text, sizeof(text), "%dx%d@%g", resolution.width, resolution.height, resolution.dpi);
+                ok = gw->setResolution(text, &error);
+            }
+        } else {
+            error = "resolution must be a string (\"1920x1080\", a preset name, \"free\") or {width, height, dpi, name}";
+        }
+        if (!ok) {
+            call->fail("resolution: " + error + ".");
+            return;
+        }
+        changed.push_back("resolution");
+    }
+
+    if (args.contains("orientation")) {
+        ScreenOrientation orientation;
+        const std::string name = args.value("orientation", "");
+        if (!PlatformRules::parseOrientationName(name, orientation) || !PlatformRules::isFixedOrientation(orientation)) {
+            call->fail("orientation must be portrait, portrait_upside_down, landscape_left or landscape_right.");
+            return;
+        }
+        const DeviceProfile* device = Platform::getSimulation().device;
+        if (!device) {
+            call->fail("orientation turns a simulated device: pass device too (e.g. {device: \"iphone_15_pro\", "
+                       "orientation: \"" + name + "\"}).");
+            return;
+        }
+        if (!(gw->getRotatableOrientations() & PlatformRules::orientationBit(orientation))) {
+            call->fail(std::string(device->name) + " cannot show " + name + " now" +
+                       (project->isAnyScenePlaying() ? " (the playing game allows other orientations: Screen.orientation / "
+                                                       "Screen.autorotateTo*)." : " (iPhones do not turn upside down)."));
+            return;
+        }
+        // as Rotate: the toolbar's orientation, and the device turned now
+        gw->turnDevice(orientation);
+        changed.push_back("orientation");
+    }
+    // the Game view lays the new screen out and hands its insets to Screen in the next frames
+    if (changed.empty()) {
+        replyGameViewSettings(call, changed);
+        return;
+    }
+    auto frames = std::make_shared<int>(0);
+    call->waitUntil([frames]() { return ++*frames >= 3; }, 5000, [call, changed](bool) {
+        replyGameViewSettings(call, changed);
+    });
+}
+
+void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& changed) {
+    McpContext& ctx = call->ctx();
+    GameWindow* gw = ctx.gameWindow();
+    Project* project = ctx.project();
+    const GameViewSettings& settings = gw->getSettings();
+
+    const PlatformSimulation& simulation = Platform::getSimulation();
+    Json devices = Json::array();
+    for (const DeviceProfile& profile : deviceProfiles()) devices.push_back(profile.id);
+    devices.push_back("custom");
+    auto rectArray = [](const Rect& rect) {
+        auto r = [](float v) { return std::round(v * 100.0f) / 100.0f; };
+        return Json::array({r(rect.getX()), r(rect.getY()), r(rect.getWidth()), r(rect.getHeight())});
+    };
+    Json resolutions = Json::array();
+    for (const GameResolution& r : builtInGameResolutions()) resolutions.push_back(r.name);
+    Json customResolutions = Json::array();
+    for (const GameResolution& r : project->getCustomResolutions())
+        customResolutions.push_back({{"name", r.name}, {"width", r.width}, {"height", r.height}, {"dpi", r.dpi}});
+    int fixedWidth = 0, fixedHeight = 0;
+    float fixedDpi = 0.0f;
+    Json resolution = "free";
+    if (gw->getFixedResolution(fixedWidth, fixedHeight, fixedDpi)) {
+        resolution = {{"name", simulation.device ? std::string(simulation.device->id) : settings.resolution},
+                      {"width", fixedWidth}, {"height", fixedHeight}, {"dpi", fixedDpi}};
+    }
+
+    // the lines the playing scenes drew last frame (0 until a frame is drawn after turning it on)
+    size_t physicsDebugLines = 0;
+    for (const SceneProject& sceneProject : project->getScenes()) {
+        if (sceneProject.playState == ScenePlayState::STOPPED || !sceneProject.scene) continue;
+        if (auto physics = sceneProject.scene->getSystem<PhysicsSystem>()) physicsDebugLines += physics->getDebugLineCount();
+    }
 
     Json data = {
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
@@ -1093,22 +1870,68 @@ void configureGameViewTool(const CallPtr& call) {
         {"maximize_on_play", settings.maximizeOnPlay},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
+        {"simulate_textures", textureFamilyName(TextureCookQueue::get().getViewFamily())},
+        {"atmosphere_quality", std::vector<std::string>{"project", "off", "low", "medium", "high"}[(size_t)std::clamp(settings.atmosphereQuality + 1, 0, 4)]},
+        {"physics_debug", Physics::isDebugDraw()},
+        {"physics_debug_contacts", Physics::isDebugDrawContacts()},
+        {"physics_debug_lines", physicsDebugLines},
+        {"network", Http::isOfflineSimulated() ? "offline" : "online"},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
         {"view_size", {gw->getWidth(), gw->getHeight()}},
         {"render_size", {gw->getRenderWidth(), gw->getRenderHeight()}},
         {"canvas", {project->getCanvasWidth(), project->getCanvasHeight()}},
+        {"device", simulation.device ? Json(simulation.device->id) : Json("none")},
+        {"orientation", PlatformRules::orientationName(simulation.orientation)},
+        {"language", settings.language.empty() ? std::string("system") : settings.language},
+        {"device_overlay", settings.deviceOverlay},
+        {"safe_area_outline", settings.safeAreaOutline},
+        // Screen.safeArea (canvas) and Screen.safeAreaPixels (render pixels) as the game sees them now
+        {"safe_area", rectArray(Screen::getSafeArea())},
+        {"safe_area_pixels", rectArray(Screen::getSafeAreaPixels())},
+        {"devices", devices},
+        {"resolution", resolution},
+        {"resolutions", resolutions},
+        {"custom_resolutions", customResolutions},
+        // Screen.dpi as Play reads it: the device's, a resolution preset's, else the host's
+        {"screen_dpi", Screen::getDpi()},
         {"changed", changed}
     };
+    if (simulation.device && std::string(simulation.device->id) == "custom") {
+        const CustomDeviceSettings& c = settings.custom;
+        data["custom_device"] = {{"width", c.width}, {"height", c.height}, {"corner_radius", c.cornerRadius},
+                                 {"dpi", c.dpi}, {"insets", {{"top", c.top}, {"right", c.right}, {"bottom", c.bottom}, {"left", c.left}}}};
+    }
     call->ok(std::string(changed.empty() ? "Game view settings: " : "Updated the Game view: ") + data.dump(), data);
 }
 
 } // namespace
 
+namespace w3 {
+
+SceneProject* resolveSceneViewScene(Project* project, const Json& ref, std::string& error) {
+    return resolveViewScene(project, ref, error);
+}
+
+void whenSceneViewShown(const CallPtr& call, uint32_t sceneId, bool focus, int timeoutMs,
+                        std::function<void(bool ready, const std::string& error)> then) {
+    whenSceneViewReady(call, sceneId, focus, timeoutMs, std::move(then));
+}
+
+void replyWithSceneShot(const CallPtr& call, uint32_t sceneId, const std::string& text, Json data) {
+    replyMaybeWithScreenshot(call, sceneId, text, std::move(data));
+}
+
+Json sceneViewCameraJson(SceneProject* sceneProject) {
+    return sceneCameraJson(sceneProject);
+}
+
+} // namespace w3
+
 void registerViewTools(McpRegistry& registry) {
     using namespace schema;
 
-    const Json viewScene = sceneRef("Default: playing, else selected.");
+    const Json viewScene = sceneRef();
     const Json sceneShot = withDefault(boolean("Also return a Scene view image."), false);
     const Json maxWidth = w3::maxWidthArgSchema(8192, 768);
 
@@ -1117,16 +1940,18 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "screenshot";
         tool.title = "Screenshot";
         tool.description =
-            "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its camera. "
-            "scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the whole window. "
-            "canvas_rect_in_image maps image -> send_input coords; warns on a flat image.";
+            "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its "
+            "camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the "
+            "whole window. canvas_rect_in_image maps image -> send_input coords; a simulated device: its "
+            "overlay, safe_area_in_image. Warns on a flat image.";
         tool.inputSchema = object({
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
             {"max_width", w3::maxWidthArgSchema(8192, 1024)},
             {"save_path", string("Also write the PNG to this project-relative path.")},
             {"focus", withDefault(boolean("Front the view's tab if needed."), true)},
-            {"timeout_seconds", withDefault(number("", 1, 600), 30)}
+            {"timeout_seconds", withDefault(number("", 1, 600), 30)},
+            {"device_overlay", withDefault(boolean(""), true)}
         });
         tool.annotations.readOnly = true;
         tool.writesFiles = [](const Json& args) {
@@ -1146,12 +1971,17 @@ void registerViewTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", viewScene},
             {"position", vec3("")},
-            {"target", vec3("Look-at point.")},
+            {"target", vec3("")},
             {"orbit", object({{"yaw", number("")}, {"pitch", number("")}})},
             {"distance", number("", 0.2, 2000)},
             {"center", vec2("World point at the view centre.")},
             {"zoom", number("World units per pixel.", 0.01, 1000)},
             {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, show_post_processing: true}; saved with the workspace.")},
+            {"projection", stringEnum("", {"perspective", "orthographic"})},
+            {"ortho_size", number("Half height.", 0.001, 100000)},
+            {"view", stringEnum("", {"top", "bottom", "front", "back", "left", "right"})},
+            {"frame_all", boolean("As Alt+F.")},
+            {"camera_settings", anyObject("fov, near, far, speed, acceleration, easing, dynamic_clipping.")},
             {"screenshot", sceneShot},
             {"max_width", maxWidth}
         });
@@ -1184,13 +2014,27 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "focus_window";
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Focus Window";
+        // pose: {entity (bind), path (.poseanim), index (pose it), play (preview), tab (Pose, Feel,
+        // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
+        // state. Budget-neutral with the pose_animation window added.
         tool.description =
             "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
-            "screenshot.";
+            "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page; "
+            "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp",
-                                       "texture_synthesis"})},
-            {"scene", sceneRef("window scene: whose tab.")}
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
+                                       "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
+                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
+            {"scene", sceneRef("window scene: whose tab.")},
+            {"console", object({
+                {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
+                {"collapse", boolean("")},
+                {"select", integer("Select the row of this message id (as a click).")}
+            })},
+            {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
+            {"close", boolean("preferences: close it.")},
+            {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
+            {"pose", anyObject("")}
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;
@@ -1199,19 +2043,52 @@ void registerViewTools(McpRegistry& registry) {
 
     {
         ToolDef tool;
+        tool.name = "find_ui_item";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Find UI Item";
+        tool.description =
+            "Where editor controls with this label are drawn now (window coords, as focus_window's rect; enabled false: "
+            "greyed out), to click them with send_input or real input. Only drawn items: scroll or open their panel first.";
+        tool.inputSchema = object({
+            {"label", string("Text (also after its icons), its ## id (these two only while in view), or the whole label.")},
+            {"window", string("Only in windows whose name contains this.")}
+        }, {"label"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = locateUiItemTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
         tool.name = "configure_game_view";
         tool.title = "Configure Game View";
         tool.description =
-            "Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). aspect "
-            "project = the canvas size (a project setting); the game renders at render_size.";
+            "Read (no arguments) or change the Game view toolbar (editor preferences, not undoable): aspect (project = "
+            "the canvas size), resolution (the game and screenshots render at it; its dpi is Screen.dpi), a simulated "
+            "device, orientation and language (editor only; safe_area is Screen.safeArea). Options: jasper://docs/ui.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
-            {"scale", number("Zoom.", 1, 5)},
+            {"scale", number("", 1, 5)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
-            {"simulate_touch", boolean("Mouse = one finger. Not while playing.")}
+            {"simulate_touch", boolean("")},
+            {"simulate_textures", stringEnum("", {"desktop", "mobile", "android_etc2", "web"})},
+            {"atmosphere_quality", stringEnum("", {"project", "off", "low", "medium", "high"})},
+            {"physics_debug", boolean("")},
+            {"physics_debug_contacts", boolean("")},
+            {"network", stringEnum("", {"online", "offline"})},
+            {"device", string("A devices id, custom or none.")},
+            {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
+            {"language", string("es-MX..., or system.")},
+            {"device_overlay", boolean("")},
+            {"safe_area_outline", boolean("")},
+            {"custom_device", anyObject("")},
+            {"resolution", any("\"WxH\", \"WxH@dpi\", a name, free, or {width, height, dpi, name}.")}
         });
         tool.annotations.idempotent = true;
+        // the Game view's editor preferences (S31: outside the default listing)
+        tool.group = "editor_ux";
         tool.handler = configureGameViewTool;
         registry.addTool(std::move(tool));
     }

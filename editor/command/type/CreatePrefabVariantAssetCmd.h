@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 
 #include <filesystem>
@@ -31,7 +32,13 @@ namespace jasperengine::editor {
         const std::filesystem::path& getPath() const { return filepath; }
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
+
+        // "Create Prefab Variant Door Variant.prefab"
+        std::string describe() const override { return "Create Prefab Variant " + CommandNames::file(filepath); }
+        const char* typeName() const override { return "CreatePrefabVariantAssetCmd"; }
     };
 
 }

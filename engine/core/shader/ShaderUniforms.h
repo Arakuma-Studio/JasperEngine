@@ -10,14 +10,20 @@
 #include <vector>
 #include <utility>
 #include <cstdint>
+#include <memory>
 
 namespace jasperengine{
 
     struct ShaderManifest;
+    struct GlobalsBlockLayout;
 
     // values of a forked shader's custom uniform block, by member name
     // (a vector keeps the serialized order stable)
     typedef std::vector<std::pair<std::string, Vector4>> ShaderUniformValues;
+
+    // the custom-block members of a material or component that follow a global shader value
+    // (ShaderGlobals): member -> global name, in a stable order
+    typedef std::vector<std::pair<std::string, std::string>> ShaderGlobalBindings;
 
     class JASPERENGINE_API ShaderUniforms{
     public:
@@ -48,9 +54,11 @@ namespace jasperengine{
 
         // every member from the value of the same name (zero when unset), reserved ones skipped
         void writeValues(const ShaderUniformValues& values);
-        // the same, a member taking the first of: values, fallbackValues (when given), the
-        // manifest's @property default (when given), zero
-        void writeValues(const ShaderUniformValues& values, const ShaderUniformValues* fallbackValues, const ShaderManifest* manifest);
+        // the same, a member taking the first of: the global it is bound to (bindings, when
+        // given: ShaderGlobals' current value, zero while the global does not exist), values,
+        // fallbackValues (when given), the manifest's @property default (when given), zero
+        void writeValues(const ShaderUniformValues& values, const ShaderUniformValues* fallbackValues, const ShaderManifest* manifest,
+                         const ShaderGlobalBindings* bindings = nullptr);
         void writeTime(float seconds);
         void writeResolution(float width, float height);
 
@@ -67,6 +75,14 @@ namespace jasperengine{
         int source = -1;      // index in the object's shaderTextures, -1: the default texture
         int fallback = 0;     // ShaderTextureDefault
         bool cube = false;    // declared as a textureCube
+    };
+
+    // a texture uniform of a loaded shader that a texture global (ShaderGlobals) binds to: one
+    // the manifest and the object's shaderTextures do not claim, named like a global
+    struct JASPERENGINE_API GlobalTextureSlot{
+        std::pair<int, int> slot = {-1, -1};
+        int globalId = 0;
+        bool cube = false;
     };
 
     // What a loaded shader reads of the shader library's engine data: the frame block
@@ -98,6 +114,15 @@ namespace jasperengine{
         // the frame's blurred scene (phase 4, includes/blurred_scene.glsl: frosted UI panels)
         int slotFSBlurredScene = -1;
         std::pair<int, int> slotBlurredScene = {-1, -1};
+        // the height fog of the pass (includes/height_fog.glsl, the fogged mesh variants)
+        int slotFSHeightFog = -1;
+        // the global shader values (ShaderGlobals: u_vs_globals / u_fs_globals and texture
+        // globals), packed once per change and shared by the programs with the same block
+        int slotVSGlobals = -1;
+        int slotFSGlobals = -1;
+        std::shared_ptr<GlobalsBlockLayout> vsGlobals;
+        std::shared_ptr<GlobalsBlockLayout> fsGlobals;
+        std::vector<GlobalTextureSlot> globalTextures;
 
         void clear(){
             slotVSFrame = -1;
@@ -116,6 +141,12 @@ namespace jasperengine{
             slotEnvironment = {-1, -1};
             slotFSBlurredScene = -1;
             slotBlurredScene = {-1, -1};
+            slotFSHeightFog = -1;
+            slotVSGlobals = -1;
+            slotFSGlobals = -1;
+            vsGlobals.reset();
+            fsGlobals.reset();
+            globalTextures.clear();
         }
         // the shader declares a scene input (its draws get the pass's, RenderSystem::applySceneInputs)
         bool readsScene() const{

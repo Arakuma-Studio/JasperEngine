@@ -59,6 +59,13 @@ namespace jasperengine::htmlui::compat {
         // how a use of the variable is written for a family: "--x" or "--x--family"
         std::string typedName(const std::string& name, const std::string& family) const;
 
+        // A variable the engine sets on each document at runtime (env(safe-area-inset-*) is
+        // var(--jasper-safe-area-inset-*), UIDocumentSystem sets it): it has no static value and is
+        // never folded, so it reaches the fork as var() and follows the live value
+        static bool isDynamic(const std::string& name);
+        // the value a rewrite that must fold one statically uses for a dynamic variable (0px)
+        static ValueList dynamicStaticValue();
+
         // the var() name and fallback of a var() function ("" when malformed)
         static std::string varName(const ComponentValue& var, ValueList* fallback = nullptr, bool* hasFallback = nullptr);
         // the variable names a value references (var(--x) anywhere in it)

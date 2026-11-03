@@ -1,7 +1,18 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "animation/AnimatorAssetDocument.h"
+#include "animation/AnimatorEditorHooks.h"
 #include "ProjectWindow.h"
+#include "window/vcs/VcsUi.h"
+#include "texture/TextureCookQueue.h"
+#include "util/EditorScripts.h"
+#include "asset/AssetTypes.h"
+#include "window/AssetPanels.h"
+#include "util/PngWriter.h"
+#include "DocumentFile.h"
+#include "audio/AudioMixerDocument.h"
+#include "window/HumanoidConvertDialog.h"
 #include "util/BidiText.h"
 
 #include "ImageViewerWindow.h"
@@ -19,19 +30,39 @@
 #include "resources/icons/font-icon_png.h"
 #include "resources/icons/html-icon_png.h"
 #include "resources/icons/css-icon_png.h"
+#include "resources/icons/lut-icon_png.h"
+#include "PostProcessingPresets.h"
+#include "util/CubeLut.h"
 
 #include "Out.h"
 #include "util/HtmlUITemplates.h"
 #include "command/type/CopyFileCmd.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateMaterialFileCmd.h"
+#include "camera/ShakePreset.h"
+#include "camera/ShakePresets.h"
+#include "animation/AnimationClipIO.h"
+#include "util/ProjectFileWrites.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/CreateDirCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/CreatePrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
+#include "animation/AnimationClipAppHooks.h"
+#include "animation/AnimationClipController.h"
+#include "animation/AnimationClipDocument.h"
+#include "animation/AnimationClipInspectorHooks.h"
+#include "vat/VatAppHooks.h"
+#include "vat/VatAssetFiles.h"
+#include "vat/VatDocument.h"
+#include "util/UIProbe.h"
+#include "util/PhysicsMaterialAssets.h"
+#include "pose/PoseAnimationDocument.h"
+#include "pose/PoseEditSession.h"
+#include "pose/PoseImage.h"
 
 #include "Backend.h"
+#include "InspectorWindow.h"
 #include "App.h"
 #include "Theme.h"
 #include "Widgets.h"
@@ -40,11 +71,15 @@
 #include "Generator.h"
 #include "Log.h"
 #include "subsystem/MeshSystem.h"
+#include "render/SystemRender.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
 #include "util/FbxImporter.h"
 #include "util/Util.h"
 #include "texsynth/SynthesisRecipe.h"
+#include "spritenormals/SpriteNormalsWatcher.h"
+#include "window/SpriteNormalsEntry.h"
+#include "window/SpriteNormalsWindow.h"
 #include "util/UIUtils.h"
 #include "util/SHA1.h"
 #include "util/GraphicUtils.h"
@@ -143,10 +178,157 @@ bool editor::ProjectWindow::writeImageThumbnail(const fs::path& sourcePath, cons
     );
 
     fs::create_directories(thumbnailPath.parent_path());
-    const bool written = stbi_write_png(thumbnailPath.string().c_str(), newWidth, newHeight, 4, thumbData.data(), newWidth * 4) != 0;
+    const bool written = writePng(thumbnailPath, newWidth, newHeight, 4, thumbData.data(), newWidth * 4, io::Durability::Cache);
 
     sourceData.releaseImageData();
     return written;
+}
+
+// The .anim icon: a film strip whose three frames show a ball rising (drawn with PoseImage,
+// like the .poseanim icon)
+static void makeAnimationClipIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor strip = editor::PoseColor::hex(0x2B2F36);
+    const editor::PoseColor hole = editor::PoseColor::hex(0xD9D9D9);
+    const editor::PoseColor frame = editor::PoseColor::hex(0xE8873A);
+    const editor::PoseColor frameEdge = editor::PoseColor::hex(0xB8652A);
+    const editor::PoseColor ball = editor::PoseColor::hex(0xF2F2F2);
+    image.fillRect(px(4), px(12), px(56), px(40), strip);
+    for (int i = 0; i < 6; i++) {
+        image.fillRect(px(8 + i * 9.0f), px(15), px(4), px(4), hole);
+        image.fillRect(px(8 + i * 9.0f), px(45), px(4), px(4), hole);
+    }
+    for (int i = 0; i < 3; i++) {
+        const float x = 8 + i * 17.0f;
+        image.fillRect(px(x), px(22), px(14), px(20), frameEdge);
+        image.fillRect(px(x + 1), px(23), px(12), px(18), frame);
+        image.fillCircle((x + 7) * s, (36 - i * 5.0f) * s, 6.4f * s, ball);
+    }
+    rgba = image.getPixels();
+}
+
+// The .physicsmaterial icon: a ball resting on a slope
+static void makePhysicsMaterialIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor panel = editor::PoseColor::hex(0x263238);
+    const editor::PoseColor slope = editor::PoseColor::hex(0x8D6E63);
+    const editor::PoseColor ball = editor::PoseColor::hex(0x4FC3F7);
+    const editor::PoseColor shine = editor::PoseColor::hex(0xE1F5FE);
+    image.fillRect(px(4), px(6), px(56), px(52), panel);
+    // a stepped ramp, low on the left
+    for (int i = 0; i < 12; i++) {
+        const float x = 6 + i * 4.5f;
+        const float h = 6 + i * 2.2f;
+        image.fillRect(px(x), px(56 - h), px(4.6f), px(h), slope);
+    }
+    image.fillCircle(30 * s, 28 * s, 20 * s, ball);
+    image.fillCircle(26 * s, 24 * s, 6 * s, shine);
+    rgba = image.getPixels();
+}
+
+// The .vat icon: a crowd of three figures over a texture grid (the baked frames)
+static void makeVertexAnimationIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor panel = editor::PoseColor::hex(0x22313A);
+    const editor::PoseColor grid = editor::PoseColor::hex(0x2F4A57);
+    const editor::PoseColor back = editor::PoseColor::hex(0x3FA7A0);
+    const editor::PoseColor front = editor::PoseColor::hex(0x7FE0D4);
+    image.fillRect(px(4), px(6), px(56), px(52), panel);
+    for (int i = 0; i < 6; i++) {
+        image.fillRect(px(6 + i * 9.0f), px(8), px(1), px(48), grid);
+        image.fillRect(px(6), px(8 + i * 9.0f), px(52), px(1), grid);
+    }
+    auto figure = [&](float x, float y, float scale, editor::PoseColor color) {
+        image.fillCircle(x * s, (y - 13.0f * scale) * s, 4.2f * scale * s, color);
+        image.fillRect(px(x - 4.5f * scale), px(y - 8.0f * scale), px(9.0f * scale), px(13.0f * scale), color);
+        image.fillRect(px(x - 4.0f * scale), px(y + 5.0f * scale), px(3.0f * scale), px(9.0f * scale), color);
+        image.fillRect(px(x + 1.0f * scale), px(y + 5.0f * scale), px(3.0f * scale), px(9.0f * scale), color);
+    };
+    figure(18.0f, 34.0f, 0.85f, back);
+    figure(46.0f, 34.0f, 0.85f, back);
+    figure(32.0f, 38.0f, 1.0f, front);
+    rgba = image.getPixels();
+}
+
+// what a hovered file says: its name, and for a generated mesh what made it
+static std::string fileTooltip(const editor::FileEntry& file) {
+    if (!file.generatedBy.empty()) {
+        // a Sprite Normal Map output
+        return file.displayName + "\n" + file.generatedBy;
+    }
+    if (file.generated) {
+        return file.displayName + "\nGenerated by the Vertex Animation baker: do not edit; Rebake regenerates it";
+    }
+    return file.displayName;
+}
+
+// the "generated" badge: a small gear in the corner of the icon
+static void drawGeneratedBadge(ImDrawList* drawList, const ImVec2& iconMin, float iconExtent, const std::string& name, bool stale = false) {
+    const float size = std::max(ImGui::GetFontSize() * 0.75f, iconExtent * 0.32f);
+    const ImVec2 min(iconMin.x, iconMin.y);
+    const ImVec2 max(min.x + size, min.y + size);
+    drawList->AddRectFilled(min, max, IM_COL32(40, 46, 52, 230), size * 0.25f);
+    const float fontSize = size * 0.8f;
+    const ImVec2 textSize = ImGui::GetFont()->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, ICON_FA_GEARS);
+    drawList->AddText(ImGui::GetFont(), fontSize, ImVec2(min.x + (size - textSize.x) * 0.5f, min.y + (size - textSize.y) * 0.5f),
+                      stale ? ImGui::ColorConvertFloat4ToU32(editor::Theme::Colors::WarningText) : IM_COL32(127, 224, 212, 255), ICON_FA_GEARS);
+    editor::UIProbe::rect("project.generated." + name, min.x, min.y, max.x, max.y);
+    if (stale) editor::UIProbe::rect("project.generatedStale." + name, min.x, min.y, max.x, max.y);
+}
+
+// The Animator assets' icons: a controller is three states and their arrows, a mask a figure, a
+// montage a strip cut into sections
+static void makeAnimatorControllerIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor arrow = editor::PoseColor::hex(0xD9D9D9);
+    const editor::PoseColor entry = editor::PoseColor::hex(0x2E8B4A);
+    const editor::PoseColor state = editor::PoseColor::hex(0x5A5F69);
+    const editor::PoseColor defaultState = editor::PoseColor::hex(0xD07A26);
+    image.drawLine(20 * s, 16 * s, 44 * s, 16 * s, 2.5f * s, arrow);
+    image.drawLine(14 * s, 22 * s, 24 * s, 42 * s, 2.5f * s, arrow);
+    image.drawLine(48 * s, 22 * s, 40 * s, 42 * s, 2.5f * s, arrow);
+    image.fillRect(px(4), px(9), px(18), px(14), entry);
+    image.fillRect(px(42), px(9), px(18), px(14), state);
+    image.fillRect(px(20), px(40), px(24), px(15), defaultState);
+    rgba = image.getPixels();
+}
+
+static void makeAvatarMaskIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor on = editor::PoseColor::hex(0x46AA50);
+    const editor::PoseColor off = editor::PoseColor::hex(0xAA3C3C);
+    image.fillCircle(32 * s, 9 * s, 11 * s, on);
+    image.fillRect(px(25), px(16), px(14), px(22), on);
+    image.fillRect(px(17), px(17), px(6), px(18), off);
+    image.fillRect(px(41), px(17), px(6), px(18), on);
+    image.fillRect(px(25), px(39), px(6), px(22), on);
+    image.fillRect(px(33), px(39), px(6), px(22), off);
+    rgba = image.getPixels();
+}
+
+static void makeMontageIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor strip = editor::PoseColor::hex(0x2B2F36);
+    const editor::PoseColor colors[] = {editor::PoseColor::hex(0x466EAA), editor::PoseColor::hex(0x5A8C5A), editor::PoseColor::hex(0x966E3C)};
+    const editor::PoseColor marker = editor::PoseColor::hex(0xE6C850);
+    image.fillRect(px(4), px(18), px(56), px(28), strip);
+    image.fillRect(px(7), px(22), px(16), px(20), colors[0]);
+    image.fillRect(px(24), px(22), px(20), px(20), colors[1]);
+    image.fillRect(px(45), px(22), px(12), px(20), colors[2]);
+    image.drawLine(34 * s, 10 * s, 34 * s, 18 * s, 3.0f * s, marker);
+    rgba = image.getPixels();
 }
 
 editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path& filePath) {
@@ -164,6 +346,10 @@ editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path
     if (editor::Util::isPrefabFile(extension)) {
         return editor::FileType::PREFAB;
     }
+    if (editor::Util::isPoseAnimationFile(extension)) {
+        return editor::FileType::POSE_ANIMATION;
+    }
+    // .anim clips keep their icon: no thumbnail render (animation clips spec 9.R53)
 
     return editor::FileType::NONE;
 }
@@ -184,7 +370,6 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
     this->isRenaming = false;
     this->renameSelectPending = false;
     this->isCreatingNewDirectory = false;
-    this->timeSinceLastCheck = 0.0f;
     this->windowOpen = true;
     this->focusRequested = false;
     this->windowFocused = false;
@@ -193,16 +378,40 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
     memset(this->nameBuffer, 0, sizeof(this->nameBuffer));
     memset(this->searchBuffer, 0, sizeof(this->searchBuffer));
 
-    thumbnailThread = std::thread(&ProjectWindow::thumbnailWorker, this);
+    // the main menu's Assets > Create > Animation Clip (shown once this is set)
+    animationClipAppHooks().createClipAsset = [this](Project*) {
+        assetsCreateAnimationClip();
+    };
+    // Assets > Create > Animator Controller / Avatar Mask through the hooks too: S21's assets
+    animationClipAppHooks().createControllerAsset = [this](Project*) {
+        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller);
+    };
+    animationClipAppHooks().createMaskAsset = [this](Project*) {
+        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask);
+    };
 }
 
 editor::ProjectWindow::~ProjectWindow() {
-    cancelThumbnailWork();
+    animationClipAppHooks().createClipAsset = nullptr;
+    // the steps capture this window
+    stopThumbnailWork();
+}
+
+void editor::ProjectWindow::stopThumbnailWork(){
     stopThumbnailThread = true;
-    thumbnailCondition.notify_one(); // Wake the worker thread to check stop condition
-    if (thumbnailThread.joinable()) {
-        thumbnailThread.join();
+    thumbnails.cancelPending();
+    // A running step can wait in Engine::endAsyncThread for the main thread to execute the
+    // batch committed before its own, so the main thread keeps executing the render queue
+    // until the step ends; its own batch is executed last. A batch nobody executes would
+    // block SokolSystem::shutdown's flush for good.
+    while (thumbnails.pendingCount() > 0) {
+        if (Engine::isViewLoaded())
+            SystemRender::executeQueue();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    if (Engine::isViewLoaded())
+        SystemRender::executeQueue();
+    cancelThumbnailWork();
 }
 
 bool editor::ProjectWindow::isFocused() const{
@@ -291,7 +500,12 @@ void editor::ProjectWindow::resumeThumbnailWork(){
         std::lock_guard<std::mutex> lock(thumbnailMutex);
         thumbnailWorkSuspended = false;
     }
+    notifyThumbnailWork();
+}
+
+void editor::ProjectWindow::notifyThumbnailWork(){
     thumbnailCondition.notify_all();
+    scheduleThumbnailStep();
 }
 
 void editor::ProjectWindow::handleExternalDragEnter() {
@@ -302,15 +516,41 @@ void editor::ProjectWindow::handleExternalDragLeave() {
     isExternalDragHovering = false;
 }
 
-void editor::ProjectWindow::notifyResourceFileChanged(const fs::path& filePath) {
-    std::error_code ec;
-    if (!fs::exists(filePath, ec) || ec || fs::is_directory(filePath, ec) || ec) {
+std::string editor::ProjectWindow::colorLutTooltip(const fs::path& filePath) {
+    // the renderer's cache, by the path the scene stores (assets-relative): parsed once
+    const std::string stored = project->normalizeToAssetsRelative(filePath).generic_string();
+    const std::shared_ptr<const CubeLut> lut = getCachedColorLut(stored);
+    return describeColorLut(lut.get(), getCachedColorLutError(stored)) +
+           "\n\nDouble-click (or right-click > Use as Color Grading LUT): the open scene's Color Grading LUT.";
+}
+
+void editor::ProjectWindow::assignColorLut(const fs::path& filePath) {
+    SceneProject* scene = project->getSelectedScene();
+    if (!scene || !scene->scene || scene->sceneType == SceneType::SCENE_UI) {
+        Out::warning("Open a 2D or 3D scene to grade it with %s.", editor::FileUtils::pathToUtf8(filePath.filename()).c_str());
         return;
     }
+    PostProcessingSettings settings = scene->scene->getPostProcessing();
+    settings.lutTexture = project->normalizeToAssetsRelative(filePath).generic_string();
+    settings.colorGradingEnabled = true;
+    if (settings.lutContribution <= 0.0f)
+        settings.lutContribution = 1.0f;
+    CommandHandle::get(scene->id)->addCommandNoMerge(makePostProcessingCommand(
+        project, scene->id, settings, "Assign Color LUT " + editor::FileUtils::pathToUtf8(filePath.filename())));
+    Out::info("%s grades \"%s\" (Color Grading > LUT Texture).", editor::FileUtils::pathToUtf8(filePath.filename()).c_str(),
+              scene->name.c_str());
+}
 
+void editor::ProjectWindow::notifyResourceFileChanged(const fs::path& filePath) {
+    // by extension first: most changed files have no thumbnail (no stat for them)
     FileType type = classifyThumbnailFileType(filePath);
 
     if (type == FileType::NONE) {
+        return;
+    }
+
+    std::error_code ec;
+    if (!fs::exists(filePath, ec) || ec || fs::is_directory(filePath, ec) || ec) {
         return;
     }
 
@@ -343,7 +583,8 @@ bool editor::ProjectWindow::hasPendingThumbnailWork() {
     std::lock_guard<std::mutex> lock(thumbnailMutex);
     // Any pending thumbnail work needs the shared systemDraw pass to keep running.
     return thumbnailWorkerBusy || hasPendingModelRender || hasPendingMaterialRender ||
-           !thumbnailQueue.empty() || hasActivePrefabThumbnail || !prefabThumbnailQueue.empty();
+           !thumbnailQueue.empty() || hasActivePrefabThumbnail || !prefabThumbnailQueue.empty() ||
+           !poseThumbnailQueue.empty() || poseThumbnailer.busy();
 }
 
 void editor::ProjectWindow::processMaterialThumbnails() {
@@ -389,7 +630,7 @@ void editor::ProjectWindow::processMaterialThumbnails() {
                     pendingMaterialGeneration = 0;
                 }
             }
-            thumbnailCondition.notify_one();
+            notifyThumbnailWork();
             return;
         }
 
@@ -437,7 +678,7 @@ void editor::ProjectWindow::processMaterialThumbnails() {
             }
         }
 
-        thumbnailCondition.notify_one();
+        notifyThumbnailWork();
     }
 }
 
@@ -474,7 +715,7 @@ void editor::ProjectWindow::processModelThumbnails() {
                     pendingModelGeneration = 0;
                 }
             }
-            thumbnailCondition.notify_one();
+            notifyThumbnailWork();
             return;
         }
 
@@ -533,7 +774,7 @@ void editor::ProjectWindow::processModelThumbnails() {
             }
         }
 
-        thumbnailCondition.notify_one();
+        notifyThumbnailWork();
     }
 }
 
@@ -590,9 +831,8 @@ void editor::ProjectWindow::checkPrefabThumbnailStamps() {
     if (changed.empty()) {
         return;
     }
-    // A file changed outside the editor: the loaded prefabs read it again first, so the
-    // thumbnails show what is on disk
-    project->refreshAssetDatabase(true);
+    // (the loaded prefabs read a changed file first: the hot reload applies it to the asset
+    // database before it tells this window)
     for (const fs::path& path : changed) {
         notifyResourceFileChanged(path);
     }
@@ -601,6 +841,9 @@ void editor::ProjectWindow::checkPrefabThumbnailStamps() {
 void editor::ProjectWindow::cancelPrefabThumbnails() {
     std::queue<ThumbnailRequest> empty;
     std::swap(prefabThumbnailQueue, empty);
+    std::queue<ThumbnailRequest> emptyPose;
+    std::swap(poseThumbnailQueue, emptyPose);
+    poseThumbnailer.cancel();
     if (hasActivePrefabThumbnail) {
         if (Scene* scene = prefabRender.getScene()) {
             Engine::removeScene(scene);
@@ -676,10 +919,7 @@ void editor::ProjectWindow::processPrefabThumbnails() {
         }
         saveStarted = GraphicUtils::saveFramebufferImage(framebuffer, thumbnailPath, false,
             [this, pending, thumbnailPath, stamp]() {
-                {
-                    std::ofstream stampFile(prefabStampPath(thumbnailPath), std::ios::trunc);
-                    stampFile << stamp;
-                }
+                FileUtils::writeFile(prefabStampPath(thumbnailPath), stamp);
                 bool publish = false;
                 {
                     std::lock_guard<std::mutex> thumbnailLock(thumbnailMutex);
@@ -772,6 +1012,20 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.89f, 0.30f, 0.15f, 1.0f));
         case FileType::CSS:
             return ImGui::GetColorU32(ImVec4(0.40f, 0.20f, 0.60f, 1.0f));
+        case FileType::COLOR_LUT:
+            return ImGui::GetColorU32(ImVec4(0.06f, 0.46f, 0.43f, 1.0f));
+        case FileType::POSE_ANIMATION:
+            return ImGui::GetColorU32(ImVec4(0.23f, 0.43f, 0.65f, 1.0f));
+        case FileType::HUMANOID:
+            return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
+        case FileType::ANIMATION_CLIP:
+            return ImGui::GetColorU32(ImVec4(0.91f, 0.53f, 0.23f, 1.0f));
+        case FileType::VERTEX_ANIMATION:
+            return ImGui::GetColorU32(ImVec4(0.25f, 0.65f, 0.63f, 1.0f));
+        case FileType::ANIMATOR_ASSET:
+            return ImGui::GetColorU32(ImVec4(0.82f, 0.48f, 0.15f, 1.0f));
+        case FileType::PHYSICS_MATERIAL:
+            return ImGui::GetColorU32(ImVec4(0.31f, 0.76f, 0.97f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -809,6 +1063,42 @@ void editor::ProjectWindow::renderCreateMenuItems() {
         memset(nameBuffer, 0, sizeof(nameBuffer));
         ImGui::CloseCurrentPopup();
     }
+    if (ImGui::MenuItem(ICON_FA_PERSON " Create Pose Animation")){
+        assetsCreatePoseAnimation();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_FILM " Create Animation Clip")){
+        assetsCreateAnimationClip();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_DIAGRAM_PROJECT " Create Animator Controller")){
+        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller);
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_PERSON " Create Avatar Mask")){
+        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask);
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_FILM " Create Animation Montage")){
+        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Montage);
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_BURST " Create Shake Preset")){
+        assetsCreateShakePreset();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_SLIDERS " Create Audio Mixer")){
+        assetsCreateAudioMixer();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE " Create Physics Material")){
+        assetsCreatePhysicsMaterial(false);
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE " Create Physics Material 2D")){
+        assetsCreatePhysicsMaterial(true);
+        ImGui::CloseCurrentPopup();
+    }
 
     ImGui::Separator();
 
@@ -843,17 +1133,25 @@ void editor::ProjectWindow::renderHeader() {
 
     const float gearW = ImGui::CalcTextSize(ICON_FA_ELLIPSIS_VERTICAL).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     const float searchW = std::min(Theme::dpi(240.0f), std::max(Theme::dpi(100.0f), barW * 0.35f));
+    // Search by Type, Search by Label and Save Search sit left of the field (Unity)
+    const float toolW = (ImGui::GetFrameHeight() + Theme::dpi(2.0f)) * 3.0f;
     ImGui::SameLine();
+    ImGui::SetCursorScreenPos(ImVec2(barMin.x + barW - padX - gearW - Theme::dpi(8.0f) - searchW - toolW, barMin.y + padY));
+    renderSearchTools();
+    ImGui::SameLine(0.0f, Theme::dpi(4.0f));
     ImGui::SetCursorScreenPos(ImVec2(barMin.x + barW - padX - gearW - Theme::dpi(4.0f) - searchW, barMin.y + padY));
-    if (UIUtils::searchInput("##ProjectSearch", "Search", searchBuffer, IM_ARRAYSIZE(searchBuffer), false, nullptr, searchW)) {
+    const bool searchEdited = UIUtils::searchInput("##ProjectSearch", "Search  (t:Texture2D l:Label ext: path: re:)", searchBuffer,
+                                                   IM_ARRAYSIZE(searchBuffer), false, nullptr, searchW);
+    uiBuilding.searchBox = lastItemRect();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::SetTooltip("Words match names (typos forgiven); \"a phrase\" exactly; t:type l:label ext:png path:part re:regex "
+                          "ref:asset missing:; the same key ORs, different keys AND; OR joins whole searches");
+    }
+    if (searchEdited) {
         std::string trimmed = searchBuffer;
         trimmed.erase(0, trimmed.find_first_not_of(" \t"));
         trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
-        if (trimmed != searchText) {
-            searchText = trimmed;
-            selectedFiles.clear();
-            scanDirectory(currentPath);
-        }
+        if (trimmed != searchText) setSearch(trimmed);
     }
     ImGui::SameLine(0.0f, Theme::dpi(4.0f));
     if (projectToolbarButton(ICON_FA_ELLIPSIS_VERTICAL, "Project panel options")) {
@@ -958,6 +1256,9 @@ void editor::ProjectWindow::renderBottomBar() {
     } else if (selectedFiles.size() > 1) {
         status = std::to_string(selectedFiles.size()) + " items selected";
     }
+    // the selection's Asset Labels, left of the size slider (S25 R23)
+    const float stripWidth = renderLabelStrip(barMin, barH, sliderX - padX);
+    const float statusRight = sliderX - padX - stripWidth - (stripWidth > 0.0f ? padX : 0.0f);
     if (!status.empty()) {
         float x = barMin.x + padX;
         const float lineH = ImGui::GetTextLineHeight();
@@ -966,7 +1267,7 @@ void editor::ProjectWindow::renderBottomBar() {
             dl->AddImage(tex, ImVec2(x, textY), ImVec2(x + lineH, textY + lineH));
             x += lineH + Theme::dpi(4.0f);
         }
-        ImGui::RenderTextEllipsis(dl, ImVec2(x, textY), ImVec2(sliderX - padX, textY + lineH), sliderX - padX, status.c_str(), nullptr, nullptr);
+        ImGui::RenderTextEllipsis(dl, ImVec2(x, textY), ImVec2(statusRight, textY + lineH), statusRight, status.c_str(), nullptr, nullptr);
     }
 
     ImGui::SetCursorScreenPos(ImVec2(sliderX, barMin.y + padY));
@@ -1103,7 +1404,7 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
             navigateTo = segments[i].second;
         }
         if (!isCurrent && ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+            if (ImGui::AcceptDragDropPayload("resource_files")) {
                 dropTarget = segments[i].second;
             }
             ImGui::EndDragDropTarget();
@@ -1168,6 +1469,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
     );
 
     ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, cellPadding);
+
+    handleTypeAhead();
+    handleWheelResize();
 
     bool clickedInFile = false;
     hoveredFile.clear();
@@ -1300,6 +1604,24 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
             ImVec2 itemMin = ImGui::GetItemRectMin();
             ImVec2 itemMax = ImGui::GetItemRectMax();
+            // type-ahead picked it: into view
+            if (file.name == scrollToFile) {
+                ImGui::SetScrollHereY(0.5f);
+                scrollToFile.clear();
+            }
+            // a ping (Search, Bookmarks): a fading frame around the item, scrolled into view once
+            if (file.name == pingName && ImGui::GetTime() < pingUntil) {
+                if (pingScroll) {
+                    ImGui::SetScrollHereY(0.5f);
+                    pingScroll = false;
+                }
+                const float alpha = static_cast<float>((pingUntil - ImGui::GetTime()) / 1.5);
+                ImGui::GetWindowDrawList()->AddRect(itemMin, itemMax, ImGui::GetColorU32(ImVec4(1.0f, 0.85f, 0.2f, alpha)),
+                                                    Theme::dpi(3.0f), 0, Theme::dpi(2.0f));
+            }
+            if (uiBuilding.entries.size() < 200) {
+                uiBuilding.entries.push_back({file.name, lastItemRect()});
+            }
 
             if (hovered) hoveredFile = file.name;
 
@@ -1316,15 +1638,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 if (file.isDirectory){
                     deferredDirectoryChange = true;
                 }else{
-                    const fs::path filePath = currentPath / file.name;
-                    if (file.type == FileType::IMAGE)
-                        imageViewerWindow->openFile(filePath);
-                    else if (file.type == FileType::SCENE)
-                        project->openScene(filePath);
-                    else if (Util::isPrefabFile(filePath.string()))
-                        editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
-                    else
-                        codeEditor->openFile(filePath.string(), true);
+                    updateInspectedAsset(file.name);
+                    openFile(file, currentPath / file.name);
                 }
             }
 
@@ -1396,7 +1711,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             // --- Directory as drop target ----------------------------------
             if (file.isDirectory){
                 if (ImGui::BeginDragDropTarget()){
-                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
+                    if (ImGui::AcceptDragDropPayload("resource_files")){
                         dropTarget = currentPath / file.name;
                     }
                     ImGui::EndDragDropTarget();
@@ -1466,6 +1781,10 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     const float badge = std::max(Theme::dpi(10.0f), std::min(dispW, dispH) * 0.34f);
                     UIUtils::drawPrefabVariantBadge(ImGui::GetWindowDrawList(), ImVec2(imageX + Theme::dpi(3.0f), imageY + dispH - badge - Theme::dpi(2.0f)),
                         ImVec2(imageX + Theme::dpi(3.0f) + badge, imageY + dispH - Theme::dpi(2.0f)), IM_COL32(140, 205, 255, 255));
+                }
+                drawTextureCookBadge(ImGui::GetWindowDrawList(), file, ImVec2(imageX, imageY), ImVec2(imageX + dispW, imageY + dispH));
+                if (file.generated){
+                    drawGeneratedBadge(ImGui::GetWindowDrawList(), ImVec2(imageX, imageY + dispH - std::min(dispW, dispH) * 0.32f), std::min(dispW, dispH), file.name, file.generatedStale);
                 }
 
                 // --- Extension badge over thumbnail -------------------------
@@ -1541,7 +1860,10 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 if (notInProject) ImGui::PopStyleVar();
 
                 if (hovered){
-                    ImGui::SetTooltip("%s", file.displayName.c_str());
+                    if (file.type == FileType::COLOR_LUT)
+                        ImGui::SetTooltip("%s\n%s", file.displayName.c_str(), colorLutTooltip(currentPath / file.name).c_str());
+                    else
+                        ImGui::SetTooltip("%s", fileTooltip(file).c_str());
                 }
 
             }else{
@@ -1576,7 +1898,13 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         UIUtils::drawPrefabVariantBadge(drawList, ImVec2(iconMin.x, iconMin.y + iconExtent - badge), ImVec2(iconMin.x + badge, iconMin.y + iconExtent),
                             IM_COL32(140, 205, 255, (int)(255 * alpha)));
                     }
+                    drawTextureCookBadge(drawList, file, iconMin, ImVec2(iconMin.x + iconExtent, iconMin.y + iconExtent));
+                    if (file.generated){
+                        drawGeneratedBadge(drawList, ImVec2(iconMin.x, iconMin.y + iconExtent * 0.45f), iconExtent, file.name, file.generatedStale);
+                    }
                     ImVec2 textMin(itemMin.x + Theme::dpi(8.0f) + iconExtent, itemMin.y + (rowH - lineHeight) * 0.5f);
+                    // version control: its state before the name (S29 R27)
+                    textMin.x += drawVcsOverlay(file, ImVec2(textMin.x, textMin.y), lineHeight, true);
                     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_Text, alpha));
                     ImGui::RenderTextEllipsis(drawList, textMin, ImVec2(itemMax.x - Theme::dpi(4.0f), itemMax.y), itemMax.x - Theme::dpi(4.0f),
                                               file.displayName.c_str(), nullptr, nullptr);
@@ -1606,6 +1934,18 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         UIUtils::drawPrefabVariantBadge(drawList, ImVec2(iconBoxMin.x + Theme::dpi(3.0f), iconBoxMax.y - badge - Theme::dpi(2.0f)),
                             ImVec2(iconBoxMin.x + Theme::dpi(3.0f) + badge, iconBoxMax.y - Theme::dpi(2.0f)), IM_COL32(140, 205, 255, (int)(255 * alpha)));
                     }
+                    drawTextureCookBadge(drawList, file, iconBoxMin, iconBoxMax);
+                    // a Vertex Animation's generated mesh
+                    if (file.generated){
+                        drawGeneratedBadge(drawList, ImVec2(iconBoxMin.x + Theme::dpi(3.0f), iconBoxMax.y - uiIconSize * 0.32f - Theme::dpi(2.0f)), uiIconSize, file.name, file.generatedStale);
+                    }
+                    // version control: its state at the thumbnail's bottom left, after a variant badge (S29 R27)
+                    {
+                        const float glyph = std::max(Theme::dpi(10.0f), uiIconSize * 0.28f);
+                        const bool variant = file.type == FileType::PREFAB && isVariantFile(currentPath / file.name);
+                        const float x = iconBoxMin.x + Theme::dpi(3.0f) + (variant ? std::max(Theme::dpi(10.0f), uiIconSize * 0.34f) + Theme::dpi(2.0f) : 0.0f);
+                        drawVcsOverlay(file, ImVec2(x, iconBoxMax.y - glyph - Theme::dpi(2.0f)), glyph, false);
+                    }
 
                     // One line, centred when it fits, cut with an ellipsis when not
                     const char* label = file.displayBaseName.c_str();
@@ -1626,9 +1966,17 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 }
 
                 if (hovered && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)){
-                    ImGui::SetTooltip("%s", file.displayName.c_str());
+                    if (file.type == FileType::COLOR_LUT)
+                        ImGui::SetTooltip("%s\n%s", file.displayName.c_str(), colorLutTooltip(currentPath / file.name).c_str());
+                    else
+                        ImGui::SetTooltip("%s", fileTooltip(file).c_str());
                 }
             }
+
+            // its asset labels: dots on tiles, chips on list rows (S25 R23)
+            drawItemLabels(file, itemMin, itemMax, useListView);
+            // UI tests: where each file is (UIProbe; the tree and grid have no other names)
+            UIProbe::rect("project.file." + file.name, itemMin.x, itemMin.y, itemMax.x, itemMax.y);
 
             // --- Selection behavior (unified) ------------------------------
             if (itemPressed && !doubleClickedItem){
@@ -1662,6 +2010,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     selectedFiles.insert(file.name);
                     lastSelectedFile = file.name;
                 }
+                updateInspectedAsset(file.name);
             }
 
             // --- Right-click context menu on the item rect -----------------
@@ -1715,6 +2064,30 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     ImGui::Separator();
                 }
 
+                // textures: cook again (S14 R23); the selected ones, or every texture
+                if (file.type == FileType::IMAGE && TextureCookQueue::get().getProject() == project) {
+                    const bool reimport = ImGui::MenuItem(ICON_FA_ARROWS_ROTATE " Reimport");
+                    uiBuilding.contextMenu.push_back({"Reimport", lastItemRect()});
+                    ImGui::SetItemTooltip("Cooks the selected textures again for the desktop (the cache answers when nothing changed)");
+                    const bool reimportAll = ImGui::MenuItem(ICON_FA_ARROWS_ROTATE " Reimport All Textures");
+                    uiBuilding.contextMenu.push_back({"Reimport All Textures", lastItemRect()});
+                    if (reimport) {
+                        std::vector<fs::path> chosen = getSelectedFiles();
+                        if (std::find(chosen.begin(), chosen.end(), currentPath / file.name) == chosen.end()) chosen = {currentPath / file.name};
+                        for (const fs::path& path : chosen) {
+                            if (!project->isInsideAssetsPath(path)) continue;
+                            const std::string assetPath = project->normalizeToAssetsRelative(path).generic_string();
+                            TextureCookQueue::get().invalidate(assetPath);
+                            TextureCookQueue::get().request(assetPath, TextureFamily::Desktop, TextureCookQueue::Selected);
+                        }
+                    }
+                    if (reimportAll) {
+                        TextureCookQueue::get().invalidateAll();
+                        TextureCookQueue::get().requestAll({TextureFamily::Desktop});
+                    }
+                    ImGui::Separator();
+                }
+
                 if (!file.isDirectory && Util::isImageFile(file.name) && fs::path(file.name).extension() != ".svg"){
                     // Texture synthesis: this image as the example, or its recipe restored
                     const fs::path imagePath = currentPath / file.name;
@@ -1741,6 +2114,82 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         }
                         ImGui::SetItemTooltip("Reopen the settings this texture was synthesized with (Regenerate reproduces it)");
                     }
+                    drawSpriteNormalsMenuItems(file, imagePath);
+                    ImGui::Separator();
+                }
+
+                // Vertex Animation: bake a model or a clip, import a Houdini / OpenVAT export, open a
+                // .vat's recipe (the baker window's hook; hidden until it is set)
+                if (!file.isDirectory && vatAppHooks().openBaker){
+                    const fs::path filePath = currentPath / file.name;
+                    bool shown = false;
+                    if (file.type == FileType::VERTEX_ANIMATION){
+                        const bool open = ImGui::MenuItem(ICON_FA_GEARS " Open in Vertex Animation Baker");
+                        uiBuilding.contextMenu.push_back({"Open in Vertex Animation Baker", lastItemRect()});
+                        ImGui::SetItemTooltip("The baker with this animation's recipe (Rebake from there)");
+                        if (open) {
+                            vatAppHooks().openBaker(project, filePath, VatBakerSource::VatAsset);
+                        }
+                        shown = true;
+                    }
+                    if (vat::isVatBakeSource(filePath)){
+                        const bool bake = ImGui::MenuItem(ICON_FA_PEOPLE_GROUP " Bake Vertex Animation...");
+                        uiBuilding.contextMenu.push_back({"Bake Vertex Animation...", lastItemRect()});
+                        ImGui::SetItemTooltip("Bake its animation into a Vertex Animation (.vat): crowds that play on the GPU");
+                        if (bake) {
+                            vatAppHooks().openBaker(project, filePath, VatBakerSource::Bake);
+                        }
+                        shown = true;
+                    }
+                    if (vat::isVatImportSource(filePath)){
+                        const bool import = ImGui::MenuItem(ICON_FA_FILE_IMPORT " Import as Vertex Animation...");
+                        uiBuilding.contextMenu.push_back({"Import as Vertex Animation...", lastItemRect()});
+                        ImGui::SetItemTooltip("Re-pack a Houdini (SideFX Labs VAT 3) or OpenVAT export into a .vat");
+                        if (import) {
+                            vatAppHooks().openBaker(project, filePath, VatBakerSource::Import);
+                        }
+                        shown = true;
+                    }
+                    if (shown) ImGui::Separator();
+                }
+
+                // a generic .anim as a humanoid clip any humanoid plays (anim-retarget 9; a model's
+                // clips: from its Inspector or a player entry)
+                if (!file.isDirectory && file.type == FileType::ANIMATION_CLIP){
+                    const bool convert = ImGui::MenuItem(ICON_FA_PERSON " Convert to Humanoid Clip...");
+                    uiBuilding.contextMenu.push_back({"Convert to Humanoid Clip...", lastItemRect()});
+                    ImGui::SetItemTooltip("A humanoid clip (rotations relative to the neutral pose) that plays on any humanoid character");
+                    if (convert) {
+                        HumanoidConvertDialog::open(project, FileUtils::pathToGenericUtf8((currentPath / file.name).lexically_normal()));
+                    }
+                    ImGui::Separator();
+                }
+
+                // a colour LUT: what its double-click does, for the open scene (S13)
+                if (file.type == FileType::COLOR_LUT) {
+                    const bool assign = ImGui::MenuItem(ICON_FA_PALETTE " Use as Color Grading LUT");
+                    uiBuilding.contextMenu.push_back({"Use as Color Grading LUT", lastItemRect()});
+                    ImGui::SetItemTooltip("The open scene's Post-processing > Color Grading > LUT Texture (one undo step)");
+                    if (assign) {
+                        assignColorLut(currentPath / file.name);
+                    }
+                    ImGui::Separator();
+                }
+
+                if (!file.isDirectory) {
+                    const Guid guid = project->getAssetDatabase().getAssetGuid(currentPath / file.name);
+                    const bool copyGuid = ImGui::MenuItem(ICON_FA_FINGERPRINT " Copy GUID", nullptr, false, !guid.isNull());
+                    uiBuilding.contextMenu.push_back({"Copy GUID", lastItemRect()});
+                    if (copyGuid) {
+                        ImGui::SetClipboardText(guid.str().c_str());
+                    }
+                    const bool findReferences = ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS " Find References", nullptr, false, !guid.isNull());
+                    uiBuilding.contextMenu.push_back({"Find References", lastItemRect()});
+                    if (findReferences) {
+                        if (AssetReferencesWindow* references = Backend::getApp().getAssetReferencesWindow()) {
+                            references->findReferences((currentPath / file.name).string());
+                        }
+                    }
                     ImGui::Separator();
                 }
 
@@ -1760,8 +2209,14 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
                 ImGui::Separator();
 
+                renderLabelsMenu();
+                if (ImGui::MenuItem(ICON_FA_BOOKMARK " Add to Bookmarks")) addSelectionToBookmarks();
+                ImGui::Separator();
                 if (ImGui::MenuItem(ICON_FA_TRASH " Delete")) showDeleteConfirmation = true;
-                if (ImGui::MenuItem(ICON_FA_I_CURSOR " Rename", "F2")){
+                const std::string renameKeys = CommandCatalog::editor().menuShortcutText("project.rename");
+                const bool rename = ImGui::MenuItem(ICON_FA_I_CURSOR " Rename", renameKeys.empty() ? nullptr : renameKeys.c_str());
+                uiBuilding.contextMenu.push_back({"Rename", lastItemRect()});
+                if (rename){
                     startRename(file.name);
                     ImGui::CloseCurrentPopup();
                 }
@@ -1770,6 +2225,26 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
                 if (ImGui::MenuItem(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE " Open in File Manager")){
                     openInFileManager(file.isDirectory ? currentPath / file.name : currentPath);
+                }
+
+                // S29: Commit..., Revert..., Lock, Unlock, Show History, Diff Against Baseline, Refresh
+                {
+                    std::vector<fs::path> selection = getSelectedFiles();
+                    if (selection.empty()) selection.push_back(currentPath / file.name);
+                    Backend::getApp().getVcsUi()->drawContextMenu(selection);
+                }
+
+                // the project's editor scripts: Assets/... items (S23)
+                {
+                    EditorMenuRunContext scriptContext;
+                    scriptContext.sceneId = project->getSelectedSceneId();
+                    for (const fs::path& selected : getSelectedFiles()) {
+                        scriptContext.assets.push_back(selected.lexically_relative(project->getProjectPath()).generic_string());
+                    }
+                    if (scriptContext.assets.empty()) {
+                        scriptContext.assets.push_back((currentPath / file.name).lexically_relative(project->getProjectPath()).generic_string());
+                    }
+                    EditorScripts::get().drawContextItems("assets", {}, scriptContext);
                 }
 
                 ImGui::EndPopup();
@@ -1791,6 +2266,11 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
         }
 
         ImGui::EndTable();
+    }
+    if (!searchText.empty() && searchMoreResults > 0) {
+        ImGui::TextDisabled("%zu more results: narrow the search", searchMoreResults);
+    } else if (!searchText.empty() && files.empty() && searchError.empty()) {
+        ImGui::TextDisabled("Nothing matches the search.");
     }
 
     ImGui::PopStyleVar();
@@ -1821,6 +2301,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
     // --- Clear selection when clicking empty space -------------------------
     if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered() && !clickedInFile){
         selectedFiles.clear();
+        updateInspectedAsset("");
     }
 
     // --- Draw marquee rectangle --------------------------------------------
@@ -1857,9 +2338,20 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
         ImGui::Text("Are you sure you want to delete the following items?");
         ImGui::Separator();
         int fileCount = 0;
+        // a Vertex Animation's .vat and .vat.glb go together: both are listed (one question)
+        std::vector<fs::path> listed;
         for (const auto& fileName : selectedFiles){
+            listed.push_back(currentPath / fileName);
+        }
+        const std::vector<fs::path> withPairs = vat::withPairs(listed);
+        for (size_t i = 0; i < withPairs.size(); i++){
             if (fileCount < 10){
-                ImGui::BulletText("%s", fileName.c_str());
+                const std::string name = withPairs[i].lexically_relative(currentPath).generic_string();
+                if (i < listed.size()){
+                    ImGui::BulletText("%s", name.c_str());
+                }else{
+                    ImGui::BulletText("%s (its Vertex Animation pair)", name.c_str());
+                }
             }
             fileCount++;
         }
@@ -1882,6 +2374,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 codeEditor->closeFile(filePath.string());
                 imageViewerWindow->closeFile(filePath);
             }
+            pathsToDelete = vat::withPairs(pathsToDelete);
 
             project->getProjectCommandHistory()->addCommand(new DeleteFileCmd(project, pathsToDelete, project->getProjectPath()));
             selectedFiles.clear();
@@ -2006,6 +2499,15 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
     const ImVec2 nodePos = ImGui::GetCursorScreenPos();
     bool nodeOpen = ImGui::TreeNodeEx("##node", rootFlags, "%s%s", iconGap.c_str(), rootDisplayName.c_str());
     const bool toggledOpen = ImGui::IsItemToggledOpen();
+    if (uiBuilding.tree.size() < 200) {
+        UiTreeNode node;
+        node.path = project->normalizeToProjectRelative(rootPath).generic_string();
+        node.rect = lastItemRect();
+        node.arrowX = nodePos.x + ImGui::GetStyle().FramePadding.x + ImGui::GetFontSize() * 0.5f;
+        node.arrowY = node.rect.y + node.rect.h * 0.5f;
+        node.open = nodeOpen;
+        uiBuilding.tree.push_back(node);
+    }
 
     ImTextureID folderTex = Backend::getImGuiTexture(folderIcon.getRender());
     if (folderTex != ImTextureID{}) {
@@ -2020,6 +2522,7 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
         if (rootPath != currentPath || !searchText.empty()) {
             searchText.clear();
             searchBuffer[0] = '\0';
+            searchReturnPath.clear();
             scanDirectory(rootPath);
             selectedFiles.clear();
         }
@@ -2027,7 +2530,7 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
 
     // Handle drag and drop target
     if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+        if (ImGui::AcceptDragDropPayload("resource_files")) {
             handleInternalDragAndDrop(rootPath);
         }
         ImGui::EndDragDropTarget();
@@ -2064,13 +2567,6 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
 
     requestSort = true;
 
-    // Update last write time
-    ec.clear();
-    lastWriteTime = fs::last_write_time(currentPath, ec);
-    if (ec) {
-        lastWriteTime = {};
-    }
-
     files.clear();
 
     // A search lists matches from this folder and everything below it instead.
@@ -2092,8 +2588,8 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
             continue;
         }
 
-        // Skip project.yaml file
-        if (entry.path().filename() == "project.yaml") {
+        // Skip project.yaml file, and the assets' .meta sidecars (S04: they move with their assets)
+        if (entry.path().filename() == "project.yaml" || AssetTypes::isMetaFile(entry.path())) {
             continue;
         }
 
@@ -2111,12 +2607,17 @@ void editor::ProjectWindow::rebuildFileIndex() {
 }
 
 editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry& entry, const std::string& name) {
+    std::error_code entryEc;
+    const bool isDirectory = entry.is_directory(entryEc) && !entryEc;
+    return makeFileEntry(entry.path(), name, isDirectory);
+}
+
+editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, const std::string& name, bool isDirectory) {
     FileEntry fileEntry;
     fileEntry.name = name;
-    std::error_code entryEc;
-    fileEntry.isDirectory = entry.is_directory(entryEc) && !entryEc;
+    fileEntry.isDirectory = isDirectory;
 
-    const std::string fileName = entry.path().filename().string();
+    const std::string fileName = path.filename().string();
     fileEntry.displayName = BidiText::toVisual(fileName);
     std::string baseName = fileName;
     if (!fileEntry.isDirectory){
@@ -2129,9 +2630,11 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
     fileEntry.hasThumbnail = false;
 
     if (!fileEntry.isDirectory) {
-        fileEntry.extension = entry.path().extension().string();
+        fileEntry.extension = path.extension().string();
         if (Util::isImageFile(fileEntry.extension)){
             fileEntry.type = FileType::IMAGE;
+            // a Sprite Normal Map output (its recipe; read again only when the file changed)
+            updateSpriteNormalsBadge(fileEntry, path);
         }else if (Util::isSceneFile(fileEntry.extension)){
             fileEntry.type = FileType::SCENE;
             fileEntry.icon = sceneIcon.getRender();
@@ -2142,6 +2645,14 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
             fileEntry.icon = entityIcon.getRender();
         }else if (Util::isModelFile(fileEntry.extension)){
             fileEntry.type = FileType::MODEL;
+            // a Vertex Animation's mesh (its .vat beside it)
+            fileEntry.generated = !vat::existingPairOf(path).empty() && vat::isVatMeshFile(path.generic_string());
+        }else if (Util::isVertexAnimationFile(fileEntry.extension)){
+            fileEntry.type = FileType::VERTEX_ANIMATION;
+            fileEntry.icon = vertexAnimationIcon.getRender();
+        }else if (PhysicsMaterialAssets::isPhysicsMaterialFile(fileEntry.extension)){
+            fileEntry.type = FileType::PHYSICS_MATERIAL;
+            fileEntry.icon = physicsMaterialIcon.getRender();
         }else if (Util::isLuaFile(fileEntry.extension)){
             fileEntry.type = FileType::LUA;
             fileEntry.icon = luaIcon.getRender();
@@ -2163,48 +2674,35 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
         }else if (Util::isCssFile(fileEntry.extension)){
             fileEntry.type = FileType::CSS;
             fileEntry.icon = cssIcon.getRender();
+        }else if (Util::isColorLutFile(fileEntry.extension)){
+            fileEntry.type = FileType::COLOR_LUT;
+            fileEntry.icon = lutIcon.getRender();
+        }else if (Util::isPoseAnimationFile(fileEntry.extension)){
+            fileEntry.type = FileType::POSE_ANIMATION;
+            fileEntry.icon = poseAnimationIcon.getRender();
+        }else if (Util::isAnimationClipFile(fileEntry.extension)){
+            fileEntry.type = FileType::ANIMATION_CLIP;
+            fileEntry.icon = animationClipIcon.getRender();
+        }else if (fileEntry.extension == ".humanoid"){
+            fileEntry.type = FileType::HUMANOID;
+        }else if (Util::isAnimatorAssetFile(fileEntry.extension)){
+            fileEntry.type = FileType::ANIMATOR_ASSET;
+            fileEntry.icon = Util::isAnimatorControllerFile(fileEntry.extension) ? animatorControllerIcon.getRender()
+                           : Util::isAvatarMaskFile(fileEntry.extension) ? avatarMaskIcon.getRender() : montageIcon.getRender();
         }
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
-            fileEntry.type == FileType::PREFAB) {
-            queueThumbnailGeneration(entry.path(), fileEntry.type);
+            fileEntry.type == FileType::PREFAB || fileEntry.type == FileType::POSE_ANIMATION) {
+            queueThumbnailGeneration(path, fileEntry.type);
         }
+        // its asset labels (S25)
+        const Guid guid = project->getAssetDatabase().getAssetGuid(project->normalizeToProjectRelative(path));
+        if (!guid.isNull()) fileEntry.labels = project->getAssetLabels().labelsOf(guid);
     } else {
         fileEntry.extension = "";
     }
 
     return fileEntry;
-}
-
-void editor::ProjectWindow::collectSearchResults() {
-    // Case-insensitive substring match on the file name, like Unity's search
-    // box. Entry names are paths relative to currentPath, so every
-    // currentPath / name use (open, drag, delete, rename) keeps working.
-    auto lower = [](std::string s) {
-        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return s;
-    };
-    const std::string needle = lower(searchText);
-    constexpr size_t MAX_SEARCH_RESULTS = 2000;
-
-    std::error_code ec;
-    fs::recursive_directory_iterator it(currentPath, fs::directory_options::skip_permission_denied, ec);
-    fs::recursive_directory_iterator end;
-    while (!ec && it != end && files.size() < MAX_SEARCH_RESULTS) {
-        const fs::directory_entry entry = *it;
-        const std::string fileName = entry.path().filename().string();
-        std::error_code entryEc;
-        const bool isDir = entry.is_directory(entryEc) && !entryEc;
-        if (fileName.empty() || fileName[0] == '.') {
-            if (isDir) it.disable_recursion_pending();
-            it.increment(ec);
-            continue;
-        }
-        if (fileName != "project.yaml" && lower(fileName).find(needle) != std::string::npos) {
-            files.push_back(makeFileEntry(entry, entry.path().lexically_relative(currentPath).generic_string()));
-        }
-        it.increment(ec);
-    }
 }
 
 void editor::ProjectWindow::sortWithSortSpecs(ImGuiTableSortSpecs* sortSpecs, std::vector<FileEntry>& files) {
@@ -2453,8 +2951,15 @@ void editor::ProjectWindow::handleRename(){
                     fs::path oldPath = currentPath / fileBeingRenamed;
                     fs::path newPath = currentPath / newName;
 
-                    // Check if the target file already exists
-                    if (fs::exists(newPath)) {
+                    // Check if the target file already exists (a Vertex Animation's other file too:
+                    // the .vat and its .vat.glb are renamed together)
+                    fs::path pairOld, pairNew;
+                    const bool pairTaken = vat::renamedPair(oldPath, newPath, pairOld, pairNew) && fs::exists(pairNew);
+                    // a Vertex Animation's file keeps its extension (as move_asset refuses)
+                    renameErrorText = vat::pairRenameRefusal(oldPath, newPath, fileBeingRenamed);
+                    if (!renameErrorText.empty()) {
+                        ImGui::OpenPopup("Rename Error");
+                    } else if (fs::exists(newPath) || pairTaken) {
                         ImGui::OpenPopup("File Already Exists");
                     } else {
                         const bool newLuaScript = !newLuaScriptFile.empty() && fileBeingRenamed == newLuaScriptFile;
@@ -2473,6 +2978,7 @@ void editor::ProjectWindow::handleRename(){
                         ImGui::CloseCurrentPopup();
                     }
                 } catch (const fs::filesystem_error& e) {
+                    renameErrorText.clear();
                     ImGui::OpenPopup("Rename Error");
                 }
             }
@@ -2511,7 +3017,7 @@ void editor::ProjectWindow::handleRename(){
 
         // Error popup for rename failure
         if (ImGui::BeginPopupModal("Rename Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Failed to rename the file.");
+            ImGui::TextUnformatted(renameErrorText.empty() ? "Failed to rename the file." : renameErrorText.c_str());
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
@@ -2600,13 +3106,16 @@ void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& 
     scanDirectory(currentPath);
 }
 
-// Converting a video takes seconds to minutes: a worker runs FFmpeg (htmlui/VideoImporter, as
-// import_files does) and reports each file in the Console; the folder is listed again on the
-// main thread when a file is written. An existing output is not replaced.
+// Converting a video takes seconds to minutes: a job of the process channel runs FFmpeg
+// (htmlui/VideoImporter, as import_files does) and reports each file in the Console; the
+// folder is listed again on the main thread when a file is written. An existing output is not
+// replaced. The job captures no window, so its handle is not kept.
 void editor::ProjectWindow::importVideos(const std::vector<fs::path>& videos, const fs::path& targetDir) {
     for (const fs::path& video : videos)
-        Out::info("Converting %s to AV1 + Opus WebM with FFmpeg...", video.filename().u8string().c_str());
-    std::thread([videos, targetDir]() {
+        Out::info("Converting %s to AV1 + Opus WebM with FFmpeg...", editor::FileUtils::pathToUtf8(video.filename()).c_str());
+    jobs::SubmitOptions options;
+    options.name = "ffmpeg-import";
+    jobs::system().processChannel().submit([videos, targetDir]() {
         for (const fs::path& video : videos) {
             const htmlui::VideoImportResult result = htmlui::VideoImporter::importFile(video, targetDir, false);
             if (result.ok) {
@@ -2628,7 +3137,7 @@ void editor::ProjectWindow::importVideos(const std::vector<fs::path>& videos, co
                 });
             }
         }
-    }).detach();
+    }, options);
 }
 
 void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, FileType type, bool forceRegenerate) {
@@ -2690,6 +3199,11 @@ void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, F
             return;
         }
         thumbFile.generation = thumbnailGeneration;
+        if (type == FileType::POSE_ANIMATION) {
+            // the main thread renders these too (processPoseThumbnails)
+            poseThumbnailQueue.push(thumbFile);
+            return;
+        }
         if (type == FileType::PREFAB) {
             // the main thread renders these (processPrefabThumbnails)
             prefabThumbnailStamps[requestKey] = stamp;
@@ -2698,20 +3212,31 @@ void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, F
         }
         thumbnailQueue.push(thumbFile);
     }
-    thumbnailCondition.notify_one();
+    notifyThumbnailWork();
 }
 
-void editor::ProjectWindow::thumbnailWorker() {
-    // warm shared preview resources in background: rendering the material preview
-    // scene once generates the IBL environment maps, which are pooled by texture id
-    // (TexturePool), so the first material preview in Properties opens without lag
-    {
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (!stopThumbnailThread && !Engine::isViewLoaded() && std::chrono::steady_clock::now() < deadline) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
+void editor::ProjectWindow::scheduleThumbnailStep() {
+    if (!thumbnailStepScheduled.exchange(true))
+        thumbnails.push([this]() { thumbnailStep(); });
+}
+
+// One step of the thumbnail strand (a Background SerialQueue): one request, then the next
+// step is scheduled while work is left. A step never waits: a request that must wait for the
+// main thread (a pending material or model render) is picked up by the step the main thread
+// schedules when it clears that state.
+void editor::ProjectWindow::thumbnailStep() {
+    thumbnailStepScheduled.store(false);
+    if (stopThumbnailThread) {
+        return;
+    }
+
+    // warm shared preview resources once: rendering the material preview scene once
+    // generates the IBL environment maps, which are pooled by texture id (TexturePool), so
+    // the first material preview in Properties opens without lag
+    if (!thumbnailWarmupDone && Engine::isViewLoaded()) {
+        thumbnailWarmupDone = true;
         bool runWarmup = false;
-        if (!stopThumbnailThread && Engine::isViewLoaded()) {
+        {
             std::lock_guard<std::mutex> lock(thumbnailMutex);
             if (!thumbnailWorkSuspended) {
                 thumbnailWorkerBusy = true;
@@ -2735,22 +3260,13 @@ void editor::ProjectWindow::thumbnailWorker() {
         }
     }
 
-    while (!stopThumbnailThread) {
+    {
         ThumbnailRequest thumbFile;
         {
             std::unique_lock<std::mutex> lock(thumbnailMutex);
-            // Wait until there is work or the thread is stopped
-            thumbnailCondition.wait(lock, [this]() {
-                return (!thumbnailWorkSuspended && !thumbnailQueue.empty() &&
-                        !hasPendingMaterialRender && !hasPendingModelRender) || stopThumbnailThread;
-            });
-
-            // If we're stopping, exit
-            if (stopThumbnailThread) {
+            if (thumbnailWorkSuspended || thumbnailQueue.empty() || hasPendingMaterialRender || hasPendingModelRender) {
                 return;
             }
-
-            // Get the next file path
             thumbFile = thumbnailQueue.front();
             thumbnailQueue.pop();
             thumbnailWorkerBusy = true;
@@ -2777,7 +3293,7 @@ void editor::ProjectWindow::thumbnailWorker() {
             }
         } else if (thumbFile.type == FileType::MATERIAL) {
             try {
-                if (YAML::Node materialNode = YAML::LoadFile(thumbFile.path.string())) {
+                if (YAML::Node materialNode = DocumentFiles::read(thumbFile.path, DocumentKind::Material).root) {
                     Material material = Stream::decodeMaterial(materialNode);
                     materialRender.applyMaterial(material);
 
@@ -2893,6 +3409,7 @@ void editor::ProjectWindow::thumbnailWorker() {
         }
         thumbnailCondition.notify_all();
     }
+    scheduleThumbnailStep();
 }
 
 ImTextureID editor::ProjectWindow::getThumbnailTexture(const std::string& thumbnailPath, int& outWidth, int& outHeight) {
@@ -3011,6 +3528,16 @@ void editor::ProjectWindow::saveMaterialFile(const fs::path& directory, const ch
     scanDirectory(currentPath);
 }
 
+// every GameObject of the encoded prefabs (the dropped scene objects): their clip previews restore
+// before the prefab is made of them
+static std::vector<Entity> prefabEntities(const std::vector<std::pair<fs::path, YAML::Node>>& prefabs) {
+    std::vector<Entity> entities;
+    for (const auto& prefab : prefabs) {
+        editor::ProjectUtils::collectEntities(prefab.second, entities);
+    }
+    return entities;
+}
+
 void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char* entityContent, size_t contentLen) {
     std::string yamlString;
     if (contentLen >= sizeof(EntityPayload)) {
@@ -3115,6 +3642,9 @@ void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char
         return;
     }
 
+    // prefabs of a posed character keep its rest bones; clip previews of the GameObjects restore
+    PoseEditSession::suspendActive();
+    PoseEditSession::suspendActiveFor(sceneId, prefabEntities(prefabs));
     CreatePrefabCmd* createPrefabCmd = new CreatePrefabCmd(project, sceneId, prefabs);
     CommandHandle::get(sceneId)->addCommandNoMerge(createPrefabCmd);
 
@@ -3141,6 +3671,8 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
     const float buttonWidth = Theme::dpi(130.0f);
     bool done = false;
     if (ImGui::Button("Original Prefab", ImVec2(buttonWidth, 0))) {
+        PoseEditSession::suspendActive();
+        PoseEditSession::suspendActiveFor(pendingPrefabDrop.sceneId, prefabEntities(pendingPrefabDrop.prefabs));
         CommandHandle::get(pendingPrefabDrop.sceneId)->addCommandNoMerge(new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, pendingPrefabDrop.prefabs));
         done = true;
     }
@@ -3153,6 +3685,8 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
                 prefabs[i].first = pendingPrefabDrop.variantPaths[i];
             }
         }
+        PoseEditSession::suspendActive();
+        PoseEditSession::suspendActiveFor(pendingPrefabDrop.sceneId, prefabEntities(prefabs));
         CreatePrefabCmd* command = new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, prefabs);
         for (size_t i = 0; i < prefabs.size(); i++) {
             command->setVariant(i, i < pendingPrefabDrop.instanceRoots.size() && pendingPrefabDrop.instanceRoots[i]);
@@ -3177,46 +3711,71 @@ bool editor::ProjectWindow::isVariantFile(const fs::path& path) {
     return Util::isPrefabFile(path.string()) && !project->getPrefabFileBase(path).empty();
 }
 
+// Never throws: it runs at every project open, also after a failed one (a first project whose
+// project.yaml does not parse leaves no project path), so a missing project or an unreadable
+// folder only skips the cleanup.
 void editor::ProjectWindow::cleanupThumbnails() {
+    const fs::path projectPath = project->getProjectPath();
+    std::error_code ec;
+    if (projectPath.empty() || !fs::is_directory(projectPath, ec)) {
+        return;
+    }
+    const fs::directory_options options = fs::directory_options::skip_permission_denied;
+
     // 1. Collect all valid thumbnail paths of existing files
     std::unordered_set<std::string> validThumbPaths;
 
     // Recursively scan project directory for files that have thumbnails
-    for (auto& p : fs::recursive_directory_iterator(project->getProjectPath())) {
-        if (!fs::is_regular_file(p.status()))
+    std::error_code walk;
+    for (fs::recursive_directory_iterator it(projectPath, options, walk), end; !walk && it != end; it.increment(walk)) {
+        std::error_code entry;
+        if (!it->is_regular_file(entry))
             continue;
 
-        std::string ext = p.path().extension().string();
-        if (Util::isImageFile(ext) || Util::isMaterialFile(ext) || Util::isModelFile(ext)) {
-            fs::path thumbnailPath = project->getThumbnailPath(p.path());
+        std::string ext = it->path().extension().string();
+        if (Util::isImageFile(ext) || Util::isMaterialFile(ext) || Util::isModelFile(ext) || Util::isPrefabFile(ext)) {
+            fs::path thumbnailPath = project->getThumbnailPath(it->path());
             validThumbPaths.insert(thumbnailPath.string());
+            // a prefab's thumbnail keeps its dependency stamp beside it
+            validThumbPaths.insert(prefabStampPath(thumbnailPath).string());
         }
     }
+    // a scan that stopped part way knows only some of the files: removing would drop valid thumbnails
+    if (walk) {
+        return;
+    }
 
-    // 2. Walk .jasperengine/thumbs/ and remove any orphaned thumbnails
+    // 2. Walk .jasperengine/thumbs/ and remove any orphaned thumbnails. Never through a link: a
+    // thumbnails folder resolving outside the project is not swept, and the removals go beneath
+    // the project (util/SafeWrite.h)
     fs::path thumbsDir = project->getThumbsDir();
-    if (!fs::exists(thumbsDir)) return;
+    if (!fs::is_directory(thumbsDir, ec)) return;
+    if (!safewrite::isInsideResolved(thumbsDir, project->getProjectPath())) return;
+    safewrite::Scope removalScope(project->getProjectPath());
 
-    // Recursively iterate through the thumbnails directory to handle subdirectories
-    for (auto& p : fs::recursive_directory_iterator(thumbsDir)) {
-        if (!fs::is_regular_file(p.status())) continue;
-
-        std::string thumbnailPath = p.path().string();
-        if (validThumbPaths.find(thumbnailPath) == validThumbPaths.end()) {
+    // Recursively iterate through the thumbnails directory to handle subdirectories, then remove
+    // what it found (never while iterating)
+    std::vector<fs::path> orphans;
+    std::vector<fs::path> folders;
+    for (fs::recursive_directory_iterator it(thumbsDir, options, walk), end; !walk && it != end; it.increment(walk)) {
+        std::error_code entry;
+        if (it->is_directory(entry)) {
+            folders.push_back(it->path());
+        } else if (it->is_regular_file(entry) && validThumbPaths.find(it->path().string()) == validThumbPaths.end()) {
             // This thumbnail file doesn't correspond to any existing image/material file
-            std::error_code ec;
-            fs::remove(p, ec);
-
-            // Also remove from the loaded thumbnails cache
-            evictThumbnailTexture(thumbnailPath);
+            orphans.push_back(it->path());
         }
     }
+    for (const fs::path& orphan : orphans) {
+        FileUtils::removePath(orphan, ec);
+        // Also remove from the loaded thumbnails cache
+        evictThumbnailTexture(orphan.string());
+    }
 
-    // 3. Remove empty directories in the thumbnails folder
-    for (auto& p : fs::recursive_directory_iterator(thumbsDir)) {
-        if (fs::is_directory(p.status()) && fs::is_empty(p.path())) {
-            std::error_code ec;
-            fs::remove(p, ec);
+    // 3. Remove empty directories in the thumbnails folder, the deepest first
+    for (auto it = folders.rbegin(); it != folders.rend(); ++it) {
+        if (fs::is_empty(*it, ec) && !ec) {
+            FileUtils::removePath(*it, ec);
         }
     }
 }
@@ -3225,15 +3784,147 @@ void editor::ProjectWindow::refreshCurrentDirectory() {
     scanDirectory(currentPath);
 }
 
+void editor::ProjectWindow::onFilesChanged(std::span<const FileChange> changes) {
+    const fs::path current = currentPath.lexically_normal();
+    auto inCurrent = [&](const fs::path& path) {
+        if (path.empty()) return false;
+        // a search lists everything under the folder
+        if (!searchText.empty()) {
+            std::string rel;
+            return watch::relativeTo(current, path, rel) && !rel.empty();
+        }
+        return path.lexically_normal().parent_path() == current;
+    };
+    bool rescan = false, folders = false, documents = false, prefabs = false;
+    std::vector<fs::path> modified;
+    for (const FileChange& change : changes) {
+        if (change.kind == FileChangeKind::Rescan) {
+            rescan = folders = documents = true;
+            continue;
+        }
+        const bool listing = change.kind != FileChangeKind::Modified;
+        if (listing && (inCurrent(change.path) || inCurrent(change.oldPath))) rescan = true;
+        if (listing && change.directory) folders = true;
+        // the open folder itself went (renamed or removed): scanDirectory falls back
+        std::string rel;
+        if (listing && (watch::relativeTo(change.path, current, rel) || watch::relativeTo(change.oldPath, current, rel))) rescan = true;
+        const std::string name = watch::pathToUtf8(change.path);
+        if (listing && (Util::isSceneFile(name) || Util::isPrefabFile(name))) documents = true;
+        if (change.kind == FileChangeKind::Modified && !change.directory) {
+            modified.push_back(change.path);
+            if (Util::isPrefabFile(name)) prefabs = true;
+        }
+    }
+    if (rescan) {
+        scanDirectory(currentPath);
+    } else {
+        if (folders) dirTreeGeneration++;
+        if (documents) refreshProjectFiles();
+    }
+    for (const fs::path& path : modified) notifyResourceFileChanged(path);
+    // a prefab's thumbnail also shows what it nests
+    if (prefabs || !modified.empty()) checkPrefabThumbnailStamps();
+}
+
+editor::ProjectWindow::UiRect editor::ProjectWindow::lastItemRect() {
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImVec2 max = ImGui::GetItemRectMax();
+    return {min.x, min.y, max.x - min.x, max.y - min.y};
+}
+
+void editor::ProjectWindow::updateSpriteNormalsBadge(FileEntry& file, const fs::path& path) {
+    const spritenormalsentry::RecipeHead head = spritenormalsentry::recipeHead(project->getProjectPath(), path);
+    // re-evaluated from scratch: a recipe gone (the file replaced) leaves no badge behind
+    file.generated = false;
+    file.generatedBy.clear();
+    file.generatedStale = false;
+    if (!head.generated) return;
+    file.generated = true;
+    file.generatedBy = spritenormalsentry::generatedText(head);
+    if (SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active()) {
+        // a generated map the watcher has not indexed (copied in, a VCS update) while it rests
+        // on a project without one: it walks the project again (once per path)
+        watcher->noticeGenerated(path);
+        if (watcher->isStale(path)) {
+            file.generatedStale = true;
+            file.generatedBy += "\n" + spritenormalsentry::fileName(head.source) + " changed since: right-click > Regenerate Normal Map";
+        } else if (watcher->sourceMissing(path)) {
+            file.generatedStale = true;
+            file.generatedBy += "\nThe source " + spritenormalsentry::fileName(head.source) + " is missing";
+        }
+    }
+}
+
+void editor::ProjectWindow::drawSpriteNormalsMenuItems(const FileEntry& file, const fs::path& imagePath) {
+    // Sprite Normal Map: one image, or every selected image (batch)
+    std::vector<fs::path> images;
+    for (const std::string& name : selectedFiles) {
+        const fs::path path = currentPath / name;
+        if (Util::isImageFile(name) && spritenormalsentry::lowerExtension(path) != ".svg" && !fs::is_directory(path)) images.push_back(path);
+    }
+    std::sort(images.begin(), images.end());
+    if (images.size() <= 1 || std::find(images.begin(), images.end(), imagePath) == images.end()) images = {imagePath};
+    if (images.size() > 1) {
+        if (ImGui::MenuItem((std::string(ICON_FA_WAND_MAGIC_SPARKLES " Generate Normal Maps (") + std::to_string(images.size()) + ")...").c_str())) {
+            editor::getEditorHost().openSpriteNormals(images, false);
+        }
+        UIProbe::item("project.menu.generateNormalMaps");
+        ImGui::SetItemTooltip("One normal map per selected image, same settings, saved as one undo step");
+    } else {
+        if (ImGui::MenuItem(ICON_FA_WAND_MAGIC_SPARKLES " Generate Normal Map...")) {
+            editor::getEditorHost().openSpriteNormals(images, false);
+        }
+        UIProbe::item("project.menu.generateNormalMap");
+        ImGui::SetItemTooltip("Sprite Normal Map with this image: preview it lit, then save %s_normal.png", jasperengine::editor::FileUtils::pathToUtf8(imagePath.stem()).c_str());
+    }
+    // a generated output (its recipe), or a source with its generated map beside it
+    const fs::path root = project->getProjectPath();
+    const spritenormalsentry::RecipeHead head = spritenormalsentry::recipeHead(root, imagePath);
+    const fs::path output = head.generated ? imagePath : spritenormalsentry::pairedOutput(root, imagePath);
+    if (head.generated) {
+        if (ImGui::MenuItem(ICON_FA_WAND_MAGIC_SPARKLES " Edit Normal Map...")) {
+            editor::getEditorHost().openSpriteNormals({imagePath}, true);
+        }
+        ImGui::SetItemTooltip("Reopen the settings this normal map was generated with");
+    }
+    if (!output.empty()) {
+        std::error_code ec;
+        const spritenormalsentry::RecipeHead outputHead = head.generated ? head : spritenormalsentry::recipeHead(root, output);
+        const bool sourceThere = fs::is_regular_file(outputHead.sourceAbsolute, ec);
+        const bool playing = project->isAnyScenePlaying();
+        if (ImGui::MenuItem(ICON_FA_ROTATE " Regenerate Normal Map", nullptr, false, sourceThere && !playing)) {
+            // on the worker; the window's tick writes it (one undo step) and refreshes this window
+            std::string error;
+            if (!Backend::getApp().getSpriteNormalsWindow()->startRegenerate(output, error)) {
+                editor::getEditorHost().registerAlert("Sprite Normal Map", "Can't regenerate " + jasperengine::editor::FileUtils::pathToUtf8(output.filename()) + ": " + error);
+            }
+        }
+        UIProbe::item("project.menu.regenerateNormalMap");
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", !sourceThere ? ("Its source " + outputHead.source + " is missing").c_str()
+                                    : playing     ? "Stop the scene first: regenerating reloads the texture the game draws"
+                                                  : "Generate it again from its source with the same settings (one undo step)");
+        }
+    }
+}
+
 void editor::ProjectWindow::show() {
+    uiBuilding = UiState();
+    // the watcher's staleness changed: the badges follow (no directory re-read)
+    if (SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active()) {
+        if (watcher->revision() != spriteNormalsRevision) {
+            spriteNormalsRevision = watcher->revision();
+            for (FileEntry& f : files) {
+                if (f.type == FileType::IMAGE) updateSpriteNormalsBadge(f, currentPath / f.name);
+            }
+        }
+    }
     if (firstOpen) {
         // Load saved settings (AppSettings is initialized by now)
         iconSize = AppSettings::getResourcesIconSize();
         currentLayout = static_cast<LayoutType>(AppSettings::getResourcesLayout());
         itemViewStyle = static_cast<ItemViewStyle>(AppSettings::getResourcesItemViewStyle());
         leftPanelWidth = AppSettings::getResourcesLeftPanelWidth();
-
-        int iconWidth, iconHeight;
 
         TextureData data;
 
@@ -3281,10 +3972,51 @@ void editor::ProjectWindow::show() {
         cssIcon.setData("editor:resources:css_icon", data);
         cssIcon.load();
 
+        data.loadTextureFromMemory(lut_icon_png, lut_icon_png_len);
+        lutIcon.setData("editor:resources:lut_icon", data);
+        lutIcon.load();
+
+        const int poseIconSize = 64;
+        makePoseAnimationIcon(poseIconSize, poseAnimationIconPixels);
+        poseAnimationIcon.setData("editor:resources:pose_animation_icon",
+            TextureData(poseIconSize, poseIconSize, static_cast<unsigned int>(poseAnimationIconPixels.size()), ColorFormat::RGBA, 4,
+                        poseAnimationIconPixels.data()));
+        poseAnimationIcon.load();
+
+        const int clipIconSize = 64;
+        makeAnimationClipIcon(clipIconSize, animationClipIconPixels);
+        animationClipIcon.setData("editor:resources:animation_clip_icon",
+            TextureData(clipIconSize, clipIconSize, static_cast<unsigned int>(animationClipIconPixels.size()), ColorFormat::RGBA, 4,
+                        animationClipIconPixels.data()));
+        animationClipIcon.load();
+
+        makeVertexAnimationIcon(clipIconSize, vertexAnimationIconPixels);
+        vertexAnimationIcon.setData("editor:resources:vertex_animation_icon",
+            TextureData(clipIconSize, clipIconSize, static_cast<unsigned int>(vertexAnimationIconPixels.size()), ColorFormat::RGBA, 4,
+                        vertexAnimationIconPixels.data()));
+        vertexAnimationIcon.load();
+        auto proceduralIcon = [](Texture& icon, std::vector<uint8_t>& pixels, const char* id, void (*make)(int, std::vector<uint8_t>&)) {
+            const int iconSize = 64;
+            make(iconSize, pixels);
+            icon.setData(id, TextureData(iconSize, iconSize, static_cast<unsigned int>(pixels.size()), ColorFormat::RGBA, 4, pixels.data()));
+            icon.load();
+        };
+        proceduralIcon(animatorControllerIcon, animatorControllerIconPixels, "editor:resources:animator_controller_icon", makeAnimatorControllerIcon);
+        proceduralIcon(avatarMaskIcon, avatarMaskIconPixels, "editor:resources:avatar_mask_icon", makeAvatarMaskIcon);
+        proceduralIcon(montageIcon, montageIconPixels, "editor:resources:montage_icon", makeMontageIcon);
+
+        makePhysicsMaterialIcon(clipIconSize, physicsMaterialIconPixels);
+        physicsMaterialIcon.setData("editor:resources:physics_material_icon",
+            TextureData(clipIconSize, clipIconSize, static_cast<unsigned int>(physicsMaterialIconPixels.size()), ColorFormat::RGBA, 4,
+                        physicsMaterialIconPixels.data()));
+        physicsMaterialIcon.load();
+
         scanDirectory(project->getProjectPath().string());
 
         firstOpen = false;
     }
+
+    processPoseThumbnails();
 
     // Process completed thumbnails
     while (true) {
@@ -3319,24 +4051,6 @@ void editor::ProjectWindow::show() {
         }
     }
 
-    timeSinceLastCheck += ImGui::GetIO().DeltaTime;
-    if (timeSinceLastCheck >= 1.0f) {
-        try {
-            auto currentWriteTime = fs::last_write_time(currentPath);
-            if (currentWriteTime != lastWriteTime) {
-                scanDirectory(currentPath);
-            } else {
-                // The project can change without touching this directory
-                refreshProjectFiles();
-                // a prefab saved in place (or one it nests) does not touch it either
-                checkPrefabThumbnailStamps();
-            }
-        } catch (const fs::filesystem_error& e) {
-            // Handle potential filesystem errors silently
-        }
-        timeSinceLastCheck = 0.0f;
-    }
-
     if (!windowOpen) {
         windowFocused = false;
         return;
@@ -3344,6 +4058,10 @@ void editor::ProjectWindow::show() {
 
     ctrlPressed = ImGui::GetIO().KeyCtrl;
     shiftPressed = ImGui::GetIO().KeyShift;
+
+    // S25: a search follows the asset index, the listing the label store
+    refreshSearchIfStale();
+    refreshEntryLabels();
 
     if (focusRequested) {
         ImGui::SetNextWindowFocus();
@@ -3371,6 +4089,7 @@ void editor::ProjectWindow::show() {
         float windowWidth = ImGui::GetWindowWidth();
         effectiveLayout = (windowWidth < Theme::dpi(layoutAutoThreshold)) ? LayoutType::GRID : LayoutType::SPLIT;
     }
+    lastLayout = effectiveLayout;
 
     // Folders first, then names (the listing has no sortable header)
     if (requestSort) {
@@ -3428,12 +4147,15 @@ void editor::ProjectWindow::show() {
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
         renderPathBreadcrumb(ImVec2(0.0f, breadcrumbHeight));
         ImGui::PopStyleVar();
+        renderSearchScopeBar();
 
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Theme::dpi(4.0f), Theme::dpi(1.0f)));
         const float bottomBarHeight = ImGui::GetFrameHeight() + Theme::dpi(4.0f);
         ImGui::PopStyleVar();
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, innerPadding);
-        ImGui::BeginChild("FileTableScrollRegion", ImVec2(0, -bottomBarHeight), ImGuiChildFlags_AlwaysUseWindowPadding);
+        // Ctrl+wheel resizes the items instead of scrolling (S25 R25)
+        ImGui::BeginChild("FileTableScrollRegion", ImVec2(0, -bottomBarHeight), ImGuiChildFlags_AlwaysUseWindowPadding,
+                          ImGui::GetIO().KeyCtrl ? ImGuiWindowFlags_NoScrollWithMouse : ImGuiWindowFlags_None);
         renderFileListing(showDirectories);
         ImGui::EndChild();
         ImGui::PopStyleVar();
@@ -3451,6 +4173,8 @@ void editor::ProjectWindow::show() {
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImGui::GetStyle().ItemSpacing);
         ImGui::BeginChild("LeftPanel", ImVec2(Theme::dpi(leftPanelWidth), 0), ImGuiChildFlags_AlwaysUseWindowPadding);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, Theme::dpi(2.0f)));
+        // Unity's Favorites: saved searches and bookmarks over the folders (S25 R26)
+        renderFavorites();
         renderDirectoryTree(project->getProjectPath());
         ImGui::PopStyleVar();
         ImGui::EndChild();
@@ -3491,7 +4215,6 @@ void editor::ProjectWindow::show() {
 
 
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
-        ImGuiDragDropFlags target_flags = ImGuiDragDropFlags_AcceptBeforeDelivery;
         if (const ImGuiPayload* payload = ImGui::GetDragDropPayload()) {
             if (payload->IsDataType("external_files")) highlightDragAndDrop();
         }
@@ -3501,36 +4224,31 @@ void editor::ProjectWindow::show() {
 
     windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
-    if (windowFocused) {
-        if (!selectedFiles.empty() && !ImGui::GetIO().WantTextInput &&
-            (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace))) {
-            // Trigger delete confirmation (handled in renderFileListing)
-            showDeleteConfirmation = true;
+    // Its keys (Ctrl+C/X/V/A, Delete, F2) are the command catalog's Project context
+    // (shortcuts/DefaultCommands.cpp), which calls copySelection, pasteClipboard and the others
+
+    renderSearchPopups();
+
+    // the Inspector shows the importer of the files selected here (S14 R22): after a click or a
+    // key in this window, or when the selection changed
+    {
+        const bool interacted = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+            (ImGui::IsMouseReleased(ImGuiMouseButton_Left) || ImGui::IsKeyReleased(ImGuiKey_UpArrow) ||
+             ImGui::IsKeyReleased(ImGuiKey_DownArrow) || ImGui::IsKeyReleased(ImGuiKey_LeftArrow) ||
+             ImGui::IsKeyReleased(ImGuiKey_RightArrow) || ImGui::IsKeyReleased(ImGuiKey_A));
+        std::vector<fs::path> selection;
+        for (const fs::path& file : getSelectedFiles()) selection.push_back(project->normalizeToProjectRelative(file));
+        if (interacted || (selection != inspectedSelection && !project->getInspectedAssets().empty())) {
+            project->setInspectedAssets(selection);
         }
-        // F2 renames the single selected file, or the hovered one when nothing is selected
-        if (ImGui::IsKeyPressed(ImGuiKey_F2, false) && !ImGui::GetIO().WantTextInput) {
-            std::string target = hoveredFile;
-            if (selectedFiles.size() == 1) {
-                const std::string& selected = *selectedFiles.begin();
-                if (std::any_of(files.begin(), files.end(), [&](const FileEntry& f){ return f.name == selected; })) target = selected;
-            }
-            if (!target.empty()) startRename(target);
-        }
-        if (ctrlPressed) {
-            if (ImGui::IsKeyPressed(ImGuiKey_C)) copySelectedFiles(false);
-            else if (ImGui::IsKeyPressed(ImGuiKey_X)) copySelectedFiles(true);
-            else if (ImGui::IsKeyPressed(ImGuiKey_V) && !clipboardFiles.empty()) pasteFiles(currentPath);
-            else if (ImGui::IsKeyPressed(ImGuiKey_A)) {
-                // Directories are only selectable when the listing shows them
-                bool listingShowsDirectories = (effectiveLayout != LayoutType::SPLIT_FILES_ONLY);
-                selectedFiles.clear();
-                for (const auto& file : files) {
-                    if (listingShowsDirectories || !file.isDirectory) selectedFiles.insert(file.name);
-                }
-                if (!files.empty()) lastSelectedFile = files.back().name;
-            }
-        }
+        inspectedSelection = std::move(selection);
     }
+
+    uiBuilding.drawn = true;
+    uiBuilding.directory = project->normalizeToProjectRelative(currentPath).generic_string();
+    uiBuilding.search = searchText;
+    uiBuilding.selected = lastSelectedFile;
+    uiState = std::move(uiBuilding);
 
     ImGui::End();
 
@@ -3626,8 +4344,7 @@ void editor::ProjectWindow::renameNewLuaScript(const fs::path& file, const std::
     if (text != newLuaScriptText) {
         return;  // edited since: leave it to its author
     }
-    std::ofstream out(file, std::ios::trunc | std::ios::binary);
-    out << newLuaScriptTemplate(name);
+    DocumentFiles::write(file, newLuaScriptTemplate(name));
 }
 
 void editor::ProjectWindow::assetsCreateScript(bool lua) {
@@ -3648,23 +4365,17 @@ void editor::ProjectWindow::assetsCreateScript(bool lua) {
     }
 
     if (lua) {
-        std::ofstream f(currentPath / (name + ".lua"), std::ios::trunc | std::ios::binary);
-        if (!f) {
-            Backend::getApp().registerAlert("Create Lua Script", "Could not write to " + currentPath.string());
-            return;
-        }
         newLuaScriptFile = name + ".lua";
         newLuaScriptText = newLuaScriptTemplate(name);
-        f << newLuaScriptText;
-        f.close();
-        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {currentPath / newLuaScriptFile});
-    } else {
-        std::ofstream h(currentPath / (name + ".h"), std::ios::trunc);
-        std::ofstream c(currentPath / (name + ".cpp"), std::ios::trunc);
-        if (!h || !c) {
-            Backend::getApp().registerAlert("Create C++ Script", "Could not write to " + currentPath.string());
+        const io::WriteResult written = DocumentFiles::write(currentPath / newLuaScriptFile, newLuaScriptText);
+        if (!written.ok()) {
+            Backend::getApp().registerAlert("Create Lua Script", DocumentFiles::saveFailureMessage(currentPath / newLuaScriptFile, written));
             return;
         }
+        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {currentPath / newLuaScriptFile});
+    } else {
+        std::ostringstream h;
+        std::ostringstream c;
         h << "#pragma once\n\n";
         h << "#include \"ScriptBase.h\"\n";
         h << "#include \"Engine.h\"\n";
@@ -3687,6 +4398,14 @@ void editor::ProjectWindow::assetsCreateScript(bool lua) {
         c << "}\n\n";
         c << "void " << name << "::onUpdate() {\n";
         c << "}\n";
+        io::WriteResult written = DocumentFiles::write(currentPath / (name + ".h"), h.str());
+        if (written.ok()) {
+            written = DocumentFiles::write(currentPath / (name + ".cpp"), c.str());
+        }
+        if (!written.ok()) {
+            Backend::getApp().registerAlert("Create C++ Script", DocumentFiles::saveFailureMessage(currentPath, written));
+            return;
+        }
     }
 
     scanDirectory(currentPath);
@@ -3724,6 +4443,171 @@ void editor::ProjectWindow::assetsCreateHtmlDocument() {
     startRename(fileName);
 }
 
+void editor::ProjectWindow::assetsCreatePoseAnimation() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    // previews on the Pose Animation window's character, when it has one
+    std::string previewModel;
+    PoseEditSession& session = Backend::getApp().getPoseAnimationWindow()->getSession();
+    if (session.bound() && session.scene()) {
+        if (ModelComponent* model = session.scene()->findComponent<ModelComponent>(session.model())) {
+            previewModel = model->filename;
+        }
+    }
+    std::string error;
+    const std::string created = PoseAnimationWindow::createAsset(project, currentPath, "New Pose Animation", previewModel, &error);
+    if (created.empty()) {
+        Backend::getApp().registerAlert("Create Pose Animation", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = FileUtils::pathToUtf8(FileUtils::pathFromUtf8(created).filename());
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+}
+
+void editor::ProjectWindow::assetsCreateShakePreset() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    camera::ShakePresetFile file;
+    file.guid = anim::generateClipGuid();
+    file.preset = *camera::findBuiltinShakePreset(camera::defaultNewShakePresetName());
+    const fs::path relative = uniqueRelativePath(currentPath, "New Shake Preset", camera::SHAKE_EXTENSION);
+    std::string error;
+    if (!ProjectFileWrites::writeUndoable(project, {{project->getProjectPath() / relative, camera::writeShakePreset(file)}}, error)) {
+        Backend::getApp().registerAlert("Create Shake Preset", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+void editor::ProjectWindow::assetsCreateAnimationClip() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    // Unity's Create > Animation: an empty clip (30 samples, once); the Animation window adds
+    // the tracks
+    ClipData initial;
+    std::string error;
+    const fs::path relative = uniqueRelativePath(currentPath, "New Animation", anim::ANIM_EXTENSION);
+    const uint64_t clock = AnimationClipController::clipCommitClock(project);
+    if (!AnimationClipDocument::create(project, relative.generic_string(), initial, "Create Animation Clip", &error)) {
+        Backend::getApp().registerAlert("Create Animation Clip", error);
+        return;
+    }
+    // a clip file write of the editor UI: Ctrl+Z undoes it from any window (9.R5c)
+    AnimationClipController::markClipCommit(clock);
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+void editor::ProjectWindow::assetsCreateAnimatorAsset(int kindValue) {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    const auto kind = static_cast<AnimatorAssetDocument::Kind>(kindValue);
+    const char* name = kind == AnimatorAssetDocument::Kind::Controller ? "New Animator Controller"
+                     : kind == AnimatorAssetDocument::Kind::Mask ? "New Avatar Mask" : "New Animation Montage";
+    const char* extension = kind == AnimatorAssetDocument::Kind::Controller ? ".controller"
+                          : kind == AnimatorAssetDocument::Kind::Mask ? ".mask" : ".montage";
+    const std::string title = std::string("Create ") + AnimatorAssetDocument::kindName(kind);
+    const fs::path relative = uniqueRelativePath(currentPath, name, extension);
+    std::string error;
+    if (!AnimatorAssetDocument::create(project, relative.generic_string(), kind, title, &error)) {
+        Backend::getApp().registerAlert(title, error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+void editor::ProjectWindow::assetsCreatePhysicsMaterial(bool preset2D) {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    std::string error;
+    const fs::path created = PhysicsMaterialAssets::create(project, currentPath, preset2D ? "New Physics Material 2D" : "New Physics Material",
+                                                           preset2D ? PhysicsMaterialData::preset2D() : PhysicsMaterialData::preset3D(), error);
+    if (created.empty()) {
+        Backend::getApp().registerAlert(preset2D ? "Create Physics Material 2D" : "Create Physics Material", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = created.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+void editor::ProjectWindow::assetsCreateAudioMixer() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    // Unity's Create > Audio Mixer: Master only; the Audio Mixer window adds the groups
+    const fs::path relative = uniqueRelativePath(currentPath, "New Audio Mixer", AudioMixerIO::EXTENSION);
+    std::string error;
+    if (!AudioMixerDocument::commit(project, project->getProjectPath() / relative, AudioMixerIO::createDefault(), "", &error)) {
+        Backend::getApp().registerAlert("Create Audio Mixer", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+void editor::ProjectWindow::processPoseThumbnails() {
+    poseThumbnailer.process();
+    if (poseThumbnailer.busy() || poseThumbnailQueue.empty() || !Engine::isViewLoaded()) {
+        return;
+    }
+    ThumbnailRequest request = poseThumbnailQueue.front();
+    poseThumbnailQueue.pop();
+    const fs::path thumbnailPath = project->getThumbnailPath(request.path);
+    poseThumbnailer.request(project, request.path, thumbnailPath, [this, request](bool ok) {
+        {
+            std::lock_guard<std::mutex> lock(thumbnailMutex);
+            pendingThumbnailRequests.erase(thumbnailRequestKey(request.path));
+            if (request.generation != thumbnailGeneration) return;
+        }
+        if (!ok) return;   // no preview model: the file keeps its icon
+        evictThumbnailTexture(project->getThumbnailPath(request.path).string());
+        std::lock_guard<std::mutex> completedLock(completedThumbnailMutex);
+        completedThumbnailQueue.push(request);
+    });
+    poseThumbnailer.process();
+}
+
 void editor::ProjectWindow::assetsShowInFileManager() {
     fs::path target = currentPath;
     if (selectedFiles.size() == 1) {
@@ -3735,6 +4619,38 @@ void editor::ProjectWindow::assetsShowInFileManager() {
     if (!target.empty()) {
         openInFileManager(target);
     }
+}
+
+void editor::ProjectWindow::drawTextureCookBadge(ImDrawList* drawList, const FileEntry& file, ImVec2 min, ImVec2 max) {
+    if (file.type != FileType::IMAGE || file.isDirectory) return;
+    TextureCookQueue& cooks = TextureCookQueue::get();
+    if (cooks.getProject() != project) return;
+    const fs::path absolute = currentPath / file.name;
+    if (!project->isInsideAssetsPath(absolute)) return;
+    const TextureCookStatus status = cooks.badgeStatus(project->normalizeToAssetsRelative(absolute).generic_string());
+    const char* icon = nullptr;
+    ImU32 color = 0;
+    const char* tooltip = nullptr;
+    switch (status) {
+        case TextureCookStatus::Queued: icon = ICON_FA_HOURGLASS_HALF; color = IM_COL32(200, 200, 200, 230); tooltip = "Texture cook queued"; break;
+        case TextureCookStatus::Cooking: icon = ICON_FA_GEAR; color = IM_COL32(120, 200, 255, 240); tooltip = "Cooking the texture"; break;
+        case TextureCookStatus::Failed: icon = ICON_FA_TRIANGLE_EXCLAMATION; color = IM_COL32(255, 110, 90, 255); tooltip = "The texture cook failed: the Inspector shows why"; break;
+        default: return;
+    }
+    const float size = std::max(Theme::dpi(9.0f), std::min(max.x - min.x, max.y - min.y) * 0.3f);
+    const ImVec2 at(max.x - size - Theme::dpi(1.0f), max.y - size - Theme::dpi(1.0f));
+    drawList->AddRectFilled(ImVec2(at.x - Theme::dpi(1.0f), at.y - Theme::dpi(1.0f)), ImVec2(at.x + size + Theme::dpi(1.0f), at.y + size + Theme::dpi(1.0f)),
+                            IM_COL32(20, 20, 20, 170), Theme::dpi(2.0f));
+    drawList->AddText(ImGui::GetFont(), size, at, color, icon);
+    if (ImGui::IsMouseHoveringRect(at, ImVec2(at.x + size, at.y + size))) ImGui::SetTooltip("%s", tooltip);
+}
+
+std::vector<fs::path> editor::ProjectWindow::getSelectedFiles() const {
+    std::vector<fs::path> files;
+    // the names of the current folder's selected entries
+    for (const std::string& file : selectedFiles) files.push_back(currentPath / file);
+    std::sort(files.begin(), files.end());
+    return files;
 }
 
 void editor::ProjectWindow::assetsOpenSelected() {
@@ -3752,14 +4668,72 @@ void editor::ProjectWindow::assetsOpenSelected() {
         scanDirectory(filePath);
         selectedFiles.clear();
         focusProjectPanel(this);
-    } else if (it->type == FileType::IMAGE) {
-        imageViewerWindow->openFile(filePath);
-    } else if (it->type == FileType::SCENE) {
-        project->openScene(filePath);
-    } else if (Util::isPrefabFile(filePath.string())) {
-        editor::getEditorHost().openPrefabAsset(filePath);
     } else {
+        openFile(*it, filePath);
+    }
+}
+
+void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& filePath) {
+    if (file.type == FileType::IMAGE) {
+        imageViewerWindow->openFile(filePath);
+    } else if (file.type == FileType::SCENE) {
+        project->openScene(filePath);
+    } else if (file.type == FileType::POSE_ANIMATION) {
+        Backend::getApp().getPoseAnimationWindow()->openFromAsset(filePath.string());
+    } else if (file.type == FileType::VERTEX_ANIMATION) {
+        // the baker with its recipe once it is there; the Inspector's asset view always
+        selectedFiles.clear();
+        selectedFiles.insert(file.name);
+        lastSelectedFile = file.name;
+        project->setInspectedAsset(filePath.lexically_normal());
+        if (InspectorWindow* inspector = Backend::getApp().getInspectorWindow()) {
+            inspector->setOpen(true);
+        }
+        if (vatAppHooks().openBaker) {
+            vatAppHooks().openBaker(project, filePath, VatBakerSource::VatAsset);
+        }
+    } else if (file.type == FileType::ANIMATOR_ASSET && Util::isAnimatorControllerFile(filePath.string()) &&
+               animatorEditorHooks().openController) {
+        // the Animator window on the controller alone (it binds to an Animator once one is selected)
+        const std::string controller = project->isInsideAssetsPath(filePath)
+            ? project->normalizeToAssetsRelative(filePath).generic_string()
+            : filePath.generic_string();
+        animatorEditorHooks().openController(project, 0, NULL_ENTITY, controller);
+    } else if (file.type == FileType::ANIMATOR_ASSET) {
+        // a mask or a montage: the Inspector edits it
+        updateInspectedAsset(file.name);
+    } else if (file.type == FileType::ANIMATION_CLIP && animationClipInspectorHooks().openClip) {
+        // the Animation window, target-less (the clip's preview model), as the component stores it
+        const std::string clip = project->isInsideAssetsPath(filePath)
+            ? project->normalizeToAssetsRelative(filePath).generic_string()
+            : filePath.generic_string();
+        animationClipInspectorHooks().openClip(project, 0, NULL_ENTITY, clip);
+    } else if (Util::isPrefabFile(filePath.string())) {
+        editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
+    } else if (filePath.extension() == ".inputactions") {
+        editor::getEditorHost().openInputActions(filePath);
+    } else if (file.type == FileType::COLOR_LUT) {
+        assignColorLut(filePath);  // the open scene's Color Grading LUT
+    } else if (filePath.extension() == AudioMixerIO::EXTENSION) {
+        editor::getEditorHost().openAudioMixerWindow(filePath);
+    } else {
+        // text files (an .anim only when the clip hooks are unset: its JSON text)
         codeEditor->openFile(filePath.string(), true);
+    }
+}
+
+void editor::ProjectWindow::updateInspectedAsset(const std::string& clickedName) {
+    fs::path inspected;
+    if (!clickedName.empty() && selectedFiles.count(clickedName)) {
+        inspected = currentPath / clickedName;
+    } else if (selectedFiles.size() == 1) {
+        inspected = currentPath / *selectedFiles.begin();
+    }
+    std::error_code ec;
+    if (inspected.empty() || fs::is_directory(inspected, ec)) {
+        project->clearInspectedAsset();
+    } else {
+        project->setInspectedAsset(inspected.lexically_normal());
     }
 }
 
@@ -3789,4 +4763,58 @@ void editor::ProjectWindow::assetsImport() {
 
 void editor::ProjectWindow::assetsRefresh() {
     refreshCurrentDirectory();
+}
+
+std::vector<fs::path> editor::ProjectWindow::getSelectedPaths() const{
+    std::vector<fs::path> paths;
+    for (const std::string& name : selectedFiles){
+        paths.push_back((currentPath / name).lexically_normal());
+    }
+    std::sort(paths.begin(), paths.end());
+    return paths;
+}
+
+// ---- the Project context's commands (the catalog's project.*) ---------------
+
+void editor::ProjectWindow::copySelection(bool cut) {
+    copySelectedFiles(cut);
+}
+
+bool editor::ProjectWindow::canPasteClipboard() const {
+    return !clipboardFiles.empty();
+}
+
+void editor::ProjectWindow::pasteClipboard() {
+    if (!clipboardFiles.empty()) pasteFiles(currentPath);
+}
+
+void editor::ProjectWindow::selectAllInListing() {
+    // Directories are only selectable when the listing shows them
+    const bool listingShowsDirectories = lastLayout != LayoutType::SPLIT_FILES_ONLY;
+    selectedFiles.clear();
+    for (const auto& file : files) {
+        if (listingShowsDirectories || !file.isDirectory) selectedFiles.insert(file.name);
+    }
+    if (!files.empty()) lastSelectedFile = files.back().name;
+}
+
+void editor::ProjectWindow::requestDeleteSelection() {
+    // the confirmation is drawn by renderFileListing
+    if (!selectedFiles.empty()) showDeleteConfirmation = true;
+}
+
+void editor::ProjectWindow::renameSelectedOrHovered() {
+    // the single selected file, or the hovered one when nothing is selected
+    std::string target = hoveredFile;
+    if (selectedFiles.size() == 1) {
+        const std::string& selected = *selectedFiles.begin();
+        if (std::any_of(files.begin(), files.end(), [&](const FileEntry& f){ return f.name == selected; })) target = selected;
+    }
+    if (!target.empty()) startRename(target);
+}
+
+void editor::ProjectWindow::pingAsset(const std::string& projectRelative) {
+    pingName = fs::path(projectRelative).filename().string();
+    pingUntil = ImGui::GetTime() + 1.5;
+    pingScroll = true;
 }

@@ -11,6 +11,61 @@
 
 namespace jasperengine{
 
+    // how a particle instance turns (particles spec 6.4; InstancedMeshComponent::particle).
+    // None: the instance's own rotation in the mesh's space (every instanced mesh but a
+    // version 2 Particle System's). The others build each instance in the world: position
+    // in the mesh's space, scale the world size, rotation the particle's own rotation in the
+    // frame the mode names (View: facing the camera plane, Vertical: upright facing the
+    // camera, Horizontal: lying flat, Stretched: along the velocity facing the camera, World,
+    // Local: the mesh GameObject's rotation, Facing: towards the camera position, Velocity:
+    // forward along the velocity)
+    enum class InstanceAlignment : uint8_t{
+        None = 0,
+        View,
+        Vertical,
+        Horizontal,
+        Stretched,
+        World,
+        Local,
+        Facing,
+        Velocity
+    };
+
+    // the order instances draw in: Auto (blended batches back to front where the camera sorts),
+    // ByDistance (back to front also when opaque), Keep (the instances' own order: the age sorts)
+    enum class InstanceSortMode : uint8_t{
+        Auto = 0,
+        ByDistance,
+        Keep
+    };
+
+    // what a Particle System's renderer module asks of its instanced mesh, written by the
+    // system each frame it simulates (runtime, not serialized)
+    struct InstanceParticleRender{
+        InstanceAlignment alignment = InstanceAlignment::None;
+        Vector3 pivot = Vector3(0.0, 0.0, 0.0);   // in particle sizes, in the aligned frame
+        // Stretched: length = size x lengthScale + speed x velocityScale (+ the camera's speed
+        // x cameraVelocityScale)
+        float lengthScale = 2.0f;
+        float velocityScale = 0.0f;
+        float cameraVelocityScale = 0.0f;
+        // the projected size kept within [min, max] x the viewport height (max 0: no limit)
+        float minSize = 0.0f;
+        float maxSize = 0.0f;
+        InstanceSortMode sort = InstanceSortMode::Auto;
+        // added to the camera distance in the transparent queue (lower draws on top, Unity)
+        float sortingFudge = 0.0f;
+
+        // the renderer's sortPriority, added to the mesh's (its shader's) in the transparent queue
+        int sortPriority = 0;
+
+        bool cameraDependent() const{
+            return alignment == InstanceAlignment::View || alignment == InstanceAlignment::Vertical ||
+                   alignment == InstanceAlignment::Stretched || alignment == InstanceAlignment::Facing ||
+                   (alignment != InstanceAlignment::None && (minSize > 0.0f || maxSize > 0.0f));
+        }
+    };
+
     struct InstanceData{
         Vector3 position = Vector3(0.0, 0.0, 0.0);
         Quaternion rotation;
@@ -18,12 +73,29 @@ namespace jasperengine{
         Vector4 color = Vector4(1.0, 1.0, 1.0, 1.0);  //linear color;
         Rect textureRect = Rect(0.0, 0.0, 1.0, 1.0);
         bool visible = true;
+        // Vertex Animator state of this instance (vat::vatPackInstance), written by
+        // VertexAnimatorSystem, not serialized; the default packs "no clip" (rest pose)
+        Vector4 vat0 = Vector4(-1.0, 0.0, 1.0, -1.0);
+        Vector4 vat1 = Vector4(0.0, 1.0, 0.0, 0.0);
+        // a particle's (InstanceParticleRender alignment): its billboard roll in radians (the z
+        // of its rotation) and its velocity in the world, not serialized. Kept readable for
+        // other renderers of the particles (the HTML UI's <particle-system>)
+        float roll = 0.0f;
+        Vector3 velocity = Vector3(0.0, 0.0, 0.0);
     };
 
     struct InstanceRenderData{
         Matrix4 instanceMatrix;
         Vector4 color;
         Rect textureRect;
+    };
+
+    // an instance's Vertex Animator state on the GPU (i_vat0, i_vat1: InstanceData::vat0/vat1),
+    // in a buffer of its own next to the InstanceRenderData one, only for a batch drawn with a
+    // Vertex Animation variant
+    struct InstanceVatRenderData{
+        Vector4 vat0;
+        Vector4 vat1;
     };
 
     struct InstanceBounds{
@@ -35,6 +107,9 @@ namespace jasperengine{
     // slice of a RenderSystem instance view, nearest first and grouped by detail level
     struct InstanceViewRange{
         unsigned int offset = 0;
+        // where the slice's InstanceVatRenderData start in the view's VAT list (a batch drawn
+        // with a Vertex Animation variant; the others have none there)
+        unsigned int vatOffset = 0;
         unsigned int lodCount[MAX_MESH_LODS] = {};
 
         unsigned int count() const{
@@ -67,6 +142,10 @@ namespace jasperengine{
         std::vector<InstanceData> instances;
         std::vector<InstanceRenderData> renderInstances; //must be sorted
         std::vector<InstanceBounds> renderBounds; // parallel to renderInstances
+        // parallel to renderInstances (same order) while the mesh draws with a Vertex Animation
+        // variant, else empty; uploaded into vatBuffer (i_vat0, i_vat1), made by such a load
+        std::vector<InstanceVatRenderData> renderVat;
+        ExternalBuffer vatBuffer;
 
         unsigned int maxInstances = 100;
         unsigned int numVisible = 0;
@@ -93,6 +172,9 @@ namespace jasperengine{
 
         bool instancedBillboard = false;
         bool instancedCylindricalBillboard = false;
+
+        // a version 2 Particle System's renderer settings (runtime, written by its system)
+        InstanceParticleRender particle;
 
         bool needUpdateBuffer = false;
         bool needUpdateInstances = true;

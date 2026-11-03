@@ -2,14 +2,28 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "spline/SplineEditor.h"
+#include "util/EditorScripts.h"
+#include "shortcuts/CommandCatalog.h"
+#include "search/HierarchyFilter.h"
+#include "organisation/Bookmarks.h"
+#include "window/BookmarksWindow.h"
+#include "window/dialog/DataSafetyDialogs.h"
+#include "StreamPreserved.h"
+#include "util/PhysicsMaterialAssets.h"
+#include "window/dialog/RagdollWizardDialog.h"
+#include "pose/PoseEditSession.h"
 
 #include "App.h"
 #include "Backend.h"
+#include "animation/AnimationClipAppHooks.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/BidiText.h"
+#include "command/PlayChangeReview.h"
 #include "command/CommandHandle.h"
 #include "command/type/MoveEntityOrderCmd.h"
+#include "component/Rigidbody2DComponent.h"
 #include "command/type/AddChildSceneCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
 #include "command/type/SetChildSceneStartActiveCmd.h"
@@ -24,6 +38,7 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/ModelLoadCmd.h"
+#include "vat/VatSceneActions.h"
 #include "component/InstancedMeshComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "command/type/ImportPrefabCmd.h"
@@ -46,6 +61,15 @@
 #include <unordered_set>
 
 using namespace jasperengine;
+
+namespace {
+    // A context menu item's shortcut text, from the command catalog (nullptr when unbound)
+    const char* shortcutText(const char* commandId) {
+        static std::string text;
+        text = editor::CommandCatalog::editor().menuShortcutText(commandId);
+        return text.empty() ? nullptr : text.c_str();
+    }
+}
 
 // Unity's prefab-instance blue, for rows that belong to a prefab
 static const ImVec4 PREFAB_TEXT_COLOR = ImVec4(0.48f, 0.68f, 0.98f, 1.0f); // Theme::Colors::PrefabText, #7BAEFA
@@ -290,6 +314,8 @@ void editor::HierarchyWindow::applyEntitySelection(uint32_t sceneId, Entity enti
     selectedScenes.clear();
     project->setSelectedSceneForProperties(sceneId);
     clearSubSelectionForEntity(sceneId, entity);
+    // a user selection makes the GameObject the inspected object (animation clips 9.R30)
+    project->clearInspectedAsset();
 
     selectionAnchorSceneId = sceneId;
     selectionAnchorEntity = entity;
@@ -460,9 +486,9 @@ bool editor::HierarchyWindow::isOpen() const{
 
 const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMenuEntries(){
     using T = EntityCreationType;
-    // submenu, label, icon, type, new GameObject name, scenes, separatorBefore, rootOnly, shortcut
+    // submenu, label, icon, type, new GameObject name, scenes, separatorBefore, rootOnly, command id
     static const std::vector<CreateMenuEntry> entries = {
-        {nullptr, "Create Empty", ICON_FA_CUBE, T::GAMEOBJECT, "GameObject", CREATE_IN_ALL, false, false, "Ctrl+Shift+N"},
+        {nullptr, "Create Empty", ICON_FA_CUBE, T::GAMEOBJECT, "GameObject", CREATE_IN_ALL, false, false, "gameobject.createEmpty"},
         {nullptr, "Create Empty (No Transform)", ICON_FA_CIRCLE_DOT, T::EMPTY, "GameObject", CREATE_IN_ALL, false, true},
 
         {"3D Object", "Cube", ICON_FA_CUBE, T::BOX, "Cube", CREATE_IN_3D},
@@ -476,6 +502,8 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
         {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
         {"3D Object", "Water", ICON_FA_WATER, T::WATER, "Water", CREATE_IN_3D},
+        // Unity's Ragdoll Wizard on the selected character (or the row's GameObject)
+        {"3D Object", "Ragdoll...", ICON_FA_PERSON_FALLING, T::RAGDOLL_WIZARD, "Ragdoll", CREATE_IN_3D, true},
         // around the selection (or its row's GameObject) when there is one, see createGameObject
         {"3D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_3D, true},
 
@@ -486,9 +514,15 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"2D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_2D, true},
 
         {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLE_SYSTEM, "Particle System", CREATE_IN_WORLD},
+        {"Effects", "Force Field", ICON_FA_WIND, T::FORCE_FIELD, "Force Field", CREATE_IN_3D},
         {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINE_RENDERER, "Line", CREATE_IN_WORLD},
+        // on the selected GameObject when it has none, else as a child (createGameObject)
+        {"Effects", "Trail Renderer", ICON_FA_WIND, T::TRAIL_RENDERER, "Trail", CREATE_IN_WORLD},
         {"Effects", "Point Renderer", ICON_FA_CIRCLE, T::POINTS, "Points", CREATE_IN_WORLD},
         {"Effects", "Fluid Simulation", ICON_FA_DROPLET, T::FLUID_SIMULATION, "Fluid Simulation", CREATE_IN_WORLD},
+        {"Effects", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D, true},
+        {"Effects", "Local Volumetric Fog", ICON_FA_SMOG, T::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog", CREATE_IN_3D},
+        {"Effects", "Volumetric Clouds", ICON_FA_CLOUD, T::VOLUMETRIC_CLOUDS, "Volumetric Clouds", CREATE_IN_3D},
 
         {"Light", "Directional Light", ICON_FA_SUN, T::DIRECTIONAL_LIGHT, "Directional Light", CREATE_IN_3D},
         {"Light", "Point Light", ICON_FA_LIGHTBULB, T::POINT_LIGHT, "Point Light", CREATE_IN_3D},
@@ -499,6 +533,9 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Audio", "Audio Source", ICON_FA_FILE_AUDIO, T::AUDIO_SOURCE, "Audio Source", CREATE_IN_ALL},
         {"Audio", "Audio Source 3D", ICON_FA_VOLUME_HIGH, T::AUDIO_SOURCE_3D, "Audio Source 3D", CREATE_IN_WORLD},
 
+        {"Video", "Video Player", ICON_FA_FILM, T::VIDEO_PLAYER, "Video Player", CREATE_IN_ALL},
+        {"Video", "Video Player (Camera Background)", ICON_FA_VIDEO, T::VIDEO_BACKGROUND, "Video Background", CREATE_IN_ALL},
+
         {"UI", "Image", ICON_FA_IMAGE, T::IMAGE, "Image", CREATE_IN_ALL},
         {"UI", "Text", ICON_FA_FONT, T::TEXT, "Text", CREATE_IN_ALL},
         {"UI", "Button", ICON_FA_SQUARE_CARET_RIGHT, T::BUTTON, "Button", CREATE_IN_ALL},
@@ -507,7 +544,15 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"UI", "Input Field", ICON_FA_I_CURSOR, T::INPUT_FIELD, "Input Field", CREATE_IN_ALL},
         {"UI", "Panel", ICON_FA_WINDOW_MAXIMIZE, T::PANEL, "Panel", CREATE_IN_ALL},
         {"UI", "Polygon", ICON_FA_DRAW_POLYGON, T::POLYGON, "Polygon", CREATE_IN_ALL},
+        {"UI", "On-Screen Stick (Fixed)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_FIXED, "On-Screen Stick", CREATE_IN_ALL, true},
+        {"UI", "On-Screen Stick (Floating)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_FLOATING, "On-Screen Stick", CREATE_IN_ALL},
+        {"UI", "On-Screen Stick (Dynamic)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_DYNAMIC, "On-Screen Stick", CREATE_IN_ALL},
+        {"UI", "On-Screen Button", ICON_FA_CIRCLE_DOT, T::ONSCREEN_BUTTON, "On-Screen Button", CREATE_IN_ALL},
+        {"UI", "Touch Area", ICON_FA_HAND_POINTER, T::TOUCH_AREA, "Touch Area", CREATE_IN_ALL},
         {"UI", "Layout Group", ICON_FA_OBJECT_GROUP, T::LAYOUT_GROUP, "Layout Group", CREATE_IN_ALL, true},
+        {"UI", "Canvas Group", ICON_FA_LAYER_GROUP, T::CANVAS_GROUP, "Canvas Group", CREATE_IN_ALL},
+        {"UI", "Particle System", ICON_FA_FIRE, T::UI_PARTICLE_SYSTEM, "UI Particles", CREATE_IN_ALL},
+        {"UI", "Safe Area", ICON_FA_MOBILE_SCREEN_BUTTON, T::SAFE_AREA, "Safe Area", CREATE_IN_ALL},
         {"UI", "UI Document", ICON_FA_FILE_CODE, T::UI_DOCUMENT, "UI Document", CREATE_IN_ALL, true},
 
         {"Physics", "Rigidbody", ICON_FA_WEIGHT_HANGING, T::RIGIDBODY, "Rigidbody", CREATE_IN_3D},
@@ -516,7 +561,6 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Physics", "Joint 2D", ICON_FA_LINK, T::JOINT2D, "Joint 2D", CREATE_IN_2D},
 
         {"Rendering", "Skybox", ICON_FA_CLOUD, T::SKYBOX, "Skybox", CREATE_IN_3D},
-        {"Rendering", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D},
 
         {"Tween", "Position Tween", ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, T::POSITION_TWEEN, "Position Tween", CREATE_IN_ALL},
         {"Tween", "Rotation Tween", ICON_FA_ROTATE, T::ROTATION_TWEEN, "Rotation Tween", CREATE_IN_ALL},
@@ -531,6 +575,20 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Animation", "Scale Track", ICON_FA_MAXIMIZE, T::SCALE_TRACKS, "Scale Track", CREATE_IN_ALL},
         {"Animation", "Morph Track", ICON_FA_SHAPES, T::MORPH_TRACKS, "Morph Track", CREATE_IN_ALL},
         {"Animation", "Lattice Track", ICON_FA_CUBES_STACKED, T::LATTICE_TRACKS, "Lattice Track", CREATE_IN_ALL},
+
+        {"Spline", "Empty", ICON_FA_BEZIER_CURVE, T::SPLINE_EMPTY, "Spline", CREATE_IN_WORLD},
+        {"Spline", "Draw Spline Tool", ICON_FA_PEN, T::SPLINE_DRAW, "Spline", CREATE_IN_WORLD},
+        {"Spline", "Road", ICON_FA_ROAD, T::SPLINE_ROAD, "Road", CREATE_IN_3D, true},
+        {"Spline", "Path", ICON_FA_SHOE_PRINTS, T::SPLINE_PATH, "Path", CREATE_IN_3D},
+        {"Spline", "Wall", ICON_FA_DUNGEON, T::SPLINE_WALL, "Wall", CREATE_IN_3D},
+        {"Spline", "Fence", ICON_FA_GRIP_LINES_VERTICAL, T::SPLINE_FENCE, "Fence", CREATE_IN_3D},
+        {"Spline", "River", ICON_FA_WATER, T::SPLINE_RIVER, "River", CREATE_IN_3D},
+        {"Spline", "Lake", ICON_FA_DROPLET, T::SPLINE_LAKE, "Lake", CREATE_IN_3D},
+        {"Spline", "Circle", ICON_FA_CIRCLE_NOTCH, T::SPLINE_CIRCLE, "Circle", CREATE_IN_3D, true},
+        {"Spline", "Square", ICON_FA_SQUARE, T::SPLINE_SQUARE, "Square", CREATE_IN_3D},
+        {"Spline", "Edge", ICON_FA_WAVE_SQUARE, T::SPLINE_EDGE_2D, "Edge", CREATE_IN_2D, true},
+        {"Spline", "Filled Shape", ICON_FA_DRAW_POLYGON, T::SPLINE_FILL_2D, "Filled Shape", CREATE_IN_2D},
+        {"Spline", "Circle", ICON_FA_CIRCLE_NOTCH, T::SPLINE_CIRCLE_2D, "Circle", CREATE_IN_2D},
 
         {nullptr, "Camera", ICON_FA_VIDEO, T::CAMERA, "Camera", CREATE_IN_ALL},
     };
@@ -551,6 +609,16 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     if (!sceneProject || !sceneProject->scene) {
         return;
     }
+    if (entry.type == EntityCreationType::RAGDOLL_WIZARD) {
+        std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+        const Entity character = parent != NULL_ENTITY ? parent : (selected.size() == 1 ? selected[0] : NULL_ENTITY);
+        if (character == NULL_ENTITY) {
+            Out::warning("Ragdoll: select the character's root GameObject first (the one holding its model)");
+            return;
+        }
+        RagdollWizardDialog::instance().open(project, sceneProject->id, character);
+        return;
+    }
     if (entry.type == EntityCreationType::LATTICE) {
         // a lattice wraps GameObjects instead of being made under one: the row it was asked
         // from (unless that row is in the selection), else the selection
@@ -564,9 +632,32 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     if (entry.rootOnly) {
         parent = NULL_ENTITY;
     }
-    CommandHandle::get(sceneProject->id)->addCommandNoMerge(
-        new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToPrefab));
+    // a Joint 2D goes under the selected Rigidbody 2D, which it is then on (Unity adds the
+    // joint to the body)
+    if (entry.type == EntityCreationType::JOINT2D && parent == NULL_ENTITY) {
+        std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+        if (selected.size() == 1 && sceneProject->scene->findComponent<Rigidbody2DComponent>(selected[0])) {
+            parent = selected[0];
+        }
+    }
+    // Unity puts a trail on the moving object itself: the selected GameObject gets one when it
+    // has none and is not locked (one undo step, its own Trail Renderer); else a child trail
+    if (entry.type == EntityCreationType::TRAIL_RENDERER && parent != NULL_ENTITY &&
+            sceneProject->scene->isEntityCreated(parent) && sceneProject->scene->findComponent<Transform>(parent) &&
+            !ProjectUtils::isEntityLocked(sceneProject->scene, parent) &&
+            !sceneProject->scene->findComponent<TrailRendererComponent>(parent)) {
+        CommandHandle::get(sceneProject->id)->addCommandNoMerge(
+            new AddComponentCmd(project, sceneProject->id, parent, ComponentType::TrailRendererComponent));
+        project->setSelectedEntity(sceneProject->id, parent);
+        return;
+    }
+    CreateEntityCmd* createCmd = new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToPrefab);
+    CommandHandle::get(sceneProject->id)->addCommandNoMerge(createCmd);
     openParent = parent;
+    if (entry.type == EntityCreationType::SPLINE_DRAW) {
+        // the new spline, drawn in the Scene view (Enter finishes, Esc cancels)
+        SplineEditor::get().beginDraw(sceneProject->id, createCmd->getEntity());
+    }
     // The new GameObject is selected: scroll it into view, as Unity does
     std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
     if (selected.size() == 1) {
@@ -628,6 +719,7 @@ static const char* createSubmenuIcon(const char* submenu){
     if (name == "Effects") return ICON_FA_FIRE;
     if (name == "Light") return ICON_FA_LIGHTBULB;
     if (name == "Audio") return ICON_FA_VOLUME_HIGH;
+    if (name == "Video") return ICON_FA_FILM;
     if (name == "UI") return ICON_FA_WINDOW_RESTORE;
     if (name == "Physics") return ICON_FA_WEIGHT_HANGING;
     if (name == "Rendering") return ICON_FA_CLOUD;
@@ -702,8 +794,9 @@ void editor::HierarchyWindow::showToolbar(){
     ImGui::SetItemTooltip("Create a GameObject");
 
     ImGui::SameLine();
+    showVcsToolbarToggle();
 
-    UIUtils::searchInput("##structure_search", "Search", searchBuffer, sizeof(searchBuffer), false, &matchCase);
+    UIUtils::searchInput("##structure_search", "Search  (t:Camera)", searchBuffer, sizeof(searchBuffer), false, &matchCase);
 
     if (ImGui::BeginPopup("HierarchyCreateMenu")) {
         showCreateMenuItems(true, NULL_ENTITY, false);
@@ -742,6 +835,7 @@ void editor::HierarchyWindow::showSceneMenu(SceneProject* sceneProject){
     if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Scene Asset", nullptr, false, !sceneProject->filepath.empty())) {
         revealInProject(sceneProject->filepath);
     }
+    showVcsMenu(sceneProject);
     const bool canRemove = !busy && project->getScenes().size() > 1;
     if (ImGui::MenuItem(ICON_FA_TRASH "  Remove Scene from Project", nullptr, false, canRemove)) {
         // Deferred: the scene is still being drawn this frame
@@ -995,6 +1089,9 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
     }else if (signature.test(scene->getComponentId<FluidSimulationComponent>())){
         // before the Sprite or Mesh it is drawn on: the fluid is what the object is
         return ICON_FA_DROPLET;
+    }else if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
+        // before the Mesh it draws with (a version 2 system's own quad)
+        return ICON_FA_FIRE;
     }else if (signature.test(scene->getComponentId<TilemapComponent>())){
         return ICON_FA_BORDER_ALL;
     }else if (signature.test(scene->getComponentId<SpriteComponent>())){
@@ -1019,6 +1116,17 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_FILE_CODE;
     }else if (signature.test(scene->getComponentId<LayoutGroupComponent>())){
         return ICON_FA_OBJECT_GROUP;
+    }else if (signature.test(scene->getComponentId<OnScreenStickComponent>())){
+        return ICON_FA_GAMEPAD;
+    }else if (signature.test(scene->getComponentId<OnScreenButtonComponent>())){
+        return ICON_FA_CIRCLE_DOT;
+    }else if (signature.test(scene->getComponentId<TouchAreaComponent>())){
+        return ICON_FA_HAND_POINTER;
+    }else if (signature.test(scene->getComponentId<CanvasGroupComponent>()) && !signature.test(scene->getComponentId<UIComponent>())){
+        // a group container (an element with its own group keeps its element's icon)
+        return ICON_FA_LAYER_GROUP;
+    }else if (signature.test(scene->getComponentId<SafeAreaComponent>())){
+        return ICON_FA_MOBILE_SCREEN_BUTTON;
     }else if (signature.test(scene->getComponentId<ButtonComponent>())){
         return ICON_FA_SQUARE_CARET_RIGHT;
     }else if (signature.test(scene->getComponentId<ScrollbarComponent>())){
@@ -1073,6 +1181,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_CUBES_STACKED;
     }else if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
         return ICON_FA_FIRE;
+    }else if (signature.test(scene->getComponentId<ForceFieldComponent>())){
+        return ICON_FA_WIND;
     }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
         return ICON_FA_GRIP_LINES;
     }else if (signature.test(scene->getComponentId<PointsComponent>())){
@@ -1084,8 +1194,12 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
             return ICON_FA_VOLUME_HIGH;
         }
         return ICON_FA_FILE_AUDIO;
+    }else if (signature.test(scene->getComponentId<CharacterController2DComponent>()) || signature.test(scene->getComponentId<CharacterControllerComponent>())){
+        return ICON_FA_PERSON_WALKING;
     }else if (signature.test(scene->getComponentId<Rigidbody2DComponent>()) || signature.test(scene->getComponentId<RigidbodyComponent>())){
         return ICON_FA_WEIGHT_HANGING;
+    }else if (signature.test(scene->getComponentId<TrailRendererComponent>())){
+        return ICON_FA_WIND;
     }else if (signature.test(scene->getComponentId<Transform>())){
         return ICON_FA_CUBE; // plain GameObject, Unity's generic cube
     }
@@ -1168,13 +1282,26 @@ void editor::HierarchyWindow::moveDraggedEntitiesToRootLevel(const std::vector<E
 bool editor::HierarchyWindow::acceptsModelDrop(const std::string& filePath) const {
     // As in the Scene window: a model file of the assets makes a Model GameObject of a 3D scene
     const SceneProject* sceneProject = project->getSelectedScene();
-    return Util::isModelFile(filePath) && sceneProject && sceneProject->sceneType == SceneType::SCENE_3D &&
-        sceneProject->playState == ScenePlayState::STOPPED;
+    return (Util::isModelFile(filePath) || Util::isVertexAnimationFile(filePath)) && sceneProject &&
+        sceneProject->sceneType == SceneType::SCENE_3D && sceneProject->playState == ScenePlayState::STOPPED;
 }
 
 void editor::HierarchyWindow::handleEntityFilesDrop(const std::vector<std::string>& filePaths, Entity parent) {
     for (const std::string& filePath : filePaths) {
         std::filesystem::path path(filePath);
+
+        // a Vertex Animation: Model = its .vat.glb + Vertex Animator, one step (vertex animation spec 3.3)
+        if (Util::isVertexAnimationFile(filePath) && acceptsModelDrop(filePath)) {
+            if (!project->isInsideAssetsPath(path)) {
+                Backend::getApp().registerOutsideAssetsAlert(filePath);
+                continue;
+            }
+            std::string error;
+            if (createVatObject(project, project->getSelectedSceneId(), filePath, Vector3(0, 0, 0), parent, &error) == NULL_ENTITY) {
+                Out::error("%s", error.c_str());
+            }
+            continue;
+        }
 
         if (acceptsModelDrop(filePath)) {
             if (!project->isInsideAssetsPath(path)) {
@@ -1297,28 +1424,6 @@ void editor::HierarchyWindow::showAddChildSceneMenu() {
     }
 }
 
-bool editor::HierarchyWindow::nodeMatchesSearch(const TreeNode& node, const std::string& searchLower) {
-    std::string nodeName = node.name;
-
-    if (!matchCase) {
-        std::transform(nodeName.begin(), nodeName.end(), nodeName.begin(), ::tolower);
-    }
-
-    return nodeName.find(searchLower) != std::string::npos;
-}
-
-void editor::HierarchyWindow::markMatchingNodes(TreeNode& node, const std::string& searchLower) {
-    node.matchesSearch = nodeMatchesSearch(node, searchLower);
-    node.hasMatchingDescendant = false;
-
-    for (auto& child : node.children) {
-        markMatchingNodes(child, searchLower);
-        if (child.matchesSearch || child.hasMatchingDescendant) {
-            node.hasMatchingDescendant = true;
-        }
-    }
-}
-
 void editor::HierarchyWindow::updateSearchAndSelectionOrder(TreeNode& root, bool treeRebuilt) {
     // Names and ordering belong to the cached tree. Reuse their derived search flags
     // and range-selection order until that tree or the toolbar's search settings change.
@@ -1330,11 +1435,18 @@ void editor::HierarchyWindow::updateSearchAndSelectionOrder(TreeNode& root, bool
 
     const bool hasSearch = !cachedSearch.empty();
     if (hasSearch) {
-        std::string searchStr = cachedSearch;
-        if (!matchCase) {
-            std::transform(searchStr.begin(), searchStr.end(), searchStr.begin(), ::tolower);
-        }
-        markMatchingNodes(root, searchStr);
+        // the editor's one scorer in Filter mode, t:<Component> by display name (S25 R14)
+        const HierarchyFilter filter(cachedSearch, matchCase);
+        filter.markTree(root, [this](const TreeNode& node) {
+            std::vector<std::string> names;
+            if (node.isScene || node.isChildScene) return names;
+            SceneProject* scene = project->getScene(getNodeSceneId(node));
+            if (!scene || !scene->scene || !scene->scene->isEntityCreated(node.id)) return names;
+            for (ComponentType type : Catalog::findComponents(scene->scene, node.id)) {
+                names.push_back(Catalog::getComponentDisplayName(type));
+            }
+            return names;
+        });
     }
 
     visibleEntitySelectionOrder.clear();
@@ -1360,6 +1472,8 @@ std::vector<char> editor::HierarchyWindow::buildEntityPayload(const TreeNode& no
     std::vector<Entity> virtualChildren = ProjectUtils::getVirtualChildren(sceneProject->scene, draggedEntities);
     exportEntities.insert(exportEntities.end(), virtualChildren.begin(), virtualChildren.end());
 
+    // a posed character (Pose Animation window) in the copy is encoded with its rest bones
+    PoseEditSession::suspendActiveFor(sceneProject->id, exportEntities);
     YAML::Node entityData;
     if (exportEntities.size() == 1) {
         entityData = Stream::encodeEntity(draggedEntities[0], sceneProject->scene, project, sceneProject);
@@ -1558,12 +1672,14 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         ImGui::SetScrollHereY(0.5f);
     }
 
+    const float rowMinY = ImGui::GetItemRectMin().y;
+    const float rowMaxY = ImGui::GetItemRectMax().y;
     bool nodeHovered = ImGui::IsItemHovered();
-    bool nodeActive = ImGui::IsItemActive();
     bool nodeRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
     const ImGuiID nodeItemId = ImGui::GetItemID();
     if (!renamingNode) {
         drawPrefabRowOverlay(node, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        drawVcsRowOverlay(node, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
     }
 
     // Pop color if we pushed it
@@ -1590,7 +1706,10 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
         }
         const std::string pathText = childScenePath.empty() ? "Unsaved scene" : childScenePath.generic_string();
-        if (node.runtimeSceneId != 0) {
+        if (node.isPersistent) {
+            ImGui::SetItemTooltip("DontDestroyOnLoad\nThe GameObjects that survive scene loads (DontDestroyOnLoad)\n"
+                "Running: they go on Stop");
+        } else if (node.runtimeSceneId != 0) {
             ImGui::SetItemTooltip("%s\nPath: %s\nRunning: changes made while playing revert on Stop",
                 node.isRuntimeLayer ? "Scene run by the game" : "Child Scene", pathText.c_str());
         } else if (node.isNotRunning) {
@@ -1636,11 +1755,17 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
 
     if (!node.isChildScene && !isChildSceneEntity && !node.isPlayCreated) {
         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-            // Add entity drag drop payload for dragging to resources
+            // Add entity drag drop payload for dragging to resources: encoded on the drag's first
+            // frame only (ImGui keeps the data), so a posed character is suspended once per drag
             if (!node.isScene) {
-                std::vector<char> payloadData = buildEntityPayload(node);
-                if (!payloadData.empty()) {
-                    ImGui::SetDragDropPayload("entity", payloadData.data(), payloadData.size());
+                const ImGuiPayload* current = ImGui::GetDragDropPayload();
+                if (current && current->IsDataType("entity")) {
+                    ImGui::SetDragDropPayload("entity", nullptr, 0, ImGuiCond_Once);
+                } else {
+                    std::vector<char> payloadData = buildEntityPayload(node);
+                    if (!payloadData.empty()) {
+                        ImGui::SetDragDropPayload("entity", payloadData.data(), payloadData.size(), ImGuiCond_Once);
+                    }
                 }
             }
 
@@ -1875,11 +2000,45 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
         }
 
+        // clips onto a GameObject: an Animation Player (added or reused) plays them, one scene
+        // step (animation clips spec 4.1; the hook is the converters')
+        // (not a payload the drop above took: a prefab with a clip makes the instance only)
+        if (!allowResourceDragDrop && !node.isScene && !node.isPlayCreated && animationClipAppHooks().dropClips && !project->isAnyScenePlaying()) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<std::string> clips;
+            if (peek && peek->IsDataType("resource_files")) {
+                for (const std::string& path : Util::getStringsFromPayload(peek)) {
+                    if (Util::isAnimationClipFile(path)) clips.push_back(path);
+                }
+            }
+            if (!clips.empty() && ImGui::AcceptDragDropPayload("resource_files")) {
+                Backend::getApp().dispatchClipDrop(getNodeSceneId(node), node.id, clips);
+                ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
+            }
+        }
+
+        // a physics material onto a GameObject: the material of all its colliders, one step
+        if (!allowResourceDragDrop && !node.isScene && !node.isPlayCreated && !project->isAnyScenePlaying()) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<std::string> received;
+            if (peek && peek->IsDataType("resource_files")) received = Util::getStringsFromPayload(peek);
+            if (!received.empty() && PhysicsMaterialAssets::isPhysicsMaterialFile(received[0]) && project->isInsideAssetsPath(received[0]) &&
+                ImGui::AcceptDragDropPayload("resource_files")) {
+                std::string error;
+                const std::string assetPath = project->normalizeToAssetsRelative(received[0]).generic_string();
+                if (!PhysicsMaterialAssets::applyToObject(project, getNodeSceneId(node), node.id, assetPath, error)) {
+                    Out::warning("%s", error.c_str());
+                }
+                ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
+            }
+        }
+
         ImGui::EndDragDropTarget();
     }
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered() && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) {
         project->clearAllSelections(project->getSelectedSceneId());
+        project->clearInspectedAsset();
         selectedScenes.clear();
         project->setSelectedSceneForProperties(project->getSelectedSceneId());
         resetEntitySelectionAnchor();
@@ -1948,7 +2107,14 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }
 
     if (!node.isScene && ImGui::BeginPopup("ContextMenu")) {
-        if (node.isChildScene) {
+        if (node.isPersistent) {
+            // made by the game, no scene file: nothing to open, show or remove
+            ImGui::TextDisabled("%s", node.name.c_str());
+            ImGui::Separator();
+            ImGui::TextDisabled("Persistent GameObjects (DontDestroyOnLoad)");
+            ImGui::TextDisabled("Running: they go on Stop");
+            ImGui::EndPopup();
+        } else if (node.isChildScene) {
             ImGui::TextDisabled("%s", node.name.c_str());
             ImGui::Separator();
             SceneProject* childScene = project->getScene(node.childSceneId);
@@ -2015,33 +2181,55 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 return project->isSelectedEntity(sceneId, node.id) ?
                     EntityClipboard::getCopyableSelection(project, sceneId) : std::vector<Entity>{node.id};
             };
-            if (ImGui::MenuItem(ICON_FA_SCISSORS "  Cut", "Ctrl+X", false, !node.isLocked)) {
+            if (ImGui::MenuItem(ICON_FA_SCISSORS "  Cut", shortcutText("edit.cut"), false, !node.isLocked)) {
                 EntityClipboard::cutGameObjects(project, sceneId, copyTargets());
                 entityDeleted = true;
             }
-            if (ImGui::MenuItem(ICON_FA_CLONE "  Copy", "Ctrl+C", false, !node.isLocked)) {
+            if (ImGui::MenuItem(ICON_FA_CLONE "  Copy", shortcutText("edit.copy"), false, !node.isLocked)) {
                 EntityClipboard::copyGameObjects(project, sceneId, copyTargets());
             }
-            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", "Ctrl+V", false, canPaste && !entityDeleted)) {
+            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", shortcutText("edit.paste"), false, canPaste && !entityDeleted)) {
                 EntityClipboard::pasteGameObjects(project, sceneId, EntityClipboard::Placement::After, node.id);
             }
-            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste As Child", "Ctrl+Shift+V", false, canPaste && node.hasTransform && !entityDeleted)) {
+            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste As Child", shortcutText("edit.pasteAsChild"), false, canPaste && node.hasTransform && !entityDeleted)) {
                 EntityClipboard::pasteGameObjects(project, sceneId, EntityClipboard::Placement::Into, node.id);
             }
             ImGui::Separator();
 
-            if (!entityDeleted && ImGui::MenuItem(ICON_FA_I_CURSOR "  Rename", "F2", false, !node.isPlayCreated)) {
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_I_CURSOR "  Rename", shortcutText("edit.rename"), false, !node.isPlayCreated)) {
                 beginRename(RenameTarget::Entity, sceneId, node.id, node.name);
             }
-            if (!entityDeleted && ImGui::MenuItem(ICON_FA_COPY "  Duplicate", "Ctrl+D", false, !node.isLocked)) {
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_COPY "  Duplicate", shortcutText("edit.duplicate"), false, !node.isLocked)) {
                 CommandHandle::get(sceneId)->addCommandNoMerge(new DuplicateEntityCmd(project, sceneId, targets));
             }
-            if (!entityDeleted && ImGui::MenuItem(ICON_FA_TRASH "  Delete", "Delete", false, !node.isLocked)) {
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_TRASH "  Delete", shortcutText("edit.delete"), false, !node.isLocked)) {
                 // One command for all of them: one snapshot pass and one undo step
                 if (!targets.empty()) {
                     CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project, sceneId, targets));
                 }
                 entityDeleted = true;
+            }
+            // Window > General > Bookmarks (S25 R28): the GameObjects, by id and path
+            if (!entityDeleted && !node.isPlayCreated && ImGui::MenuItem(ICON_FA_BOOKMARK "  Add to Bookmarks")) {
+                for (Entity target : targets) {
+                    std::string error;
+                    if (!Backend::getApp().getBookmarksWindow()->add(Bookmarks::forGameObject(project, sceneId, target), &error)) {
+                        Out::warning("Bookmarks: %s", error.c_str());
+                    }
+                }
+            }
+
+            // Play Mode Changes: what scripts change here is offered at Stop too
+            SceneProject* playingScene = project->getScene(sceneId);
+            if (!entityDeleted && playingScene && !node.isPlayCreated && !project->isPlayRuntimeScene(sceneId) &&
+                (playingScene->playState == ScenePlayState::PLAYING || playingScene->playState == ScenePlayState::PAUSED)) {
+                ImGui::Separator();
+                if (ImGui::MenuItem(ICON_FA_THUMBTACK "  Keep Values After Play (all components)")) {
+                    for (Entity target : targets) {
+                        PlayChangeReview::get().markGameObject(sceneId, target);
+                    }
+                }
+                ImGui::SetItemTooltip("At Stop, Play Mode Changes offers to keep every component's values as they are then");
             }
 
             // Create children of this GameObject
@@ -2223,6 +2411,12 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 }
             }
 
+            // the project's editor scripts: GameObject/... items (S23)
+            EditorMenuRunContext scriptContext;
+            scriptContext.sceneId = sceneId;
+            for (Entity selected : project->getSelectedEntities(sceneId)) scriptContext.selection.push_back(selected);
+            EditorScripts::get().drawContextItems("gameobject", {}, scriptContext);
+
             ImGui::EndPopup();
         }
     }
@@ -2350,6 +2544,8 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     if (!renamingNode) {
         showPrefabRowArrow(node);
     }
+    // the eye and the hand at the row's left (HierarchyVisibilityGutter.cpp)
+    drawVisibilityGutter(node, rowMinY, rowMaxY);
 
     if (nodeOpen) {
         for (auto& child : node.children) {
@@ -2626,8 +2822,14 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
     }
 
     // scenes the game runs that are no child scene of this one: nested deeper, or added by scripts
+    // (the DontDestroyOnLoad scene goes last, below the played scene's GameObjects)
+    SceneProject* persistentLayer = nullptr;
     for (SceneProject* runtime : runningLayers) {
         if (listedLayers.count(runtime->id) || !runtime->scene) {
+            continue;
+        }
+        if (project->isPersistentPlayScene(runtime->id)) {
+            persistentLayer = runtime;
             continue;
         }
         TreeNode layerNode;
@@ -2837,8 +3039,51 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
         }
     } while (splicedNew);
 
+    // Unity's DontDestroyOnLoad scene in Play: the persistent GameObjects, live
+    if (persistentLayer) {
+        TreeNode persistentNode;
+        persistentNode.icon = ICON_FA_THUMBTACK;
+        persistentNode.name = persistentLayer->name;
+        persistentNode.isChildScene = true;
+        persistentNode.isRuntimeLayer = true;
+        persistentNode.isPersistent = true;
+        persistentNode.id = project->getPlaySourceSceneId(persistentLayer->id);
+        persistentNode.childSceneId = persistentNode.id;
+        persistentNode.ownerSceneId = sceneProject->id;
+        persistentNode.runtimeSceneId = persistentLayer->id;
+        persistentNode.order = order++;
+        addSceneContents(persistentNode, persistentLayer, persistentLayer->id);
+        if (!root.children.empty()) {
+            root.children.back().separator = true;
+        }
+        root.children.push_back(persistentNode);
+    }
+
     markPrefabScripts(root);
     markPrefabRows(root);
+}
+
+void editor::HierarchyWindow::showPartialLoadBanner(const SceneProject& sceneProject) {
+    const size_t dropped = sceneProject.loadReport.dropped();
+    if (dropped == 0) {
+        return;
+    }
+    const size_t kept = sceneProject.loadReport.outstandingPreserved(findPreservedStore(sceneProject.scene));
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::WarningText);
+    ImGui::TextWrapped("This scene did not load completely: %zu value%s dropped, %zu kept. Auto Save is off for this scene.",
+                       dropped, dropped == 1 ? "" : "s", kept);
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Details##PartialLoad")) {
+        for (const LoadIssue& issue : sceneProject.loadReport.issues) {
+            if (issue.fate == LoadIssueFate::Dropped) {
+                Out::error(issue.consoleLine());
+            }
+        }
+        DataSafetyDialogs::showFileInConsole(sceneProject.filepath.filename().string());
+    }
+    ImGui::SetItemTooltip("Show this scene's load issues in the Console");
+    ImGui::Separator();
 }
 
 void editor::HierarchyWindow::show(){
@@ -2878,6 +3123,8 @@ void editor::HierarchyWindow::show(){
         focusedThisFrame = false;
     }
     windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+    showPartialLoadBanner(*sceneProject);
 
     // A rename started for a scene that is no longer shown has nothing to edit
     if (renameTarget != RenameTarget::None && renameSceneId != sceneProject->id) {
@@ -2943,7 +3190,11 @@ void editor::HierarchyWindow::show(){
         revealRequest = {};
     }
 
+    // the rows leave room on their left for the visibility gutter
+    const float gutterWidth = visibilityGutterWidth();
+    ImGui::Indent(gutterWidth);
     showTreeNode(root);
+    ImGui::Unindent(gutterWidth);
     syncSceneWindowSelectionHierarchy(root);
     float treeLastCursorY = ImGui::GetCursorScreenPos().y;
 
@@ -2969,7 +3220,7 @@ void editor::HierarchyWindow::show(){
         if (ImGui::IsWindowAppearing()) {
             EntityClipboard::refresh();
         }
-        if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", "Ctrl+V", false, EntityClipboard::hasGameObjects(project))) {
+        if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", shortcutText("edit.paste"), false, EntityClipboard::hasGameObjects(project))) {
             EntityClipboard::pasteGameObjects(project, sceneProject->id, EntityClipboard::Placement::Root, NULL_ENTITY);
         }
         ImGui::Separator();

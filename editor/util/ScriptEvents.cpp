@@ -33,6 +33,10 @@ const std::vector<ScriptEventSourceInfo>& sourceList() {
         {S::Action, "Action", ICON_FA_PLAY, "ActionComponent.h", "ActionComponent", "REGISTER_COMPONENT_EVENT", "Action"},
         {S::AudioSource, "AudioSource", ICON_FA_VOLUME_HIGH, "AudioSourceComponent.h", "AudioSourceComponent", "REGISTER_COMPONENT_EVENT", "AudioSource"},
         {S::UIDocument, "UI Document", ICON_FA_FILE_CODE, "UIDocumentComponent.h", "UIDocumentComponent", "REGISTER_COMPONENT_EVENT", "UIDocument"},
+        {S::PoseAnimator, "Pose Animator", ICON_FA_PERSON_RUNNING, "PoseAnimatorComponent.h", "PoseAnimatorComponent", "REGISTER_COMPONENT_EVENT", "PoseAnimator"},
+        {S::AnimationPlayer, "Animation Player", ICON_FA_FILM, "AnimationPlayerComponent.h", "AnimationPlayerComponent", "REGISTER_COMPONENT_EVENT", "AnimationPlayer"},
+        {S::Animator, "Animator", ICON_FA_DIAGRAM_PROJECT, "AnimatorComponent.h", "AnimatorComponent", "REGISTER_COMPONENT_EVENT", "Animator"},
+        {S::VertexAnimator, "Vertex Animator", ICON_FA_PEOPLE_GROUP, "VertexAnimatorComponent.h", "VertexAnimatorComponent", "REGISTER_COMPONENT_EVENT", "VertexAnimator"},
         {S::Physics2D, "Physics 2D", ICON_FA_CIRCLE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
         {S::Physics3D, "Physics 3D", ICON_FA_CUBE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
     };
@@ -117,6 +121,23 @@ const std::vector<ScriptEvent>& eventList() {
 
         {S::UIDocument, "onLoad", nullptr, "The document has loaded (also after every hot reload)", {}},
         {S::UIDocument, "onUnload", nullptr, "The document is about to unload", {}},
+
+        {S::PoseAnimator, "onFinish", nullptr, "A one-shot pose animation reached its end", {}},
+
+        {S::AnimationPlayer, "onEvent", nullptr, "A clip event fired (its function name, args, state and time)", {{"const AnimationEvent&", "event"}}},
+        {S::AnimationPlayer, "onFinish", nullptr, "A once state ended, or a clamp forever state first reached its end", {{"const std::string&", "state"}}},
+        {S::AnimationPlayer, "onStateEnter", nullptr, "An Animator Controller state was entered (its layer and name)", {{"int", "layer"}, {"const std::string&", "state"}}},
+        {S::AnimationPlayer, "onStateExit", nullptr, "An Animator Controller state was exited (its layer and name)", {{"int", "layer"}, {"const std::string&", "state"}}},
+
+        {S::Animator, "onEvent", nullptr, "An animation event fired (its function name, args, state and time)", {{"const AnimationEvent&", "event"}}},
+        {S::Animator, "onStateEnter", nullptr, "A layer entered a state", {{"const std::string&", "layer"}, {"const std::string&", "state"}}},
+        {S::Animator, "onStateExit", nullptr, "A layer left a state", {{"const std::string&", "layer"}, {"const std::string&", "state"}}},
+        {S::Animator, "onMontageEnded", nullptr, "A montage ended (interrupted: another montage or stopMontage)", {{"const std::string&", "montage"}, {"bool", "interrupted"}}},
+        {S::Animator, "onAnimatorMove", nullptr, "Root motion of this update (world space); when handled it is not applied", {{"Vector3", "deltaPosition"}, {"Quaternion", "deltaRotation"}}},
+        {S::VertexAnimator, "onEvent", nullptr, "A baked clip event fired (a GameObject without instances)", {{"const AnimationEvent&", "event"}}},
+        {S::VertexAnimator, "onFinish", nullptr, "A once clip ended", {{"const std::string&", "clip"}}},
+        {S::VertexAnimator, "onInstanceEvent", nullptr, "A clip event of an instance fired (Instance Events on)", {{"int", "instance"}, {"const AnimationEvent&", "event"}}},
+        {S::VertexAnimator, "onInstanceFinish", nullptr, "A once clip of an instance ended (Instance Events on)", {{"int", "instance"}, {"const std::string&", "clip"}}},
 
         {S::Physics2D, "beginContact2D", "Contacts", "Any two Rigidbody 2Ds start touching, needs Contact Events on a Collider 2D", contact2D},
         {S::Physics2D, "endContact2D", "Contacts", "Any two Rigidbody 2Ds stop touching, needs Contact Events on a Collider 2D", contact2D},
@@ -486,17 +507,17 @@ std::vector<std::string> callArguments(const Document& doc, size_t paren) {
     return {};
 }
 
-struct InputField {
+struct ScriptTextEdit {
     size_t document = 0;
     size_t offset = 0;
     size_t erase = 0;
     std::string text;
 };
 
-void applyEdits(std::vector<std::string>& texts, std::vector<InputField> edits) {
+void applyEdits(std::vector<std::string>& texts, std::vector<ScriptTextEdit> edits) {
     // Back to front, so the offsets of the others stay valid
-    std::sort(edits.begin(), edits.end(), [](const InputField& a, const InputField& b) { return a.offset > b.offset; });
-    for (const InputField& edit : edits) {
+    std::sort(edits.begin(), edits.end(), [](const ScriptTextEdit& a, const ScriptTextEdit& b) { return a.offset > b.offset; });
+    for (const ScriptTextEdit& edit : edits) {
         texts[edit.document].replace(edit.offset, edit.erase, edit.text);
     }
 }
@@ -509,12 +530,12 @@ size_t bodyCaret(const std::string& text, size_t open, size_t close) {
 
 // Adds a statement after the last one of the body starting with 'prefix', else first.
 // 'open' is the '{' of a C++ body or the ')' closing the Lua function parameters.
-InputField bodyInsertion(const Document& doc, size_t open, size_t close, const std::string& prefix, const std::string& statement) {
+ScriptTextEdit bodyInsertion(const Document& doc, size_t open, size_t close, const std::string& prefix, const std::string& statement) {
     const std::string& text = *doc.text;
     const std::string& masked = doc.masked;
     const std::string outerIndent = indentOf(text, open);
 
-    InputField edit;
+    ScriptTextEdit edit;
     edit.document = doc.index;
 
     // A one-line body is spread over lines
@@ -912,9 +933,11 @@ std::string cppSignature(const ScriptEvent& event, const std::string& name, bool
     std::string params;
     for (const ScriptEventParam& param : event.params) {
         if (!params.empty()) params += ", ";
-        // Engine types are the capitalized ones
-        if (qualify && std::isupper(static_cast<unsigned char>(param.type[0]))) params += "jasperengine::";
-        params += std::string(param.type) + " " + param.name;
+        // Engine types are the capitalized ones ("const AnimationEvent&" too)
+        std::string type = param.type;
+        const size_t base = type.compare(0, 6, "const ") == 0 ? 6 : 0;
+        if (qualify && base < type.size() && std::isupper(static_cast<unsigned char>(type[base]))) type.insert(base, "jasperengine::");
+        params += type + " " + param.name;
     }
     return std::string(event.returnsBool ? "bool " : "void ") + name + "(" + params + ")";
 }
@@ -937,7 +960,7 @@ std::string cppRegistration(const ScriptEvent& event, const std::string& method,
 }
 
 // After the last member of the last public section
-InputField memberInsertion(const Document& doc, const CppClass& cls, const ScriptEvent& event, const std::string& signature, bool define) {
+ScriptTextEdit memberInsertion(const Document& doc, const CppClass& cls, const ScriptEvent& event, const std::string& signature, bool define) {
     const std::string& text = *doc.text;
     const std::string& m = doc.masked;
     const int memberDepth = doc.depth[cls.open + 1];
@@ -968,7 +991,7 @@ InputField memberInsertion(const Document& doc, const CppClass& cls, const Scrip
     std::string indent = classIndent + indentUnit;
     bool blankLine = false;
 
-    InputField edit;
+    ScriptTextEdit edit;
     edit.document = doc.index;
 
     const size_t last = prevNonSpace(m, section.end);
@@ -996,14 +1019,14 @@ InputField memberInsertion(const Document& doc, const CppClass& cls, const Scrip
 }
 
 // After the last method defined next to the constructor
-InputField definitionInsertion(const CppScript& script, const ScriptEvent& event, const std::string& method) {
+ScriptTextEdit definitionInsertion(const CppScript& script, const ScriptEvent& event, const std::string& method) {
     const Document& doc = script.docs[script.constructor.document];
     size_t lastClose = script.constructor.close;
     for (const CppFunction& function : outOfClassFunctions(doc, script.className)) {
         if (function.close != npos) lastClose = std::max(lastClose, function.close);
     }
 
-    InputField edit;
+    ScriptTextEdit edit;
     edit.document = doc.index;
     edit.offset = lineEnd(*doc.text, lastClose);
     edit.text = "\n\n" + cppSignature(event, script.className + "::" + method, !usesJasperEngineNamespace(doc)) + " {\n" +
@@ -1020,7 +1043,7 @@ struct LuaMethod {
     size_t end = npos;
 };
 
-struct LuaScript {
+struct LuaScriptOutline {
     Document doc;
     std::string table;
     size_t moduleReturn = npos;
@@ -1069,7 +1092,7 @@ std::vector<LuaMethod> findLuaMethods(const Document& doc, const std::string& ta
     return methods;
 }
 
-bool analyzeLua(const std::string& text, LuaScript& script, std::string& error) {
+bool analyzeLua(const std::string& text, LuaScriptOutline& script, std::string& error) {
     script.doc = luaDocument(text);
     const Document& doc = script.doc;
     const std::string& m = doc.masked;
@@ -1107,14 +1130,14 @@ bool analyzeLua(const std::string& text, LuaScript& script, std::string& error) 
     return true;
 }
 
-const LuaMethod* findLuaMethod(const LuaScript& script, const std::string& name) {
+const LuaMethod* findLuaMethod(const LuaScriptOutline& script, const std::string& name) {
     for (const LuaMethod& method : script.methods) {
         if (method.name == name) return &method;
     }
     return nullptr;
 }
 
-std::vector<Registration> luaRegistrations(const LuaScript& script) {
+std::vector<Registration> luaRegistrations(const LuaScriptOutline& script) {
     const Document& doc = script.doc;
     std::vector<Registration> registrations;
     for (const Word& word : doc.words) {
@@ -1186,7 +1209,7 @@ std::string ScriptEvents::getParameterNames(const ScriptEvent& event) {
 
 ScriptEventScan ScriptEvents::scanLua(const std::string& text) {
     ScriptEventScan scan;
-    LuaScript script;
+    LuaScriptOutline script;
     if (analyzeLua(text, script, scan.error)) {
         scan.registered = registeredEvents(luaRegistrations(script));
     }
@@ -1197,7 +1220,7 @@ ScriptEventChange ScriptEvents::addLua(const std::string& text, size_t eventInde
     ScriptEventChange change;
     change.texts = {text};
 
-    LuaScript script;
+    LuaScriptOutline script;
     if (!analyzeLua(text, script, change.error)) return change;
 
     const std::vector<Registration> registrations = luaRegistrations(script);
@@ -1219,7 +1242,7 @@ ScriptEventChange ScriptEvents::addLua(const std::string& text, size_t eventInde
     const std::string method = handlerName(event, true, registrations, methods);
     const std::string statement = luaRegistration(event, method);
 
-    std::vector<InputField> edits;
+    std::vector<ScriptTextEdit> edits;
     std::string functions;
     if (const LuaMethod* init = findLuaMethod(script, "init")) {
         edits.push_back(bodyInsertion(script.doc, init->paramsClose, init->end, "Register", statement));
@@ -1232,7 +1255,7 @@ ScriptEventChange ScriptEvents::addLua(const std::string& text, size_t eventInde
     }
     if (!functions.empty()) {
         // Before "return Name"
-        InputField edit;
+        ScriptTextEdit edit;
         edit.offset = script.moduleReturn;
         const bool afterBlankLine = edit.offset == 0 || restOfLineBlank(text, lineStart(text, edit.offset - 1));
         edit.text = (afterBlankLine ? "" : "\n") + functions;
@@ -1240,7 +1263,7 @@ ScriptEventChange ScriptEvents::addLua(const std::string& text, size_t eventInde
     }
     applyEdits(change.texts, edits);
 
-    LuaScript changed;
+    LuaScriptOutline changed;
     std::string error;
     if (analyzeLua(change.texts[0], changed, error)) {
         if (const LuaMethod* handler = findLuaMethod(changed, method)) {
@@ -1281,7 +1304,7 @@ ScriptEventChange ScriptEvents::addCpp(const std::vector<std::string>& documents
     const ScriptEventSourceInfo& source = sourceInfo(event.source);
     const std::string method = handlerName(event, false, registrations, cppMemberNames(script));
     const Document& classDoc = script.docs[script.cls.document];
-    std::vector<InputField> edits;
+    std::vector<ScriptTextEdit> edits;
 
     // The physics types are used in the declaration, the other headers only by the macros
     size_t includeAt = includeOffset(classDoc, source.include);

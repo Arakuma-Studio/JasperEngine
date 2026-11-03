@@ -1,59 +1,123 @@
-# jasperengine-editor-tests: googletest unit tests of the editor and the engine core it drives
-# (shader variant keys: ShaderPool, the .sdat format, the scene/project encoding of keys).
-# Included by the root CMakeLists.txt with -DJASPERENGINE_EDITOR_TESTS=ON (include(), not
-# add_subdirectory(): the editor's relative source and include paths must keep resolving
-# against the root), built next to the editor and run by tools/build.sh editor-tests.
-# Needs no display, network or GPU. Tests are *Test.cpp files next to this one.
+# jasperengine-editor-tests: unit tests of editor logic (editor/tests/<area>/ mirrors editor/<area>/,
+# fixtures in editor/tests/fixtures, shared helpers in editor/tests/support; docs/testing.md), and
+# in editor/tests/engine/<area>/ (mirroring engine/core/<area>/) the tests of engine code that
+# drive it through the editor's shared engine (scenes with physics, models, shader keys).
+# Included by the root CMakeLists.txt with -DJASPERENGINE_TESTS=ON (include(), not
+# add_subdirectory(): the editor's relative source and include paths must keep resolving against
+# the root). The editor's sources without its main() are compiled with jasperengine-editor's
+# command lines, so ccache shares their objects; the binary sits next to the editor and its shared
+# engine. Runs on Linux, Windows and macOS (tools/build.sh unit-tests on Linux).
 
-# googletest from the repository's yaml-cpp test tree (as engine/tests/htmlui); the HTML UI
-# editor tests (editor/htmlui/tests) add the same targets when both are on
-if(NOT TARGET gtest)
-    set(JASPER_EDITOR_GTEST_DIR "${CMAKE_SOURCE_DIR}/libs/yaml-cpp/test/gtest-1.11.0")
-    set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
-    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
-    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${JASPER_EDITOR_GTEST_DIR} ${CMAKE_BINARY_DIR}/gtest-editor EXCLUDE_FROM_ALL)
-    target_compile_options(gtest PRIVATE -w)
-    target_compile_options(gtest_main PRIVATE -w)
+file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/reflect/legacy/*.cpp)
+# the reflection codec's benchmark against the legacy codecs (docs/specs/S08-reflection.md R17)
+list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
+
+# the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
+# crash handler (editor/tests/util/LogCrashHelper.cpp)
+add_executable(je_log_crash_helper
+    ${CMAKE_CURRENT_LIST_DIR}/util/LogCrashHelper.cpp
+    ${CMAKE_SOURCE_DIR}/${EDITOR_DIR}/util/CrashHandler.cpp)
+target_include_directories(je_log_crash_helper PRIVATE ${CMAKE_SOURCE_DIR}/${EDITOR_DIR} ${GENERATED_DIR})
+target_link_libraries(je_log_crash_helper PRIVATE jasperengine)
+if(WIN32)
+    target_link_libraries(je_log_crash_helper PRIVATE dbghelp)
 endif()
-
-# The editor's sources without its main(); the same command lines as jasperengine-editor's,
-# so ccache shares the objects
-set(EDITOR_TEST_EDITOR_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
-list(REMOVE_ITEM EDITOR_TEST_EDITOR_SOURCES ${EDITOR_DIR}/main.cpp)
-
-# The tests themselves see googletest; the editor sources keep the editor's command lines
-file(GLOB EDITOR_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp)
-add_library(jasperengine-editor-tests-objects OBJECT ${EDITOR_TEST_SOURCES})
-target_link_libraries(jasperengine-editor-tests-objects PRIVATE gtest jasperengine yaml-cpp)
-target_include_directories(jasperengine-editor-tests-objects PRIVATE ${CMAKE_SOURCE_DIR}/${EDITOR_DIR} ${GENERATED_DIR})
-target_include_directories(jasperengine-editor-tests-objects SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/${IMGUI_DIR} ${CMAKE_SOURCE_DIR}/${IMGUI_DIR}/backends)
-# Test models and other inputs read from the source tree (fixtures/rigged_cube.fbx ...)
-target_compile_definitions(jasperengine-editor-tests-objects PRIVATE JASPER_EDITOR_TEST_FIXTURES="${CMAKE_CURRENT_LIST_DIR}/fixtures")
-set_target_properties(jasperengine-editor-tests-objects PROPERTIES
+set_target_properties(je_log_crash_helper PROPERTIES
     CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
     CXX_STANDARD_REQUIRED ON
-)
-add_dependencies(jasperengine-editor-tests-objects generate_api_suggestions)
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    FOLDER "tests")
 
-add_executable(jasperengine-editor-tests
-    ${EDITOR_TEST_EDITOR_SOURCES}
-    $<TARGET_OBJECTS:jasperengine-editor-tests-objects>
+# HttpTest's HTTP server on 127.0.0.1 (POSIX sockets)
+if(NOT WIN32)
+    list(APPEND EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/util/TestHttpServer.cpp)
+else()
+    list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/HttpTest\\.cpp$")
+endif()
+# VideoMp4Test: the Linux FFmpeg backend and the media cache against that server
+if(WIN32 OR APPLE)
+    list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/VideoMp4Test\\.cpp$")
+endif()
+
+# the child ProcessExecTest runs (argument echo, environment, timeouts, a process tree, floods)
+add_executable(je_vcs_process_helper ${CMAKE_CURRENT_LIST_DIR}/vcs/ProcessHelper.cpp)
+set_target_properties(je_vcs_process_helper PROPERTIES
+    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
+    CXX_STANDARD_REQUIRED ON
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    FOLDER "tests")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(je_vcs_process_helper PRIVATE Threads::Threads)
+endif()
+
+jasperengine_add_test_target(jasperengine-editor-tests
+    EDITOR
+    SOURCES ${EDITOR_TEST_SOURCES}
+    # (engine/physics: upstream's flat physics tests include "PhysicsTestScene.h" as they did)
+    INCLUDES ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR}/engine/tests/core ${CMAKE_CURRENT_LIST_DIR}/engine/physics
+    ASSET_DIR ${CMAKE_CURRENT_LIST_DIR}/fixtures
+    # tinyexr: FloatImageTest writes EXRs with custom channel names through it
+    LINK tinyexr
+    DEFINITIONS
+        # the repository root (the data-safety corpus reads tools/fixtures)
+        JASPER_TEST_REPO_DIR="${CMAKE_SOURCE_DIR}"
+        JASPER_TEST_FIXTURES_DIR="${CMAKE_CURRENT_LIST_DIR}/fixtures"
+        # upstream's name of the same folder
+        JASPER_EDITOR_TEST_FIXTURES="${CMAKE_CURRENT_LIST_DIR}/fixtures"
+        # the video tests' clips (tools/media/make_test_clips.sh) and the HTML UI's WebM fixtures
+        JASPER_MEDIA_TEST_CLIPS="${CMAKE_SOURCE_DIR}/engine/tests/media/clips"
+        JASPER_HTMLUI_VIDEO_FIXTURES="${CMAKE_SOURCE_DIR}/engine/tests/htmlui/fixtures/video"
+        # tests that run the editor binary (CLI exit codes)
+        JASPER_TEST_EDITOR_BINARY="$<TARGET_FILE:jasperengine-editor>"
+        JASPER_TEST_LOG_CRASH_HELPER="$<TARGET_FILE:je_log_crash_helper>"
+        JASPER_TEST_VCS_PROCESS_HELPER="$<TARGET_FILE:je_vcs_process_helper>"
+        # whether this build compiles V-HACD (engine/CMakeLists.txt): the test of the build without
+        # it is registered only there, not skipped here (S02 R11, no skipped editor test)
+        JASPER_TEST_CONVEX_DECOMPOSITION=$<BOOL:${JASPERENGINE_CONVEX_DECOMPOSITION}>
+        # the engine's include directories and definitions, and the compiler (the flags file is
+        # generated below): LineRendererStreamTest compiles Factory's component code
+        JASPER_EDITOR_TEST_ENGINE_FLAGS="${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt"
+        JASPER_EDITOR_TEST_CXX="${CMAKE_CXX_COMPILER}"
 )
-configure_jasperengine_editor_target(jasperengine-editor-tests)
-# googletest by file, not by target: its include directories would change the editor sources' command lines
-add_dependencies(jasperengine-editor-tests gtest gtest_main)
-target_link_libraries(jasperengine-editor-tests PRIVATE $<TARGET_FILE:gtest_main> $<TARGET_FILE:gtest>)
-# next to the editor and libjasperengine.so ($ORIGIN rpath)
-set_target_properties(jasperengine-editor-tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper je_vcs_process_helper)
 
 # A process with nothing but the engine (the editor's static App builds a Scene before main, so
 # the test binary can't make a PlacementWorld before Jolt is set up); run by PlacementWorldTest
-add_executable(jasperengine-placement-fresh-process ${CMAKE_CURRENT_LIST_DIR}/standalone/PlacementWorldBeforeAnyScene.cpp)
+add_executable(jasperengine-placement-fresh-process ${CMAKE_CURRENT_LIST_DIR}/engine/physics/standalone/PlacementWorldBeforeAnyScene.cpp)
 target_link_libraries(jasperengine-placement-fresh-process PRIVATE jasperengine)
 set_target_properties(jasperengine-placement-fresh-process PROPERTIES
     CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
     CXX_STANDARD_REQUIRED ON
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-)
+    FOLDER "tests")
 add_dependencies(jasperengine-editor-tests jasperengine-placement-fresh-process)
+
+# A process of its own for the texture synthesis' out-of-memory check (an address-space limit
+# measured from the process size, which the engine-running test binary can't give); run by
+# TexSynthOutOfMemory.IsAFailedStatusNotATerminate, Linux only
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(jasperengine-texsynth-oom
+        ${CMAKE_CURRENT_LIST_DIR}/texsynth/standalone/SynthesisOutOfMemory.cpp
+        ${JASPERENGINE_TEXSYNTH_SOURCES}
+        ${CMAKE_SOURCE_DIR}/${EDITOR_DIR}/util/PngWriter.cpp)
+    target_include_directories(jasperengine-texsynth-oom PRIVATE ${CMAKE_SOURCE_DIR}/${EDITOR_DIR} ${GENERATED_DIR})
+    target_link_libraries(jasperengine-texsynth-oom PRIVATE jasperengine)
+    if(TARGET stb)
+        target_link_libraries(jasperengine-texsynth-oom PRIVATE stb)
+    endif()
+    set_target_properties(jasperengine-texsynth-oom PROPERTIES
+        CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
+        CXX_STANDARD_REQUIRED ON
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+        FOLDER "tests")
+    add_dependencies(jasperengine-editor-tests jasperengine-texsynth-oom)
+endif()
+
+# The engine's include directories and definitions, for tests that compile the C++ the editor
+# generates for exports (LineRendererStreamTest: Factory's component code against the engine
+# headers, with the compiler that builds the tests)
+file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
+"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,\n>\n")

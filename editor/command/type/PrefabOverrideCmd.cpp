@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PrefabOverrideCmd.h"
+#include "pose/PoseEditSession.h"
 
 using namespace jasperengine;
 
@@ -24,6 +25,9 @@ bool editor::PrefabOverrideCmd::isApply() const{
 
 bool editor::PrefabOverrideCmd::execute(){
     std::vector<std::filesystem::path> targets;
+    // a posed or previewed object applies, records or reverts from its rest, never from the
+    // pose; a revert's value is not written back over by the preview's stop (clips 9.R7)
+    PoseEditSession::suspendActiveFor(sceneId, {entity});
     if (isApply()){
         if (!project->canApplyPrefabOverrides()){
             return false;
@@ -42,6 +46,7 @@ bool editor::PrefabOverrideCmd::execute(){
     if (!project->getScene(sceneId)){
         return false;
     }
+    writtenTargets = targets;
     before = project->capturePrefabUndoState(sceneId, entity, targets);
 
     switch (operation){
@@ -62,5 +67,35 @@ bool editor::PrefabOverrideCmd::execute(){
 }
 
 void editor::PrefabOverrideCmd::undo(){
+    PoseEditSession::suspendActiveFor(sceneId, {entity});
     project->restorePrefabUndoState(before);
+}
+
+std::string editor::PrefabOverrideCmd::describe() const{
+    const std::string what = properties.size() == 1 ? CommandNames::property(properties.front()) : CommandNames::component(componentType);
+    std::string verb;
+    switch (operation){
+        case Operation::RecordProperty: verb = "Record Override " + what; break;
+        case Operation::RevertProperty: verb = "Revert " + what; break;
+        case Operation::ApplyProperty: verb = "Apply " + what + " to Prefab"; break;
+        case Operation::RecordState: verb = "Record GameObject State Override"; break;
+        case Operation::RevertState: verb = "Revert GameObject State"; break;
+        case Operation::ApplyState: verb = "Apply GameObject State to Prefab"; break;
+        case Operation::RecordAddedComponent: verb = "Record Added Component " + CommandNames::component(componentType); break;
+        case Operation::RevertAddedComponent: verb = "Revert Added Component " + CommandNames::component(componentType); break;
+        case Operation::ApplyAddedComponent: verb = "Apply Added Component " + CommandNames::component(componentType); break;
+        case Operation::RecordRemovedComponent: verb = "Record Removed Component " + CommandNames::component(componentType); break;
+        case Operation::RevertRemovedComponent: verb = "Revert Removed Component " + CommandNames::component(componentType); break;
+        case Operation::ApplyRemovedComponent: verb = "Apply Removed Component " + CommandNames::component(componentType); break;
+    }
+    return verb + " (" + CommandNames::entity(project, sceneId, entity) + ")";
+}
+
+std::vector<editor::Command::Touched> editor::PrefabOverrideCmd::touchedPaths(bool) const{
+    // an apply writes its prefab (and its undo writes it back)
+    std::vector<Touched> out;
+    for (const std::filesystem::path& file : writtenTargets){
+        out.push_back({file.is_absolute() ? file : project->getProjectPath() / file, false});
+    }
+    return out;
 }

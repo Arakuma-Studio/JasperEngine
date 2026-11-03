@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "UIProbe.h"
+#include "io/AtomicFile.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -36,6 +37,18 @@ namespace {
     std::map<std::string, Rect>& written() {
         static std::map<std::string, Rect> items;
         return items;
+    }
+
+    using Scroll = std::array<float, 2>;
+
+    std::map<std::string, Scroll>& currentScroll() {
+        static std::map<std::string, Scroll> scrolls;
+        return scrolls;
+    }
+
+    std::map<std::string, Scroll>& writtenScroll() {
+        static std::map<std::string, Scroll> scrolls;
+        return scrolls;
     }
 
     bool visibleInWindow(const ImVec2& min, const ImVec2& max) {
@@ -75,11 +88,18 @@ void editor::UIProbe::rect(const std::string& name, float x0, float y0, float x1
     current()[name] = {x0, y0, x1, y1};
 }
 
+void editor::UIProbe::scroll(const std::string& name) {
+    if (!enabled()) return;
+    const ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (!window) return;
+    currentScroll()[name] = {window->Scroll.y, window->ScrollMax.y};
+}
+
 void editor::UIProbe::flush() {
     if (!enabled()) return;
     static unsigned long frame = 0;
     frame++;
-    if (current() != written()) {
+    if (current() != written() || currentScroll() != writtenScroll()) {
         std::ostringstream json;
         json << "{\"frame\": " << frame << ", \"items\": {";
         bool first = true;
@@ -87,16 +107,20 @@ void editor::UIProbe::flush() {
             json << (first ? "" : ", ") << jsonString(name) << ": [" << r[0] << ", " << r[1] << ", " << r[2] << ", " << r[3] << "]";
             first = false;
         }
-        json << "}}\n";
-        // whole files only: written beside, then renamed over
-        const std::string temporary = probePath() + ".tmp";
-        {
-            std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-            out << json.str();
+        json << "}, \"scroll\": {";
+        first = true;
+        for (const auto& [name, s] : currentScroll()) {
+            json << (first ? "" : ", ") << jsonString(name) << ": [" << s[0] << ", " << s[1] << "]";
+            first = false;
         }
-        std::error_code error;
-        std::filesystem::rename(temporary, probePath(), error);
+        json << "}}\n";
+        // whole files only (a reader never sees half of one): an atomic Cache write
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        io::writeFileAtomic(probePath(), json.str(), options);
         written() = current();
+        writtenScroll() = currentScroll();
     }
     current().clear();
+    currentScroll().clear();
 }

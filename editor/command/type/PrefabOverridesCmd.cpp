@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PrefabOverridesCmd.h"
+#include "pose/PoseEditSession.h"
 
 #include "command/type/AddEntityToPrefabCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -111,6 +112,8 @@ void editor::PrefabOverridesCmd::undo(){
 editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::revertAll(Project* project, uint32_t sceneId, Entity root){
     using Kind = PrefabOverrideEntry::Kind;
     using Operation = PrefabOverrideCmd::Operation;
+    // a posed character's bones are no overrides: back to rest before they are listed and reverted
+    PoseEditSession::suspendActiveFor(sceneId, {root});
     const std::vector<PrefabOverrideEntry> entries = project->getPrefabOverrideEntries(sceneId, root);
     // Added GameObjects first (their delete reads the scene as it is), removed GameObjects
     // before components (a reverted component pointing at one finds it back)
@@ -136,7 +139,9 @@ editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::revertAll(Project* proje
             default: break;
         }
     }
-    return new PrefabOverridesCmd(project, sceneId, std::move(steps));
+    auto* cmd = new PrefabOverridesCmd(project, sceneId, std::move(steps));
+    cmd->label = "Revert All Overrides (" + CommandNames::entity(project, sceneId, root) + ")";
+    return cmd;
 }
 
 editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::applyAll(Project* project, uint32_t sceneId, Entity root){
@@ -151,12 +156,15 @@ editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::applyAll(Project* projec
         return nullptr;
     }
     const std::filesystem::path rootPath = component->path;
+    // a posed character's bones are no overrides: back to rest before they are listed
+    PoseEditSession::suspendActiveFor(sceneId, {root});
     const std::vector<PrefabOverrideEntry> entries = project->getPrefabOverrideEntries(sceneId, root);
     // Added GameObjects first: each reads where it is when made
     std::vector<std::unique_ptr<Command>> steps;
     for (const PrefabOverrideEntry& entry : entries) {
-        if (entry.kind == Kind::AddedGameObject) {
-            // into the instance's own prefab, also below its nested instances (PREFABS.md 17)
+        // into the instance's own prefab, also below its nested instances (PREFABS.md 17); not one
+        // holding an instance of that prefab, which would make it contain itself: it stays an override
+        if (entry.kind == Kind::AddedGameObject && project->canAddToPrefab(sceneId, entry.entity, rootPath)) {
             steps.emplace_back(new AddEntityToPrefabCmd(project, sceneId, entry.entity, entry.parent, rootPath));
         }
     }
@@ -190,5 +198,49 @@ editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::applyAll(Project* projec
                 rootPath));
         }
     }
-    return new PrefabOverridesCmd(project, sceneId, std::move(steps));
+    auto* cmd = new PrefabOverridesCmd(project, sceneId, std::move(steps));
+    cmd->label = "Apply All Overrides (" + CommandNames::entity(project, sceneId, root) + ")";
+    return cmd;
+}
+
+std::string editor::PrefabOverridesCmd::describe() const{
+    if (!label.empty()) {
+        return label;
+    }
+    for (size_t i = 0; i < steps.size(); i++) {
+        if (i < stepDone.size() && stepDone[i]) {
+            return steps[i]->describe();
+        }
+    }
+    return "Prefab Overrides";
+}
+
+size_t editor::PrefabOverridesCmd::memoryBytes() const{
+    size_t bytes = sizeof(*this);
+    for (const std::unique_ptr<Command>& step : steps) {
+        bytes += step->memoryBytes();
+    }
+    return bytes;
+}
+
+std::vector<editor::Command::Touched> editor::RevertPrefabRemovalCmd::touchedPaths(bool) const{
+    return {};   // the instance in the scene only
+}
+
+std::vector<editor::Command::Touched> editor::ApplyPrefabRemovalCmd::touchedPaths(bool) const{
+    std::vector<Touched> out;
+    for (const std::filesystem::path& file : {path, target}){
+        if (file.empty()) continue;
+        out.push_back({file.is_absolute() ? file : project->getProjectPath() / file, false});
+    }
+    return out;
+}
+
+std::vector<editor::Command::Touched> editor::PrefabOverridesCmd::touchedPaths(bool undo) const{
+    std::vector<Touched> out;
+    for (const std::unique_ptr<Command>& step : steps){
+        std::vector<Touched> some = step->touchedPaths(undo);
+        out.insert(out.end(), some.begin(), some.end());
+    }
+    return out;
 }

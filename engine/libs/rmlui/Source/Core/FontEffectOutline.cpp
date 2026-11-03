@@ -44,6 +44,15 @@ bool FontEffectOutline::Initialise(int _width)
 	return true;
 }
 
+bool FontEffectOutline::GetDistanceEffect(DistanceEffect& effect) const
+{
+	// the dilation filter's weights fall off over the last pixel: the ring's edge at width + 0.5
+	effect.dilation = float(width) + 0.5f;
+	effect.sigma = 0.f;
+	effect.offset = Vector2f(0.f);
+	return true;
+}
+
 bool FontEffectOutline::GetGlyphMetrics(Vector2i& origin, Vector2i& dimensions, const FontGlyph& /*glyph*/) const
 {
 	if (dimensions.x * dimensions.y > 0)

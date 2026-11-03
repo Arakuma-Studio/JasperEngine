@@ -17,7 +17,7 @@ Runs in a new empty project; the tests share one editor and run in order (state 
 """
 
 import json
-import shutil
+import math
 import sys
 from pathlib import Path
 
@@ -28,6 +28,7 @@ import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
 
 TIMEOUT = 900
 EDITOR = {"create": True}
+CI = True
 
 S: dict = {}
 
@@ -265,7 +266,10 @@ async def test_preview_evaluates_and_restores(ed: Editor):
     s = await setup(ed)
     sid = s["scene"]
     await set_offsets(ed, {13: [0, 0, 0.05]})
-    await ed.call("set_scene_camera", scene=sid, target=[0, 1, 0], distance=5, orbit={"yaw": 30, "pitch": -20})
+    # the field of view the deformation's share of the view was measured with (0.75 rad, before
+    # S26's 60 degree default made the box smaller in the shot)
+    await ed.call("set_scene_camera", scene=sid, target=[0, 1, 0], distance=5, orbit={"yaw": 30, "pitch": -20},
+                  camera_settings={"fov": math.degrees(0.75)})
     r = await ed.call("preview_animation", scene=sid, animation=S["squash"], action="seek", time=0)
     ed.check(r["previewing"] is True, f"previewing: {r}")
     rest = await ed.screenshot("scene", path=ed.scratch.root / "anim_rest.png" if ed.scratch else None)
@@ -275,7 +279,9 @@ async def test_preview_evaluates_and_restores(ed: Editor):
     ed.check(0.4 * (0.5 - 2 / 60) - 1e-4 <= off[4][1] <= 0.2 + 1e-4, f"point 4 at 0.5 s: {off[4]}")
     ed.check(close(off[22], [0, -off[4][1], 0]), f"point 22 mirrors it: {off[22]}")
     check_close(ed, off[13], [0, 0, 0.05], "a point no key names keeps its offset")
-    # the GPU deforms the bound box mid-animation: the Scene view changes
+    # the GPU deforms the bound box mid-animation: the Scene view changes (once frames have drawn
+    # the seeked offsets)
+    await ed.call("wait", frames=5)
     mid = await ed.screenshot("scene", path=ed.scratch.root / "anim_mid.png" if ed.scratch else None)
     same, fraction, _ = pngdiff.compare(pngdiff.decode(rest), pngdiff.decode(mid), max_fraction=0.002)
     ed.check(not same, f"the deformed box shows in the Scene view ({fraction:.4f} of the pixels changed)")
@@ -373,15 +379,26 @@ function LatticeAnimProbe:init()
     out("targetA", self.trackA.target == cage.entity)
 
     self.animA:start()
-    RegisterEngineEvent(self, "onUpdate")
+    RegisterEngineEvent(self, "onPostUpdate")
 end
 
 function LatticeAnimProbe:next(phase)
     self.phase = phase
     self.phaseTime = 0
+    self.settled = 0
 end
 
-function LatticeAnimProbe:onUpdate()
+-- The phases wait on the animations' own clocks, not on the summed frame deltas: an animation
+-- advances once it runs (its start takes a frame or two). The probe reads after the frame's update
+-- (onPostUpdate), so the offsets it reads come from the clocks and weights it reads with them. A
+-- phase's state held for three updates in a row is reached (20 s of frames: given up, its values
+-- go out as they are).
+function LatticeAnimProbe:reached(condition)
+    self.settled = condition and (self.settled or 0) + 1 or 0
+    return self.settled >= 3 or self.phaseTime >= 20
+end
+
+function LatticeAnimProbe:onPostUpdate()
     local dt = Engine.deltatime
     self.phaseTime = self.phaseTime + dt
     local cage = self.cage
@@ -392,7 +409,7 @@ function LatticeAnimProbe:onUpdate()
             self.sampled = true
             out("sampleA", string.format("[%.6f,%.6f,%.6f]", tc, dt, cage:getOffsetAt(4).y))
         end
-        if self.phaseTime >= 0.8 then
+        if self:reached(tc >= 0.8) then
             out("aHeld4", v3(cage:getOffsetAt(4)))
             out("aShared", v3(cage:getOffsetAt(10)))
             out("aRest22", v3(cage:getOffsetAt(22)))
@@ -402,13 +419,13 @@ function LatticeAnimProbe:onUpdate()
             self:next("fade")
         end
     elseif self.phase == "fade" then
-        if not self.mid and self.phaseTime >= 0.5 then
+        if not self.mid and self.animB.blendWeight >= 0.3 and self.animA.blendWeight >= 0.3 then
             self.mid = true
             out("midShared", v3(cage:getOffsetAt(10)))
             out("midHeld4", v3(cage:getOffsetAt(4)))
             out("midWeights", string.format("[%.6f,%.6f]", self.animA.blendWeight, self.animB.blendWeight))
         end
-        if self.phaseTime >= 1.6 then
+        if self:reached(self.mid and self.animA:isStopped() and self.trackB:getTimeCount() >= 0.8) then
             out("end4", v3(cage:getOffsetAt(4)))
             out("end22", v3(cage:getOffsetAt(22)))
             out("endShared", v3(cage:getOffsetAt(10)))
@@ -436,20 +453,24 @@ async def test_lua_tracks_and_crossfade(ed: Editor):
     await ed.call("create_script", kind="lua", name="LatticeAnimProbe", content=PROBE, scene=sid, entity=driver)
     await ed.call("save_scene", scene=sid)
     await ed.console_since(None, limit=1)
-    started = await ed.call("play", action="start", scene=sid)
+    # fixed_fps + auto_pause: the game runs only inside wait, each frame exactly 1/30 s, so the probe
+    # sees the same frames however slowly a loaded machine draws them (on the wall clock's frame
+    # deltas, up to Engine's 0.25 s cap, a crossfade moved its weights a quarter between two reads).
+    # The wait is bounded in frames: the probe ends by itself within 3 x 20 s of game time.
+    started = await ed.call("play", action="start", scene=sid, fixed_fps=30, auto_pause=True)
     ed.check_eq(started["state"], "playing", "play starts")
     try:
-        waited = await ed.call_raw("wait", {"until": "latticeAnimDone == true", "timeout_seconds": 60})
+        waited = await ed.call_raw("wait", {"until": "latticeAnimDone == true", "frames": 2000})
         ed.check(not waited.is_error, f"the probe finished: {waited.text[:1500]}")
         entries = await ed.console_since(None, limit=1000)
     finally:
-        await ed.call("play", action="stop")
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
     v = lines(entries, "LATANIM")
     errors = [e.get("message", "") for e in entries if e.get("type") == "error"]
     ed.check(not errors, f"no errors (the out-of-range point is ignored silently): {errors}")
 
     ed.check_eq(v.get("targetA"), True, "addActionFrame set the track's target")
-    # onUpdate may run before the actions of its frame: the offsets lag the time by up to two frames
+    # (read after the update: the offsets are the time's; the lower bound allows two frames of lag)
     tc, dt, y = v.get("sampleA", [0, 0, -1])
     ed.check(0.6 * max(0.0, tc - 2.5 * dt) - 1e-4 <= y <= 0.6 * tc + 1e-4 and y > 0, f"clip A mid-segment: {v.get('sampleA')}")
     check_close(ed, v.get("aHeld4"), [0, 0.3, 0], "clip A holds point 4 at its key")
@@ -487,34 +508,32 @@ async def test_save_reload_round_trip(ed: Editor):
     expected = await tracks_of(ed, S["squash_track"])
     fill = await tracks_of(ed, lattice_action(await ed.call("get_animation", scene=sid, entity=S["fill"]))["action"]["id"])
 
-    copy = ed.project.parent / "lattice-anim-reload"
-    if copy.exists():
-        shutil.rmtree(copy)
-    shutil.copytree(ed.project, copy)
-    try:
-        async with Editor(project=copy, label="lattice-anim-reload") as ed2:
-            opened = await ed2.call("open_scene", scene="scenes/LatticeAnim.scene")
-            sid2 = opened["scene"]["id"]
-            got = await tracks_of(ed2, S["squash_track"], scene=sid2)
-            ed2.check_eq(got["points"], expected["points"], "points reloaded")
-            ed2.check_eq(got["times"], expected["times"], "times reloaded")
-            check_close(ed2, got["values"], expected["values"], "values reloaded")
-            anim = await ed2.call("get_animation", scene=sid2, entity=S["fill"])
-            got = await tracks_of(ed2, lattice_action(anim)["action"]["id"], scene=sid2)
-            ed2.check_eq(got["easings"], fill["easings"], "easings reloaded")
-            check_close(ed2, got["values"], fill["values"], "filled values reloaded")
-            # the reloaded clip plays (preview) and the re-save writes the same bytes
-            await ed2.call("preview_animation", scene=sid2, animation=S["squash"], action="seek", time=1.0)
-            off = await offsets(ed2, S["cage"], scene=sid2)
-            ed2.check(off[4][1] > 0.35, f"the reloaded clip evaluates: {off[4]}")
-            await ed2.call("preview_animation", scene=sid2, animation=S["squash"], action="stop")
-            await ed2.call("set_properties", scene=sid2, entity=S["cage"], values={"lattice": {"fadeDistance": 0.5}})
-            await ed2.call("set_properties", scene=sid2, entity=S["cage"], values={"lattice": {"fadeDistance": 0.25}})
-            await ed2.call("save_scene", scene=sid2)
-            resaved = (copy / "scenes/LatticeAnim.scene").read_text()
-            if resaved != text:
-                import difflib
-                diff = "".join(list(difflib.unified_diff(text.splitlines(True), resaved.splitlines(True)))[:60])
-                ed2.fail("re-save is not byte-identical:\n" + diff)
-    finally:
-        shutil.rmtree(copy, ignore_errors=True)
+    async with Editor(project=ed.project, label="lattice-anim-reload") as ed2:
+        opened = await ed2.call("open_scene", scene="scenes/LatticeAnim.scene")
+        sid2 = opened["scene"]["id"]
+        got = await tracks_of(ed2, S["squash_track"], scene=sid2)
+        ed2.check_eq(got["points"], expected["points"], "points reloaded")
+        ed2.check_eq(got["times"], expected["times"], "times reloaded")
+        check_close(ed2, got["values"], expected["values"], "values reloaded")
+        anim = await ed2.call("get_animation", scene=sid2, entity=S["fill"])
+        got = await tracks_of(ed2, lattice_action(anim)["action"]["id"], scene=sid2)
+        ed2.check_eq(got["easings"], fill["easings"], "easings reloaded")
+        check_close(ed2, got["values"], fill["values"], "filled values reloaded")
+        await ed2.call("set_properties", scene=sid2, entity=S["cage"], values={"lattice": {"fadeDistance": 0.5}})
+        await ed2.call("set_properties", scene=sid2, entity=S["cage"], values={"lattice": {"fadeDistance": 0.25}})
+        # Verify an unmodified re-save before preview deliberately changes the
+        # keyframe evaluation progress (which is part of the legacy scene format).
+        scene_file = ed2.project / "scenes/LatticeAnim.scene"
+        scene_file.write_text("")
+        await ed2.call("save_scene", scene=sid2)
+        resaved = scene_file.read_text()
+        if resaved != text:
+            import difflib
+            diff = "".join(list(difflib.unified_diff(text.splitlines(True), resaved.splitlines(True)))[:60])
+            ed2.fail("re-save is not byte-identical:\n" + diff)
+
+        # Separately, the reloaded clip must still evaluate its authored keys.
+        await ed2.call("preview_animation", scene=sid2, animation=S["squash"], action="seek", time=1.0)
+        off = await offsets(ed2, S["cage"], scene=sid2)
+        ed2.check(off[4][1] > 0.35, f"the reloaded clip evaluates: {off[4]}")
+        await ed2.call("preview_animation", scene=sid2, animation=S["squash"], action="stop")

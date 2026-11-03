@@ -8,9 +8,11 @@
 // Mode saves and external edits use, with the undo snapshots built on it.
 
 #include "Project.h"
+#include "command/CommandHistory.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"
+#include "pose/PoseEditSession.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
@@ -559,6 +561,25 @@ bool editor::Project::revertPropertyOverride(uint32_t sceneId, Entity entity, Co
         copyProperties(source, scene, entity, type, names, ref.path.string());
     }
     Catalog::updateEntity(scene, entity, Catalog::getComponentStructuralUpdateFlags(type));
+    // a reverted clip list or pose animation loads again, as a decode does (the whole-component
+    // copy also brings the prefab's own runtime flags)
+    if (type == ComponentType::AnimationPlayerComponent) {
+        if (AnimationPlayerComponent* player = scene->findComponent<AnimationPlayerComponent>(entity)) {
+            player->needsLoad = true;
+        }
+    } else if (type == ComponentType::PoseAnimatorComponent) {
+        if (PoseAnimatorComponent* animator = scene->findComponent<PoseAnimatorComponent>(entity)) {
+            animator->needsLoad = true;
+        }
+    } else if (type == ComponentType::VertexAnimatorComponent) {
+        if (VertexAnimatorComponent* animator = scene->findComponent<VertexAnimatorComponent>(entity)) {
+            animator->needsLoad = true;
+        }
+    } else if (type == ComponentType::AnimatorComponent) {
+        if (AnimatorComponent* animator = scene->findComponent<AnimatorComponent>(entity)) {
+            animator->needsLoad = true;
+        }
+    }
     clearPropertyOverride(sceneId, entity, type, whole ? std::vector<std::string>{} : properties);
     if (CameraTextureLink::isLinkSourceType(type)) {
         CameraTextureLink::resolve(scene);
@@ -1091,7 +1112,6 @@ bool editor::Project::applyAddedComponent(uint32_t sceneId, Entity entity, Compo
     if (!canApplyPrefabOverrides()) {
         return false;
     }
-    Scene* scene = sceneProject->scene;
     const Entity instanceRoot = ref.instance->rootEntity;
     if (isNestedRootApplyTarget(sceneId, ref, target)) {
         Prefab* nested = getPrefab(target);
@@ -1252,11 +1272,34 @@ std::vector<std::pair<uint32_t, Entity>> editor::Project::findOutermostInstances
     return result;
 }
 
+// The GameObjects of root's branch (root first; a branch is one run of the Transform array), and
+// whether one of them is a camera texture source
+static std::vector<Entity> branchEntities(Scene* scene, Entity root, bool* hasLinkSource) {
+    std::vector<Entity> branch;
+    if (!scene->isEntityCreated(root) || !scene->findComponent<Transform>(root)) {
+        return branch;
+    }
+    auto transforms = scene->getComponentArray<Transform>();
+    const size_t first = transforms->getIndex(root);
+    const size_t last = scene->findBranchLastIndex(root);
+    for (size_t i = first; i <= last && i < transforms->size(); i++) {
+        const Entity entity = transforms->getEntity(i);
+        branch.push_back(entity);
+        if (hasLinkSource && editor::CameraTextureLink::isLinkSource(scene, entity)) {
+            *hasLinkSource = true;
+        }
+    }
+    return branch;
+}
+
 bool editor::Project::reimportPrefabInstance(SceneProject* sceneProject, Entity root, const YAML::Node& givenNode) {
     if (!sceneProject || !sceneProject->scene) {
         return false;
     }
     Scene* scene = sceneProject->scene;
+    // the instance is rewritten from the prefab (same entity ids, no channel notification): a
+    // preview of it restores first, or its stop would write the old values back (clips 9.R7)
+    PoseEditSession::suspendActiveFor(sceneProject->id, {root});
     std::filesystem::path path;
     Prefab::Instance* instance = instanceRootedAt(this, scene, sceneProject->id, root, &path);
     if (!instance) {
@@ -1271,8 +1314,12 @@ bool editor::Project::reimportPrefabInstance(SceneProject* sceneProject, Entity 
         members.push_back(member.localEntity);
     }
     const std::vector<Entity> selection = sceneProject->selectedEntities;
+    const std::vector<Entity> order = sceneProject->entities;
     const Entity mainCamera = sceneProject->mainCamera;
     const bool wasModified = sceneProject->isModified;
+    // a camera of the instance, before or after: textures anywhere may name it
+    bool hadLinkSource = false;
+    branchEntities(scene, root, &hadLinkSource);
 
     unimportPrefab(sceneProject->id, path, root, members, true, true);
 
@@ -1305,7 +1352,19 @@ bool editor::Project::reimportPrefabInstance(SceneProject* sceneProject, Entity 
     }
 
     ProjectUtils::sortEntitiesByTransformOrder(scene, sceneProject->entities);
-    CameraTextureLink::resolve(scene);
+    // the members came back at the end of the list: one without a Transform among them, and the
+    // scene's own, go back to their place, so a reimport (an apply, its undo) leaves the list as it was
+    ProjectUtils::keepUntransformedPlaces(scene, order, sceneProject->entities);
+    // Only the instance's GameObjects were made again, so only their camera textures need binding:
+    // resolving the whole scene for each instance made a prefab apply to many instances quadratic
+    // (300 instances: 27 s). With a camera among them, before or after, the whole scene
+    bool hasLinkSource = hadLinkSource;
+    const std::vector<Entity> branch = branchEntities(scene, root, &hasLinkSource);
+    if (hasLinkSource || branch.empty()) {
+        CameraTextureLink::resolve(scene);
+    } else {
+        CameraTextureLink::resolve(scene, branch);
+    }
     if (mainCamera != NULL_ENTITY && scene->isEntityCreated(mainCamera)) {
         sceneProject->mainCamera = mainCamera;
     }
@@ -1315,7 +1374,9 @@ bool editor::Project::reimportPrefabInstance(SceneProject* sceneProject, Entity 
             kept.push_back(entity);
         }
     }
-    sceneProject->selectedEntities = kept;
+    SelectionState keptSelection;
+    keptSelection.entities = kept;
+    setSelection(sceneProject->id, keptSelection, SelectionCause::Forced);
     sceneProject->isModified = wasModified;
     sceneProject->needUpdateRender = true;
     sceneProject->structureVersion++;
@@ -1335,6 +1396,8 @@ void editor::Project::refreshPrefabInstances(const std::filesystem::path& filepa
         // the ids are the file's, so the instances' members keep their registry entities
         prefab->takeAssetData(std::move(loaded));
         prefab->isModified = false;
+        // what the file holds again
+        prefab->savedAt = CommandHistory::stampSave();
         for (auto& [sceneId, instances] : prefab->instances) {
             for (Prefab::Instance& instance : instances) {
                 instance.rootRegistryEntity = prefab->root;
@@ -1386,7 +1449,7 @@ editor::PrefabUndoState editor::Project::capturePrefabUndoState(uint32_t sceneId
         if (!prefab || !prefab->registry) {
             continue;
         }
-        state.assets.push_back({path, encodePrefabNode(path), prefab->isModified, prefab->needsUpgrade});
+        state.assets.push_back({path, encodePrefabNode(path), prefab->isModified, prefab->needsUpgrade, prefab->savedAt});
         for (const auto& pair : findOutermostInstancesOf(path)) {
             if (std::find(roots.begin(), roots.end(), pair) == roots.end()) {
                 roots.push_back(pair);
@@ -1398,7 +1461,8 @@ editor::PrefabUndoState editor::Project::capturePrefabUndoState(uint32_t sceneId
         if (!sceneProject || !sceneProject->scene) {
             continue;
         }
-        state.instances.push_back({rootSceneId, root, Stream::encodeEntity(root, sceneProject->scene, this, sceneProject), sceneProject->isModified});
+        state.instances.push_back({rootSceneId, root, Stream::encodeEntity(root, sceneProject->scene, this, sceneProject), sceneProject->isModified,
+                                   sceneProject->savedAt});
     }
     return state;
 }
@@ -1412,8 +1476,10 @@ void editor::Project::restorePrefabUndoState(const PrefabUndoState& state) {
         std::string rootName = asset.path.stem().string();
         prefab->loadRegistry(asset.node, rootName);
         resolveRegistryPrefabRefs(prefab->registry.get());
-        prefab->isModified = asset.isModified;
-        prefab->needsUpgrade = asset.needsUpgrade;
+        // written since the capture, its file holds what is undone here: the next save writes it
+        const bool savedSince = prefab->savedAt != asset.savedAt;
+        prefab->isModified = asset.isModified || savedSince;
+        prefab->needsUpgrade = asset.needsUpgrade && !savedSince;
         for (auto& [sceneId, instances] : prefab->instances) {
             for (Prefab::Instance& instance : instances) {
                 instance.rootRegistryEntity = prefab->root;
@@ -1426,7 +1492,7 @@ void editor::Project::restorePrefabUndoState(const PrefabUndoState& state) {
             continue;
         }
         reimportPrefabInstance(sceneProject, instance.root, instance.rootNode);
-        sceneProject->isModified = instance.sceneModified;
+        sceneProject->isModified = instance.sceneModified || sceneProject->savedAt != instance.sceneSavedAt;
     }
     for (SceneProject& sceneProject : scenes) {
         if (sceneProject.scene) {

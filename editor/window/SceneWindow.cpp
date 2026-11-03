@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "widget/ColorField.h"
+#include "util/EditorScripts.h"
+#include "DocumentFile.h"
+#include "util/PhysicsMaterialAssets.h"
+#include "component/Joint2DComponent.h"
+#include "pose/PoseViewport.h"
 #include "util/BidiText.h"
 #include "imgui_internal.h"
 
@@ -9,6 +15,7 @@
 #include "Input.h"
 #include "external/IconsFontAwesome6.h"
 #include "Backend.h"
+#include "subsystem/RenderSystem.h"
 #include "util/Util.h"
 #include "util/EntityPayload.h"
 #include "command/CommandHandle.h"
@@ -17,10 +24,13 @@
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/ModelLoadCmd.h"
+#include "vat/VatSceneActions.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/ImportPrefabCmd.h"
 #include "lattice/LatticeEditorOps.h"
 #include "lattice/LatticeSceneTools.h"
+#include "spline/SplineEditor.h"
+#include "spline/SplineSceneTools.h"
 #include "util/ProjectUtils.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
@@ -30,12 +40,17 @@
 #include "Out.h"
 #include "App.h"
 #include "EditorHost.h"
+#include "animation/AnimationClipAppHooks.h"
 #include "Theme.h"
 #include "Widgets.h"
 #include "window/GameWindow.h"
+#include "AppSettings.h"
+#include "sceneview/SurfacePlacement.h"
 #include "util/FluidEditorTools.h"
 #include "util/UIProbe.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/CameraFollowComponent.h"
+#include "subsystem/CameraControlSystem.h"
 
 #include "math/Vector2.h"
 #include "util/Angle.h"
@@ -44,6 +59,64 @@
 #include <cmath>
 
 using namespace jasperengine;
+
+namespace {
+
+    // A selected Camera Follow's Bounds (a box) and, on an orthographic or UI camera, its Dead Zone
+    // (the rectangle around where it looks, in the target's plane), over the Scene view image
+    void drawCameraFollowGizmos(jasperengine::editor::Project* project, jasperengine::editor::SceneProject& sceneProject,
+                                const std::function<bool(const jasperengine::Vector3&, ImVec2&)>& toScreen){
+        using namespace jasperengine;
+        if (!sceneProject.scene) return;
+        Scene* scene = sceneProject.scene;
+        std::shared_ptr<CameraControlSystem> system = scene->findSystem<CameraControlSystem>();
+        if (!system) return;
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        auto line = [&](const Vector3& a, const Vector3& b, ImU32 color){
+            ImVec2 sa, sb;
+            if (toScreen(a, sa) && toScreen(b, sb)) draw->AddLine(sa, sb, color, editor::Theme::dpi(1.5f));
+        };
+        for (Entity entity : project->getSelectedEntities(sceneProject.id)){
+            const CameraFollowComponent* follow = scene->findComponent<CameraFollowComponent>(entity);
+            if (!follow) continue;
+            if (follow->useBounds){
+                const ImU32 color = IM_COL32(120, 200, 255, 220);
+                const Vector3 lo(std::min(follow->boundsMin.x, follow->boundsMax.x), std::min(follow->boundsMin.y, follow->boundsMax.y),
+                                 std::min(follow->boundsMin.z, follow->boundsMax.z));
+                const Vector3 hi(std::max(follow->boundsMin.x, follow->boundsMax.x), std::max(follow->boundsMin.y, follow->boundsMax.y),
+                                 std::max(follow->boundsMin.z, follow->boundsMax.z));
+                const Vector3 c[8] = {Vector3(lo.x, lo.y, lo.z), Vector3(hi.x, lo.y, lo.z), Vector3(hi.x, hi.y, lo.z), Vector3(lo.x, hi.y, lo.z),
+                                      Vector3(lo.x, lo.y, hi.z), Vector3(hi.x, lo.y, hi.z), Vector3(hi.x, hi.y, hi.z), Vector3(lo.x, hi.y, hi.z)};
+                for (int k = 0; k < 4; k++){
+                    line(c[k], c[(k + 1) % 4], color);
+                    line(c[4 + k], c[4 + (k + 1) % 4], color);
+                    line(c[k], c[4 + k], color);
+                }
+            }
+            const CameraComponent* camera = scene->findComponent<CameraComponent>(entity);
+            const bool orthographic = camera && (camera->type == CameraType::CAMERA_ORTHO || camera->type == CameraType::CAMERA_UI);
+            if (orthographic && (follow->deadZone.x > 0.0f || follow->deadZone.y > 0.0f)){
+                const ImU32 color = IM_COL32(255, 200, 80, 230);
+                const Vector3 cameraWorld = system->computeWorldNow(entity).position;
+                float z = cameraWorld.z;
+                if (system->targetAlive(*follow, entity)){
+                    z = CameraControlSystem::computeWorldNow(system->targetSceneOf(*follow), follow->target).position.z;
+                }
+                // what the camera centres (its position minus the offset), as the system's dead zone
+                const Vector3 focus(cameraWorld.x - follow->offset.x, cameraWorld.y - follow->offset.y, z);
+                const float hx = follow->deadZone.x * 0.5f, hy = follow->deadZone.y * 0.5f;
+                const Vector3 a(focus.x - hx, focus.y - hy, z), b(focus.x + hx, focus.y - hy, z);
+                const Vector3 cc(focus.x + hx, focus.y + hy, z), d(focus.x - hx, focus.y + hy, z);
+                line(a, b, color);
+                line(b, cc, color);
+                line(cc, d, color);
+                line(d, a, color);
+            }
+        }
+    }
+
+}
+
 
 namespace {
 
@@ -63,6 +136,21 @@ editor::SceneWindow::SceneWindow(Project* project) {
     this->project = project;
     this->mouseLeftDraggedInside = false;
     this->windowFocused = false;
+
+    viewController = std::make_unique<SceneViewController>(project);
+    viewController->collapsedRow = [this](uint32_t viewSceneId, uint32_t sceneId, Entity entity) {
+        return resolveStructureSelection(viewSceneId, sceneId, entity);
+    };
+    viewController->viewSize = [this](uint32_t sceneId, int& w, int& h) {
+        w = getWidth(sceneId);
+        h = getHeight(sceneId);
+    };
+}
+
+editor::SceneWindow::~SceneWindow() = default;
+
+void editor::SceneWindow::renderInactivePanes(SceneProject& sceneProject) {
+    viewController->renderInactivePanes(sceneProject);
 }
 
 void editor::SceneWindow::handleCloseScene(uint32_t sceneId) {
@@ -90,6 +178,16 @@ void editor::SceneWindow::closeSceneInternal(uint32_t sceneId) {
         }
         closeSceneQueue.push_back(sceneId);
     }
+}
+
+bool editor::SceneWindow::isNavigatingCamera() const{
+    for (const auto& [id, dragging] : draggingMouse){
+        if (dragging) return true;
+    }
+    for (const auto& [id, looking] : lookActive){
+        if (looking) return true;
+    }
+    return false;
 }
 
 bool editor::SceneWindow::isFocused() const {
@@ -128,6 +226,7 @@ void editor::SceneWindow::resetProjectState() {
     hasNotification.clear();
     structureSelectionParents.clear();
     closeSceneQueue.clear();
+    viewController->forgetAll();
 }
 
 void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
@@ -156,6 +255,8 @@ void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
     canvasDpiScale.erase(sceneId);
     hasNotification.erase(sceneId);
     structureSelectionParents.erase(sceneId);
+    viewController->forgetScene(sceneId);
+    particleOverlay.clear(sceneId);
 
     closeSceneQueue.erase(
         std::remove(closeSceneQueue.begin(), closeSceneQueue.end(), sceneId),
@@ -218,36 +319,43 @@ Entity editor::SceneWindow::findSelectableObjectByRay(uint32_t sceneId, float x,
     return resolveStructureSelection(sceneId, hitSceneId, hitEntity);
 }
 
-bool editor::SceneWindow::selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed) {
+bool editor::SceneWindow::poseClick(uint32_t sceneId, float x, float y, Entity* picked, Entity* rawHit) {
+    if (picked) *picked = NULL_ENTITY;
+    if (rawHit) *rawHit = NULL_ENTITY;
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->sceneRender || !sceneProject->sceneRender->getPoseViewport()) {
+        return false;
+    }
+    // the raw hit and what selection makes of it (a collapsed Hierarchy parent of the model)
+    uint32_t rawSceneId = sceneId;
+    const Entity raw = project->findObjectByRay(sceneId, x, y, &rawSceneId);
+    if (rawSceneId != sceneId) {
+        // a scene layered over this one: not the posed model
+        return sceneProject->sceneRender->getPoseViewport()->clicked(NULL_ENTITY);
+    }
+    const Entity selectable = resolveStructureSelection(sceneId, rawSceneId, raw);
+    if (picked) *picked = selectable;
+    if (rawHit) *rawHit = raw;
+    return sceneProject->sceneRender->getPoseViewport()->clicked(selectable, raw);
+}
+
+// R13, R14: root, drill, same-spot cycling, Shift adds and Ctrl/Cmd toggles; a click on a mesh
+// whose BVH is still building waits for it (SceneViewController)
+bool editor::SceneWindow::selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed, bool ctrlPressed) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->sceneRender) {
         return false;
     }
-
-    uint32_t hitSceneId = sceneId;
-    Entity hitEntity = findSelectableObjectByRay(sceneId, x, y, &hitSceneId);
-
-    if (!sceneProject->sceneRender->isAnyGizmoSideSelected()) {
-        if (hitEntity != NULL_ENTITY) {
-            // a selection is of one scene: Shift adds to it only within that scene
-            if (!shiftPressed || project->getSelectedSceneForProperties() != hitSceneId) {
-                project->clearAllSelections(sceneId);
-            }
-            project->addSelectedEntity(hitSceneId, hitEntity);
-            project->setSelectedSceneForProperties(hitSceneId);
-            if (HierarchyWindow* structure = Backend::getApp().getHierarchyWindow()) {
-                structure->revealEntity(hitSceneId, hitEntity);
-            }
-            project->syncSceneRenderEditLayer(sceneId);
-            return true;
-        }
-
-        project->clearAllSelections(sceneId);
-        project->setSelectedSceneForProperties(sceneId);
-        project->syncSceneRenderEditLayer(sceneId);
+    if (sceneProject->sceneRender->isAnyGizmoSideSelected()) {
+        return false;
     }
-
-    return false;
+    SceneClickInput input;
+    input.x = x;
+    input.y = y;
+    input.shift = shiftPressed;
+    input.ctrl = ctrlPressed;
+    const SceneClickOutcome outcome = viewController->click(sceneId, input);
+    return outcome.applied && outcome.click.action != ScenePickClick::Action::CLEAR;
 }
 
 void editor::SceneWindow::requestPlayFocus(uint32_t sceneId) {
@@ -387,33 +495,17 @@ std::string editor::SceneWindow::getWindowTitle(const SceneProject& sceneProject
         icon = ICON_FA_WINDOW_RESTORE + std::string("  ");
     }
     // everything before "###" is drawn, the id after it keeps docking state stable
-    return icon + BidiText::toVisual(sceneProject.name) + ((project->hasSceneUnsavedChanges(sceneProject.id)) ? " *" : "") + "###Scene" + std::to_string(sceneProject.id);
+    // a scene whose load dropped values (docs/data-safety.md): its saves ask first
+    const bool partial = sceneProject.loadReport.dropped() > 0;
+    return icon + BidiText::toVisual(sceneProject.name) + (partial ? " (Partial Load)" : "") +
+        ((project->hasSceneUnsavedChanges(sceneProject.id)) ? " *" : "") + "###Scene" + std::to_string(sceneProject.id);
 }
 
-Vector3 editor::SceneWindow::getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity) {
-    Ray ray = sceneProject->sceneRender->screenToRay(x, y);
-
-    if (hitEntity != NULL_ENTITY) {
-        AABB entityAABB = sceneProject->sceneRender->getEntitiesAABB({hitEntity});
-        RayReturn entityHit = ray.intersects(entityAABB);
-        if (entityHit) {
-            // If the hit entity is terrain, use its precise surface height instead of the AABB top
-            Vector3 terrainPosition;
-            TerrainComponent* terrain = sceneProject->scene->findComponent<TerrainComponent>(hitEntity);
-            Transform* transform = sceneProject->scene->findComponent<Transform>(hitEntity);
-            if (terrain && transform && sceneProject->scene->getSystem<MeshSystem>()->raycastTerrainSurface(ray, *terrain, *transform, terrainPosition)) {
-                return terrainPosition;
-            }
-            return entityHit.point;
-        }
-    }
-
-    RayReturn hit = ray.intersects(Plane(Vector3(0, 1, 0), Vector3(0, 0, 0)));
-    if (hit) {
-        return hit.point;
-    }
-
-    return sceneProject->sceneRender->getCamera()->getTarget();
+// R16: a triangle, terrain or UI rect under the pointer (pickable layers, the preview left
+// out), else the ground plane, else 10 units along the ray
+editor::SceneSurfaceHit editor::SceneWindow::getDropSurface(SceneProject* sceneProject, float x, float y, const std::unordered_set<Entity>& ignore) {
+    const std::vector<Entity> ignored(ignore.begin(), ignore.end());
+    return viewController->surfaceAt(*sceneProject, x, y, ignored, false);
 }
 
 void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject) {
@@ -493,6 +585,26 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                             updatePrefabDrag(sceneProject, receivedStrings, x, y, payload->IsDelivery());
                         }
                     }
+                } else if (Util::isVertexAnimationFile(droppedRelativePath) && sceneProject->sceneType == SceneType::SCENE_3D) {
+                    // a Vertex Animation: a GameObject with Model = its .vat.glb and Vertex Animator =
+                    // the .vat, one step (vertex animation spec 3.3)
+                    if (sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+                            if (payload->IsDelivery() && !insideAssets) {
+                                Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                                focusSceneWindow(*sceneProject);
+                            } else if (payload->IsDelivery()) {
+                                // where a model drops (S26: the surface under the pointer)
+                                const SceneSurfaceHit surface = getDropSurface(sceneProject, x, y, {});
+                                const Vector3 dropPosition = surface.point;
+                                std::string error;
+                                if (createVatObject(project, sceneProject->id, receivedStrings[0], dropPosition, NULL_ENTITY, &error) == NULL_ENTITY) {
+                                    Out::error("%s", error.c_str());
+                                }
+                                focusSceneWindow(*sceneProject);
+                            }
+                        }
+                    }
                 } else if (isModel && sceneProject->sceneType == SceneType::SCENE_3D) {
                     if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
                         if (payload->IsDelivery() && !insideAssets) {
@@ -504,10 +616,41 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 modelEntityName = "Model";
                             }
 
-                            Vector3 dropPosition = getModelDropPosition(sceneProject, x, y, selEntity);
-                            CommandHandle::get(sceneProject->id)->addCommandNoMerge(
-                                new ModelLoadCmd(project, sceneProject->id, modelEntityName, dropPosition, droppedAssetPath));
+                            const SceneSurfaceHit surface = getDropSurface(sceneProject, x, y, {});
+                            if (surface.pending) {
+                                // never onto a surface it cannot see yet (R16)
+                                viewController->notifyStatus("Preparing surface\xE2\x80\xA6", 6.0);
+                            } else {
+                                ModelLoadCmd* loadCmd = new ModelLoadCmd(project, sceneProject->id, modelEntityName, surface.point, droppedAssetPath);
+                                loadCmd->setDropSurface(surface.normal, AppSettings::getSceneViewSettings().alignToSurface || ImGui::GetIO().KeyAlt);
+                                CommandHandle::get(sceneProject->id)->addCommandNoMerge(loadCmd);
+                            }
 
+                            focusSceneWindow(*sceneProject);
+                        }
+                    }
+                } else if (Util::isAnimationClipFile(droppedRelativePath)) {
+                    // clips onto a GameObject: an Animation Player (added or reused) plays them,
+                    // one scene step (animation clips spec 4.1; the hook is the converters')
+                    if (selEntity != NULL_ENTITY && animationClipAppHooks().dropClips &&
+                        sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (ImGui::AcceptDragDropPayload("resource_files")) {
+                            std::vector<std::string> clips;
+                            for (const std::string& path : receivedStrings) {
+                                if (Util::isAnimationClipFile(path)) clips.push_back(path);
+                            }
+                            Backend::getApp().dispatchClipDrop(sceneProject->id, selEntity, clips);
+                            focusSceneWindow(*sceneProject);
+                        }
+                    }
+                } else if (PhysicsMaterialAssets::isPhysicsMaterialFile(droppedRelativePath)) {
+                    // a physics material onto a GameObject: the material of all its colliders, one step
+                    if (selEntity != NULL_ENTITY && insideAssets && sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (ImGui::AcceptDragDropPayload("resource_files")) {
+                            std::string error;
+                            if (!PhysicsMaterialAssets::applyToObject(project, sceneProject->id, selEntity, droppedAssetPath, error)) {
+                                Out::warning("%s", error.c_str());
+                            }
                             focusSceneWindow(*sceneProject);
                         }
                     }
@@ -633,7 +776,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         // Cache the decoded material — only reload when the path changes
                                         if (cachedDragPath != droppedRelativePath) {
                                             fs::path materialPath = project->getProjectPath() / droppedRelativePath;
-                                            YAML::Node materialNode = YAML::LoadFile(materialPath.string());
+                                            YAML::Node materialNode = DocumentFiles::read(materialPath, DocumentKind::Material).root;
                                             cachedDragMaterial = Stream::decodeMaterial(materialNode);
                                             cachedDragMaterial.name = fs::path(droppedRelativePath).lexically_normal().generic_string();
                                             cachedDragPath = droppedRelativePath;
@@ -782,13 +925,16 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
     }
 }
 
-Vector3 editor::SceneWindow::getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ) {
+Vector3 editor::SceneWindow::getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ, SceneSurfaceHit* surface) {
     keepZ = false;
     if (sceneProject->sceneType == SceneType::SCENE_3D) {
         // On what the pointer is over (the preview itself left out), else the ground plane,
         // else in front of the camera
-        Entity hit = project->findObjectByRayIgnoring(sceneProject->id, x, y, prefabDragEntities);
-        return getModelDropPosition(sceneProject, x, y, hit);
+        const SceneSurfaceHit hit = getDropSurface(sceneProject, x, y, prefabDragEntities);
+        if (surface) {
+            *surface = hit;
+        }
+        return hit.point;
     }
     // 2D and UI: the pointer's world position, the prefab keeping its own depth
     keepZ = true;
@@ -865,15 +1011,26 @@ void editor::SceneWindow::updatePrefabDrag(SceneProject* sceneProject, const std
         }
     }
 
-    const Vector3 position = getPrefabDropPosition(sceneProject, x, y, keepZ);
+    SceneSurfaceHit surface;
+    const Vector3 position = getPrefabDropPosition(sceneProject, x, y, keepZ, &surface);
+    const bool onSurface = sceneProject->sceneType == SceneType::SCENE_3D;
+    const bool align = AppSettings::getSceneViewSettings().alignToSurface || ImGui::GetIO().KeyAlt;
     if (prefabDragPreview) {
         if (Transform* transform = sceneProject->scene->findComponent<Transform>(prefabDragPreview->getRootEntity())) {
             Vector3 target = position;
+            Quaternion rotation = transform->rotation;
             if (keepZ) {
                 target.z = transform->position.z;
             }
-            if (transform->position != target) {
+            if (onSurface) {
+                // the prefab's own rotation, as the drop gives it, turned onto the surface
+                const Quaternion prefabRotation = prefabDragPreview->getRootRotation();
+                sceneview::restOnSurface(position, surface.normal, sceneview::familyLocalBounds(sceneProject->scene, prefabDragPreview->getRootEntity()),
+                                         transform->scale, prefabRotation, align, target, rotation);
+            }
+            if (transform->position != target || transform->rotation != rotation) {
                 transform->position = target;
+                transform->rotation = rotation;
                 transform->needUpdate = true;
                 sceneProject->needUpdateRender = true;
             }
@@ -883,6 +1040,12 @@ void editor::SceneWindow::updatePrefabDrag(SceneProject* sceneProject, const std
     if (!delivery) {
         return;
     }
+    if (onSurface && surface.pending) {
+        // never onto a surface it cannot see yet (R16): the preview showed it, the drop waits
+        cancelPrefabDrag();
+        viewController->notifyStatus("Preparing surface\xE2\x80\xA6", 6.0);
+        return;
+    }
 
     // The drop: the preview goes, the real instances come as one undo step
     cancelPrefabDrag();
@@ -890,6 +1053,9 @@ void editor::SceneWindow::updatePrefabDrag(SceneProject* sceneProject, const std
     for (const fs::path& prefab : prefabs) {
         ImportPrefabCmd* cmd = new ImportPrefabCmd(project, sceneProject->id, prefab, NULL_ENTITY, true);
         cmd->setDropPosition(position, keepZ);
+        if (onSurface) {
+            cmd->setDropSurface(surface.normal, align);
+        }
         commands.push_back(cmd);
     }
     if (commands.size() == 1) {
@@ -997,6 +1163,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     ImVec2 windowPos = ImGui::GetWindowPos();
     ImVec2 windowSize = ImGui::GetWindowSize();
     ImGuiIO& io = ImGui::GetIO();
+    {
+        // relative to the main window (ImGui positions are screen positions with viewports on)
+        const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+        viewRect[sceneProject->id] = ImVec4(windowPos.x - origin.x, windowPos.y - origin.y, windowSize.x, windowSize.y);
+    }
     float mouseWheel = io.MouseWheel;
     ImVec2 mousePos = io.MousePos;
     ImVec2 mouseDelta = io.MouseDelta;
@@ -1072,10 +1243,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         altHeld ||
         handPanEnabled || 
         sceneProject->sceneRender->isTerrainEditing() ||
+        sceneProject->sceneRender->isPoseDragging() ||
         fluidPainting ||
         gizmoSideActive ||
         (physicsSnapArmed[sceneId] && mouseLeftDraggedInside) ||
-        sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space);
+        (sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space));
 
     if (isMouseInWindow){
 
@@ -1085,8 +1257,45 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         float y = logicalY;
         toEngineCanvas(sceneId, x, y);
 
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled){
+        // Posing a humanoid (pose animation): a click on a pose handle is the handle's, not
+        // a selection or a tool's
+        bool poseHandleClick = false;
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !altHeld && !suppressLeftMouse && !handPanEnabled &&
+                sceneProject->sceneRender->isPoseEditing()){
+            poseHandleClick = sceneProject->sceneRender->poseMouseDown(x, y, io.KeyShift, io.KeyCtrl || io.KeySuper);
+            if (poseHandleClick){
+                subSelectionClickConsumesRelease[sceneId] = true;
+                mouseLeftStartPos = Vector2(logicalX, logicalY);
+                // a joint dot only picks the joint: the rest of the press is nobody's
+                if (!sceneProject->sceneRender->isPoseDragging()){
+                    suppressLeftMouseUntilRelease[sceneId] = true;
+                }
+            }
+        }
+
+        // the spline tools take the press next: the Draw Spline tool, then the edited spline's
+        // knots and handles (SplineSceneTools); a captured press is theirs until its release
+        SplineSceneTools::Press splinePress = SplineSceneTools::Press::None;
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !altHeld && !suppressLeftMouse && !handPanEnabled && !poseHandleClick){
+            splinePress = SplineSceneTools::mousePress(project, sceneProject, x, y, gizmoSideActive);
+            if (splinePress == SplineSceneTools::Press::Captured){
+                subSelectionClickConsumesRelease[sceneId] = true;
+            }
+        }
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !altHeld && !suppressLeftMouse && !poseHandleClick){
+            SplineSceneTools::doubleClick(project, sceneProject, x, y);
+        }
+
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled && !poseHandleClick &&
+                splinePress != SplineSceneTools::Press::Captured){
             subSelectionClickConsumesRelease[sceneId] = false;
+            if (splinePress == SplineSceneTools::Press::Selected){
+                // a knot picked: the release selects nothing, and the gizmo jumps to it so this
+                // press can drag it
+                subSelectionClickConsumesRelease[sceneId] = true;
+                project->updateSceneRender(sceneId);
+                sceneProject->sceneRender->mouseHoverEvent(x, y);
+            }
 
             // Lattice point picking within the selected lattice, with any tool: a click on a
             // point selects it (Shift/Ctrl toggle it); the gizmo then sits on it, so the same
@@ -1156,7 +1365,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             }
 
             // Selecting and dragging an unselected object at same time (just for 2D object mode)
-            if (!disableSelection && !latticePointHit && gizmoSelected == GizmoSelected::OBJECT2D) {
+            if (!disableSelection && !latticePointHit && splinePress == SplineSceneTools::Press::None &&
+                    gizmoSelected == GizmoSelected::OBJECT2D) {
                 uint32_t hitSceneId = sceneId;
                 Entity hitEntity = findSelectableObjectByRay(sceneId, x, y, &hitSceneId);
                 if (hitEntity != NULL_ENTITY) {
@@ -1170,6 +1380,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                         sceneProject->sceneRender->clearTrackPointSelection();
                         bool changed = selectObjectByRay(sceneId, x, y, io.KeyShift);
                         if (changed) {
+                            // this press was the click: its release must not click again (it
+                            // would cycle to the next object at the same spot)
+                            subSelectionClickConsumesRelease[sceneId] = true;
                             // the mouse through the camera of the scene now edited, so the gizmo
                             // this update places finds it on its body and the drag moves it
                             sceneProject->sceneRender->mouseHoverEvent(x, y);
@@ -1226,6 +1439,10 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     }
                     if (!blockPointHit) {
                         int pointHit = sceneProject->sceneRender->hitTestLinePoint(selEntity, x, y);
+                        // Inspector > Line Renderer > Edit Points: Ctrl+click on the polyline inserts a point
+                        if (pointHit < 0 && io.KeyCtrl && sceneProject->sceneRender->isLinePointEditing()) {
+                            pointHit = sceneProject->sceneRender->insertLinePointAt(project, sceneId, selEntity, x, y);
+                        }
                         if (pointHit >= 0) {
                             sceneProject->sceneRender->selectLinePoint(selEntity, pointHit);
                             subSelectionClickConsumesRelease[sceneId] = true;
@@ -1280,6 +1497,35 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                                     sceneProject->sceneRender->mouseHoverEvent(x, y);
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // Joint 2D anchor handles of a selected joint (2D gizmo or 3D translate; same side
+            // guards as the polygon block above)
+            if (gizmoSelected == GizmoSelected::OBJECT2D || gizmoSelected == GizmoSelected::TRANSLATE) {
+                std::vector<Entity> selEntities = project->getSelectedEntities(sceneId);
+                if (selEntities.size() == 1 && !io.KeyShift && sceneProject->scene->findComponent<Joint2DComponent>(selEntities[0])) {
+                    Entity selEntity = selEntities[0];
+                    Gizmo2DSideSelected gizmo2DSide = sceneProject->sceneRender->getActiveToolsLayer()->getGizmo2DSideSelected();
+                    bool blockPointHit;
+                    if (gizmoSelected == GizmoSelected::OBJECT2D) {
+                        blockPointHit = !(gizmo2DSide == Gizmo2DSideSelected::NONE || gizmo2DSide == Gizmo2DSideSelected::CENTER);
+                    } else {
+                        blockPointHit = sceneProject->sceneRender->isAnyGizmoSideSelected();
+                    }
+                    if (!blockPointHit) {
+                        int anchorHit = sceneProject->sceneRender->hitTestJointAnchor(selEntity, x, y);
+                        if (anchorHit >= 0) {
+                            sceneProject->sceneRender->selectJointAnchor(selEntity, anchorHit);
+                            subSelectionClickConsumesRelease[sceneId] = true;
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        } else if (sceneProject->sceneRender->getSelectedJointAnchorIndex() >= 0 && !sceneProject->sceneRender->isAnyGizmoSideSelected()) {
+                            sceneProject->sceneRender->clearJointAnchorSelection();
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
                         }
                     }
                 }
@@ -1445,13 +1691,21 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 mouseLeftDown = true;
             }
             mouseLeftDragPos = Vector2(logicalX, logicalY);
+            // a stroke, a pulled handle: the spline tools' drag, no threshold, no box
+            const bool splineCapture = SplineSceneTools::isCapturing((uint32_t)sceneId);
+            if (splineCapture){
+                SplineSceneTools::mouseDrag(project, sceneProject, x, y);
+            }
             // Terrain brush strokes skip the drag threshold: holding the button
             // keeps applying flow and tiny precise drags still paint.
             // So do Paint Dye strokes: a short drag is a small splat.
-            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing() || fluidPainting){
+            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing() || fluidPainting ||
+                    sceneProject->sceneRender->isPoseDragging()){
                 mouseLeftDraggedInside = true;
             }
-            if (mouseLeftDraggedInside && physicsSnapArmed[sceneId]){
+            if (splineCapture){
+                mouseLeftDraggedInside = false;
+            }else if (mouseLeftDraggedInside && physicsSnapArmed[sceneId]){
                 // Snap: the selection rides the surface under the cursor, every frame it is held
                 // refused (the HUD says why) or cancelled later: the rest of the drag does nothing
                 if (!physicsSnapBegun[sceneId]){
@@ -1465,12 +1719,20 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 float origX = mouseLeftStartPos.x;
                 float origY = mouseLeftStartPos.y;
                 toEngineCanvas(sceneId, origX, origY);
-                sceneProject->sceneRender->mouseDragEvent(x, y, origX, origY, project, sceneId, project->getSelectedEntities(editSceneId), disableSelection, io.KeyCtrl, io.KeyShift);
+                // Cmd (macOS) snaps a pose handle's ring turn like Ctrl; the transform gizmo keeps Ctrl alone
+                const bool snapModifier = sceneProject->sceneRender->isPoseDragging() ? (io.KeyCtrl || io.KeySuper) : io.KeyCtrl;
+                sceneProject->sceneRender->mouseDragEvent(x, y, origX, origY, project, sceneId, project->getSelectedEntities(editSceneId), disableSelection, snapModifier, io.KeyShift);
             }
         }
 
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
             bool consumeSelectionRelease = subSelectionClickConsumesRelease[sceneId];
+            if (!mouseLeftDraggedInside && mouseLeftDown && !disableSelection && !consumeSelectionRelease &&
+                    sceneProject->sceneRender->isPoseEditing()){
+                // posing (pose animation): a click on empty space or on anything but the posed
+                // model and its bones leaves posing, also when the selection stays the same
+                poseClick(sceneId, x, y);
+            }
             if (!mouseLeftDraggedInside && mouseLeftDown && !disableSelection && !consumeSelectionRelease){
                 // Remember sub-selection anchors BEFORE re-selecting, so we can tell
                 // whether the release click actually changed the host entity.
@@ -1486,11 +1748,21 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 Entity prevPolygonPointEntity = sceneProject->sceneRender->getSelectedPolygonPointEntity();
                 int prevTrackPointIndex = sceneProject->sceneRender->getSelectedTrackPointIndex();
                 Entity prevTrackPointEntity = sceneProject->sceneRender->getSelectedTrackPointEntity();
+                int prevJointAnchorIndex = sceneProject->sceneRender->getSelectedJointAnchorIndex();
+                Entity prevJointAnchorEntity = sceneProject->sceneRender->getSelectedJointAnchorEntity();
 
                 // a click on empty space while lattice points are selected clears the points
-                // and keeps the lattice (the next one deselects it as usual)
+                // and keeps the lattice (the next one deselects it as usual); the same for the
+                // edited spline's knots
                 Entity latticeEntity = LatticeEditorOps::getEditedLattice(project, sceneId);
                 bool clearedLatticePoints = false;
+                if (SplineEditor::get().isEditing() && SplineEditor::get().getSceneId() == sceneId &&
+                        !SplineEditor::get().getSelection().empty() && !io.KeyShift &&
+                        findSelectableObjectByRay(sceneId, x, y) == NULL_ENTITY) {
+                    SplineEditor::get().clearSelection();
+                    sceneProject->needUpdateRender = true;
+                    clearedLatticePoints = true;
+                }
                 if (latticeEntity != NULL_ENTITY && !LatticeEditorOps::getSelectedPoints(sceneId, latticeEntity).empty() && !io.KeyShift) {
                     if (findSelectableObjectByRay(sceneId, x, y) == NULL_ENTITY) {
                         LatticeEditorOps::clearSelectedPoints(sceneId);
@@ -1500,7 +1772,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
 
                 if (!clearedLatticePoints) {
-                    selectObjectByRay(sceneId, x, y, io.KeyShift);
+                    selectObjectByRay(sceneId, x, y, io.KeyShift, io.KeyCtrl);
                 }
 
                 // Sub-selection is only meaningful while its host entity is the sole
@@ -1525,6 +1797,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
                 if (prevTrackPointIndex >= 0 && !(soleHost && selAfter[0] == prevTrackPointEntity)){
                     sceneProject->sceneRender->clearTrackPointSelection();
+                }
+                if (prevJointAnchorIndex >= 0 && !(soleHost && selAfter[0] == prevJointAnchorEntity)){
+                    sceneProject->sceneRender->clearJointAnchorSelection();
                 }
             }
             subSelectionClickConsumesRelease[sceneId] = false;
@@ -1551,7 +1826,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }else{
 
             Entity latticeEntity = LatticeEditorOps::getEditedLattice(project, sceneId);
-            if (mouseLeftDraggedInside && !disableSelection && latticeEntity != NULL_ENTITY && !sceneProject->sceneRender->hasEditLayer()){
+            const Vector2 marqueeStart = Vector2((2 * mouseLeftStartPos.x / width[sceneId]) - 1, -((2 * mouseLeftStartPos.y / height[sceneId]) - 1));
+            const Vector2 marqueeEnd = Vector2((2 * mouseLeftDragPos.x / width[sceneId]) - 1, -((2 * mouseLeftDragPos.y / height[sceneId]) - 1));
+            if (SplineSceneTools::isCapturing((uint32_t)sceneId)){
+                // the stroke or the pulled handle ends with the button
+                SplineSceneTools::mouseRelease(project, sceneProject, x, y);
+            }else if (mouseLeftDraggedInside && !disableSelection && !sceneProject->sceneRender->hasEditLayer() &&
+                    SplineSceneTools::marquee(project, sceneProject, marqueeStart, marqueeEnd, io.KeyShift)){
+                // the box selected the edited spline's knots (Shift adds), the spline stays selected
+            }else if (mouseLeftDraggedInside && !disableSelection && latticeEntity != NULL_ENTITY && !sceneProject->sceneRender->hasEditLayer()){
                 // the box selects the lattice's points (Shift adds), the lattice stays selected
                 Vector2 clickStartPos = Vector2((2 * mouseLeftStartPos.x / width[sceneId]) - 1, -((2 * mouseLeftStartPos.y / height[sceneId]) - 1));
                 Vector2 clickEndPos = Vector2((2 * mouseLeftDragPos.x / width[sceneId]) - 1, -((2 * mouseLeftDragPos.y / height[sceneId]) - 1));
@@ -1571,7 +1854,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 sceneProject->sceneRender->clearLinePointSelection();
                 sceneProject->sceneRender->clearPolygonPointSelection();
                 sceneProject->sceneRender->clearTrackPointSelection();
+                sceneProject->sceneRender->clearJointAnchorSelection();
                 project->selectObjectsByRect(sceneId, clickStartPos, clickEndPos);
+                project->clearInspectedAsset();
                 project->syncSceneRenderEditLayer(sceneId);
             }
 
@@ -1582,6 +1867,13 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
         physicsSnapArmed[sceneId] = false;
         physicsSnapBegun[sceneId] = false;
+    }
+
+    if (!isMouseInWindow){
+        // nothing of the view is hovered (a pose handle's highlight and the session's flag)
+        if (PoseViewport* poseViewport = sceneProject->sceneRender->getPoseViewport()){
+            poseViewport->hoverEnd();
+        }
     }
 
     if (isMouseInWindow && (ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
@@ -1619,7 +1911,22 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) && lookActive[sceneId]) {
             io.AddMousePosEvent(lookReturnPos[sceneId].x, lookReturnPos[sceneId].y);
             lookActive[sceneId] = false;
+            // a short right click (no look): the editor scripts' SceneView/... items (S23)
+            if (io.MouseDownDurationPrev[ImGuiMouseButton_Right] < 0.25f && !EditorScripts::get().itemsFor("sceneview").empty()) {
+                sceneScriptMenuPending = true;
+            }
         }
+    }
+    if (sceneScriptMenuPending && !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+        sceneScriptMenuPending = false;
+        ImGui::OpenPopup("##SceneViewScriptMenu");
+    }
+    if (ImGui::BeginPopup("##SceneViewScriptMenu")) {
+        EditorMenuRunContext scriptContext;
+        scriptContext.sceneId = sceneId;
+        for (Entity selected : project->getSelectedEntities(sceneId)) scriptContext.selection.push_back(selected);
+        EditorScripts::get().drawContextItems("sceneview", {}, scriptContext);
+        ImGui::EndPopup();
     }
 
     // Focus loss clears the buttons without reporting a release, and the Alt+LMB term
@@ -1638,7 +1945,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
         SceneRender3D* sceneRender3D = static_cast<SceneRender3D*>(sceneProject->sceneRender);
 
-        float distanceFromTarget = camera->getDistanceFromTarget();
+        // an orthographic view moves as the perspective one framing it would
+        float distanceFromTarget = viewController->navigationDistance(*sceneProject);
+        const bool orthographicView = viewController->isOrthographic(*sceneProject);
+        // an axis pane of Split and Quad pans and zooms, never orbits (R20)
+        const bool axisLocked = viewController->isAxisLocked(*sceneProject);
 
         // Scale factor: movements should be proportional to distance
         // Base movement rate is maintained at around distanceFromTarget = 10
@@ -1646,7 +1957,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
         // Check for mouse clicks
         if (draggingMouse[sceneId] && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right))) {
-            if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Right) && !axisLocked) {
                 walkingMode = true;
 
                 float lookDeltaX = mouseDelta.x;
@@ -1671,24 +1982,22 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     camera->setUp(0, 1, 0);
                 }
 
+                // Camera Speed (the Scene Camera settings): the wheel steps it while flying
                 if (mouseWheel != 0.0f) {
-                    sceneRender3D->setWalkSpeedOffset(sceneRender3D->getWalkSpeedOffset() + mouseWheel);
+                    viewController->stepFlySpeed(*sceneProject, mouseWheel);
                 }
-                float walkSpeed = DEFAULT_EDITOR_WALK_SPEED + sceneRender3D->getWalkSpeedOffset();
-
+                const SceneCameraSettings& cameraSettings = sceneProject->viewState.camera;
                 sceneRender3D->getUILayer()->showSpeedGauge(
-                    walkSpeed / DEFAULT_EDITOR_WALK_SPEED,
-                    MIN_EDITOR_WALK_SPEED / DEFAULT_EDITOR_WALK_SPEED,
-                    MAX_EDITOR_WALK_SPEED / DEFAULT_EDITOR_WALK_SPEED);
+                    cameraSettings.speed / DEFAULT_EDITOR_WALK_SPEED,
+                    cameraSettings.speedMin / DEFAULT_EDITOR_WALK_SPEED,
+                    cameraSettings.speedMax / DEFAULT_EDITOR_WALK_SPEED);
 
-                // Speed is per second, with the delta clamped so a stall cannot jump
-                float finalSpeed = 1.2f * walkSpeed * distanceScaleFactor *
-                                   std::min(io.DeltaTime, 0.1f);
-
-                // Shift multiplier for faster movement
-                if (ImGui::IsKeyDown(ImGuiMod_Shift)) {
-                    finalSpeed *= 3.0f;
-                }
+                const bool flying = ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_A) ||
+                                    ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_E) || ImGui::IsKeyDown(ImGuiKey_Q);
+                // Speed is per second, with the delta clamped so a stall cannot jump; Shift
+                // multiplies it and Camera Acceleration ramps it up
+                float finalSpeed = 1.2f * viewController->flySpeed(*sceneProject, flying, ImGui::IsKeyDown(ImGuiMod_Shift), io.DeltaTime) *
+                                   distanceScaleFactor * std::min(io.DeltaTime, 0.1f);
 
                 if (ImGui::IsKeyDown(ImGuiKey_W)) {
                     camera->slideForward(finalSpeed);
@@ -1713,11 +2022,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 Backend::disableMouseCursor();
             }
             if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
-                if (ImGui::IsKeyDown(ImGuiMod_Shift)) {
+                if (ImGui::IsKeyDown(ImGuiMod_Shift) || axisLocked) {
                     camera->slide(-0.01 * mouseDelta.x * distanceScaleFactor);
                     camera->slideUp(0.01 * mouseDelta.y * distanceScaleFactor);
                 } else if (ImGui::IsKeyDown(ImGuiMod_Ctrl)) {
-                    sceneRender3D->zoomCamera(-0.1f * mouseDelta.y * distanceScaleFactor);
+                    if (orthographicView) {
+                        viewController->orthoZoom(*sceneProject, 0.05f * mouseDelta.y);
+                    } else {
+                        sceneRender3D->zoomCamera(-0.1f * mouseDelta.y * distanceScaleFactor);
+                    }
                 } else {
                     camera->rotatePosition(-0.1 * mouseDelta.x);
                     camera->elevatePosition(0.1 * mouseDelta.y);
@@ -1732,7 +2045,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
 
         // Alt+LMB orbit
-        if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !axisLocked) {
             camera->rotatePosition(-0.1 * mouseDelta.x);
             camera->elevatePosition(0.1 * mouseDelta.y);
 
@@ -1759,6 +2072,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     // dragging lattice points: the wheel sizes the proportional falloff
                     LatticeFalloff& falloff = LatticeEditorOps::falloff();
                     falloff.radius = std::clamp(falloff.radius * std::pow(1.1f, mouseWheel), 0.01f, 10.0f);
+                } else if (orthographicView) {
+                    // the orthographic half height scales with the wheel (R17)
+                    viewController->orthoZoom(*sceneProject, mouseWheel);
                 } else {
                     sceneRender3D->zoomCamera(2.0f * mouseWheel * distanceScaleFactor);
                 }
@@ -1816,6 +2132,12 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
     }
 
+    // Its keys (F, Home, the numpad views, the terrain and Paint Dye brushes' [ and ], G, the
+    // lattice point keys) are command catalog entries (shortcuts/DefaultCommands.cpp): frameSelection,
+    // frameAll, viewFrom below. What stays here: Esc (it cancels what runs in the view) and the
+    // physics drop, a key held (a gesture row of the catalog).
+    if (isMouseInWindow) viewHovered = true;
+
     // The Scene view has the keyboard: hovered, or focused (it or its canvas)
     const bool sceneViewInput = isMouseInWindow || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
@@ -1829,117 +2151,59 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         escapeTaken = physics->cancelGesture((uint32_t)sceneId);
     }
 
-    // Paint Dye: [ / ] scale the fluid's splatRadius (one undo step a run of presses), Esc puts
-    // the brush down, while the view is focused or under the pointer and nothing is being typed
-    // (a keyboard key shows ImGui's nav cursor, which IsAnyItemFocused below would count)
+    // Paint Dye: Esc puts the brush down ([ / ] scale it: sceneView.brushSmaller/Larger), while the
+    // view is focused or under the pointer and nothing is being typed
     if (sceneProject->sceneRender->isFluidPainting() && !ImGui::IsAnyItemActive() && !io.WantTextInput &&
         (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows) || isMouseInWindow)){
-        if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket)){
-            FluidEditorTools::adjustRadius(1.0f / 1.15f);
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_RightBracket)){
-            FluidEditorTools::adjustRadius(1.15f);
-        }
         if (!escapeTaken && ImGui::IsKeyPressed(ImGuiKey_Escape, false)){
             FluidEditorTools::disarm();
         }
     }
 
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()){
-        if (project->getSelectedSceneId() == sceneId){
-            if (!walkingMode){
-
-                // Brush shortcuts while terrain editing: [ / ] resize the brush,
-                // Shift+[ / Shift+] adjust its strength.
-                if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
-                    if (terrainEditWindow->isEditingScene(sceneProject->scene)){
-                        const bool shiftHeld = ImGui::IsKeyDown(ImGuiMod_Shift);
-                        if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket)){
-                            if (shiftHeld){
-                                terrainEditWindow->adjustBrushStrength(1.0f / 1.15f);
-                            }else{
-                                terrainEditWindow->adjustBrushSize(1.0f / 1.15f);
-                            }
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_RightBracket)){
-                            if (shiftHeld){
-                                terrainEditWindow->adjustBrushStrength(1.15f);
-                            }else{
-                                terrainEditWindow->adjustBrushSize(1.15f);
-                            }
-                        }
-                    }
-                }
-
-                // Tool shortcuts (Q/W/E/R/T, X, G) live in the main toolbar.
-
-                // Physics: hold Space to drop (its release is seen anywhere, see
-                // PhysicsPlacementWindow)
-                if (physicsActive && sceneViewInput) {
-                    if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !io.KeySuper) {
-                        physics->beginGesture((uint32_t)sceneId, PlacementGesture::Drop, PhysicsInput::Space);
-                    }
-                }
-
-                // Lattice point shortcuts (Esc, O, Alt+A, Ctrl+I, Ctrl+=/-) while this view has the keyboard
-                if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
-                    LatticeSceneTools::handleShortcuts(project, sceneId);
-                }
-
-                // F key: Focus camera on selected entities (the selected lattice points first)
-                if (ImGui::IsKeyPressed(ImGuiKey_F)) {
-                    frameSelection(sceneId);
-                }
-
-                // Home key: Frame all objects in the scene
-                if (sceneProject->sceneType == SceneType::SCENE_3D && ImGui::IsKeyPressed(ImGuiKey_Home)) {
-                    focusOnEntities(sceneProject, sceneProject->entities);
-                }
-
-                // Numpad preset views (3D only)
-                if (sceneProject->sceneType == SceneType::SCENE_3D) {
-                    Camera* cam = sceneProject->sceneRender->getCamera();
-                    if (!ImGui::IsKeyDown(ImGuiMod_Ctrl)) {
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad1)) {
-                            // Numpad 1: Front view (-Z looking toward +Z)
-                            snapCameraToDirection(cam, Vector3(0, 0, 1));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad3)) {
-                            // Numpad 3: Right view (+X looking toward -X)
-                            snapCameraToDirection(cam, Vector3(-1, 0, 0));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad7)) {
-                            // Numpad 7: Top view (+Y looking down)
-                            snapCameraToDirection(cam, Vector3(0, -1, 0));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad9)) {
-                            // Numpad 9: Bottom view (-Y looking up)
-                            snapCameraToDirection(cam, Vector3(0, 1, 0));
-                        }
-                    } else {
-                        // Ctrl+Numpad for opposite directions
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad1)) {
-                            // Ctrl+Numpad 1: Back view (+Z looking toward -Z)
-                            snapCameraToDirection(cam, Vector3(0, 0, -1));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad3)) {
-                            // Ctrl+Numpad 3: Left view (-X looking toward +X)
-                            snapCameraToDirection(cam, Vector3(1, 0, 0));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad7)) {
-                            // Ctrl+Numpad 7: Bottom view (-Y looking up)
-                            snapCameraToDirection(cam, Vector3(0, 1, 0));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad9)) {
-                            // Ctrl+Numpad 9: Top view (+Y looking down)
-                            snapCameraToDirection(cam, Vector3(0, -1, 0));
-                        }
-                    }
-                }
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && project->getSelectedSceneId() == sceneId && !walkingMode){
+        // Physics: hold Space to drop (its release is seen anywhere, see PhysicsPlacementWindow);
+        // a held key, listed in the catalog as the gesture row sceneView.physicsDrop
+        if (physicsActive && sceneViewInput) {
+            if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !io.KeySuper) {  // shortcut-lint: allow a held gesture key
+                physics->beginGesture((uint32_t)sceneId, PlacementGesture::Drop, PhysicsInput::Space);
             }
+        }
+        // Esc clears the edited lattice's points while this view has the keyboard
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+            LatticeSceneTools::handleShortcuts(project, sceneId);
+        }
+        // Esc and Enter of the spline tools (cancel, clear, leave; finish a drawing)
+        if (sceneViewInput && !escapeTaken && !popupOpen) {
+            SplineSceneTools::handleKeys(project, sceneProject);
         }
     }
 
+}
+
+void editor::SceneWindow::frameAll(uint32_t sceneId) {
+    // every scene type (S26 R18): what is visible and pickable, the camera's tween
+    if (SceneProject* sceneProject = project->getScene(sceneId); sceneProject && sceneProject->sceneRender) {
+        viewController->frameAll(*sceneProject);
+    }
+}
+
+void editor::SceneWindow::viewFrom(uint32_t sceneId, const Vector3& direction) {
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || sceneProject->sceneType != SceneType::SCENE_3D || !sceneProject->sceneRender) {
+        return;
+    }
+    // the direction the camera looks along: its axis view (orthographic, as the view gizmo's)
+    SceneViewAxis axis = SceneViewAxis::FRONT;
+    if (direction.z < -0.5f) axis = SceneViewAxis::BACK;
+    else if (direction.x < -0.5f) axis = SceneViewAxis::RIGHT;
+    else if (direction.x > 0.5f) axis = SceneViewAxis::LEFT;
+    else if (direction.y < -0.5f) axis = SceneViewAxis::TOP;
+    else if (direction.y > 0.5f) axis = SceneViewAxis::BOTTOM;
+    viewController->setAxisView(*sceneProject, axis);
+}
+
+bool editor::SceneWindow::isHovered() const {
+    return viewHovered;
 }
 
 bool editor::SceneWindow::hasFrameableSelection(uint32_t sceneId) {
@@ -1951,6 +2215,14 @@ bool editor::SceneWindow::hasFrameableSelection(uint32_t sceneId) {
 }
 
 void editor::SceneWindow::frameSelection(uint32_t sceneId) {
+    // the selected knots of the edited spline (all of them without a selection)
+    if (SceneProject* sceneProject = project->getScene(sceneId)) {
+        AABB knots;
+        if (SplineSceneTools::frameBounds(project, sceneId, knots)) {
+            focusOnBounds(sceneProject, knots);
+            return;
+        }
+    }
     // the selected points of the edited lattice
     if (SceneProject* sceneProject = project->getScene(sceneId)) {
         Entity lattice = LatticeEditorOps::getEditedLattice(project, sceneId);
@@ -2073,26 +2345,8 @@ void editor::SceneWindow::focusOnBounds(SceneProject* sceneProject, const AABB& 
     direction.normalize();
     Vector3 newPos = center - direction * distance;
 
-    camera->setPosition(newPos.x, newPos.y, newPos.z);
-    camera->setTarget(center.x, center.y, center.z);
-    sceneProject->needUpdateRender = true;
-}
-
-void editor::SceneWindow::snapCameraToDirection(Camera* camera, const Vector3& direction) {
-    Vector3 target = camera->getWorldTarget();
-    float distance = camera->getDistanceFromTarget();
-
-    Vector3 newPos = target - direction * distance;
-    camera->setPosition(newPos.x, newPos.y, newPos.z);
-
-    // When looking along Y axis, up vector (0,1,0) is parallel to direction — use Z as up instead
-    if (std::abs(direction.y) > 0.9f) {
-        camera->setUp(0, 0, direction.y > 0 ? -1.0f : 1.0f);
-    } else {
-        camera->setUp(0, 1, 0);
-    }
-
-    camera->setTarget(target.x, target.y, target.z);
+    // eased with Camera Easing (R18), the orthographic size following the distance
+    viewController->lookFrom(*sceneProject, newPos, center, camera->getUp());
 }
 
 bool editor::SceneWindow::handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth) {
@@ -2121,15 +2375,15 @@ bool editor::SceneWindow::handleViewportGizmoClick(SceneProject* sceneProject, f
         return false;
     }
 
-    Camera* camera = sceneProject->sceneRender->getCamera();
-
+    // an arrow: that axis view (orthographic while aligned, R17); the cube: Persp / Iso
     switch (axis) {
-        case ViewportGizmoAxis::POSITIVE_X:  snapCameraToDirection(camera, Vector3(-1, 0, 0)); break; // Look from +X toward origin
-        case ViewportGizmoAxis::NEGATIVE_X:  snapCameraToDirection(camera, Vector3( 1, 0, 0)); break;
-        case ViewportGizmoAxis::POSITIVE_Y:  snapCameraToDirection(camera, Vector3( 0,-1, 0)); break; // Look from +Y (top)
-        case ViewportGizmoAxis::NEGATIVE_Y:  snapCameraToDirection(camera, Vector3( 0, 1, 0)); break;
-        case ViewportGizmoAxis::POSITIVE_Z:  snapCameraToDirection(camera, Vector3( 0, 0,-1)); break;
-        case ViewportGizmoAxis::NEGATIVE_Z:  snapCameraToDirection(camera, Vector3( 0, 0, 1)); break;
+        case ViewportGizmoAxis::POSITIVE_X:  viewController->setAxisView(*sceneProject, SceneViewAxis::RIGHT); break; // Look from +X toward origin
+        case ViewportGizmoAxis::NEGATIVE_X:  viewController->setAxisView(*sceneProject, SceneViewAxis::LEFT); break;
+        case ViewportGizmoAxis::POSITIVE_Y:  viewController->setAxisView(*sceneProject, SceneViewAxis::TOP); break; // Look from +Y (top)
+        case ViewportGizmoAxis::NEGATIVE_Y:  viewController->setAxisView(*sceneProject, SceneViewAxis::BOTTOM); break;
+        case ViewportGizmoAxis::POSITIVE_Z:  viewController->setAxisView(*sceneProject, SceneViewAxis::BACK); break;
+        case ViewportGizmoAxis::NEGATIVE_Z:  viewController->setAxisView(*sceneProject, SceneViewAxis::FRONT); break;
+        case ViewportGizmoAxis::CENTER:      viewController->toggleProjection(*sceneProject); break;
         default: break;
     }
 
@@ -2182,6 +2436,34 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::EndTable();
     }
 
+    // the AI Navigation overlay (S19): saved with the workspace, per scene
+    if (beginSection("AI Navigation")) {
+        NavOverlaySettings& nav = sceneProject.displaySettings.navigation;
+        drawSettingRow(ICON_FA_ROUTE " AI Navigation overlay", nav.enabled);
+        drawSettingRow("    Show NavMesh", nav.showNavMesh, !nav.enabled);
+        drawSettingRow("    Show Tile Bounds", nav.showTileBounds, !nav.enabled);
+        drawSettingRow("    Show HeightMesh", nav.showHeightMesh, !nav.enabled);
+        drawSettingRow("    Show NavGrid", nav.showGrid, !nav.enabled);
+        drawSettingRow("    Show Links", nav.showLinks, !nav.enabled);
+        drawSettingRow("    Show Obstacles", nav.showObstacles, !nav.enabled);
+        drawSettingRow("    Show Avoidance", nav.showAvoidance, !nav.enabled);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::BeginDisabled(!nav.enabled);
+        ImGui::TextUnformatted("    Show Agent Paths");
+        ImGui::TableSetColumnIndex(1);
+        int paths = (int)nav.showPaths;
+        const char* names[] = {"None", "Selected", "All"};
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Combo("##navpaths", &paths, names, 3)) {
+            nav.showPaths = (NavOverlaySettings::Paths)paths;
+            sceneProject.needUpdateRender = true;
+            project->saveWorkspaceFile();
+        }
+        ImGui::EndDisabled();
+        ImGui::EndTable();
+    }
+
     // Physics Placement's own gizmos: per user, like its panel (every 3D Scene view)
     if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Physics Placement")) {
         PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow();
@@ -2207,7 +2489,22 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         if (sceneProject.sceneType == SceneType::SCENE_3D) {
             drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling);
         }
+        if (sceneProject.sceneType == SceneType::SCENE_3D) {
+            // the shadow debug views (editor only, not saved; MCP shadows_debug_view)
+            static const char* const debugViews[] = {"None", "Cascades", "Shadow Factor", "Texel Density", "Cache", "Atlas"};
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%s", ICON_FA_CIRCLE_HALF_STROKE " Shadow debug");
+            ImGui::TableSetColumnIndex(1);
+            int view = static_cast<int>(sceneProject.scene->getShadowDebugView());
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::Combo("##ShadowDebugView", &view, debugViews, IM_ARRAYSIZE(debugViews))) {
+                sceneProject.scene->setShadowDebugView(static_cast<ShadowDebugView>(view));
+                sceneProject.needUpdateRender = true;
+            }
+        }
         drawSettingRow(ICON_FA_SMOG " Disable fog", sceneProject.displaySettings.disableFog);
+        drawSettingRow(ICON_FA_CLOUD " Disable clouds", sceneProject.displaySettings.disableClouds);
         if (sceneProject.sceneType != SceneType::SCENE_UI) {
             drawSettingRow(ICON_FA_WAND_MAGIC_SPARKLES " Show post-processing", sceneProject.displaySettings.showPostProcessing);
         }
@@ -2269,70 +2566,15 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::EndTable();
     }
 
-    if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.sceneRender && beginSection("Editor camera")) {
-        Camera* editorCamera = sceneProject.sceneRender->getCamera();
-
-        auto drawFloatSettingRow = [&](const char* name, const char* id, float value, float defaultValue, float dragSpeed, float minValue, float maxValue, const char* format, auto validate, auto apply) {
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("%s", name);
-
-            bool defChanged = std::fabs(value - defaultValue) > 1e-4f;
-            if (defChanged) {
-                ImGui::SameLine();
-                ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
-                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, ImGui::GetStyle().FramePadding.y));
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                if (ImGui::Button((std::string(ICON_FA_ROTATE_LEFT) + "##" + id).c_str())) {
-                    apply(defaultValue);
-                    sceneProject.needUpdateRender = true;
-                    project->saveWorkspaceFile();
-                }
-                ImGui::PopStyleColor(2);
-                ImGui::PopStyleVar(3);
-            }
-
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(-1);
-            float editedValue = value;
-            if (ImGui::DragFloat((std::string("##") + id).c_str(), &editedValue, dragSpeed, minValue, maxValue, format)) {
-                apply(editedValue);
-                validate();
-                sceneProject.needUpdateRender = true;
-            }
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                project->saveWorkspaceFile();
-            }
-        };
-
-        auto validateNearClip = [&]() {
-            if (editorCamera->getNearClip() >= editorCamera->getFarClip()) {
-                editorCamera->setNearClip(editorCamera->getFarClip() - 0.01f);
-            }
-        };
-        auto validateFarClip = [&]() {
-            if (editorCamera->getFarClip() <= editorCamera->getNearClip()) {
-                editorCamera->setFarClip(editorCamera->getNearClip() + 1.0f);
-            }
-        };
-
-        drawFloatSettingRow(
-            ICON_FA_CAMERA " Editor camera near", "EditorCameraNear",
-            editorCamera->getNearClip(), DEFAULT_EDITOR_CAMERA_NEAR,
-            0.01f, 0.01f, 100.0f, "%.2f", validateNearClip,
-            [&](float v) { editorCamera->setNearClip(v); });
-
-        drawFloatSettingRow(
-            ICON_FA_CAMERA " Editor camera far", "EditorCameraFar",
-            editorCamera->getFarClip(), DEFAULT_EDITOR_CAMERA_FAR,
-            1.0f, 1.0f, 100000.0f, "%.0f", validateFarClip,
-            [&](float v) { editorCamera->setFarClip(v); });
-
-        ImGui::EndTable();
+    if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.sceneRender) {
+        // near, far, field of view and speed are the Scene Camera settings (the toolbar's camera)
+        ImGui::SeparatorText("Editor camera");
+        if (ImGui::Button(ICON_FA_CAMERA " Camera\xE2\x80\xA6")) {
+            viewController->openCameraSettings(sceneProject.id);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SetItemTooltip("Scene Camera: Field of View, Near, Far, Camera Speed, Easing and Acceleration");
     }
-
 }
 
 void editor::SceneWindow::drawLatticeContextMenu(SceneProject& sceneProject) {
@@ -2357,6 +2599,7 @@ void editor::SceneWindow::drawLatticeContextMenu(SceneProject& sceneProject) {
 }
 
 void editor::SceneWindow::show() {
+    viewHovered = false;
     for (uint32_t sceneId: closeSceneQueue){
         project->closeScene(sceneId);
     }
@@ -2400,6 +2643,7 @@ void editor::SceneWindow::show() {
     for (SceneProject* viewScene : viewScenes) {
         SceneProject& sceneProject = *viewScene;
         const bool isStage = activeStage && &activeStage->sceneProject == viewScene;
+        particleOverlay.update(project, &sceneProject, ImGui::GetIO().DeltaTime);
 
         // Disable close button if this is the only open scene (Prefab Mode's tab exits it)
         bool canClose = isStage || openedScenesCount > 1;
@@ -2446,10 +2690,14 @@ void editor::SceneWindow::show() {
                 sceneProject.needUpdateRender = true;
             }
 
+            // the view state, the pane a hover chose, eased moves, a click waiting on a BVH
+            viewController->beginFrame(sceneProject);
+
             // Prefab Mode: its breadcrumbs and controls over the Scene view
             if (isStage) {
                 drawPrefabStageBar(sceneProject);
             }
+            drawExternalChangeBar(sceneProject);
 
             // Scene view toolbar (Unity style): view-specific controls only. Play and the
             // transform tools live in the main toolbar. Full-height buttons vertically
@@ -2501,6 +2749,11 @@ void editor::SceneWindow::show() {
                 const float postWidth = postToggle ? ImGui::CalcTextSize(postLabel.c_str(), nullptr, true).x +
                                                      ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x : 0.0f;
                 const float rightX = ImGui::GetWindowContentRegionMax().x - gizmosWidth - postWidth;
+                // S26 (R32): bookmarks, layout, projection, layers, measure, rulers, exact pick,
+                // align to surface, Scene Camera
+                if (!isCameraPreview) {
+                    viewController->drawToolbar(sceneProject, rightX);
+                }
                 ImGui::SameLine();
                 if (rightX > ImGui::GetCursorPosX()) {
                     ImGui::SetCursorPosX(rightX);
@@ -2532,6 +2785,11 @@ void editor::SceneWindow::show() {
             ImGui::SetCursorPosY(toolbarRowY + ImGui::GetTextLineHeightWithSpacing());
 
             ImGui::BeginChild(("Canvas" + std::to_string(sceneProject.id)).c_str());
+            // Split and Quad: a child per pane; the active one draws the Scene view below as
+            // Single does, the others their own image (SceneViewController::beginPane)
+            const int paneSlots = viewController->paneSlotCount(sceneProject);
+            for (int paneSlot = 0; paneSlot < paneSlots; viewController->endPane(sceneProject, paneSlot++))
+            if (viewController->beginPane(sceneProject, paneSlot))
             {
                 if (focusCanvasOnNextFrame[sceneProject.id]) {
                     ImGui::SetWindowFocus();
@@ -2621,6 +2879,7 @@ void editor::SceneWindow::show() {
 
                     ImGui::SetCursorScreenPos(imageMin);
                     Widgets::image(previewTex, imageSize);
+                    ui::registerViewImage(ImGui::GetWindowViewport()->ID, imageMin, imageMax, sceneProject.sceneRender->getFramebuffer());
 
                     // Yellow frame as a "viewing through camera" cue (inset 1px so it's not clipped at the edge).
                     // Matches the previewed camera's highlight color in the Hierarchy tree.
@@ -2630,6 +2889,27 @@ void editor::SceneWindow::show() {
                     // Black until the first render creates the framebuffer.
                     const ImVec2 canvasMin = ImGui::GetCursorScreenPos();
                     Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
+                    ui::registerViewImage(ImGui::GetWindowViewport()->ID, canvasMin,
+                                          ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y), sceneProject.sceneRender->getFramebuffer());
+                    particleOverlay.draw(project, &sceneProject, canvasMin, canvasAvail);
+                    // an item over the image again, after the panel's widgets: the drop targets
+                    // below (BeginDragDropTarget) take the last item, and an empty one a line
+                    // lower would make them unreachable and give the canvas a scrollbar (which
+                    // narrows the view and moves the view gizmo off the view's corner)
+                    ImGui::SetCursorScreenPos(canvasMin);
+                    ImGui::Dummy(canvasAvail);
+
+                    // Camera Follow: the selected followers' Bounds and Dead Zone
+                    {
+                        const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+                        SceneRender* sceneRender = sceneProject.sceneRender;
+                        drawCameraFollowGizmos(project, sceneProject, [&](const Vector3& world, ImVec2& screen) {
+                            Vector2 engine;
+                            if (!sceneRender->worldToScreen(world, engine)) return false;
+                            screen = ImVec2(canvasMin.x + engine.x / engineScale.x, canvasMin.y + engine.y / engineScale.y);
+                            return true;
+                        });
+                    }
 
                     // Physics: the HUD, and the labels at their objects
                     if (PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow()) {
@@ -2643,6 +2923,20 @@ void editor::SceneWindow::show() {
                                 screen = ImVec2(canvasMin.x + engine.x / engineScale.x, canvasMin.y + engine.y / engineScale.y);
                                 return true;
                             });
+                    }
+                    // the Atlas shadow debug view: the shadow atlases over the bottom-left corner
+                    if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.scene->getShadowDebugView() == ShadowDebugView::ATLAS) {
+                        if (TextureRender* atlas = sceneProject.scene->getSystem<RenderSystem>()->getShadowAtlasDebugTexture()) {
+                            const float atlasWidth = std::min(canvasAvail.x, (float)atlas->getWidth());
+                            const float atlasHeight = atlasWidth * (float)atlas->getHeight() / std::max((float)atlas->getWidth(), 1.0f);
+                            const ImVec2 pMin(canvasMin.x, canvasMin.y + canvasAvail.y - atlasHeight);
+                            const ImVec2 pMax(canvasMin.x + atlasWidth, canvasMin.y + canvasAvail.y);
+                            // GL stores render targets bottom-up
+                            const bool flip = Engine::isOpenGL();
+                            ImGui::GetWindowDrawList()->AddImage(Backend::getImGuiTexture(atlas), pMin, pMax,
+                                                                 ImVec2(0.0f, flip ? 1.0f : 0.0f), ImVec2(1.0f, flip ? 0.0f : 1.0f));
+                            sceneProject.needUpdateRender = true;
+                        }
                     }
                 }
 
@@ -2692,6 +2986,21 @@ void editor::SceneWindow::show() {
                     }
                 }
 
+                // S26: the view's shortcuts, Ctrl+wheel cycling and the measure tool, before the
+                // selection and camera input (a used left press is not a pick)
+                if (!transitioning && !isCameraPreview) {
+                    const ImVec2 windowPos = ImGui::GetWindowPos();
+                    float pointerX = ImGui::GetIO().MousePos.x - windowPos.x;
+                    float pointerY = ImGui::GetIO().MousePos.y - windowPos.y;
+                    toEngineCanvas(sceneProject.id, pointerX, pointerY);
+                    const bool viewHovered = ImGui::IsWindowHovered();
+                    const bool viewFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && project->getSelectedSceneId() == sceneProject.id;
+                    const bool pressed = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+                    if (viewController->handleInput(sceneProject, pointerX, pointerY, viewHovered, viewFocused) && pressed) {
+                        suppressLeftMouseUntilRelease[sceneProject.id] = true;
+                    }
+                }
+
                 if (!transitioning && !isCameraPreview){
                     drawFluidBrushCursor(&sceneProject);
                     if (UIProbe::enabled() && sceneProject.id == project->getSelectedSceneId()){
@@ -2700,6 +3009,15 @@ void editor::SceneWindow::show() {
                 }
 
                 sceneEventHandler(&sceneProject);
+
+                if (!transitioning && !isCameraPreview) {
+                    const ImVec2 viewMin = ImGui::GetWindowPos();
+                    const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+                    viewController->drawOverlays(sceneProject, viewMin, ImGui::GetWindowSize(), engineScale.x, engineScale.y);
+                    if (viewController->hasPendingClick(sceneProject.id) && ImGui::IsWindowHovered()) {
+                        ImGui::SetMouseCursor(ImGuiMouseCursor_Progress);
+                    }
+                }
                 drawLatticeContextMenu(sceneProject);
             }
             ImGui::EndChild();
@@ -2791,6 +3109,18 @@ void editor::SceneWindow::toEngineCanvas(uint32_t sceneId, float& x, float& y) c
     ImVec2 scale = canvasEngineScale(sceneId);
     x *= scale.x;
     y *= scale.y;
+}
+
+bool editor::SceneWindow::getViewRect(uint32_t sceneId, float& x, float& y, float& w, float& h) const {
+    auto it = viewRect.find(sceneId);
+    if (it == viewRect.end()) {
+        return false;
+    }
+    x = it->second.x;
+    y = it->second.y;
+    w = it->second.z;
+    h = it->second.w;
+    return true;
 }
 
 int editor::SceneWindow::getWidth(uint32_t sceneId) const{

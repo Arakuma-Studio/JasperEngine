@@ -14,6 +14,12 @@
 // to follow the lattices it includes the file and calls it as main() does, before the model
 // matrix (the depth fork too).
 //
+// A mesh played by a Vertex Animator compiles with HAS_VAT (and HAS_VAT_BONES in Bones mode),
+// without skinning or morph targets: main() calls vatEvaluate() first and the rest position,
+// normal and tangent go through vatPosition, vatNormal and vatTangent (includes/vat.glsl). A
+// fork without them draws the mesh at rest; to play the animation it includes the file and
+// calls them as main() does (the depth fork too).
+//
 //   uniform u_vs_customParams {
 //       float time;
 //       vec4 tint;
@@ -100,15 +106,6 @@ in vec3 a_position;
     out vec4 v_color;
 #endif
 
-#ifdef USE_SHADOWS
-    uniform u_vs_shadows {
-        mat4 lightVPMatrix[MAX_SHADOW_ATLAS_SLOTS];
-        vec4 shadowParams[MAX_SHADOW_ATLAS_SLOTS]; // normalBias in .x
-    };
- 
-    out vec4 v_lightProjPos[MAX_SHADOW_ATLAS_SLOTS];
-#endif
-
 #ifdef USE_VERTEX_LIGHTS
     // the object's vertex lights (includes/lights.glsl), Lambert per vertex
     #define LIGHTS_VS
@@ -136,9 +133,15 @@ in vec3 a_position;
 #endif
 // the lattices deforming the mesh (HAS_LATTICE): latticeDeform, after a_color is declared
 #include "includes/lattice.glsl"
+// the baked vertex animation (HAS_VAT): vatEvaluate, vatPosition, vatNormal, vatTangent
+#include "includes/vat.glsl"
+// a mirroring transform or texture rect turns the tangent frame (HAS_TANGENTS): mirrorTangentFrame
+#ifdef HAS_TANGENTS
+    #include "includes/tangent_frame.glsl"
+#endif
 
 vec4 getPosition(mat4 boneTransform){
-    vec3 pos = a_position;
+    vec3 pos = vatPosition(a_position);
 
     pos = getMorphPosition(pos);
     pos = getSkinPosition(pos, boneTransform);
@@ -151,7 +154,7 @@ vec4 getPosition(mat4 boneTransform){
 
 #ifdef HAS_NORMALS
 vec3 getNormal(mat4 boneTransform, vec4 position){
-    vec3 normal = a_normal;
+    vec3 normal = vatNormal(a_normal);
 
     normal = getMorphNormal(normal);
     normal = getSkinNormal(normal, boneTransform);
@@ -165,7 +168,7 @@ vec3 getNormal(mat4 boneTransform, vec4 position){
 
 #ifdef HAS_TANGENTS
 vec3 getTangent(mat4 boneTransform){
-    vec3 tangent = a_tangent.xyz;
+    vec3 tangent = vatTangent(a_tangent.xyz);
 
     tangent = getMorphTangent(tangent);
     tangent = getSkinTangent(tangent, boneTransform);
@@ -175,20 +178,22 @@ vec3 getTangent(mat4 boneTransform){
 #endif
 
 void main() {
+    // the baked vertex animation first (HAS_VAT): it takes the place of morph targets and skinning
+    vatEvaluate();
     mat4 boneTransform = getBoneTransform();
 
     #ifdef HAS_LATTICE
         // position, normal and tangent go through each lattice together (one Jacobian):
         // morph targets, the before-skinning lattices, skinning, the instance matrix, then
         // (below, after the instance fade) the after-skinning ones
-        vec3 latticePosition = getMorphPosition(a_position);
+        vec3 latticePosition = getMorphPosition(vatPosition(a_position));
         vec3 latticeNormal = vec3(0.0, 1.0, 0.0);
         vec3 latticeTangent = vec3(1.0, 0.0, 0.0);
         #ifdef HAS_NORMALS
-            latticeNormal = getMorphNormal(a_normal);
+            latticeNormal = getMorphNormal(vatNormal(a_normal));
         #endif
         #ifdef HAS_TANGENTS
-            latticeTangent = getMorphTangent(a_tangent.xyz);
+            latticeTangent = getMorphTangent(vatTangent(a_tangent.xyz));
         #endif
         float latticeStretchValue = 1.0;
         #ifdef HAS_SKINNING
@@ -257,6 +262,8 @@ void main() {
         #endif
         vec3 tangentW = normalize(vec3(pbrParams.modelMatrix * vec4(tangent, 0.0)));
         vec3 bitangentW = cross(worldNormal, tangentW) * a_tangent.w;
+        // a negative determinant or a mirrored texture rect (includes/tangent_frame.glsl)
+        mirrorTangentFrame(tangentW, bitangentW);
         v_tbn = mat3(tangentW, bitangentW, worldNormal);
     #else // !HAS_TANGENTS
         v_normal = worldNormal;
@@ -324,16 +331,6 @@ void main() {
             // ambient and the lights over the cap) comes along
             v_vertexLight += ambientLight(lightingNormal);
         #endif
-    #endif
-
-    #ifdef USE_SHADOWS
-    for (int i = 0; i < MAX_SHADOW_ATLAS_SLOTS; ++i){
-        #ifdef HAS_NORMALS
-            v_lightProjPos[i] = lightVPMatrix[i] * (worldPos + vec4(worldNormal * shadowParams[i].x, 0.0));
-        #else
-            v_lightProjPos[i] = lightVPMatrix[i] * worldPos;
-        #endif
-    }
     #endif
 
     gl_Position = pbrParams.mvpMatrix * pos;

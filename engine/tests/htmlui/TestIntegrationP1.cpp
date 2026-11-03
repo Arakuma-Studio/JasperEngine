@@ -274,7 +274,12 @@ TEST_F(IntegrationTest, PlayStopCyclesLeakNothing){
             pipelines = SystemRender::getPipelineCacheSize();
             EXPECT_GE(screenTextures, 4u);
             EXPECT_GT(screenGeometry, 0u);
-            EXPECT_GT(textureGeometry, 0u);
+            // the texture form is an empty field and an empty label: with the S16 primitives its
+            // background is an HTMLUI_PRIM instance, not a geometry, so only the screen document
+            // is sure to hold geometry
+            if (!RmlRenderer::isSdfPrimitives()) {
+                EXPECT_GT(textureGeometry, 0u);
+            }
         }else if (cycle > 1){
             EXPECT_EQ(screenContext->getRenderer().getLiveTextureCount(), screenTextures) << "cycle " << cycle;
             EXPECT_EQ(screenContext->getRenderer().getLiveGeometryCount(), screenGeometry) << "cycle " << cycle;
@@ -715,7 +720,13 @@ TEST_F(IntegrationTest, TextureDocumentDrawsClipsLayersAndFilters){
     EXPECT_GE(stats.layersPushed, 3u);
     EXPECT_GT(stats.passes, 3u);
 
-    CompareResult result = compareWithGolden("p1/texture_effects", texels.rgba, texels.width, texels.height);
+    // the golden is llvmpipe's; a hardware GPU anti-aliases the rotated panel's edges, the circle
+    // and the outlined text a little differently: 68 scattered edge pixels over the threshold
+    // (0.104 %, mean difference 0.31) on an NVIDIA GTX 1080 (Vulkan, driver 580). The bad-pixel
+    // limit is that plus about 25 % there (the default 0.05 % on the goldens' renderer).
+    CompareOptions hardware;
+    hardware.maxBadFraction = 0.0013;
+    CompareResult result = compareWithGolden("p1/texture_effects", texels.rgba, texels.width, texels.height, hardwareTolerance(hardware));
     EXPECT_TRUE(result.passed) << result.message;
 }
 
@@ -753,7 +764,9 @@ TEST_F(IntegrationTest, RenderStatsOfACombinedScene){
     EXPECT_GT(a.passes, 1u);
     EXPECT_EQ(b.passes, 1u);
     EXPECT_EQ(b.filtersApplied, 0u);
-    EXPECT_GE(a.drawCalls, 10u);
+    EXPECT_GE(a.geometrySubmitted, 10u);
+    EXPECT_GE(b.geometrySubmitted, 1u);
+    EXPECT_GE(a.drawCalls, 1u);
     EXPECT_GE(b.drawCalls, 1u);
     EXPECT_EQ(total.pipelineCacheMisses, 0u);
     EXPECT_LE(total.pipelineApplies, total.drawCalls + total.passes * 2);
@@ -830,8 +843,11 @@ TEST_F(TextEffectsInLayersTest, FontEffectsInsideLayersAndFilters){
     EXPECT_GT(countNear(screen, w, row1, 142, 15, 15, 20), 40u);
     // row 2, blur(1px) on outlined text: the blue outline is there, softened
     const PixelRect row2{16, 56, 260, 96};
-    EXPECT_GT(countInk(screen, w, row2), 400u);
-    EXPECT_EQ(countNear(screen, w, row2, 0, 128, 255, 4), 0u);
+    const size_t ink2 = countInk(screen, w, row2);
+    EXPECT_GT(ink2, 400u);
+    // (the outline from distance glyphs, S16 R17, is drawn at device resolution: the middle of
+    // its stroke may keep a few pure pixels through a 1 px blur, not the edges)
+    EXPECT_LE(countNear(screen, w, row2, 0, 128, 255, 4), ink2 / 100);
     // row 3, glow text in a backdrop-blurred panel over a gradient: green glow pixels
     size_t glow = 0;
     for (int y = 104; y < 160; y++){

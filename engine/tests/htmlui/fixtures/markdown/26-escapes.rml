@@ -1,0 +1,1 @@
+<div class="markdown-body"><p>*not em*, _not em_, `not code`, # not a heading, [not a link](x)</p><p>A backslash before a letter stays: \a \</p><p>Ampersands &amp; entities: &amp;amp; &amp;lt; &amp;copy; &quot;quotes&quot; 'apostrophes' and 1 &lt; 2 &gt; 0 brackets.</p></div>

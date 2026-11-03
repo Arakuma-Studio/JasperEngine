@@ -1,0 +1,116 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#include "ShadowTiers.h"
+
+#include <algorithm>
+#include <cstring>
+
+using namespace jasperengine;
+
+namespace {
+    constexpr uint64_t MB = 1024ull * 1024ull;
+
+    // the budget table of docs/rendering/shadow-budgets.md (spec S10 §5). High and Ultra since the
+    // GPU campaign (AC14 on an RTX 3080 Ti, the bench's walking camera): the fit freeze on and the
+    // memory row twice the D32 atlases, so the static layers fit and the walking camera redraws
+    // only the dynamic casters over them (High 7.2 -> under 1.0 ms of shadow passes at 1440p)
+    const ShadowTierSettings tierSettings[] = {
+        // cascades, slot, spot, point face, distance, soft filter, transition, receiver plane, freeze, memory
+        {2, 1024, 512, 256, 40.0f, ShadowSoftFilter::GRID3, CascadeTransition::DITHER, false, true, 16 * MB},
+        {3, 2048, 1024, 512, 60.0f, ShadowSoftFilter::GRID5, CascadeTransition::BLEND, true, true, 48 * MB},
+        {4, 2048, 1024, 512, 100.0f, ShadowSoftFilter::VOGEL, CascadeTransition::BLEND, true, true, 192 * MB},
+        {4, 4096, 1024, 512, 150.0f, ShadowSoftFilter::PCSS, CascadeTransition::BLEND, true, true, 576 * MB},
+    };
+
+    const char* const tierNames[] = {"low", "medium", "high", "ultra"};
+
+    // the project's tiers by Engine::Platform, -1 for the default
+    int platformTiers[ShadowTiers::PLATFORM_COUNT] = {-1, -1, -1, -1, -1, -1};
+}
+
+const ShadowTierSettings& ShadowTiers::getSettings(ShadowTier tier){
+    int index = static_cast<int>(tier);
+    if (index < 0 || index > 3)
+        index = 2;
+    return tierSettings[index];
+}
+
+float ShadowTiers::pointKernelReach(ShadowTier tier){
+    // a bilinear comparison tap reads one texel past its centre; the 3x3 grid's taps sit 1.5
+    // texels out, the 5x5's 2.5, a Vogel disk's at most 8 (points never take PCSS)
+    switch (getSettings(tier).softFilter){
+        case ShadowSoftFilter::GRID3: return 2.5f;
+        case ShadowSoftFilter::GRID5: return 3.5f;
+        case ShadowSoftFilter::VOGEL:
+        case ShadowSoftFilter::PCSS:  return 9.0f;
+    }
+    return 9.0f;
+}
+
+ShadowTier ShadowTiers::defaultTier(int platform){
+    // Engine::Platform: MacOS, iOS, Web, Android, Linux, Windows
+    switch (platform){
+        case 1: // iOS
+        case 3: // Android
+            return ShadowTier::LOW;
+        case 2: // Web
+            return ShadowTier::MEDIUM;
+        default:
+            return ShadowTier::HIGH;
+    }
+}
+
+void ShadowTiers::setPlatformTier(int platform, ShadowTier tier){
+    if (platform >= 0 && platform < PLATFORM_COUNT)
+        platformTiers[platform] = std::clamp(static_cast<int>(tier), 0, 3);
+}
+
+ShadowTier ShadowTiers::getPlatformTier(int platform){
+    if (platform >= 0 && platform < PLATFORM_COUNT && platformTiers[platform] >= 0)
+        return static_cast<ShadowTier>(platformTiers[platform]);
+    return defaultTier(platform);
+}
+
+bool ShadowTiers::usesHighFilters(ShadowTier tier){
+    return tier == ShadowTier::HIGH || tier == ShadowTier::ULTRA;
+}
+
+bool ShadowTiers::cooksHighFilters(int shaderBackend){
+    // the platforms (Engine::Platform: MacOS, iOS, Web, Android, Linux, Windows) of each
+    // ShaderBackend (GLCore, GLES3, D3D11, MetalMacOS, MetalIOS, Vulkan)
+    static const int platforms[][3] = {
+        {0, 4, 5},    // GLCore
+        {2, 3, -1},   // GLES3
+        {5, -1, -1},  // D3D11
+        {0, -1, -1},  // MetalMacOS
+        {1, -1, -1},  // MetalIOS
+        {3, 4, 5},    // Vulkan
+    };
+    if (shaderBackend < 0 || shaderBackend >= (int)(sizeof(platforms) / sizeof(platforms[0])))
+        return true;
+    for (int platform : platforms[shaderBackend]){
+        if (platform >= 0 && usesHighFilters(getPlatformTier(platform)))
+            return true;
+    }
+    return false;
+}
+
+const char* ShadowTiers::getName(ShadowTier tier){
+    int index = static_cast<int>(tier);
+    if (index < 0 || index > 3)
+        return "high";
+    return tierNames[index];
+}
+
+bool ShadowTiers::fromName(const char* name, ShadowTier& tier){
+    if (!name)
+        return false;
+    for (int i = 0; i < 4; i++){
+        if (std::strcmp(name, tierNames[i]) == 0){
+            tier = static_cast<ShadowTier>(i);
+            return true;
+        }
+    }
+    return false;
+}

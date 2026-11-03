@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "util/ProjectUtils.h"
 #include "ecs/Entity.h"
 
@@ -48,7 +49,20 @@ namespace jasperengine::editor {
         const std::string& getError() const { return plan.error; }
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
+
+        // "Fork Shader shaders/myMesh"
+        std::string describe() const override { return "Fork Shader " + plan.base; }
+        const char* typeName() const override { return "ForkShaderCmd"; }
+        size_t memoryBytes() const override {
+            size_t bytes = sizeof(*this) + plan.vertContent.capacity() + plan.fragContent.capacity() + (propertyCmd ? propertyCmd->memoryBytes() : 0);
+            for (const auto& file : plan.includeFiles) {
+                bytes += sizeof(file) + file.content.capacity();
+            }
+            return bytes;
+        }
     };
 
 }

@@ -37,8 +37,15 @@ namespace jasperengine {
         static void beginFrame();
         static void endFrame();
 
+        // Engine.vSyncCount on or off (FIFO or IMMEDIATE/MAILBOX): pending until the next
+        // beginFrame, which makes the swapchain again before it acquires an image
+        static void setVSync(bool vsync);
+
         static sg_environment environment();
         static sg_swapchain swapchain();
+        // the picked physical device's name ("llvmpipe (LLVM ...)" for Mesa's lavapipe); empty
+        // before create
+        static const char* deviceName();
     };
 
 }

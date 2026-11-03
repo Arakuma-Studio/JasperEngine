@@ -8,8 +8,10 @@
 # - static library targets dav1d-<platform>, opus-<platform> and webm-<platform> (ios, macos;
 #   products lib<name>-<platform>.a), cloned from lunasvg-<platform> (deployment targets, hidden
 #   visibility, warnings off), compiling the sources their CMakeLists.txt compile (read from
-#   them) with their defines and private search paths. dav1d's bit-depth templates are compiled
-#   twice by CMake (OBJECT libraries with BITDEPTH 8 and 16); Xcode compiles each file once per
+#   them) with their defines and private search paths, and without a header map (USE_HEADERMAP =
+#   NO: Xcode's project header map resolved dav1d's "config.h" to thorvg's; the generated
+#   xcode/cpu_*.c stop the build when config.h is not dav1d's). dav1d's bit-depth templates are
+#   compiled twice by CMake (OBJECT libraries with BITDEPTH 8 and 16); Xcode compiles each file once per
 #   target, so the script writes one wrapper per template and depth,
 #   engine/libs/dav1d/bitdepth/<name>_<8|16>.c (#define BITDEPTH, #include the template);
 # - dav1d's asm (its CMakeLists.txt's DAV1D_ASM_AARCH64 and DAV1D_ASM_X86_64 lists): the arm64 .S
@@ -22,8 +24,9 @@
 #   its target depends on them;
 # - every configuration that has lunasvg's include path (the engine and app targets) gets the
 #   three public include paths and DAV1D_API= / OPUS_EXPORT= (the CMake targets' interface);
-# - engine/core/htmlui/media (the element, the pipeline) in the engine targets, as
-#   xcode_sync_effects.py does for effects (an htmlui/media group), and
+# - engine/core/htmlui/media (the element and its controls) in the engine targets, as
+#   xcode_sync_effects.py does for effects (an htmlui/media group; the platform-neutral pipeline
+#   moved to engine/core/media, which tools/xcode_sync_engine.py keeps in step), and
 #   engine/core/script/binding/HtmlUIMediaLua.cpp next to HtmlUIClassesLua.cpp.
 #
 # Object ids are "VIDE" + sha1 of a key, deterministic and distinct from the other scripts' ids.
@@ -100,6 +103,11 @@ def dav1d_wrappers():
             "// CPU feature detection of dav1d's %s asm, in that architecture's slices only (CMake\n"
             "// compiles it for its target alone).\n"
             "#include \"config.h\"\n"
+            "// config.h must be dav1d's: another library's (through Xcode's header map, which the targets\n"
+            "// turn off) leaves dav1d without a bit depth (it decodes nothing) and its asm unassembled\n"
+            "#ifndef DAV1D_ENGINE_CONFIG_H\n"
+            "#error \"config.h is not engine/libs/dav1d/config/config.h: is USE_HEADERMAP = NO on the dav1d targets?\"\n"
+            "#endif\n"
             "#if (%s) && HAVE_ASM\n"
             "#include \"src/%s/cpu.c\"\n"
             "#endif\n" % (name, arch, condition, name))
@@ -138,6 +146,10 @@ def libraries():
             "defines": ["DAV1D_API=", "DAV1D_ASM"], "asm": True,
             "includes": [inc("dav1d/config"), inc("dav1d"), inc("dav1d/include")],
             "public_include": inc("dav1d/include"), "public_define": "DAV1D_API=",
+            # no header map: the project's map names thorvg's config/config.h "config.h", which
+            # dav1d's #include "config.h" took instead of its own (no ARCH_AARCH64: the arm64 asm
+            # failed to assemble, refmvs.S on the iOS simulator)
+            "headermap": False,
         },
         {
             # PACKAGE_VERSION is left out (opus_get_version_string says "unknown"; quoting a
@@ -192,6 +204,24 @@ def clone_configuration(project, template_id, new_id, name, lib):
         i += 1
     out.append("\t\t};")
     return out
+
+
+def keep_headermap_off(project, lib):
+    """USE_HEADERMAP = NO in every configuration of the library's targets (lib["headermap"] False)"""
+    if lib.get("headermap", True):
+        return
+    for platform in PLATFORMS:
+        name = "%s-%s" % (lib["name"], platform)
+        configs = project.configurations('Build configuration list for PBXNativeTarget "%s"' % name)
+        for config_name, cid in sorted(configs.items()):
+            first, last = project.block(cid)
+            settings = project.lines[first:last]
+            if any(line.strip() == "USE_HEADERMAP = NO;" for line in settings):
+                continue
+            # the end of buildSettings: the last "};" before the configuration's name
+            end = max(i for i in range(first, last) if project.lines[i] == "\t\t\t};")
+            project.lines.insert(end, "\t\t\t\tUSE_HEADERMAP = NO;")
+            project.added.append("no header map in %s %s" % (name, config_name))
 
 
 def add_library_targets(project, lib, portal):
@@ -423,6 +453,29 @@ def add_dav1d_asm(project):
         project.add_to_list(project.target_by_name(name), "buildRules", "\t\t\t\t%s /* PBXBuildRule */," % rule)
 
 
+def disable_headermaps(project, libs):
+    """USE_HEADERMAP = NO in the libraries' configurations: their quoted includes resolve through
+    their own search paths, as CMake's do. Xcode's project header map (-iquote, searched before
+    them) maps a header's file name to any header of that name in the project: dav1d's
+    "config.h" became engine/libs/thorvg/config/config.h (no ARCH_AARCH64, CONFIG_8BPC, ...: the
+    asm did not assemble and the C decoder had no bit depth)."""
+    for lib in libs:
+        for platform in PLATFORMS:
+            name = "%s-%s" % (lib["name"], platform)
+            for config in project.configurations('Build configuration list for PBXNativeTarget "%s"' % name).values():
+                first, last = project.block(config)
+                settings = [i for i in range(first, last) if re.match(r"^\t\t\t\t[^\t]", project.lines[i])]
+                if any(project.lines[i].strip().startswith("USE_HEADERMAP =") for i in settings):
+                    continue
+                # Xcode keeps the keys sorted: before the first key after it, or at the end
+                keys = [(project.lines[i].strip().strip('"'), i) for i in settings]
+                at = next((i for key, i in keys if key > "USE_HEADERMAP"), None)
+                if at is None:
+                    at = next(i for i in range(first, last) if project.lines[i] == "\t\t\t};")
+                project.lines.insert(at, "\t\t\t\tUSE_HEADERMAP = NO;")
+                project.added.append("USE_HEADERMAP = NO in " + config)
+
+
 def add_public_interface(project, libs):
     configs = engine_configurations(project)
     for config in configs:
@@ -534,9 +587,11 @@ def main():
     libs = libraries()
     for lib in libs:
         add_library_targets(project, lib, portal)
+        keep_headermap_off(project, lib)
         add_library_files(project, lib)
         link_libraries(project, lib, portal)
     configs = add_public_interface(project, libs)
+    disable_headermaps(project, libs)
     add_dav1d_asm(project)
     media = add_media_sources(project)
     phases = add_sibling_source(project, "HtmlUIClassesLua.cpp", "HtmlUIMediaLua.cpp")

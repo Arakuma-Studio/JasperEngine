@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "Prefab.h"
+#include "StreamPreserved.h"
 
 #include "Stream.h"
+#include "util/WorldTransforms.h"
 #include "util/YamlNumbers.h"
 
 #include <unordered_set>
@@ -22,7 +24,52 @@ bool PrefabObjectOverrides::isWholeComponent(ComponentType type) const {
     return it != properties.end() && it->second.count(WHOLE_COMPONENT);
 }
 
-void PrefabObjectOverrides::addProperty(ComponentType type, const std::string& property) {
+namespace {
+
+// Names of overrides recorded by editors before colliders had no caps: the collider count
+// ("numColliders"), a collider's point count ("colliders[i].numVertices") and its points
+// ("colliders[i].vertices[j]") are now the colliders list, the points list and its points
+std::string currentPropertyName(ComponentType type, const std::string& property) {
+    // 3D colliders the same: the count is the list, a collider's vertex and index counts are
+    // its vertices and indices lists
+    if (type == ComponentType::RigidbodyComponent) {
+        if (property == "numColliders") {
+            return "colliders";
+        }
+        const size_t field = property.find("].");
+        if (property.compare(0, 10, "colliders[") == 0 && field != std::string::npos) {
+            const std::string collider = property.substr(0, field + 1);
+            const std::string rest = property.substr(field + 2);
+            if (rest == "numVertices") return collider + ".vertices";
+            if (rest == "numIndices") return collider + ".indices";
+        }
+        return property;
+    }
+    if (type != ComponentType::Rigidbody2DComponent) {
+        return property;
+    }
+    if (property == "numColliders") {
+        return "colliders";
+    }
+    const size_t field = property.find("].");
+    if (property.compare(0, 10, "colliders[") != 0 || field == std::string::npos) {
+        return property;
+    }
+    const std::string collider = property.substr(0, field + 1);
+    const std::string rest = property.substr(field + 2);
+    if (rest == "numVertices") {
+        return collider + ".points";
+    }
+    if (rest.compare(0, 9, "vertices[") == 0) {
+        return collider + ".points[" + rest.substr(9);
+    }
+    return property;
+}
+
+}
+
+void PrefabObjectOverrides::addProperty(ComponentType type, const std::string& recorded) {
+    const std::string property = currentPropertyName(type, recorded);
     if (property.empty()) {
         return;
     }
@@ -178,11 +225,17 @@ Prefab::FileHeader Prefab::loadRegistry(const YAML::Node& node, const std::strin
     addedObjects.clear();
     root = NULL_ENTITY;
 
+    // the file holds no world values: computed once the registry is complete
+    WorldTransformScope worldTransforms(registry.get());
     Stream::decodeEntitySelection(node, registry.get(), &registryEntities);
+    // the header keys this editor does not know go back into the file on save
+    StreamLoad::preserveRootKeys(registry.get(), NULL_ENTITY, node, RootKind::PrefabHeader);
 
     FileHeader header = readHeader(node);
-    const bool legacyFile = header.version < FILE_VERSION;
-    needsUpgrade = legacyFile;
+    // older than the root-GameObject layout: converted while loading; older than this editor's
+    // format either way: written again on the next save
+    const bool legacyFile = header.version < ROOT_LAYOUT_VERSION;
+    needsUpgrade = header.version < FILE_VERSION;
 
     // Stripped objects: references into the nested instances
     if (node && node.IsMap() && node["stripped"] && node["stripped"].IsSequence()) {
@@ -402,6 +455,8 @@ void Prefab::takeAssetData(Prefab&& loaded) {
     stripped = std::move(loaded.stripped);
     addedObjects = std::move(loaded.addedObjects);
     needsUpgrade = loaded.needsUpgrade;
+    loadReport = std::move(loaded.loadReport);
+    diskSha1 = std::move(loaded.diskSha1);
 }
 
 Entity Prefab::Instance::getRegistryEntity(Entity localEntity) const {

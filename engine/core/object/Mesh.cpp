@@ -4,10 +4,15 @@
 #include "Mesh.h"
 #include "render/ObjectRender.h"
 #include "util/Color.h"
+#include "Log.h"
 #include "component/MirrorComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "component/VertexAnimatorComponent.h"
+#include "animation/VertexAnimatorRuntime.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
 
@@ -42,6 +47,7 @@ void Mesh::setTexture(const std::string& path){
     mesh.submeshes[0].material.baseColorTexture.setPath(path);
 
     mesh.submeshes[0].needUpdateTexture = true;
+    markChanged<MeshComponent>();
 }
 
 void Mesh::setTexture(const std::string& id, TextureData data){
@@ -50,6 +56,7 @@ void Mesh::setTexture(const std::string& id, TextureData data){
     mesh.submeshes[0].material.baseColorTexture.setData(id, data);
 
     mesh.submeshes[0].needUpdateTexture = true;
+    markChanged<MeshComponent>();
 }
 
 void Mesh::setTexture(Framebuffer* framebuffer){
@@ -58,6 +65,83 @@ void Mesh::setTexture(Framebuffer* framebuffer){
     mesh.submeshes[0].material.baseColorTexture.setFramebuffer(framebuffer);
 
     mesh.submeshes[0].needUpdateTexture = true;
+    markChanged<MeshComponent>();
+}
+
+namespace {
+    // a submesh the mesh has: submesh 0 always (the slot exists before a generator builds it)
+    bool validNormalSubmesh(const MeshComponent& mesh, unsigned int submesh){
+        const unsigned int count = std::max(mesh.numSubmeshes, 1u);
+        if (submesh >= count){
+            Log::error("Cannot set the normal map of submesh %u: the mesh has %u submesh%s", submesh, mesh.numSubmeshes,
+                       mesh.numSubmeshes == 1 ? "" : "es");
+            return false;
+        }
+        return true;
+    }
+
+    // as the editor's change of material.normalTexture (needUpdateTexture), and a reload when the
+    // submesh gains or loses its normal map: the shader variant samples one or not (HAS_NORMAL_MAP)
+    void normalTextureChanged(MeshComponent& mesh, unsigned int submesh, bool hadNormalMap){
+        mesh.submeshes[submesh].needUpdateTexture = true;
+        if (hadNormalMap != !mesh.submeshes[submesh].material.normalTexture.empty())
+            mesh.needReload = true;
+    }
+}
+
+void Mesh::setNormalTexture(const std::string& path){
+    setNormalTexture(0, path);
+}
+
+void Mesh::setNormalTexture(unsigned int submesh, const std::string& path){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+    if (!validNormalSubmesh(mesh, submesh))
+        return;
+
+    Texture& texture = mesh.submeshes[submesh].material.normalTexture;
+    const bool hadNormalMap = !texture.empty();
+    if (path.empty()){
+        if (!hadNormalMap)
+            return;
+        texture = Texture();
+    }else{
+        if (hadNormalMap && texture.getPath() == path)
+            return;
+        texture.setPath(path);
+    }
+    normalTextureChanged(mesh, submesh, hadNormalMap);
+}
+
+void Mesh::setNormalTexture(const std::string& id, TextureData data){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    Texture& texture = mesh.submeshes[0].material.normalTexture;
+    const bool hadNormalMap = !texture.empty();
+    // a fresh texture (no path left from a file), with the sampler the old one had
+    Texture fromData;
+    fromData.setMinFilter(texture.getMinFilter());
+    fromData.setMagFilter(texture.getMagFilter());
+    fromData.setWrapU(texture.getWrapU());
+    fromData.setWrapV(texture.getWrapV());
+    fromData.setData(id, data);
+    texture = fromData;
+    normalTextureChanged(mesh, 0, hadNormalMap);
+}
+
+std::string Mesh::getNormalTexture() const{
+    return getNormalTexture(0);
+}
+
+std::string Mesh::getNormalTexture(unsigned int submesh) const{
+    MeshComponent& mesh = getComponent<MeshComponent>();
+    if (submesh >= std::max(mesh.numSubmeshes, 1u))
+        return "";
+
+    const Texture& texture = mesh.submeshes[submesh].material.normalTexture;
+    if (texture.empty())
+        return "";
+    const std::string path = texture.getPath();
+    return path.empty() ? texture.getId() : path;
 }
 
 void Mesh::setColor(Vector4 color){
@@ -127,14 +211,18 @@ void Mesh::setMaterial(unsigned int submesh, const Material& material){
         for (size_t t = 0; !reload && t < pass.shaderTextures.size(); t++){
             reload = currentPass.shaderTextures[t].first != pass.shaderTextures[t].first;
         }
-        const bool paramsChanged = current.shaderParams != material.shaderParams || currentPass.shaderParams != pass.shaderParams;
+        const bool paramsChanged = current.shaderParams != material.shaderParams || currentPass.shaderParams != pass.shaderParams ||
+            current.shaderGlobalBindings != material.shaderGlobalBindings;
 
         mesh.submeshes[submesh].material = material;
         mesh.submeshes[submesh].needUpdateTexture = true;
+        markChanged<MeshComponent>();
         if (reload)
             mesh.needReload = true;
-        if (paramsChanged)
+        if (paramsChanged){
             mesh.needUpdateShaderUniforms = true;
+            markChanged<MeshComponent>();
+        }
     }
 }
 
@@ -316,6 +404,14 @@ bool Mesh::isCastShadows() const{
     return mesh.castShadows;
 }
 
+void Mesh::setStaticShadowCaster(bool staticShadowCaster){
+    getComponent<MeshComponent>().staticShadowCaster = staticShadowCaster;
+}
+
+bool Mesh::isStaticShadowCaster() const{
+    return getComponent<MeshComponent>().staticShadowCaster;
+}
+
 void Mesh::setLodEnabled(bool lodEnabled){
     MeshComponent& mesh = getComponent<MeshComponent>();
 
@@ -453,8 +549,10 @@ std::string Mesh::getCustomDepthShader() const{
 void Mesh::setShaderUniform(const std::string& name, const Vector4& value){
     MeshComponent& mesh = getComponent<MeshComponent>();
 
-    if (ShaderUniforms::set(mesh.shaderUniforms, name, value))
+    if (ShaderUniforms::set(mesh.shaderUniforms, name, value)){
         mesh.needUpdateShaderUniforms = true;
+        markChanged<MeshComponent>();
+    }
 }
 
 void Mesh::setShaderUniform(const std::string& name, const Vector3& value){
@@ -482,6 +580,7 @@ bool Mesh::removeShaderUniform(const std::string& name){
         return false;
 
     mesh.needUpdateShaderUniforms = true;
+    markChanged<MeshComponent>();
     return true;
 }
 
@@ -534,6 +633,7 @@ void Mesh::setInstancedBillboard(bool billboard, bool cylindrical){
     instmesh.instancedCylindricalBillboard = cylindrical;
 
     instmesh.needUpdateInstances = true;
+    markChanged<InstancedMeshComponent>();
 }
 
 void Mesh::setInstancedBillboard(bool billboard){
@@ -544,6 +644,7 @@ void Mesh::setInstancedBillboard(bool billboard){
         instmesh.instancedBillboard = billboard;
 
         instmesh.needUpdateInstances = true;
+        markChanged<InstancedMeshComponent>();
     }
 }
 
@@ -565,6 +666,7 @@ void Mesh::setInstancedCylindricalBillboard(bool cylindricalBillboard){
         instmesh.instancedCylindricalBillboard = cylindricalBillboard;
 
         instmesh.needUpdateInstances = true;
+        markChanged<InstancedMeshComponent>();
     }
 }
 
@@ -720,6 +822,7 @@ void Mesh::addInstance(InstanceData instance){
     }
 
     instmesh.needUpdateInstances = true;
+    markChanged<InstancedMeshComponent>();
 }
 
 void Mesh::addInstance(Vector3 position){
@@ -776,12 +879,17 @@ InstanceData& Mesh::getInstance(size_t index){
 void Mesh::updateInstance(size_t index, InstanceData instance){
     createInstancedMesh();
 
-    MeshComponent& mesh = getComponent<MeshComponent>();
     InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
-    instmesh.instances.at(index) = instance;
+    InstanceData& current = instmesh.instances.at(index);
+    // the Vertex Animator's state of the instance is runtime state, not user data: it stays (a
+    // new InstanceData() from a script would draw the instance at rest)
+    instance.vat0 = current.vat0;
+    instance.vat1 = current.vat1;
+    current = instance;
 
     instmesh.needUpdateInstances = true;
+    markChanged<InstancedMeshComponent>();
 }
 
 void Mesh::updateInstance(size_t index, Vector3 position){
@@ -833,8 +941,13 @@ void Mesh::removeInstance(size_t index){
     InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
     instmesh.instances.erase(instmesh.instances.begin() + index);
+    // a Vertex Animator's per-instance states stay with their instances
+    if (VertexAnimatorComponent* animator = scene->findComponent<VertexAnimatorComponent>(entity)){
+        vat::eraseInstanceState(*animator, index);
+    }
 
     instmesh.needUpdateInstances = true;
+    markChanged<InstancedMeshComponent>();
 }
 
 bool Mesh::isInstanceVisible(size_t index){
@@ -855,6 +968,7 @@ void Mesh::setInstanceVisible(size_t index, bool visible) const{
             instmesh.instances.at(index).visible = visible;
 
             instmesh.needUpdateInstances = true;
+            markChanged<InstancedMeshComponent>();
         }
     }else{
         Log::error("There is no instanced mesh component in this mesh");
@@ -866,6 +980,7 @@ void Mesh::updateInstances(){
         InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
         instmesh.needUpdateInstances = true;
+        markChanged<InstancedMeshComponent>();
     }else{
         Log::error("There is no instanced mesh component in this mesh");
     }
@@ -886,8 +1001,12 @@ void Mesh::clearInstances(){
         InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
         instmesh.instances.clear();
+        if (VertexAnimatorComponent* animator = scene->findComponent<VertexAnimatorComponent>(entity)){
+            vat::clearInstanceStates(*animator);
+        }
 
         instmesh.needUpdateInstances = true;
+        markChanged<InstancedMeshComponent>();
     }else{
         Log::error("There is no instanced mesh component in this mesh");
     }

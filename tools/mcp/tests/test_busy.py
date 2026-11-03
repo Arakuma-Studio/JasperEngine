@@ -13,12 +13,18 @@ import shutil
 import subprocess
 import time
 
-from harness import Editor, skip
+from harness import Editor, build_jobs, skip
+import ui_input
 
 # the harness owns the Xvfb so xdotool can press keys in the editor window
+CI = True
 EDITOR = {"create": True, "name": "Busy Test", "xvfb": "harness"}
 TIMEOUT = 1800
-JOBS = 3
+# the container's CPU allowance (harness.build_jobs: JOBS, else docker's --cpus quota): Docker's
+# cap is what shares the host, so the compile needs no cap of its own
+JOBS = build_jobs()
+
+_PREPARED = None
 
 
 async def wait_job(ed: Editor, job_id: str, timeout: float) -> dict:
@@ -64,7 +70,8 @@ async def human_play_attempt(ed: Editor, job_id: str) -> None:
         dialog = st.get("dialog")
         if dialog:
             break
-        await asyncio.sleep(0.25)
+        # editor frames, not wall-clock time: a loaded host reads the key a frame later
+        await ui_input.frames(ed, 2)
     if not dialog:
         print("     (F5 did not reach the editor window: no alert seen)")
         return
@@ -73,20 +80,26 @@ async def human_play_attempt(ed: Editor, job_id: str) -> None:
     await ed.call("respond_dialog", choice="ok")
 
 
-async def test_prepare(ed: Editor):
+async def prepare(ed: Editor):
+    global _PREPARED
+    if _PREPARED is ed:
+        return
     await ed.call("create_entity", name="Box", type="box")
     saved = await ed.call("save_project", untitled_scene_dir="scenes")
     scene = saved["scenes_in_build"][0]
     await ed.call("edit_build_scenes", action="set_start", scene=scene["id"])
     await ed.call("set_project_settings", values={"graphics.runtime_shaders": False, "preferences.build_jobs": JOBS})
+    _PREPARED = ed
 
 
 async def test_export_job_refusals(ed: Editor):
+    await prepare(ed)
     info = await ed.call("get_build_info")
     if not info["desktop"]["available"]:
         skip(f"no desktop build tools: {info['desktop'].get('missing_tools')}")
     out = ed.scratch.root / "busy-export"
-    r = await ed.call("build_project", mode="desktop", output_dir=str(out), wait=False, build_jobs=JOBS)
+    # a compile: it runs long enough for the refusals below (a prebuilt build ends in seconds)
+    r = await ed.call("build_project", mode="desktop", output_dir=str(out), wait=False, build_jobs=JOBS, method="compile")
     job_id = r["job_id"]
     ed.check_eq(r.get("holds"), "export", f"the job says what it holds: {r!r}")
     try:
@@ -121,6 +134,7 @@ async def test_export_job_refusals(ed: Editor):
 
 
 async def test_script_compile_job_refusals(ed: Editor):
+    await prepare(ed)
     if not (shutil.which("cmake") and (shutil.which("c++") or shutil.which("g++") or shutil.which("clang++"))):
         skip("no C++ toolchain (cmake + compiler) on PATH for the editor")
     await ed.call("create_script", kind="cpp_script", name="BusySpinner", entity="Box")

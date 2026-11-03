@@ -14,7 +14,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -209,6 +211,10 @@ TEST_F(RmlRendererP1GoldenTest, FilterDropShadow){
 
     // the hard magenta shadow of the image, 8 px down and right, and the image over it
     EXPECT_TRUE(probe.is(406, 70, 255, 0, 255));
+    // its first row (the image's first row, read at the region's first texel centre: it was
+    // dropped where rounding put the read just before it)
+    for (int x = 404; x < 412; x++)
+        EXPECT_TRUE(probe.is(x, 48, 255, 0, 255)) << "the shadow's first row";
     EXPECT_TRUE(probe.is(344, 44, 255, 0, 0));
     EXPECT_TRUE(probe.is(345, 105, 0x80, 0x80, 0x80));
     // the blurred one fades
@@ -443,7 +449,13 @@ TEST_F(RmlRendererP1GoldenTest, MsaaRounded){
         if (r > 0x30 && r < 0xd0)
             partialEdgePixels++;
     }
-    EXPECT_GT(differentEdgePixels, 20);
+    // (with the SDF primitives, S16 R8, one sample is antialiased as well: the edges barely differ,
+    // both are partial)
+    if (RmlRenderer::isSdfPrimitives()) {
+        EXPECT_LE(differentEdgePixels, 20);
+    }
+    else
+        EXPECT_GT(differentEdgePixels, 20);
     EXPECT_GT(partialEdgePixels, 20);
 }
 
@@ -539,7 +551,7 @@ TEST_F(RmlRendererP1GoldenTest, ManyElements){
     EXPECT_EQ(stats.passes, 1u);
     EXPECT_LE(stats.pipelineApplies, 10u);
     EXPECT_EQ(stats.pipelineCacheMisses, 0u);
-    EXPECT_GE(stats.drawCalls, 500u);
+    EXPECT_GE(stats.geometrySubmitted, 500u);
 
     std::vector<uint8_t> screen;
     ASSERT_TRUE(test.readScreen(screen));
@@ -552,4 +564,40 @@ TEST_F(RmlRendererP1GoldenTest, ManyElements){
     }
 
     expectGolden(test, "many_elements");
+}
+
+// (upstream) unrelated text drawn earlier and a preformatted line's trailing line feed leave a
+// glyph's pixels as they are: fractional scaling shows any edge sampling difference
+TEST_F(RmlRendererP1GoldenTest, GlyphPixelsIgnoreEarlierText){
+    JASPER_REQUIRE_GPU();
+    // Unrelated text rendered earlier and a preformatted line's trailing line feed must
+    // not change a glyph's pixels. Fractional scaling exposes edge sampling differences.
+    const std::string beforeText = "<rml><head><style>body { margin:0; font-family:sans-serif; font-size:64px; color:#fff;} "
+                                   "div {display:block;position:absolute;left:20px;top:30px;white-space:pre;}</style></head><body><div>";
+    const std::string afterText = "</div></body></rml>";
+    std::vector<uint8_t> text[2];
+    for (int warm = 0; warm < 2; warm++){
+        RenderTestContext test(283, 159, 256, 144, 4);
+        ASSERT_TRUE(test.isValid());
+        if (warm){
+            Rml::ElementDocument* preceding = test.loadFromMemory(beforeText + "W" + afterText, "preceding-text.rml");
+            ASSERT_NE(preceding, nullptr);
+            ASSERT_TRUE(test.renderUntilDrawn());
+            preceding->Close();
+            test.context->Update();
+        }
+        ASSERT_NE(test.loadFromMemory(beforeText + (warm ? "H\n" : "H") + afterText, "same-text.rml"), nullptr);
+        ASSERT_TRUE(test.renderUntilDrawn());
+        ASSERT_TRUE(test.readScreen(text[warm]));
+    }
+    ASSERT_EQ(text[0].size(), text[1].size());
+    int difference = 0;
+    bool inked = false;
+    for (size_t i = 0; i < text[0].size(); i++){
+        difference = std::max(difference, std::abs(int(text[0][i]) - int(text[1][i])));
+        inked |= i % 4 == 0 && text[0][i] > 60;
+    }
+    EXPECT_TRUE(inked);
+    // Same 24-channel tolerance as the reviewed examples' exact fresh-start check.
+    EXPECT_LE(difference, 24) << "unrelated prior text or a trailing line feed changed the glyph pixels";
 }

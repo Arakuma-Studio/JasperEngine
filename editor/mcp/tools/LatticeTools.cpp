@@ -122,7 +122,8 @@ public:
     bool changed() const { return history->position() > start; }
     void commit() { history->groupSince(start); }
     void rollback() {
-        while (history->position() > start && history->canUndo()) history->undo();
+        // a refused undo leaves the position (CommandHistory::undo false): it ends the loop too
+        while (history->position() > start && history->canUndo() && history->undo()) {}
     }
 
 private:
@@ -1099,7 +1100,9 @@ bool opBake(Session& s, const Json& op, const std::string& where, Json& result, 
         target = targets[0];
     }
     std::string path, note, why;
-    // canBake gives the inspector's reason (a generated mesh, no bakeable binding...) before any work
+    // canBake gives the inspector's reason (a generated mesh, no bakeable binding...) before any
+    // work, on what the bake reads: the scene with its previews restored
+    LatticeEditorOps::restoreForBake(s.sceneId, s.scene(), target);
     if (!LatticeEditorOps::canBake(s.scene(), target, &why)) {
         return opFailed(error, where + ".target", label(s.scene(), target) + " cannot be baked: " + why);
     }
@@ -1454,17 +1457,10 @@ void registerLatticeTools(McpRegistry& registry) {
     tool.title = "Edit Lattice";
     tool.description =
         "Lattice (FFD cage) edits as in the Scene view; one undo step, undone on any error. lattice: "
-        "default: selected/only one; create {targets, name, resolution, fit_padding} fits one "
-        "around targets, bound. Then resolution (resamples), interpolation, outside, fade_distance, "
-        "then ops in order: set {points: [{ijk|index, offset|position, space}]}, move {select, offset, "
-        "rotate (deg), scale, pivot center|lattice|[x,y,z], space, falloff {radius, curve}}, reset {select}, "
-        "preset {name, axis, toward, amount, seed, mode, select}, mirror {axis, from +|-}, fit {targets, "
-        "padding}, bind {target, weight, stage, submesh, mask, include_children}, unbind {target}, follow "
-        "{target, rest}, pose {save|apply|delete: name, weight}, bake {target}. select (default all): all, exterior, interior, "
-        "selected, +x..-z, [points] or {face, i, j, k (n|[lo,hi]), points, box, sphere (world)} intersected. "
-        "Offsets: lattice-local (unit cube). Returns targets, moved_points, max_offset, warnings, "
-        "points (detail points), samples (sample: world points -> deformed, stretch). No edits: a read (play "
-        "too). jasper://docs/lattice.";
+        "default: selected/only one; create fits one around targets, bound. Then resolution (resamples), "
+        "interpolation, outside, fade_distance, then ops in order. Offsets: lattice-local (unit cube). "
+        "Returns targets, moved_points, max_offset, warnings; sample: world points -> deformed, stretch. No "
+        "edits: a read (play too). Op fields, select grammar, results: jasper://docs/lattice.";
     tool.inputSchema = object({
         {"scene", sceneRef()},
         {"lattice", entityRef()},
@@ -1476,7 +1472,7 @@ void registerLatticeTools(McpRegistry& registry) {
         {"fade_distance", number("")},
         {"ops", array(Json{{"type", "object"}, {"properties", {{"op", stringEnum("", {"set", "move", "reset", "preset", "mirror",
                                                                                          "fit", "bind", "unbind", "follow", "pose", "bake"})}}},
-                           {"required", {"op"}}}, "")},
+                           {"required", {"op"}}, {"additionalProperties", true}}, "")},   // each op names its own keys
         {"sample", array(Json{{"type", "array"}}, "")},
         {"detail", stringEnum("", {"summary", "points"})}
     });

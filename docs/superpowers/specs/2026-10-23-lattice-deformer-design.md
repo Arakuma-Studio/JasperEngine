@@ -677,20 +677,11 @@ goldens and ball uniformity, selection helpers, copyAsLua. A mutation pass (26 s
 bugs in the solver and presets, e.g. transposes, multiplication order, ghost passes, signs)
 was each caught by at least one test.
 
-Build and run, standalone (seconds):
+Build and run: since the merge into oe-port these suites are part of `jasperengine-core-tests`
+(`engine/tests/core/lattice/`, S02's unit-test target, against the static engine, so
+`EngineStubs.cpp` is gone):
 
-    cmake -S engine/tests/lattice -B build/lattice-tests -G Ninja -DCMAKE_BUILD_TYPE=Release
-    cmake --build build/lattice-tests -j2
-    build/lattice-tests/jasperengine-lattice-tests
-
-or inside the editor build (the binary lands in the build root):
-
-    cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_LATTICE_TESTS=ON
-    cmake --build build/native --target jasperengine-lattice-tests -j2
-    build/native/jasperengine-lattice-tests
-
-(also from the standalone engine build `cmake -S engine ... -DJASPERENGINE_LATTICE_TESTS=ON`;
-`ctest` runs it where testing is enabled).
+    UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=Lattice*' tools/build.sh unit-tests
 
 ### 12.2 WP-EDITOR-DATA
 

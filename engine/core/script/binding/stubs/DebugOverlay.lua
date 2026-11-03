@@ -1,0 +1,38 @@
+---@meta _
+-- Hand-written shapes of the debug overlay's tables (engine/core/script/binding/CoreClassesLua.cpp,
+-- feature debug-overlay), appended to the generated stubs. Rules: docs/mcp/guide/debugging.md.
+
+---One line of the log (Log.getEntries)
+---@class DebugLogEntry
+---@field id integer # the Logger's record id: increasing from 1, never reused
+---@field category string # the log category ("lua" for Lua, "engine" for Log::* of C++, "render"...)
+---@field level integer # a LogLevel value (LogLevel.TRACE .. LogLevel.FATAL)
+---@field message string # the text before "stack traceback:"
+---@field stackTrace string # the Lua traceback ("" when none)
+---@field time number # seconds since the app started (monotonic)
+---@field frame integer # Engine.frameCount when it was logged
+---@field mainThread boolean # logged on the main thread (false: an engine worker thread)
+---@field fromLua boolean # logged by Lua (print, Log.*, a Lua error)
+
+---The stats of the debug overlay (DebugOverlay.getStats); frame times are of the last 2 s of the engine's frame-time ring (S15)
+---@class DebugStats
+---@field fps number
+---@field frameMs number # the last frame
+---@field frameMsAvg number
+---@field frameMsMin number
+---@field frameMsMax number
+---@field frameMs1PercentLow number # the average of the slowest 1% of frames
+---@field drawCalls integer # of the last drawn frame
+---@field instances integer
+---@field triangles integer
+---@field processMemoryBytes integer # resident memory of the process (0: unknown on this platform)
+---@field luaMemoryBytes integer # the Lua heap
+---@field audioVoices integer # sounds playing now
+---@field audioVoicesMax integer # the most that play at once
+---@field bodies2D integer # physics bodies of the running scenes
+---@field bodies3D integer
+---@field entities integer # entities of the running scenes
+---@field scenes integer # running scenes
+---@field coroutines integer # engine coroutines running
+---@field timers integer # engine timers pending
+---@field htmlUiDrawCalls integer # HTML UI draw calls of the last frame

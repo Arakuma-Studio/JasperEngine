@@ -1,0 +1,182 @@
+formatVersion: 7
+guid: 2385f1a5e2877b94bc16d5309fb19aca
+id: 1
+name: Main Scene
+scene:
+  backgroundColor: [0.16, 0.18, 0.24, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: auto
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 0
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 0
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: blit
+cppScripts:
+  - path: cpp/CppSpawner.cpp
+    headerPath: cpp/CppSpawner.h
+    className: CppSpawner
+    properties:
+      - name: bullet
+        isPtr: false
+prefabs:
+  - path: prefabs/Enemy.prefab
+    guid: e0e0e0e0e0e0e0e0e0e0e0e0e0e00001
+  - path: prefabs/Wheel.prefab
+    guid: f0f0f0f0f0f0f0f0f0f0f0f0f0f00002
+  - path: prefabs/Bullet.prefab
+    guid: b0b0b0b0b0b0b0b0b0b0b0b0b0b00003
+entities:
+  - type: Entity
+    entity: 1001
+    name: Game
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      script:
+        scripts:
+          - type: lua
+            path: PrefabRuntimeTest.lua
+            pathGuid: 15377975aac14398387b0191d2fc2b29
+            className: PrefabRuntimeTest
+            enabled: true
+            properties:
+              - name: enemyPrefab
+                displayName: Enemy Prefab
+                type: Prefab
+                value:
+                  guid: e0e0e0e0e0e0e0e0e0e0e0e0e0e00001
+                  path: prefabs/Enemy.prefab
+                defaultValue:
+                  {}
+              - name: spawnParent
+                displayName: Spawn Parent
+                type: EntityReference
+                ptrTypeName: GameObject
+                value: 1002
+                defaultValue: 0
+          - type: cpp
+            path: cpp/CppSpawner.cpp
+            pathGuid: f1e7321844ef8fdefef483759c8c6591
+            headerPath: cpp/CppSpawner.h
+            headerPathGuid: 23ffd591fd524fe1cca92107f27c5bc9
+            className: CppSpawner
+            enabled: true
+            properties:
+              - name: bullet
+                displayName: Bullet
+                type: Prefab
+                value:
+                  guid: b0b0b0b0b0b0b0b0b0b0b0b0b0b00003
+                  path: prefabs/Bullet.prefab
+                defaultValue:
+                  {}
+  - type: Entity
+    entity: 1002
+    name: Spawner
+    components:
+      transform:
+        position: [10, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+  - type: Entity
+    entity: 1003
+    name: Enemy
+    components:
+      transform:
+        position: [1, 2, 3]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      script:
+        scripts:
+          - type: lua
+            path: Enemy.lua
+            pathGuid: a2fba6e3bb5af0e54866fa377640f7c1
+            className: Enemy
+            enabled: true
+            properties:
+              - name: speed
+                displayName: Speed
+                type: Float
+                value: 1.5
+                defaultValue: 1
+              - name: body
+                displayName: Body
+                type: EntityReference
+                ptrTypeName: GameObject
+                value: 1004
+                defaultValue: 0
+              - name: bulletPrefab
+                displayName: Bullet Prefab
+                type: Prefab
+                value:
+                  guid: b0b0b0b0b0b0b0b0b0b0b0b0b0b00003
+                  path: prefabs/Bullet.prefab
+                defaultValue:
+                  {}
+      prefab:
+        name: Enemy
+        path: prefabs/Enemy.prefab
+        guid: e0e0e0e0e0e0e0e0e0e0e0e0e0e00001
+    prefabInstance:
+      version: 8
+      memberIds:
+        - [1002, 1004]
+        - [1003, 1005]
+      nested:
+        - prefabRootRegistryEntity: 1003
+          prefabPath: prefabs/Wheel.prefab
+          memberIds:
+            - [1002, 1006]

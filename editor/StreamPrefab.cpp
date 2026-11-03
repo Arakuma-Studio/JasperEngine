@@ -68,12 +68,15 @@ namespace {
                 if (!componentTypeOf(it->first.as<std::string>(), type)) {
                     continue;
                 }
-                if (it->second.IsSequence()) {
-                    for (const YAML::Node& name : it->second) {
+                // (a copy: `it->second` is a member of the iterator's temporary proxy, which a
+                // range-for over it would outlive)
+                const YAML::Node names = it->second;
+                if (names.IsSequence()) {
+                    for (const YAML::Node& name : names) {
                         object.overrides.addProperty(type, name.as<std::string>());
                     }
-                } else if (it->second.IsScalar()) {
-                    object.overrides.addProperty(type, it->second.as<std::string>());
+                } else if (names.IsScalar()) {
+                    object.overrides.addProperty(type, names.as<std::string>());
                 }
                 if (object.overrides.properties[type].empty()) {
                     object.overrides.properties.erase(type);
@@ -578,6 +581,35 @@ void editor::Stream::encodePrefabInstance(YAML::Node& entityNode, const Entity e
     }
 }
 
+namespace {
+    // One map entry of restoreWrittenStyles: an empty value gets its written style, another is walked
+    void restoreWrittenStyle(const YAML::Node& key, YAML::Node value) {
+        if ((value.IsSequence() || value.IsMap()) && value.size() == 0) {
+            // a parsed value comes after its key; a node made in memory has no mark, a clone's
+            // marks are all at the start (YAML::Clone does not copy them): both keep their style
+            const YAML::Mark keyMark = key.Mark();
+            const YAML::Mark written = value.Mark();
+            if (!keyMark.is_null() && !written.is_null() && written.pos > keyMark.pos) {
+                value.SetStyle(written.line == keyMark.line ? YAML::EmitterStyle::Flow : YAML::EmitterStyle::Default);
+            }
+            return;
+        }
+        editor::Stream::restoreWrittenStyles(value);
+    }
+}
+
+void editor::Stream::restoreWrittenStyles(YAML::Node node) {
+    if (node.IsSequence()) {
+        for (YAML::Node item : node) {
+            restoreWrittenStyles(item);
+        }
+    } else if (node.IsMap()) {
+        for (auto it = node.begin(); it != node.end(); ++it) {
+            restoreWrittenStyle(it->first, it->second);
+        }
+    }
+}
+
 void editor::Stream::decodePrefabInstance(const YAML::Node& entityNode, Entity entity, EntityRegistry* registry,
         std::vector<Entity>* entities, Project* project, SceneProject* sceneProject,
         std::unordered_map<Entity, Entity>* entityRemap, std::vector<Entity>& allEntities) {
@@ -586,6 +618,12 @@ void editor::Stream::decodePrefabInstance(const YAML::Node& entityNode, Entity e
         PrefabComponent* prefabComp = registry->findComponent<PrefabComponent>(entity);
         if (prefabComp && (!prefabComp->path.empty() || !prefabComp->guid.empty())) {
             const std::filesystem::path path = prefabComp->path;
+            // the data a Missing Prefab copies from here is written again as the file has it
+            for (auto it = entityNode.begin(); it != entityNode.end(); ++it) {
+                if (it->first.IsScalar() && !isGameObjectKey(it->first.Scalar())) {
+                    restoreWrittenStyle(it->first, it->second);
+                }
+            }
             const PrefabInstanceData data = decodePrefabInstanceData(entityNode);
             std::vector<Entity> prefabEntities = project->importPrefab(
                 sceneProject, entities, path, entity, false, &data, entityRemap);

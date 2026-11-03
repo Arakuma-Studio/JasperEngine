@@ -1,0 +1,212 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#include "EditorTestSupport.h"
+
+#include "DocumentFile.h"
+#include "Engine.h"
+#include "Stream.h"
+#include "Project.h"
+#include "System.h"
+#include "TestSystem.h"
+#include "command/CommandHandle.h"
+
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <cstdlib>
+#include <fstream>
+#include <iterator>
+#include <mutex>
+#include <vector>
+
+namespace fs = std::filesystem;
+using namespace jasperengine;
+using namespace jasperengine::editor;
+
+void editor::test::ensureEngine() {
+    // engine/tests/support/TestMain.cpp starts the engine before any test, with the support
+    // library's TestSystem (headless, logs captured); a second Engine::systemInit with another
+    // System would leave that capture reading the wrong object
+}
+
+namespace {
+
+    // a test's project paths end with it: the next test runs on the test System's own
+    class ProjectPathsReset : public ::testing::EmptyTestEventListener {
+    public:
+        void OnTestEnd(const ::testing::TestInfo&) override { jasperengine::test::TestSystem::get().clearPathProvider(); }
+    };
+
+    const bool projectPathsResetInstalled = []() {
+        ::testing::UnitTest::GetInstance()->listeners().Append(new ProjectPathsReset());
+        return true;
+    }();
+
+    std::vector<Project*>& projectsToRelease() {
+        static std::vector<Project*> projects;
+        return projects;
+    }
+
+    // the headless projects' scenes go when the tests end (as PlacementSessionTest's
+    // EngineShutdown: a static environment, torn down with the others)
+    struct ReleaseProjects : public ::testing::Environment {
+        void TearDown() override {
+            for (Project* project : projectsToRelease()) project->releaseScenes();
+            projectsToRelease().clear();
+        }
+    };
+
+    [[maybe_unused]] ::testing::Environment* const releaseProjects = ::testing::AddGlobalTestEnvironment(new ReleaseProjects);
+
+}
+
+void editor::test::releaseAtExit(Project* project) {
+    std::vector<Project*>& projects = projectsToRelease();
+    if (project && std::find(projects.begin(), projects.end(), project) == projects.end()) projects.push_back(project);
+}
+
+void editor::test::useProjectPaths(Project* project) {
+    (void)projectPathsResetInstalled;
+    releaseAtExit(project);
+    jasperengine::test::TestSystem::PathProvider provider;
+    provider.assets = [project]() { return project->getAssetsPath().string(); };
+    provider.lua = [project]() { return project->getLuaPath().string(); };
+    provider.userData = [project]() { return project->getUserDataPath().string(); };
+    jasperengine::test::TestSystem::get().setPathProvider(std::move(provider));
+}
+
+void editor::test::closeProject(Project& project) {
+    for (SceneProject& scene : project.getScenes())
+        CommandHandle::remove(scene.id);
+    project.releaseScenes();
+}
+
+double editor::test::perfSlack() {
+#if defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
+    return 0.0;
+#else
+    const char* value = std::getenv("JASPER_TEST_PERF_SLACK");
+    const double slack = value ? std::atof(value) : 0.0;
+    return slack > 0.0 ? slack : 0.0;
+#endif
+}
+
+fs::path editor::test::fixture(const std::string& relative) {
+    return fs::path(JASPER_TEST_FIXTURES_DIR) / relative;
+}
+
+std::string editor::test::readText(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+editor::test::DecodedScene::~DecodedScene() {
+    if (scene) {
+        delete scene->scene;
+        scene->scene = nullptr;
+    }
+}
+
+namespace {
+
+    editor::test::DecodedScene decodeNode(YAML::Node root, const std::string& name, LoadReport report) {
+        editor::test::DecodedScene decoded;
+        decoded.scene = std::make_unique<SceneProject>();
+        decoded.report = std::move(report);
+        {
+            ScopedLoadReport scope(decoded.report);
+            Stream::decodeSceneProject(decoded.scene.get(), root, true);
+            Stream::decodeSceneProjectEntities(nullptr, decoded.scene.get(), root);
+        }
+        (void)name;
+        return decoded;
+    }
+
+}
+
+editor::test::DecodedScene editor::test::decodeSceneFile(const fs::path& path) {
+    ensureEngine();
+    LoadReport report;
+    report.documentPath = path.filename().string();
+    YAML::Node root;
+    std::string sha1;
+    {
+        ScopedLoadReport scope(report);
+        DocumentFile document = DocumentFiles::read(path, DocumentKind::Scene);
+        root = document.root;
+        sha1 = document.sha1;
+    }
+    DecodedScene decoded = decodeNode(root, report.documentPath, std::move(report));
+    decoded.sha1 = sha1;
+    return decoded;
+}
+
+editor::test::DecodedScene editor::test::decodeSceneText(const std::string& text, const std::string& name) {
+    ensureEngine();
+    LoadReport report;
+    report.documentPath = name;
+    YAML::Node root;
+    {
+        ScopedLoadReport scope(report);
+        root = DocumentFiles::parse(text, name);
+        DocumentFiles::recordVersionIssues(DocumentKind::Scene, StreamMigrations::migrate(DocumentKind::Scene, root));
+    }
+    DecodedScene decoded = decodeNode(root, name, std::move(report));
+    decoded.sha1 = DocumentFiles::sha1(text);
+    return decoded;
+}
+
+YAML::Node editor::test::encodeScene(const DecodedScene& decoded) {
+    return Stream::encodeSceneProject(nullptr, decoded.scene.get());
+}
+
+std::string editor::test::encodeSceneText(const DecodedScene& decoded) {
+    return DocumentFiles::text(encodeScene(decoded));
+}
+
+bool editor::test::structurallyEqual(const YAML::Node& a, const YAML::Node& b, std::string* why) {
+    auto fail = [why](const std::string& text) {
+        if (why) *why = text;
+        return false;
+    };
+    if (a.Type() != b.Type()) {
+        return fail("type differs: " + YAML::Dump(a) + " vs " + YAML::Dump(b));
+    }
+    if (a.IsScalar()) {
+        return a.Scalar() == b.Scalar() ? true : fail("\"" + a.Scalar() + "\" vs \"" + b.Scalar() + "\"");
+    }
+    if (a.IsSequence()) {
+        if (a.size() != b.size()) return fail("sequence sizes " + std::to_string(a.size()) + " vs " + std::to_string(b.size()));
+        for (size_t i = 0; i < a.size(); i++) {
+            std::string inner;
+            if (!structurallyEqual(a[i], b[i], &inner)) return fail("[" + std::to_string(i) + "] " + inner);
+        }
+        return true;
+    }
+    if (a.IsMap()) {
+        if (a.size() != b.size()) {
+            std::string keys;
+            for (auto it = a.begin(); it != a.end(); ++it) if (!b[it->first.Scalar()]) keys += " -" + it->first.Scalar();
+            for (auto it = b.begin(); it != b.end(); ++it) if (!a[it->first.Scalar()]) keys += " +" + it->first.Scalar();
+            return fail("map keys differ:" + keys);
+        }
+        for (auto it = a.begin(); it != a.end(); ++it) {
+            const std::string key = it->first.Scalar();
+            const YAML::Node other = b[key];
+            if (!other) return fail("missing key " + key);
+            std::string inner;
+            if (!structurallyEqual(it->second, other, &inner)) return fail(key + ": " + inner);
+        }
+        return true;
+    }
+    return true;
+}
+
+YAML::Node editor::test::withoutKey(const YAML::Node& map, const std::string& key) {
+    YAML::Node copy(YAML::NodeType::Map);
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        if (it->first.Scalar() != key) copy[it->first] = it->second;
+    }
+    return copy;
+}

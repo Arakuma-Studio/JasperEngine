@@ -1,0 +1,8026 @@
+{
+ "alpha_tween#0": [
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Float",
+   "label": "Speed",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Duration",
+   "path": "duration",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ping-pong",
+   "path": "pingPong",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Ease",
+   "label": "Ease",
+   "path": "function",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Unscaled Time",
+   "path": "useUnscaledTime",
+   "read_only": false
+  },
+  {
+   "component": "alphatween",
+   "group": "",
+   "kind": "Float",
+   "label": "Start alpha",
+   "path": "startAlpha",
+   "read_only": false
+  },
+  {
+   "component": "alphatween",
+   "group": "",
+   "kind": "Float",
+   "label": "End alpha",
+   "path": "endAlpha",
+   "read_only": false
+  }
+ ],
+ "animation#0": [
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Float",
+   "label": "Speed",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "animation",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "animation",
+   "group": "",
+   "kind": "Float",
+   "label": "Duration",
+   "path": "duration",
+   "read_only": false
+  },
+  {
+   "component": "animation",
+   "group": "",
+   "kind": "Bool",
+   "label": "Owned actions",
+   "path": "ownedActions",
+   "read_only": false
+  },
+  {
+   "component": "animation",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Fade time",
+   "path": "defaultFadeTime",
+   "read_only": false
+  }
+ ],
+ "audio_source#0": [
+  {
+   "component": "audiosource",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "DoublePositive",
+   "label": "Volume",
+   "path": "volume",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "FloatPositive",
+   "label": "Pitch",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Float",
+   "label": "Pan",
+   "path": "pan",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Looping",
+   "path": "looping",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "DoublePositive",
+   "label": "Loop Point",
+   "path": "loopingPoint",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Protect Voice",
+   "path": "protectVoice",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Clocked",
+   "path": "enableClocked",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Inaudible Must Tick",
+   "path": "inaudibleBehaviorMustTick",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Inaudible Kill",
+   "path": "inaudibleBehaviorKill",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Priority",
+   "path": "priority",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Max Voices",
+   "path": "maxVoices",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Ignore Listener Pause",
+   "path": "ignoreListenerPause",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Enum",
+   "label": "Load Type",
+   "path": "loadType",
+   "read_only": false
+  }
+ ],
+ "audio_source_3d#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "DoublePositive",
+   "label": "Volume",
+   "path": "volume",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "FloatPositive",
+   "label": "Pitch",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Float",
+   "label": "Pan",
+   "path": "pan",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Looping",
+   "path": "looping",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "DoublePositive",
+   "label": "Loop Point",
+   "path": "loopingPoint",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Protect Voice",
+   "path": "protectVoice",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Clocked",
+   "path": "enableClocked",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Inaudible Must Tick",
+   "path": "inaudibleBehaviorMustTick",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Inaudible Kill",
+   "path": "inaudibleBehaviorKill",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Priority",
+   "path": "priority",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Max Voices",
+   "path": "maxVoices",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Ignore Listener Pause",
+   "path": "ignoreListenerPause",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Enum",
+   "label": "Load Type",
+   "path": "loadType",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "3D Audio Source Settings",
+   "kind": "FloatPositive",
+   "label": "Min Distance",
+   "path": "minDistance",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "3D Audio Source Settings",
+   "kind": "FloatPositive",
+   "label": "Max Distance",
+   "path": "maxDistance",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "3D Audio Source Settings",
+   "kind": "Enum",
+   "label": "Attenuation",
+   "path": "attenuationModel",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "3D Audio Source Settings",
+   "kind": "FloatPositive",
+   "label": "Rolloff",
+   "path": "attenuationRolloffFactor",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "3D Audio Source Settings",
+   "kind": "FloatPositive",
+   "label": "Doppler",
+   "path": "dopplerFactor",
+   "read_only": false
+  }
+ ],
+ "audio_source_3d#1": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "DoublePositive",
+   "label": "Volume",
+   "path": "volume",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "FloatPositive",
+   "label": "Pitch",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Float",
+   "label": "Pan",
+   "path": "pan",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Looping",
+   "path": "looping",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "DoublePositive",
+   "label": "Loop Point",
+   "path": "loopingPoint",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Protect Voice",
+   "path": "protectVoice",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Clocked",
+   "path": "enableClocked",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Inaudible Must Tick",
+   "path": "inaudibleBehaviorMustTick",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Inaudible Kill",
+   "path": "inaudibleBehaviorKill",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Priority",
+   "path": "priority",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Int",
+   "label": "Max Voices",
+   "path": "maxVoices",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Bool",
+   "label": "Ignore Listener Pause",
+   "path": "ignoreListenerPause",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Enum",
+   "label": "Load Type",
+   "path": "loadType",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "3D Audio Source Settings",
+   "kind": "FloatPositive",
+   "label": "Min Distance",
+   "path": "minDistance",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "3D Audio Source Settings",
+   "kind": "FloatPositive",
+   "label": "Max Distance",
+   "path": "maxDistance",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "3D Audio Source Settings",
+   "kind": "Enum",
+   "label": "Attenuation",
+   "path": "attenuationModel",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "3D Audio Source Settings",
+   "kind": "FloatPositive",
+   "label": "Rolloff",
+   "path": "attenuationRolloffFactor",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "3D Audio Source Settings",
+   "kind": "FloatPositive",
+   "label": "Doppler",
+   "path": "dopplerFactor",
+   "read_only": false
+  }
+ ],
+ "button#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture",
+   "path": "texture",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Blend Mode",
+   "path": "blendMode",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Depth Write",
+   "path": "depthWrite",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Anchors",
+   "path": "usingAnchors",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Position Offset",
+   "path": "positionOffset",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Pivot",
+   "path": "pivot",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Scissor",
+   "path": "ignoreScissor",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Events",
+   "path": "ignoreEvents",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Label",
+   "path": "label",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
+   "kind": "Bool",
+   "label": "Disabled",
+   "path": "disabled",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture Normal",
+   "path": "textureNormal",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture Hovered",
+   "path": "textureHovered",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture Pressed",
+   "path": "texturePressed",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture Disabled",
+   "path": "textureDisabled",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color Normal",
+   "path": "colorNormal",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color Hovered",
+   "path": "colorHovered",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color Pressed",
+   "path": "colorPressed",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color Disabled",
+   "path": "colorDisabled",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Left",
+   "path": "patchMarginLeft",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Right",
+   "path": "patchMarginRight",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Top",
+   "path": "patchMarginTop",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Bottom",
+   "path": "patchMarginBottom",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "Float",
+   "label": "Texture Scale",
+   "path": "textureScaleFactor",
+   "read_only": false
+  }
+ ],
+ "camera#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "LayerMask",
+   "label": "Culling Mask",
+   "path": "cullingMask",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Target",
+   "path": "useTarget",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Direction",
+   "label": "Up",
+   "path": "up",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Y FOV",
+   "path": "yfov",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Aspect",
+   "path": "aspect",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Near",
+   "path": "near",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Far",
+   "path": "far",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Bool",
+   "label": "Depth Test",
+   "path": "depthTest",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Bool",
+   "label": "Auto Resize",
+   "path": "autoResize",
+   "read_only": false
+  }
+ ],
+ "camera#1": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "LayerMask",
+   "label": "Culling Mask",
+   "path": "cullingMask",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Target",
+   "path": "useTarget",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Direction",
+   "label": "Up",
+   "path": "up",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Left",
+   "path": "left",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Right",
+   "path": "right",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Bottom",
+   "path": "bottom",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Top",
+   "path": "top",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Near",
+   "path": "near",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Far",
+   "path": "far",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Bool",
+   "label": "Depth Test",
+   "path": "depthTest",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Bool",
+   "label": "Auto Resize",
+   "path": "autoResize",
+   "read_only": false
+  }
+ ],
+ "camera#2": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "LayerMask",
+   "label": "Culling Mask",
+   "path": "cullingMask",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Target",
+   "path": "useTarget",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Direction",
+   "label": "Up",
+   "path": "up",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Left",
+   "path": "left",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Right",
+   "path": "right",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Bottom",
+   "path": "bottom",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Top",
+   "path": "top",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Near",
+   "path": "near",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Float",
+   "label": "Far",
+   "path": "far",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Bool",
+   "label": "Depth Test",
+   "path": "depthTest",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Bool",
+   "label": "Auto Resize",
+   "path": "autoResize",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "Render Target",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "framebufferWidth",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "Render Target",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "framebufferHeight",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "Render Target",
+   "kind": "Enum",
+   "label": "Filter",
+   "path": "framebufferFilter",
+   "read_only": false
+  }
+ ],
+ "color_tween#0": [
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Float",
+   "label": "Speed",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Duration",
+   "path": "duration",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ping-pong",
+   "path": "pingPong",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Ease",
+   "label": "Ease",
+   "path": "function",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Unscaled Time",
+   "path": "useUnscaledTime",
+   "read_only": false
+  },
+  {
+   "component": "colortween",
+   "group": "",
+   "kind": "Color3L",
+   "label": "Start color",
+   "path": "startColor",
+   "read_only": false
+  },
+  {
+   "component": "colortween",
+   "group": "",
+   "kind": "Color3L",
+   "label": "End color",
+   "path": "endColor",
+   "read_only": false
+  },
+  {
+   "component": "colortween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use sRGB",
+   "path": "useSRGB",
+   "read_only": false
+  }
+ ],
+ "cube#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Lights",
+   "path": "receiveLights",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive IBL",
+   "path": "receiveIBL",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Cast Shadows",
+   "path": "castShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Shadows",
+   "path": "receiveShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Static Shadow Caster",
+   "path": "staticShadowCaster",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Culling Mode",
+   "path": "cullingMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Detail Levels",
+   "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Render in Probes",
+   "path": "renderInReflectionProbes",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Transparent",
+   "path": "transparent",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Material",
+   "label": "Material",
+   "path": "submeshes[0].material",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Bool",
+   "label": "Face Culling",
+   "path": "submeshes[0].faceCulling",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Bool",
+   "label": "Texture Shadow",
+   "path": "submeshes[0].textureShadow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Enum",
+   "label": "Primitive",
+   "path": "submeshes[0].primitiveType",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Vector4",
+   "label": "Texture Rect",
+   "path": "submeshes[0].textureRect",
+   "read_only": false
+  }
+ ],
+ "directional_light#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Float",
+   "label": "Intensity",
+   "path": "intensity",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Float",
+   "label": "Range",
+   "path": "range",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Color3L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Color Temperature",
+   "path": "useColorTemperature",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Direction",
+   "label": "Direction",
+   "path": "direction",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "LayerMask",
+   "label": "Culling Mask",
+   "path": "cullingMask",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Enum",
+   "label": "Shading",
+   "path": "shading",
+   "read_only": false
+  }
+ ],
+ "directional_light#1": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Float",
+   "label": "Intensity",
+   "path": "intensity",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Float",
+   "label": "Range",
+   "path": "range",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Color3L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Color Temperature",
+   "path": "useColorTemperature",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Direction",
+   "label": "Direction",
+   "path": "direction",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "LayerMask",
+   "label": "Culling Mask",
+   "path": "cullingMask",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Enum",
+   "label": "Shading",
+   "path": "shading",
+   "read_only": false
+  }
+ ],
+ "empty#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  }
+ ],
+ "fog#0": [
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Color3L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Float",
+   "label": "Linear Start",
+   "path": "linearStart",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Float",
+   "label": "Linear End",
+   "path": "linearEnd",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Bool",
+   "label": "Volumetric",
+   "path": "volumetric",
+   "read_only": true
+  }
+ ],
+ "fog#1": [
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Color3L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Float",
+   "label": "Density",
+   "path": "density",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Bool",
+   "label": "Volumetric",
+   "path": "volumetric",
+   "read_only": true
+  }
+ ],
+ "fog#2": [
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Color3L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Float",
+   "label": "Linear Start",
+   "path": "linearStart",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Float",
+   "label": "Linear End",
+   "path": "linearEnd",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Bool",
+   "label": "Volumetric",
+   "path": "volumetric",
+   "read_only": true
+  }
+ ],
+ "fog#3": [
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "Enum",
+   "label": "Color Mode",
+   "path": "colorMode",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "Color3L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "FloatPositive",
+   "label": "Attenuation Distance",
+   "path": "attenuationDistance",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "Float",
+   "label": "Base Height",
+   "path": "baseHeight",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "Float",
+   "label": "Maximum Height",
+   "path": "maximumHeight",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "FloatPositive",
+   "label": "Start Distance",
+   "path": "startDistance",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "FloatPositive",
+   "label": "Max Fog Distance",
+   "path": "maxFogDistance",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "Float_0_1",
+   "label": "Max Opacity",
+   "path": "maxOpacity",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Directional Inscattering",
+   "kind": "FloatPositive",
+   "label": "Intensity",
+   "path": "directionalInscattering",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Directional Inscattering",
+   "kind": "Float",
+   "label": "Anisotropy",
+   "path": "anisotropy",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Sky",
+   "kind": "Bool",
+   "label": "Sky Fill",
+   "path": "skyFill",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Sky",
+   "kind": "FloatPositive",
+   "label": "Sky Fill Angle",
+   "path": "skyFillAngle",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "Bool",
+   "label": "Enabled",
+   "path": "volumetric",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "FloatPositive",
+   "label": "Distance",
+   "path": "volumetricDistance",
+   "read_only": true
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "Bool",
+   "label": "Light Shafts",
+   "path": "lightShafts",
+   "read_only": true
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "Float_0_1",
+   "label": "Noise Intensity",
+   "path": "noiseIntensity",
+   "read_only": true
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "FloatPositive",
+   "label": "Noise Scale",
+   "path": "noiseScale",
+   "read_only": true
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "Vector3",
+   "label": "Wind",
+   "path": "wind",
+   "read_only": true
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "Enum",
+   "label": "Quality Override",
+   "path": "qualityOverride",
+   "read_only": true
+  }
+ ],
+ "fog#4": [
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "Enum",
+   "label": "Color Mode",
+   "path": "colorMode",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "Color3L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "FloatPositive",
+   "label": "Attenuation Distance",
+   "path": "attenuationDistance",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "Float",
+   "label": "Base Height",
+   "path": "baseHeight",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "Float",
+   "label": "Maximum Height",
+   "path": "maximumHeight",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "FloatPositive",
+   "label": "Start Distance",
+   "path": "startDistance",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "FloatPositive",
+   "label": "Max Fog Distance",
+   "path": "maxFogDistance",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Height Fog",
+   "kind": "Float_0_1",
+   "label": "Max Opacity",
+   "path": "maxOpacity",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Directional Inscattering",
+   "kind": "FloatPositive",
+   "label": "Intensity",
+   "path": "directionalInscattering",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Directional Inscattering",
+   "kind": "Float",
+   "label": "Anisotropy",
+   "path": "anisotropy",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Sky",
+   "kind": "Bool",
+   "label": "Sky Fill",
+   "path": "skyFill",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Sky",
+   "kind": "FloatPositive",
+   "label": "Sky Fill Angle",
+   "path": "skyFillAngle",
+   "read_only": true
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "Bool",
+   "label": "Enabled",
+   "path": "volumetric",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "FloatPositive",
+   "label": "Distance",
+   "path": "volumetricDistance",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "Bool",
+   "label": "Light Shafts",
+   "path": "lightShafts",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "Float_0_1",
+   "label": "Noise Intensity",
+   "path": "noiseIntensity",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "FloatPositive",
+   "label": "Noise Scale",
+   "path": "noiseScale",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "Vector3",
+   "label": "Wind",
+   "path": "wind",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "Volumetric Fog",
+   "kind": "Enum",
+   "label": "Quality Override",
+   "path": "qualityOverride",
+   "read_only": false
+  }
+ ],
+ "image#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture",
+   "path": "texture",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Blend Mode",
+   "path": "blendMode",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Depth Write",
+   "path": "depthWrite",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Anchors",
+   "path": "usingAnchors",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Position Offset",
+   "path": "positionOffset",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Pivot",
+   "path": "pivot",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Scissor",
+   "path": "ignoreScissor",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Events",
+   "path": "ignoreEvents",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Left",
+   "path": "patchMarginLeft",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Right",
+   "path": "patchMarginRight",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Top",
+   "path": "patchMarginTop",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Bottom",
+   "path": "patchMarginBottom",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "Float",
+   "label": "Texture Scale",
+   "path": "textureScaleFactor",
+   "read_only": false
+  }
+ ],
+ "input_field#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture",
+   "path": "texture",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Blend Mode",
+   "path": "blendMode",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Depth Write",
+   "path": "depthWrite",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Anchors",
+   "path": "usingAnchors",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Position Offset",
+   "path": "positionOffset",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Pivot",
+   "path": "pivot",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Scissor",
+   "path": "ignoreScissor",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Events",
+   "path": "ignoreEvents",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Left",
+   "path": "patchMarginLeft",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Right",
+   "path": "patchMarginRight",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Top",
+   "path": "patchMarginTop",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Bottom",
+   "path": "patchMarginBottom",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "Float",
+   "label": "Texture Scale",
+   "path": "textureScaleFactor",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Text",
+   "path": "text",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Selection",
+   "path": "selection",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Cursor",
+   "path": "cursor",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "",
+   "kind": "Bool",
+   "label": "Disabled",
+   "path": "disabled",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "",
+   "kind": "Bool",
+   "label": "Password",
+   "path": "password",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "Content",
+   "kind": "String",
+   "label": "Placeholder",
+   "path": "placeholder",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "Cursor",
+   "kind": "Float",
+   "label": "Blink",
+   "path": "cursorBlink",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "Cursor",
+   "kind": "Float",
+   "label": "Width",
+   "path": "cursorWidth",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "Cursor",
+   "kind": "Color4L",
+   "label": "Color",
+   "path": "cursorColor",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "Cursor",
+   "kind": "Color4L",
+   "label": "Selection Color",
+   "path": "selectionColor",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "Cursor",
+   "kind": "Color4L",
+   "label": "Placeholder Color",
+   "path": "placeholderColor",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "Selection",
+   "kind": "Int",
+   "label": "Cursor Index",
+   "path": "cursorIndex",
+   "read_only": false
+  },
+  {
+   "component": "inputfield",
+   "group": "Selection",
+   "kind": "Int",
+   "label": "Selection Anchor",
+   "path": "selectionAnchor",
+   "read_only": false
+  }
+ ],
+ "joint2d#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Rigidbody A",
+   "path": "bodyA",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Connected Body",
+   "path": "bodyB",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Anchor",
+   "path": "anchorA",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Connected Anchor",
+   "path": "anchorB",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Collision",
+   "path": "enableCollision",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Spring",
+   "path": "enableSpring",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Length",
+   "path": "length",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Max Distance Only",
+   "path": "rope",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Limits",
+   "path": "useLimits",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Motor",
+   "path": "useMotor",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Break Action",
+   "path": "breakAction",
+   "read_only": false
+  }
+ ],
+ "joint2d#1": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Rigidbody A",
+   "path": "bodyA",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Connected Body",
+   "path": "bodyB",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Anchor",
+   "path": "anchorA",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Connected Anchor",
+   "path": "anchorB",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Collision",
+   "path": "enableCollision",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Spring",
+   "path": "enableSpring",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Limits",
+   "path": "useLimits",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Motor",
+   "path": "useMotor",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Break Action",
+   "path": "breakAction",
+   "read_only": false
+  }
+ ],
+ "joint2d#2": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Rigidbody A",
+   "path": "bodyA",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Connected Body",
+   "path": "bodyB",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Anchor",
+   "path": "anchorA",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Connected Anchor",
+   "path": "anchorB",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Axis",
+   "path": "axis",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Collision",
+   "path": "enableCollision",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Spring",
+   "path": "enableSpring",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Limits",
+   "path": "useLimits",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Motor",
+   "path": "useMotor",
+   "read_only": false
+  },
+  {
+   "component": "joint2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Break Action",
+   "path": "breakAction",
+   "read_only": false
+  }
+ ],
+ "joint3d#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Joint Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Rigidbody A",
+   "path": "bodyA",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Connected Body",
+   "path": "bodyB",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Anchor",
+   "path": "anchor",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Auto Configure Connected",
+   "path": "autoAnchors",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Collision",
+   "path": "enableCollision",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Force",
+   "path": "breakForce",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Torque",
+   "path": "breakTorque",
+   "read_only": false
+  }
+ ],
+ "joint3d#1": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Joint Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Rigidbody A",
+   "path": "bodyA",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Connected Body",
+   "path": "bodyB",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Anchor",
+   "path": "anchor",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Auto Configure Connected",
+   "path": "autoAnchors",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Collision",
+   "path": "enableCollision",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Joint settings",
+   "kind": "Vector3",
+   "label": "Axis",
+   "path": "axis",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Joint settings",
+   "kind": "Vector3",
+   "label": "Secondary Axis",
+   "path": "normal",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Limits",
+   "kind": "Bool",
+   "label": "Use Limits",
+   "path": "useLimits",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Spring",
+   "kind": "Bool",
+   "label": "Use Spring",
+   "path": "useSpring",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Motor",
+   "kind": "Bool",
+   "label": "Use Motor",
+   "path": "useMotor",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Motor",
+   "kind": "FloatPositive",
+   "label": "Max Friction",
+   "path": "maxFriction",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Force",
+   "path": "breakForce",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Torque",
+   "path": "breakTorque",
+   "read_only": false
+  }
+ ],
+ "joint3d#2": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Joint Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Rigidbody A",
+   "path": "bodyA",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Connected Body",
+   "path": "bodyB",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anchor Space",
+   "path": "anchorSpace",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Anchor",
+   "path": "anchor",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Auto Configure Connected",
+   "path": "autoAnchors",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enable Collision",
+   "path": "enableCollision",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Joint settings",
+   "kind": "Vector3",
+   "label": "Twist Axis",
+   "path": "twistAxis",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Joint settings",
+   "kind": "Float",
+   "label": "Cone Half Angle",
+   "path": "coneHalfAngle",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Force",
+   "path": "breakForce",
+   "read_only": false
+  },
+  {
+   "component": "joint3d",
+   "group": "Break",
+   "kind": "Float",
+   "label": "Break Torque",
+   "path": "breakTorque",
+   "read_only": false
+  }
+ ],
+ "layout_group#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Anchors",
+   "path": "usingAnchors",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Position Offset",
+   "path": "positionOffset",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Pivot",
+   "path": "pivot",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Scissor",
+   "path": "ignoreScissor",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Events",
+   "path": "ignoreEvents",
+   "read_only": false
+  },
+  {
+   "component": "layoutgroup",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "layoutgroup",
+   "group": "",
+   "kind": "Label",
+   "label": "Num Boxes",
+   "path": "numBoxes",
+   "read_only": false
+  }
+ ],
+ "layout_group#1": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Anchors",
+   "path": "usingAnchors",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Position Offset",
+   "path": "positionOffset",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Pivot",
+   "path": "pivot",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Scissor",
+   "path": "ignoreScissor",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Events",
+   "path": "ignoreEvents",
+   "read_only": false
+  },
+  {
+   "component": "layoutgroup",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "layoutgroup",
+   "group": "",
+   "kind": "Label",
+   "label": "Num Boxes",
+   "path": "numBoxes",
+   "read_only": false
+  }
+ ],
+ "light_2d#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "light2d",
+   "group": "",
+   "kind": "Float",
+   "label": "Intensity",
+   "path": "intensity",
+   "read_only": false
+  },
+  {
+   "component": "light2d",
+   "group": "",
+   "kind": "Float",
+   "label": "Range",
+   "path": "range",
+   "read_only": false
+  },
+  {
+   "component": "light2d",
+   "group": "",
+   "kind": "Float",
+   "label": "Falloff",
+   "path": "falloff",
+   "read_only": false
+  },
+  {
+   "component": "light2d",
+   "group": "",
+   "kind": "Float",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "light2d",
+   "group": "",
+   "kind": "Color3L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "light2d",
+   "group": "Shadow settings",
+   "kind": "Bool",
+   "label": "Enabled",
+   "path": "shadows",
+   "read_only": false
+  },
+  {
+   "component": "light2d",
+   "group": "Shadow settings",
+   "kind": "Float",
+   "label": "Bias",
+   "path": "shadowBias",
+   "read_only": false
+  },
+  {
+   "component": "light2d",
+   "group": "Shadow settings",
+   "kind": "Float",
+   "label": "Softness",
+   "path": "shadowSoftness",
+   "read_only": false
+  },
+  {
+   "component": "light2d",
+   "group": "Shadow settings",
+   "kind": "UIntSlider",
+   "label": "Map Resolution",
+   "path": "mapResolution",
+   "read_only": false
+  }
+ ],
+ "line_renderer#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Enum",
+   "label": "Mode",
+   "path": "mode",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use World Space",
+   "path": "useWorldSpace",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Width",
+   "path": "widthMultiplier",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Curve",
+   "label": "Width Curve",
+   "path": "widthCurve",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Enum",
+   "label": "Width Unit",
+   "path": "widthUnit",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Gradient",
+   "label": "Color",
+   "path": "colorGradient",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "UInt",
+   "label": "Corner Vertices",
+   "path": "numCornerVertices",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "UInt",
+   "label": "End Cap Vertices",
+   "path": "numCapVertices",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Enum",
+   "label": "Alignment",
+   "path": "alignment",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Enum",
+   "label": "Texture Mode",
+   "path": "textureMode",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Texture Scale",
+   "path": "textureScale",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Int",
+   "label": "Sort Priority",
+   "path": "sortPriority",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Enum",
+   "label": "Blend Mode",
+   "path": "blendMode",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Enum",
+   "label": "Depth Write",
+   "path": "depthWrite",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Element 0",
+   "path": "positions[0]",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Element 1",
+   "path": "positions[1]",
+   "read_only": false
+  }
+ ],
+ "local_volumetric_fog#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "localvolumetricfog",
+   "group": "",
+   "kind": "Enum",
+   "label": "Shape",
+   "path": "shape",
+   "read_only": false
+  },
+  {
+   "component": "localvolumetricfog",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Size",
+   "path": "size",
+   "read_only": false
+  },
+  {
+   "component": "localvolumetricfog",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Attenuation Distance",
+   "path": "attenuationDistance",
+   "read_only": false
+  },
+  {
+   "component": "localvolumetricfog",
+   "group": "",
+   "kind": "Color3L",
+   "label": "Albedo",
+   "path": "albedo",
+   "read_only": false
+  },
+  {
+   "component": "localvolumetricfog",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Blend Distance",
+   "path": "blendDistance",
+   "read_only": false
+  },
+  {
+   "component": "localvolumetricfog",
+   "group": "",
+   "kind": "Enum",
+   "label": "Falloff",
+   "path": "falloff",
+   "read_only": false
+  },
+  {
+   "component": "localvolumetricfog",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Noise Intensity",
+   "path": "noiseIntensity",
+   "read_only": false
+  },
+  {
+   "component": "localvolumetricfog",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Noise Scale",
+   "path": "noiseScale",
+   "read_only": false
+  },
+  {
+   "component": "localvolumetricfog",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scroll Speed",
+   "path": "scrollSpeed",
+   "read_only": false
+  }
+ ],
+ "mesh_polygon#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Lights",
+   "path": "receiveLights",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive IBL",
+   "path": "receiveIBL",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Cast Shadows",
+   "path": "castShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Shadows",
+   "path": "receiveShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Static Shadow Caster",
+   "path": "staticShadowCaster",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Culling Mode",
+   "path": "cullingMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Detail Levels",
+   "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Render in Probes",
+   "path": "renderInReflectionProbes",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Transparent",
+   "path": "transparent",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Material",
+   "label": "Material",
+   "path": "submeshes[0].material",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Bool",
+   "label": "Face Culling",
+   "path": "submeshes[0].faceCulling",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Bool",
+   "label": "Texture Shadow",
+   "path": "submeshes[0].textureShadow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Enum",
+   "label": "Primitive",
+   "path": "submeshes[0].primitiveType",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Vector4",
+   "label": "Texture Rect",
+   "path": "submeshes[0].textureRect",
+   "read_only": false
+  },
+  {
+   "component": "meshpolygon",
+   "group": "",
+   "kind": "Bool",
+   "label": "Flip Y",
+   "path": "flipY",
+   "read_only": false
+  }
+ ],
+ "mirror#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Lights",
+   "path": "receiveLights",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive IBL",
+   "path": "receiveIBL",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Cast Shadows",
+   "path": "castShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Shadows",
+   "path": "receiveShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Static Shadow Caster",
+   "path": "staticShadowCaster",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Culling Mode",
+   "path": "cullingMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Detail Levels",
+   "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Render in Probes",
+   "path": "renderInReflectionProbes",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Transparent",
+   "path": "transparent",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Material",
+   "label": "Material",
+   "path": "submeshes[0].material",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Bool",
+   "label": "Face Culling",
+   "path": "submeshes[0].faceCulling",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Bool",
+   "label": "Texture Shadow",
+   "path": "submeshes[0].textureShadow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Enum",
+   "label": "Primitive",
+   "path": "submeshes[0].primitiveType",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Vector4",
+   "label": "Texture Rect",
+   "path": "submeshes[0].textureRect",
+   "read_only": false
+  },
+  {
+   "component": "mirror",
+   "group": "",
+   "kind": "Direction",
+   "label": "Normal",
+   "path": "normal",
+   "read_only": false
+  }
+ ],
+ "morph_tracks#0": [
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Float",
+   "label": "Speed",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Int",
+   "label": "Index",
+   "path": "index",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Float",
+   "label": "Interpolation",
+   "path": "interpolation",
+   "read_only": false
+  }
+ ],
+ "panel#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture",
+   "path": "texture",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Blend Mode",
+   "path": "blendMode",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Depth Write",
+   "path": "depthWrite",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Anchors",
+   "path": "usingAnchors",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Position Offset",
+   "path": "positionOffset",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Pivot",
+   "path": "pivot",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Scissor",
+   "path": "ignoreScissor",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Events",
+   "path": "ignoreEvents",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Left",
+   "path": "patchMarginLeft",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Right",
+   "path": "patchMarginRight",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Top",
+   "path": "patchMarginTop",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Bottom",
+   "path": "patchMarginBottom",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "Float",
+   "label": "Texture Scale",
+   "path": "textureScaleFactor",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Header Image",
+   "path": "headerimage",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Header Container",
+   "path": "headercontainer",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Header Text",
+   "path": "headertext",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "",
+   "kind": "Enum",
+   "label": "Title Anchor",
+   "path": "titleAnchorPreset",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "",
+   "kind": "UInt",
+   "label": "Min Width",
+   "path": "minWidth",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "",
+   "kind": "UInt",
+   "label": "Min Height",
+   "path": "minHeight",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "",
+   "kind": "Int",
+   "label": "Resize Margin",
+   "path": "resizeMargin",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "",
+   "kind": "Bool",
+   "label": "Can Move",
+   "path": "canMove",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "",
+   "kind": "Bool",
+   "label": "Can Resize",
+   "path": "canResize",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "",
+   "kind": "Bool",
+   "label": "Can Bring To Front",
+   "path": "canBringToFront",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "Header margin",
+   "kind": "Bool",
+   "label": "Default Margin",
+   "path": "defaultHeaderMargin",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "Header margin",
+   "kind": "Int",
+   "label": "Margin Left",
+   "path": "headerMarginLeft",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "Header margin",
+   "kind": "Int",
+   "label": "Margin Right",
+   "path": "headerMarginRight",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "Header margin",
+   "kind": "Int",
+   "label": "Margin Top",
+   "path": "headerMarginTop",
+   "read_only": false
+  },
+  {
+   "component": "panel",
+   "group": "Header margin",
+   "kind": "Int",
+   "label": "Margin Bottom",
+   "path": "headerMarginBottom",
+   "read_only": false
+  }
+ ],
+ "particle_system#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "particlesystem",
+   "group": "",
+   "kind": "Asset",
+   "label": "Effect",
+   "path": "effect",
+   "read_only": false
+  },
+  {
+   "component": "particlesystem",
+   "group": "",
+   "kind": "Bool",
+   "label": "Play On Awake",
+   "path": "playOnAwake",
+   "read_only": false
+  },
+  {
+   "component": "particlesystem",
+   "group": "",
+   "kind": "UInt",
+   "label": "Seed",
+   "path": "seed",
+   "read_only": false
+  },
+  {
+   "component": "particlesystem",
+   "group": "",
+   "kind": "Float",
+   "label": "Playback Speed",
+   "path": "playbackSpeed",
+   "read_only": false
+  },
+  {
+   "component": "particlesystem",
+   "group": "",
+   "kind": "Bool",
+   "label": "Unscaled Time",
+   "path": "useUnscaledTime",
+   "read_only": false
+  }
+ ],
+ "point_light#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Float",
+   "label": "Intensity",
+   "path": "intensity",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Float",
+   "label": "Range",
+   "path": "range",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Color3L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Color Temperature",
+   "path": "useColorTemperature",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Volumetric Intensity",
+   "path": "volumetricIntensity",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "LayerMask",
+   "label": "Culling Mask",
+   "path": "cullingMask",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Enum",
+   "label": "Shading",
+   "path": "shading",
+   "read_only": false
+  }
+ ],
+ "points#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "points",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture",
+   "path": "texture",
+   "read_only": false
+  },
+  {
+   "component": "points",
+   "group": "",
+   "kind": "Bool",
+   "label": "Transparent",
+   "path": "transparent",
+   "read_only": false
+  },
+  {
+   "component": "points",
+   "group": "",
+   "kind": "UInt",
+   "label": "Max Points",
+   "path": "maxPoints",
+   "read_only": false
+  },
+  {
+   "component": "points",
+   "group": "",
+   "kind": "Enum",
+   "label": "Blend Mode",
+   "path": "blendMode",
+   "read_only": false
+  },
+  {
+   "component": "points",
+   "group": "",
+   "kind": "Enum",
+   "label": "Depth Write",
+   "path": "depthWrite",
+   "read_only": false
+  }
+ ],
+ "polygon#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture",
+   "path": "texture",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Blend Mode",
+   "path": "blendMode",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Depth Write",
+   "path": "depthWrite",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Anchors",
+   "path": "usingAnchors",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Position Offset",
+   "path": "positionOffset",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Pivot",
+   "path": "pivot",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Scissor",
+   "path": "ignoreScissor",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Events",
+   "path": "ignoreEvents",
+   "read_only": false
+  }
+ ],
+ "position_tween#0": [
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Float",
+   "label": "Speed",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Duration",
+   "path": "duration",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ping-pong",
+   "path": "pingPong",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Ease",
+   "label": "Ease",
+   "path": "function",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Unscaled Time",
+   "path": "useUnscaledTime",
+   "read_only": false
+  },
+  {
+   "component": "positiontween",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Start position",
+   "path": "startPosition",
+   "read_only": false
+  },
+  {
+   "component": "positiontween",
+   "group": "",
+   "kind": "Vector3",
+   "label": "End position",
+   "path": "endPosition",
+   "read_only": false
+  }
+ ],
+ "progressbar#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture",
+   "path": "texture",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Blend Mode",
+   "path": "blendMode",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Depth Write",
+   "path": "depthWrite",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Anchors",
+   "path": "usingAnchors",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Position Offset",
+   "path": "positionOffset",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Pivot",
+   "path": "pivot",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Scissor",
+   "path": "ignoreScissor",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Events",
+   "path": "ignoreEvents",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Left",
+   "path": "patchMarginLeft",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Right",
+   "path": "patchMarginRight",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Top",
+   "path": "patchMarginTop",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Bottom",
+   "path": "patchMarginBottom",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "Float",
+   "label": "Texture Scale",
+   "path": "textureScaleFactor",
+   "read_only": false
+  },
+  {
+   "component": "progressbar",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Fill",
+   "path": "fill",
+   "read_only": false
+  },
+  {
+   "component": "progressbar",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "progressbar",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Value",
+   "path": "value",
+   "read_only": false
+  },
+  {
+   "component": "progressbar",
+   "group": "Fill margin",
+   "kind": "Int",
+   "label": "Margin Left",
+   "path": "fillMarginLeft",
+   "read_only": false
+  },
+  {
+   "component": "progressbar",
+   "group": "Fill margin",
+   "kind": "Int",
+   "label": "Margin Right",
+   "path": "fillMarginRight",
+   "read_only": false
+  },
+  {
+   "component": "progressbar",
+   "group": "Fill margin",
+   "kind": "Int",
+   "label": "Margin Top",
+   "path": "fillMarginTop",
+   "read_only": false
+  },
+  {
+   "component": "progressbar",
+   "group": "Fill margin",
+   "kind": "Int",
+   "label": "Margin Bottom",
+   "path": "fillMarginBottom",
+   "read_only": false
+  }
+ ],
+ "reflection_probe#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "",
+   "kind": "Enum",
+   "label": "Mode",
+   "path": "mode",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "",
+   "kind": "TextureCube",
+   "label": "Cubemap",
+   "path": "texture",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Intensity",
+   "path": "intensity",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "",
+   "kind": "Int",
+   "label": "Priority",
+   "path": "priority",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Influence",
+   "kind": "Vector3",
+   "label": "Box Offset",
+   "path": "boxOffset",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Influence",
+   "kind": "Vector3",
+   "label": "Box Size",
+   "path": "boxSize",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Influence",
+   "kind": "FloatPositive",
+   "label": "Blend Distance",
+   "path": "blendDistance",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Capture",
+   "kind": "UIntSlider",
+   "label": "Resolution",
+   "path": "resolution",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Capture",
+   "kind": "FloatPositive",
+   "label": "Near",
+   "path": "nearClip",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Capture",
+   "kind": "FloatPositive",
+   "label": "Far",
+   "path": "farClip",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Capture",
+   "kind": "Bool",
+   "label": "Include Skybox",
+   "path": "includeSky",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Capture",
+   "kind": "LayerMask",
+   "label": "Culling Mask",
+   "path": "cullingMask",
+   "read_only": false
+  }
+ ],
+ "reflection_probe#1": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "",
+   "kind": "Enum",
+   "label": "Mode",
+   "path": "mode",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "",
+   "kind": "Enum",
+   "label": "Update",
+   "path": "updateMode",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Update Interval",
+   "path": "updateInterval",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Intensity",
+   "path": "intensity",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "",
+   "kind": "Int",
+   "label": "Priority",
+   "path": "priority",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Influence",
+   "kind": "Vector3",
+   "label": "Box Offset",
+   "path": "boxOffset",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Influence",
+   "kind": "Vector3",
+   "label": "Box Size",
+   "path": "boxSize",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Influence",
+   "kind": "FloatPositive",
+   "label": "Blend Distance",
+   "path": "blendDistance",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Capture",
+   "kind": "UIntSlider",
+   "label": "Resolution",
+   "path": "resolution",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Capture",
+   "kind": "FloatPositive",
+   "label": "Near",
+   "path": "nearClip",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Capture",
+   "kind": "FloatPositive",
+   "label": "Far",
+   "path": "farClip",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Capture",
+   "kind": "Bool",
+   "label": "Include Skybox",
+   "path": "includeSky",
+   "read_only": false
+  },
+  {
+   "component": "reflectionprobe",
+   "group": "Capture",
+   "kind": "LayerMask",
+   "label": "Culling Mask",
+   "path": "cullingMask",
+   "read_only": false
+  }
+ ],
+ "rigidbody#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "rigidbody",
+   "group": "",
+   "kind": "Enum",
+   "label": "Body Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "rigidbody",
+   "group": "",
+   "kind": "Float",
+   "label": "Buoyancy",
+   "path": "buoyancy",
+   "read_only": false
+  }
+ ],
+ "rigidbody2d#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "rigidbody2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Body Type",
+   "path": "type",
+   "read_only": false
+  }
+ ],
+ "rotate_tracks#0": [
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Float",
+   "label": "Speed",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Relative",
+   "path": "relative",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Int",
+   "label": "Index",
+   "path": "index",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Float",
+   "label": "Interpolation",
+   "path": "interpolation",
+   "read_only": false
+  }
+ ],
+ "rotation_tween#0": [
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Float",
+   "label": "Speed",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Duration",
+   "path": "duration",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ping-pong",
+   "path": "pingPong",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Ease",
+   "label": "Ease",
+   "path": "function",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Unscaled Time",
+   "path": "useUnscaledTime",
+   "read_only": false
+  },
+  {
+   "component": "rotationtween",
+   "group": "",
+   "kind": "Quat",
+   "label": "Start rotation",
+   "path": "startRotation",
+   "read_only": false
+  },
+  {
+   "component": "rotationtween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Spin",
+   "path": "spin",
+   "read_only": false
+  },
+  {
+   "component": "rotationtween",
+   "group": "",
+   "kind": "Quat",
+   "label": "End rotation",
+   "path": "endRotation",
+   "read_only": false
+  },
+  {
+   "component": "rotationtween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Shortest path",
+   "path": "shortestPath",
+   "read_only": false
+  }
+ ],
+ "scale_tracks#0": [
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Float",
+   "label": "Speed",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Relative",
+   "path": "relative",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Int",
+   "label": "Index",
+   "path": "index",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Float",
+   "label": "Interpolation",
+   "path": "interpolation",
+   "read_only": false
+  }
+ ],
+ "scale_tween#0": [
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Float",
+   "label": "Speed",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Duration",
+   "path": "duration",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ping-pong",
+   "path": "pingPong",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Ease",
+   "label": "Ease",
+   "path": "function",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Unscaled Time",
+   "path": "useUnscaledTime",
+   "read_only": false
+  },
+  {
+   "component": "scaletween",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Start scale",
+   "path": "startScale",
+   "read_only": false
+  },
+  {
+   "component": "scaletween",
+   "group": "",
+   "kind": "Vector3",
+   "label": "End scale",
+   "path": "endScale",
+   "read_only": false
+  }
+ ],
+ "scrollbar#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture",
+   "path": "texture",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Blend Mode",
+   "path": "blendMode",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Depth Write",
+   "path": "depthWrite",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Anchors",
+   "path": "usingAnchors",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Position Offset",
+   "path": "positionOffset",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Pivot",
+   "path": "pivot",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Scissor",
+   "path": "ignoreScissor",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Events",
+   "path": "ignoreEvents",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Left",
+   "path": "patchMarginLeft",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Right",
+   "path": "patchMarginRight",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Top",
+   "path": "patchMarginTop",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "UInt",
+   "label": "Margin Bottom",
+   "path": "patchMarginBottom",
+   "read_only": false
+  },
+  {
+   "component": "image",
+   "group": "Nine-patch rect",
+   "kind": "Float",
+   "label": "Texture Scale",
+   "path": "textureScaleFactor",
+   "read_only": false
+  },
+  {
+   "component": "scrollbar",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Bar",
+   "path": "bar",
+   "read_only": false
+  },
+  {
+   "component": "scrollbar",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "scrollbar",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Bar Size",
+   "path": "barSize",
+   "read_only": false
+  },
+  {
+   "component": "scrollbar",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Step",
+   "path": "step",
+   "read_only": false
+  },
+  {
+   "component": "scrollbar",
+   "group": "Bar margin",
+   "kind": "Int",
+   "label": "Margin Left",
+   "path": "barMarginLeft",
+   "read_only": false
+  },
+  {
+   "component": "scrollbar",
+   "group": "Bar margin",
+   "kind": "Int",
+   "label": "Margin Right",
+   "path": "barMarginRight",
+   "read_only": false
+  },
+  {
+   "component": "scrollbar",
+   "group": "Bar margin",
+   "kind": "Int",
+   "label": "Margin Top",
+   "path": "barMarginTop",
+   "read_only": false
+  },
+  {
+   "component": "scrollbar",
+   "group": "Bar margin",
+   "kind": "Int",
+   "label": "Margin Bottom",
+   "path": "barMarginBottom",
+   "read_only": false
+  }
+ ],
+ "shadow_caster_2d#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "shadowcaster2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Outline",
+   "path": "shape",
+   "read_only": false
+  },
+  {
+   "component": "shadowcaster2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Closed",
+   "path": "closed",
+   "read_only": false
+  },
+  {
+   "component": "shadowcaster2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enabled",
+   "path": "enabled",
+   "read_only": false
+  }
+ ],
+ "shadow_caster_2d#1": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "shadowcaster2d",
+   "group": "",
+   "kind": "Enum",
+   "label": "Outline",
+   "path": "shape",
+   "read_only": false
+  },
+  {
+   "component": "shadowcaster2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Closed",
+   "path": "closed",
+   "read_only": false
+  },
+  {
+   "component": "shadowcaster2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Enabled",
+   "path": "enabled",
+   "read_only": false
+  }
+ ],
+ "skybox#0": [
+  {
+   "component": "skybox",
+   "group": "Skybox Settings",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "skybox",
+   "group": "Skybox Settings",
+   "kind": "TextureCube",
+   "label": "Texture",
+   "path": "texture",
+   "read_only": false
+  },
+  {
+   "component": "skybox",
+   "group": "Skybox Settings",
+   "kind": "Color4L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "skybox",
+   "group": "Skybox Settings",
+   "kind": "Float",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  }
+ ],
+ "spot_light#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Enum",
+   "label": "Type",
+   "path": "type",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Float",
+   "label": "Intensity",
+   "path": "intensity",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Float",
+   "label": "Range",
+   "path": "range",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Color3L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Color Temperature",
+   "path": "useColorTemperature",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Direction",
+   "label": "Direction",
+   "path": "direction",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Volumetric Intensity",
+   "path": "volumetricIntensity",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Texture",
+   "label": "Mask",
+   "path": "spotMask",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "HalfCone",
+   "label": "Inner Cone",
+   "path": "innerConeCos",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "HalfCone",
+   "label": "Outer Cone",
+   "path": "outerConeCos",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "LayerMask",
+   "label": "Culling Mask",
+   "path": "cullingMask",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Enum",
+   "label": "Shading",
+   "path": "shading",
+   "read_only": false
+  }
+ ],
+ "sprite#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Lights",
+   "path": "receiveLights",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive IBL",
+   "path": "receiveIBL",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Cast Shadows",
+   "path": "castShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Shadows",
+   "path": "receiveShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Static Shadow Caster",
+   "path": "staticShadowCaster",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Culling Mode",
+   "path": "cullingMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Detail Levels",
+   "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Render in Probes",
+   "path": "renderInReflectionProbes",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Transparent",
+   "path": "transparent",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Material",
+   "label": "Material",
+   "path": "submeshes[0].material",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Bool",
+   "label": "Face Culling",
+   "path": "submeshes[0].faceCulling",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Bool",
+   "label": "Texture Shadow",
+   "path": "submeshes[0].textureShadow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Enum",
+   "label": "Primitive",
+   "path": "submeshes[0].primitiveType",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Vector4",
+   "label": "Texture Rect",
+   "path": "submeshes[0].textureRect",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "Enum",
+   "label": "Pivot",
+   "path": "pivotPreset",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "Float",
+   "label": "Texture Scale",
+   "path": "textureScaleFactor",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "Bool",
+   "label": "Flip Y",
+   "path": "flipY",
+   "read_only": false
+  }
+ ],
+ "sprite_animation#0": [
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Float",
+   "label": "Speed",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "spriteanimation",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "spriteanimation",
+   "group": "",
+   "kind": "Label",
+   "label": "Frame index",
+   "path": "frameIndex",
+   "read_only": false
+  },
+  {
+   "component": "spriteanimation",
+   "group": "",
+   "kind": "Label",
+   "label": "Interval index",
+   "path": "frameTimeIndex",
+   "read_only": false
+  },
+  {
+   "component": "spriteanimation",
+   "group": "",
+   "kind": "Label",
+   "label": "Frame count",
+   "path": "spriteFrameCount",
+   "read_only": false
+  }
+ ],
+ "terrain#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Lights",
+   "path": "receiveLights",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive IBL",
+   "path": "receiveIBL",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Cast Shadows",
+   "path": "castShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Shadows",
+   "path": "receiveShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Static Shadow Caster",
+   "path": "staticShadowCaster",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Culling Mode",
+   "path": "cullingMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Detail Levels",
+   "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Render in Probes",
+   "path": "renderInReflectionProbes",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Transparent",
+   "path": "transparent",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Maps",
+   "kind": "Texture",
+   "label": "Height Map",
+   "path": "heightMap",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Mesh Resolution",
+   "kind": "FloatPositive",
+   "label": "Size",
+   "path": "terrainSize",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Mesh Resolution",
+   "kind": "FloatPositive",
+   "label": "Max Height",
+   "path": "maxHeight",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Mesh Resolution",
+   "kind": "FloatPositive",
+   "label": "Resolution",
+   "path": "resolution",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Mesh Resolution",
+   "kind": "Int",
+   "label": "Root Grid Size",
+   "path": "rootGridSize",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Mesh Resolution",
+   "kind": "Int",
+   "label": "Levels",
+   "path": "levels",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Mesh Resolution",
+   "kind": "Vector2",
+   "label": "Offset",
+   "path": "offset",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Texturing",
+   "kind": "FloatPositive",
+   "label": "Base Tiles",
+   "path": "textureBaseTiles",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Texturing",
+   "kind": "FloatPositive",
+   "label": "Detail Tiles",
+   "path": "textureDetailTiles",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Ranges",
+   "kind": "Bool",
+   "label": "Auto Ranges",
+   "path": "autoSetRanges",
+   "read_only": false
+  }
+ ],
+ "text#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Color4L",
+   "label": "Color",
+   "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Texture",
+   "label": "Texture",
+   "path": "texture",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Blend Mode",
+   "path": "blendMode",
+   "read_only": false
+  },
+  {
+   "component": "ui",
+   "group": "",
+   "kind": "Enum",
+   "label": "Depth Write",
+   "path": "depthWrite",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Anchors",
+   "path": "usingAnchors",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Position Offset",
+   "path": "positionOffset",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Vector2",
+   "label": "Pivot",
+   "path": "pivot",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Scissor",
+   "path": "ignoreScissor",
+   "read_only": false
+  },
+  {
+   "component": "recttransform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ignore Events",
+   "path": "ignoreEvents",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "",
+   "kind": "MultilineString",
+   "label": "Text",
+   "path": "text",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "",
+   "kind": "Int",
+   "label": "Visible Characters",
+   "path": "visibleCharacters",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "",
+   "kind": "Font",
+   "label": "Font",
+   "path": "font",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "",
+   "kind": "UInt",
+   "label": "FontSize",
+   "path": "fontSize",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "",
+   "kind": "Bool",
+   "label": "Multiline",
+   "path": "multiline",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Fixed size",
+   "kind": "Bool",
+   "label": "Width",
+   "path": "fixedWidth",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Fixed size",
+   "kind": "Bool",
+   "label": "Height",
+   "path": "fixedHeight",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Pivot",
+   "kind": "Bool",
+   "label": "Baseline",
+   "path": "pivotBaseline",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Pivot",
+   "kind": "Bool",
+   "label": "Center",
+   "path": "pivotCentered",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Outline",
+   "kind": "FloatPositive",
+   "label": "Outline Width",
+   "path": "outlineWidth",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Outline",
+   "kind": "Color4L",
+   "label": "Outline Color",
+   "path": "outlineColor",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Shadow",
+   "kind": "Bool",
+   "label": "Shadow",
+   "path": "shadowEnabled",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Shadow",
+   "kind": "Color4L",
+   "label": "Shadow Color",
+   "path": "shadowColor",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Shadow",
+   "kind": "Vector2",
+   "label": "Shadow Offset",
+   "path": "shadowOffset",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Shadow",
+   "kind": "FloatPositive",
+   "label": "Shadow Softness",
+   "path": "shadowSoftness",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Shadow",
+   "kind": "FloatPositive",
+   "label": "Shadow Dilate",
+   "path": "shadowDilate",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "Advanced settings",
+   "kind": "UInt",
+   "label": "Max. text size",
+   "path": "maxTextSize",
+   "read_only": false
+  }
+ ],
+ "tilemap#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Lights",
+   "path": "receiveLights",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive IBL",
+   "path": "receiveIBL",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Cast Shadows",
+   "path": "castShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Receive Shadows",
+   "path": "receiveShadows",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Static Shadow Caster",
+   "path": "staticShadowCaster",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Culling Mode",
+   "path": "cullingMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Detail Levels",
+   "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Render in Probes",
+   "path": "renderInReflectionProbes",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Transparent",
+   "path": "transparent",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Material",
+   "label": "Material",
+   "path": "submeshes[0].material",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Bool",
+   "label": "Face Culling",
+   "path": "submeshes[0].faceCulling",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Bool",
+   "label": "Texture Shadow",
+   "path": "submeshes[0].textureShadow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Enum",
+   "label": "Primitive",
+   "path": "submeshes[0].primitiveType",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "Submesh 0",
+   "kind": "Vector4",
+   "label": "Texture Rect",
+   "path": "submeshes[0].textureRect",
+   "read_only": false
+  },
+  {
+   "component": "tilemap",
+   "group": "",
+   "kind": "UInt",
+   "label": "Width",
+   "path": "width",
+   "read_only": false
+  },
+  {
+   "component": "tilemap",
+   "group": "",
+   "kind": "UInt",
+   "label": "Height",
+   "path": "height",
+   "read_only": false
+  },
+  {
+   "component": "tilemap",
+   "group": "",
+   "kind": "Float",
+   "label": "Texture Scale",
+   "path": "textureScaleFactor",
+   "read_only": false
+  },
+  {
+   "component": "tilemap",
+   "group": "",
+   "kind": "Bool",
+   "label": "Flip Y",
+   "path": "flipY",
+   "read_only": false
+  },
+  {
+   "component": "tilemap",
+   "group": "",
+   "kind": "UInt",
+   "label": "Reserve Tiles",
+   "path": "reserveTiles",
+   "read_only": false
+  }
+ ],
+ "translate_tracks#0": [
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Enum",
+   "label": "State",
+   "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Float",
+   "label": "Speed",
+   "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Target",
+   "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Relative",
+   "path": "relative",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Int",
+   "label": "Index",
+   "path": "index",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Float",
+   "label": "Interpolation",
+   "path": "interpolation",
+   "read_only": false
+  }
+ ],
+ "ui_document#0": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Int",
+   "label": "Sort Order",
+   "path": "sortOrder",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Bool",
+   "label": "Interactive",
+   "path": "interactive",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Enum",
+   "label": "Render Mode",
+   "path": "renderMode",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Pixel Ratio",
+   "path": "pixelRatio",
+   "read_only": false
+  }
+ ],
+ "ui_document#1": [
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Int",
+   "label": "Sort Order",
+   "path": "sortOrder",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Bool",
+   "label": "Interactive",
+   "path": "interactive",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Enum",
+   "label": "Render Mode",
+   "path": "renderMode",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Int",
+   "label": "Texture Width",
+   "path": "textureWidth",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Int",
+   "label": "Texture Height",
+   "path": "textureHeight",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "LocalEntity",
+   "label": "Input Surface",
+   "path": "inputSurface",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Pixel Ratio",
+   "path": "pixelRatio",
+   "read_only": false
+  }
+ ],
+ "volumetric_clouds#0": [
+  {
+   "component": "volumetricclouds",
+   "group": "",
+   "kind": "Enum",
+   "label": "Rendering",
+   "path": "rendering",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "",
+   "kind": "Enum",
+   "label": "Quality Override",
+   "path": "qualityOverride",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Shape",
+   "kind": "Float_0_1",
+   "label": "Coverage",
+   "path": "coverage",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Shape",
+   "kind": "Float_0_1",
+   "label": "Density",
+   "path": "density",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Shape",
+   "kind": "FloatPositive",
+   "label": "Shape Scale",
+   "path": "shapeScale",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Shape",
+   "kind": "Float_0_1",
+   "label": "Shape Factor",
+   "path": "shapeFactor",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Shape",
+   "kind": "Float_0_1",
+   "label": "Erosion Factor",
+   "path": "erosionFactor",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Shape",
+   "kind": "FloatPositive",
+   "label": "Erosion Scale",
+   "path": "erosionScale",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Layer",
+   "kind": "Float",
+   "label": "Bottom Altitude",
+   "path": "bottomAltitude",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Layer",
+   "kind": "FloatPositive",
+   "label": "Altitude Range",
+   "path": "altitudeRange",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Layer",
+   "kind": "Float_0_1",
+   "label": "Earth Curvature",
+   "path": "earthCurvature",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Layer",
+   "kind": "FloatPositive",
+   "label": "Max Distance",
+   "path": "maxDistance",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Weather",
+   "kind": "Texture",
+   "label": "Weather Map",
+   "path": "weatherMap",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Weather",
+   "kind": "FloatPositive",
+   "label": "Weather Map Scale",
+   "path": "weatherMapScale",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Weather",
+   "kind": "Float",
+   "label": "Wind Direction",
+   "path": "windDirection",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Weather",
+   "kind": "FloatPositive",
+   "label": "Wind Speed",
+   "path": "windSpeed",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Lighting",
+   "kind": "FloatPositive",
+   "label": "Sun Light Dimmer",
+   "path": "sunLightDimmer",
+   "read_only": false
+  },
+  {
+   "component": "volumetricclouds",
+   "group": "Lighting",
+   "kind": "FloatPositive",
+   "label": "Ambient Light Dimmer",
+   "path": "ambientLightDimmer",
+   "read_only": false
+  }
+ ]
+}

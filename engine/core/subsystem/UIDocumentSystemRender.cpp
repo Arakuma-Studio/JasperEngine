@@ -10,11 +10,16 @@
 #include "Engine.h"
 #include "component/CameraComponent.h"
 #include "component/Transform.h"
+#include "htmlui/HtmlUI.h"
 #include "htmlui/HtmlUIContext.h"
+#include "htmlui/RmlFontEngine.h"
 #include "htmlui/RmlRenderer.h"
 #include "math/Matrix4.h"
 #include "render/SystemRender.h"
 
+#include <RmlUi/Core/Context.h>
+
+#include <algorithm>
 #include <cstring>
 
 namespace jasperengine{
@@ -28,19 +33,7 @@ namespace jasperengine{
             if (!context)
                 return;
             RmlRenderer& renderer = context->getRenderer();
-            const HtmlUIRenderStats& frame = renderer.getStats();
-            if (renderer.hasFrame(SystemRender::getFrameCount())){
-                stats.passes += frame.passes;
-                stats.drawCalls += frame.drawCalls;
-                stats.pipelineApplies += frame.pipelineApplies;
-                stats.pipelineCacheMisses += frame.pipelineCacheMisses;
-                stats.textureBinds += frame.textureBinds;
-                stats.layersPushed += frame.layersPushed;
-                stats.filtersApplied += frame.filtersApplied;
-                stats.compositesFused += frame.compositesFused;
-            }
-            stats.geometryLive += frame.geometryLive;
-            stats.geometryBytes += frame.geometryBytes;
+            stats.add(renderer.getStats(), renderer.hasFrame(SystemRender::getFrameCount()));
         }
     };
 
@@ -54,6 +47,18 @@ void UIDocumentSystem::setPreferredSampleCount(int samples){
 
 int UIDocumentSystem::getPreferredSampleCount(){
     return HtmlUIContext::getPreferredSampleCount();
+}
+
+void UIDocumentSystem::setHtmlUiRenderOptions(int glyphAtlasMiB, bool sdfPrimitives, bool transformAwareText){
+    RmlFontEngine::setAtlasBudgetMiB((size_t)std::max(glyphAtlasMiB, 0));
+    const bool primitivesChanged = RmlRenderer::isSdfPrimitives() != sdfPrimitives;
+    RmlRenderer::setSdfPrimitivesForTesting(sdfPrimitives);
+    RmlFontEngine::setTransformAwareTextForTesting(transformAwareText);
+    for (HtmlUIContext* context : HtmlUI::getContexts()){
+        if (primitivesChanged && context->getRmlContext())
+            context->getRmlContext()->DirtyBackgrounds();
+        context->markUpdated();
+    }
 }
 
 void UIDocumentSystem::renderOffscreen(const Rect& viewRect){
@@ -73,6 +78,13 @@ void UIDocumentSystem::renderOffscreen(const Rect& viewRect){
 const HtmlUIRenderStats& UIDocumentSystem::getRenderStats() const{
     static const HtmlUIRenderStats none;
     return renderState ? renderState->stats : none;
+}
+
+HtmlUIRenderStats UIDocumentSystem::getRenderStats(Entity entity) const{
+    HtmlUIContext* context = getTextureContext(entity);
+    if (!context)
+        context = getContext();
+    return context ? context->getRenderer().getStats() : HtmlUIRenderStats();
 }
 
 void UIDocumentSystem::drawComposite(PipelineType colorPipeline, bool flipY){
@@ -98,13 +110,11 @@ void UIDocumentSystem::drawComposite(CameraComponent& camera, Transform& cameraT
     // RectTransform UI lives, through the camera, so a panned or zoomed view (the editor's
     // Scene view) shows the document in place. The document's top edge is at y = 0 under a
     // UI camera (y down) and at y = height under an orthographic one (y up, UI flipped)
-    int width = 0, height = 0;
-    getLayoutSize(width, height);
-    if (width <= 0 || height <= 0)
+    float w = 0.0f, h = 0.0f;
+    getFrameSize(w, h);
+    if (w <= 0.0f || h <= 0.0f)
         return;
 
-    const float w = (float)width;
-    const float h = (float)height;
     const float ySign = (camera.type == CameraType::CAMERA_UI) ? -1.0f : 1.0f;
     // quad corners (-1,1) top-left .. (1,-1) bottom-right to world
     const Matrix4 worldFromQuad(0.5f * w, 0.0f, 0.0f, 0.5f * w,

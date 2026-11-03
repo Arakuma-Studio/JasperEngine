@@ -18,6 +18,7 @@
 #include "util/FileUtils.h"
 
 #include "mcp_docs.h"
+#include "util/LuaApiData.h"
 
 #include <algorithm>
 #include <cctype>
@@ -141,6 +142,15 @@ const std::vector<Doc>& docs() {
                 }
             }
             if (doc.title.empty()) doc.title = name;
+            splitDoc(doc);
+            out.push_back(std::move(doc));
+        }
+        // the Lua API reference, generated from lua-api.json (S23 R46)
+        {
+            Doc doc;
+            doc.name = "lua-api-reference";
+            doc.text = LuaApiData::markdown();
+            doc.title = "Lua API reference";
             splitDoc(doc);
             out.push_back(std::move(doc));
         }
@@ -456,6 +466,32 @@ void registerDocsTools(McpRegistry& registry) {
         }
     }
     {
+        // the Lua API as data (lua-api.json, S23 R46)
+        ResourceDef api;
+        api.uri = "jasper://lua-api";
+        api.name = "lua-api";
+        api.title = "Lua API (JSON)";
+        api.description = "The engine's Lua API from its one parser: classes (constructors, methods with overloads, properties, "
+                          "C++-only methods), enums, globals, engine events. jasper://lua-api?class=<Name>: one class.";
+        api.mimeType = "application/json";
+        api.read = [](const std::string& uri) { return textResource(uri, "application/json", LuaApiData::jsonText()); };
+        registry.addResource(std::move(api));
+
+        ResourceTemplateDef tmpl;
+        tmpl.uriTemplate = "jasper://lua-api?class={class}";
+        tmpl.name = "lua-api-class";
+        tmpl.title = "Lua API class";
+        tmpl.description = "One class of jasper://lua-api by its Lua name.";
+        tmpl.mimeType = "application/json";
+        tmpl.read = [](const std::string& uri, const std::map<std::string, std::string>& vars) {
+            const std::string name = vars.count("class") ? vars.at("class") : "";
+            const Json cls = LuaApiData::findClass(name);
+            if (cls.is_null()) return notFound("No Lua class \"" + name + "\" (jasper://lua-api lists them).");
+            return textResource(uri, "application/json", cls.dump(1));
+        };
+        registry.addResourceTemplate(std::move(tmpl));
+    }
+    {
         // Any other jasper://docs/<name> gets a helpful error listing the documents
         ResourceTemplateDef tmpl;
         tmpl.uriTemplate = "jasper://docs/{name}";
@@ -487,9 +523,11 @@ void registerDocsTools(McpRegistry& registry) {
             std::string text;
             if (!project) return notFound("No project is open.");
             const fs::path file = project->getProjectPath() / "AGENTS.md";
-            std::error_code ec;
-            // the editor writes it on play/build; a new project gets it on first read
-            if (!fs::exists(file, ec)) Generator::writeAgentsFile(project->getProjectPath(), project->getProjectInternalPath());
+            // the editor writes it on play/build; a new project gets it on first read. Always
+            // asked for, as Play does: it writes only what is missing (AGENTS.md, then CLAUDE.md),
+            // so a read leaves both even when a generation from a Play wrote AGENTS.md alone
+            // after its CLAUDE.md check
+            Generator::writeAgentsFile(project->getProjectPath(), project->getProjectInternalPath());
             if (!ProjectChecks::readFile(file, text)) return notFound("Can't read the project's AGENTS.md.");
             return textResource(uri, "text/markdown", text);
         };
@@ -532,7 +570,7 @@ void registerDocsTools(McpRegistry& registry) {
             {"query", string("e.g. \"Sprite setTexture\", \"KEY_SPACE\".")},
             {"parent", string("Only members of this class/enum.")},
             {"max_results", withDefault(integer("", 1, 50), 16)},
-            {"include_docs", withDefault(boolean("Also search the reference docs."), true)},
+            {"include_docs", withDefault(boolean(""), true)},
             {"max_doc_results", withDefault(integer("", 0, 40), 8)}
         }, {"query"});
         tool.annotations.readOnly = true;
@@ -549,7 +587,7 @@ void registerDocsTools(McpRegistry& registry) {
             "ground truth for signatures, overloads, enum values, macros, key codes (D_KEY_* in C++, Input.KEY_* in "
             "Lua); matches [{path, line, text}]; context: read_engine_source.";
         tool.inputSchema = object({
-            {"query", string("e.g. \"Quaternion(\", \"isKeyPressed\".")},
+            {"query", string("")},
             {"path_filter", string("Substring of the file path, e.g. \"math/\", \"binding\".")},
             {"max_results", withDefault(integer("", 1, 200), 40)}
         }, {"query"});
@@ -566,7 +604,7 @@ void registerDocsTools(McpRegistry& registry) {
             "Read an engine source file (path relative to the engine root, e.g. core/math/Quaternion.h, "
             "core/script/binding/CoreClassesLua.cpp).";
         tool.inputSchema = object({
-            {"path", string("Engine-relative path.")},
+            {"path", string("")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
             {"max_lines", withDefault(integer("", 1, 20000), 2000)}
         }, {"path"});

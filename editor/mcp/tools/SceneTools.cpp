@@ -4,9 +4,11 @@
 // W1: scenes (list, create, open, close, select, save, rename, delete), child scenes, main
 // camera, scene settings
 #include "McpTools.h"
+#include "shader/ShaderGlobals.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
+#include "mcp/McpDataSafety.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
@@ -14,6 +16,8 @@
 
 #include "PostProcessingPresets.h"
 #include "Project.h"
+#include "StreamPreserved.h"
+#include "command/CommandNames.h"
 #include "command/type/AddChildSceneCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/MultiPropertyCmd.h"
@@ -25,6 +29,7 @@
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 #include "util/FileUtils.h"
+#include "util/CubeLut.h"
 #include "util/Util.h"
 #include "shader/ShaderManifest.h"
 #include "window/ProjectWindow.h"
@@ -33,7 +38,9 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <memory>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
@@ -66,14 +73,14 @@ bool parseUnsaved(const CallPtr& call, UnsavedChoice& out) {
 }
 
 Json unsavedSchema() {
-    return withDefault(stringEnum("Unsaved changes of a scene that closes (cancel: fail).", {"cancel", "save", "discard"}),
+    return withDefault(stringEnum("cancel: fail.", {"cancel", "save", "discard"}),
                        "cancel");
 }
 
 // set_main_camera's entity: null = the default camera
 Json nullableEntityRef(const std::string& description = {}) {
     Json ref = entityRef(description);
-    ref["type"].push_back("null");
+    ref["type"] = Json::array({"string", "null"});
     return ref;
 }
 
@@ -82,7 +89,8 @@ bool scenePathArg(Project* project, const std::string& given, fs::path& relative
     fs::path rel = FileUtils::pathFromUtf8(given).lexically_normal();
     if (rel.extension() != ".scene") rel += ".scene";
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, FileUtils::pathToGenericUtf8(rel), absolute, error)) return false;
+    // a file the tool writes: inside the project once links are resolved
+    if (!McpRefs::resolveProjectWritePath(project, FileUtils::pathToGenericUtf8(rel), absolute, error)) return false;
     relative = rel;
     return true;
 }
@@ -111,6 +119,9 @@ Json sceneInfo(Project* project, SceneProject& scene) {
         item["main_camera"] = McpValues::entityToJson(&scene, scene.mainCamera);
     }
     if (!scene.childScenes.empty()) item["child_scenes"] = childScenesJson(project, scene);
+    // what its file's load could not read (docs/data-safety.md); a scene with dropped values
+    // is saved only with allow_data_loss
+    if (scene.scene) item["degraded"] = degradedJson(scene);
     const uint32_t runtime = project->getPlayRuntimeSceneId(scene.id);
     if (runtime != NULL_PROJECT_SCENE && runtime != scene.id) item["runtime_scene_id"] = runtime;
     return item;
@@ -178,20 +189,69 @@ void createSceneTool(const CallPtr& call) {
              data);
 }
 
+// recovery: {available, autosaved_at, status, applied} of the scene just opened
+Json recoveryJson(const RecoveryOutcome& outcome, const char* applied) {
+    const bool usable = outcome.checked && outcome.backup.status == BackupStatus::Usable;
+    return {{"available", usable},
+            {"autosaved_at", outcome.backup.savedAt},
+            {"status", outcome.checked ? backupStatusName(outcome.backup.status) : "none"},
+            {"applied", usable ? applied : "none"}};
+}
+
+const char* recoveryName(RecoveryChoice choice) {
+    switch (choice) {
+        case RecoveryChoice::Restore: return "restore";
+        case RecoveryChoice::Discard: return "discard";
+        case RecoveryChoice::Keep: return "keep";
+    }
+    return "keep";
+}
+
 void openSceneTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     UnsavedChoice unsaved;
     if (!parseUnsaved(call, unsaved)) return;
+    // a crash backup of the scene: decided here, never by a modal (R36)
+    const std::string recoveryArg = args.value("recovery", std::string("keep"));
+    RecoveryChoice recovery = RecoveryChoice::Keep;
+    if (recoveryArg == "restore") recovery = RecoveryChoice::Restore;
+    else if (recoveryArg == "discard") recovery = RecoveryChoice::Discard;
+    else if (recoveryArg != "keep") {
+        call->fail("recovery is keep, restore or discard.");
+        return;
+    }
     std::string given;
     if (args.contains("scene")) {
         if (args["scene"].is_string()) given = args["scene"].get<std::string>();
         std::string error;
         if (SceneProject* known = McpRefs::resolveScene(project, args["scene"], error)) {
             if (known->opened && known->scene) {
-                project->setSelectedSceneId(known->id);
-                call->ok("Scene " + std::to_string(known->id) + " \"" + known->name + "\" is open; selected it.",
-                         Json{{"scene", sceneInfo(project, *known)}});
+                // open already: its backup can still be restored or discarded now
+                RecoveryOutcome outcome;
+                const uint32_t knownId = known->id;
+                if (!known->filepath.empty()) {
+                    outcome.checked = true;
+                    outcome.backup = SceneBackups::scan(project->getProjectPath(), project->normalizeToProjectRelative(known->filepath));
+                    outcome.applied = recovery;
+                    if (outcome.backup.status == BackupStatus::Usable) {
+                        if (recovery == RecoveryChoice::Restore && !project->restoreSceneFromBackup(knownId)) {
+                            call->fail("The auto-saved copy of the scene could not be restored (see the console).");
+                            return;
+                        }
+                        if (recovery == RecoveryChoice::Discard) project->discardSceneBackup(knownId);
+                    }
+                }
+                SceneProject* current = project->getScene(project->findSceneByPath(project->getProjectPath() / outcome.backup.source));
+                if (!current) current = project->getScene(knownId);
+                if (!current) {
+                    call->fail("The scene is gone.");
+                    return;
+                }
+                project->setSelectedSceneId(current->id);
+                call->ok("Scene " + std::to_string(current->id) + " \"" + current->name + "\" is open; selected it.",
+                         Json{{"scene", sceneInfo(project, *current)}, {"recovery", recoveryJson(outcome, recoveryName(outcome.applied))},
+                              {"load_report", loadReportSummary(current->loadReport, findPreservedStore(current->scene))}});
                 return;
             }
             if (known->filepath.empty()) {
@@ -218,14 +278,29 @@ void openSceneTool(const CallPtr& call) {
         call->fail("\"" + given + "\" is not a .scene file.");
         return;
     }
+    project->setNextRecoveryChoice(recovery);
     const uint32_t id = project->openSceneNow(given, args.value("close_previous", false), unsaved, &error);
+    project->setNextRecoveryChoice(RecoveryChoice::Keep);
     SceneProject* scene = id != NULL_PROJECT_SCENE ? project->getScene(id) : nullptr;
     if (!scene) {
         call->fail(error.empty() ? "The scene could not be opened." : error);
         return;
     }
-    call->ok("Opened scene " + std::to_string(id) + " \"" + scene->name + "\" and selected it.",
-             Json{{"scene", sceneInfo(project, *scene)}});
+    const RecoveryOutcome& outcome = project->getLastRecovery();
+    std::string note;
+    if (outcome.checked && outcome.backup.status == BackupStatus::Usable) {
+        note = outcome.applied == RecoveryChoice::Restore ? " Restored its auto-saved changes (modified; save to keep them)." :
+               outcome.applied == RecoveryChoice::Discard ? " Discarded its auto-saved changes." :
+               " It has auto-saved changes from a session that did not close normally (" + outcome.backup.savedAt +
+               "): open_scene recovery=restore or discard.";
+    }
+    const Json report = loadReportSummary(scene->loadReport, findPreservedStore(scene->scene));
+    if (report["skipped"].get<size_t>() > 0) {
+        note += " It did not load completely: get_load_report lists what was kept and dropped.";
+    }
+    call->ok("Opened scene " + std::to_string(id) + " \"" + scene->name + "\" and selected it." + note,
+             Json{{"scene", sceneInfo(project, *scene)}, {"recovery", recoveryJson(outcome, recoveryName(outcome.applied))},
+                  {"load_report", report}});
 }
 
 void closeSceneTool(const CallPtr& call) {
@@ -265,28 +340,44 @@ void saveSceneTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     std::string error;
+    // a scene that did not load completely is written only when the agent accepts the loss
+    const DegradedSavePolicy policy = args.value("allow_data_loss", false) ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse;
 
     if (args.value("all", false)) {
         Json saved = Json::array();
         Json skipped = Json::array();
         Json failed = Json::array();
+        Json refused = Json::array();
         for (SceneProject* scene : project->getScenesAndPrefabStages()) {
             if (!scene->scene || !project->hasSceneUnsavedChanges(scene->id)) continue;
             if (scene->filepath.empty() && !project->isPrefabStage(scene->id)) {
                 skipped.push_back(Json{{"id", scene->id}, {"name", scene->name}, {"reason", "never saved: save_scene with a path"}});
                 continue;
             }
-            if (project->saveSceneNow(scene->id, {}, &error)) {
-                saved.push_back(Json{{"id", scene->id}, {"name", scene->name}});
+            const uint32_t id = scene->id;
+            const std::string name = scene->name;
+            SaveResult result = SaveResult::Failed;
+            if (project->saveSceneNow(id, {}, &error, policy, &result)) {
+                SceneProject* after = project->getScene(id);
+                saved.push_back(Json{{"id", id}, {"name", name}, {"degraded", after ? degradedJson(*after) : Json(nullptr)}});
+            } else if (result == SaveResult::RefusedDegraded) {
+                SceneProject* after = project->getScene(id);
+                Json item = after ? degradedDocumentError(after->filepath.generic_string(), after->loadReport) : Json::object();
+                item["id"] = id;
+                item["name"] = name;
+                refused.push_back(item);
             } else {
-                failed.push_back(Json{{"id", scene->id}, {"name", scene->name}, {"error", error}});
+                failed.push_back(Json{{"id", id}, {"name", name}, {"error", error}});
             }
         }
-        Json data = {{"saved", saved}, {"skipped", skipped}, {"failed", failed}};
+        Json data = {{"saved", saved}, {"skipped", skipped}, {"failed", failed}, {"refused", refused}};
         const std::string text = "Saved " + std::to_string(saved.size()) + " scene(s)" +
             (skipped.empty() ? std::string() : ", skipped " + std::to_string(skipped.size()) + " untitled") +
-            (failed.empty() ? std::string() : ", " + std::to_string(failed.size()) + " failed") + ".";
-        if (!failed.empty()) call->fail(text, data);
+            (failed.empty() ? std::string() : ", " + std::to_string(failed.size()) + " failed") +
+            (refused.empty() ? std::string() : ", refused " + std::to_string(refused.size()) +
+                " that did not load completely (allow_data_loss=true writes them anyway)") + ".";
+        if (!refused.empty()) data["code"] = "degraded_document";
+        if (!failed.empty() || !refused.empty()) call->fail(text, data);
         else call->ok(text, data);
         return;
     }
@@ -303,7 +394,8 @@ void saveSceneTool(const CallPtr& call) {
         }
         const fs::path current = project->normalizeToProjectRelative(scene->filepath).lexically_normal();
         if (relative != current) {
-            // Save As: the scene now lives in the new file (the old one stays on disk)
+            // Save As: the scene now lives in the new file (the old one stays on disk, and with
+            // it whatever this editor could not read: never gated)
             if (scene->playState != ScenePlayState::STOPPED) {
                 call->fail("Cannot save a scene while it plays.");
                 return;
@@ -314,7 +406,7 @@ void saveSceneTool(const CallPtr& call) {
                 return;
             }
             std::error_code ec;
-            fs::create_directories((project->getProjectPath() / relative).parent_path(), ec);
+            FileUtils::createDirectories((project->getProjectPath() / relative).parent_path(), ec);
             if (!project->saveSceneToPath(id, relative)) {
                 call->fail("Failed to save the scene to " + FileUtils::pathToGenericUtf8(relative) + " (see the console).");
                 return;
@@ -322,7 +414,15 @@ void saveSceneTool(const CallPtr& call) {
             if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
             SceneProject* saved = project->getScene(id);
             call->ok("Saved scene " + std::to_string(id) + " as " + FileUtils::pathToGenericUtf8(relative) + ".",
-                     Json{{"scene", sceneInfo(project, *saved)}});
+                     Json{{"scene", sceneInfo(project, *saved)}, {"degraded", degradedJson(*saved)}});
+            return;
+        }
+    }
+    // saved in place: its file (a link out of the project would be written through) stays inside
+    if (!scene->filepath.empty()) {
+        const fs::path file = scene->filepath.is_absolute() ? scene->filepath : project->getProjectPath() / scene->filepath;
+        if (const std::string escape = McpRefs::writeEscape(project, file); !escape.empty()) {
+            call->fail(escape);
             return;
         }
     }
@@ -333,7 +433,21 @@ void saveSceneTool(const CallPtr& call) {
             return;
         }
     }
-    if (!project->saveSceneNow(id, untitledPath, &error)) {
+    SaveResult result = SaveResult::Failed;
+    if (!project->saveSceneNow(id, untitledPath, &error, policy, &result)) {
+        SceneProject* refused = project->getScene(id);
+        if (result == SaveResult::RefusedDegraded && refused) {
+            if (project->isPrefabStage(id)) {
+                const PrefabStage* stage = project->getPrefabStage(id);
+                const Prefab* prefab = stage ? project->getPrefab(stage->assetPath) : nullptr;
+                if (prefab) {
+                    failDegraded(*call, stage->assetPath.generic_string(), prefab->loadReport);
+                    return;
+                }
+            }
+            failDegraded(*call, refused->filepath.generic_string(), refused->loadReport);
+            return;
+        }
         call->fail(error.empty() ? "The scene could not be saved." : error);
         return;
     }
@@ -345,7 +459,68 @@ void saveSceneTool(const CallPtr& call) {
     }
     call->ok("Saved scene " + std::to_string(id) + " \"" + saved->name + "\"" +
              (saved->filepath.empty() ? "." : " to " + FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(saved->filepath)) + "."),
-             Json{{"scene", sceneInfo(project, *saved)}});
+             Json{{"scene", sceneInfo(project, *saved)}, {"degraded", degradedJson(*saved)}});
+}
+
+// ------------------------------------------------------------------ load reports / backups
+
+void getLoadReportTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    const PreservedStore* store = findPreservedStore(scene->scene);
+    Json report = loadReportJson(scene->loadReport, store);
+    report["scene_id"] = scene->id;
+    std::string text = "Scene " + std::to_string(scene->id) + " \"" + scene->name + "\": ";
+    const size_t preserved = report["preserved"].get<size_t>();
+    const size_t dropped = report["dropped"].get<size_t>();
+    if (preserved == 0 && dropped == 0) {
+        text += "loaded completely.";
+    } else {
+        text += std::to_string(preserved) + " value(s) this editor does not read are kept in the file, " + std::to_string(dropped) +
+                " would be lost by a save" + (dropped > 0 ? " (save_scene refuses without allow_data_loss)." : ".");
+        for (const LoadIssue* issue : scene->loadReport.outstanding(store)) {
+            text += "\n" + issue->consoleLine();
+        }
+    }
+    (void)project;
+    call->ok(text, report);
+}
+
+void listSceneBackupsTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    Json backups = Json::array();
+    std::string text;
+    for (const SceneBackupInfo& backup : project->listSceneBackups()) {
+        Json item = backupJson(project, backup);
+        text += "\n" + item["source"].get<std::string>() + " -> " + item["backup"].get<std::string>() + " (" +
+                item["status"].get<std::string>() + ", auto-saved " + backup.savedAt + ")";
+        backups.push_back(item);
+    }
+    call->ok(backups.empty() ? "No auto-saved backups." : std::to_string(backups.size()) + " backup(s):" + text, Json{{"backups", backups}});
+}
+
+void discardSceneBackupTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    std::string error;
+    if (SceneProject* scene = McpRefs::resolveScene(project, args.value("scene", Json()), error)) {
+        if (project->discardSceneBackup(scene->id)) {
+            call->ok("Deleted the auto-saved backup of scene " + std::to_string(scene->id) + " \"" + scene->name + "\".",
+                     Json{{"scene_id", scene->id}, {"discarded", true}});
+        } else {
+            call->ok("Scene \"" + scene->name + "\" has no auto-saved backup.", Json{{"scene_id", scene->id}, {"discarded", false}});
+        }
+        return;
+    }
+    const std::string given = args.value("scene", Json()).is_string() ? args["scene"].get<std::string>() : std::string();
+    if (!given.empty() && Util::isSceneFile(given)) {
+        const bool removed = project->discardSceneBackup(fs::path(given));
+        call->ok(removed ? "Deleted the auto-saved backup of " + given + "." : given + " has no auto-saved backup.",
+                 Json{{"scene", given}, {"discarded", removed}});
+        return;
+    }
+    call->fail(error.empty() ? "Pass scene: a scene id, name or .scene path." : error);
 }
 
 void renameSceneTool(const CallPtr& call) {
@@ -406,6 +581,9 @@ public:
         if (removed) restore();
     }
 
+    std::string describe() const override { return "Remove Scene " + CommandNames::file(scenePath); }
+    const char* typeName() const override { return "RemoveProjectSceneCmd"; }
+
 private:
     void restore() {
         if (scenePath.empty()) return;
@@ -454,6 +632,12 @@ void deleteSceneTool(const CallPtr& call) {
     const std::string name = scene->name;
     const fs::path relative = project->normalizeToProjectRelative(scene->filepath);
     const fs::path absolute = project->getProjectPath() / relative;
+    if (deleteFile) {
+        if (const std::string escape = McpRefs::writeEscape(project, absolute, McpRefs::WriteUse::Entry); !escape.empty()) {
+            call->fail(escape);
+            return;
+        }
+    }
     CommandHistory* history = project->getProjectCommandHistory();
     const size_t mark = history->mark();
     std::string error;
@@ -462,8 +646,10 @@ void deleteSceneTool(const CallPtr& call) {
         return;
     }
     if (deleteFile) {
-        if (!runProjectCommand(project, new DeleteFileCmd(project, {absolute}, project->getProjectPath()), error,
-                               "The scene file could not be deleted.")) {
+        // the file moved to the trash beneath the project (a link: the link itself)
+        auto* deleteCmd = new DeleteFileCmd(project, {absolute}, project->getProjectPath());
+        deleteCmd->setWriteRoots(McpRefs::trustedRoots(project));
+        if (!runProjectCommand(project, deleteCmd, error, "The scene file could not be deleted.")) {
             history->undo();
             call->fail(error);
             return;
@@ -591,8 +777,8 @@ void setMainCameraTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ scene settings
 
-enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, Filter, PostProcess,
-                         PostProcessing, PostProcessingField };
+enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, Filter, PostProcess,
+                         PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler };
 
 struct SceneSetting {
     std::string name;
@@ -611,13 +797,22 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"global_illumination_color", SettingKind::Vector3, "ambient light color [r,g,b] (sRGB)"},
         {"global_illumination_intensity", SettingKind::Float, "ambient light intensity"},
         {"max_lights_per_object", SettingKind::Int, "lights each object is lit by, 1-16 (the rest reaching it fold into its ambient)"},
-        {"shadows_quality", SettingKind::ShadowQuality, "3D shadow edge filtering: none, low, medium, high"},
+        {"lit_quality", SettingKind::LitQuality, "the built-in Lit's quality: standard (as before), high (specular anti-aliasing, direct-light energy compensation; new scenes)"},
+        {"physical_light_ev100", SettingKind::Float, "Physical Light Exposure, EV100 -6..24 (Sunny 15, Overcast 12, Interior 7, Night 2): only lights in lux, candela or lumen"},
+        {"shadows_quality", SettingKind::ShadowQuality,
+         "3D shadow quality tier: auto (the project's tier of the platform), none (that tier, every light hard), low, medium, high, ultra (PCSS)"},
+        {"shadow_distance", SettingKind::Float, "metres of directional shadows from the camera (0: the quality tier's; a light's own overrides it)"},
+        {"shadow_fade_fraction", SettingKind::Float, "last fraction of the shadow distance over which directional shadows fade out (0..1)"},
+        {"shadow_cascade_blend", SettingKind::Bool, "blend (dither on Low) between shadow cascades over a band before each split"},
+        {"shadows_debug_view", SettingKind::ShadowDebugView,
+         "Scene view shadow debug view (editor only, never saved, no undo step): none, cascades, shadow_factor, texel_density, cache, atlas"},
         {"ambient_light_2d_color", SettingKind::Vector3, "2D ambient light color [r,g,b] (sRGB)"},
         {"ambient_light_2d_intensity", SettingKind::Float, "2D ambient light intensity"},
-        {"shadows_2d_quality", SettingKind::ShadowQuality, "2D shadow edge filtering: none, low, medium, high"},
+        {"shadows_2d_quality", SettingKind::ShadowQuality, "2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high)"},
         {"physics_gravity_2d", SettingKind::Vector2, "2D gravity [x,y]"},
         {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},
         {"physics_interpolation", SettingKind::Bool, "draw bodies between their last two fixed steps (smooth at any frame rate)"},
+        {"physics_2d_sub_steps", SettingKind::Int, "Box2D sub-steps per fixed step, 1-16 (default 4; more = stiffer joints)"},
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
         {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
@@ -635,6 +830,11 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"ssr_blur", SettingKind::Float, "SSR blur"},
         {"ssr_max_steps", SettingKind::Int, "SSR ray march steps"},
         {"ssr_debug_mode", SettingKind::Int, "SSR debug view (0 off)"},
+        {"canvas_scaler", SettingKind::CanvasScaler,
+         "UI scale (Canvas Scaler) of the scene's UI and screen HTML documents: {use_project_default, mode: follow_game_canvas|"
+         "constant_pixel_size|scale_with_screen_size|constant_physical_size, reference: [w,h], match_mode: "
+         "match_width_or_height|expand|shrink, match: 0..1, scale_factor, physical_unit, fallback_dpi}; fields given "
+         "override the project default (use_project_default false)"},
         {"fixed_resolution_enabled", SettingKind::Bool, "render at a fixed resolution, then scale"},
         {"fixed_resolution_width", SettingKind::Int, "fixed resolution width (>= 1)"},
         {"fixed_resolution_height", SettingKind::Int, "fixed resolution height (>= 1)"},
@@ -675,6 +875,7 @@ Json postProcessingFieldToJson(const PostProcessingSettings& settings, const Pos
         case FT::Float: return McpValues::number(*(const float*)ref);
         case FT::Vector3: return McpValues::toJson(*(const Vector3*)ref);
         case FT::String: return McpValues::assetPathToJson(project, *(const std::string*)ref);
+        case FT::Asset: return McpValues::assetPathToJson(project, ((const AssetRef*)ref)->path);
         case FT::Enum: return std::string(field.enumNames[*(const int*)ref]);
     }
     return nullptr;
@@ -739,10 +940,12 @@ bool postProcessingFieldFromJson(Project* project, const PostProcessingSettings:
             *(Vector3*)ref = v;
             return true;
         }
-        case FT::String: {
-            if (!value.is_string()) { error = name + " must be a project image path (\"\" none)."; return false; }
+        case FT::String:
+        case FT::Asset: {
+            if (!value.is_string()) { error = name + " must be a project asset path (\"\" none)."; return false; }
             const std::string path = value.get<std::string>();
-            if (!path.empty() && !fs::exists(project->getProjectPath() / path)) {
+            // a GUID names the file too (assetPathFromJson resolves it)
+            if (!path.empty() && !Guid::isValidText(path) && !fs::exists(project->getProjectPath() / path)) {
                 error = name + ": no file \"" + path + "\" in the project.";
                 return false;
             }
@@ -752,7 +955,25 @@ bool postProcessingFieldFromJson(Project* project, const PostProcessingSettings:
                 error = name + ": " + error;
                 return false;
             }
-            *(std::string*)ref = stored;
+            if (field.type == FT::Asset) {
+                // the file's GUID now, not at the next save: a rename or move of it before the
+                // scene is saved is followed. A file written a moment ago that no asset refresh
+                // has seen yet (the refresh is a Background walk) is imported first.
+                Guid guid;
+                AssetDatabase& database = project->getAssetDatabase();
+                if (!stored.empty() && database.isOpen()) {
+                    const fs::path full = project->resolveAssetPath(FileUtils::pathFromUtf8(stored));
+                    guid = database.getAssetGuid(full);
+                    std::error_code ec;
+                    if (guid.isNull() && fs::is_regular_file(full, ec)) {
+                        project->importPrefabFiles(full);
+                        guid = database.getAssetGuid(full);
+                    }
+                }
+                *(AssetRef*)ref = AssetRef(stored, guid);
+            } else {
+                *(std::string*)ref = stored;
+            }
             return true;
         }
         case FT::Enum: {
@@ -805,10 +1026,13 @@ const char* kindName(SettingKind kind) {
         case SettingKind::ShadowQuality:
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
+        case SettingKind::LitQuality:
+        case SettingKind::ShadowDebugView:
         case SettingKind::Filter: return "enum";
         case SettingKind::PostProcess: return "post_process";
         case SettingKind::PostProcessing: return "post_processing";
         case SettingKind::PostProcessingField: return "post_processing_field";
+        case SettingKind::CanvasScaler: return "canvas_scaler";
     }
     return "unknown";
 }
@@ -816,8 +1040,10 @@ const char* kindName(SettingKind kind) {
 const McpValues::EnumOptions* settingOptions(SettingKind kind) {
     switch (kind) {
         case SettingKind::ShadowQuality: return McpValues::enumTable("shadow_quality");
+        case SettingKind::ShadowDebugView: return McpValues::enumTable("shadow_debug_view");
         case SettingKind::SceneColorScale: return McpValues::enumTable("scene_color_scale");
         case SettingKind::LightState: return McpValues::enumTable("light_state");
+        case SettingKind::LitQuality: return McpValues::enumTable("lit_quality");
         case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
         default: return nullptr;
     }
@@ -834,6 +1060,12 @@ Json postProcessToJson(const std::vector<PostProcessPass>& passes, Project* proj
         Json textures = McpValues::shaderTexturesToJson(project, nullptr, pass.textures);
         if (!textures.empty()) item["textures"] = textures;
         if (pass.scale != 1.0f) item["scale"] = pass.scale;
+        // members following global shader values {member: global}, only when set
+        if (!pass.shaderGlobalBindings.empty()) {
+            Json bindings = Json::object();
+            for (const auto& binding : pass.shaderGlobalBindings) bindings[binding.first] = binding.second;
+            item["shaderGlobalBindings"] = bindings;
+        }
         list.push_back(item);
     }
     return list;
@@ -875,6 +1107,10 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<ShadowQuality>(setting.name)
                                                         : Catalog::getSceneProperty<ShadowQuality>(scene, setting.name)),
                                          *settingOptions(setting.kind));
+        case SettingKind::ShadowDebugView:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<ShadowDebugView>(setting.name)
+                                                        : Catalog::getSceneProperty<ShadowDebugView>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
         case SettingKind::SceneColorScale:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<SceneColorScale>(setting.name)
                                                         : Catalog::getSceneProperty<SceneColorScale>(scene, setting.name)),
@@ -883,6 +1119,10 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LightState>(setting.name)
                                                         : Catalog::getSceneProperty<LightState>(scene, setting.name)),
                                          *settingOptions(setting.kind));
+        case SettingKind::LitQuality:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LitQuality>(setting.name)
+                                                        : Catalog::getSceneProperty<LitQuality>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
         case SettingKind::Filter:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<TextureFilter>(setting.name)
                                                         : Catalog::getSceneProperty<TextureFilter>(scene, setting.name)),
@@ -890,6 +1130,13 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
         case SettingKind::PostProcess:
             return postProcessToJson(defaults ? Catalog::getScenePropertyDefault<std::vector<PostProcessPass>>(setting.name)
                                               : Catalog::getSceneProperty<std::vector<PostProcessPass>>(scene, setting.name), project);
+        case SettingKind::CanvasScaler: {
+            const SceneCanvasScaler value = defaults ? Catalog::getScenePropertyDefault<SceneCanvasScaler>(setting.name)
+                                                     : Catalog::getSceneProperty<SceneCanvasScaler>(scene, setting.name);
+            Json json = McpValues::canvasScalerToJson(value.settings);
+            json["use_project_default"] = value.useProjectDefault;
+            return json;
+        }
     }
     return nullptr;
 }
@@ -944,9 +1191,11 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (!value.is_number_integer()) return expect("an integer");
             if (name.rfind("fixed_resolution_", 0) == 0 && value.get<int>() < 1) return expect("at least 1");
             if (name == "max_lights_per_object" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
+            if (name == "physics_2d_sub_steps" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
             if (!value.is_number()) return expect("a number");
+            if (name == "physical_light_ev100" && (value.get<float>() < -6.0f || value.get<float>() > 24.0f)) return expect("-6 to 24");
             return new ScenePropertyCmd<float>(project, id, name, value.get<float>());
         case SettingKind::String: {
             if (!value.is_string()) return expect("a string (\"\" for the built-in shader)");
@@ -985,6 +1234,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::ShadowQuality:
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
+        case SettingKind::LitQuality:
         case SettingKind::Filter: {
             int parsed = 0;
             std::string why;
@@ -995,11 +1245,35 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (setting.kind == SettingKind::ShadowQuality) return new ScenePropertyCmd<ShadowQuality>(project, id, name, (ShadowQuality)parsed);
             if (setting.kind == SettingKind::SceneColorScale) return new ScenePropertyCmd<SceneColorScale>(project, id, name, (SceneColorScale)parsed);
             if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
+            if (setting.kind == SettingKind::LitQuality) return new ScenePropertyCmd<LitQuality>(project, id, name, (LitQuality)parsed);
             return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);
         }
         case SettingKind::PostProcessing:
         case SettingKind::PostProcessingField:
             break; // setSceneSettingsTool gathers them (applyPostProcessingSetting)
+        case SettingKind::ShadowDebugView:
+            break; // editor state, applied by setSceneSettingsTool without an undo step
+        case SettingKind::CanvasScaler: {
+            if (!value.is_object()) return expect("an object {use_project_default, mode, reference, match_mode, match, ...}");
+            SceneCanvasScaler scaler = Catalog::getSceneProperty<SceneCanvasScaler>(scene->scene, name);
+            Json fields = value;
+            bool useDefaultGiven = false;
+            if (value.contains("use_project_default")) {
+                if (!value["use_project_default"].is_boolean()) return expect("an object whose use_project_default is true or false");
+                useDefaultGiven = true;
+                fields.erase("use_project_default");
+            }
+            // fields on a scene that used the project default start from that default
+            if (!fields.empty() && scaler.useProjectDefault && !useDefaultGiven)
+                scaler.settings = project->getUIScale();
+            std::string why;
+            if (!McpValues::canvasScalerFromJson(fields, scaler.settings, why)) {
+                error = name + ": " + why + ".";
+                return nullptr;
+            }
+            scaler.useProjectDefault = useDefaultGiven ? value["use_project_default"].get<bool>() : (fields.empty() && scaler.useProjectDefault);
+            return new ScenePropertyCmd<SceneCanvasScaler>(project, id, name, scaler);
+        }
         case SettingKind::PostProcess: {
             if (!value.is_array()) return expect("an array of {shader, enabled, uniforms, textures, scale}");
             std::vector<PostProcessPass> passes;
@@ -1012,9 +1286,10 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 }
                 // a misspelt key would otherwise be dropped without a word
                 for (auto key = item.begin(); key != item.end(); ++key) {
-                    static const std::set<std::string> known = {"shader", "enabled", "uniforms", "textures", "scale"};
+                    static const std::set<std::string> known = {"shader", "enabled", "uniforms", "textures", "scale", "shaderGlobalBindings"};
                     if (!known.count(key.key())) {
-                        error = where + ": unknown key \"" + key.key() + "\". A pass is {shader, enabled, uniforms, textures, scale}.";
+                        error = where + ": unknown key \"" + key.key() + "\". A pass is {shader, enabled, uniforms, textures, scale, "
+                                "shaderGlobalBindings}.";
                         return nullptr;
                     }
                 }
@@ -1060,6 +1335,23 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                         return nullptr;
                     }
                     pass.scale = item["scale"].get<float>();
+                }
+                if (item.contains("shaderGlobalBindings")) {
+                    // {member: global}: u_fs_postParams members that follow global shader values
+                    const Json& bindings = item["shaderGlobalBindings"];
+                    if (!bindings.is_object()) {
+                        error = where + ".shaderGlobalBindings is an object {member: global name}.";
+                        return nullptr;
+                    }
+                    for (auto it = bindings.begin(); it != bindings.end(); ++it) {
+                        std::string invalid;
+                        if (it.value().is_null()) continue;
+                        if (!it.value().is_string() || !ShaderGlobals::isValidName(it.value().get<std::string>(), &invalid)) {
+                            error = where + ".shaderGlobalBindings." + it.key() + ": " + (invalid.empty() ? "a global's name" : invalid) + ".";
+                            return nullptr;
+                        }
+                        ShaderGlobals::setBinding(pass.shaderGlobalBindings, it.key(), it.value().get<std::string>());
+                    }
                 }
                 passes.push_back(pass);
             }
@@ -1175,6 +1467,17 @@ void setSceneSettingsTool(const CallPtr& call) {
             postProcessingSet = true;
             continue;
         }
+        if (setting->kind == SettingKind::ShadowDebugView) {
+            // editor state, not a setting: applied at once, no undo step, never saved
+            int parsed = 0;
+            if (!McpValues::enumFromJson(it.value(), *settingOptions(setting->kind), parsed, error)) {
+                delete multi;
+                call->fail(it.key() + ": " + error);
+                return;
+            }
+            scene->scene->setShadowDebugView((ShadowDebugView)parsed);
+            continue;
+        }
         Command* cmd = buildSettingCommand(project, scene, *setting, it.value(), error);
         if (!cmd) {
             delete multi;
@@ -1188,7 +1491,9 @@ void setSceneSettingsTool(const CallPtr& call) {
     }
     const uint32_t id = scene->id;
     std::string error;
-    if (!runSceneCommand(id, multi, error)) {
+    if (multi->empty()) {
+        delete multi;
+    }else if (!runSceneCommand(id, multi, error)) {
         call->fail(error);
         return;
     }
@@ -1197,7 +1502,9 @@ void setSceneSettingsTool(const CallPtr& call) {
     for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
         values[it.key()] = settingValue(updated->scene, *findSetting(it.key()), false, project);
     }
-    call->ok("Set " + std::to_string(values.size()) + " scene setting(s) (one undo step).",
+    const bool debugView = args["settings"].contains("shadows_debug_view");
+    call->ok("Set " + std::to_string(values.size()) + " scene setting(s) (one undo step" +
+             (debugView ? std::string("; shadows_debug_view takes none).") : std::string(").")),
              Json{{"scene_id", id}, {"settings", values}});
 }
 
@@ -1308,7 +1615,7 @@ void applyPostProcessingPresetTool(const CallPtr& call) {
     }
     const uint32_t sceneId = scene->id;
     std::string error;
-    if (!runSceneCommand(sceneId, new ScenePropertyCmd<PostProcessingSettings>(project, sceneId, "post_processing", preset->settings), error)) {
+    if (!runSceneCommand(sceneId, makePostProcessingCommand(project, sceneId, preset->settings, "Apply " + preset->name + " Preset"), error)) {
         call->fail(error);
         return;
     }
@@ -1319,6 +1626,186 @@ void applyPostProcessingPresetTool(const CallPtr& call) {
              Json{{"scene_id", sceneId}, {"preset", preset->id},
                   {"settings", postProcessingToJson(updated->scene->getPostProcessing(), project)},
                   {"cost", postProcessingCostToJson(cost)}});
+}
+
+// ------------------------------------------------------------------ S13: LUTs, status, debug
+
+const char* lutEncodingId(LutInputEncoding encoding) {
+    const PostProcessingSettings::Field* field = PostProcessingSettings::findField("lutInputEncoding");
+    const int index = (int)encoding;
+    return field && field->enumNames && index >= 0 && index <= (int)LutInputEncoding::DAVINCI_INTERMEDIATE ? field->enumNames[index] : "auto";
+}
+
+void inspectColorLutTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const std::string requested = call->args().value("path", std::string());
+    std::string stored;
+    std::string error;
+    if (requested.empty()) {
+        call->fail("path is required: a project-relative .cube file or LUT strip image (or its GUID).");
+        return;
+    }
+    if (!McpValues::assetPathFromJson(project, requested, stored, error)) {
+        call->fail(error);
+        return;
+    }
+    const fs::path absolute = project->resolveAssetPath(stored);
+    const std::string relative = McpValues::assetPathToJson(project, stored);
+    if (!fs::exists(absolute)) {
+        call->fail("No file \"" + relative + "\" in the project.");
+        return;
+    }
+    // read fresh (not through the renderer's cache): the file as it is on disk now; a .cube is
+    // parsed here so a bad one reports without logging an engine error
+    CubeLut lut;
+    bool ok = false;
+    if (Util::isColorLutFile(absolute.string())) {
+        std::ifstream in(absolute, std::ios::binary);
+        std::ostringstream text;
+        text << in.rdbuf();
+        ok = parseCubeLut(text.str(), lut, error);
+    } else {
+        ok = loadColorLut(absolute.string(), lut, &error);
+    }
+    Json out = {{"path", relative}, {"ok", ok}, {"error", ok ? Json(nullptr) : Json(error)}};
+    if (!ok) {
+        call->ok("\"" + relative + "\" is not a usable colour LUT: " + error, out);
+        return;
+    }
+    std::string reason;
+    const LutInputEncoding proposed = proposeEncoding(lut, reason);
+    const LutStage stage = stageOf(proposed, lut);
+    out["title"] = lut.title;
+    out["kind"] = lut.fromStrip ? "strip" : "cube";
+    out["size_1d"] = lut.size1D;
+    out["size_3d"] = lut.size3D;
+    out["input_range"] = {McpValues::number(lut.size3D > 0 ? lut.in3D[0] : lut.in1D[0]), McpValues::number(lut.size3D > 0 ? lut.in3D[1] : lut.in1D[1])};
+    if (lut.size1D > 0 && lut.size3D > 0) out["input_range_1d"] = {McpValues::number(lut.in1D[0]), McpValues::number(lut.in1D[1])};
+    out["proposed_encoding"] = lutEncodingId(proposed);
+    out["reason"] = reason;
+    out["stage"] = stage == LutStage::SCENE ? "scene" : "display";
+    std::string text = "\"" + relative + "\"" + (lut.title.empty() ? std::string() : " (\"" + lut.title + "\")") + ": ";
+    if (lut.size1D > 0) text += "1D " + std::to_string(lut.size1D) + (lut.size3D > 0 ? " + " : "");
+    if (lut.size3D > 0) text += "3D " + std::to_string(lut.size3D) + "^3";
+    text += std::string(", proposed encoding ") + lutEncodingId(proposed) + " (" + reason + "), " +
+            (stage == LutStage::SCENE ? "scene stage (before the tone mapping)." : "display stage.");
+    call->ok(text, out);
+}
+
+Json dynamicResolutionToJson(const DynamicResolutionStatus& status) {
+    return Json{{"enabled", status.enabled}, {"running", status.running}, {"idle", status.idle}, {"overridden", status.overridden},
+                {"scale", McpValues::number(status.scale)}, {"min_scale", McpValues::number(status.minScale)},
+                {"max_scale", McpValues::number(status.maxScale)}, {"source", status.source},
+                {"smoothed_ms", McpValues::number(status.smoothedMs)}, {"target_ms", McpValues::number(status.targetMs)},
+                {"saturated_low", status.saturatedLow}, {"ineffective", status.ineffective},
+                {"accepted_changes", status.acceptedChanges}, {"probe_seconds", McpValues::number(status.probeSeconds)}};
+}
+
+// set_post_processing_debug's pins (null: released)
+Json postDebugJson(const RenderSystem& render) {
+    auto pin = [](bool set, double value) { return set ? Json(value) : Json(nullptr); };
+    return Json{{"time_seconds", pin(render.getPostProcessingDebugTime() >= 0.0, render.getPostProcessingDebugTime())},
+                {"force_render_scale", pin(render.getDynamicResolutionOverride() > 0.0f, McpValues::number(render.getDynamicResolutionOverride()))},
+                {"fake_gpu_ms", pin(render.getDynamicResolutionFakeGpuMs() > 0.0f, McpValues::number(render.getDynamicResolutionFakeGpuMs()))}};
+}
+
+void getPostProcessingStatusTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    // while playing, the scene's running copy (its renderer is the game's)
+    SceneProject* scene = McpRefs::runtimeScene(project, sceneArg(call));
+    if (!scene) return;
+    if (!scene->scene) {
+        call->fail(McpRefs::notOpenError(project, *scene));
+        return;
+    }
+    std::shared_ptr<RenderSystem> render = scene->scene->getSystem<RenderSystem>();
+    const PostProcessingSettings& settings = scene->scene->getPostProcessing();
+    // what applies: the running game's renderer, else what the settings draw on the next frame
+    // (an idle editor renders on demand, so its last tiers can be older than the settings)
+    const bool playing = scene->playState == ScenePlayState::PLAYING || scene->playState == ScenePlayState::PAUSED;
+    const PostProcessingTiers tiers = (render && playing) ? render->getActivePostProcessingTiers() : RenderSystem::getPostProcessingTiers(settings);
+    Json features = Json::array();
+    const int count = ShaderPool::getShaderPropertyCount(ShaderType::BLIT);
+    for (int bit = 0; bit < count && bit < 32; bit++) {
+        if (tiers.uberFeatures & (1u << bit)) features.push_back(ShaderPool::getShaderPropertyName(ShaderType::BLIT, bit, false));
+    }
+    const PostProcessingCost cost = sceneCost(scene->scene, settings);
+    Json passes = Json::array();
+    for (const PostProcessingCostPass& pass : cost.engine.passes) {
+        passes.push_back({{"label", pass.label}, {"count", pass.count}, {"screens", McpValues::number(pass.area)},
+                          {"full_resolution", pass.fullResolution}});
+    }
+    const DynamicResolutionStatus status = render ? render->getDynamicResolutionStatus() : DynamicResolutionStatus();
+    const float applied = (render && playing) ? render->getAppliedRenderScale() : tiers.renderScale;
+    Json out = {{"scene_id", scene->id}, {"playing", playing}, {"tail_color", tiers.tailColor}, {"uber", tiers.uber},
+                {"uber_features", features}, {"render_scale", McpValues::number(tiers.renderScale)},
+                {"render_scale_applied", McpValues::number(applied)}, {"passes", passes}, {"passes_estimate", true},
+                {"dynamic_resolution", dynamicResolutionToJson(status)}};
+    if (render) out["debug"] = postDebugJson(*render);
+    char text[256];
+    std::snprintf(text, sizeof(text), "\"%s\": %s, uber pass %s, render scale %.2f applied", scene->name.c_str(),
+                  tiers.tailColor ? "in-shader colour" : "no in-shader colour", tiers.uber ? "on" : "off", applied);
+    std::string message = text;
+    if (!features.empty()) message += ", features " + describeUberFeatures(tiers.uberFeatures);
+    if (status.enabled) {
+        std::snprintf(text, sizeof(text), "; dynamic resolution %s (%s, %.2f, %.1f / %.1f ms)", status.running ? "running" : "idle",
+                      status.source, status.scale, status.smoothedMs, status.targetMs);
+        message += text;
+    }
+    call->ok(message + ".", out);
+}
+
+void setPostProcessingDebugTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    // while playing, the scene's running copy (its renderer is the game's)
+    SceneProject* scene = McpRefs::runtimeScene(project, sceneArg(call));
+    if (!scene) return;
+    if (!scene->scene) {
+        call->fail(McpRefs::notOpenError(project, *scene));
+        return;
+    }
+    std::shared_ptr<RenderSystem> render = scene->scene->getSystem<RenderSystem>();
+    if (!render) {
+        call->fail("\"" + scene->name + "\" has no renderer.");
+        return;
+    }
+    const Json& args = call->args();
+    // each value: a number pins it, null releases it, absent leaves it
+    auto read = [&](const char* key, double minimum, double maximum, double& out, bool& release) -> bool {
+        release = false;
+        if (!args.contains(key)) return false;
+        if (args[key].is_null()) {
+            release = true;
+            return true;
+        }
+        if (!args[key].is_number()) {
+            call->fail(std::string(key) + " must be a number or null.");
+            return false;
+        }
+        out = args[key].get<double>();
+        if (!(out >= minimum && out <= maximum)) {
+            char text[96];
+            std::snprintf(text, sizeof(text), " must be a number from %g to %g, or null.", minimum, maximum);
+            call->fail(key + std::string(text));
+            return false;
+        }
+        return true;
+    };
+    double time = 0.0, scale = 0.0, gpuMs = 0.0;
+    bool releaseTime = false, releaseScale = false, releaseGpu = false;
+    const bool hasTime = read("time_seconds", 0.0, 1e6, time, releaseTime);
+    if (call->completed()) return;
+    const bool hasScale = read("force_render_scale", 0.5, 1.0, scale, releaseScale);
+    if (call->completed()) return;
+    const bool hasGpu = read("fake_gpu_ms", 0.01, 1000.0, gpuMs, releaseGpu);
+    if (call->completed()) return;
+    if (hasTime) render->setPostProcessingDebugTime(releaseTime ? -1.0 : time);
+    if (hasScale) render->setDynamicResolutionOverride(releaseScale ? 0.0f : (float)scale);
+    if (hasGpu) render->setDynamicResolutionFakeGpuMs(releaseGpu ? 0.0f : (float)gpuMs);
+    scene->needUpdateRender = true;
+    const Json debug = postDebugJson(*render);
+    call->ok("Post-processing debug of \"" + scene->name + "\" (editor only, not saved): " + debug.dump() + ".",
+             Json{{"scene_id", scene->id}, {"debug", debug}});
 }
 
 } // namespace
@@ -1349,7 +1836,7 @@ void registerSceneTools(McpRegistry& registry) {
             {"name", string("Default: the file name or \"New Scene\".")},
             {"type", withDefault(stringEnum("", {"3D", "2D", "UI"}), "3D")},
             {"path", assetPath(".scene path (extension optional).")},
-            {"close_previous", withDefault(boolean("Close the previously selected scene."), false)},
+            {"close_previous", withDefault(boolean(""), false)},
             {"unsaved", unsavedSchema()}
         });
         tool.allowedWhilePlaying = false;
@@ -1365,7 +1852,9 @@ void registerSceneTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", sceneRef(".scene path, or id/name of a project scene.")},
             {"close_previous", withDefault(boolean("Close the previously selected scene."), false)},
-            {"unsaved", unsavedSchema()}
+            {"unsaved", unsavedSchema()},
+            {"recovery", withDefault(stringEnum("Its crash backup: keep (offered again), restore (modified) or discard.",
+                {"keep", "restore", "discard"}), "keep")}
         }, {"scene"});
         tool.allowedWhilePlaying = false;
         tool.handler = openSceneTool;
@@ -1389,7 +1878,7 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "select_scene";
         tool.title = "Select Scene";
         tool.description = "Selects an open scene (its tab): the default scene of other tools.";
-        tool.inputSchema = object({{"scene", sceneRef("An open scene.")}}, {"scene"});
+        tool.inputSchema = object({{"scene", sceneRef("")}}, {"scene"});
         tool.annotations.idempotent = true;
         tool.handler = selectSceneTool;
         registry.addTool(std::move(tool));
@@ -1400,15 +1889,53 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Save Scene";
         tool.description =
             "Save a scene and its modified child scenes. Untitled scenes need path; path on a saved scene = Save As. "
-            "all=true: every modified scene (untitled skipped). A prefab stage id saves its prefab.";
+            "all=true: every modified scene (untitled skipped). A prefab stage id saves its prefab. Fails with "
+            "degraded_document if data would be lost (get_load_report).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"path", assetPath(".scene path.")},
-            {"all", withDefault(boolean(""), false)}
+            {"all", withDefault(boolean(""), false)},
+            {"allow_data_loss", boolean("")}
         });
         tool.allowedWhilePlaying = false;
         tool.annotations.idempotent = true;
         tool.handler = saveSceneTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "get_load_report";
+        tool.group = "data_safety";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Get Load Report";
+        tool.description =
+            "What the scene's load could not read: issues with kind, file:line, did-you-mean and fate (preserved: "
+            "kept on save; dropped: lost by a save).";
+        tool.inputSchema = object({{"scene", sceneRef()}});
+        tool.annotations.readOnly = true;
+        tool.handler = getLoadReportTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "list_scene_backups";
+        tool.group = "data_safety";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "List Scene Backups";
+        tool.description =
+            "Auto Save backups with status (usable: open_scene recovery=restore; stale: the file changed).";
+        tool.inputSchema = object({});
+        tool.annotations.readOnly = true;
+        tool.handler = listSceneBackupsTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "discard_scene_backup";
+        tool.group = "data_safety";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Discard Scene Backup";
+        tool.description = "Deletes a scene's Auto Save backup.";
+        tool.inputSchema = object({{"scene", sceneRef()}}, {"scene"});
+        tool.annotations.destructive = true;
+        tool.handler = discardSceneBackupTool;
         registry.addTool(std::move(tool));
     }
     {
@@ -1431,7 +1958,7 @@ void registerSceneTools(McpRegistry& registry) {
             "Remove a saved, unmodified scene from the project (undo scope=project); delete_file=true also moves the "
             "file to .trash. Not the last scene.";
         tool.inputSchema = object({
-            {"scene", sceneRef("A saved project scene.")},
+            {"scene", sceneRef("")},
             {"delete_file", withDefault(boolean(""), false)}
         }, {"scene"});
         tool.allowedWhilePlaying = false;
@@ -1448,7 +1975,7 @@ void registerSceneTools(McpRegistry& registry) {
             "when the parent starts; loaded_inline: shown inside the parent in the editor. Not undoable.";
         tool.inputSchema = object({
             {"scene", sceneRef("Parent (default: selected).")},
-            {"child", sceneRef("Child scene.")},
+            {"child", sceneRef()},
             {"attached", withDefault(boolean(""), true)},
             {"start_active", boolean("")},
             {"loaded_inline", boolean("")}
@@ -1481,7 +2008,7 @@ void registerSceneTools(McpRegistry& registry) {
             "shaders).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"names", array(string(""), "Default: all.")},
+            {"names", array(string(""), "")},
             {"detail", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
@@ -1494,10 +2021,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_scene_settings";
         tool.title = "Set Scene Settings";
         tool.description =
-            "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces the pass "
-            "list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}]. "
-            "post_processing {field: value} sets the fields named (null resets all), like post_processing.<field>; "
-            "one undo step per call.";
+            "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces "
+            "the pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": "
+            "[0.5,0,0,0]}}]. post_processing {field: value} sets the fields named (null resets all); one undo "
+            "step per call.";
         tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}}, {"settings"});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;
@@ -1508,9 +2035,9 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "list_post_processing_presets";
         tool.title = "List Post-processing Presets";
         tool.description =
-            "Post-processing presets (none, mobile, console, stylised, crt_retro): id, name, description, the "
-            "post_processing fields each sets, estimated cost (passes, full-resolution passes, screens; vs Unity "
-            "URP). current: the scene's preset (null = custom), settings, cost; in play also applied.";
+            "Post-processing presets (none, mobile, mobile_adaptive, console, stylised, crt_retro, film, vhs): id, name, "
+            "description, the post_processing fields each sets, estimated cost (passes, full-resolution passes, screens, against "
+            "Unity URP). current: the scene's preset (null = custom), settings and cost; in play also applied.";
         tool.inputSchema = object({{"scene", sceneRef()}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1530,6 +2057,60 @@ void registerSceneTools(McpRegistry& registry) {
         }, {"preset"});
         tool.annotations.idempotent = true;
         tool.handler = applyPostProcessingPresetTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "inspect_color_lut";
+        tool.group = "rendering_fx";  // S13: listed once tool_groups enables it, callable always
+        tool.title = "Inspect Color LUT";
+        tool.description =
+            "Read a colour LUT file (.cube, or an image strip) as post_processing.lut_texture would: ok, error (one line "
+            "with the line number), title, size_1d, size_3d, input_range, proposed_encoding (what lut_input_encoding auto "
+            "picks), reason, stage (display, or scene: before the tone mapping).";
+        tool.inputSchema = object({{"path", assetPath("Project-relative .cube or strip image, or its GUID.")}}, {"path"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = inspectColorLutTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "get_post_processing_status";
+        tool.group = "rendering_fx";  // S13: listed once tool_groups enables it, callable always
+        tool.title = "Get Post-processing Status";
+        tool.description =
+            "What the scene's renderer applies now: tail_color, uber, uber_features, render_scale (settings) and "
+            "render_scale_applied, passes (estimate), dynamic_resolution {enabled, running, idle, scale, source gpu|frame, "
+            "smoothed_ms, target_ms, saturated_low, ineffective, accepted_changes, probe_seconds}, debug pins.";
+        tool.inputSchema = object({{"scene", sceneRef()}});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getPostProcessingStatusTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "set_post_processing_debug";
+        tool.group = "rendering_fx";  // S13: listed once tool_groups enables it, callable always
+        tool.title = "Set Post-processing Debug";
+        tool.description =
+            "Editor-only, unsaved pins for deterministic captures: time_seconds (the uber effects' time: grain, VHS, "
+            "film damage), force_render_scale (0.5..1, in Play), fake_gpu_ms (GPU time fed to dynamic resolution). "
+            "A number pins, null releases, absent keeps. Stop or Pause releases the scale and GPU pins.";
+        auto nullableNumber = [](const std::string& description) {
+            Json value = number(description);
+            value["type"] = Json::array({"number", "null"});
+            return value;
+        };
+        tool.inputSchema = object({
+            {"scene", sceneRef()},
+            {"time_seconds", nullableNumber("Seconds, or null: live.")},
+            {"force_render_scale", nullableNumber("0.5..1, or null: the controller's / the settings'.")},
+            {"fake_gpu_ms", nullableNumber("Milliseconds, or null: measured.")}
+        });
+        tool.annotations.idempotent = true;
+        tool.handler = setPostProcessingDebugTool;
         registry.addTool(std::move(tool));
     }
 }

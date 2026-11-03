@@ -35,6 +35,9 @@
 #include <unordered_set>
 #include <vector>
 
+// the HTML UI module (docs/specs/S34-player-size.md R1): the Lua API description reads this condition
+#if JASPERENGINE_HTMLUI
+
 using namespace jasperengine;
 
 namespace {
@@ -44,21 +47,23 @@ namespace {
 
     class LuaRefHolder;
 
-    std::unordered_set<LuaRefHolder*>& liveRefs(){
+    std::unordered_set<LuaRefHolder*>& animeLiveRefs(){
         static auto* refs = new std::unordered_set<LuaRefHolder*>();
         return *refs;
     }
 
+    // A registry reference, kept with the main thread of the state (never a coroutine's thread,
+    // which ends long before an animation callback runs: LuaBinding::mainThread)
     class LuaRefHolder {
     public:
-        LuaRefHolder(lua_State* L, int index): L(L){
-            lua_pushvalue(L, index);
-            ref = luaL_ref(L, LUA_REGISTRYINDEX);
-            liveRefs().insert(this);
+        LuaRefHolder(lua_State* from, int index): L(LuaBinding::mainThread(from)){
+            lua_pushvalue(from, index);
+            ref = luaL_ref(from, LUA_REGISTRYINDEX);
+            animeLiveRefs().insert(this);
         }
         ~LuaRefHolder(){
             release();
-            liveRefs().erase(this);
+            animeLiveRefs().erase(this);
         }
         LuaRefHolder(const LuaRefHolder&) = delete;
         LuaRefHolder& operator=(const LuaRefHolder&) = delete;
@@ -71,11 +76,15 @@ namespace {
         bool isAlive() const{
             return ref != LUA_NOREF && L && LuaBinding::getLuaState() == L;
         }
-        // pushes the value; false (nothing pushed) once released or the state is gone
+        // pushes the value on the main thread; false (nothing pushed) once released or the state is gone
         bool push() const{
-            if (!isAlive())
+            return push(L);
+        }
+        // pushes the value on `onto`, any thread of the state (the one running the binding)
+        bool push(lua_State* onto) const{
+            if (!isAlive() || !onto || LuaBinding::mainThread(onto) != L)
                 return false;
-            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+            lua_rawgeti(onto, LUA_REGISTRYINDEX, ref);
             return true;
         }
         lua_State* state() const{ return L; }
@@ -88,7 +97,7 @@ namespace {
     using LuaRefPtr = std::shared_ptr<LuaRefHolder>;
 
     void releaseAllRefs(){
-        for (LuaRefHolder* ref : liveRefs())
+        for (LuaRefHolder* ref : animeLiveRefs())
             ref->release();
     }
 
@@ -122,7 +131,8 @@ namespace {
         TableTarget(lua_State* L, int index): table(std::make_shared<LuaRefHolder>(L, index)), identity(lua_topointer(L, index)) {}
 
         const void* getIdentity() const override{ return identity; }
-        bool push() const{ return table->push(); }
+        bool isAlive() const{ return table->isAlive(); }
+        bool push(lua_State* onto) const{ return table->push(onto); }
 
         AnimRawValue getValue(const std::string& property, AnimTweenType type, AnimRawValue* inlineValue) override{
             (void)type;
@@ -197,8 +207,7 @@ namespace {
         auto it = targets.find(identity);
         if (it != targets.end()){
             std::shared_ptr<TableTarget> existing = it->second.lock();
-            if (existing && existing->push()){
-                lua_pop(L, 1);
+            if (existing && existing->isAlive()){
                 return existing;
             }
         }
@@ -234,7 +243,7 @@ namespace {
             return;
         }
         TableTarget* table = dynamic_cast<TableTarget*>(target.get());
-        if (table && table->push())
+        if (table && table->push(L))
             return;
         lua_settop(L, top);
         lua_pushnil(L);
@@ -437,7 +446,7 @@ namespace {
     }
 
     // the `root` of a parameters table: a UIElement or a UIDocument
-    UIElement rootOf(lua_State* L, int paramsIndex){
+    UIElement animeRootOf(lua_State* L, int paramsIndex){
         UIElement root;
         if (lua_type(L, paramsIndex) != LUA_TTABLE)
             return root;
@@ -474,7 +483,7 @@ namespace {
             lua_pushstring(L, "anime.animate(targets, params): params must be a table");
             return false;
         }
-        UIElement root = rootOf(L, 2);
+        UIElement root = animeRootOf(L, 2);
         AnimTargetList targets;
         toTargets(L, 1, root, targets);
         AnimParam params = toParam(L, 2, "");
@@ -762,7 +771,7 @@ namespace {
         }
         std::shared_ptr<AnimTimeline> keep = self(timeline);
         if (lua_type(L, 3) == LUA_TTABLE){
-            UIElement root = rootOf(L, 3);
+            UIElement root = animeRootOf(L, 3);
             AnimTargetList targets;
             toTargets(L, 2, root, targets);
             timeline->add(targets, toParam(L, 3, ""), positionArg(L, 4));
@@ -791,7 +800,7 @@ namespace {
             return false;
         }
         std::shared_ptr<AnimTimeline> keep = self(timeline);
-        UIElement root = rootOf(L, 3);
+        UIElement root = animeRootOf(L, 3);
         AnimTargetList targets;
         toTargets(L, 2, root, targets);
         timeline->set(targets, toParam(L, 3, ""), positionArg(L, 4));
@@ -1086,7 +1095,7 @@ namespace {
             lua_pushstring(L, "anime.utils.set(targets, props): props must be a table");
             return false;
         }
-        UIElement root = rootOf(L, 2);
+        UIElement root = animeRootOf(L, 2);
         AnimTargetList targets;
         toTargets(L, 1, root, targets);
         pushTimer(L, AnimUtils::set(targets, toParam(L, 2, "")));
@@ -1186,7 +1195,7 @@ namespace {
 
 size_t AnimLua::getLiveLuaRefs(){
     size_t count = 0;
-    for (LuaRefHolder* ref : liveRefs()){
+    for (LuaRefHolder* ref : animeLiveRefs()){
         if (ref->isAlive())
             count++;
     }
@@ -1341,3 +1350,5 @@ void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){
 
 #endif //DISABLE_LUA_BINDINGS
 }
+
+#endif // JASPERENGINE_HTMLUI

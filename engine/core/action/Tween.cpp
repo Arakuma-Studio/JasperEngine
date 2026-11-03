@@ -30,6 +30,17 @@ void Tween::setFunctionType(EaseType functionType){
     tween.function.setType(functionType);
 }
 
+void Tween::setCurve(const Curve& curve){
+    TweenComponent& tween = getComponent<TweenComponent>();
+
+    tween.curve = curve;
+    tween.function.setType(EaseType::CURVE);
+}
+
+Curve Tween::getCurve() const{
+    return getComponent<TweenComponent>().curve;
+}
+
 float Tween::getValue() const{
     TweenComponent& tween = getComponent<TweenComponent>();
 
@@ -76,4 +87,15 @@ bool Tween::isPingPong() const{
     TweenComponent& tween = getComponent<TweenComponent>();
 
     return tween.pingPong;
+}
+void Tween::setUseUnscaledTime(bool useUnscaledTime){
+    TweenComponent& tween = getComponent<TweenComponent>();
+
+    tween.useUnscaledTime = useUnscaledTime;
+}
+
+bool Tween::isUseUnscaledTime() const{
+    TweenComponent& tween = getComponent<TweenComponent>();
+
+    return tween.useUnscaledTime;
 }

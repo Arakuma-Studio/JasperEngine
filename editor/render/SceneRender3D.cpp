@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender3D.h"
+#include "profiler/Profile.h"
+#include "pose/PoseViewport.h"
 
 #include "resources/icons/sun-icon_png.h"
 #include "resources/icons/bulb-icon_png.h"
@@ -9,8 +11,14 @@
 
 #include "Project.h"
 #include "LineDrawUtils.h"
+#include "util/Angle.h"
+#include "particles/ParticleCompiler.h"
+#include "subsystem/ParticleSubsystem.h"
+#include "subsystem/ParticleSystemState.h"
+#include "window/ParticleEffectOverlay.h"
 
 #include <algorithm>
+#include "util/WaterEditorUtils.h"
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -22,224 +30,6 @@
 #include <vector>
 
 using namespace jasperengine;
-
-uint64_t editor::SceneRender3D::quantizeHullKey(const Vector3& p) {
-    auto q = [](float v) { return int32_t(std::lround(v * SceneRender3D::kHullQuantizeScale)); };
-    uint64_t x = uint32_t(q(p.x));
-    uint64_t y = uint32_t(q(p.y));
-    uint64_t z = uint32_t(q(p.z));
-    return (x * 73856093u) ^ (y * 19349663u) ^ (z * 83492791u);
-}
-
-void editor::SceneRender3D::pushUniqueHullPoint(std::vector<Vector3>& points, std::unordered_set<uint64_t>& seen, const Vector3& p) {
-    if (!p.isValid()) return;
-    if (seen.insert(quantizeHullKey(p)).second) {
-        points.push_back(p);
-    }
-}
-
-// Reduce a large point cloud to its extremes along a fixed direction set.
-// The convex hull of these extremes is contained in the original hull and
-// is sufficient for visualization while bounding cost.
-void editor::SceneRender3D::reduceToExtremes(std::vector<Vector3>& points) {
-    if (points.size() <= SceneRender3D::kMaxHullInputPoints) return;
-
-    // A 5^3 lattice of directions, dense enough that the drawn hull stays close to
-    // the one Jolt builds from the same vertices.
-    static const std::vector<Vector3> directions = [](){
-        std::vector<Vector3> dirs;
-        for (int x = -2; x <= 2; x++){
-            for (int y = -2; y <= 2; y++){
-                for (int z = -2; z <= 2; z++){
-                    if (x != 0 || y != 0 || z != 0) dirs.push_back(Vector3(x, y, z));
-                }
-            }
-        }
-        return dirs;
-    }();
-    const int dirCount = int(directions.size());
-
-    std::vector<int> bestIndex(dirCount, 0);
-    std::vector<float> bestDot(dirCount, -std::numeric_limits<float>::infinity());
-
-    for (size_t i = 0; i < points.size(); i++) {
-        for (int d = 0; d < dirCount; d++) {
-            float dot = points[i].dotProduct(directions[d]);
-            if (dot > bestDot[d]) {
-                bestDot[d] = dot;
-                bestIndex[d] = int(i);
-            }
-        }
-    }
-
-    std::vector<Vector3> reduced;
-    std::unordered_set<uint64_t> seen;
-    reduced.reserve(dirCount);
-    for (int d = 0; d < dirCount; d++) {
-        pushUniqueHullPoint(reduced, seen, points[bestIndex[d]]);
-    }
-    points = std::move(reduced);
-}
-
-// Builds convex hull edges from a point set and emits each unique edge once.
-// Uses an incremental QuickHull with axis-extreme seeding, cached face
-// normals and a horizon-edge map. Falls back to a 2D Andrew monotone chain
-// when the input is coplanar.
-void editor::SceneRender3D::buildConvexHullEdges(std::vector<Vector3> points, const std::function<void(const Vector3&, const Vector3&)>& emit) {
-    reduceToExtremes(points);
-    if (points.size() < 2) return;
-    if (points.size() == 2) { emit(points[0], points[1]); return; }
-
-    Vector3 minPt = points[0];
-    Vector3 maxPt = points[0];
-    for (const Vector3& p : points) {
-        minPt.x = std::min(minPt.x, p.x); minPt.y = std::min(minPt.y, p.y); minPt.z = std::min(minPt.z, p.z);
-        maxPt.x = std::max(maxPt.x, p.x); maxPt.y = std::max(maxPt.y, p.y); maxPt.z = std::max(maxPt.z, p.z);
-    }
-    Vector3 extent = maxPt - minPt;
-    float maxExtent = std::max(extent.x, std::max(extent.y, extent.z));
-    float eps = std::max(1e-5f, maxExtent * 1e-5f);
-    float epsSq = eps * eps;
-
-    // Seed pair from the 6 axis extremes (min/max over x, y, z).
-    int axisExt[6] = {0, 0, 0, 0, 0, 0};
-    {
-        float bestVal[6] = {points[0].x, -points[0].x, points[0].y, -points[0].y, points[0].z, -points[0].z};
-        for (size_t i = 1; i < points.size(); i++) {
-            float v[6] = {points[i].x, -points[i].x, points[i].y, -points[i].y, points[i].z, -points[i].z};
-            for (int k = 0; k < 6; k++) {
-                if (v[k] > bestVal[k]) { bestVal[k] = v[k]; axisExt[k] = int(i); }
-            }
-        }
-    }
-
-    int i0 = 0, i1 = 0;
-    float maxDistSq = 0.0f;
-    for (int a = 0; a < 6; a++) {
-        for (int b = a + 1; b < 6; b++) {
-            float d = points[axisExt[a]].squaredDistance(points[axisExt[b]]);
-            if (d > maxDistSq) { maxDistSq = d; i0 = axisExt[a]; i1 = axisExt[b]; }
-        }
-    }
-    if (maxDistSq <= epsSq) return;
-
-    Vector3 baseLine = points[i1] - points[i0];
-    int i2 = -1;
-    float maxLineSq = 0.0f;
-    for (size_t i = 0; i < points.size(); i++) {
-        float d = (points[i] - points[i0]).crossProduct(baseLine).squaredLength() / maxDistSq;
-        if (d > maxLineSq) { maxLineSq = d; i2 = int(i); }
-    }
-    if (i2 < 0 || maxLineSq <= epsSq) { emit(points[i0], points[i1]); return; }
-
-    Vector3 planeNormal = (points[i1] - points[i0]).crossProduct(points[i2] - points[i0]);
-    float planeNormalLen = planeNormal.length();
-
-    int i3 = -1;
-    float maxPlaneDist = 0.0f;
-    for (size_t i = 0; i < points.size(); i++) {
-        float d = std::fabs(planeNormal.dotProduct(points[i] - points[i0]) / planeNormalLen);
-        if (d > maxPlaneDist) { maxPlaneDist = d; i3 = int(i); }
-    }
-
-    // Coplanar fallback: 2D convex hull (Andrew's monotone chain).
-    if (i3 < 0 || maxPlaneDist <= eps) {
-        Vector3 absN(std::fabs(planeNormal.x), std::fabs(planeNormal.y), std::fabs(planeNormal.z));
-        int drop = (absN.y > absN.x && absN.y >= absN.z) ? 1 : ((absN.z > absN.x) ? 2 : 0);
-        struct P2 { float x, y; int idx; };
-        std::vector<P2> pp;
-        pp.reserve(points.size());
-        for (size_t i = 0; i < points.size(); i++) {
-            const Vector3& p = points[i];
-            float px = drop == 0 ? p.y : p.x;
-            float py = drop == 2 ? p.y : p.z;
-            pp.push_back({px, py, int(i)});
-        }
-        std::sort(pp.begin(), pp.end(), [](const P2& a, const P2& b) { return a.x < b.x || (a.x == b.x && a.y < b.y); });
-        auto cross2 = [](const P2& a, const P2& b, const P2& c) { return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x); };
-        std::vector<P2> poly;
-        for (const P2& p : pp) {
-            while (poly.size() >= 2 && cross2(poly[poly.size() - 2], poly.back(), p) <= 0.0f) poly.pop_back();
-            poly.push_back(p);
-        }
-        size_t lower = poly.size();
-        for (auto it = pp.rbegin(); it != pp.rend(); ++it) {
-            while (poly.size() > lower && cross2(poly[poly.size() - 2], poly.back(), *it) <= 0.0f) poly.pop_back();
-            poly.push_back(*it);
-        }
-        if (!poly.empty()) poly.pop_back();
-        for (size_t i = 0; i < poly.size(); i++) {
-            emit(points[poly[i].idx], points[poly[(i + 1) % poly.size()].idx]);
-        }
-        return;
-    }
-
-    Vector3 interior = (points[i0] + points[i1] + points[i2] + points[i3]) * 0.25f;
-
-    struct Face { int a, b, c; Vector3 n; bool removed; };
-    std::vector<Face> faces;
-    faces.reserve(64);
-
-    auto pushFace = [&](int a, int b, int c) {
-        Vector3 n = (points[b] - points[a]).crossProduct(points[c] - points[a]);
-        if (n.squaredLength() <= epsSq) return;
-        if (n.dotProduct(interior - points[a]) > 0.0f) { std::swap(b, c); n = -n; }
-        faces.push_back({a, b, c, n, false});
-    };
-
-    pushFace(i0, i1, i2);
-    pushFace(i0, i3, i1);
-    pushFace(i0, i2, i3);
-    pushFace(i1, i3, i2);
-
-    auto edgeKey = [](int a, int b) { return (uint64_t(uint32_t(a)) << 32) | uint32_t(b); };
-
-    std::vector<int> visible;
-    std::unordered_set<uint64_t> horizon;
-
-    for (size_t pi = 0; pi < points.size(); pi++) {
-        if (int(pi) == i0 || int(pi) == i1 || int(pi) == i2 || int(pi) == i3) continue;
-
-        visible.clear();
-        for (size_t fi = 0; fi < faces.size(); fi++) {
-            const Face& f = faces[fi];
-            if (f.removed) continue;
-            if (f.n.dotProduct(points[pi] - points[f.a]) > eps * f.n.length()) {
-                visible.push_back(int(fi));
-            }
-        }
-        if (visible.empty()) continue;
-
-        horizon.clear();
-        auto addEdge = [&](int s, int e) {
-            uint64_t rev = edgeKey(e, s);
-            auto it = horizon.find(rev);
-            if (it != horizon.end()) { horizon.erase(it); return; }
-            horizon.insert(edgeKey(s, e));
-        };
-        for (int fi : visible) {
-            Face& f = faces[fi];
-            addEdge(f.a, f.b); addEdge(f.b, f.c); addEdge(f.c, f.a);
-            f.removed = true;
-        }
-        for (uint64_t key : horizon) {
-            int s = int(uint32_t(key >> 32));
-            int e = int(uint32_t(key));
-            pushFace(s, e, int(pi));
-        }
-    }
-
-    std::unordered_set<uint64_t> drawn;
-    auto emitEdge = [&](int a, int b) {
-        if (a == b) return;
-        int lo = std::min(a, b), hi = std::max(a, b);
-        if (drawn.insert(edgeKey(lo, hi)).second) emit(points[a], points[b]);
-    };
-    for (const Face& f : faces) {
-        if (f.removed) continue;
-        emitEdge(f.a, f.b); emitEdge(f.b, f.c); emitEdge(f.c, f.a);
-    }
-}
 
 editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, true, 40.0, 0.01){
     ScopedDefaultEntityPool sys(*scene, EntityPool::System);
@@ -268,9 +58,16 @@ editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, tr
 
     uilayer.setViewportGizmoTexture(viewgizmo.getFramebuffer());
 
+    poseViewport = std::make_unique<PoseViewport>(scene, toolslayer.getScene());
 }
 
 editor::SceneRender3D::~SceneRender3D(){
+    // the pose overlays and ghosts first: they live in this scene and the tools layer
+    poseViewport.reset();
+
+    // a gizmo the scene destroyed is not deleted through an id that may be another entity's now
+    dropGoneGizmos();
+
     delete lines;
     delete selLines;
 
@@ -313,6 +110,30 @@ editor::SceneRender3D::~SceneRender3D(){
     }
 
     for (auto& pair : reflectionProbeLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : fogVolumeLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : controllerLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : waterVolumeLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : buoyancyLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : particleLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : forceFieldLines) {
         delete pair.second;
     }
 }
@@ -453,6 +274,331 @@ void editor::SceneRender3D::createOrUpdateReflectionProbeLines(Entity entity, co
     }
 }
 
+namespace {
+
+    // the 12 edges of an axis-aligned box
+    void addBoxLines(LineRenderer* lines, const Vector3& lo, const Vector3& hi, const Vector4& color){
+        const Vector3 c[8] = {
+            Vector3(lo.x, lo.y, lo.z), Vector3(hi.x, lo.y, lo.z), Vector3(hi.x, hi.y, lo.z), Vector3(lo.x, hi.y, lo.z),
+            Vector3(lo.x, lo.y, hi.z), Vector3(hi.x, lo.y, hi.z), Vector3(hi.x, hi.y, hi.z), Vector3(lo.x, hi.y, hi.z)
+        };
+        const int edges[12][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6}, {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+        for (const auto& e : edges) lines->addLine(c[e[0]], c[e[1]], color);
+    }
+
+    // a square of the plane around a point, and its normal
+    void addPlaneLines(LineRenderer* lines, const Vector3& point, const Vector3& normal, float size, const Vector4& color){
+        auto [n, right, forward] = editor::LineDrawUtils::makeBasis(normal);
+        const Vector3 a = point + (right + forward) * size, b = point + (right - forward) * size;
+        const Vector3 c = point - (right + forward) * size, d = point - (right - forward) * size;
+        lines->addLine(a, b, color);
+        lines->addLine(b, c, color);
+        lines->addLine(c, d, color);
+        lines->addLine(d, a, color);
+        lines->addLine(point, point + n * size, color);
+    }
+
+}
+
+void editor::SceneRender3D::createOrUpdateParticleLines(Entity entity, const Transform& transform, const ParticleSystemComponent& particles, bool visible){
+    LineRenderer* lines = particleLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+    const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles);
+    if (!document) return;
+
+    const Matrix4 rotation = transform.worldRotation.getRotationMatrix();
+    auto world = [&](const Vector3& local){
+        return transform.worldPosition + rotation * Vector3(local.x * transform.worldScale.x, local.y * transform.worldScale.y, local.z * transform.worldScale.z);
+    };
+
+    if (document->shape.present && document->shape.enabled){
+        std::vector<Vector3> segments;
+        particles::ParticleCompiler::shapeOutline(document->shape, segments);
+        const Vector4 shapeColor(0.45f, 0.8f, 1.0f, 1.0f);
+        for (size_t i = 0; i + 1 < segments.size(); i += 2) lines->addLine(world(segments[i]), world(segments[i + 1]), shapeColor);
+    }
+
+    // the bounds the culling and the budget use (the particles' last frame)
+    if (ParticleEffectOverlay::gizmos().bounds && particles.state && particles.state->runtime.count() > 0){
+        const particles::ParticleSystemState& state = *particles.state;
+        addBoxLines(lines, Vector3(state.boundsMin[0], state.boundsMin[1], state.boundsMin[2]),
+                    Vector3(state.boundsMax[0], state.boundsMax[1], state.boundsMax[2]), Vector4(1.0f, 0.85f, 0.2f, 1.0f));
+    }
+
+    const particles::CollisionModule& collision = document->collision;
+    if (ParticleEffectOverlay::gizmos().colliders && collision.present && collision.enabled && collision.type == particles::CollisionType::Planes){
+        const Vector4 planeColor(0.4f, 1.0f, 0.5f, 1.0f);
+        const bool local = document->simulationSpace == particles::SimulationSpace::Local;
+        for (const particles::CollisionPlane& plane : collision.planes){
+            const Vector3 point = local ? world(plane.point) : plane.point;
+            const Vector3 normal = local ? rotation * plane.normal : plane.normal;
+            addPlaneLines(lines, point, normal, 1.0f, planeColor);
+        }
+        for (Entity planeEntity : particles.collisionPlanes){
+            if (!scene->isEntityCreated(planeEntity)) continue;
+            if (const Transform* planeTransform = scene->findComponent<Transform>(planeEntity)){
+                const Vector3 up = planeTransform->worldRotation.getRotationMatrix() * Vector3(0.0f, 1.0f, 0.0f);
+                addPlaneLines(lines, planeTransform->worldPosition, up, 1.0f, planeColor);
+            }
+        }
+    }
+}
+
+void editor::SceneRender3D::createOrUpdateForceFieldLines(Entity entity, const Transform& transform, const ForceFieldComponent& field, bool visible){
+    LineRenderer* lines = forceFieldLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    const Matrix4 rotation = transform.worldRotation.getRotationMatrix();
+    auto world = [&](const Vector3& local){
+        return transform.worldPosition + rotation * Vector3(local.x * transform.worldScale.x, local.y * transform.worldScale.y, local.z * transform.worldScale.z);
+    };
+    const Vector4 color(0.55f, 0.95f, 0.95f, 1.0f);
+    const int steps = 40;
+    auto ring = [&](float radius, float y, int plane){
+        for (int i = 0; i < steps; i++){
+            const float a0 = 6.2831853f * (float)i / steps, a1 = 6.2831853f * (float)(i + 1) / steps;
+            auto at = [&](float a){
+                const float c = std::cos(a) * radius, sn = std::sin(a) * radius;
+                return plane == 1 ? Vector3(c, sn, 0.0f) : (plane == 2 ? Vector3(0.0f, sn, c) : Vector3(c, y, sn));
+            };
+            lines->addLine(world(at(a0)), world(at(a1)), color);
+        }
+    };
+    switch (field.shape){
+        case ForceFieldShapeType::Sphere:
+            ring(field.size.x, 0.0f, 0);
+            ring(field.size.x, 0.0f, 1);
+            ring(field.size.x, 0.0f, 2);
+            break;
+        case ForceFieldShapeType::Box: {
+            const Vector3 h = field.size;
+            const Vector3 c[8] = {
+                world(Vector3(-h.x, -h.y, -h.z)), world(Vector3(h.x, -h.y, -h.z)), world(Vector3(h.x, h.y, -h.z)), world(Vector3(-h.x, h.y, -h.z)),
+                world(Vector3(-h.x, -h.y, h.z)), world(Vector3(h.x, -h.y, h.z)), world(Vector3(h.x, h.y, h.z)), world(Vector3(-h.x, h.y, h.z))
+            };
+            const int edges[12][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6}, {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+            for (const auto& e : edges) lines->addLine(c[e[0]], c[e[1]], color);
+            break;
+        }
+        case ForceFieldShapeType::Cylinder: {
+            ring(field.size.x, field.size.y, 0);
+            ring(field.size.x, -field.size.y, 0);
+            for (int i = 0; i < 4; i++){
+                const float a = 1.5707963f * (float)i;
+                const Vector3 side(std::cos(a) * field.size.x, 0.0f, std::sin(a) * field.size.x);
+                lines->addLine(world(side + Vector3(0.0f, field.size.y, 0.0f)), world(side - Vector3(0.0f, field.size.y, 0.0f)), color);
+            }
+            break;
+        }
+        case ForceFieldShapeType::Infinite:
+            ring(0.5f, 0.0f, 0);
+            break;
+    }
+    // the wind's direction or the vortex's axis
+    if (field.kind == ForceFieldKind::Directional || field.kind == ForceFieldKind::Vortex){
+        const float length = field.shape == ForceFieldShapeType::Infinite ? 1.0f : std::max({field.size.x, field.size.y, field.size.z});
+        const Vector3 direction = field.direction.length() > 1e-6f ? field.direction.normalized() : Vector3(0.0f, 0.0f, 1.0f);
+        const Vector3 from = transform.worldPosition;
+        const Vector3 to = world(direction * length);
+        lines->addLine(from, to, color);
+        auto [n, right, forward] = LineDrawUtils::makeBasis(to - from);
+        const float head = length * 0.15f;
+        lines->addLine(to, to - n * head + right * head * 0.5f, color);
+        lines->addLine(to, to - n * head - right * head * 0.5f, color);
+        (void)forward;
+    }
+}
+
+void editor::SceneRender3D::createOrUpdateFogVolumeLines(Entity entity, const Transform& transform, const LocalVolumetricFogComponent& volume, bool visible){
+    LineRenderer* lines = fogVolumeLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    // the volume's frame: its Transform's position and rotation, its size times the scale
+    const Vector3 half(std::fabs(volume.size.x * transform.worldScale.x) * 0.5f,
+                       std::fabs(volume.size.y * transform.worldScale.y) * 0.5f,
+                       std::fabs(volume.size.z * transform.worldScale.z) * 0.5f);
+    const Matrix4 rotation = transform.worldRotation.getRotationMatrix();
+    auto world = [&](const Vector3& local){ return transform.worldPosition + rotation * local; };
+
+    // inside the blend distance the density fades in: the inner shape is where it is full
+    const float blend = std::max(volume.blendDistance, 0.0f);
+    const Vector3 inner(std::max(half.x - blend, 0.0f), std::max(half.y - blend, 0.0f), std::max(half.z - blend, 0.0f));
+    const Vector4 outerColor(0.75f, 0.85f, 1.0f, 1.0f);
+    const Vector4 innerColor(0.45f, 0.6f, 0.9f, 1.0f);
+
+    auto drawShape = [&](const Vector3& e, const Vector4& color){
+        if (volume.shape == FogVolumeShape::SPHERE){
+            // three ellipses through the axes
+            const int segments = 48;
+            for (int axis = 0; axis < 3; axis++){
+                Vector3 previous;
+                for (int i = 0; i <= segments; i++){
+                    const float a = 2.0f * 3.14159265f * (float)i / (float)segments;
+                    const float c = std::cos(a);
+                    const float s = std::sin(a);
+                    Vector3 local = axis == 0 ? Vector3(0.0f, c * e.y, s * e.z) : (axis == 1 ? Vector3(c * e.x, 0.0f, s * e.z) : Vector3(c * e.x, s * e.y, 0.0f));
+                    const Vector3 point = world(local);
+                    if (i > 0) lines->addLine(previous, point, color);
+                    previous = point;
+                }
+            }
+            return;
+        }
+        const Vector3 p[8] = {
+            world(Vector3(-e.x, -e.y, -e.z)), world(Vector3(e.x, -e.y, -e.z)), world(Vector3(e.x, e.y, -e.z)), world(Vector3(-e.x, e.y, -e.z)),
+            world(Vector3(-e.x, -e.y, e.z)), world(Vector3(e.x, -e.y, e.z)), world(Vector3(e.x, e.y, e.z)), world(Vector3(-e.x, e.y, e.z))
+        };
+        const int edges[12][2] = {
+            {0,1}, {1,2}, {2,3}, {3,0}, {4,5}, {5,6}, {6,7}, {7,4},
+            {0,4}, {1,5}, {2,6}, {3,7}
+        };
+        for (const auto& edge : edges) lines->addLine(p[edge[0]], p[edge[1]], color);
+    };
+    drawShape(half, outerColor);
+    if (blend > 0.0f && inner.x > 0.0f && inner.y > 0.0f && inner.z > 0.0f)
+        drawShape(inner, innerColor);
+}
+
+// A Water Volume: the box of water under its surface (in the GameObject's frame, as WaterSystem
+// tests it) and the flat surface itself, crossed; an infinite one as a wide surface only
+void editor::SceneRender3D::createOrUpdateWaterVolumeLines(Entity entity, const Transform& transform, const WaterVolumeComponent& volume, bool visible, bool highlighted){
+    LineRenderer* lines = waterVolumeLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    const float alpha = highlighted ? 1.0f : 0.4f;
+    const Vector4 boxColor = volume.enabled ? Vector4(0.3f, 0.6f, 1.0f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
+    const Vector4 surfaceColor = volume.enabled ? Vector4(0.5f, 0.85f, 1.0f, alpha) : Vector4(0.7f, 0.7f, 0.7f, alpha);
+    auto world = [&](float x, float y, float z){ return transform.modelMatrix * Vector3(x, y, z); };
+    const float top = volume.surfaceOffset;
+    if (volume.infinite){
+        const float extent = 50.0f;
+        for (int i = -5; i <= 5; i++){
+            const float t = extent * (float)i / 5.0f;
+            lines->addLine(transform.worldPosition + Vector3(-extent, top, t), transform.worldPosition + Vector3(extent, top, t), surfaceColor);
+            lines->addLine(transform.worldPosition + Vector3(t, top, -extent), transform.worldPosition + Vector3(t, top, extent), surfaceColor);
+        }
+        return;
+    }
+    const float hx = std::fabs(volume.size.x) * 0.5f;
+    const float hz = std::fabs(volume.size.z) * 0.5f;
+    const float bottom = top - std::fabs(volume.size.y);
+    const Vector3 p[8] = {
+        world(-hx, bottom, -hz), world(hx, bottom, -hz), world(hx, bottom, hz), world(-hx, bottom, hz),
+        world(-hx, top, -hz), world(hx, top, -hz), world(hx, top, hz), world(-hx, top, hz)
+    };
+    const int edges[8][2] = {{0,1}, {1,2}, {2,3}, {3,0}, {0,4}, {1,5}, {2,6}, {3,7}};
+    for (const auto& edge : edges) lines->addLine(p[edge[0]], p[edge[1]], boxColor);
+    // the surface, with a cross: where the waves rest
+    lines->addLine(p[4], p[5], surfaceColor);
+    lines->addLine(p[5], p[6], surfaceColor);
+    lines->addLine(p[6], p[7], surfaceColor);
+    lines->addLine(p[7], p[4], surfaceColor);
+    lines->addLine(p[4], p[6], surfaceColor);
+    lines->addLine(p[5], p[7], surfaceColor);
+}
+
+// A Buoyancy's columns: each from its bottom up the colliders' height, as WaterSystem samples
+void editor::SceneRender3D::createOrUpdateBuoyancyLines(Entity entity, const Transform& transform, const BuoyancyComponent& buoyancy, bool visible, bool highlighted){
+    LineRenderer* lines = buoyancyLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    Vector3 min, max;
+    const std::vector<Vector3> bottoms = WaterEditorUtils::columnBottoms(scene, entity, buoyancy, min, max);
+    if (bottoms.empty()) return;
+    const float height = max.y > min.y ? max.y - min.y : 1.0f;
+    const Vector4 color = buoyancy.enabled ? Vector4(1.0f, 0.75f, 0.25f, highlighted ? 1.0f : 0.4f) : Vector4(0.6f, 0.6f, 0.6f, 0.4f);
+    const float tick = std::max(0.02f, height * 0.05f);
+    for (const Vector3& bottom : bottoms){
+        const Vector3 a = transform.modelMatrix * bottom;
+        const Vector3 b = transform.modelMatrix * (bottom + Vector3(0.0f, height, 0.0f));
+        lines->addLine(a, b, color);
+        lines->addLine(transform.modelMatrix * (bottom - Vector3(tick, 0.0f, 0.0f)), transform.modelMatrix * (bottom + Vector3(tick, 0.0f, 0.0f)), color);
+        lines->addLine(transform.modelMatrix * (bottom - Vector3(0.0f, 0.0f, tick)), transform.modelMatrix * (bottom + Vector3(0.0f, 0.0f, tick)), color);
+    }
+}
+
+// The upright capsule a CharacterController moves (as CharacterControllerSystem sizes it: radius by
+// the larger of the X and Z scales, height by Y, no rotation), the band of the step it climbs over
+// its feet, and the cone of the steepest slope it walks
+void editor::SceneRender3D::createOrUpdateControllerLines(Entity entity, const Transform& transform, const CharacterControllerComponent& controller, bool visible, bool highlighted){
+    LineRenderer* lines = controllerLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    const Vector3 scale(std::fabs(transform.worldScale.x), std::fabs(transform.worldScale.y), std::fabs(transform.worldScale.z));
+    const float radius = std::max(0.0f, controller.radius) * std::max(scale.x, scale.z);
+    const float height = std::max(0.0f, controller.height) * scale.y;
+    if (radius <= 0.0f) return;
+    const float halfSegment = std::max(0.0f, height * 0.5f - radius);
+    const Vector3 center = transform.worldPosition + controller.center * scale;
+    const Vector3 top = center + Vector3(0.0f, halfSegment, 0.0f);
+    const Vector3 bottom = center - Vector3(0.0f, halfSegment, 0.0f);
+    const float alpha = highlighted ? 1.0f : 0.4f;
+    const Vector4 color = controller.enabled ? Vector4(0.45f, 0.95f, 0.35f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
+    const int segments = 32;
+    const float pi = 3.14159265f;
+
+    auto circle = [&](const Vector3& at, float r, const Vector4& c){
+        Vector3 previous;
+        for (int i = 0; i <= segments; i++){
+            const float a = 2.0f * pi * (float)i / (float)segments;
+            const Vector3 point = at + Vector3(std::cos(a) * r, 0.0f, std::sin(a) * r);
+            if (i > 0) lines->addLine(previous, point, c);
+            previous = point;
+        }
+    };
+    // the two rings, the four sides, and the half circles over and under them
+    circle(top, radius, color);
+    circle(bottom, radius, color);
+    for (int k = 0; k < 4; k++){
+        const float a = 0.5f * pi * (float)k;
+        const Vector3 side(std::cos(a) * radius, 0.0f, std::sin(a) * radius);
+        lines->addLine(top + side, bottom + side, color);
+    }
+    for (int plane = 0; plane < 2; plane++){
+        Vector3 previousTop, previousBottom;
+        for (int i = 0; i <= segments / 2; i++){
+            const float a = pi * (float)i / (float)(segments / 2);
+            const float h = std::cos(a) * radius;
+            const float v = std::sin(a) * radius;
+            const Vector3 offset = plane == 0 ? Vector3(h, 0.0f, 0.0f) : Vector3(0.0f, 0.0f, h);
+            const Vector3 pointTop = top + offset + Vector3(0.0f, v, 0.0f);
+            const Vector3 pointBottom = bottom + offset - Vector3(0.0f, v, 0.0f);
+            if (i > 0){
+                lines->addLine(previousTop, pointTop, color);
+                lines->addLine(previousBottom, pointBottom, color);
+            }
+            previousTop = pointTop;
+            previousBottom = pointBottom;
+        }
+    }
+
+    const Vector3 feet = bottom - Vector3(0.0f, radius, 0.0f);
+    const Vector4 bandColor(color.x, color.y, color.z, color.w * 0.6f);
+    // the step band: what it climbs is below this ring
+    if (controller.stepOffset > 0.0f)
+        circle(feet + Vector3(0.0f, controller.stepOffset * scale.y, 0.0f), radius * 1.15f, bandColor);
+    // the slope cone: surfaces steeper than slopeLimit (from the horizontal) are walls
+    const float slope = std::clamp(controller.slopeLimit, 0.0f, 89.0f) * pi / 180.0f;
+    const float reach = radius * 1.5f;
+    for (int k = 0; k < 8; k++){
+        const float a = 2.0f * pi * (float)k / 8.0f;
+        const Vector3 out = feet + Vector3(std::cos(a) * reach, std::tan(slope) * reach, std::sin(a) * reach);
+        lines->addLine(feet, out, bandColor);
+    }
+}
+
 // endpoint handles for a selected Lines entity, drawn as small 3-axis crosses
 // (orientation-independent in 3D); the sub-selected endpoint is drawn bigger
 // and in the selection color
@@ -470,19 +616,18 @@ void editor::SceneRender3D::createOrUpdateLinePointLines(Entity entity, const Tr
     const Vector4 selectedHandleColor(1.0f, 0.6f, 0.0f, 1.0f);
     bool hasPointSelection = (getSelectedLinePointEntity() == entity);
 
-    for (size_t i = 0; i < lines.lines.size(); i++){
-        for (int e = 0; e < 2; e++){
-            const Vector3& localPoint = (e == 0) ? lines.lines[i].pointA : lines.lines[i].pointB;
-            Vector3 worldPoint = transform.modelMatrix * localPoint;
+    // a polyline's points, or each segment's ends
+    const std::vector<Vector3> points = getLinePointWorldPositions(lines, transform);
+    for (size_t i = 0; i < points.size(); i++){
+        const Vector3& worldPoint = points[i];
 
-            bool pointSelected = hasPointSelection && ((int)(i * 2) + e == getSelectedLinePointIndex());
-            const Vector4& color = pointSelected ? selectedHandleColor : handleColor;
-            float halfSize = getPointHandleHalfSize(worldPoint) * (pointSelected ? 0.75f : 0.5f);
+        bool pointSelected = hasPointSelection && ((int)i == getSelectedLinePointIndex());
+        const Vector4& color = pointSelected ? selectedHandleColor : handleColor;
+        float halfSize = getPointHandleHalfSize(worldPoint) * (pointSelected ? 0.75f : 0.5f);
 
-            handlesObj->addLine(worldPoint - Vector3(halfSize, 0, 0), worldPoint + Vector3(halfSize, 0, 0), color);
-            handlesObj->addLine(worldPoint - Vector3(0, halfSize, 0), worldPoint + Vector3(0, halfSize, 0), color);
-            handlesObj->addLine(worldPoint - Vector3(0, 0, halfSize), worldPoint + Vector3(0, 0, halfSize), color);
-        }
+        handlesObj->addLine(worldPoint - Vector3(halfSize, 0, 0), worldPoint + Vector3(halfSize, 0, 0), color);
+        handlesObj->addLine(worldPoint - Vector3(0, halfSize, 0), worldPoint + Vector3(0, halfSize, 0), color);
+        handlesObj->addLine(worldPoint - Vector3(0, 0, halfSize), worldPoint + Vector3(0, 0, halfSize), color);
     }
 }
 
@@ -668,555 +813,51 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
     bo.lines->clearLines();
     bo.lines->setVisible(transform.visible && visible);
 
-    if (!transform.visible || !visible || body.numColliders == 0) {
+    if (!transform.visible || !visible || body.colliders.empty()) {
         return;
     }
 
     float alpha = highlighted ? 1.0f : 0.35f;
     const Vector4 bodyColor(0.2f, 0.95f, 0.95f, alpha);
-    // must match how PhysicsSystem sizes the Jolt shape, parent scale included
-    const Vector3 entityScale = transform.worldScale;
-    const Vector3 absScale(std::fabs(entityScale.x), std::fabs(entityScale.y), std::fabs(entityScale.z));
-    const Matrix4 bodyMatrix = Matrix4::translateMatrix(transform.worldPosition) * transform.worldRotation.getRotationMatrix();
-
-    auto maxScaleXZ = [&](){
-        return std::max(absScale.x, absScale.z);
-    };
-
-    auto maxScaleXYZ = [&](){
-        return std::max(absScale.x, std::max(absScale.y, absScale.z));
-    };
-
-    auto addTransformedLine = [&](const Matrix4& shapeMatrix, const Vector3& from, const Vector3& to) {
-        Vector3 worldFrom = bodyMatrix * (shapeMatrix * from);
-        Vector3 worldTo = bodyMatrix * (shapeMatrix * to);
-        bo.lines->addLine(worldFrom, worldTo, bodyColor);
-    };
-
-    auto addBox = [&](const Matrix4& shapeMatrix, const Vector3& minPt, const Vector3& maxPt) {
-        Vector3 p000(minPt.x, minPt.y, minPt.z);
-        Vector3 p100(maxPt.x, minPt.y, minPt.z);
-        Vector3 p110(maxPt.x, maxPt.y, minPt.z);
-        Vector3 p010(minPt.x, maxPt.y, minPt.z);
-
-        Vector3 p001(minPt.x, minPt.y, maxPt.z);
-        Vector3 p101(maxPt.x, minPt.y, maxPt.z);
-        Vector3 p111(maxPt.x, maxPt.y, maxPt.z);
-        Vector3 p011(minPt.x, maxPt.y, maxPt.z);
-
-        addTransformedLine(shapeMatrix, p000, p100);
-        addTransformedLine(shapeMatrix, p100, p110);
-        addTransformedLine(shapeMatrix, p110, p010);
-        addTransformedLine(shapeMatrix, p010, p000);
-
-        addTransformedLine(shapeMatrix, p001, p101);
-        addTransformedLine(shapeMatrix, p101, p111);
-        addTransformedLine(shapeMatrix, p111, p011);
-        addTransformedLine(shapeMatrix, p011, p001);
-
-        addTransformedLine(shapeMatrix, p000, p001);
-        addTransformedLine(shapeMatrix, p100, p101);
-        addTransformedLine(shapeMatrix, p110, p111);
-        addTransformedLine(shapeMatrix, p010, p011);
-    };
-
-    auto addBoxRings = [&](const Matrix4& shapeMatrix, const Vector3& minPt, const Vector3& maxPt) {
-        const int ringCount = 3;
-        for (int r = 1; r <= ringCount; r++) {
-            float t = (float)r / (float)(ringCount + 1);
-            float y = minPt.y + (maxPt.y - minPt.y) * t;
-
-            Vector3 p0(minPt.x, y, minPt.z);
-            Vector3 p1(maxPt.x, y, minPt.z);
-            Vector3 p2(maxPt.x, y, maxPt.z);
-            Vector3 p3(minPt.x, y, maxPt.z);
-
-            addTransformedLine(shapeMatrix, p0, p1);
-            addTransformedLine(shapeMatrix, p1, p2);
-            addTransformedLine(shapeMatrix, p2, p3);
-            addTransformedLine(shapeMatrix, p3, p0);
-        }
-    };
-
-    auto addBoxVerticals = [&](const Matrix4& shapeMatrix, const Vector3& minPt, const Vector3& maxPt) {
-        const int verticalCount = 3;
-
-        for (int v = 1; v <= verticalCount; v++) {
-            float t = (float)v / (float)(verticalCount + 1);
-
-            float x = minPt.x + (maxPt.x - minPt.x) * t;
-            float z = minPt.z + (maxPt.z - minPt.z) * t;
-
-            addTransformedLine(shapeMatrix, Vector3(x, minPt.y, minPt.z), Vector3(x, maxPt.y, minPt.z));
-            addTransformedLine(shapeMatrix, Vector3(x, minPt.y, maxPt.z), Vector3(x, maxPt.y, maxPt.z));
-
-            addTransformedLine(shapeMatrix, Vector3(minPt.x, minPt.y, z), Vector3(minPt.x, maxPt.y, z));
-            addTransformedLine(shapeMatrix, Vector3(maxPt.x, minPt.y, z), Vector3(maxPt.x, maxPt.y, z));
-        }
-    };
-
-    auto addBoxCaps = [&](const Matrix4& shapeMatrix, const Vector3& minPt, const Vector3& maxPt) {
-        const int capLineCount = 3;
-
-        for (int c = 1; c <= capLineCount; c++) {
-            float t = (float)c / (float)(capLineCount + 1);
-
-            float x = minPt.x + (maxPt.x - minPt.x) * t;
-            float z = minPt.z + (maxPt.z - minPt.z) * t;
-
-            addTransformedLine(shapeMatrix, Vector3(x, minPt.y, minPt.z), Vector3(x, minPt.y, maxPt.z));
-            addTransformedLine(shapeMatrix, Vector3(x, maxPt.y, minPt.z), Vector3(x, maxPt.y, maxPt.z));
-
-            addTransformedLine(shapeMatrix, Vector3(minPt.x, minPt.y, z), Vector3(maxPt.x, minPt.y, z));
-            addTransformedLine(shapeMatrix, Vector3(minPt.x, maxPt.y, z), Vector3(maxPt.x, maxPt.y, z));
-        }
-    };
-
-    auto addCircle = [&](const Matrix4& shapeMatrix, const Vector3& center, const Vector3& axisA, const Vector3& axisB, float radius, int segments) {
-        if (radius <= 0.0f) {
-            return;
-        }
-
-        for (int i = 0; i < segments; i++) {
-            float a0 = (2.0f * M_PI * i) / segments;
-            float a1 = (2.0f * M_PI * (i + 1)) / segments;
-
-            Vector3 p0 = center + axisA * (std::cos(a0) * radius) + axisB * (std::sin(a0) * radius);
-            Vector3 p1 = center + axisA * (std::cos(a1) * radius) + axisB * (std::sin(a1) * radius);
-
-            addTransformedLine(shapeMatrix, p0, p1);
-        }
-    };
-
-    auto addHemisphere = [&](const Matrix4& shapeMatrix, const Vector3& center, float radius, bool topHemisphere) {
-        if (radius <= 0.0f) {
-            return;
-        }
-
-        const int elevationSegments = 6;
-        const int azimuthSegments = 12;
-        const float ySign = topHemisphere ? 1.0f : -1.0f;
-
-        for (int a = 0; a < azimuthSegments; a++) {
-            float az = (2.0f * M_PI * a) / azimuthSegments;
-            Vector3 dirXZ(std::cos(az), 0.0f, std::sin(az));
-
-            for (int e = 0; e < elevationSegments; e++) {
-                float phi0 = (0.5f * M_PI * e) / elevationSegments;
-                float phi1 = (0.5f * M_PI * (e + 1)) / elevationSegments;
-
-                Vector3 p0 = center + dirXZ * (std::cos(phi0) * radius) + Vector3(0.0f, ySign * std::sin(phi0) * radius, 0.0f);
-                Vector3 p1 = center + dirXZ * (std::cos(phi1) * radius) + Vector3(0.0f, ySign * std::sin(phi1) * radius, 0.0f);
-
-                addTransformedLine(shapeMatrix, p0, p1);
-            }
-        }
-
-        const int ringCount = 3;
-        for (int r = 1; r <= ringCount; r++) {
-            float phi = (0.5f * M_PI * r) / (ringCount + 1);
-            float ringRadius = std::cos(phi) * radius;
-            float y = ySign * std::sin(phi) * radius;
-
-            addCircle(shapeMatrix, center + Vector3(0.0f, y, 0.0f), Vector3(1, 0, 0), Vector3(0, 0, 1), ringRadius, 18);
-        }
-    };
-
-    auto addCapsuleMiddle = [&](const Matrix4& shapeMatrix, float halfHeight, float topRadius, float bottomRadius) {
-        const int azimuthSegments = 12;
-        for (int a = 0; a < azimuthSegments; a++) {
-            float az = (2.0f * M_PI * a) / azimuthSegments;
-            Vector3 dirXZ(std::cos(az), 0.0f, std::sin(az));
-
-            Vector3 topPoint = Vector3(0.0f, halfHeight, 0.0f) + dirXZ * topRadius;
-            Vector3 bottomPoint = Vector3(0.0f, -halfHeight, 0.0f) + dirXZ * bottomRadius;
-            addTransformedLine(shapeMatrix, topPoint, bottomPoint);
-        }
-    };
-
-    auto addCylinderRings = [&](const Matrix4& shapeMatrix, float halfHeight, float radius) {
-        const int ringCount = 3;
-        for (int r = 1; r <= ringCount; r++) {
-            float t = (float)r / (float)(ringCount + 1);
-            float y = halfHeight - (2.0f * halfHeight * t);
-            addCircle(shapeMatrix, Vector3(0.0f, y, 0.0f), Vector3(1, 0, 0), Vector3(0, 0, 1), radius, 18);
-        }
-    };
-
-    auto addSpherePattern = [&](const Matrix4& shapeMatrix, float radius) {
-        if (radius <= 0.0f) {
-            return;
-        }
-
-        const int azimuthSegments = 12;
-        const int elevationSegments = 12;
-
-        for (int a = 0; a < azimuthSegments; a++) {
-            float az = (2.0f * M_PI * a) / azimuthSegments;
-            Vector3 dirXZ(std::cos(az), 0.0f, std::sin(az));
-
-            for (int e = 0; e < elevationSegments; e++) {
-                float phi0 = -0.5f * M_PI + (M_PI * e) / elevationSegments;
-                float phi1 = -0.5f * M_PI + (M_PI * (e + 1)) / elevationSegments;
-
-                Vector3 p0 = dirXZ * (std::cos(phi0) * radius) + Vector3(0.0f, std::sin(phi0) * radius, 0.0f);
-                Vector3 p1 = dirXZ * (std::cos(phi1) * radius) + Vector3(0.0f, std::sin(phi1) * radius, 0.0f);
-
-                addTransformedLine(shapeMatrix, p0, p1);
-            }
-        }
-
-        const int latitudeRings = 5;
-        for (int r = 1; r <= latitudeRings; r++) {
-            float phi = -0.5f * M_PI + (M_PI * r) / (latitudeRings + 1);
-            float ringRadius = std::cos(phi) * radius;
-            float y = std::sin(phi) * radius;
-
-            addCircle(shapeMatrix, Vector3(0.0f, y, 0.0f), Vector3(1, 0, 0), Vector3(0, 0, 1), ringRadius, 20);
-        }
-    };
-
-    // An empty name keeps the buffer already in view; an unknown one returns null so the
-    // attribute is dropped, since its offset only means anything against its own buffer.
-    auto resolveNamedBuffer = [](const std::map<std::string, Buffer*>& buffers, const std::string& bufferName, Buffer* current) -> Buffer* {
-        if (bufferName.empty()) {
-            return current;
-        }
-
-        auto it = buffers.find(bufferName);
-        return it != buffers.end() ? it->second : nullptr;
-    };
-
-    // A multi-node glTF root holds no geometry of its own, so a shape sourced from it
-    // reads the model's mesh-node children instead.
-    auto shapeSourceEntities = [&](const Collider3D& shapeData) {
-        std::vector<Entity> sources;
-        Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-
-        MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity);
-        if (mesh && mesh->numSubmeshes > 0) {
-            sources.push_back(meshEntity);
-            return sources;
-        }
-
-        if (ModelComponent* model = scene->findComponent<ModelComponent>(meshEntity)) {
-            for (auto const& node : model->meshNodesMapping) {
-                MeshComponent* nodeMesh = scene->findComponent<MeshComponent>(node.second);
-                if (nodeMesh && nodeMesh->numSubmeshes > 0) {
-                    sources.push_back(node.second);
-                }
-            }
-        }
-
-        return sources;
-    };
-
-    // Source geometry through its world matrix and back into the body's local
-    // (rotation-free, world-scaled) space, the same mapping PhysicsSystem applies.
-    auto sourceToBodyMatrix = [&](Entity sourceEntity) -> Matrix4 {
-        Transform* sourceTransform = scene->findComponent<Transform>(sourceEntity);
-        if (sourceEntity == entity || !sourceTransform) {
-            return Matrix4::scaleMatrix(sourceTransform ? sourceTransform->worldScale : Vector3::UNIT_SCALE);
-        }
-
-        return transform.worldRotation.inverse().getRotationMatrix() *
-               Matrix4::translateMatrix(-transform.worldPosition) *
-               sourceTransform->modelMatrix;
-    };
-
-    auto forEachSourceSubmesh = [&](const std::vector<Entity>& sources, auto&& callback) {
-        for (Entity sourceEntity : sources) {
-            MeshComponent* mesh = scene->findComponent<MeshComponent>(sourceEntity);
-            if (!mesh) continue;
-
-            std::map<std::string, Buffer*> buffers;
-            if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;
-            if (mesh->indices.getSize() > 0) buffers["indices"] = &mesh->indices;
-            for (int bufferIndex = 0; bufferIndex < mesh->numExternalBuffers; bufferIndex++) {
-                buffers[mesh->eBuffers[bufferIndex].getName()] = &mesh->eBuffers[bufferIndex];
-            }
-
-            Buffer* indexBuffer = nullptr;
-            Attribute indexAttr;
-            Buffer* vertexBuffer = nullptr;
-            Attribute vertexAttr;
-
-            for (auto const& buf : buffers) {
-                if (buf.second->getAttribute(AttributeType::INDEX)) {
-                    indexBuffer = buf.second;
-                    indexAttr = *buf.second->getAttribute(AttributeType::INDEX);
-                }
-                if (buf.second->getAttribute(AttributeType::POSITION)) {
-                    vertexBuffer = buf.second;
-                    vertexAttr = *buf.second->getAttribute(AttributeType::POSITION);
-                }
-            }
-
-            const Matrix4 toBody = sourceToBodyMatrix(sourceEntity);
-
-            for (size_t submeshIndex = 0; submeshIndex < mesh->numSubmeshes; submeshIndex++) {
-                for (auto const& attr : mesh->submeshes[submeshIndex].attributes) {
-                    if (attr.first == AttributeType::INDEX) {
-                        if (Buffer* resolved = resolveNamedBuffer(buffers, attr.second.getBufferName(), indexBuffer)) {
-                            indexBuffer = resolved;
-                            indexAttr = attr.second;
-                        }
-                    }
-                    if (attr.first == AttributeType::POSITION) {
-                        if (Buffer* resolved = resolveNamedBuffer(buffers, attr.second.getBufferName(), vertexBuffer)) {
-                            vertexBuffer = resolved;
-                            vertexAttr = attr.second;
-                        }
-                    }
-                }
-
-                callback(vertexBuffer, vertexAttr, indexBuffer, indexAttr, toBody);
-            }
-        }
-    };
-
-    // Placement comes from the local chain up to the body, not from the mapping matrix:
-    // the two agree, but the matrix jitters in its low bits when the body itself moves.
-    auto sourceSignature = [&](const Collider3D& shapeData, const std::vector<Entity>& sources) {
-        uint64_t hash = 1469598103934665603ull;
-        auto mix = [&hash](const void* data, size_t size) {
-            const unsigned char* bytes = static_cast<const unsigned char*>(data);
-            for (size_t byteIndex = 0; byteIndex < size; byteIndex++) {
-                hash ^= bytes[byteIndex];
-                hash *= 1099511628211ull;
-            }
-        };
-
-        // One slot serves every shape type at this index
-        int shapeType = int(shapeData.type);
-        int shapeSource = int(shapeData.source);
-        mix(&shapeType, sizeof(shapeType));
-        mix(&shapeSource, sizeof(shapeSource));
-        mix(&transform.worldScale, sizeof(Vector3));
-
-        for (Entity sourceEntity : sources) {
-            Entity current = sourceEntity;
-            size_t hops = 0;
-
-            while (current != NULL_ENTITY && current != entity && hops <= kMaxSourceParentHops) {
-                Transform* sourceTransform = scene->findComponent<Transform>(current);
-                if (!sourceTransform) break;
-
-                mix(&sourceTransform->position, sizeof(Vector3));
-                mix(&sourceTransform->rotation, sizeof(Quaternion));
-                mix(&sourceTransform->scale, sizeof(Vector3));
-
-                current = sourceTransform->parent;
-                hops++;
-            }
-
-            // Outside the body's subtree there is no chain to walk, so quantize instead
-            if (current != entity) {
-                const Matrix4 toBody = sourceToBodyMatrix(sourceEntity);
-                for (int element = 0; element < 16; element++) {
-                    int64_t quantized = std::llround(double(static_cast<const float*>(toBody)[element]) * kHullQuantizeScale);
-                    mix(&quantized, sizeof(quantized));
-                }
-            }
-        }
-
-        forEachSourceSubmesh(sources, [&](Buffer* vbuf, Attribute vattr, Buffer* ibuf, Attribute iattr, const Matrix4&) {
-            const void* vdata = vbuf ? static_cast<const void*>(vbuf->getData()) : nullptr;
-            const void* idata = ibuf ? static_cast<const void*>(ibuf->getData()) : nullptr;
-            size_t vertexCount = vbuf ? vattr.getCount() : 0;
-            size_t indexCount = ibuf ? iattr.getCount() : 0;
-
-            mix(&vdata, sizeof(vdata));
-            mix(&idata, sizeof(idata));
-            mix(&vertexCount, sizeof(vertexCount));
-            mix(&indexCount, sizeof(indexCount));
+    const Vector4 triggerColor(1.0f, 0.9f, 0.15f, alpha);
+    const Vector4 centerColor(1.0f, 0.4f, 0.1f, alpha);
+
+    // the same wireframes as the runtime debug draw (PhysicsDebugLines), at the Transform
+    PhysicsDebugLines::Pose pose;
+    pose.position = transform.worldPosition;
+    pose.rotation = transform.worldRotation;
+    pose.scale = transform.worldScale;
+    PhysicsDebugLines::bodyEdges(scene, entity, transform, body, pose, bo.shapeEdgeCaches,
+        [&](const Vector3& a, const Vector3& b, size_t collider) {
+            bo.lines->addLine(a, b, (collider < body.colliders.size() && body.colliders[collider].isTrigger) ? triggerColor : bodyColor);
         });
 
-        return hash;
-    };
-
-    auto shapeEdgeCache = [&](size_t colliderIndex) -> BodyObjects::ShapeEdgeCache& {
-        if (bo.shapeEdgeCaches.size() != body.numColliders) {
-            bo.shapeEdgeCaches.assign(body.numColliders, BodyObjects::ShapeEdgeCache{});
+    // the centre of mass of the selected body: given, or computed from primitive colliders
+    // (mesh-sourced ones would be built every frame)
+    if (highlighted) {
+        bool hasCenter = false;
+        Vector3 center = body.centerOfMass;
+        if (!body.automaticCenterOfMass) {
+            hasCenter = true;
+        } else {
+            bool primitives = true;
+            for (const Collider3D& collider : body.colliders) {
+                if (collider.type == Collider3DType::MESH || collider.type == Collider3DType::HEIGHTFIELD ||
+                        (collider.type == Collider3DType::CONVEX_HULL && collider.source != Collider3DSource::RAW_VERTICES)) {
+                    primitives = false;
+                }
+            }
+            PhysicsSystem::MassInfo3D info;
+            if (primitives && scene->getSystem<PhysicsSystem>()->computeMassProperties3D(entity, body, info)) {
+                center = info.centerOfMass;
+                hasCenter = true;
+            }
         }
-        return bo.shapeEdgeCaches[colliderIndex];
-    };
-
-    for (size_t i = 0; i < body.numColliders; i++) {
-        const Collider3D& shapeData = body.colliders[i];
-
-        Matrix4 shapeMatrix = Matrix4::translateMatrix(shapeData.position * entityScale) * shapeData.rotation.getRotationMatrix();
-
-        if (shapeData.type == Collider3DType::BOX) {
-            Vector3 halfSize(shapeData.width * absScale.x * 0.5f, shapeData.height * absScale.y * 0.5f, shapeData.depth * absScale.z * 0.5f);
-            addBox(shapeMatrix, -halfSize, halfSize);
-            addBoxRings(shapeMatrix, -halfSize, halfSize);
-            addBoxVerticals(shapeMatrix, -halfSize, halfSize);
-            addBoxCaps(shapeMatrix, -halfSize, halfSize);
-        } else if (shapeData.type == Collider3DType::SPHERE) {
-            addSpherePattern(shapeMatrix, shapeData.radius * maxScaleXYZ());
-        } else if (shapeData.type == Collider3DType::CAPSULE) {
-            const float halfHeight = shapeData.halfHeight * absScale.y;
-            const float radius = shapeData.radius * maxScaleXZ();
-            Vector3 top(0, halfHeight, 0);
-            Vector3 bottom(0, -halfHeight, 0);
-
-            addCircle(shapeMatrix, top, Vector3(1, 0, 0), Vector3(0, 0, 1), radius, 20);
-            addCircle(shapeMatrix, bottom, Vector3(1, 0, 0), Vector3(0, 0, 1), radius, 20);
-            addCapsuleMiddle(shapeMatrix, halfHeight, radius, radius);
-
-            addHemisphere(shapeMatrix, top, radius, true);
-            addHemisphere(shapeMatrix, bottom, radius, false);
-        } else if (shapeData.type == Collider3DType::TAPERED_CAPSULE) {
-            const float halfHeight = shapeData.halfHeight * absScale.y;
-            const float radiusScale = maxScaleXZ();
-            const float topRadius = shapeData.topRadius * radiusScale;
-            const float bottomRadius = shapeData.bottomRadius * radiusScale;
-
-            addCircle(shapeMatrix, Vector3(0, halfHeight, 0), Vector3(1, 0, 0), Vector3(0, 0, 1), topRadius, 20);
-            addCircle(shapeMatrix, Vector3(0, -halfHeight, 0), Vector3(1, 0, 0), Vector3(0, 0, 1), bottomRadius, 20);
-            addCapsuleMiddle(shapeMatrix, halfHeight, topRadius, bottomRadius);
-
-            addHemisphere(shapeMatrix, Vector3(0, halfHeight, 0), topRadius, true);
-            addHemisphere(shapeMatrix, Vector3(0, -halfHeight, 0), bottomRadius, false);
-        } else if (shapeData.type == Collider3DType::CYLINDER) {
-            const float halfHeight = shapeData.halfHeight * absScale.y;
-            const float radius = shapeData.radius * maxScaleXZ();
-
-            addCircle(shapeMatrix, Vector3(0, halfHeight, 0), Vector3(1, 0, 0), Vector3(0, 0, 1), radius, 20);
-            addCircle(shapeMatrix, Vector3(0, -halfHeight, 0), Vector3(1, 0, 0), Vector3(0, 0, 1), radius, 20);
-            addCapsuleMiddle(shapeMatrix, halfHeight, radius, radius);
-            addCylinderRings(shapeMatrix, halfHeight, radius);
-        } else if (shapeData.type == Collider3DType::CONVEX_HULL) {
-            if (shapeData.source == Collider3DSource::ENTITY_MESH) {
-                // Walking every source vertex and rebuilding the hull is far too heavy
-                // to repeat per frame
-                BodyObjects::ShapeEdgeCache& cache = shapeEdgeCache(i);
-                std::vector<Entity> sources = shapeSourceEntities(shapeData);
-                uint64_t signature = sourceSignature(shapeData, sources);
-
-                if (!cache.valid || cache.signature != signature) {
-                    cache.valid = true;
-                    cache.signature = signature;
-                    cache.edges.clear();
-
-                    std::vector<Vector3> hullPoints;
-                    std::unordered_set<uint64_t> seen;
-                    forEachSourceSubmesh(sources, [&](Buffer* vbuf, Attribute vattr, Buffer*, Attribute, const Matrix4& toBody) {
-                        if (!vbuf) return;
-                        int count = int(vattr.getCount());
-                        for (int v = 0; v < count; v++) {
-                            pushUniqueHullPoint(hullPoints, seen, toBody * vbuf->getVector3(&vattr, v));
-                        }
-                    });
-
-                    buildConvexHullEdges(hullPoints, [&](const Vector3& a, const Vector3& b) {
-                        cache.edges.emplace_back(a, b);
-                    });
-                }
-
-                for (const auto& e : cache.edges) {
-                    addTransformedLine(shapeMatrix, e.first, e.second);
-                }
-            } else if (shapeData.numVertices >= 2) {
-                // Raw vertices are inspector-editable and bounded, so build them inline.
-                std::vector<Vector3> hullPoints;
-                std::unordered_set<uint64_t> seen;
-                hullPoints.reserve(shapeData.numVertices);
-                for (size_t vertexIndex = 0; vertexIndex < shapeData.numVertices; vertexIndex++) {
-                    pushUniqueHullPoint(hullPoints, seen, shapeData.vertices[vertexIndex] * entityScale);
-                }
-
-                buildConvexHullEdges(hullPoints, [&](const Vector3& a, const Vector3& b) {
-                    addTransformedLine(shapeMatrix, a, b);
-                });
-            }
-        } else if (shapeData.type == Collider3DType::MESH) {
-            if (shapeData.source == Collider3DSource::ENTITY_MESH) {
-                // Cached in body-local space, so a frame only costs two matrix
-                // transforms + addLine per edge
-                BodyObjects::ShapeEdgeCache& cache = shapeEdgeCache(i);
-                std::vector<Entity> sources = shapeSourceEntities(shapeData);
-                uint64_t signature = sourceSignature(shapeData, sources);
-
-                if (!cache.valid || cache.signature != signature) {
-                    cache.valid = true;
-                    cache.signature = signature;
-                    cache.edges.clear();
-
-                    // Interior edges belong to 2 triangles, so deduping by index pair
-                    // halves the lines. Per submesh: indices are local to their own.
-                    std::unordered_set<uint64_t> seenEdges;
-                    forEachSourceSubmesh(sources, [&](Buffer* vbuf, Attribute vattr, Buffer* ibuf, Attribute iattr, const Matrix4& toBody) {
-                        seenEdges.clear();
-                        if (!vbuf) return;
-                        uint32_t vcount = uint32_t(vattr.getCount());
-                        auto pushEdge = [&](uint32_t a, uint32_t b) {
-                            if (a == b || a >= vcount || b >= vcount) return;
-                            uint32_t lo = std::min(a, b);
-                            uint32_t hi = std::max(a, b);
-                            uint64_t key = (uint64_t(lo) << 32) | hi;
-                            if (!seenEdges.insert(key).second) return;
-                            cache.edges.emplace_back(toBody * vbuf->getVector3(&vattr, lo), toBody * vbuf->getVector3(&vattr, hi));
-                        };
-
-                        if (!ibuf) {
-                            uint32_t triCount = vcount / 3;
-                            for (uint32_t t = 0; t < triCount; t++) {
-                                uint32_t a = t * 3, b = a + 1, c = a + 2;
-                                pushEdge(a, b);
-                                pushEdge(b, c);
-                                pushEdge(c, a);
-                            }
-                            return;
-                        }
-                        uint32_t triCount = uint32_t(iattr.getCount() / 3);
-                        auto readIndex = [&](uint32_t idx) -> uint32_t {
-                            if (iattr.getDataType() == AttributeDataType::UNSIGNED_INT) return ibuf->getUInt32(&iattr, idx);
-                            if (iattr.getDataType() == AttributeDataType::UNSIGNED_SHORT) return ibuf->getUInt16(&iattr, idx);
-                            return UINT32_MAX;
-                        };
-                        for (uint32_t t = 0; t < triCount; t++) {
-                            uint32_t i0 = readIndex(t * 3);
-                            uint32_t i1 = readIndex(t * 3 + 1);
-                            uint32_t i2 = readIndex(t * 3 + 2);
-                            if (i0 == UINT32_MAX || i1 == UINT32_MAX || i2 == UINT32_MAX) continue;
-                            pushEdge(i0, i1);
-                            pushEdge(i1, i2);
-                            pushEdge(i2, i0);
-                        }
-                    });
-                }
-
-                for (const auto& e : cache.edges) {
-                    addTransformedLine(shapeMatrix, e.first, e.second);
-                }
-            } else if (shapeData.numVertices >= 3 && shapeData.numIndices >= 3) {
-                int triangles = int(shapeData.numIndices / 3);
-                for (int tri = 0; tri < triangles; tri++) {
-                    uint16_t i0 = shapeData.indices[tri * 3 + 0];
-                    uint16_t i1 = shapeData.indices[tri * 3 + 1];
-                    uint16_t i2 = shapeData.indices[tri * 3 + 2];
-
-                    if (i0 < shapeData.numVertices && i1 < shapeData.numVertices && i2 < shapeData.numVertices) {
-                        Vector3 p0 = shapeData.vertices[i0] * entityScale;
-                        Vector3 p1 = shapeData.vertices[i1] * entityScale;
-                        Vector3 p2 = shapeData.vertices[i2] * entityScale;
-
-                        addTransformedLine(shapeMatrix, p0, p1);
-                        addTransformedLine(shapeMatrix, p1, p2);
-                        addTransformedLine(shapeMatrix, p2, p0);
-                    }
-                }
-            }
-        } else if (shapeData.type == Collider3DType::HEIGHTFIELD) {
-            Entity terrainEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-            TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
-            if (terrain) {
-                Vector3 minPt(-terrain->terrainSize * 0.5f, 0.0f, -terrain->terrainSize * 0.5f);
-                Vector3 maxPt(terrain->terrainSize * 0.5f, terrain->maxHeight, terrain->terrainSize * 0.5f);
-                addBox(shapeMatrix, minPt, maxPt);
-            }
+        if (hasCenter) {
+            const Vector3 world = transform.worldPosition + transform.worldRotation * center;
+            PhysicsDebugLines::crossMark(world, 0.08f, [&](const Vector3& a, const Vector3& b) { bo.lines->addLine(a, b, centerColor); });
+            LineDrawUtils::addRing3D(bo.lines, world, Vector3(0, 1, 0), 0.06f, centerColor, 12);
+            LineDrawUtils::addRing3D(bo.lines, world, Vector3(1, 0, 0), 0.06f, centerColor, 12);
         }
     }
 }
@@ -1231,17 +872,6 @@ void editor::SceneRender3D::createOrUpdateJointLines(Entity entity, const Joint3
         return;
     }
 
-    auto getBodyWorldPosition = [&](Entity bodyEntity){
-        if (bodyEntity != NULL_ENTITY){
-            Transform* transform = scene->findComponent<Transform>(bodyEntity);
-            if (transform){
-                return transform->worldPosition;
-            }
-        }
-
-        return Vector3::ZERO;
-    };
-
     float alpha = highlighted ? 1.0f : 0.35f;
 
     const Vector4 jointColor(0.95f, 0.75f, 0.2f, alpha);
@@ -1249,166 +879,19 @@ void editor::SceneRender3D::createOrUpdateJointLines(Entity entity, const Joint3
     const Vector4 axisColor(0.2f, 0.9f, 1.0f, alpha);
     const Vector4 limitColor(1.0f, 0.35f, 0.35f, alpha);
 
-    Vector3 anchorA = getBodyWorldPosition(joint.bodyA);
-    Vector3 anchorB = getBodyWorldPosition(joint.bodyB);
-
-    switch (joint.type){
-        case Joint3DType::DISTANCE:
-            if (!joint.autoAnchors){
-                anchorA = joint.anchorA;
-                anchorB = joint.anchorB;
-            }
-            break;
-        case Joint3DType::POINT:
-        case Joint3DType::HINGE:
-        case Joint3DType::CONE:
-        case Joint3DType::SWINGTWIST:
-            anchorA = anchorB = joint.anchor;
-            break;
-        case Joint3DType::SIXDOF:
-            anchorA = joint.anchorA;
-            anchorB = joint.anchorB;
-            break;
-        case Joint3DType::PRISMATIC:
-            anchorA = anchorB = (anchorA + anchorB) * 0.5f;
-            break;
-        case Joint3DType::FIXED:
-        case Joint3DType::PATH:
-        case Joint3DType::GEAR:
-        case Joint3DType::RACKANDPINON:
-        case Joint3DType::PULLEY:
-        default:
-            break;
-    }
-
-    jointLinesObj->addLine(anchorA, anchorB, jointColor);
-
-    float markSize = 0.12f;
-
-    jointLinesObj->addLine(anchorA + Vector3(-markSize, 0.0f, 0.0f), anchorA + Vector3(markSize, 0.0f, 0.0f), helperColor);
-    jointLinesObj->addLine(anchorA + Vector3(0.0f, -markSize, 0.0f), anchorA + Vector3(0.0f, markSize, 0.0f), helperColor);
-    jointLinesObj->addLine(anchorA + Vector3(0.0f, 0.0f, -markSize), anchorA + Vector3(0.0f, 0.0f, markSize), helperColor);
-
-    jointLinesObj->addLine(anchorB + Vector3(-markSize, 0.0f, 0.0f), anchorB + Vector3(markSize, 0.0f, 0.0f), helperColor);
-    jointLinesObj->addLine(anchorB + Vector3(0.0f, -markSize, 0.0f), anchorB + Vector3(0.0f, markSize, 0.0f), helperColor);
-    jointLinesObj->addLine(anchorB + Vector3(0.0f, 0.0f, -markSize), anchorB + Vector3(0.0f, 0.0f, markSize), helperColor);
-
-    Vector3 dirAB = anchorB - anchorA;
-    float lenAB = dirAB.length();
-    Vector3 dirABNorm = lenAB > 0.0001f ? dirAB / lenAB : Vector3(1.0f, 0.0f, 0.0f);
-
-    switch (joint.type){
-        case Joint3DType::DISTANCE:{
-            // Connection line + anchor crosses already drawn above
-            break;
-        }
-        case Joint3DType::HINGE:{
-            Vector3 axis = joint.axis.length() > 0.0001f ? joint.axis.normalized() : dirABNorm;
-            Vector3 center = (anchorA + anchorB) * 0.5f;
-            LineDrawUtils::addRing3D(jointLinesObj, center, axis, 0.25f, axisColor, 28);
-            LineDrawUtils::addRing3D(jointLinesObj, center, axis, 0.33f, helperColor, 28);
-            jointLinesObj->addLine(center - axis * 0.35f, center + axis * 0.35f, axisColor);
-            break;
-        }
-        case Joint3DType::PRISMATIC:{
-            Vector3 axis = joint.axis.length() > 0.0001f ? joint.axis.normalized() : dirABNorm;
-            auto [railAxis, side, up] = LineDrawUtils::makeBasis(axis);
-            float limitMin = joint.limitsMin;
-            float limitMax = joint.limitsMax;
-            if (limitMax < limitMin){
-                std::swap(limitMin, limitMax);
-            }
-            if (limitMin > 0.0f){
-                float offset = limitMin;
-                limitMin -= offset;
-                limitMax -= offset;
-            }else if (limitMax < 0.0f){
-                float offset = limitMax;
-                limitMin -= offset;
-                limitMax -= offset;
-            }
-            if (std::fabs(limitMax - limitMin) < 0.000001f){
-                limitMin = -0.4f;
-                limitMax = 0.4f;
-            }
-
-            Vector3 railStart = anchorA + railAxis * limitMin;
-            Vector3 railEnd = anchorA + railAxis * limitMax;
-
-            float railOffset = 0.06f;
-            jointLinesObj->addLine(railStart + side * railOffset, railEnd + side * railOffset, axisColor);
-            jointLinesObj->addLine(railStart - side * railOffset, railEnd - side * railOffset, axisColor);
-
-            jointLinesObj->addLine(railStart - side * 0.12f, railStart + side * 0.12f, limitColor);
-            jointLinesObj->addLine(railEnd - side * 0.12f, railEnd + side * 0.12f, limitColor);
-
-            Vector3 sliderCenter = anchorA;
-
-            LineDrawUtils::addRing3D(jointLinesObj, sliderCenter, railAxis, 0.09f, jointColor, 18);
-            jointLinesObj->addLine(sliderCenter - up * 0.1f, sliderCenter + up * 0.1f, helperColor);
-            break;
-        }
-        case Joint3DType::CONE:{
-            Vector3 axis = joint.twistAxis.length() > 0.0001f ? joint.twistAxis.normalized() : dirABNorm;
-            auto [coneAxis, right, forward] = LineDrawUtils::makeBasis(axis);
-            (void)right;
-            float coneLen = 0.9f;
-            float angle = std::clamp(joint.normalHalfConeAngle, 0.0f, 179.9f) * (M_PI / 180.0f);
-            float radius = coneLen * std::tan(angle);
-            Vector3 end = anchorA + coneAxis * coneLen;
-            LineDrawUtils::addRing3D(jointLinesObj, end, coneAxis, radius, axisColor, 22);
-            jointLinesObj->addLine(anchorA, end + forward * radius, helperColor);
-            jointLinesObj->addLine(anchorA, end - forward * radius, helperColor);
-            break;
-        }
-        case Joint3DType::SWINGTWIST:{
-            Vector3 axis = joint.twistAxis.length() > 0.0001f ? joint.twistAxis.normalized() : (joint.axis.length() > 0.0001f ? joint.axis.normalized() : dirABNorm);
-            Vector3 center = (anchorA + anchorB) * 0.5f;
-            LineDrawUtils::addRing3D(jointLinesObj, center, axis, 0.28f, axisColor, 24);
-
-            float twistMin = joint.twistMinAngle * (M_PI / 180.0f);
-            float twistMax = joint.twistMaxAngle * (M_PI / 180.0f);
-            auto [axisN, right, forward] = LineDrawUtils::makeBasis(axis);
-            (void)axisN;
-            LineDrawUtils::addArc3D(jointLinesObj, center, axis, right, twistMin, twistMax, 0.36f, limitColor, 16);
-            jointLinesObj->addLine(center, center + right * 0.36f, helperColor);
-            jointLinesObj->addLine(center, center + (right * std::cos(twistMax) + forward * std::sin(twistMax)) * 0.36f, helperColor);
-            break;
-        }
-        case Joint3DType::PATH:{
-            if (joint.pathPoints.size() >= 2){
-                for (size_t i = 0; i < joint.pathPoints.size() - 1; i++){
-                    jointLinesObj->addLine(joint.pathPoints[i], joint.pathPoints[i + 1], axisColor);
-                }
-                if (joint.isLooping){
-                    jointLinesObj->addLine(joint.pathPoints.back(), joint.pathPoints.front(), axisColor);
-                }
-                LineDrawUtils::addRing3D(jointLinesObj, joint.pathPosition, Vector3(0.0f, 1.0f, 0.0f), 0.08f, jointColor, 16);
-            }
-            break;
-        }
-        case Joint3DType::GEAR:
-        case Joint3DType::RACKANDPINON:
-        case Joint3DType::PULLEY:
-        case Joint3DType::SIXDOF:
-        case Joint3DType::FIXED:
-        case Joint3DType::POINT:
-        default:{
-            break;
-        }
-    }
-
-    // Only draw generic axis for types that don't already visualize it
-    if (joint.axis.length() > 0.0001f
-        && joint.type != Joint3DType::HINGE
-        && joint.type != Joint3DType::PRISMATIC
-        && joint.type != Joint3DType::CONE){
-        Vector3 axis = joint.axis;
-        axis.normalize();
-
-        Vector3 center = (anchorA + anchorB) * 0.5f;
-        jointLinesObj->addLine(center, center + axis, axisColor);
-    }
+    // the bodies at their Transforms (LOCAL anchors are points of them)
+    auto poseOf = [&](Entity bodyEntity, PhysicsDebugLines::Pose& pose) -> bool {
+        Transform* transform = scene->findComponent<Transform>(bodyEntity);
+        if (!transform) return false;
+        pose.position = transform->worldPosition;
+        pose.rotation = transform->worldRotation;
+        pose.scale = transform->worldScale;
+        return true;
+    };
+    PhysicsDebugLines::jointEdges(scene, joint, poseOf, [&](const Vector3& a, const Vector3& b, int kind) {
+        const Vector4& color = kind == 0 ? jointColor : (kind == 1 ? helperColor : (kind == 2 ? axisColor : limitColor));
+        jointLinesObj->addLine(a, b, color);
+    });
 }
 
 void editor::SceneRender3D::createOrUpdateLightIcon(Entity entity, const Transform& transform, LightType lightType, bool newLight) {
@@ -1712,6 +1195,22 @@ void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform&
     lo.lines->addLine(position, endPos, Vector4(0.8, 0.8, 0.8, 1.0));
 }
 
+void editor::SceneRender3D::dropGoneGizmos(){
+    SceneRender::dropGoneGizmos();
+
+    const RenderSystem& render = *scene->getSystem<RenderSystem>();
+    dropGoneGizmos(lightObjects, render, &LightObjects::icon, &LightObjects::lines);
+    dropGoneGizmos(cameraObjects, render, &CameraObjects::icon, &CameraObjects::lines);
+    dropGoneGizmos(soundObjects, render, &SoundObjects::icon);
+    dropGoneGizmos(bodyObjects, render, &BodyObjects::lines);
+    dropGoneGizmos(jointLines, render);
+    dropGoneGizmos(boneLines, render);
+    dropGoneGizmos(linePointLines, render);
+    dropGoneGizmos(polygonPointLines, render);
+    dropGoneGizmos(trackLines, render);
+    dropGoneGizmos(reflectionProbeLines, render);
+}
+
 void editor::SceneRender3D::hideAllGizmos(){
     SceneRender::hideAllGizmos();
 
@@ -1748,6 +1247,24 @@ void editor::SceneRender3D::hideAllGizmos(){
     for (auto& pair : reflectionProbeLines) {
         pair.second->setVisible(false);
     }
+    for (auto& pair : fogVolumeLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : controllerLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : waterVolumeLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : buoyancyLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : particleLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : forceFieldLines) {
+        pair.second->setVisible(false);
+    }
 }
 
 void editor::SceneRender3D::activate(){
@@ -1764,6 +1281,7 @@ void editor::SceneRender3D::drawOverlayTargets(){
     Framebuffer* gizmoTarget = viewgizmo.getFramebuffer();
     gizmoScene->update(Engine::getDeltatime());
     if (!gizmoTarget->isCreated()){
+        JE_GPU_ALLOC_SCOPE(Editor, "Orientation gizmo");
         gizmoTarget->create();
     }
     Engine::drawView(SCENE_VIEW_ID, gizmoTarget, {{gizmoScene, gizmoScene->getCamera(),
@@ -1807,6 +1325,9 @@ void editor::SceneRender3D::updateSelLines(std::vector<OBB> obbs){
 
 void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings){
     SceneRender::update(selEntities, entities, mainCamera, settings);
+
+    // pose animation handles, floor and ghosts (hidden while playing or previewing a camera)
+    poseViewport->update(camera, getViewWidth(), getViewHeight(), overlayScale, isPlaying || isPreviewCameraActive());
 
     if (isPreviewCameraActive()){
         return;
@@ -1872,9 +1393,21 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentJointObjects;
     std::set<Entity> currentBoneModels;
     std::set<Entity> currentLinePoints;
+    std::set<Entity> currentParticleShapes;
     std::set<Entity> currentPolygonPoints;
     std::set<Entity> currentTrackLines;
     std::set<Entity> currentReflectionProbes;
+    std::set<Entity> currentFogVolumes;
+    std::set<Entity> currentControllers;
+    std::set<Entity> currentWaterVolumes;
+    std::set<Entity> currentBuoyancies;
+    std::set<Entity> currentParticleSystems;
+    std::set<Entity> currentForceFields;
+    // force fields show with a selected Particle System (the panel's Show Force Fields)
+    bool particleSelected = false;
+    for (Entity selected : selectedEntities){
+        if (scene->isEntityCreated(selected) && scene->findComponent<ParticleSystemComponent>(selected)) particleSelected = true;
+    }
 
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
@@ -1944,6 +1477,10 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             createOrUpdateBodyLines(entity, transform, body, isVisible, highlighted);
         }
 
+        if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
+            updateParticleShapeLines(entity, selectedEntities.find(entity) != selectedEntities.end(), currentParticleShapes);
+        }
+
         if (signature.test(scene->getComponentId<LineRendererComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             LineRendererComponent& linesComp = scene->getComponent<LineRendererComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
@@ -1984,6 +1521,55 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             bool isSelected = selectedEntities.find(entity) != selectedEntities.end();
 
             createOrUpdateTrackLines(entity, tracks, isSelected);
+        }
+
+        if (signature.test(scene->getComponentId<LocalVolumetricFogComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            LocalVolumetricFogComponent& volume = scene->getComponent<LocalVolumetricFogComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentFogVolumes.insert(entity);
+            ensureOverlayLines(fogVolumeLines, entity);
+            createOrUpdateFogVolumeLines(entity, transform, volume, selectedEntities.find(entity) != selectedEntities.end());
+        }
+
+        if (signature.test(scene->getComponentId<WaterVolumeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const WaterVolumeComponent& volume = scene->getComponent<WaterVolumeComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentWaterVolumes.insert(entity);
+            ensureOverlayLines(waterVolumeLines, entity);
+            const bool highlighted = isDescendantSelected(entity);
+            createOrUpdateWaterVolumeLines(entity, transform, volume, displaySettings.showAllBodies || highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<BuoyancyComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const BuoyancyComponent& buoyancy = scene->getComponent<BuoyancyComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentBuoyancies.insert(entity);
+            ensureOverlayLines(buoyancyLines, entity);
+            const bool highlighted = isDescendantSelected(entity);
+            createOrUpdateBuoyancyLines(entity, transform, buoyancy, displaySettings.showAllBodies || highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<CharacterControllerComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const CharacterControllerComponent& controller = scene->getComponent<CharacterControllerComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentControllers.insert(entity);
+            ensureOverlayLines(controllerLines, entity);
+            const bool highlighted = isDescendantSelected(entity);
+            createOrUpdateControllerLines(entity, transform, controller, displaySettings.showAllBodies || highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<ParticleSystemComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            currentParticleSystems.insert(entity);
+            ensureOverlayLines(particleLines, entity);
+            createOrUpdateParticleLines(entity, scene->getComponent<Transform>(entity), scene->getComponent<ParticleSystemComponent>(entity),
+                                        selectedEntities.find(entity) != selectedEntities.end());
+        }
+
+        if (signature.test(scene->getComponentId<ForceFieldComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            currentForceFields.insert(entity);
+            ensureOverlayLines(forceFieldLines, entity);
+            const bool shown = selectedEntities.find(entity) != selectedEntities.end() || (particleSelected && ParticleEffectOverlay::gizmos().forceFields);
+            createOrUpdateForceFieldLines(entity, scene->getComponent<Transform>(entity), scene->getComponent<ForceFieldComponent>(entity), shown);
         }
 
         if (signature.test(scene->getComponentId<ReflectionProbeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
@@ -2088,6 +1674,8 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         }
     }
 
+    dropParticleShapeLines(currentParticleShapes);
+
     auto itLinePoints = linePointLines.begin();
     while (itLinePoints != linePointLines.end()) {
         if (currentLinePoints.find(itLinePoints->first) == currentLinePoints.end()) {
@@ -2118,6 +1706,47 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         }
     }
 
+    for (const auto& pair : {std::make_pair(&waterVolumeLines, &currentWaterVolumes), std::make_pair(&buoyancyLines, &currentBuoyancies)}) {
+        for (auto it = pair.first->begin(); it != pair.first->end();) {
+            if (pair.second->find(it->first) == pair.second->end()) {
+                delete it->second;
+                it = pair.first->erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    for (auto it = controllerLines.begin(); it != controllerLines.end();) {
+        if (currentControllers.find(it->first) == currentControllers.end()) {
+            delete it->second;
+            it = controllerLines.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto it = fogVolumeLines.begin(); it != fogVolumeLines.end();) {
+        if (currentFogVolumes.find(it->first) == currentFogVolumes.end()) {
+            delete it->second;
+            it = fogVolumeLines.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto* map : {&particleLines, &forceFieldLines}) {
+        const std::set<Entity>& current = map == &particleLines ? currentParticleSystems : currentForceFields;
+        for (auto it = map->begin(); it != map->end();) {
+            if (current.find(it->first) == current.end()) {
+                delete it->second;
+                it = map->erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
     auto itProbeLines = reflectionProbeLines.begin();
     while (itProbeLines != reflectionProbeLines.end()) {
         if (currentReflectionProbes.find(itProbeLines->first) == currentReflectionProbes.end()) {
@@ -2131,4 +1760,20 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
 
 editor::ViewportGizmo* editor::SceneRender3D::getViewportGizmo(){
     return &viewgizmo;
+}
+
+void editor::SceneRender3D::setGridPlane(int plane){
+    plane = std::clamp(plane, 0, 2);
+    if (plane == gridPlane){
+        return;
+    }
+    gridPlane = plane;
+    // the grid is built in XZ: a quarter turn about X lays it in XY, about Z in YZ
+    if (plane == 1){
+        lines->setRotation(Quaternion(Angle::degToDefault(90.0f), Vector3(1, 0, 0)));
+    }else if (plane == 2){
+        lines->setRotation(Quaternion(Angle::degToDefault(90.0f), Vector3(0, 0, 1)));
+    }else{
+        lines->setRotation(Quaternion());
+    }
 }

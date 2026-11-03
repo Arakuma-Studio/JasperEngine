@@ -50,6 +50,8 @@ namespace jasperengine::htmlui::compat {
         LineClamp,   // -webkit-line-clamp, line-clamp
         // added by phase 3
         UserSelect,  // user-select (p3-text: text/all/contain select nothing outside text inputs)
+        // added by ui-scaling-text
+        TextEffect,  // text-effect, text-effect-iteration, text-effect-time (engine extensions)
         Count
     };
 

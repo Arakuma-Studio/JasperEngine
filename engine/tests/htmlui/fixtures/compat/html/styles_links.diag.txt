@@ -1,8 +1,0 @@
-compat/html/styles_links.html:10:1: info: alternate stylesheet skipped (browsers do not apply it either) [HTMLUI-HTML-0010]
-compat/html/styles_links.html:11:1: info: <link type="text/css"> has no rel="stylesheet": browsers ignore it; the engine loads it as a stylesheet (fix: add rel="stylesheet") [HTMLUI-HTML-0010]
-compat/html/styles_links.html:14:1: info: <style type="text/less"> skipped (browsers only apply text/css) [HTMLUI-HTML-0010]
-compat/html/styles_links.html:15:1: warning: <base href> is ignored: URLs resolve against the document's own path (fix: write URLs relative to the document) [HTMLUI-HTML-0016]
-compat/html/styles_links.html:16:1: warning: the document declares charset 'iso-8859-1'; it is decoded as UTF-8 (fix: save the file as UTF-8 and declare <meta charset="utf-8">) [HTMLUI-GEN-0005]
-compat/html/styles_links.html:7:1: info: disabled stylesheet skipped [HTMLUI-HTML-0010]
-compat/html/styles_links.html:8:30: error: remote stylesheet 'https://fonts.googleapis.com/css2?family=Inter&display=swap' is not imported; the stylesheet is skipped; fonts fall back through the font chain (fix: import it: load the document in the editor (it imports remote resources), run jasperengine-editor import-ui, or MCP import_files from_document) [HTMLUI-IMP-0001]
-compat/html/styles_links.html:9:30: error: remote stylesheet 'https://cdn.example.com/missing.css' is not imported; the stylesheet is skipped; fonts fall back through the font chain (fix: import it: load the document in the editor (it imports remote resources), run jasperengine-editor import-ui, or MCP import_files from_document) [HTMLUI-IMP-0001]

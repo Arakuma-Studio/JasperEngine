@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "util/FbxImporter.h"
+#include "io/AtomicFile.h"
 
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/GlbBuilder.h"
 #include "util/Util.h"
 
@@ -214,39 +216,20 @@ ImportInfo readImportInfo(const tinygltf::Model& model) {
     return info;
 }
 
-// Written aside and renamed, so a reader never sees half a file. The name of the file aside is
-// its own: another writer (a second editor on the project) cannot truncate or take it.
+// An atomic write (io::writeFileAtomic, Cache: the import is made again from the .fbx), so a
+// reader never sees half a file; the temporary sibling is named by this process and a counter,
+// so another writer (a second editor on the project) cannot truncate or take it, and the
+// publish is retried while a reader or virus scan holds the target on Windows
 bool writeFile(const fs::path& path, const std::vector<unsigned char>& bytes, std::string& error) {
-    static std::atomic<uint64_t> writes{0};
-    const uint64_t unique = static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^
-        (static_cast<uint64_t>(std::hash<std::thread::id>()(std::this_thread::get_id())) << 1) ^ (writes++ << 48);
-    char suffix[32];
-    std::snprintf(suffix, sizeof(suffix), ".%016llx.tmp", static_cast<unsigned long long>(unique));
-    fs::path tempPath = path;
-    tempPath += suffix;
-    std::error_code ec;
-    fs::create_directories(path.parent_path(), ec);
-    {
-        std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
-        if (!out || !out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()))) {
-            error = "Could not write " + FileUtils::pathToUtf8(tempPath);
-            out.close();
-            fs::remove(tempPath, ec);
-            return false;
-        }
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    const io::WriteResult written = io::writeFileAtomic(path,
+            std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()), options);
+    if (!written.ok()) {
+        error = "Could not write " + FileUtils::pathToUtf8(path) + ": " + io::describeWriteError(written);
+        return false;
     }
-    // Windows cannot replace a file that a reader or virus scan briefly holds
-    for (int attempt = 0; attempt < 10; attempt++) {
-        ec.clear();
-        fs::rename(tempPath, path, ec);
-        if (!ec) {
-            return true;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-    error = "Could not write " + FileUtils::pathToUtf8(path) + ": " + ec.message();
-    fs::remove(tempPath, ec);
-    return false;
+    return true;
 }
 
 fs::path resolveDependency(const fs::path& fbxPath, const std::string& path) {

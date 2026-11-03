@@ -8,7 +8,6 @@
 #include "Entity.h"
 #include "Signature.h"
 #include "ComponentManager.h"
-#include <set>
 
 namespace jasperengine{
 
@@ -16,16 +15,38 @@ namespace jasperengine{
 
     class JASPERENGINE_API SubSystem {
 
+        private:
+        // The types onComponentAdded/onComponentRemoved handle (declareHookType); every type
+        // while a system declares none
+        Signature hookTypes;
+        bool hookTypesDeclared = false;
+
         protected:
         Signature signature;
         Scene* scene;
         bool paused = false;
+
+        // Narrows the Scene's add/remove hook calls to the declared types, so that destroying
+        // an entity calls only the systems that handle one of its types. Every type the hooks
+        // compare the id against must be declared.
+        void declareHookType(ComponentId componentId) {
+            hookTypes.set(componentId);
+            hookTypesDeclared = true;
+        }
+
+        // The hooks handle no type (they are not overridden)
+        void declareNoHookTypes() {
+            hookTypesDeclared = true;
+        }
 
     public:
 
         SubSystem(Scene* scene) {
             this->scene = scene;
         }
+
+        // virtual: a Scene holds its systems as shared_ptr<SubSystem>
+        virtual ~SubSystem() = default;
 
         SubSystem(const SubSystem&) = delete;
         SubSystem& operator=(const SubSystem&) = delete;
@@ -48,10 +69,29 @@ namespace jasperengine{
         // Use for physics, networking and any logic requiring a stable, deterministic step.
         virtual void fixedUpdate(double dt) { (void)dt; }
 
+        // whether the Scene calls the add/remove hooks for this type
+        bool handlesHookType(ComponentId componentId) const {
+            return !hookTypesDeclared || hookTypes.test(componentId);
+        }
+
+        // fn(componentId) for each type of `types` the add/remove hooks handle, ascending
+        template<typename F>
+        void forEachHookType(const Signature& types, F&& fn) const {
+            if (hookTypesDeclared){
+                types.forEachSetIn(hookTypes, fn);
+            }else{
+                types.forEachSet(fn);
+            }
+        }
+
         virtual void onComponentAdded(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
         virtual void onComponentRemoved(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
         // GameObject layer changed (Scene::setEntityLayer)
         virtual void onEntityLayerChanged(Entity entity) { (void)entity; }
+        // The scheduler stopped (false) or resumed running the system (the editor's Systems
+        // window and set_system_options, a Play-mode debug switch); its phases are skipped
+        // meanwhile. A system with effects that outlive its updates (sounds) pauses them.
+        virtual void onSchedulerEnabledChanged(bool enabled) { (void)enabled; }
 
     };
 

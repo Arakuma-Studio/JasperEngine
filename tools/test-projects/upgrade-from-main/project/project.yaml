@@ -1,0 +1,27 @@
+name: Upgrade Courier
+canvasWidth: 960
+canvasHeight: 540
+scalingMode: fitwidth
+textureStrategy: none
+vsync: false
+htmlUiMsaaSamples: 4
+windowMode: windowed
+windowWidth: 960
+windowHeight: 540
+windowResizable: true
+windowTitle: Upgrade Courier
+luaDir: .
+tags:
+  - Gem
+  - Pickup
+layers:
+  8: Pickups
+application:
+  identifier: com.jasperengine.upgradecourier
+  version: 0.3
+startSceneId: 1313999883
+scenes:
+  - filepath: scenes/Title.scene
+  - filepath: scenes/Level1.scene
+  - filepath: scenes/HUD.scene
+  - filepath: scenes/Arena2D.scene

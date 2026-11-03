@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "ImportPrefabCmd.h"
+#include "sceneview/SurfacePlacement.h"
 
 #include "editor/Out.h"
 #include "Stream.h"
 #include "util/ProjectUtils.h"
+#include "util/WorldTransforms.h"
 
 using namespace jasperengine;
 
@@ -30,6 +32,8 @@ bool editor::ImportPrefabCmd::execute(){
     lastSelected = project->getSelectedEntities(sceneId);
 
     Scene* scene = sceneProject->scene;
+    // the instance's world values once it is in and placed (WorldTransforms.h)
+    WorldTransformScope worldTransforms(scene);
 
     // The prefab is the asset with this GUID: a redo after it was renamed finds it
     if (guid.empty()) {
@@ -89,6 +93,7 @@ bool editor::ImportPrefabCmd::execute(){
         // Clean up root if import failed
         project->clearMissingPrefab(sceneId, rootEntity);
         scene->destroyEntity(rootEntity);
+        scene->compactComponents();
         auto it = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), rootEntity);
         if (it != sceneProject->entities.end()) {
             sceneProject->entities.erase(it);
@@ -113,12 +118,23 @@ bool editor::ImportPrefabCmd::execute(){
         }
     }
 
+    if (Transform* rootTransform = scene->findComponent<Transform>(rootEntity)){
+        importedRootRotation = rootTransform->rotation;
+    }
     if (hasDropPosition){
         if (Transform* rootTransform = scene->findComponent<Transform>(rootEntity)){
             const float z = rootTransform->position.z;
             rootTransform->position = dropPosition;
             if (dropKeepsZ){
                 rootTransform->position.z = z;
+            }
+            if (hasDropSurface){
+                Vector3 position;
+                Quaternion rotation;
+                sceneview::restOnSurface(dropPosition, dropNormal, sceneview::familyLocalBounds(scene, rootEntity), rootTransform->scale,
+                                         rootTransform->rotation, dropAlign, position, rotation);
+                rootTransform->position = position;
+                rootTransform->rotation = rotation;
             }
             rootTransform->needUpdate = true;
         }
@@ -190,6 +206,12 @@ void editor::ImportPrefabCmd::setPlacement(const Vector3& position, const Quater
 
 void editor::ImportPrefabCmd::setQuiet(bool quiet){
     this->quiet = quiet;
+}
+
+void editor::ImportPrefabCmd::setDropSurface(const Vector3& normal, bool align){
+    hasDropSurface = true;
+    dropNormal = normal;
+    dropAlign = align;
 }
 
 void editor::ImportPrefabCmd::setDropPosition(const Vector3& position, bool keepZ){

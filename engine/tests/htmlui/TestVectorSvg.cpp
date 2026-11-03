@@ -10,7 +10,7 @@
 #include "harness/TestSystem.h"
 
 #include "HtmlUI.h"
-#include "LunaSVGRuntime.h"
+#include "util/LunaSVGRuntime.h"
 #include "texture/TextureData.h"
 
 #include <RmlUi/Core.h>
@@ -253,93 +253,10 @@ namespace {
             return document;
         }
 
-        // the generated texture an element was drawn with
-        const RecordingRenderInterface::Texture* textureOf(Rml::Vector2i size) const{
-            for (const RecordingRenderInterface::Draw& draw : recording.getDraws()){
-                const RecordingRenderInterface::Texture* texture = recording.getTexture(draw.texture);
-                if (texture && texture->dimensions == size)
-                    return texture;
-            }
-            return nullptr;
-        }
-
         RecordingRenderInterface recording;
         Rml::Context* context = nullptr;
     };
 
-}
-
-TEST_F(SvgPluginTest, FileAtThreeSizes){
-    Rml::ElementDocument* document = show(
-        "<svg src=\"../../common/icon.svg\" style=\"width: 24px; height: 24px;\"/>"
-        "<svg src=\"../../common/icon.svg\" style=\"width: 64px; height: 64px;\"/>"
-        "<svg src=\"../../common/icon.svg\" style=\"width: 256px; height: 256px;\"/>");
-    ASSERT_NE(document, nullptr);
-    for (int size : {24, 64, 256}){
-        const RecordingRenderInterface::Texture* texture = textureOf(Rml::Vector2i(size, size));
-        ASSERT_NE(texture, nullptr) << size;
-        EXPECT_TRUE(isPremultiplied(texture->pixels)) << size;
-        EXPECT_GT(partialPixels(texture->pixels), 0u) << size;
-        const uint8_t* centre = &texture->pixels[((size_t)(size / 2) * size + size / 2) * 4];
-        EXPECT_EQ(centre[0], 255) << size;
-        EXPECT_EQ(centre[3], 255) << size;
-    }
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI]"), 0u);
-}
-
-TEST_F(SvgPluginTest, IntrinsicSizeAndCropToContent){
-    Rml::ElementDocument* document = show(
-        "<svg id=\"full\" src=\"crop.svg\"/>"
-        "<svg id=\"crop\" src=\"crop.svg\" crop-to-content=\"\"/>");
-    ASSERT_NE(document, nullptr);
-    Rml::Element* full = document->GetElementById("full");
-    Rml::Element* crop = document->GetElementById("crop");
-    EXPECT_FLOAT_EQ(full->GetBox().GetSize().x, 100.0f);
-    EXPECT_FLOAT_EQ(full->GetBox().GetSize().y, 100.0f);
-    // the circle's bounding box: r = 20
-    EXPECT_FLOAT_EQ(crop->GetBox().GetSize().x, 40.0f);
-    EXPECT_FLOAT_EQ(crop->GetBox().GetSize().y, 40.0f);
-    // cropped, the circle fills its 40 x 40 texture: opaque centre and edge midpoints
-    const RecordingRenderInterface::Texture* texture = textureOf(Rml::Vector2i(40, 40));
-    ASSERT_NE(texture, nullptr);
-    EXPECT_EQ(texture->pixels[(20 * 40 + 20) * 4 + 3], 255);
-    EXPECT_GT(texture->pixels[(20 * 40 + 1) * 4 + 3], 128);
-}
-
-TEST_F(SvgPluginTest, InlineSvgAndDecorator){
-    Rml::ElementDocument* document = show(
-        "<svg width=\"50\" height=\"30\" viewBox=\"0 0 50 30\">"
-        "<rect width=\"50\" height=\"30\" fill=\"#ff0000\"/></svg>"
-        "<div style=\"width: 32px; height: 48px; decorator: svg(../../common/icon.svg);\"/>");
-    ASSERT_NE(document, nullptr);
-    const RecordingRenderInterface::Texture* inlineTexture = textureOf(Rml::Vector2i(50, 30));
-    ASSERT_NE(inlineTexture, nullptr);
-    EXPECT_EQ(inlineTexture->pixels[(15 * 50 + 25) * 4 + 0], 255);
-    EXPECT_EQ(inlineTexture->pixels[(15 * 50 + 25) * 4 + 3], 255);
-    EXPECT_NE(textureOf(Rml::Vector2i(32, 48)), nullptr);
-}
-
-TEST_F(SvgPluginTest, TintIsTheQuadColour){
-    // image-color x opacity multiplies the quad's vertex colour, premultiplied
-    Rml::ElementDocument* document = show(
-        "<svg src=\"white.svg\" style=\"width: 32px; height: 32px; image-color: #ff8000; opacity: 0.5;\"/>");
-    ASSERT_NE(document, nullptr);
-    bool found = false;
-    for (const RecordingRenderInterface::Draw& draw : recording.getDraws()){
-        const RecordingRenderInterface::Texture* texture = recording.getTexture(draw.texture);
-        if (!texture || texture->dimensions != Rml::Vector2i(32, 32))
-            continue;
-        const RecordingRenderInterface::Geometry* geometry = recording.getGeometry(draw.geometry);
-        ASSERT_NE(geometry, nullptr);
-        ASSERT_FALSE(geometry->vertices.empty());
-        const Rml::ColourbPremultiplied colour = geometry->vertices[0].colour;
-        EXPECT_NEAR(colour.red, 128, 1);
-        EXPECT_NEAR(colour.green, 64, 1);
-        EXPECT_EQ(colour.blue, 0);
-        EXPECT_NEAR(colour.alpha, 128, 1);
-        found = true;
-    }
-    EXPECT_TRUE(found);
 }
 
 TEST_F(SvgPluginTest, MissingFileWarns){

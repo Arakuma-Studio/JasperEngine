@@ -1,0 +1,5 @@
+# UBSAN suppressions (tools/build.sh passes this file in UBSAN_OPTIONS; docs/testing.md, "Sanitizers").
+# Only third-party code may be listed: Mesa (llvmpipe, lavapipe), X11, fontconfig and the vendored
+# libraries under libs/ and engine/libs/. Engine and editor code is never suppressed: fix it.
+# Every entry has a comment line above it giving the reason.
+

@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "GraphicUtils.h"
+#include "util/PngWriter.h"
 
 #include "Out.h"
 #include "System.h"
 #include "stb_image_write.h"
 #include "stb_image_resize2.h"
 #include "util/STBText.h"
+#include "jobs/JobSystem.h"
 
 #include <algorithm>
 #include <cstring>
@@ -45,6 +47,64 @@
     #include <vulkan/vulkan.h>
 #endif
 
+#if defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
+    #ifndef GL_READ_FRAMEBUFFER
+        #define GL_READ_FRAMEBUFFER 0x8CA8
+    #endif
+    #ifndef GL_READ_FRAMEBUFFER_BINDING
+        #define GL_READ_FRAMEBUFFER_BINDING 0x8CAA
+    #endif
+    #ifndef GL_COLOR_ATTACHMENT0
+        #define GL_COLOR_ATTACHMENT0 0x8CE0
+    #endif
+    #ifndef GL_FRAMEBUFFER_COMPLETE
+        #define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+    #endif
+    #if defined(_WIN32)
+        #define JE_GL_CALL APIENTRY
+    #else
+        #define JE_GL_CALL
+    #endif
+
+namespace {
+
+    // The framebuffer object calls (GL 3.0) of a part read: the library's prototypes on Linux,
+    // wglGetProcAddress on Windows (its gl.h is GL 1.1). Missing (macOS, which draws the
+    // editor with Metal): a part is cut from a whole read.
+    struct GlFramebufferCalls {
+        void (JE_GL_CALL* gen)(GLsizei, GLuint*) = nullptr;
+        void (JE_GL_CALL* bind)(GLenum, GLuint) = nullptr;
+        void (JE_GL_CALL* texture2D)(GLenum, GLenum, GLenum, GLuint, GLint) = nullptr;
+        GLenum (JE_GL_CALL* status)(GLenum) = nullptr;
+        void (JE_GL_CALL* remove)(GLsizei, const GLuint*) = nullptr;
+
+        bool available() const { return gen && bind && texture2D && status && remove; }
+    };
+
+    const GlFramebufferCalls& glFramebufferCalls() {
+        static const GlFramebufferCalls calls = []() {
+            GlFramebufferCalls c;
+        #if defined(_WIN32)
+            c.gen = reinterpret_cast<decltype(c.gen)>(wglGetProcAddress("glGenFramebuffers"));
+            c.bind = reinterpret_cast<decltype(c.bind)>(wglGetProcAddress("glBindFramebuffer"));
+            c.texture2D = reinterpret_cast<decltype(c.texture2D)>(wglGetProcAddress("glFramebufferTexture2D"));
+            c.status = reinterpret_cast<decltype(c.status)>(wglGetProcAddress("glCheckFramebufferStatus"));
+            c.remove = reinterpret_cast<decltype(c.remove)>(wglGetProcAddress("glDeleteFramebuffers"));
+        #elif !defined(__APPLE__)
+            c.gen = &glGenFramebuffers;
+            c.bind = &glBindFramebuffer;
+            c.texture2D = &glFramebufferTexture2D;
+            c.status = &glCheckFramebufferStatus;
+            c.remove = &glDeleteFramebuffers;
+        #endif
+            return c;
+        }();
+        return calls;
+    }
+
+}
+#endif
+
 using namespace jasperengine;
 
 Vector2 editor::GraphicUtils::getRectTransformCenter(Scene* scene, Entity entity, const RectTransformComponent& layout) {
@@ -62,15 +122,19 @@ Vector2 editor::GraphicUtils::getRectTransformCenter(Scene* scene, Entity entity
     return center;
 }
 
-// The framebuffer's color texture, width * height RGBA8 rows as the backend stores them
-// (pixels from new[], owned by the caller when needDelete). Synchronous GPU readback,
-// on the main thread.
-static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bool& needDelete) {
+// The framebuffer's color texture (textureWidth x textureHeight), the rect (x, y, width, height)
+// inside it as RGBA8 rows as the backend stores them (pixels from new[], owned by the caller
+// when needDelete). Synchronous GPU readback, on the main thread.
+static bool readRenderPixels(FramebufferRender& render, unsigned int textureWidth, unsigned int textureHeight,
+                             unsigned int x, unsigned int y, unsigned int width, unsigned int height,
+                             uint8_t*& pixels, bool& needDelete) {
     pixels = nullptr;
     needDelete = false;
-
-    unsigned int width = framebuffer->getWidth();
-    unsigned int height = framebuffer->getHeight();
+    if (width == 0 || height == 0 || x + width > textureWidth || y + height > textureHeight) {
+        return false;
+    }
+    // (OpenGL and D3D11 read a whole texture another way; Vulkan and Metal copy the rect alike)
+    [[maybe_unused]] const bool whole = x == 0 && y == 0 && width == textureWidth && height == textureHeight;
 
     #if defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
         // OpenGL
@@ -80,9 +144,43 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         // every command that renders into the texture finished first: GL makes glGetTexImage
         // wait for them, Mesa's llvmpipe (the headless editor's driver) did not always (p4-gaps)
         glFinish();
-        glBindTexture(GL_TEXTURE_2D, framebuffer->getRender().getColorTexture().getGLHandler());
-        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-        glBindTexture(GL_TEXTURE_2D, 0);
+        const GlFramebufferCalls& fbo = glFramebufferCalls();
+        if (whole || !fbo.available()) {
+            std::vector<uint8_t> all;
+            uint8_t* target = pixels;
+            if (!whole) {
+                all.resize((size_t)textureWidth * textureHeight * 4);
+                target = all.data();
+            }
+            glBindTexture(GL_TEXTURE_2D, render.getColorTexture().getGLHandler());
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, target);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            for (unsigned int row = 0; !whole && row < height; row++) {
+                std::memcpy(pixels + (size_t)row * width * 4, all.data() + ((size_t)(y + row) * textureWidth + x) * 4, (size_t)width * 4);
+            }
+        } else {
+            // a part (the eyedropper's texel): the texture on a framebuffer of its own, rows in
+            // the texture's order (row y of the texture is y here as in glGetTexImage)
+            GLint previousRead = 0;
+            glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousRead);
+            GLint previousPack = 4;
+            glGetIntegerv(GL_PACK_ALIGNMENT, &previousPack);
+            GLuint object = 0;
+            fbo.gen(1, &object);
+            fbo.bind(GL_READ_FRAMEBUFFER, object);
+            fbo.texture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, render.getColorTexture().getGLHandler(), 0);
+            const bool complete = fbo.status(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+            if (complete) {
+                glPixelStorei(GL_PACK_ALIGNMENT, 1);
+                glReadPixels((GLint)x, (GLint)y, (GLsizei)width, (GLsizei)height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+                glPixelStorei(GL_PACK_ALIGNMENT, previousPack);
+            }
+            fbo.bind(GL_READ_FRAMEBUFFER, (GLuint)previousRead);
+            fbo.remove(1, &object);
+            if (!complete) {
+                return false;
+            }
+        }
     #endif
 
     #if defined(SOKOL_VULKAN)
@@ -94,7 +192,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         VkQueue queue = reinterpret_cast<VkQueue>(
             const_cast<void*>(environment.vulkan.queue));
         VkImage image = reinterpret_cast<VkImage>(const_cast<void*>(
-            framebuffer->getRender().getColorTexture().getVulkanImageHandler()));
+            render.getColorTexture().getVulkanImageHandler()));
         const VkDeviceSize dataSize = static_cast<VkDeviceSize>(width) * height * 4;
         VkBuffer stagingBuffer = VK_NULL_HANDLE;
         VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
@@ -206,6 +304,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         VkBufferImageCopy copy{};
         copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         copy.imageSubresource.layerCount = 1;
+        copy.imageOffset = {(int32_t)x, (int32_t)y, 0};
         copy.imageExtent = {width, height, 1};
         vkCmdCopyImageToBuffer(commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                stagingBuffer, 1, &copy);
@@ -249,7 +348,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
 
     #if defined(SOKOL_METAL)
         // Metal
-        auto metalTexPtr = framebuffer->getRender().getColorTexture().getMetalHandler();
+        auto metalTexPtr = render.getColorTexture().getMetalHandler();
         id<MTLTexture> tex = (__bridge id<MTLTexture>)metalTexPtr;
         id<MTLDevice> device = [tex device];
         NSUInteger bytesPerRow = width * 4;
@@ -263,7 +362,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         [blit copyFromTexture:tex
                  sourceSlice:0
                  sourceLevel:0
-                sourceOrigin:MTLOriginMake(0, 0, 0)
+                sourceOrigin:MTLOriginMake(x, y, 0)
                   sourceSize:MTLSizeMake(width, height, 1)
                    toBuffer:buffer
            destinationOffset:0
@@ -282,7 +381,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
 
     #if defined(SOKOL_D3D11)
         // D3D11
-        auto rtvPtr = framebuffer->getRender().getD3D11HandlerColorRTV();
+        auto rtvPtr = render.getD3D11HandlerColorRTV();
         ID3D11RenderTargetView* rtv = reinterpret_cast<ID3D11RenderTargetView*>(const_cast<void*>(rtvPtr));
 
         ID3D11Device* device = nullptr;
@@ -300,8 +399,14 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         renderTargetResource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&srcTex);
         srcTex->GetDesc(&desc);
 
-        // Create staging texture
+        // Create staging texture (the rect's size)
         D3D11_TEXTURE2D_DESC stagingDesc = desc;
+        if (!whole) {
+            stagingDesc.Width = width;
+            stagingDesc.Height = height;
+            stagingDesc.MipLevels = 1;
+            stagingDesc.ArraySize = 1;
+        }
         stagingDesc.Usage = D3D11_USAGE_STAGING;
         stagingDesc.BindFlags = 0;
         stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -309,15 +414,20 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         device->CreateTexture2D(&stagingDesc, nullptr, &staging);
 
         // Copy to staging
-        context->CopyResource(staging, srcTex);
+        if (whole) {
+            context->CopyResource(staging, srcTex);
+        } else {
+            D3D11_BOX box = {x, y, 0, x + width, y + height, 1};
+            context->CopySubresourceRegion(staging, 0, 0, 0, 0, srcTex, 0, &box);
+        }
 
         // Map and read
         D3D11_MAPPED_SUBRESOURCE mapped = {};
         context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped);
 
-        for (int y = 0; y < height; ++y) {
-            memcpy(&pixels[y * width * 4],
-                (uint8_t*)mapped.pData + y * mapped.RowPitch,
+        for (unsigned int row = 0; row < height; ++row) {
+            memcpy(&pixels[row * width * 4],
+                (uint8_t*)mapped.pData + row * mapped.RowPitch,
                 width * 4);
         }
 
@@ -333,6 +443,26 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
     return true;
 }
 
+static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bool& needDelete) {
+    return readRenderPixels(framebuffer->getRender(), framebuffer->getWidth(), framebuffer->getHeight(), 0, 0,
+                            framebuffer->getWidth(), framebuffer->getHeight(), pixels, needDelete);
+}
+
+bool editor::GraphicUtils::readRenderPixels(FramebufferRender* render, int width, int height, std::vector<uint8_t>& rgba) {
+    rgba.clear();
+    if (!render || !render->isCreated() || width <= 0 || height <= 0)
+        return false;
+    uint8_t* pixels = nullptr;
+    bool needDelete = false;
+    const bool read = ::readRenderPixels(*render, (unsigned int)width, (unsigned int)height, 0, 0, (unsigned int)width,
+                                         (unsigned int)height, pixels, needDelete) && pixels;
+    if (read)
+        rgba.assign(pixels, pixels + (size_t)width * height * 4);
+    if (needDelete)
+        delete[] pixels;
+    return read;
+}
+
 bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::path path, bool flipY, std::function<void()> onComplete) {
     uint8_t* pixels = nullptr;
     bool needDelete = false;
@@ -345,7 +475,8 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
     }
 
     try {
-        std::thread([pixels, needDelete, width, height, path, flipY, onComplete]() {
+        // must-run (the pixels are freed and onComplete called there): a detached Background job
+        jobs::enqueueDetached([pixels, needDelete, width, height, path, flipY, onComplete]() {
             // Do not use stb's process-global flip flag from concurrent writers.
             // The readback buffer is owned here, so flip its rows directly.
             if (flipY && pixels) {
@@ -358,7 +489,7 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
                     }
                 }
             }
-            stbi_write_png(path.string().c_str(), width, height, 4, pixels, width * 4);
+            writePng(path, width, height, 4, pixels, width * 4, io::Durability::Cache);
 
             if (needDelete && pixels) {
                 delete[] pixels;
@@ -367,13 +498,47 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
             if (onComplete) {
                 onComplete();
             }
-        }).detach();
+        }, jobs::Lane::Background, "save-framebuffer-png");
     } catch (...) {
         if (needDelete && pixels) {
             delete[] pixels;
         }
         return false;
     }
+    return true;
+}
+
+bool editor::GraphicUtils::readFramebufferRect(Framebuffer* framebuffer, int x, int y, int width, int height, std::vector<uint8_t>& rgba) {
+    rgba.clear();
+    if (!framebuffer || !framebuffer->isCreated() || width <= 0 || height <= 0 || x < 0 || y < 0 ||
+        (unsigned int)(x + width) > framebuffer->getWidth() || (unsigned int)(y + height) > framebuffer->getHeight()) {
+        return false;
+    }
+    uint8_t* pixels = nullptr;
+    bool needDelete = false;
+    const bool read = ::readRenderPixels(framebuffer->getRender(), framebuffer->getWidth(), framebuffer->getHeight(), (unsigned int)x,
+                                         (unsigned int)y, (unsigned int)width, (unsigned int)height, pixels, needDelete) && pixels;
+    if (read) rgba.assign(pixels, pixels + (size_t)width * height * 4);
+    if (needDelete) delete[] pixels;
+    return read;
+}
+
+bool editor::GraphicUtils::readFramebufferRGBA(Framebuffer* framebuffer, std::vector<uint8_t>& out) {
+    out.clear();
+    if (!framebuffer || !framebuffer->isCreated() || framebuffer->getWidth() == 0 || framebuffer->getHeight() == 0) {
+        return false;
+    }
+
+    uint8_t* pixels = nullptr;
+    bool needDelete = false;
+    if (!readFramebufferPixels(framebuffer, pixels, needDelete) || !pixels) {
+        if (needDelete) delete[] pixels;
+        return false;
+    }
+
+    const size_t size = static_cast<size_t>(framebuffer->getWidth()) * framebuffer->getHeight() * 4;
+    out.assign(pixels, pixels + size);
+    if (needDelete) delete[] pixels;
     return true;
 }
 
@@ -431,5 +596,57 @@ bool editor::GraphicUtils::encodeFramebufferPng(Framebuffer* framebuffer, std::v
 
     if (outWidth) *outWidth = finalWidth;
     if (outHeight) *outHeight = finalHeight;
+    return true;
+}
+
+bool editor::GraphicUtils::encodeFramebufferThumbnailPng(Framebuffer* framebuffer, int width, int height, std::vector<uint8_t>& out) {
+    out.clear();
+    if (width <= 0 || height <= 0 || !framebuffer || !framebuffer->isCreated() || framebuffer->getWidth() == 0 ||
+            framebuffer->getHeight() == 0) {
+        return false;
+    }
+    uint8_t* pixels = nullptr;
+    bool needDelete = false;
+    if (!readFramebufferPixels(framebuffer, pixels, needDelete) || !pixels) {
+        if (needDelete) delete[] pixels;
+        return false;
+    }
+    const int sourceWidth = static_cast<int>(framebuffer->getWidth());
+    const int sourceHeight = static_cast<int>(framebuffer->getHeight());
+    // the largest centred rectangle of the thumbnail's aspect
+    int cropWidth = sourceWidth;
+    int cropHeight = static_cast<int>(static_cast<long long>(sourceWidth) * height / width);
+    if (cropHeight > sourceHeight) {
+        cropHeight = sourceHeight;
+        cropWidth = std::max(1, static_cast<int>(static_cast<long long>(sourceHeight) * width / height));
+    }
+    cropHeight = std::max(1, cropHeight);
+    const int x0 = (sourceWidth - cropWidth) / 2;
+    const int y0 = (sourceHeight - cropHeight) / 2;
+    std::vector<uint8_t> rgb(static_cast<size_t>(cropWidth) * cropHeight * 3);
+    for (int y = 0; y < cropHeight; ++y) {
+        const uint8_t* src = pixels + (static_cast<size_t>(y0 + y) * sourceWidth + x0) * 4;
+        uint8_t* dst = rgb.data() + static_cast<size_t>(y) * cropWidth * 3;
+        for (int x = 0; x < cropWidth; ++x) {
+            dst[x * 3 + 0] = src[x * 4 + 0];
+            dst[x * 3 + 1] = src[x * 4 + 1];
+            dst[x * 3 + 2] = src[x * 4 + 2];
+        }
+    }
+    if (needDelete) delete[] pixels;
+
+    std::vector<uint8_t> scaled(static_cast<size_t>(width) * height * 3);
+    if (!stbir_resize_uint8_srgb(rgb.data(), cropWidth, cropHeight, 0, scaled.data(), width, height, 0, STBIR_RGB)) {
+        return false;
+    }
+    auto append = [](void* context, void* data, int size) {
+        auto* bytes = static_cast<std::vector<uint8_t>*>(context);
+        const uint8_t* begin = static_cast<const uint8_t*>(data);
+        bytes->insert(bytes->end(), begin, begin + size);
+    };
+    if (!stbi_write_png_to_func(append, &out, width, height, 3, scaled.data(), width * 3)) {
+        out.clear();
+        return false;
+    }
     return true;
 }

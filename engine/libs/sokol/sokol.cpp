@@ -1,4 +1,5 @@
 #include "Log.h"
+#include <mutex>  // the pools' lock in sokol_gfx.h (PATCHES.md)
 #define SOKOL_LOG(s) { SOKOL_ASSERT(s); jasperengine::Log::error(s); }
 
 #define SOKOL_IMPL
@@ -21,8 +22,26 @@
 // under engine/platform, which owns the window, the event loop and the
 // graphics device.
 
+// the GPU timer's query entry points for sokol's own Win32 GL loader (sokol_gpu_timer_impl.h), and
+// glFinish for the asynchronous creation's worker context (sokol_async_impl.h)
+#define SG_GL_FUNCS_EXT \
+    _SG_XMACRO(glGenQueries,          void, (GLsizei n, GLuint* ids)) \
+    _SG_XMACRO(glDeleteQueries,       void, (GLsizei n, const GLuint* ids)) \
+    _SG_XMACRO(glBeginQuery,          void, (GLenum target, GLuint id)) \
+    _SG_XMACRO(glEndQuery,            void, (GLenum target)) \
+    _SG_XMACRO(glGetQueryiv,          void, (GLenum target, GLenum pname, GLint* params)) \
+    _SG_XMACRO(glGetQueryObjectuiv,   void, (GLuint id, GLenum pname, GLuint* params)) \
+    _SG_XMACRO(glGetQueryObjectui64v, void, (GLuint id, GLenum pname, GLuint64* params)) \
+    _SG_XMACRO(glFinish,              void, (void))
+
+// the GPU timer's hook table, which sokol_gfx.h calls (marked "JasperEngine: gpu timer hook")
+#include "sokol_gpu_timer.h"
 #include "sokol_gfx.h"
 #include "sokol_time.h"
+// its backends, where sokol's state is visible
+#include "sokol_gpu_timer_impl.h"
+#include "sokol_async.h"
+#include "sokol_async_impl.h"
 //#include "sokol_audio.h"
 //#include "sokol_log.h"
 
@@ -62,4 +81,87 @@ extern "C" int jasperengine_sg_max_msaa_samples(int requested){
 #endif
     // Metal: every Apple GPU renders 2 and 4 samples
     return supported;
+}
+
+// Slots in use and free of a resource pool (by SystemRender's GpuResourceKind: buffer, image,
+// sampler, view, pipeline, shader), for SokolSystem's pool limits and their tests. A pool of
+// size N has N + 1 slots, slot 0 never used.
+extern "C" void jasperengine_sg_pool_usage(int kind, int* used, int* free){
+    const _sg_pool_t* pools[6] = {&_sg.pools.buffer_pool, &_sg.pools.image_pool, &_sg.pools.sampler_pool,
+                                  &_sg.pools.view_pool, &_sg.pools.pipeline_pool, &_sg.pools.shader_pool};
+    *used = 0;
+    *free = 0;
+    if (kind < 0 || kind >= 6 || !_sg.valid)
+        return;
+    _SGJ_POOL_LOCK();
+    const _sg_pool_t* pool = pools[kind];
+    *free = pool->queue_top;
+    *used = (pool->size - 1) - pool->queue_top;
+}
+
+// Vulkan's per-frame shared buffers, for SokolSystem's budgets (Engine::GpuResourceLimits):
+// 0 the stream staging buffer, 1 the uniform buffer, 2 the descriptor buffer. The bytes the
+// frame being recorded has taken (0 before its first pass or upload), the buffer's size, and
+// whether sokol found it full this frame. False on the other backends (no such buffers).
+extern "C" bool jasperengine_sg_vk_frame_buffer_usage(int which, uint32_t* used, uint32_t* size, bool* overflown){
+    *used = 0;
+    *size = 0;
+    *overflown = false;
+#if defined(SOKOL_VULKAN)
+    if (!_sg.valid || which < 0 || which > 2)
+        return false;
+    const _sg_vk_shared_buffer_t* buffers[3] = {&_sg.vk.stage.stream, &_sg.vk.uniforms.dbuf, &_sg.vk.bind};
+    const _sg_vk_shared_buffer_t* buffer = buffers[which];
+    *size = buffer->size;
+    if (buffer->cur_buf){
+        *used = buffer->offset;
+        *overflown = buffer->overflown;
+    }
+    return true;
+#else
+    (void)which;
+    return false;
+#endif
+}
+
+// Vulkan: the descriptor buffer bytes the next sg_apply_bindings and sg_draw take (their
+// textures', samplers' and storage buffers' descriptor set, and the uniform blocks' one when
+// uniforms were applied since the last draw, each rounded up to the buffer's alignment as sokol
+// places them), the bytes the frame has taken and the buffer's size; false when they do not fit
+// in it, or in `limit` bytes when that is less (sokol would drop the draw). True with nothing
+// needed on the other backends and outside a valid pass or pipeline (sokol skips such a draw
+// before it gets there).
+extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, uint32_t* need, uint32_t* used, uint32_t* size){
+    *need = 0;
+    *used = 0;
+    *size = 0;
+#if defined(SOKOL_VULKAN)
+    if (!_sg.valid)
+        return true;
+    const _sg_vk_shared_buffer_t* bind = &_sg.vk.bind;
+    *size = bind->size;
+    *used = bind->cur_buf ? bind->offset : 0;
+    if (!_sg.cur_pass.valid || !_sg.next_draw_valid || _sg.cur_pass.is_compute)
+        return true;
+    const _sg_pipeline_t* pip = _sg_pipeline_ref_ptr_or_null(&_sg.cur_pip);
+    const _sg_shader_t* shd = pip ? _sg_shader_ref_ptr_or_null(&pip->cmn.shader) : nullptr;
+    if (!shd)
+        return true;
+    const uint64_t room = limit < bind->size ? limit : bind->size;
+    uint64_t offset = *used;
+    bool fits = !bind->overflown;
+    const uint64_t sets[2] = {shd->vk.view_smp_dset_size, _sg.vk.uniforms.dirty ? shd->vk.ub_dset_size : 0};
+    for (uint64_t set : sets){
+        if (set == 0)
+            continue;
+        if (offset + set > room)
+            fits = false;
+        offset = (offset + set + bind->align - 1) / bind->align * bind->align;
+    }
+    *need = (uint32_t)(offset - *used);
+    return fits;
+#else
+    (void)limit;
+    return true;
+#endif
 }

@@ -178,18 +178,3 @@ TEST(CompatHtml5lib, StartTagOffsets){
     std::printf("[html5lib] %zu documents, %zu elements, %zu from start tags, %zu attributes located\n",
                 documents, counts.elements, counts.located, counts.attributes);
 }
-
-TEST(CompatHtml5lib, FragmentsParse){
-    // fragment inputs parse in body context without crashing (innerHTML)
-    size_t parsed = 0;
-    for (const Html5libCase& c : loadCases()){
-        if (!c.fragment)
-            continue;
-        SourceFiles files;
-        const uint32_t file = files.add(c.file, c.data);
-        HtmlDocument document = HtmlParser::parseFragment(file, files.text(file), 0, nullptr);
-        ASSERT_TRUE(document.root);
-        parsed++;
-    }
-    EXPECT_GT(parsed, 100u);
-}

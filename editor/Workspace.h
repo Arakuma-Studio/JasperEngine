@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Project.h"
+#include "window/GameResolutions.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -28,6 +29,9 @@ public:
         SceneDisplaySettings displaySettings;
         YAML::Node editorCamera;
         bool hasDisplaySettings = false;
+        // the Scene view's camera settings, layout, bookmarks, measures and filters (S26), and
+        // the entry's keys this version does not know
+        SceneViewState viewState;
     };
 
     // .jasperengine/user, created on demand
@@ -59,11 +63,18 @@ public:
 
     // Defaults when the file has none (it never was in project.yaml)
     const PhysicsPlacementSettings& getPhysicsPlacementSettings() const { return physicsPlacementSettings; }
+    const SpriteNormalsWindowSettings& getSpriteNormalsSettings() const { return spriteNormalsSettings; }
 
     bool isSimulateTouch() const { return simulateTouch; }
+    // the Game view's "Add custom..." resolutions
+    const std::vector<GameResolution>& getCustomResolutions() const { return customResolutions; }
 
     // Keyed by project-relative path, so reordering scenes never rewrites this file
     const SceneState* getSceneState(const std::filesystem::path& sceneFilepath) const;
+
+    // A scene's workspace entry (tests: what save() writes and load() reads back)
+    static YAML::Node encodeSceneEntry(const SceneProject& sceneProject);
+    static SceneState decodeSceneEntry(const YAML::Node& node);
 
 private:
     static std::filesystem::path getWorkspaceFile(const std::filesystem::path& projectPath);
@@ -81,8 +92,10 @@ private:
     bool terrainDefined = false;
 
     PhysicsPlacementSettings physicsPlacementSettings;
+    SpriteNormalsWindowSettings spriteNormalsSettings;
 
     bool simulateTouch = false;
+    std::vector<GameResolution> customResolutions;
 
     std::map<std::string, SceneState> sceneStates;
     bool adoptedLegacy = false;

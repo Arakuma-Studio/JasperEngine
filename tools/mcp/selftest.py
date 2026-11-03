@@ -1,15 +1,16 @@
 """Self-test of the harness against tools/mcp/fake_server.py (no editor needed).
 
-    uv run --no-project --with mcp --with pyyaml python tools/mcp/selftest.py
+    uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/selftest.py
 
 Checks: stdio launch in both Xvfb modes (editor-spawned and harness-spawned), scratch layout
 (cwd, HOME, settings.yaml, LIBGL_ALWAYS_SOFTWARE, stderr capture), call/ToolError/expect_error,
 screenshot saving, console cursor, batch, Streamable HTTP attach, the runner (pass, -k, -j,
-failure exit code and kept scratch), the stdout purity check catching a dirty server, and that
-no Xvfb is left behind.
+--suite ci and its exit 2, failure exit code and kept scratch), the stdout purity check catching a
+dirty server, and that no Xvfb is left behind.
 """
 
 import asyncio
+import json
 import os
 import socket
 import subprocess
@@ -41,43 +42,48 @@ def xvfb_pid(ed: Editor, status: dict) -> int:
     return int(subprocess.check_output(["pgrep", "-P", str(status["pid"]), "-x", "Xvfb"], text=True))
 
 
-async def stdio_checks():
+async def stdio_checks(project):
     owned_xvfb = set()
-    for mode in ("editor", "harness"):
-        async with Editor(fake=True, xvfb=mode) as ed:
-            st = await ed.call("editor_status")
-            root = ed.scratch.root
-            ok(st["cwd"] == str(root), f"[{mode}] cwd is the scratch dir")
-            ok(st["home"] == str(root / "home"), f"[{mode}] HOME is scratch/home")
-            ok(st["project"] == str(root / "project") and (root / "project" / "project.yaml").exists(),
-               f"[{mode}] fixture copied to scratch/project and passed with --project")
-            ok("last_project_path: " + str(root / "project") in st["settings_yaml"]
-               and "maximized: true" in st["settings_yaml"], f"[{mode}] settings.yaml written")
-            ok(st["libgl_software"] == "1", f"[{mode}] LIBGL_ALWAYS_SOFTWARE=1")
-            ok(st["display"] and st["display"].startswith(":"), f"[{mode}] DISPLAY set ({st['display']})")
-            owned_xvfb.add(xvfb_pid(ed, st))
-            ok("--headless" in st["argv"], f"[{mode}] --headless passed")
-            ok("serving stdio" in ed.stderr_tail(), f"[{mode}] stderr captured to editor.stderr.log")
-            try:
-                await ed.call("fail_always")
-                ok(False, "ToolError raised")
-            except ToolError as e:
-                ok("Valid choices" in e.message, f"[{mode}] ToolError carries the tool's message")
-            msg = await ed.call("fail_always", expect_error=True)
-            ok("Valid choices" in msg, f"[{mode}] expect_error returns the message")
-            png = await ed.screenshot(view="scene", path=root / "shots" / "s.png")
-            ok(png.startswith(b"\x89PNG") and (root / "shots" / "s.png").read_bytes() == png,
-               f"[{mode}] screenshot saved as PNG")
-            first = await ed.console_since(None)
-            await ed.call("create_entity", name="C1", type="box")
-            new = await ed.console_since()
-            ok(len(first) >= 1 and [e["message"] for e in new] == ["Created C1"], f"[{mode}] console cursor")
-            ok("stdout noise from create_entity C1" in ed.stderr_text(), f"[{mode}] server stdout noise lands in stderr log")
-            kept = root
-        ok(not kept.exists(), f"[{mode}] scratch removed after success")
+    async with Editor(fake=True, xvfb="editor", project=project) as ed:
+        st = await ed.call("editor_status")
+        root = ed.scratch.root
+        ok(st["cwd"] == str(root), "cwd is the scratch dir")
+        ok(st["home"] == str(root / "home"), "HOME is scratch/home")
+        ok(st["project"] == str(root / "project")
+           and (root / "project" / "project.yaml").read_bytes() == (project / "project.yaml").read_bytes(),
+           "fixture copied to scratch/project and passed with --project")
+        ok("last_project_path: " + str(root / "project") in st["settings_yaml"]
+           and "maximized: true" in st["settings_yaml"], "settings.yaml written")
+        ok(st["libgl_software"] == "1", "LIBGL_ALWAYS_SOFTWARE=1")
+        ok(st["display"] and st["display"].startswith(":"), "editor-spawned DISPLAY set")
+        owned_xvfb.add(xvfb_pid(ed, st))
+        ok("--headless" in st["argv"], "--headless passed")
+        ok("serving stdio" in ed.stderr_tail(), "stderr captured to editor.stderr.log")
+        try:
+            await ed.call("fail_always")
+            ok(False, "ToolError raised")
+        except ToolError as e:
+            ok("Valid choices" in e.message, "ToolError carries the tool's message")
+        msg = await ed.call("fail_always", expect_error=True)
+        ok("Valid choices" in msg, "expect_error returns the message")
+        png = await ed.screenshot(view="scene", path=root / "shots" / "s.png")
+        ok(png.startswith(b"\x89PNG") and (root / "shots" / "s.png").read_bytes() == png,
+           "screenshot saved as PNG")
+        first = await ed.console_since(None)
+        await ed.call("create_entity", name="C1", type="box")
+        new = await ed.console_since()
+        ok(len(first) >= 1 and [e["message"] for e in new] == ["Created C1"], "console cursor")
+        ok("stdout noise from create_entity C1" in ed.stderr_text(), "server stdout noise lands in stderr log")
+        kept = root
+    ok(not kept.exists(), "scratch removed after success")
+    async with Editor(fake=True, xvfb="harness", create=True, name="Fresh") as ed:
+        st = await ed.call("editor_status")
+        owned_xvfb.add(xvfb_pid(ed, st))
+        ok(st["display"] == ed._xvfb.display, "harness-spawned DISPLAY reaches server")
+        ok("--create" in st["argv"] and "Fresh" in st["argv"], "create=True passes --create <dir> --name")
     # a failing block keeps the scratch dir
     try:
-        async with Editor(fake=True) as ed:
+        async with Editor(fake=True, project=project) as ed:
             kept = ed.scratch.root
             owned_xvfb.add(xvfb_pid(ed, await ed.call("editor_status")))
             ed.check(False, "deliberate")
@@ -86,10 +92,6 @@ async def stdio_checks():
     ok(kept.exists(), "scratch kept after failure")
     import shutil
     shutil.rmtree(kept)
-    async with Editor(fake=True, create=True, name="Fresh") as ed:
-        st = await ed.call("editor_status")
-        owned_xvfb.add(xvfb_pid(ed, st))
-        ok("--create" in st["argv"] and "Fresh" in st["argv"], "create=True passes --create <dir> --name")
     ok(all(not Path(f"/proc/{pid}").exists() for pid in owned_xvfb), "no self-test Xvfb left running")
 
 
@@ -119,6 +121,14 @@ async def http_checks():
                 ok(made["entity_id"] >= 100, "HTTP: tool call")
                 ok(len(await ed.screenshot(path=Path(shots) / "http.png")) > 8, "HTTP: screenshot")
                 ok(ed.stderr_tail() == "", "HTTP: no stderr")
+            remote = subprocess.run(
+                [sys.executable, str(HERE / "run_tests.py"), "--url", f"http://127.0.0.1:{port}/mcp",
+                 "-k", "test_initialize", str(HERE / "tests" / "test_protocol.py")],
+                capture_output=True, text=True,
+                env=dict(os.environ, JASPER_EDITOR=str(Path(shots) / "must-not-launch-editor")),
+            )
+            ok(remote.returncode == 0 and "1 passed, 0 failed, 0 skipped" in remote.stdout,
+               "runner: explicit --url overrides a test module's owned project")
     finally:
         proc.terminate()
         proc.wait()
@@ -127,9 +137,10 @@ async def http_checks():
 def runner_checks():
     runner = [sys.executable, str(HERE / "run_tests.py"), "--fake"]
     run = runner + [str(HERE / "tests" / "test_protocol.py")]
-    r = subprocess.run(run + ["-j", "2"], capture_output=True, text=True)
-    ok(r.returncode == 0 and "0 failed" in r.stdout, "runner: test_protocol passes on the fake with -j 2")
-    for test in ("test_create_entity_undo_redo", "test_batch"):
+    r = subprocess.run(run + ["-k", "test_protocol.py::test_initialize",
+                              "-k", "test_protocol.py::test_batch"], capture_output=True, text=True)
+    ok(r.returncode == 0 and "0 failed" in r.stdout, "runner: selected tests pass on the fake")
+    for test in ("test_initialize", "test_batch"):
         ok(f"PASS test_protocol.py::{test} (" in r.stdout, f"runner: {test} exercises the fake")
     with tempfile.TemporaryDirectory(prefix="jasper-runner-selftest-") as root:
         files = [Path(root) / f"parallel_{name}.py" for name in ("a", "b")]
@@ -148,7 +159,60 @@ async def test_parallel():
         r = subprocess.run(runner + ["-j", "2", *map(str, files)], capture_output=True, text=True)
         ok(r.returncode == 0 and "2 passed, 0 failed, 0 skipped" in r.stdout,
            "runner: -j 2 runs two files concurrently")
-    r = subprocess.run(run + ["-k", "ping"], capture_output=True, text=True)
+        # the CI suite: CI = True files only; one that needs the default fixture stops the run (exit 2)
+        tests = Path(root) / "ci"
+        tests.mkdir()
+        (tests / "test_ci_created.py").write_text('CI = True\nEDITOR = {"create": True}\n\nasync def test_ping(ed):\n    await ed.ping()\n')
+        (tests / "test_ci_editorless.py").write_text("CI = True\n\nasync def test_nothing():\n    pass\n")
+        (tests / "test_not_ci.py").write_text("async def test_ping(ed):\n    await ed.ping()\n")
+        (tests / "test_long.py").write_text('CI_EXCLUDED = "long-running"\n\nasync def test_nothing():\n    pass\n')
+        suite = runner + ["--suite", "ci", "--tests-dir", str(tests)]
+        r = subprocess.run(suite, capture_output=True, text=True)
+        ok(r.returncode == 0 and "2 passed, 0 failed, 0 skipped" in r.stdout and "PASS test_not_ci" not in r.stdout
+           and "PASS test_long" not in r.stdout, "runner: --suite ci runs the CI = True files only")
+        ok("--suite ci runs 2 test file(s) and leaves out 2:" in r.stdout and
+           "left out test_not_ci.py: needs the default fixture" in r.stdout and
+           "left out test_long.py: long-running" in r.stdout and "(2 test file(s) left out by --suite ci)" in r.stdout,
+           "runner: --suite ci says which files it leaves out, and why")
+        (tests / "test_unexplained.py").write_text("async def test_nothing():\n    pass\n")
+        r = subprocess.run(suite, capture_output=True, text=True)
+        ok(r.returncode == 2 and "test_unexplained.py: left out of CI for no reason" in r.stderr,
+           "runner: --suite ci exits 2 on a file left out for no reason")
+        (tests / "test_unexplained.py").unlink()
+        (tests / "test_ci_default_fixture.py").write_text("CI = True\n\nasync def test_ping(ed):\n    await ed.ping()\n")
+        r = subprocess.run(suite, capture_output=True, text=True)
+        ok(r.returncode == 2 and "test_ci_default_fixture.py: CI = True" in r.stderr,
+           "runner: --suite ci exits 2 on a CI = True file that relies on the default fixture")
+        # chunks: a plan's tests, each chunk its own worker process; a planned test the file does not
+        # have fails; --split-seconds splits a TESTS_INDEPENDENT file by the earlier test times
+        chunked = Path(root) / "chunks"
+        chunked.mkdir()
+        (chunked / "test_free.py").write_text(
+            'import os\nfrom pathlib import Path\nTESTS_INDEPENDENT = "each its own"\n'
+            + "".join(f'\nasync def test_{n}():\n    print("PID", os.getpid())\n' for n in "abc"))
+        plan = Path(root) / "plan.json"
+        plan.write_text(json.dumps({"chunks": [{"file": "test_free.py", "tests": ["test_a", "test_c"], "seconds": 2},
+                                               {"file": "test_free.py", "tests": ["test_b"], "seconds": 1}]}))
+        planned = runner + ["--tests-dir", str(chunked), "--plan", str(plan), "-j", "2", "--json", str(Path(root) / "plan-results.json")]
+        r = subprocess.run(planned, capture_output=True, text=True)
+        pids = {line.split()[1] for line in r.stdout.splitlines() if line.startswith("PID")}
+        ok(r.returncode == 0 and "3 passed, 0 failed, 0 skipped" in r.stdout and len(pids) == 2 and "[chunk" in r.stdout,
+           f"runner: --plan runs each chunk's tests in a process of its own: {r.stdout[-300:]}")
+        results = json.loads((Path(root) / "plan-results.json").read_text())
+        ok(sorted(x["name"] for x in results["results"]) == [f"test_free.py::test_{n}" for n in "abc"],
+           "runner: --plan's results name every planned test once")
+        plan.write_text(json.dumps({"chunks": [{"file": "test_free.py", "tests": ["test_a", "test_gone"], "seconds": 2}]}))
+        r = subprocess.run(planned, capture_output=True, text=True)
+        ok(r.returncode == 1 and "FAIL test_free.py::test_gone" in r.stdout and "PASS test_free.py::test_b" not in r.stdout,
+           "runner: a planned test the file does not have fails, and an unplanned one does not run")
+        seconds = Path(root) / "test-seconds.json"
+        seconds.write_text(json.dumps({f"test_free.py::test_{n}": 100.0 for n in "abc"}))
+        env = dict(os.environ, JASPER_MCP_TEST_SECONDS=str(seconds))
+        r = subprocess.run(runner + ["--split-seconds", "150", "-j", "2", str(chunked / "test_free.py")],
+                           capture_output=True, text=True, env=env)
+        ok(r.returncode == 0 and "3 passed, 0 failed, 0 skipped" in r.stdout and "[chunk 3/3]" in r.stdout,
+           f"runner: --split-seconds splits a TESTS_INDEPENDENT file: {r.stdout[-300:]}")
+    r = subprocess.run(run + ["-k", "test_protocol.py::test_initialize"], capture_output=True, text=True)
     ok(r.returncode == 0 and "1 passed, 0 failed, 0 skipped" in r.stdout, "runner: -k filters")
     env = dict(os.environ, FAKE_DIRTY_STDOUT="1")
     r = subprocess.run(run + ["-k", "stdio_raw"], capture_output=True, text=True, env=env)
@@ -162,9 +226,13 @@ async def test_parallel():
 
 
 async def main():
-    await stdio_checks()
-    await http_checks()
-    runner_checks()
+    with tempfile.TemporaryDirectory(prefix="jasper-harness-fixture-") as fixture:
+        project = Path(fixture)
+        (project / "project.yaml").write_text("name: Harness\n")
+        os.environ["JASPER_FIXTURE"] = fixture
+        await stdio_checks(project)
+        await http_checks()
+        runner_checks()
     print(f"\nselftest: {checks} checks passed")
 
 

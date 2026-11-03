@@ -26,6 +26,11 @@ namespace jasperengine::editor {
         // Same for mouse buttons, which stop being forwarded as soon as the pointer
         // leaves the view, well before the button comes up.
         std::set<int> pressedMouseButtons;
+        // Simulate Touch (ui-multitouch): the finger the left button drives (0, or 1 while finger
+        // 0 is pinned), and finger 0 pinned by an Alt release: it stays down until Alt goes up
+        int touchFinger = 0;
+        bool fingerPinned = false;
+        ImVec2 pinnedPos = ImVec2(0, 0);
         uint32_t mouseSceneId = 0;
         ImVec2 mousePos = ImVec2(0, 0);
 
@@ -62,6 +67,12 @@ namespace jasperengine::editor {
         void releaseAll();
 
         void setPointerInjected(bool injected) { pointerInjected = injected; }
+
+        // The engine key (D_KEY_*) of an ImGui key, D_KEY_UNKNOWN (-1) when the game has none:
+        // what forward() sends (Project Settings > Input's Listen captures with it)
+        static int engineKey(ImGuiKey key);
+        // The engine gamepad button (D_GAMEPAD_BUTTON_*) of an ImGui gamepad key, else -1
+        static int engineGamepadButton(ImGuiKey key);
     };
 
 }

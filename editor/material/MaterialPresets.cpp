@@ -307,7 +307,7 @@ namespace {
             pass.stencil = masked;
     }
 
-    std::vector<MaterialPreset> makePresets(){
+    std::vector<MaterialPreset> makeMaterialPresets(){
         std::vector<MaterialPreset> presets;
 
         presets.push_back({"outline_hull", "Outline (hull)",
@@ -393,6 +393,94 @@ namespace {
                 makeMask(material, SPRITE_MASK_SHADER);
             }});
 
+        // The extended lobes of the built-in Lit (S11): a library shader has none of them, so
+        // these draw with the built-in Lit (a fork of it keeps them, as does the mesh's)
+        auto litLobes = [](Material& material) -> MaterialPbrExtensions& {
+            if (ShaderReference::isLibrary(material.shader)){
+                material.shader.clear();
+                material.shaderFeatures.clear();
+            }
+            return material.pbr.edit();
+        };
+
+        presets.push_back({"car_paint", "Car Paint",
+            "Glossy paint under a clear coat (KHR_materials_clearcoat): a smooth dielectric coat over a "
+            "metallic flake base. Keeps the base colour; draws with the built-in Lit.",
+            [litLobes](Material& material, const std::string&){
+                MaterialPbrExtensions& pbr = litLobes(material);
+                pbr.clearcoat.enabled = true;
+                pbr.clearcoat.factor = 1.0f;
+                pbr.clearcoat.roughness = 0.03f;
+                material.metallicFactor = 0.6f;
+                material.roughnessFactor = 0.45f;
+            }});
+
+        presets.push_back({"velvet", "Velvet",
+            "Cloth with a soft rim (KHR_materials_sheen): a Charlie sheen lobe over a rough dielectric. "
+            "The sheen takes the base colour, brightened.",
+            [litLobes](Material& material, const std::string&){
+                MaterialPbrExtensions& pbr = litLobes(material);
+                pbr.sheen.enabled = true;
+                const Vector3 base(material.baseColorFactor.x, material.baseColorFactor.y, material.baseColorFactor.z);
+                pbr.sheen.color = Vector3(std::min(base.x * 1.5f + 0.2f, 1.0f), std::min(base.y * 1.5f + 0.2f, 1.0f), std::min(base.z * 1.5f + 0.2f, 1.0f));
+                pbr.sheen.roughness = 0.5f;
+                material.metallicFactor = 0.0f;
+                material.roughnessFactor = 0.9f;
+            }});
+
+        presets.push_back({"brushed_metal", "Brushed Metal",
+            "Metal with highlights stretched along its tangent (KHR_materials_anisotropy). Needs tangents "
+            "or UVs for the direction; Rotation turns it.",
+            [litLobes](Material& material, const std::string&){
+                MaterialPbrExtensions& pbr = litLobes(material);
+                pbr.anisotropy.enabled = true;
+                pbr.anisotropy.strength = 0.8f;
+                pbr.anisotropy.rotation = 0.0f;
+                material.metallicFactor = 1.0f;
+                material.roughnessFactor = 0.35f;
+            }});
+
+        presets.push_back({"soap_bubble", "Soap Bubble",
+            "A thin film's rainbow (KHR_materials_iridescence) on a clear, smooth surface: alpha blended, "
+            "a 250 to 650 nm film. Stripped from the Reduced mobile tier.",
+            [litLobes](Material& material, const std::string&){
+                MaterialPbrExtensions& pbr = litLobes(material);
+                pbr.iridescence.enabled = true;
+                pbr.iridescence.factor = 1.0f;
+                pbr.iridescence.ior = 1.33f;
+                pbr.iridescence.thicknessNm = Vector2(250.0f, 650.0f);
+                material.baseColorFactor = Vector4(1.0f, 1.0f, 1.0f, 0.15f);
+                material.alphaMode = MaterialAlphaMode::BLEND;
+                material.metallicFactor = 0.0f;
+                material.roughnessFactor = 0.02f;
+            }});
+
+        presets.push_back({"clear_glass", "Clear Glass",
+            "Glass that refracts the scene behind it (KHR_materials_transmission and _volume, IOR 1.5): "
+            "drawn after the opaque objects over a copy of them. Objects drawn after it do not show "
+            "through (the copy holds the opaque scene).",
+            [litLobes](Material& material, const std::string&){
+                MaterialPbrExtensions& pbr = litLobes(material);
+                pbr.transmission.enabled = true;
+                pbr.transmission.factor = 1.0f;
+                pbr.volume.enabled = true;
+                pbr.volume.thickness = 0.1f;
+                pbr.specular.enabled = true;
+                pbr.specular.ior = 1.5f;
+                material.metallicFactor = 0.0f;
+                material.roughnessFactor = 0.05f;
+            }});
+
+        presets.push_back({"tiled_floor", "Tiled Floor",
+            "Hex tiling: the textures of UV set 0 sampled on three randomly rotated copies, which hides "
+            "the grid a repeating texture shows from a distance (three texture taps per map).",
+            [litLobes](Material& material, const std::string&){
+                MaterialPbrExtensions& pbr = litLobes(material);
+                pbr.hex.enabled = true;
+                pbr.hex.rotation = 1.0f;
+                pbr.hex.contrast = 0.6f;
+            }});
+
         // every preset leaves the extra pass masked as the material's stencil says
         for (MaterialPreset& preset : presets){
             preset.apply = [apply = preset.apply](Material& material, const std::string& meshShader){
@@ -407,7 +495,7 @@ namespace {
 
 bool isMaterialBlended(const Material& material, const std::string& meshShader){
     MaterialBlendMode blend = material.blendMode;
-    const std::string& shader = material.shader.empty() ? meshShader : material.shader;
+    const std::string& shader = material.shader.empty() ? meshShader : material.shader.path;
     if (blend == MaterialBlendMode::AUTO && !shader.empty()){
         std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
         if (manifest && manifest->present)
@@ -423,7 +511,7 @@ bool isMaterialBlended(const Material& material, const std::string& meshShader){
 }
 
 const std::vector<MaterialPreset>& getMaterialPresets(){
-    static const std::vector<MaterialPreset> presets = makePresets();
+    static const std::vector<MaterialPreset> presets = makeMaterialPresets();
     return presets;
 }
 

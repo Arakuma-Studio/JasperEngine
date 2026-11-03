@@ -48,6 +48,10 @@
 
 namespace Rml {
 
+// Fork (P7-L): the elements that are layout boundaries (SetLayoutBoundary), over every document: while there are none,
+// DirtyLayout looks for no boundary among the ancestors.
+static int num_layout_boundaries = 0;
+
 // Determines how many levels up in the hierarchy the OnChildAdd and OnChildRemove are called (starting at the child itself)
 static constexpr int ChildNotifyLevels = 2;
 
@@ -112,7 +116,7 @@ Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
 	dirty_child_definitions(false), dirty_definition_self(false), dirty_pseudo_elements(false), pseudo_element_type(PseudoElementTypeOfTag(tag)), has_pseudo_elements(false), dirty_animation(false), dirty_transition(false),
-	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), line_clamp_hidden(false), draws_line_clamp_ellipsis(false), tag(tag),
+	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), line_clamp_hidden(false), draws_line_clamp_ellipsis(false), layout_boundary(false), layout_boundary_dirty(false), tag(tag),
 	relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
 	RMLUI_ASSERT(tag == StringUtilities::ToLower(tag));
@@ -139,6 +143,9 @@ Element::~Element()
 	RMLUI_ASSERT(parent == nullptr);
 
 	PluginRegistry::NotifyElementDestroy(this);
+
+	if (layout_boundary)
+		num_layout_boundaries--;
 
 	// A simplified version of RemoveChild() for destruction.
 	for (ElementPtr& child : children)
@@ -234,6 +241,19 @@ void Element::UpdateProperties(const float dp_ratio, const Vector2f vp_dimension
 	}
 }
 
+bool Element::GetPaintBounds(Rectanglef& out_bounds)
+{
+	// (a subclass may paint more in OnRender: unknown unless it says)
+	if (GetClassIdentifier() != Element::GetStaticClassIdentifier() || GetNumBoxes() != 1)
+		return false;
+	float reach = 0.f;
+	if (!meta->background_border.GetInkReach(reach))
+		return false;
+	const Vector2f position = GetAbsoluteOffset(BoxArea::Border);
+	out_bounds = Rectanglef::FromPositionSize(position - Vector2f(reach), main_box.GetSize(BoxArea::Border) + Vector2f(2.f * reach));
+	return true;
+}
+
 void Element::Render()
 {
 #ifdef RMLUI_TRACY_PROFILING
@@ -257,6 +277,27 @@ void Element::Render()
 	if (stacking_context_dirty)
 		BuildLocalStackingContext();
 
+	// Fork (S16-F6): an element with nothing to paint but its own (no transform, effects, stacking children or ellipsis)
+	// whose paint bounds lie wholly outside the scissor its clipping region sets (kept by SetClippingRegion for the other
+	// elements of its key) is passed over before any state is set: a long scrolled list's hidden rows cost a few tests
+	if (!transform_state && !dirty_transform && !dirty_perspective && stacking_context.empty() && !local_stacking_context &&
+		!draws_line_clamp_ellipsis && computed.clip() == Style::Clip::Type::Auto && !effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+	{
+		RenderManager* render_manager = GetRenderManager();
+		if (render_manager && render_manager->PaintShortcuts())
+		{
+			const RenderManager::ClipMemo* memo = render_manager->FindClipMemo(ElementUtilities::GetClipMemoKey(GetOffsetParent()));
+			Rectanglef bounds;
+			if (memo && memo->scissor && GetPaintBounds(bounds))
+			{
+				const Rectanglei& scissor = memo->region;
+				if (bounds.Right() <= (float)scissor.Left() || bounds.Left() >= (float)scissor.Right() || bounds.Bottom() <= (float)scissor.Top() ||
+					bounds.Top() >= (float)scissor.Bottom())
+					return;
+			}
+		}
+	}
+
 	UpdateTransformState();
 	ElementUtilities::ApplyTransform(*this);
 
@@ -267,10 +308,26 @@ void Element::Render()
 	// A hidden element (CSS visibility) paints nothing of its own; its visible descendants paint (phase 3, p3-paint).
 	if (computed.visibility() == Style::Visibility::Visible && ElementUtilities::SetClippingRegion(this))
 	{
-		meta->background_border.Render(this);
-		if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
-			effects.RenderEffects(RenderStage::Decoration);
-		meta->background_border.RenderBorder(this);
+		// Fork (S16-F4): a background, border and box shadow wholly outside the scissor region are not painted (a long
+		// scrolled list draws its visible rows only); the decorators are inside the border box
+		float reach = 0.f;
+		bool outside = false;
+		if (GetNumBoxes() == 1 && meta->background_border.GetInkReach(reach))
+		{
+			if (RenderManager* render_manager = GetRenderManager())
+			{
+				const Vector2f position = GetAbsoluteOffset(BoxArea::Border);
+				const Vector2f size = main_box.GetSize(BoxArea::Border);
+				outside = render_manager->IsOutsideScissor(Rectanglef::FromPositionSize(position - Vector2f(reach), size + Vector2f(2.f * reach)));
+			}
+		}
+		if (!outside)
+		{
+			meta->background_border.Render(this);
+			if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+				effects.RenderEffects(RenderStage::Decoration);
+			meta->background_border.RenderBorder(this);
+		}
 
 		{
 			RMLUI_ZoneScopedNC("OnRender", 0x228B22);
@@ -1641,6 +1698,24 @@ void Element::SetInnerRML(const String& rml)
 		Factory::InstanceElementText(this, rml);
 }
 
+bool Element::SetPointerCapture(PointerId pointer_id)
+{
+	Context* context = GetContext();
+	return context && context->SetPointerCapture(this, pointer_id);
+}
+
+bool Element::ReleasePointerCapture(PointerId pointer_id)
+{
+	Context* context = GetContext();
+	return context && context->ReleasePointerCapture(this, pointer_id);
+}
+
+bool Element::HasPointerCapture(PointerId pointer_id) const
+{
+	Context* context = const_cast<Element*>(this)->GetContext();
+	return context && context->HasPointerCapture(this, pointer_id);
+}
+
 bool Element::Focus(bool focus_visible)
 {
 	// Are we allowed focus? (Not 'focus: none', not a disabled form control.)
@@ -2139,6 +2214,13 @@ ElementBackgroundBorder* Element::GetElementBackgroundBorder() const
 	return &meta->background_border;
 }
 
+bool Element::IsPaintedAsPrimitives(const char** reason) const
+{
+	if (reason)
+		*reason = meta->background_border.GetPaintReason();
+	return meta->background_border.IsPaintedAsPrimitives();
+}
+
 ElementScroll* Element::GetElementScroll() const
 {
 	return &meta->scroll;
@@ -2583,8 +2665,39 @@ void Element::OnChildRemove(Element* /*child*/) {}
 
 void Element::DirtyLayout()
 {
-	if (Element* document = GetOwnerDocument())
+	ElementDocument* document = GetOwnerDocument();
+	if (!document)
+		return;
+	// Fork (P7-L): a change inside a layout boundary lays out the boundary alone (the nearest one); the elements
+	// that are no boundary pay one counter test while the document has none.
+	if (num_layout_boundaries > 0)
+	{
+		for (Element* ancestor = parent; ancestor && ancestor != document; ancestor = ancestor->parent)
+		{
+			if (ancestor->layout_boundary)
+			{
+				document->DirtyLayoutBoundary(ancestor);
+				return;
+			}
+		}
+	}
+	document->DirtyLayout();
+}
+
+void Element::SetLayoutBoundary(bool boundary)
+{
+	if (layout_boundary == boundary)
+		return;
+	layout_boundary = boundary;
+	num_layout_boundaries += boundary ? 1 : -1;
+	// The next layout is the document's: the boundary's box comes from its parent's formatting.
+	if (ElementDocument* document = GetOwnerDocument())
 		document->DirtyLayout();
+}
+
+bool Element::IsLayoutBoundary() const
+{
+	return layout_boundary;
 }
 
 bool Element::IsLayoutDirty()
@@ -2614,26 +2727,10 @@ Element* Element::GetClosestScrollableContainer()
 	return nullptr;
 }
 
-void Element::ProcessDefaultAction(Event& event)
+void Element::ProcessDefaultAction(Event& /*event*/)
 {
-	if (event == EventId::Mousedown)
-	{
-		const Vector2f mouse_pos(event.GetParameter("mouse_x", 0.f), event.GetParameter("mouse_y", 0.f));
-
-		if (IsPointWithinElement(mouse_pos) && event.GetParameter("button", 0) == 0)
-			SetPseudoClass("active", true);
-	}
-
-	if (event.GetPhase() == EventPhase::Target)
-	{
-		switch (event.GetId())
-		{
-		case EventId::Mouseover: SetPseudoClass("hover", true); break;
-		case EventId::Mouseout: SetPseudoClass("hover", false); break;
-		// The focus pseudo-classes are set by Context::OnFocusChange (phase 3: ':focus' on the focused element only).
-		default: break;
-		}
-	}
+	// ':hover' and ':active' are set by the context, counted over its pointers (fork, engine-gaps G5-1: a lifted finger
+	// no longer clears another finger's); the focus pseudo-classes by Context::OnFocusChange (phase 3).
 }
 
 const Style::ComputedValues& Element::GetComputedValues() const
@@ -3944,11 +4041,21 @@ void Element::UpdateTransformState()
 			transform_state->SetTransform(nullptr);
 
 		perspective_or_transform_changed |= (had_transform != have_transform);
+
+		// Fork (S16-F6): done until something dirties it again (RmlUi 6.3 kept the flag set: once dirtied, an element
+		// computed its transform anew at every render, and it is dirtied again whenever an input of it changes:
+		// a transform property, its offset or box while it has a transform state, its stacking parent's transform)
+		if (RenderManager::LastPaintShortcuts())
+			dirty_transform = false;
 	}
 
 	// A change in perspective or transform will require an update to children transforms as well.
 	if (perspective_or_transform_changed)
 	{
+		// Fork (S16-F6): and changes the clipping regions of the elements it clips
+		if (RenderManager* render_manager = GetRenderManager())
+			render_manager->ResetClipMemo();
+
 		for (Element* stacking_child : stacking_context)
 			stacking_child->DirtyTransformState(false, true);
 	}

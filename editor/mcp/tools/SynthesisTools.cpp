@@ -4,6 +4,7 @@
 // Texture synthesis: synthesize_texture (texsynth, the same code as Window > Texture Synthesis
 // through texsynth/SynthesisSession), and the recipe summary get_asset_info / view_asset show
 #include "McpTools.h"
+#include "util/FileUtils.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -95,7 +96,9 @@ bool pathArg(Project* project, const Json& value, const std::string& field, bool
         return false;
     }
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, value.get<std::string>(), absolute, error, mustExist)) {
+    // an output (!mustExist) is written: inside the project once links are resolved; inputs are read
+    if (mustExist ? !McpRefs::resolveProjectPath(project, value.get<std::string>(), absolute, error, true)
+                  : !McpRefs::resolveProjectWritePath(project, value.get<std::string>(), absolute, error, false)) {
         error = field + ": " + error;
         return false;
     }
@@ -120,14 +123,14 @@ bool numberArg(const Json& params, const char* key, double minimum, double maxim
 bool outputArg(Project* project, const Json& value, const std::string& field, std::string& out, std::string& error) {
     if (!pathArg(project, value, field, false, out, error)) return false;
     const fs::path root = project->getProjectPath();
-    const fs::path absolute = root / fs::u8path(out);
+    const fs::path absolute = root / editor::FileUtils::pathFromUtf8(out);
     if (!project->isInsideAssetsPath(absolute)) {
         error = field + " \"" + out + "\" is outside the assets directory (\"" + ts::projectRelative(root, project->getAssetsPath()) +
                 "\"), so no component could use it.";
         return false;
     }
-    for (const fs::path& part : fs::u8path(out)) {
-        const std::string name = part.u8string();
+    for (const fs::path& part : editor::FileUtils::pathFromUtf8(out)) {
+        const std::string name = FileUtils::pathToUtf8(part);
         if (name.size() > 1 && name[0] == '.' && name != "..") {
             error = field + " \"" + out + "\" is in a hidden directory (" + name + "): write it to a visible folder of the assets.";
             return false;
@@ -244,8 +247,8 @@ bool specFromArgs(Project* project, const Json& args, ts::SynthesisSpec& spec, b
             }
             if (companion.name.empty()) {
                 char separator = '_';
-                companion.name = ts::companionSuffix(fs::u8path(spec.examples[0].path).stem().u8string(),
-                                                     fs::u8path(companion.paths[0]).stem().u8string(), separator);
+                companion.name = ts::companionSuffix(FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(spec.examples[0].path).stem()),
+                                                     FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(companion.paths[0]).stem()), separator);
                 if (companion.name.empty()) companion.name = "companion" + std::to_string(c + 1);
             }
             spec.companions.push_back(companion);
@@ -528,7 +531,7 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
     // another project was opened meanwhile (the run was cancelled then): nothing goes into it
     Project* project = ctx.project();
     if (state->generation != ts::projectGeneration() || !project || project->getProjectPath() != state->root) {
-        job->fail("The project changed while the synthesis ran (it was started in " + state->root.u8string() +
+        job->fail("The project changed while the synthesis ran (it was started in " + FileUtils::pathToUtf8(state->root) +
                       "): nothing was written. Call synthesize_texture again in the open project.",
                   data);
         return;
@@ -552,7 +555,7 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
             std::vector<std::string> existing;
             std::error_code ec;
             for (const ts::PlannedOutput& out : ts::plannedOutputs(spec)) {
-                if (fs::exists(state->root / fs::u8path(out.path), ec)) existing.push_back(out.path);
+                if (fs::exists(state->root / editor::FileUtils::pathFromUtf8(out.path), ec)) existing.push_back(out.path);
             }
             if (!existing.empty()) {
                 std::string list;
@@ -573,7 +576,7 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
             ok = window->save(state->overwrite, written, error, &spec);
         } else {
             std::vector<ts::OutputFile> files;
-            ok = ts::encodeOutputs(state->root, spec, run.request(), result, files, error) && ts::writeOutputsUndoable(files, error);
+            ok = ts::encodeOutputs(state->root, spec, run.request(), result, files, error) && ts::writeOutputsUndoable(ctx.project(), files, error);
             for (const ts::OutputFile& f : files) written.push_back(f.path);
         }
         if (!ok) {
@@ -673,7 +676,7 @@ void synthesizeTextureTool(const CallPtr& call) {
         std::vector<std::string> existing;
         std::error_code ec;
         for (const ts::PlannedOutput& out : ts::plannedOutputs(spec)) {
-            if (fs::exists(root / fs::u8path(out.path), ec)) existing.push_back(out.path);
+            if (fs::exists(root / editor::FileUtils::pathFromUtf8(out.path), ec)) existing.push_back(out.path);
         }
         if (!existing.empty()) {
             std::string list;
@@ -697,6 +700,8 @@ void synthesizeTextureTool(const CallPtr& call) {
     };
     ts::SynthesisRun::Finished onFinished = [context, state, job](ts::SynthesisRun&) {
         getEditorHost().enqueueMainThreadTask([context, state, job]() {
+            // a continuation writes beneath the project, as the tool's run did
+            McpWriteScope writeScope;
             // the run may finish before start() returned to the handler
             if (!state->run) return;
             // whatever goes wrong, the job ends (the main-thread loop would swallow an exception
@@ -758,9 +763,12 @@ void synthesizeTextureTool(const CallPtr& call) {
 
 Json synthesisAssetInfo(Project* project, const fs::path& file, bool full) {
     std::string readError;
-    const std::optional<nlohmann::json> recipe = ts::readRecipe(file, &readError);
+    ts::RecipeReadError origin = ts::RecipeReadError::None;
+    const std::optional<nlohmann::json> recipe = ts::readRecipe(file, &readError, &origin);
     if (!recipe) {
-        if (!readError.empty()) return Json{{"error", readError}};
+        // only a damaged jasper.synthesis chunk is an unusable recipe; a file that is not a PNG
+        // (a JPEG named .png) or can't be read has none (decided on the error's origin)
+        if (origin == ts::RecipeReadError::Chunk) return Json{{"error", readError}};
         return Json();
     }
     // a garbled recipe (another writer, a hand edit) is reported as such, the rest of the asset info stays
@@ -821,61 +829,53 @@ void registerSynthesisTools(McpRegistry& registry) {
     tool.name = "synthesize_texture";
     tool.title = "Synthesize Texture";
     tool.description =
-        "Example-based texture synthesis (editor-side): a new texture like the examples (extend), a seamless tiling one (tileable), an "
-        "image made seamless (make_tileable), a masked region regenerated (inpaint), or examples following a guide (guided). PBR "
-        "companions (normal, roughness...) get the same arrangement. Without output nothing is written: a preview with images and "
-        "metrics; the same arguments + the returned seed + output write exactly that (one undo step, PNGs with a recipe). Read "
-        "hint. Guide: jasper://docs/texture-synthesis.";
-    // nested objects: the handler refuses unknown keys itself (saves tools/list bytes)
-    auto loose = [](Json o) {
-        o.erase("additionalProperties");
-        return o;
-    };
+        "Example-based texture synthesis: mode extend, tileable, make_tileable, inpaint or guided; PBR companions "
+        "get the same arrangement. Without output nothing is written: a preview with images, metrics and a hint; the same "
+        "arguments + the returned seed + output write exactly that (one undo step, PNGs with a recipe). "
+        "Guide: jasper://docs/texture-synthesis.";
+
+    // what each argument does: docs/mcp/guide/texture-synthesis.md
     const Json pathOrObject = [&] {
         Json j;
         j["anyOf"] = Json::array({Json{{"type", "string"}},
-                                  loose(object({{"path", string("")}, {"sample_mask", string("White may be copied.")},
-                                                {"guide", string("guided.")}, {"sampleable", boolean("")}},
-                                               {"path"}))});
+                                  object({{"path", string("")}, {"sample_mask", string("")},
+                                          {"guide", string("")}, {"sampleable", boolean("")}},
+                                         {"path"})});
         return j;
     }();
     Json companionItem;
     companionItem["anyOf"] = Json::array({Json{{"type", "string"}},
-                                          loose(object({{"path", string("")}, {"paths", array(Json{{"type", "string"}}, "One per example.")},
-                                                        {"name", string("")}, {"output", string("")}}))});
+                                          object({{"path", string("")}, {"paths", array(Json{{"type", "string"}}, "")},
+                                                  {"name", string("")}, {"output", string("")}})});
     Json companions;
-    companions["description"] = "auto: the maps next to each example (rock_albedo.png -> rock_normal.png...).";
     companions["default"] = "auto";
     companions["anyOf"] = Json::array({stringEnum("", {"auto", "none"}), array(companionItem, "")});
     Json size;
-    size["description"] = "Default 1024; guided: the target guide's. Not for make_tileable/inpaint.";
-    size["anyOf"] = Json::array({integer("", 1, 8192), loose(object({{"width", integer("")}, {"height", integer("")}}, {"width", "height"}))});
+    size["anyOf"] = Json::array({integer("", 1, 8192), object({{"width", integer("")}, {"height", integer("")}}, {"width", "height"})});
     tool.inputSchema = object({
         {"mode", withDefault(stringEnum("", {"extend", "tileable", "make_tileable", "inpaint", "guided"}), "tileable")},
-        {"examples", array(pathOrObject, "Image paths (albedo).")},
+        {"examples", array(pathOrObject, "")},
         {"companions", companions},
-        {"mask", loose(object({{"path", string("White = regenerate. Omitted: the example's transparent pixels.")},
-                               {"channel", withDefault(stringEnum("", {"luma", "r", "g", "b", "a"}), "luma")},
-                               {"invert", boolean("")}}))},
-        {"target_guide", string("guided.")},
+        {"mask", object({{"path", string("")},
+                         {"channel", withDefault(stringEnum("", {"luma", "r", "g", "b", "a"}), "luma")},
+                         {"invert", boolean("")}})},
+        {"target_guide", string("")},
         {"size", size},
-        {"quality", withDefault(stringEnum("draft ~2x faster, high ~2x slower.", {"draft", "balanced", "high"}), "balanced")},
-        {"params", loose(object({{"nearest_neighbors", integer("", 1, 256)}, {"random_sample_locations", integer("", 1, 1024)},
-                           {"cauchy_dispersion", number("Low: hard patch edges.", 0.0001, 1)}, {"backtrack_percent", number("", 0, 0.95)},
-                           {"backtrack_stages", integer("", 0, 10)}, {"guide_alpha", number("", 0, 1)}, {"guide_decay", boolean("")}}))},
-        {"border", withDefault(number("make_tileable band per edge.", 0.0001, 0.5), 0.125)},
+        {"quality", withDefault(stringEnum("", {"draft", "balanced", "high"}), "balanced")},
+        // the fields and their ranges: docs/mcp/guide/texture-synthesis.md (the handler checks them)
+        {"params", anyObject("")},
+        {"border", withDefault(number("", 0.0001, 0.5), 0.125)},
         {"seed", [] {
              Json j;
-             j["description"] = "0..2^53, or a decimal string up to 2^64-1. Default random (returned).";
-             j["anyOf"] = Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"type", "string"}, {"pattern", "^[0-9]{1,20}$"}}});
+             j["anyOf"] = Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"type", "string"}}});   // (the handler checks the digits: no pattern, S31's subset)
              return j;
          }()},
-        {"output", string("A .png in the assets dir; omitted = preview only.")},
+        {"output", string("")},
         {"overwrite", withDefault(boolean(""), false)},
         {"uncertainty_output", string("")},
-        {"show_in_editor", withDefault(boolean("Run it in the Texture Synthesis window."), false)},
+        {"show_in_editor", withDefault(boolean(""), false)},
         {"wait", withDefault(boolean(""), true)},
-        {"timeout_seconds", withDefault(number("Then a job_id (get_job).", 1, 3600), 120)}
+        {"timeout_seconds", withDefault(number("", 1, 3600), 120)}
     }, {"examples"});
     tool.handler = synthesizeTextureTool;
     registry.addTool(std::move(tool));

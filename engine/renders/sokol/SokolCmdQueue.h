@@ -15,7 +15,7 @@
 
 #include "sokol_gfx.h"
 
-#include "ThreadUtils.h"
+#include "util/ThreadUtils.h"
 
 // ----------------------------------------------------------------------------------------------------
 
@@ -56,6 +56,12 @@ namespace jasperengine {
 		SokolRenderCommand(TYPE::ENUM _type) : type(_type) {}
 
 		TYPE::ENUM type = TYPE::NOT_SET;
+		// MAKE_BUFFER / MAKE_IMAGE: the JE_GPU_ALLOC_SCOPE the creation was queued in (the VRAM
+		// tracker sees the creation when it runs, on the main thread)
+		uint8_t allocCategory = 0xFF;
+		uint32_t allocOwner = 0;
+		// and its label, copied: the caller's string is gone by the time the command runs
+		char allocLabel[40] = {};
 
 		union
 		{
@@ -209,21 +215,20 @@ namespace jasperengine {
 		static void dealloc_buffer_cb(void* cleanup_data) { sg_dealloc_buffer({(uint32_t)(uintptr_t)cleanup_data}); }
 		static void dealloc_image_cb(void* cleanup_data) { sg_dealloc_image({(uint32_t)(uintptr_t)cleanup_data}); }
 		static void dealloc_sampler_cb(void* cleanup_data) { sg_dealloc_sampler({(uint32_t)(uintptr_t)cleanup_data}); }
-		static void dealloc_shader_cb(void* cleanup_data) { sg_dealloc_shader({(uint32_t)(uintptr_t)cleanup_data}); }
-		static void dealloc_pipeline_cb(void* cleanup_data) { sg_dealloc_pipeline({(uint32_t)(uintptr_t)cleanup_data}); }
 		static void dealloc_view_cb(void* cleanup_data) { sg_dealloc_view({(uint32_t)(uintptr_t)cleanup_data}); }
 
 		static std::vector<SokolRenderCommand> m_commands[2];
 		static int32_t m_pending_commands_index;
 		static int32_t m_commit_commands_index;
 		static std::vector<SokolRenderCleanup> m_cleanups;
+		static std::mutex m_cleanups_mutex;
 
 		static Semaphore m_update_semaphore;
 		static Semaphore m_render_semaphore;
 		static std::atomic<bool> m_flushing;
 		static std::atomic<bool> m_commited;
 		static std::mutex m_execute_mutex;
-		static int32_t m_frame_index;
+		static std::atomic<int32_t> m_frame_index;
 	};
 
 // ----------------------------------------------------------------------------------------------------

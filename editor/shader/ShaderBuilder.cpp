@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderBuilder.h"
+#include "diag/HangWatchdog.h"
+#include "io/AtomicFile.h"
+#include "shader/ShaderGlobals.h"
 
 #include "ShaderDataSerializer.h"
 #include "App.h"
@@ -9,7 +12,6 @@
 #include "Out.h"
 
 #include "thread/ResourceProgress.h"
-#include "thread/ThreadPoolManager.h"
 
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -60,7 +62,8 @@ std::string customSourceCacheKey(editor::Project* project, const std::string& cu
 std::shared_ptr<const CustomSourceSnapshot> resolveCustomSources(editor::Project* project,
                                                                  const std::string& customShader,
                                                                  ShaderType shaderType) {
-    const bool library = ShaderReference::isLibrary(customShader);
+    // the library's and the built-in Lit's variants ("builtin:lit#...", S11) read engine sources only
+    const bool library = ShaderReference::isLibrary(customShader) || ShaderReference::isBuiltin(customShader);
     if ((!project && !library) || customShader.empty()) {
         auto invalid = std::make_shared<CustomSourceSnapshot>();
         invalid->sources.error = "Custom shader project or path is unavailable.";
@@ -113,9 +116,23 @@ bool readSourceSignature(const std::filesystem::path& path, std::string& signatu
     return !signature.empty();
 }
 
-void clearCustomSourceCache() {
+// the customShader of a customSourceCacheKey (its second-to-last line)
+std::string customShaderOfCacheKey(const std::string& key) {
+    const size_t last = key.find_last_of('\n');
+    if (last == std::string::npos || last == 0)
+        return std::string();
+    const size_t before = key.find_last_of('\n', last - 1);
+    return key.substr(before == std::string::npos ? 0 : before + 1, last - (before == std::string::npos ? 0 : before + 1));
+}
+
+void clearCustomSourceCache(const std::function<bool(const std::string&)>& which) {
     std::lock_guard<std::mutex> lock(customSourceCacheMutex);
-    customSourceCache.clear();
+    for (auto it = customSourceCache.begin(); it != customSourceCache.end(); ) {
+        if (which(customShaderOfCacheKey(it->first)))
+            it = customSourceCache.erase(it);
+        else
+            ++it;
+    }
 }
 
 // The id of a variant's build in ResourceProgress (a hash of the key, as other resources hash their name)
@@ -127,7 +144,7 @@ uint64_t progressId(ShaderKey key) {
 
 
 std::unordered_map<ShaderKey, ShaderData> editor::ShaderBuilder::shaderDataCache;
-std::unordered_map<ShaderKey, std::future<ShaderData>> editor::ShaderBuilder::pendingBuilds;
+std::unordered_map<ShaderKey, jobs::Task<ShaderData>> editor::ShaderBuilder::pendingBuilds;
 std::mutex editor::ShaderBuilder::cacheMutex;
 std::atomic<bool> editor::ShaderBuilder::shutdownRequested{false};
 
@@ -167,11 +184,11 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
 
     // Check if already building
     if (auto pending = pendingBuilds.find(shaderKey); pending != pendingBuilds.end()) {
-        auto& future = pending->second;
-        if (future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        jobs::Task<ShaderData>& task = pending->second;
+        if (task.isReady()) {
             // Build finished, move to cache
             try {
-                ShaderData data = future.get();
+                ShaderData data = task.get();
                 shaderDataCache[shaderKey] = data;
                 pendingBuilds.erase(shaderKey);
 
@@ -193,6 +210,8 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
     if (!Engine::isAsyncLoading()) {
         try {
             lock.unlock();
+            // the synchronous compile blocks the main thread (a hang report names it)
+            const diag::BusyScope busy("Compiling shader", 120'000);
             ShaderData data = buildShaderInternal(shaderKey, project, false);
             lock.lock();
             shaderDataCache[shaderKey] = data;
@@ -210,11 +229,17 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
     std::string shaderName = getShaderDisplayName(shaderKey);
     ResourceProgress::startBuild(progressId(shaderKey), ResourceType::Shader, shaderName);
 
-    // Use thread pool instead of std::async
-    pendingBuilds[shaderKey] = ThreadPoolManager::getInstance().enqueue(
+    // a compile holds a worker for long: Heavy, so the decodes the frame waits on keep slots
+    jobs::SubmitOptions options;
+    options.lane = jobs::Lane::Background;
+    options.gate = jobs::GateClass::Heavy;
+    options.name = "shader-build";
+    // a resource being built: counted by Engine::getQueuedResourceCount (the editor's loading state)
+    options.tags = jobs::Tag::Asset;
+    pendingBuilds[shaderKey] = jobs::submit(
         [this, shaderKey, project]() {
             return buildShaderInternal(shaderKey, project, true);
-        }
+        }, options
     );
 
     return ShaderBuildResult({}, ResourceLoadState::Loading);
@@ -245,16 +270,28 @@ void editor::ShaderBuilder::buildMissingShaders(const std::set<ShaderKey>& shade
     }
 }
 
+size_t editor::ShaderBuilder::getRunningBuildCount() {
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    size_t running = 0;
+    for (const auto& [key, task] : pendingBuilds) {
+        if (!task.isReady())
+            running++;
+    }
+    return running;
+}
+
 void editor::ShaderBuilder::requestShutdown() {
     std::lock_guard<std::mutex> lock(cacheMutex);
     shutdownRequested = true;
 
-    // Wait for all pending builds to complete
-    for (auto& [key, future] : pendingBuilds) {
-        if (future.valid()) {
-            future.wait(); // Wait for completion
-        }
+    // builds not started never run; the running ones are waited for (cancelled first, so
+    // no wait runs a build inline while this holds cacheMutex)
+    for (auto& [key, task] : pendingBuilds){
+        if (task.cancel())
+            ResourceProgress::failBuild(progressId(key));
     }
+    for (auto& [key, task] : pendingBuilds)
+        task.wait();
     pendingBuilds.clear();
 }
 
@@ -274,7 +311,7 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
     if (customId != 0 && !ShaderPool::isLibraryCustomShader(customId)) {
         std::string setupError;
         const std::string customShader = ShaderPool::getCustomShaderName(customId);
-        if (!project && !ShaderReference::isLibrary(customShader)) {
+        if (!project && !ShaderReference::isLibrary(customShader) && !ShaderReference::isBuiltin(customShader)) {
             setupError = "Custom shader requested without a project";
         } else {
             if (customShader.empty()) {
@@ -336,6 +373,13 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
         "Shader %s (%s) generated successfully",
         getShaderDisplayName(shaderKey).c_str(),
         ShaderPool::getShaderLangStr(backend).c_str());
+    // what a fork reads of the global shader values that Project Settings does not declare as
+    // such (once: for the editor's own backend)
+    if (ShaderPool::getCustomIdFromKey(shaderKey) != 0 && backend == ShaderPool::getShaderBackend()) {
+        for (const ShaderGlobalDiagnostic& d : ShaderGlobals::checkShader(shaderData, ShaderGlobals::getDeclarationsSnapshot())) {
+            Out::warning("Shader %s: %s: %s", getShaderDisplayName(shaderKey).c_str(), d.code.c_str(), d.message.c_str());
+        }
+    }
     // a variant over the per-stage budget may not bind on some devices (GLES3: 16 texture units)
     const std::string over = ShaderVariantCompiler::checkResourceBudget(shaderData);
     if (!over.empty()){
@@ -394,14 +438,9 @@ bool editor::ShaderBuilder::saveShaderDataCache(ShaderKey shaderKey, Project* pr
         return false;
     }
 
-    std::ofstream signatureFile(sourceSignaturePath(cachePath), std::ios::binary | std::ios::trunc);
-    if (!signatureFile) {
-        if (err)
-            *err = "Failed to write custom shader source signature.";
-        return false;
-    }
-    signatureFile << sources->signature << '\n';
-    if (!signatureFile) {
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    if (!io::writeFileAtomic(sourceSignaturePath(cachePath), sources->signature + "\n", options).ok()) {
         if (err)
             *err = "Failed to write custom shader source signature.";
         return false;
@@ -442,11 +481,25 @@ std::string editor::ShaderBuilder::getShaderDisplayName(ShaderKey key) {
 }
 
 void editor::ShaderBuilder::invalidateCustomShaders() {
+    invalidateCustomShaders([](const std::string&) { return true; });
+}
+
+void editor::ShaderBuilder::primeCache(ShaderKey shaderKey, const ShaderData& data) {
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    pendingBuilds.erase(shaderKey);
+    shaderDataCache[shaderKey] = data;
+}
+
+void editor::ShaderBuilder::dropSourceSnapshot(const std::string& fork) {
+    clearCustomSourceCache([&fork](const std::string& name) { return name == fork; });
+}
+
+void editor::ShaderBuilder::invalidateCustomShaders(const std::function<bool(const std::string& fork)>& which) {
     std::lock_guard<std::mutex> lock(cacheMutex);
     // the engine library's effects (library ids) do not change with the project
-    auto projectCustom = [](ShaderKey key) {
+    auto projectCustom = [&which](ShaderKey key) {
         const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
-        return customId != 0 && !ShaderPool::isLibraryCustomShader(customId);
+        return customId != 0 && !ShaderPool::isLibraryCustomShader(customId) && which(ShaderPool::getCustomShaderName(customId));
     };
     for (auto it = shaderDataCache.begin(); it != shaderDataCache.end(); ) {
         if (projectCustom(it->first))
@@ -455,15 +508,18 @@ void editor::ShaderBuilder::invalidateCustomShaders() {
             ++it;
     }
     // Drop pending custom builds too, otherwise buildShader would reap a stale (pre-edit)
-    // future into the cache. ThreadPoolManager futures don't block on destruction; an
-    // in-flight task simply discards its result and the next get() restarts the build.
+    // result into the cache. One not started is cancelled; a running one finishes and its
+    // result is discarded (dropping a handle never blocks); the next get() restarts the build.
     for (auto it = pendingBuilds.begin(); it != pendingBuilds.end(); ) {
-        if (projectCustom(it->first))
+        if (projectCustom(it->first)){
+            if (it->second.cancel())
+                ResourceProgress::failBuild(progressId(it->first));
             it = pendingBuilds.erase(it);
-        else
+        }else{
             ++it;
+        }
     }
-    clearCustomSourceCache();
+    clearCustomSourceCache(which);
 }
 
 ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Project* project, ShaderBackend backend) {

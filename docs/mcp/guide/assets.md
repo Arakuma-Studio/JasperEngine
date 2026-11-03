@@ -1,0 +1,175 @@
+# Asset identity: GUIDs, references, missing assets
+
+Every asset of a project has a GUID: a 128-bit id, written as 32 lowercase hex digits, that
+stays the same when the file is renamed or moved, in the editor or outside it. Scenes, prefabs,
+materials and `project.yaml` reference assets by GUID and keep the path as a readable hint, so
+a rename or a move rewrites no file but the moved asset and its meta. The full design is in
+`docs/specs/S04-asset-identity.md`.
+
+## Where the GUID lives
+
+| Asset | Identity |
+|---|---|
+| `.prefab`, `.scene`, `.material` | a top-level `guid:` key in the file (and `formerGuids:` right after it) |
+| everything else: textures, models, audio, fonts, HTML/CSS, shaders, Lua and C++ scripts, data files (`.json .txt .csv .xml .bytes`, in the assets directory only) | a `<file name>.meta` file next to it (`hero.png.meta`) |
+
+A meta file looks like this:
+
+```yaml
+metaVersion: 1
+guid: 4b1e9c0d2a7f4e31b6c58d0f9e2a7c13
+formerGuids: [9c1d0f3e5b7a42c8a1e06d2f4b8c7a19]   # optional, sorted
+subAssets:                                         # models only, sorted by key
+  - {key: "mesh:Body", guid: 7f2c..., name: Body}
+  - {key: "animation#3", guid: 21d0..., name: ""}
+```
+
+- Commit the metas with their assets. The Project window hides them and moves, copies and
+  deletes them with their assets. Sections the editor does not know (`import:`, `labels:`, or
+  anything a newer editor wrote) are kept byte for byte. A meta holds no mtimes or machine
+  paths, and is rewritten only when its content changes.
+- The first open of a project written before GUIDs gives every file the GUID derived from its
+  path (`legacyGuid`), so two machines upgrading the same commit write identical metas. It
+  inserts a `guid:` line into scenes, prefabs and materials and rewrites no reference.
+- `.jasperengine/assetdb/` (`index.json`, `deps.json`) is a cache. Deleting it changes no result.
+
+## Sub-assets
+
+The meshes, materials, animations, skins and embedded images of a `.gltf`, `.glb` or `.obj`
+are sub-assets. A key is `<kind>:<name>` when the name is unique among that kind in the
+file, else `<kind>#<index>`. A sub-asset's first GUID is derived from the model's GUID and
+the key. When the model changes, entries match by key, then by kind and index; what matches
+nothing is dropped, and its references become missing. A reference to a sub-asset uses the
+path hint `<model path>#<key>`, for example `models/hero.glb#mesh:Body`.
+
+## How a reference resolves
+
+1. A live GUID: the asset that has it now.
+2. A former GUID (`formerGuids` of an asset, written by "Retarget All" or "Keep"): that asset.
+3. A sub-asset GUID: the sub-asset.
+4. No GUID (written before GUIDs): the asset whose legacy GUID is the hint's, else the file at the hint.
+5. An unknown GUID whose hint names an existing file of the expected type: that file, listed
+   under "Resolved by path" (not for prefabs: a GUID no prefab has is a Missing Prefab).
+6. Missing.
+
+A reference that resolves to a new path gets the new hint in memory. A loaded scene is then
+marked modified, and the next save writes the new path. A path you assign in the Inspector, in
+a tool or in code gets its asset's GUID when the scene is saved.
+
+In files, a reference keeps its key and value and gains a GUID next to it:
+
+```yaml
+model:
+  filename: models/hero.glb
+  filenameGuid: 4b1e9c0d2a7f4e31b6c58d0f9e2a7c13
+mesh:
+  customShader: shaders/water                  # shaders/water.vert + shaders/water.frag
+  customShaderGuid: 7f2c...|21d0...            # the .vert's GUID | the .frag's
+  submeshes:
+    - material:
+        baseColorTexture: {textureType: 2D, source: path, path: textures/a.png, guid: 9c1d..., ...}
+        name: materials/Rock.material           # the linked .material file
+        nameGuid: 0a4f...
+```
+
+## Renaming, moving, deleting
+
+- **In the editor** (the Project window, `move_asset`, `delete_asset`): the file and its meta
+  move together, and every GUID stays. No referrer is rewritten, the open scenes' hints
+  update in memory, and thumbnails are kept.
+- **Outside the editor**: a move that carries the meta (`git mv`, a file manager moving both)
+  is recognized as a move. A file moved without its meta adopts the meta it left behind when
+  its extension and size match, and its content hash too when the index knows it, or else its
+  name. Otherwise the old meta is listed as an orphan meta.
+- **A copy outside the editor** (two files with one GUID): the file that had the GUID keeps it.
+  The other one gets a new GUID, and its sub-asset GUIDs are derived from the new one.
+- **Delete** never clears a field: references to a deleted asset show as missing, in red in the
+  Inspector with the last path. Undoing the delete makes them resolve again.
+- **References in text** (Lua `require`, HTML `href`/`src`, CSS `url()`/`@import`, shader
+  `#include`) are not rewritten. A rename, move or delete lists the ones it breaks in the
+  Console, and MCP returns them as `text_references_broken`.
+
+## Missing Assets and Find References
+
+**Window > Assets > Missing Assets** opens the Missing Assets panel. The status bar badge shows
+how many there are, and clicking it opens the panel too. It lists every unresolved reference of
+the project, in open and closed files, grouped by the missing GUID with each referrer's owner,
+GameObject, component and field:
+
+- **Retarget All...**: the missing GUID becomes a former GUID of the asset you choose, so every
+  reference resolves to it and no referrer file is rewritten.
+- **Retarget Rewrite... / Retarget Selected...**: the chosen fields are rewritten to the asset.
+  Open documents change in memory, closed files are written.
+- **Clear All / Clear Selected**: the fields are emptied.
+- **Replace Prefab...** (prefab groups): the instances use the chosen prefab and keep their overrides.
+- **Resolved by path > Keep**: the file keeps those references, and the GUID they hold becomes
+  one of its former GUIDs.
+- **Orphan metas > Delete Meta** moves the meta to the project trash.
+- Double-click a referrer, or use **Locate**, to open its owner and select the GameObject.
+
+Every action is one undo step (Edit > Undo while the Project window has focus, or MCP
+`undo` with `scope: "project"`).
+
+Right-click a file in the Project window for **Copy GUID** and **Find References**. Find
+References opens the References panel, with a Transitive option that also lists who uses the
+referrers.
+
+**Assets > Asset Database > Migrate References** rewrites every scene, prefab, material and
+`project.yaml` with the GUIDs of what it references. A second run writes nothing.
+
+## Scripts
+
+Lua:
+
+```lua
+local path = Asset.path("4b1e9c0d2a7f4e31b6c58d0f9e2a7c13")   -- "textures/hero.png" or nil
+local guid = Asset.guid("textures/hero.png")                    -- or nil
+local ok = Asset.exists("textures/hero.png")                    -- a GUID or a path
+local ref = Asset.ref("textures/hero.png")                      -- AssetRef: .guid .path .type .valid
+
+-- an Asset script property, set in the Inspector by dragging a file onto it
+properties = {
+    { name = "portrait", displayName = "Portrait", type = "Asset", assetType = "texture" },
+}
+-- self.portrait is an AssetRef (nil while None)
+```
+
+Paths are relative to the root the asset type uses in references: the assets directory for
+textures, models, audio, fonts, UI documents and data files, and the project for scenes,
+prefabs, materials, shaders and scripts. C++ scripts declare a `DPROPERTY("Portrait") AssetRef
+portrait;` member. A component field such as `ModelComponent::filename` is an `AssetRef`; it
+converts to and from a path string, so existing code keeps working.
+
+## Builds
+
+The exporter resolves every reference to its current path, so the game loads by path. A
+build whose scenes, or the prefabs and materials they use, reference missing assets fails and
+lists each reference. Use "Export Anyway" in Build Settings, `--allow-missing-assets` on the
+command line, or `allow_missing_assets` for `build_project` to build anyway. The build ships
+`assetmap.bin` (every asset's GUID, its former GUIDs and its sub-assets, mapped to paths) for
+the `Asset` Lua API. It is loaded on the first query and costs nothing until then. Metas and
+the asset database never ship.
+
+## Command line
+
+```
+jasperengine-editor assets check --project <dir>     # JSON; exit code 1 when anything is missing
+jasperengine-editor assets migrate --project <dir>   # write the GUIDs into every referrer
+```
+
+## MCP tools
+
+| Tool | Does |
+|---|---|
+| `resolve_asset {asset, path?, type?}` | GUID, path, type, `resolved_by` (live, former, sub_asset, legacy_path, path_fallback, missing), former GUIDs, sub-assets |
+| `find_references {asset, transitive, limit}` | referrer, GameObject, component, field, locator, kind |
+| `get_asset_dependencies {asset, depth}` | what an asset references |
+| `list_missing_assets {scope}` | `missing` groups, `resolved_by_path`, `orphan_metas` |
+| `retarget_asset_references {from, to, mode, referrers?}` | `redirect` (a former GUID; no referrer written) or `rewrite` |
+| `clear_asset_references {guid, referrers?}` | empties the fields |
+
+Paths and GUIDs are interchangeable wherever a tool takes an asset. `list_assets`,
+`get_asset_info`, `move_asset`, `delete_asset`, `import_files`, `link_material` and
+`get_component` (`asset_guids`) return GUIDs. `move_asset` and the mutating tools report
+`files_written`. A locator names a field: `entity:12/MeshComponent.submeshes[0].material.baseColorTexture`,
+`settings/defaultMeshShader`, `project/scenes[3].filepath`, `text:14`.

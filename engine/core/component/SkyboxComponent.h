@@ -35,7 +35,7 @@ namespace jasperengine{
         std::shared_ptr<ShaderRender> shader;
         // optional custom shader: "library:<name>" or a project-relative fork base path
         // (no extension), empty = built-in. customShaderId is the resolved id for ShaderPool keys.
-        std::string customShader;
+        ShaderRef customShader;
         uint16_t customShaderId = 0;
         // the variant's property bits (the post-processing colour, 'Pcl')
         uint64_t shaderProperties = 0;
@@ -44,6 +44,11 @@ namespace jasperengine{
         // values of the fork's custom uniform blocks, by member name
         ShaderUniformValues shaderUniforms;
         bool needUpdateShaderUniforms = false;
+        // custom-block members that follow a global shader value (Shader.setGlobal*): member
+        // -> global name, over shaderUniforms and the manifest default; globalsVersionSeen is
+        // ShaderGlobals::getVersion() when the blocks were last written with them
+        ShaderGlobalBindings shaderGlobalBindings;
+        uint64_t globalsVersionSeen = 0;
         CustomUniformBlock customVSParams;
         CustomUniformBlock customFSParams;
         // shader library: textures by @texture uniform name and enabled @feature/@keywords
@@ -67,6 +72,9 @@ namespace jasperengine{
         std::shared_ptr<TextureRender> irradianceMap;
         std::shared_ptr<TextureRender> prefilteredMap;
         bool envMapsLoaded = false;
+        // the image the environment maps were made of, and its TextureDataPool::generation
+        std::string environmentId;
+        uint32_t environmentGeneration = 0;
         bool needUpdateEnvironment = true;
 
         bool needUpdateTexture = false;

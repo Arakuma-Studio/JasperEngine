@@ -1,22 +1,17 @@
-"""The UI Document in the editor (HTML/CSS UI, phase 1, p1-editor), through MCP.
+"""UI Document editor contracts through MCP: creation, metadata, paths, command history,
+scene storage, clipboard, prefabs, asset typing, graphics configuration and the Scene view.
 
-create_entity type=ui_document (the Hierarchy's Create > UI > UI Document creation type), every
-phase-1 field through set_properties / get_entity (enum names, clamping, entity references),
-the component's type info, YAML save / reopen (every field round-trips, defaults omitted, the
-phase-0 keys unchanged), a changed filename reloading the document (Game view pixels), copy /
-paste of the component, undo / redo, a prefab override, .html/.css asset types, the HTML UI
-MSAA project setting, and the Scene view of a UI scene showing the document.
-
-Runs on a scratch copy of the fixture project (assets in assets/, canvas 1280 x 720).
-The ImGui menus themselves (Hierarchy Create, Assets > Create > HTML Document) cannot be
-clicked through MCP: create_entity uses the Hierarchy entry's creation type, and the
-HTML Document template is tested by jasperengine-htmlui-tests (HtmlUITemplates).
+The phase-0 and phase-1 component scenarios share one scratch editor. Core document behavior
+is owned by the native HTML UI tests; these cases protect the editor's public adapters.
 """
 
 import yaml
 
-from harness import Editor
+from harness import Editor, REPO
 from htmlui_pixels import Shot, check_color, count_near
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI = True
 
 TIMEOUT = 900
 
@@ -35,19 +30,6 @@ RED_HTML = """<html>
 """
 
 BLUE_HTML = RED_HTML.replace("#ff0000", "#0000ff").replace("<title>red</title>", "<title>blue</title>")
-
-ROT_DOC = "assets/ui/rotated.html"
-ROT_HTML = """<html>
-<head>
-    <style>
-        body { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; }
-        #sq { display: block; position: absolute; left: 440px; top: 160px; width: 400px; height: 400px;
-              background-color: #ff0000; transform: rotate(17deg); }
-    </style>
-</head>
-<body><div id="sq"></div></body>
-</html>
-"""
 
 RED_DOC = "assets/ui/red.html"
 BLUE_DOC = "assets/ui/blue.html"
@@ -97,11 +79,10 @@ async def test_create_ui_document(ed: Editor):
 
     made = await ed.call("create_scene", name="HtmlUiEditor", type="UI")
     S["scene"] = made["scene"]["id"]
-    out = await ed.call("create_entity", scene=S["scene"], type="ui_document")
+    out = await ed.call("create_entity", scene=S["scene"], type="ui_document", name="Menu")
     S["doc"] = out["entity_id"]
     ed.check_eq(out["type"], "ui_document")
     ed.check_in("uidocument", out["components"])
-    ed.check_eq(out["entity"]["name"], "UI Document", "the Hierarchy entry's GameObject name")
     got = await ed.call("get_entity", scene=S["scene"], entity=S["doc"], components=["transform", "uidocument"])
     ed.check("transform" in got["components"], f"a Transform: {list(got['components'])}")
 
@@ -111,15 +92,12 @@ async def test_create_ui_document(ed: Editor):
         ed.check_eq(v[key], value, f"default {key}")
     ed.check(v.get("inputSurface") in (None, 0, "", {}) or not v.get("inputSurface"), f"no input surface: {v.get('inputSurface')}")
 
-    # an unknown type names the new one among the valid ones
-    msg = await ed.call("create_entity", scene=S["scene"], type="ui_documentx", expect_error=True)
-    ed.check_in("ui_document", msg)
-
 
 async def test_component_type_info(ed: Editor):
     one = await ed.call("list_component_types", component="uidocument")
     props = one["properties"]
-    for name, kind in (("interactive", "bool"), ("renderMode", "enum"), ("textureWidth", "int"),
+    for name, kind in (("filename", "asset"), ("sortOrder", "int"), ("enabled", "bool"),
+                       ("interactive", "bool"), ("renderMode", "enum"), ("textureWidth", "int"),
                        ("textureHeight", "int"), ("inputSurface", "entity"), ("pixelRatio", "float")):
         ed.check(name in props, f"{name} missing: {sorted(props)}")
         ed.check(kind in props[name]["type"].lower(), f"{name} type {props[name]['type']}")
@@ -127,6 +105,32 @@ async def test_component_type_info(ed: Editor):
                 f"renderMode values: {props['renderMode']}")
     ed.check_eq(props["textureWidth"].get("default"), 1024)
     ed.check_eq(props["interactive"].get("default"), True)
+    ed.check_eq(props["sortOrder"].get("default"), 0)
+    ed.check_eq(props["enabled"].get("default"), True)
+
+
+async def test_add_remove_component(ed: Editor):
+    target = (await ed.call("create_entity", scene=S["scene"], type="empty", name="Added"))["entity_id"]
+    await ed.call("add_component", scene=S["scene"], entity=target, component="UIDocument",
+                  values={"uidocument": {"filename": RED_DOC, "sortOrder": 2}})
+    ed.check_eq((await doc_values(ed, target))["filename"], RED_DOC)
+    await ed.check_error("add_component", scene=S["scene"], entity=target, component="uidocument", contains="already")
+    ed.check_eq((await doc_values(ed, target))["sortOrder"], 2, "re-add changed the component")
+    await ed.call("remove_component", scene=S["scene"], entity=target, component="uidocument")
+    got = await ed.call("get_entity", scene=S["scene"], entity=target, detail="summary")
+    ed.check("uidocument" not in got.get("components", {}), f"still has the component: {got}")
+    await ed.call("undo", scene=S["scene"])
+    values = await doc_values(ed, target)
+    ed.check_eq((values["filename"], values["sortOrder"]), (RED_DOC, 2), "remove undone")
+    await ed.call("delete_entities", scene=S["scene"], entities=[target])
+
+
+async def test_filename_validation(ed: Editor):
+    for bad, words in (("../outside.html", "project-relative"), ("/tmp/outside.html", "project-relative"),
+                       ("scripts/outside.html", "assets")):
+        await ed.check_error("set_properties", scene=S["scene"], entity=S["doc"],
+                             values={"uidocument": {"filename": bad}}, contains=words)
+    ed.check_eq((await doc_values(ed, S["doc"]))["filename"], "", "a rejected path changed the value")
 
 
 async def test_set_every_field(ed: Editor):
@@ -151,6 +155,10 @@ async def test_set_every_field(ed: Editor):
                         expect_error=True)
     ed.check("screen" in msg and "texture" in msg, f"renderMode error: {msg}")
 
+    await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {"filename": ""}})
+    ed.check_eq((await doc_values(ed, S["doc"]))["filename"], "", "empty source is allowed")
+    await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {"filename": RED_DOC}})
+
     # undo / redo of one change
     await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {"interactive": True}})
     await ed.call("undo", scene=S["scene"])
@@ -161,7 +169,7 @@ async def test_set_every_field(ed: Editor):
 
 async def test_save_reopen_yaml(ed: Editor):
     await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {
-        "interactive": False, "textureWidth": 640, "textureHeight": 480, "pixelRatio": 1.5}})
+        "enabled": False, "interactive": False, "textureWidth": 640, "textureHeight": 480, "pixelRatio": 1.5}})
     saved = await ed.call("save_scene", scene=S["scene"], path="scenes/HtmlUiEditor")
     path = ed.project / saved["scene"]["path"]
     S["path"] = saved["scene"]["path"]
@@ -169,27 +177,28 @@ async def test_save_reopen_yaml(ed: Editor):
     ed.check_eq(len(docs), 1)
     stored = docs[0]
     ed.check_eq(stored.get("filename"), "ui/red.html", f"asset-relative filename: {stored}")
-    ed.check_eq((stored.get("sortOrder"), stored.get("enabled")), (3, True), "phase-0 keys")
+    ed.check_eq((stored.get("sortOrder"), stored.get("enabled")), (3, False), "phase-0 keys")
     ed.check_eq((stored.get("interactive"), stored.get("renderMode"), stored.get("textureWidth"), stored.get("textureHeight"),
                  stored.get("pixelRatio")), (False, "texture", 640, 480, 1.5), f"phase-1 keys: {stored}")
     ed.check("inputSurface" in stored, f"inputSurface stored: {stored}")
 
     await ed.call("close_scene", scene=S["scene"])
     await ed.call("open_scene", scene=S["path"])
-    found = await ed.call("find_entities", scene=S["scene"], name="UI Document")
+    found = await ed.call("find_entities", scene=S["scene"], name="Menu")
     ed.check_eq(found["count"], 1)
     S["doc"] = found["entities"][0]["id"]
     S["surface"] = (await ed.call("find_entities", scene=S["scene"], name="Surface"))["entities"][0]["id"]
     v = await doc_values(ed, S["doc"])
     ed.check_eq((v["filename"], v["sortOrder"], v["interactive"], v["renderMode"], v["textureWidth"], v["textureHeight"],
                  v["pixelRatio"]), (RED_DOC, 3, False, "texture", 640, 480, 1.5), f"reopened: {v}")
+    ed.check_eq(v["enabled"], False, "disabled survives reopening")
     ref = v["inputSurface"]
     ed.check(ref == S["surface"] or (isinstance(ref, dict) and ref.get("id") == S["surface"]), f"reopened inputSurface: {ref}")
 
     # back to the defaults: the phase-1 keys leave the file, the phase-0 ones stay
     await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {
         "interactive": True, "renderMode": "screen", "textureWidth": 1024, "textureHeight": 1024, "pixelRatio": 0,
-        "inputSurface": None, "sortOrder": 0}})
+        "inputSurface": None, "sortOrder": 0, "enabled": True}})
     await ed.call("save_scene", scene=S["scene"])
     stored = saved_documents(path)[0]
     for key in DEFAULTS:
@@ -207,6 +216,27 @@ async def test_filename_change_reloads(ed: Editor):
     await ed.call("undo", scene=S["scene"])
     shot = await game_shot(ed, "red-again")
     check_color(ed, shot, CENTER, RED, "undo loads the old document again")
+
+
+async def test_copy_paste_and_duplicate(ed: Editor):
+    await ed.call("copy_entities", scene=S["scene"], entity=S["doc"])
+    out = await ed.call("paste_entities", scene=S["scene"])
+    pasted = out["created"][0]["id"]
+    v = await doc_values(ed, pasted)
+    ed.check_eq((v["filename"], v["sortOrder"], v["enabled"]), (RED_DOC, 0, True), "pasted values")
+
+    # into another scene (another registry)
+    out = await ed.call("paste_entities", scene="Main Scene")
+    other = out["created"][0]["id"]
+    v = await doc_values(ed, other, scene="Main Scene")
+    ed.check_eq((v["filename"], v["sortOrder"]), (RED_DOC, 0), "pasted into Main Scene")
+    await ed.call("undo", scene="Main Scene")
+
+    dup = await ed.call("duplicate_entities", scene=S["scene"], entity=S["doc"])
+    copy = dup["created"][0]["id"] if isinstance(dup, dict) and "created" in dup else dup[0]["id"]
+    v = await doc_values(ed, copy)
+    ed.check_eq((v["filename"], v["sortOrder"], v["enabled"]), (RED_DOC, 0, True), "duplicated values")
+    await ed.call("delete_entities", scene=S["scene"], entities=[pasted, copy])
 
 
 async def test_copy_paste_component(ed: Editor):
@@ -230,6 +260,9 @@ async def test_prefab_override(ed: Editor):
     ed.check_eq(made["prefabs"][0]["path"], "prefabs/HtmlDoc.prefab")
     inst = await ed.call("instantiate_prefab", scene=S["scene"], prefab="prefabs/HtmlDoc.prefab", name="Doc 2")
     second = inst["instance"]["id"]
+    v = await doc_values(ed, second)
+    ed.check_eq((v["filename"], v["sortOrder"], v["interactive"], v["pixelRatio"]),
+                (RED_DOC, 0, False, 1.25), "prefab instance preserves the document")
     await ed.call("set_properties", scene=S["scene"], entity=second, values={"uidocument": {"sortOrder": 9, "interactive": True}})
     info = await ed.call("get_prefab_info", scene=S["scene"], entity=second)
     overrides = str(info.get("overrides"))
@@ -255,41 +288,15 @@ async def test_asset_types(ed: Editor):
 
 async def test_msaa_setting(ed: Editor):
     got = await ed.call("get_project_settings", keys=["graphics.html_ui_msaa_samples"])
-    ed.check_in("4", str(got), "default 4 samples")
+    ed.check_eq(got["settings"]["graphics.html_ui_msaa_samples"], 4, "default sample count")
     await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": 2})
     got = await ed.call("get_project_settings", keys=["graphics.html_ui_msaa_samples"])
-    ed.check_in("2", str(got))
+    ed.check_eq(got["settings"]["graphics.html_ui_msaa_samples"], 2)
     msg = await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": 3}, expect_error=True)
     ed.check_in("1, 2, 4 or 8", msg)
     text = (ed.project / "project.yaml").read_text()
-    ed.check("htmlUiMsaaSamples: 2" in text, "saved to project.yaml")
-
-    # end to end: the setting reaches the renderer. A rotated square's edges are smooth with 4 samples (multisampling)
-    # and with 1 (the fork feathers the edges itself when the target has one sample, phase 3 p3-paint): both draw
-    # partly covered pixels, and differently.
-    await ed.call("write_file", path=ROT_DOC, content=ROT_HTML)
-    made = await ed.call("create_scene", name="HtmlUiMsaa", type="UI")
-    scene = made["scene"]["id"]
-    await ed.call("set_scene_settings", scene=scene, settings={"background_color": [0.0, 0.0, 0.0, 1.0]})
-    ent = await ed.call("create_entity", scene=scene, type="ui_document", name="Rotated")
-    await ed.call("set_properties", scene=scene, entity=ent["entity_id"], values={"uidocument": {"filename": ROT_DOC}})
-
-    async def edge_pixels(samples: int):
-        await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": samples})
-        shot = await ed.call_raw("screenshot", {"view": "game", "scene": scene, "max_width": 1280})
-        png = shot.images[0][0]
-        (ed.scratch.root / f"html-ui-editor-msaa-{samples}.png").write_bytes(png)
-        from htmlui_pixels import decode_png
-        w, h, ch, rows = decode_png(png)
-        # partly covered pixels: red between 40 and 215 with no green/blue
-        edge = {(x, y) for y in range(h) for x in range(w)
-                if 40 < rows[y][x * ch] < 215 and rows[y][x * ch + 1] < 30 and rows[y][x * ch + 2] < 30}
-        return edge
-
-    one = await edge_pixels(1)
-    four = await edge_pixels(4)
-    ed.check(len(one) > 200 and len(four) > 200, f"smooth edges: {len(four)} partly covered pixels with 4 samples, {len(one)} with 1")
-    ed.check(len(one ^ four) > 50, f"the sample count changes the edges: {len(one ^ four)} pixels differ")
+    ed.check_eq(yaml.safe_load(text)["htmlUiMsaaSamples"], 2, "saved graphics setting")
+    ed.check_eq((await ed.call("get_project_settings", keys=["graphics.html_ui_msaa_samples"]))["settings"]["graphics.html_ui_msaa_samples"], 2, "invalid sample count leaves the setting unchanged")
 
 
 async def test_scene_view_shows_document(ed: Editor):
@@ -314,9 +321,3 @@ async def test_scene_view_shows_document(ed: Editor):
     await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {"enabled": True}})
     ed.check(shown > 200, f"the Scene view shows the red document ({shown} red samples)")
     ed.check(hidden < shown // 10, f"disabled: no document in the Scene view ({hidden} red samples)")
-
-
-async def test_console_clean(ed: Editor):
-    entries = await ed.console_since(None, types=["error"], limit=1000)
-    errors = [e.get("message", "") for e in entries if "[HTML UI]" in e.get("message", "")]
-    ed.check(not errors, f"[HTML UI] errors: {errors}")

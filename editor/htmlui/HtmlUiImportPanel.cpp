@@ -18,6 +18,7 @@
 #include "htmlui/compat/ImportManifest.h"
 
 #include "imgui.h"
+#include "util/FileUtils.h"
 
 #include <chrono>
 #include <map>
@@ -57,7 +58,7 @@ namespace {
                                                       const std::string& document, uint32_t loads){
         CachedStates& cached = cache()[{sceneId, entity}];
         std::error_code ec;
-        const fs::file_time_type manifestTime = fs::last_write_time(target.assetsDir / fs::u8path(compat::ImportManifest::kPath), ec);
+        const fs::file_time_type manifestTime = fs::last_write_time(target.assetsDir / editor::FileUtils::pathFromUtf8(compat::ImportManifest::kPath), ec);
         const size_t pending = HtmlUiAutoImport::get().queue().pending();
         const auto now = std::chrono::steady_clock::now();
         // discovery parses the document: again when something it depends on changed, else once a second
@@ -141,7 +142,6 @@ void HtmlUiImportPanel::draw(Project* project, SceneProject* sceneProject, Entit
                           result.removedUrls.size() == 1 ? "" : "s", result.deletedFiles.size(), result.deletedFiles.size() == 1 ? "" : "s");
                 if (!result.removedUrls.empty()){
                     compat::ImportManifest::reload();
-                    project->refreshAssetDatabase();
                 }
             }
             cache().clear();

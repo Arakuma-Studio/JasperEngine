@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PlacementCli.h"
+#include "util/FileUtils.h"
 
 #include "PlacementSession.h"
 
@@ -138,7 +139,7 @@ namespace jasperengine::editor {
                     o.help = true;
                 } else if (arg == "-p" || arg == "--project") {
                     if (!need()) return false;
-                    o.project = CommandLine::projectArgPath(fs::u8path(value));
+                    o.project = CommandLine::projectArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "-s" || arg == "--scene") {
                     if (!need()) return false;
                     o.scene = value;
@@ -438,7 +439,7 @@ namespace jasperengine::editor {
             std::string names;
             for (const SceneProject& sp : project.getScenes()) {
                 if (sp.filepath.empty()) continue;
-                names += (names.empty() ? "" : ", ") + sp.name + " (" + sp.filepath.generic_u8string() + ")";
+                names += (names.empty() ? "" : ", ") + sp.name + " (" + FileUtils::pathToGenericUtf8(sp.filepath) + ")";
             }
             return names.empty() ? std::string("none") : names;
         }
@@ -446,7 +447,7 @@ namespace jasperengine::editor {
         // A scene of the project by name, file name or path (absolute, relative to the current
         // directory, else to the project)
         SceneProject* findScene(Project& project, const std::string& ref) {
-            const fs::path refPath = fs::u8path(ref);
+            const fs::path refPath = editor::FileUtils::pathFromUtf8(ref);
             std::error_code ec;
             fs::path asPath = CommandLine::absoluteArgPath(refPath);
             if (refPath.is_relative() && !fs::is_regular_file(asPath, ec)) {
@@ -454,7 +455,7 @@ namespace jasperengine::editor {
             }
             for (SceneProject& sp : project.getScenes()) {
                 if (sp.filepath.empty()) continue;
-                if (sp.name == ref || sp.filepath.filename().u8string() == ref ||
+                if (sp.name == ref || FileUtils::pathToUtf8(sp.filepath.filename()) == ref ||
                     CommandLine::absoluteArgPath(project.getProjectPath() / sp.filepath) == asPath) {
                     return &sp;
                 }
@@ -496,9 +497,9 @@ namespace jasperengine::editor {
             for (const std::string& warning : r.warnings) out << "warning: " << warning << "\n";
             if (!r.hint.empty()) out << "hint: " << r.hint << "\n";
             if (saved) {
-                out << "saved " << sp.filepath.generic_u8string() << "\n";
+                out << "saved " << FileUtils::pathToGenericUtf8(sp.filepath) << "\n";
             } else {
-                out << "dry run: " << sp.filepath.generic_u8string() << " not changed (--save applies the result and writes it)\n";
+                out << "dry run: " << FileUtils::pathToGenericUtf8(sp.filepath) << " not changed (--save applies the result and writes it)\n";
             }
         }
 
@@ -517,7 +518,7 @@ namespace jasperengine::editor {
             DecompositionCacheGuard decompositionCache;
 
             if (!project.loadProject(o.project, false)) {
-                err << prefix << "the project could not be loaded: " << o.project.u8string() << "\n";
+                err << prefix << "the project could not be loaded: " << FileUtils::pathToUtf8(o.project) << "\n";
                 return 1;
             }
             // loading the project turns asynchronous loading back on (resetEngineConfigs): the
@@ -530,7 +531,7 @@ namespace jasperengine::editor {
             }
             const uint32_t sceneId = sp->id;
             if (!sp->scene && !project.loadScene(sp->filepath, false, false, true)) {
-                err << prefix << "the scene could not be loaded: " << sp->filepath.generic_u8string() << "\n";
+                err << prefix << "the scene could not be loaded: " << FileUtils::pathToGenericUtf8(sp->filepath) << "\n";
                 return 1;
             }
             sp = project.getScene(sceneId);
@@ -779,7 +780,7 @@ namespace jasperengine::editor {
         }
         std::error_code ec;
         if (!fs::is_regular_file(o.project / "project.yaml", ec)) {
-            err << prefix << "no project.yaml in " << o.project.u8string() << "\n";
+            err << prefix << "no project.yaml in " << FileUtils::pathToUtf8(o.project) << "\n";
             return 2;
         }
         std::string report;

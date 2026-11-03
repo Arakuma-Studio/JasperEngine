@@ -1,6 +1,6 @@
 """Generate docs/mcp/guide/html-ui-support.md from the engine's HTML/CSS compatibility tables.
 
-    uv run --no-project --with mcp --with pyyaml python tools/mcp/gen_html_ui_support.py
+    uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/gen_html_ui_support.py
         [--out docs/mcp/guide/html-ui-support.md] [--json-out FILE] [--check]
 
 Runs `jasperengine-editor ui-support` (the editor of harness.editor_command(): JASPER_EDITOR, else

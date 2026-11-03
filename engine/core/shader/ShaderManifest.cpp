@@ -174,6 +174,7 @@ namespace {
         if (name == "ui")     { type = ShaderType::UI; return true; }
         if (name == "points") { type = ShaderType::POINTS; return true; }
         if (name == "lines")  { type = ShaderType::LINES; return true; }
+        if (name == "particles") { type = ShaderType::PARTICLES; return true; }
         if (name == "sky")    { type = ShaderType::SKYBOX; return true; }
         // a user post-process pass (PostProcessPass, phase 4): fullscreen.vert and the frag
         if (name == "postprocess") { type = ShaderType::POSTPROCESS; return true; }
@@ -414,7 +415,8 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 else if (input == "scenedepth") rule.require |= ShaderRequire_SceneDepth;
                 else if (input == "scenecolor") rule.require |= ShaderRequire_SceneColor;
                 else if (input == "environment") rule.require |= ShaderRequire_Environment;
-                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor, environment)");
+                else if (input == "normalmap") rule.require |= ShaderRequire_NormalMap;
+                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor, environment, normalmap)");
             }
             if (!valid)
                 continue;
@@ -652,6 +654,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 else if (def == "normal") value = ShaderTextureDefault::NORMAL;
                 else if (def == "ripples") value = ShaderTextureDefault::RIPPLES;
                 else if (def == "noise") value = ShaderTextureDefault::NOISE;
+                else if (def == "particle") value = ShaderTextureDefault::PARTICLE;
                 else return false;
                 return true;
             };
@@ -667,7 +670,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 continue;
             }
             if (!parseDefault(args[1].text, texture.defaultTexture)){
-                report(lineNumber, true, "unknown @texture default '" + args[1].text + "' (white, black, gray, normal, ripples, noise)");
+                report(lineNumber, true, "unknown @texture default '" + args[1].text + "' (white, black, gray, normal, ripples, noise, particle)");
                 continue;
             }
             bool valid = true;
@@ -679,7 +682,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 if (!args[a].quoted && lower(text.substr(0, 8)) == "default[" && close != std::string::npos && close > 8){
                     texture.featureDefaultDefine = text.substr(8, close - 8);
                     if (!parseDefault(text.substr(close + 2), texture.featureDefaultTexture)){
-                        report(lineNumber, true, "unknown @texture default '" + text.substr(close + 2) + "' (white, black, gray, normal, ripples, noise)");
+                        report(lineNumber, true, "unknown @texture default '" + text.substr(close + 2) + "' (white, black, gray, normal, ripples, noise, particle)");
                         valid = false;
                     }
                 }else if (splitOption(args[a], key, value) && key == "feature"){
@@ -835,8 +838,8 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
     if (depth && hasType && type != ShaderType::MESH)
         report(1, "@depth needs @shader mesh");
 
-    // scene inputs (phase 3): the engine binds them to mesh and points draws only, by these
-    // names, and produces them for what draws after the opaque queue
+    // scene inputs (phase 3): the engine binds them to mesh, points and particle draws only, by
+    // these names, and produces them for what draws after the opaque queue
     const uint32_t sceneInputs = getPossibleSceneInputs();
     if (sceneInputs){
         int line = 1;
@@ -846,8 +849,8 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
                 break;
             }
         }
-        if (hasType && type != ShaderType::MESH && type != ShaderType::POINTS)
-            report(line, "@require scenedepth / scenecolor needs @shader mesh or points");
+        if (hasType && type != ShaderType::MESH && type != ShaderType::POINTS && type != ShaderType::PARTICLES)
+            report(line, "@require scenedepth / scenecolor needs @shader mesh, points or particles");
     }
     for (const ShaderManifestTexture& texture : textures){
         if (texture.uniform == "u_sceneDepthTexture" || texture.uniform == "u_sceneColorTexture")
@@ -865,6 +868,23 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
     }
     if ((possibleRequire & ShaderRequire_Environment) && hasType && type != ShaderType::MESH)
         report(environmentLine, "@require environment needs @shader mesh");
+    // the material's normal map is bound to mesh draws, by the name the 2D light path reads
+    if (possibleRequire & ShaderRequire_NormalMap){
+        // the first feature= line asking for it (1 when every variant does)
+        int normalMapLine = 1;
+        for (const ShaderManifestRequireRule& rule : requireRules){
+            if (!(require & ShaderRequire_NormalMap) && (rule.require & ShaderRequire_NormalMap)){
+                normalMapLine = rule.line;
+                break;
+            }
+        }
+        if (hasType && type != ShaderType::MESH)
+            report(normalMapLine, "@require normalmap needs @shader mesh");
+        for (const ShaderManifestTexture& texture : textures){
+            if (texture.uniform == "u_normalTexture")
+                report(texture.line, "@texture 'u_normalTexture' is reserved with @require normalmap: it is the material's Normal Texture");
+        }
+    }
     // a mesh variant reading the scene must draw after the opaque queue: its state has to put
     // it in the transparent queue (a material can still override it; the inspector and the
     // checks report that). Checked for the default features and for each feature= rule's
@@ -1136,14 +1156,19 @@ std::vector<std::string> ShaderManifest::getRequireDefines(uint32_t require){
     if (require & ShaderRequire_SceneDepth) defines.push_back("SURFACE_SCENE_DEPTH");
     if (require & ShaderRequire_SceneColor) defines.push_back("SURFACE_SCENE_COLOR");
     if (require & ShaderRequire_Environment) defines.push_back("SURFACE_ENVIRONMENT");
+    if (require & ShaderRequire_NormalMap) defines.push_back("SURFACE_NORMAL_MAP");
     return defines;
 }
 
 uint32_t ShaderManifest::getPossibleSceneInputs() const{
+    return getPossibleRequire() & ShaderRequire_SceneInputs;
+}
+
+uint32_t ShaderManifest::getPossibleRequire() const{
     uint32_t inputs = require;
     for (const ShaderManifestRequireRule& rule : requireRules)
         inputs |= rule.require;
-    return inputs & ShaderRequire_SceneInputs;
+    return inputs;
 }
 
 std::vector<std::string> ShaderManifest::getRequireNames(uint32_t require){
@@ -1152,7 +1177,7 @@ std::vector<std::string> ShaderManifest::getRequireNames(uint32_t require){
         {ShaderRequire_UV1, "uv1"}, {ShaderRequire_UV2, "uv2"}, {ShaderRequire_Color, "color"},
         {ShaderRequire_RawColor, "rawcolor"}, {ShaderRequire_SmoothNormals, "smoothnormals"},
         {ShaderRequire_SceneDepth, "scenedepth"}, {ShaderRequire_SceneColor, "scenecolor"},
-        {ShaderRequire_Environment, "environment"}};
+        {ShaderRequire_Environment, "environment"}, {ShaderRequire_NormalMap, "normalmap"}};
     std::vector<std::string> result;
     for (const auto& name : names){
         if (require & name.first)
@@ -1321,6 +1346,7 @@ std::string ShaderManifest::getShaderTypeToken(ShaderType type){
         case ShaderType::UI:     return "ui";
         case ShaderType::POINTS: return "points";
         case ShaderType::LINES:  return "lines";
+        case ShaderType::PARTICLES: return "particles";
         case ShaderType::SKYBOX: return "sky";
         case ShaderType::POSTPROCESS: return "postprocess";
         default:                 return "";
@@ -1330,9 +1356,15 @@ std::string ShaderManifest::getShaderTypeToken(ShaderType type){
 // ---------------------------------------------------------------- ShaderReference
 
 const char* const ShaderReference::LIBRARY_PREFIX = "library:";
+const char* const ShaderReference::BUILTIN_PREFIX = "builtin:";
+const char* const ShaderReference::BUILTIN_LIT = "builtin:lit";
 
 bool ShaderReference::isLibrary(const std::string& reference){
     return reference.compare(0, 8, LIBRARY_PREFIX) == 0;
+}
+
+bool ShaderReference::isBuiltin(const std::string& reference){
+    return reference.compare(0, 8, BUILTIN_PREFIX) == 0;
 }
 
 std::string ShaderReference::getLibraryName(const std::string& reference){
@@ -1636,10 +1668,14 @@ bool ShaderManifests::readForkFile(const std::string& path, std::string& content
 }
 
 void ShaderManifests::clearForks(){
+    clearForks([](const std::string&){ return true; });
+}
+
+void ShaderManifests::clearForks(const std::function<bool(const std::string& fork)>& which){
     ManifestCache& c = cache();
     std::lock_guard<std::mutex> lock(c.mutex);
     for (auto it = c.manifests.begin(); it != c.manifests.end();){
-        if (!ShaderReference::isLibrary(it->first)){
+        if (!ShaderReference::isLibrary(it->first) && which(it->first)){
             c.reported.erase(it->first);
             it = c.manifests.erase(it);
         }else{

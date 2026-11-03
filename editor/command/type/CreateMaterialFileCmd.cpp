@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "CreateMaterialFileCmd.h"
+#include "DocumentFile.h"
+#include "Out.h"
 
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -50,7 +52,7 @@ editor::CreateMaterialFileCmd::CreateMaterialFileCmd(Project* project, const fs:
 
         decodedMaterial = material;
         hasDecodedMaterial = true;
-        this->payload = YAML::Dump(Stream::encodeMaterial(material));
+        this->payload = DocumentFiles::materialText(Stream::encodeMaterial(material), fs::path());
     } catch (const std::exception&) {
     }
 
@@ -69,13 +71,30 @@ editor::CreateMaterialFileCmd::CreateMaterialFileCmd(Project* project, const fs:
 }
 
 bool editor::CreateMaterialFileCmd::execute() {
-    if (!FileUtils::writeFileReplacing(targetFile, payload)) {
+    // the file's identity: a new GUID the first time, the same one again on redo
+    std::string content = payload;
+    try {
+        YAML::Node root = YAML::Load(payload);
+        if (root.IsMap()) {
+            if (!guid.isNull()) {
+                root["guid"] = guid.str();
+            }
+            guid = project->prepareDocumentIdentity(root, targetFile);
+            // no trailing newline: material files never had one (DocumentFiles::materialText)
+            content = YAML::Dump(root);
+        }
+    } catch (const std::exception&) {
+    }
+    const io::WriteResult written = DocumentFiles::write(targetFile, content);
+    if (!written.ok()) {
+        Out::error(DocumentFiles::saveFailureMessage(targetFile, written));
         return false;
     }
+    project->getAssetDatabase().registerAsset(targetFile, guid.str());
 
     if (materialCmd && !materialCmd->execute()) {
         std::error_code ec;
-        fs::remove(targetFile, ec);
+        FileUtils::removePath(targetFile, ec);   // (in a write scope: beneath its root)
         return false;
     }
 
@@ -88,5 +107,12 @@ void editor::CreateMaterialFileCmd::undo() {
     }
 
     std::error_code ec;
-    fs::remove(targetFile, ec);
+    // the file it made, the entry itself (in a write scope: beneath its root)
+    if (!FileUtils::removePath(targetFile, ec) && fs::exists(fs::symlink_status(targetFile, ec)))
+        undoProblem = "could not remove " + FileUtils::pathToGenericUtf8(targetFile);
+    project->getAssetDatabase().removeAssets(targetFile);
+}
+
+std::vector<editor::Command::Touched> editor::CreateMaterialFileCmd::touchedPaths(bool undo) const {
+    return {{targetFile, undo}};
 }

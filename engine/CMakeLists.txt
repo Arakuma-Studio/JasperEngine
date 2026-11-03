@@ -1,13 +1,22 @@
-# Mirrored by cxxStandards in editor/util/CxxStandards.h. Covers the engine, the editor
-# and the exported game; Play plugins read the project setting (editor/Generator.cpp).
-set(JASPERENGINE_CXX_STANDARDS 17 20 23)
+# The C++ standard of the engine, the editor and the exported game, and the source of
+# cxxStandards in the editor (JASPERENGINE_CXX_STANDARD_LIST); Play plugins read the project
+# setting (editor/Generator.cpp). The first entry is the default.
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperEngineToolchain.cmake)
+set(JASPERENGINE_CXX_STANDARDS 20 23)
 if(NOT DEFINED JASPERENGINE_CXX_STANDARD)
-    set(JASPERENGINE_CXX_STANDARD 17 CACHE STRING "C++ standard for the engine, editor and project")
+    set(JASPERENGINE_CXX_STANDARD 20 CACHE STRING "C++ standard for the engine, editor and project")
+    set_property(CACHE JASPERENGINE_CXX_STANDARD PROPERTY STRINGS ${JASPERENGINE_CXX_STANDARDS})
+elseif("$CACHE{JASPERENGINE_CXX_STANDARD}" STREQUAL "17")
+    # a build tree configured before C++17 was dropped
+    message(WARNING "JASPERENGINE_CXX_STANDARD 17 is no longer supported; using 20")
+    set(JASPERENGINE_CXX_STANDARD 20 CACHE STRING "C++ standard for the engine, editor and project" FORCE)
     set_property(CACHE JASPERENGINE_CXX_STANDARD PROPERTY STRINGS ${JASPERENGINE_CXX_STANDARDS})
 endif()
 
 option(JASPERENGINE_PHYSICS_2D "Enable Box2D-based 2D physics" ON)
 option(JASPERENGINE_PHYSICS_3D "Enable Jolt-based 3D physics" ON)
+# Fallback for one release: Jolt's own JobSystemThreadPool instead of the engine's job system
+option(JE_JOLT_OWN_POOL "Run Jolt physics jobs on Jolt's own thread pool" OFF)
 # Compiles at runtime the shader variants a build does not ship precompiled (scripted
 # meshes and materials, properties changed while playing) instead of leaving out what
 # draws with them. Adds the shader compiler and the engine shader library to the build.
@@ -15,13 +24,28 @@ option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime"
 # The editor export turns it off unless the project enables AdMob for iOS (Android's
 # Gradle build gets the same switch from the export)
 option(JASPERENGINE_ADMOB "Link Google Mobile Ads into iOS builds" ON)
+# Plain http:// to hosts other than localhost (the export sets it from player.allow_insecure_http):
+# App Transport Security of bare macOS executables; Http itself enforces the policy everywhere
+option(JASPERENGINE_ALLOW_INSECURE_HTTP "Allow plain http:// in Apple's App Transport Security" OFF)
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
-# googletest suite of the lattice math (engine/tests/lattice): math and lattice sources only, no
-# GPU or display; works from the editor build, the standalone engine build or on its own
-# (cmake -S engine/tests/lattice)
-option(JASPERENGINE_LATTICE_TESTS "Build jasperengine-lattice-tests" OFF)
+# The unit tests (docs/testing.md): jasperengine-core-tests in a standalone engine build
+# (engine/tests/core, against the static engine, with the job system and allocator benchmarks
+# je-bench-jobs and je-bench-memory), jasperengine-editor-tests in the editor build
+option(JASPERENGINE_TESTS "Build the unit-test target of this build tree" OFF)
+# the S07 ECS benchmark (tools/performance/run-ecs-bench.py), standalone engine builds only
+option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
+# Navigation meshes, queries and crowds (Recast/Detour, engine/libs/recastnavigation, spec S19);
+# OFF leaves the library out and the navmesh API fails (grids keep working). The export sets it
+# from Project Settings > Navigation.
+option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crowds" ON)
+# The HTML/CSS UI (UI Document components, their Lua API, anime, widgets, effects, the on-screen
+# controls: RmlUi, lexbor, ThorVG, msdfgen, the Lucide icons) and its <video> (dav1d, Opus,
+# libwebm). A player variant or a Compile build leaves out what its project cannot reach
+# (docs/specs/S34-player-size.md); the editor, the tests and the full player have both.
+option(JASPERENGINE_HTMLUI "Compile the HTML UI" ON)
+option(JASPERENGINE_VIDEO "Compile the HTML UI's <video> (needs JASPERENGINE_HTMLUI)" ON)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -31,11 +55,23 @@ option(JASPERENGINE_LATTICE_TESTS "Build jasperengine-lattice-tests" OFF)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.20)
 
+    # The prebuilt player (docs/specs/S30-shipping.md R1): the engine with engine/player as its
+    # project, which runs any game's cooked content (game.json, scenes/*.jscn) instead of
+    # compiled-in scenes
+    option(JASPERENGINE_PLAYER "Build jasperengine-player, the prebuilt player of shipped games" OFF)
+    if(JASPERENGINE_PLAYER)
+        set(APP_NAME jasperengine-player)
+        set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/player)
+    endif()
+
     if(NOT DEFINED APP_NAME)
         set(APP_NAME jasperengine-project)
     endif()
 
     project(${APP_NAME})
+
+    # before any target: sanitizers apply to the whole tree (empty by default, as in every export)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperSanitizers.cmake)
 
     set(JASPERENGINE_SHARED OFF)
 
@@ -55,6 +91,14 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # Project-wide runtime settings are injected here by the editor Exporter.
     # Standalone engine builds keep the defaults declared by each platform.
     # @JASPERENGINE_PROJECT_SETTINGS@
+
+    # The settings below reach the game executable only (JASPERENGINE_APP_DEFINITIONS, its platform
+    # main and the project's sources), which hands them to the engine at start through
+    # PlatformConfig (platform/common/PlatformDefaults.h): the engine library and the vendored
+    # libraries compile the same for every project, so a settings change recompiles a few units,
+    # and a prebuilt engine package serves every project of one configuration
+    # (docs/specs/S33-build-speed.md R5)
+    set(JASPERENGINE_APP_DEFINITIONS "")
     if(NOT DEFINED JASPERENGINE_VSYNC_ENABLED)
         set(JASPERENGINE_VSYNC_ENABLED ON)
     endif()
@@ -63,7 +107,51 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     else()
         set(JASPERENGINE_VSYNC_ENABLED_VALUE 0)
     endif()
-    add_definitions("-DJASPERENGINE_VSYNC_ENABLED=${JASPERENGINE_VSYNC_ENABLED_VALUE}")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_VSYNC_ENABLED=${JASPERENGINE_VSYNC_ENABLED_VALUE}")
+
+    # Player > Logging (the Exporter sets them): the game's log level, player.log, backtraces
+    if(DEFINED JASPERENGINE_LOG_LEVEL)
+        list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_LOG_LEVEL=\"${JASPERENGINE_LOG_LEVEL}\"")
+    endif()
+    if(DEFINED JASPERENGINE_LOG_FILE)
+        if(JASPERENGINE_LOG_FILE)
+            list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_LOG_FILE=1")
+        else()
+            list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_LOG_FILE=0")
+        endif()
+    endif()
+    if(DEFINED JASPERENGINE_LOG_BACKTRACE)
+        if(JASPERENGINE_LOG_BACKTRACE)
+            list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_LOG_BACKTRACE=1")
+        else()
+            list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_LOG_BACKTRACE=0")
+        endif()
+    endif()
+
+    # Player > Crash Handling (the Exporter sets them; PlatformConfig.h has the defaults). Whether
+    # the crash handler and the hang watchdog are compiled in at all stays a definition of the
+    # whole build (core/Engine.cpp leaves their code out when off).
+    foreach(crashSetting JASPERENGINE_CRASH_HANDLER JASPERENGINE_CRASH_HANG_WATCHDOG)
+        if(DEFINED ${crashSetting})
+            if(${crashSetting})
+                add_definitions("-D${crashSetting}=1")
+            else()
+                add_definitions("-D${crashSetting}=0")
+            endif()
+        endif()
+    endforeach()
+    foreach(crashSetting JASPERENGINE_CRASH_LOG_TAIL JASPERENGINE_CRASH_DUMP_WITH_HEAP JASPERENGINE_CRASH_WEB_OVERLAY)
+        if(DEFINED ${crashSetting})
+            if(${crashSetting})
+                list(APPEND JASPERENGINE_APP_DEFINITIONS "${crashSetting}=1")
+            else()
+                list(APPEND JASPERENGINE_APP_DEFINITIONS "${crashSetting}=0")
+            endif()
+        endif()
+    endforeach()
+    if(DEFINED JASPERENGINE_CRASH_HANG_MS)
+        list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_CRASH_HANG_MS=${JASPERENGINE_CRASH_HANG_MS}")
+    endif()
 
     if(NOT DEFINED JASPERENGINE_WINDOW_WIDTH)
         set(JASPERENGINE_WINDOW_WIDTH 960)
@@ -94,17 +182,23 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     else()
         set(JASPERENGINE_WINDOW_RESIZABLE_VALUE 0)
     endif()
-    add_definitions("-DDEFAULT_WINDOW_WIDTH=${JASPERENGINE_WINDOW_WIDTH}")
-    add_definitions("-DDEFAULT_WINDOW_HEIGHT=${JASPERENGINE_WINDOW_HEIGHT}")
-    add_definitions("-DJASPERENGINE_WINDOW_MODE=${JASPERENGINE_WINDOW_MODE}")
-    add_definitions("-DJASPERENGINE_WINDOW_RESIZABLE=${JASPERENGINE_WINDOW_RESIZABLE_VALUE}")
-    add_definitions("-DJASPERENGINE_WINDOW_TITLE=\"${JASPERENGINE_WINDOW_TITLE}\"")
-    add_definitions("-DJASPERENGINE_STORAGE_ID=\"${JASPERENGINE_STORAGE_ID}\"")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "DEFAULT_WINDOW_WIDTH=${JASPERENGINE_WINDOW_WIDTH}")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "DEFAULT_WINDOW_HEIGHT=${JASPERENGINE_WINDOW_HEIGHT}")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_WINDOW_MODE=${JASPERENGINE_WINDOW_MODE}")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_WINDOW_RESIZABLE=${JASPERENGINE_WINDOW_RESIZABLE_VALUE}")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_WINDOW_TITLE=\"${JASPERENGINE_WINDOW_TITLE}\"")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_STORAGE_ID=\"${JASPERENGINE_STORAGE_ID}\"")
+    # Only an editor export sets it: desktop builds then save per user
+    # (~/.local/share/<id>, %APPDATA%\<id>, ~/Library/Application Support/<id>) instead of in
+    # the working directory
+    if(DEFINED JASPERENGINE_APP_IDENTIFIER AND NOT JASPERENGINE_APP_IDENTIFIER STREQUAL "")
+        list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_APP_IDENTIFIER=\"${JASPERENGINE_APP_IDENTIFIER}\"")
+    endif()
     # X11 class / Wayland app_id (APP_NAME is a plain identifier, safe to quote).
     # Desktop environments match it against <APP_NAME>.desktop for the app icon.
-    add_definitions("-DJASPERENGINE_APP_ID=\"${APP_NAME}\"")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_APP_ID=\"${APP_NAME}\"")
     if(JASPERENGINE_WINDOW_ICON AND EXISTS "${PROJECT_ROOT}/app_icon.h")
-        add_definitions("-DJASPERENGINE_WINDOW_ICON")
+        list(APPEND JASPERENGINE_APP_DEFINITIONS JASPERENGINE_WINDOW_ICON)
     endif()
 
     # Per-project HybridArray capacities (SceneMaxValues) are injected here by the
@@ -126,6 +220,61 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endif()
     endif()
     message(STATUS "Graphic backend is set to ${GRAPHIC_BACKEND}")
+
+    if(JASPERENGINE_PLAYER)
+        # <platform>-<arch>-<backend>-<flavour> (R8): content-manifest.json names the player it
+        # was built for, and the player refuses other content (exit 5)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+            set(JE_PLAYER_PLATFORM windows)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            set(JE_PLAYER_PLATFORM macos)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            set(JE_PLAYER_PLATFORM ios)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+            set(JE_PLAYER_PLATFORM android)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+            set(JE_PLAYER_PLATFORM web)
+        else()
+            set(JE_PLAYER_PLATFORM linux)
+        endif()
+        if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+            set(JE_PLAYER_ARCH wasm32)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            # one runtime holds every ABI (Android) or slice (a universal macOS binary)
+            set(JE_PLAYER_ARCH universal)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            set(JE_PLAYER_ARCH arm64)
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+            set(JE_PLAYER_ARCH arm64)
+        else()
+            set(JE_PLAYER_ARCH x64)
+        endif()
+        # (the web runtime holds a single-thread and a pthreads build of one id: the page picks one)
+        set(JE_PLAYER_BACKEND ${GRAPHIC_BACKEND})
+        if(JASPERENGINE_DEVELOPMENT_BUILD OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+            set(JE_PLAYER_FLAVOUR development)
+        else()
+            set(JE_PLAYER_FLAVOUR release)
+        endif()
+        # A release player is built for one variant of engine/player/variants.json, a set of the
+        # optional modules (docs/specs/S34-player-size.md R4): the variant sets them here, and its
+        # name follows the flavour in the id (-lite); the full player keeps the plain id. The
+        # development flavour is always full.
+        set(JASPERENGINE_PLAYER_VARIANT "full" CACHE STRING "The release player's variant (engine/player/variants.json)")
+        include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperPlayerVariants.cmake)
+        jasperengine_player_variant("${JASPERENGINE_PLAYER_VARIANT}" jePlayerVariantSuffix)
+        if(jePlayerVariantSuffix AND JE_PLAYER_FLAVOUR STREQUAL "development")
+            message(FATAL_ERROR "JASPERENGINE_PLAYER_VARIANT=${JASPERENGINE_PLAYER_VARIANT}: a development player is always the full one")
+        endif()
+        set(jePlayerId "${JE_PLAYER_PLATFORM}-${JE_PLAYER_ARCH}-${JE_PLAYER_BACKEND}-${JE_PLAYER_FLAVOUR}")
+        if(jePlayerVariantSuffix)
+            string(APPEND jePlayerId "-${jePlayerVariantSuffix}")
+        endif()
+        set(JASPERENGINE_PLAYER_ID "${jePlayerId}" CACHE STRING
+            "The player's runtime id (set from the platform, backend, flavour and variant)" FORCE)
+        add_definitions("-DJASPERENGINE_PLAYER" "-DJASPERENGINE_PLAYER_ID=\"${JASPERENGINE_PLAYER_ID}\"")
+        message(STATUS "Player runtime ${JASPERENGINE_PLAYER_ID}")
+    endif()
 
     if(NOT APP_BACKEND)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -203,6 +352,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         set(EM_PRELOAD_FILES)
         if(EXISTS "${PROJECT_ROOT}/assets")
             set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file ${PROJECT_ROOT}/assets@/")
+            # the web loads the web family of the cooked textures only (S14 R9)
+            foreach(family desktop mobile android_etc2)
+                set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --exclude-file */je-cooked/${family}")
+            endforeach()
         endif()
         if(EXISTS "${PROJECT_ROOT}/lua")
             set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file ${PROJECT_ROOT}/lua@/")
@@ -220,8 +373,21 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         option(EMSCRIPTEN_THREAD_SUPPORT "Enable pthreads for Emscripten builds" OFF)
 
         if(EMSCRIPTEN_THREAD_SUPPORT)
-            set(USE_PTHREADS "-s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=4")
+            # The pool is created at startup and never grows, and the engine sizes its threads
+            # to it (JE_PTHREAD_POOL_SIZE, thread::webThreadPoolSize): the job system's workers
+            # (at most 4, and pool - 3), one blocking thread, a video decoder, and a spare an
+            # asset reader may take. STRICT=2 aborts loudly instead of deadlocking when a thread
+            # is asked beyond it.
+            set(JASPERENGINE_WEB_PTHREAD_POOL_SIZE 8 CACHE STRING "Emscripten pthread pool of the threaded web build")
+            set(USE_PTHREADS "-s PTHREAD_POOL_SIZE=${JASPERENGINE_WEB_PTHREAD_POOL_SIZE} -s PTHREAD_POOL_SIZE_STRICT=2")
+            add_compile_definitions(JE_PTHREAD_POOL_SIZE=${JASPERENGINE_WEB_PTHREAD_POOL_SIZE})
             list(APPEND PLATFORM_OPTIONS -pthread)
+            # shared memory links only objects built with atomics: every library of the tree,
+            # not only the engine (wasm-ld refuses glslang's PoolAlloc.cpp otherwise)
+            add_compile_options(-pthread)
+            # and the link: without it Emscripten links its pthread stubs, and the first thread
+            # the engine starts fails with EOPNOTSUPP
+            add_link_options(-pthread)
         endif()
 
         # GROWABLE_ARRAYBUFFERS only exists on recent Emscripten, and emcc errors
@@ -249,13 +415,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 "${EM_DEBUG_INFO} \
                 -s INITIAL_MEMORY=256MB \
                 -s STACK_SIZE=4MB \
-                -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main']\" \
+                -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main','_malloc','_free']\" \
                 -s EXPORTED_RUNTIME_METHODS=\"['ccall', 'cwrap']\" \
+                --pre-js ${PLATFORM_ROOT}/crash_pre.js \
                 ${EM_PRELOAD_FILES} \
                 ${EM_ADDITIONAL_LINK_FLAGS} \
                 ${USE_PTHREADS} \
                 ${ALLOW_MEMORY_GROWTH} \
                 ${USE_WEBGL2}"
+            # the pre-js is read at link time: a change of it relinks
+            LINK_DEPENDS ${PLATFORM_ROOT}/crash_pre.js
         )
     endif()
 
@@ -343,6 +512,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/JasperEngineWin.cpp
             ${PLATFORM_ROOT}/WindowWin.cpp
             ${PLATFORM_ROOT}/SystemWin.cpp
+            ${PLATFORM_ROOT}/HostServicesWin.cpp
             ${PLATFORM_ROOT}/WinInputRouter.cpp
             ${PLATFORM_ROOT}/GamepadWin.cpp
             ${PLATFORM_ROOT}/main.cpp
@@ -353,7 +523,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             gdi32
             shell32
             imm32 # IME composition for HTML UI text fields (WinInputRouter)
+            ole32 # INetworkListManager (System.getInternetReachability)
+            uuid
+            advapi32 # the BIOS product name (System.getDeviceModel)
         )
+
+        # HostServices.h, shared with the editor
+        include_directories(${JASPERENGINE_ROOT}/platform/common)
 
         if(GRAPHIC_BACKEND STREQUAL "vulkan")
             # Device and swapchain are shared with the other desktops
@@ -415,6 +591,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/JasperEngineLinux.cpp
             ${PLATFORM_ROOT}/WindowLinux.cpp
             ${PLATFORM_ROOT}/SystemLinux.cpp
+            ${PLATFORM_ROOT}/HostServicesLinux.cpp
             ${PLATFORM_ROOT}/LinuxInputRouter.cpp
             ${PLATFORM_ROOT}/GamepadLinux.cpp
             ${PLATFORM_ROOT}/GamepadDB.cpp
@@ -529,12 +706,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
             # Gamepads come from the same GameController code iOS and the editor use
             include_directories(${JASPERENGINE_ROOT}/platform/apple)
+            # HostServices.h, shared with the editor
+            include_directories(${JASPERENGINE_ROOT}/platform/common)
 
             list(APPEND PLATFORM_SOURCE
                 ${PLATFORM_ROOT}/JasperEngineMac.h
                 ${PLATFORM_ROOT}/JasperEngineMac.mm
                 ${PLATFORM_ROOT}/WindowMac.mm
                 ${PLATFORM_ROOT}/SystemMac.mm
+                ${PLATFORM_ROOT}/HostServicesMac.mm
                 ${PLATFORM_ROOT}/MacInputRouter.mm
                 ${PLATFORM_ROOT}/MacTextInputClient.mm
                 ${PLATFORM_ROOT}/main.mm
@@ -546,6 +726,23 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 "-framework QuartzCore"
                 "-framework GameController"
             )
+
+            # A bare executable has no bundle Info.plist, so App Transport Security would block
+            # every http:// URL, localhost too: an embedded __info_plist section carries the
+            # same ATS dictionary the Xcode bundle gets
+            if(JASPERENGINE_ALLOW_INSECURE_HTTP)
+                set(JASPERENGINE_ATS_KEY NSAllowsArbitraryLoads)
+            else()
+                set(JASPERENGINE_ATS_KEY NSAllowsLocalNetworking)
+            endif()
+            set(JASPERENGINE_ATS_PLIST ${CMAKE_BINARY_DIR}/jasperengine-ats-Info.plist)
+            file(WRITE ${JASPERENGINE_ATS_PLIST}
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+                "<plist version=\"1.0\">\n<dict>\n"
+                "\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>${JASPERENGINE_ATS_KEY}</key>\n\t\t<true/>\n\t</dict>\n"
+                "</dict>\n</plist>\n")
+            list(APPEND PLATFORM_LIBS "-Wl,-sectcreate,__TEXT,__info_plist,${JASPERENGINE_ATS_PLIST}")
 
             # MTKView has no GL or Vulkan drawable, so those get views of their own
             if(GRAPHIC_BACKEND STREQUAL "glcore")
@@ -568,6 +765,18 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             list(APPEND PLATFORM_PROPERTIES
                 XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
             )
+
+            # The prebuilt player is a bundle, jasperengine-player.app: the macOS runtime is a
+            # template bundle that an export renames, fills (Contents/Resources) and re-signs with
+            # its own Info.plist (S30 R11, R12; tools/players/package_player.py). A bare
+            # executable left the players-apple job and the packaging without one.
+            if(JASPERENGINE_PLAYER)
+                set(PLATFORM_EXEC_FLAGS MACOSX_BUNDLE)
+                list(APPEND PLATFORM_PROPERTIES
+                    MACOSX_BUNDLE_BUNDLE_NAME "JasperEnginePlayer"
+                    MACOSX_BUNDLE_GUI_IDENTIFIER "com.jaspergameengine.player"
+                )
+            endif()
         endif()
     endif()
 
@@ -656,6 +865,11 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include_directories(${PROJECT_ROOT})
     include_directories(${PROJECT_ROOT}/scripts)
 
+    # A Debug-type export is a development build (Engine.isDevelopmentBuild, the debug overlay's
+    # "development" mode): the generated init reads it. Multi-config generators (Xcode, Visual
+    # Studio) and Android's debug variant get it for their Debug configuration.
+    add_compile_definitions($<$<CONFIG:Debug>:JASPERENGINE_DEVELOPMENT_BUILD>)
+
 endif() # End standalone project setup
 
 # =============================================================
@@ -663,7 +877,34 @@ endif() # End standalone project setup
 # Always runs (both standalone and when included by the editor).
 # =============================================================
 
+jasperengine_check_cxx_toolchain()
+# Checked after the project settings marker, so the value the Exporter injects is validated too
+if(NOT JASPERENGINE_CXX_STANDARD IN_LIST JASPERENGINE_CXX_STANDARDS)
+    string(REPLACE ";" ", " JASPERENGINE_CXX_STANDARDS_TEXT "${JASPERENGINE_CXX_STANDARDS}")
+    message(FATAL_ERROR "JASPERENGINE_CXX_STANDARD must be one of: ${JASPERENGINE_CXX_STANDARDS_TEXT} (got '${JASPERENGINE_CXX_STANDARD}')")
+endif()
+message(STATUS "C++ standard is set to ${JASPERENGINE_CXX_STANDARD}")
+# The default of every target created from here on, the vendored libraries included;
+# jasperengine_apply_cxx_standard below overrides the ones that set their own
+set(CMAKE_CXX_STANDARD ${JASPERENGINE_CXX_STANDARD})
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_OBJCXX_STANDARD ${JASPERENGINE_CXX_STANDARD})
+set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+# MSVC reports __cplusplus as 199711L without it, and header-only libraries (nlohmann json,
+# LuaBridge3) would pick their pre-C++20 code paths
+if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>)
+endif()
+
 option(JASPERENGINE_SHARED "Build jasperengine as a shared library" OFF)
+
+# Warnings (off here by default, so exports stay quiet) and unity builds of our own targets
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperWarnings.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperUnityBuild.cmake)
+# precompiled headers (off here by default: exports build as before) and the linker of development
+# and test builds (docs/testing.md "Build speed"; selected below, once a shipped game is known)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperPch.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperLinker.cmake)
 
 if(JASPERENGINE_SHARED)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -675,7 +916,8 @@ endif()
 if(WIN32)
     if(MSVC)
         add_compile_options(/bigobj)
-        if(JASPERENGINE_SHARED)
+        # (MSVC's AddressSanitizer needs the DLL runtime too, JasperSanitizers.cmake)
+        if(JASPERENGINE_SHARED OR JASPERENGINE_SANITIZE_ADDRESS)
             set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
         else()
             set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -689,12 +931,15 @@ include_directories(shaders)
 
 include_directories(core)
 include_directories(core/action)
+include_directories(core/asset)
 include_directories(core/buffer)
 include_directories(core/component)
 include_directories(core/ecs)
 include_directories(core/io)
+include_directories(core/io/watch)
 include_directories(core/manager)
 include_directories(core/math)
+include_directories(core/spline)
 include_directories(core/object)
 include_directories(core/object/sound)
 include_directories(core/object/ui)
@@ -707,7 +952,7 @@ include_directories(core/script)
 include_directories(core/shader)
 include_directories(core/subsystem)
 include_directories(core/texture)
-include_directories(core/util)
+# Keep util/ namespaced: Signal.h shadows <signal.h> on case-insensitive hosts.
 include_directories(core/htmlui)
 
 include_directories(renders)
@@ -751,6 +996,110 @@ option(JASPERENGINE_CONVEX_DECOMPOSITION "Compile V-HACD convex decomposition (P
 include_directories(SYSTEM libs/harfbuzz)
 include_directories(SYSTEM libs/sheenbidi/Headers)
 include_directories(SYSTEM libs/meshoptimizer)
+include_directories(SYSTEM libs/bcdec)
+
+# A release game's link (a prebuilt player and a Compile build alike; docs/specs/S30-shipping.md,
+# shipped size), set before the libraries so they are built the same way:
+#   - every function and datum in its own section, and the linker drops what nothing reaches;
+#   - hidden visibility: no symbol leaves the binary but what the platform looks up (Android:
+#     platform/android/exports.map, the JNI and GameActivity entry points);
+#   - Clang with lld (Android): ThinLTO, and identical code folding of the functions whose
+#     address is not taken (--icf=safe).
+# Static registrations survive: an initializer is reached from .init_array, a GC and LTO root.
+# Not for the editor, the tests, sanitizer or Development builds (their backtraces name every
+# function), nor the web: wasm-ld already drops unreferenced code and exports only
+# EXPORTED_FUNCTIONS. A release build's own backtraces give module offsets, which its split
+# symbols resolve.
+set(jasperengineShippedGame OFF)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND NOT JASPERENGINE_TESTS AND NOT JASPERENGINE_SHARED
+   AND "${JASPERENGINE_SANITIZE}" STREQUAL "" AND NOT EMSCRIPTEN AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo|MinSizeRel)$")
+    set(jasperengineShippedGame ON)
+endif()
+set(JASPERENGINE_RELEASE_LINK_DEFAULT OFF)
+if(jasperengineShippedGame AND NOT JASPERENGINE_DEVELOPMENT_BUILD)
+    set(JASPERENGINE_RELEASE_LINK_DEFAULT ON)
+endif()
+option(JASPERENGINE_RELEASE_LINK "A release game's size-optimised link (sections, hidden visibility, ThinLTO and ICF with lld)"
+    ${JASPERENGINE_RELEASE_LINK_DEFAULT})
+# GCC's link-time optimisation in that link (Linux release games; Android's Clang has ThinLTO).
+# A first configure takes its default from the environment when JASPERENGINE_RELEASE_LTO is set there
+# (OFF: a game built for a test, e.g. the MCP suite's compiled games but the one that checks LTO,
+# docs/testing.md; the link then takes a minute instead of a quarter of an hour)
+set(jasperengineReleaseLtoDefault ON)
+if(DEFINED ENV{JASPERENGINE_RELEASE_LTO})
+    set(jasperengineReleaseLtoDefault "$ENV{JASPERENGINE_RELEASE_LTO}")
+endif()
+option(JASPERENGINE_RELEASE_LTO "The release link of a GCC Linux game with link-time optimisation" ${jasperengineReleaseLtoDefault})
+# A shipped game (a prebuilt player or a Compile build, release or Development) ships stripped:
+# it is built with debug information, which the link's post-build step moves into the build
+# tree's symbols/ (desktop: <exe>.debug with a debug link, <exe>.dSYM, the PDB). Publish prepare
+# puts them in the release's symbols/. Android's Gradle strips the libraries it packages itself.
+option(JASPERENGINE_SPLIT_SYMBOLS "A shipped game's debug information, split off into the build tree's symbols/" ${jasperengineShippedGame})
+if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID)
+    if(MSVC)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Zi>)
+        add_link_options(/DEBUG:FULL)
+    else()
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-g>)
+    endif()
+endif()
+if(JASPERENGINE_RELEASE_LINK)
+    if(MSVC)
+        # function-level linking, then the unreferenced and identical COMDATs out (also with /DEBUG)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Gy> $<$<COMPILE_LANGUAGE:C,CXX>:/Gw>)
+        add_link_options(/OPT:REF /OPT:ICF)
+        set(jasperengineLto "/OPT:REF,ICF")
+    else()
+        # (C and C++ only: the assemblers of dav1d and others take none of these)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-ffunction-sections>
+            $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-fdata-sections> $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-fvisibility=hidden>
+            $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-fvisibility-inlines-hidden>)
+        if(APPLE)
+            add_link_options(LINKER:-dead_strip)
+        else()
+            add_link_options(LINKER:--gc-sections)
+        endif()
+        if(ANDROID)
+            # what the Java side and GameActivity look up in libjasperengine-android.so
+            add_link_options("LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/platform/android/exports.map")
+        endif()
+        if(ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            # the NDK links with lld: ThinLTO (its llvm-ar archives the bitcode objects), its cache
+            # for the relinks, and safe identical code folding (Clang emits the address-
+            # significance tables it needs by default). Set directly: CMake's check_ipo_supported
+            # probes with a project that falls back to ld.gold, which cannot load LLVM's plugin.
+            add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-flto=thin>)
+            add_link_options(-flto=thin "LINKER:--thinlto-cache-dir=${CMAKE_BINARY_DIR}/thinlto-cache" LINKER:--icf=safe)
+            set(jasperengineLto "ThinLTO, --icf=safe")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND JASPERENGINE_RELEASE_LTO)
+            # GCC's LTO (docs/specs/S34-player-size.md D7): the whole program optimised at the link,
+            # identical functions folded (-fipa-icf across units), its partitions compiled by as
+            # many jobs as the machine has (-flto=auto); the archives through gcc-ar, which CMake's
+            # interprocedural optimisation selects
+            set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+            add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-flto=auto>)
+            add_link_options(-flto=auto)
+            set(jasperengineLto "GCC LTO")
+        else()
+            set(jasperengineLto "no LTO")
+        endif()
+    endif()
+    message(STATUS "Release link: dead sections out, hidden visibility, ${jasperengineLto}")
+endif()
+
+# Build speed of the trees that ship nothing (docs/specs/S33-build-speed.md R3, R4): lld for their
+# Debug and RelWithDebInfo links, and Jolt unity-built. A shipped game keeps the toolchain's linker
+# and compiles every vendored source on its own, as always. (The editor tree selects its linker in
+# the root CMakeLists.txt, before this directory.)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    jasperengine_select_linker(${jasperengineShippedGame})
+endif()
+if(jasperengineShippedGame)
+    set(jasperengineVendoredUnityDefault OFF)
+else()
+    set(jasperengineVendoredUnityDefault ON)
+endif()
+option(JASPERENGINE_VENDORED_UNITY "Unity-build the vendored libraries that gain from it and merge cleanly (Jolt)" ${jasperengineVendoredUnityDefault})
 
 add_subdirectory(libs/sokol)
 add_subdirectory(libs/lua)
@@ -762,9 +1111,50 @@ add_subdirectory(libs/tinyxml2)
 foreach(lib IN LISTS JASPERENGINE_PHYSICS_LIBS)
     add_subdirectory(libs/${lib})
 endforeach()
+if(JASPERENGINE_PHYSICS_3D)
+    jasperengine_vendored_unity_build(joltphysics)
+endif()
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
+# The optional modules (docs/specs/S34-player-size.md R1): the video of an HTML UI, and the
+# editor's shared engine has every module (its windows and the Play of any project use them)
+if(JASPERENGINE_VIDEO AND NOT JASPERENGINE_HTMLUI)
+    message(STATUS "JASPERENGINE_VIDEO needs JASPERENGINE_HTMLUI: the build has no video")
+    set(JASPERENGINE_VIDEO OFF)
+endif()
+if(JASPERENGINE_SHARED AND NOT (JASPERENGINE_HTMLUI AND JASPERENGINE_VIDEO AND JASPERENGINE_RUNTIME_SHADERS))
+    message(FATAL_ERROR "The editor's engine (JASPERENGINE_SHARED) has every module: JASPERENGINE_HTMLUI, JASPERENGINE_VIDEO and JASPERENGINE_RUNTIME_SHADERS stay ON")
+endif()
+set(JASPERENGINE_HTMLUI_LIBS "")
+set(JASPERENGINE_VIDEO_LIBS "")
+if(JASPERENGINE_HTMLUI)
+    # the HTML UI's MTSDF glyphs (S16)
+    add_subdirectory(libs/msdfgen)
+    list(APPEND JASPERENGINE_HTMLUI_LIBS msdfgen thorvg rmlui lexbor)
+endif()
+if(JASPERENGINE_VIDEO)
+    list(APPEND JASPERENGINE_VIDEO_LIBS dav1d opus webm)
+endif()
+if(JASPERENGINE_NAVIGATION)
+    add_subdirectory(libs/recastnavigation)
+endif()
+# Cooked textures (S14, docs/textures.md): Zstandard (zstd_decompress in every game, zstd for the
+# cook), the Basis Universal transcoder of web textures (the web runtime, the editor's previews
+# and the tests; native games never load Basis files) and, in the editor tree only
+# (JASPERENGINE_TEXTURE_ENCODERS, set by the root CMakeLists), the encoders of the cook
+add_subdirectory(libs/zstd)
+if(EMSCRIPTEN OR JASPERENGINE_SHARED OR JASPERENGINE_TESTS)
+    set(JASPERENGINE_BASIS_TRANSCODER_DEFAULT ON)
+else()
+    set(JASPERENGINE_BASIS_TRANSCODER_DEFAULT OFF)
+endif()
+option(JASPERENGINE_BASIS_TRANSCODER "Transcode Basis Universal KTX2 textures at load" ${JASPERENGINE_BASIS_TRANSCODER_DEFAULT})
+add_subdirectory(libs/basisu)
+if(JASPERENGINE_TEXTURE_ENCODERS)
+    add_subdirectory(libs/bc7enc_rdo)
+    add_subdirectory(libs/astcenc)
+endif()
 # The RmlUi debugger (Source/Debugger, UIDocumentSystem::setDebuggerVisible): the editor, Debug
 # exports and the HTML UI tests have it; release games leave it out
 if(JASPERENGINE_SHARED OR JASPERENGINE_HTMLUI_TESTS OR CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -776,15 +1166,41 @@ option(JASPERENGINE_HTMLUI_DEBUGGER "Compile the RmlUi debugger into the HTML UI
 if(JASPERENGINE_HTMLUI_DEBUGGER)
     add_definitions(-DJASPERENGINE_HTMLUI_DEBUGGER)
 endif()
+# The profiler (core/profiler, renders/sokol pass recorder and VRAM tracker, spec S15): the
+# editor, Debug builds, the unit tests and Development Build exports have it; release games
+# leave it out, and its macros compile to nothing there (docs/profiling.md)
+option(JASPERENGINE_DEVELOPMENT_BUILD "A Development Build: a Release game with the profiler and its --profile options" OFF)
+if(JASPERENGINE_SHARED OR JASPERENGINE_TESTS OR JASPERENGINE_DEVELOPMENT_BUILD OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(JASPERENGINE_PROFILER_DEFAULT ON)
+else()
+    set(JASPERENGINE_PROFILER_DEFAULT OFF)
+endif()
+option(JASPERENGINE_PROFILER "Compile the CPU/GPU profiler, the frame pass recorder and the VRAM tracker" ${JASPERENGINE_PROFILER_DEFAULT})
+# Tracy remote profiling of a running development game (desktop and Android, libs/tracy)
+option(JASPERENGINE_TRACY "Send the profiler's zones, frames and plots to Tracy" OFF)
+if(JASPERENGINE_TRACY)
+    if(EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        message(FATAL_ERROR "JASPERENGINE_TRACY is for desktop and Android builds; web and iOS profile with capture files (docs/profiling.md)")
+    endif()
+    if(NOT JASPERENGINE_PROFILER)
+        message(FATAL_ERROR "JASPERENGINE_TRACY needs JASPERENGINE_PROFILER")
+    endif()
+    add_subdirectory(libs/tracy)
+endif()
+# SVG images (texture/TextureData, and the HTML UI's)
 add_subdirectory(libs/lunasvg)
-add_subdirectory(libs/thorvg)
-add_subdirectory(libs/rmlui)
-# the HTML5 parser of the HTML UI compatibility layer (engine/core/htmlui/compat/html)
-add_subdirectory(libs/lexbor)
-# the HTML UI's <video>: AV1 (dav1d), Opus (libopus) and the WebM parser (libwebm)
-add_subdirectory(libs/dav1d)
-add_subdirectory(libs/opus)
-add_subdirectory(libs/libwebm)
+if(JASPERENGINE_HTMLUI)
+    add_subdirectory(libs/thorvg)
+    add_subdirectory(libs/rmlui)
+    # the HTML5 parser of the HTML UI compatibility layer (engine/core/htmlui/compat/html)
+    add_subdirectory(libs/lexbor)
+endif()
+if(JASPERENGINE_VIDEO)
+    # the HTML UI's <video>: AV1 (dav1d), Opus (libopus) and the WebM parser (libwebm)
+    add_subdirectory(libs/dav1d)
+    add_subdirectory(libs/opus)
+    add_subdirectory(libs/libwebm)
+endif()
 
 if(JASPERENGINE_RUNTIME_SHADERS)
     # A game only needs the back end of its own graphics API (GLSL is always in);
@@ -817,18 +1233,72 @@ else()
     set(EXTERNAL_WARNING_FLAG -w)
 endif()
 
+set(JASPERENGINE_TEXTURE_LIBS zstd_decompress zstd basisu_transcoder)
+if(JASPERENGINE_TEXTURE_ENCODERS)
+    list(APPEND JASPERENGINE_TEXTURE_LIBS basisu_encoder bc7enc_rdo astcenc)
+endif()
+
+set(jasperengineQuietVideoLibs "")
+if(JASPERENGINE_VIDEO)
+    set(jasperengineQuietVideoLibs dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm)
+endif()
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
-    dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm ${JASPERENGINE_PHYSICS_LIBS})
+    harfbuzz sheenbidi meshoptimizer lunasvg ${JASPERENGINE_HTMLUI_LIBS}
+    ${jasperengineQuietVideoLibs} ${JASPERENGINE_PHYSICS_LIBS} ${JASPERENGINE_TEXTURE_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
+if(JASPERENGINE_NAVIGATION)
+    target_compile_options(recastnavigation PRIVATE ${EXTERNAL_WARNING_FLAG})
+    target_compile_options(recastnavigation_debugdraw PRIVATE ${EXTERNAL_WARNING_FLAG})
+    jasperengine_apply_cxx_standard(recastnavigation recastnavigation_debugdraw)
+    # No fused multiply-adds in the voxeliser: clang contracts a * b + c into one rounding on
+    # arm64 (Apple silicon, Android, iOS) and x86-64 GCC builds do not, and Recast clips
+    # triangles at cell boundaries, so a mesh edge on a boundary lost its last column of cells
+    # on arm64 (a plane walkable to 9.2 m instead of 9.5 m: NavQueryTest on macOS). Without
+    # contraction both bake the same edges; the cost is in the bake only.
+    if(NOT MSVC)
+        target_compile_options(recastnavigation PRIVATE -ffp-contract=off)
+    endif()
+endif()
+# The same for meshoptimizer's simplifier (placement contexts, LODs): with contraction an arm64
+# build collapsed other edges than x86-64, and its absolute 1 cm target strayed 1.5 cm
+# (PlacementWorldReview.SimplificationErrorIsAbsolute on macOS)
+if(NOT MSVC)
+    target_compile_options(meshoptimizer PRIVATE -ffp-contract=off)
+endif()
+
+# One C++ standard for every object of the binary: libc++ template definitions instantiated
+# at two standards across a library boundary (tinygltf and RmlUi pass std containers into
+# engine code) broke Wasm signatures. Most of these set a standard of their own, or none.
+set(jasperengineCxxHtmlUILibs "")
+if(JASPERENGINE_HTMLUI)
+    set(jasperengineCxxHtmlUILibs msdfgen thorvg rmlui)
+endif()
+if(JASPERENGINE_VIDEO)
+    list(APPEND jasperengineCxxHtmlUILibs webm)
+endif()
+jasperengine_apply_cxx_standard(
+    sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
+    lunasvg ${jasperengineCxxHtmlUILibs} ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
+if(JASPERENGINE_TEXTURE_ENCODERS)
+    jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc)
+endif()
+if(JASPERENGINE_RUNTIME_SHADERS)
+    # shadercompiler and every glslang, SPIRV and spirv-cross target it creates
+    jasperengine_apply_cxx_standard_in_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/shadercompiler)
+endif()
 
 if(JASPERENGINE_HTMLUI_TESTS)
     if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         message(FATAL_ERROR "JASPERENGINE_HTMLUI_TESTS needs the standalone engine build (cmake -S engine): the editor's shared engine hides the RmlUi symbols the tests use")
     endif()
-    # the tests read render targets back (engine/tests/htmlui/harness/Readback.cpp)
+endif()
+if((JASPERENGINE_HTMLUI_TESTS OR JASPERENGINE_TESTS) AND NOT (JASPERENGINE_HTMLUI AND JASPERENGINE_VIDEO))
+    message(FATAL_ERROR "The tests cover the HTML UI and its video: JASPERENGINE_HTMLUI and JASPERENGINE_VIDEO stay ON")
+endif()
+if((JASPERENGINE_HTMLUI_TESTS OR JASPERENGINE_TESTS) AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    # the tests read render targets back (engine/tests/support/Readback.cpp)
     add_definitions(-DJASPERENGINE_TEXTURE_READBACK)
 endif()
 
@@ -843,16 +1313,65 @@ endif()
 
 set(JASPERENGINE_SRCS
     core/Engine.cpp
+    core/EngineTime.cpp
+    core/PlatformConfig.cpp
+    core/player/ContentManifest.cpp
+    core/player/Launch.cpp
+    core/player/LaunchOptions.cpp
+    core/player/PlayerConfig.cpp
+    core/player/PlayerModules.cpp
+    core/player/RunControl.cpp
     core/Input.cpp
+    core/input/InputControlPath.cpp
+    core/input/InputActionAsset.cpp
+    core/input/InputActions.cpp
+    core/input/InputRebind.cpp
+    core/input/InputVirtualControls.cpp
+    core/audio/AudioEffects.cpp
+    core/audio/AudioFileCheck.cpp
+    core/audio/AudioMixer.cpp
+    core/audio/AudioMixerIO.cpp
+    core/audio/SoloudEngineFile.cpp
+    core/input/InputControlNames.cpp
+    core/input/InputManagerFormat.cpp
     core/Log.cpp
+    core/diag/CrashHandler.cpp
+    core/diag/CrashHandlerPosix.cpp
+    core/diag/CrashHandlerWin.cpp
+    core/diag/HangStackCapture.cpp
+    core/diag/CrashHandlerWeb.cpp
+    core/diag/HangWatchdog.cpp
+    core/log/Logger.cpp
+    core/log/LogFormat.cpp
+    core/log/Backtrace.cpp
+    core/log/sinks/ConsoleSink.cpp
+    core/log/sinks/RotatingFileSink.cpp
+    core/log/sinks/MemorySink.cpp
+    core/log/sinks/CallbackSink.cpp
+    core/log/sinks/PlatformSink.cpp
+    core/log/sinks/PlatformSinks.cpp
+    core/log/sinks/AndroidLogSink.cpp
+    core/log/sinks/EmscriptenConsoleSink.cpp
+    core/log/sinks/DebuggerSink.cpp
+    core/log/sinks/AppleLogSink.cpp
+    core/debug/DebugOverlay.cpp
+    core/debug/DebugOverlayResources.cpp
+    core/debug/DebugStats.cpp
+    core/debug/ProcessMemory.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
+    core/serialization/CookCodecs.cpp
+    core/serialization/CookedScene.cpp
+    core/serialization/CookStream.cpp
+    core/serialization/codecs/ComponentHooks.cpp
+    core/serialization/RuntimeFields.cpp
+    core/serialization/SceneSettingsCodec.cpp
+    core/Screen.cpp
     core/System.cpp
     core/action/Action.cpp
     core/action/AlphaTween.cpp
     core/action/Animation.cpp
     core/action/ColorTween.cpp
-    core/action/ParticleSystem.cpp
     core/action/PositionTween.cpp
     core/action/RotationTween.cpp
     core/action/ScaleTween.cpp
@@ -864,14 +1383,73 @@ set(JASPERENGINE_SRCS
     core/action/keyframe/RotateTracks.cpp
     core/action/keyframe/ScaleTracks.cpp
     core/action/keyframe/TranslateTracks.cpp
+    core/animation/AnimationClip.cpp
+    core/animation/AnimationClipIO.cpp
+    core/animation/AnimJson.cpp
+    core/animation/AvatarMaskWeights.cpp
+    core/animation/UpstreamAnimFormats.cpp
+    core/camera/CameraShake.cpp
+    core/camera/ShakeInstance.cpp
+    core/camera/ShakePreset.cpp
+    core/camera/ShakePresets.cpp
+    core/camera/ShakerRuntime.cpp
+    core/animation/AnimationEvent.cpp
+    core/animation/AnimationPlayerRuntime.cpp
+    core/animation/AnimatorAssetIO.cpp
+    core/animation/AnimatorIK.cpp
+    core/animation/AnimatorInstance.cpp
+    core/animation/AnimatorPose.cpp
+    core/animation/AnimatorRetarget.cpp
+    core/animation/AnimatorRig.cpp
+    core/animation/BlendTree.cpp
+    core/animation/VertexAnimatorRuntime.cpp
+    core/animation/ClipBinding.cpp
+    core/animation/CompiledController.cpp
+    core/animation/PropertyBindings.cpp
+    core/animation/HumanoidClip.cpp
+    core/animation/KeyframeSampling.cpp
+    core/animation/ModelSubClips.cpp
+    core/animation/VertexAnimation.cpp
+    core/pose/HumanBones.cpp
+    core/pose/HumanExtraBones.cpp
+    core/pose/HumanoidMap.cpp
+    core/pose/HumanoidMapIO.cpp
+    core/pose/ModelRig.cpp
+    core/pose/PoseAnimationIO.cpp
+    core/pose/PoseAnimatorRuntime.cpp
+    core/pose/PoseDofs.cpp
+    core/pose/PoseFile.cpp
+    core/pose/PoseIK.cpp
+    core/pose/PoseMetrics.cpp
+    core/pose/PoseRealisation.cpp
+    core/pose/PoseRanges.cpp
+    core/pose/PoseRig.cpp
+    core/pose/PoseSampler.cpp
+    core/pose/PoseSecondary.cpp
+    core/pose/PoseSkin.cpp
+    core/pose/PoseTween.cpp
     core/buffer/Attribute.cpp
     core/buffer/Buffer.cpp
     core/buffer/ExternalBuffer.cpp
     core/buffer/IndexBuffer.cpp
     core/buffer/InterleavedBuffer.cpp
     core/ecs/ComponentManager.cpp
+    core/ecs/ChangeTracking.cpp
+    core/ecs/CommandBuffer.cpp
+    core/ecs/SystemScheduler.cpp
+    core/picking/BinnedSah.cpp
+    core/picking/MeshBvh.cpp
+    core/picking/MeshBvhSimd_avx2.cpp
+    core/picking/MeshBvhSimd_neon.cpp
+    core/picking/MeshPose.cpp
+    core/picking/MeshRaycast.cpp
+    core/picking/PickCache.cpp
+    core/picking/PickGeometry.cpp
+    core/picking/SceneBvh.cpp
     core/htmlui/HtmlUI.cpp
     core/htmlui/HtmlUIClock.cpp
+    core/htmlui/HtmlTextEffects.cpp
+    core/htmlui/UIParticleSystemElement.cpp
     core/htmlui/HtmlUIContext.cpp
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUIDependencies.cpp
@@ -879,7 +1457,9 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFile.cpp
     core/htmlui/RmlFontEffects.cpp
     core/htmlui/RmlFontEngine.cpp
+    core/htmlui/RmlFontMsdf.cpp
     core/htmlui/RmlRenderer.cpp
+    core/htmlui/RmlRendererBatch.cpp
     core/htmlui/RmlSystem.cpp
     core/htmlui/HtmlUIContextInput.cpp
     core/htmlui/RmlKeyMap.cpp
@@ -902,17 +1482,25 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
-    core/htmlui/media/Av1Decoder.cpp
+    core/htmlui/controls/OnScreenControls.cpp
+    core/media/Av1Decoder.cpp
+    core/media/GrowingFileReader.cpp
+    core/media/MediaByteSource.cpp
+    core/media/MediaCache.cpp
+    core/media/Mp4Probe.cpp
+    core/media/OpusAudioDecoder.cpp
+    core/media/PlatformVideoSource.cpp
+    core/media/VideoAudio.cpp
+    core/media/VideoColorConvert.cpp
+    core/media/VideoDemuxer.cpp
+    core/media/VideoFormats.cpp
+    core/media/VideoPlayback.cpp
+    core/media/VideoSourceFactory.cpp
+    core/media/VideoStream.cpp
+    core/media/VideoTextureConverter.cpp
     core/htmlui/media/UIElementVideo.cpp
-    core/htmlui/media/OpusAudioDecoder.cpp
     core/htmlui/media/UIVideoControls.cpp
     core/htmlui/media/UIVideoElement.cpp
-    core/htmlui/media/VideoAudio.cpp
-    core/htmlui/media/VideoColorConvert.cpp
-    core/htmlui/media/VideoDemuxer.cpp
-    core/htmlui/media/VideoFormats.cpp
-    core/htmlui/media/VideoPlayback.cpp
-    core/htmlui/media/VideoStream.cpp
     core/htmlui/HtmlUIInspector.cpp
     core/htmlui/HtmlUIAssertions.cpp
     core/htmlui/effects/BuiltinEffectManifests.gen.cpp
@@ -925,16 +1513,44 @@ set(JASPERENGINE_SRCS
     core/htmlui/effects/EffectSimulator.cpp
     core/htmlui/effects/EffectSyntax.cpp
     core/htmlui/effects/EffectValue.cpp
+    core/asset/AssetMap.cpp
+    core/asset/Guid.cpp
+    core/graph/Graph.cpp
+    core/graph/GraphRegistry.cpp
+    core/io/AssetIOService.cpp
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp
+    core/io/JPak.cpp
+    core/io/FileUtils.cpp
     core/io/ResourcePack.cpp
+    core/io/watch/ExpectedWriteLedger.cpp
+    core/io/watch/FileChangeCoalescer.cpp
+    core/io/watch/FileIdentity.cpp
+    core/io/watch/FileWatchService.cpp
+    core/io/watch/FileWatcher.cpp
+    core/io/watch/ProjectFileIndex.cpp
+    core/io/watch/SharedFileReader.cpp
+    core/io/watch/backends/FsEventsBackend.cpp
+    core/io/watch/backends/InotifyBackend.cpp
+    core/io/watch/backends/NullBackend.cpp
+    core/io/watch/backends/PollingBackend.cpp
+    core/io/watch/backends/RdcwBackend.cpp
     core/manager/ObjectManager.cpp
     core/manager/PrefabAsset.cpp
     core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
+    core/native/NativeBridge.cpp
+    core/net/Http.cpp
+    core/net/HttpUtil.cpp
     core/io/UserSettings.cpp
+    core/io/AtomicFile.cpp
+    core/io/ScopedFileLock.cpp
+    core/io/UserSettingsStore.cpp
     core/math/AABB.cpp
+    core/math/Curve.cpp
+    core/math/CurveJson.cpp
+    # the Line and Trail Renderers' curves and gradients (upstream's, beside S27's Curve)
     core/math/Matrix3.cpp
     core/math/Matrix4.cpp
     core/math/OBB.cpp
@@ -948,16 +1564,24 @@ set(JASPERENGINE_SRCS
     core/math/Vector4.cpp
     core/object/Bone.cpp
     core/object/Camera.cpp
+    core/object/CameraFollow.cpp
+    core/object/CameraShaker.cpp
     core/object/EntityHandle.cpp
     core/object/Light.cpp
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
+    core/object/TrailRenderer.cpp
     core/object/Mesh.cpp
+    core/object/VideoPlayer.cpp
     core/object/MeshPolygon.cpp
     core/object/Mirror.cpp
     core/object/FluidSimulation.cpp
     core/object/Lattice.cpp
     core/object/Model.cpp
+    core/object/PoseAnimator.cpp
+    core/object/AnimationPlayer.cpp
+    core/object/VertexAnimator.cpp
+    core/object/Animator.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
     core/object/Points.cpp
@@ -967,11 +1591,21 @@ set(JASPERENGINE_SRCS
     core/object/Tilemap.cpp
     core/object/sound/AudioSource.cpp
     core/object/environment/Fog.cpp
+    core/object/environment/LocalVolumetricFog.cpp
     core/object/environment/ReflectionProbe.cpp
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
+    core/object/environment/WaterVolume.cpp
+    core/object/physics/Buoyancy.cpp
+    core/object/spline/Spline.cpp
+    core/object/spline/SplineExtrude.cpp
+    core/object/spline/SplineInstantiate.cpp
+    core/object/spline/SplineAnimate.cpp
+    core/object/environment/VolumetricClouds.cpp
     core/object/ui/Button.cpp
+    core/object/ui/OnScreenControls.cpp
     core/object/ui/LayoutGroup.cpp
+    core/object/ui/CanvasGroup.cpp
     core/object/ui/Image.cpp
     core/object/ui/Panel.cpp
     core/object/ui/Polygon.cpp
@@ -994,90 +1628,286 @@ set(JASPERENGINE_SRCS
     core/pool/TexturePool.cpp
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
+    core/pool/MeshBufferPool.cpp
+    core/pool/AnimationClipPool.cpp
+    core/pool/ShakePresetPool.cpp
+    core/pool/PhysicsMaterialPool.cpp
+    core/pool/VertexAnimationPool.cpp
+    core/pool/AnimatorAssetPool.cpp
+    core/object/physics/Collision.cpp
+    core/object/physics/Collision2D.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
+    core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
+    core/physics/PhysicsDebugLines.cpp
+    core/physics/PhysicsMaterial.cpp
+    core/physics/RagdollBuilder.cpp
+    core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
+    core/render/AtmosphereMath.cpp
+    core/render/FrameReadback.cpp
+    core/render/AtmosphereNoise.cpp
+    core/render/AtmospherePresets.cpp
+    core/render/AtmosphereQuality.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
+    core/render/DynamicResolutionController.cpp
+    core/render/CpuSkin.cpp
     core/render/FramebufferRender.cpp
+    core/render/LineRibbonBuilder.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
     core/render/SystemRender.cpp
     core/render/TextureRender.cpp
+    core/render/shadow/CascadeFit.cpp
+    core/render/shadow/ShadowCache.cpp
+    core/render/shadow/ShadowCasterRegistry.cpp
+    core/render/shadow/ShadowSlotPlanner.cpp
+    core/render/shadow/ShadowTiers.cpp
+    core/render/shadow/ShadowTypes.cpp
+    core/script/AsyncOwner.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
+    core/script/LuaJson.cpp
+    core/script/LuaWatchdog.cpp
+    core/script/LuaReload.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
+    core/script/ScriptScheduler.cpp
+    core/script/ScriptEvent.cpp
+    core/script/ScriptScheduler.cpp
+    core/script/ScriptMessages.cpp
     core/script/ScriptProperty.cpp
+    core/script/ToolchainFingerprint.cpp
+    core/script/ScriptRuntime.cpp
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
+    core/script/binding/CrashClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
+    core/script/binding/NativeClassesLua.cpp
+    core/script/binding/NetClassesLua.cpp
+    core/script/binding/ParticleClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
+    core/script/binding/ProfilerClassesLua.cpp
+    core/script/binding/GameplayClassesLua.cpp
+    core/script/binding/SplineClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
+    core/script/binding/HtmlUIWidgetsLua.cpp
     core/script/binding/UtilClassesLua.cpp
     core/script/binding/HtmlUIClassesLua.cpp
     core/script/binding/HtmlUIAnimeLua.cpp
+    core/script/binding/CoroutineClassesLua.cpp
+    core/script/binding/ScriptClassesLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
     core/shader/ShaderDataSerializer.cpp
     core/shader/ShaderManifest.cpp
     core/shader/ShaderUniforms.cpp
+    core/shader/ShaderGlobals.cpp
     core/shader/ShaderVariantCollection.cpp
+    core/shader/ShaderWarmup.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
+    core/subsystem/ActionSystemPlayers.cpp
+    core/subsystem/ActionSystemLayers.cpp
+    core/subsystem/PoseAnimatorSystem.cpp
+    core/subsystem/VertexAnimatorSystem.cpp
+    core/subsystem/AnimatorSystem.cpp
+    core/subsystem/TrailSystem.cpp
+    core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp
+    core/subsystem/VideoPlayerSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
     core/subsystem/LatticeSystem.cpp
+    core/subsystem/SplineSystem.cpp
     core/lattice/LatticeSolver.cpp
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp
+    core/subsystem/MeshSystemGltfPbr.cpp
     core/subsystem/PhysicsSystem.cpp
+    core/subsystem/WaterSystem.cpp
+    core/subsystem/AtmosphereRenderer.cpp
+    core/subsystem/PhysicsSystemContacts.cpp
+    core/subsystem/PhysicsSystemJoints3D.cpp
+    core/subsystem/PhysicsSystemRagdoll.cpp
+    core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
+    core/subsystem/RenderSystemShadows.cpp
     core/subsystem/UISystem.cpp
+    core/subsystem/UISystemPointer.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp
     core/subsystem/UIDocumentSystemScript.cpp
+    core/subsystem/UIDocumentSystemPatch.cpp
     core/subsystem/UIDocumentSystemReload.cpp
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
+    core/texture/BasisTranscode.cpp
+    core/texture/CookedTextures.cpp
     core/texture/Framebuffer.cpp
     core/texture/IBLEnvironment.cpp
+    core/texture/Ktx2.cpp
+    core/texture/Ktx2Write.cpp
+    core/texture/MipChain.cpp
+    core/texture/MaterialPbr.cpp
+    core/texture/TexturePack.cpp
     core/texture/Texture.cpp
     core/texture/TextureData.cpp
+    core/texture/TextureDecode.cpp
+    core/texture/TextureFallback.cpp
+    core/texture/TextureFormat.cpp
+    core/texture/TexturePrepare.cpp
+    core/jobs/BackgroundGate.cpp
+    core/jobs/JobCounter.cpp
+    core/jobs/JobSystem.cpp
+    core/jobs/ParallelFor.cpp
+    core/jobs/Primitives.cpp
+    core/jobs/SerialQueue.cpp
+    core/jobs/SlabPool.cpp
+    core/profiler/EngineProfiling.cpp
+    core/profiler/FrameTimes.cpp
+    core/profiler/GpuMemory.cpp
+    core/profiler/Profiler.cpp
+    core/memory/Arena.cpp
+    core/memory/MemoryStats.cpp
+    core/memory/ObjectPool.cpp
+    core/memory/RangeAllocator.cpp
+    core/memory/ScratchScope.cpp
+    core/thread/MainThreadQueue.cpp
     core/thread/ResourceProgress.cpp
-    core/thread/ThreadPoolManager.cpp
+    core/thread/ThreadUtil.cpp
     core/util/Angle.cpp
     core/util/Base64.cpp
     core/util/Color.cpp
+    core/util/CrashHook.cpp
+    core/util/CubeLut.cpp
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
+    core/util/FrameLimiter.cpp
+    core/util/CanvasScaler.cpp
+    core/util/TextEffects.cpp
     core/util/GlyphAtlas.cpp
+    core/util/JoltJobAdapter.cpp
     core/util/LunaSVGRuntime.cpp
+    core/util/PlatformRules.cpp
+    core/util/NumberText.cpp
     core/util/PostColorLut.cpp
+    core/util/Scheduler.cpp
+    core/util/Sha256.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp
+    core/util/SubscriptionOwnerIndex.cpp
     core/util/TextShaper.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
     core/util/XMLUtils.cpp
 )
 
-# HTML/CSS compatibility layer (phase 2): globbed per directory
-include(core/htmlui/compat/CompatSources.cmake)
-list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
-include(libs/lucide/lucide.cmake)
+# The HTTP client's backend (core/net/HttpBackend.h): each platform's own stack. Outside the
+# list above, which the Xcode workspace mirrors (tools/xcode_sync_engine.py): its engine targets
+# compile platform/apple/HttpBackendApple.mm instead.
+if(EMSCRIPTEN)
+    set(JASPERENGINE_HTTP_BACKEND platform/emscripten/HttpBackendWeb.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(JASPERENGINE_HTTP_BACKEND platform/android/HttpBackendAndroid.cpp)
+elseif(WIN32)
+    set(JASPERENGINE_HTTP_BACKEND platform/win/HttpBackendWin.cpp)
+elseif(APPLE)
+    set(JASPERENGINE_HTTP_BACKEND platform/apple/HttpBackendApple.mm)
+    set_source_files_properties(platform/apple/HttpBackendApple.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    # Linux and FreeBSD: the system libcurl through dlopen
+    set(JASPERENGINE_HTTP_BACKEND core/net/HttpBackendCurl.cpp)
+endif()
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_HTTP_BACKEND})
+
+# The video decoders of MP4 and other non-AV1 video (core/media/PlatformVideoBackend.h): each
+# platform's own (docs/superpowers/specs/2026-10-31-video-mp4-design.md §6.6). Outside the list
+# above like the HTTP backend: the Xcode workspace compiles platform/apple/AVFoundationBackend.mm.
+if(EMSCRIPTEN)
+    # the browser's <video> (its JavaScript inline, EM_JS, as the engine's other Web code)
+    set(JASPERENGINE_VIDEO_BACKEND platform/emscripten/WebVideoSource.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(JASPERENGINE_VIDEO_BACKEND platform/android/MediaCodecBackend.cpp)
+elseif(WIN32)
+    set(JASPERENGINE_VIDEO_BACKEND platform/win/MediaFoundationBackend.cpp)
+elseif(APPLE)
+    set(JASPERENGINE_VIDEO_BACKEND platform/apple/AVFoundationBackend.mm)
+    set_source_files_properties(platform/apple/AVFoundationBackend.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    # Linux and FreeBSD: the system FFmpeg through dlopen, one translation unit per ABI major,
+    # each compiled against its vendored headers only (-isystem: ahead of a system FFmpeg's)
+    set(JASPERENGINE_VIDEO_BACKEND platform/linux/FFmpegBackend.cpp)
+    foreach(major 58 59 60 61 62)
+        list(APPEND JASPERENGINE_VIDEO_BACKEND platform/linux/FFmpegBackend${major}.cpp)
+        set_source_files_properties(platform/linux/FFmpegBackend${major}.cpp PROPERTIES
+            COMPILE_OPTIONS "-isystem;${CMAKE_CURRENT_SOURCE_DIR}/libs/ffmpeg-headers/${major}")
+    endforeach()
+endif()
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_VIDEO_BACKEND})
+# The native bridge's platform layer (core/native/NativePlatform.h): Java/Kotlin through JNI,
+# Objective-C/Swift through the runtime, JavaScript through EM_JS; none elsewhere (C++ plugins
+# and Lua mocks only). Outside JASPERENGINE_SRCS like the HTTP backend: the Xcode workspace
+# compiles the Apple files in its engine targets (tools/xcode_sync_engine.py).
+if(EMSCRIPTEN)
+    set(JASPERENGINE_NATIVE_PLATFORM platform/emscripten/NativePlatformWeb.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(JASPERENGINE_NATIVE_PLATFORM platform/android/NativePlatformAndroid.cpp)
+elseif(APPLE)
+    # JasperNative.m: the helper API plugin code calls (JasperNative.h)
+    set(JASPERENGINE_NATIVE_PLATFORM platform/apple/NativePlatformApple.mm platform/apple/JasperNative.m)
+    set_source_files_properties(platform/apple/NativePlatformApple.mm platform/apple/JasperNative.m PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    set(JASPERENGINE_NATIVE_PLATFORM core/native/NativePlatformNone.cpp)
+endif()
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NATIVE_PLATFORM})
+
+# The video module (docs/specs/S34-player-size.md R1): <video>, its decoders and its Lua API
+if(NOT JASPERENGINE_VIDEO)
+    # what links dav1d, Opus and libwebm, and the platform decoders (FFmpeg's headers on Linux). The
+    # rest of core/media stays: VideoSourceFactory makes a source that fails with the reason, and the
+    # format rules stay for the compatibility layer, which drops a video used as a CSS image
+    list(FILTER JASPERENGINE_SRCS EXCLUDE REGEX
+        "^core/(htmlui/media/|script/binding/HtmlUIMediaLua|media/(Av1Decoder|OpusAudioDecoder|VideoDemuxer|VideoStream)[.])|^platform/.*/(WebVideoSource|MediaCodecBackend|MediaFoundationBackend|AVFoundationBackend|FFmpegBackend)")
+endif()
+# The HTML UI module: core/htmlui (but its clock, which the engine advances), the UI Document
+# system, the documents' Lua objects and bindings, the on-screen controls and the Lottie runtime
+if(JASPERENGINE_HTMLUI)
+    # HTML/CSS compatibility layer (phase 2): globbed per directory
+    include(core/htmlui/compat/CompatSources.cmake)
+    list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
+    # HTML UI widgets (S17): virtual views, tooltips, drag and drop, Markdown
+    include(core/htmlui/widgets/WidgetsSources.cmake)
+    list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
+else()
+    list(FILTER JASPERENGINE_SRCS EXCLUDE REGEX
+        "^core/(htmlui/|debug/DebugOverlayResources|subsystem/UIDocumentSystem|object/ui/(UIDocument|UIElement|UIEvent|UIDataModel|UIValue|HtmlUI)|script/binding/HtmlUI|input/InputVirtualControls|util/ThorVGRuntime)")
+    list(APPEND JASPERENGINE_SRCS core/htmlui/HtmlUIClock.cpp)
+endif()
+# Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
+include(core/particles/ParticleSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
+# Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
+include(core/navigation/NavigationSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
+# Splines (S18): the core, geometry and layouts (no contraction, bit-identical output)
+include(core/spline/SplineSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SPLINE_SRCS})
+if(JASPERENGINE_HTMLUI)
+    include(libs/lucide/lucide.cmake)
+endif()
 
 if(JASPERENGINE_PHYSICS_2D)
     list(APPEND JASPERENGINE_SRCS
@@ -1085,6 +1915,8 @@ if(JASPERENGINE_PHYSICS_2D)
         core/object/physics/Contact2D.cpp
         core/object/physics/Joint2D.cpp
         core/object/physics/Manifold2D.cpp
+        core/object/physics/CharacterController2D.cpp
+        core/subsystem/CharacterController2DSystem.cpp
     )
 endif()
 
@@ -1094,6 +1926,9 @@ if(JASPERENGINE_PHYSICS_3D)
         core/object/physics/CollideShapeResult3D.cpp
         core/object/physics/Contact3D.cpp
         core/object/physics/Joint3D.cpp
+        core/object/physics/CharacterController.cpp
+        core/subsystem/CharacterControllerSystem.cpp
+        core/object/physics/Ragdoll.cpp
     )
 endif()
 
@@ -1104,10 +1939,24 @@ set(RENDER_SOKOL_SRC
     renders/sokol/SokolCamera.cpp
     renders/sokol/SokolObject.cpp
     renders/sokol/SokolPipelineCache.cpp
+    renders/sokol/SokolAsyncCreate.cpp
+    renders/sokol/SokolPipelineRecord.cpp
     renders/sokol/SokolShader.cpp
     renders/sokol/SokolCmdQueue.cpp
     renders/sokol/SokolFramebuffer.cpp
+    renders/sokol/SokolPassPreview.cpp
+    renders/sokol/SokolPassRecorder.cpp
+    renders/sokol/SokolTraceHub.cpp
+    renders/sokol/SokolVramTracker.cpp
 )
+
+# The engine build a C++ script library must be made for (ToolchainFingerprint.h): the
+# editor's version string, on this one file only so a new commit does not rebuild the engine
+if(DEFINED JASPERENGINE_EDITOR_VERSION)
+    set_source_files_properties(core/script/ToolchainFingerprint.cpp PROPERTIES
+        COMPILE_DEFINITIONS "JASPERENGINE_ABI_VERSION=\"${JASPERENGINE_EDITOR_VERSION}\""
+        SKIP_UNITY_BUILD_INCLUSION ON)
+endif()
 
 add_library(
     jasperengine
@@ -1127,17 +1976,131 @@ if(JASPERENGINE_CONVEX_DECOMPOSITION)
     )
 endif()
 
-jasperengine_htmlui_compat_embed(jasperengine)
-jasperengine_htmlui_lucide_embed(jasperengine)
+# The clip pool's test seams (pool/AnimationClipPoolTesting.h) exist only in builds with the unit
+# tests (JASPERENGINE_TESTS): the define stays on the two sources, so a shipped engine has none of it
+if(JASPERENGINE_TESTS)
+    set_property(SOURCE core/pool/AnimationClipPool.cpp core/animation/ModelSubClips.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_ANIM_TEST_HOOKS)
+endif()
+
+if(JASPERENGINE_HTMLUI)
+    jasperengine_htmlui_compat_embed(jasperengine)
+    jasperengine_htmlui_lucide_embed(jasperengine)
+endif()
+jasperengine_target_warnings(jasperengine)
+# Unity build: the HTML UI sources keep generic file-local helpers (lower, trim, startsWith, PI,
+# Registry, Cache, ...) in anonymous namespaces at global scope, one helper set per file
+get_target_property(JASPERENGINE_UNITY_SKIP jasperengine SOURCES)
+list(FILTER JASPERENGINE_UNITY_SKIP INCLUDE REGEX "core/htmlui/")
+jasperengine_skip_unity_build(
+    REASON "the HTML UI subsystem: per-file helper sets with the same names"
+    SOURCES ${JASPERENGINE_UNITY_SKIP})
+# Triangle picking (core/picking/, S26): every SIMD path of the BVH slab test does the same
+# arithmetic, which needs the compiler not to fuse a multiply and an add (arm64 GCC and Clang do
+# by default); its own units, since a unity batch would apply that to its neighbours too
+set(JASPERENGINE_PICKING_SRCS ${JASPERENGINE_SRCS})
+list(FILTER JASPERENGINE_PICKING_SRCS INCLUDE REGEX "^core/picking/")
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(${JASPERENGINE_PICKING_SRCS} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+jasperengine_skip_unity_build(
+    REASON "the picking sources: no floating-point contraction, per unit"
+    SOURCES ${JASPERENGINE_PICKING_SRCS})
+jasperengine_skip_unity_build(
+    REASON "the particle kernels build with their own floating-point flags"
+    SOURCES ${JASPERENGINE_PARTICLE_SRCS})
+jasperengine_skip_unity_build(
+    REASON "the navigation sources: file-local Detour helpers and constants with the same names"
+    SOURCES ${JASPERENGINE_NAVIGATION_SRCS})
+if(JASPERENGINE_SPLINE_SRCS)
+    jasperengine_skip_unity_build(
+        REASON "the spline sources build with their own floating-point flags"
+        SOURCES ${JASPERENGINE_SPLINE_SRCS})
+endif()
+# Unity build: these sources keep file-local helpers or types (State, Category, TempDir, ...)
+# whose names another source of the engine defines too (docs/specs/S33-build-speed.md M8)
+jasperengine_skip_unity_build(
+    REASON "file-local helpers or types named as in another engine source"
+    SOURCES
+        core/Input.cpp
+        core/animation/AnimatorAssetIO.cpp
+        core/diag/CrashHandlerPosix.cpp
+        core/graph/GraphRegistry.cpp
+        core/lattice/LatticePresets.cpp
+        core/lattice/LatticeSolver.cpp
+        core/object/spline/SplineAnimate.cpp
+        core/object/spline/SplineInstantiate.cpp
+        core/pose/PoseAnimationIO.cpp
+        core/pose/PoseFile.cpp
+        core/profiler/GpuMemory.cpp
+        core/profiler/Profiler.cpp
+        core/script/binding/HtmlUIClassesLua.cpp
+        core/shader/ShaderWarmup.cpp
+        core/subsystem/PoseAnimatorSystem.cpp
+        core/subsystem/SplineSystem.cpp
+        core/util/PostColorLut.cpp
+        core/util/SubscriptionOwnerIndex.cpp
+        renders/sokol/SokolPassPreview.cpp
+        renders/sokol/SokolPassRecorder.cpp)
+jasperengine_target_unity_build(jasperengine)
+jasperengine_target_pch(jasperengine)
 
 target_compile_definitions(jasperengine
     PUBLIC
         $<$<BOOL:${JASPERENGINE_PHYSICS_2D}>:JASPERENGINE_PHYSICS_2D>
         $<$<BOOL:${JASPERENGINE_PHYSICS_3D}>:JASPERENGINE_PHYSICS_3D>
+        JASPERENGINE_PROFILER=$<BOOL:${JASPERENGINE_PROFILER}>
+        JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
+        JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
+        JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
+        JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
+        JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
+    PRIVATE
+        $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
 )
+if(JASPERENGINE_TRACY)
+    target_link_libraries(jasperengine PUBLIC TracyClient)
+endif()
 
 find_package(Threads REQUIRED)
 target_link_libraries(jasperengine PRIVATE Threads::Threads)
+
+# the file watcher's FSEvents backend (core/io/watch/backends/FsEventsBackend.cpp)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    target_link_libraries(jasperengine PUBLIC "-framework CoreServices")
+endif()
+
+# the logger's backtraces (core/log/Backtrace.cpp): DbgHelp symbols on Windows, dladdr elsewhere
+if(WIN32)
+    target_link_libraries(jasperengine PRIVATE dbghelp)
+elseif(ANDROID)
+    target_link_libraries(jasperengine PRIVATE log)
+elseif(NOT APPLE AND NOT EMSCRIPTEN)
+    target_link_libraries(jasperengine PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+# The HTTP and video backends' system libraries
+if(WIN32)
+    # iphlpapi: whether a network is up at all ("offline"). Media Foundation (the video decoders):
+    # mfplat.dll and mfreadwrite.dll are loaded at run time (Windows N editions lack them without
+    # the Media Feature Pack, platform/win/MediaFoundationBackend.cpp); mfuuid is static GUIDs
+    target_link_libraries(jasperengine PRIVATE winhttp iphlpapi mfuuid ole32)
+elseif(APPLE)
+    target_link_libraries(jasperengine PRIVATE "-framework Foundation" "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    # NDK media (API 21; the API 28 custom data source is looked up with dlsym)
+    target_link_libraries(jasperengine PRIVATE mediandk)
+elseif(NOT EMSCRIPTEN)
+    # dlopen of libcurl and of FFmpeg
+    target_link_libraries(jasperengine PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+# The User-Agent's version ("JasperEngine/<version> (<platform>)"): on this one file only, so a
+# new version recompiles nothing else
+if(JASPERENGINE_EDITOR_VERSION)
+    set_property(SOURCE core/net/Http.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+        "JASPERENGINE_VERSION_STRING=\"${JASPERENGINE_EDITOR_VERSION}\"")
+endif()
 
 if(EMSCRIPTEN AND EMSCRIPTEN_THREAD_SUPPORT)
 	target_compile_options(jasperengine PRIVATE -pthread)
@@ -1148,10 +2111,52 @@ target_link_libraries(
 
     PUBLIC
 
-    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
-    dav1d opus webm
+    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg
+    ${JASPERENGINE_HTMLUI_LIBS} ${JASPERENGINE_VIDEO_LIBS} zstd_decompress
     ${JASPERENGINE_PHYSICS_LIBS}
 )
+if(JASPERENGINE_NAVIGATION)
+    target_link_libraries(jasperengine PRIVATE recastnavigation)
+endif()
+if(JASPERENGINE_BASIS_TRANSCODER)
+    target_link_libraries(jasperengine PUBLIC basisu_transcoder)
+    target_compile_definitions(jasperengine PUBLIC JASPERENGINE_BASIS_TRANSCODER)
+endif()
+# the Animator's pose kernels (docs/specs/S21-animation.md R17): SIMD and scalar give the same
+# bits only without floating-point contraction; WebAssembly builds the kernels (AnimatorPose.cpp
+# only: the others include Jolt, whose SSE detection simd128 would trip) with simd128 like the
+# particle kernels (JASPERENGINE_WASM_SIMD)
+set(JASPERENGINE_ANIMATOR_SRCS core/animation/AnimatorPose.cpp core/animation/AnimatorIK.cpp core/animation/AnimatorInstance.cpp)
+if(MSVC)
+    set(JASPERENGINE_ANIMATOR_FLAGS /fp:precise)
+else()
+    set(JASPERENGINE_ANIMATOR_FLAGS -ffp-contract=off)
+endif()
+set_source_files_properties(${JASPERENGINE_ANIMATOR_SRCS} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
+if(EMSCRIPTEN)
+    if(JASPERENGINE_WASM_SIMD)
+        set_source_files_properties(core/animation/AnimatorPose.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS};-msimd128")
+    else()
+        set_source_files_properties(core/animation/AnimatorPose.cpp PROPERTIES COMPILE_DEFINITIONS JASPERENGINE_SIMD_DISABLE)
+    endif()
+endif()
+jasperengine_skip_unity_build(
+    REASON "the Animator's pose kernels: no floating-point contraction, per unit"
+    SOURCES ${JASPERENGINE_ANIMATOR_SRCS})
+
+# the mip chain and the import processing: no fused multiply-adds, so the levels (and the cook
+# cache keys built on them) are the same bytes on every CPU, like stb_image_resize2's
+if(NOT MSVC)
+    set_source_files_properties(core/texture/MipChain.cpp core/texture/TexturePrepare.cpp
+        PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+# the cooked-texture runtime the web downloads, optimised for size there like the Basis
+# transcoder (spec S14 R21): its hot loops are the transcoder's and Zstandard's
+if(EMSCRIPTEN)
+    set_source_files_properties(core/texture/Ktx2.cpp core/texture/TextureDecode.cpp core/texture/TextureFallback.cpp
+        core/texture/TextureFormat.cpp core/texture/CookedTextures.cpp core/texture/BasisTranscode.cpp
+        PROPERTIES COMPILE_OPTIONS "-Os")
+endif()
 
 # The manifests of the library shaders (shaderlib/library/), embedded in every build: a
 # game reads their properties, textures and render state even without the runtime
@@ -1200,25 +2205,6 @@ if(JASPERENGINE_RUNTIME_SHADERS)
     target_link_libraries(jasperengine PRIVATE shadercompiler)
 endif()
 
-# Checked after the marker above, so the value the Exporter injects is validated too
-if(NOT JASPERENGINE_CXX_STANDARD IN_LIST JASPERENGINE_CXX_STANDARDS)
-    string(REPLACE ";" ", " JASPERENGINE_CXX_STANDARDS_TEXT "${JASPERENGINE_CXX_STANDARDS}")
-    message(FATAL_ERROR "JASPERENGINE_CXX_STANDARD must be one of: ${JASPERENGINE_CXX_STANDARDS_TEXT} (got '${JASPERENGINE_CXX_STANDARD}')")
-endif()
-message(STATUS "C++ standard is set to ${JASPERENGINE_CXX_STANDARD}")
-
-# tinygltf shares STL containers with the engine; libc++ template definitions
-# must use the same C++ standard on both sides of that boundary.
-set_target_properties(tinygltf PROPERTIES
-    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
-    CXX_STANDARD_REQUIRED ON
-)
-# Same for RmlUi: Rml::String and Rml::Vector are std types crossing into engine code
-set_target_properties(rmlui PROPERTIES
-    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
-    CXX_STANDARD_REQUIRED ON
-)
-
 set_target_properties(
     jasperengine
 
@@ -1252,6 +2238,9 @@ if(JASPERENGINE_SHARED)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblexbor.a")
         # the <video> decoders (hidden visibility too: dav1d_*, opus_*, mkvparser::)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,libdav1d.a:libopus.a:libwebm.a")
+        # the texture decoders (hidden visibility too: ZSTD_*, basist::); the editor links its own
+        # zstd and basisu encoder
+        target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,libzstd_decompress.a:libbasisu_transcoder.a")
         # and what engine code instantiates over RmlUi types (see the script; ELF only)
         if(NOT WIN32)
             target_link_options(jasperengine PRIVATE "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/libs/rmlui/hidden-symbols.map")
@@ -1267,6 +2256,14 @@ endif()
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     file(GLOB_RECURSE PROJECT_SOURCE ${PROJECT_ROOT}/*.cpp)
+    # the native plugins' platform folders belong to Gradle / Xcode (and the macOS block the
+    # export adds); plugins/native/cpp ships as a script root under scripts/
+    foreach(native_source IN LISTS PROJECT_SOURCE)
+        string(FIND "${native_source}" "${PROJECT_ROOT}/plugins/native/" native_at)
+        if(native_at EQUAL 0)
+            list(REMOVE_ITEM PROJECT_SOURCE "${native_source}")
+        endif()
+    endforeach()
 
     # Embed the exported icon into the Windows executable (Explorer, taskbar
     # and window icon). Other platforms set the window icon at runtime instead.
@@ -1280,7 +2277,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         ${PLATFORM_RESOURCES}
     )
 
-    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    if(JASPERENGINE_PLAYER AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # the prebuilt iOS player is a static library, main() included, that the runtime's Xcode
+        # template links (tools/players/ios_player.sh makes JasperEnginePlayer.xcframework of it)
+        add_library(
+            ${APP_NAME}
+            STATIC
+            ${all_code_files}
+        )
+    elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
         add_executable(
             ${APP_NAME}
             ${PLATFORM_EXEC_FLAGS}
@@ -1294,10 +2299,58 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         )
     endif()
 
+    if(JASPERENGINE_PLAYER AND EMSCRIPTEN)
+        # the web runtime ships both builds side by side (R15): their .js name their own .wasm
+        if(EMSCRIPTEN_THREAD_SUPPORT)
+            set_target_properties(${APP_NAME} PROPERTIES OUTPUT_NAME jasperengine-player-mt)
+        else()
+            set_target_properties(${APP_NAME} PROPERTIES OUTPUT_NAME jasperengine-player-st)
+        endif()
+    endif()
+
     if(WIN32)
         include(${JASPERENGINE_ROOT}/platform/win/WindowsManifest.cmake)
         jasperengine_add_windows_manifest(${APP_NAME})
     endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        jasperengine_skip_unity_build(
+            REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
+            SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+                    ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
+    endif()
+    # the shipped binary stripped, its debug information in symbols/ (JASPERENGINE_SPLIT_SYMBOLS)
+    get_target_property(jasperengineAppType ${APP_NAME} TYPE)
+    if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID AND jasperengineAppType STREQUAL "EXECUTABLE")
+        set(jasperengineSymbols "${CMAKE_BINARY_DIR}/symbols")
+        if(MSVC)
+            set_target_properties(${APP_NAME} PROPERTIES PDB_OUTPUT_DIRECTORY "${jasperengineSymbols}")
+        elseif(APPLE)
+            add_custom_command(TARGET ${APP_NAME} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${jasperengineSymbols}"
+                COMMAND dsymutil "$<TARGET_FILE:${APP_NAME}>" -o "${jasperengineSymbols}/$<TARGET_FILE_NAME:${APP_NAME}>.dSYM"
+                COMMAND strip -S -x "$<TARGET_FILE:${APP_NAME}>"
+                COMMENT "Splitting the symbols of ${APP_NAME} into symbols/"
+                VERBATIM)
+        elseif(CMAKE_OBJCOPY AND CMAKE_STRIP)
+            set(jasperengineDebug "${jasperengineSymbols}/$<TARGET_FILE_NAME:${APP_NAME}>.debug")
+            add_custom_command(TARGET ${APP_NAME} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${jasperengineSymbols}"
+                COMMAND "${CMAKE_OBJCOPY}" --only-keep-debug "$<TARGET_FILE:${APP_NAME}>" "${jasperengineDebug}"
+                COMMAND "${CMAKE_STRIP}" --strip-debug --strip-unneeded "$<TARGET_FILE:${APP_NAME}>"
+                COMMAND "${CMAKE_OBJCOPY}" "--add-gnu-debuglink=${jasperengineDebug}" "$<TARGET_FILE:${APP_NAME}>"
+                COMMENT "Splitting the symbols of ${APP_NAME} into symbols/"
+                VERBATIM)
+        else()
+            message(WARNING "JASPERENGINE_SPLIT_SYMBOLS: no objcopy and strip, ${APP_NAME} keeps its symbols")
+        endif()
+    endif()
+
+    jasperengine_target_warnings(${APP_NAME})
+    jasperengine_target_unity_build(${APP_NAME})
+    jasperengine_target_pch(${APP_NAME})
+    # the project's runtime settings (above), for its platform main and its own sources
+    target_compile_definitions(${APP_NAME} PRIVATE ${JASPERENGINE_APP_DEFINITIONS})
+    jasperengine_stage_asan_runtime(${APP_NAME})
 
     # Project script roots are injected here by the editor Exporter. They are
     # scoped to this target: include_directories() would reach the jasperengine
@@ -1309,10 +2362,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     if(DEFINED ASSETS_DEST_DIR)
+        # a native build keeps the cooked texture family its platform loads (S14 R9)
+        set(JE_COOKED_DROP)
+        foreach(family mobile android_etc2 web)
+            list(APPEND JE_COOKED_DROP COMMAND "${CMAKE_COMMAND}" -E remove_directory ${ASSETS_DEST_DIR}/je-cooked/${family})
+        endforeach()
         add_custom_command(
             TARGET ${APP_NAME} POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E remove_directory ${ASSETS_DEST_DIR}
             COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PROJECT_ROOT}/assets ${ASSETS_DEST_DIR}
+            ${JE_COOKED_DROP}
         )
         install(DIRECTORY ${ASSETS_DEST_DIR} DESTINATION bin)
     endif()
@@ -1351,6 +2410,23 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         OBJCXX_STANDARD_REQUIRED ON
     )
 
+    # emcc packs project/assets and project/lua into the .data file at link time
+    # (--preload-file), which ninja does not see: list them as link inputs so an
+    # edited script or asset relinks instead of shipping the previous bundle (appended after
+    # PLATFORM_PROPERTIES, whose LINK_DEPENDS of the crash pre-js would replace them)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        set(EM_PRELOAD_DEPENDS)
+        foreach(preloadDir assets lua)
+            if(EXISTS "${PROJECT_ROOT}/${preloadDir}")
+                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${PROJECT_ROOT}/${preloadDir}/*")
+                list(APPEND EM_PRELOAD_DEPENDS ${preloadFiles})
+            endif()
+        endforeach()
+        if(EM_PRELOAD_DEPENDS)
+            set_property(TARGET ${APP_NAME} APPEND PROPERTY LINK_DEPENDS ${EM_PRELOAD_DEPENDS})
+        endif()
+    endif()
+
     # Generated sources embed UTF-8 literals and carry no BOM, so MSVC would
     # otherwise decode them in the active code page.
     target_compile_options(
@@ -1380,10 +2456,22 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
 endif() # End standalone executable build
 
+# googletest targets of the standalone engine tree (engine/cmake/JasperTesting.cmake)
+if((JASPERENGINE_HTMLUI_TESTS OR JASPERENGINE_TESTS) AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperTesting.cmake)
+endif()
 if(JASPERENGINE_HTMLUI_TESTS)
     add_subdirectory(tests/htmlui)
 endif()
-
-if(JASPERENGINE_LATTICE_TESTS)
-    add_subdirectory(tests/lattice)
+if(JASPERENGINE_TESTS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_subdirectory(tests/core)
 endif()
+
+if(JASPERENGINE_ECS_BENCH)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../tools/performance/EcsBench.cmake)
+endif()
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    jasperengine_check_cxx_standards()
+endif()
+

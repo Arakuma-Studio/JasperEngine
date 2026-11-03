@@ -9,6 +9,8 @@
 // SceneSettings.cpp shows up here without code.
 
 #include "InspectorWindow.h"
+#include "widget/ColorPickerWindow.h"
+#include "log/LogFormatCheck.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -76,9 +78,11 @@ namespace {
                 {"Color Grading", "color_grading_enabled",
                  {{"temperature", "Temperature"}, {"tint", "Tint"}, {"contrast", "Contrast"}, {"saturation", "Saturation"},
                   {"lift", "Lift"}, {"gamma", "Gamma"}, {"gain", "Gain"}, {"lut_texture", "LUT Texture"},
-                  {"lut_contribution", "LUT Contribution"}, {"lut_size", "LUT Size"}},
-                 "White balance, contrast, lift/gamma/gain, saturation and an optional LUT strip (an N*N x N image, "
-                 "Unity's layout), baked with the curve into one small colour LUT whenever a value changes.",
+                  {"lut_input_encoding", "LUT Input Encoding"}, {"lut_contribution", "LUT Contribution"}, {"lut_size", "LUT Size"}},
+                 "White balance, contrast, lift/gamma/gain, saturation and an optional LUT: an image strip (N*N x N, "
+                 "Unity's layout) or a .cube file (1D, 3D or both, from Resolve and other grading tools), baked with the "
+                 "curve into one small colour LUT whenever a value changes (no GPU cost). A .cube in a log encoding applies "
+                 "before the tone mapping; prefer LUT Size 32 with a .cube.",
                  [](PostProcessingSettings& s) { s.colorGradingEnabled = true; s.contrast = 1.2f; }, nullptr},
                 {"Monochrome", "monochrome_enabled", {{"monochrome_mode", "Mode"}, {"monochrome_intensity", "Intensity"}},
                  "Grayscale or sepia, baked into the colour LUT (free once any colour effect is on).",
@@ -98,9 +102,21 @@ namespace {
                  "stays antialiased where the shift is under a pixel; a stronger fringe at the edges is a shifted "
                  "copy, not antialiased again.",
                  [](PostProcessingSettings& s) { s.chromaticAberrationEnabled = true; }, nullptr},
-                {"Film Grain", "film_grain_enabled", {{"film_grain_intensity", "Intensity"}, {"film_grain_response", "Response"}},
-                 "Animated noise, weaker in bright areas (Response).",
+                {"Film Grain", "film_grain_enabled",
+                 {{"film_grain_type", "Type"}, {"film_grain_intensity", "Intensity"}, {"film_grain_response", "Response"},
+                  {"film_grain_size", "Size"}, {"film_grain_colored", "Colored"}, {"film_frame_rate", "Frame Rate"}},
+                 "Animated noise, weaker in bright areas (Response). Classic: a new hash per pixel and frame. Lens: "
+                 "FidelityFX Lens-style cells of Size pixels. Filmic: a 5x5 lattice of soft grains (desktop / high-end; "
+                 "Colored grains per channel). Lens and Filmic change once per film frame (Frame Rate) and never push a "
+                 "pixel past black or white.",
                  [](PostProcessingSettings& s) { s.filmGrainEnabled = true; }, nullptr},
+                {"Halation", "halation_enabled",
+                 {{"halation_intensity", "Intensity"}, {"halation_threshold", "Threshold"}, {"halation_radius", "Radius"},
+                  {"halation_tint", "Tint"}},
+                 "The red-orange glow film shows around bright highlights (light scattered back through the film base). "
+                 "With Bloom on it reuses bloom's chain (no pass, bloom's Threshold); without, two small passes. LDR like "
+                 "bloom: a white wall halates too.",
+                 [](PostProcessingSettings& s) { s.halationEnabled = true; }, nullptr},
             }},
             {"Anti-aliasing", {
                 {"FXAA", "fxaa_enabled", {},
@@ -134,6 +150,22 @@ namespace {
                 {"Sharpen", "sharpen_enabled", {{"sharpen_intensity", "Intensity"}},
                  "Crisper detail (shares FXAA's taps); pairs well with a render scale below 1.",
                  [](PostProcessingSettings& s) { s.sharpenEnabled = true; }, nullptr},
+                {"VHS", "vhs_enabled",
+                 {{"vhs_intensity", "Intensity"}, {"vhs_wobble", "Wobble"}, {"vhs_tracking", "Tracking"},
+                  {"vhs_color_bleed", "Color Bleed"}, {"vhs_tape_noise", "Tape Noise"}, {"vhs_chroma_streaks", "Chroma Streaks"},
+                  {"vhs_dropouts", "Dropouts"}, {"vhs_scanlines", "Scanlines"}, {"vhs_interference", "Interference"},
+                  {"vhs_glitches", "Glitches"}, {"vhs_speed", "Speed"}},
+                 "A played video tape: colour bleed and trails of its narrow chroma, line wobble, tracking bands, tape "
+                 "noise, chroma streaks, dropouts, interference, glitches and scanlines. It replaces the scene tap (9 "
+                 "taps), so FXAA and Sharpen do not run with it.",
+                 [](PostProcessingSettings& s) { s.vhsEnabled = true; }, nullptr},
+                {"Film Damage", "film_damage_enabled",
+                 {{"film_damage_intensity", "Intensity"}, {"film_hair_amount", "Hairs"}, {"film_scratch_amount", "Scratches"},
+                  {"film_dust_amount", "Dust"}, {"film_dust_size", "Dust Size"}, {"film_gate_weave", "Gate Weave"},
+                  {"film_gate_mask", "Gate Mask"}, {"film_gate_mask_feather", "Gate Mask Feather"}, {"film_frame_rate", "Frame Rate"}},
+                 "A projected film print: hairs, scratches and dust (up to 8 of each per film frame), the gate's weave "
+                 "and its frame (Academy 1.37, widescreen 1.85, anamorphic 2.39 or rounded corners).",
+                 [](PostProcessingSettings& s) { s.filmDamageEnabled = true; }, nullptr},
             }},
             {"Bloom", {
                 {"Bloom", "bloom_enabled",
@@ -158,6 +190,13 @@ namespace {
                  "by a layer scene stays at full resolution. Point sprites keep their size in pixels of the scaled "
                  "image (larger on screen), as with fixed resolution.",
                  [](PostProcessingSettings& s) { s.renderScale = 0.75f; }, nullptr},
+                {"Dynamic Resolution", "dynamic_resolution_enabled",
+                 {{"dynamic_resolution_min_scale", "Min Scale"}, {"dynamic_resolution_target_fps", "Target FPS"}},
+                 "In Play and in the exported game, the render scale moves between Min Scale and Render Scale to hold the "
+                 "Target FPS (0: 60): it drops quickly on missed frames and probes upward slowly. Without GPU timing it "
+                 "reads the frame period, so it cannot help a CPU-bound game. Never in edit mode; off with Fixed Resolution. "
+                 "Each change resizes the scene targets (a step of 0.05, at most twice a second).",
+                 [](PostProcessingSettings& s) { s.dynamicResolutionEnabled = true; }, nullptr},
             }},
         };
         return table;
@@ -189,6 +228,7 @@ namespace {
             case FT::Float: return std::fabs(fieldValue<float>(settings, f) - fieldValue<float>(defaults, f)) <= 1e-5f;
             case FT::Vector3: return fieldValue<Vector3>(settings, f) == fieldValue<Vector3>(defaults, f);
             case FT::String: return fieldValue<std::string>(settings, f) == fieldValue<std::string>(defaults, f);
+            case FT::Asset: return fieldValue<AssetRef>(settings, f).path == fieldValue<AssetRef>(defaults, f).path;
         }
         return true;
     }
@@ -202,6 +242,7 @@ namespace {
             case FT::Float: fieldValue<float>(settings, f) = fieldValue<float>(defaults, f); break;
             case FT::Vector3: fieldValue<Vector3>(settings, f) = fieldValue<Vector3>(defaults, f); break;
             case FT::String: fieldValue<std::string>(settings, f) = fieldValue<std::string>(defaults, f); break;
+            case FT::Asset: fieldValue<AssetRef>(settings, f) = fieldValue<AssetRef>(defaults, f); break;
         }
     }
 
@@ -249,13 +290,21 @@ namespace {
             if (name == "aces") return "ACES";
             if (name == "agx") return "AgX";
             if (name == "neutral") return "Neutral (Khronos PBR)";
+        } else if (std::strcmp(f.enumType, "LutInputEncoding") == 0) {
+            return editor::getLutInputEncodingName((LutInputEncoding)index);
+        } else if (std::strcmp(f.enumType, "FilmGateMask") == 0) {
+            if (name == "academy_137") return "Academy (1.37)";
+            if (name == "widescreen_185") return "Widescreen (1.85)";
+            if (name == "anamorphic_239") return "Anamorphic (2.39)";
+        } else if (std::strcmp(f.enumType, "FilmGrainType") == 0) {
+            if (name == "filmic") return "Filmic (desktop / high-end)";
         }
         std::string label = name;
         if (!label.empty()) label[0] = (char)std::toupper((unsigned char)label[0]);
         return label;
     }
 
-    void wrappedTooltip(const std::string& text) {
+    void postProcessingWrappedTooltip(const std::string& text) {
         ImGui::BeginTooltip();
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
         ImGui::TextUnformatted(text.c_str());
@@ -263,7 +312,7 @@ namespace {
         ImGui::EndTooltip();
     }
 
-    std::string formatFloat(float value, const char* format = "%.2f") {
+    JE_PRINTF_FORMAT(2, 0) std::string formatFloat(float value, const char* format = "%.2f") {
         char text[32];
         std::snprintf(text, sizeof(text), format, value);
         return text;
@@ -291,6 +340,12 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
     const std::string property = std::string("post_processing.") + f.snakeName;
     const std::string id = "##pp_" + std::string(f.snakeName);
 
+    // rows that apply only with some values, and rows inactive because of another effect
+    const PostProcessingRowState state = getPostProcessingRowState(
+        settings, f.snakeName, Catalog::getSceneProperty<bool>(sceneProject->scene, "fixed_resolution_enabled"));
+    if (!state.shown)
+        return;
+
     ImGui::PushID(f.snakeName);
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
@@ -298,7 +353,8 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(label);
     if (ImGui::IsItemHovered())
-        wrappedTooltip(std::string(f.help) + (help.empty() ? std::string() : "\n\n" + help));
+        postProcessingWrappedTooltip(std::string(f.help) + (help.empty() ? std::string() : "\n\n" + help) +
+                                     (state.inactiveReason.empty() ? std::string() : "\n\n" + state.inactiveReason));
     if (!fieldIsDefault(settings, f)) {
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
         ImGui::SameLine();
@@ -320,6 +376,9 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
 
     ImGui::TableSetColumnIndex(1);
     ImGui::SetNextItemWidth(-1);
+    // still editable (the value is kept), greyed with the reason
+    if (!state.inactiveReason.empty())
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * ImGui::GetStyle().DisabledAlpha);
 
     // a changed value: one command, merged while the widget is held (cmd: the inspector's
     // pending command, closed below when the widget is released)
@@ -374,7 +433,13 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
             const bool colour = snake.find("color") != std::string::npos || snake.find("tint") != std::string::npos;
             bool changed;
             if (colour) {
-                changed = ImGui::ColorEdit3(id.c_str(), (float*)&value.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+                ui::ColorFieldOptions colorOptions;
+                colorOptions.alpha = false;
+                colorOptions.linearStorage = false;
+                colorOptions.label = label;
+                const ui::EditPhase phase = ui::colorField(id.c_str(), value, colorOptions);
+                if (phase == ui::EditPhase::Begin) ui::ColorPickerWindow::beginEdit(CommandHandle::get(sceneId), label);
+                changed = phase == ui::EditPhase::Changing;
             } else {
                 changed = ImGui::DragFloat3(id.c_str(), (float*)&value.x, 0.005f, f.minValue, f.maxValue, "%.3f");
             }
@@ -394,11 +459,22 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
                 }
                 ImGui::EndCombo();
             }
+            if (std::strcmp(f.name, "lutInputEncoding") == 0) {
+                // what the .cube's encoding resolves to (Auto: the proposal from its title and range)
+                const std::shared_ptr<const CubeLut> lut = getCachedColorLut(settings.lutTexture);
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextDisabled("%s", describeLutInputEncoding(settings.lutInputEncoding, lut.get(),
+                                                                   getCachedColorLutError(settings.lutTexture)).c_str());
+                ImGui::PopTextWrapPos();
+            }
             break;
         }
-        case FT::String: {
-            // a project image (the LUT strip): drop one, pick one, or clear
-            const std::string current = fieldValue<std::string>(settings, f);
+        case FT::String:
+        case FT::Asset: {
+            // a project image (the LUT strip): drop one, pick one, or clear. An Asset field is set
+            // by its path (ScenePropertyCmd<std::string>), which drops a GUID it no longer names
+            const std::string current = f.type == FT::Asset ? fieldValue<AssetRef>(settings, f).path
+                                                            : fieldValue<std::string>(settings, f);
             auto assign = [&](const std::string& absolutePath) {
                 if (!project->isInsideAssetsPath(absolutePath)) {
                     Backend::getApp().registerOutsideAssetsAlert(absolutePath);
@@ -415,22 +491,23 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
             ImGui::Button((shown + "##slot").c_str(), ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x - buttons), 0));
             ImGui::PopStyleColor();
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s%sDrop an image here", current.c_str(), current.empty() ? "" : "\n");
+                ImGui::SetTooltip("%s%sDrop an image strip or a .cube file here", current.c_str(), current.empty() ? "" : "\n");
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
                     std::vector<std::string> received = editor::Util::getStringsFromPayload(payload);
-                    if (!received.empty() && editor::Util::isImageFile(received[0]))
+                    if (!received.empty() && (editor::Util::isImageFile(received[0]) || editor::Util::isColorLutFile(received[0])))
                         assign(received[0]);
                 }
                 ImGui::EndDragDropTarget();
             }
             ImGui::SameLine();
             if (ImGui::Button(ICON_FA_FOLDER_OPEN "##pick")) {
-                const std::string selected = FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_IMAGE);
+                const std::string selected = FileDialogs::openFileDialog(project->getAssetsPath().string(),
+                                                                         FILE_DIALOG_IMAGE | FILE_DIALOG_COLOR_LUT);
                 if (!selected.empty())
                     assign(selected);
             }
-            ImGui::SetItemTooltip("Pick an image");
+            ImGui::SetItemTooltip("Pick an image strip or a .cube LUT");
             if (!current.empty()) {
                 ImGui::SameLine();
                 if (ImGui::Button(ICON_FA_XMARK "##clear"))
@@ -439,6 +516,11 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
             }
             break;
         }
+    }
+    if (!state.inactiveReason.empty()) {
+        ImGui::PopStyleVar();
+        if (ImGui::IsItemHovered())
+            postProcessingWrappedTooltip(state.inactiveReason);
     }
 
     if (ImGui::IsItemDeactivatedAfterEdit() && cmd) {
@@ -469,7 +551,7 @@ void editor::InspectorWindow::drawPostProcessingCost(SceneProject* sceneProject,
 
         auto sideTooltip = [](const char* who, const PostProcessingCostSide& side) {
             if (ImGui::IsItemHovered())
-                wrappedTooltip(std::string(who) + ":" + passListText(side));
+                postProcessingWrappedTooltip(std::string(who) + ":" + passListText(side));
         };
         auto row = [&](const char* label, const std::string& engineText, const std::string& urpText) {
             ImGui::TableNextRow();
@@ -511,6 +593,18 @@ void editor::InspectorWindow::drawPostProcessingCost(SceneProject* sceneProject,
                                   "JASPERENGINE_READY_SIGNAL=1 and JASPERENGINE_FRAME_STATS=all to log the measured pass "
                                   "list of every frame once loaded (=1: three frames); in the editor each extra view "
                                   "(the Scene view while playing) logs its own line.");
+            // the scale dynamic resolution applies and what it reads (S13 R16)
+            std::vector<std::string> warnings;
+            const std::string dynamic = describeDynamicResolution(render->getDynamicResolutionStatus(), warnings);
+            if (!dynamic.empty()) {
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_PLAY " %s", dynamic.c_str());
+                for (const std::string& warning : warnings)
+                    ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s", warning.c_str());
+                ImGui::PopTextWrapPos();
+                ImGui::SetItemTooltip("GPU: the GPU frame time drives it. Frame law (no GPU timing on this backend): it drops on "
+                                      "missed frames and probes one step up after a while without one.");
+            }
         }
     }
 
@@ -521,9 +615,9 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
     const uint32_t sceneId = sceneProject->id;
     const PostProcessingSettings settings = Catalog::getSceneProperty<PostProcessingSettings>(sceneProject->scene, "post_processing");
 
-    auto setAll = [&](const PostProcessingSettings& value) {
-        CommandHandle::get(sceneId)->addCommandNoMerge(
-            new ScenePropertyCmd<PostProcessingSettings>(project, sceneId, "post_processing", value));
+    // the whole struct in one undo step, named for the history ("Apply Film Preset (Main)")
+    auto setAll = [&](const PostProcessingSettings& value, const std::string& label) {
+        CommandHandle::get(sceneId)->addCommandNoMerge(makePostProcessingCommand(project, sceneId, value, label));
     };
 
     ImGui::PushTextWrapPos(0.0f);
@@ -541,10 +635,10 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
         if (ImGui::BeginCombo("##pp_preset", matched ? matched->name.c_str() : "Custom")) {
             for (const PostProcessingPreset& preset : getPostProcessingPresets()) {
                 if (ImGui::Selectable(preset.name.c_str(), matched == &preset) && matched != &preset)
-                    setAll(preset.settings);
+                    setAll(preset.settings, "Apply " + preset.name + " Preset");
                 if (ImGui::IsItemHovered()) {
                     const PostProcessingCost cost = estimatePostProcessingCost(preset.settings, {}, false);
-                    wrappedTooltip(preset.description + "\n\nEstimate: " + std::to_string(cost.engine.passCount) + " passes, " +
+                    postProcessingWrappedTooltip(preset.description + "\n\nEstimate: " + std::to_string(cost.engine.passCount) + " passes, " +
                                    formatFloat(cost.engine.fullscreen) + " screens shaded (Unity URP: " +
                                    std::to_string(cost.urp.passCount) + " passes, " + formatFloat(cost.urp.fullscreen) + ").");
                 }
@@ -583,13 +677,13 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
                 PostProcessingSettings changed = settings;
                 for (const EffectDef& effect : group.effects)
                     setEffect(changed, effect, on == 0);
-                setAll(changed);
+                setAll(changed, std::string(on == 0 ? "Turn On " : "Turn Off ") + group.name);
             }
             if (mixed) ImGui::PopItemFlag();
             // a group of one effect (Bloom, Blur): its checkbox is the effect's, with its help
             const bool single = group.effects.size() == 1;
             if (ImGui::IsItemHovered()) {
-                if (single) wrappedTooltip(std::string(group.effects[0].help) + "\n\nCost: " + tierText(group.effects[0]));
+                if (single) postProcessingWrappedTooltip(std::string(group.effects[0].help) + "\n\nCost: " + tierText(group.effects[0]));
                 else ImGui::SetTooltip(on > 0 ? "Turn every %s effect off" : "Turn every %s effect on", group.name);
             }
             ImGui::SameLine();
@@ -630,12 +724,22 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
                             project, sceneId, std::string("post_processing.") + enable.snakeName, value));
                     }
                     if (ImGui::IsItemHovered())
-                        wrappedTooltip(help);
+                        postProcessingWrappedTooltip(help);
                     ImGui::TableSetColumnIndex(1);
                     ImGui::AlignTextToFramePadding();
-                    ImGui::TextDisabled("%s", tierTag(effect));
-                    if (ImGui::IsItemHovered())
-                        wrappedTooltip(help);
+                    // an effect another one turns off (FXAA and Sharpen with VHS, Dynamic Resolution
+                    // with Fixed Resolution) says so instead of its tier
+                    const PostProcessingRowState state = getPostProcessingRowState(
+                        settings, enable.snakeName, Catalog::getSceneProperty<bool>(sceneProject->scene, "fixed_resolution_enabled"));
+                    if (state.inactiveReason.empty()) {
+                        ImGui::TextDisabled("%s", tierTag(effect));
+                        if (ImGui::IsItemHovered())
+                            postProcessingWrappedTooltip(help);
+                    } else {
+                        ImGui::TextColored(Theme::Colors::WarningText, "%s", state.inactiveTag.c_str());
+                        if (ImGui::IsItemHovered())
+                            postProcessingWrappedTooltip(state.inactiveReason);
+                    }
                     if (isOn) {
                         for (const ParamDef& param : effect.params) {
                             drawn.insert(param.field);
@@ -722,7 +826,7 @@ void editor::InspectorWindow::drawPostProcessPassFields(SceneProject* sceneProje
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(def.label);
         if (ImGui::IsItemHovered())
-            wrappedTooltip(def.help);
+            postProcessingWrappedTooltip(def.help);
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         switch (def.kind) {
@@ -786,7 +890,7 @@ void editor::InspectorWindow::drawPostProcessPassFields(SceneProject* sceneProje
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(slot.second.c_str());
         if (ImGui::IsItemHovered())
-            wrappedTooltip("Texture " + slot.first + " of the pass's shader (unset: its default)");
+            postProcessingWrappedTooltip("Texture " + slot.first + " of the pass's shader (unset: its default)");
         ImGui::TableSetColumnIndex(1);
         const std::string path = pass.getTexture(slot.first);
         const std::string shown = path.empty() ? std::string("None") : std::filesystem::path(path).filename().string();

@@ -9,7 +9,12 @@
 //   eval_lua              run Lua in the game's Lua state, results as JSON
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
+#include "camera/ShakerRuntime.h"
+#include "object/physics/Joint3D.h"
+#include "object/physics/Rigidbody.h"
 #include "McpTools.h"
+
+#include "debug/DebugOverlay.h"
 #include "HtmlUiShared.h"
 #include "PlayViewCommon.h"
 
@@ -21,18 +26,40 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpValues.h"
+#include "subsystem/VideoPlayerSystem.h"
 
 #include "App.h"
 #include "Catalog.h"
 #include "Engine.h"
+#include "net/Http.h"
 #include "Input.h"
+#include "input/InputActions.h"
+#include "input/InputControlPath.h"
+#include "Platform.h"
+#include "audio/AudioMixer.h"
+#include "subsystem/AudioSystem.h"
 #include "Project.h"
+#include "Screen.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "component/ScriptComponent.h"
+#include "component/NavMeshAgentComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "object/physics/Joint2D.h"
+#include "object/physics/Rigidbody2D.h"
+#include "subsystem/PhysicsSystem.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptScheduler.h"
+#include "script/ScriptRuntime.h"
+#include "manager/SceneManager.h"
 #include "util/EntityPath.h"
+#include "util/PlatformRules.h"
+#include "window/DeviceProfiles.h"
+#include "window/GameWindow.h"
 #include "window/PlayInput.h"
 
 #include "lua.hpp"
@@ -134,8 +161,13 @@ struct HeldInput {
     std::set<int> gamepads;             // connected virtual gamepads
     std::map<int, std::set<int>> gamepadButtons;
     std::map<int, std::set<int>> gamepadAxes;
+    std::set<std::string> actions;      // Input Actions forced down (input_action down)
+    // the Input Manager's actions held and axes set through the "mcp" source (action / axis events)
+    std::set<std::string> managerActions;
+    std::map<std::string, float> axes;
     bool empty() const {
-        if (!keys.empty() || !mouseButtons.empty() || !touches.empty() || !gamepads.empty()) return false;
+        if (!keys.empty() || !mouseButtons.empty() || !touches.empty() || !gamepads.empty() || !actions.empty() ||
+            !managerActions.empty() || !axes.empty()) return false;
         for (const auto& [id, buttons] : gamepadButtons) if (!buttons.empty()) return false;
         return true;
     }
@@ -404,13 +436,13 @@ void ensureMonitor(McpContext& ctx) {
         static void run(McpContext* c) {
             observeSession(*c);
             if (monitorNeeded(*c)) {
-                c->app().enqueueMainThreadTask([c]() { run(c); });
+                c->app().enqueueMainThreadTask([c]() { McpWriteScope writeScope; run(c); });
             } else {
                 state().monitorScheduled = false;
             }
         }
     };
-    ctx.app().enqueueMainThreadTask([context]() { Tick::run(context); });
+    ctx.app().enqueueMainThreadTask([context]() { McpWriteScope writeScope; Tick::run(context); });
 }
 
 std::string playStateName(Project* project) {
@@ -453,6 +485,8 @@ Json runningScenesJson(Project* project) {
         const uint32_t source = project->getPlaySourceSceneId(sp->id);
         if (source != sp->id) item["source_scene_id"] = source;
         item["main"] = sp->id == project->getPlaySessionSceneId();
+        // DontDestroyOnLoad's scene: survives scene loads
+        if (project->isPersistentPlayScene(sp->id)) item["persistent"] = true;
         list.push_back(item);
     }
     return list;
@@ -460,131 +494,36 @@ Json runningScenesJson(Project* project) {
 
 // ================================================================== input
 
+// The control names are InputControlNames' (engine/core/input/InputControlPath.cpp), shared with
+// InputActions' control paths and get_input_state
 int parseKeyName(const Json& value) {
     if (value.is_number_integer()) return value.get<int>();
     if (!value.is_string()) return D_KEY_UNKNOWN;
-    std::string name = lowerCopy(value.get<std::string>());
-    if (name.size() == 1) {
-        const char c = name[0];
-        if (c >= 'a' && c <= 'z') return D_KEY_A + (c - 'a');
-        if (c >= '0' && c <= '9') return D_KEY_0 + (c - '0');
-        switch (c) {
-            case ' ': return D_KEY_SPACE;
-            case '\'': return D_KEY_APOSTROPHE;
-            case ',': return D_KEY_COMMA;
-            case '-': return D_KEY_MINUS;
-            case '.': return D_KEY_PERIOD;
-            case '/': return D_KEY_SLASH;
-            case ';': return D_KEY_SEMICOLON;
-            case '=': return D_KEY_EQUAL;
-            case '[': return D_KEY_LEFT_BRACKET;
-            case '\\': return D_KEY_BACKSLASH;
-            case ']': return D_KEY_RIGHT_BRACKET;
-            case '`': return D_KEY_GRAVE_ACCENT;
-            default: return D_KEY_UNKNOWN;
-        }
-    }
-    for (char& c : name) if (c == ' ' || c == '-') c = '_';
-    if (name.rfind("key_", 0) == 0) name = name.substr(4);
-    if (name.rfind("d_key_", 0) == 0) name = name.substr(6);
-    static const std::map<std::string, int> keys = {
-        {"space", D_KEY_SPACE}, {"spacebar", D_KEY_SPACE},
-        {"apostrophe", D_KEY_APOSTROPHE}, {"comma", D_KEY_COMMA}, {"minus", D_KEY_MINUS}, {"period", D_KEY_PERIOD},
-        {"slash", D_KEY_SLASH}, {"semicolon", D_KEY_SEMICOLON}, {"equal", D_KEY_EQUAL}, {"equals", D_KEY_EQUAL},
-        {"left_bracket", D_KEY_LEFT_BRACKET}, {"backslash", D_KEY_BACKSLASH}, {"right_bracket", D_KEY_RIGHT_BRACKET},
-        {"grave_accent", D_KEY_GRAVE_ACCENT}, {"backquote", D_KEY_GRAVE_ACCENT},
-        {"escape", D_KEY_ESCAPE}, {"esc", D_KEY_ESCAPE}, {"enter", D_KEY_ENTER}, {"return", D_KEY_ENTER},
-        {"tab", D_KEY_TAB}, {"backspace", D_KEY_BACKSPACE}, {"insert", D_KEY_INSERT}, {"delete", D_KEY_DELETE},
-        {"del", D_KEY_DELETE},
-        {"right", D_KEY_RIGHT}, {"left", D_KEY_LEFT}, {"down", D_KEY_DOWN}, {"up", D_KEY_UP},
-        {"right_arrow", D_KEY_RIGHT}, {"left_arrow", D_KEY_LEFT}, {"down_arrow", D_KEY_DOWN}, {"up_arrow", D_KEY_UP},
-        {"arrow_right", D_KEY_RIGHT}, {"arrow_left", D_KEY_LEFT}, {"arrow_down", D_KEY_DOWN}, {"arrow_up", D_KEY_UP},
-        {"page_up", D_KEY_PAGE_UP}, {"pageup", D_KEY_PAGE_UP}, {"page_down", D_KEY_PAGE_DOWN}, {"pagedown", D_KEY_PAGE_DOWN},
-        {"home", D_KEY_HOME}, {"end", D_KEY_END},
-        {"caps_lock", D_KEY_CAPS_LOCK}, {"scroll_lock", D_KEY_SCROLL_LOCK}, {"num_lock", D_KEY_NUM_LOCK},
-        {"print_screen", D_KEY_PRINT_SCREEN}, {"pause", D_KEY_PAUSE},
-        {"kp_decimal", D_KEY_KP_DECIMAL}, {"kp_divide", D_KEY_KP_DIVIDE}, {"kp_multiply", D_KEY_KP_MULTIPLY},
-        {"kp_subtract", D_KEY_KP_SUBTRACT}, {"kp_add", D_KEY_KP_ADD}, {"kp_enter", D_KEY_KP_ENTER}, {"kp_equal", D_KEY_KP_EQUAL},
-        {"left_shift", D_KEY_LEFT_SHIFT}, {"shift", D_KEY_LEFT_SHIFT}, {"left_control", D_KEY_LEFT_CONTROL},
-        {"left_ctrl", D_KEY_LEFT_CONTROL}, {"control", D_KEY_LEFT_CONTROL}, {"ctrl", D_KEY_LEFT_CONTROL},
-        {"left_alt", D_KEY_LEFT_ALT}, {"alt", D_KEY_LEFT_ALT}, {"left_super", D_KEY_LEFT_SUPER}, {"super", D_KEY_LEFT_SUPER},
-        {"right_shift", D_KEY_RIGHT_SHIFT}, {"right_control", D_KEY_RIGHT_CONTROL}, {"right_ctrl", D_KEY_RIGHT_CONTROL},
-        {"right_alt", D_KEY_RIGHT_ALT}, {"right_super", D_KEY_RIGHT_SUPER}, {"menu", D_KEY_MENU}
-    };
-    auto it = keys.find(name);
-    if (it != keys.end()) return it->second;
-    if (name.size() >= 2 && name[0] == 'f' && std::all_of(name.begin() + 1, name.end(), ::isdigit)) {
-        const int n = std::stoi(name.substr(1));
-        if (n >= 1 && n <= 25) return D_KEY_F1 + n - 1;
-    }
-    if (name.rfind("kp_", 0) == 0 && name.size() == 4 && std::isdigit(static_cast<unsigned char>(name[3]))) {
-        return D_KEY_KP_0 + (name[3] - '0');
-    }
-    if (name.rfind("numpad", 0) == 0 && name.size() == 7 && std::isdigit(static_cast<unsigned char>(name[6]))) {
-        return D_KEY_KP_0 + (name[6] - '0');
-    }
-    return D_KEY_UNKNOWN;
+    return InputControlNames::parseKey(value.get<std::string>());
 }
 
 std::string keyName(int key) {
-    if (key >= D_KEY_A && key <= D_KEY_Z) return std::string(1, static_cast<char>('a' + key - D_KEY_A));
-    if (key >= D_KEY_0 && key <= D_KEY_9) return std::string(1, static_cast<char>('0' + key - D_KEY_0));
-    if (key >= D_KEY_F1 && key <= D_KEY_F25) return "f" + std::to_string(key - D_KEY_F1 + 1);
-    switch (key) {
-        case D_KEY_SPACE: return "space";
-        case D_KEY_ENTER: return "enter";
-        case D_KEY_ESCAPE: return "escape";
-        case D_KEY_TAB: return "tab";
-        case D_KEY_BACKSPACE: return "backspace";
-        case D_KEY_LEFT: return "left";
-        case D_KEY_RIGHT: return "right";
-        case D_KEY_UP: return "up";
-        case D_KEY_DOWN: return "down";
-        case D_KEY_LEFT_SHIFT: return "left_shift";
-        case D_KEY_LEFT_CONTROL: return "left_control";
-        case D_KEY_LEFT_ALT: return "left_alt";
-        default: return std::to_string(key);
-    }
+    return InputControlNames::keyName(key);
 }
 
 int parseMouseButton(const Json& value) {
     if (value.is_null()) return D_MOUSE_BUTTON_LEFT;
     if (value.is_number_integer()) return std::clamp(value.get<int>(), 0, D_MOUSE_BUTTON_LAST);
-    const std::string name = value.is_string() ? lowerCopy(value.get<std::string>()) : std::string();
-    if (name == "left" || name.empty()) return D_MOUSE_BUTTON_LEFT;
-    if (name == "right") return D_MOUSE_BUTTON_RIGHT;
-    if (name == "middle") return D_MOUSE_BUTTON_MIDDLE;
-    return -1;
+    const std::string name = value.is_string() ? value.get<std::string>() : std::string();
+    if (name.empty()) return D_MOUSE_BUTTON_LEFT;
+    return InputControlNames::parseMouseButton(name);
 }
 
 int parseGamepadButton(const Json& value) {
     if (value.is_number_integer()) return std::clamp(value.get<int>(), 0, D_GAMEPAD_BUTTON_LAST);
     if (!value.is_string()) return -1;
-    static const std::map<std::string, int> buttons = {
-        {"a", D_GAMEPAD_BUTTON_A}, {"b", D_GAMEPAD_BUTTON_B}, {"x", D_GAMEPAD_BUTTON_X}, {"y", D_GAMEPAD_BUTTON_Y},
-        {"cross", D_GAMEPAD_BUTTON_CROSS}, {"circle", D_GAMEPAD_BUTTON_CIRCLE}, {"square", D_GAMEPAD_BUTTON_SQUARE},
-        {"triangle", D_GAMEPAD_BUTTON_TRIANGLE}, {"left_bumper", D_GAMEPAD_BUTTON_LEFT_BUMPER}, {"lb", D_GAMEPAD_BUTTON_LEFT_BUMPER},
-        {"right_bumper", D_GAMEPAD_BUTTON_RIGHT_BUMPER}, {"rb", D_GAMEPAD_BUTTON_RIGHT_BUMPER},
-        {"back", D_GAMEPAD_BUTTON_BACK}, {"select", D_GAMEPAD_BUTTON_BACK}, {"start", D_GAMEPAD_BUTTON_START},
-        {"guide", D_GAMEPAD_BUTTON_GUIDE}, {"left_thumb", D_GAMEPAD_BUTTON_LEFT_THUMB}, {"ls", D_GAMEPAD_BUTTON_LEFT_THUMB},
-        {"right_thumb", D_GAMEPAD_BUTTON_RIGHT_THUMB}, {"rs", D_GAMEPAD_BUTTON_RIGHT_THUMB},
-        {"dpad_up", D_GAMEPAD_BUTTON_DPAD_UP}, {"dpad_right", D_GAMEPAD_BUTTON_DPAD_RIGHT},
-        {"dpad_down", D_GAMEPAD_BUTTON_DPAD_DOWN}, {"dpad_left", D_GAMEPAD_BUTTON_DPAD_LEFT}
-    };
-    auto it = buttons.find(lowerCopy(value.get<std::string>()));
-    return it == buttons.end() ? -1 : it->second;
+    return InputControlNames::parseGamepadButton(value.get<std::string>());
 }
 
 int parseGamepadAxis(const Json& value) {
     if (value.is_number_integer()) return std::clamp(value.get<int>(), 0, D_GAMEPAD_AXIS_LAST);
     if (!value.is_string()) return -1;
-    static const std::map<std::string, int> axes = {
-        {"left_x", D_GAMEPAD_AXIS_LEFT_X}, {"left_y", D_GAMEPAD_AXIS_LEFT_Y}, {"right_x", D_GAMEPAD_AXIS_RIGHT_X},
-        {"right_y", D_GAMEPAD_AXIS_RIGHT_Y}, {"left_trigger", D_GAMEPAD_AXIS_LEFT_TRIGGER}, {"lt", D_GAMEPAD_AXIS_LEFT_TRIGGER},
-        {"right_trigger", D_GAMEPAD_AXIS_RIGHT_TRIGGER}, {"rt", D_GAMEPAD_AXIS_RIGHT_TRIGGER}
-    };
-    auto it = axes.find(lowerCopy(value.get<std::string>()));
-    return it == axes.end() ? -1 : it->second;
+    return InputControlNames::parseGamepadAxis(value.get<std::string>());
 }
 
 int parseMods(const Json& value) {
@@ -607,6 +546,12 @@ Vector2 clampToView(Vector2 point) {
                    std::clamp(point.y, view.getY(), view.getY() + std::max(0.0f, view.getHeight())));
 }
 
+// the owner of what send_input's action / axis / axis_delta events give the input actions (a
+// virtual source, as an on-screen control; input_action forces an action with InputActions::inject)
+uintptr_t mcpInputSource() {
+    return InputActions::namedSource("mcp");
+}
+
 void releaseHeldInput(McpContext& ctx) {
     HeldInput& held = state().held;
     for (int key : held.keys) Engine::systemKeyUp(key, false, 0);
@@ -623,6 +568,9 @@ void releaseHeldInput(McpContext& ctx) {
         for (int axis : axes) Engine::systemGamepadAxisMove(pad, axis, 0.0f);
     }
     for (int pad : held.gamepads) Engine::systemGamepadDisconnect(pad);
+    for (const std::string& action : held.actions) InputActions::releaseInjected(action);
+    // the Input Manager's actions and axes it held (send_input action / axis / axis_delta)
+    InputActions::clearSource(mcpInputSource());
     held = HeldInput();
     if (PlayInput* input = ctx.playInput()) input->setPointerInjected(false);
 }
@@ -632,7 +580,7 @@ Json heldInputJson() {
     Json keys = Json::array();
     for (int key : held.keys) keys.push_back(keyName(key));
     Json buttons = Json::array();
-    for (int button : held.mouseButtons) buttons.push_back(button == 0 ? "left" : button == 1 ? "right" : button == 2 ? "middle" : std::to_string(button));
+    for (int button : held.mouseButtons) buttons.push_back(InputControlNames::mouseButtonName(button));
     Json touches = Json::array();
     for (const auto& [pointer, point] : held.touches) touches.push_back(pointer);
     Json pads = Json::array();
@@ -642,7 +590,48 @@ Json heldInputJson() {
         if (it != held.gamepadButtons.end()) for (int b : it->second) item["buttons"].push_back(b);
         pads.push_back(item);
     }
-    return {{"keys", keys}, {"mouse_buttons", buttons}, {"touches", touches}, {"gamepads", pads}};
+    Json actions = Json::array();
+    for (const std::string& action : held.actions) actions.push_back(action);
+    Json out = {{"keys", keys}, {"mouse_buttons", buttons}, {"touches", touches}, {"gamepads", pads}, {"input_actions", actions}};
+    if (!held.managerActions.empty()) out["actions"] = held.managerActions;
+    if (!held.axes.empty()) out["axes"] = held.axes;
+    return out;
+}
+
+// What the game's input reads now (get_play_state while playing): the Input Manager's view of
+// the actions that are not at rest (a value, or "pressed" for a button action), the touch count,
+// the keys held
+Json playInputJson() {
+    Json actions = Json::object();
+    for (const std::string& name : InputActions::getActionNames()) {
+        InputActions::State st;
+        const InputAction* action = InputActions::find(name);
+        if (!action || !InputActions::getState(name, st) || !st.enabled) continue;
+        if (action->getType() == InputActionType::BUTTON) {
+            if (st.pressed) actions[name] = "pressed";
+        } else if (std::fabs(st.value) >= 0.0005f) {
+            actions[name] = std::round(st.value * 1000.0f) / 1000.0f;
+        }
+    }
+    Json keys = Json::array();
+    for (int key = 0; key <= D_KEY_LAST && keys.size() < 16; key++) {
+        if (Input::isKeyPressed(key)) keys.push_back(keyName(key));
+    }
+    return {{"actions", actions}, {"touches", Input::getTouchCount()}, {"keys_held", keys}};
+}
+
+// What the game's audio does now (get_play_state while playing): the voices, and the mixer
+// groups that are audible (above -60 dB)
+Json playAudioJson() {
+    Json meters = Json::object();
+    for (const std::string& group : AudioMixer::getGroupNames()) {
+        const float db = AudioMixer::getMeterDb(group);
+        if (db > -60.0f) meters[group] = std::round(db * 10.0f) / 10.0f;
+    }
+    Json out = {{"voices", AudioSystem::getVoiceCount()}, {"mixer_meters", meters}};
+    if (!AudioSystem::isOutputAvailable()) out["output"] = "none (mixing without a device)";
+    if (AudioSystem::isListenerPaused()) out["listener_paused"] = true;
+    return out;
 }
 
 } // namespace
@@ -665,6 +654,60 @@ SceneProject* defaultPlayScene(Project* project) {
     return start && start->scene && start->opened ? start : gameViewScene(project);
 }
 
+// The game's HTTP requests (Http): counts of this Play, the simulated network, the last failures
+static Json httpJson() {
+    const Http::Stats stats = Http::getStats();
+    Json failures = Json::array();
+    for (const HttpResponse& failure : stats.lastFailures) {
+        failures.push_back({{"method", failure.method}, {"url", failure.url}, {"status", failure.status},
+                            {"error_code", failure.errorCode}, {"error", failure.error}});
+    }
+    return {{"active", stats.active}, {"queued", stats.queued}, {"finished", stats.finished}, {"failed", stats.failed},
+            {"cancelled", stats.cancelled}, {"offline", Http::isOfflineSimulated()}, {"last_failures", failures}};
+}
+
+// The platform side of the running game: lifecycle, frame pacing, orientation, the simulated
+// device and language, and what the game asked the system for (URLs, vibrations)
+Json platformJson() {
+    System& system = System::instance();
+    Json urls = Json::array();
+    for (const OpenedUrl& url : Platform::getOpenedUrls()) {
+        urls.push_back({{"url", url.url}, {"launched", url.launched},
+                        {"seconds_ago", std::round((Engine::getSystemTime() - url.time) * 10.0) / 10.0}});
+    }
+    const PlatformSimulation& simulation = Platform::getSimulation();
+    Json out = {
+        {"focused", Engine::isFocused()},
+        {"paused", Engine::isPaused()},
+        {"orientation", PlatformRules::orientationName(Screen::getOrientation())},
+        {"requested_orientation", PlatformRules::orientationName(Screen::getRequestedOrientation())},
+        {"target_frame_rate", Engine::getTargetFrameRate()},
+        {"vsync_count", Engine::getVSyncCount()},
+        {"language", system.getLocale()},
+        {"system_language", LocaleRules::systemLanguageName(system.getSystemLanguage())},
+        {"device", simulation.device ? Json(simulation.device->id) : Json()},
+        {"opened_urls", urls},
+        {"vibrations", Platform::getVibrationCount()},
+        {"haptics", Platform::getHapticCount()}
+    };
+    if (Platform::getOpenedUrlCount() > (int)urls.size()) out["opened_url_count"] = Platform::getOpenedUrlCount();
+    return out;
+}
+
+// Screen.safeArea as the game sees it (canvas units; stopped: for the project canvas, as the
+// Scene view lays UI out), the insets with extras, the extras, and the simulated device
+Json safeAreaJson() {
+    auto r = [](float v) { return std::round(v * 100.0f) / 100.0f; };
+    const Rect rect = Screen::getSafeArea();
+    const EdgeInsets insets = Screen::getSafeAreaInsets();
+    const EdgeInsets extra = Screen::getExtraInsets();
+    const PlatformSimulation& simulation = Platform::getSimulation();
+    return {{"rect", {r(rect.getX()), r(rect.getY()), r(rect.getWidth()), r(rect.getHeight())}},
+            {"insets", {r(insets.left), r(insets.top), r(insets.right), r(insets.bottom)}},
+            {"extra", {r(extra.left), r(extra.top), r(extra.right), r(extra.bottom)}},
+            {"device", simulation.device ? Json(simulation.device->id) : Json()}};
+}
+
 Json playStateJson(McpContext& ctx) {
     Project* project = ctx.project();
     PlayToolsState& s = state();
@@ -683,8 +726,30 @@ Json playStateJson(McpContext& ctx) {
         out["play_would_start"] = {{"id", sp->id}, {"name", sp->name}};
     }
     out["time"] = timeJson(playId != NULL_PROJECT_SCENE && s.current.active);
+    if (playId != NULL_PROJECT_SCENE) {
+        out["platform"] = platformJson();
+        out["http"] = httpJson();
+    }
+    out["safe_area"] = safeAreaJson();
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
+    // Play Mode Changes waiting after a Stop (get_play_changes)
+    size_t pending = 0;
+    for (uint32_t sceneId : PlayChangeReview::get().pendingScenes()) pending += PlayChangeReview::get().pendingCount(sceneId);
+    out["pending_play_changes"] = pending;
     if (!s.held.empty()) out["held_input"] = heldInputJson();
+    // what the game's input reads (the Input Manager's actions, touches, keys)
+    if (playId != NULL_PROJECT_SCENE && s.current.active) {
+        out["input"] = playInputJson();
+        // the on-device console and stats overlay (Project Settings > Debug, DebugOverlay)
+        static const char* const statsModes[] = {"off", "fps", "full"};
+        const int statsMode = static_cast<int>(DebugOverlay::getStatsMode());
+        out["debug_overlay"] = {{"enabled", DebugOverlay::isEnabled()}, {"console_visible", DebugOverlay::isConsoleVisible()},
+                                {"stats", statsMode >= 0 && statsMode < 3 ? statsModes[statsMode] : "off"}};
+    }
+    if (playId != NULL_PROJECT_SCENE && s.current.active) out["audio"] = playAudioJson();
+    // script coroutines and pending timers of the game (get_runtime_entity lists them per script)
+    out["coroutines"] = ScriptScheduler::coroutineCount();
+    out["timers"] = ScriptScheduler::timerCount();
     return out;
 }
 
@@ -703,9 +768,18 @@ SceneProject* resolveRuntimeScene(Project* project, const Json& ref, std::string
         error = "Play mode is " + McpRefs::playStateName(main->playState) + "; wait until it is playing (play start waits).";
         return nullptr;
     }
-    if (ref.is_null()) return main;
-
     std::vector<SceneProject*> running = runningScenes(project);
+    // after a scene load replaced the played scene (another scene, or the same one loaded
+    // again: a fresh copy), the default is the main scene the game shows now
+    SceneProject* shown = main;
+    if (project->isPlayedSceneReplaced(main->id)) {
+        Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
+        for (SceneProject* sp : running) {
+            if (sp != main && sp->scene == loadedMain) shown = sp;
+        }
+    }
+    if (ref.is_null()) return shown;
+
     std::string text = ref.is_string() ? ref.get<std::string>() : ref.dump();
     // a Play copy id or a running scene's name
     for (SceneProject* sp : running) {
@@ -714,7 +788,7 @@ SceneProject* resolveRuntimeScene(Project* project, const Json& ref, std::string
     std::string refError;
     SceneProject* source = McpRefs::resolveScene(project, ref, refError);
     if (source) {
-        if (source == main) return main;
+        if (source == main) return shown;
         const uint32_t runtimeId = project->getPlayRuntimeSceneId(source->id);
         if (runtimeId != NULL_PROJECT_SCENE) {
             if (SceneProject* runtime = project->getScene(runtimeId)) return runtime;
@@ -1065,8 +1139,11 @@ Json luaToJson(Project* project, lua_State* L, int index, int maxDepth, size_t m
 
 namespace {
 
+// The call's context, through a box (a full userdata) the call empties when it returns: a
+// function eval_lua defined can outlive it (a coroutine it started, a callback), and then has none
 LuaEvalContext* evalContext(lua_State* L) {
-    return static_cast<LuaEvalContext*>(lua_touserdata(L, lua_upvalueindex(1)));
+    LuaEvalContext** box = static_cast<LuaEvalContext**>(lua_touserdata(L, lua_upvalueindex(1)));
+    return box ? *box : nullptr;
 }
 
 // Lua is built as C: lua_error longjmps past C++ destructors, so every helper below raises
@@ -1074,6 +1151,13 @@ LuaEvalContext* evalContext(lua_State* L) {
 
 int luaEvalPrint(lua_State* L) {
     LuaEvalContext* ctx = evalContext(L);
+    if (!ctx) {
+        // the eval_lua call ended (a coroutine or callback it started prints): the game's print
+        lua_getglobal(L, "print");
+        lua_insert(L, 1);
+        lua_call(L, lua_gettop(L) - 1, 0);
+        return 0;
+    }
     const int n = lua_gettop(L);
     for (int i = 1; i <= n; i++) {
         if (i > 1) lua_pushliteral(L, "\t");
@@ -1104,6 +1188,11 @@ bool helperRef(lua_State* L, int argIndex, Json& out) {
 // The scene a helper works on: its optional scene argument, else the eval's scene
 bool helperScene(lua_State* L, int argIndex, SceneProject*& out) {
     LuaEvalContext* ctx = evalContext(L);
+    if (!ctx) {
+        lua_pushliteral(L, "eval_lua's entity/script/object/getScene helpers work only during the eval_lua call "
+                           "(this runs later, in a coroutine or callback it started): keep the values in locals");
+        return false;
+    }
     out = ctx->scene;
     if (lua_gettop(L) < argIndex || lua_isnil(L, argIndex)) return true;
     Json ref;
@@ -1258,11 +1347,17 @@ LuaEvalResult runLua(Project* project, SceneProject* scene, const std::string& c
         {"print", luaEvalPrint}, {"entity", luaEvalEntity}, {"script", luaEvalScript},
         {"object", luaEvalObject}, {"getScene", luaEvalGetScene}
     };
+    LuaEvalContext** contextBox = static_cast<LuaEvalContext**>(lua_newuserdatauv(L, sizeof(LuaEvalContext*), 0));
+    *contextBox = &context;
+    // anchored while the call runs: the box is emptied after it, whatever the collector did
+    lua_pushvalue(L, -1);
+    const int contextBoxRef = luaL_ref(L, LUA_REGISTRYINDEX);
     for (const auto& [name, fn] : helpers) {
-        lua_pushlightuserdata(L, &context);
+        lua_pushvalue(L, -1);
         lua_pushcclosure(L, fn, 1);
-        lua_setfield(L, -2, name);
+        lua_setfield(L, -3, name);
     }
+    lua_pop(L, 1);
     lua_newtable(L);
     lua_pushglobaltable(L);
     lua_setfield(L, -2, "__index");
@@ -1281,6 +1376,8 @@ LuaEvalResult runLua(Project* project, SceneProject* scene, const std::string& c
     status = LuaBinding::pcallWithTraceback(L, 0, LUA_MULTRET);
 
     lua_sethook(L, oldHook, oldMask, oldCount);
+    *contextBox = nullptr;
+    luaL_unref(L, LUA_REGISTRYINDEX, contextBoxRef);
 
     if (status != LUA_OK) {
         result.error = LuaBinding::getLuaStackErrorString(L, -1);
@@ -1472,6 +1569,8 @@ void playStop(const CallPtr& call, std::function<void()> after) {
     SceneProject* sp = project->getScene(playId);
     s.current.stopRequested = true;
     releaseHeldInput(ctx);
+    // an agent's Stop: the Play Mode Changes window stays shut (keep_changes, get_play_changes)
+    PlayChangeReview::get().setQuietStop(true);
     if (sp && sp->playState != ScenePlayState::CANCELLING) project->stop(playId);
     ensureMonitor(ctx);
 
@@ -1481,9 +1580,10 @@ void playStop(const CallPtr& call, std::function<void()> after) {
         Project* p = c.project();
         SceneProject* scene = p->getScene(playId);
         return p->getPlaySessionSceneId() == NULL_PROJECT_SCENE && (!scene || scene->playState == ScenePlayState::STOPPED);
-    }, static_cast<int>(timeout * 1000.0), [call, after](bool timedOut) {
+    }, static_cast<int>(timeout * 1000.0), [call, after, playId](bool timedOut) {
         McpContext& c = call->ctx();
         observeSession(c);
+        PlayChangeReview::get().setQuietStop(false);
         if (timedOut) {
             call->fail("Play mode is still stopping (waiting for a C++ build to cancel?). Check get_play_state.",
                        w3::playStateJson(c));
@@ -1493,11 +1593,31 @@ void playStop(const CallPtr& call, std::function<void()> after) {
             after();
             return;
         }
+        // keep_changes: what to do with the edits made while playing (absent: they wait, get_play_changes)
+        std::string keepNote;
+        const std::string keep = call->args().value("keep_changes", std::string());
+        Json kept = nullptr;
+        if (PlayChangeReview::get().pending(playId)) {
+            if (keep == "all") {
+                PlayChangeReview::ApplyResult applied = PlayChangeReview::get().apply(c.project(), playId, nullptr);
+                kept = {{"kept", applied.kept.size()}, {"skipped", applied.skipped.size()}};
+                if (applied.entryId != 0) kept["undo"] = {{"id", applied.entryId}, {"name", applied.entryName}};
+                keepNote = " Kept " + std::to_string(applied.kept.size()) + " play-mode change(s)" +
+                           (applied.skipped.empty() ? std::string(".") : ", " + std::to_string(applied.skipped.size()) + " could not be kept.");
+            } else if (keep == "none") {
+                PlayChangeReview::get().discard(playId);
+                keepNote = " Play-mode changes discarded.";
+            } else {
+                keepNote = " " + std::to_string(PlayChangeReview::get().pendingCount(playId)) +
+                           " play-mode change(s) can be kept: get_play_changes, then apply_play_changes.";
+            }
+        }
         const SessionRecord& last = state().last;
         Json data = w3::playStateJson(c);
         data["problems"] = problemsSince(last.startLogId, 30);
         data["next_cursor"] = Out::lastLogId();
-        std::string text = "Stopped. " + sessionSummaryText(last) + " The scene is back to its edit-time state.";
+        if (!kept.is_null()) data["kept_changes"] = kept;
+        std::string text = "Stopped. " + sessionSummaryText(last) + " The scene is back to its edit-time state." + keepNote;
         if (!data["problems"].empty()) text += "\nProblems during the session:\n" + w3::formatConsoleText(data["problems"], 4000);
         call->ok(text, data);
     });
@@ -1700,6 +1820,14 @@ void playTool(const CallPtr& call) {
         return;
     }
 
+    if (action == "start" || action == "restart") {
+        // Play writes generated sources and build trees into the project's internal folder (in
+        // later frames too, outside this call's write scope): it must stay inside the project
+        if (const std::string escape = McpRefs::internalFoldersEscape(project); !escape.empty()) {
+            call->fail(escape);
+            return;
+        }
+    }
     if (action == "start") {
         playStart(call, sceneRef);
         return;
@@ -1843,6 +1971,8 @@ void getPlayStateTool(const CallPtr& call) {
         text += " Session: " + std::to_string((int)secondsSince(s.current.startTime)) + " s, " +
                 std::to_string(s.current.errors) + " error(s) logged.";
         if (!s.current.crash.empty()) text += " CRASHED: " + s.current.crash;
+        text += " Script coroutines: " + std::to_string(data.value("coroutines", 0)) + ", timers: " +
+                std::to_string(data.value("timers", 0)) + ".";
     } else if (s.last.serial != 0) {
         text += " Last session: " + sessionSummaryText(s.last);
     }
@@ -2033,8 +2163,34 @@ Json cppMemberJson(Project* project, SceneProject* sp, const ScriptProperty& pro
             const std::string& path = static_cast<PrefabAsset*>(member)->getPath();
             return path.empty() ? Json(nullptr) : Json(path);
         }
+        case ScriptPropertyType::Asset: {
+            const AssetRef& ref = *static_cast<AssetRef*>(member);
+            if (!ref.isSet()) return nullptr;
+            return Json{{"path", ref.path}, {"guid", ref.guid.str()}};
+        }
     }
     return nullptr;
+}
+
+// what a script's coroutines wait for and its pending timers (ScriptScheduler)
+Json coroutinesJson(const void* owner) {
+    Json list = Json::array();
+    for (const ScriptCoroutineInfo& co : ScriptScheduler::coroutinesOf(owner)) {
+        Json item = {{"id", co.id}, {"status", co.status}, {"origin", co.origin}};
+        if (!co.waiting.empty()) item["waiting"] = co.waiting;
+        if (!co.method.empty()) item["method"] = co.method;
+        list.push_back(item);
+    }
+    return list;
+}
+
+Json timersJson(const void* owner) {
+    Json list = Json::array();
+    for (const ScriptTimerInfo& timer : ScriptScheduler::timersOf(owner)) {
+        list.push_back({{"id", timer.id}, {"remaining", round3(timer.remaining)}, {"interval", round3(timer.interval)},
+                        {"unscaled", timer.unscaled}, {"callback", timer.callback}});
+    }
+    return list;
 }
 
 Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxDepth) {
@@ -2043,18 +2199,25 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
     if (!component) return scripts;
     lua_State* L = LuaBinding::getLuaState();
     for (ScriptEntry& entry : component->scripts) {
+        // the lifecycle (script-lifecycle 6.1): init ran, start ran, onEnable ran and no onDisable since
+        const ScriptState* state = ScriptRuntime::getState(entry.instance);
         Json item = {{"class", entry.className}, {"type", entry.type == ScriptType::LUA ? "lua" : "cpp"},
-                     {"enabled", entry.enabled}};
+                     {"enabled", entry.enabled}, {"initialized", state && state->initialized}, {"started", state && state->started},
+                     {"active_and_enabled", entry.instance && entry.enabled && !(state && state->destroyed) &&
+                                            sp->scene->isEntityActiveInHierarchy(entity)}};
+        if (!entry.instance) item["running"] = false;
         if (entry.type == ScriptType::LUA && entry.instance && L) {
             const int top = lua_gettop(L);
             lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<lua_Integer>(reinterpret_cast<intptr_t>(entry.instance)));
             LuaSerializer serializer{L, project, maxDepth, 100};
             Json fields = serializer.toJson(-1, 0);
             if (fields.is_object()) {
-                for (const char* hidden : {"__name", "__scriptRef", "scene"}) fields.erase(hidden);
+                for (const char* hidden : {"__name", "__scriptRef", "__released", "scene"}) fields.erase(hidden);
             }
             item["state"] = fields;
             lua_settop(L, top);
+            item["coroutines"] = coroutinesJson(entry.instance);
+            item["timers"] = timersJson(entry.cppScript ? static_cast<const void*>(entry.cppScript) : entry.instance);
         } else if (entry.type == ScriptType::CPP && entry.instance) {
             // C++ has no reflection: the DPROPERTY members (what the Inspector shows)
             Json fields = Json::object();
@@ -2062,10 +2225,200 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
                 if (prop.memberPtr) fields[prop.name] = cppMemberJson(project, sp, prop);
             }
             item["state"] = fields;
+            // ScriptBase::invoke timers (owner: the script object)
+            item["timers"] = timersJson(entry.instance);
         }
         scripts.push_back(item);
     }
     return scripts;
+}
+
+// what a component holds at runtime besides its properties (the last move and step of a
+// character controller), read only
+void addRuntimeState(Scene* scene, Entity entity, ComponentType type, const std::set<std::string>& onlyProps, Json& props) {
+    auto put = [&](const char* name, Json value) {
+        if (onlyProps.empty() || onlyProps.count(name)) props[name] = std::move(value);
+    };
+    auto vec2 = [](const Vector2& v) { return Json::array({v.x, v.y}); };
+    if (type == ComponentType::CharacterController2DComponent) {
+        const CharacterController2DComponent* c = scene->findComponent<CharacterController2DComponent>(entity);
+        if (!c) return;
+        put("isGrounded", c->isGrounded);
+        put("isOnSteepSlope", c->isOnSteepSlope);
+        put("collisionFlags", c->collisionFlags);
+        put("velocity", vec2(c->velocity));
+        put("groundNormal", vec2(c->groundNormal));
+        put("groundEntity", c->groundEntity == NULL_ENTITY ? Json() : Json(c->groundEntity));
+        put("groundVelocity", vec2(c->groundVelocity));
+        put("refusedWithRigidbody", c->refusedWithRigidbody);
+    }
+    if (type == ComponentType::CharacterControllerComponent) {
+        const CharacterControllerComponent* c = scene->findComponent<CharacterControllerComponent>(entity);
+        if (!c) return;
+        auto vec3 = [](const Vector3& v) { return Json::array({v.x, v.y, v.z}); };
+        put("isGrounded", c->isGrounded);
+        put("isOnSteepSlope", c->isOnSteepSlope);
+        put("collisionFlags", c->collisionFlags);
+        put("velocity", vec3(c->velocity));
+        put("groundNormal", vec3(c->groundNormal));
+        put("groundEntity", c->groundEntity == NULL_ENTITY ? Json() : Json(c->groundEntity));
+        put("groundVelocity", vec3(c->groundVelocity));
+        put("refusedWithRigidbody", c->refusedWithRigidbody);
+    }
+    if (type == ComponentType::NavMeshAgentComponent) {
+        // what the crowd says (S19 R37)
+        const NavMeshAgentComponent* c = scene->findComponent<NavMeshAgentComponent>(entity);
+        if (!c) return;
+        auto vec3 = [](const Vector3& v) { return Json::array({v.x, v.y, v.z}); };
+        put("destination", vec3(c->destination));
+        put("pathStatus", nav::pathStatusName(c->pathStatus));
+        put("pathPending", c->pathPending);
+        put("remainingDistance", c->remainingDistance);
+        put("velocity", vec3(c->velocity));
+        put("desiredVelocity", vec3(c->desiredVelocity));
+        put("isOnNavMesh", c->isOnNavMesh);
+        put("isOnOffMeshLink", c->isOnOffMeshLink);
+    }
+}
+
+// camera shake spec 10: a Camera Shaker's play state and a Camera Follow's motion (read only)
+Json shakerRuntimeJson(const CameraShakerComponent& shaker) {
+    Json instances = Json::array();
+    float trauma = 0.0f;
+    Vector3 position(0, 0, 0), rotation(0, 0, 0);
+    if (const camera::ShakerRuntime* runtime = shaker.runtime.get()) {
+        for (const camera::ShakerInstanceEntry& entry : runtime->instances) {
+            const char* state = "stopped";
+            switch (entry.instance.getState()) {
+                case camera::ShakeState::FadingIn: state = "fading_in"; break;
+                case camera::ShakeState::Sustained: state = "sustained"; break;
+                case camera::ShakeState::FadingOut: state = "fading_out"; break;
+                default: break;
+            }
+            if (entry.instance.isPaused() && !entry.instance.isFinished()) state = "paused";
+            instances.push_back({{"preset", entry.presetName}, {"state", state},
+                                 {"strength", McpValues::number(entry.instance.getCurrentStrength())}});
+        }
+        trauma = runtime->trauma.trauma;
+        position = runtime->offsetPosition;
+        rotation = runtime->offsetRotation;
+    }
+    return {{"instances", instances}, {"trauma", McpValues::number(trauma)},
+            {"offset_position", McpValues::toJson(position)}, {"offset_rotation", McpValues::toJson(rotation)}};
+}
+
+Json followRuntimeJson(const CameraFollowComponent& follow) {
+    Json runtime = {{"velocity", McpValues::toJson(follow.velocity)}, {"desired", McpValues::toJson(follow.desired)},
+                    {"placed", follow.placed}};
+    if (follow.foreignWriteDetected) runtime["foreign_write"] = true;
+    if (follow.targetPersistent) runtime["target_persistent"] = true;
+    return runtime;
+}
+
+// the live state of a 2D joint (Unity's read-outs): forces N, torques N m, points, engine angle units
+Json joint2DReadoutsJson(Scene* scene, Entity entity) {
+    Joint2D joint(scene, entity);
+    static const char* limitStates[] = {"inactive", "lower", "upper", "equal"};
+    Json out = {{"live", joint.isLive()}, {"broken", joint.isBroken()}};
+    if (!joint.isLive()) return out;
+    const Vector2 force = joint.getReactionForce();
+    out["reaction_force"] = {force.x, force.y};
+    out["reaction_torque"] = joint.getReactionTorque();
+    out["joint_angle"] = joint.getJointAngle();
+    out["joint_speed"] = joint.getJointSpeed();
+    out["joint_translation"] = joint.getJointTranslation();
+    out["joint_linear_speed"] = joint.getJointLinearSpeed();
+    out["motor_torque"] = joint.getMotorTorque();
+    out["motor_force"] = joint.getMotorForce();
+    out["current_length"] = joint.getCurrentLength();
+    out["limit_state"] = limitStates[(int)joint.getLimitState()];
+    out["reference_angle"] = joint.getReferenceAngle();
+    return out;
+}
+
+// the live state of a Rigidbody 2D: mass, velocities, the Box2D shapes of each collider
+Json rigidbody2DReadoutsJson(Scene* scene, Entity entity) {
+    Rigidbody2DComponent& component = scene->getComponent<Rigidbody2DComponent>(entity);
+    if (!b2Body_IsValid(component.body)) return Json{{"live", false}};
+    Rigidbody2D body(scene, entity);
+    const Vector2 velocity = body.getLinearVelocity();
+    const Vector2 center = body.getCenterOfMass();
+    Json pieces = Json::array();
+    for (size_t i = 0; i < component.colliders.size(); i++) pieces.push_back(body.getBox2DShapes(i).size());
+    return Json{{"live", true}, {"mass", body.getMass()}, {"inertia", body.getRotationalInertia()},
+                {"center_of_mass", {center.x, center.y}}, {"linear_velocity", {velocity.x, velocity.y}},
+                {"angular_velocity", body.getAngularVelocity()}, {"awake", body.isAwake()}, {"collider_shapes", pieces}};
+}
+
+// physics.contacts [{other, other_path, collider, other_collider, trigger, since_step, asleep}]
+// and physics.callbacks (the contact methods its scripts define), for bodies and listeners
+Json physicsContactsJson(SceneProject* sp, Entity entity) {
+    Json out = Json::object();
+    Scene* scene = sp->scene;
+    std::vector<ContactSummary> contacts;
+    std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+    bool hasBody = false;
+#ifdef JASPERENGINE_PHYSICS_2D
+    if (scene->findComponent<Rigidbody2DComponent>(entity)) {
+        hasBody = true;
+        contacts = physics->getContactSummary2D(entity);
+    }
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+    if (scene->findComponent<RigidbodyComponent>(entity)) {
+        hasBody = true;
+        const std::vector<ContactSummary> contacts3D = physics->getContactSummary3D(entity);
+        contacts.insert(contacts.end(), contacts3D.begin(), contacts3D.end());
+    }
+#endif
+    const std::vector<std::string> callbacks = ScriptMessages::describeReceivers(scene, entity, PhysicsCallbacks::ALL_3D | PhysicsCallbacks::ALL_2D);
+    if (!hasBody && callbacks.empty()) return out;
+    if (hasBody) {
+        Json list = Json::array();
+        for (const ContactSummary& contact : contacts) {
+            Json item = {{"other", contact.other}, {"collider", contact.collider}, {"other_collider", contact.otherCollider},
+                         {"trigger", contact.trigger}, {"asleep", contact.asleep}};
+            if (scene->isEntityCreated(contact.other)) item["other_path"] = EntityPath::of(scene, contact.other);
+            item["since_step"] = contact.sinceStep > 0 ? Json(contact.sinceStep) : Json(nullptr);
+            list.push_back(item);
+        }
+        out["contacts"] = list;
+    }
+    out["callbacks"] = callbacks;
+    return out;
+}
+
+Json vec3Json(const Vector3& v) {
+    return Json::array({v.x, v.y, v.z});
+}
+
+Json rigidbody3DReadoutsJson(Scene* scene, Entity entity) {
+    RigidbodyComponent& component = scene->getComponent<RigidbodyComponent>(entity);
+    if (component.body.IsInvalid()) return Json{{"live", false}};
+    Rigidbody body(scene, entity);
+    return Json{{"live", true}, {"type", component.type == BodyType::DYNAMIC ? "dynamic" : (component.type == BodyType::KINEMATIC ? "kinematic" : "static")},
+                {"mass", body.getMass()}, {"center_of_mass_world", vec3Json(body.getCenterOfMassPosition())},
+                {"linear_velocity", vec3Json(body.getLinearVelocity())}, {"angular_velocity", vec3Json(body.getAngularVelocity())},
+                {"sleeping", body.isSleeping()}, {"colliders", component.colliders.size()}};
+}
+
+Json joint3DReadoutsJson(Scene* scene, Entity entity) {
+    Joint3D joint(scene, entity);
+    const Joint3DComponent& component = scene->getComponent<Joint3DComponent>(entity);
+    Json out = {{"live", joint.isLive()}, {"broken", joint.isBroken()}};
+    if (!joint.isLive()) return out;
+    out["current_force"] = vec3Json(joint.getCurrentForce());
+    out["current_torque"] = vec3Json(joint.getCurrentTorque());
+    if (component.type == Joint3DType::HINGE) {
+        out["angle"] = joint.getAngle();
+        out["velocity"] = joint.getVelocity();
+    } else if (component.type == Joint3DType::PRISMATIC) {
+        out["position"] = joint.getPosition();
+        out["speed"] = joint.getSpeed();
+    } else if (component.type == Joint3DType::DISTANCE) {
+        out["current_length"] = joint.getCurrentLength();
+    }
+    return out;
 }
 
 void getRuntimeEntityTool(const CallPtr& call) {
@@ -2118,12 +2471,18 @@ void getRuntimeEntityTool(const CallPtr& call) {
                 try {
                     // context reads give enum names and resolvable entity refs; custom values stay
                     // out of this listing (they can be large)
-                    props[name] = property.type == PropertyType::Custom ? McpValues::toJson(project, name, property)
+                    props[name] = property.type == PropertyType::Custom ? McpValues::toJson(project, type, name, property)
                                                                          : McpValues::readProperty(ctx, name, property);
                 } catch (const std::exception&) {
                     props[name] = "<unreadable>";
                 }
             }
+            addRuntimeState(sp->scene, entity, type, onlyProps, props);
+        }
+        if (type == ComponentType::CameraShakerComponent) {
+            props["runtime"] = shakerRuntimeJson(sp->scene->getComponent<CameraShakerComponent>(entity));
+        } else if (type == ComponentType::CameraFollowComponent) {
+            props["runtime"] = followRuntimeJson(sp->scene->getComponent<CameraFollowComponent>(entity));
         }
         components[componentNameOf(type)] = props;
     }
@@ -2133,11 +2492,42 @@ void getRuntimeEntityTool(const CallPtr& call) {
     data["path"] = EntityPath::of(sp->scene, entity);
     data["scene"] = McpRefs::sceneJson(project, *sp);
     data["created_at_runtime"] = std::find(created.begin(), created.end(), entity) != created.end();
+    // activeSelf / activeInHierarchy (what a clip's gameobject.active keys or a script set)
+    data["active"] = sp->scene->isEntityActive(entity);
+    data["active_in_hierarchy"] = sp->scene->isEntityActiveInHierarchy(entity);
+    // in the DontDestroyOnLoad scene, or marked to move there
+    if (project->isPersistentPlayScene(sp->id) || SceneManager::isPersistent(sp->scene, entity)) data["persistent"] = true;
     data["components"] = components;
     // a fluid's runtime state (read only; FluidStats, the matching preset)
     if (only.empty() || only.count(ComponentType::FluidSimulationComponent)) {
         const Json fluid = McpValues::fluidStatsToJson(sp->scene, entity);
         if (!fluid.is_null()) data["fluid_stats"] = fluid;
+    }
+    // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)
+    const Json groupState = McpValues::canvasGroupStateToJson(sp->scene, entity);
+    if (!groupState.is_null()) data["canvas_group_state"] = groupState;
+    // a Video Player's playback
+    if (only.empty() || only.count(ComponentType::VideoPlayerComponent)) {
+        const Json video = McpValues::videoStatusToJson(sp->scene, entity);
+        if (!video.is_null()) data["video"] = video;
+    }
+    // physics read-outs (joint forces and angles, body mass and velocities)
+    if ((only.empty() || only.count(ComponentType::Joint2DComponent)) && sp->scene->findComponent<Joint2DComponent>(entity)) {
+        data["joint2d"] = joint2DReadoutsJson(sp->scene, entity);
+    }
+    if ((only.empty() || only.count(ComponentType::Rigidbody2DComponent)) && sp->scene->findComponent<Rigidbody2DComponent>(entity)) {
+        data["rigidbody2d"] = rigidbody2DReadoutsJson(sp->scene, entity);
+    }
+    if ((only.empty() || only.count(ComponentType::Joint3DComponent)) && sp->scene->findComponent<Joint3DComponent>(entity)) {
+        data["joint3d"] = joint3DReadoutsJson(sp->scene, entity);
+    }
+    if ((only.empty() || only.count(ComponentType::RigidbodyComponent)) && sp->scene->findComponent<RigidbodyComponent>(entity)) {
+        data["rigidbody"] = rigidbody3DReadoutsJson(sp->scene, entity);
+    }
+    // physics-contacts: what the body touches now and the contact callbacks its scripts define
+    {
+        const Json physics = physicsContactsJson(sp, entity);
+        if (!physics.empty()) data["physics"] = physics;
     }
     if (args.value("include_script_state", true)) {
         data["scripts"] = scriptStateJson(project, sp, entity, std::clamp(args.value("max_depth", 2), 1, 8));
@@ -2146,6 +2536,13 @@ void getRuntimeEntityTool(const CallPtr& call) {
                        sp->name + "\": " + data["components"].dump();
     if (data.contains("scripts") && !data["scripts"].empty()) text += "\nscripts: " + data["scripts"].dump();
     if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
+    if (data.contains("canvas_group_state")) text += "\ncanvas_group_state: " + data["canvas_group_state"].dump();
+    if (data.contains("video")) text += "\nvideo: " + data["video"].dump();
+    if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
+    if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
+    if (data.contains("physics")) text += "\nphysics: " + data["physics"].dump();
+    if (data.contains("joint3d")) text += "\njoint3d: " + data["joint3d"].dump();
+    if (data.contains("rigidbody")) text += "\nrigidbody: " + data["rigidbody"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";
     call->ok(text, data);
 }
@@ -2193,6 +2590,59 @@ void setRuntimePropertyTool(const CallPtr& call) {
     if (values.empty()) {
         call->fail("Pass property + value, or values {name: value}.");
         return;
+    }
+
+    // a Video Player's playback (spec 6.10): state play | pause | stop | prepare, time (seconds,
+    // seeks), frame (seeks to it); its fields go on below as any component's
+    if (component == ComponentType::VideoPlayerComponent) {
+        std::shared_ptr<VideoPlayerSystem> videos = sp->scene->findSystem<VideoPlayerSystem>();
+        if (!videos) {
+            call->fail("The scene has no Video Player system.");
+            return;
+        }
+        const bool seeks = values.contains("time") || values.contains("frame");
+        if (values.contains("state")) {
+            const Json& value = values["state"];
+            const std::string state = value.is_string() ? value.get<std::string>() : std::string();
+            if (state == "play") videos->play(entity);
+            else if (state == "pause") videos->pause(entity);
+            else if (state == "stop") videos->stop(entity);
+            else if (state == "prepare") videos->prepare(entity);
+            else {
+                call->fail("state must be play, pause, stop or prepare.");
+                return;
+            }
+            values.erase("state");
+        }
+        if (seeks && !videos->getStatus(entity).prepared) {
+            call->fail("time and frame seek a prepared player: state prepare (or play), then wait until video.prepared.");
+            return;
+        }
+        if (values.contains("time")) {
+            if (!values["time"].is_number() || values["time"].get<double>() < 0.0) {
+                call->fail("time must be a number of seconds >= 0.");
+                return;
+            }
+            videos->setTime(entity, values["time"].get<double>());
+            values.erase("time");
+        }
+        if (values.contains("frame")) {
+            if (!values["frame"].is_number_integer() || values["frame"].get<int64_t>() < 0) {
+                call->fail("frame must be an integer >= 0.");
+                return;
+            }
+            videos->setFrame(entity, values["frame"].get<int64_t>());
+            values.erase("frame");
+        }
+        if (values.empty()) {
+            Json data = McpRefs::entityJson(sp, entity);
+            data["component"] = componentNameOf(component);
+            const Json video = McpValues::videoStatusToJson(sp->scene, entity);
+            data["video"] = video;
+            call->ok("Video Player of \"" + data.value("path", std::string()) + "\": " + video.dump() +
+                     " (the next frames show it; get_runtime_entity reads it again).", data);
+            return;
+        }
     }
 
     const std::map<std::string, PropertyData> properties = Catalog::findEntityProperties(sp->scene, entity, component);
@@ -2407,7 +2857,8 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         error = "space must be canvas, normalized or view";
         return false;
     }
-    int holdFrames = std::clamp(event.value("hold_frames", 2), 1, 100000);
+    // 0: the press and its release in the same frame (a tap Input.getKeyDown and getKeyUp both see)
+    int holdFrames = std::clamp(event.value("hold_frames", 2), 0, 100000);
     const int holdMs = std::clamp(event.value("hold_ms", 0), 0, 600000);
     const int mods = parseMods(event.value("mods", Json::array()));
     McpContext* c = &ctx;
@@ -2519,7 +2970,7 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         const std::string action = lowerCopy(event.value("action", "click"));
         const int button = parseMouseButton(event.contains("button") ? event["button"] : Json());
         if (button < 0) {
-            error = "button must be left, right or middle";
+            error = "button must be left, right, middle or button4..button8";
             return false;
         }
         EventPoint from, to;
@@ -2528,9 +2979,11 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             return false;
         }
         const bool hasPoint = from.given;
+        // a move without a point and with dx, dy goes that far from the pointer (mouse-look)
+        const bool relativeMove = action == "move" && !hasPoint && (event.contains("dx") || event.contains("dy"));
         // down / up / click without a point: where the pointer is
-        if (!hasPoint && (action == "move" || action == "drag")) {
-            error = "mouse " + action + " needs x and y (or position [x,y], or target)";
+        if (!hasPoint && !relativeMove && (action == "move" || action == "drag")) {
+            error = "mouse " + action + " needs x and y (or position [x,y], or target), or dx/dy for a move";
             return false;
         }
         if (!to.target.empty() && action != "drag") {
@@ -2591,7 +3044,26 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         // a point resolved once per event: a click's down and up happen at the same place
         auto at = std::make_shared<Vector2>();
 
-        if (action == "move") {
+        if (action == "move" && relativeMove) {
+            const double dx = event.value("dx", 0.0);
+            const double dy = event.value("dy", 0.0);
+            add([moveTo, dx, dy, space]() {
+                const Rect view = Engine::getViewRect();
+                const double canvasW = std::max(1, Engine::getCanvasWidth());
+                const double canvasH = std::max(1, Engine::getCanvasHeight());
+                // the event's space to view pixels
+                double sx = 1.0, sy = 1.0;
+                if (space == "canvas") {
+                    sx = view.getWidth() / canvasW;
+                    sy = view.getHeight() / canvasH;
+                } else if (space == "normalized") {
+                    sx = view.getWidth();
+                    sy = view.getHeight();
+                }
+                const Vector2 from = currentPointerView();
+                return moveTo(Vector2(static_cast<float>(from.x + dx * sx), static_cast<float>(from.y + dy * sy)));
+            }, gapFrames, 0, "mouse move");
+        } else if (action == "move") {
             add([resolve, moveTo, from]() {
                 Vector2 p;
                 const std::string err = resolve(from, p);
@@ -2827,12 +3299,178 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         return true;
     }
 
+    if (type == "action" || type == "axis" || type == "axis_delta") {
+        // the Input Manager's actions (a flat name or Map/Action), through the virtual source
+        // "mcp" (as an on-screen control)
+        const Json nameValue = event.contains("name") ? event["name"] : (event.contains("action") ? event["action"] : Json());
+        const std::string name = nameValue.is_string() ? nameValue.get<std::string>() : std::string();
+        if (!InputActions::hasAction(name)) {
+            std::string list;
+            for (const std::string& known : InputActions::getActionNames()) list += (list.empty() ? "" : ", ") + known;
+            error = (name.empty() ? std::string("name must be an input action") : "no input action \"" + name + "\"") +
+                    " (Project Settings > Input: " + list + ")";
+            return false;
+        }
+        const uintptr_t source = mcpInputSource();
+        if (type == "action") {
+            const std::string phase = lowerCopy(event.value("phase", "press"));
+            auto down = [name, source]() {
+                InputActions::setSourceValue(source, name, 1.0f, InputSourceKind::Agent);
+                state().held.managerActions.insert(name);
+                return std::string();
+            };
+            auto up = [name, source]() {
+                InputActions::setSourceValue(source, name, 0.0f, InputSourceKind::Agent);
+                state().held.managerActions.erase(name);
+                return std::string();
+            };
+            if (phase == "down") add(down, gapFrames, 0, "action down " + name);
+            else if (phase == "up") add(up, gapFrames, 0, "action up " + name);
+            else if (phase == "press" || phase == "tap") {
+                add(down, holdFrames, holdMs, "action down " + name);
+                add(up, gapFrames, 0, "action up " + name);
+            } else {
+                error = "action phase must be press, down or up";
+                return false;
+            }
+            return true;
+        }
+        const char* key = type == "axis" ? "value" : "delta";
+        if (!event.contains(key) || !event[key].is_number()) {
+            error = std::string(type) + " needs a number " + key;
+            return false;
+        }
+        if (type == "axis_delta") {
+            const float delta = event[key].get<float>();
+            add([name, source, delta]() {
+                InputActions::addSourceDelta(source, name, delta, InputSourceKind::Agent);
+                return std::string();
+            }, gapFrames, 0, "axis delta " + name);
+            return true;
+        }
+        const float value = std::clamp(event[key].get<float>(), -1.0f, 1.0f);
+        auto set = [name, source](float v) {
+            InputActions::setSourceValue(source, name, v, InputSourceKind::Agent);
+            if (v != 0.0f) state().held.axes[name] = v;
+            else state().held.axes.erase(name);
+            return std::string();
+        };
+        // with hold_frames / hold_ms it goes back to 0 after them, else it stays (0 releases)
+        if (value != 0.0f && (event.contains("hold_frames") || event.contains("hold_ms"))) {
+            add([set, value]() { return set(value); }, holdFrames, holdMs, "axis " + name);
+            add([set]() { return set(0.0f); }, gapFrames, 0, "axis release " + name);
+        } else {
+            add([set, value]() { return set(value); }, gapFrames, 0, "axis " + name);
+        }
+        return true;
+    }
+
+    // an Input Action forced at top priority (InputActions::inject): press for hold_frames
+    // windows (0: pressed and released in one), down until up, up, or a value for hold_frames
+    if (type == "input_action") {
+        const std::string name = event.value("name", "");
+        if (name.find('/') == std::string::npos) {
+            error = "input_action needs name \"Map/Action\"";
+            return false;
+        }
+        const std::string action = lowerCopy(event.value("action", "press"));
+        Vector2 value(1.0f, 0.0f);
+        if (event.contains("value")) {
+            const Json& v = event["value"];
+            if (v.is_number()) value = Vector2(v.get<float>(), 0.0f);
+            else if (v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number()) value = Vector2(v[0].get<float>(), v[1].get<float>());
+            else {
+                error = "input_action value is a number or [x, y]";
+                return false;
+            }
+        }
+        auto exists = [name]() {
+            return InputActions::get(name) ? std::string() : "no Input Action " + name + " is loaded (get_input_state fields actions lists them)";
+        };
+        if (action == "press" || action == "value") {
+            const int windows = holdFrames;
+            add([exists, name, value, windows]() {
+                const std::string err = exists();
+                if (err.empty()) InputActions::inject(name, value, windows);
+                return err;
+            }, std::max(holdFrames, 0), holdMs, "input action " + action + " " + name);
+            add([]() { return std::string(); }, gapFrames, 0, "input action gap");
+        } else if (action == "down") {
+            add([exists, name, value]() {
+                const std::string err = exists();
+                if (err.empty()) {
+                    InputActions::inject(name, value, -1);
+                    state().held.actions.insert(name);
+                }
+                return err;
+            }, gapFrames, 0, "input action down " + name);
+        } else if (action == "up") {
+            add([exists, name]() {
+                const std::string err = exists();
+                if (err.empty()) {
+                    InputActions::releaseInjected(name);
+                    state().held.actions.erase(name);
+                }
+                return err;
+            }, gapFrames, 0, "input action up " + name);
+        } else {
+            error = "input_action action must be press, down, up or value";
+            return false;
+        }
+        return true;
+    }
+
     if (type == "release_all") {
         add([c]() { releaseHeldInput(*c); return std::string(); }, gapFrames, 0, "release all");
         return true;
     }
 
-    error = "type must be key, text, ime, ime_commit, ime_cancel, mouse, mouse_leave, mouse_enter, touch, gamepad, wait or release_all";
+    // The app's lifecycle as a device reports it (Engine::systemPause / systemResume /
+    // systemFocus / systemLowMemory), or the simulated device turned (configure_game_view device)
+    if (type == "app") {
+        const std::string action = lowerCopy(event.value("action", ""));
+        if (action == "pause" || action == "resume" || action == "focus_lost" || action == "focus_gained" ||
+            action == "low_memory") {
+            add([action]() {
+                if (action == "pause") Engine::systemPause();
+                else if (action == "resume") Engine::systemResume();
+                else if (action == "focus_lost") Engine::systemFocus(false);
+                else if (action == "focus_gained") Engine::systemFocus(true);
+                else Engine::systemLowMemory();
+                return std::string();
+            }, gapFrames, 0, "app " + action);
+            return true;
+        }
+        if (action == "orientation") {
+            ScreenOrientation orientation;
+            if (!PlatformRules::parseOrientationName(event.value("orientation", ""), orientation) ||
+                !PlatformRules::isFixedOrientation(orientation)) {
+                error = "app orientation needs orientation: portrait, portrait_upside_down, landscape_left or landscape_right";
+                return false;
+            }
+            add([c, orientation]() {
+                const DeviceProfile* device = Platform::getSimulation().device;
+                if (!device) return std::string("app orientation needs a simulated device: configure_game_view {device: \"iphone_15_pro\"}");
+                GameWindow* gw = c->gameWindow();
+                const uint8_t allowed = gw ? gw->getRotatableOrientations() : profileOrientationMask(*device);
+                if (!(allowed & PlatformRules::orientationBit(orientation))) {
+                    std::string text = std::string(device->name) + " cannot show " + PlatformRules::orientationName(orientation) + " now (allowed:";
+                    for (ScreenOrientation o : {ScreenOrientation::Portrait, ScreenOrientation::PortraitUpsideDown,
+                                                ScreenOrientation::LandscapeLeft, ScreenOrientation::LandscapeRight}) {
+                        if (allowed & PlatformRules::orientationBit(o)) text += std::string(" ") + PlatformRules::orientationName(o);
+                    }
+                    return text + "; the game sets them with Screen.orientation / Screen.autorotateTo*)";
+                }
+                Platform::setSimulatedOrientation(orientation);
+                return std::string();
+            }, gapFrames, 0, "app orientation");
+            return true;
+        }
+        error = "app action must be pause, resume, focus_lost, focus_gained, low_memory or orientation";
+        return false;
+    }
+
+    error = "type must be key, text, ime, ime_commit, ime_cancel, mouse, mouse_leave, mouse_enter, touch, gamepad, input_action, action, axis, axis_delta, app, wait or release_all";
     return false;
 }
 
@@ -2843,8 +3481,11 @@ bool advanceInput(InputRun& run, bool newFrame) {
     // the game frames that ran since the run last advanced (a call is polled once per editor
     // frame, which need not run exactly one game frame)
     const uint64_t gameFrame = Engine::getGameFrames();
-    const int elapsed = newFrame ? static_cast<int>(gameFrame - run.gameFrame) : 0;
+    int elapsed = newFrame ? static_cast<int>(gameFrame - run.gameFrame) : 0;
     run.gameFrame = gameFrame;
+    // an app paused by an `app` event does not update (as on a device): the editor's frames
+    // drive the steps meanwhile, so a later resume step still runs
+    if (newFrame && elapsed == 0 && Engine::isPaused()) elapsed = 1;
     if (run.pendingFrames > 0 || run.msPending) {
         if (elapsed <= 0) return false;
         run.frames += elapsed;
@@ -2929,6 +3570,32 @@ bool cutInputShort(InputRun& run) {
             Engine::systemGamepadButtonUp(pad, b);
             padButtons.erase(b);
         }
+    }
+    // the input actions it forced down are released
+    std::vector<std::string> actions;
+    for (const std::string& name : held.actions) if (!before.actions.count(name)) actions.push_back(name);
+    for (const std::string& name : actions) {
+        InputActions::releaseInjected(name);
+        held.actions.erase(name);
+    }
+    // the Input Manager's actions it pressed are released, the axes it moved go back to where they were
+    std::vector<std::string> managerActions;
+    for (const std::string& name : held.managerActions) if (!before.managerActions.count(name)) managerActions.push_back(name);
+    for (const std::string& name : managerActions) {
+        InputActions::setSourceValue(mcpInputSource(), name, 0.0f, InputSourceKind::Agent);
+        held.managerActions.erase(name);
+    }
+    std::vector<std::string> axes;
+    for (const auto& [name, value] : held.axes) {
+        auto it = before.axes.find(name);
+        if (it == before.axes.end() || it->second != value) axes.push_back(name);
+    }
+    for (const std::string& name : axes) {
+        auto it = before.axes.find(name);
+        const float value = it == before.axes.end() ? 0.0f : it->second;
+        InputActions::setSourceValue(mcpInputSource(), name, value, InputSourceKind::Agent);
+        if (value != 0.0f) held.axes[name] = value;
+        else held.axes.erase(name);
     }
     return true;
 }
@@ -3040,7 +3707,7 @@ void sendInputTool(const CallPtr& call) {
         McpContext& c = call->ctx();
         observeSession(c);
         if (!inputPlayable(c, *run)) return true;
-        if (progress->stalled()) {
+        if (!Engine::isPaused() && progress->stalled()) {
             run->error = "the game did not advance for " + std::to_string((int)kStallSeconds) + " s (is it rendering?)";
             return true;
         }
@@ -3050,8 +3717,9 @@ void sendInputTool(const CallPtr& call) {
         }
         // frames_after: game frames after the last step
         const uint64_t gameFrame = Engine::getGameFrames();
-        const int elapsed = static_cast<int>(gameFrame - run->gameFrame);
+        int elapsed = static_cast<int>(gameFrame - run->gameFrame);
         run->gameFrame = gameFrame;
+        if (elapsed == 0 && Engine::isPaused()) elapsed = 1;
         if (*afterLeft > 0 && elapsed > 0) {
             const int counted = std::min(*afterLeft, elapsed);
             *afterLeft -= counted;
@@ -3311,7 +3979,9 @@ void waitTool(const CallPtr& call) {
             isError = true;
         } else if (ws->reason == "stalled") {
             text = "The game stopped advancing: no frame" + std::string(gameSeconds > 0.0 && frames <= 0 ? " or game time" : "") +
-                   " for " + std::to_string((int)kStallSeconds) + " s (" + elapsed + "; is it rendering, or the time scale 0?).";
+                   " for " + std::to_string((int)kStallSeconds) + " s (" + elapsed + "; " +
+                   (Engine::isPaused() ? "the app is paused by an app event: send_input {type: \"app\", action: \"resume\"}"
+                                       : "is it rendering, or the time scale 0?") + ").";
             isError = true;
         } else if (ws->reason == "timeout") {
             text = until.empty() ? "Timed out (" + elapsed + ")." : "Timed out (" + elapsed + "); the condition is still " +
@@ -3344,6 +4014,121 @@ void waitTool(const CallPtr& call) {
 
 // ================================================================== registration
 
+// ================================================================== Play Mode Changes
+
+// The scene a review is pending for: the one asked, else the only one, else the selected
+const PlayChangeReview::Pending* pendingReview(const CallPtr& call, std::string& error) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    PlayChangeReview& review = PlayChangeReview::get();
+    if (args.contains("scene") && !args["scene"].is_null()) {
+        SceneProject* scene = McpRefs::resolveScene(project, args["scene"], error);
+        if (!scene) return nullptr;
+        if (const PlayChangeReview::Pending* pending = review.pending(scene->id)) return pending;
+        error = "No play-mode changes are waiting for scene \"" + scene->name + "\".";
+        return nullptr;
+    }
+    const std::vector<uint32_t> scenes = review.pendingScenes();
+    if (scenes.size() == 1) return review.pending(scenes.front());
+    if (const PlayChangeReview::Pending* pending = review.pending(project->getSelectedSceneId())) return pending;
+    error = scenes.empty() ? std::string("No play-mode changes are waiting: they are listed after a Stop (play stop).")
+                           : std::string("Several scenes have play-mode changes waiting: pass scene.");
+    return nullptr;
+}
+
+Json playChangeJson(const KeepRow& row) {
+    Json item = {
+        {"id", row.id},
+        {"kind", [&]() -> std::string {
+            switch (row.kind) {
+                case KeepRow::Kind::Property: return "property";
+                case KeepRow::Kind::Transform: return "transform";
+                case KeepRow::Kind::Component: return "component";
+                case KeepRow::Kind::AddComponent: return "add_component";
+                case KeepRow::Kind::RemoveComponent: return "remove_component";
+                case KeepRow::Kind::Name: return "name";
+                case KeepRow::Kind::State: return "state";
+                case KeepRow::Kind::Created: return "created";
+                case KeepRow::Kind::Deleted: return "deleted";
+                case KeepRow::Kind::Unsupported: return "unsupported";
+            }
+            return "property";
+        }()},
+        {"game_object", row.entity == NULL_ENTITY ? Json(nullptr) : Json{{"id", row.entity}, {"name", row.gameObject}}},
+        {"component", row.hasComponent ? Json(McpRefs::componentName(row.component)) : Json(nullptr)},
+        {"property", row.property},
+        {"edit_value", row.editValue},
+        {"play_value", row.playValue},
+        {"source", row.source},
+        {"keepable", row.keepable}
+    };
+    if (!row.reason.empty()) item["reason"] = row.reason;
+    return item;
+}
+
+void getPlayChangesTool(const CallPtr& call) {
+    std::string error;
+    const PlayChangeReview::Pending* pending = pendingReview(call, error);
+    if (!pending) {
+        call->fail(error, Json{{"rows", Json::array()}});
+        return;
+    }
+    Json rows = Json::array();
+    std::string text;
+    for (const KeepRow& row : pending->rows) {
+        rows.push_back(playChangeJson(row));
+        text += "\n" + std::to_string(row.id) + ". " + (row.entity == NULL_ENTITY ? std::string() : row.gameObject + " ") +
+                (row.hasComponent ? CommandNames::component(row.component) + " " : std::string()) + row.property +
+                ": " + row.editValue + " -> " + row.playValue + (row.keepable ? "" : " (can't keep: " + row.reason + ")");
+    }
+    call->ok(std::to_string(rows.size()) + " play-mode change(s) for scene \"" + pending->sceneName + "\":" + text,
+             Json{{"scene_id", pending->sceneId}, {"rows", rows}});
+}
+
+void applyPlayChangesTool(const CallPtr& call) {
+    std::string error;
+    const PlayChangeReview::Pending* pending = pendingReview(call, error);
+    if (!pending) {
+        call->fail(error);
+        return;
+    }
+    const Json& args = call->args();
+    const bool all = args.value("all", false);
+    std::vector<uint64_t> ids;
+    if (args.contains("ids") && args["ids"].is_array()) {
+        for (const Json& id : args["ids"]) ids.push_back(id.get<uint64_t>());
+    }
+    if (!all && ids.empty()) {
+        call->fail("Pass ids (row ids from get_play_changes) or all: true. Rows not listed are discarded.");
+        return;
+    }
+    const uint32_t sceneId = pending->sceneId;
+    PlayChangeReview::ApplyResult result = PlayChangeReview::get().apply(call->ctx().project(), sceneId, all ? nullptr : &ids);
+    Json skipped = Json::array();
+    for (const auto& [id, why] : result.skipped) skipped.push_back({{"id", id}, {"reason", why}});
+    Json data = {{"scene_id", sceneId}, {"kept", result.kept}, {"skipped", skipped}};
+    if (result.entryId != 0) data["undo"] = {{"id", result.entryId}, {"name", result.entryName}};
+    if (result.kept.empty()) {
+        call->fail("No play-mode change was kept." + std::string(skipped.empty() ? "" : " Skipped: " + skipped.dump()), data);
+        return;
+    }
+    call->ok("Kept " + std::to_string(result.kept.size()) + " play-mode change(s) as one undo step" +
+             (result.entryName.empty() ? std::string(".") : " \"" + result.entryName + "\".") +
+             (skipped.empty() ? std::string() : " " + std::to_string(skipped.size()) + " skipped."), data);
+}
+
+void discardPlayChangesTool(const CallPtr& call) {
+    std::string error;
+    const PlayChangeReview::Pending* pending = pendingReview(call, error);
+    if (!pending) {
+        call->fail(error);
+        return;
+    }
+    const size_t count = pending->rows.size();
+    PlayChangeReview::get().discard(pending->sceneId);
+    call->ok("Discarded " + std::to_string(count) + " play-mode change(s).");
+}
+
 void registerPlayTools(McpRegistry& registry) {
     using namespace schema;
 
@@ -3369,12 +4154,14 @@ void registerPlayTools(McpRegistry& registry) {
             {"scene", sceneRef("start: default the start scene (else selected).")},
             {"wait", withDefault(boolean("start only."), true)},
             {"timeout_seconds", withDefault(number("start/stop: then return a job.", 1, 3600), 120)},
-            {"frames", withDefault(integer("step only.", 1, 600), 1)},
-            {"time_scale", withDefault(number("Engine.timeScale.", 0, 100), 1)},
-            {"fixed_fps", withDefault(integer("Frames advance exactly 1/fixed_fps s; 0 = real time.", 0, 1000), 0)},
+            {"frames", withDefault(integer("", 1, 600), 1)},
+            {"time_scale", withDefault(number("", 0, 100), 1)},
+            {"fixed_fps", withDefault(integer("0 = real time.", 0, 1000), 0)},
             {"auto_pause", withDefault(boolean(""), false)},
             {"screenshot", screenshotOption},
-            {"max_width", maxWidth}
+            {"max_width", maxWidth},
+            {"keep_changes", stringEnum("stop: keep all or none of the edits made while playing (absent: get_play_changes).",
+                                        {"none", "all"})}
         }, {"action"});
         tool.handler = playTool;
         registry.addTool(std::move(tool));
@@ -3386,12 +4173,58 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, console_cursor, the clock (time_scale, "
-            "fixed_fps, auto_pause, held); stopped: play_would_start.";
+            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, audio "
+            "(voices, mixer_meters dB), "
+            "console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), "
+            "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures), safe_area; stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getPlayStateTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_play_changes";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Get Play Mode Changes";
+        tool.description =
+            "After play stop: the edits made while playing that can be kept, rows {id, kind, game_object, component, "
+            "property, edit_value, play_value, source step, keepable, reason}. Script-made GameObjects can't be kept.";
+        tool.inputSchema = object({{"scene", sceneRef()}});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getPlayChangesTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "apply_play_changes";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Apply Play Mode Changes";
+        tool.description =
+            "Keep chosen play-mode changes (ids from get_play_changes, or all) as one undo step on the restored scene; "
+            "the other rows are discarded. Returns undo {id, name} and the skipped rows.";
+        tool.inputSchema = object({
+            {"scene", sceneRef()},
+            {"ids", Json{{"type", "array"}, {"items", Json{{"type", "integer"}}}}},
+            {"all", withDefault(boolean(""), false)}
+        });
+        tool.handler = applyPlayChangesTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "discard_play_changes";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Discard Play Mode Changes";
+        tool.description = "Drop the play-mode changes waiting after a Stop.";
+        tool.inputSchema = object({{"scene", sceneRef()}});
+        tool.annotations.idempotent = true;
+        tool.handler = discardPlayChangesTool;
         registry.addTool(std::move(tool));
     }
 
@@ -3421,6 +4254,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"max_width", maxWidth}
         });
         tool.handler = waitTool;
+        // runs the game, changes nothing (busy policy: McpServer::busyRefusal)
+        tool.activity = ToolActivity::Control;
         registry.addTool(std::move(tool));
     }
 
@@ -3456,7 +4291,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"name_contains", string("Case-insensitive.")},
-            {"component", componentName("Has this component.")},
+            {"component", componentName("")},
             {"created_only", withDefault(boolean("Runtime-spawned only."), false)},
             {"with_components", withDefault(boolean(""), false)},
             {"limit", withDefault(integer("", 1, 5000), 200)}
@@ -3472,8 +4307,9 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "get_runtime_entity";
         tool.title = "Get Runtime GameObject";
         tool.description =
-            "Live values of a GameObject in the running game (runtime-spawned too): component properties this frame "
-            "and script state (Lua instance fields, C++ DPROPERTY members). Only while playing.";
+            "Live values of a running GameObject (runtime-spawned too): components this frame, script state (Lua "
+            "fields, C++ DPROPERTY members; coroutines with their waits, timers), physics contacts and callbacks. "
+            "Only while playing.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},
@@ -3494,7 +4330,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Set Runtime Property";
         tool.description =
             "Set component properties of a GameObject in the running game, live: property + value, or values {name: "
-            "value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua.";
+            "value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua. videoplayer also: "
+            "state play|pause|stop|prepare, time, frame.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},
@@ -3516,18 +4353,18 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "send_input";
         tool.title = "Send Input";
         tool.description =
-            "Inject input into the running game across frames (no focus needed). events in order, each {type, "
-            "...} (first action = default):\nkey: key (space, a, 0, left, f1, kp_0...), action press|down|up, "
-            "hold_frames (2), hold_ms, mods [shift,ctrl,alt,super]\ntext: text (UTF-8); ime: text, cursor (code "
-            "points; -1 selects) = composition; ime_commit: text; ime_cancel\nmouse_leave, mouse_enter (the game "
-            "window)\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (click/down/up default: the "
-            "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action "
-            "tap|start|move|end|cancel|swipe, pointer, x, y, to\nmouse/touch: target / to_target = CSS selector "
-            "of a UI Document element (its center; document: which)\ngamepad: gamepad (0), button (a, b, start, "
-            "dpad_up...) + action, or axis (left_x..right_trigger) + value -1..1\nwait: frames, ms. "
-            "release_all.\nspace: canvas px from top-left (Input.getMousePosition), normalized 0..1, view = Game "
-            "view px. down holds until up/release_all/stop. Returns frames, console lines, play state; "
-            "auto_pause: only events + frames_after run.";
+            "Input into the running game, over frames. events in order, {type, ...} (first action: default):\nkey: key "
+            "(space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
+            "[shift,ctrl,alt,super]\ntext: text; ime: text, cursor; ime_commit: text; ime_cancel\n"
+            "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
+            "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
+            "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document element CSS selector "
+            "(document: which)\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
+            "value\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
+            "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|orientation "
+            "(+orientation)\nwait: frames, ms. release_all.\nspace: canvas px, normalized 0..1, view = Game view px. "
+            "down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + "
+            "frames_after only).";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
@@ -3537,6 +4374,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"max_width", maxWidth}
         }, {"events"});
         tool.handler = sendInputTool;
+        // input into the running game, changes nothing (busy policy: McpServer::busyRefusal)
+        tool.activity = ToolActivity::Control;
         registry.addTool(std::move(tool));
     }
 }

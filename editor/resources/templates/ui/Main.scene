@@ -1,0 +1,95 @@
+formatVersion: 7
+guid: 02963967bed17b9ec95b0e9135e9c654
+id: 574877787
+name: Main
+scene:
+  backgroundColor: [0.525, 0.525, 0.525, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: off
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  litQuality: high
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_ui
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 0
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 0
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: blit
+  - type: htmlui
+  - type: htmlui
+    properties: 1
+  - type: htmluigradient
+  - type: htmluipost
+    properties: 1
+  - type: htmluipost
+    properties: 2
+  - type: htmluipost
+    properties: 4
+  - type: htmluipost
+    properties: 8
+  - type: htmluipost
+    properties: 16
+  - type: htmluipost
+    properties: 32
+  - type: htmluipost
+    properties: 64
+  - type: htmluiprim
+entities:
+  - type: Entity
+    entity: 1001
+    name: Main Menu
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      uidocument:
+        enabled: true
+        filename: ui/main_menu.html
+        filenameGuid: 11f1ecfb04c5a8d8c3034395da152b18
+        sortOrder: 0
+      script:
+        scripts:
+          - type: lua
+            path: MainMenuUI.lua
+            pathGuid: 949bef7369205721c42c07e9bcbc44d0
+            className: MainMenuUI
+            enabled: true

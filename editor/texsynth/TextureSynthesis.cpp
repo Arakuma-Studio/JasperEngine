@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TextureSynthesis.h"
+#include "util/FileUtils.h"
 
 #include "Synthesizer.h"
 
@@ -310,9 +311,9 @@ namespace jasperengine::editor::texsynth {
     std::filesystem::path companionOutputPath(const std::filesystem::path& primaryOut, const std::filesystem::path& example,
                                               const std::filesystem::path& companion) {
         char separator = '_';
-        const std::string suffix = companionSuffix(example.stem().u8string(), companion.stem().u8string(), separator);
+        const std::string suffix = companionSuffix(FileUtils::pathToUtf8(example.stem()), FileUtils::pathToUtf8(companion.stem()), separator);
         if (suffix.empty()) return std::filesystem::path();
-        return primaryOut.parent_path() / std::filesystem::u8path(primaryOut.stem().u8string() + separator + suffix + ".png");
+        return primaryOut.parent_path() / editor::FileUtils::pathFromUtf8(FileUtils::pathToUtf8(primaryOut.stem()) + separator + suffix + ".png");
     }
 
     Result synthesize(Request& request, const Control& control) {

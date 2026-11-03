@@ -6,6 +6,7 @@
 // or a UI/Points/LineRenderer/Skybox component.
 
 #include "McpValues.h"
+#include "shader/ShaderGlobals.h"
 
 #include "McpRefs.h"
 #include "Project.h"
@@ -68,6 +69,7 @@ const char* textureDefaultName(ShaderTextureDefault value) {
         case ShaderTextureDefault::NORMAL: return "normal";
         case ShaderTextureDefault::RIPPLES: return "ripples";
         case ShaderTextureDefault::NOISE: return "noise";
+        case ShaderTextureDefault::PARTICLE: return "particle";
     }
     return "white";
 }
@@ -628,9 +630,9 @@ bool McpValues::colorWriteFromJson(const Json& value, int& out, std::string& err
 // ------------------------------------------------------------------ material keys
 
 bool McpValues::isMaterialShaderLibraryKey(const std::string& key) {
-    static const char* const keys[] = {"shader", "shaderParams", "shaderTextures", "shaderFeatures", "blendMode", "cullMode",
-                                       "depthWrite", "depthTest", "depthOffsetFactor", "depthOffsetUnits", "sortPriority", "lighting",
-                                       "stencil", "colorWrite", "extraPass"};
+    static const char* const keys[] = {"shader", "shaderParams", "shaderTextures", "shaderFeatures", "shaderGlobalBindings", "blendMode",
+                                       "cullMode", "depthWrite", "depthTest", "depthOffsetFactor", "depthOffsetUnits", "sortPriority",
+                                       "lighting", "stencil", "colorWrite", "extraPass"};
     for (const char* known : keys) {
         if (key == known) return true;
     }
@@ -770,7 +772,7 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
             for (MaterialLighting mode : Catalog::getShaderLightingModes(manifest.get())) {
                 modes += ", " + McpValues::enumToJson((int)mode, *McpValues::enumTable("material_lighting")).template get<std::string>();
             }
-            error = "lighting: " + (out.shader.empty() ? std::string("the built-in Lit shader") : out.shader) + " takes " + modes + ".";
+            error = "lighting: " + (out.shader.empty() ? std::string("the built-in Lit shader") : out.shader.path) + " takes " + modes + ".";
             return false;
         }
     } else {
@@ -835,6 +837,12 @@ bool McpValues::materialPassFromJson(Project* project, SceneProject* scene, cons
 
 void McpValues::materialShaderLibraryToJson(Project* project, SceneProject* scene, const Material& material, Json& out, bool all) {
     shaderStateToJson(project, scene, material, out, all);
+    // members following global shader values {member: global}
+    if (all || !material.shaderGlobalBindings.empty()) {
+        Json bindings = Json::object();
+        for (const auto& binding : material.shaderGlobalBindings) bindings[binding.first] = binding.second;
+        out["shaderGlobalBindings"] = bindings;
+    }
     if (all || material.sortPriority != 0) out["sortPriority"] = material.sortPriority;
     out["lighting"] = enumToJson((int)material.lighting, *enumTable("material_lighting"));
     // the extra pass: null without one
@@ -844,6 +852,27 @@ void McpValues::materialShaderLibraryToJson(Project* project, SceneProject* scen
 
 bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error) {
     if (!shaderStateFromJson(project, scene, value, out, "", error)) return false;
+    if (value.contains("shaderGlobalBindings")) {
+        // merged: {member: global | null}
+        const Json& bindings = value["shaderGlobalBindings"];
+        if (!bindings.is_object()) {
+            error = "shaderGlobalBindings is an object {member: global name | null}.";
+            return false;
+        }
+        for (auto it = bindings.begin(); it != bindings.end(); ++it) {
+            if (!it.value().is_string() && !it.value().is_null()) {
+                error = "shaderGlobalBindings." + it.key() + ": a global's name, or null to unbind.";
+                return false;
+            }
+            const std::string global = it.value().is_string() ? it.value().get<std::string>() : std::string();
+            std::string why;
+            if (!global.empty() && !ShaderGlobals::isValidName(global, &why)) {
+                error = "shaderGlobalBindings." + it.key() + ": " + why;
+                return false;
+            }
+            ShaderGlobals::setBinding(out.shaderGlobalBindings, it.key(), global);
+        }
+    }
     if (value.contains("sortPriority")) {
         if (!value["sortPriority"].is_number_integer()) {
             error = "sortPriority must be an integer (draw order within its queue, opaque or transparent: lower draws first).";

@@ -5,7 +5,10 @@
 #define TextureRender_h
 
 #include "Render.h"
+#include "texture/TextureFormat.h"
 #include "sokol/SokolTexture.h"
+
+#include <span>
 
 namespace jasperengine {
 
@@ -26,6 +29,17 @@ namespace jasperengine {
                 const std::string& label, int width, int height,
                 ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[],
                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
+
+        // levels as given (level 0 first, each with every face or array slice contiguous), in a
+        // cooked or uncompressed GPU format: the one upload path of file textures (spec S14 D9)
+        bool createTextureLevels(const std::string& label, TextureType type, GpuTextureFormat format,
+                                 int width, int height, int numFaces, std::span<const TextureLevel> levels,
+                                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
+
+        // a 3D texture: width x height x depth RGBA8 texels (x fastest, then y, then the
+        // slices), linear or nearest and repeat or clamp on every axis, no mipmaps
+        bool createTexture3D(const std::string& label, int width, int height, int depth, const void* data, size_t size,
+                             TextureFilter filter, TextureWrap wrap);
 
         // creates a cubemap with custom (pre-filtered) mipmap data,
         // data[level] must contain all 6 faces in one contiguous block
@@ -54,7 +68,13 @@ namespace jasperengine {
         // at most once a frame (the post-processing colour LUTs)
         bool createDynamicColorTexture(const std::string& label, int width, int height);
         // at most once per frame (sokol); the next draw that samples the texture sees the data
-        void updateTexture(const void* data, size_t size);
+        // false when not uploaded: past the frame's stream staging buffer (try again next
+        // frame), a wrong size, no data
+        bool updateTexture(const void* data, size_t size);
+
+        // a second view of source's image with a nearest, non-comparison sampler (the raw depths
+        // of a shadow atlas); source must outlive it
+        bool createAliasView(const TextureRender& source, const char* label);
 
         void destroyTexture();
 
@@ -77,8 +97,26 @@ namespace jasperengine {
         void setTransparent(bool transparent);
         bool isTransparent() const;
 
+        // what createTextureLevels uploaded (RGBA8 / 1 level for the other creators)
+        GpuTextureFormat getGpuFormat() const;
+        int getLevelCount() const;
+        uint64_t getGpuBytes() const;
+
+        // TexturePool: its image's pixels were replaced and it was not made again yet (it still
+        // draws the old ones); and how many times it was made again in place, which takes the old
+        // view away from the bindings holding it (Texture::isRenderOutdated)
+        void setStale(bool stale) { this->stale = stale; }
+        bool isStale() const { return stale; }
+        void noteRebuilt() { revision++; }
+        uint32_t getRevision() const { return revision; }
+
     private:
+        bool stale = false;
+        uint32_t revision = 0;
         bool transparent = false;
+        GpuTextureFormat gpuFormat = GpuTextureFormat::RGBA8;
+        int levelCount = 1;
+        uint64_t gpuBytes = 0;
     };
 }
 

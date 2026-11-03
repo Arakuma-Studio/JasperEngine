@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/PrefabEditUndo.h"
 #include "component/AnimationComponent.h"
@@ -47,6 +48,13 @@ namespace jasperengine::editor {
         void undo() override;
 
         Entity getEntity() const { return trackEntity; }
+
+        // "Add Key (Walk)": the Animation the track joins
+        std::string describe() const override { return "Add Key (" + CommandNames::entity(project, sceneId, animEntity) + ")"; }
+        const char* typeName() const override { return "CreateTrackKeyCmd"; }
+        size_t memoryBytes() const override {
+            return sizeof(*this) + oldActions.capacity() * sizeof(ActionFrame) + (createCmd ? createCmd->memoryBytes() : 0);
+        }
     };
 
 }

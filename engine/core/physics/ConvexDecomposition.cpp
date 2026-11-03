@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ConvexDecomposition.h"
+#include "thread/ThreadUtil.h"
+#include "io/AtomicFile.h"
 
 #include <algorithm>
 #include <array>
@@ -497,12 +499,17 @@ namespace{
     };
 
     // Polled by V-HACD between stages and while it splits: the cancel flag stops it even when it
-    // was raised before V-HACD reset its own (Compute() clears it on entry)
+    // was raised before V-HACD reset its own (Compute() clears it on entry). The caller's progress
+    // callback runs first, so it can raise the flag at a given stage.
     class CancelPoll: public VHACD::IVHACD::IUserCallback {
     public:
-        CancelPoll(const std::atomic<bool>* cancelFlag, VHACD::IVHACD* instance): cancel(cancelFlag), vhacd(instance) {}
+        CancelPoll(const std::atomic<bool>* cancelFlag, VHACD::IVHACD* instance, const DecompositionProgress* progressCallback):
+            cancel(cancelFlag), vhacd(instance), progress(progressCallback) {}
 
-        void Update(const double, const double, const char* const, const char*) override{
+        void Update(const double, const double stageProgress, const char* const stage, const char*) override{
+            if (progress && *progress){
+                (*progress)(stage, stageProgress);
+            }
             if (cancel && cancel->load()){
                 vhacd->Cancel();
             }
@@ -511,13 +518,15 @@ namespace{
     private:
         const std::atomic<bool>* cancel;
         VHACD::IVHACD* vhacd;
+        const DecompositionProgress* progress;
     };
 #else
     struct ActiveSlot {};
 #endif
 
     bool decomposeWelded(const WeldedMesh& mesh, const DecompositionParams& params, std::vector<ConvexHullPoints>& out,
-                         const std::atomic<bool>* cancel, std::string* error, const ActiveSlot& slot){
+                         const std::atomic<bool>* cancel, std::string* error, const ActiveSlot& slot,
+                         const DecompositionProgress* progress = nullptr){
         out.clear();
         auto fail = [error](const std::string& message){
             if (error){
@@ -531,6 +540,7 @@ namespace{
         (void)params;
         (void)cancel;
         (void)slot;
+        (void)progress;
         return fail(NOT_AVAILABLE);
 #else
         if (!validParams(params, error)){
@@ -574,7 +584,7 @@ namespace{
         if (!vhacd){
             return fail("V-HACD could not be created");
         }
-        CancelPoll poll(cancel, vhacd);
+        CancelPoll poll(cancel, vhacd, progress);
 
         VHACD::IVHACD::Parameters vparams;
         vparams.m_callback = &poll;
@@ -839,12 +849,16 @@ struct ConvexDecompositionCache::Impl {
             if (!written){
                 problem = "could not write " + temporary;
             }else{
-                std::filesystem::rename(temporary, path, ec);
-                if (!ec){
+                // published the atomic way (a cache: never synced; retried while a reader holds
+                // the target on Windows); a failed publish removes the temporary file
+                io::AtomicWriteOptions options;
+                options.durability = io::Durability::Cache;
+                const io::WriteResult published = io::publishFile(temporary, path, options);
+                if (published.ok()){
                     diskError.clear();
                     return;
                 }
-                problem = "could not rename " + temporary + ": " + ec.message();
+                problem = "could not rename " + temporary + ": " + io::describeWriteError(published);
             }
             std::filesystem::remove(temporary, ec);
         }
@@ -1039,7 +1053,9 @@ uint64_t ConvexDecompositionCache::request(const std::vector<Vector3>& positions
     impl->enqueueLocked(Impl::Job{key, std::move(mesh), params, urgent});
     if (!impl->worker.joinable()){
         Impl* state = impl.get();
-        impl->worker = std::thread([state](){ state->workerLoop(); });
+        // a long-lived service thread outside the job system (S06: through spawnNamed), below
+        // normal priority: decompositions are background work that may take seconds
+        impl->worker = thread::spawnNamed("je-hulls", [state](){ state->workerLoop(); }, thread::Priority::BelowNormal);
     }
     impl->wake.notify_one();
 #endif
@@ -1177,7 +1193,8 @@ size_t ConvexDecompositionCache::bytesOnDisk() const{
 
 bool ConvexDecompositionCache::decompose(const std::vector<Vector3>& positions, const std::vector<uint32_t>& indices,
                                          const DecompositionParams& params, std::vector<ConvexHullPoints>& out,
-                                         const std::atomic<bool>* cancel, std::string* error){
+                                         const std::atomic<bool>* cancel, std::string* error,
+                                         const DecompositionProgress& progress){
     out.clear();
     if (!available()){
         if (error){
@@ -1188,7 +1205,7 @@ bool ConvexDecompositionCache::decompose(const std::vector<Vector3>& positions, 
     if (!validInput(positions, indices, error)){
         return false;
     }
-    return decomposeWelded(weld(positions, indices), params, out, cancel, error, ActiveSlot());
+    return decomposeWelded(weld(positions, indices), params, out, cancel, error, ActiveSlot(), &progress);
 }
 
 bool ConvexDecompositionCache::available(){

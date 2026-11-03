@@ -150,7 +150,6 @@ bool UIUtils::searchInput(const char* id, std::string hint, char* buffer, size_t
             ImGui::Checkbox(ICON_FA_SPELL_CHECK "  Match Case", matchCase);
         } else {
             // Show disabled checkbox if matchCase is not provided
-            bool dummyMatchCase = false;
             ImGui::BeginDisabled();
             ImGui::Text("No options available");
             ImGui::EndDisabled();

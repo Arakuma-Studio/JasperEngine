@@ -85,6 +85,11 @@ out vec4 g_finalColor;
     #endif
 #endif
 
+// the built-in Lit's extended lobes (includes/pbr_ext_slots.glsl): their values end this block
+#if defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || defined(PBR_IRIDESCENCE) || \
+    defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HEX_TILING)
+    #define PBR_EXT
+#endif
 uniform u_fs_pbrParams {
     //Metallic material
     vec4 baseColorFactor;
@@ -113,6 +118,25 @@ uniform u_fs_pbrParams {
         #endif
         // Stochastic Tiling: cell size, blend sharpness, contrast, rotation (includes/pbr.glsl)
         vec4 stochastic;
+    #endif
+    #ifdef PBR_EXT
+        // std140 vec4s (MaterialPbr::getUniformBlock), after the material's (and Stochastic
+        // Tiling's vec4: the upload reads the lobes' offset, RenderSystem pbrExtOffset)
+        // (the w of clearcoat, anisotropy and transmission: the Specular & IOR lobe's dielectric
+        // f0 without a map; of attenuation, the IOR's term of it: MaterialPbr::getUniformBlock)
+        vec4 clearcoat;     // factor, roughness, normal scale, f0.r
+        vec4 sheen;         // rgb colour (linear), roughness
+        vec4 anisotropy;    // strength, cos(rotation), sin(rotation), f0.g
+        vec4 iridescence;   // factor, ior, thickness min (nm), thickness max (nm)
+        vec4 transmission;  // factor, volume thickness, attenuation distance (0: none), f0.b
+        vec4 attenuation;   // rgb attenuation colour (linear), ((ior - 1) / (ior + 1))^2 (1 under 1)
+        vec4 specular;      // rgb colour (linear), factor
+        vec4 iorHex;        // ior, hex rotation, hex contrast, the sheen visibility's L(0.5)
+        #ifdef HAS_UV_SET2
+            // the UV set of each texture (includes/pbr.glsl u_fs_texCoordSets), as floats
+            vec4 set0;
+            vec4 set1;
+        #endif
     #endif
 } pbrParams;
 
@@ -187,12 +211,26 @@ const float occlusionStrength = 1.0;
 
 const float M_PI = 3.141592653589793;
 
+// the extended lobes and hex tiling (builtin:lit#PBR_*): their block, maps and hex taps
+#include "includes/pbr_ext_slots.glsl"
 #include "includes/pbr.glsl"
 #include "includes/brdf.glsl"
 #ifndef MATERIAL_UNLIT
     #include "includes/ibl.glsl"
+    // the High Lit Quality (builtin:lit#USE_LIT_QUALITY): specular anti-aliasing and the
+    // direct lights' multiscatter energy compensation
+    #ifdef USE_LIT_QUALITY
+        #include "includes/specular_aa.glsl"
+        vec3 litEnergyCompensation;
+    #endif
+    #include "includes/pbr_ext.glsl"
 #endif
 #ifdef USE_LIGHT2D
+    // the lit path shades 2D lights with its real normals (N.L at the light's height); the
+    // unlit one answers the height only where it samples a normal map
+    #ifndef MATERIAL_UNLIT
+        #define LIGHT2D_SURFACE_NORMALS
+    #endif
     // declares the 2D lights block and shadow atlas (shared with library shaders)
     #include "includes/lighting2d.glsl"
 #endif
@@ -208,6 +246,9 @@ const float M_PI = 3.141592653589793;
 #include "includes/post_color.glsl"
 
 void main() {
+    #ifdef PBR_HEX_ACTIVE
+        pbrHexSetup();
+    #endif
     vec4 baseColor = getBaseColor();
 
     #if defined(USE_MIRROR) && defined(HAS_UV_SET1)
@@ -263,6 +304,9 @@ void main() {
         float f0_ior = 0.04;
 
         materialInfo = getMetallicRoughnessInfo(materialInfo, f0_ior);
+        #ifdef PBR_EXT_LOBES
+            materialInfo = pbrExtSurface(materialInfo, normalInfo);
+        #endif
 
         #ifdef HAS_TERRAIN_PBR
             // painted layers own the whole surface, so it is evaluated once and applied here
@@ -285,6 +329,9 @@ void main() {
 
         // Anything less than 2% is physically impossible and is instead considered to be shadowing. Compare to "Real-Time-Rendering" 4th editon on page 325.
         materialInfo.f90 = vec3(clamp(reflectance * 50.0, 0.0, 1.0));
+        #ifdef PBR_SPECULAR
+            materialInfo.f90 = pbrExtF90(materialInfo);
+        #endif
 
         materialInfo.n = n;
 
@@ -296,7 +343,32 @@ void main() {
         vec3 toEye = litFrame.cameraPosition_fogEnd.xyz - v_position;
         vec3 v = normalize(toEye);
 
-        #ifdef USE_IBL
+        #ifdef USE_LIT_QUALITY
+            // geometric specular AA, once, in uniform control flow (derivatives): the base by
+            // its shading normal's variance, the coat by its own normal's
+            materialInfo.perceptualRoughness = specularAARoughness(materialInfo.perceptualRoughness, specularAAKernel(n));
+            materialInfo.alphaRoughness = materialInfo.perceptualRoughness * materialInfo.perceptualRoughness;
+            #ifdef PBR_CLEARCOAT
+                pbrExtInfo.clearcoatRoughness = specularAARoughness(pbrExtInfo.clearcoatRoughness, specularAAKernel(pbrExtInfo.clearcoatNormal));
+            #endif
+            // the energy single-scattering GGX loses at this roughness, given back to the
+            // direct lights (the environment's split sum has it already)
+            vec2 litEss = envBRDFApprox(clampedDot(n, v), materialInfo.perceptualRoughness);
+            litEnergyCompensation = 1.0 + materialInfo.f0 * (1.0 / max(litEss.x + litEss.y, 1e-3) - 1.0);
+        #endif
+        #ifdef PBR_EXT_LOBES
+            pbrExtView(materialInfo, v);
+        #endif
+
+        #if defined(USE_IBL) && defined(PBR_EXT_LOBES)
+            pbrExtEnvironment(materialInfo, n, v, vec3(0.0), f_diffuse, f_specular);
+            #ifdef USE_PUNCTUAL
+                vec3 overflowLight = max(ambientLight(n) - litFrame.ambient_fogType.rgb, vec3(0.0));
+                float overflowNdotV = clampedDot(n, v);
+                f_specular += envRadianceGGX(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
+                f_diffuse += envRadianceLambertian(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
+            #endif
+        #elif defined(USE_IBL)
             // image based lighting from the environment (sky) cubemaps
             f_specular += getIBLRadianceGGX(n, v, v_position, materialInfo.perceptualRoughness, materialInfo.f0);
             f_diffuse += getIBLRadianceLambertian(n, v, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
@@ -317,9 +389,13 @@ void main() {
             #else
                 vec3 envLight = litFrame.ambient_fogType.rgb;
             #endif
-            float ambNdotV = clampedDot(n, v);
-            f_specular += envRadianceGGX(envLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
-            f_diffuse += envRadianceLambertian(envLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
+            #ifdef PBR_EXT_LOBES
+                pbrExtEnvironment(materialInfo, n, v, envLight, f_diffuse, f_specular);
+            #else
+                float ambNdotV = clampedDot(n, v);
+                f_specular += envRadianceGGX(envLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
+                f_diffuse += envRadianceLambertian(envLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
+            #endif
         #endif
 
         #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
@@ -393,8 +469,15 @@ void main() {
                         // Calculation of analytical light
                         // https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB
                         vec3 intensity = getLighIntensity(light, pointToLight, i);
+                        #ifdef PBR_EXT_LOBES
+                            pbrExtDirect(materialInfo, shadow * intensity, pointToLight, n, v, l, h, NdotL, NdotV, NdotH, VdotH, f_diffuse, f_specular);
+                        #elif defined(USE_LIT_QUALITY)
+                            f_diffuse += shadow * intensity * NdotL *  BRDF_lambertian(materialInfo.f0, materialInfo.f90, materialInfo.albedoColor, VdotH);
+                            f_specular += shadow * intensity * NdotL * BRDF_specularGGX(materialInfo.f0, materialInfo.f90, materialInfo.alphaRoughness, VdotH, NdotL, NdotV, NdotH) * litEnergyCompensation;
+                        #else
                         f_diffuse += shadow * intensity * NdotL *  BRDF_lambertian(materialInfo.f0, materialInfo.f90, materialInfo.albedoColor, VdotH);
                         f_specular += shadow * intensity * NdotL * BRDF_specularGGX(materialInfo.f0, materialInfo.f90, materialInfo.alphaRoughness, VdotH, NdotL, NdotV, NdotH);
+                        #endif
                     }
                 }
             }
@@ -418,12 +501,28 @@ void main() {
             f_emissive *= sRGBToLinear(getEmissiveTexture().rgb);
         #endif
 
+        #ifdef PBR_TRANSMISSION
+            f_diffuse = pbrExtTransmission(materialInfo, n, v, f_diffuse);
+        #endif
+
         vec3 color = f_emissive + f_diffuse + f_specular;
+        #ifdef PBR_EXT_LOBES
+            color = pbrExtComposite(color);
+        #endif
 
         #ifdef USE_LIGHT2D
             // mixed scene: 2D lights add on top of the PBR result (scene ambient is
             // already applied above, so skip the 2D ambient here)
             color.rgb += baseColor.rgb * getLight2DIntensity(v_position, n, false);
+        #endif
+
+        #if defined(USE_SHADOWS) && defined(USE_PUNCTUAL)
+            // the Scene view's shadow debug views replace the shading (includes/lights.glsl)
+            vec4 shadowDebug = shadowDebugColor(v_position, n);
+            if (shadowDebug.a > 0.5){
+                g_finalColor = vec4(linearTosRGB(shadowDebug.rgb), 1.0);
+                return;
+            }
         #endif
 
         #ifdef HAS_FOG

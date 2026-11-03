@@ -5,8 +5,10 @@
 
 #include "Catalog.h"
 #include "FluidTextureLink.h"
+#include "VideoTextureLink.h"
 #include "component/CameraComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 
 using namespace jasperengine;
 
@@ -37,6 +39,8 @@ Entity editor::CameraTextureLink::parseLink(const std::string& textureId){
     Entity entity = parse(textureId);
     if (entity == NULL_ENTITY)
         entity = FluidTextureLink::parse(textureId);
+    if (entity == NULL_ENTITY)
+        entity = VideoTextureLink::parse(textureId);
     return entity;
 }
 
@@ -49,6 +53,8 @@ Framebuffer* editor::CameraTextureLink::linkFramebuffer(EntityRegistry* registry
         return nullptr;
     if (FluidTextureLink::parse(textureId) != NULL_ENTITY)
         return FluidTextureLink::outputFramebuffer(registry, entity);
+    if (VideoTextureLink::parse(textureId) != NULL_ENTITY)
+        return VideoTextureLink::outputFramebuffer(registry, entity);
     CameraComponent* camera = registry->findComponent<CameraComponent>(entity);
     return camera ? camera->framebuffer : nullptr;
 }
@@ -68,6 +74,10 @@ Texture editor::CameraTextureLink::make(EntityRegistry* registry, Entity cameraE
 void editor::CameraTextureLink::retarget(EntityRegistry* registry, Texture& texture, Entity cameraEntity){
     if (FluidTextureLink::isFluidTexture(texture)){
         FluidTextureLink::retarget(registry, texture, cameraEntity);
+        return;
+    }
+    if (VideoTextureLink::isVideoTexture(texture)){
+        VideoTextureLink::retarget(registry, texture, cameraEntity);
         return;
     }
     if (cameraEntity == NULL_ENTITY){
@@ -93,15 +103,20 @@ std::string editor::CameraTextureLink::cameraName(EntityRegistry* registry, cons
 
 bool editor::CameraTextureLink::isLinkSource(EntityRegistry* registry, Entity entity){
     return registry && registry->isEntityCreated(entity) &&
-           (registry->findComponent<CameraComponent>(entity) || registry->findComponent<FluidSimulationComponent>(entity));
+           (registry->findComponent<CameraComponent>(entity) || registry->findComponent<FluidSimulationComponent>(entity) ||
+            (registry->isComponentRegistered<VideoPlayerComponent>() && registry->findComponent<VideoPlayerComponent>(entity)));
 }
 
 bool editor::CameraTextureLink::isLinkSourceType(ComponentType type){
-    return type == ComponentType::CameraComponent || type == ComponentType::FluidSimulationComponent;
+    return type == ComponentType::CameraComponent || type == ComponentType::FluidSimulationComponent ||
+           type == ComponentType::VideoPlayerComponent;
 }
 
 bool editor::CameraTextureLink::isCameraUsed(EntityRegistry* registry, Entity cameraEntity){
     for (Entity entity : registry->getEntityList()){
+        if (registry->isPooledSystemEntity(entity)){
+            continue;
+        }
         for (ComponentType cpType : Catalog::findComponents(registry, entity)){
             if (!Catalog::mayHoldReferences(registry, entity, cpType, false, true))
                 continue;
@@ -127,6 +142,12 @@ bool editor::CameraTextureLink::resolve(EntityRegistry* registry){
     bool changed = false;
 
     for (Entity entity : registry->getEntityList()){
+        // the editor's own (the Scene view's grid, gizmos and icons) name no camera: their
+        // property maps were most of a whole-scene resolve. A GameObject an older file saved
+        // with a system-range id is the scene's, and is bound
+        if (registry->isPooledSystemEntity(entity)){
+            continue;
+        }
         changed |= resolveEntity(registry, entity);
     }
 
@@ -170,9 +191,13 @@ bool resolveEntity(EntityRegistry* registry, Entity entity){
                 target = camera ? camera->framebuffer : nullptr;
             }else{
                 Entity fluidEntity = FluidTextureLink::parse(texture->getId());
-                if (fluidEntity == NULL_ENTITY)
+                Entity videoEntity = VideoTextureLink::parse(texture->getId());
+                if (fluidEntity != NULL_ENTITY)
+                    target = FluidTextureLink::outputFramebuffer(registry, fluidEntity);
+                else if (videoEntity != NULL_ENTITY)
+                    target = VideoTextureLink::outputFramebuffer(registry, videoEntity);
+                else
                     continue;
-                target = FluidTextureLink::outputFramebuffer(registry, fluidEntity);
             }
 
             if (texture->getFramebuffer() != target){

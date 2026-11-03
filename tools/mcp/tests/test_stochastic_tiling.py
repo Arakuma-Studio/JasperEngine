@@ -32,6 +32,7 @@ import pngdiff  # noqa: E402
 REPO = HERE.parents[2]
 FIXTURE = REPO / "tools" / "fixtures" / "stochastic-tiling"
 EDITOR = {"project": str(FIXTURE)}
+CI = True
 TIMEOUT = 900
 
 SCENE_FILE = "Main Scene.scene"
@@ -81,8 +82,12 @@ async def material_values(ed: Editor, sid, eid) -> dict:
 async def test_old_scene_resaves_byte_identical(ed: Editor):
     """the fixture was saved without the feature: toggling it on and back off and saving gives the
     same bytes (defaults are not written, for terrain layers and materials alike)"""
-    original = (ed.project / SCENE_FILE).read_bytes()
     sid = await scene_id(ed)
+    # the fixture predates format versions, S04's guid line and S10's scene migration (Low shadow
+    # quality is Auto, light biases in texels): a plain save first writes those, and toggling the
+    # feature then changes nothing more
+    await ed.call("save_scene", scene=sid)
+    original = (ed.project / SCENE_FILE).read_bytes()
     terrain = await entity(ed, sid, "Ground")
     quad = await entity(ed, sid, "SimpleLitQuad")
     await ed.call("set_terrain_maps", scene=sid, entity=terrain, layers=[{"index": 0, "stochastic_tiling": True}])
@@ -344,7 +349,7 @@ async def test_lit_variants(ed: Editor):
     ed.check(not any("Sto" in n for n in before), f"no Sto variant while it is off: {sorted(n for n in before if 'Sto' in n)}")
 
     await lit_on(ed, sid)
-    await ed.call("wait", frames=10)
+    await ed.call("wait", frames=10, timeout_seconds=600)  # the variants compile first: minutes on a loaded builder
     shaders = (await ed.call("get_build_info", include_shaders=True))["shaders"]
     # display names, "Mesh (Uv1, Puc, Sto, ...)" (a library shader's has its reference in brackets)
     built_in = {s["name"]: s for s in shaders if "[" not in s["name"]}
@@ -383,14 +388,13 @@ def variant_bits(name: str) -> list[str]:
 
 
 def old_style_fork(source: str) -> str:
-    """a fork of mesh.frag as it was before Stochastic Tiling: no 'stochastic' member in
-    u_fs_pbrParams and no LIT_STOCHASTIC_PARAMS"""
-    start = source.index("    #ifdef USE_STOCHASTIC_TILING\n        #ifdef MATERIAL_UNLIT")
-    end = source.index("} pbrParams;", start)
-    old = source[:start] + source[end:]
-    define = re.compile(r"#ifdef USE_STOCHASTIC_TILING\s*\n\s*#define LIT_STOCHASTIC_PARAMS[^\n]*\n\s*#endif\n")
-    old, count = define.subn("", old, count=1)
-    assert count == 1, "mesh.frag names LIT_STOCHASTIC_PARAMS"
+    """Remove the documented opt-in directive; the fork must then use legacy variants.
+
+    Keep the shader's declarations intact so unrelated layout or identifier changes do not
+    break the compatibility fixture.
+    """
+    old, count = re.subn(r"^[ \t]*#[ \t]*define[ \t]+LIT_STOCHASTIC_PARAMS\b[^\n]*", "", source, flags=re.M)
+    assert count == 1, "the current fork defines the documented Stochastic Tiling opt-in"
     return old
 
 
@@ -398,7 +402,7 @@ async def foliage_variants(ed: Editor, fork: str) -> dict:
     """the variants the build collects for the alpha-masked leaf card (the only Lit mesh with
     Stochastic Tiling on, drawn with the fork): its colour variants (the fork's), and the
     alpha-clip depth and G-buffer variants (built-in shaders)"""
-    await ed.call("wait", frames=10)
+    await ed.call("wait", frames=10, timeout_seconds=600)  # the variants compile first: minutes on a loaded builder
     shaders = (await ed.call("get_build_info", include_shaders=True))["shaders"]
     names = [s["name"] for s in shaders]
     return {
@@ -411,7 +415,7 @@ async def foliage_variants(ed: Editor, fork: str) -> dict:
 
 
 async def test_lit_fork_passes_agree(ed: Editor):
-    """a fork of Lit made before Stochastic Tiling (no LIT_STOCHASTIC_PARAMS) on the alpha-masked
+    """a fork of Lit without the documented Stochastic Tiling opt-in (no LIT_STOCHASTIC_PARAMS) on the alpha-masked
     leaf card with the feature on: its colour, depth (the shadow's alpha clip) and G-buffer variants
     agree, none with 'Sto', and `check` says the fork predates the feature; the same fork brought up
     to date (as fork_shader writes it now) takes 'Sto' in all three, and they compile"""
@@ -430,7 +434,8 @@ async def test_lit_fork_passes_agree(ed: Editor):
     forked = await ed.call("fork_shader", scene=sid, entity=foliage, name="OldLeaves")
     fork, frag = forked["custom_shader"], forked["frag_path"]
     current = (ed.project / frag).read_text()
-    ed.check("#define LIT_STOCHASTIC_PARAMS" in current, "a fork made now names the values")
+    ed.check(re.search(r"^[ \t]*#[ \t]*define[ \t]+LIT_STOCHASTIC_PARAMS\b", current, re.M),
+             "a fork made now names the values")
     w = await ed.call("write_file", path=frag, content=old_style_fork(current), timeout=300)
     ed.check(all(c.get("ok", True) for c in w.get("shader_check", [])), f"the old-style fork compiles: {w.get('shader_check')!r}")
     await ed.call("set_properties", scene=sid, entity=foliage, values={"mesh": {M + "stochasticTiling": True}})

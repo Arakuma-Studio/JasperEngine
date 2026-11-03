@@ -121,7 +121,7 @@ namespace shadercompiler{
     // the tables below are indexed by vertex input location, bounded by MaxVertexAttribs
     static_assert(MaxVertexAttribs <= VERTEX_ATTRIB_COUNT, "semantic tables must cover every allowed location");
 
-    static const char* k_attrib_names[VERTEX_ATTRIB_COUNT] = {
+    inline const char* k_attrib_names[VERTEX_ATTRIB_COUNT] = {
         "POSITION",
         "NORMAL",
         "TEXCOORD0",
@@ -142,7 +142,7 @@ namespace shadercompiler{
         "BLENDWEIGHT"
     };
 
-    static const char* k_attrib_sem_names[VERTEX_ATTRIB_COUNT] = {
+    inline const char* k_attrib_sem_names[VERTEX_ATTRIB_COUNT] = {
         "POSITION",
         "NORMAL",
         "TEXCOORD",
@@ -163,7 +163,7 @@ namespace shadercompiler{
         "BLENDWEIGHT"
     };
 
-    static int k_attrib_sem_indices[VERTEX_ATTRIB_COUNT] = {
+    inline int k_attrib_sem_indices[VERTEX_ATTRIB_COUNT] = {
         0,
         0,
         0,
@@ -319,6 +319,10 @@ namespace shadercompiler{
     void finalize_process();
 
     bool load_input(std::vector<input_t>& inputs, const args_t& args);
+
+    // The preprocessed source of every input (includes expanded, the variant's defines
+    // applied, #line directives kept), as glslang's -E gives it; one output per input
+    bool preprocess(std::vector<std::string>& outputs, const std::vector<input_t>& inputs, const args_t& args);
 
     bool compile_to_spirv(std::vector<spirv_t>& spirvvec, const std::vector<input_t>& inputs, const args_t& args);
 

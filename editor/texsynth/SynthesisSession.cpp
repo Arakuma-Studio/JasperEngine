@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "SynthesisSession.h"
+#include "util/FileUtils.h"
+#include "thread/ThreadUtil.h"
 
-#include "mcp/McpServer.h"
-#include "mcp/tools/W4Shared.h"
+#include "Project.h"
+#include "util/ProjectFileWrites.h"
 #include "util/Util.h"
 
 #include "stb_image.h"
@@ -66,7 +68,7 @@ namespace jasperengine::editor::texsynth {
         }
 
         bool isPng(const std::string& path) {
-            return lower(fs::u8path(path).extension().u8string()) == ".png";
+            return lower(FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(path).extension())) == ".png";
         }
 
         void add(std::vector<Problem>& problems, const std::string& field, const std::string& message) {
@@ -182,7 +184,7 @@ namespace jasperengine::editor::texsynth {
             error = "no path given";
             return false;
         }
-        const fs::path given = fs::u8path(rel);
+        const fs::path given = editor::FileUtils::pathFromUtf8(rel);
         if (given.is_absolute() || given.has_root_name() || given.has_root_directory()) {
             error = "\"" + rel + "\" is absolute: give a project-relative path (e.g. \"assets/rock_albedo.png\")";
             return false;
@@ -199,23 +201,23 @@ namespace jasperengine::editor::texsynth {
 
     std::string projectRelative(const fs::path& projectDir, const fs::path& absolute) {
         const fs::path rel = absolute.lexically_normal().lexically_relative(projectDir.lexically_normal());
-        if (rel.empty() || *rel.begin() == ".." || rel.is_absolute()) return absolute.generic_u8string();
-        return rel.generic_u8string();
+        if (rel.empty() || *rel.begin() == ".." || rel.is_absolute()) return FileUtils::pathToGenericUtf8(absolute);
+        return FileUtils::pathToGenericUtf8(rel);
     }
 
     std::string defaultOutputPath(const std::string& examplePath, Mode mode) {
-        const fs::path example = fs::u8path(examplePath);
+        const fs::path example = editor::FileUtils::pathFromUtf8(examplePath);
         const std::string suffix = isTileableMode(mode) ? "_tile.png" : "_synth.png";
         // rock_albedo.png -> rock_tile.png, so the companions follow as rock_tile_normal.png
         // (the naming rule appends their suffix to the output's stem); rock.png -> rock_tile.png
-        std::string stem = baseOf(example.stem().u8string());
-        if (stem.empty()) stem = example.stem().u8string();
-        return (example.parent_path() / fs::u8path(stem + suffix)).generic_u8string();
+        std::string stem = baseOf(FileUtils::pathToUtf8(example.stem()));
+        if (stem.empty()) stem = FileUtils::pathToUtf8(example.stem());
+        return FileUtils::pathToGenericUtf8((example.parent_path() / editor::FileUtils::pathFromUtf8(stem + suffix)));
     }
 
     std::string paintedMaskPath(const std::string& output) {
-        const fs::path out = fs::u8path(output);
-        return (out.parent_path() / fs::u8path(out.stem().u8string() + "_inpaint_mask.png")).generic_u8string();
+        const fs::path out = editor::FileUtils::pathFromUtf8(output);
+        return FileUtils::pathToGenericUtf8((out.parent_path() / editor::FileUtils::pathFromUtf8(FileUtils::pathToUtf8(out.stem()) + "_inpaint_mask.png")));
     }
 
     std::vector<CompanionCandidate> findCompanions(const fs::path& projectDir, const std::string& examplePath) {
@@ -223,20 +225,20 @@ namespace jasperengine::editor::texsynth {
         fs::path example;
         std::string error;
         if (!resolveProjectFile(projectDir, examplePath, example, error)) return found;
-        const std::string stem = example.stem().u8string();
+        const std::string stem = FileUtils::pathToUtf8(example.stem());
         const std::string base = baseOf(stem);
         std::error_code ec;
         std::vector<fs::path> siblings;
         for (const auto& entry : fs::directory_iterator(example.parent_path(), ec)) {
             if (!entry.is_regular_file(ec)) continue;
             const fs::path path = entry.path();
-            if (path.filename() == example.filename() || !Util::isImageFile(path.filename().u8string())) continue;
-            if (lower(path.extension().u8string()) == ".svg") continue;
+            if (path.filename() == example.filename() || !Util::isImageFile(FileUtils::pathToUtf8(path.filename()))) continue;
+            if (lower(FileUtils::pathToUtf8(path.extension())) == ".svg") continue;
             siblings.push_back(path);
         }
         std::sort(siblings.begin(), siblings.end());
         for (const fs::path& path : siblings) {
-            const std::string other = path.stem().u8string();
+            const std::string other = FileUtils::pathToUtf8(path.stem());
             if (!base.empty()) {
                 if (other.size() <= base.size() || other.compare(0, base.size(), base) != 0 || !isSeparator(other[base.size()])) continue;
             }
@@ -310,11 +312,11 @@ namespace jasperengine::editor::texsynth {
             if (!c.enabled) continue;
             std::string path = c.output;
             if (path.empty() && !spec.examples.empty() && !c.paths.empty()) {
-                path = companionOutputPath(fs::u8path(spec.output), fs::u8path(spec.examples.front().path), fs::u8path(c.paths.front()))
-                           .generic_u8string();
+                path = FileUtils::pathToGenericUtf8(
+                    companionOutputPath(editor::FileUtils::pathFromUtf8(spec.output), editor::FileUtils::pathFromUtf8(spec.examples.front().path), editor::FileUtils::pathFromUtf8(c.paths.front())));
                 if (path.empty()) {
-                    const fs::path out = fs::u8path(spec.output);
-                    path = (out.parent_path() / fs::u8path(out.stem().u8string() + "_" + c.name + ".png")).generic_u8string();
+                    const fs::path out = editor::FileUtils::pathFromUtf8(spec.output);
+                    path = FileUtils::pathToGenericUtf8((out.parent_path() / editor::FileUtils::pathFromUtf8(FileUtils::pathToUtf8(out.stem()) + "_" + c.name + ".png")));
                 }
             }
             outputs.push_back({c.name, path});
@@ -345,7 +347,7 @@ namespace jasperengine::editor::texsynth {
                 add(problems, field, rel + " does not exist");
                 return;
             }
-            inputs.insert(abs.lexically_normal().generic_u8string());
+            inputs.insert(FileUtils::pathToGenericUtf8(abs.lexically_normal()));
             int c = 0, iw = 0, ih = 0;
             if (!stbi_info(abs.string().c_str(), &iw, &ih, &c)) {
                 add(problems, field, rel + " is not an image the synthesis can read (PNG, JPEG, TGA, BMP, PSD, GIF)");
@@ -447,7 +449,7 @@ namespace jasperengine::editor::texsynth {
                 add(problems, field, error);
                 continue;
             }
-            const std::string key = abs.lexically_normal().generic_u8string();
+            const std::string key = FileUtils::pathToGenericUtf8(abs.lexically_normal());
             if (!written.insert(key).second) add(problems, field, "two outputs would be written to " + out.path);
             if (inputs.count(key)) add(problems, field, "the " + out.role + " output would replace an input: " + out.path + " (write it elsewhere)");
         }
@@ -566,10 +568,12 @@ namespace jasperengine::editor::texsynth {
         return true;
     }
 
-    bool writeOutputsUndoable(const std::vector<OutputFile>& files, std::string& error) {
-        std::vector<mcp::w4::WriteFilesCmd::Item> items;
+    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error, const std::filesystem::path& beneath) {
+        std::vector<WriteFilesCmd::Item> items;
         for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
-        return mcp::w4::writeFilesUndoable(mcp::McpServer::get().context(), std::move(items), error);
+        // beneath `beneath` (the MCP tool: the project) when they are written; the window: each
+        // file beneath its own folder (no new refusal for a folder linked in from a library)
+        return ProjectFileWrites::writeUndoable(project, std::move(items), error, nullptr, nullptr, beneath, beneath.empty());
     }
 
     // ------------------------------------------------------------------ feedback
@@ -646,7 +650,7 @@ namespace jasperengine::editor::texsynth {
         auto rel = [&](const json& entry) -> std::string {
             const std::string recordedText = jsonString(entry, "path");
             if (recordedText.empty()) return std::string();
-            const fs::path recorded = fs::u8path(recordedText);
+            const fs::path recorded = editor::FileUtils::pathFromUtf8(recordedText);
             return projectRelative(projectDir, recorded.is_absolute() ? recorded : base / recorded);
         };
         if (recipe.contains("params")) {
@@ -699,7 +703,7 @@ namespace jasperengine::editor::texsynth {
         auto outputPath = [&](const std::string& role) -> std::string {
             const std::string recordedText = jsonString(outputs, role.c_str());
             if (recordedText.empty()) return std::string();
-            const fs::path recorded = fs::u8path(recordedText);
+            const fs::path recorded = editor::FileUtils::pathFromUtf8(recordedText);
             return projectRelative(projectDir, recorded.is_absolute() ? recorded : base / recorded);
         };
         spec.output = outputPath("primary");
@@ -799,7 +803,9 @@ namespace jasperengine::editor::texsynth {
             shared->done.notify_all();
         };
         try {
-            std::thread([run, options, shared, finish]() {
+            // a long-lived thread outside the job system (S06: through spawnNamed): a run takes
+            // seconds to minutes and drives a worker pool of its own (Synthesizer)
+            thread::spawnNamed("je-texsynth", [run, options, shared, finish]() {
                 Result result;
                 try {
                     Control control;
@@ -826,7 +832,7 @@ namespace jasperengine::editor::texsynth {
                     result = failedResult(run->req, "the synthesis failed");
                 }
                 finish(std::move(result));
-            }).detach();
+            }, thread::Priority::BelowNormal).detach();
         } catch (const std::system_error& e) {
             // no thread: the run ends at once, failed (its callback on this thread)
             finish(failedResult(run->req, std::string("could not start a worker thread: ") + e.what()));

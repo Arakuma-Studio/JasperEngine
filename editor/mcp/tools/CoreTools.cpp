@@ -1,10 +1,13 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Core: batch, get_job, cancel_job, undo / redo, editor_status, respond_dialog
+// Core: batch, get_job, cancel_job, undo / redo, editor_status, respond_dialog, tool_groups,
+// get_job_system_stats, set_job_system_config, get_memory_stats
 #include "McpTools.h"
+#include "window/StatusBar.h"
 
 #include "mcp/McpAutoSync.h"
+#include "reload/HotReloadService.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
@@ -12,20 +15,33 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpServer.h"
+#include "mcp/McpToolGroups.h"
+#include "mcp/McpUndo.h"
+#include "util/ScriptStatus.h"
 
 #include "App.h"
+#include "search/SearchPalette.h"
 #include "EditorVersion.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/UndoTimeline.h"
+#include "command/type/ThreadingSettingsCmd.h"
+#include "io/AssetIOService.h"
+#include "jobs/JobSystem.h"
+#include "memory/MemoryStats.h"
 #include "physics/PlacementSession.h"
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
+#include "window/AssetPanels.h"
 
+#include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <map>
 #include <memory>
+#include <set>
 
 namespace jasperengine::editor::mcp {
 
@@ -46,33 +62,10 @@ struct BatchState {
     size_t failed = 0;
     bool stopped = false;
     std::vector<ToolImage> images;
-    // undo_group: each history's position when the batch started
-    std::map<uint32_t, size_t> sceneMarks;
-    size_t projectMark = 0;
+    // undo_group: each history's position when the batch started, kept from trimming
+    McpUndo::Group undo;
+    std::string undoName;
 };
-
-void beginUndoGroup(BatchState& state, Project* project) {
-    for (SceneProject* scene : project->getScenesAndPrefabStages()) {
-        state.sceneMarks[scene->id] = CommandHandle::get(scene->id)->mark();
-    }
-    state.projectMark = project->getProjectCommandHistory()->mark();
-}
-
-// One undo step per history the batch changed. Scenes the batch created start at 0.
-Json endUndoGroup(BatchState& state, Project* project) {
-    Json grouped = Json::array();
-    bool complete = true;
-    for (SceneProject* scene : project->getScenesAndPrefabStages()) {
-        auto it = state.sceneMarks.find(scene->id);
-        const size_t mark = it != state.sceneMarks.end() ? it->second : 0;
-        CommandHistory* history = CommandHandle::get(scene->id);
-        if (history->position() <= mark) continue;
-        if (history->groupSince(mark)) grouped.push_back(scene->id);
-        else complete = false;
-    }
-    if (!project->getProjectCommandHistory()->groupSince(state.projectMark)) complete = false;
-    return Json{{"scene_ids", grouped}, {"complete", complete}};
-}
 
 void finishBatch(const std::shared_ptr<BatchState>& state) {
     Project* project = state->call->ctx().project();
@@ -83,7 +76,9 @@ void finishBatch(const std::shared_ptr<BatchState>& state) {
         {"stopped_early", state->stopped}
     };
     if (state->undoGroup) {
-        data["undo_group"] = endUndoGroup(*state, project);
+        const std::string label = !state->undoName.empty() ? state->undoName
+            : "Batch (" + std::to_string(state->calls.size()) + " calls)";
+        data["undo_group"] = McpUndo::endGroup(state->undo, project, label);
     }
 
     std::string text = "batch: " + std::to_string(state->succeeded) + " ok, " + std::to_string(state->failed) + " failed";
@@ -147,7 +142,7 @@ void runBatchStep(const std::shared_ptr<BatchState>& state) {
             // Completed later (a deferred call): continue on the main thread
             App& app = state->call->ctx().app();
             if (app.isMainThread()) runBatchStep(state);
-            else app.enqueueMainThreadTask([state]() { runBatchStep(state); });
+            else app.enqueueMainThreadTask([state]() { McpWriteScope writeScope; runBatchStep(state); });
         });
         int expected = 0;
         if (phase->compare_exchange_strong(expected, 2)) {
@@ -172,7 +167,8 @@ void batchTool(const CallPtr& call) {
     state->calls = args["calls"];
     state->stopOnError = args.value("stop_on_error", true);
     state->undoGroup = args.value("undo_group", false);
-    if (state->undoGroup) beginUndoGroup(*state, call->ctx().project());
+    state->undoName = args.value("undo_name", std::string());
+    if (state->undoGroup) McpUndo::beginGroup(state->undo, call->ctx().project());
     call->detach();
     runBatchStep(state);
 }
@@ -218,6 +214,42 @@ void cancelJobTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ undo / redo
 
+// One step of a single history (scope scene or project), with what it took
+// What an undo/redo call learns of the steps it takes (the sandbox hardening): why one was
+// refused, the files a taken one could not put back
+struct StepReport {
+    std::vector<std::filesystem::path> projectRoots;   // the project's trusted roots
+    std::string refusedWhy;
+    std::vector<std::string> problems;
+};
+
+// A step the GUI made (no write root of its own): its files must stay inside the project too,
+// once links are resolved (Command::escapeFor); it then runs in this call's write scope
+bool escapesProject(const Command* next, bool undo, StepReport& report) {
+    if (!next) return false;
+    const std::string escape = next->escapeFor(report.projectRoots, undo);
+    if (escape.empty()) return false;
+    report.refusedWhy = escape;
+    return true;
+}
+
+bool historyStep(CommandHistory* history, bool undo, std::vector<UndoTimeline::Step>& steps, bool project, uint32_t sceneId,
+                 StepReport& report) {
+    const UndoEntry* next = undo ? history->top() : history->nextRedo();
+    if (!next) return false;
+    if (escapesProject(next->cmd.get(), undo, report)) return false;
+    UndoTimeline::Step step{next->info.id, next->name(), project, sceneId};
+    // the command itself can refuse (it would make a child scene cycle; a file it changes
+    // resolves out of its write root through a link): the history keeps its place
+    if (!(undo ? history->undo() : history->redo())) {
+        report.refusedWhy = history->lastRefusal();
+        return false;
+    }
+    if (!history->lastUndoProblem().empty()) report.problems.push_back(history->lastUndoProblem());
+    steps.push_back(step);
+    return true;
+}
+
 void undoRedo(const CallPtr& call, bool undo) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -226,17 +258,19 @@ void undoRedo(const CallPtr& call, bool undo) {
     const char* verb = undo ? "undo" : "redo";
 
     CommandHistory* history = nullptr;
+    uint32_t sceneId = NULL_PROJECT_SCENE;
     Json data = {{"scope", scope}};
     if (scope == "project") {
         history = project->getProjectCommandHistory();
-    } else if (scope == "scene") {
+    } else if (scope == "scene" || scope == "timeline") {
         std::string error;
         SceneProject* scene = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(), error);
         if (!scene) {
             call->fail(error);
             return;
         }
-        history = CommandHandle::get(scene->id);
+        sceneId = scene->id;
+        if (scope == "scene") history = CommandHandle::get(scene->id);
         data["scene"] = McpRefs::sceneJson(project, *scene);
         // a Scene view Physics Placement gesture or settle holds preview poses in the scene: an
         // undo cancels it instead (CommandHistory::beforeChange), a redo is refused
@@ -247,49 +281,342 @@ void undoRedo(const CallPtr& call, bool undo) {
                            "\" (its preview poses are in the scene). Let it finish, or undo to cancel it, then redo.", data);
                 return;
             }
-            const size_t before = history->position();
-            history->undo();
-            data["steps"] = static_cast<int>(before - history->position());
+            // the history's undo asks the gesture first (CommandHistory::beforeChange) and moves nothing
+            CommandHistory* sceneHistory = CommandHandle::get(scene->id);
+            sceneHistory->undo();
+            data["steps"] = 0;
+            data["undone"] = Json::array();
+            data["redone"] = Json::array();
             data["cancelled_gesture"] = true;
-            data["can_undo"] = history->canUndo();
-            data["can_redo"] = history->canRedo();
+            data["can_undo"] = history ? history->canUndo() : UndoTimeline::canUndo(sceneId);
+            data["can_redo"] = history ? history->canRedo() : UndoTimeline::canRedo(sceneId);
             call->ok("Cancelled the running Physics Placement gesture instead of undoing (nothing was undone): its objects "
                      "are back where they were before it.", data);
             return;
         }
     } else {
-        call->fail("scope must be \"scene\" (GameObject and component edits) or \"project\" (asset file operations).");
+        call->fail("scope must be \"timeline\" (the scene's and the asset steps in order, like Ctrl+Z), \"scene\" "
+                   "(GameObject and component edits) or \"project\" (asset file operations).");
         return;
     }
 
-    int done = 0;
-    bool refused = false;
-    for (; done < steps; done++) {
-        if (undo ? !history->canUndo() : !history->canRedo()) break;
-        // the command itself can refuse (it would make a child scene cycle)
-        if (!(undo ? history->undo() : history->redo())) {
-            refused = true;
-            break;
+    // The step undo/redo takes next in the scope
+    auto nextId = [&]() -> uint64_t {
+        if (history) {
+            const UndoEntry* next = undo ? history->top() : history->nextRedo();
+            return next ? next->info.id : 0;
+        }
+        UndoTimeline::EntryView next = undo ? UndoTimeline::nextUndo(sceneId) : UndoTimeline::nextRedo(sceneId);
+        return next ? next.entry->info.id : 0;
+    };
+    auto inScope = [&](uint64_t id) -> const UndoEntry* {
+        if (history) return history->find(id);
+        UndoTimeline::EntryView view = UndoTimeline::find(sceneId, id);
+        return view.entry;
+    };
+    auto applied = [&](uint64_t id) {
+        if (history) return history->isApplied(id);
+        UndoTimeline::EntryView view = UndoTimeline::find(sceneId, id);
+        return view && view.applied;
+    };
+
+    // expect_top_id: change nothing unless the next step is that one (an agent undoing only its own call)
+    if (args.contains("expect_top_id") && !args["expect_top_id"].is_null()) {
+        const uint64_t expected = args["expect_top_id"].get<uint64_t>();
+        const uint64_t actual = nextId();
+        if (actual != expected) {
+            data["next_id"] = actual == 0 ? Json(nullptr) : Json(actual);
+            call->fail(std::string("The next step to ") + verb + " is " +
+                       (actual == 0 ? std::string("none") : std::to_string(actual)) + ", not " + std::to_string(expected) +
+                       ": nothing changed. get_undo_history lists the steps.", data);
+            return;
         }
     }
-    if (scope == "project" && call->ctx().projectWindow()) {
+
+    std::vector<UndoTimeline::Step> done;
+    std::string why;
+    bool stopped = false;   // a step did not move: refused (busy, or by the command) or nothing left
+    StepReport report;
+    report.projectRoots = McpRefs::trustedRoots(project);
+    // the timeline's next step: checked as historyStep checks its own, its history's report read after
+    auto timelineStep = [&](bool undoing) {
+        UndoTimeline::EntryView next = undoing ? UndoTimeline::nextUndo(sceneId) : UndoTimeline::nextRedo(sceneId);
+        if (next && escapesProject(next.entry->cmd.get(), undoing, report)) return false;
+        const size_t before = done.size();
+        const bool moved = undoing ? UndoTimeline::undo(sceneId, &why, &done) : UndoTimeline::redo(sceneId, &why, &done);
+        for (size_t i = before; i < done.size(); i++) {
+            CommandHistory* stepHistory = done[i].project ? project->getProjectCommandHistory() : CommandHandle::get(done[i].sceneId);
+            if (stepHistory && !stepHistory->lastUndoProblem().empty()) report.problems.push_back(stepHistory->lastUndoProblem());
+        }
+        if (!moved && why.empty() && next && next.history && !next.history->lastRefusal().empty()) {
+            report.refusedWhy = next.history->lastRefusal();
+        }
+        return moved;
+    };
+    if (args.contains("to_id") && !args["to_id"].is_null()) {
+        const uint64_t target = args["to_id"].get<uint64_t>();
+        if (!inScope(target)) {
+            call->fail("No step " + std::to_string(target) + " in the " + scope + " history (get_undo_history lists them).", data);
+            return;
+        }
+        if (undo != applied(target)) {
+            call->fail("Step " + std::to_string(target) + (undo ? " is not applied: redo to it instead." : " is applied already: undo to it instead."), data);
+            return;
+        }
+        if (history) {
+            // undo until it is the newest applied step, or redo until it is applied
+            while (undo ? (history->top() && history->top()->info.id != target) : !history->isApplied(target)) {
+                if (!historyStep(history, undo, done, scope == "project", sceneId, report)) {
+                    stopped = true;
+                    break;
+                }
+            }
+        } else {
+            stopped = !UndoTimeline::jumpTo(sceneId, target, &why, &done);
+        }
+    } else {
+        for (int i = 0; i < steps; i++) {
+            if (history) {
+                if (!historyStep(history, undo, done, scope == "project", sceneId, report)) {
+                    stopped = true;
+                    break;
+                }
+            } else if (!timelineStep(undo)) {
+                stopped = true;
+                break;
+            }
+        }
+    }
+    if (history && why.empty() && report.refusedWhy.empty() && !CommandHistory::lastBusyRefusal().empty()) {
+        why = "Busy: " + CommandHistory::lastBusyRefusal();
+    }
+    const bool busy = why.rfind("Busy", 0) == 0;
+    // the next step is there but did not move: the command refused (it would make a child scene cycle)
+    const bool refused = stopped && !busy && nextId() != 0;
+    const std::string refusal = std::string("The next step cannot be ") + (undo ? "undone" : "redone") + " now: " +
+        (report.refusedWhy.empty() ? std::string("it would make a child scene cycle (read_console has the scenes).") : report.refusedWhy);
+    if (refused) data["refused"] = true;
+    if (refused && !report.refusedWhy.empty()) data["refusal"] = report.refusedWhy;
+    // a step taken whose files could not all be put back (a link planted after its check)
+    std::string problemText;
+    if (!report.problems.empty()) {
+        data["problems"] = report.problems;
+        for (const std::string& problem : report.problems) problemText += std::string(undo ? " Undo incomplete: " : " Redo incomplete: ") + problem + ".";
+    }
+    bool touchedProject = false;
+    Json list = Json::array();
+    for (const UndoTimeline::Step& step : done) {
+        list.push_back(McpUndo::stepJson(step));
+        touchedProject = touchedProject || step.project;
+    }
+    // the timeline refreshes the Project window itself
+    if (history && touchedProject && call->ctx().projectWindow()) {
         call->ctx().projectWindow()->refreshCurrentDirectory();
     }
-    data["steps"] = done;
-    data["can_undo"] = history->canUndo();
-    data["can_redo"] = history->canRedo();
-    const std::string refusal = std::string("The next step cannot be ") + (undo ? "undone" : "redone") +
-        " now: it would make a child scene cycle (read_console has the scenes).";
-    if (refused) data["refused"] = true;
-    if (done == 0) {
-        call->fail(refused ? refusal : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
+    data["steps"] = done.size();
+    data["undone"] = undo ? list : Json::array();
+    data["redone"] = undo ? Json::array() : list;
+    if (history) {
+        data["can_undo"] = history->canUndo();
+        data["can_redo"] = history->canRedo();
+    } else {
+        data["can_undo"] = UndoTimeline::canUndo(sceneId);
+        data["can_redo"] = UndoTimeline::canRedo(sceneId);
+    }
+    if (done.empty()) {
+        call->fail(busy ? why : refused ? refusal : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
         return;
     }
-    call->ok(std::string(undo ? "Undid " : "Redid ") + std::to_string(done) + " step(s) in the " + scope + " history." +
-             (refused ? " Stopped there: " + refusal : std::string()), data);
+    std::string names;
+    for (const UndoTimeline::Step& step : done) {
+        if (!names.empty()) names += ", ";
+        names += "\"" + step.name + "\"";
+    }
+    if (!report.problems.empty()) {
+        call->fail(std::string(undo ? "Undid " : "Redid ") + std::to_string(done.size()) + " step(s) in the " + scope + " history: " +
+                   names + "." + problemText + " Remove the link, then check those files.", data);
+        return;
+    }
+    call->ok(std::string(undo ? "Undid " : "Redid ") + std::to_string(done.size()) + " step(s) in the " + scope +
+             " history: " + names + "." + (refused ? " Stopped there: " + refusal : std::string()), data);
 }
 
+// ------------------------------------------------------------------ get_undo_history
+
+void getUndoHistoryTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    const std::string scope = args.value("scope", "timeline");
+    const int limit = std::max(1, std::min(500, args.value("limit", 30)));
+    const bool includeSelection = args.value("include_selection", false);
+    const bool includeRedo = args.value("include_redo", true);
+
+    uint32_t sceneId = NULL_PROJECT_SCENE;
+    Json data = {{"scope", scope}};
+    if (scope != "project") {
+        std::string error;
+        SceneProject* scene = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+        if (!scene) {
+            call->fail(error);
+            return;
+        }
+        sceneId = scene->id;
+        data["scene"] = McpRefs::sceneJson(project, *scene);
+    }
+    if (scope != "timeline" && scope != "scene" && scope != "project") {
+        call->fail("scope must be \"timeline\", \"scene\" or \"project\".");
+        return;
+    }
+
+    std::vector<UndoTimeline::EntryView> views = UndoTimeline::entries(sceneId, includeSelection);
+    Json entries = Json::array();
+    std::string text;
+    int listed = 0;
+    for (auto it = views.rbegin(); it != views.rend() && listed < limit; ++it) {
+        if (scope == "scene" && it->project) continue;
+        if (scope == "project" && !it->project) continue;
+        if (!includeRedo && !it->applied) continue;
+        entries.push_back(McpUndo::entryJson(*it));
+        text += "\n" + std::to_string(it->entry->info.id) + (it->applied ? "  " : " (redo) ") + it->entry->name() +
+                (it->project ? " [project]" : "");
+        listed++;
+    }
+    UndoTimeline::EntryView nextUndo = UndoTimeline::nextUndo(sceneId);
+    UndoTimeline::EntryView nextRedo = UndoTimeline::nextRedo(sceneId);
+    data["entries"] = entries;
+    data["undo_name"] = nextUndo ? Json(nextUndo.entry->name()) : Json(nullptr);
+    data["redo_name"] = nextRedo ? Json(nextRedo.entry->name()) : Json(nullptr);
+    data["can_undo"] = UndoTimeline::canUndo(sceneId);
+    data["can_redo"] = UndoTimeline::canRedo(sceneId);
+    data["memory"] = {{"used", CommandHistory::totalBytes()}, {"limit", CommandHistory::memoryLimit}};
+    if (CommandHistory* history = UndoTimeline::sceneHistory(sceneId); history && history->isInPlaySession()) {
+        data["play_floor_id"] = history->getPlayStartId();
+    }
+    call->ok(std::to_string(listed) + " step(s), newest first" + (listed ? ":" : ".") + text, data);
+}
+
+// ------------------------------------------------------------------ job system and memory
+
+Json jobSystemStatsJson(int windowFrames) {
+    const jobs::Stats stats = jobs::system().stats(windowFrames);
+    Json lanes = Json::object();
+    for (size_t lane = 0; lane < jobs::kLaneCount; lane++) {
+        lanes[jobs::laneName((jobs::Lane)lane)] = {{"queued", stats.lanes[lane].queued}, {"running", stats.lanes[lane].running}};
+    }
+    Json channels = Json::array();
+    for (const jobs::ChannelStats& channel : stats.channels) {
+        channels.push_back({{"name", channel.name}, {"queued", channel.queued}, {"running", channel.running}, {"cap", channel.cap}});
+    }
+    const AssetIOService::IOStats io = AssetIOService::instance().stats();
+    Json queuedByPriority = Json::object();
+    for (size_t level = 0; level < kIOPriorityCount; level++) {
+        queuedByPriority[ioPriorityName((IOPriority)level)] = io.queuedByPriority[level];
+    }
+    Json reads = Json::array();
+    for (const AssetIOService::ReadInfo& read : io.inFlight) {
+        reads.push_back({{"id", read.id}, {"path", read.path}, {"priority", ioPriorityName(read.priority)}, {"claimed", read.claimed}});
+    }
+    Json perWorker = Json::array();
+    for (const jobs::WorkerStats& worker : stats.perWorker) {
+        perWorker.push_back({{"busy_pct", std::round(worker.busyPct * 10.0) / 10.0}, {"jobs", worker.jobs}});
+    }
+    return {
+        {"workers", stats.workers},
+        {"single_thread", stats.singleThread},
+        {"lanes", lanes},
+        {"gate", {{"max", stats.gate.max}, {"taken", stats.gate.taken}, {"heavy_max", stats.gate.heavyMax},
+                  {"heavy_taken", stats.gate.heavyTaken}, {"reserve", stats.gate.reserve},
+                  {"peak", stats.gate.peakTaken}, {"heavy_peak", stats.gate.peakHeavyTaken}}},
+        {"channels", channels},
+        {"blocking_threads", stats.blockingThreads},
+        {"io", {{"queued_by_priority", queuedByPriority}, {"in_flight", reads}, {"readers", io.readers}}},
+        {"per_worker", perWorker},
+        {"window_frames", stats.windowFrames},
+        {"asset_jobs", stats.assetJobs},
+        {"totals", {{"executed", stats.totals.executed}, {"stolen", stats.totals.stolen},
+                    {"cancelled", stats.totals.cancelled}, {"failed", stats.totals.failed},
+                    {"heap_envelopes", stats.totals.heapEnvelopes}}},
+    };
+}
+
+void getJobSystemStatsTool(const CallPtr& call) {
+    const int window = std::max(1, std::min(120, call->args().value("window_frames", 60)));
+    Json data = jobSystemStatsJson(window);
+    call->ok("Job system: " + std::to_string(data["workers"].get<int>()) + " worker(s), Background gate " +
+             std::to_string(data["gate"]["taken"].get<int>()) + "/" + std::to_string(data["gate"]["max"].get<int>()) +
+             ", " + std::to_string(data["asset_jobs"].get<uint32_t>()) + " asset job(s) queued or running.", data);
+}
+
+void setJobSystemConfigTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    ThreadingProjectSettings settings = project->getThreadingSettings();
+    if (args.contains("reserved_frame_workers")) settings.reservedFrameWorkers = args["reserved_frame_workers"].get<int>();
+    if (args.contains("web_pump_budget_ms")) settings.webPumpBudgetMs = args["web_pump_budget_ms"].get<float>();
+    if (settings == project->getThreadingSettings()) {
+        call->ok("Nothing changed.", jobSystemStatsJson(1));
+        return;
+    }
+    // the settings path: project.yaml, live on the editor's job system, one project undo step
+    project->getProjectCommandHistory()->addCommand(new ThreadingSettingsCmd(project, settings));
+    Json data = jobSystemStatsJson(1);
+    call->ok("Threading settings applied (undo with scope project). Background gate max is now " +
+             std::to_string(data["gate"]["max"].get<int>()) + ".", data);
+}
+
+void getMemoryStatsTool(const CallPtr& call) {
+    const Json& args = call->args();
+    const std::string prefix = args.value("prefix", "");
+    const std::string residency = args.value("residency", "");
+    const std::string sort = args.value("sort", "current");
+    std::vector<memory::StatsEntry> entries = memory::snapshot();
+    entries.erase(std::remove_if(entries.begin(), entries.end(), [&](const memory::StatsEntry& entry) {
+        return entry.name.compare(0, prefix.size(), prefix) != 0
+            || (!residency.empty() && residency != memory::residencyName(entry.residency));
+    }), entries.end());
+    std::sort(entries.begin(), entries.end(), [&sort](const memory::StatsEntry& a, const memory::StatsEntry& b) {
+        if (sort == "name") return a.name < b.name;
+        if (sort == "peak") return a.peak > b.peak;
+        if (sort == "capacity") return a.capacity > b.capacity;
+        return a.current > b.current;
+    });
+    Json records = Json::array();
+    std::map<std::string, uint64_t> totals;
+    for (const memory::StatsEntry& entry : entries) {
+        records.push_back({{"name", entry.name}, {"kind", memory::kindName(entry.kind)},
+                           {"residency", memory::residencyName(entry.residency)}, {"current", entry.current},
+                           {"peak", entry.peak}, {"capacity", entry.capacity}, {"count", entry.count}});
+        totals[memory::residencyName(entry.residency)] += entry.current;
+    }
+    Json totalsJson = Json::object();
+    for (const char* name : {"Cpu", "Gpu", "Mapped"}) totalsJson[name] = totals[name];
+    call->ok(std::to_string(records.size()) + " memory record(s).", Json{{"records", records}, {"totals", totalsJson}});
+}
+
+
 // ------------------------------------------------------------------ editor_status
+
+// The file watcher and the hot reload (S05 R31)
+Json fileWatcherJson() {
+    const FileWatchService::Stats stats = FileWatchService::get().stats();
+    HotReloadService& reloads = HotReloadService::get();
+    return {
+        {"backend", stats.backend.empty() ? Json(nullptr) : Json(stats.backend)},
+        {"state", FileWatchService::stateName(stats.state)},
+        {"auto_refresh", reloads.getAutoRefresh()},
+        {"roots", stats.roots},
+        {"watches", stats.watches},
+        {"events", stats.events},
+        {"coalesced", stats.coalesced},
+        {"echoes_suppressed", stats.echoesSuppressed},
+        {"overflows", stats.overflows},
+        {"pending", stats.pending + reloads.pendingExternalChanges() + McpAutoSync::get().heldAtCallStart()},
+        {"reloading", reloads.reloadingCount()},
+        {"reloads", reloads.reloadCount()},
+        {"last_reload", reloads.lastReloadJson()},
+        {"poll_interval_ms", stats.pollInterval.count()}
+    };
+}
 
 void editorStatusTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
@@ -329,8 +656,55 @@ void editorStatusTool(const CallPtr& call) {
         dialog = {{"kind", info.kind}, {"title", info.title}, {"message", info.message}, {"choices", info.choices}};
     }
 
+    // What the asset windows show (S04), with the Project window's clickable rects in window
+    // pixels (UI automation: a test right-clicks an entry for real)
+    auto rectJson = [](const ProjectWindow::UiRect& r) { return Json::array({r.x, r.y, r.w, r.h}); };
+    Json ui = Json::object();
+    if (ProjectWindow* projectWindow = ctx.projectWindow()) {
+        const ProjectWindow::UiState& state = projectWindow->getUiState();
+        Json entries = Json::array();
+        for (const auto& [name, rect] : state.entries) entries.push_back({{"name", name}, {"rect", rectJson(rect)}});
+        Json menu = Json::array();
+        for (const auto& [label, rect] : state.contextMenu) menu.push_back({{"label", label}, {"rect", rectJson(rect)}});
+        Json tree = Json::array();
+        for (const ProjectWindow::UiTreeNode& node : state.tree) {
+            tree.push_back({{"path", node.path}, {"rect", rectJson(node.rect)}, {"arrow", Json::array({node.arrowX, node.arrowY})},
+                            {"open", node.open}});
+        }
+        ui["project_window"] = {{"drawn", state.drawn}, {"directory", state.directory}, {"search", state.search},
+                                {"selected", state.selected}, {"search_box", rectJson(state.searchBox)},
+                                {"tree", tree}, {"entries", entries}, {"context_menu", menu}};
+    }
+    if (AssetReferencesWindow* references = app.getAssetReferencesWindow()) {
+        Json referrers = Json::array();
+        for (const DepEdge& edge : references->getResults()) {
+            referrers.push_back({{"referrer", project->getAssetIndex().referrerPath(edge.referrer)}, {"field", edge.field}});
+        }
+        ui["references"] = {{"open", references->isOpen()}, {"asset", references->getTargetPath()},
+                            {"guid", references->getTargetGuid().isNull() ? Json(nullptr) : Json(references->getTargetGuid().str())},
+                            {"results", referrers}};
+    }
+    if (MissingAssetsWindow* missing = app.getMissingAssetsWindow()) {
+        ui["missing_assets"] = {{"open", missing->isOpen()}};
+    }
+    if (SearchPalette* palette = app.getSearchPalette()) {
+        const SearchPalette::UiState state = palette->uiState();
+        ui["search_palette"] = {{"open", state.open}, {"query", state.query}, {"results", state.results}, {"selected", state.selected}};
+    }
+
     const SceneProject* selected = project->getSelectedScene();
+    // the Edit menu's labels come from the same calls (UndoTimeline::undoLabel)
+    const uint32_t undoScene = selected ? selected->id : NULL_PROJECT_SCENE;
+    UndoTimeline::EntryView nextUndo = UndoTimeline::nextUndo(undoScene);
+    UndoTimeline::EntryView nextRedo = UndoTimeline::nextRedo(undoScene);
+    Json undoStatus = {
+        {"undo_name", nextUndo ? Json(nextUndo.entry->name()) : Json(nullptr)},
+        {"redo_name", nextRedo ? Json(nextRedo.entry->name()) : Json(nullptr)},
+        {"undo_label", UndoTimeline::undoLabel(undoScene)},
+        {"redo_label", UndoTimeline::redoLabel(undoScene)}
+    };
     Json data = {
+        {"undo", undoStatus},
         {"editor", {{"version", JASPERENGINE_EDITOR_VERSION}}},
         {"project", {
             {"name", project->getName()},
@@ -349,7 +723,15 @@ void editorStatusTool(const CallPtr& call) {
         {"jobs", jobs},
         {"waiting_calls", status.pendingCalls},
         {"auto_sync", McpAutoSync::get().stats()},
+        {"file_watcher", fileWatcherJson()},
+        // the status bar's short message ("Preparing picking for Rock...", S26)
+        {"status_message", StatusBar::getTransientMessage()},
+        {"scripts", ScriptStatus::get().toJson()},
+        {"frame_ms", app.takeFrameStats()},
         {"dialog", dialog},
+        {"ui", ui},
+        // S25: what the layouts and the palette change
+        {"windows", {{"focused", app.focusedWindowName()}, {"open", app.openPanels()}}},
         {"mcp", {
             {"server", McpServer::SERVER_NAME},
             {"stdio", status.stdio},
@@ -399,6 +781,88 @@ void respondDialogTool(const CallPtr& call) {
     });
 }
 
+// ------------------------------------------------------------------ tool_groups
+
+// Adds (on) or removes the groups args[key] names; false (call failed) on a bad name
+bool changeToolGroups(const CallPtr& call, const char* key, bool on, std::set<std::string>& enabled) {
+    const Json& args = call->args();
+    if (!args.contains(key)) return true;
+    if (!args[key].is_array()) {
+        call->fail(std::string(key) + " must be an array of group names.");
+        return false;
+    }
+    for (const Json& item : args[key]) {
+        const std::string name = item.is_string() ? item.get<std::string>() : item.dump();
+        if (!item.is_string() || !findToolGroup(name)) {
+            std::string valid;
+            for (const ToolGroupInfo& group : toolGroups()) valid += (valid.empty() ? "" : ", ") + group.name;
+            call->fail("Unknown tool group " + name + ". Groups: " + valid + ".");
+            return false;
+        }
+        if (name == CORE_TOOL_GROUP) {
+            if (!on) {
+                call->fail("core is always listed and can't be disabled.");
+                return false;
+            }
+            continue;
+        }
+        if (on) enabled.insert(name);
+        else enabled.erase(name);
+    }
+    return true;
+}
+
+void toolGroupsTool(const CallPtr& call) {
+    McpServer& server = call->server();
+    const SessionPtr session = call->session();
+    std::set<std::string> enabled = server.sessionToolGroups(session);
+    const std::set<std::string> before = enabled;
+    if (!changeToolGroups(call, "enable", true, enabled) || !changeToolGroups(call, "disable", false, enabled)) return;
+    if (enabled != before) {
+        if (!session) {
+            call->fail("This call has no client session whose tool listing could change.");
+            return;
+        }
+        server.setSessionToolGroups(session, enabled);
+    }
+
+    Json groups = Json::array();
+    size_t listedTools = 0;
+    std::string listed;
+    for (const ToolGroupInfo& group : toolGroups()) {
+        Json names = Json::array();
+        size_t chars = 0;
+        for (const ToolDef& def : server.registry().tools()) {
+            if (McpRegistry::groupOf(def) != group.name) continue;
+            names.push_back(def.name);
+            chars += McpRegistry::toolChars(def);
+        }
+        const bool on = group.name == CORE_TOOL_GROUP || enabled.count(group.name) > 0;
+        if (on) {
+            listedTools += names.size();
+            listed += (listed.empty() ? "" : ", ") + group.name;
+        }
+        groups.push_back({{"name", group.name}, {"description", group.description}, {"tools", names},
+                          {"chars", chars}, {"enabled", on}});
+    }
+
+    std::string text = "tools/list shows " + listed + " (" + std::to_string(listedTools) + " tools).";
+    Json data = {{"groups", groups}, {"list_changed", false}};
+    if (enabled != before) {
+        const bool sent = call->notifyClient(Json{{"jsonrpc", "2.0"}, {"method", "notifications/tools/list_changed"}});
+        data["list_changed"] = sent;
+        text += sent ? " Sent notifications/tools/list_changed: re-list tools."
+                     : " This client can't receive notifications/tools/list_changed (HTTP without text/event-stream): "
+                       "call tools/list again, or call the tools by name (also in batch).";
+    }
+    for (const Json& group : groups) {
+        text += "\n" + group["name"].get<std::string>() + (group["enabled"].get<bool>() ? " [listed]" : "") + ": " +
+                std::to_string(group["tools"].size()) + " tools, " + std::to_string(group["chars"].get<size_t>()) +
+                " chars. " + group["description"].get<std::string>();
+    }
+    call->ok(text, data);
+}
+
 } // namespace
 
 void registerCoreTools(McpRegistry& registry) {
@@ -427,8 +891,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.title = "Batch";
         tool.description =
             "Run tool calls in order in one round-trip: results [{ok, text, structured}], succeeded, failed (the "
-            "batch itself doesn't fail: check failed). undo_group: one undo step per scene; undo/redo or Play "
-            "start/stop inside prevent it. Not nestable.";
+            "batch itself doesn't fail: check failed). undo_group: one linked undo step (one Ctrl+Z) over the "
+            "histories it changed, named undo_name; undo/redo or Play start/stop inside prevent it. Not nestable.";
         tool.inputSchema = object({
             {"calls", Json{
                 {"type", "array"},
@@ -440,7 +904,8 @@ void registerCoreTools(McpRegistry& registry) {
                 }, {"tool"})}
             }},
             {"stop_on_error", withDefault(boolean(""), true)},
-            {"undo_group", withDefault(boolean(""), false)}
+            {"undo_group", withDefault(boolean(""), false)},
+            {"undo_name", string("undo_group's step name (default \"Batch (N calls)\").")}
         }, {"calls"});
         tool.handler = batchTool;
         registry.addTool(std::move(tool));
@@ -481,15 +946,40 @@ void registerCoreTools(McpRegistry& registry) {
         tool.name = undo ? "undo" : "redo";
         tool.title = undo ? "Undo" : "Redo";
         tool.description = undo
-            ? "Undo like Ctrl+Z. scope scene: one scene's edits (a step per edit call; a batch with undo_group is "
-              "one); project: asset file operations. Returns steps undone and whether more undo/redo is possible."
-            : "Redo what undo undid, like Ctrl+Y; same scopes. Any new edit clears the redo history.";
+            ? "Undo. scope timeline (recommended): exactly Ctrl+Z, the scene's and the asset steps in order; scene: "
+              "one scene's edits; project: asset file operations. to_id: until that step is the newest applied; "
+              "expect_top_id: refuse unless the next step is that id. Returns undone [{id, name}]."
+            : "Redo what undo undid, like Ctrl+Y; same scopes, to_id (until applied) and expect_top_id. Any new edit "
+              "clears the redo history.";
         tool.inputSchema = object({
-            {"scope", withDefault(stringEnum("", {"scene", "project"}), "scene")},
+            {"scope", withDefault(stringEnum("", {"timeline", "scene", "project"}), "scene")},
             {"scene", sceneRef()},
-            {"steps", withDefault(integer("", 1, 100), 1)}
+            {"steps", withDefault(integer("", 1, 100), 1)},
+            {"to_id", integer("A step id from get_undo_history.")},
+            {"expect_top_id", integer("Refuse unless the next step is this id.")}
         });
         tool.handler = [undo](CallPtr call) { undoRedo(call, undo); };
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_undo_history";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Get Undo History";
+        tool.description =
+            "Undo steps newest first: {id, name, type, history (project|scene id), origin {kind, client, tool}, time, "
+            "bytes, applied, link_id}, the next undo/redo names, memory. scope timeline: what Ctrl+Z walks.";
+        tool.inputSchema = object({
+            {"scene", sceneRef()},
+            {"scope", withDefault(stringEnum("", {"timeline", "scene", "project"}), "timeline")},
+            {"limit", withDefault(integer("", 1, 500), 30)},
+            {"include_selection", withDefault(boolean("Selection steps too."), false)},
+            {"include_redo", withDefault(boolean(""), true)}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getUndoHistoryTool;
         registry.addTool(std::move(tool));
     }
 
@@ -499,11 +989,55 @@ void registerCoreTools(McpRegistry& registry) {
         tool.title = "Editor Status";
         tool.description =
             "Editor overview: project, open scenes (id, name, path, selected, start, modified, play state, prefab "
-            "stage), unsaved changes, jobs, pending dialog, MCP sessions. Call it first.";
+            "stage), unsaved changes, jobs, pending dialog, MCP sessions, file watcher, frame times. Call it first.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = editorStatusTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_job_system_stats";
+        tool.group = "diagnostics";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Get Job System Stats";
+        tool.description = "Job system: workers, lanes, Background gate, channels, asset I/O, per-worker busy % over window_frames, totals.";
+        tool.inputSchema = object({{"window_frames", withDefault(integer("", 1, 120), 60)}});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getJobSystemStatsTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "set_job_system_config";
+        tool.group = "diagnostics";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Set Job System Config";
+        tool.description = "Player > Threading, applied live and saved: reserved_frame_workers (-1 Auto), web_pump_budget_ms. Undo: scope project.";
+        tool.inputSchema = object({
+            {"reserved_frame_workers", integer("", -1, 4)},
+            {"web_pump_budget_ms", number("", 0.5, 50.0)}
+        });
+        tool.handler = setJobSystemConfigTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_memory_stats";
+        tool.group = "diagnostics";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Get Memory Stats";
+        tool.description = "Memory records {name, kind, residency, current, peak, capacity, count} in bytes, totals by residency.";
+        tool.inputSchema = object({
+            {"prefix", string("e.g. Texture.")},
+            {"residency", stringEnum("", {"Cpu", "Gpu", "Mapped"})},
+            {"sort", withDefault(stringEnum("", {"current", "peak", "capacity", "name"}), "current")}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getMemoryStatsTool;
         registry.addTool(std::move(tool));
     }
 
@@ -519,6 +1053,25 @@ void registerCoreTools(McpRegistry& registry) {
             {"choice", stringEnum("", {"ok", "yes", "no", "cancel"})}
         }, {"choice"});
         tool.handler = respondDialogTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "tool_groups";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
+        tool.title = "Tool Groups";
+        tool.description =
+            "List the tool groups; enable/disable lists a group in this session's tools/list (core always is). "
+            "Every tool is callable by name whether listed or not, also in batch.";
+        tool.inputSchema = object({
+            {"enable", array(string(""), "")},
+            {"disable", array(string(""), "")}
+        });
+        // changes what this client lists, never the project
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = toolGroupsTool;
         registry.addTool(std::move(tool));
     }
 }

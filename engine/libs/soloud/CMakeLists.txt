@@ -1,4 +1,24 @@
 # SoLoud - https://github.com/jarikomppa/soloud/
+# Local patches (keep them when updating SoLoud): Bus has a destructor that stops its voices
+# (src/core/soloud_bus.cpp: AudioSource's own destructor ran after the Bus part was destroyed, and
+# ~BusInstance read the destroyed Bus); AlignedFloatBuffer::clear() leaves an uninitialised buffer
+# alone (src/core/soloud.cpp: the nosound backend cleared it with memset of a null pointer);
+# postinit_internal frees the resample arrays of an earlier init (src/core/soloud.cpp: re-inits leaked them).
+# SoLoud's own stb_vorbis.c is compiled here, not the stock copy (stb has none): it reads through SoLoud's
+# File (soloud_file_hack_on.h), which WavStream hands it; the stock one took that File* for a FILE* and
+# every streamed or compressed-in-memory Ogg aborted.
+# WavStreamInstance::seek lands on its frame in every format with the decoder's own seek
+# (src/audiosource/wav/soloud_wavstream.cpp: it tested a union member set for every format and handed
+# WAV, FLAC and MP3 decoders to stb_vorbis_seek at each loop wrap; Ogg dropped the sought frame), and a
+# streamed Ogg ends at its last granule (getAudio played the frames stb_vorbis decodes past it).
+# Wav's loaders stay within the clip (src/audiosource/wav/soloud_wav.cpp: loadogg wrote the frames
+# stb_vorbis decodes past the last granule beyond mData; loadwav and loadflac copied whole blocks after
+# a short read, stale or uninitialised floats).
+# A voice that ends plays its last block to the end (src/core/soloud.cpp mixBus_internal: it was stopped
+# at the end of the mix call that read that block, dropping what the block still held).
+# A bus never reads ahead (src/core/soloud.cpp mixBus_internal: a voice at step 1 with autostop off, the
+# engine's buses, reads only the frames the call still needs; a voice started into a bus was mixed at the
+# bus's next 512-frame block, up to 511 frames late, and seen ended up to a block early).
 
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
@@ -34,8 +54,15 @@ add_library(
 
     src/audiosource/wav/dr_impl.cpp
     src/audiosource/wav/soloud_wav.cpp
+    src/audiosource/wav/soloud_wavstream.cpp
+    # SoLoud's copy, which reads through SoLoud's File with soloud_file_hack_on.h: WavStream hands
+    # stb_vorbis a SoLoud File*, which a stock copy takes for a FILE*
+    src/audiosource/wav/stb_vorbis.c
 
     src/backend/miniaudio/soloud_miniaudio.cpp
+    src/backend/nosound/soloud_nosound.cpp
+    # the null driver: the editor's Recorder mixes offline in step with the game (S27 R29)
+    src/backend/null/soloud_null.cpp
 
     src/filter/soloud_bassboostfilter.cpp
     src/filter/soloud_biquadresonantfilter.cpp
@@ -62,8 +89,13 @@ if(APPLE)
     )
 endif()
 
+# no device (CI, servers, headless boxes): NoSound mixes in its own thread with no output,
+# Null on the main thread (AudioSystem; audio-mixer spec A14)
+target_compile_definitions(soloud PRIVATE WITH_NOSOUND WITH_NULL)
+
 find_package(Threads REQUIRED)
 target_link_libraries(soloud PRIVATE Threads::Threads)
+target_compile_definitions(soloud PRIVATE WITH_NULL)
 
 if(EMSCRIPTEN AND EMSCRIPTEN_THREAD_SUPPORT)
 	target_compile_options(soloud PRIVATE -pthread)

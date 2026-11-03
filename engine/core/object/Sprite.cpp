@@ -66,6 +66,7 @@ void Sprite::setSize(unsigned int width, unsigned int height){
         spritecomp.height = height;
 
         spritecomp.needUpdateSprite = true;
+        markChanged<SpriteComponent>();
     }
 }
 
@@ -76,6 +77,7 @@ void Sprite::setWidth(unsigned int width){
         spritecomp.width = width;
 
         spritecomp.needUpdateSprite = true;
+        markChanged<SpriteComponent>();
     }
 }
 
@@ -86,6 +88,7 @@ void Sprite::setHeight(unsigned int height){
         spritecomp.height = height;
 
         spritecomp.needUpdateSprite = true;
+        markChanged<SpriteComponent>();
     }
 }
 
@@ -109,6 +112,7 @@ void Sprite::setFlipY(bool flipY){
         spritecomp.flipY = flipY;
 
         spritecomp.needUpdateSprite = true;
+        markChanged<SpriteComponent>();
     }
 }
 
@@ -124,6 +128,7 @@ void Sprite::setTextureScaleFactor(float textureScaleFactor){
     if (spritecomp.textureScaleFactor != textureScaleFactor){
         spritecomp.textureScaleFactor = textureScaleFactor;
         spritecomp.needUpdateSprite = true;
+        markChanged<SpriteComponent>();
     }
 }
 
@@ -143,6 +148,7 @@ void Sprite::setTextureRect(Rect textureRect){
 
     if (MeshSystem::changesSpriteInset(spritecomp, mesh.submeshes[0].textureRect, textureRect)){
         spritecomp.needUpdateSprite = true;
+        markChanged<SpriteComponent>();
     }
 
     // An explicit UV rectangle supersedes a frame waiting for its texture size.
@@ -161,6 +167,7 @@ void Sprite::setPivotPreset(PivotPreset pivotPreset){
 
     spritecomp.pivotPreset = pivotPreset;
     spritecomp.needUpdateSprite = true;
+    markChanged<SpriteComponent>();
 }
 
 PivotPreset Sprite::getPivotPreset() const{
@@ -177,7 +184,7 @@ void Sprite::addFrame(int id, const std::string& name, Rect rect){
             spritecomp.numFramesRect = id + 1;
         }
     }else{
-        Log::error("Cannot set frame id %s less than 0 or greater than %i", name.c_str(), spritecomp.framesRect.size());
+        Log::error("Cannot set frame id %s less than 0 or greater than %zu", name.c_str(), spritecomp.framesRect.size());
     }
 }
 
@@ -189,7 +196,7 @@ void Sprite::addFrame(const std::string& name, float x, float y, float width, fl
     if (spritecomp.framesRect.validIndex(id)){
         addFrame(id, name, Rect(x, y, width, height));
     }else{
-        Log::error("Cannot set frame %s. Sprite frames reached limit of %i", name.c_str(), spritecomp.framesRect.size());
+        Log::error("Cannot set frame %s. Sprite frames reached limit of %zu", name.c_str(), spritecomp.framesRect.size());
     }
 }
 

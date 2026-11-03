@@ -13,6 +13,7 @@
 // simulator's runtime stats.
 
 #include "InspectorWindow.h"
+#include "widget/ColorPickerWindow.h"
 
 #include "App.h"
 #include "Catalog.h"
@@ -670,11 +671,17 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
                                "sRGB to linear conversion.", v.changed(), false))
                 commitFluidProperty<Vector3>(sceneProject, entities, "backColor", v.def, false);
             Vector3 value = v.value;
-            if (v.mixed) ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-            if (ImGui::ColorEdit3("##value", (float*)&value.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+            ui::ColorFieldOptions colorOptions;
+            colorOptions.alpha = false;
+            colorOptions.linearStorage = false;
+            colorOptions.label = "Back Color";
+            colorOptions.mixed = v.mixed;
+            const ui::EditPhase phase = ui::colorField("##value", value, colorOptions);
+            if (phase == ui::EditPhase::Begin)
+                ui::ColorPickerWindow::beginEdit(CommandHandle::get(project->getSelectedSceneId()), "Back Color");
+            else if (phase == ui::EditPhase::Changing)
                 commitFluidProperty<Vector3>(sceneProject, entities, "backColor", value, true);
             UIProbe::item("fluid.value.backColor");
-            if (v.mixed) ImGui::PopStyleColor();
             endEdit();
             ImGui::PopID();
         }

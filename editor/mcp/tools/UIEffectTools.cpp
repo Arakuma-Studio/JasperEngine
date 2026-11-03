@@ -21,6 +21,7 @@
 #include "object/ui/UIDocument.h"
 #include "object/ui/UIElement.h"
 #include "util/ProjectChecks.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -83,7 +84,7 @@ void listUiEffectsTool(const CallPtr& call) {
     if (project && !project->getProjectPath().empty()) {
         for (const std::string& file : ProjectChecks::uiEffectFiles(project)) {
             std::string source;
-            if (!ProjectChecks::readFile(project->getProjectPath() / fs::u8path(file), source)) continue;
+            if (!ProjectChecks::readFile(project->getProjectPath() / FileUtils::pathFromUtf8(file), source)) continue;
             auto manifest = std::make_unique<fx::EffectManifest>();
             std::vector<fx::EffectDiagnostic> diags;
             if (!fx::EffectManifestParser::parse(source, file, false, *manifest, diags) || registry.find(manifest->name)) continue;

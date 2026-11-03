@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainEditWindow.h"
+#include "widget/ColorPickerWindow.h"
+#include "DocumentFile.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include "Backend.h"
 #include "Catalog.h"
@@ -9,6 +13,7 @@
 #include "Stream.h"
 #include "Theme.h"
 #include "command/CommandHandle.h"
+#include "command/CommandNames.h"
 #include "command/PrefabEditUndo.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -30,6 +35,7 @@
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
 #include "window/Widgets.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -539,6 +545,12 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
         return flushOk;
     }
 
+    // The maps folder resolving outside the project (a link to another project's folder): its
+    // files are not this project's to collect
+    if (!safewrite::isInsideResolved(absoluteBaseDir, project->getProjectPath()) && !safewrite::isInsideResolved(absoluteBaseDir, project->getAssetsPath())){
+        return flushOk;
+    }
+
     // Candidate orphans: editable maps on disk that no loaded scene references.
     std::vector<fs::path> candidates;
     for (const auto& entry : fs::directory_iterator(absoluteBaseDir, ec)){
@@ -563,7 +575,8 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
 
     for (const fs::path& candidate : candidates){
         if (activeFiles.find(candidate.filename().string()) == activeFiles.end()){
-            fs::remove(candidate, ec);
+            // the entry itself (in a write scope: beneath its root)
+            FileUtils::removePath(candidate, ec);
             Out::info("Garbage collected old terrain map: %s", candidate.filename().string().c_str());
         }
     }
@@ -920,6 +933,8 @@ private:
     TerrainMapSnapshot afterSnapshot;
     bool wasModified = false;
     PrefabEditUndo prefabUndo;
+    // the step's verb when it is not a sculpt or a paint ("Convert Heightmap to 16-bit")
+    std::string verbOverride;
 
     void apply(const TerrainMapSnapshot& snapshot, bool restoreModifiedState){
         SceneProject* sceneProject = project->getScene(sceneId);
@@ -966,8 +981,9 @@ private:
 
 public:
     TerrainTextureEditCmd(TerrainEditWindow* window, Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref,
-                          const TerrainMapSnapshot& beforeSnapshot, const TerrainMapSnapshot& afterSnapshot):
-        window(window), project(project), sceneId(sceneId), entity(entity), ref(ref), beforeSnapshot(beforeSnapshot), afterSnapshot(afterSnapshot){}
+                          const TerrainMapSnapshot& beforeSnapshot, const TerrainMapSnapshot& afterSnapshot, std::string verb = {}):
+        window(window), project(project), sceneId(sceneId), entity(entity), ref(ref), beforeSnapshot(beforeSnapshot), afterSnapshot(afterSnapshot),
+        verbOverride(std::move(verb)){}
 
     bool execute() override{
         SceneProject* sceneProject = project->getScene(sceneId);
@@ -981,6 +997,31 @@ public:
 
     void undo() override{
         apply(beforeSnapshot, true);
+    }
+
+    // "Sculpt Terrain (Island)", "Paint Terrain (Island)", "Paint Details (Island)"
+    std::string describe() const override{
+        const char* verb = ref.target == TerrainMapTarget::HeightMap ? "Sculpt Terrain" :
+            (ref.target == TerrainMapTarget::BlendMap ? "Paint Terrain" : "Paint Details");
+        return (verbOverride.empty() ? std::string(verb) : verbOverride) + " (" + editor::CommandNames::entity(project, sceneId, entity) + ")";
+    }
+
+    const char* typeName() const override{ return "TerrainTextureEditCmd"; }
+
+    // Off-thread release: the destructor only frees map snapshots and override records; no editor/engine/GPU state (S24 R8).
+    bool releaseOffThread() const override{ return true; }
+
+    size_t memoryBytes() const override{
+        return sizeof(*this) + beforeSnapshot.pixels.capacity() + afterSnapshot.pixels.capacity() +
+            beforeSnapshot.path.size() + afterSnapshot.path.size();
+    }
+
+    // the map file each apply writes (the write itself: TerrainMapUtils::writeFile, beneath the
+    // step's write scope)
+    std::vector<Touched> touchedPaths(bool undo) const override{
+        const TerrainMapSnapshot& snapshot = undo ? beforeSnapshot : afterSnapshot;
+        if (snapshot.path.empty()) return {};
+        return {{project->resolveAssetPath(snapshot.path), false}};
     }
 };
 
@@ -1177,6 +1218,18 @@ public:
     bool affectsStructure() const override{
         return createHostCmd != nullptr;
     }
+
+    // "Paint Trees (Island)"
+    std::string describe() const override{
+        return "Paint Trees (" + editor::CommandNames::entity(project, sceneId, terrainEntity) + ")";
+    }
+
+    const char* typeName() const override{ return "TerrainInstancePlaceCmd"; }
+
+    size_t memoryBytes() const override{
+        return sizeof(*this) + assetPath.size() + (createHostCmd ? createHostCmd->memoryBytes() : 0) +
+            (loadHostCmd ? loadHostCmd->memoryBytes() : 0) + (mergeHostCmd ? mergeHostCmd->memoryBytes() : 0);
+    }
 };
 
 class editor::TerrainEditWindow::TerrainInstanceEraseCmd: public editor::Command{
@@ -1241,6 +1294,20 @@ public:
     bool affectsStructure() const override{
         return false;
     }
+
+    // "Erase Trees (Rock)": the instanced GameObject they are erased from
+    std::string describe() const override{
+        return "Erase Trees (" + editor::CommandNames::entity(project, sceneId, host) + ")";
+    }
+
+    const char* typeName() const override{ return "TerrainInstanceEraseCmd"; }
+
+    size_t memoryBytes() const override{
+        return sizeof(*this) + indices.capacity() * sizeof(size_t) + removed.capacity() * sizeof(InstanceData);
+    }
+
+    // Off-thread release: the destructor only frees index and instance vectors; no editor/engine/GPU state (S24 R8).
+    bool releaseOffThread() const override{ return true; }
 };
 
 // One undo step per stroke: each stamp merges into the previous one while the stroke id
@@ -1306,6 +1373,21 @@ public:
             }
         }
         return false;
+    }
+
+    // A stroke's stamps are all of one kind: named by the first
+    std::string describe() const override{
+        return commands.empty() ? std::string("Paint Trees") : commands.front()->describe();
+    }
+
+    const char* typeName() const override{ return "TerrainObjectStrokeCmd"; }
+
+    size_t memoryBytes() const override{
+        size_t bytes = sizeof(*this) + commands.capacity() * sizeof(editor::Command*);
+        for (const editor::Command* command : commands){
+            bytes += command->memoryBytes();
+        }
+        return bytes;
     }
 };
 
@@ -2122,7 +2204,34 @@ bool editor::TerrainEditWindow::applyObjectErase(SceneProject* sceneProject, Ent
 }
 
 void editor::TerrainEditWindow::clearStroke(){
+    stroke.edit.commit();
     stroke = ActiveStroke();
+}
+
+void editor::TerrainEditWindow::openStrokeEdit(SceneProject* sceneProject){
+    stroke.wasModified = sceneProject->isModified;
+    stroke.edit = CommandHandle::get(sceneProject->id)->beginInteractive(std::string());
+    stroke.editStarted = true;
+}
+
+bool editor::TerrainEditWindow::strokeCancelled(){
+    if (!stroke.editStarted || stroke.edit.isOpen()){
+        return false;
+    }
+    // Placement commands were undone by the cancel; a map stroke only wrote pixels
+    SceneProject* sceneProject = project->getScene(stroke.sceneId);
+    if (!stroke.placement && sceneProject && sceneProject->scene->isEntityCreated(stroke.entity)){
+        if (TerrainComponent* terrain = sceneProject->scene->findComponent<TerrainComponent>(stroke.entity)){
+            if (Texture* texture = TerrainMapUtils::findTexture(*terrain, stroke.ref)){
+                applySnapshotToTexture(project, *texture, stroke.beforeSnapshot);
+                TerrainMapUtils::refresh(sceneProject, stroke.entity, stroke.ref);
+                TerrainMapUtils::refreshSharing(project, stroke.sceneId, stroke.entity, stroke.ref);
+            }
+        }
+        sceneProject->isModified = stroke.wasModified;
+    }
+    stroke = ActiveStroke();
+    return true;
 }
 
 bool editor::TerrainEditWindow::createMapForTarget(const TerrainMapRef& ref, int width, int height){
@@ -2159,6 +2268,41 @@ bool editor::TerrainEditWindow::createMapForTarget(const TerrainMapRef& ref, int
     }
 
     CommandHandle::get(sceneProject->id)->addCommandNoMerge(new TerrainTextureEditCmd(this, project, sceneProject->id, selectedEntity, ref, before, after));
+    return true;
+}
+
+bool editor::TerrainEditWindow::convertHeightMapTo16Bit(uint32_t sceneId, Entity entity, std::string& error){
+    SceneProject* sceneProject = project->getScene(sceneId);
+    TerrainComponent* terrain = sceneProject ? sceneProject->scene->findComponent<TerrainComponent>(entity) : nullptr;
+    if (!terrain){
+        error = "The GameObject has no Terrain.";
+        return false;
+    }
+    const TerrainMapRef ref(TerrainMapTarget::HeightMap);
+    Texture& texture = terrain->heightMap;
+    TerrainMapSnapshot before = captureSnapshot(project, texture, true);
+    if (before.empty || before.pixels.empty()){
+        error = "The terrain has no heightmap.";
+        return false;
+    }
+    if (TextureData::getBytesPerChannel(before.colorFormat) >= 2){
+        error = "The heightmap is 16-bit already.";
+        return false;
+    }
+    // the same heights, each 8-bit level at its 16-bit equal (v * 257), in the same file
+    TerrainMapSnapshot after = before;
+    after.colorFormat = ColorFormat::RED16;
+    after.channels = 1;
+    after.pixels.assign(static_cast<size_t>(before.width) * static_cast<size_t>(before.height) * 2, 0);
+    for (size_t texel = 0; texel < static_cast<size_t>(before.width) * static_cast<size_t>(before.height); texel++){
+        encodeHeightTexel(after.pixels.data(), texel, 2, decodeHeightTexel(before.pixels.data(), texel, before.channels, 1));
+    }
+    if (after.path.empty()){
+        after.path = makeEditableTexturePath(project, sceneId, entity, ref);
+        after.id = after.path;
+    }
+    CommandHandle::get(sceneId)->addCommandNoMerge(new TerrainTextureEditCmd(this, project, sceneId, entity, ref, before, after,
+                                                                             "Convert Heightmap to 16-bit"));
     return true;
 }
 
@@ -2541,7 +2685,7 @@ void editor::TerrainEditWindow::applyLayerMaterial(TerrainComponent& terrain, in
 
     Material material;
     try{
-        material = Stream::decodeMaterial(YAML::LoadFile((project->getProjectPath() / materialPath).string()));
+        material = Stream::decodeMaterial(DocumentFiles::read(project->getProjectPath() / materialPath, DocumentKind::Material).root);
     }catch (const std::exception& e){
         Out::error("Failed to read material '%s': %s", materialPath.c_str(), e.what());
         return;
@@ -2660,11 +2804,14 @@ void editor::TerrainEditWindow::drawLayerSurface(TerrainComponent& terrain, int 
     // Tiling rides on every layer, so only the maps below wait for the PBR surface
     if (layer.pbr){
         terrainPropertyRow("Tint", "Multiplies the layer color", true);
-        Vector4 tint = Color::linearTosRGB(layer.colorFactor);
-        if (ImGui::ColorEdit4("##tint", &tint.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel |
-                              ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)){
-            const Vector4 linear = Color::sRGBToLinear(tint);
-            edit([&](TerrainSurfaceLayer& target){ target.colorFactor = linear; }, true);
+        Vector4 tint = layer.colorFactor;
+        ui::ColorFieldOptions tintOptions;
+        tintOptions.label = "Tint";
+        const ui::EditPhase tintPhase = ui::colorField("##tint", tint, tintOptions);
+        if (tintPhase == ui::EditPhase::Begin){
+            if (SceneProject* target = getTargetSceneProject()) ui::ColorPickerWindow::beginEdit(CommandHandle::get(target->id), "Tint");
+        }else if (tintPhase == ui::EditPhase::Changing){
+            edit([&](TerrainSurfaceLayer& target){ target.colorFactor = tint; }, true);
         }
 
         mapRow("Normal", "Tangent-space normal map, projected with the layer", &TerrainSurfaceLayer::normalTexture);
@@ -2721,7 +2868,7 @@ void editor::TerrainEditWindow::drawLayerSurface(TerrainComponent& terrain, int 
         // tilt measured once per file, off this thread)
         const std::string normalPath = layer.pbr && !layer.normalTexture.empty() ? layer.normalTexture.getPath(0) : std::string();
         if (layer.stochasticRotation > 0.0f && !normalPath.empty()){
-            const fs::path normalFile = project->resolveAssetPath(fs::u8path(normalPath));
+            const fs::path normalFile = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(normalPath));
             const NormalMapTiltResult tilt = NormalMapTilt::request(normalFile);
             if (tilt.ready && tilt.valid && tilt.degrees >= NormalMapTilt::WARNING_DEGREES){
                 ImGui::TableNextRow();
@@ -2734,6 +2881,18 @@ void editor::TerrainEditWindow::drawLayerSurface(TerrainComponent& terrain, int 
                     edit([&](TerrainSurfaceLayer& target){ target.stochasticRotation = 0.0f; });
                 }
             }
+        }
+    }
+    terrainPropertyRow("Hex Tiling", "Samples the flat projection on three randomly rotated copies on a hex grid: no visible tiling from a distance (three taps per map)", false);
+    bool hexTiling = layer.hexTiling;
+    if (ImGui::Checkbox("##hex_tiling", &hexTiling)){
+        edit([&](TerrainSurfaceLayer& target){ target.hexTiling = hexTiling; }, false);
+    }
+    if (layer.hexTiling){
+        terrainPropertyRow("Rotation", "How far a hex tile may turn: 1 a full turn, 0 none", true);
+        float hexRotation = layer.hexRotation;
+        if (ImGui::SliderFloat("##hex_rotation", &hexRotation, 0.0f, 1.0f, "%.2f")){
+            edit([&](TerrainSurfaceLayer& target){ target.hexRotation = hexRotation; }, true);
         }
     }
 }
@@ -3577,6 +3736,7 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
         stroke.placementStrokeId = ++placementStrokeCounter;
         stroke.instanced = useInstancedPlacement();
         stroke.placedPoints = collectPlacedPoints(sceneProject, entity);
+        openStrokeEdit(sceneProject);
 
         // Ctrl swaps place and erase for the stroke, matching the paint brushes.
         stroke.effectiveMode = brushMode;
@@ -3606,6 +3766,7 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
     stroke.sceneId = sceneProject->id;
     stroke.entity = entity;
     stroke.ref = ref;
+    openStrokeEdit(sceneProject);
 
     // Modifiers picked up at stroke start and held for the whole stroke:
     // Shift turns any sculpt brush into Smooth, Ctrl inverts Raise/Lower and paint/erase.
@@ -3646,7 +3807,7 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
 }
 
 bool editor::TerrainEditWindow::paintStroke(Scene* scene, const Ray& ray){
-    if (!stroke.active || !isEditingScene(scene)){
+    if (!stroke.active || !isEditingScene(scene) || strokeCancelled()){
         return false;
     }
 
@@ -3676,7 +3837,7 @@ bool editor::TerrainEditWindow::paintStroke(Scene* scene, const Ray& ray){
 }
 
 void editor::TerrainEditWindow::endStroke(){
-    if (!stroke.active){
+    if (!stroke.active || strokeCancelled()){
         return;
     }
 

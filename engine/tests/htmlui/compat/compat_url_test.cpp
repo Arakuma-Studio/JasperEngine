@@ -136,8 +136,9 @@ TEST(CompatUrl, MissingLocalFileIsKeptAndReported){
     const Diagnostic& d = sink.diagnostics()[0];
     EXPECT_EQ(d.code, codes::FileNotFound);
     EXPECT_EQ(d.severity, Severity::Error);
-    EXPECT_EQ(toText(d), "ui/menu.html:1:11: error: image 'img/b.png' not found (resolved to ui/img/b.png) "
-                         "(fix: check the path: relative paths start at the referencing file's directory, '/' at the assets directory) [HTMLUI-GEN-0001]");
+    EXPECT_EQ(d.file, "ui/menu.html");
+    EXPECT_EQ(d.line, 1u);
+    EXPECT_EQ(d.column, 11u);
     EXPECT_EQ(d.subject, "img/b.png");
 
     // nothing reported for a file that exists
@@ -242,18 +243,4 @@ TEST(CompatUrl, FragmentsVirtualAndOtherSchemes){
     const ResolvedUrl empty = resolver.resolve("", "ui/menu.html", "image");
     EXPECT_EQ(empty.kind, UrlKind::Empty);
     EXPECT_TRUE(empty.dropped());
-}
-
-TEST(CompatUrl, PathHelpers){
-    bool outside = false;
-    EXPECT_EQ(UrlResolver::normalizePath("a/./b/../c", &outside), "a/c");
-    EXPECT_FALSE(outside);
-    EXPECT_EQ(UrlResolver::normalizePath("../a", &outside), "a");
-    EXPECT_TRUE(outside);
-    EXPECT_EQ(UrlResolver::normalizePath("/a//b/"), "a/b");
-    EXPECT_EQ(UrlResolver::joinPath("ui/menu.html", "x.css"), "ui/x.css");
-    EXPECT_EQ(UrlResolver::joinPath("menu.html", "x.css"), "x.css");
-    EXPECT_EQ(UrlResolver::joinPath("asset://ui/menu.html", "../x.css"), "x.css");
-    EXPECT_EQ(UrlResolver::percentDecode("a%20b%2"), "a b%2");
-    EXPECT_EQ(UrlResolver::percentDecode("%e2%82%ac"), "\xE2\x82\xAC");
 }

@@ -1,0 +1,184 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// Scenes through Stream: the scene settings, entities with their components, and every
+// .scene file of editor/tests/fixtures/scenes (copies of the tools/fixtures projects' scenes),
+// which must load without an engine error and save back to the same YAML.
+
+#include "Project.h"
+#include "Stream.h"
+
+#include "LogCapture.h"
+
+#include <gtest/gtest.h>
+#include <yaml-cpp/yaml.h>
+
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <vector>
+
+using namespace jasperengine;
+using namespace jasperengine::editor;
+using namespace jasperengine::test;
+
+namespace {
+
+    std::string dumpScene(Scene* scene){
+        return YAML::Dump(Stream::encodeScene(scene));
+    }
+
+    // a SceneProject (an editor scene) loaded from YAML, as Project::loadScene does it
+    struct LoadedScene {
+        std::unique_ptr<Scene> scene = std::make_unique<Scene>();
+        SceneProject project;
+
+        explicit LoadedScene(const YAML::Node& node){
+            project.scene = scene.get();
+            Stream::decodeSceneProject(&project, node, true);
+            Stream::decodeSceneProjectEntities(nullptr, &project, node);
+        }
+        ~LoadedScene(){
+            project.scene = nullptr;
+        }
+
+        std::string dump(){
+            return YAML::Dump(Stream::encodeSceneProject(nullptr, &project));
+        }
+    };
+
+    std::vector<std::string> fixtureScenes(){
+        std::vector<std::string> names;
+        std::error_code error;
+        for (const auto& entry : std::filesystem::directory_iterator(std::filesystem::path(JASPER_TEST_SOURCE_DIR) / "fixtures" / "scenes", error)){
+            if (entry.path().extension() == ".scene")
+                names.push_back(entry.path().filename().string());
+        }
+        std::sort(names.begin(), names.end());
+        return names;
+    }
+
+}
+
+TEST(StreamScene, DefaultSceneSettingsRoundTrip){
+    Scene scene;
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(dumpScene(&scene)));
+    EXPECT_EQ(dumpScene(&read), dumpScene(&scene));
+}
+
+TEST(StreamScene, ChangedSceneSettingsRoundTrip){
+    Scene scene;
+    scene.setBackgroundColor(0.1f, 0.2f, 0.3f, 1.0f);
+    scene.setLightState(LightState::ON);
+    scene.setGravity3D(0.0f, -3.5f, 0.0f);
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(dumpScene(&scene)));
+    EXPECT_EQ(read.getLightState(), LightState::ON);
+    EXPECT_EQ(read.getGravity3D(), Vector3(0, -3.5f, 0));
+    EXPECT_EQ(dumpScene(&read), dumpScene(&scene));
+}
+
+TEST(StreamScene, DecodeSceneWithoutASceneMakesOne){
+    Scene source;
+    std::unique_ptr<Scene> made(Stream::decodeScene(nullptr, Stream::encodeScene(&source)));
+    ASSERT_NE(made, nullptr);
+    EXPECT_EQ(dumpScene(made.get()), dumpScene(&source));
+}
+
+TEST(StreamScene, EntityWithComponentsRoundTrips){
+    Scene scene;
+    const Entity entity = scene.createEntity();
+    scene.setEntityName(entity, "Lamp");
+    scene.addComponent<Transform>(entity, Transform{});
+    LightComponent light;
+    light.type = LightType::POINT;
+    light.color = Vector3(1, 0.8f, 0.6f);
+    scene.addComponent<LightComponent>(entity, light);
+    const YAML::Node first = Stream::encodeEntity(entity, &scene);
+
+    Scene other;
+    const std::vector<Entity> read = Stream::decodeEntity(YAML::Load(YAML::Dump(first)), &other);
+    ASSERT_EQ(read.size(), 1u);
+    EXPECT_EQ(read[0], entity);
+    EXPECT_EQ(other.getEntityName(entity), "Lamp");
+    EXPECT_EQ(other.getComponent<LightComponent>(entity).type, LightType::POINT);
+    EXPECT_EQ(YAML::Dump(Stream::encodeEntity(read[0], &other)), YAML::Dump(first));
+}
+
+TEST(StreamScene, ChildrenAreWrittenUnderTheirParent){
+    Scene scene;
+    const Entity parent = scene.createEntity();
+    const Entity child = scene.createEntity();
+    scene.addComponent<Transform>(parent, Transform{});
+    scene.addComponent<Transform>(child, Transform{});
+    scene.addEntityChild(parent, child, false);
+    const YAML::Node node = Stream::encodeEntity(parent, &scene);
+    ASSERT_TRUE(node["children"]);
+    EXPECT_EQ(node["children"].size(), 1u);
+
+    Scene other;
+    const std::vector<Entity> read = Stream::decodeEntity(node, &other);
+    EXPECT_EQ(read.size(), 2u);
+    EXPECT_EQ(other.getComponent<Transform>(child).parent, parent);
+}
+
+TEST(StreamScene, DecodingATakenIdMakesANewEntity){
+    Scene scene;
+    const Entity entity = scene.createEntity();
+    scene.addComponent<Transform>(entity, Transform{});
+    const YAML::Node node = Stream::encodeEntity(entity, &scene);
+    const std::vector<Entity> copy = Stream::decodeEntity(node, &scene);
+    ASSERT_EQ(copy.size(), 1u);
+    EXPECT_NE(copy[0], entity);
+    EXPECT_TRUE(scene.isEntityCreated(copy[0]));
+}
+
+TEST(StreamScene, SceneProjectRoundTrips){
+    Scene scene;
+    SceneProject project;
+    project.id = 7;
+    project.name = "Level";
+    project.scene = &scene;
+    project.sceneType = SceneType::SCENE_2D;
+    const Entity entity = scene.createEntity();
+    scene.setEntityName(entity, "Player");
+    scene.addComponent<Transform>(entity, Transform{});
+    project.entities.push_back(entity);
+    const std::string first = YAML::Dump(Stream::encodeSceneProject(nullptr, &project));
+    project.scene = nullptr;
+
+    LoadedScene loaded(YAML::Load(first));
+    EXPECT_EQ(loaded.project.id, 7u);
+    EXPECT_EQ(loaded.project.name, "Level");
+    EXPECT_EQ(loaded.project.sceneType, SceneType::SCENE_2D);
+    EXPECT_EQ(loaded.project.entities, std::vector<Entity>{entity});
+    EXPECT_EQ(loaded.dump(), first);
+}
+
+class StreamFixtureScene : public ::testing::TestWithParam<std::string> {};
+
+TEST_P(StreamFixtureScene, LoadsWithoutErrorsAndSavesTheSameYaml){
+    const std::filesystem::path path = std::filesystem::path(JASPER_TEST_SOURCE_DIR) / "fixtures" / "scenes" / GetParam();
+    const YAML::Node file = YAML::LoadFile(path.string());
+    LoadedScene first(file);
+    EXPECT_FALSE(first.project.entities.empty());
+    EXPECT_NO_ENGINE_ERRORS();
+    const std::string saved = first.dump();
+
+    LoadedScene second(YAML::Load(saved));
+    EXPECT_EQ(second.dump(), saved);
+    EXPECT_EQ(second.project.entities, first.project.entities);
+}
+
+INSTANTIATE_TEST_SUITE_P(Fixtures, StreamFixtureScene, ::testing::ValuesIn(fixtureScenes()),
+    [](const ::testing::TestParamInfo<std::string>& info){
+        std::string name = info.param.substr(0, info.param.size() - 6);
+        for (char& c : name){
+            if (!std::isalnum(static_cast<unsigned char>(c)))
+                c = '_';
+        }
+        return name;
+    });

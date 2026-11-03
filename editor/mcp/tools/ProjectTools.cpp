@@ -13,7 +13,11 @@
 //                          (replaces add_project_scene / set_start_scene)
 //   edit_project_build_file  read / write ProjectBuild.cmake (replaces update_project_build_file)
 #include "McpTools.h"
+#include "log/Logger.h"
+#include "DocumentFile.h"
+#include "W4Shared.h"
 
+#include "mcp/McpDataSafety.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
@@ -22,6 +26,7 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpValues.h"
+#include "settings/SettingsRegistry.h"
 
 #include "App.h"
 #include "AppSettings.h"
@@ -29,23 +34,41 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
+#include "audio/AudioMixer.h"
+#include "command/type/DebugSettingsCmd.h"
+#include "DebugSettings.h"
+#include "input/InputActions.h"
 #include "registry/TagManager.h"
+#include "command/type/ShaderGlobalsCmd.h"
+#include "util/ShaderGlobalsJson.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
+#include "util/NativePlugins.h"
+#include "util/SafeWrite.h"
+#include "util/ShellEnv.h"
 #include "window/CodeEditor.h"
 #include "window/ConsoleWindow.h"
 #include "window/ProjectWindow.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <cctype>
 #include <chrono>
 #include <fstream>
 #include <functional>
+#include <map>
+#include <regex>
 #include <memory>
+#include <map>
 #include <set>
 #include <sstream>
 
 namespace jasperengine::editor::mcp {
+
+// S27 (EditorToolsTools.cpp): create_project {template}; true when it took the call
+bool createProjectFromTemplateTool(const CallPtr& call, const std::filesystem::path& path, const std::string& name);
+
 
 namespace {
 
@@ -59,11 +82,6 @@ const char* hostPlatformName() {
 #else
     return "linux";
 #endif
-}
-
-std::string lowerText(std::string text) {
-    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return text;
 }
 
 std::string relText(Project* project, const fs::path& path) {
@@ -201,7 +219,8 @@ fs::path untitledScenePath(Project* project, const SceneProject& scene, const fs
 // Saves prefab stages, scenes with unsaved changes (untitled ones into untitledDir) and the
 // code editor's buffers. Fills `saved` with what it saved.
 // saveUntitled: also untitled scenes without changes (a new project's scene), so they reach the build.
-bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntitled, Json& saved, std::string& error) {
+bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntitled, Json& saved, std::string& error,
+        DegradedSavePolicy policy = DegradedSavePolicy::Refuse, Json* refused = nullptr) {
     Project* project = ctx.project();
     saved = {{"scenes", Json::array()}, {"prefab_stages", Json::array()}, {"scripts", false}};
 
@@ -218,8 +237,13 @@ bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntit
         PrefabStage* stage = project->getPrefabStageAt(i);
         if (!stage || !project->hasUnsavedPrefabStage(stage->sceneProject.id)) continue;
         std::string message;
-        if (!project->saveSceneNow(stage->sceneProject.id, {}, &message)) {
+        SaveResult result = SaveResult::Failed;
+        if (!project->saveSceneNow(stage->sceneProject.id, {}, &message, policy, &result)) {
             error = "Could not save the prefab open in Prefab Mode: " + message;
+            if (result == SaveResult::RefusedDegraded && refused) {
+                const Prefab* prefab = project->getPrefab(stage->assetPath);
+                if (prefab) *refused = degradedDocumentError(stage->assetPath.generic_string(), prefab->loadReport);
+            }
             return false;
         }
         saved["prefab_stages"].push_back(stage->sceneProject.id);
@@ -237,8 +261,13 @@ bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntit
         fs::path target;
         if (scene->filepath.empty()) target = untitledScenePath(project, *scene, untitledDir);
         std::string message;
-        if (!project->saveSceneNow(id, target, &message)) {
+        SaveResult result = SaveResult::Failed;
+        if (!project->saveSceneNow(id, target, &message, policy, &result)) {
             error = "Could not save scene " + std::to_string(id) + " \"" + scene->name + "\": " + message;
+            if (result == SaveResult::RefusedDegraded && refused) {
+                SceneProject* after = project->getScene(id);
+                if (after) *refused = degradedDocumentError(after->filepath.generic_string(), after->loadReport);
+            }
             return false;
         }
         SceneProject* after = project->getScene(id);
@@ -274,6 +303,143 @@ bool hasUnsaved(const Json& state) {
 }
 
 // ------------------------------------------------------------------ create / open
+
+// An asset or Lua root value (assetsDir / luaDir in project.yaml, editor.assets_dir /
+// scripting.lua_dir): "" when it is a plain project-relative folder, else why it isn't (absolute,
+// a drive, or a ".." step: a root out of the project folder is one only the user sets)
+std::string rootValueRefusal(const std::string& text) {
+    return McpRefs::rootValueRefusal(text);
+}
+
+// A project opened or created over MCP whose project.yaml points its assets or Lua folder out of
+// the project folder (absolute, or with ".."): the editor GUI opens it (the user chose it), an MCP
+// call doesn't (the folder would become a trusted root of the agent's choosing). "" when fine.
+std::string outsideRootsRefusal(const fs::path& projectDir) {
+    const fs::path file = projectDir / "project.yaml";
+    std::error_code ec;
+    if (!fs::is_regular_file(file, ec)) return std::string();
+    YAML::Node node;
+    try {
+        std::ifstream in(file, std::ios::binary);
+        node = YAML::Load(in);
+    } catch (const std::exception& e) {
+        return "its project.yaml can't be read (" + std::string(e.what()) + ")";
+    }
+    if (!node.IsMap()) return std::string();
+    for (const char* key : {"assetsDir", "luaDir"}) {
+        const YAML::Node value = node[key];
+        if (!value) continue;
+        std::string text;
+        try {
+            text = value.as<std::string>();
+        } catch (const std::exception&) {
+            return std::string("its ") + key + " is not a folder name";
+        }
+        if (const std::string why = rootValueRefusal(text); !why.empty()) {
+            return std::string("this project's ") + (std::string(key) == "assetsDir" ? "assets_dir" : "lua_dir") + " (" + why +
+                   ") points outside the project folder; open it from the editor";
+        }
+    }
+    return std::string();
+}
+
+// The user's home folder, resolved ("" when unknown): $HOME / %USERPROFILE%, else the account's
+// own (getpwuid, SHGetKnownFolderPath) so an unset HOME doesn't switch the home rules off
+fs::path homeFolder() {
+    const fs::path home = ShellEnv::homeDirectory();
+    if (home.empty()) return fs::path();
+    return safewrite::resolvedPath(home);
+}
+
+bool isFilesystemRoot(const fs::path& path) {
+    return !path.empty() && (path == path.root_path() || !path.has_relative_path());
+}
+
+bool samePlace(const fs::path& a, const fs::path& b) {
+    return !a.empty() && !b.empty() && safewrite::isAtOrBelow(a, b) && safewrite::isAtOrBelow(b, a);
+}
+
+// Where an MCP create_project / Save As may put a new project. Allowed: a new or empty folder (not a
+// link) whose parent IS the current project's parent folder (spelled and resolved), or one at or
+// below the user's default export folder (resolved). Below its anchor no path component may be
+// hidden ('.'-named); the anchor may not be the user's home folder itself (a project in the home
+// root gets siblings only through the GUI). "" when allowed.
+std::string switchTargetRefusal(Project* project, const fs::path& target) {
+    const fs::path normal = target.lexically_normal();
+    std::error_code ec;
+    if (fs::is_symlink(fs::symlink_status(normal, ec))) {
+        return FileUtils::pathToGenericUtf8(normal) + " is a symbolic link: a new project goes in a real, new or empty folder";
+    }
+    const fs::path parent = normal.parent_path();
+    const fs::path parentReal = safewrite::resolvedPath(parent);
+    const fs::path targetReal = safewrite::writeLocation(normal);
+    const fs::path home = homeFolder();
+    auto hiddenBelow = [](const fs::path& rel) {
+        for (const fs::path& part : rel) {
+            const std::string name = safewrite::comparableName(part);
+            if (!name.empty() && name[0] == '.' && name != "." && name != "..") return true;
+        }
+        return false;
+    };
+    // never the home folder itself, nor a folder directly in it (a project there gets siblings only
+    // through the GUI): checked where the target and its parent resolve
+    if (!home.empty() && (samePlace(targetReal, home) || samePlace(parentReal, home))) {
+        return "it is your home folder (or a folder directly inside it): create the project from the editor (File > New Project)";
+    }
+    // ... and the same for EVERY folder the call would create on the way (<home>/bin/z would make
+    // <home>/bin): none may be the home folder, directly inside it, or directly in a filesystem root
+    {
+        fs::path existing = normal;
+        std::vector<fs::path> missing;
+        std::error_code ex;
+        while (!fs::exists(fs::symlink_status(existing, ex)) && existing.has_relative_path() && existing.has_parent_path() &&
+               existing != existing.parent_path()) {
+            missing.insert(missing.begin(), existing.filename());
+            existing = existing.parent_path();
+        }
+        fs::path made = safewrite::resolvedPath(existing);
+        for (const fs::path& name : missing) {
+            const fs::path above = made;
+            made /= name;
+            if (!home.empty() && (samePlace(made, home) || samePlace(above, home))) {
+                return "it would create " + FileUtils::pathToGenericUtf8(made) +
+                       " directly in your home folder: create the project from the editor (File > New Project)";
+            }
+            if (isFilesystemRoot(above)) {
+                return "it would create " + FileUtils::pathToGenericUtf8(made) + " directly in a filesystem root";
+            }
+        }
+    }
+    const fs::path cur = project && !project->getProjectPath().empty() ? project->getProjectPath().lexically_normal() : fs::path();
+    // (a) a sibling of the current project: same parent, spelled and resolved
+    if (!cur.empty() && cur.has_parent_path()) {
+        const fs::path curParent = cur.parent_path();
+        // not when the project's parent is a filesystem / drive root, spelled or once resolved (a
+        // link to "/"): "beside it" would be the root
+        const bool parentIsRoot = isFilesystemRoot(curParent) || isFilesystemRoot(safewrite::resolvedPath(curParent));
+        if (!parentIsRoot && parent == curParent && samePlace(parentReal, safewrite::resolvedPath(curParent))) {
+            if (hiddenBelow(normal.filename())) {
+                return "a hidden ('.'-named) folder is not a project folder an MCP call makes";
+            }
+            return std::string();
+        }
+    }
+    // (b) at or below the user's default export folder (resolved)
+    if (const fs::path def = AppSettings::getDefaultExportDirectory(); !def.empty()) {
+        const fs::path defReal = safewrite::resolvedPath(def);
+        if (!defReal.empty() && !targetReal.empty() && safewrite::isAtOrBelow(targetReal, defReal) && !samePlace(targetReal, defReal)) {
+            if (hiddenBelow(targetReal.lexically_relative(defReal))) {
+                return "a hidden ('.'-named) folder is not a project folder an MCP call makes";
+            }
+            if (!cur.empty() && safewrite::isAtOrBelow(targetReal, safewrite::resolvedPath(cur))) {
+                return "it is inside the currently open project: a project nested in another is not made over MCP";
+            }
+            return std::string();
+        }
+    }
+    return "it is neither beside the current project (same parent folder) nor under the default export folder "
+           "(Edit > Preferences): create the project from the editor (File > New Project, or Save As), then open it with open_project";
+}
 
 struct SwitchState {
     bool ran = false;
@@ -311,6 +477,17 @@ void switchProjectTool(const CallPtr& call, bool create) {
             call->fail(FileUtils::pathToGenericUtf8(path) + " is a file, not a directory.");
             return;
         }
+        // a new or empty folder only: the project becomes a trusted root, so an agent can't turn
+        // a folder that holds other things (a home directory) into one
+        if (fs::is_directory(path, ec) && !fs::is_empty(path, ec)) {
+            call->fail(FileUtils::pathToGenericUtf8(path) + " is not empty: create_project makes a project in a new or empty folder. "
+                       "Pick a new folder (it is created), or create the project in the editor's New Project dialog.");
+            return;
+        }
+        if (const std::string refusal = switchTargetRefusal(project, path); !refusal.empty()) {
+            call->fail("create_project here is refused: " + refusal);
+            return;
+        }
     } else {
         if (path.filename() == "project.yaml") path = path.parent_path();
         if (!fs::exists(path / "project.yaml", ec)) {
@@ -321,6 +498,10 @@ void switchProjectTool(const CallPtr& call, bool create) {
         if (fs::equivalent(path, project->getProjectPath(), eq)) {
             Json data = projectSummary(ctx);
             call->ok("That project is already open. " + summaryText(data), data);
+            return;
+        }
+        if (const std::string refusal = outsideRootsRefusal(path); !refusal.empty()) {
+            call->fail("Not opened: " + refusal + ".");
             return;
         }
     }
@@ -359,9 +540,17 @@ void switchProjectTool(const CallPtr& call, bool create) {
     }
 
     const std::string name = args.value("name", "");
+    // a project from a Project Hub template (S27 R42)
+    if (create && createProjectFromTemplateTool(call, path, name)) return;
     auto switchState = std::make_shared<SwitchState>();
     app.requestProjectChange([switchState, project, path, name, create]() {
         switchState->ran = true;
+        // checked again right before the load (the file may have changed since the call came in)
+        if (const std::string refusal = outsideRootsRefusal(path); !refusal.empty()) {
+            switchState->ok = false;
+            switchState->error = refusal;
+            return;
+        }
         switchState->ok = create ? project->createProjectAt(path, name, &switchState->error)
                                  : project->openProjectNow(path, &switchState->error);
     });
@@ -419,7 +608,7 @@ void saveProjectTool(const CallPtr& call) {
     if (!sceneDirText.empty()) {
         fs::path absolute;
         std::string error;
-        if (!McpRefs::resolveProjectPath(project, sceneDirText, absolute, error)) {
+        if (!McpRefs::resolveProjectWritePath(project, sceneDirText, absolute, error)) {
             call->fail("untitled_scene_dir: " + error);
             return;
         }
@@ -453,14 +642,36 @@ void saveProjectTool(const CallPtr& call) {
                 call->fail(FileUtils::pathToGenericUtf8(target) + " must be a new or empty directory.");
                 return;
             }
+            if (const std::string refusal = switchTargetRefusal(project, target); !refusal.empty()) {
+                call->fail("Save As here is refused: " + refusal);
+                return;
+            }
         }
     }
 
+    // documents that did not load completely are written only when the agent accepts the loss
+    const bool allowDataLoss = args.value("allow_data_loss", false);
+    const DegradedSavePolicy policy = allowDataLoss ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse;
     Json saved;
+    Json refused;
     std::string error;
-    if (!saveEverything(ctx, sceneDir, true, saved, error)) {
-        call->fail(error, Json{{"unsaved", unsavedState(ctx)}});
+    if (!saveEverything(ctx, sceneDir, true, saved, error, policy, &refused)) {
+        Json data = refused.is_object() ? refused : Json::object();
+        data["unsaved"] = unsavedState(ctx);
+        call->fail(refused.is_object() ? error + " Pass allow_data_loss=true to write anyway." : error, data);
         return;
+    }
+    const LoadReport& projectReport = project->getProjectLoadReport();
+    if (projectReport.dropped() > 0) {
+        if (!allowDataLoss) {
+            Json data = degradedDocumentError("project.yaml", projectReport);
+            data["saved"] = saved;
+            call->fail("project.yaml did not load completely (" + std::to_string(projectReport.dropped()) +
+                       " value(s) this editor could not read); the scenes were saved, project.yaml was not. Pass "
+                       "allow_data_loss=true to write it anyway.", data);
+            return;
+        }
+        project->saveProjectFile(DegradedSavePolicy::SaveAnyway);
     }
 
     const std::string name = args.value("name", "");
@@ -469,6 +680,9 @@ void saveProjectTool(const CallPtr& call) {
     bool ok;
     if (!target.empty()) {
         std::error_code ec;
+        // Save As: the explicit target outside the project is the user's choice (a temporary
+        // project's new home): the call's strict write scope is suspended for it
+        safewrite::Scope saveAs{fs::path()};
         fs::create_directories(target.parent_path(), ec);   // saveProjectToPath makes only the last level
         ok = project->saveProjectToPath(target);
         if (ok) ctx.app().updateWindowTitle(project->getName());
@@ -489,1079 +703,32 @@ void saveProjectTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ settings
 
-struct Setting {
-    std::string key;
-    std::string type;          // bool, int, number, string, enum, path, list, object
-    std::string description;
-    std::vector<std::string> values;   // enum values
-    std::function<Json(McpContext&)> get;
-    // Validates `value`; applies it when apply is true. Returns false with error.
-    std::function<bool(McpContext&, const Json& value, bool apply, std::string& error)> set;
-    bool preference = false;   // editor/machine preference, not project.yaml
-};
+// The settings registry's MCP rows (editor/settings: the table these tools had before S25), in
+// registration order
+using Setting = SettingRow;
+// SYNC4: upstream added rows to its hand-written table here (native-bridge: web.script_urls,
+// macos/ios plist/frameworks, ios.cocoapods/swift_packages/entitlements_xml/deployment_target,
+// android.gradle_*/extra_permissions/manifest*_xml; safe-area: web.viewport_fit_cover;
+// ui-scaling-text: graphics.ui_scale; audio-mixer: audio.*; debug-overlay: debug.*). They belong
+// in editor/settings/SettingsRows.cpp (S25).
 
-template <typename T>
-struct EnumMap {
-    const char* name;
-    T value;
-};
-
-const EnumMap<Scaling> scalingModes[] = {
-    {"fit_width", Scaling::FITWIDTH}, {"fit_height", Scaling::FITHEIGHT}, {"letterbox", Scaling::LETTERBOX},
-    {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE}};
-const EnumMap<TextureStrategy> textureStrategies[] = {
-    {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
-const EnumMap<WindowMode> windowModes[] = {
-    {"windowed", WindowMode::WINDOWED}, {"maximized", WindowMode::MAXIMIZED}, {"fullscreen", WindowMode::FULLSCREEN}};
-const EnumMap<AndroidOrientation> androidOrientations[] = {
-    {"unspecified", AndroidOrientation::Unspecified}, {"portrait", AndroidOrientation::Portrait},
-    {"landscape", AndroidOrientation::Landscape}, {"sensor_portrait", AndroidOrientation::SensorPortrait},
-    {"sensor_landscape", AndroidOrientation::SensorLandscape}, {"full_sensor", AndroidOrientation::FullSensor}};
-
-template <typename T, size_t N>
-std::vector<std::string> enumNames(const EnumMap<T> (&map)[N]) {
-    std::vector<std::string> names;
-    for (const auto& item : map) names.push_back(item.name);
-    return names;
-}
-
-template <typename T, size_t N>
-std::string enumName(const EnumMap<T> (&map)[N], T value) {
-    for (const auto& item : map) {
-        if (item.value == value) return item.name;
-    }
-    return map[0].name;
-}
-
-template <typename T, size_t N>
-bool parseEnum(const EnumMap<T> (&map)[N], const Json& value, T& out, std::string& error) {
-    if (value.is_string()) {
-        const std::string text = lowerText(value.get<std::string>());
-        for (const auto& item : map) {
-            if (text == item.name) {
-                out = item.value;
-                return true;
-            }
+const std::vector<std::reference_wrapper<const SettingRow>>& settingsTable() {
+    static const std::vector<std::reference_wrapper<const SettingRow>> table = [] {
+        std::vector<std::reference_wrapper<const SettingRow>> rows;
+        for (const SettingRow& row : SettingsRegistry::get().rows()) {
+            if (row.mcp) rows.push_back(std::cref(row));
         }
-    }
-    error = "must be one of:";
-    for (const auto& item : map) error += std::string(" ") + item.name;
-    return false;
-}
-
-bool readBool(const Json& value, bool& out, std::string& error) {
-    if (!value.is_boolean()) {
-        error = "must be true or false";
-        return false;
-    }
-    out = value.get<bool>();
-    return true;
-}
-
-bool readInt(const Json& value, long long minimum, long long maximum, long long& out, std::string& error) {
-    if (!value.is_number_integer() && !(value.is_number_float() && value.get<double>() == static_cast<long long>(value.get<double>()))) {
-        error = "must be an integer";
-        return false;
-    }
-    out = value.is_number_integer() ? value.get<long long>() : static_cast<long long>(value.get<double>());
-    if (out < minimum || out > maximum) {
-        error = "must be between " + std::to_string(minimum) + " and " + std::to_string(maximum);
-        return false;
-    }
-    return true;
-}
-
-bool readNumber(const Json& value, double minimum, double maximum, double& out, std::string& error) {
-    if (!value.is_number()) {
-        error = "must be a number";
-        return false;
-    }
-    out = value.get<double>();
-    if (out < minimum || out > maximum) {
-        std::ostringstream text;
-        text << "must be between " << minimum << " and " << maximum;
-        error = text.str();
-        return false;
-    }
-    return true;
-}
-
-bool readString(const Json& value, std::string& out, std::string& error, size_t maxLength = 4096) {
-    if (!value.is_string()) {
-        error = "must be a string";
-        return false;
-    }
-    out = value.get<std::string>();
-    if (out.size() > maxLength) {
-        error = "is too long (max " + std::to_string(maxLength) + " characters)";
-        return false;
-    }
-    return true;
-}
-
-// "" clears; otherwise an existing project-relative file
-bool readProjectFile(McpContext& ctx, const Json& value, fs::path& out, std::string& error) {
-    std::string text;
-    if (!readString(value, text, error)) return false;
-    if (text.empty()) {
-        out.clear();
-        return true;
-    }
-    fs::path absolute;
-    if (!McpRefs::resolveProjectPath(ctx.project(), text, absolute, error, true)) return false;
-    out = FileUtils::pathFromUtf8(text).lexically_normal();
-    return true;
-}
-
-// Validation shared with Project Settings (window/dialog/ProjectSettingsWindow.cpp)
-bool isNumericVersion(const std::string& value, int maxParts, unsigned long long maxPart) {
-    if (value.empty()) return false;
-    int parts = 0;
-    size_t start = 0;
-    while (true) {
-        const size_t dot = value.find('.', start);
-        const size_t end = dot == std::string::npos ? value.size() : dot;
-        if (start >= end) return false;
-        unsigned long long part = 0;
-        for (size_t i = start; i < end; i++) {
-            if (!std::isdigit(static_cast<unsigned char>(value[i]))) return false;
-            part = part * 10 + static_cast<unsigned>(value[i] - '0');
-            if (part > maxPart) return false;
-        }
-        if (++parts > maxParts) return false;
-        if (dot == std::string::npos) return true;
-        start = dot + 1;
-    }
-}
-
-bool isDottedIdentifier(const std::string& value, bool (*partValid)(const std::string&, size_t, size_t)) {
-    if (value.empty() || value.back() == '.') return false;
-    size_t start = 0;
-    int parts = 0;
-    while (start < value.size()) {
-        const size_t dot = value.find('.', start);
-        const size_t end = dot == std::string::npos ? value.size() : dot;
-        if (!partValid(value, start, end)) return false;
-        parts++;
-        if (dot == std::string::npos) break;
-        start = dot + 1;
-    }
-    return parts >= 2;
-}
-
-bool sharedIdPart(const std::string& v, size_t s, size_t e) {
-    if (s >= e || !std::isalpha(static_cast<unsigned char>(v[s]))) return false;
-    for (size_t i = s; i < e; i++) if (!std::isalnum(static_cast<unsigned char>(v[i]))) return false;
-    return true;
-}
-bool javaIdPart(const std::string& v, size_t s, size_t e) {
-    if (s >= e || (!std::isalpha(static_cast<unsigned char>(v[s])) && v[s] != '_')) return false;
-    for (size_t i = s + 1; i < e; i++) if (!std::isalnum(static_cast<unsigned char>(v[i])) && v[i] != '_') return false;
-    return true;
-}
-bool appleIdPart(const std::string& v, size_t s, size_t e) {
-    if (s >= e || v[s] == '-' || v[e - 1] == '-') return false;
-    for (size_t i = s; i < e; i++) if (!std::isalnum(static_cast<unsigned char>(v[i])) && v[i] != '-') return false;
-    return true;
-}
-
-using Validator = std::function<bool(const std::string&)>;
-
-Setting stringSetting(const std::string& key, const std::string& description,
-                      std::function<std::string&(Project&)> field, Validator valid = nullptr,
-                      const std::string& validHint = {}) {
-    Setting s;
-    s.key = key;
-    s.type = "string";
-    s.description = description;
-    s.get = [field](McpContext& ctx) { return Json(field(*ctx.project())); };
-    s.set = [field, valid, validHint](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-        std::string text;
-        if (!readString(value, text, error)) return false;
-        if (!text.empty() && valid && !valid(text)) {
-            error = "\"" + text + "\" is not valid: " + validHint;
-            return false;
-        }
-        if (apply) field(*ctx.project()) = text;
-        return true;
-    };
-    return s;
-}
-
-Setting boolSetting(const std::string& key, const std::string& description,
-                    std::function<bool(Project&)> get, std::function<void(Project&, bool)> set) {
-    Setting s;
-    s.key = key;
-    s.type = "bool";
-    s.description = description;
-    s.get = [get](McpContext& ctx) { return Json(get(*ctx.project())); };
-    s.set = [set](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-        bool b;
-        if (!readBool(value, b, error)) return false;
-        if (apply) set(*ctx.project(), b);
-        return true;
-    };
-    return s;
-}
-
-Setting boolField(const std::string& key, const std::string& description, std::function<bool&(Project&)> field) {
-    return boolSetting(key, description, [field](Project& p) { return field(p); },
-                       [field](Project& p, bool v) { field(p) = v; });
-}
-
-Setting pathSetting(const std::string& key, const std::string& description, std::function<fs::path&(Project&)> field) {
-    Setting s;
-    s.key = key;
-    s.type = "path";
-    s.description = description + " Project-relative file path; \"\" clears it.";
-    s.get = [field](McpContext& ctx) { return Json(FileUtils::pathToGenericUtf8(field(*ctx.project()))); };
-    s.set = [field](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-        fs::path path;
-        if (!readProjectFile(ctx, value, path, error)) return false;
-        if (apply) field(*ctx.project()) = path;
-        return true;
-    };
-    return s;
-}
-
-Setting intField(const std::string& key, const std::string& description, long long minimum, long long maximum,
-                 std::function<unsigned int&(Project&)> field) {
-    Setting s;
-    s.key = key;
-    s.type = "int";
-    s.description = description;
-    s.get = [field](McpContext& ctx) { return Json(field(*ctx.project())); };
-    s.set = [field, minimum, maximum](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-        long long v;
-        if (!readInt(value, minimum, maximum, v, error)) return false;
-        if (apply) field(*ctx.project()) = static_cast<unsigned int>(v);
-        return true;
-    };
-    return s;
-}
-
-Json layerCollisionJson(const LayerCollisionRows& rows) {
-    // Only what differs from "everything collides": the pairs that don't
-    Json pairs = Json::array();
-    for (int a = 0; a < MAX_LAYERS; a++) {
-        for (int b = a; b < MAX_LAYERS; b++) {
-            const bool collide = (rows[a] & (1u << b)) && (rows[b] & (1u << a));
-            if (!collide) {
-                const std::string nameA = TagManager::layerToName(a);
-                const std::string nameB = TagManager::layerToName(b);
-                pairs.push_back(Json::array({nameA.empty() ? Json(a) : Json(nameA), nameB.empty() ? Json(b) : Json(nameB)}));
-            }
-        }
-    }
-    return pairs;
-}
-
-bool parseLayer(const Json& value, int& layer, std::string& error) {
-    if (value.is_number_integer()) {
-        layer = value.get<int>();
-        if (layer < 0 || layer >= MAX_LAYERS) {
-            error = "layer index " + std::to_string(layer) + " is outside 0-31";
-            return false;
-        }
-        return true;
-    }
-    if (value.is_string()) {
-        layer = TagManager::nameToLayer(value.get<std::string>());
-        if (layer < 0) {
-            error = "no layer is named \"" + value.get<std::string>() + "\" (name it in tags_and_layers.layers first, or use the index)";
-            return false;
-        }
-        return true;
-    }
-    error = "a layer is an index (0-31) or a layer name";
-    return false;
-}
-
-Setting layerCollisionSetting(const std::string& key, bool is3D) {
-    Setting s;
-    s.key = key;
-    s.type = "list";
-    s.description = std::string("Layer Collision Matrix of ") + (is3D ? "Physics (3D)" : "Physics 2D") +
-                    ": the layer pairs that do NOT collide, as [[a, b], ...] with layer names or indexes "
-                    "(everything else collides). Setting it replaces the whole list; [] makes every layer collide. Layer names must "
-                    "exist before the call (name them with tags_and_layers.layers in an earlier call) or use indexes.";
-    s.get = [is3D](McpContext& ctx) {
-        Project* p = ctx.project();
-        return layerCollisionJson(is3D ? p->getLayerCollisionMatrix3D() : p->getLayerCollisionMatrix2D());
-    };
-    s.set = [is3D](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-        if (!value.is_array()) {
-            error = "must be a list of [layerA, layerB] pairs";
-            return false;
-        }
-        LayerCollisionRows rows = allLayersCollide();
-        for (const Json& pair : value) {
-            if (!pair.is_array() || pair.size() != 2) {
-                error = "each entry must be a [layerA, layerB] pair";
-                return false;
-            }
-            int a, b;
-            if (!parseLayer(pair[0], a, error) || !parseLayer(pair[1], b, error)) return false;
-            rows[a] &= ~(1u << b);
-            rows[b] &= ~(1u << a);
-        }
-        if (apply) {
-            Project* p = ctx.project();
-            if (is3D) p->setLayerCollisionMatrices(rows, p->getLayerCollisionMatrix2D());
-            else p->setLayerCollisionMatrices(p->getLayerCollisionMatrix3D(), rows);
-        }
-        return true;
-    };
-    return s;
-}
-
-const std::vector<Setting>& settingsTable() {
-    static const std::vector<Setting> table = [] {
-        std::vector<Setting> t;
-        auto add = [&t](Setting s) { t.push_back(std::move(s)); };
-
-        // ---- player
-        {
-            Setting s;
-            s.key = "player.product_name";
-            s.type = "string";
-            s.description = "Project name (Product Name): the editor title, the default app/window name and the executable name.";
-            s.get = [](McpContext& ctx) { return Json(ctx.project()->getName()); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                std::string text;
-                if (!readString(value, text, error, 255)) return false;
-                if (text.empty()) {
-                    error = "must not be empty";
-                    return false;
-                }
-                if (apply && text != ctx.project()->getName()) ctx.project()->setName(text);
-                return true;
-            };
-            add(s);
-        }
-        add(stringSetting("player.application_name", "Application display name shared by every platform; \"\" uses the project name.",
-                          [](Project& p) -> std::string& { return p.getApplicationSettings().name; }));
-        {
-            Setting s = stringSetting("player.identifier", "Application identifier (reverse domain, letters and digits, e.g. com.mycompany.game) shared by every platform.",
-                                      [](Project& p) -> std::string& { return p.getApplicationSettings().identifier; },
-                                      [](const std::string& v) { return isDottedIdentifier(v, sharedIdPart); },
-                                      "two or more dot-separated parts of letters and digits, each starting with a letter");
-            add(s);
-        }
-        add(stringSetting("player.version", "Application version (1 to 3 numeric parts, e.g. 1.2.0).",
-                          [](Project& p) -> std::string& { return p.getApplicationSettings().version; },
-                          [](const std::string& v) { return isNumericVersion(v, 3, 65535); }, "1 to 3 numeric parts, each 0-65535"));
-        add(intField("player.build", "Build number (Apple build number, Android version code).", 1, 2100000000,
-                     [](Project& p) -> unsigned int& { return p.getApplicationSettings().build; }));
-        {
-            Setting s;
-            s.key = "player.window_mode";
-            s.type = "enum";
-            s.values = enumNames(windowModes);
-            s.description = "Desktop window mode of the built player.";
-            s.get = [](McpContext& ctx) { return Json(enumName(windowModes, ctx.project()->getWindowMode())); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                WindowMode mode;
-                if (!parseEnum(windowModes, value, mode, error)) return false;
-                if (apply) ctx.project()->setWindowMode(mode);
-                return true;
-            };
-            add(s);
-        }
-        for (const bool width : {true, false}) {
-            Setting s;
-            s.key = width ? "player.window_width" : "player.window_height";
-            s.type = "int";
-            s.description = std::string("Desktop window ") + (width ? "width" : "height") + " in pixels.";
-            s.get = [width](McpContext& ctx) {
-                return Json(width ? ctx.project()->getWindowWidth() : ctx.project()->getWindowHeight());
-            };
-            s.set = [width](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                long long v;
-                if (!readInt(value, 1, 16384, v, error)) return false;
-                if (apply) {
-                    Project* p = ctx.project();
-                    if (width) p->setWindowSize(static_cast<unsigned>(v), p->getWindowHeight());
-                    else p->setWindowSize(p->getWindowWidth(), static_cast<unsigned>(v));
-                }
-                return true;
-            };
-            add(s);
-        }
-        add(boolSetting("player.window_resizable", "The desktop window can be resized.",
-                        [](Project& p) { return p.isWindowResizable(); }, [](Project& p, bool v) { p.setWindowResizable(v); }));
-        {
-            Setting s;
-            s.key = "player.window_title";
-            s.type = "string";
-            s.description = "Desktop window title; \"\" uses the project name.";
-            s.get = [](McpContext& ctx) { return Json(ctx.project()->getWindowTitle()); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                std::string text;
-                if (!readString(value, text, error, 255)) return false;
-                if (apply) ctx.project()->setWindowTitle(text);
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "player.window_icon";
-            s.type = "path";
-            s.description = "Default icon (desktop window and platforms without their own), a project-relative image; \"\" clears it.";
-            s.get = [](McpContext& ctx) { return Json(FileUtils::pathToGenericUtf8(ctx.project()->getWindowIcon())); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                fs::path path;
-                if (!readProjectFile(ctx, value, path, error)) return false;
-                if (apply) ctx.project()->setWindowIcon(path);
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "player.loading_scene";
-            s.type = "scene";
-            s.description = "Splash/loading scene shown while the start scene loads: a saved scene (id, name or .scene path), or null for none.";
-            s.get = [](McpContext& ctx) {
-                const SceneProject* scene = ctx.project()->getScene(ctx.project()->getLoadingSettings().sceneId);
-                return scene ? Json{{"id", scene->id}, {"name", scene->name}} : Json(nullptr);
-            };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                uint32_t id = 0;
-                if (!value.is_null() && !(value.is_number_integer() && value.get<long long>() == 0)) {
-                    SceneProject* scene = McpRefs::resolveScene(ctx.project(), value, error);
-                    if (!scene) return false;
-                    if (scene->filepath.empty()) {
-                        error = "the scene is not saved, so it is not in the build";
-                        return false;
-                    }
-                    id = scene->id;
-                }
-                if (apply) ctx.project()->getLoadingSettings().sceneId = id;
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "player.loading_delay";
-            s.type = "number";
-            s.description = "Seconds the loading scene stays at least.";
-            s.get = [](McpContext& ctx) { return Json(ctx.project()->getLoadingSettings().delay); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                double v;
-                if (!readNumber(value, 0.0, 600.0, v, error)) return false;
-                if (apply) ctx.project()->getLoadingSettings().delay = static_cast<float>(v);
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "player.loading_timeout";
-            s.type = "number";
-            s.description = "Seconds before the loading scene gives up waiting.";
-            s.get = [](McpContext& ctx) { return Json(ctx.project()->getLoadingSettings().timeout); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                double v;
-                if (!readNumber(value, 0.0, 3600.0, v, error)) return false;
-                if (apply) ctx.project()->getLoadingSettings().timeout = static_cast<float>(v);
-                return true;
-            };
-            add(s);
-        }
-        add(boolField("player.async_loading", "Load the start scene asynchronously behind the loading scene.",
-                      [](Project& p) -> bool& { return p.getLoadingSettings().asyncLoading; }));
-        add(boolSetting("player.pack_native_resources", "Experimental: pack assets and Lua into resources.pak in native builds instead of copying folders.",
-                        [](Project& p) { return p.shouldPackNativeResources(); }, [](Project& p, bool v) { p.setPackNativeResources(v); }));
-
-        // ---- per platform (overrides: "" inherits the shared player value)
-        add(stringSetting("web.application_name", "Web page title override.", [](Project& p) -> std::string& { return p.getWebProjectSettings().applicationName; }));
-        add(pathSetting("web.favicon", "Web favicon.", [](Project& p) -> fs::path& { return p.getWebProjectSettings().favicon; }));
-        add(pathSetting("web.custom_html_shell", "Custom Emscripten HTML shell.", [](Project& p) -> fs::path& { return p.getWebProjectSettings().customHtmlShell; }));
-        add(stringSetting("web.head_include", "Extra HTML put in the page <head>.", [](Project& p) -> std::string& { return p.getWebProjectSettings().headInclude; }));
-        add(boolField("web.resize_canvas_to_window", "The canvas follows the browser window size.", [](Project& p) -> bool& { return p.getWebProjectSettings().resizeCanvasToWindow; }));
-        add(boolField("web.hide_emscripten_ui", "Hide the Emscripten status/console UI.", [](Project& p) -> bool& { return p.getWebProjectSettings().hideEmscriptenUI; }));
-        add(stringSetting("linux.application_name", "Linux .desktop name override.", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().applicationName; }));
-        add(stringSetting("linux.comment", "Linux .desktop comment.", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().comment; }));
-        add(stringSetting("linux.categories", "Linux .desktop categories (e.g. Game;).", [](Project& p) -> std::string& { return p.getLinuxProjectSettings().categories; }));
-        add(stringSetting("windows.product_name", "Windows product name override.", [](Project& p) -> std::string& { return p.getWindowsProjectSettings().productName; }));
-        add(stringSetting("windows.company_name", "Windows company name.", [](Project& p) -> std::string& { return p.getWindowsProjectSettings().companyName; }));
-        add(stringSetting("windows.file_version", "Windows file version override (1-4 numeric parts).", [](Project& p) -> std::string& { return p.getWindowsProjectSettings().fileVersion; },
-                          [](const std::string& v) { return isNumericVersion(v, 4, 65535); }, "1 to 4 numeric parts"));
-        add(stringSetting("windows.product_version", "Windows product version override (1-4 numeric parts).", [](Project& p) -> std::string& { return p.getWindowsProjectSettings().productVersion; },
-                          [](const std::string& v) { return isNumericVersion(v, 4, 65535); }, "1 to 4 numeric parts"));
-        add(stringSetting("macos.application_name", "macOS name override.", [](Project& p) -> std::string& { return p.getMacOSProjectSettings().applicationName; }));
-        add(stringSetting("macos.bundle_identifier", "macOS bundle identifier override.", [](Project& p) -> std::string& { return p.getMacOSProjectSettings().bundleIdentifier; },
-                          [](const std::string& v) { return isDottedIdentifier(v, appleIdPart); }, "dot-separated parts of letters, digits and hyphens"));
-        add(stringSetting("macos.version_name", "macOS version override.", [](Project& p) -> std::string& { return p.getMacOSProjectSettings().versionName; },
-                          [](const std::string& v) { return isNumericVersion(v, 3, 65535); }, "1 to 3 numeric parts"));
-        add(stringSetting("macos.build_number", "macOS build number override.", [](Project& p) -> std::string& { return p.getMacOSProjectSettings().buildNumber; },
-                          [](const std::string& v) { return isNumericVersion(v, 3, 0xFFFFFFFFull); }, "1 to 3 numeric parts"));
-        add(pathSetting("macos.icon", "macOS icon.", [](Project& p) -> fs::path& { return p.getMacOSProjectSettings().icon; }));
-        add(boolField("macos.high_dpi", "macOS high DPI (Retina) rendering.", [](Project& p) -> bool& { return p.getMacOSProjectSettings().highDpi; }));
-        add(stringSetting("ios.application_name", "iOS name override.", [](Project& p) -> std::string& { return p.getIOSProjectSettings().applicationName; }));
-        add(stringSetting("ios.bundle_identifier", "iOS bundle identifier override.", [](Project& p) -> std::string& { return p.getIOSProjectSettings().bundleIdentifier; },
-                          [](const std::string& v) { return isDottedIdentifier(v, appleIdPart); }, "dot-separated parts of letters, digits and hyphens"));
-        add(stringSetting("ios.version_name", "iOS version override.", [](Project& p) -> std::string& { return p.getIOSProjectSettings().versionName; },
-                          [](const std::string& v) { return isNumericVersion(v, 3, 65535); }, "1 to 3 numeric parts"));
-        add(stringSetting("ios.build_number", "iOS build number override.", [](Project& p) -> std::string& { return p.getIOSProjectSettings().buildNumber; },
-                          [](const std::string& v) { return isNumericVersion(v, 3, 0xFFFFFFFFull); }, "1 to 3 numeric parts"));
-        add(pathSetting("ios.icon", "iOS icon.", [](Project& p) -> fs::path& { return p.getIOSProjectSettings().icon; }));
-        add(boolField("ios.hide_status_bar", "Hide the iOS status bar.", [](Project& p) -> bool& { return p.getIOSProjectSettings().hideStatusBar; }));
-        add(boolField("ios.hide_home_indicator", "Hide the iOS home indicator.", [](Project& p) -> bool& { return p.getIOSProjectSettings().hideHomeIndicator; }));
-        add(boolField("ios.supports_high_refresh_rate", "Allow 120 Hz on ProMotion devices.", [](Project& p) -> bool& { return p.getIOSProjectSettings().supportsHighRefreshRate; }));
-        add(boolField("ios.admob_enabled", "Link Google Mobile Ads into the iOS export (System.initializeAdMob and the interstitial calls); needs ios.admob_app_id.",
-                      [](Project& p) -> bool& { return p.getIOSProjectSettings().admobEnabled; }));
-        add(stringSetting("ios.admob_app_id", "iOS AdMob App ID (GADApplicationIdentifier) from the AdMob console; without it the export leaves AdMob out.",
-                          [](Project& p) -> std::string& { return p.getIOSProjectSettings().admobAppId; },
-                          isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
-        add(stringSetting("android.application_name", "Android label override.", [](Project& p) -> std::string& { return p.getAndroidProjectSettings().applicationName; }));
-        add(stringSetting("android.package_name", "Android package name override.", [](Project& p) -> std::string& { return p.getAndroidProjectSettings().packageName; },
-                          [](const std::string& v) { return isDottedIdentifier(v, javaIdPart); }, "a Java package name (dot-separated identifiers)"));
-        add(intField("android.version_code", "Android version code override (0 inherits player.build).", 0, 2100000000,
-                     [](Project& p) -> unsigned int& { return p.getAndroidProjectSettings().versionCode; }));
-        add(stringSetting("android.version_name", "Android version name override.", [](Project& p) -> std::string& { return p.getAndroidProjectSettings().versionName; }));
-        add(pathSetting("android.launcher_icon", "Android launcher icon.", [](Project& p) -> fs::path& { return p.getAndroidProjectSettings().launcherIcon; }));
-        add(pathSetting("android.adaptive_icon_foreground", "Android adaptive icon foreground.", [](Project& p) -> fs::path& { return p.getAndroidProjectSettings().adaptiveIconForeground; }));
-        add(pathSetting("android.adaptive_icon_background", "Android adaptive icon background.", [](Project& p) -> fs::path& { return p.getAndroidProjectSettings().adaptiveIconBackground; }));
-        {
-            Setting s;
-            s.key = "android.min_sdk";
-            s.type = "int";
-            s.description = "Android minimum SDK level.";
-            s.get = [](McpContext& ctx) { return Json(ctx.project()->getAndroidProjectSettings().minSdk); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                long long v;
-                if (!readInt(value, 1, 100, v, error)) return false;
-                if (apply) {
-                    auto& a = ctx.project()->getAndroidProjectSettings();
-                    a.minSdk = static_cast<unsigned>(v);
-                    a.targetSdk = std::max(a.targetSdk, a.minSdk);
-                }
-                return true;
-            };
-            add(s);
-        }
-        add(intField("android.target_sdk", "Android target SDK level.", 1, 100, [](Project& p) -> unsigned int& { return p.getAndroidProjectSettings().targetSdk; }));
-        {
-            Setting s;
-            s.key = "android.orientation";
-            s.type = "enum";
-            s.values = enumNames(androidOrientations);
-            s.description = "Android screen orientation.";
-            s.get = [](McpContext& ctx) { return Json(enumName(androidOrientations, ctx.project()->getAndroidProjectSettings().orientation)); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                AndroidOrientation o;
-                if (!parseEnum(androidOrientations, value, o, error)) return false;
-                if (apply) ctx.project()->getAndroidProjectSettings().orientation = o;
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "android.abis";
-            s.type = "list";
-            s.values = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"};
-            s.description = "Android ABIs to build (at least one of armeabi-v7a, arm64-v8a, x86, x86_64).";
-            s.get = [](McpContext& ctx) {
-                const auto& a = ctx.project()->getAndroidProjectSettings();
-                Json list = Json::array();
-                if (a.abiArmeabiV7a) list.push_back("armeabi-v7a");
-                if (a.abiArm64V8a) list.push_back("arm64-v8a");
-                if (a.abiX86) list.push_back("x86");
-                if (a.abiX86_64) list.push_back("x86_64");
-                return list;
-            };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                if (!value.is_array() || value.empty()) {
-                    error = "must be a non-empty list of: armeabi-v7a, arm64-v8a, x86, x86_64";
-                    return false;
-                }
-                bool v7 = false, v8 = false, x86 = false, x64 = false;
-                for (const Json& item : value) {
-                    const std::string abi = item.is_string() ? item.get<std::string>() : "";
-                    if (abi == "armeabi-v7a") v7 = true;
-                    else if (abi == "arm64-v8a") v8 = true;
-                    else if (abi == "x86") x86 = true;
-                    else if (abi == "x86_64") x64 = true;
-                    else {
-                        error = "unknown ABI " + item.dump() + "; use armeabi-v7a, arm64-v8a, x86, x86_64";
-                        return false;
-                    }
-                }
-                if (apply) {
-                    auto& a = ctx.project()->getAndroidProjectSettings();
-                    a.abiArmeabiV7a = v7;
-                    a.abiArm64V8a = v8;
-                    a.abiX86 = x86;
-                    a.abiX86_64 = x64;
-                }
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "android.permissions";
-            s.type = "list";
-            s.description = "Android permissions, lower-case manifest names without the prefix (internet, vibrate, camera, record_audio, access_fine_location, ...).";
-            s.get = [](McpContext& ctx) {
-                Json list = Json::array();
-                for (const std::string& p : ctx.project()->getAndroidProjectSettings().permissions) list.push_back(p);
-                return list;
-            };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                if (!value.is_array()) {
-                    error = "must be a list of permission names";
-                    return false;
-                }
-                std::set<std::string> permissions;
-                for (const Json& item : value) {
-                    if (!item.is_string() || item.get<std::string>().empty()) {
-                        error = "permissions must be non-empty strings";
-                        return false;
-                    }
-                    permissions.insert(lowerText(item.get<std::string>()));
-                }
-                if (apply) ctx.project()->getAndroidProjectSettings().permissions = permissions;
-                return true;
-            };
-            add(s);
-        }
-        add(boolField("android.allow_backup", "Android allowBackup.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().allowBackup; }));
-        add(boolField("android.fullscreen", "Android fullscreen theme.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().fullscreen; }));
-        add(boolField("android.keep_screen_on", "Keep the Android screen on.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().keepScreenOn; }));
-        add(boolField("android.admob_enabled", "Compile Google Mobile Ads into the Android export (System.initializeAdMob and the interstitial calls); needs android.admob_app_id.",
-                      [](Project& p) -> bool& { return p.getAndroidProjectSettings().admobEnabled; }));
-        add(stringSetting("android.admob_app_id", "Android AdMob App ID (com.google.android.gms.ads.APPLICATION_ID) from the AdMob console; without it the export leaves AdMob out.",
-                          [](Project& p) -> std::string& { return p.getAndroidProjectSettings().admobAppId; },
-                          isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
-
-        // ---- graphics / quality
-        for (const bool width : {true, false}) {
-            Setting s;
-            s.key = width ? "graphics.canvas_width" : "graphics.canvas_height";
-            s.type = "int";
-            s.description = std::string("Reference resolution ") + (width ? "width" : "height") +
-                            " the game is designed for (UI and 2D coordinates), scaled to the screen by graphics.scaling_mode.";
-            s.get = [width](McpContext& ctx) {
-                return Json(width ? ctx.project()->getCanvasWidth() : ctx.project()->getCanvasHeight());
-            };
-            s.set = [width](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                long long v;
-                if (!readInt(value, 1, 16384, v, error)) return false;
-                if (apply) {
-                    Project* p = ctx.project();
-                    if (width) p->setCanvasSize(static_cast<unsigned>(v), p->getCanvasHeight());
-                    else p->setCanvasSize(p->getCanvasWidth(), static_cast<unsigned>(v));
-                }
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "graphics.scaling_mode";
-            s.type = "enum";
-            s.values = enumNames(scalingModes);
-            s.description = "How the canvas maps to the screen.";
-            s.get = [](McpContext& ctx) { return Json(enumName(scalingModes, ctx.project()->getScalingMode())); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                Scaling mode;
-                if (!parseEnum(scalingModes, value, mode, error)) return false;
-                if (apply) ctx.project()->setScalingMode(mode);
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "graphics.texture_strategy";
-            s.type = "enum";
-            s.values = enumNames(textureStrategies);
-            s.description = "How textures larger than the GPU limit are handled.";
-            s.get = [](McpContext& ctx) { return Json(enumName(textureStrategies, ctx.project()->getTextureStrategy())); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                TextureStrategy v;
-                if (!parseEnum(textureStrategies, value, v, error)) return false;
-                if (apply) ctx.project()->setTextureStrategy(v);
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "graphics.html_ui_msaa_samples";
-            s.type = "int";
-            s.description = "MSAA samples of the HTML/CSS UI documents' targets (1, 2, 4 or 8; default 4). Smoother "
-                            "rounded corners and rotated edges at more GPU memory; devices without MSAA use 1.";
-            s.get = [](McpContext& ctx) { return Json(ctx.project()->getHtmlUiMsaaSamples()); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                long long v;
-                if (!readInt(value, 1, 8, v, error)) return false;
-                if (!Project::isValidHtmlUiMsaaSamples(static_cast<int>(v))) {
-                    error = "must be 1, 2, 4 or 8";
-                    return false;
-                }
-                if (apply) ctx.project()->setHtmlUiMsaaSamples(static_cast<int>(v));
-                return true;
-            };
-            add(s);
-        }
-        add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
-                        [](Project& p) { return p.isRuntimeShadersEnabled(); }, [](Project& p, bool v) { p.setRuntimeShadersEnabled(v); }));
-        add(boolSetting("quality.vsync", "VSync in the built player.",
-                        [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
-
-        // ---- physics
-        add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
-                        [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));
-        add(layerCollisionSetting("physics.layer_collision_matrix", true));
-        add(boolSetting("physics2d.enabled", "2D physics (Box2D). Off leaves Rigidbody2Ds and joints out of builds.",
-                        [](Project& p) { return p.isPhysics2DEnabled(); }, [](Project& p, bool v) { p.setPhysics2DEnabled(v); }));
-        add(layerCollisionSetting("physics2d.layer_collision_matrix", false));
-
-        // ---- scripting
-        {
-            Setting s;
-            s.key = "scripting.cxx_standard";
-            s.type = "enum";
-            for (int v : cxxStandards) s.values.push_back(std::to_string(v));
-            s.description = "C++ standard for scripts and builds (" + cxxStandardList() + "). The next Play/build uses it; never edit CMAKE_CXX_STANDARD in the generated CMakeLists.txt.";
-            s.get = [](McpContext& ctx) { return Json(ctx.project()->getCxxStandard()); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                long long v = 0;
-                if (value.is_string()) {
-                    std::string text = value.get<std::string>();
-                    if (text.rfind("c++", 0) == 0 || text.rfind("C++", 0) == 0) text = text.substr(3);
-                    try { v = std::stoll(text); } catch (...) { v = 0; }
-                } else if (!readInt(value, 0, 100, v, error)) {
-                    return false;
-                }
-                if (!isSupportedCxxStandard(static_cast<int>(v))) {
-                    error = "must be " + cxxStandardList();
-                    return false;
-                }
-                if (apply) ctx.project()->setCxxStandard(static_cast<int>(v));
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "scripting.script_dirs";
-            s.type = "list";
-            s.description = "C++ script roots: include directories whose sources all compile. Pass the complete list; entries read "
-                            "here can be passed back verbatim; a NEW entry must be an existing project-relative directory.";
-            s.get = [](McpContext& ctx) {
-                Json list = Json::array();
-                for (const fs::path& dir : ctx.project()->getScriptDirs()) list.push_back(FileUtils::pathToGenericUtf8(dir));
-                return list;
-            };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                Project* p = ctx.project();
-                if (!value.is_array()) {
-                    error = "must be a list of project-relative directories";
-                    return false;
-                }
-                const std::vector<fs::path>& configured = p->getScriptDirs();
-                std::vector<fs::path> dirs;
-                for (const Json& item : value) {
-                    if (!item.is_string()) {
-                        error = "entries must be strings";
-                        return false;
-                    }
-                    const fs::path dir = FileUtils::pathFromUtf8(item.get<std::string>()).lexically_normal();
-                    const bool known = std::any_of(configured.begin(), configured.end(),
-                                                   [&dir](const fs::path& c) { return c.lexically_normal() == dir; });
-                    if (!known) {
-                        fs::path absolute;
-                        if (!McpRefs::resolveProjectPath(p, item.get<std::string>(), absolute, error, true)) return false;
-                        std::error_code ec;
-                        if (!fs::is_directory(absolute, ec)) {
-                            error = item.get<std::string>() + " is not a directory";
-                            return false;
-                        }
-                    }
-                    if (std::find(dirs.begin(), dirs.end(), dir) == dirs.end()) dirs.push_back(dir);
-                }
-                if (apply) p->setScriptDirs(dirs);
-                return true;
-            };
-            add(s);
-        }
-        for (const bool lua : {true, false}) {
-            Setting s;
-            s.key = lua ? "scripting.lua_dir" : "editor.assets_dir";
-            s.type = "string";
-            s.description = lua
-                ? "Root of Lua script references (lua://), project-relative directory (\".\" = project root). Changing it MOVES referenced files and rewrites references."
-                : "Root of asset references (textures, models, sounds, fonts), project-relative directory (\".\" = project root). Changing it MOVES referenced files and rewrites references.";
-            s.get = [lua](McpContext& ctx) {
-                return Json(FileUtils::pathToGenericUtf8(lua ? ctx.project()->getLuaDir() : ctx.project()->getAssetsDir()));
-            };
-            s.set = [lua](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                Project* p = ctx.project();
-                std::string text;
-                if (!readString(value, text, error)) return false;
-                fs::path dir = text.empty() ? fs::path(".") : FileUtils::pathFromUtf8(text).lexically_normal();
-                if (dir != ".") {
-                    fs::path absolute;
-                    if (!McpRefs::resolveProjectPath(p, text, absolute, error)) return false;
-                }
-                if (ctx.isPlaying()) {
-                    error = "cannot change asset roots during Play";
-                    return false;
-                }
-                if (apply) {
-                    std::error_code ec;
-                    fs::create_directories(p->getProjectPath() / dir, ec);
-                    if (lua) p->changeAssetRoots(p->getAssetsDir(), dir);
-                    else p->changeAssetRoots(dir, p->getLuaDir());
-                }
-                return true;
-            };
-            add(s);
-        }
-        add(boolSetting("editor.version_control_files", "Write version-control metadata files (.gitignore etc.) with the project.",
-                        [](Project& p) { return p.hasVersionControlMetadata(); }, [](Project& p, bool v) { p.setVersionControlMetadata(v); }));
-
-        // ---- tags and layers
-        {
-            Setting s;
-            s.key = "tags_and_layers.tags";
-            s.type = "list";
-            s.description = "User tags (after the built-in Untagged, Respawn, Finish, EditorOnly, MainCamera, Player, GameController). Pass the complete list.";
-            s.get = [](McpContext& ctx) {
-                Json list = Json::array();
-                for (const std::string& tag : ctx.project()->getTags()) list.push_back(tag);
-                return list;
-            };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                if (!value.is_array()) {
-                    error = "must be a list of tag names";
-                    return false;
-                }
-                std::vector<std::string> tags;
-                for (const Json& item : value) {
-                    if (!item.is_string()) {
-                        error = "tags must be strings";
-                        return false;
-                    }
-                    const std::string tag = TagManager::trimName(item.get<std::string>());
-                    if (tag.empty()) {
-                        error = "tags must not be empty";
-                        return false;
-                    }
-                    if (TagManager::isBuiltinTag(tag)) {
-                        error = "\"" + tag + "\" is a built-in tag";
-                        return false;
-                    }
-                    if (std::find(tags.begin(), tags.end(), tag) != tags.end()) {
-                        error = "\"" + tag + "\" is listed twice";
-                        return false;
-                    }
-                    tags.push_back(tag);
-                }
-                if (apply) ctx.project()->setTagsAndLayers(tags, ctx.project()->getLayerNames());
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "tags_and_layers.layers";
-            s.type = "object";
-            s.description = "User layer names by index, {\"3\": \"Player\", \"8\": \"Enemies\"} (user layers are 3 and 6-31; "
-                            "0 Default, 1 TransparentFX, 2 Ignore Raycast, 4 Water, 5 UI are built-in). Setting merges: a "
-                            "listed index gets that name, \"\" unnames it, unlisted ones keep theirs. Reading returns every named layer, built-ins included.";
-            s.get = [](McpContext& ctx) {
-                Json map = Json::object();
-                const std::vector<std::string>& names = ctx.project()->getLayerNames();
-                for (int i = 0; i < MAX_LAYERS; i++) {
-                    std::string name = TagManager::isBuiltinLayer(i) ? TagManager::getBuiltinLayerName(i)
-                                                                     : (i < static_cast<int>(names.size()) ? names[i] : std::string());
-                    if (!name.empty()) map[std::to_string(i)] = name;
-                }
-                return map;
-            };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                if (!value.is_object()) {
-                    error = "must be an object {\"index\": \"name\"}";
-                    return false;
-                }
-                std::vector<std::string> names = ctx.project()->getLayerNames();
-                names.resize(MAX_LAYERS);
-                for (auto it = value.begin(); it != value.end(); ++it) {
-                    int index = -1;
-                    try { index = std::stoi(it.key()); } catch (...) { index = -1; }
-                    if (index < 0 || index >= MAX_LAYERS || std::to_string(index) != it.key()) {
-                        error = "layer key \"" + it.key() + "\" must be an index 0-31";
-                        return false;
-                    }
-                    if (TagManager::isBuiltinLayer(index)) {
-                        error = "layer " + it.key() + " is built-in (" + TagManager::getBuiltinLayerName(index) + ")";
-                        return false;
-                    }
-                    if (!it.value().is_string()) {
-                        error = "layer names must be strings";
-                        return false;
-                    }
-                    names[index] = TagManager::trimName(it.value().get<std::string>());
-                }
-                std::set<std::string> seen;
-                for (int i = 0; i < MAX_LAYERS; i++) {
-                    const std::string name = TagManager::isBuiltinLayer(i) ? TagManager::getBuiltinLayerName(i) : names[i];
-                    if (name.empty()) continue;
-                    if (!seen.insert(name).second) {
-                        error = "two layers are named \"" + name + "\"";
-                        return false;
-                    }
-                }
-                if (apply) ctx.project()->setTagsAndLayers(ctx.project()->getTags(), names);
-                return true;
-            };
-            add(s);
-        }
-
-        // ---- editor preferences (this machine / this editor session)
-        {
-            Setting s;
-            s.key = "preferences.clear_on_play";
-            s.type = "bool";
-            s.preference = true;
-            s.description = "Console: clear the log when Play starts (editor session).";
-            s.get = [](McpContext& ctx) { return ctx.consoleWindow() ? Json(ctx.consoleWindow()->isClearOnPlay()) : Json(nullptr); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                bool b;
-                if (!readBool(value, b, error)) return false;
-                if (!ctx.consoleWindow()) {
-                    error = "no Console window";
-                    return false;
-                }
-                if (apply) ctx.consoleWindow()->setClearOnPlay(b);
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "preferences.error_pause";
-            s.type = "bool";
-            s.preference = true;
-            s.description = "Console: pause Play when an error is logged (editor session). Usually off for agents.";
-            s.get = [](McpContext& ctx) { return ctx.consoleWindow() ? Json(ctx.consoleWindow()->isErrorPause()) : Json(nullptr); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                bool b;
-                if (!readBool(value, b, error)) return false;
-                if (!ctx.consoleWindow()) {
-                    error = "no Console window";
-                    return false;
-                }
-                if (apply) ctx.consoleWindow()->setErrorPause(b);
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s = boolSetting("preferences.simulate_touch", "Play acts as a touch device: the mouse is one finger and isTouchDevice() is true.",
-                                    [](Project& p) { return p.isSimulateTouch(); }, [](Project& p, bool v) { p.setSimulateTouch(v); });
-            s.preference = true;
-            add(s);
-        }
-        auto stringPreference = [&add](const std::string& key, const std::string& description,
-                                       std::function<std::string()> get, std::function<void(const std::string&)> set) {
-            Setting s;
-            s.key = key;
-            s.type = "string";
-            s.preference = true;
-            s.description = description;
-            s.get = [get](McpContext&) { return Json(get()); };
-            s.set = [set](McpContext&, const Json& value, bool apply, std::string& error) {
-                std::string text;
-                if (!readString(value, text, error)) return false;
-                if (apply) set(text);
-                return true;
-            };
-            add(s);
-        };
-        stringPreference("preferences.cmake_path", "External Tools: cmake executable (\"\" = from PATH).",
-                         [] { return AppSettings::getCMakePath(); }, [](const std::string& v) { AppSettings::setCMakePath(v); });
-        stringPreference("preferences.emsdk_path", "External Tools: Emscripten SDK root for Web builds (\"\" = EMSDK / PATH).",
-                         [] { return AppSettings::getEmsdkPath(); }, [](const std::string& v) { AppSettings::setEmsdkPath(v); });
-        stringPreference("preferences.ffmpeg_path", "External Tools: ffmpeg for video imports (\"\" = JASPER_FFMPEG / PATH).",
-                         [] { return AppSettings::getFfmpegPath(); }, [](const std::string& v) { AppSettings::setFfmpegPath(v); });
-        stringPreference("preferences.default_export_dir", "Default output directory for builds of projects that have none yet.",
-                         [] { return FileUtils::pathToGenericUtf8(AppSettings::getDefaultExportDirectory()); },
-                         [](const std::string& v) { AppSettings::setDefaultExportDirectory(FileUtils::pathFromUtf8(v)); });
-        // Compiler kit and jobs, per project (.jasperengine/user/build.yaml)
-        struct KitField {
-            const char* key;
-            const char* description;
-            std::string LocalBuildSettings::* member;
-        };
-        static const KitField kitFields[] = {
-            {"preferences.build_c_compiler", "C compiler for Desktop builds of this project (\"\" = CMake default).", &LocalBuildSettings::cCompiler},
-            {"preferences.build_cxx_compiler", "C++ compiler for Desktop builds of this project (\"\" = CMake default).", &LocalBuildSettings::cxxCompiler},
-            {"preferences.build_generator", "CMake generator for Desktop builds of this project, e.g. \"Ninja\" or \"Unix Makefiles\" (\"\" = CMake default).", &LocalBuildSettings::generator},
-        };
-        for (const KitField& field : kitFields) {
-            Setting s;
-            s.key = field.key;
-            s.type = "string";
-            s.preference = true;
-            s.description = field.description;
-            auto member = field.member;
-            s.get = [member](McpContext& ctx) {
-                return Json(AppSettings::getBuildSettings(ctx.project()->getProjectPath() / "project.yaml").*member);
-            };
-            s.set = [member](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                std::string text;
-                if (!readString(value, text, error)) return false;
-                if (apply) {
-                    const fs::path file = ctx.project()->getProjectPath() / "project.yaml";
-                    LocalBuildSettings build = AppSettings::getBuildSettings(file);
-                    build.*member = text;
-                    if (!AppSettings::setBuildSettings(file, build)) {
-                        error = "could not write the local build settings";
-                        return false;
-                    }
-                }
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
-            s.key = "preferences.build_jobs";
-            s.type = "int";
-            s.preference = true;
-            s.description = "Parallel compile jobs for Desktop builds of this project (0 = automatic).";
-            s.get = [](McpContext& ctx) {
-                return Json(AppSettings::getBuildSettings(ctx.project()->getProjectPath() / "project.yaml").buildJobs);
-            };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                long long v;
-                if (!readInt(value, 0, 1024, v, error)) return false;
-                if (apply) {
-                    const fs::path file = ctx.project()->getProjectPath() / "project.yaml";
-                    LocalBuildSettings build = AppSettings::getBuildSettings(file);
-                    build.buildJobs = static_cast<unsigned>(v);
-                    if (!AppSettings::setBuildSettings(file, build)) {
-                        error = "could not write the local build settings";
-                        return false;
-                    }
-                }
-                return true;
-            };
-            add(s);
-        }
-        return t;
+        return rows;
     }();
     return table;
+}
+
+SettingsContext settingsContext(McpContext& ctx) {
+    return SettingsContext{ctx.project(), ctx.consoleWindow(), ctx.isPlaying()};
+}
+
+bool isPreference(const SettingRow& row) {
+    return row.scope == SettingsScope::Preference;
 }
 
 std::string categoryOf(const std::string& key) {
@@ -1578,14 +745,98 @@ std::vector<std::string> categories() {
     return out;
 }
 
+// keys of earlier versions and what replaced them (set_project_settings / get_project_settings say so)
+const std::map<std::string, std::string>& renamedSettings() {
+    static const std::map<std::string, std::string> renamed = {
+        {"android.orientation", "player.default_orientation / player.allowed_orientations (shared by Android and iOS)"},
+        {"android.keep_screen_on", "player.keep_screen_on (every platform; true by default, as Android builds always did)"},
+    };
+    return renamed;
+}
+
+// Project Settings > Graphics > Shader Globals: the list is graphics.shader_globals (SettingsRows);
+// graphics.shader_globals.<name> is one global by name (upsert, null removes), each change one undo
+// step of the project history
+constexpr const char* kShaderGlobalsKey = "graphics.shader_globals";
+
+bool applyShaderGlobals(SettingsContext& ctx, const std::vector<ShaderGlobalDecl>& decls, const std::map<std::string, std::string>& renames,
+                        std::string& error) {
+    Project* p = ctx.project();
+    if (decls == p->getShaderGlobals()) return true;
+    auto* command = new ShaderGlobalsCmd(p, p->getShaderGlobals(), decls, renames);
+    command->setNoMerge();
+    if (!p->getProjectCommandHistory()->addCommand(command)) {
+        error = "the shader globals could not be applied";
+        return false;
+    }
+    return true;
+}
+
+// graphics.shader_globals.<name>: {type, default, array_size} (a missing field keeps the current
+// one), name: a rename (bindings follow), null: removed
+Setting shaderGlobalSetting(const std::string& name) {
+    Setting s;
+    s.key = std::string(kShaderGlobalsKey) + "." + name;
+    s.mcp = true;
+    s.type = "object";
+    s.description = "One shader global of graphics.shader_globals: {type, default, array_size}; name renames it; null removes it.";
+    s.get = [name](SettingsContext& ctx) {
+        for (const ShaderGlobalDecl& decl : ctx.project()->getShaderGlobals()) {
+            if (decl.name == name) {
+                Json json = ShaderGlobalsJson::declToJson(decl);
+                json.erase("name");
+                return json;
+            }
+        }
+        return Json();
+    };
+    s.set = [name](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        std::vector<ShaderGlobalDecl> decls = ctx.project()->getShaderGlobals();
+        auto it = std::find_if(decls.begin(), decls.end(), [&name](const ShaderGlobalDecl& d) { return d.name == name; });
+        std::map<std::string, std::string> renames;
+        if (value.is_null()) {
+            if (it == decls.end()) {
+                error = "no shader global is named \"" + name + "\"";
+                return false;
+            }
+            decls.erase(it);
+        } else {
+            ShaderGlobalDecl decl;
+            if (!ShaderGlobalsJson::declFromJson(value, decl, error, name, it != decls.end() ? &*it : nullptr)) return false;
+            if (it != decls.end()) {
+                if (decl.name != name) renames[name] = decl.name;
+                *it = decl;
+            } else {
+                decls.push_back(decl);
+            }
+            error = ShaderGlobals::validate(decls);
+            if (!error.empty()) return false;
+        }
+        return !apply || applyShaderGlobals(ctx, decls, renames, error);
+    };
+    return s;
+}
+
 const Setting* findSetting(const std::string& key) {
     for (const Setting& s : settingsTable()) {
         if (s.key == key) return &s;
+    }
+    // one shader global by name (made for the key on first use)
+    const std::string prefix = std::string(kShaderGlobalsKey) + ".";
+    if (key.size() > prefix.size() && key.compare(0, prefix.size(), prefix) == 0) {
+        static std::map<std::string, Setting> perGlobal;
+        auto it = perGlobal.find(key);
+        if (it == perGlobal.end()) it = perGlobal.emplace(key, shaderGlobalSetting(key.substr(prefix.size()))).first;
+        return &it->second;
     }
     return nullptr;
 }
 
 std::string unknownKeyMessage(const std::string& key) {
+    const auto renamed = renamedSettings().find(key);
+    if (renamed != renamedSettings().end()) {
+        return "\"" + key + "\" was renamed: use " + renamed->second + ".";
+    }
     std::string text = "Unknown setting \"" + key + "\".";
     const std::string category = categoryOf(key);
     std::string sameCategory;
@@ -1609,8 +860,23 @@ const std::set<std::string>& platformCategories() {
 
 void getProjectSettingsTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
+    SettingsContext settings = settingsContext(ctx);
     const Json& args = call->args();
     const bool describe = args.value("describe", false);
+
+    // search: where a setting is (every row of Preferences and Project Settings, S25 R39)
+    if (args.contains("search") && args["search"].is_string()) {
+        Json matches = Json::array();
+        for (const SettingRow* row : SettingsRegistry::get().search(args["search"].get<std::string>())) {
+            Json match = {{"key", row->key}, {"page", row->page}, {"label", row->label}, {"scope", SettingsRegistry::scopeName(row->scope)}};
+            if (!row->section.empty()) match["section"] = row->section;
+            if (row->mcp) match["value"] = row->get(settings);
+            matches.push_back(match);
+        }
+        call->ok(std::to_string(matches.size()) + " setting(s) match. The ones with a value are keys for set_project_settings.",
+                 Json{{"matches", matches}});
+        return;
+    }
 
     std::vector<const Setting*> selected;
     if (args.contains("keys") && args["keys"].is_array() && !args["keys"].empty()) {
@@ -1647,7 +913,8 @@ void getProjectSettingsTool(const CallPtr& call) {
         for (const Setting& s : settingsTable()) {
             const std::string c = categoryOf(s.key);
             if (category.empty()) {
-                if (platformCategories().count(c)) continue;
+                // the platform overrides, and the input settings (the Input Manager list is long): asked for by name
+                if (platformCategories().count(c) || c == "input") continue;
             } else if (category != "all" && c != category) {
                 continue;
             }
@@ -1658,24 +925,35 @@ void getProjectSettingsTool(const CallPtr& call) {
     Json values = Json::object();
     Json schema = Json::object();
     for (const Setting* s : selected) {
-        values[s->key] = s->get(ctx);
+        values[s->key] = s->get(settings);
         if (describe) {
             Json info = {{"type", s->type}, {"description", s->description}};
             if (!s->values.empty()) info["values"] = s->values;
-            if (s->preference) info["preference"] = true;
+            if (isPreference(*s)) info["preference"] = true;
+            if (s->userOnly) info["read_only"] = true;
             schema[s->key] = info;
         }
     }
     Json data = {{"settings", values}};
     if (describe) data["describe"] = schema;
+    // the shader globals' declarations to paste into a shader (one block per stage)
+    const bool globalsAsked = std::any_of(selected.begin(), selected.end(), [](const Setting* s) {
+        return s->key.compare(0, std::strlen(kShaderGlobalsKey), kShaderGlobalsKey) == 0;
+    });
+    if (globalsAsked && !ctx.project()->getShaderGlobals().empty()) {
+        data["glsl_vs"] = ShaderGlobals::getGlslBlock(ctx.project()->getShaderGlobals(), ShaderStageType::VERTEX);
+        data["glsl_fs"] = ShaderGlobals::getGlslBlock(ctx.project()->getShaderGlobals(), ShaderStageType::FRAGMENT);
+    }
     if (!args.contains("keys") && args.value("category", "").empty()) {
-        data["note"] = "Platform overrides (web, linux, windows, macos, ios, android) are left out: pass category or keys.";
+        data["note"] = "Platform overrides (web, linux, windows, macos, ios, android) and input (input.actions, "
+                       "input.manager_actions) are left out: pass category or keys.";
     }
     call->ok(std::to_string(values.size()) + " setting(s).", data);
 }
 
 void setProjectSettingsTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
+    SettingsContext settings = settingsContext(ctx);
     Project* project = ctx.project();
     const Json& args = call->args();
     if (!args.contains("values") || !args["values"].is_object() || args["values"].empty()) {
@@ -1694,8 +972,13 @@ void setProjectSettingsTool(const CallPtr& call) {
             call->fail(unknownKeyMessage(it.key()) + " Nothing was changed.");
             return;
         }
+        if (s->userOnly) {
+            call->fail(s->key + " is a machine-level preference only the user changes: change it in Edit > Preferences. "
+                       "Nothing was changed.");
+            return;
+        }
         std::string error;
-        if (!s->set(ctx, it.value(), false, error)) {
+        if (!s->set(settings, it.value(), false, error)) {
             std::string hint;
             if (!s->values.empty()) {
                 hint = " Values:";
@@ -1717,12 +1000,12 @@ void setProjectSettingsTool(const CallPtr& call) {
     bool projectChanged = false;
     for (const auto& [setting, value] : changes) {
         std::string error;
-        if (!setting->set(ctx, value, true, error)) {
+        if (!setting->set(settings, value, true, error)) {
             call->fail(setting->key + ": " + error + ". Applied before it: " + applied.dump() + ".");
             return;
         }
-        applied[setting->key] = setting->get(ctx);
-        if (!setting->preference) projectChanged = true;
+        applied[setting->key] = setting->get(settings);
+        if (!isPreference(*setting)) projectChanged = true;
     }
 
     std::string text = "Set " + std::to_string(applied.size()) + " setting(s).";
@@ -1939,17 +1222,22 @@ void editProjectBuildFileTool(const CallPtr& call) {
                    "build and exported players), and use ${JASPERENGINE_SCRIPTS_DIR} as the root of script paths.");
         return;
     }
-    std::error_code ec;
+    // written (or removed) beneath the project: a link there leading out of it is refused, and no
+    // link planted on the way since the check is followed
+    std::string why;
+    if (const std::string escape = McpRefs::writeEscape(project, path, content.empty() ? McpRefs::WriteUse::Entry : McpRefs::WriteUse::Write);
+        !escape.empty()) {
+        call->fail(escape);
+        return;
+    }
     if (content.empty()) {
-        fs::remove(path, ec);
-    } else {
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
-        out << content;
-        out.close();
-        if (!out) {
-            call->fail("Could not write ProjectBuild.cmake.");
+        if (!safewrite::removeFileResolvedBeneath(McpRefs::rootFor(project, path, McpRefs::WriteUse::Entry), path, why)) {
+            call->fail("Could not remove ProjectBuild.cmake: " + why);
             return;
         }
+    } else if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, path), path, content, why)) {
+        call->fail("Could not write ProjectBuild.cmake: " + why);
+        return;
     }
     if (ctx.projectWindow()) ctx.projectWindow()->refreshCurrentDirectory();
     Out::info("MCP: %s ProjectBuild.cmake", content.empty() ? "removed" : "updated");
@@ -1958,6 +1246,124 @@ void editProjectBuildFileTool(const CallPtr& call) {
              "log for CMake errors.", Json{{"path", "ProjectBuild.cmake"}, {"bytes", content.size()}});
 }
 
+
+// ---- native_plugins: plugins/native (feature native-bridge, docs/mcp/guide/native-bridge.md)
+
+const std::vector<std::string>& nativeSettingKeys() {
+    static const std::vector<std::string> keys = {
+        "android.gradle_dependencies", "android.gradle_repositories", "android.gradle_properties", "android.extra_permissions",
+        "android.manifest_xml", "android.manifest_application_xml", "ios.plist_entries", "ios.plist_xml", "ios.frameworks",
+        "ios.cocoapods", "ios.swift_packages", "ios.entitlements_xml", "ios.deployment_target", "macos.plist_entries",
+        "macos.frameworks", "web.script_urls"};
+    return keys;
+}
+
+void nativePluginsTool(const CallPtr& call) {
+    McpContext& ctx = call->ctx();
+    Project* project = ctx.project();
+    const Json& args = call->args();
+    const std::string action = args.value("action", "list");
+    const fs::path projectPath = project->getProjectPath();
+
+    if (action == "list") {
+        const NativePlugins::Scan scan = NativePlugins::scan(projectPath);
+        Json data;
+        data["root"] = FileUtils::pathToGenericUtf8(NativePlugins::relativeRoot());
+        data["exists"] = scan.exists;
+        Json plugins = Json::array();
+        for (const NativePlugins::PluginInfo& plugin : NativePlugins::listPlugins(scan)) {
+            Json platforms = Json::object();
+            for (const auto& [platform, files] : plugin.files) platforms[platform] = files;
+            plugins.push_back({{"name", plugin.name}, {"platforms", platforms}, {"methods", plugin.methods}});
+        }
+        data["plugins"] = plugins;
+        Json counts = Json::object();
+        for (const std::string& platform : NativePlugins::platformNames()) {
+            if (scan.count(platform)) counts[platform] = scan.count(platform);
+        }
+        data["files"] = counts;
+        data["mocks"] = NativePlugins::listMocks(project->getLuaPath());
+        Json settings = Json::object();
+        for (const Setting& setting : settingsTable()) {
+            if (std::find(nativeSettingKeys().begin(), nativeSettingKeys().end(), setting.key) == nativeSettingKeys().end()) continue;
+            SettingsContext rowContext = settingsContext(ctx);
+            const Json value = setting.get(rowContext);
+            // only what is set (the defaults are empty, and 15.0)
+            if ((value.is_string() && (value.get<std::string>().empty() || (setting.key == "ios.deployment_target" && value == "15.0"))) ||
+                ((value.is_array() || value.is_object()) && value.empty())) {
+                continue;
+            }
+            settings[setting.key] = value;
+        }
+        data["settings"] = settings;
+        std::string text = std::to_string(plugins.size()) + " native plugin(s)";
+        if (!scan.exists) text += " (no plugins/native folder yet: action create makes one)";
+        text += ", " + std::to_string(data["mocks"].size()) + " Lua mock(s), " + std::to_string(settings.size()) + " native setting(s) set.";
+        call->ok(text, data);
+        return;
+    }
+    if (action != "create") {
+        call->fail("action must be \"list\" or \"create\".");
+        return;
+    }
+    if (ctx.isPlaying()) {
+        call->fail("Stop Play mode before creating a native plugin (its C++ joins the Play library at the next Play).");
+        return;
+    }
+    NativePlugins::CreateOptions options;
+    options.name = args.value("name", "");
+    if (args.contains("platforms")) {
+        if (!args["platforms"].is_array()) {
+            call->fail("platforms must be a list: android, ios, macos, web, cpp.");
+            return;
+        }
+        for (const Json& platform : args["platforms"]) {
+            if (platform.is_string()) options.platforms.push_back(platform.get<std::string>());
+        }
+    } else {
+        options.platforms = {"android", "ios", "web", "cpp"};
+    }
+    options.androidLanguage = args.value("android_language", "java");
+    options.appleLanguage = args.value("apple_language", "objc");
+    options.package = args.value("package", options.package);
+    options.overwrite = args.value("overwrite", false);
+    if (args.contains("methods")) {
+        if (!args["methods"].is_array()) {
+            call->fail("methods must be a list of {name, async}.");
+            return;
+        }
+        for (const Json& method : args["methods"]) {
+            NativePlugins::MethodSpec spec;
+            if (method.is_string()) {
+                spec.name = method.get<std::string>();
+            } else if (method.is_object()) {
+                spec.name = method.value("name", "");
+                spec.async = method.value("async", false);
+            }
+            options.methods.push_back(spec);
+        }
+    }
+    const std::string invalid = NativePlugins::validate(options);
+    if (!invalid.empty()) {
+        call->fail(invalid + ".");
+        return;
+    }
+    std::vector<NativePlugins::CreatedFile> written;
+    std::string error;
+    if (!NativePlugins::create(projectPath, project->getLuaPath(), options, written, error)) {
+        call->fail(error + ".");
+        return;
+    }
+    if (ctx.projectWindow()) ctx.projectWindow()->refreshCurrentDirectory();
+    Json files = Json::array();
+    for (const NativePlugins::CreatedFile& file : written) files.push_back({{"path", file.path}, {"overwritten", file.overwritten}});
+    Json data = {{"name", options.name}, {"files", files}};
+    data["try"] = "eval_lua in Play: return Native.call('" + options.name + "', '" +
+                  (options.methods.empty() ? std::string("method") : options.methods[0].name) + "') (the Lua mock answers outside the device)";
+    call->ok("Wrote " + std::to_string(written.size()) + " file(s) of the native plugin " + options.name +
+             " (not undoable). The Lua mock " + written.back().path + " answers in editor Play and desktop builds; the platform files "
+             "answer on their platforms.", data);
+}
 } // namespace
 
 void registerProjectTools(McpRegistry& registry) {
@@ -1979,7 +1385,7 @@ void registerProjectTools(McpRegistry& registry) {
 
     // Shared by create_project / open_project
     const Json unsavedSchema = withDefault(stringEnum(
-        "The open project's unsaved changes (cancel: fail listing them).",
+        "cancel: fail listing them.",
         {"cancel", "save", "discard"}), "cancel");
     const Json loadTimeout = withDefault(number("", 5, 600), 180);
 
@@ -1990,10 +1396,11 @@ void registerProjectTools(McpRegistry& registry) {
         tool.title = "Create Project";
         tool.description =
             "File > New Project: creates a project in `path` (no project.yaml there yet) with one untitled 3D scene, "
-            "opens it and waits for load. Save the scene (save_project) before building.";
+            "or from a template (list_project_templates: empty, 3d, 2d, ui), opens it and waits for load.";
         tool.inputSchema = object({
             {"path", string("Absolute directory.")},
             {"name", string("Default: directory name.")},
+            {"template", string("A Project Hub template id.")},
             {"unsaved", unsavedSchema},
             {"timeout_seconds", loadTimeout}
         }, {"path"});
@@ -2032,7 +1439,8 @@ void registerProjectTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"path", string("Temporary project: Save As to this empty absolute dir.")},
             {"name", string("Rename the project.")},
-            {"untitled_scene_dir", withDefault(string(""), "")}
+            {"untitled_scene_dir", withDefault(string(""), "")},
+            {"allow_data_loss", boolean("")}
         });
         tool.allowedWhilePlaying = false;
         tool.handler = saveProjectTool;
@@ -2049,9 +1457,10 @@ void registerProjectTools(McpRegistry& registry) {
             "platform overrides. describe adds each key's type, allowed values, meaning.";
         tool.inputSchema = object({
             {"category", string("player, web, linux, windows, macos, ios, android, graphics, quality, physics, "
-                                "physics2d, scripting, editor, tags_and_layers, preferences or all.")},
+                                "physics2d, input, scripting, debug, editor, tags_and_layers, preferences or all.")},
             {"keys", array(Json{{"type", "string"}}, "Keys or categories.")},
-            {"describe", withDefault(boolean(""), false)}
+            {"describe", withDefault(boolean(""), false)},
+            {"search", string("Words: matches {key, page, label, scope} of every Preferences/Project Settings row.")}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -2061,15 +1470,38 @@ void registerProjectTools(McpRegistry& registry) {
 
     {
         ToolDef tool;
+        tool.name = "native_plugins";
+        tool.title = "Native Plugins";
+        tool.description =
+            "plugins/native for Lua's Native.call (Java/Kotlin, ObjC/Swift, JS, C++). list: plugins, methods, Lua mocks, "
+            "native settings. create: one plugin's files for the platforms plus its Lua mock; refuses to overwrite. SDK "
+            "settings: set_project_settings android.gradle_*, ios.cocoapods... jasper://docs/native-bridge.";
+        tool.inputSchema = object({
+            {"action", stringEnum("", {"list", "create"})},
+            {"name", string("e.g. Device")},
+            {"platforms", array(stringEnum("", {"android", "ios", "macos", "web", "cpp"}), "default android, ios, web, cpp")},
+            {"android_language", stringEnum("", {"java", "kotlin"})},
+            {"apple_language", stringEnum("", {"objc", "swift"})},
+            {"package", string("default com.example.plugins")},
+            {"methods", array(object({{"name", string("")}, {"async", boolean("")}}, {"name"}), "")},
+            {"overwrite", boolean("")}
+        }, {"action"});
+        tool.handler = nativePluginsTool;
+        // plugins/native is a build input of the players (S31: outside the default listing)
+        tool.group = "shipping";
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
         tool.name = "set_project_settings";
         tool.title = "Set Project Settings";
         tool.description =
-            "Set get_project_settings keys. Every value is validated first (one bad value changes nothing); saved to "
-            "project.yaml at once, NOT undoable. Lists are replaced; tags_and_layers.layers merges by index. "
-            "Example: {\"values\": {\"player.window_width\": 800, \"physics.layer_collision_matrix\": [[\"Player\", "
-            "\"Water\"]]}}.";
+            "Set get_project_settings keys. Every value is validated first (one bad value changes nothing); "
+            "saved to project.yaml at once, NOT undoable. Lists are replaced; tags_and_layers.layers merges "
+            "by index. Example: {\"values\": {\"player.window_width\": 800}}.";
         tool.inputSchema = object({
-            {"values", anyObject("{key: value}")}
+            {"values", anyObject("")}
         }, {"values"});
         tool.annotations.destructive = true;
         tool.annotations.idempotent = true;
@@ -2101,8 +1533,8 @@ void registerProjectTools(McpRegistry& registry) {
         tool.title = "Edit ProjectBuild.cmake";
         tool.description =
             "Read (omit content) or replace ProjectBuild.cmake, the CMake hook for C++ scripts' include dirs, "
-            "libraries and definitions (Play and player builds); content \"\" deletes it. Use ${JASPERENGINE_TARGET} "
-            "and ${JASPERENGINE_SCRIPTS_DIR}. Not undoable.";
+            "libraries and definitions; content \"\" deletes it. Use ${JASPERENGINE_TARGET} and "
+            "${JASPERENGINE_SCRIPTS_DIR}. Not undoable.";
         tool.inputSchema = object({
             {"content", string("Whole new file.")}
         });

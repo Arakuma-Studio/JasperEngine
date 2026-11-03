@@ -7,6 +7,7 @@ proves nothing regressed. Runs on a new project in a scratch directory whose nam
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Utf8Paths", "scratch_prefix": "jasper-mcp-ünïcødé-日本-"}
+CI = True
 
 FOLDER = "assets/dossier été"
 TEXT = FOLDER + "/café ☕.txt"

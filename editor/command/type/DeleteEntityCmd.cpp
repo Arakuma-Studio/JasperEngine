@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 #include "DeleteEntityCmd.h"
+#include "pose/PoseEditSession.h"
+
+#include "command/CommandMemory.h"
 
 #include "Stream.h"
 #include "Out.h"
 #include "util/CameraTextureLink.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "util/ProjectUtils.h"
 #include "util/BackgroundRelease.h"
 #include "util/EntityClipboard.h"
@@ -138,6 +142,9 @@ editor::DeleteEntityCmd::DeleteEntityCmd(Project* project, uint32_t sceneId, con
     this->preservedEntities = preservedEntities;
     this->allowLockedRoots = allowLockedRoots;
 
+    // a posed character (Pose Animation window) goes back to its rest bones first: they are what
+    // the undo snapshots keep
+    PoseEditSession::suspendActiveFor(sceneId, entities);
     for (const Entity& entity : entities){
         if (std::find(preservedEntities.begin(), preservedEntities.end(), entity) == preservedEntities.end()) {
             appendEntityData(entity);
@@ -182,9 +189,8 @@ bool editor::DeleteEntityCmd::appendEntityData(Entity entity){
     Signature signature = scene->getSignature(entity);
     if (signature.test(scene->getComponentId<Transform>())) {
         entityData.hasTransform = true;
-        Transform& transform = scene->getComponent<Transform>(entity);
+        entityData.parent = scene->getComponent<Transform>(entity).parent;
         entityData.entityIndex = scene->getComponentArray<Transform>()->getIndex(entity);
-        entityData.parent = transform.parent;
     } else {
         auto it = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), entity);
         if (it != sceneProject->entities.end()) {
@@ -515,6 +521,8 @@ void editor::DeleteEntityCmd::recordTransformOrder(){
 void editor::DeleteEntityCmd::destroyEntity(EntityRegistry* registry, Entity entity, std::vector<Entity>& entities, Project* project, uint32_t sceneId){
     destroyEntityWithoutReconcile(registry, entity);
     ProjectUtils::reconcileTrackedEntities(registry, entities, project, sceneId);
+    // the holes it left closed before the step ends (ComponentArray)
+    registry->compactComponents();
 }
 
 void editor::DeleteEntityCmd::destroyEntities(EntityRegistry* registry,
@@ -529,10 +537,18 @@ void editor::DeleteEntityCmd::destroyEntities(EntityRegistry* registry,
     if (reconcile) {
         ProjectUtils::reconcileTrackedEntities(registry, entities, project, sceneId);
     }
+    registry->compactComponents();
 }
 
 bool editor::DeleteEntityCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
+
+    if (deletedNames.empty() && sceneProject && sceneProject->scene) {
+        // one per requested GameObject, in that order
+        for (Entity requested : requestedEntities) {
+            deletedNames.push_back(CommandNames::entity(project, sceneId, requested));
+        }
+    }
 
     // Prefab Mode: a prefab has its root (Unity refuses to delete it there)
     for (Entity requested : requestedEntities) {
@@ -549,9 +565,11 @@ bool editor::DeleteEntityCmd::execute(){
         return requestedSet.count(entity) != 0;
     };
 
+    // indexed once: a scan of the scene's models for each entity made deleting many quadratic
+    const editor::LockedParentIndex lockedParents(sceneProject->scene);
     auto it = entities.begin();
     while (it != entities.end()) {
-        Entity lockedParent = ProjectUtils::getLockedEntityParent(sceneProject->scene, it->entity);
+        Entity lockedParent = lockedParents.get(it->entity);
         bool canDelete = true;
         if (lockedParent != NULL_ENTITY){
             canDelete = (allowLockedRoots && isRequestedEntity(it->entity))
@@ -588,7 +606,8 @@ bool editor::DeleteEntityCmd::execute(){
     recordTransformOrder();
 
     Scene* scene = sceneProject->scene;
-    // Only a deleted camera or fluid changes what texture links resolve to
+    // Only a deleted link source (a camera, a fluid, a Video Player) changes what texture links
+    // resolve to
     std::vector<Entity> linkSources;
     auto cameraArray = scene->getComponentArray<CameraComponent>();
     for (size_t i = 0; i < cameraArray->size(); i++) {
@@ -598,6 +617,12 @@ bool editor::DeleteEntityCmd::execute(){
         auto fluidArray = scene->getComponentArray<FluidSimulationComponent>();
         for (size_t i = 0; i < fluidArray->size(); i++) {
             linkSources.push_back(fluidArray->getEntity(i));
+        }
+    }
+    if (scene->isComponentRegistered<VideoPlayerComponent>()) {
+        auto videoArray = scene->getComponentArray<VideoPlayerComponent>();
+        for (size_t i = 0; i < videoArray->size(); i++) {
+            linkSources.push_back(videoArray->getEntity(i));
         }
     }
 
@@ -685,6 +710,8 @@ bool editor::DeleteEntityCmd::execute(){
         CameraTextureLink::resolve(scene);
     }
     survivingEntities = sceneProject->entities;
+    // a delete leaves no holes behind it (ComponentArray): the next step finds packed arrays
+    scene->compactComponents();
 
     return true;
 }
@@ -880,6 +907,8 @@ void editor::DeleteEntityCmd::undo(){
 
     // recreated cameras get a new framebuffer, recreated textures are bound to theirs
     CameraTextureLink::resolve(sceneProject->scene, restoredEntities);
+    // (a restore can replace entities, e.g. a prefab instance's)
+    sceneProject->scene->compactComponents();
 
     sceneProject->isModified = wasModified;
 }
@@ -907,6 +936,12 @@ bool editor::DeleteEntityCmd::mergeWith(editor::Command* otherCommand){
                     requestedEntities.push_back(entity);
                 }
             }
+            // in the order requestedEntities got them
+            for (size_t i = 0; i < otherCmd->requestedEntities.size() && i < otherCmd->deletedNames.size(); i++) {
+                if (deletedNames.size() < requestedEntities.size()) {
+                    deletedNames.push_back(otherCmd->deletedNames[i]);
+                }
+            }
             for (const PrefabInstanceSnapshot& instance : otherCmd->prefabInstanceSnapshots) {
                 if (std::find_if(prefabInstanceSnapshots.begin(), prefabInstanceSnapshots.end(), [&](const PrefabInstanceSnapshot& saved) {
                         return saved.path == instance.path && saved.rootEntity == instance.rootEntity;
@@ -922,4 +957,23 @@ bool editor::DeleteEntityCmd::mergeWith(editor::Command* otherCommand){
     }
 
     return false;
+}
+
+size_t editor::DeleteEntityCmd::memoryBytes() const{
+    size_t bytes = sizeof(*this) + entities.capacity() * sizeof(DeleteEntityData) +
+        (requestedEntities.capacity() + preservedEntities.capacity() + lastSelected.capacity() +
+         survivingEntities.capacity() + trackedBeforeDelete.capacity()) * sizeof(Entity);
+    for (const DeleteEntityData& entityData : entities) {
+        bytes += yamlFootprint(entityData.data) + CommandMemory::of(entityData.recoveryPrefabData);
+        if (!entityData.removedFromInstance.node.IsNull() && entityData.removedFromInstance.node.IsDefined()) {
+            bytes += CommandMemory::of(entityData.removedFromInstance);
+        }
+    }
+    for (const auto& [entity, node] : preEncoded) {
+        bytes += yamlFootprint(node);
+    }
+    for (const PrefabInstanceSnapshot& instance : prefabInstanceSnapshots) {
+        bytes += sizeof(instance) + instance.members.size() * sizeof(Prefab::EntityMember);
+    }
+    return bytes;
 }

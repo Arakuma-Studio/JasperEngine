@@ -33,6 +33,16 @@ public:
 	/// @param[in] glyph The glyph the effect is being asked to generate an effect texture for.
 	virtual void GenerateGlyphTexture(byte* destination_data, Vector2i destination_dimensions, int destination_stride, const FontGlyph& glyph) const;
 
+	/// Fork (S16-F3): the effect as a font engine can draw it from a glyph's distance field: the glyph dilated by 'dilation'
+	/// px, blurred by a Gaussian of 'sigma' px (0: not blurred), moved by 'offset' px. False (the default) for an effect that
+	/// only its own GenerateGlyphTexture can draw.
+	struct DistanceEffect {
+		float dilation = 0.f;
+		float sigma = 0.f;
+		Vector2f offset;
+	};
+	virtual bool GetDistanceEffect(DistanceEffect& effect) const;
+
 	/// Sets the colour of the effect's geometry.
 	void SetColour(Colourb colour);
 	/// Returns the effect's colour.

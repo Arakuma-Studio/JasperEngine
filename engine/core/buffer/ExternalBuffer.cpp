@@ -38,6 +38,7 @@ ExternalBuffer& ExternalBuffer::operator=(const ExternalBuffer& rhs){
 }
 
 bool ExternalBuffer::increase(size_t newSize){
+    clearShareSource();
     if (!ownsData()){
         try {
             std::vector<unsigned char>(newSize).swap(ownedData);
@@ -80,6 +81,13 @@ void ExternalBuffer::setData(unsigned char* data, size_t size){
 
     this->data = data;
     this->size = size;
+    clearShareSource();
+}
+
+void ExternalBuffer::setData(unsigned char* data, size_t size, const std::shared_ptr<const void>& owner){
+    setData(data, size);
+    // the bytes' address identifies them in the owner
+    setShareSource(owner, (uint64_t)(uintptr_t)data);
 }
 
 void ExternalBuffer::copyToOwnData(){

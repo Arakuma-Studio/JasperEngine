@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Synthesizer.h"
+#include "thread/ThreadUtil.h"
 
 #include <algorithm>
 #include <chrono>
@@ -19,6 +20,56 @@
 namespace jasperengine::editor::texsynth::detail {
 
     namespace {
+
+        // Exact k nearest resolved pixels on a uniform grid of point lists.
+        // With tiling, distances wrap around the output and the neighbours come back as offsets that
+        // may point outside it (the caller wraps them).
+        class KnnGrid {
+        public:
+            struct Neighbor {
+                int dx;
+                int dy;
+                int d2;
+            };
+
+            void init(int width, int height, bool tiling, int cellSize);
+            void insert(int x, int y);
+            int64_t size() const { return count; }
+            // The (up to) k nearest inserted points to (qx, qy), ascending by distance, ties by (dy,
+            // dx); `keys` is scratch space (reused, grows as needed). Returns how many.
+            int query(int qx, int qy, int k, std::vector<uint64_t>& keys, Neighbor* out) const;
+
+        private:
+            int width = 0, height = 0, cell = 1, gridW = 0, gridH = 0, slack = 0;
+            bool tiling = false;
+            int64_t count = 0;
+            std::vector<uint32_t> points;   // per cell slots: cell i holds points[start[i], start[i] + used[i])
+            std::vector<uint32_t> start;
+            std::vector<uint32_t> used;
+        };
+
+        // The same k nearest for dense point sets: offsets within a disc, sorted by the k-NN key, tried
+        // against a bitmap of the points; the first k present are the k nearest. -1 when the disc
+        // holds fewer than k (the caller asks the grid then).
+        class DenseKnn {
+        public:
+            explicit DenseKnn(int radius = 40);
+            int query(const uint8_t* present, int width, int height, bool tiling, int qx, int qy, int k, KnnGrid::Neighbor* out) const;
+
+        private:
+            std::vector<KnnGrid::Neighbor> offsets;
+        };
+
+        std::vector<int64_t> stagePixelCounts(int64_t total, const Params& params) {
+            const int stages = std::max(0, params.backtrackStages);
+            std::vector<int64_t> counts(stages + 1, 0);
+            for (int i = 0; i <= stages; i++) {
+                const int s = stages - i;
+                counts[i] = s == 0 ? total : static_cast<int64_t>(std::pow(static_cast<double>(params.backtrackPercent), s) * static_cast<double>(total));
+                if (i > 0) counts[i] = std::max(counts[i], counts[i - 1]);
+            }
+            return counts;
+        }
 
         using Clock = std::chrono::steady_clock;
 
@@ -65,7 +116,12 @@ namespace jasperengine::editor::texsynth::detail {
             explicit WorkerPool(int threads) {
                 // a thread that can't be created: fewer workers (the output never depends on them)
                 try {
-                    for (int i = 1; i < threads; i++) workers.emplace_back([this, i] { loop(i); });
+                    // named threads below normal priority (S06: threads outside the job system
+                    // start through spawnNamed); the job system's workers keep the frame
+                    for (int i = 1; i < threads; i++) {
+                        workers.push_back(jasperengine::thread::spawnNamed("je-texsynth-worker", [this, i] { loop(i); },
+                                                                         jasperengine::thread::Priority::BelowNormal));
+                    }
                 } catch (const std::system_error&) {
                 }
             }
@@ -695,17 +751,6 @@ namespace jasperengine::editor::texsynth::detail {
             return true;
         }
 
-    }
-
-    std::vector<int64_t> stagePixelCounts(int64_t total, const Params& params) {
-        const int stages = std::max(0, params.backtrackStages);
-        std::vector<int64_t> counts(stages + 1, 0);
-        for (int i = 0; i <= stages; i++) {
-            const int s = stages - i;
-            counts[i] = s == 0 ? total : static_cast<int64_t>(std::pow(static_cast<double>(params.backtrackPercent), s) * static_cast<double>(total));
-            if (i > 0) counts[i] = std::max(counts[i], counts[i - 1]);
-        }
-        return counts;
     }
 
     // ---- KnnGrid

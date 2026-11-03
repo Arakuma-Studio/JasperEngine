@@ -31,10 +31,10 @@ namespace jasperengine{
     
     struct TileData{
         std::string name;
-        int rectId;
+        int rectId = 0;
         Vector2 position;
-        float width;
-        float height;
+        float width = 0;
+        float height = 0;
     };
 
     // One spatial chunk of a submesh: a contiguous run of indices inside that

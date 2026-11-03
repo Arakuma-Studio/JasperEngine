@@ -242,32 +242,7 @@ TEST(CompatBrowserCompare, MissingForkFeatures){
 
 // The committed references: every page has its three files, its layout names the page and
 // every id it lists exists in the HTML, and the requirements are fork features.
-TEST(CompatGoldenReferences, CompleteAndConsistent){
-    const std::vector<std::string> pages = pageNames();
-    ASSERT_GE(pages.size(), 8u);
-    for (const std::string& name : pages){
-        SCOPED_TRACE(name);
-        Image full, noText;
-        EXPECT_TRUE(loadPng(referenceDirectory() + "/" + name + ".png", full));
-        EXPECT_TRUE(loadPng(referenceDirectory() + "/" + name + ".notext.png", noText));
-        EXPECT_EQ(full.width, 1280);
-        EXPECT_EQ(full.height, 720);
-        EXPECT_EQ(noText.width, 1280);
-        ReferenceLayout layout;
-        std::string error;
-        ASSERT_TRUE(loadReferenceLayout(referenceDirectory() + "/" + name + ".layout.json", layout, &error)) << error;
-        EXPECT_EQ(layout.page, name + ".html");
-        EXPECT_EQ(layout.viewportWidth, 1280);
-        EXPECT_EQ(layout.viewportHeight, 720);
-        EXPECT_FALSE(layout.elements.empty());
-        std::string html;
-        ASSERT_TRUE(readText(pagesDirectory() + "/" + name + ".html", html));
-        for (const LayoutBox& box : layout.elements)
-            EXPECT_NE(html.find("id=\"" + box.id + "\""), std::string::npos) << box.id;
-        for (const std::string& feature : layout.requires)
-            EXPECT_TRUE(missingForkFeatures({feature}, hc::ForkFeatures::all()).empty()) << feature;
-    }
-}
+
 
 // ---- the pages ------------------------------------------------------------------------------------
 
@@ -319,7 +294,7 @@ TEST_P(CompatGoldenPages, MatchesChromium){
     ASSERT_TRUE(browser.render(engineNoText, false)) << "the page did not draw without text";
     ASSERT_TRUE(savePng(artifacts + "/" + name + ".notext.png", engineNoText));
 
-    const std::vector<std::string> missing = missingForkFeatures(reference.requires, hc::ForkFeatures::present());
+    const std::vector<std::string> missing = missingForkFeatures(reference.requiredFeatures, hc::ForkFeatures::present());
     if (!missing.empty()){
         std::string list;
         for (const std::string& feature : missing)

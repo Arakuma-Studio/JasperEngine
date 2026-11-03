@@ -3,6 +3,8 @@
 
 #include "ResourcePack.h"
 
+#include "JPak.h"
+#include "Log.h"
 #include "System.h"
 
 #include <algorithm>
@@ -20,7 +22,11 @@ using namespace jasperengine;
 namespace {
 
     constexpr char PACK_MAGIC[] = {'D', 'X', 'P', 'K', '1'};
+#ifndef JASPERENGINE_EDITOR
+    // the editor reads its projects' files, never a pack
     constexpr const char* PACK_FILENAME = "resources.pak";
+    constexpr const char* CONTENT_PACK_FILENAME = "content.jpak";
+#endif
 
 #ifdef _WIN32
     typedef __int64 pack_offset_t;
@@ -41,6 +47,8 @@ namespace {
     struct PackState {
         std::string filename;
         std::map<std::string, PackEntry> entries;
+        // the .jpak content pack (mounted, or found next to the executable)
+        std::unique_ptr<JPak> content;
     };
 
     // Same static-destruction guard as TextureDataPool::getMap()
@@ -91,6 +99,8 @@ namespace {
 
         if (startsWith(path, "asset://")) return "assets/" + normalizePath(path.substr(8));
         if (startsWith(path, "lua://")) return "lua/" + normalizePath(path.substr(6));
+        if (startsWith(path, "shader://")) return "assets/shaders/" + normalizePath(path.substr(9));
+        if (startsWith(path, "content://")) return normalizePath(path.substr(10));
 
         if (path.find("://") != std::string::npos) return "";
         if (path.front() == '/' || (path.size() > 1 && path[1] == ':')) return "";
@@ -156,7 +166,8 @@ namespace {
         return seekFile(file, 0);
     }
 
-    bool loadPack(const std::string& filename) {
+    // (games only: the editor reads the project's files, loadPackOnce)
+    [[maybe_unused]] bool loadPack(const std::string& filename) {
         FILE* file = System::instance().platformFopen(filename.c_str(), "rb");
         if (!file) return false;
 
@@ -213,6 +224,26 @@ namespace {
 
     void loadPackOnce() {
 #ifndef JASPERENGINE_EDITOR
+        if (!System::hasInstance()) return;
+        // a content pack beside the executable (desktop) or at the asset root (an APK), unless
+        // the player mounted its own
+        if (!state().content) {
+            for (const std::string& candidate : {std::string(CONTENT_PACK_FILENAME),
+                                                 System::instance().getAssetPath() + "/../" + CONTENT_PACK_FILENAME}) {
+                FILE* probe = System::instance().platformFopen(candidate.c_str(), "rb");
+                if (!probe) continue;
+                std::fclose(probe);
+                auto pack = std::make_unique<JPak>();
+                std::string error;
+                if (pack->openFile(candidate, &error)) {
+                    state().content = std::move(pack);
+                } else {
+                    Log::error("Content pack %s: %s", candidate.c_str(), error.c_str());
+                }
+                break;
+            }
+        }
+
         // Beside the executable on desktop, at the asset root inside an APK
         if (loadPack(PACK_FILENAME)) return;
 
@@ -251,13 +282,65 @@ namespace {
         }
     }
 
+    const JPak* contentEntryPack(const std::string& path, std::string& key) {
+        std::call_once(loadFlag, loadPackOnce);
+        const JPak* pack = state().content.get();
+        if (!pack) return nullptr;
+        key = getPackKey(path);
+        if (key.empty() || !pack->find(key)) return nullptr;
+        return pack;
+    }
+
+    bool mountPack(std::unique_ptr<JPak> pack) {
+        // the automatic lookup must not replace (or race) the mounted pack later
+        std::call_once(loadFlag, loadPackOnce);
+        state().content = std::move(pack);
+        return true;
+    }
+
+}
+
+bool ResourcePack::mountContentPack(const std::filesystem::path& path, std::string* error) {
+    auto pack = std::make_unique<JPak>();
+    if (!pack->openFile(path, error)) return false;
+    return mountPack(std::move(pack));
+}
+
+bool ResourcePack::mountContentPack(std::span<const uint8_t> bytes, std::string* error) {
+    auto pack = std::make_unique<JPak>();
+    if (!pack->openMemory(bytes, error)) return false;
+    return mountPack(std::move(pack));
+}
+
+const JPak* ResourcePack::contentPack() {
+    std::call_once(loadFlag, loadPackOnce);
+    return state().content.get();
+}
+
+std::string ResourcePack::packKey(const std::string& path) {
+    return getPackKey(path);
 }
 
 bool ResourcePack::contains(const std::string& path) {
-    return findEntry(path) != nullptr;
+    std::string key;
+    return contentEntryPack(path, key) != nullptr || findEntry(path) != nullptr;
+}
+
+bool ResourcePack::size(const std::string& path, uint64_t& outSize) {
+    const PackEntry* entry = findEntry(path);
+    if (!entry) return false;
+    outSize = entry->size;
+    return true;
 }
 
 bool ResourcePack::read(const std::string& path, std::vector<unsigned char>& outData) {
+    std::string key;
+    if (const JPak* pack = contentEntryPack(path, key)) {
+        std::string error;
+        if (pack->read(key, outData, &error)) return true;
+        Log::error("%s", error.c_str());
+        return false;
+    }
     const PackEntry* entry = findEntry(path);
     if (!entry) return false;
 
@@ -280,8 +363,55 @@ bool ResourcePack::read(const std::string& path, std::vector<unsigned char>& out
     return true;
 }
 
+ResourcePack::RangeReader::~RangeReader() {
+    if (file) std::fclose(static_cast<FILE*>(file));
+}
+
+bool ResourcePack::RangeReader::open(const std::string& path) {
+    const PackEntry* entry = findEntry(path);
+    if (!entry) return false;
+    FILE* handle = System::instance().platformFopen(state().filename.c_str(), "rb");
+    if (!handle) return false;
+    if (file) std::fclose(static_cast<FILE*>(file));
+    file = handle;
+    entryOffset = entry->offset;
+    entrySize = entry->size;
+    key = entry->key;
+    shift = entry->size ? (uint32_t)(entry->shift % entry->size) : 0;
+    return true;
+}
+
+// Byte i of the entry is stored at (i + shift) % size, XOR key (deobfuscate's rotation, inverted)
+bool ResourcePack::RangeReader::readRange(uint64_t from, unsigned char* dst, size_t count) {
+    if (!file || from + count > entrySize) return false;
+    FILE* handle = static_cast<FILE*>(file);
+    size_t done = 0;
+    while (done < count) {
+        const uint64_t stored = (from + done + shift) % entrySize;
+        const size_t run = (size_t)std::min<uint64_t>(count - done, entrySize - stored);
+        if (!seekFile(handle, entryOffset + stored) || !readExact(handle, dst + done, run)) return false;
+        done += run;
+    }
+    for (size_t i = 0; i < count; i++) dst[i] ^= key;
+    return true;
+}
+
 bool ResourcePack::readOwned(const std::string& path, std::unique_ptr<unsigned char[]>& outData,
                              unsigned int& outSize) {
+    std::string key;
+    if (const JPak* pack = contentEntryPack(path, key)) {
+        const JPak::Entry* entry = pack->find(key);
+        if (entry->size > UINT32_MAX) return false;
+        std::unique_ptr<unsigned char[]> data(new unsigned char[static_cast<size_t>(entry->size) + 1]);
+        std::string error;
+        if (!pack->read(*entry, data.get(), &error)) {
+            Log::error("%s", error.c_str());
+            return false;
+        }
+        outData = std::move(data);
+        outSize = static_cast<unsigned int>(entry->size);
+        return true;
+    }
     const PackEntry* entry = findEntry(path);
     if (!entry) return false;
 

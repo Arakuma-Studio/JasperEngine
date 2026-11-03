@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include "util/EntityPayload.h"
 #include <filesystem>
@@ -19,6 +20,7 @@ namespace jasperengine::editor {
         Project* project;
         fs::path targetFile;
         std::string payload;
+        Guid guid;   // the file's GUID, kept for redo
         std::unique_ptr<Command> materialCmd;
 
         static fs::path findAvailableTargetFile(const fs::path& directory);
@@ -28,7 +30,14 @@ namespace jasperengine::editor {
                               size_t contentLen, const MaterialPayload* sourceMaterial = nullptr);
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
+
+        // "Create Material New Material.material"
+        std::string describe() const override { return "Create Material " + CommandNames::file(targetFile); }
+        const char* typeName() const override { return "CreateMaterialFileCmd"; }
+        size_t memoryBytes() const override { return sizeof(*this) + payload.capacity() + (materialCmd ? materialCmd->memoryBytes() : 0); }
 
     };
 

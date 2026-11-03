@@ -5,8 +5,13 @@
 // ---------------------------------------
 
 #include <algorithm>
+#include <cstdio>
 
 #include "SokolCmdQueue.h"
+#include "profiler/GpuMemory.h"
+#include "SokolSystem.h"
+#include "SokolPassPreview.h"
+#include "SokolAsyncCreate.h"
 #include "SokolPipelineCache.h"
 
 using namespace jasperengine;
@@ -15,12 +20,13 @@ std::vector<SokolRenderCommand> SokolCmdQueue::m_commands[2];
 int32_t SokolCmdQueue::m_pending_commands_index = 0;
 int32_t SokolCmdQueue::m_commit_commands_index = 1;
 std::vector<SokolRenderCleanup> SokolCmdQueue::m_cleanups;
+std::mutex SokolCmdQueue::m_cleanups_mutex;
 Semaphore SokolCmdQueue::m_update_semaphore;
 Semaphore SokolCmdQueue::m_render_semaphore;
 std::atomic<bool> SokolCmdQueue::m_flushing = false;
 std::atomic<bool> SokolCmdQueue::m_commited = false;
 std::mutex SokolCmdQueue::m_execute_mutex;
-int32_t SokolCmdQueue::m_frame_index = 0;
+std::atomic<int32_t> SokolCmdQueue::m_frame_index = 0;
 
 constexpr int32_t INITIAL_NUMBER_OF_COMMANDS = 256;
 constexpr int32_t INITIAL_NUMBER_OF_CLEANUPS = 64;
@@ -62,19 +68,34 @@ void SokolCmdQueue::execute_commands()
 			switch (command.type)
 			{
 			case SokolRenderCommand::TYPE::MAKE_BUFFER:
-				sg_init_buffer(command.make_buffer.buffer, command.make_buffer.desc);
+			{
+#if JASPERENGINE_PROFILER
+				gpumem::Scope allocScope(gpumem::ScopeState{command.allocCategory, command.allocOwner});
+#endif
+				sg_buffer_desc desc = command.make_buffer.desc;
+				desc.label = command.allocLabel[0] ? command.allocLabel : nullptr;
+				sg_init_buffer(command.make_buffer.buffer, &desc);
 				break;
+			}
 			case SokolRenderCommand::TYPE::MAKE_IMAGE:
-				sg_init_image(command.make_image.image, command.make_image.desc);
+			{
+#if JASPERENGINE_PROFILER
+				gpumem::Scope allocScope(gpumem::ScopeState{command.allocCategory, command.allocOwner});
+#endif
+				sg_image_desc desc = command.make_image.desc;
+				desc.label = command.allocLabel[0] ? command.allocLabel : nullptr;
+				sg_init_image(command.make_image.image, &desc);
 				break;
+			}
 			case SokolRenderCommand::TYPE::MAKE_SAMPLER:
 				sg_init_sampler(command.make_sampler.sampler, command.make_sampler.desc);
 				break;
 			case SokolRenderCommand::TYPE::MAKE_SHADER:
-				sg_init_shader(command.make_shader.shader, command.make_shader.desc);
+				// created off the render thread where the backend allows (spec S32)
+				SokolAsyncCreate::initShader(command.make_shader.shader, command.make_shader.desc);
 				break;
 			case SokolRenderCommand::TYPE::MAKE_PIPELINE:
-				sg_init_pipeline(command.make_pipeline.pipeline, command.make_pipeline.desc);
+				SokolAsyncCreate::initPipeline(command.make_pipeline.pipeline, command.make_pipeline.desc);
 				break;
 			case SokolRenderCommand::TYPE::MAKE_VIEW:
 				sg_init_view(command.make_view.view, command.make_view.desc);
@@ -89,26 +110,26 @@ void SokolCmdQueue::execute_commands()
 				sg_uninit_sampler(command.destroy_sampler.sampler);
 				break;
 			case SokolRenderCommand::TYPE::DESTROY_SHADER:
-				sg_uninit_shader(command.destroy_shader.shader);
+				// the whole destroy (a pending one's waits for its creation): no deferred dealloc
+				SokolAsyncCreate::destroyShader(command.destroy_shader.shader);
 				break;
 			case SokolRenderCommand::TYPE::DESTROY_PIPELINE:
-				sg_uninit_pipeline(command.destroy_pipeline.pipeline);
+				SokolAsyncCreate::destroyPipeline(command.destroy_pipeline.pipeline);
 				break;
 			case SokolRenderCommand::TYPE::DESTROY_VIEW:
 				sg_uninit_view(command.destroy_view.view);
 				break;
 			case SokolRenderCommand::TYPE::UPDATE_BUFFER:
-				sg_update_buffer(command.update_buffer.buffer, command.update_buffer.data);
+				SokolSystem::updateBuffer(command.update_buffer.buffer, command.update_buffer.data);
 				break;
 			case SokolRenderCommand::TYPE::UPDATE_IMAGE:
-				sg_update_image(command.update_image.image, command.update_image.data);
+				SokolSystem::updateImage(command.update_image.image, command.update_image.data);
 				break;
 			case SokolRenderCommand::TYPE::BEGIN_PASS:
-				sg_begin_pass(command.begin_pass.pass);
-				SokolPipelineCache::invalidateApplied();
+				SokolSystem::beginPass(command.begin_pass.pass);
 				break;
 			case SokolRenderCommand::TYPE::END_PASS:
-				sg_end_pass();
+				SokolSystem::endPass();
 				break;
 			case SokolRenderCommand::TYPE::CUSTOM:
 				command.custom.custom_cb(command.custom.custom_data);
@@ -154,10 +175,10 @@ void SokolCmdQueue::wait_for_flush()
 					sg_uninit_sampler(command.destroy_sampler.sampler);
 					break;
 				case SokolRenderCommand::TYPE::DESTROY_SHADER:
-					sg_uninit_shader(command.destroy_shader.shader);
+					SokolAsyncCreate::destroyShader(command.destroy_shader.shader);
 					break;
 				case SokolRenderCommand::TYPE::DESTROY_PIPELINE:
-					sg_uninit_pipeline(command.destroy_pipeline.pipeline);
+					SokolAsyncCreate::destroyPipeline(command.destroy_pipeline.pipeline);
 					break;
 				case SokolRenderCommand::TYPE::DESTROY_VIEW:
 					sg_uninit_view(command.destroy_view.view);
@@ -179,6 +200,13 @@ sg_buffer SokolCmdQueue::add_command_make_buffer(const sg_buffer_desc& desc)
 	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::MAKE_BUFFER);
 
 	command.make_buffer.desc = desc;
+	if (desc.label)
+		std::snprintf(command.allocLabel, sizeof(command.allocLabel), "%s", desc.label);
+#if JASPERENGINE_PROFILER
+	const gpumem::ScopeState scope = gpumem::currentScope();
+	command.allocCategory = scope.category;
+	command.allocOwner = scope.owner;
+#endif
 	
 	command.make_buffer.buffer = sg_alloc_buffer();
 	
@@ -190,6 +218,13 @@ sg_image SokolCmdQueue::add_command_make_image(const sg_image_desc& desc)
 	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::MAKE_IMAGE);
 
 	command.make_image.desc = desc;
+	if (desc.label)
+		std::snprintf(command.allocLabel, sizeof(command.allocLabel), "%s", desc.label);
+#if JASPERENGINE_PROFILER
+	const gpumem::ScopeState scope = gpumem::currentScope();
+	command.allocCategory = scope.category;
+	command.allocOwner = scope.owner;
+#endif
 
 	command.make_image.image = sg_alloc_image();
 	
@@ -272,8 +307,6 @@ void SokolCmdQueue::add_command_destroy_shader(sg_shader shader)
 	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::DESTROY_SHADER);
 
 	command.destroy_shader.shader = shader;
-
-	schedule_cleanup(dealloc_shader_cb, (void*)(uintptr_t)command.destroy_shader.shader.id);
 }
 
 void SokolCmdQueue::add_command_destroy_pipeline(sg_pipeline pipeline)
@@ -281,8 +314,6 @@ void SokolCmdQueue::add_command_destroy_pipeline(sg_pipeline pipeline)
 	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::DESTROY_PIPELINE);
 
 	command.destroy_pipeline.pipeline = pipeline;
-
-	schedule_cleanup(dealloc_pipeline_cb, (void*)(uintptr_t)command.destroy_pipeline.pipeline.id);
 }
 
 void SokolCmdQueue::add_command_destroy_view(sg_view view)
@@ -332,6 +363,8 @@ void SokolCmdQueue::add_command_custom(void (*custom_cb)(void* custom_data), voi
 
 void SokolCmdQueue::schedule_cleanup(void (*cleanup_cb)(void* cleanup_data), void* cleanup_data, int32_t number_of_frames_to_defer)
 {
+	std::scoped_lock<std::mutex> lock(m_cleanups_mutex);
+
 	SokolRenderCleanup& cleanup = m_cleanups.emplace_back(cleanup_cb, cleanup_data);
 	
 	cleanup.frame_index = m_frame_index + 1 + number_of_frames_to_defer;
@@ -365,15 +398,19 @@ void SokolCmdQueue::flush_commands()
 
 void SokolCmdQueue::process_cleanups(int32_t frame_index)
 {
-	for (auto& cleanup : m_cleanups)
+	// the ones due, taken out: a thread queues its cleanups while this one runs them (a thread
+	// under Engine::AsyncThreadScope goes on after its commit), and one may queue another
+	std::vector<SokolRenderCleanup> due;
 	{
-		if ((cleanup.frame_index < frame_index || frame_index < 0) && cleanup.cleanup_cb)
-		{
-			cleanup.cleanup_cb(cleanup.cleanup_data);
-			
-			cleanup.cleanup_cb = nullptr;
-		}
+		std::scoped_lock<std::mutex> lock(m_cleanups_mutex);
+
+		const auto first_kept = std::stable_partition(m_cleanups.begin(), m_cleanups.end(), [frame_index](const auto& cleanup) { return cleanup.frame_index < frame_index || frame_index < 0; });
+		due.assign(m_cleanups.begin(), first_kept);
+		m_cleanups.erase(m_cleanups.begin(), first_kept);
 	}
-	
-	m_cleanups.erase(std::remove_if(m_cleanups.begin(), m_cleanups.end(), [](const auto& cleanup) { return !cleanup.cleanup_cb; }), m_cleanups.end());
+
+	for (const auto& cleanup : due)
+	{
+		cleanup.cleanup_cb(cleanup.cleanup_data);
+	}
 }

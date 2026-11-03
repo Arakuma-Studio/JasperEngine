@@ -7,10 +7,18 @@
 #include "EntityHandle.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
+#include "CharacterController2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Rigidbody.h"
+#include "CharacterController.h"
+#include "Buoyancy.h"
 #endif
+#include "WaterVolume.h"
+#include "object/spline/Spline.h"
+#include "object/spline/SplineExtrude.h"
+#include "object/spline/SplineInstantiate.h"
+#include "object/spline/SplineAnimate.h"
 #include "math/Ray.h"
 #include "manager/PrefabAsset.h"
 
@@ -110,11 +118,27 @@ namespace jasperengine{
 #ifdef JASPERENGINE_PHYSICS_2D
         Rigidbody2D getRigidbody2D();
         void removeRigidbody2D();
+        // the GameObject's 2D CharacterController, added with its defaults when it has none
+        CharacterController2D getCharacterController2D();
+        void removeCharacterController2D();
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         Rigidbody getRigidbody();
         void removeRigidbody();
+        // the GameObject's CharacterController, added with its defaults when it has none
+        CharacterController getCharacterController();
+        void removeCharacterController();
+        // the GameObject's Buoyancy, added with its defaults when it has none
+        Buoyancy getBuoyancy();
 #endif
+        // the GameObject's Water Volume, added with its defaults when it has none
+        WaterVolume getWaterVolume();
+        // the GameObject's Spline, Spline Extrude (with a Mesh), Spline Instantiate and Spline
+        // Animate, each added with its defaults when it has none
+        Spline getSpline();
+        SplineExtrude getSplineExtrude();
+        SplineInstantiate getSplineInstantiate();
+        SplineAnimate getSplineAnimate();
 
         Ray getRay(Vector3 direction);
     };

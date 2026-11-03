@@ -18,17 +18,34 @@ namespace jasperengine{
     typedef std::map<ShaderKey, std::shared_ptr<ShaderRender>> shaders_t;
 
     using ShaderBuilderFn = std::function<ShaderBuildResult(ShaderKey)>;
+    // how many variants the builder is still building (off the main thread)
+    using ShaderBuildsPendingFn = std::function<size_t()>;
 
     // the exclusive variants of ShaderType::HTMLUI_POST, in property-bit order
     // YUV: <video> frames (phase 6), appended
     enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY, YUV };
     static const int HTMLUI_POST_VARIANT_COUNT = 7;
 
+    // what a particle system draw needs of its variant (ShaderType::PARTICLES)
+    struct ParticlesShaderFlags {
+        bool texture = false;        // HAS_TEXTURE: the sprite sheet
+        bool mesh = false;           // PARTICLE_MESH: mesh particles (the mesh's vertices, a rotation per instance)
+        bool trail = false;          // PARTICLE_TRAIL: trail and ribbon strips
+        bool stretch = false;        // STRETCH: stretched billboards
+        bool frameBlend = false;     // FRAME_BLEND: the next sprite frame blended in
+        bool lit = false;            // LIT: per-vertex lighting
+        bool sixWay = false;         // SIXWAY: six-way smoke lighting
+        bool customData = false;     // CUSTOM_DATA: the Custom Data stream
+        bool receiveShadows = false; // RECEIVE_SHADOWS: the main light's shadow
+        bool fog = false;            // HAS_FOG: the scene fog
+    };
+
     class JASPERENGINE_API ShaderPool{
     private:
         static shaders_t& getMap();
 
         static ShaderBuilderFn shaderBuilderFn;
+        static ShaderBuildsPendingFn shaderBuildsPendingFn;
 
         static std::string getShaderName(const std::string& shaderStr);
 
@@ -87,8 +104,23 @@ namespace jasperengine{
         static size_t warmUpAllShaders();
         // built-in variants the build ships precompiled for this backend
         static std::vector<ShaderKey> getPrecompiledShaderKeys();
-        // variants being compiled at runtime
+        // The key of the variant whose GPU program has this backend handle id (the warm-up's
+        // recording, spec S32); false when none has it
+        static bool findKeyOfHandle(uint32_t handleId, ShaderKey& key);
+        // A file the build embeds next to its shaders in the shader headers (the warm-up list,
+        // "warmup"); empty when the build embeds none of that name
+        static std::string getEmbeddedData(const std::string& name);
+
+        // variants being compiled at runtime, or whose GPU program is being created (spec S32)
         static size_t getPendingShaderCount();
+        // pipelines being created (spec S32: off the render thread on Vulkan and Metal)
+        static size_t getPendingPipelineCount();
+        // no shader, pipeline or GL warm draw is being created
+        static bool isGpuCreationIdle();
+        // nothing a draw waits for is being made: no variant compiling at runtime or building in
+        // the shader builder, and the GPU creation idle. What a screenshot waits for (spec S32: a
+        // captured frame never shows a stand-in)
+        static bool isCreationIdle();
 
         // ---- Runtime compilation of variants the build lacks (RuntimeShaderCompiler) ----
         // The build carries the compiler (export setting "Runtime shader compilation")
@@ -126,6 +158,14 @@ namespace jasperengine{
         // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
         // depth, effects)
         static uint64_t getPostColorProperty(ShaderType shaderType);
+        // the mesh variant bit of the High and Ultra shadow filters (USE_SHADOWS_HQ: the Vogel
+        // disk, PCSS and the raw-depth view of the atlas; docs/rendering/shadows.md), set on a
+        // variant that receives shadows when the shadow tier is High or above (MESH bit 33)
+        static uint64_t getShadowsHQProperty();
+        // the variant bit of a Vertex Animation (includes/vat.glsl; HAS_VAT, with `bones`
+        // HAS_VAT_BONES) of MESH, DEPTH and GBUFFER, 0 for another type; getVatProperties: both
+        static uint64_t getVatProperty(ShaderType shaderType, bool bones);
+        static uint64_t getVatProperties(ShaderType shaderType);
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint64_t getPropertiesFromKey(ShaderKey key);
@@ -184,6 +224,8 @@ namespace jasperengine{
         // the ShaderRender objects, so meshes holding them stay valid and re-bind on
         // their needReload pass.
         static void destroyCustomShaders();
+        // Only the forks `which` names by their custom shader name (a hot reload, S05)
+        static void destroyCustomShaders(const std::function<bool(const std::string& name)>& which);
 
         static const std::vector<ShaderBackend>& getShaderBackends();
         // backend this runtime was built for
@@ -199,9 +241,11 @@ namespace jasperengine{
         static std::string getSuggestedCliBackend();
         static std::string getMissingShadersCliArgs();
         static std::string getMissingShadersDisplayList();
-        static std::vector<std::string>& getMissingShaders();
+        // (a copy: a model loading off the main thread may add to them)
+        static std::vector<std::string> getMissingShaders();
 
-        static void setShaderBuilder(ShaderBuilderFn fn);
+        // the builder of the variants (the editor's), and how many it is still building
+        static void setShaderBuilder(ShaderBuilderFn fn, ShaderBuildsPendingFn pending = nullptr);
 
         static uint64_t getMeshProperties(bool unlit, bool uv1, bool uv2,
 						bool punctual, bool shadows, bool normals, bool normalMap,
@@ -212,26 +256,36 @@ namespace jasperengine{
                         bool alphaMask = false, bool alphaOpaque = false, bool instanceFade = false,
                         bool terrainPBR = false,
                         bool vertexLights = false, int lightCapacity = 8, bool stochasticTiling = false,
-                        bool lattice = false);
+                        bool lattice = false, bool vat = false, bool vatBones = false);
         // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires
         // (vertexColorVec3/4 also a lattice's vertex colour mask); textureRect: the sprite
         // texture rect its UV (texture or uv1) goes through
         static uint64_t getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask = false, bool instanceFade = false,
                                                bool normals = false, bool vertexColorVec3 = false, bool vertexColorVec4 = false, bool uv1 = false,
-                                               bool textureRect = false, bool stochasticTiling = false, bool lattice = false);
+                                               bool textureRect = false, bool stochasticTiling = false, bool lattice = false,
+                                               bool vat = false, bool vatBones = false);
         // vertexColorVec3/4: the vertex colour a lattice's mask reads (set only with lattice)
         static uint64_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false,
                                                  bool stochasticTiling = false, bool lattice = false,
-                                                 bool vertexColorVec3 = false, bool vertexColorVec4 = false);
-        static uint64_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4);
+                                                 bool vertexColorVec3 = false, bool vertexColorVec4 = false,
+                                                 bool vat = false, bool vatBones = false);
+        // fontAtlasSdf: a Text with outline or shadow (with fontAtlasTexture only)
+        static uint64_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4, bool fontAtlasSdf = false);
         static uint64_t getHtmlUIProperties(bool texture);
         // HTMLUI_POST: one property bit per (exclusive) variant
         static uint64_t getHtmlUIPostProperties(HtmlUIPostVariant variant);
         // every built-in variant an HTML UI document draws with (export and Build Settings
         // lists): HTMLUI untextured and textured, HTMLUI_GRADIENT, the seven HTMLUI_POST
         static std::vector<std::pair<ShaderType, uint64_t>> getHtmlUIVariants();
+        // what a Video Player draws with: the HTMLUI_POST Yuv conversion and Passthrough blit
+        static std::vector<std::pair<ShaderType, uint64_t>> getVideoPlayerVariants();
         static uint64_t getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect);
-        static uint64_t getLinesProperties(bool vertexColorVec3, bool vertexColorVec4);
+        // a particle draw's variant (the post-processing colour bit comes from getPostColorProperty)
+        static uint64_t getParticlesProperties(const ParticlesShaderFlags& flags);
+        // ribbon: a thick Line Renderer or a Trail Renderer ('Rib', LINE_RIBBON); texture: the
+        // built-in shader samples its u_baseTexture ('Tex'); pixelWidth: widths in screen pixels
+        // ('Pxw', LINE_PIXEL_WIDTH). The hairline is (false, true) as before
+        static uint64_t getLinesProperties(bool vertexColorVec3, bool vertexColorVec4, bool ribbon = false, bool texture = false, bool pixelWidth = false);
 
 		// necessary for engine shutdown
 		static void clear();

@@ -21,11 +21,40 @@ void RenderInterface::EnableClipMask(bool /*enable*/) {}
 
 void RenderInterface::RenderToClipMask(ClipMaskOperation /*operation*/, CompiledGeometryHandle /*geometry*/, Vector2f /*translation*/) {}
 
+void RenderInterface::RenderToClipMaskShape(ClipMaskOperation operation, CompiledGeometryHandle geometry, Vector2f translation,
+	const ClipShape& /*shape*/)
+{
+	RenderToClipMask(operation, geometry, translation);
+}
+
+bool RenderInterface::SupportsPrimitives()
+{
+	return false;
+}
+
+bool RenderInterface::CullsOffscreenPaint()
+{
+	return false;
+}
+
+bool RenderInterface::SupportsGradientPrimitive(CompiledShaderHandle /*shader*/)
+{
+	return false;
+}
+
+void RenderInterface::RenderPrimitives(Span<const BoxPrimitive> /*primitives*/, Vector2f /*translation*/) {}
+
 void RenderInterface::SetTransform(const Matrix4f* /*transform*/) {}
 
 LayerHandle RenderInterface::PushLayer()
 {
 	return {};
+}
+
+LayerHandle RenderInterface::PushLayerRegion(Rectanglei& region)
+{
+	region = Rectanglei::MakeInvalid();
+	return PushLayer();
 }
 
 void RenderInterface::CompositeLayers(LayerHandle /*source*/, LayerHandle /*destination*/, BlendMode /*blend_mode*/,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderPool.h"
+#include "render/SystemRender.h"
 
 #include "Log.h"
 #include "Engine.h"
@@ -10,7 +11,10 @@
 #include "shader/ShaderDataSerializer.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Base64.h"
+#include "shader/ShaderManifest.h"
+#include "texture/MaterialPbr.h"
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <algorithm>
@@ -52,6 +56,7 @@
 using namespace jasperengine;
 
 ShaderBuilderFn ShaderPool::shaderBuilderFn = nullptr;
+ShaderBuildsPendingFn ShaderPool::shaderBuildsPendingFn = nullptr;
 
 bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& shaderType) {
     if (typeToken == "mesh") {
@@ -143,8 +148,60 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::FLUID;
         return true;
     }
+    if (typeToken == "shadowcache") {
+        shaderType = ShaderType::SHADOW_CACHE;
+        return true;
+    }
+    if (typeToken == "atmospheredepth") {
+        shaderType = ShaderType::ATMOSPHERE_DEPTH;
+        return true;
+    }
+    if (typeToken == "volumetricfog") {
+        shaderType = ShaderType::VOLUMETRIC_FOG;
+        return true;
+    }
+    if (typeToken == "atmospheredenoise") {
+        shaderType = ShaderType::ATMOSPHERE_DENOISE;
+        return true;
+    }
+    if (typeToken == "volumetricclouds") {
+        shaderType = ShaderType::VOLUMETRIC_CLOUDS;
+        return true;
+    }
+    if (typeToken == "skycomposite") {
+        shaderType = ShaderType::SKY_COMPOSITE;
+        return true;
+    }
+    if (typeToken == "volumetriccomposite") {
+        shaderType = ShaderType::VOLUMETRIC_COMPOSITE;
+        return true;
+    }
+    if (typeToken == "passpreview") {
+        shaderType = ShaderType::PASS_PREVIEW;
+        return true;
+    }
+    if (typeToken == "particles") {
+        shaderType = ShaderType::PARTICLES;
+        return true;
+    }
+    if (typeToken == "htmluiprim") {
+        shaderType = ShaderType::HTMLUI_PRIM;
+        return true;
+    }
 
     return false;
+}
+
+namespace {
+    // The map and the key sets below it: the frames use them, and so does a model loading off the
+    // main thread (the thumbnail strand, a game's loading thread: RenderSystem::loadMesh under
+    // Engine::executeSceneOnce), next to what the main thread lets go outside a frame. Taken around
+    // the containers' own operations alone: never while a builder runs or a GPU shader is made or
+    // destroyed (TexturePool's entriesMutex, and docs/rendering/async-shaders.md, Threads).
+    std::mutex& shaderEntriesMutex(){
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
+    }
 }
 
 shaders_t& ShaderPool::getMap(){
@@ -154,9 +211,14 @@ shaders_t& ShaderPool::getMap(){
     return *map;
 };
 
-std::vector<std::string>& ShaderPool::getMissingShaders(){
+static std::vector<std::string>& missingShaderNames(){
     static std::vector<std::string>* missingshaders = new std::vector<std::string>();
     return *missingshaders;
+};
+
+std::vector<std::string> ShaderPool::getMissingShaders(){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    return missingShaderNames();
 };
 
 // Keys whose last build or backend resource creation failed. The editor pool stops
@@ -173,6 +235,38 @@ static std::set<ShaderKey>& notPrecompiledShaders(){
     static std::set<ShaderKey>* set = new std::set<ShaderKey>();
     return *set;
 };
+
+static bool isFailedShader(ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    return failedShaders().count(key) > 0;
+}
+
+static void markFailedShader(ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    failedShaders().insert(key);
+}
+
+static void clearFailedShader(ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    failedShaders().erase(key);
+}
+
+static bool isNotPrecompiledShader(ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    return notPrecompiledShaders().count(key) > 0;
+}
+
+static void markNotPrecompiledShader(ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    notPrecompiledShaders().insert(key);
+}
+
+// the entry of the key, if it has one, held: remove() leaves what someone holds
+static std::shared_ptr<ShaderRender> findEntry(shaders_t& map, ShaderKey key){
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    auto it = map.find(key);
+    return it != map.end() ? it->second : nullptr;
+}
 
 // Custom shader registry: index = customId-1, value = project-relative base path.
 // Bumped whenever the registry is reset (clear/clearUnused): ids held elsewhere are stale.
@@ -243,6 +337,10 @@ std::string ShaderPool::getCustomShaderBasename(uint16_t customId){
         }
         return "fx_" + effect;
     }
+    // a variant of the built-in Lit ("builtin:lit#PBR_CLEARCOAT,...") is "lit_" and two
+    // letters per define, short enough for every platform's paths (MaterialPbr)
+    if (ShaderReference::getBase(name) == ShaderReference::BUILTIN_LIT)
+        return MaterialPbr::getVariantBasename(ShaderReference::getFeatures(name));
     std::string base = name;
     // Sanitize the project-relative base into a filesystem-safe, deterministic token
     // (e.g. "shaders/myMesh" -> "shaders_myMesh") used in .sdat filenames.
@@ -259,8 +357,9 @@ std::string ShaderPool::getCustomShaderBasename(uint16_t customId){
     return base;
 }
 
-void ShaderPool::setShaderBuilder(ShaderBuilderFn fn) {
+void ShaderPool::setShaderBuilder(ShaderBuilderFn fn, ShaderBuildsPendingFn pending) {
     shaderBuilderFn = fn;
+    shaderBuildsPendingFn = fn ? pending : nullptr;
 }
 
 std::string ShaderPool::getShaderLangStr(ShaderLang lang, int version, bool es, Platform platform) {
@@ -500,8 +599,39 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
         case ShaderType::PROBE_FILTER: return lowerCase ? "probefilter" : "Probe Filter";
         case ShaderType::FLUID:  return lowerCase ? "fluid"  : "Fluid";
+        case ShaderType::SHADOW_CACHE: return lowerCase ? "shadowcache" : "Shadow Cache";
+        case ShaderType::ATMOSPHERE_DEPTH: return lowerCase ? "atmospheredepth" : "Atmosphere Depth";
+        case ShaderType::VOLUMETRIC_FOG: return lowerCase ? "volumetricfog" : "Volumetric Fog";
+        case ShaderType::ATMOSPHERE_DENOISE: return lowerCase ? "atmospheredenoise" : "Atmosphere Denoise";
+        case ShaderType::VOLUMETRIC_CLOUDS: return lowerCase ? "volumetricclouds" : "Volumetric Clouds";
+        case ShaderType::SKY_COMPOSITE: return lowerCase ? "skycomposite" : "Sky Composite";
+        case ShaderType::VOLUMETRIC_COMPOSITE: return lowerCase ? "volumetriccomposite" : "Volumetric Composite";
+        case ShaderType::PASS_PREVIEW: return lowerCase ? "passpreview" : "Pass Preview";
+        case ShaderType::PARTICLES: return lowerCase ? "particles" : "Particles";
+        case ShaderType::HTMLUI_PRIM: return lowerCase ? "htmluiprim" : "HTML UI Primitives";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
+}
+
+// MESH bit 33 ('Shq'): S10 took bit 5, which upstream gave Stochastic Tiling the same month;
+// the upstream keys keep bit 5 and the high filters moved past the Lattice bit
+uint64_t ShaderPool::getShadowsHQProperty(){
+    return shaderPropertyBit(33);
+}
+
+// The Vertex Animation's bits: MESH 34/35 (upstream gave it 33/34, S10's 'Shq' had 33 first),
+// DEPTH 16/17, GBUFFER 14/15
+uint64_t ShaderPool::getVatProperty(ShaderType shaderType, bool bones){
+    switch (shaderType) {
+        case ShaderType::MESH:    return shaderPropertyBit(bones ? 35 : 34);
+        case ShaderType::DEPTH:   return shaderPropertyBit(bones ? 17 : 16);
+        case ShaderType::GBUFFER: return shaderPropertyBit(bones ? 15 : 14);
+        default:                  return 0;
+    }
+}
+
+uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
+    return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
 }
 
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
@@ -510,6 +640,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
         case ShaderType::POINTS: return shaderPropertyBit(4);
         case ShaderType::LINES:  return shaderPropertyBit(2);
         case ShaderType::SKYBOX: return shaderPropertyBit(0);
+        case ShaderType::PARTICLES: return shaderPropertyBit(10);
         default:                 return 0;
     }
 }
@@ -518,12 +649,13 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 33;
-        case ShaderType::DEPTH:  return 16;
-        case ShaderType::GBUFFER: return 14;
-        case ShaderType::UI:     return 4;
+        case ShaderType::MESH:   return 36;
+        case ShaderType::DEPTH:  return 18;
+        case ShaderType::GBUFFER: return 16;
+        case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
-        case ShaderType::LINES:  return 3;
+        // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
+        case ShaderType::LINES:  return 6;
         case ShaderType::SKYBOX: return 1;
         case ShaderType::SSAO:   return 0;
         case ShaderType::SSAO_BLUR: return 0;
@@ -531,7 +663,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 13;
+        case ShaderType::BLIT:   return 18;
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
@@ -541,6 +673,12 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::PROBE_FILTER: return 0;
         // Lok (the look program), Mfl (the solver with manual filtering)
         case ShaderType::FLUID:  return 2;
+        case ShaderType::SHADOW_CACHE: return 1;
+        // the source's texture type: 2D (none), array, cube or 3D
+        case ShaderType::PASS_PREVIEW: return 3;
+        // ShaderPool::getParticlesProperties
+        case ShaderType::PARTICLES: return 11;
+        case ShaderType::HTMLUI_PRIM: return 0;
         default:                 return 0;
     }
 }
@@ -588,6 +726,15 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // the lattice deformer (HAS_LATTICE, includes/lattice.glsl): the first property past
             // the 32 of older keys, so keys without a lattice read as they always did
             case 32: return shortName ? "Ltc" : "Lattice";
+            // the High and Ultra shadow filters (USE_SHADOWS_HQ, S10): set by the shadow tier on
+            // variants that receive shadows (getShadowsHQProperty)
+            case 33: return shortName ? "Shq" : "Shadows HQ";
+            // a Vertex Animator's baked animation (includes/vat.glsl): Vertices mode
+            // (HAS_VAT) or Bones mode (HAS_VAT and HAS_VAT_BONES), never both; either one
+            // replaces the skinning and the morph targets (getVatProperty: upstream's bits 33
+            // and 34, after S10's 'Shq')
+            case 34: return shortName ? "Vat" : "Vertex Animation";
+            case 35: return shortName ? "Vab" : "Vertex Animation Bones";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -611,6 +758,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 14: return shortName ? "Sto" : "Stochastic Tiling";
             // the lattice deformer (HAS_LATTICE, includes/lattice.glsl)
             case 15: return shortName ? "Ltc" : "Lattice";
+            // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
+            case 16: return shortName ? "Vat" : "Vertex Animation";
+            case 17: return shortName ? "Vab" : "Vertex Animation Bones";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -631,6 +781,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // the vertex colour a lattice's mask reads, never set without 'Ltc'
             case 12: return shortName ? "Vc3" : "Vertex Color 3";
             case 13: return shortName ? "Vc4" : "Vertex Color 4";
+            // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
+            case 14: return shortName ? "Vat" : "Vertex Animation";
+            case 15: return shortName ? "Vab" : "Vertex Animation Bones";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -638,6 +791,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Ftx" : "Font Texture";
             case 2: return shortName ? "Vc3" : "Vertex Color 3";
             case 3: return shortName ? "Vc4" : "Vertex Color 4";
+            // a Text with outline or shadow: signed-distance glyphs
+            case 4: return shortName ? "Sdf" : "Font SDF";
         }
     } else if (shaderType == ShaderType::HTMLUI) {
         switch (bit) {
@@ -654,6 +809,16 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 5: return shortName ? "Unp" : "Unpremultiply";
             case 6: return shortName ? "Yuv" : "YUV";
         }
+    } else if (shaderType == ShaderType::SHADOW_CACHE) {
+        switch (bit) {
+            case 0: return shortName ? "Vis" : "Atlas View";
+        }
+    } else if (shaderType == ShaderType::PASS_PREVIEW) {
+        switch (bit) {
+            case 0: return shortName ? "Arr" : "Array Source";
+            case 1: return shortName ? "Cub" : "Cube Source";
+            case 2: return shortName ? "Tx3" : "3D Source";
+        }
     } else if (shaderType == ShaderType::UI_EFFECT) {
         switch (bit) {
             case 0: return shortName ? "Flt" : "Filter form";
@@ -668,11 +833,29 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 3: return shortName ? "Txr" : "Texture Rect";
             case 4: return shortName ? "Pcl" : "Post Color";
         }
+    } else if (shaderType == ShaderType::PARTICLES) {
+        // what the effect's modules draw (getParticlesProperties)
+        switch (bit) {
+            case 0: return shortName ? "Tex" : "Texture";
+            case 1: return shortName ? "Msh" : "Mesh";
+            case 2: return shortName ? "Trl" : "Trail";
+            case 3: return shortName ? "Str" : "Stretch";
+            case 4: return shortName ? "Fbl" : "Frame Blend";
+            case 5: return shortName ? "Lit" : "Lit";
+            case 6: return shortName ? "Sxw" : "Six-Way";
+            case 7: return shortName ? "Cus" : "Custom Data";
+            case 8: return shortName ? "Rsh" : "Receive Shadows";
+            case 9: return "Fog";
+            case 10: return shortName ? "Pcl" : "Post Color";
+        }
     } else if (shaderType == ShaderType::LINES) {
         switch (bit) {
             case 0: return shortName ? "Vc3" : "Vertex Color 3";
             case 1: return shortName ? "Vc4" : "Vertex Color 4";
             case 2: return shortName ? "Pcl" : "Post Color";
+            case 3: return shortName ? "Rib" : "Ribbon";
+            case 4: return shortName ? "Tex" : "Texture";
+            case 5: return shortName ? "Pxw" : "Pixel Width";
         }
     } else if (shaderType == ShaderType::SKYBOX) {
         switch (bit) {
@@ -694,6 +877,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 10: return shortName ? "Blm" : "Bloom";
             case 11: return shortName ? "Blr" : "Blur";
             case 12: return shortName ? "Scl" : "Upscale";
+            case 13: return shortName ? "Vhs" : "VHS";
+            case 14: return shortName ? "Hal" : "Halation";
+            case 15: return shortName ? "Fdm" : "Film Damage";
+            case 16: return shortName ? "Gln" : "Film Grain Lens";
+            case 17: return shortName ? "Gfm" : "Film Grain Filmic";
         }
     } else if (shaderType == ShaderType::BLOOM) {
         // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample
@@ -798,7 +986,8 @@ bool ShaderPool::parseShaderKeyText(const std::string& text, ShaderKey& key) {
 }
 
 void ShaderPool::addMissingShader(const std::string& shaderStr) {
-    auto& missingShaders = getMissingShaders();
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    auto& missingShaders = missingShaderNames();
     if (std::find(missingShaders.begin(), missingShaders.end(), shaderStr) == missingShaders.end()) {
         missingShaders.push_back(shaderStr);
     }
@@ -806,52 +995,72 @@ void ShaderPool::addMissingShader(const std::string& shaderStr) {
 
 std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint64_t properties, uint16_t customId){
     ShaderKey shaderKey = getShaderKey(shaderType, properties, customId);
-    auto& shared = getMap()[shaderKey];
+    // its entry, held: the lock is not kept while the variant is looked at or made, and remove()
+    // leaves what someone holds
+    std::shared_ptr<ShaderRender> shared;
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        std::shared_ptr<ShaderRender>& entry = getMap()[shaderKey];
+        if (!entry) {
+            entry = std::make_shared<ShaderRender>();
+        }
+        shared = entry;
+    }
 
-    if (shared && shared->isCreated()){
+    if (shared->isCreated()){
+        return shared;
+    }
+    // its GPU object is being created off the render thread (spec S32): nothing to do until then
+    if (shared->isPending()){
         return shared;
     }
 
     // The build can succeed and the backend still reject the shader (Metal compiles
     // the native library here). Retire the handle so its pool slot is released.
-    if (shared && shared->isFailed()) {
+    if (shared->isFailed()) {
         shared->destroyShader();
-        failedShaders().insert(shaderKey);
+        markFailedShader(shaderKey);
         Log::error("Shader resource creation failed: %s",
                    getShaderStr(shaderType, properties, customId).c_str());
         return shared;
     }
 
-    if (!shared) {
-        shared = std::make_shared<ShaderRender>();
-    }
-
     if (!shared->isCreated()) {
         // A previous attempt failed: don't retry every frame (it recompiles and spams
         // errors). Retried once remove()/destroyCustomShaders() clears the failure.
-        if (failedShaders().count(shaderKey)) {
+        if (isFailedShader(shaderKey)) {
             return shared;
         }
         if (shaderBuilderFn) {
+            static const bool timing = std::getenv("JASPER_SHADER_TIMING") != nullptr;
+            const auto t0 = std::chrono::steady_clock::now();
             ShaderBuildResult result = shaderBuilderFn(shaderKey);
+            const auto t1 = std::chrono::steady_clock::now();
+            if (timing && std::chrono::duration<double, std::milli>(t1 - t0).count() > 5.0)
+                Log::print("[shader-timing] builder %s: %.1f ms (state %d)", getShaderStr(shaderType, properties, customId).c_str(),
+                          std::chrono::duration<double, std::milli>(t1 - t0).count(), (int)result.state);
             if (result.state == ResourceLoadState::Finished) {
+                const auto c0 = std::chrono::steady_clock::now();
                 shared->createShader(result.data);
-                failedShaders().erase(shaderKey);
+                if (timing)
+                    Log::print("[shader-timing] create %s: %.1f ms", getShaderStr(shaderType, properties, customId).c_str(),
+                              std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - c0).count());
+                clearFailedShader(shaderKey);
             } else if (result.state == ResourceLoadState::Loading) {
                 // Shader is still building, do nothing
             } else if (result.state == ResourceLoadState::Failed) {
-                failedShaders().insert(shaderKey);
+                markFailedShader(shaderKey);
                 Log::error("Shader build failed: %s", getShaderStr(shaderType, properties, customId).c_str());
             }
         } else {
             const std::string shaderStr = getShaderStr(shaderType, properties, customId);
 
             ShaderData precompiled;
-            if (!notPrecompiledShaders().count(shaderKey) && loadPrecompiledShader(shaderKey, shaderStr, precompiled)){
+            if (!isNotPrecompiledShader(shaderKey) && loadPrecompiledShader(shaderKey, shaderStr, precompiled)){
                 shared->createShader(precompiled);
             } else {
                 // looked for once: what the build ships does not change
-                notPrecompiledShaders().insert(shaderKey);
+                markNotPrecompiledShader(shaderKey);
 
                 if (RuntimeShaderCompiler::isEnabled()){
                     // Built in the background: Loading leaves whatever draws with it out
@@ -860,7 +1069,7 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint64_t pr
                     if (result.state == ResourceLoadState::Finished){
                         shared->createShader(result.data);
                     } else if (result.state == ResourceLoadState::Failed){
-                        failedShaders().insert(shaderKey);
+                        markFailedShader(shaderKey);
                         Log::error("Shader %s (%s) failed to compile at runtime: %s",
                                    shaderStr.c_str(), getShaderLangStr().c_str(),
                                    RuntimeShaderCompiler::getError(shaderKey).c_str());
@@ -886,7 +1095,7 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint64_t pr
                         // Not in this build: reported once (RenderSystem::draw), and not looked
                         // for again every frame by whatever needs it
                         addMissingShader(shaderStr);
-                        failedShaders().insert(shaderKey);
+                        markFailedShader(shaderKey);
                     }
                 }
             }
@@ -970,21 +1179,19 @@ bool ShaderPool::warmUp(ShaderKey shaderKey){
 }
 
 bool ShaderPool::isShaderReady(ShaderType shaderType, uint64_t properties, uint16_t customId){
-    auto& map = getMap();
-    auto it = map.find(getShaderKey(shaderType, properties, customId));
-    return it != map.end() && it->second && it->second->isCreated();
+    const std::shared_ptr<ShaderRender> entry = findEntry(getMap(), getShaderKey(shaderType, properties, customId));
+    return entry && entry->isCreated();
 }
 
 ResourceLoadState ShaderPool::getShaderState(ShaderKey shaderKey){
-    if (failedShaders().count(shaderKey))
+    if (isFailedShader(shaderKey))
         return ResourceLoadState::Failed;
-    auto& map = getMap();
-    auto it = map.find(shaderKey);
-    if (it == map.end() || !it->second)
+    const std::shared_ptr<ShaderRender> entry = findEntry(getMap(), shaderKey);
+    if (!entry)
         return ResourceLoadState::NotStarted;
-    if (it->second->isCreated())
+    if (entry->isCreated())
         return ResourceLoadState::Finished;
-    if (it->second->isFailed())
+    if (entry->isFailed())
         return ResourceLoadState::Failed;
     return ResourceLoadState::Loading;
 }
@@ -1030,14 +1237,48 @@ size_t ShaderPool::warmUpAllShaders(){
 
     size_t notReady = 0;
     for (ShaderKey key : keys){
-        if (!warmUp(key) && !failedShaders().count(key))
+        if (!warmUp(key) && !isFailedShader(key))
             notReady++;
     }
     return notReady;
 }
 
+bool ShaderPool::findKeyOfHandle(uint32_t handleId, ShaderKey& key){
+    if (handleId == 0)
+        return false;
+    std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+    for (const auto& entry : getMap()){
+        if (entry.second && entry.second->backend.get().id == handleId){
+            key = entry.first;
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string ShaderPool::getEmbeddedData(const std::string& name){
+    const std::string base64 = getBase64Shader(name);
+    if (base64.empty())
+        return std::string();
+    const std::vector<unsigned char> bytes = Base64::decode(base64);
+    return std::string(bytes.begin(), bytes.end());
+}
+
 size_t ShaderPool::getPendingShaderCount(){
-    return RuntimeShaderCompiler::getPendingCount();
+    // compiling at runtime, and GPU objects being created (spec S32)
+    return RuntimeShaderCompiler::getPendingCount() + SystemRender::getGpuCreationStats().pendingShaders;
+}
+
+size_t ShaderPool::getPendingPipelineCount(){
+    return SystemRender::getGpuCreationStats().pendingPipelines;
+}
+
+bool ShaderPool::isGpuCreationIdle(){
+    return SystemRender::isGpuCreationIdle();
+}
+
+bool ShaderPool::isCreationIdle(){
+    return getPendingShaderCount() == 0 && (!shaderBuildsPendingFn || shaderBuildsPendingFn() == 0) && SystemRender::isGpuCreationIdle();
 }
 
 bool ShaderPool::isRuntimeCompilationSupported(){
@@ -1322,6 +1563,10 @@ std::string ShaderPool::resolveCustomShaderBasename(const std::string& basename)
         }
         return libraryEffectPrefix + name;
     }
+    // the built-in Lit's variants map back without a resolver too
+    std::vector<std::string> litDefines;
+    if (MaterialPbr::parseVariantBasename(basename, litDefines))
+        return ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, litDefines);
     const auto& resolver = customShaderNameResolver();
     return resolver ? resolver(basename) : std::string();
 }
@@ -1352,47 +1597,68 @@ std::string ShaderPool::getUiEffectName(const std::string& customShader){
 }
 
 bool ShaderPool::isShaderBuildFailed(ShaderType shaderType, uint64_t properties, uint16_t customId){
-    return failedShaders().count(getShaderKey(shaderType, properties, customId)) > 0;
+    return isFailedShader(getShaderKey(shaderType, properties, customId));
 }
 
 void ShaderPool::remove(ShaderType shaderType, uint64_t properties, uint16_t customId){
     ShaderKey shaderKey = getShaderKey(shaderType, properties, customId);
-    failedShaders().erase(shaderKey);
-    auto& map = getMap();
-    auto it = map.find(shaderKey);
-    if (it != map.end()){
-        if (!it->second || it->second.use_count() <= 1){
-            if (it->second){
-                it->second->destroyShader();
+    bool found = false;
+    std::shared_ptr<ShaderRender> unused;
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        failedShaders().erase(shaderKey);
+        auto& map = getMap();
+        auto it = map.find(shaderKey);
+        if (it != map.end()){
+            found = true;
+            if (!it->second || it->second.use_count() <= 1){
+                unused = std::move(it->second);
+                map.erase(it);
             }
-            map.erase(it);
         }
-    }else{
-        if (Engine::isViewLoaded()){
-            Log::debug("Trying to destroy a non existent shader");
-        }
+    }
+    if (unused){
+        unused->destroyShader();
+    }
+    if (!found && Engine::isViewLoaded()){
+        Log::debug("Trying to destroy a non existent shader");
     }
 }
 
 void ShaderPool::destroyCustomShaders(){
+    destroyCustomShaders([](const std::string&){ return true; });
+}
+
+void ShaderPool::destroyCustomShaders(const std::function<bool(const std::string& name)>& which){
     // library shaders ("library:<name>") and the library UI effects ("@effects/<name>") are
     // embedded in the engine: their sources never change with the project
-    auto isFork = [](ShaderKey key){
+    auto isFork = [&which](ShaderKey key){
         const uint16_t customId = getCustomIdFromKey(key);
-        return customId != 0 && getCustomShaderName(customId).compare(0, 8, "library:") != 0 &&
-               !isLibraryCustomShader(customId);
+        if (customId == 0)
+            return false;
+        const std::string name = getCustomShaderName(customId);
+        return name.compare(0, 8, "library:") != 0 && !isLibraryCustomShader(customId) && which(name);
     };
-    for (auto& entry : getMap()){
-        if (isFork(entry.first) && entry.second && entry.second->isCreated()){
+    // (what `which` asks and the GPU shaders' end are outside the lock: copies of the entries)
+    std::vector<std::pair<ShaderKey, std::shared_ptr<ShaderRender>>> entries;
+    std::vector<ShaderKey> failed;
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        entries.assign(getMap().begin(), getMap().end());
+        failed.assign(failedShaders().begin(), failedShaders().end());
+    }
+    for (auto& entry : entries){
+        // being made as well (queued off the main thread, or created off the render thread): what
+        // would come of it is the old source. A queued make finds its handle gone and makes nothing
+        if (isFork(entry.first) && entry.second &&
+                (entry.second->isCreated() || entry.second->isPending() || entry.second->loading.load())){
             entry.second->destroyShader();
         }
     }
     // Forget custom-shader build failures so an edited source is retried on the next get().
-    for (auto it = failedShaders().begin(); it != failedShaders().end();){
-        if (isFork(*it)){
-            it = failedShaders().erase(it);
-        } else {
-            ++it;
+    for (ShaderKey key : failed){
+        if (isFork(key)){
+            clearFailedShader(key);
         }
     }
 }
@@ -1429,7 +1695,11 @@ uint64_t ShaderPool::getValidPropertyMask(ShaderType shaderType) {
 }
 
 ShaderKey ShaderPool::normalizeKey(ShaderKey key) {
-    key.properties &= getValidPropertyMask(getShaderTypeFromKey(key));
+    ShaderType type = getShaderTypeFromKey(key);
+    key.properties &= getValidPropertyMask(type);
+    // the high-quality shadow filters only exist in a variant that receives shadows
+    if (type == ShaderType::MESH && !(key.properties & shaderPropertyBit(4)))
+        key.properties &= ~getShadowsHQProperty();
     return key;
 }
 
@@ -1440,7 +1710,7 @@ uint64_t ShaderPool::getMeshProperties(
     bool fog, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent,
     bool terrain, bool instanced, bool ibl, bool mirror, bool ssao, bool light2d, bool shadows2d,
     bool alphaMask, bool alphaOpaque, bool instanceFade, bool terrainPBR,
-    bool vertexLights, int lightCapacity, bool stochasticTiling, bool lattice){
+    bool vertexLights, int lightCapacity, bool stochasticTiling, bool lattice, bool vat, bool vatBones){
     uint64_t prop = 0;
 
     prop |= unlit            ? shaderPropertyBit(0) : 0;
@@ -1449,7 +1719,8 @@ uint64_t ShaderPool::getMeshProperties(
     prop |= punctual         ? shaderPropertyBit(3) : 0;
     prop |= shadows          ? shaderPropertyBit(4) : 0;
     // bit 5 was USE_SHADOWS_PCF until July 2026 (the PCF filter is uniform-driven now); since
-    // October 2026 it is Stochastic Tiling (see getShaderPropertyName)
+    // October 2026 it is Stochastic Tiling (see getShaderPropertyName). Bit 33 ('Shq',
+    // USE_SHADOWS_HQ) is set after, by the render system's shadow tier (getShadowsHQProperty)
     prop |= stochasticTiling ? shaderPropertyBit(5) : 0;
     prop |= normals          ? shaderPropertyBit(6) : 0;
     prop |= normalMap        ? shaderPropertyBit(7) : 0;
@@ -1478,13 +1749,16 @@ uint64_t ShaderPool::getMeshProperties(
     prop |= (lightCapacity == 4)  ? shaderPropertyBit(29) : 0;
     prop |= (lightCapacity == 16) ? shaderPropertyBit(30) : 0;
     prop |= lattice          ? shaderPropertyBit(32) : 0;
+    // one of the two: Bones mode is 'Vab' alone
+    prop |= (vat && !vatBones) ? getVatProperty(ShaderType::MESH, false) : 0;
+    prop |= vatBones         ? getVatProperty(ShaderType::MESH, true) : 0;
 
     return prop;
 }
 
 uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade,
                                             bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect,
-                                            bool stochasticTiling, bool lattice){
+                                            bool stochasticTiling, bool lattice, bool vat, bool vatBones){
     uint64_t prop = 0;
 
     prop |= texture          ? shaderPropertyBit(0) : 0;
@@ -1503,12 +1777,15 @@ uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
     prop |= textureRect      ? shaderPropertyBit(13) : 0;
     prop |= stochasticTiling ? shaderPropertyBit(14) : 0;
     prop |= lattice          ? shaderPropertyBit(15) : 0;
+    prop |= (vat && !vatBones) ? shaderPropertyBit(16) : 0;
+    prop |= vatBones         ? shaderPropertyBit(17) : 0;
 
     return prop;
 }
 
 uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR,
-                                              bool stochasticTiling, bool lattice, bool vertexColorVec3, bool vertexColorVec4){
+                                              bool stochasticTiling, bool lattice, bool vertexColorVec3, bool vertexColorVec4,
+                                              bool vat, bool vatBones){
     uint64_t prop = 0;
 
     prop |= baseColorTexture        ? shaderPropertyBit(0) : 0;
@@ -1525,17 +1802,20 @@ uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     prop |= lattice                 ? shaderPropertyBit(11) : 0;
     prop |= (lattice && vertexColorVec3) ? shaderPropertyBit(12) : 0;
     prop |= (lattice && vertexColorVec4) ? shaderPropertyBit(13) : 0;
+    prop |= (vat && !vatBones)      ? shaderPropertyBit(14) : 0;
+    prop |= vatBones                ? shaderPropertyBit(15) : 0;
 
     return prop;
 }
 
-uint64_t ShaderPool::getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4){
+uint64_t ShaderPool::getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4, bool fontAtlasSdf){
     uint64_t prop = 0;
 
     prop |= texture          ? shaderPropertyBit(0) : 0;
     prop |= fontAtlasTexture ? shaderPropertyBit(1) : 0;
     prop |= vertexColorVec3  ? shaderPropertyBit(2) : 0;
     prop |= vertexColorVec4  ? shaderPropertyBit(3) : 0;
+    prop |= (fontAtlasTexture && fontAtlasSdf) ? shaderPropertyBit(4) : 0;
 
     return prop;
 }
@@ -1557,10 +1837,16 @@ std::vector<std::pair<ShaderType, uint64_t>> ShaderPool::getHtmlUIVariants(){
     variants.push_back({ShaderType::HTMLUI, getHtmlUIProperties(false)});
     variants.push_back({ShaderType::HTMLUI, getHtmlUIProperties(true)});
     variants.push_back({ShaderType::HTMLUI_GRADIENT, 0});
+    variants.push_back({ShaderType::HTMLUI_PRIM, 0});
     for (int variant = 0; variant < HTMLUI_POST_VARIANT_COUNT; variant++){
         variants.push_back({ShaderType::HTMLUI_POST, getHtmlUIPostProperties((HtmlUIPostVariant)variant)});
     }
     return variants;
+}
+
+std::vector<std::pair<ShaderType, uint64_t>> ShaderPool::getVideoPlayerVariants(){
+    return {{ShaderType::HTMLUI_POST, getHtmlUIPostProperties(HtmlUIPostVariant::YUV)},
+            {ShaderType::HTMLUI_POST, getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH)}};
 }
 
 uint64_t ShaderPool::getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect){
@@ -1574,24 +1860,49 @@ uint64_t ShaderPool::getPointsProperties(bool texture, bool vertexColorVec3, boo
     return prop;
 }
 
-uint64_t ShaderPool::getLinesProperties(bool vertexColorVec3, bool vertexColorVec4){
+uint64_t ShaderPool::getParticlesProperties(const ParticlesShaderFlags& flags){
+    uint64_t prop = 0;
+
+    prop |= flags.texture        ? (1 <<  0) : 0;
+    prop |= flags.mesh           ? (1 <<  1) : 0;
+    prop |= flags.trail          ? (1 <<  2) : 0;
+    prop |= flags.stretch        ? (1 <<  3) : 0;
+    prop |= flags.frameBlend     ? (1 <<  4) : 0;
+    prop |= flags.lit            ? (1 <<  5) : 0;
+    prop |= flags.sixWay         ? (1 <<  6) : 0;
+    prop |= flags.customData     ? (1 <<  7) : 0;
+    prop |= flags.receiveShadows ? (1 <<  8) : 0;
+    prop |= flags.fog            ? (1 <<  9) : 0;
+
+    return prop;
+}
+
+uint64_t ShaderPool::getLinesProperties(bool vertexColorVec3, bool vertexColorVec4, bool ribbon, bool texture, bool pixelWidth){
     uint64_t prop = 0;
 
     prop |= vertexColorVec3	 ? shaderPropertyBit(0) : 0;
     prop |= vertexColorVec4  ? shaderPropertyBit(1) : 0;
+    // a hairline has no texture coordinates nor widths
+    prop |= ribbon                  ? shaderPropertyBit(3) : 0;
+    prop |= (ribbon && texture)     ? shaderPropertyBit(4) : 0;
+    prop |= (ribbon && pixelWidth)  ? shaderPropertyBit(5) : 0;
 
     return prop;
 }
 
 void ShaderPool::clear(){
-    for (auto& it: getMap()) {
+    shaders_t entries;
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        entries.swap(getMap());
+        missingShaderNames().clear();
+        failedShaders().clear();
+        notPrecompiledShaders().clear();
+    }
+    for (auto& it: entries) {
         if (it.second)
             it.second->destroyShader();
     }
-    getMap().clear();
-    getMissingShaders().clear();
-    failedShaders().clear();
-    notPrecompiledShaders().clear();
     // stops a compile in flight; what it compiled is in the disk cache for next time
     RuntimeShaderCompiler::shutdown();
 
@@ -1602,18 +1913,24 @@ void ShaderPool::clear(){
 
 void ShaderPool::clearUnused(){
     std::vector<ShaderKey> keys;
-    keys.reserve(getMap().size());
-    for (const auto& entry : getMap()) {
-        keys.push_back(entry.first);
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        keys.reserve(getMap().size());
+        for (const auto& entry : getMap()) {
+            keys.push_back(entry.first);
+        }
     }
     for (ShaderKey key : keys) {
         remove(getShaderTypeFromKey(key), getPropertiesFromKey(key), getCustomIdFromKey(key));
     }
     // Per-project bookkeeping: always reset so the next project does not inherit
     // missing/failed entries or custom-shader name registrations.
-    getMissingShaders().clear();
-    failedShaders().clear();
-    notPrecompiledShaders().clear();
+    {
+        std::lock_guard<std::mutex> lock(shaderEntriesMutex());
+        missingShaderNames().clear();
+        failedShaders().clear();
+        notPrecompiledShaders().clear();
+    }
     // its variants are keyed by the custom shader ids reset below
     RuntimeShaderCompiler::shutdown();
     std::lock_guard<std::mutex> lock(customShaderMutex());

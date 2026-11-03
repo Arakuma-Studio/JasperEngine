@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "SystemWin.h"
+#include "PlatformConfig.h"
 
+#include "HostServices.h"
+#include "JasperEngineWin.h"
 #include "WinInputRouter.h"
 #include "WindowWin.h"
 
@@ -12,7 +15,12 @@
 #include "D3D11Context.h"
 #endif
 
+#include "io/FileUtils.h"
+
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <share.h>
 
 using namespace jasperengine;
 
@@ -181,6 +189,9 @@ void SystemWin::setTextInputArea(float x, float y, float width, float height) {
 // assets in the project directory instead, so the editor bakes absolute paths
 // in through these macros (see Generator::getPlatformCMakeConfig).
 std::string SystemWin::getAssetPath() {
+    // a prebuilt player's content root (next to its executable, or --content)
+    if (!platformConfig().contentRoot.empty())
+        return platformConfig().contentRoot + "/assets";
 #ifdef JASPERENGINE_ASSET_PATH
     return JASPERENGINE_ASSET_PATH;
 #else
@@ -188,11 +199,45 @@ std::string SystemWin::getAssetPath() {
 #endif
 }
 
+// An export (the Exporter defines JASPERENGINE_APP_IDENTIFIER) saves per user, as Program Files
+// is not writable: %APPDATA%\<identifier>. Other builds (a project run from outside the editor,
+// engine tests) keep the working directory.
 std::string SystemWin::getUserDataPath() {
+#ifdef JASPERENGINE_APP_IDENTIFIER
+    static const std::string path = []() {
+        wchar_t* appData = nullptr;
+        size_t appDataLength = 0;
+        std::string base;
+        if (_wdupenv_s(&appData, &appDataLength, L"APPDATA") == 0 && appData && appData[0])
+            base = winWideToUtf8(appData, static_cast<int>(wcslen(appData)));
+        free(appData);
+        if (base.empty()) return std::string(".");
+        const std::string dir = base + "\\" + JASPERENGINE_APP_IDENTIFIER;
+        return FileUtils::prepareUserDataFolder(dir) ? dir : std::string(".");
+    }();
+    return path;
+#else
     return ".";
+#endif
+}
+
+// Engine paths are UTF-8; fopen would read them in the ANSI code page (a user folder named
+// "José" would not open)
+FILE* SystemWin::platformFopen(const char* fname, const char* mode) {
+    if (!fname || !mode) return nullptr;
+    const int length = static_cast<int>(std::strlen(fname));
+    const int size = length ? MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, fname, length, nullptr, 0) : 0;
+    if (size <= 0) return std::fopen(fname, mode);
+    std::wstring wideName(static_cast<size_t>(size), L'\0');
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, fname, length, &wideName[0], size);
+    const std::wstring wideMode(mode, mode + std::strlen(mode));
+    // _wfsopen: shared like fopen (_wfopen_s would lock the file)
+    return _wfsopen(wideName.c_str(), wideMode.c_str(), _SH_DENYNO);
 }
 
 std::string SystemWin::getLuaPath() {
+    if (!platformConfig().contentRoot.empty())
+        return platformConfig().contentRoot + "/lua";
 #ifdef JASPERENGINE_LUA_PATH
     return JASPERENGINE_LUA_PATH;
 #else
@@ -201,9 +246,77 @@ std::string SystemWin::getLuaPath() {
 }
 
 std::string SystemWin::getShaderPath() {
+    if (!platformConfig().contentRoot.empty())
+        return System::getShaderPath();
 #ifdef JASPERENGINE_SHADER_PATH
     return JASPERENGINE_SHADER_PATH;
 #else
     return System::getShaderPath();
+#endif
+}
+
+bool SystemWin::platformOpenURL(const std::string& url) {
+    return HostServices::openURL(url);
+}
+
+std::vector<std::string> SystemWin::getPreferredLocales() {
+    std::vector<std::string> locales = HostServices::preferredLocales();
+    return locales.empty() ? System::getPreferredLocales() : locales;
+}
+
+std::string SystemWin::getRegionOverride() {
+    return HostServices::regionOverride();
+}
+
+std::string SystemWin::getOperatingSystem() {
+    static const std::string value = HostServices::operatingSystem();
+    return value;
+}
+
+std::string SystemWin::getOperatingSystemVersion() {
+    static const std::string value = HostServices::operatingSystemVersion();
+    return value;
+}
+
+std::string SystemWin::getDeviceModel() {
+    static const std::string value = HostServices::deviceModel();
+    return value;
+}
+
+DeviceType SystemWin::getDeviceType() {
+    return DeviceType::Desktop;
+}
+
+int SystemWin::getSystemMemorySize() {
+    static const int value = HostServices::systemMemoryMiB();
+    return value;
+}
+
+NetworkReachability SystemWin::getInternetReachability() {
+    return HostServices::internetReachability();
+}
+
+float SystemWin::getScreenDpi() {
+    return HostServices::screenDpi();
+}
+
+float SystemWin::getRefreshRate() {
+    return HostServices::refreshRate();
+}
+
+void SystemWin::setKeepScreenOn(bool keepOn) {
+    HostServices::setKeepScreenOn(keepOn);
+}
+
+void SystemWin::applyFramePacing(const FramePacing& pacing) {
+    JasperEngineWin::applySwapInterval(pacing.swapInterval);
+}
+
+int SystemWin::getMaxSwapInterval() {
+#if defined(SOKOL_VULKAN)
+    return 1;
+#else
+    // wglSwapIntervalEXT and IDXGISwapChain::Present take an interval up to 4
+    return 4;
 #endif
 }

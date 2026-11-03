@@ -8,15 +8,22 @@
 #include "ecs/Entity.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
-#include "util/HybridArray.h"
+#include "component/PhysicsCommon.h"
 #include <cstdint>
+#include <limits>
+#include <memory>
+#include <string>
+#include <vector>
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Jolt/Jolt.h"
 #include "Jolt/Physics/Body/Body.h"
+#include "physics/JoltSurfaceMaterial.h"
 #endif
 
 namespace jasperengine{
+
+    class PhysicsMaterialRuntime;
 
     enum class Collider3DType{
         SPHERE,
@@ -55,7 +62,9 @@ namespace jasperengine{
 
     struct JASPERENGINE_API Collider3D{
 #ifdef JASPERENGINE_PHYSICS_3D
+        // runtime: the leaf shape (world-scaled, in the collider's own frame) and its surface
         JPH::ShapeRefC shape = NULL;
+        JPH::Ref<JoltSurfaceMaterial> surface;
 #endif
         Vector3 position = Vector3::ZERO;
         Quaternion rotation = Quaternion::IDENTITY;
@@ -78,10 +87,27 @@ namespace jasperengine{
         Entity sourceEntity = NULL_ENTITY;
         unsigned int samplesSize = 0;
 
-        HybridArray<Vector3, MAX_COLLIDER_VERTICES_3D> vertices;
-        uint16_t numVertices = 0;
-        HybridArray<uint16_t, MAX_COLLIDER_INDICES_3D> indices;
-        uint16_t numIndices = 0;
+        // RAW_VERTICES (hull points) and RAW_MESH (triangles) geometry, GameObject-local (scaled
+        // by the transform), any size
+        std::vector<Vector3> vertices;
+        std::vector<uint32_t> indices;
+
+        // Unity isTrigger: overlaps are reported (sensor contacts), nothing is pushed; a trigger
+        // does not count in the body's mass unless every collider is one
+        bool isTrigger = false;
+        // a .physicsmaterial asset path ("" = none): friction, bounciness and their combine
+        // modes, over the body's material and its legacy friction / restitution
+        std::string material;
+        // also gets this collider's contact callbacks (physics-contacts), none by default
+        Entity receiver = NULL_ENTITY;
+
+        // runtime, not saved
+        // rebuild this collider's shape at the next sync
+        bool dirty = true;
+        // a material set from a script (PhysicsMaterial object), over `material`
+        std::shared_ptr<PhysicsMaterialRuntime> materialInstance;
+        // materialInstance is this collider's own copy (setColliderFriction on a material)
+        bool ownsMaterialInstance = false;
     };
 
     struct RigidbodyComponent{
@@ -90,26 +116,54 @@ namespace jasperengine{
 
 #ifdef JASPERENGINE_PHYSICS_3D
         JPH::BodyID body;
+        // runtime: a sensor body with the trigger colliders of a body that has solid ones too,
+        // following it (invalid when the body has no such mix)
+        JPH::BodyID triggerBody;
 #endif
 
-        HybridArray<Collider3D, MAX_COLLIDERS_3D> colliders;
-        size_t numColliders = 0;
+        std::vector<Collider3D> colliders;
 
         bool needReloadBody = true;
         bool needUpdateColliders = true;
 
         bool overrideMassProperties = false;
         Vector3 solidBoxSize;
-        float solidBoxDensity;
-        
+        // kg/m3, the default of Collider3D::density
+        float solidBoxDensity = 1000.0f;
+
         BodyType type = BodyType::STATIC;
         RigidbodyMotionQuality motionQuality = RigidbodyMotionQuality::DISCRETE;
         float gravityFactor = 1.0f;
-        // Surface of the whole body (Jolt keeps them per body, not per collider); the
-        // defaults are Jolt's. A contact combines two frictions by geometric mean and takes
-        // the larger restitution.
+        // The surface of the colliders without a material (theirs or the body's), Jolt's
+        // defaults: two of them combine by geometric mean friction and the larger restitution
         float friction = 0.2f;
         float restitution = 0.0f;
+        // default .physicsmaterial of the colliders without one ("" = none)
+        std::string material;
+
+        // Unity Rigidbody fields; the defaults are what Jolt used before they existed
+        float linearDamping = 0.05f;
+        float angularDamping = 0.05f;
+        // m/s, rad/s
+        float maxLinearVelocity = 500.0f;
+        float maxAngularVelocity = 0.25f * 3.14159265358979323846f * 60.0f;
+        // false: `mass` (kg) instead of the colliders' volume x density
+        bool automaticMass = true;
+        float mass = 1.0f;
+        // false: centerOfMass, body-local in world units (not scaled by the transform)
+        bool automaticCenterOfMass = true;
+        Vector3 centerOfMass = Vector3::ZERO;
+        // false: the principal moments (kg m^2) about the centre of mass, in the frame rotated
+        // by inertiaTensorRotation
+        bool automaticInertiaTensor = true;
+        Vector3 inertiaTensor = Vector3(1.0f, 1.0f, 1.0f);
+        Quaternion inertiaTensorRotation = Quaternion::IDENTITY;
+        bool allowSleeping = true;
+        // a kinematic body also touches static and kinematic bodies (a kinematic body with a
+        // trigger collider does anyway, Unity's trigger matrix)
+        bool collideKinematicVsNonDynamic = false;
+        // SCENE: the scene's physics_interpolation
+        RigidbodyInterpolation interpolation = RigidbodyInterpolation::SCENE;
         // In a water (a mesh drawn with library:water, Water.h), Jolt's buoyancy at the centre
         // of mass each fixed step: 1 neutral, more floats, less sinks, 0 ignores the water
         // (the default). The drags slow the body moving and turning in it (Jolt's linear drag
@@ -140,12 +194,35 @@ namespace jasperengine{
         bool hasSyncedPose = false;
         Vector3 syncedPosition;
         Quaternion syncedRotation;
+        // the state of the body it had in another scene (persistence moves a GameObject with
+        // its body): the next body made for it starts with these, once
+        bool hasPendingVelocity = false;
+        Vector3 pendingLinearVelocity;
+        Vector3 pendingAngularVelocity;
+        bool pendingAwake = true;
+
+        // a material set from a script for the whole body, over `material`
+        std::shared_ptr<PhysicsMaterialRuntime> materialInstance;
+        // the colliders' materials were resolved at this PhysicsMaterialRuntime::revision()
+        uint64_t appliedMaterialRevision = 0;
+        // the mass fields changed: the mass properties (and centre of mass) are applied again
+        bool massDirty = false;
+        // the body fields changed (damping, max velocities, sleeping...): applied before the next step
+        bool needApplyParameters = false;
+        // Rigidbody::setCollisionGroupID (same valid group: no collision), kept across reloads
+        uint32_t collisionGroupID = std::numeric_limits<uint32_t>::max();
+        // a type change asked for inside a step, applied right after it
+        bool hasPendingType = false;
+        BodyType pendingType = BodyType::STATIC;
 
         // Collision filter bits (Rigidbody::setBitsFilter), kept across body reloads. Two
         // bodies collide when each one's category meets the other's mask and the Layer
         // Collision Matrix lets their GameObject layers collide.
         uint16_t categoryBits = 1;
         uint16_t maskBits = 0xFFFF;
+        // the contact messages its scripts (and its colliders' receivers') define
+        // (PhysicsCallbacks bits), packed in the Jolt body's user data; runtime
+        uint16_t listenerMask = 0;
     };
 
 }

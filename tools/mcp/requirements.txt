@@ -1,0 +1,5 @@
+# The Python packages of the MCP test harness (tools/mcp/run-tests.sh: uv run --with-requirements).
+# Pinned so a CI run and a build server run the same client; bumped by hand.
+mcp==2.3.0
+pyyaml==6.0.3
+jsonschema==4.25.1

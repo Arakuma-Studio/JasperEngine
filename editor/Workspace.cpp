@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "Workspace.h"
+#include "DocumentFile.h"
 
 #include "Out.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "Stream.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
@@ -44,13 +47,7 @@ std::vector<TabEntry> decodeTabs(const YAML::Node& node) {
 }
 
 Workspace::SceneState decodeSceneState(const YAML::Node& node) {
-    Workspace::SceneState state;
-    state.hasDisplaySettings = Stream::hasSceneDisplaySettings(node);
-    Stream::decodeSceneDisplaySettings(node, state.displaySettings);
-    if (node["editorCamera"]) {
-        state.editorCamera = YAML::Clone(node["editorCamera"]);
-    }
-    return state;
+    return Workspace::decodeSceneEntry(node);
 }
 
 // Every field here is a view preference, so a section hand-edited into something a
@@ -65,6 +62,57 @@ void readSection(const char* what, const std::string& source, Fn&& read) {
 }
 
 } // namespace
+
+Workspace::SceneState Workspace::decodeSceneEntry(const YAML::Node& node) {
+    SceneState state;
+    state.hasDisplaySettings = Stream::hasSceneDisplaySettings(node);
+    Stream::decodeSceneDisplaySettings(node, state.displaySettings);
+    if (node["editorCamera"]) {
+        state.editorCamera = YAML::Clone(node["editorCamera"]);
+        // the fly speed moved to cameraSettings (an older offset migrates, SceneViewStateStream)
+        if (state.editorCamera.IsMap() && state.editorCamera["walkSpeed"]) {
+            state.editorCamera.remove("walkSpeed");
+        }
+    }
+    state.viewState = SceneViewStateStream::decode(node);
+    // the display settings' keys are Stream's, not unknown ones
+    if (state.viewState.unknownKeys.IsMap()) {
+        const YAML::Node display = Stream::encodeSceneDisplaySettings(SceneDisplaySettings());
+        for (const auto& entry : display) {
+            state.viewState.unknownKeys.remove(entry.first.as<std::string>());
+        }
+    }
+    return state;
+}
+
+YAML::Node Workspace::encodeSceneEntry(const SceneProject& sceneProject) {
+    YAML::Node sceneNode = Stream::encodeSceneDisplaySettings(sceneProject.displaySettings);
+
+    // A closed scene has no renderer, so its camera is whatever was last read
+    if (sceneProject.sceneRender) {
+        if (Camera* editorCam = sceneProject.sceneRender->getCamera()) {
+            float zoom = 0.0f;
+            if (sceneProject.sceneType == SceneType::SCENE_2D || sceneProject.sceneType == SceneType::SCENE_UI) {
+                zoom = static_cast<SceneRender2D*>(sceneProject.sceneRender)->getZoom();
+            }
+            sceneNode["editorCamera"] = Stream::encodeEditorCamera(editorCam, zoom, 0.0f);
+        }
+    } else if (sceneProject.editorCameraState.IsDefined()) {
+        sceneNode["editorCamera"] = sceneProject.editorCameraState;
+    }
+
+    // the GameObjects hidden or locked that are still there (R36)
+    SceneViewState viewState = sceneProject.viewState;
+    if (sceneProject.scene) {
+        for (std::set<Entity>* entities : {&viewState.hiddenEntities, &viewState.pickLockedEntities}) {
+            for (auto it = entities->begin(); it != entities->end();) {
+                it = sceneProject.scene->isEntityCreated(*it) ? std::next(it) : entities->erase(it);
+            }
+        }
+    }
+    SceneViewStateStream::encode(viewState, sceneNode);
+    return sceneNode;
+}
 
 fs::path Workspace::getUserDirectory(const fs::path& projectPath) {
     return projectPath / ".jasperengine" / "user";
@@ -86,7 +134,9 @@ void Workspace::clear() {
     terrainEditorSettings = TerrainEditorSettings();
     terrainDefined = false;
     physicsPlacementSettings = PhysicsPlacementSettings();
+    spriteNormalsSettings = SpriteNormalsWindowSettings();
     simulateTouch = false;
+    customResolutions.clear();
     sceneStates.clear();
     adoptedLegacy = false;
 }
@@ -148,9 +198,27 @@ void Workspace::load(const fs::path& projectPath) {
         physicsPlacementSettings = Stream::decodePhysicsPlacementSettings(root["physicsPlacement"]);
     });
 
+    readSection("the Sprite Normal Map settings", source, [&]() {
+        if (!root["spriteNormals"] || !root["spriteNormals"].IsMap()) return;
+        spriteNormalsSettings = Stream::decodeSpriteNormalsSettings(root["spriteNormals"]);
+    });
+
     readSection("touch simulation", source, [&]() {
         if (!root["simulateTouch"]) return;
         simulateTouch = root["simulateTouch"].as<bool>();
+    });
+
+    readSection("the Game view resolutions", source, [&]() {
+        if (!root["gameResolutions"] || !root["gameResolutions"].IsSequence()) return;
+        for (const YAML::Node& entry : root["gameResolutions"]) {
+            GameResolution resolution;
+            resolution.name = entry["name"] ? entry["name"].as<std::string>() : std::string();
+            resolution.width = entry["width"] ? entry["width"].as<int>() : 0;
+            resolution.height = entry["height"] ? entry["height"].as<int>() : 0;
+            resolution.dpi = entry["dpi"] ? entry["dpi"].as<float>() : 0.0f;
+            if (!resolution.name.empty() && isValidGameResolution(resolution.width, resolution.height, resolution.dpi))
+                customResolutions.push_back(resolution);
+        }
     });
 
     if (root["scenes"] && root["scenes"].IsMap()) {
@@ -231,6 +299,7 @@ std::map<std::string, YAML::Node> Workspace::statesForUnresolvedScenes(const Pro
         if (it->second.editorCamera.IsDefined()) {
             sceneNode["editorCamera"] = YAML::Clone(it->second.editorCamera);
         }
+        SceneViewStateStream::encode(it->second.viewState, sceneNode);
         if (sceneNode.size()) {
             retained[key] = sceneNode;
         }
@@ -248,7 +317,8 @@ bool Workspace::save(const Project* project) {
     const fs::path file = getWorkspaceFile(projectPath);
 
     std::error_code ec;
-    fs::create_directories(file.parent_path(), ec);
+    // (in a write scope, an MCP call: beneath the project)
+    FileUtils::createDirectories(file.parent_path(), ec);
     if (ec) {
         Out::error("Failed to create editor workspace directory: %s", ec.message().c_str());
         return false;
@@ -269,7 +339,20 @@ bool Workspace::save(const Project* project) {
 
     root["terrainEditor"] = Stream::encodeTerrainEditorSettings(project->getTerrainEditorSettings());
     root["physicsPlacement"] = Stream::encodePhysicsPlacementSettings(project->getPhysicsPlacementSettings());
+    root["spriteNormals"] = Stream::encodeSpriteNormalsSettings(project->getSpriteNormalsSettings());
     root["simulateTouch"] = project->isSimulateTouch();
+    if (!project->getCustomResolutions().empty()) {
+        YAML::Node resolutions(YAML::NodeType::Sequence);
+        for (const GameResolution& resolution : project->getCustomResolutions()) {
+            YAML::Node entry;
+            entry["name"] = resolution.name;
+            entry["width"] = resolution.width;
+            entry["height"] = resolution.height;
+            if (resolution.dpi > 0.0f) entry["dpi"] = resolution.dpi;
+            resolutions.push_back(entry);
+        }
+        root["gameResolutions"] = resolutions;
+    }
 
     YAML::Node scenesNode(YAML::NodeType::Map);
     for (const SceneProject& sceneProject : project->getScenes()) {
@@ -277,24 +360,7 @@ bool Workspace::save(const Project* project) {
             continue;
         }
 
-        YAML::Node sceneNode = Stream::encodeSceneDisplaySettings(sceneProject.displaySettings);
-
-        // A closed scene has no renderer, so its camera is whatever was last read
-        if (sceneProject.sceneRender) {
-            if (Camera* editorCam = sceneProject.sceneRender->getCamera()) {
-                float zoom = 0.0f;
-                float walkSpeedOffset = 0.0f;
-                if (sceneProject.sceneType == SceneType::SCENE_2D || sceneProject.sceneType == SceneType::SCENE_UI) {
-                    zoom = static_cast<SceneRender2D*>(sceneProject.sceneRender)->getZoom();
-                } else if (sceneProject.sceneType == SceneType::SCENE_3D) {
-                    walkSpeedOffset = static_cast<SceneRender3D*>(sceneProject.sceneRender)->getWalkSpeedOffset();
-                }
-                sceneNode["editorCamera"] = Stream::encodeEditorCamera(editorCam, zoom, walkSpeedOffset);
-            }
-        } else if (sceneProject.editorCameraState.IsDefined()) {
-            sceneNode["editorCamera"] = sceneProject.editorCameraState;
-        }
-
+        const YAML::Node sceneNode = encodeSceneEntry(sceneProject);
         scenesNode[sceneKey(sceneProject.filepath)] = sceneNode;
     }
 
@@ -306,20 +372,23 @@ bool Workspace::save(const Project* project) {
     }
     root["scenes"] = scenesNode;
 
-    try {
-        std::ofstream fout(file.string());
-        if (!fout) {
-            Out::error("Failed to open editor workspace for writing: %s", file.string().c_str());
-            return false;
+    // in a write scope (an MCP call): written beneath the project, no link on the way followed
+    if (const FileUtils::ScopedOps* ops = FileUtils::scopedOps()) {
+        const std::string text = "# Editor state for this checkout only. Not committed; deleting it\n"
+                                 "# costs nothing but the layout it holds.\n" + YAML::Dump(root) + "\n";
+        const int r = ops->write(file, text, ec);
+        if (r >= 0) {
+            if (r == 0) Out::error("Failed to write editor workspace: %s", safewrite::lastScopedError().c_str());
+            return r == 1;
         }
+    }
 
-        fout << "# Editor state for this checkout only. Not committed; deleting it\n"
-                "# costs nothing but the layout it holds.\n";
-        fout << YAML::Dump(root) << "\n";
-        fout.close();
-
-        if (!fout) {
-            Out::error("Failed to write editor workspace: %s", file.string().c_str());
+    try {
+        const std::string text = "# Editor state for this checkout only. Not committed; deleting it\n"
+                "# costs nothing but the layout it holds.\n" + YAML::Dump(root) + "\n";
+        const io::WriteResult written = DocumentFiles::write(file, text);
+        if (!written.ok()) {
+            Out::error(DocumentFiles::saveFailureMessage(file, written));
             return false;
         }
     } catch (const std::exception& e) {

@@ -31,9 +31,11 @@
 
 namespace jasperengine{
 
+    namespace vat{ class VertexAnimation; }
+
     // Submesh fields a model load rewrites from its source file, so an edit to one only survives
-    // the load while it is flagged in Submesh::overrideFields.
-    enum SubmeshOverrideFlags : uint32_t {
+    // the load while it is flagged in Submesh::overrideFields (64 bits, saved as a number).
+    enum SubmeshOverrideFlags : uint64_t {
         SubmeshOverride_BaseColorFactor          = 1 << 0,
         SubmeshOverride_MetallicFactor           = 1 << 1,
         SubmeshOverride_RoughnessFactor          = 1 << 2,
@@ -68,10 +70,19 @@ namespace jasperengine{
         SubmeshOverride_ColorWrite               = 1 << 28,
         SubmeshOverride_ExtraPass                = 1 << 29,
         // Stochastic Tiling: material.stochasticTiling and its four values under one bit
-        SubmeshOverride_StochasticTiling         = 1 << 30,
+        // (upstream's, in released files)
+        SubmeshOverride_StochasticTiling         = 1ull << 30,
+        // the extended lobes and hex tiling (Material::pbr, all of it) and the emissive strength,
+        // which a glTF model sets (KHR_materials_*; S11's, after Stochastic Tiling's bit)
+        SubmeshOverride_PbrExtensions            = 1ull << 31,
+        SubmeshOverride_EmissiveStrength         = 1ull << 32,
+        // material.shaderGlobalBindings (shader globals; upstream's 1 << 31 is S11's PbrExtensions
+        // here, so it comes after S11's bits)
+        SubmeshOverride_ShaderGlobalBindings     = 1ull << 33,
 
         SubmeshOverride_ShaderLibrary = SubmeshOverride_Shader | SubmeshOverride_ShaderParams |
                                         SubmeshOverride_ShaderTextures | SubmeshOverride_ShaderFeatures |
+                                        SubmeshOverride_ShaderGlobalBindings |
                                         SubmeshOverride_BlendMode | SubmeshOverride_CullMode |
                                         SubmeshOverride_DepthWrite | SubmeshOverride_DepthTest |
                                         SubmeshOverride_DepthOffset | SubmeshOverride_SortPriority |
@@ -85,7 +96,8 @@ namespace jasperengine{
                                    SubmeshOverride_EmissiveTexture | SubmeshOverride_MetallicRoughnessTexture |
                                    SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture |
                                    SubmeshOverride_FoliageTransmission | SubmeshOverride_ShaderLibrary |
-                                   SubmeshOverride_StochasticTiling
+                                   SubmeshOverride_StochasticTiling | SubmeshOverride_PbrExtensions |
+                                   SubmeshOverride_EmissiveStrength
     };
 
     // The lights reaching a mesh (an instanced batch counts as one mesh), picked by
@@ -148,6 +160,8 @@ namespace jasperengine{
         int slotVSMorphTarget = -1;
         int slotVSLattice = -1;
         std::pair<int, int> slotVSLatticeTexture = {-1, -1};
+        int slotVSVat = -1;
+        std::pair<int, int> slotVSVatTexture = {-1, -1};
 
         bool loaded = false;
         // its shader failed to build: the submesh draws without it
@@ -191,6 +205,11 @@ namespace jasperengine{
         // cached here so the matching ShaderPool::remove uses the same key
         uint16_t customShaderId = 0;
         uint16_t customDepthShaderId = 0;
+        // the built-in Lit's defines its colour variant was loaded with (the "builtin:lit#..."
+        // reference, SubmeshShaderVariant::litDefines, as MaterialPbr::getDefineBits) and the
+        // extension maps that variant binds, in slot order (u_pbrExtTexture0..2; COUNT: none)
+        uint32_t litDefineBits = 0;
+        PbrMap pbrMaps[MaterialPbr::MAX_EXTENSION_MAPS] = {PbrMap::COUNT, PbrMap::COUNT, PbrMap::COUNT};
 
         int slotVSParams = -1;
         int slotFSParams = -1;
@@ -214,13 +233,23 @@ namespace jasperengine{
         int slotVSShadows = -1;
         int slotFSShadows = -1;
         int slotFSPointShadows = -1;
+        int slotFSShadowData = -1;        // u_fs_shadow_data (includes/shadow_data.glsl)
+        int slotFSPointShadowData = -1;   // u_fs_point_shadow_data
         int slotVSSkinning = -1;
         int slotVSMorphTarget = -1;
         // u_vs_lattice and u_latticeTexture (includes/lattice.glsl), loaded with a lattice variant
         int slotVSLattice = -1;
         std::pair<int, int> slotVSLatticeTexture = {-1, -1};
+        // u_vs_vat and u_vatTexture (includes/vat.glsl), loaded with a Vertex Animation variant
+        int slotVSVat = -1;
+        std::pair<int, int> slotVSVatTexture = {-1, -1};
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
+        // u_fs_pbrParams of a built-in Lit lobe variant ends with the lobes' values (and the UV
+        // sets with a second set): its size, their offsets (bytes; size 0: no lobes)
+        uint16_t pbrParamsSize = 0;
+        uint16_t pbrExtOffset = 0;
+        int16_t pbrSetsOffset = -1;
 
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix
@@ -231,6 +260,8 @@ namespace jasperengine{
         int slotVSDepthMorphTarget = -1;
         int slotVSDepthLattice = -1;
         std::pair<int, int> slotVSDepthLatticeTexture = {-1, -1};
+        int slotVSDepthVat = -1;
+        std::pair<int, int> slotVSDepthVatTexture = {-1, -1};
         int slotVSDepthTerrain = -1;
         int slotVSDepthSprite = -1;
 
@@ -241,6 +272,8 @@ namespace jasperengine{
         int slotVSGBufferMorphTarget = -1;
         int slotVSGBufferLattice = -1;
         std::pair<int, int> slotVSGBufferLatticeTexture = {-1, -1};
+        int slotVSGBufferVat = -1;
+        std::pair<int, int> slotVSGBufferVatTexture = {-1, -1};
         int slotVSGBufferTerrain = -1;
         int slotFSGBufferTerrainLayers = -1;
 
@@ -271,7 +304,7 @@ namespace jasperengine{
         PrimitiveType primitiveType = PrimitiveType::TRIANGLES;
         unsigned int vertexCount = 0;
 
-        uint32_t overrideFields = 0; // SubmeshOverrideFlags edited after import, kept across loads
+        uint64_t overrideFields = 0; // SubmeshOverrideFlags edited after import, kept across loads
 
         // material.lighting the shader variant was picked for
         MaterialLighting loadedLighting = MaterialLighting::AUTO;
@@ -297,6 +330,10 @@ namespace jasperengine{
         bool needUpdateTexture = false;
         bool needUpdateDepthTexture = false;
         bool needUpdateGBufferTexture = false;
+        // runtime (RenderSystem): TexturePool::getReadyEpoch when the material was bound with a
+        // stand-in for an image it names (0: every image bound is its own). When it moves on, the
+        // material binds again.
+        uint32_t textureStandInEpoch = 0;
 
         bool generated = false;
 
@@ -315,12 +352,47 @@ namespace jasperengine{
         int smoothNormals = -1;
     };
 
+    // The Vertex Animation variant a mesh draws with (vertex animation spec 3.5)
+    enum class VatVariant : uint8_t {
+        NONE,
+        VERTICES,   // 'Vat' (HAS_VAT)
+        BONES       // 'Vab' (HAS_VAT, HAS_VAT_BONES)
+    };
+
+    // u_vs_vat (includes/vat.glsl): clock and bone index/weight scales, layout, the entity's
+    // tracks, the clip table
+    constexpr int VAT_BLOCK_HEADER = 4;
+    constexpr int VAT_BLOCK_CLIPS = 64;     // = vat::VAT_MAX_CLIPS
+
+    // A Vertex Animator's draw state on its mesh: RenderSystem fills it every frame from the
+    // entity's VertexAnimatorComponent (gpuActive, asset, gpuState0/1, gpuNow, gpuMode) and binds
+    // it to the 'Vat' / 'Vab' variants. A change of `variant` reloads the mesh with the new
+    // variant once its shaders are built (needVariantReload), the loaded one drawing until then.
+    struct JASPERENGINE_API VatMeshState{
+        VatVariant variant = VatVariant::NONE;          // what the animator asks for now
+        VatVariant variantActive = VatVariant::NONE;    // as the loaded shaders were built
+        std::shared_ptr<const vat::VertexAnimation> asset; // holds the payload texture
+        TextureRender* texture = nullptr;               // the payload, null without a variant
+        // u_vs_vat, VAT_BLOCK_HEADER + VAT_BLOCK_CLIPS vectors (allocated with a variant); the
+        // bone index and weight scales (x.y, x.z) are each submesh's, written at its draw
+        std::vector<Vector4> block;
+        // the animatedBounds the bounds were last made with (a change marks them dirty)
+        AABB boundsApplied;
+    };
+
     struct MeshComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
 
         bool loaded = false;
         bool loadCalled = false;
+        // its load could not make a GPU object because that pool was full (SokolSystem logs
+        // which, once): not drawn and counted as settled (RenderSystem::isAllLoaded), not as
+        // loading; loaded again when the pools have room (SystemRender::hasResourcePoolRoom)
+        bool loadFailed = false;
+        // a submesh's attribute names a buffer the mesh does not have: not drawn and settled as
+        // above, and not tried again until the mesh is reloaded
+        bool loadMissingBuffer = false;
 
         InterleavedBuffer buffer;
         IndexBuffer indices;
@@ -336,14 +408,17 @@ namespace jasperengine{
         // e.g. "shaders/myMesh" -> shaders/myMesh.vert + shaders/myMesh.frag.
         // Empty = use the built-in Mesh shader. Drives the main render pass only;
         // the gbuffer pass keeps the built-in shader.
-        std::string customShader;
+        ShaderRef customShader;
         // Same for the depth shader (shadow maps, and the SSAO/post-process depth when SSR
         // is off; with SSR on those read the built-in gbuffer), so a fork that displaces
         // vertices or discards keeps its shadows in step.
-        std::string customDepthShader;
+        ShaderRef customDepthShader;
         // values of the fork's custom uniform blocks, by member name, shared by all submeshes
         ShaderUniformValues shaderUniforms;
         bool needUpdateShaderUniforms = false;
+        // ShaderGlobals::getVersion() when the custom blocks of the submeshes whose materials
+        // bind globals (Material::shaderGlobalBindings) were last written
+        uint64_t globalsVersionSeen = 0;
 
         HybridArray<Matrix4, MAX_BONES> bonesMatrix;
         BufferRender bonesBuffer;
@@ -358,10 +433,30 @@ namespace jasperengine{
         Matrix4 mirrorViewProjection;
 
         float morphWeights[MAX_MORPHTARGETS] = {};
+        // the weights are this component's own: read from a saved scene or prefab (the editor's
+        // Stream, an exported game's factory code) or kept from an earlier load of the same model
+        // (edits, deliberate zeros). A model load gives the file's default weights only when this
+        // is false (a freshly loaded model) or when it loads another model file.
+        bool morphWeightsSet = false;
+        // how many targets those weights cover: the mesh's target count at its last load (saved
+        // with them). A reload of a model file that has more targets now gives the new ones the
+        // file's defaults. Weights saved without it (older files) or set before any load cover
+        // the targets up to their last non-zero weight (morphWeightsPresentCount): the zeros after
+        // it get the file's defaults, as every load gave them before the count existed.
+        int morphTargetCount = 0;
+        // the blend shape (morph target) names of this mesh in its model file (glTF
+        // extras.targetNames), index = weight; empty when the file names none. Filled by the
+        // model load (per mesh: two meshes of a model can name their targets differently), not saved.
+        std::vector<std::string> morphTargetNames;
 
         // lattice deformation (spec 2026-10-23-lattice-deformer-design.md §5): filled by
         // LatticeRender::prepare, uploaded and bound by RenderSystem
         LatticeMeshState lattice;
+        // a Vertex Animator's playback (vertex animation spec 3.5), filled by RenderSystem
+        VatMeshState vat;
+        // loaded from a Vertex Animation mesh (a .vat.glb, glTF extension JASPER_vertex_animation):
+        // its JOINTS_0 / WEIGHTS_0 name the baked bones, there is no skin to draw them with
+        bool vatMesh = false;
 
         AABB aabb = AABB::ZERO;
         AABB verticesAABB = AABB::ZERO; // is not influenced by instances
@@ -369,6 +464,9 @@ namespace jasperengine{
 
         std::vector<AABB> bonesAABB; // bind-pose bounds per bone index, empty when not skinned
         AABB skinnedAABB; // local bounds of the posed mesh, null when not skinned
+        // Vertex Animator: local bounds over every frame of the clips in use (null = none); used
+        // instead of verticesAABB for culling, the world AABB and instance spheres (vertex animation spec 3.2)
+        AABB animatedBounds;
 
         // the lights it is drawn with, see MeshLights
         MeshLights lights;
@@ -381,10 +479,23 @@ namespace jasperengine{
         bool castShadows = true;
         bool receiveShadows = true;
         bool shadowsBillboard = true;
+        // its shadows are cached in the static layer: redrawn only when it (or another static
+        // caster of the slot) changes, while dynamic casters move over it (docs/rendering/shadows.md)
+        bool staticShadowCaster = false;
+        // runtime: bumped on every change of what it casts that its bounds alone may miss (a
+        // transform, a mesh reload, a buffer or depth texture update): the shadow cache's input
+        uint32_t shadowCasterRevision = 0;
         bool renderInReflectionProbes = true; // when false the mesh is skipped by probe captures
 
+        // authored (saved): transparent drawn when autoTransparency is off
         bool transparent = false;
         bool autoTransparency = true;
+        // set at load with autoTransparency: a submesh draws in the transparent queue. Runtime
+        // only, never saved, so a scene saves the same whether or not it has loaded yet
+        bool derivedTransparent = false;
+        // drawn in the transparent queue (the derived value with autoTransparency, else the
+        // authored one)
+        bool isTransparent() const { return autoTransparency ? derivedTransparent : transparent; }
         // set at load: transparent-queue order (the lowest sortPriority of its blended
         // submeshes), opaque-queue order (the lowest of the others; before the distance)
         // and whether the camera depth pre-pass leaves it out (a forked color shader without
@@ -411,16 +522,37 @@ namespace jasperengine{
 
         CullingMode cullingMode = CullingMode::BACK;
         WindingOrder windingOrder = WindingOrder::CCW;
+        // The winding order already compensates a mirroring transform: a glTF import whose
+        // scene root or node with a negative determinant is placed on the entity transforms
+        // turns windingOrder to CW for it (MeshSystem::loadGLTF). Any other draw whose model
+        // matrix mirrors (negative determinant) reverses the face winding itself, so front faces
+        // stay front: RenderSystem::isMirroredDraw
+        bool mirroredWinding = false;
 
         bool needUpdateAABB = false;
         bool needUpdateBuffer = false;
         bool needReload = false;
+
+        // runtime: content hash of the triangles picking reads (picking/PickGeometry.h), the
+        // key of the shared picking BVH; 0 until a pick computes it, and again whenever the
+        // geometry may have changed (calculateMeshAABB, a dynamic buffer upload)
+        uint64_t pickGeometryHash = 0;
         // the scene's shader environment changed (light cap, fog, lights, scene depth programs:
         // RenderSystem::needReloadMeshVariants): the mesh keeps drawing its loaded variant and
         // reloads once the new variant's shaders are built (needReload then)
         bool needVariantReload = false;
     };
-    
+
+    // the targets weights without a count cover: up to the last non-zero one
+    // (MeshComponent::morphTargetCount)
+    inline int morphWeightsPresentCount(const float* weights){
+        int count = 0;
+        for (int i = 0; i < MAX_MORPHTARGETS; i++){
+            if (weights[i] != 0.0f) count = i + 1;
+        }
+        return count;
+    }
+
 }
 
 #endif //MESH_COMPONENT_H

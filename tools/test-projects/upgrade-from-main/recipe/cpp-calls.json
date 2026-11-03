@@ -1,0 +1,93 @@
+[
+ {
+  "tool": "set_project_settings",
+  "arguments": {
+   "values": {
+    "player.product_name": "Upgrade Cpp"
+   }
+  }
+ },
+ {
+  "tool": "create_scene",
+  "arguments": {
+   "path": "scenes/Main.scene",
+   "name": "Main",
+   "type": "3D"
+  }
+ },
+ {
+  "tool": "close_scene",
+  "arguments": {
+   "scene": "New Scene",
+   "unsaved": "discard"
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Main.scene",
+   "type": "cube",
+   "name": "Target",
+   "position": [
+    0,
+    0.5,
+    0
+   ]
+  }
+ },
+ {
+  "tool": "create_entity",
+  "arguments": {
+   "scene": "scenes/Main.scene",
+   "type": "empty",
+   "name": "Spinner"
+  }
+ },
+ {
+  "tool": "create_script",
+  "arguments": {
+   "kind": "cpp_script",
+   "name": "Spinner",
+   "directory": "scripts",
+   "header_content": "// (c) Eduardo Doria and contributors\n// SPDX-License-Identifier: MIT\n\n// The C++ script fixture of the upgrade test (tools/ci/upgrade_from_main): spins a target,\n// moves its own GameObject, prints the same kind of transcript the Lua game does.\n#pragma once\n\n#include \"ScriptBase.h\"\n#include \"Engine.h\"\n#include \"GameObject.h\"\n#include \"ScriptProperty.h\"\n\nclass Spinner : public jasperengine::ScriptBase {\npublic:\n    DPROPERTY(\"Speed\")\n    float speed = 90.0f;\n\n    DPROPERTY(\"Drift\")\n    jasperengine::Vector3 drift = jasperengine::Vector3(0.5f, 0.0f, 0.0f);\n\n    DPROPERTY(\"Target\")\n    jasperengine::GameObject* target = nullptr;\n\n    DPROPERTY(\"Frames\")\n    int frames = 120;\n\n    Spinner(jasperengine::Scene* scene, jasperengine::Entity entity);\n    virtual ~Spinner();\n\n    void onUpdate();\n    void onPostUpdate();\n\nprivate:\n    int frame = 0;\n    float angle = 0.0f;\n};\n",
+   "source_content": "// (c) Eduardo Doria and contributors\n// SPDX-License-Identifier: MIT\n\n#include \"Spinner.h\"\n#include \"GameObject.h\"\n#include \"Log.h\"\n\nusing namespace jasperengine;\n\nSpinner::Spinner(Scene* scene, Entity entity): ScriptBase(scene, entity) {\n    REGISTER_ENGINE_EVENT(onUpdate);\n    REGISTER_ENGINE_EVENT(onPostUpdate);\n}\n\nSpinner::~Spinner() {\n    UNREGISTER_ENGINE_EVENT(onUpdate);\n    UNREGISTER_ENGINE_EVENT(onPostUpdate);\n}\n\nvoid Spinner::onUpdate() {\n    const float dt = Engine::getDeltatime();\n    angle += speed * dt;\n    if (target) {\n        target->setRotation(Quaternion(angle, Vector3(0, 1, 0)));\n    }\n    GameObject self(getScene(), getEntity());\n    self.setPosition(self.getPosition() + drift * dt);\n}\n\nvoid Spinner::onPostUpdate() {\n    if (frame % 10 == 0 && frame <= frames) {\n        GameObject self(getScene(), getEntity());\n        const Vector3 p = self.getPosition();\n        Log::print(\"T|Cpp|%d|spin|%.3f|(%.3f,%.3f,%.3f)|%s\", frame, angle, p.x, p.y, p.z, target ? \"true\" : \"false\");\n    }\n    if (frame == frames) {\n        Log::print(\"T|Cpp|%d|end\", frame);\n    }\n    frame++;\n}\n",
+   "overwrite": true
+  }
+ },
+ {
+  "tool": "attach_script",
+  "arguments": {
+   "scene": "scenes/Main.scene",
+   "entity": "Spinner",
+   "path": "scripts/Spinner.h"
+  }
+ },
+ {
+  "tool": "set_script_properties",
+  "arguments": {
+   "scene": "scenes/Main.scene",
+   "entity": "Spinner",
+   "values": {
+    "target": "Target",
+    "speed": 120.0
+   }
+  }
+ },
+ {
+  "tool": "edit_build_scenes",
+  "arguments": {
+   "action": "set_start",
+   "scene": "scenes/Main.scene"
+  }
+ },
+ {
+  "tool": "save_scene",
+  "arguments": {
+   "all": true
+  }
+ },
+ {
+  "tool": "save_project",
+  "arguments": {}
+ }
+]

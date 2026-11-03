@@ -81,6 +81,15 @@ namespace {
 
 }
 
+// two arguments as the human-readable command line quotes them (the platform shell's quoting)
+static std::string quotedPair(const std::string& a, const std::string& b){
+#ifdef _WIN32
+    return "\"" + a + "\" \"" + b + "\"";
+#else
+    return "'" + a + "' '" + b + "'";
+#endif
+}
+
 TEST_F(VideoImporterTest, PlayableVideosAreCopied){
     EXPECT_TRUE(VideoImporter::isVideoFile("a.webm"));
     EXPECT_TRUE(VideoImporter::isVideoFile("a.MP4"));
@@ -103,12 +112,12 @@ TEST_F(VideoImporterTest, ConvertsWithFfmpeg){
     EXPECT_TRUE(result.ok) << result.message;
     EXPECT_TRUE(result.converted);
     EXPECT_EQ(result.output, root / "out" / "clip.webm");
-    EXPECT_TRUE(VideoImporter::isPlayable(result.output));
+    EXPECT_TRUE(fs::is_regular_file(result.output));
     EXPECT_FALSE(fs::exists(root / "out" / "clip.mp4")) << "the original is not copied";
     EXPECT_EQ(result.encoder, "libsvtav1");
-    EXPECT_NE(result.command.find("-c:v libsvtav1"), std::string::npos) << result.command;
-    EXPECT_NE(result.command.find("-c:a libopus"), std::string::npos);
-    EXPECT_NE(result.command.find("-f webm"), std::string::npos);
+    EXPECT_NE(result.command.find(quotedPair("-c:v", "libsvtav1")), std::string::npos) << result.command;
+    EXPECT_NE(result.command.find(quotedPair("-c:a", "libopus")), std::string::npos);
+    EXPECT_NE(result.command.find(quotedPair("-f", "webm")), std::string::npos);
     // an existing output is not replaced unless asked
     const VideoImportResult again = VideoImporter::importFile(input(), root / "out", false);
     EXPECT_FALSE(again.ok);
@@ -140,7 +149,7 @@ TEST_F(VideoImporterTest, EncoderPreference){
     const VideoImportResult result = VideoImporter::importFile(input(), root / "out", false);
     EXPECT_TRUE(result.converted);
     EXPECT_EQ(result.encoder, "libaom-av1");
-    EXPECT_NE(result.command.find("-c:v libaom-av1"), std::string::npos);
+    EXPECT_NE(result.command.find(quotedPair("-c:v", "libaom-av1")), std::string::npos);
 }
 
 TEST_F(VideoImporterTest, WithoutFfmpegTheOriginalIsCopiedAndDiagnosed){

@@ -119,6 +119,34 @@ int ShaderData::getAttrIndex(AttributeType type){
         attrstr = "i_terrainnode_resolution";
     }else if (type == AttributeType::SMOOTHNORMAL){
         attrstr = "a_smoothNormal";
+    }else if (type == AttributeType::PARTICLECORNER){
+        attrstr = "a_corner";
+    }else if (type == AttributeType::PARTICLEPOSITION){
+        attrstr = "i_particlePosition";
+    }else if (type == AttributeType::PARTICLECOLOR){
+        attrstr = "i_particleColor";
+    }else if (type == AttributeType::PARTICLESIZE){
+        attrstr = "i_particleSize";
+    }else if (type == AttributeType::PARTICLEROTATIONFRAME){
+        attrstr = "i_particleRotFrame";
+    }else if (type == AttributeType::PARTICLEVELOCITY){
+        attrstr = "i_particleVelocity";
+    }else if (type == AttributeType::PARTICLEROTATION){
+        attrstr = "i_particleRotation";
+    }else if (type == AttributeType::PARTICLECUSTOM){
+        attrstr = "i_particleCustom";
+    }else if (type == AttributeType::VAT_INDEX){
+        attrstr = "a_vatIndex";
+    }else if (type == AttributeType::INSTANCEVAT0){
+        attrstr = "i_vat0";
+    }else if (type == AttributeType::INSTANCEVAT1){
+        attrstr = "i_vat1";
+    }else if (type == AttributeType::LINETANGENTIN){
+        attrstr = "a_tangentIn";
+    }else if (type == AttributeType::LINETANGENTOUT){
+        attrstr = "a_tangentOut";
+    }else if (type == AttributeType::LINEPARAMS){
+        attrstr = "a_lineParams";
     }
 
     if (attrstr.empty()){
@@ -141,6 +169,18 @@ int ShaderData::getAttrIndex(AttributeType type){
     }
 
     return attrIndex;
+}
+
+int ShaderData::getAttrIndexByName(const std::string& name){
+    for (const ShaderStage& stage : stages){
+        if (stage.type != ShaderStageType::VERTEX)
+            continue;
+        for (const ShaderAttr& attribute : stage.attributes){
+            if (attribute.name == name)
+                return attribute.location;
+        }
+    }
+    return -1;
 }
 
 int ShaderData::getUniformBlockIndex(UniformBlockType type){
@@ -184,12 +224,18 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_vs_uiParams";
     }else if (type == UniformBlockType::UI_FS_PARAMS){
         ustr = "u_fs_uiParams";
+    }else if (type == UniformBlockType::UI_FS_TEXT_PARAMS){
+        ustr = "u_fs_textParams";
     }else if (type == UniformBlockType::SPRITE_VS_PARAMS){
         ustr = "u_vs_spriteParams";
     }else if (type == UniformBlockType::POINTS_VS_PARAMS){
         ustr = "u_vs_pointsParams";
     }else if (type == UniformBlockType::LINES_VS_PARAMS){
         ustr = "u_vs_linesParams";
+    }else if (type == UniformBlockType::PARTICLES_VS_PARAMS){
+        ustr = "u_vs_particlesParams";
+    }else if (type == UniformBlockType::PARTICLES_FS_PARAMS){
+        ustr = "u_fs_particlesParams";
     }else if (type == UniformBlockType::VS_SKINNING){
         ustr = "u_vs_skinning";
     }else if (type == UniformBlockType::DEPTH_VS_SKINNING){
@@ -204,6 +250,12 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_vs_lattice";
     }else if (type == UniformBlockType::GBUFFER_VS_LATTICE){
         ustr = "u_vs_lattice";
+    }else if (type == UniformBlockType::VS_VAT){
+        ustr = "u_vs_vat";
+    }else if (type == UniformBlockType::DEPTH_VS_VAT){
+        ustr = "u_vs_vat";
+    }else if (type == UniformBlockType::GBUFFER_VS_VAT){
+        ustr = "u_vs_vat";
     }else if (type == UniformBlockType::TERRAIN_VS_PARAMS){
         ustr = "u_vs_terrainParams";
     }else if (type == UniformBlockType::DEPTH_TERRAIN_VS_PARAMS){
@@ -323,10 +375,20 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_uiTexture";
     }else if (type == TextureShaderType::POINTS){
         texstr = "u_pointsTexture";
+    }else if (type == TextureShaderType::PARTICLES){
+        texstr = "u_particleTexture";
+    }else if (type == TextureShaderType::PARTICLESIXWAYA){
+        texstr = "u_particleSixWayA";
+    }else if (type == TextureShaderType::PARTICLESIXWAYB){
+        texstr = "u_particleSixWayB";
+    }else if (type == TextureShaderType::PARTICLEEMISSION){
+        texstr = "u_particleEmission";
     }else if (type == TextureShaderType::BONES){
         texstr = "u_bonesTexture";
     }else if (type == TextureShaderType::LATTICE){
         texstr = "u_latticeTexture";
+    }else if (type == TextureShaderType::VAT){
+        texstr = "u_vatTexture";
     }else if (type == TextureShaderType::HEIGHTMAP){
         texstr = "u_heightMap";
     }else if (type == TextureShaderType::BLENDMAP){
@@ -357,6 +419,8 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_spotMaskAtlas";
     }else if (type == TextureShaderType::PROBESOURCE){
         texstr = "u_probeSourceTexture";
+    }else if (type == TextureShaderType::SHADOWATLASRAW){
+        texstr = "u_shadowAtlasRaw";
     }
 
     if (texstr.empty()){

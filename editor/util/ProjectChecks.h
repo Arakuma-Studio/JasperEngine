@@ -275,7 +275,7 @@ namespace jasperengine::editor {
         // effect's manifest is checked first (HTMLUI-FX-0014 effect-manifest at its line, no
         // compile then); a compile error is HTMLUI-FX-0015 effect-shader-compile at the .frag
         // line, and the compiled variant is checked against the manifest (its parameter block)
-        static ShaderCheck runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey);
+        static ShaderCheck runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey, ShaderData* built = nullptr);
         // {shader, type, ok, errors, log} (log and errors only on failure); a UI effect adds
         // effect, form (paint/filter) and, on failure, code
         static nlohmann::json toJson(const ShaderCheck& check);
@@ -305,6 +305,18 @@ namespace jasperengine::editor {
         // code "stochastic-no-effect" where a material asks Lit's Stochastic Tiling but it does
         // not apply (no texture, a texture rect, a terrain, a shader with a manifest)
         static std::vector<Finding> stochasticTilingFindings(Project* project);
+
+        // Line and Trail Renderers of the loaded scenes (lines and trails spec 6.8): code
+        // "line-texture-no-uv" where a hairline (no width) draws with a shader that samples a
+        // texture (a hairline has no texture coordinates), "trail-zero-time" where a trail's
+        // Time is 0 (it keeps no point: nothing is drawn)
+        static std::vector<Finding> lineTrailFindings(Project* project);
+
+        // Particle Systems of the loaded scenes (docs/specs/S20-particles.md, Upstream absorption):
+        // "particles-max-exceeded-budget" (warning: an effect whose Max Particles is past a mobile
+        // build's world particle budget, which thins its emission there), "particles-effect-invalid"
+        // (error: an effect that does not compile, so the system draws nothing)
+        static std::vector<Finding> particleFindings(Project* project);
     };
 
 }

@@ -44,7 +44,8 @@ namespace jasperengine::editor::prefabinternal {
                 case PropertyType::Bool: case PropertyType::String: case PropertyType::Float: case PropertyType::Double:
                 case PropertyType::Vector2: case PropertyType::Vector3: case PropertyType::Vector4: case PropertyType::Quat:
                 case PropertyType::Int: case PropertyType::UInt: case PropertyType::Enum: case PropertyType::Entity:
-                case PropertyType::EntityReference:
+                case PropertyType::EntityReference: case PropertyType::Asset: case PropertyType::Shader: case PropertyType::Curve:
+                case PropertyType::Gradient:
                     changed.push_back(name);
                     continue;
                 default:

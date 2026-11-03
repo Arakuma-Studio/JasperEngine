@@ -1,0 +1,153 @@
+formatVersion: 7
+guid: 7c734271a1338c26e76b34070c83450a
+id: 1
+name: Particles
+scene:
+  backgroundColor: [0.05, 0.05, 0.08, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: auto
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 1000
+maxValues:
+  maxSubmeshes: 1
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 128
+shaderKeys:
+  - type: blit
+  - type: particles
+  - type: particles
+    properties: 8
+  - type: particles
+    properties: 512
+  - type: particles
+    properties: 520
+  - type: particles
+    properties: 8
+    customShader: library:particles#BLEND_ADDITIVE
+  - type: particles
+    properties: 520
+    customShader: library:particles#BLEND_ADDITIVE
+  - type: particles
+    customShader: library:particles#BLEND_ALPHA
+  - type: particles
+    properties: 512
+    customShader: library:particles#BLEND_ALPHA
+entities:
+  - type: Entity
+    entity: 1000
+    name: Camera
+    components:
+      transform:
+        position: [0, 1.5, 7]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camera:
+        enabled: true
+        type: camera_perspective
+        cullingMask: 4294967295
+        target: [0, 1, 0]
+        up: [0, 1, 0]
+        leftClip: <view>
+        rightClip: <view>
+        bottomClip: <view>
+        topClip: <view>
+        yfov: 0.75
+        aspect: <view>
+        nearClip: 0.1
+        farClip: 100
+        renderToTexture: false
+        transparentSort: true
+        depthTest: true
+        useTarget: true
+        autoResize: true
+        framebufferWidth: 512
+        framebufferHeight: 512
+        framebufferFilter: linear
+      script:
+        scripts:
+          - type: lua
+            path: ParticlesProbe.lua
+            pathGuid: b10673ca014bc76a3e80175f92a9da1f
+            className: ParticlesProbe
+            enabled: true
+  - type: Entity
+    entity: 1001
+    name: Fire
+    components:
+      transform:
+        position: [-1.5, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      particlesystem:
+        enabled: true
+        inlineEffect: "{\n  \"version\": 1,\n  \"duration\": 3.3333333,\n  \"simulationSpace\": \"world\",\n  \"tickRate\": 60,\n  \"maxParticles\": 200,\n  \"scalingMode\": \"shape\",\n  \"modules\": [\n    {\n      \"type\": \"main\",\n      \"startLifetime\": {\n        \"mode\": \"twoConstants\",\n        \"constant\": 0.5,\n        \"constantMax\": 1.0\n      },\n      \"startSpeed\": 0.0,\n      \"startSize\": {\n        \"mode\": \"twoConstants\",\n        \"constant\": 0.35,\n        \"constantMax\": 0.5\n      }\n    },\n    {\n      \"type\": \"emission\",\n      \"rateOverTime\": 60.0,\n      \"maxPerTick\": 100\n    },\n    {\n      \"type\": \"shape\",\n      \"shape\": \"circle\",\n      \"radius\": 0.25\n    },\n    {\n      \"type\": \"startVelocity\",\n      \"min\": [\n        -0.15,\n        1.0,\n        -0.15\n      ],\n      \"max\": [\n        0.15,\n        2.0,\n        0.15\n      ]\n    },\n    {\n      \"type\": \"colorOverLifetime\",\n      \"color\": {\n        \"mode\": \"gradient\",\n        \"gradient\": {\n          \"colorKeys\": [\n            [\n              0.0,\n              1.0,\n              0.9,\n              0.4\n            ],\n            [\n              1.0,\n              0.35,\n              0.08,\n              0.03\n            ]\n          ],\n          \"alphaKeys\": []\n        }\n      },\n      \"setMode\": true\n    },\n    {\n      \"type\": \"renderer\",\n      \"untexturedShape\": \"square\",\n      \"depthWrite\": true,\n      \"sortMode\": \"byDistance\",\n      \"maxScreenSize\": 10.0\n    }\n  ]\n}\n"
+        playOnAwake: false
+        seed: 0
+        playbackSpeed: 1
+  - type: Entity
+    entity: 1002
+    name: Fire Particles
+    components:
+      action:
+        state: Running
+        speed: 1
+        target: 1001
+        ownedTarget: false
+  - type: Entity
+    entity: 1003
+    name: Sparks
+    components:
+      transform:
+        position: [1.5, 1, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      particlesystem:
+        enabled: true
+        effect: fx/sparks.particles
+        effectGuid: 35b1ecd4f1a6742648196eb6f4b2ae6e
+        playOnAwake: true
+        seed: 0
+        playbackSpeed: 1

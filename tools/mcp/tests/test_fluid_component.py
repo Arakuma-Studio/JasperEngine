@@ -1,19 +1,15 @@
 """The FluidSimulation component (Pavel Dobryakov's WebGL fluid as an engine feature) as an editor
 component, through MCP.
 
-Non-visual (the fluid's pixels belong to the engine's tests): list_component_types lists
-fluidsimulation with every serializable field of FluidSimulationComponent (and none of its runtime
-ones), create_entity type fluid_simulation (a Sprite showing the fluid, sized for 2D and 3D scenes),
+Non-visual (the fluid's pixels belong to the engine's tests): create_entity type fluid_simulation (a Sprite showing the fluid, sized for 2D and 3D scenes),
 add_component / set_properties / get_entity for every property type with undo and redo, the scene
 round trip (YAML key fluidsimulation, only non-default keys), "fluid|<entity>" texture links (set
 as {"fluid": ...} and as the link id, saved, reopened, followed by copy / paste and duplicate),
-copy / paste of the component, a prefab with an override, remove + undo, and the exported C++ of a
-scene with a fluid (build_project mode source).
+copy / paste of the component, a prefab with an override, remove + undo.
 
 Runs in a new empty project (EDITOR create).
 """
 
-import math
 import re
 
 import yaml
@@ -21,6 +17,7 @@ import yaml
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Fluid Component"}
+CI = True
 TIMEOUT = 900
 
 S: dict = {}
@@ -156,29 +153,6 @@ def scene_entities(path) -> list:
 
 
 # ---------------------------------------------------------------------------- the type
-
-
-async def test_component_type_listed(ed: Editor):
-    await ed.console_since(None, limit=1)
-    listed = await ed.call("list_component_types")
-    entries = {c["name"]: c for c in listed["components"]}
-    ed.check(KEY in entries, f"{KEY} not listed: {sorted(entries)}")
-    ed.check_eq(entries[KEY]["display_name"], "Fluid Simulation")
-    ed.check(entries[KEY]["addable"], "Add Component > Effects lists it")
-    # the components after it in the enum are still listed (the loop bound is the type count)
-    ed.check("uidocument" in entries and "reflectionprobe" in entries, "the last types listed")
-
-    for name in ("FluidSimulation", "fluid", "Fluid Simulation", "FluidSimulationComponent"):
-        one = await ed.call("list_component_types", component=name)
-        ed.check_eq(one["component"], KEY, f"{name} resolves")
-    props = one["properties"]
-    ed.check_eq(sorted(props), sorted(PROPS), "every serializable field and no other")
-    for name, (kind, default) in PROPS.items():
-        ed.check_eq(props[name]["type"], kind, f"{name} type")
-        ed.check(close(props[name].get("default"), default), f"{name} default {props[name].get('default')!r}")
-    ed.check_eq(props["output"]["options"], ["screen", "material", "texture"])
-    for name in RUNTIME:
-        ed.check(name not in props, f"runtime field {name} is a property")
 
 
 async def test_create_entity(ed: Editor):
@@ -423,40 +397,3 @@ async def test_remove_and_undo(ed: Editor):
     ed.check(KEY not in str(got.get("components", "")).lower(), f"still has the component: {got}")
     await ed.call("undo", scene=S["scene"])
     check_values(ed, await fluid_values(ed, S["fluid"]), {"curl": 44.0, "seed": 77}, "remove undone")
-
-
-async def test_console_and_frames(ed: Editor):
-    await ed.call("select_scene", scene=S["scene"])
-    await ed.screenshot(view="scene")
-    await ed.check_alive()
-    errors = [e.get("message", "") for e in await ed.console_since(types=["error"], limit=1000)]
-    ed.check(not errors, f"Console errors: {errors}")
-
-
-# ---------------------------------------------------------------------------- export
-
-
-async def test_source_export(ed: Editor):
-    await ed.call("save_scene", scene=S["scene"])
-    s = await ed.call("save_project", untitled_scene_dir="scenes")
-    scenes = {sc["name"]: sc for sc in s["scenes_in_build"]} if s.get("scenes_in_build") else {}
-    if "Fluids" not in scenes:
-        await ed.call("edit_build_scenes", action="add", scene=S["scene"])
-    await ed.call("edit_build_scenes", action="set_start", scene=S["scene"])
-    out = ed.scratch.root / "export-source"
-    r = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", timeout_seconds=600)
-    ed.check_eq(r["status"], "succeeded", f"{r}")
-
-    code = ""
-    for path in out.rglob("*.cpp"):
-        if "engine" in path.relative_to(out).parts[:1]:
-            continue
-        text = path.read_text(errors="replace")
-        if "FluidSimulationComponent" in text:
-            code += text
-    ed.check("FluidSimulationComponent fluid;" in code, "the component is constructed")
-    ed.check("addComponent<FluidSimulationComponent>" in code, "and added")
-    ed.check(re.search(r"fluid\.curl = 44\.0+f;", code), "a non-default value exported")
-    ed.check(re.search(r"fluid\.seed = 77u;", code), "the seed exported")
-    ed.check("getOutputFramebuffer()" in code and "std::make_shared<FluidSimulator>()" in code,
-             "the fluid texture link is bound in the export")

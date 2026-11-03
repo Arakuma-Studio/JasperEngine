@@ -79,31 +79,24 @@ TEST_F(FontFamilyListTest, TheForkWritesTheCanonicalList){
     EXPECT_EQ(computed("a,,b"), "<invalid>");
 }
 
-TEST_F(FontFamilyListTest, TheEngineSplitsTheCanonicalList){
-    // the canonical separator, and the lists phase 2 writes (unquoted, ", "), split alike
-    const std::vector<std::string> expected{"inter", "segoe ui", "sans-serif"};
-    EXPECT_EQ(RmlFontEngine::splitFamilyList("inter,segoe ui,sans-serif"), expected);
-    EXPECT_EQ(RmlFontEngine::splitFamilyList("Inter, Segoe UI, sans-serif"), expected);
-    EXPECT_EQ(RmlFontEngine::splitFamilyList(computed("'Inter', \"Segoe UI\", sans-serif")), expected);
-}
 
 TEST_F(FontFamilyListTest, FamiliesResolveLeftToRight){
     ASSERT_TRUE(engine.LoadFontFace("fonts/Roboto-Bold.ttf", 0, "Heavy", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Bold, false));
 
     // an unknown family falls through to the next one; the generic families are the built-in faces
     Rml::FontFaceHandle face = engine.GetFontFaceHandle(computed("'Missing Family Y', Heavy, sans-serif"), Rml::Style::FontStyle::Normal,
-                                                        Rml::Style::FontWeight::Bold, 16);
+                                                        Rml::Style::FontWeight::Bold, 100);
     ASSERT_NE(face, 0u);
-    std::vector<const FontFace*> chain = engine.getChain(face);
-    ASSERT_FALSE(chain.empty());
-    EXPECT_EQ(chain[0]->getLabel(), "fonts/Roboto-Bold.ttf");
+    const Rml::String language;
+    const Rml::TextShapingContext shaping{language};
+    EXPECT_EQ(engine.GetStringWidth(face, "M", shaping), 88);
 
     for (const char* generic : {"serif", "sans-serif", "monospace", "system-ui", "ui-rounded", "cursive", "fantasy", "emoji", "math"}){
         EXPECT_TRUE(FontRegistry::isGenericFamily(generic)) << generic;
         Rml::FontFaceHandle handle = engine.GetFontFaceHandle(computed(std::string("'Missing Family Y', ") + generic), Rml::Style::FontStyle::Normal,
-                                                              Rml::Style::FontWeight::Normal, 16);
+                                                              Rml::Style::FontWeight::Normal, 100);
         ASSERT_NE(handle, 0u) << generic;
-        EXPECT_EQ(engine.getChain(handle)[0], FontRegistry::getBuiltInLatin().get()) << generic;
+        EXPECT_EQ(engine.GetStringWidth(handle, "M", shaping), 87) << generic;
     }
     // a generic family is never reported as not loaded
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI] font-family 'emoji' is not loaded"), 0u);

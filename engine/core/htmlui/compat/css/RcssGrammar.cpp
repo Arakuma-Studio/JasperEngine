@@ -160,8 +160,12 @@ namespace {
         {"text-align", "kw:left,right,center,justify"},
         {"text-decoration", "kw:none,underline,overline,line-through"},
         {"text-overflow", "kw:clip,ellipsis|string"},
+        // fork S16-F3
+        {"text-rendering", "kw:auto,optimizespeed,optimizelegibility,geometricprecision"},
         {"text-transform", "kw:none,capitalize,uppercase,lowercase"},
         {"top", "kw:auto|length_percent"},
+        // the fork's (engine-gaps G5-4): auto | none | pan-x | pan-y | pan-x pan-y | manipulation
+        {"touch-action", "string"},
         {"transform", "@transform"},
         {"transform-origin", "@origin3"},
         {"transform-origin-x", "kw:left,center,right|length_percent"},

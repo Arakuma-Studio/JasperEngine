@@ -84,6 +84,7 @@ void GameObject::setPosition(Vector3 position){
         transform.position = position;
 
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -112,6 +113,7 @@ void GameObject::setRotation(Quaternion rotation){
         transform.rotation = rotation;
 
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -140,6 +142,7 @@ void GameObject::setScale(Vector3 scale){
         transform.scale = scale;
 
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -161,6 +164,7 @@ void GameObject::setVisible(bool visible){
     if (transform.visible != visible || !visible){
         transform.visible = visible;
         transform.needUpdateChildVisibility = true;
+        markChanged<Transform>();
     }
 }
 
@@ -200,6 +204,7 @@ void GameObject::setBillboardRotation(Quaternion rotation){
     if (transform.billboardRotation != rotation){
         transform.billboardRotation = rotation;
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -250,6 +255,7 @@ void GameObject::setLocalMatrix(Matrix4 localMatrix){
         }
 
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -322,6 +328,17 @@ Rigidbody2D GameObject::getRigidbody2D(){
 void GameObject::removeRigidbody2D(){
     scene->getSystem<PhysicsSystem>()->removeRigidbody2D(entity);
 }
+
+CharacterController2D GameObject::getCharacterController2D(){
+    if (!scene->findComponent<CharacterController2DComponent>(entity))
+        scene->addComponent<CharacterController2DComponent>(entity, {});
+    return CharacterController2D(scene, entity);
+}
+
+void GameObject::removeCharacterController2D(){
+    if (scene->findComponent<CharacterController2DComponent>(entity))
+        scene->removeComponent<CharacterController2DComponent>(entity);
+}
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -333,8 +350,62 @@ Rigidbody GameObject::getRigidbody(){
 void GameObject::removeRigidbody(){
     scene->getSystem<PhysicsSystem>()->removeRigidbody(entity);
 }
+
+CharacterController GameObject::getCharacterController(){
+    if (!scene->findComponent<CharacterControllerComponent>(entity))
+        scene->addComponent<CharacterControllerComponent>(entity, {});
+    return CharacterController(scene, entity);
+}
+
+void GameObject::removeCharacterController(){
+    if (scene->findComponent<CharacterControllerComponent>(entity))
+        scene->removeComponent<CharacterControllerComponent>(entity);
+}
+
+Buoyancy GameObject::getBuoyancy(){
+    if (!scene->findComponent<BuoyancyComponent>(entity))
+        scene->addComponent<BuoyancyComponent>(entity, {});
+    return Buoyancy(scene, entity);
+}
 #endif
 
 Ray GameObject::getRay(Vector3 direction){
     return Ray(getWorldPosition(), direction);
+}
+
+WaterVolume GameObject::getWaterVolume(){
+    if (!scene->findComponent<WaterVolumeComponent>(entity))
+        scene->addComponent<WaterVolumeComponent>(entity, {});
+    return WaterVolume(scene, entity);
+}
+
+Spline GameObject::getSpline(){
+    if (!scene->findComponent<SplineComponent>(entity))
+        scene->addComponent<SplineComponent>(entity, {});
+    return Spline(scene, entity);
+}
+
+SplineExtrude GameObject::getSplineExtrude(){
+    if (!scene->findComponent<SplineComponent>(entity))
+        scene->addComponent<SplineComponent>(entity, {});
+    // the chunks' material and shadows are the GameObject's Mesh
+    if (!scene->findComponent<MeshComponent>(entity))
+        scene->addComponent<MeshComponent>(entity, {});
+    if (!scene->findComponent<SplineExtrudeComponent>(entity))
+        scene->addComponent<SplineExtrudeComponent>(entity, {});
+    return SplineExtrude(scene, entity);
+}
+
+SplineInstantiate GameObject::getSplineInstantiate(){
+    if (!scene->findComponent<SplineComponent>(entity))
+        scene->addComponent<SplineComponent>(entity, {});
+    if (!scene->findComponent<SplineInstantiateComponent>(entity))
+        scene->addComponent<SplineInstantiateComponent>(entity, {});
+    return SplineInstantiate(scene, entity);
+}
+
+SplineAnimate GameObject::getSplineAnimate(){
+    if (!scene->findComponent<SplineAnimateComponent>(entity))
+        scene->addComponent<SplineAnimateComponent>(entity, {});
+    return SplineAnimate(scene, entity);
 }

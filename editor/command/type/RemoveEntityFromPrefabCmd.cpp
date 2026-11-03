@@ -15,6 +15,9 @@ editor::RemoveEntityFromPrefabCmd::RemoveEntityFromPrefabCmd(Project* project, u
 }
 
 bool editor::RemoveEntityFromPrefabCmd::execute(){
+    if (subject.empty()){
+        subject = CommandNames::entity(project, sceneId, entity);
+    }
     recovery = project->removeEntityFromPrefab(sceneId, entity, false);
 
     bool result = !recovery.empty();

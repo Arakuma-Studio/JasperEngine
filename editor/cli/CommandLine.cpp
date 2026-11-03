@@ -1,7 +1,13 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "media/VideoFormats.h"
+#include "media/VideoSourceFactory.h"
 #include "CommandLine.h"
+#include "log/Logger.h"
+#include "io/AtomicFile.h"
+#include "navigation/NavigationEditor.h"
+#include "util/FileUtils.h"
 
 #include "AppSettings.h"
 #include "JasperEngine.h"
@@ -13,6 +19,7 @@
 #include "Stream.h"
 #include "Factory.h"
 #include "Catalog.h"
+#include "command/CommandHistory.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/AddEntityToPrefabCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -38,15 +45,32 @@
 #include "command/type/PasteEntitiesCmd.h"
 #include "util/EntityClipboard.h"
 #include "util/EntityPath.h"
+#include "asset/AssetRefEditor.h"
+#include "asset/AssetFileWrite.h"
+#include "json.hpp"
 #include "util/ProjectChecks.h"
+#include "subsystem/RenderSystem.h"
+#include "subsystem/TransformPropagation.h"
+#include "texture/TextureCli.h"
+#include "texture/TextureCookQueue.h"
+#include "util/EditorScripts.h"
 #include "htmlui/HtmlUiImportCli.h"
 #include "texsynth/SynthesisCli.h"
+#include "spritenormals/SpriteNormalsCheck.h"
+#include "spritenormals/SpriteNormalsCli.h"
 #include "physics/PlacementCli.h"
+#include "vat/VatCli.h"
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Util.h"
+#include "animation/AnimationClipIO.h"
+#include "animation/AnimatorAssetIO.h"
+#include "animation/ModelSubClips.h"
+#include "json.hpp"
+#include "tiny_gltf.h"
 #include "imgui.h"
+#include "yaml-cpp/yaml.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -62,6 +86,7 @@
 #include "shader/ShaderLibraryDoc.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "unity/UnityParticleImport.h"
 
 #include <algorithm>
 #include <cctype>
@@ -75,6 +100,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #if defined(_WIN32)
@@ -110,6 +136,8 @@ struct ExportCliOptions {
     std::vector<std::string> shaderSpecs;   // as given: expanded again once the engine (and project) is up
     bool help = false;
     bool listScenes = false;
+    bool allowMissingAssets = false;
+    bool developmentBuild = false;
 };
 
 struct ShaderCliOptions {
@@ -247,17 +275,38 @@ static void printMainUsage(const std::string& commandName) {
         << "Usage:\n"
         << "  " << commandName << "                          Open the editor.\n"
         << "  " << commandName << " export [options]         Export a project.\n"
+        << "  " << commandName << " build [options]          Build a game for a platform (a prebuilt player, or from source).\n"
+        << "  " << commandName << " players list|install|download|remove  The prebuilt player runtimes.\n"
+        << "  " << commandName << " publish <action>         Prepare, verify and ship releases (Steam, Steam Deck).\n"
+        << "  " << commandName << " reflect --emit-runtime-fields <file>  The cooked scenes' field tables (engine development).\n"
         << "  " << commandName << " shaders [options]        Generate shaders.\n"
         << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
-        << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts and HTML/CSS UI (compiler-style).\n"
+        << "  " << commandName << " merge-scene <base> <ours> <theirs> <path>  Git merge driver for scenes and prefabs.\n"
+        << "  " << commandName << " scene-diff <old> <new> [--json]  Semantic diff of two scenes or prefabs.\n"
+        << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts, HTML/CSS UI, clips, vertex animations and normal maps (compiler-style).\n"
+        << "  " << commandName << " assets check|migrate     Missing asset references (JSON); rewrite references with GUIDs.\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
         << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
         << "  " << commandName << " place-physics [options]  Drop, separate or move GameObjects with edit-time physics.\n"
+        << "  " << commandName << " bake-vat [options]       Bake a Vertex Animation (.vat) from a model, clips or GameObject, or import one.\n"
+        << "  " << commandName << " import-unity-particles <file> [options]  Import Unity Particle Systems as engine prefabs.\n"
+        << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
+        << "  " << commandName << " call [options] <tool> ...  Run one MCP tool of an editor from the shell.\n"
+        << "  " << commandName << " batch [options] < calls  Run MCP tool calls from stdin (one JSON per line).\n"
+        << "  " << commandName << " list-tools [options]     List the MCP tools (--json: their definitions).\n"
+        << "  " << commandName << " editors [--json]         List the running editors that serve MCP over HTTP.\n"
         << "  " << commandName << " --mcp-port <port>        Open the editor with the MCP server on HTTP.\n\n"
+        << "Profiler (with the editor, mcp or --mcp-port):\n"
+        << "  --profile                  Record from the start (Window > Analysis > Profiler).\n"
+        << "  --profile-capture <path>   Capture frames once the scenes are loaded, write a .jetrace.json.\n"
+        << "  --profile-frames <n>       Frames of that capture (1 to 600). Default: 300.\n\n"
+        << "With any of them (and the env JASPER_FILE_WATCHER; the flag wins):\n"
+        << "  --file-watcher=auto|native|polling|off   How the editor finds files changed on disk (default: the\n"
+        << "                                           Asset Pipeline preference, auto).\n\n"
         << "Run a subcommand with --help for its options.\n";
 }
 
@@ -275,6 +324,8 @@ static void printUsage(const std::string& commandName) {
         << "      --shader <spec>         Shader type and optional properties, e.g. mesh:Uv1,Nor. Can repeat.\n"
         << "                              UI effects: uieffect/<name>[:Flt] (Flt: the filter form), uieffect/all.\n"
         << "      --list-scenes           Print project scenes and exit.\n"
+        << "      --allow-missing-assets  Export even when the build references missing assets.\n"
+        << "      --development-build     A Development Build: the profiler and --profile in a Release game.\n"
         << "  -h, --help                  Show this help.\n\n"
         << "--project and --out are absolute or relative to the current directory; --assets and --lua\n"
         << "are relative to the project (as in project.yaml).\n"
@@ -296,10 +347,19 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --warmup <n>       Warmup frames after resources load. Default: 90.\n"
         << "      --mesh-lod <on|off>      Override the scene's mesh LOD setting.\n"
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
+        << "      --lit-quality <standard|high> Override the scene's Lit Quality.\n"
+        << "      --play             Measure the scene playing (Play: scripts, animation, physics run)\n"
+        << "                         as the Game view draws it, instead of the Scene view in edit mode.\n"
         << "      --name <label>     Label written into the JSON result.\n"
         << "      --out <path>       Write JSON to this file in addition to stdout.\n"
+        << "      --ui-stats         Add the scene's HTML UI statistics (draws, merged runs, stencil draws,\n"
+        << "                         glyph atlas, ...), averaged over the measured frames, as \"htmlUi\".\n"
+        << "      --gpu-passes       Time every GPU pass of the measured frames: \"gpu\" in the JSON, with\n"
+        << "                         the frame's and each pass label's median/p95/mean ms (docs/profiling.md).\n"
+        << "      --profile-capture <path>  Write a .jetrace.json profiler capture of the measured frames.\n"
+        << "      --profile          Record the measured frames in the profiler (its overhead included).\n"
         << "  -h, --help             Show this help.\n\n"
-        << "--project and --out are absolute or relative to the current directory.\n"
+        << "--project, --out and --profile-capture are absolute or relative to the current directory.\n"
         << "Vsync is forced off. The scene camera is used for the capture.\n";
 }
 
@@ -370,6 +430,10 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
             options.shaderSpecs.push_back(value);
         } else if (arg == "--list-scenes") {
             options.listScenes = true;
+        } else if (arg == "--allow-missing-assets") {
+            options.allowMissingAssets = true;
+        } else if (arg == "--development-build") {
+            options.developmentBuild = true;
         } else {
             error = "Unknown argument: " + arg;
             return false;
@@ -594,8 +658,10 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     ShaderPool::setShaderBuilder([projectPtr = &project](ShaderKey shaderKey) -> ShaderBuildResult {
         static ShaderBuilder builder;
         return builder.buildShader(shaderKey, projectPtr);
-    });
+    }, &ShaderBuilder::getRunningBuildCount);
 
+    // exports and benchmarks run next to an open editor (CI, a terminal): they take no lock
+    project.setSkipProjectLock(true);
     if (!project.loadProject(options.projectPath, false)) {
         return 1;
     }
@@ -611,6 +677,8 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     config.luaDir    = options.luaDir.empty()    ? project.getLuaDir()    : options.luaDir;
     config.startSceneId = resolveStartSceneId(project, options.startScene);
     config.packNativeResources = project.shouldPackNativeResources();
+    config.allowMissingAssets = options.allowMissingAssets;
+    config.developmentBuild = options.developmentBuild;
     config.selectedBackends   = options.backends;
     expandShaderSpecsAgain(options.shaderSpecs, options.shaderKeys);
     config.shaderKeysOverride = options.shaderKeys;
@@ -644,16 +712,21 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
 // Markdown reference (ShaderLibraryDoc) instead.
 static int runLibraryShaderMatrix(const ShaderCliOptions& options, const std::string& commandName) {
     std::vector<std::string> names;
+    // the built-in Lit's own matrix (its extended lobes, hex tiling, Lit Quality): with all, or by name
+    bool builtinLit = false;
     for (const std::string& requested : options.libraryShaders) {
         if (requested == "all") {
             for (const std::string& name : ShaderManifests::getLibraryShaderNames()) names.push_back(name);
+            builtinLit = true;
+        } else if (requested == ShaderLibraryMatrix::BUILTIN_LIT_NAME) {
+            builtinLit = true;
         } else {
             names.push_back(requested);
         }
     }
     std::sort(names.begin(), names.end());
     names.erase(std::unique(names.begin(), names.end()), names.end());
-    if (names.empty()) {
+    if (names.empty() && !builtinLit) {
         std::cerr << commandName << " shaders: this build has no library shader\n";
         return 1;
     }
@@ -683,8 +756,11 @@ static int runLibraryShaderMatrix(const ShaderCliOptions& options, const std::st
     const std::vector<ShaderBackend> backends(options.backends.begin(), options.backends.end());
     bool failed = false;
     size_t totalCompiled = 0;
+    if (builtinLit)
+        names.push_back(ShaderLibraryMatrix::BUILTIN_LIT_NAME);
     for (const std::string& name : names) {
-        const ShaderLibraryMatrix::Result result = ShaderLibraryMatrix::run(name, backends);
+        const ShaderLibraryMatrix::Result result = name == ShaderLibraryMatrix::BUILTIN_LIT_NAME
+            ? ShaderLibraryMatrix::runBuiltinLit(backends) : ShaderLibraryMatrix::run(name, backends);
         bool errors = result.failed > 0;
         for (const ShaderLibraryMatrix::Problem& problem : result.problems) {
             std::cerr << problem.file << ":" << problem.line << ": " << (problem.error ? "error" : "warning") << ": " << problem.message << "\n";
@@ -762,6 +838,9 @@ int CommandLine::runBenchmarkHelp(const char* executableName) {
 
 
 // ---- scene-dump: a developer check of what loading a project gives ----
+
+// --allow-data-loss: saves of scenes that did not load completely are written anyway
+static DegradedSavePolicy sceneDumpSavePolicy = DegradedSavePolicy::Refuse;
 //
 // Loads every scene of a project headless and writes, per scene, every GameObject by its
 // hierarchy path (names, and an index among same-named siblings): name, state, parent and
@@ -769,7 +848,38 @@ int CommandLine::runBenchmarkHelp(const char* executableName) {
 // link. Two dumps of the same project (an older and a newer editor, or before and after a
 // save) compare GameObject by GameObject. --save saves every scene (and so the modified
 // prefabs) after the dump.
-static void writeSceneDump(Project& project, const fs::path& outPath) {
+// --world: every GameObject's world values after the transform pass the first frame runs
+// (RenderSystem's propagation), so dumps of two editors compare what loading gives, whatever
+// the files hold of the derived values (docs/specs/S29-version-control.md AC16)
+static YAML::Node worldValues(const Transform& transform) {
+    auto vector = [](std::initializer_list<float> values) {
+        YAML::Node node(YAML::NodeType::Sequence);
+        node.SetStyle(YAML::EmitterStyle::Flow);
+        for (float value : values) node.push_back(value);
+        return node;
+    };
+    YAML::Node node;
+    node["position"] = vector({transform.worldPosition.x, transform.worldPosition.y, transform.worldPosition.z});
+    node["rotation"] = vector({transform.worldRotation.w, transform.worldRotation.x, transform.worldRotation.y, transform.worldRotation.z});
+    node["scale"] = vector({transform.worldScale.x, transform.worldScale.y, transform.worldScale.z});
+    YAML::Node matrix(YAML::NodeType::Sequence);
+    matrix.SetStyle(YAML::EmitterStyle::Flow);
+    for (int column = 0; column < 4; column++) {
+        for (int row = 0; row < 4; row++) matrix.push_back(transform.modelMatrix[column][row]);
+    }
+    node["modelMatrix"] = matrix;
+    return node;
+}
+
+static void writeSceneDump(Project& project, const fs::path& outPath, bool world = false) {
+    if (world) {
+        for (SceneProject* sceneProjectPtr : project.getScenesAndPrefabStages()) {
+            Scene* scene = sceneProjectPtr->scene;
+            RenderSystem* render = scene ? scene->getSystem<RenderSystem>().get() : nullptr;
+            if (!render) continue;
+            propagateTransforms(*scene, [render](Transform& transform, Entity entity) { render->updateTransform(transform, entity); });
+        }
+    }
     YAML::Emitter out;
     out << YAML::BeginMap << YAML::Key << "scenes" << YAML::Value << YAML::BeginSeq;
     // the scenes, then the open prefab stages (Prefab Mode), named after their asset
@@ -791,6 +901,9 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
             if (Transform* transform = scene->findComponent<Transform>(entity)) parent = transform->parent;
             node["parent"] = parent != NULL_ENTITY ? EntityPath::of(scene, parent, &paths) : std::string();
             node["components"] = Stream::encodeComponents(entity, scene, scene->getSignature(entity));
+            if (world) {
+                if (const Transform* transform = scene->findComponent<Transform>(entity)) node["world"] = worldValues(*transform);
+            }
             for (ComponentType type : Catalog::findComponents(scene, entity)) {
                 for (auto& [name, property] : Catalog::findEntityProperties(scene, entity, type)) {
                     if (!property.ref) continue;
@@ -842,8 +955,12 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
     if (outPath.empty()) {
         std::cout << out.c_str() << "\n";
     } else {
-        std::ofstream file(outPath);
-        file << out.c_str() << "\n";
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        const io::WriteResult written = io::writeFileAtomic(outPath, std::string(out.c_str()) + "\n", options);
+        if (!written.ok()) {
+            std::cerr << "scene-dump: could not write " << outPath.string() << ": " << io::describeWriteError(written) << "\n";
+        }
     }
 }
 
@@ -929,9 +1046,8 @@ static EntityCreationType creationKind(const YAML::Node& op) {
 }
 
 static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
-    std::vector<std::unique_ptr<Command>> done;
-    std::vector<std::unique_ptr<Command>> undone;
-    size_t playFloor = 0;
+    // the editor's own history: its merges, no-op drops, groups and play floor
+    CommandHistory history(NULL_PROJECT_SCENE);
     static const std::map<std::string, PrefabOverrideCmd::Operation> operations = {
         {"recordProperty", PrefabOverrideCmd::Operation::RecordProperty}, {"revertProperty", PrefabOverrideCmd::Operation::RevertProperty},
         {"applyProperty", PrefabOverrideCmd::Operation::ApplyProperty}, {"recordState", PrefabOverrideCmd::Operation::RecordState},
@@ -944,20 +1060,21 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
         const std::string name = op["op"].as<std::string>();
         std::cout << "op " << name << (op["entity"] ? " " + op["entity"].as<std::string>() : std::string()) << "\n";
         auto runCommand = [&](Command* command) {
-            std::unique_ptr<Command> owned(command);
-            if (!owned->execute()) {
+            if (!history.addCommandNoMerge(command)) {
                 std::cout << "  (failed)\n";
-                return;
             }
-            done.push_back(std::move(owned));
-            undone.clear();
         };
         if (name == "save") {
+            // a save refused (one that would lose a GameObject) fails the run
+            bool saved = true;
             for (SceneProject& sceneProject : project.getScenes()) {
-                if (sceneProject.scene && !sceneProject.filepath.empty()) {
-                    project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false);
+                if (sceneProject.scene && !sceneProject.filepath.empty() &&
+                        !project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false, sceneDumpSavePolicy)) {
+                    std::cout << "  (scene " << sceneProject.name << " not saved)\n";
+                    saved = false;
                 }
             }
+            if (!saved) return false;
             continue;
         }
         if (name == "dump") {
@@ -986,7 +1103,13 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             for (SceneProject& played : project.getScenes()) {
                 if (!played.scene || (op["scene"] && played.name != op["scene"].as<std::string>())) continue;
                 if (name == "playStart") {
-                    played.playStateSnapshot = Stream::encodeSceneProject(nullptr, &played);
+                    // Play does not start on a snapshot that would lose a GameObject
+                    try {
+                        played.playStateSnapshot = Stream::encodeSceneProject(nullptr, &played);
+                    } catch (const std::exception& e) {
+                        Out::error("Failed to start scene: %s", e.what());
+                        return false;
+                    }
                     played.playPrefabState = project.capturePlayPrefabState(&played);
                     const std::vector<Entity> alive = played.scene->getEntityList();
                     played.playStateEntities = std::set<Entity>(alive.begin(), alive.end());
@@ -1001,10 +1124,9 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             }
             // Stop drops what was done while playing from the history
             if (name == "playStart") {
-                playFloor = done.size();
+                history.beginPlaySession();
             } else {
-                while (done.size() > playFloor) done.pop_back();
-                undone.clear();
+                history.endPlaySession(true);
             }
             continue;
         }
@@ -1038,18 +1160,19 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             continue;
         }
         if (name == "undo") {
-            if (!done.empty()) {
-                done.back()->undo();
-                undone.push_back(std::move(done.back()));
-                done.pop_back();
-            }
+            history.undo();
             continue;
         }
         if (name == "redo") {
-            if (!undone.empty()) {
-                undone.back()->execute();
-                done.push_back(std::move(undone.back()));
-                undone.pop_back();
+            history.redo();
+            continue;
+        }
+        if (name == "history") {
+            // the steps, oldest first: "id name", the redo tail marked
+            const std::vector<const UndoEntry*> entries = history.entries();
+            for (size_t i = 0; i < entries.size(); i++) {
+                std::cout << "  " << entries[i]->info.id << " " << entries[i]->name()
+                          << (i < history.appliedCount() ? "" : " (redo)") << "\n";
             }
             continue;
         }
@@ -1058,9 +1181,8 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             const fs::path out = resolveOpsPath(op["out"].as<std::string>());
             fs::create_directories(out);
             for (const auto& [path, baked] : project.bakePrefabsForExport()) {
-                std::ofstream file(out / (Factory::prefabToFileName(path) + ".cpp"));
-                file << Factory::createPrefab(path, *baked, project.getProjectPath(), out,
-                    [&project](const fs::path& p) { return project.getPrefabGuid(p); });
+                FileUtils::writeFile(out / (Factory::prefabToFileName(path) + ".cpp"), Factory::createPrefab(path, *baked, project.getProjectPath(), out,
+                    [&project](const fs::path& p) { return project.getPrefabGuid(p); }));
             }
             continue;
         }
@@ -1325,6 +1447,8 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                     case PropertyType::Int: command->addPropertyCmd<int>(&project, id, target, type, property, value.as<int>()); break;
                     case PropertyType::UInt: command->addPropertyCmd<unsigned int>(&project, id, target, type, property, value.as<unsigned int>()); break;
                     case PropertyType::String: command->addPropertyCmd<std::string>(&project, id, target, type, property, value.as<std::string>()); break;
+                    case PropertyType::Asset: command->addPropertyCmd<AssetRef>(&project, id, target, type, property, AssetRef(value.as<std::string>())); break;
+                    case PropertyType::Shader: command->addPropertyCmd<ShaderRef>(&project, id, target, type, property, ShaderRef(value.as<std::string>())); break;
                     case PropertyType::Vector3: command->addPropertyCmd<Vector3>(&project, id, target, type, property,
                         Vector3(value[0].as<float>(), value[1].as<float>(), value[2].as<float>())); break;
                     case PropertyType::Vector4: command->addPropertyCmd<Vector4>(&project, id, target, type, property,
@@ -1588,15 +1712,25 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     fs::path outPath;
     fs::path opsPath;
     bool save = false;
+    bool allowDataLoss = false;
+    bool ignoreLock = false;
+    bool world = false;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if ((arg == "--project" || arg == "-p") && i + 1 < argc) projectArg = CommandLine::projectArgPath(argv[++i]);
+        else if (arg == "--world") world = true;
         else if ((arg == "--out" || arg == "-o") && i + 1 < argc) outPath = CommandLine::absoluteArgPath(argv[++i]);
         else if (arg == "--ops" && i + 1 < argc) opsPath = CommandLine::absoluteArgPath(argv[++i]);
         else if (arg == "--save") save = true;
+        else if (arg == "--allow-data-loss") allowDataLoss = true;
+        else if (arg == "--ignore-lock") ignoreLock = true;
         else {
             std::cerr << commandName << " scene-dump --project <dir|project.yaml> [--out <file>] [--ops <file>] [--save]\n"
-                      << "(paths absolute or relative to the current directory)\n";
+                      << "    [--allow-data-loss] [--ignore-lock] [--world]\n"
+                      << "--world adds each GameObject's world position, rotation, scale and model matrix after the transform pass\n"
+                      << "(paths absolute or relative to the current directory)\n"
+                      << "--save refuses (exit 4) to write a scene that did not load completely unless --allow-data-loss;\n"
+                      << "a project another editor has open fails (exit 3, project_locked) unless --ignore-lock.\n";
             return 2;
         }
     }
@@ -1616,7 +1750,18 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
+    // a dump only reads: only a writer takes the project's lock (R10), and only a writer
+    // upgrades files to GUIDs (prefabs, clips): an analysis changes no project file
+    const bool writes = save || !opsPath.empty();
+    project.setSkipProjectLock(!writes);
+    project.setReadOnlyAssets(!writes);
+    project.setIgnoreProjectLock(ignoreLock);
+    sceneDumpSavePolicy = allowDataLoss ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse;
     if (!project.loadProject(projectArg, false)) {
+        if (project.wasProjectLocked()) {
+            std::cerr << "scene-dump: project_locked: " << project.getProjectLockMessage() << " (--ignore-lock opens it anyway)\n";
+            return 3;
+        }
         return 1;
     }
 
@@ -1626,22 +1771,313 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
             project.loadScene(scenes[i].filepath, false, false, true);
         }
     }
+    // the load report of every scene, on stderr (R39)
+    for (const SceneProject& sceneProject : scenes) {
+        for (const LoadIssue& issue : sceneProject.loadReport.issues) {
+            std::cerr << issue.consoleLine() << "\n";
+        }
+    }
 
     sceneDumpOpsDir = opsPath.empty() ? fs::path() : opsPath.parent_path();
     if (!opsPath.empty() && !runSceneDumpOps(project, YAML::LoadFile(opsPath.string()))) {
         return 1;
     }
 
-    writeSceneDump(project, outPath);
+    writeSceneDump(project, outPath, world);
 
     if (save) {
+        bool refused = false;
+        bool failed = false;
         for (SceneProject& sceneProject : scenes) {
             if (sceneProject.scene && !sceneProject.filepath.empty()) {
-                project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false);
+                SaveResult result = SaveResult::Failed;
+                if (project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false, sceneDumpSavePolicy, &result)) {
+                    continue;
+                }
+                if (result == SaveResult::RefusedDegraded) {
+                    std::cerr << "scene-dump: not saved: " << sceneProject.filepath.generic_string() << " did not load completely "
+                              << "(--allow-data-loss writes it anyway)\n";
+                    refused = true;
+                } else {
+                    // written nowhere (the console says why: a GameObject it would lose, a write error)
+                    std::cerr << "scene-dump: not saved: " << sceneProject.filepath.generic_string() << "\n";
+                    failed = true;
+                }
             }
+        }
+        if (refused) {
+            return 4;
+        }
+        if (failed) {
+            return 1;
         }
     }
     return 0;
+}
+
+// ---- assets: asset identity from a shell or CI (docs/specs/S04-asset-identity.md R32) ----
+//
+//   assets check --project P     the missing references, the ones resolved only by path and the
+//                                orphan metas, as JSON on stdout; exit code 1 when any is missing
+//   assets migrate --project P   rewrites every scene, prefab, material and project.yaml with the
+//                                GUIDs of what they reference (idempotent: a second run writes nothing)
+
+// assets bench (developer, tools/performance/assetdb_bench.py): the asset database and the
+// dependency index alone on a project, timed in milliseconds as JSON: a cold open (no cache),
+// the full index, a warm open, one referrer's incremental update, find_references, resolution
+static int runAssetsBench(const fs::path& projectArg) {
+    using Json = nlohmann::json;
+    using Clock = std::chrono::steady_clock;
+    auto ms = [](Clock::time_point since) {
+        return std::chrono::duration<double, std::milli>(Clock::now() - since).count();
+    };
+    const fs::path project = fs::is_regular_file(projectArg) ? projectArg.parent_path() : projectArg;
+    std::string assetsDir = "assets";
+    try {
+        const YAML::Node root = YAML::LoadFile((project / "project.yaml").string());
+        if (root["assetsDir"]) assetsDir = root["assetsDir"].as<std::string>();
+    } catch (const std::exception&) {
+    }
+    const AssetIndex::Roots roots{assetsDir, assetsDir};
+    Json result;
+    std::error_code ec;
+    {
+        // the identity pass with no cache (the metas exist: the project was opened before)
+        fs::remove_all(project / ".jasperengine" / "assetdb", ec);
+        AssetDatabase database;
+        database.setBackgroundHashing(false);
+        Clock::time_point start = Clock::now();
+        database.open(project, assetsDir);
+        result["cold_identity_ms"] = ms(start);
+        AssetIndex index;
+        start = Clock::now();
+        index.open(&database, project, roots);
+        index.waitUntilReady();
+        result["cold_index_ms"] = ms(start);
+        result["assets"] = database.assetCount();
+        index.close();
+    }
+    AssetDatabase database;
+    database.setBackgroundHashing(false);
+    Clock::time_point start = Clock::now();
+    database.open(project, assetsDir);
+    result["warm_open_ms"] = ms(start);
+    AssetIndex index;
+    start = Clock::now();
+    index.open(&database, project, roots);
+    index.waitUntilReady();
+    result["warm_index_ms"] = ms(start);
+
+    // the poll with nothing changed: the walk (a background thread in the editor) and what the
+    // main thread does with it (R23)
+    start = Clock::now();
+    const AssetDatabase::DiskScan scan = database.scanDisk();
+    result["poll_walk_ms"] = ms(start);
+    start = Clock::now();
+    database.refresh(scan);
+    result["poll_apply_ms"] = ms(start);
+
+    // one referrer edited and saved: its entry and its edges are updated (the save's path, and
+    // what an S05 watcher event does); the YAML parse is part of it
+    std::string referrer;
+    Guid referrerGuid;
+    database.forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        if (referrer.empty() && info.type == AssetType::Scene) {
+            referrer = info.path;
+            referrerGuid = info.guid;
+        }
+    });
+    if (!referrer.empty()) {
+        std::string text;
+        assetio::readFile(project / referrer, text);
+        assetio::writeFile(project / referrer, text + "\n", assetio::Durability::Cache);
+        fs::last_write_time(project / referrer, fs::last_write_time(project / referrer) + std::chrono::seconds(2));
+        // as in the editor: the cache is written by the background thread, not by the save
+        database.setBackgroundHashing(true);
+        start = Clock::now();
+        database.registerAsset(project / referrer, referrerGuid.str());
+        index.updateReferrer(referrer);
+        result["single_update_ms"] = ms(start);
+        // the same through a full refresh (the poll finding it)
+        assetio::writeFile(project / referrer, text, assetio::Durability::Cache);
+        fs::last_write_time(project / referrer, fs::last_write_time(project / referrer) + std::chrono::seconds(4));
+        start = Clock::now();
+        index.update(database.refresh());
+        result["refresh_update_ms"] = ms(start);
+    }
+
+    // Find References of the most referenced asset
+    std::vector<AssetDatabase::AssetInfo> assets;
+    database.forEachAsset([&](const AssetDatabase::AssetInfo& info) { assets.push_back(info); });
+    double worst = 0.0;
+    size_t found = 0;
+    for (size_t i = 0; i < assets.size() && i < 200; i++) {
+        start = Clock::now();
+        found += index.referencesTo(assets[i].guid, assets[i].path, true, 500).size();
+        worst = std::max(worst, ms(start));
+    }
+    result["find_references_worst_ms"] = worst;
+    result["references_found"] = found;
+
+    // resolution: a hash map lookup
+    const size_t rounds = 1000000;
+    start = Clock::now();
+    size_t hits = 0;
+    for (size_t i = 0; i < rounds; i++) {
+        hits += database.resolve(assets[i % assets.size()].guid, std::string(), AssetType::Unknown, false).found();
+    }
+    result["resolve_ns"] = ms(start) * 1.0e6 / static_cast<double>(rounds);
+    result["resolved"] = hits;
+    index.close();
+    std::cout << result.dump(2) << "\n";
+    return 0;
+}
+
+static int runAssets(int argc, char** argv, const std::string& commandName) {
+    using Json = nlohmann::json;
+    const std::string usage = commandName + " assets check|migrate --project <dir|project.yaml>\n"
+                              "(paths absolute or relative to the current directory)\n";
+    if (argc >= 4 && std::string(argv[1]) == "bench" && (std::string(argv[2]) == "--project" || std::string(argv[2]) == "-p")) {
+        return runAssetsBench(CommandLine::projectArgPath(argv[3]));
+    }
+    if (argc < 2 || (std::string(argv[1]) != "check" && std::string(argv[1]) != "migrate")) {
+        std::cerr << usage;
+        return 2;
+    }
+    const std::string action = argv[1];
+    fs::path projectArg;
+    for (int i = 2; i < argc; i++) {
+        const std::string arg = argv[i];
+        if ((arg == "--project" || arg == "-p") && i + 1 < argc) {
+            projectArg = CommandLine::projectArgPath(argv[++i]);
+        } else {
+            std::cerr << usage;
+            return 2;
+        }
+    }
+    if (projectArg.empty()) {
+        std::cerr << commandName << " assets: --project is required\n";
+        return 2;
+    }
+
+    EditorHostOverrideGuard hostOverride(nullptr);
+    Out::setConsoleWindow(nullptr);
+    AppSettings::initialize();
+
+    Project project;
+    auto platform = std::make_unique<Platform>(&project);
+    Engine::systemInit(argc, argv, platform.get());
+    EngineRuntimeGuard engineRuntime;
+    Engine::pauseGameEvents(true);
+    Engine::setAsyncLoading(false);
+
+    if (!project.loadProject(projectArg, false)) {
+        return 1;
+    }
+    project.getAssetIndex().waitUntilReady();
+
+    if (action == "migrate") {
+        std::vector<std::string> files;
+        project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+            if (info.type == AssetType::Scene || info.type == AssetType::Prefab || info.type == AssetType::Material) {
+                files.push_back(info.path);
+            }
+        });
+        std::sort(files.begin(), files.end());
+        files.push_back("project.yaml");
+        Json written = Json::array();
+        int failures = 0;
+        for (const std::string& file : files) {
+            bool changed = false;
+            std::string error;
+            if (!AssetRefEditor::migrateFile(project, file, changed, error)) {
+                std::cerr << error << "\n";
+                failures++;
+            } else if (changed) {
+                written.push_back(file);
+            }
+        }
+        std::cout << Json{{"files_written", written}, {"checked", files.size()}}.dump(2) << "\n";
+        return failures > 0 ? 1 : 0;
+    }
+
+    MissingAssetTracker& tracker = project.getMissingAssets();
+    tracker.update(project.getAssetDatabase(), project.getAssetIndex(), true);
+    auto referrerJson = [](const MissingAssetTracker::Referrer& referrer) {
+        Json item{{"owner", referrer.ownerPath}, {"field", referrer.field}, {"locator", referrer.locator}};
+        if (referrer.entity != 0) item["entity"] = Json{{"id", referrer.entity}, {"path", referrer.entityPath}};
+        if (!referrer.component.empty()) item["component"] = referrer.component;
+        return item;
+    };
+    Json missing = Json::array();
+    for (const MissingAssetTracker::Group& group : tracker.getGroups()) {
+        Json referrers = Json::array();
+        for (const MissingAssetTracker::Referrer& referrer : group.referrers) referrers.push_back(referrerJson(referrer));
+        missing.push_back({{"guid", group.guid.isNull() ? Json(nullptr) : Json(group.guid.str())},
+                           {"expected_type", assetTypeName(group.expected)}, {"last_path", group.lastPath},
+                           {"referrers", referrers}});
+    }
+    Json healed = Json::array();
+    for (const MissingAssetTracker::ResolvedByPath& entry : tracker.getResolvedByPath()) {
+        Json referrers = Json::array();
+        for (const MissingAssetTracker::Referrer& referrer : entry.referrers) referrers.push_back(referrerJson(referrer));
+        healed.push_back({{"referenced_guid", entry.referencedGuid.str()}, {"guid", entry.currentGuid.str()},
+                          {"path", entry.path}, {"referrers", referrers}});
+    }
+    Json orphans = Json::array();
+    for (const AssetDatabase::OrphanMeta& orphan : tracker.getOrphanMetas()) {
+        orphans.push_back({{"meta", orphan.metaPath}, {"asset", orphan.assetPath}, {"guid", orphan.guid.str()}});
+    }
+    std::cout << Json{{"assets", project.getAssetDatabase().assetCount()}, {"missing", missing},
+                      {"resolved_by_path", healed}, {"orphan_metas", orphans}}.dump(2) << "\n";
+    return missing.empty() ? 0 : 1;
+}
+
+static int runCookTextures(int argc, char** argv, const std::string& commandName) {
+    TextureCliOptions options;
+    std::string error;
+    if (!TextureCli::parse(argc, argv, options, error)) {
+        std::cerr << commandName << " cook-textures: " << error << "\n\n";
+        TextureCli::printUsage(commandName);
+        return 2;
+    }
+    if (options.help) {
+        TextureCli::printUsage(commandName);
+        return 0;
+    }
+    if (!options.decodeIn.empty()) {
+        return TextureCli::decode(options);
+    }
+
+    EditorHostOverrideGuard hostOverride(nullptr);
+    Out::setConsoleWindow(nullptr);
+    AppSettings::initialize();
+
+    Project project;
+    auto platform = std::make_unique<Platform>(&project);
+    Engine::systemInit(argc, argv, platform.get());
+    EngineRuntimeGuard engineRuntime;
+    Engine::pauseGameEvents(true);
+    Engine::setAsyncLoading(false);
+
+    // reads the project: an open editor is fine (the cache's writes are atomic)
+    project.setSkipProjectLock(true);
+    if (!project.loadProject(options.project, false)) {
+        std::cerr << commandName << " cook-textures: the project could not be loaded: " << options.project.string() << "\n";
+        return 1;
+    }
+    project.getAssetIndex().waitUntilReady();
+    return TextureCli::cook(project, options);
+}
+
+int CommandLine::runCookTexturesCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return runCookTextures(argc, argv, getCommandName(executableName));
+}
+
+int CommandLine::runAssetsCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return runAssets(argc, argv, getCommandName(executableName));
 }
 
 int CommandLine::runSceneDumpCommand(int argc, char** argv, const char* executableName) {
@@ -1664,6 +2100,10 @@ struct CheckOptions {
     bool cpp = false;
     bool ui = false;
     bool textures = false;
+    bool anims = false;
+    bool vat = false;
+    bool normals = false;
+    bool videos = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -1686,12 +2126,30 @@ void printCheckUsage(const std::string& commandName) {
         << "      --cpp                C++ scripts: configured and built like Play does (slow the first time).\n"
         << "      --ui                 HTML/CSS UI documents: the compatibility diagnostics (dropped or rewritten\n"
         << "                           constructs, missing or remote files) with file:line:col, code and fix.\n"
-        << "      --textures           Synthesized textures (PNGs with a jasper.synthesis recipe): warns when a\n"
-        << "                           source changed or went missing since (regenerate them).\n"
-        << "      --all                Lua, shaders, C++, UI and textures.\n"
-        << "                           Default: --lua --shaders --ui --textures.\n"
+        << "      --textures           Textures: import problems (a reference that does not fit the texture's\n"
+        << "                           type, a size block formats cannot take, a format the data does not fit)\n"
+        << "                           and synthesized textures (PNGs with a jasper.synthesis recipe) whose\n"
+        << "                           sources changed or went missing since (regenerate them).\n"
+        << "      --anims              Animation clips (.anim): the format, with line:col for JSON errors and the\n"
+        << "                           JSON path of every dropped part, and the clips scenes and prefabs reference.\n"
+        << "      --vat                Vertex Animations (.vat): the format, a source changed or missing since the\n"
+        << "                           bake (warnings), a mesh or layout that no longer matches, a payload over its\n"
+        << "                           preset's device limit (errors).\n"
+        << "      --normals            Sprite normal maps: generated ones whose source changed or went missing, and\n"
+        << "                           normal maps on sprites that don't match their colour texture (size, frames,\n"
+        << "                           filter), look like DirectX or aren't normal maps, or no Light 2D can show\n"
+        << "                           (height 0).\n"
+        << "      --videos             Video Players' clips: codecs an export platform does not decode\n"
+        << "                           (video-codec-unsupported-on-target, a warning per platform) and URL MP4s\n"
+        << "                           whose moov box follows the media data (video-not-faststart-url, info; an\n"
+        << "                           http(s) url by the project's file of that name: nothing is downloaded).\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps and videos.\n"
+        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
+        << "                           A .vat or .vat.glb checks the Vertex Animation; another file checks the\n"
+        << "                           .vat files baked from it. An image checks the normal map it is (a recipe)\n"
+        << "                           or the normal maps made from it.\n"
         << "      --format <format>    text (default) or json.\n"
         << "  -q, --quiet              No summary line.\n"
         << "      --hook               Agent hook mode: read the hook's JSON on stdin (any tool: Claude Code\n"
@@ -1726,6 +2184,14 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.ui = true;
         } else if (arg == "--textures") {
             options.textures = true;
+        } else if (arg == "--anims") {
+            options.anims = true;
+        } else if (arg == "--vat") {
+            options.vat = true;
+        } else if (arg == "--normals") {
+            options.normals = true;
+        } else if (arg == "--videos") {
+            options.videos = true;
         } else if (arg == "--all") {
             options.all = true;
         } else if (arg == "--files") {
@@ -1813,9 +2279,17 @@ struct HookStamp {
     uintmax_t size = 0;
 };
 
+// "<name>.vat.glb": the generated mesh of a Vertex Animation
+bool isVatMeshFile(const std::string& rel) {
+    std::string lower = rel;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    return lower.size() > 8 && lower.compare(lower.size() - 8, 8, ".vat.glb") == 0;
+}
+
 bool isHookTrackedFile(const std::string& rel) {
     if (Util::isLuaFile(rel) || Util::isShaderFile(rel) || Util::isHeaderFile(rel) || Util::isSourceFile(rel)) return true;
     if (ProjectChecks::isUiFile(rel)) return true;
+    if (Util::isGuidJsonAssetFile(rel) || isVatMeshFile(rel)) return true;
     const std::string ext = fs::path(rel).extension().string();
     return ext == ".c" || ext == ".inl";
 }
@@ -1823,7 +2297,8 @@ bool isHookTrackedFile(const std::string& rel) {
 std::map<std::string, HookStamp> scanHookFiles(const fs::path& root) {
     std::map<std::string, HookStamp> files;
     static const std::vector<std::string> extensions = {".lua", ".vert", ".frag", ".glsl", ".h", ".hh", ".hpp", ".hxx",
-                                                        ".cpp", ".cc", ".cxx", ".c", ".inl", ".html", ".htm", ".css"};
+                                                        ".cpp", ".cc", ".cxx", ".c", ".inl", ".html", ".htm", ".css", ".anim",
+                                                        ".vat", ".glb", ".mask", ".controller"};
     for (const fs::path& file : ProjectChecks::findProjectFiles(root, extensions)) {
         std::error_code ec;
         HookStamp stamp;
@@ -1878,23 +2353,10 @@ void saveHookState(const fs::path& file, const HookState& state) {
         if (!keys.empty()) uiReported[rel] = std::vector<std::string>(keys.begin(), keys.end());
     }
     const nlohmann::json json = {{"version", 2}, {"files", files}, {"ui_reported", uiReported}};
-    std::error_code ec;
-    fs::create_directories(file.parent_path(), ec);
     // a hook running in parallel must never read half a file
-    const fs::path temp = file.string() + ".tmp" + std::to_string(static_cast<long long>(
-        std::chrono::steady_clock::now().time_since_epoch().count() % 1000000007));
-    {
-        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        if (!out) return;
-        out << json.dump();
-        if (!out) {
-            out.close();
-            fs::remove(temp, ec);
-            return;
-        }
-    }
-    fs::rename(temp, file, ec);
-    if (ec) fs::remove(temp, ec);
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    io::writeFileAtomic(file, json.dump(), options);
 }
 
 fs::path hookStateFile(const fs::path& root) {
@@ -1935,7 +2397,7 @@ void appendHookLog(const fs::path& root, const std::string& tool, const std::vec
     if (!fs::is_directory(dir, ec)) fs::create_directories(dir, ec);
     const fs::path log = dir / HOOK_LOG_FILE;
     if (fs::file_size(log, ec) > HOOK_LOG_MAX_BYTES && !ec) {
-        fs::rename(log, dir / (std::string(HOOK_LOG_FILE) + ".1"), ec);
+        io::renameWithRetry(log, dir / (std::string(HOOK_LOG_FILE) + ".1"), ec);
     }
     std::ofstream out(log, std::ios::app);
     if (!out) return;
@@ -1968,6 +2430,8 @@ fs::path canonicalOr(const fs::path& path) {
 class QuietOutput {
 public:
     QuietOutput() {
+        // the logger writes the console from its own thread: what came before goes out first
+        Logger::flush();
         std::cout.flush();
         std::cerr.flush();
         std::fflush(stdout);
@@ -1993,6 +2457,8 @@ public:
 #endif
     }
     ~QuietOutput() {
+        // and what was logged while quiet is written while the descriptors still point at null
+        Logger::flush();
         std::cout.flush();
         std::cerr.flush();
         std::fflush(stdout);
@@ -2016,14 +2482,488 @@ struct CheckRun {
     std::vector<std::pair<std::string, size_t>> checked;   // category, count (in run order)
     std::vector<std::string> cppLogTail;                   // a failed C++ build without diagnostics
     std::string fatal;                                     // the checks could not run
+    vat::VatCheck vat;                                     // --vat (listed last, after the pure checks)
+    bool vatRan = false;
 };
 
 std::string plural(size_t count, const std::string& word) {
     return std::to_string(count) + " " + word + (count == 1 ? "" : "s");
 }
 
+// ---- --anims: animation clips (pure parsing, no engine)
+
+struct ClipCheck {
+    std::vector<ProjectChecks::Finding> findings;
+    size_t clips = 0;
+};
+
+// The clip entries ({clip, guid}) of every Animation Player in a scene or prefab file's YAML
+void collectPlayerClips(const YAML::Node& node, std::vector<std::pair<std::string, std::string>>& out, int depth = 0) {
+    if (depth > 64 || !node) return;
+    if (node.IsMap()) {
+        for (const auto& item : node) {
+            const YAML::Node value = item.second;
+            if (item.first.IsScalar() && item.first.Scalar() == "animationplayer" && value.IsMap() && value["clips"] &&
+                value["clips"].IsSequence()) {
+                for (const YAML::Node& entry : value["clips"]) {
+                    if (!entry.IsMap() || !entry["clip"] || !entry["clip"].IsScalar()) continue;
+                    out.push_back({entry["clip"].Scalar(), entry["guid"] && entry["guid"].IsScalar() ? entry["guid"].Scalar() : std::string()});
+                }
+                continue;
+            }
+            collectPlayerClips(value, out, depth + 1);
+        }
+    } else if (node.IsSequence()) {
+        for (const YAML::Node& child : node) collectPlayerClips(child, out, depth + 1);
+    }
+}
+
+// The masks (layers[i].mask) and the controller of every Animation Player under a node:
+// {what, path, guid}, what being "layers[i].mask" or "controller"
+struct PlayerAssetReference {
+    std::string what;
+    std::string path;
+    std::string guid;
+};
+
+void collectPlayerAssets(const YAML::Node& node, std::vector<PlayerAssetReference>& out, int depth = 0) {
+    if (depth > 64 || !node) return;
+    auto scalar = [](const YAML::Node& map, const char* key) {
+        const YAML::Node value = map[key];
+        return value && value.IsScalar() ? value.Scalar() : std::string();
+    };
+    if (node.IsMap()) {
+        for (const auto& item : node) {
+            const YAML::Node value = item.second;
+            if (item.first.IsScalar() && item.first.Scalar() == "animationplayer" && value.IsMap()) {
+                if (value["layers"] && value["layers"].IsSequence()) {
+                    for (size_t i = 0; i < value["layers"].size(); i++) {
+                        const YAML::Node layer = value["layers"][i];
+                        if (!layer.IsMap() || scalar(layer, "mask").empty()) continue;
+                        out.push_back({"layers[" + std::to_string(i) + "].mask", scalar(layer, "mask"), scalar(layer, "maskGuid")});
+                    }
+                }
+                if (!scalar(value, "controller").empty()) out.push_back({"controller", scalar(value, "controller"), scalar(value, "controllerGuid")});
+                continue;
+            }
+            collectPlayerAssets(value, out, depth + 1);
+        }
+    } else if (node.IsSequence()) {
+        for (const YAML::Node& child : node) collectPlayerAssets(child, out, depth + 1);
+    }
+}
+
+// The glTF animation names of a model file, read from its JSON without the engine: a .gltf's
+// text, a .glb's JSON chunk, and for an .fbx the .glb the editor imported it to (none yet:
+// false, nothing to compare with). Empty names stay empty (subClipNames names them).
+bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const fs::path& model,
+                             std::vector<std::string>& names) {
+    fs::path file = model;
+    std::string extension = model.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    if (extension == ".fbx") {
+        // MeshSystem::getImportedModelPath: the project's import folder mirrors the assets folder
+        file = root / ".jasperengine" / "imported" / (model.lexically_relative(assets).generic_string() + ".glb");
+        extension = ".glb";
+    }
+    std::string bytes;
+    if (!ProjectChecks::readFile(file, bytes)) return false;
+    std::string text;
+    if (extension == ".glb") {
+        // header (magic, version, length), then the first chunk: length, type "JSON", data
+        auto word = [&](size_t at) {
+            uint32_t value = 0;
+            for (int i = 3; i >= 0; i--) value = (value << 8) | (unsigned char)bytes[at + (size_t)i];
+            return value;
+        };
+        if (bytes.size() < 20 || bytes.compare(0, 4, "glTF") != 0 || word(16) != 0x4E4F534Au) return false;
+        const size_t length = word(12);
+        if (length > bytes.size() - 20) return false;
+        text = bytes.substr(20, length);
+    } else {
+        text = std::move(bytes);
+    }
+    const nlohmann::json json = nlohmann::json::parse(text, nullptr, false);
+    if (json.is_discarded() || !json.is_object()) return false;
+    names.clear();
+    const auto animations = json.find("animations");
+    if (animations == json.end() || !animations->is_array()) return true;
+    for (const nlohmann::json& animation : *animations) {
+        const auto name = animation.is_object() ? animation.find("name") : animation.end();
+        names.push_back(animation.is_object() && name != animation.end() && name->is_string() ? name->get<std::string>() : std::string());
+    }
+    return true;
+}
+
+// Each .anim (all of the project's when `files` is empty): parse errors with line:col, lenient
+// warnings with their JSON path; on a whole-project run also the clips the scenes and prefabs
+// reference (the entries of their Animation Players, prefab-instance overrides included): a
+// missing .anim (an error; a warning when its GUID still finds the moved file), a missing model
+// of a sub-clip, and a sub-clip name the model has no animation for
+struct VideoCheck {
+    std::vector<ProjectChecks::Finding> findings;
+    size_t players = 0;
+};
+
+// Every VideoPlayerComponent node under a scene or prefab file's YAML
+void collectVideoPlayers(const YAML::Node& node, std::vector<YAML::Node>& out, int depth = 0) {
+    if (depth > 64 || !node) return;
+    if (node.IsMap()) {
+        for (auto it = node.begin(); it != node.end(); ++it) {
+            if (it->first.IsScalar() && (it->first.Scalar() == "videoplayer" || it->first.Scalar() == "VideoPlayerComponent") && it->second.IsMap())
+                out.push_back(it->second);
+            else
+                collectVideoPlayers(it->second, out, depth + 1);
+        }
+    } else if (node.IsSequence()) {
+        for (const YAML::Node& child : node) collectVideoPlayers(child, out, depth + 1);
+    }
+}
+
+// the project's file an http(s) url names (its last path segment, query and fragment dropped): the
+// copy that was uploaded there, presumably; "" when the project has none (or several)
+fs::path findServedCopy(const fs::path& assets, const std::string& url) {
+    std::string path = url.substr(0, url.find_first_of("?#"));
+    const size_t slash = path.find_last_of('/');
+    const std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
+    if (name.empty() || name.find('.') == std::string::npos) return {};
+    fs::path found;
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(assets, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string entry = it->path().filename().string();
+        if (it->is_directory(ec) && !entry.empty() && (entry[0] == '.' || entry == "build")) {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (entry == name && it->is_regular_file(ec)) {
+            if (!found.empty()) return {};
+            found = it->path();
+        }
+    }
+    return found;
+}
+
+// video-codec-unsupported-on-target: a player's clip (or local url) in a codec an export platform
+// does not decode (Linux counts as FFmpeg's); video-not-faststart-url: an MP4 played as a URL
+// whose moov box follows the media data (it plays only once downloaded)
+VideoCheck checkVideoPlayers(const fs::path& root) {
+    VideoCheck check;
+    const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
+    std::set<std::string> reported;
+    for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        std::vector<YAML::Node> players;
+        try {
+            collectVideoPlayers(YAML::LoadFile(file.string()), players);
+        } catch (const std::exception&) {
+            continue;
+        }
+        for (const YAML::Node& player : players) {
+            check.players++;
+            const bool url = player["source"] && player["source"].IsScalar() && player["source"].Scalar() == "url";
+            const std::string value = url ? (player["url"] ? player["url"].as<std::string>("") : "") : (player["clip"] ? player["clip"].as<std::string>("") : "");
+            std::string scheme = value.substr(0, 8);
+            std::transform(scheme.begin(), scheme.end(), scheme.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+            const bool remote = scheme.rfind("http://", 0) == 0 || scheme.rfind("https://", 0) == 0;
+            if (value.empty() || scheme.rfind("data://", 0) == 0)
+                continue;
+            if (remote) {
+                // the check is offline (nothing is downloaded): an http(s) url is judged by the
+                // project's own copy of the file it names (the one uploaded there), when there is one
+                const fs::path served = findServedCopy(assets, value);
+                if (served.empty() || !reported.insert(rel + "|" + value).second) continue;
+                const jasperengine::VideoProbe probe = jasperengine::VideoFormats::probeStdio(std::fopen(served.string().c_str(), "rb"), value);
+                const bool mp4 = probe.container == "mp4" || probe.container == "mov" || probe.container == "3gp";
+                if (mp4 && !probe.fastStart && !probe.fragmented) {
+                    check.findings.push_back({"videos", rel, 0, 0, "info", "'" + value + "' (as the project's " +
+                                              ProjectChecks::projectRelative(root, served) + ") has its moov box after the media data: it plays only once downloaded",
+                                              "video-not-faststart-url",
+                                              "the video asset's Inspector: Optimize for streaming (or ffmpeg -movflags +faststart), then upload it again"});
+                }
+                continue;
+            }
+            const fs::path video = fs::path(value).is_absolute() ? fs::u8path(value) : (assets / fs::u8path(value)).lexically_normal();
+            std::error_code ec;
+            if (!fs::is_regular_file(video, ec)) {
+                check.findings.push_back({"videos", rel, 0, 0, "warning", "a Video Player's " + std::string(url ? "url" : "clip") + " '" + value +
+                                          "' is not in the project", "video-missing"});
+                continue;
+            }
+            if (!reported.insert(rel + "|" + value).second) continue;
+            const jasperengine::VideoProbe probe = jasperengine::VideoFormats::probeStdio(std::fopen(video.string().c_str(), "rb"), value);
+            for (int p = 0; p < jasperengine::VideoSourceFactory::PLATFORM_COUNT; p++) {
+                const auto platform = (jasperengine::VideoSourceFactory::Platform)p;
+                const std::string cell = jasperengine::VideoSourceFactory::playableOn(platform, probe);
+                if (cell != "no") continue;
+                ProjectChecks::Finding finding{"videos", rel, 0, 0, "warning",
+                    "'" + value + "' (" + jasperengine::VideoFormats::codecName(probe.videoCodec) + " in " + (probe.container.empty() ? "an unknown container" : probe.container) +
+                    ") does not play on " + jasperengine::VideoSourceFactory::platformLabel(platform), "video-codec-unsupported-on-target",
+                    "convert it to WebM (AV1): the Project window's Convert to WebM (AV1)..., or an H.264 MP4"};
+                check.findings.push_back(finding);
+            }
+            const bool mp4 = probe.container == "mp4" || probe.container == "mov" || probe.container == "3gp";
+            if (url && mp4 && !probe.fastStart && !probe.fragmented) {
+                check.findings.push_back({"videos", rel, 0, 0, "info", "'" + value + "' has its moov box after the media data: served from a URL it plays only "
+                                          "once downloaded", "video-not-faststart-url",
+                                          "the video asset's Inspector: Optimize for streaming (or ffmpeg -movflags +faststart)"});
+            }
+        }
+    }
+    return check;
+}
+
+// Avatar Masks (.mask: the format) and Animator Controllers (.controller: the format and
+// anim::validateController, with the clips it names read here: .anim files parsed, model
+// sub-clips looked up in the model). Version 1 files (S21's or upstream's dialect) are read by
+// their members and noted: the editor converts them and saves version 2.
+// `guids`: each readable mask's and controller's GUID -> its project-relative path.
+// `projectGuids`: every clip's, mask's and controller's GUID in the project -> its absolute path
+// (a controller's clips and masks are found by GUID first, as the editor does)
+void checkAnimAssetFiles(const fs::path& root, const std::vector<fs::path>& masks, const std::vector<fs::path>& controllers, ClipCheck& check,
+                         std::map<std::string, std::string>& guids, const std::map<std::string, fs::path>& projectGuids) {
+    const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
+    for (const fs::path& file : masks) {
+        std::string text;
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        if (!ProjectChecks::readFile(file, text)) continue;
+        check.clips++;
+        const anim::MaskParseResult parsed = anim::parseMask(text);
+        if (!parsed.ok) {
+            check.findings.push_back({"anim", rel, parsed.error.line, parsed.error.column, "error", parsed.error.message});
+            continue;
+        }
+        if (!parsed.data.guid.empty()) guids[parsed.data.guid] = rel;
+        if (parsed.converted()) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", std::string(parsed.dialect == anim::AnimatorFileDialect::UpstreamVersion1 ?
+                                      "upstream's version 1 Avatar Mask" : "a version 1 Avatar Mask") +
+                                      ": read as version 2 (the editor saves it as version 2 when it is edited)"});
+        }
+        for (const ClipWarning& warning : parsed.warnings) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
+        }
+    }
+    std::map<std::string, anim::ControllerClipInfo> clipInfos;
+    auto resolve = [&](const std::string& clip) {
+        auto known = clipInfos.find(clip);
+        if (known != clipInfos.end()) return known->second;
+        anim::ControllerClipInfo info;
+        anim::SubClipReference reference;
+        const bool subClip = anim::parseSubClipReference(clip, reference);
+        const fs::path target = (assets / fs::u8path(subClip ? reference.model : clip)).lexically_normal();
+        std::error_code ec;
+        if (!fs::is_regular_file(target, ec)) {
+            info.error = subClip ? "the model " + reference.model + " does not exist" : "the file does not exist (paths are relative to the assets folder)";
+        } else if (subClip) {
+            std::vector<std::string> names;
+            if (!readModelAnimationNames(root, assets, target, names)) {
+                info.loads = true;      // not readable here (an FBX not imported yet): not reported
+            } else {
+                tinygltf::Model listed;
+                listed.animations.resize(names.size());
+                for (size_t i = 0; i < names.size(); i++) listed.animations[i].name = names[i];
+                info.loads = anim::findModelClip(listed, reference.clip) >= 0;
+                if (!info.loads) info.error = "the model has no animation '" + reference.clip + "'";
+            }
+            info.loops = false;         // a model's animations import as once
+        } else {
+            std::string text;
+            const anim::ClipParseResult parsed = ProjectChecks::readFile(target, text) ? anim::parseClip(text) : anim::ClipParseResult();
+            info.loads = parsed.ok();
+            if (!info.loads) info.error = parsed.error.empty() ? "cannot read it" : parsed.error.toString();
+            else info.loops = parsed.data->wrap == ClipWrapMode::Loop || parsed.data->wrap == ClipWrapMode::PingPong;
+        }
+        clipInfos[clip] = info;
+        return info;
+    };
+    for (const fs::path& file : controllers) {
+        std::string text;
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        if (!ProjectChecks::readFile(file, text)) continue;
+        check.clips++;
+        const anim::ControllerParseResult parsed = anim::parseController(text);
+        if (!parsed.ok) {
+            check.findings.push_back({"anim", rel, parsed.error.line, parsed.error.column, "error", parsed.error.message});
+            continue;
+        }
+        if (!parsed.data.guid.empty()) guids[parsed.data.guid] = rel;
+        if (parsed.converted()) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", std::string(parsed.dialect == anim::AnimatorFileDialect::UpstreamVersion1 ?
+                                      "upstream's version 1 Animator Controller" : "a version 1 Animator Controller") +
+                                      ": read as version 2 (the editor saves it as version 2 when it is edited)"});
+        }
+        for (const ClipWarning& warning : parsed.warnings) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
+        }
+        // a clip or mask its GUID finds elsewhere: checked there (a moved file, or a GUID
+        // naming another file than the path)
+        anim::ControllerDef data = parsed.data;
+        auto follow = [&](std::string& stored, const std::string& guid, const std::string& what) {
+            if (stored.empty() || guid.empty() || anim::isSubClipReference(stored)) return;
+            const auto found = projectGuids.find(guid);
+            const fs::path target = (assets / fs::u8path(stored)).lexically_normal();
+            if (found == projectGuids.end() || found->second == target) return;
+            const std::string foundRel = ProjectChecks::projectRelative(root, found->second);
+            std::error_code ec;
+            if (fs::is_regular_file(target, ec)) {
+                check.findings.push_back({"anim", rel, 0, 0, "warning", what + ": '" + stored + "' has the GUID of '" + foundRel +
+                                          "', which the editor uses (it resolves the GUID first): set it again in the editor, or fix the GUID"});
+            } else {
+                check.findings.push_back({"anim", rel, 0, 0, "warning", what + ": '" + stored + "' moved to '" + foundRel +
+                                          "' (found by its GUID; the editor updates the path when it sees the move)"});
+            }
+            stored = found->second.lexically_relative(assets.lexically_normal()).generic_string();
+        };
+        anim::visitControllerRefs(data, [&](anim::AnimatorAssetRef& ref, const std::string& field) {
+            follow(ref.path, ref.guid, field);
+        });
+        for (const ClipWarning& warning : anim::validateController(data, resolve)) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
+        }
+        // the masks its layers name
+        for (size_t l = 0; l < data.layers.size(); l++) {
+            const std::string& mask = data.layers[l].mask.path;
+            std::error_code ec;
+            if (!mask.empty() && !fs::is_regular_file((assets / fs::u8path(mask)).lexically_normal(), ec)) {
+                check.findings.push_back({"anim", rel, 0, 0, "error", "layers[" + std::to_string(l) + "].mask: '" + mask +
+                                          "' does not exist (paths are relative to the assets folder)"});
+            }
+        }
+    }
+}
+
+ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& files) {
+    ClipCheck check;
+    const bool all = files.empty();
+    std::vector<fs::path> given, masks, controllers;
+    for (const fs::path& file : files) {
+        const std::string name = file.string();
+        (Util::isAvatarMaskFile(name) ? masks : Util::isAnimatorControllerFile(name) ? controllers : given).push_back(file);
+    }
+    if (all) {
+        masks = ProjectChecks::findProjectFiles(root, {".mask"});
+        controllers = ProjectChecks::findProjectFiles(root, {".controller"});
+    }
+    // every clip's, mask's and controller's GUID, also when only some files are checked
+    std::map<std::string, fs::path> projectGuids;
+    for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".anim", ".mask", ".controller"})) {
+        std::string text;
+        if (!ProjectChecks::readFile(file, text)) continue;
+        const std::string guid = anim::readClipGuid(text);
+        if (!guid.empty()) projectGuids.emplace(guid, file.lexically_normal());
+    }
+    std::map<std::string, std::string> assetGuids;   // mask / controller guid -> project-relative path
+    checkAnimAssetFiles(root, masks, controllers, check, assetGuids, projectGuids);
+    const std::vector<fs::path> clips = all ? ProjectChecks::findProjectFiles(root, {".anim"}) : given;
+    std::map<std::string, std::string> guids;   // guid -> project-relative path
+    for (const fs::path& file : clips) {
+        std::string text;
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        if (!ProjectChecks::readFile(file, text)) continue;
+        check.clips++;
+        const anim::ClipParseResult parsed = anim::parseClip(text);
+        if (!parsed.ok()) {
+            check.findings.push_back({"anim", rel, parsed.error.line, parsed.error.column, "error", parsed.error.message});
+            continue;
+        }
+        if (!parsed.data->guid.empty()) guids[parsed.data->guid] = rel;
+        for (const ClipWarning& warning : parsed.warnings) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
+        }
+    }
+    if (!all) return check;
+    const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
+    std::map<std::string, std::pair<bool, std::vector<std::string>>> modelNames;   // model file -> (read, animation names)
+    for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
+        std::vector<std::pair<std::string, std::string>> entries;
+        std::vector<PlayerAssetReference> assetReferences;
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        try {
+            const YAML::Node loaded = YAML::LoadFile(file.string());
+            collectPlayerClips(loaded, entries);
+            collectPlayerAssets(loaded, assetReferences);
+        } catch (const std::exception& e) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", std::string("could not read Animation Player entries: ") + e.what()});
+            continue;
+        }
+        // once per (clip, guid): two entries of one path with different GUIDs are checked apart
+        std::set<std::pair<std::string, std::string>> reported;
+        for (const auto& [clip, guid] : entries) {
+            if (clip.empty() || !reported.insert({clip, guid}).second) continue;
+            anim::SubClipReference reference;
+            const bool subClip = anim::parseSubClipReference(clip, reference);
+            const fs::path target = (assets / editor::FileUtils::pathFromUtf8(subClip ? reference.model : clip)).lexically_normal();
+            std::error_code ec;
+            if (fs::is_regular_file(target, ec)) {
+                // the editor resolves the GUID first: an entry whose GUID names another clip plays that one
+                auto named = subClip || guid.empty() ? guids.end() : guids.find(guid);
+                if (named != guids.end() && named->second != ProjectChecks::projectRelative(root, target)) {
+                    check.findings.push_back({"anim", rel, 0, 0, "warning", "an Animation Player's clip '" + clip + "' has the GUID of '" +
+                                              named->second + "', which the editor plays (it resolves the GUID first): set the entry's clip "
+                                              "again in the editor, or fix the guid"});
+                }
+                if (!subClip) continue;
+                // the animation the name (or index) selects, by the sub-clip naming rule
+                auto known = modelNames.find(target.generic_string());
+                if (known == modelNames.end()) {
+                    std::vector<std::string> names;
+                    const bool read = readModelAnimationNames(root, assets, target, names);
+                    known = modelNames.emplace(target.generic_string(), std::make_pair(read, names)).first;
+                }
+                if (!known->second.first) continue;   // not readable here (an FBX not imported yet)
+                tinygltf::Model listed;
+                listed.animations.resize(known->second.second.size());
+                for (size_t i = 0; i < listed.animations.size(); i++) listed.animations[i].name = known->second.second[i];
+                if (anim::findModelClip(listed, reference.clip) >= 0) continue;
+                const std::vector<std::string> available = anim::subClipNames(known->second.second);
+                std::string list;
+                for (const std::string& name : available) list += (list.empty() ? "'" : ", '") + name + "'";
+                check.findings.push_back({"anim", rel, 0, 0, "error", "an Animation Player plays '" + clip + "' but the model '" +
+                                          reference.model + "' has no animation '" + reference.clip + "' (" +
+                                          (available.empty() ? std::string("it has none") : "its animations: " + list) + ")"});
+                continue;
+            }
+            if (subClip) {
+                check.findings.push_back({"anim", rel, 0, 0, "error", "an Animation Player plays '" + clip + "' but the model '" +
+                                          reference.model + "' does not exist"});
+                continue;
+            }
+            auto found = guid.empty() ? guids.end() : guids.find(guid);
+            if (found != guids.end()) {
+                check.findings.push_back({"anim", rel, 0, 0, "warning", "an Animation Player's clip '" + clip + "' moved to '" + found->second +
+                                          "' (found by its GUID; the editor updates the path when the file is opened and saved)"});
+            } else {
+                check.findings.push_back({"anim", rel, 0, 0, "error", "an Animation Player plays '" + clip + "', which does not exist "
+                                          "(paths are relative to the assets folder)"});
+            }
+        }
+        // its masks and controllers, as its clips (the editor resolves their GUIDs first too)
+        std::set<std::tuple<std::string, std::string, std::string>> assetsReported;
+        for (const PlayerAssetReference& reference : assetReferences) {
+            if (!assetsReported.insert({reference.what, reference.path, reference.guid}).second) continue;
+            const fs::path target = (assets / fs::u8path(reference.path)).lexically_normal();
+            const std::string what = "an Animation Player's " + reference.what + " '" + reference.path + "'";
+            auto named = reference.guid.empty() ? assetGuids.end() : assetGuids.find(reference.guid);
+            std::error_code ec;
+            if (fs::is_regular_file(target, ec)) {
+                if (named != assetGuids.end() && named->second != ProjectChecks::projectRelative(root, target)) {
+                    check.findings.push_back({"anim", rel, 0, 0, "warning", what + " has the GUID of '" + named->second +
+                                              "', which the editor uses (it resolves the GUID first): set it again in the editor, or fix the GUID"});
+                }
+            } else if (named != assetGuids.end()) {
+                check.findings.push_back({"anim", rel, 0, 0, "warning", what + " moved to '" + named->second +
+                                          "' (found by its GUID; the editor updates the path when the file is opened and saved)"});
+            } else {
+                check.findings.push_back({"anim", rel, 0, 0, "error", what + " does not exist (paths are relative to the assets folder)"});
+            }
+        }
+    }
+    return check;
+}
+
 CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vector<fs::path>& luaFiles, bool luaWanted,
-                   bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted) {
+                   bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted,
+                   const std::vector<std::string>& textureFiles, bool texturesWanted,
+                   const std::vector<fs::path>& vatFiles, bool vatWanted) {
     CheckRun run;
     EditorHostOverrideGuard hostOverride(nullptr);
     Out::setConsoleWindow(nullptr);
@@ -2042,10 +2982,30 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         const std::vector<std::string> engineGlobals = ProjectChecks::engineLuaGlobals();
         const fs::path luaRoot = ProjectChecks::luaRootFromProjectFile(root);
         size_t count = 0;
+        // the scenes and prefabs, as text: an editor script attached to a GameObject is a mistake
+        std::vector<std::pair<std::string, std::string>> documents;
+        for (const fs::path& document : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
+            std::string text;
+            if (ProjectChecks::readFile(document, text)) documents.push_back({ProjectChecks::projectRelative(root, document), std::move(text)});
+        }
         for (const fs::path& file : luaFiles) {
             std::string code;
             if (!ProjectChecks::readFile(file, code)) continue;
             count++;
+            // an editor script (S23): its syntax only (it runs when its menu item is clicked)
+            if (EditorScripts::isLuaEditorScript(file.lexically_relative(root), code)) {
+                const std::string rel = ProjectChecks::projectRelative(root, file);
+                const ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, rel);
+                if (!syntax.ok) run.findings.push_back({"lua", rel, syntax.line, 0, "error", syntax.message});
+                const std::string luaRelative = file.lexically_relative(luaRoot).generic_string();
+                for (const auto& [document, text] : documents) {
+                    if (text.find(luaRelative) != std::string::npos) {
+                        run.findings.push_back({"lua", rel, 0, 0, "warning", "an editor script (Editor/ with ---@menu annotations) is attached to a "
+                                                "GameObject in " + document + ": it does not run in the game"});
+                    }
+                }
+                continue;
+            }
             lua_State* L = ProjectChecks::newIsolatedLuaState(luaRoot, engineGlobals);
             const ProjectChecks::LuaScriptCheck check = ProjectChecks::checkLuaScript(code, ProjectChecks::projectRelative(root, file), L);
             ProjectChecks::closeIsolatedLuaState(L);
@@ -2054,18 +3014,37 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.checked.push_back({"lua", count});
     }
 
-    if (shadersWanted || cppWanted) {
+    if (shadersWanted || cppWanted || texturesWanted || vatWanted) {
+        // checks only read the project: no lock, an open editor is fine, and no file is written
+        // (a project from before GUIDs keeps its identities in memory; no GUID upgrade of
+        // prefabs or clips)
+        project.setSkipProjectLock(true);
+        project.setReadOnlyAssets(true);
         if (!project.loadProject(root, false)) {
             run.fatal = "the project could not be loaded: " + root.string();
             return run;
         }
         // every scene, so the forks in use and the scripts attached are all known
         auto& scenes = project.getScenes();
-        for (size_t i = 0; i < scenes.size(); i++) {
+        for (size_t i = 0; (shadersWanted || cppWanted) && i < scenes.size(); i++) {
             if (!scenes[i].filepath.empty() && !scenes[i].scene) {
                 project.loadScene(scenes[i].filepath, false, false, true);
             }
         }
+    }
+
+    if (vatWanted) {
+        // the .vat files (all of them, or the given ones): format, staleness, device limits
+        run.vat = vat::checkVatAssets(&project, vatFiles);
+        run.vatRan = true;
+    }
+
+    // S19 R42: the scenes' NavMesh Surfaces that are not baked or out of date (whole-project checks)
+    if (shadersWanted && shadersAll) {
+        size_t surfaces = 0;
+        for (const NavigationEditor::Finding& finding : NavigationEditor::checkSurfaces(&project, &surfaces))
+            run.findings.push_back({"navigation", finding.scenePath, 0, 0, "warning", finding.message});
+        run.checked.push_back({"navigation", surfaces});
     }
 
     if (shadersWanted) {
@@ -2096,8 +3075,22 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         if (shadersAll) {
             const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(&project);
             run.findings.insert(run.findings.end(), stochastic.begin(), stochastic.end());
+            // Line and Trail Renderers drawing nothing or reading no texture coordinates
+            const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(&project);
+            run.findings.insert(run.findings.end(), lines.begin(), lines.end());
+            // Particle Systems: legacy ones, points with a render mode, the mobile budget
+            const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(&project);
+            run.findings.insert(run.findings.end(), particleChecks.begin(), particleChecks.end());
         }
         run.checked.push_back({"shaders", forks.size()});
+    }
+
+    if (texturesWanted) {
+        project.getAssetIndex().waitUntilReady();
+        size_t count = 0;
+        const std::vector<ProjectChecks::Finding> textures = TextureCli::check(project, textureFiles, count);
+        run.findings.insert(run.findings.end(), textures.begin(), textures.end());
+        run.checked.push_back({"texture_imports", count});
     }
 
     if (cppWanted) {
@@ -2148,7 +3141,14 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool cpp = options.cpp || options.all;
     bool ui = options.ui || options.all;
     bool textures = options.textures || options.all;
-    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.all) lua = shaders = ui = textures = true;
+    bool anims = options.anims || options.all;
+    bool vatAssets = options.vat || options.all;
+    bool normals = options.normals || options.all;
+    bool videos = options.videos || options.all;
+    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
+        !options.videos && !options.all) {
+        lua = shaders = ui = textures = anims = vatAssets = normals = videos = true;
+    }
 
     fs::path base = CommandLine::invocationDirectory();
     std::vector<std::string> files = options.files;
@@ -2176,7 +3176,11 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> luaFiles;
     std::vector<std::string> shaderFiles;
     std::vector<fs::path> uiFiles;
-    std::vector<fs::path> textureFiles;
+    std::vector<std::string> textureFiles;   // project-relative: cookable textures (import settings)
+    std::vector<fs::path> synthesisFiles;    // images: synthesized ones, or their examples
+    std::vector<fs::path> clipFiles;
+    std::vector<fs::path> vatGiven;     // .vat, .vat.glb and the other files (sources of bakes)
+    std::vector<fs::path> normalFiles;  // images: generated normal maps, or sources of some
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -2198,6 +3202,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             if (ProjectChecks::isInSkippedDir(rel) || !seen.insert(rel.generic_string()).second) continue;
             const std::string name = rel.generic_string();
             if (isHookTrackedFile(name)) checkedNames.push_back(name);
+            // a .vat, its mesh, or a file a .vat was baked from
+            if (vatAssets) vatGiven.push_back(path);
             if (Util::isLuaFile(name)) {
                 if (lua) luaFiles.push_back(path);
             } else if (Util::isShaderFile(name)) {
@@ -2206,9 +3212,15 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
                 cppFiles = true;
             } else if (ProjectChecks::isUiFile(name)) {
                 if (ui) uiFiles.push_back(path);
+            } else if (Util::isAnimationClipFile(name) || Util::isAvatarMaskFile(name) || Util::isAnimatorControllerFile(name)) {
+                if (anims) clipFiles.push_back(path);
+            } else if (isCookableTexture(name)) {
+                if (textures) textureFiles.push_back(name);
             }
             // a synthesized PNG, or an image a synthesized texture was made from
-            if (textures && Util::isImageFile(name)) textureFiles.push_back(path);
+            if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
+            // a generated normal map, or an image normal maps were made from
+            if (normals && Util::isImageFile(name)) normalFiles.push_back(path);
         }
     } else if (lua) {
         luaFiles = ProjectChecks::findProjectFiles(root, {".lua"});
@@ -2217,7 +3229,16 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool shadersWanted = fileMode ? !shaderFiles.empty() : shaders;
     const bool cppWanted = cpp && (!fileMode || cppFiles);
     const bool uiWanted = fileMode ? !uiFiles.empty() : ui;
+    // --textures: the import check (cookable textures, the engine) and the synthesis recipes
     const bool texturesWanted = fileMode ? !textureFiles.empty() : textures;
+    const bool synthesisWanted = fileMode ? !synthesisFiles.empty() : textures;
+    const bool animsWanted = fileMode ? !clipFiles.empty() : anims;
+    const bool normalsWanted = fileMode ? !normalFiles.empty() : normals;
+    // scene files' Video Players (a whole-project check: not per file)
+    const bool videosWanted = !fileMode && videos;
+    // the recipes are read without the engine: it starts only when a .vat is concerned
+    const std::vector<fs::path> vatFiles = fileMode ? vat::vatAssetsForFiles(root, vatGiven) : std::vector<fs::path>();
+    const bool vatWanted = fileMode ? !vatFiles.empty() : vatAssets;
 
     // The UI check is pure parsing (no engine): first, and the engine starts only for the others
     ProjectChecks::UiCheck uiCheck;
@@ -2226,9 +3247,10 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         uiCheck = ProjectChecks::checkUiFiles(root, fileMode ? uiFiles : std::vector<fs::path>());
     }
     CheckRun run;
-    if (luaWanted || shadersWanted || cppWanted) {
+    if (luaWanted || shadersWanted || cppWanted || texturesWanted || vatWanted) {
         QuietOutput quiet;
-        run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted);
+        run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted, textureFiles, texturesWanted,
+                        vatFiles, vatWanted);
     }
     if (!run.fatal.empty()) {
         std::cerr << commandName << " check: " << run.fatal << "\n";
@@ -2239,11 +3261,33 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         run.findings.insert(run.findings.end(), uiCheck.findings.begin(), uiCheck.findings.end());
         run.checked.push_back({"ui", uiCheck.documents + uiCheck.stylesheets});
     }
-    if (texturesWanted) {
+    if (synthesisWanted) {
         // reads PNG headers and hashes the sources of synthesized ones: no engine
-        const ProjectChecks::SynthesisCheck synthesis = ProjectChecks::checkSynthesisRecipes(root, fileMode ? textureFiles : std::vector<fs::path>());
+        const ProjectChecks::SynthesisCheck synthesis = ProjectChecks::checkSynthesisRecipes(root, fileMode ? synthesisFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), synthesis.findings.begin(), synthesis.findings.end());
         run.checked.push_back({"textures", synthesis.recipes});
+    }
+    if (animsWanted) {
+        // JSON parsing (the engine's clip reader) and the scene files' YAML: no engine
+        const ClipCheck clips = checkClipFiles(root, fileMode ? clipFiles : std::vector<fs::path>());
+        run.findings.insert(run.findings.end(), clips.findings.begin(), clips.findings.end());
+        run.checked.push_back({"anims", clips.clips});
+    }
+    if (run.vatRan) {
+        run.findings.insert(run.findings.end(), run.vat.findings.begin(), run.vat.findings.end());
+        run.checked.push_back({"vat", run.vat.assets});
+    }
+    if (normalsWanted) {
+        // PNG headers, the scene and prefab YAML, pixels only of normal maps without a recipe: no engine
+        const spritenormals::NormalsCheck normalsCheck = spritenormals::checkSpriteNormals(root, fileMode ? normalFiles : std::vector<fs::path>());
+        run.findings.insert(run.findings.end(), normalsCheck.findings.begin(), normalsCheck.findings.end());
+        run.checked.push_back({"normals", normalsCheck.recipes + normalsCheck.maps});
+    }
+    if (videosWanted) {
+        // the scene and prefab YAML and the clips' header boxes: no engine
+        const VideoCheck videoCheck = checkVideoPlayers(root);
+        run.findings.insert(run.findings.end(), videoCheck.findings.begin(), videoCheck.findings.end());
+        run.checked.push_back({"videos", videoCheck.players});
     }
     ProjectChecks::sortFindings(run.findings);
     const size_t errors = ProjectChecks::countSeverity(run.findings, "error");
@@ -2302,9 +3346,13 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (!options.quiet) {
         std::string what;
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
-                                                          {"textures", "recipe"}};
+                                                          {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"},
+                                                          {"vat", "file"}, {"navigation", "surface"},
+                                                          {"normals", "map"}, {"videos", "Video Player"}};
         for (const auto& [category, count] : run.checked) {
-            what += (what.empty() ? "" : ", ") + category + " " + plural(count, units.at(category));
+            // a category without a unit here still prints (never a map::at abort after the results)
+            const auto unit = units.find(category);
+            what += (what.empty() ? "" : ", ") + category + " " + plural(count, unit != units.end() ? unit->second : "item");
         }
         char time[32];
         std::snprintf(time, sizeof(time), "%.2fs", seconds);
@@ -2552,6 +3600,122 @@ int CommandLine::runSynthesizeTextureCommand(int argc, char** argv, const char* 
     return texsynth::runSynthesizeTexture(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
+int CommandLine::runBakeVatCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return vat::runBakeVat(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+static void printImportUnityParticlesUsage(const std::string& commandName) {
+    std::cout
+        << "Usage:\n"
+        << "  " << commandName << " import-unity-particles <file.prefab|file.unity> --project <engine project> [options]\n\n"
+        << "Imports the Unity ParticleSystems of a prefab or scene as engine prefabs (Particle Systems,\n"
+        << "each renderer's material in its Renderer module) with their textures, and writes a report of what was imported,\n"
+        << "approximated or not supported. The Unity project is only read.\n\n"
+        << "Options:\n"
+        << "  -p, --project <path>        The engine project (directory or project.yaml) the files go into.\n"
+        << "      --object <path>         A GameObject path (\"Player/Camera/EndParticles\"); default: every root\n"
+        << "                              GameObject with a ParticleSystem in itself or its children.\n"
+        << "      --dest <folder>         Project-relative output folder (default assets/fx).\n"
+        << "      --unity-project <dir>   The Unity project (default: the nearest folder holding Assets/ and\n"
+        << "                              ProjectSettings/ around the file).\n"
+        << "      --report <file.json>    Also write the report there.\n"
+        << "      --overwrite             Replace existing prefabs and textures (default: a numbered prefab\n"
+        << "                              name, existing textures kept).\n"
+        << "      --dry-run               Print the report, write nothing.\n"
+        << "  -h, --help                  Show this help.\n\n"
+        << "Exit code: 0 imported, 1 error, 2 imported with notes (approximations, unsupported modules).\n";
+}
+
+int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    const std::string commandName = getCommandName(executableName);
+    unity::ImportOptions options;
+    fs::path reportPath;
+    std::string file;
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = argv[i];
+        auto value = [&](std::string& out) -> bool {
+            if (i + 1 >= argc) {
+                std::cerr << "error: " << arg << " needs a value\n";
+                return false;
+            }
+            out = argv[++i];
+            return true;
+        };
+        std::string v;
+        if (arg == "-h" || arg == "--help") {
+            printImportUnityParticlesUsage(commandName);
+            return 0;
+        } else if (arg == "-p" || arg == "--project") {
+            if (!value(v)) return 1;
+            options.engineProject = projectArgPath(v);
+        } else if (arg == "--object") {
+            if (!value(v)) return 1;
+            options.object = v;
+        } else if (arg == "--dest") {
+            if (!value(v)) return 1;
+            options.dest = v;
+        } else if (arg == "--unity-project") {
+            if (!value(v)) return 1;
+            options.unityProject = absoluteArgPath(v);
+        } else if (arg == "--report") {
+            if (!value(v)) return 1;
+            reportPath = absoluteArgPath(v);
+        } else if (arg == "--overwrite") {
+            options.overwrite = true;
+        } else if (arg == "--dry-run") {
+            options.dryRun = true;
+        } else if (!arg.empty() && arg[0] == '-') {
+            std::cerr << "error: unknown option " << arg << "\n";
+            printImportUnityParticlesUsage(commandName);
+            return 1;
+        } else if (file.empty()) {
+            file = arg;
+        } else {
+            std::cerr << "error: one file at a time (" << file << ", " << arg << ")\n";
+            return 1;
+        }
+    }
+    if (file.empty()) {
+        std::cerr << "error: give the .prefab or .unity file to import\n";
+        printImportUnityParticlesUsage(commandName);
+        return 1;
+    }
+    if (options.engineProject.empty()) {
+        std::cerr << "error: --project is required (the engine project the files go into)\n";
+        return 1;
+    }
+    std::error_code ec;
+    if (!fs::is_regular_file(options.engineProject / "project.yaml", ec)) {
+        std::cerr << "error: not an engine project (no project.yaml): " << options.engineProject.string() << "\n";
+        return 1;
+    }
+    options.file = absoluteArgPath(file);
+
+    const unity::ImportResult result = unity::importParticles(options);
+    if (!result.ok) {
+        std::cerr << "error: " << result.error << "\n";
+        return 1;
+    }
+    std::cout << result.report.dump(2) << "\n";
+    if (!reportPath.empty()) {
+        if (FileUtils::writeFile(reportPath, result.report.dump(2) + "\n") == FileUtils::WriteResult::Failed) {
+            std::cerr << "error: cannot write the report to " << reportPath.string() << "\n";
+            return 1;
+        }
+    }
+    for (const std::string& prefab : result.prefabs) {
+        std::cerr << (options.dryRun ? "would write " : "wrote ") << prefab << "\n";
+    }
+    return result.hasWarnings ? 2 : 0;
+}
+
+int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return spritenormals::runGenerateSpriteNormals(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
 int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return runPlacePhysics(argc, argv, getCommandName(executableName), std::cout, std::cerr);
@@ -2571,6 +3735,55 @@ int CommandLine::runHelpCommand(int argc, char** argv, const char* executableNam
     std::cerr << commandName << ": unknown argument '" << argument << "'\n\n";
     printMainUsage(commandName);
     return 2;
+}
+
+// ---- the profiler's options, for the engine (S15 R38)
+
+namespace {
+    std::vector<std::string>& profilerFlags(){
+        static std::vector<std::string> flags;
+        return flags;
+    }
+}
+
+bool CommandLine::takeProfilerFlags(std::vector<char*>& args){
+    std::vector<std::string>& taken = profilerFlags();
+    for (size_t i = 1; i < args.size();){
+        const std::string arg = args[i];
+        const bool record = arg == "--profile";
+        const bool capture = arg == "--profile-capture" || arg.rfind("--profile-capture=", 0) == 0;
+        const bool frames = arg == "--profile-frames" || arg.rfind("--profile-frames=", 0) == 0;
+        if (!record && !capture && !frames){
+            i++;
+            continue;
+        }
+        size_t used = 1;
+        std::string value;
+        if (!record){
+            const size_t equals = arg.find('=');
+            if (equals != std::string::npos){
+                value = arg.substr(equals + 1);
+            }else if (i + 1 < args.size()){
+                value = args[i + 1];
+                used = 2;
+            }else{
+                std::cerr << arg << " needs a value\n";
+                return false;
+            }
+        }
+        if (record)
+            taken.push_back("--profile");
+        else if (capture)
+            taken.push_back("--profile-capture=" + absoluteArgPath(value).string());
+        else
+            taken.push_back("--profile-frames=" + value);
+        args.erase(args.begin() + static_cast<long>(i), args.begin() + static_cast<long>(i + used));
+    }
+    return true;
+}
+
+const std::vector<std::string>& CommandLine::takenProfilerFlags(){
+    return profilerFlags();
 }
 
 }

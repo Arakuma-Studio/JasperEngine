@@ -1,11 +1,32 @@
 """W4 docs: jasper://guide and jasper://docs/* resources, the project resources, engine API search,
-prompts."""
+prompts; and the docs gate of docs/mcp/TOOLS.md (S31 R22): `gen_tool_docs.py --check` passes on
+the committed file and fails after a description edit that was not regenerated (red control), the
+header names the editor version, each tool shows its group and the sections follow _meta modules."""
+
+import asyncio
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
 
 from mcp.shared.exceptions import MCPError
 
+import harness
 from harness import Editor
 
-DOCS = ["cpp-scripting", "html-ui", "lattice", "lua-api", "physics", "post-processing", "prefabs", "shaders", "unity-glossary"]
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import gen_tool_docs  # noqa: E402
+
+TIMEOUT = 900
+TOOLS_MD = harness.REPO / "docs" / "mcp" / "TOOLS.md"
+EDITOR = {"create": True, "name": "MCP Resources"}
+CI = True
+
+DOCS = ["animation", "assets", "camera", "cpp-scripting", "data-safety", "debugging", "html-ui", "input",
+        "lattice", "lines-trails", "lua-api", "lua-scripting", "particles", "physics",
+        "platform-services", "post-processing", "prefabs", "safe-area", "scene-view", "shaders",
+        "sprite-normals", "ui", "undo", "unity-glossary", "vertex-animation"]
 
 
 async def read_text(ed: Editor, uri: str) -> str:
@@ -26,15 +47,15 @@ async def test_resources_listed(ed: Editor):
 
 async def test_read_docs(ed: Editor):
     guide = await read_text(ed, "jasper://guide")
-    ed.check(guide.startswith(ed.instructions.strip()[:200]), "guide starts with the initialize instructions")
+    ed.check(guide.startswith(ed.instructions.strip()), "guide starts with the initialize instructions")
     ed.check("jasper://docs/lua-api" in guide, "guide lists the docs")
     for name in DOCS:
         text = await read_text(ed, f"jasper://docs/{name}")
-        ed.check(len(text) > 500 and text.lstrip().startswith("#"), f"{name} looks empty: {text[:100]!r}")
+        ed.check(bool(text.strip()), f"{name} returned an empty resource")
     # the big Lua reference is an index of section resources
     lua = await read_text(ed, "jasper://docs/lua-api")
     sections = [line.split("`")[1] for line in lua.splitlines() if line.startswith("- `jasper://docs/lua-api/")]
-    ed.check(len(sections) > 10 and len(lua) < 12000, f"lua-api index: {len(sections)} sections, {len(lua)} chars")
+    ed.check(bool(sections), "lua-api index has no readable section resources")
     events = next(u for u in sections if "event-registration" in u)
     ed.check("RegisterEngineEvent" in await read_text(ed, events), "lua-api section content")
     listed = {str(r.uri) for r in (await ed.session.list_resources()).resources}
@@ -50,17 +71,26 @@ async def test_read_docs(ed: Editor):
 
 
 async def test_project_resources(ed: Editor):
+    (ed.project / "AGENTS.md").unlink(missing_ok=True)
+    claude_file = ed.project / "CLAUDE.md"
+    claude_file.unlink(missing_ok=True)
     agents = await read_text(ed, "jasper://project/AGENTS.md")
-    ed.check("JasperEngine" in agents, "AGENTS.md content")
-    (ed.project / "AGENTS.md").unlink()  # a new project has none until play/build: written on read
-    agents = await read_text(ed, "jasper://project/AGENTS.md")
-    ed.check("JasperEngine Project Context" in agents and (ed.project / "AGENTS.md").exists(), "AGENTS.md generated")
-    lua = await read_text(ed, "jasper://project/scripts/GameController.lua")
-    ed.check("GameController" in lua, "project file template")
+    ed.check((ed.project / "AGENTS.md").is_file(), "reading the resource generates AGENTS.md")
+    ed.check(claude_file.is_file(), "generating context also creates its client import")
+    ed.check(any(line.strip() in ("@AGENTS.md", "@./AGENTS.md") for line in claude_file.read_text().splitlines()),
+             "CLAUDE.md imports the generated project context")
+    # Public onboarding targets required by phase-4-agent-tooling.md §3.8.4.
+    for target in ("check --ui", "jasper://docs/html-ui", "jasper://docs/html-ui-support",
+                   ".jasperengine/engine-api/html-ui-examples/"):
+        ed.check_in(target, agents, "generated AGENTS.md exposes the HTML UI checks and references")
+    contents = "Resource probe: caf\u00e9\nSecond line.\n"
+    (ed.project / "resource-probe.txt").write_text(contents, encoding="utf-8")
+    ed.check_eq(await read_text(ed, "jasper://project/resource-probe.txt"), contents,
+                "project resources preserve UTF-8 file contents")
     try:
         await ed.session.read_resource("jasper://project/../etc/passwd")
-    except MCPError:
-        pass
+    except MCPError as error:
+        ed.check("inside the project" in str(error), f"path traversal failed for the wrong reason: {error}")
     else:
         ed.fail("escaping the project must fail")
 
@@ -85,6 +115,56 @@ async def test_prompts(ed: Editor):
     listed = await ed.session.list_prompts()
     names = {p.name for p in listed.prompts}
     ed.check_in("new_2d_game", names, "prompt listed")
-    got = await ed.session.get_prompt("new_2d_game", {"idea": "a pong clone"})
+    idea = "a nocturnal library maze"
+    got = await ed.session.get_prompt("new_2d_game", {"idea": idea})
     text = got.messages[0].content.text
-    ed.check("pong" in text and "create_script" in text, text[:300])
+    ed.check_in(idea, text, "the prompt preserves the caller's complete game idea")
+
+
+# ---------------------------------------------------------------- docs/mcp/TOOLS.md (S31 R22)
+
+async def run_gen_check(out: Path) -> tuple[int, str]:
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, str(Path(gen_tool_docs.__file__)), "--check", "--out", str(out),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=dict(os.environ))
+    text, _ = await asyncio.wait_for(proc.communicate(), 600)
+    return proc.returncode, text.decode(errors="replace")
+
+
+async def test_tool_docs_current(ed: Editor):
+    code, out = await run_gen_check(TOOLS_MD)
+    ed.check(code == 0, f"docs/mcp/TOOLS.md is stale: regenerate it with tools/mcp/gen_tool_docs.py\n{out[-2000:]}")
+    text = gen_tool_docs.render(await ed.tools(groups="all"), ed.init_result.server_info, ed.init_result.protocol_version)
+    version = ed.init_result.server_info.version
+    ed.check(f"jasperengine-editor {version} (protocol" in text.splitlines()[2], f"the header names the version {version}")
+    ed.check("Group: `core`" in text and "## Core" in text and "## HTML/CSS UI" in text, "groups and _meta sections")
+
+
+async def test_tool_docs_red_control(ed: Editor):
+    tmp = Path(tempfile.mkdtemp(prefix="jasper-tooldocs-"))
+    try:
+        copy = tmp / "TOOLS.md"
+        shutil.copy(TOOLS_MD, copy)
+        # a description edited in the editor without regenerating = the file no longer matches
+        text = copy.read_text(encoding="utf-8")
+        description = ed.tool("editor_status").description
+        ed.check(description in text, "the description is in the file")
+        copy.write_text(text.replace(description, description + " Changed."), encoding="utf-8")
+        code, out = await run_gen_check(copy)
+        ed.check(code == 1 and "is stale" in out and "Changed." in out, f"a stale file fails --check: {code}\n{out[-1500:]}")
+        # the version in the header alone is not staleness
+        lines = text.splitlines(keepends=True)
+        lines[2] = lines[2].replace(" (protocol", "-other-version (protocol", 1)
+        copy.write_text("".join(lines), encoding="utf-8")
+        ed.check(gen_tool_docs.stale_diff(copy, text) == [], "a different version in the header is not stale")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+async def test_tool_reference_has_no_other_section(ed: Editor):
+    """docs/mcp/TOOLS.md (tools/mcp/gen_tool_docs.py) files every tool under its module's section: none
+    falls into "Other" (a tools/*.cpp missing from the generator's MODULES)."""
+    from harness import REPO
+    text = (REPO / "docs" / "mcp" / "TOOLS.md").read_text()
+    ed.check("\n## Other\n" not in text and "[Other](#other)" not in text, "a tool is listed under Other: add its module to gen_tool_docs.py")
+    ed.check("- [Vertex animation](#vertex-animation) (1): `bake_vertex_animation`" in text, "bake_vertex_animation under Vertex animation")

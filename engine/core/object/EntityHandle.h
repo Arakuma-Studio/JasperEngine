@@ -64,6 +64,10 @@ namespace jasperengine{
         bool isEntityOwned() const;
         void setEntityOwned(bool entityOwned);
 
+        // Engine-internal: the GameObject moved to another scene (persistence, ObjectManager::
+        // moveToScene), this handle follows it (an owning handle watches the new scene)
+        void rebind(Scene* scene, Entity entity);
+
         template <typename T>
         void addComponent() {
             scene->addComponent<T>(entity);
@@ -89,6 +93,13 @@ namespace jasperengine{
     	T& getComponent() const {
     		return scene->getComponent<T>(entity);
     	}
+
+        // A change made through the wrapper: the setters that set a needUpdate flag stamp
+        // the component changed (Changed<T>, EntityRegistry::markChanged)
+        template <typename T>
+        void markChanged() const {
+            scene->markChanged<T>(entity);
+        }
 
     };
 }

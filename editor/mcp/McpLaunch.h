@@ -6,7 +6,8 @@
 namespace jasperengine::editor::mcp {
 
     // `jasperengine-editor mcp [--project <dir|project.yaml>] [--create <dir> [--name N]]
-    //  [--headless] [--http-port N]`: the GUI editor serving MCP on the original stdio.
+    //  [--headless] [--http-port N] [--tool-groups a,b|all]`: the GUI editor serving MCP on
+    // the original stdio.
     // argv[0] is "mcp". Sets the stdio aside (fd 1 becomes stderr, fd 0 /dev/null) and,
     // with --headless and no DISPLAY, starts Xvfb. Returns -1 to go on and start the
     // editor, otherwise the exit code (help, bad arguments, no Xvfb).

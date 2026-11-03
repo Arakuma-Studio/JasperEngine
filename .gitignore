@@ -77,4 +77,13 @@ $RECYCLE.BIN/
 
 # Python bytecode from importing tools/*.py
 __pycache__/
-.claude/
+# Claude Code: the contributor rules are tracked (AGENTS.md), personal settings are not
+.claude/*
+!.claude/rules/
+
+# the core tests write their resource pack (TestPack.h) into the working directory, the checkout
+/resources.pak
+/resources.pak.tmp*
+
+# HTML UI effect cost reports written by EffectPerfTest when run from the repository root
+htmlui-effects-cost*.json

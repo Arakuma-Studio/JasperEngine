@@ -1,4 +1,0 @@
-compat/css/gradients.css:8:9: info: gradient interpolation hints are dropped (the midpoint stays in the middle) [HTMLUI-CSS-0005]
-compat/css/gradients.css:9:10: info: gradient color interpolation 'oklch' is dropped (sRGB interpolation) [HTMLUI-CSS-0005]
-compat/css/gradients.css:15:7: info: a gradient position offset from an edge is dropped (the edge is used) [HTMLUI-CSS-0005]
-compat/css/gradients.css:22:12: warning: a gradient layer with a background-size or background-position is drawn once over the whole box (fix: draw the pattern with an image) [HTMLUI-CSS-0006]

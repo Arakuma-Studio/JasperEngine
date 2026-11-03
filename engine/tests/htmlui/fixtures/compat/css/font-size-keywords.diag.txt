@@ -1,1 +1,0 @@
-compat/css/font-size-keywords.css:6:12: warning: 'font-size: huge' is not supported; declaration dropped (fix: use a length, a percentage or a size keyword) [HTMLUI-CSS-0004]

@@ -368,28 +368,30 @@ TEST_F(RmlFontEngineTest, ControlCharactersTakeNoSpaceAndDrawNothing){
               generate(face, "text", Rml::Vector2f(10, 50), Rml::ColourbPremultiplied(255, 255, 255, 255), 1.0f, 4.0f).width);
 }
 
-TEST_F(RmlFontEngineTest, VersionBumpsOnlyOnNewGlyphs){
+// S16 R13: versions are per handle, and a page that gets new glyphs is the same texture (its
+// texels are uploaded again): no text is made again for it. Only what clears a page or resets
+// everything (the epoch) changes a version.
+TEST_F(RmlFontEngineTest, VersionIsPerHandle){
     Rml::FontFaceHandle face = handle("sans-serif", 24);
+    Rml::FontFaceHandle other = handle("sans-serif", 30);
     const int start = engine.GetVersion(face);
+    const int otherStart = engine.GetVersion(other);
 
     generate(face, "abc");
-    const int afterAbc = engine.GetVersion(face);
-    EXPECT_EQ(afterAbc, start + 1);   // once per string, not per glyph
-
-    generate(face, "abc");
-    generate(face, "cab ba");
-    EXPECT_EQ(engine.GetVersion(face), afterAbc);
+    generate(face, "abcd");
+    generate(other, "xyz");
+    EXPECT_EQ(engine.GetVersion(face), start);
+    EXPECT_EQ(engine.GetVersion(other), otherStart);
     // widths never touch the atlas
     width(face, "xyz");
-    EXPECT_EQ(engine.GetVersion(face), afterAbc);
+    EXPECT_EQ(engine.GetVersion(face), start);
 
-    generate(face, "abcd");
-    EXPECT_EQ(engine.GetVersion(face), afterAbc + 1);
-    // one global version
-    EXPECT_EQ(engine.GetVersion(handle("sans-serif", 30)), afterAbc + 1);
-    // a new size is new glyphs
-    generate(handle("sans-serif", 30), "a");
-    EXPECT_EQ(engine.GetVersion(face), afterAbc + 2);
+    // the epoch (a scale reset) moves every handle once
+    engine.setRasterScale(2.0f);
+    EXPECT_EQ(engine.GetVersion(face), start + 1);
+    EXPECT_EQ(engine.GetVersion(other), otherStart + 1);
+    EXPECT_EQ(engine.GetVersion(face), start + 1);
+    engine.setRasterScale(1.0f);
 }
 
 TEST_F(RmlFontEngineTest, RasterScaleChange){
@@ -461,7 +463,9 @@ TEST_F(RmlFontEngineTest, PageOverflowNewPage){
 
     generate(big, "ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz0123456789");
     EXPECT_GE(engine.getPageCount(), 2u);
-    EXPECT_LE(engine.getPageCount(), RmlFontEngine::maxPages);
+    // within the atlas budget (R13): 1 MiB per R8 page
+    EXPECT_LE(engine.getPageCount() * 1024u * 1024u, RmlFontEngine::getBaseBudgetBytes());
+    EXPECT_EQ(engine.getAtlasBytes(), engine.getPageCount() * 1024u * 1024u);
 
     // a string spanning pages: one mesh per page, every glyph drawn
     Generated spanning = generate(big, "Wz9");
@@ -540,7 +544,9 @@ TEST_F(RmlFontEngineTest, ReleaseFontResources){
     Rml::FontFaceHandle face = handle("sans-serif", 24);
     generate(face, "release me");
     EXPECT_EQ(engine.getPageCount(), 1u);
-    const int before = engine.GetVersion(face);
+    // (the epoch: what a handle that went with the release reads)
+    const int before = engine.GetVersion(0);
+    EXPECT_GE(engine.GetVersion(face), before);
 
     engine.ReleaseFontResources();
     EXPECT_EQ(engine.getPageCount(), 0u);

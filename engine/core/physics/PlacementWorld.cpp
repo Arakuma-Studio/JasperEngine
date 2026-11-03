@@ -20,7 +20,9 @@
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/SplineSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "util/MeshTriangles.h"
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "JoltShapeBuilder.h"
@@ -186,7 +188,7 @@ namespace {
     // Colliders that take part in collisions (an enabled Rigidbody, not a sensor)
     RigidbodyComponent* authoredBody(Scene* scene, Entity entity) {
         RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
-        return (body && body->enabled && !body->sensor && body->numColliders > 0) ? body : nullptr;
+        return (body && body->enabled && !body->sensor && !body->colliders.empty()) ? body : nullptr;
     }
 
     bool layerIgnored(Scene* scene, Entity entity, uint32_t mask) {
@@ -195,7 +197,14 @@ namespace {
     }
 
     bool editorOverlay(Scene* scene, Entity entity) {
+#ifdef JASPERENGINE_EDITOR
         return scene->getSystem<RenderSystem>()->isEditorOverlay(entity);
+#else
+        // a game build has no editor overlays (RenderSystem keeps them in the editor only)
+        (void)scene;
+        (void)entity;
+        return false;
+#endif
     }
 
     bool isSkinned(MeshComponent* mesh) {
@@ -237,7 +246,7 @@ namespace {
             float frobenius = 0.0f;
             for (int c = 0; c < 3; c++) for (int r = 0; r < 3; r++) frobenius += model.get(c, r) * model.get(c, r);
             const float maxScale = std::max(std::sqrt(frobenius), std::max(std::fabs(scale.x), std::max(std::fabs(scale.y), std::fabs(scale.z))));
-            for (size_t i = 0; i < body->numColliders; i++) {
+            for (size_t i = 0; i < body->colliders.size(); i++) {
                 const Collider3D& c = body->colliders[i];
                 if ((c.type == Collider3DType::CONVEX_HULL || c.type == Collider3DType::MESH) &&
                     c.source != Collider3DSource::RAW_VERTICES && c.source != Collider3DSource::RAW_MESH) {
@@ -260,7 +269,7 @@ namespace {
                 } else if (c.type == Collider3DType::TAPERED_CAPSULE) {
                     radius = c.halfHeight + std::max(c.topRadius, c.bottomRadius);
                 } else {
-                    for (size_t v = 0; v < c.numVertices; v++) radius = std::max(radius, (c.vertices[v] - c.position).length() + c.position.length());
+                    for (size_t v = 0; v < c.vertices.size(); v++) radius = std::max(radius, (c.vertices[v] - c.position).length() + c.position.length());
                 }
                 const Vector3 center = model * c.position;
                 const float r = radius * maxScale;
@@ -693,7 +702,7 @@ namespace {
     void authoredParts(Entity entity, RigidbodyComponent& body, bool dynamic, JPH::Vec3Arg partPosition, JPH::QuatArg partRotation,
                        std::vector<ShapePart>& parts) const {
         const Matrix4 linear = linearOf(entity);
-        for (size_t i = 0; i < body.numColliders; i++) {
+        for (size_t i = 0; i < body.colliders.size(); i++) {
             Collider3D collider = body.colliders[i];
             if (dynamic) {
                 if (collider.type == Collider3DType::HEIGHTFIELD) continue;
@@ -718,7 +727,7 @@ namespace {
     }
 
     bool partGeometry(Entity entity, MeshComponent* mesh, PartGeometry& out) const {
-        JoltShapeBuilder::appendMeshTriangles(mesh, Matrix4(), out.local, out.indices);
+        MeshTriangles::appendMeshTriangles(mesh, Matrix4(), out.local, out.indices);
         weldExact(out.local, out.indices);
         if (out.local.empty()) return false;
         const Matrix4 linear = linearOf(entity);
@@ -930,7 +939,7 @@ namespace {
             }
         }
         for (Entity e : entities) {
-            if (JoltShapeBuilder::isGeometryLoading(scene, e)) {
+            if (MeshTriangles::isGeometryLoading(scene, e)) {
                 if (why) *why = "mesh still loading";
                 return false;
             }
@@ -941,11 +950,11 @@ namespace {
         for (Entity e : entities) {
             RigidbodyComponent* body = authoredBody(scene, e);
             if (!body) continue;
-            for (size_t i = 0; i < body->numColliders; i++) {
+            for (size_t i = 0; i < body->colliders.size(); i++) {
                 const Collider3D& c = body->colliders[i];
                 if ((c.type == Collider3DType::CONVEX_HULL || c.type == Collider3DType::MESH) &&
                     c.source != Collider3DSource::RAW_VERTICES && c.source != Collider3DSource::RAW_MESH) {
-                    for (Entity source : JoltShapeBuilder::meshSourceEntities(scene, c.sourceEntity == NULL_ENTITY ? e : c.sourceEntity)) {
+                    for (Entity source : MeshTriangles::meshSourceEntities(scene, c.sourceEntity == NULL_ENTITY ? e : c.sourceEntity)) {
                         authoredSources.insert(source);
                     }
                 }
@@ -1323,7 +1332,7 @@ struct PlacementWorld::Impl {
         std::vector<Vector3> vertices;
         std::vector<uint32_t> indices;
         // in the body's frame, mirrored triangles wound back (appendMeshTriangles)
-        JoltShapeBuilder::appendMeshTriangles(mesh, shapes().linearOf(entity), vertices, indices);
+        MeshTriangles::appendMeshTriangles(mesh, shapes().linearOf(entity), vertices, indices);
         weldExact(vertices, indices);
         if (indices.empty()) return nullptr;
 
@@ -1382,7 +1391,7 @@ struct PlacementWorld::Impl {
     // Static bodies for one entity's own components. False while its geometry is still
     // loading, so a later call tries again.
     bool addStaticContext(Entity entity, std::vector<JPH::BodyID>& added) {
-        if (JoltShapeBuilder::isGeometryLoading(scene, entity)) return false;
+        if (MeshTriangles::isGeometryLoading(scene, entity)) return false;
         resolveTransform(scene, entity);
         Transform* transform = scene->findComponent<Transform>(entity);
         if (!transform) return true;
@@ -1550,6 +1559,13 @@ struct PlacementWorld::Impl {
         MeshSystem* meshSystem = scene->getSystem<MeshSystem>().get();
         for (size_t i = 0; i < terrains->size(); i++) {
             for (Entity e : meshSystem->getFoliageEntities(terrains->getEntity(i))) foliage.insert(e);
+        }
+        // a spline's chunks collide through their owner's colliders (SplineSystem), not as props
+        if (std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>()) {
+            auto splineArray = scene->getComponentArray<SplineComponent>();
+            for (size_t i = 0; i < splineArray->size(); i++) {
+                for (Entity e : splines->getGeneratedEntities(splineArray->getEntity(i))) foliage.insert(e);
+            }
         }
 
         std::vector<Entity> candidates;

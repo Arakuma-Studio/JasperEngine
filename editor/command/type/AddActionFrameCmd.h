@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "component/AnimationComponent.h"
@@ -32,6 +33,11 @@ namespace jasperengine::editor {
 
         bool execute() override;
         void undo() override;
+
+        // "Add Action (Hero Walk)", the Animation's GameObject
+        std::string describe() const override;
+        const char* typeName() const override { return "AddActionFrameCmd"; }
+        size_t memoryBytes() const override;
     };
 
 }

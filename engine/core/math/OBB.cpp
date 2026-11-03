@@ -237,14 +237,9 @@ void OBB::setOrientation(const Quaternion& orientation) {
 }
 
 Quaternion OBB::getOrientation() const {
-    // Create rotation matrix from the axes
-    Matrix3 rotMatrix;
-    rotMatrix[0][0] = mAxisX.x; rotMatrix[0][1] = mAxisY.x; rotMatrix[0][2] = mAxisZ.x;
-    rotMatrix[1][0] = mAxisX.y; rotMatrix[1][1] = mAxisY.y; rotMatrix[1][2] = mAxisZ.y;
-    rotMatrix[2][0] = mAxisX.z; rotMatrix[2][1] = mAxisY.z; rotMatrix[2][2] = mAxisZ.z;
-
-    // Convert to quaternion
-    return Quaternion(rotMatrix);
+    // what setOrientation stored: the rotation whose matrix has the axes as its columns
+    // (filling a Matrix3, indexed [column][row], with the axes as rows gave its inverse)
+    return Quaternion(mAxisX, mAxisY, mAxisZ);
 }
 
 void OBB::transform(const Matrix4& matrix) {

@@ -8,7 +8,9 @@
 #include "ToolsLayer.h"
 #include "UILayer.h"
 #include "RenderUtil.h"
+#include "navigation/NavigationOverlay.h"
 #include "command/Command.h"
+#include "command/CommandHistory.h"
 
 #include <memory>
 
@@ -36,6 +38,8 @@ namespace jasperengine::editor{
         bool hideSelectionOutline = false;
         bool disableFaceCulling  = false;
         bool disableFog          = false;
+        // the Scene view draws without the volumetric clouds
+        bool disableClouds       = false;
         // the scene's post-processing in the Scene view (off by default: the Game view shows it)
         bool showPostProcessing  = false;
         bool showGrid2D          = false;
@@ -47,6 +51,8 @@ namespace jasperengine::editor{
         float rotationSnapDegrees = 15.0f;
         // every lattice's cage, not only the selected ones' (faint)
         bool showAllLattices     = false;
+        // the AI Navigation overlay (S19; navigation/NavigationOverlay.h)
+        NavOverlaySettings navigation;
     };
 
     struct CameraObjects{
@@ -74,6 +80,7 @@ namespace jasperengine::editor{
     };
 
     class Project;
+    class PoseViewport;
     class PhysicsPlacementWindow;
 
     class SceneRender{
@@ -98,7 +105,14 @@ namespace jasperengine::editor{
         float gizmoScale;
         float selectionOffset;
 
-        Command* lastCommand;
+        // A gizmo or handle drag is one undo step, Esc (or Ctrl+Z) puts it back: the drag's
+        // commands go through this edit, opened by its first one. Once it ends before the
+        // mouse does (cancelled, or committed by a popup), the rest of the drag is ignored.
+        InteractiveEdit dragEdit;
+        bool dragEditStarted = false;
+        bool pushDragCommand(size_t sceneId, Command* command);
+        // this drag already said that Record does not key it (ClipRecordHooks::note)
+        bool gizmoRecordNoted = false;
 
         CursorSelected cursorSelected;
 
@@ -120,6 +134,9 @@ namespace jasperengine::editor{
         // Lines endpoint sub-selection (index = lineIndex * 2 + endpoint, 0 = A, 1 = B)
         Entity selectedLinePointEntity = 0;  // NULL_ENTITY
         int selectedLinePointIndex = -1;
+        // the line's mode when the point was picked (the index is a polyline position or a segment end)
+        LineRendererMode selectedLinePointMode = LineRendererMode::Segments;
+        bool linePointEditing = false;
 
         // Polygon / MeshPolygon vertex sub-selection (both store std::vector<PolygonPoint>;
         // isMesh picks which component, avoiding a ComponentType dependency in this header)
@@ -132,11 +149,20 @@ namespace jasperengine::editor{
         Entity selectedTrackPointEntity = 0;  // NULL_ENTITY
         int selectedTrackPointIndex = -1;
 
+        // Joint 2D anchor handle sub-selection: 0 anchor A, 1 anchor B (or a mouse joint's target)
+        Entity selectedJointAnchorEntity = 0;  // NULL_ENTITY
+        int selectedJointAnchorIndex = -1;
+
         // world position of vertex pointIndex of the selected entity's Polygon/MeshPolygon
         // points (nullptr list / bad index -> false)
         bool getPolygonPointWorld(Entity entity, bool isMesh, int pointIndex, Vector3& worldPoint);
 
         bool getTrackPointWorld(Entity entity, int pointIndex, Vector3& worldPoint);
+
+        // world position of handle `index` of a Joint 2D (false when the joint has none there)
+        bool getJointAnchorWorld(Entity entity, int index, Vector3& worldPoint);
+        // the Joint 2D property a handle drag writes ("anchorA", "anchorB", "target")
+        std::string getJointAnchorProperty(Entity entity, int index);
 
         // Bounds of an entity of target: this scene, or the edit layer's scene
         AABB getAABB(Scene* target, Entity entity, bool local);
@@ -214,6 +240,10 @@ namespace jasperengine::editor{
         int viewWidth = 0;
         int viewHeight = 0;
 
+        // --- the AI Navigation overlay (S19, editor/navigation/NavigationOverlay.cpp) ---
+        std::unique_ptr<NavigationOverlay> navigationOverlay;
+        void updateNavigationOverlay(const std::vector<Entity>& selEntities);
+
         // --- lattices: cages, point gizmo and drag (editor/lattice/LatticeSceneRender.cpp) ---
         struct LatticeCageLines{
             LineRenderer* overlay = nullptr; // tools scene: over the geometry (faded where hidden in 3D)
@@ -260,12 +290,39 @@ namespace jasperengine::editor{
         void drawLatticeFalloff(Entity entity, bool visible);
         void hideLatticeCages();
         void destroyLatticeCages();
+        // the world change of a gizmo drag about pivot (W/E/R or the 2D move), false when the
+        // cursor is off the drag plane; shared by the lattice points and the spline knots
+        bool gizmoDragDelta(const Vector3& pivot, const Quaternion& rotation, bool invertRotationSnap, Matrix4& delta);
         void beginLatticeDrag(Entity entity, const Vector3& pivot, const Quaternion& rotation);
         // the gizmo's change since the drag began (the entity drag's math, about the pivot)
         void dragLatticeGizmo(Project* project, uint32_t sceneId, bool invertRotationSnap);
         // a world-space change applied to the dragged points (and the falloff's)
         void dragLatticePoints(Project* project, uint32_t sceneId, const Matrix4& worldDelta);
         void endLatticeDrag();
+
+        // --- splines: the edited spline's knots, handles and radius band, the Draw Spline
+        // tool's stroke, the knot gizmo's drag (editor/spline/SplineSceneRender.cpp) ---
+        LineRenderer* splineOverlayLines = nullptr; // tools scene: over the geometry
+        LineRenderer* splineDepthLines = nullptr;   // this scene: depth tested (3D views)
+        struct SplineDrag{
+            bool active = false;
+            Entity spline = 0; // NULL_ENTITY
+            std::vector<uint32_t> knots;
+            std::vector<spline::SplineKnot> baseKnots;
+            Matrix4 model;
+            Vector3 pivot;
+            Quaternion rotation;
+        };
+        SplineDrag splineDrag;
+        // the spline whose knots the tools edit: the only tool entity, the one in Edit Spline
+        Entity getKnotEditSpline(const std::vector<Entity>& toolEntities);
+        bool getSplineKnotsPivot(Entity entity, const std::vector<uint32_t>& knots, Vector3& pivot, Quaternion& rotation, OBB& obb);
+        void updateSplineOverlay(const std::vector<Entity>& selEntities, Entity editedSpline);
+        void hideSplineOverlay();
+        void destroySplineOverlay();
+        void beginSplineDrag(Entity entity, const Vector3& pivot, const Quaternion& rotation);
+        void dragSplineGizmo(Project* project, uint32_t sceneId, bool invertRotationSnap);
+        void endSplineDrag();
         // a Lattice Follower driven on the channel the grabbed gizmo edits (W position, E
         // rotation, R scale, the 2D gizmo's move) is replaced by its rest: the follower is put
         // back every frame, so the tools move the spot it follows instead
@@ -284,6 +341,13 @@ namespace jasperengine::editor{
         float overlayPx(float logicalPixels) const { return logicalPixels * overlayScale; }
         void ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity);
 
+        // the wire of a selected version 2 Particle System's Shape module (particles spec 6.8):
+        // `entity` noted in `current`; the wires of systems not in it are dropped by
+        // dropParticleShapeLines after the entity loop
+        void updateParticleShapeLines(Entity entity, bool selected, std::set<Entity>& current);
+        void dropParticleShapeLines(const std::set<Entity>& current);
+        std::map<Entity, LineRenderer*> particleShapeLines;
+
         // Marks an editor gizmo or icon created in the scene it annotates: only the
         // Scene view draws it, never the game or a camera image
         template<typename T>
@@ -292,10 +356,54 @@ namespace jasperengine::editor{
             return object;
         }
 
+        // A gizmo whose entity its scene destroyed behind this view's back (Stop once swept the
+        // gizmos the Scene view first drew while playing as made by the game): hiding or
+        // updating it throws, and its id may already be another entity's. An overlay of this
+        // scene that is no longer marked as one is gone too (the mark goes with its entity).
+        // render: this scene's RenderSystem (the overlay marks)
+        bool isGizmoGone(const EntityHandle* gizmo, const RenderSystem& render) const;
+        // Deletes a gizmo; a gone one without touching the scene (it no longer owns its entity)
+        void deleteGizmo(EntityHandle* gizmo, const RenderSystem& render) const;
+        // Every per-entity gizmo whose own entity is gone is forgotten (update() makes it again
+        // while what it annotates is there), so no pass touches it: run before the gizmo maps
+        // are used (update, hideAllGizmos, the destructors). The views' single gizmos (selection,
+        // terrain brush, physics, grid, tile and document lines, the editor camera) are not
+        // swept: they are made with the view, before any Play, so the Play snapshot lists them as
+        // alive before Play and Stop never destroys them, and nothing else destroys them.
+        virtual void dropGoneGizmos();
+
+        template<typename T>
+        void dropGoneGizmos(std::map<Entity, T*>& gizmos, const RenderSystem& render){
+            for (auto it = gizmos.begin(); it != gizmos.end();){
+                if (isGizmoGone(it->second, render)){
+                    deleteGizmo(it->second, render);
+                    it = gizmos.erase(it);
+                }else{
+                    ++it;
+                }
+            }
+        }
+
+        // gizmos made of several objects (icon and lines): one gone drops them all
+        template<typename V, typename... Parts>
+        void dropGoneGizmos(std::map<Entity, V>& gizmos, const RenderSystem& render, Parts... parts){
+            for (auto it = gizmos.begin(); it != gizmos.end();){
+                V& gizmo = it->second;
+                if ((isGizmoGone(gizmo.*parts, render) || ...)){
+                    (deleteGizmo(gizmo.*parts, render), ...);
+                    it = gizmos.erase(it);
+                }else{
+                    ++it;
+                }
+            }
+        }
+
         // Editor-only scenes the Scene view draws over the scene and its layers
         // (gizmos, overlays), and the views they render into before it
         virtual void addOverlayLayers(std::vector<Engine::ViewLayer>& layers, int width, int height);
         virtual void drawOverlayTargets();
+        // the editor overlays placed after the scene's update get their transforms for a draw
+        void settleOverlayTransforms();
 
         Scene* scene;
         Camera* camera;
@@ -311,6 +419,9 @@ namespace jasperengine::editor{
 
         ToolsLayer toolslayer;
         UILayer uilayer;
+
+        // posing a humanoid in the view (pose animation phase 5; 3D views only, null otherwise)
+        std::unique_ptr<PoseViewport> poseViewport;
 
         std::vector<Scene*> childSceneLayers;
 
@@ -354,6 +465,7 @@ namespace jasperengine::editor{
         void drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers);
         virtual void updateSize(int width, int height);
         virtual void setOverlayScale(float scale);
+        float getOverlayScale() const { return overlayScale; }
         float billboardScreenScale(const Vector3& worldPos, float logicalScale) const;
         virtual void updateSelLines(std::vector<OBB> obbs) = 0;
 
@@ -366,6 +478,24 @@ namespace jasperengine::editor{
         // sceneId is this scene: its history takes the commands. While an edit layer is set
         // the tools work on the layer's selection, and its commands target the layer.
         virtual void mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio);
+
+        // Record (animation clips 9.R5), the transform gizmo's drag: `localMatrix` is `entity`'s
+        // new local matrix from `gizmo` (Move: Position, Rotate: Rotation, Scale: Scale). When
+        // Record claims that channel for some of `selection`, a claimed entity's value is recorded
+        // (the live value and a key at the playhead, one merge key per drag, no scene command) and
+        // an unclaimed one stays as it is; returns false when Record does not take the drag (the
+        // caller builds the scene command). Rotate / Scale about another pivot also key the moved
+        // position. The drag's release ends the gesture (endGizmoRecord).
+        // `selectionClaimed`: gizmoRecordClaims of the drag's selection (asked once per drag event)
+        bool recordGizmoTransform(uint32_t sceneId, Entity entity, const Matrix4& localMatrix, GizmoSelected gizmo,
+                                  bool selectionClaimed);
+        bool gizmoRecordClaims(uint32_t sceneId, GizmoSelected gizmo, const std::vector<Entity>& selection) const;
+        // the gizmo drag's step for one GameObject (Move / Rotate / Scale of its new local matrix):
+        // recorded (null) or the ObjectTransformCmd to add (the caller adds it; the drag's release,
+        // mouseReleaseEvent, ends its merging and the record gesture)
+        Command* buildObjectTransformDrag(Project* project, uint32_t sceneId, Entity entity, const Matrix4& localMatrix,
+                                          GizmoSelected gizmo, bool selectionClaimed);
+        void endGizmoRecord();
 
         virtual bool isAnyGizmoSideSelected() const;
 
@@ -397,6 +527,14 @@ namespace jasperengine::editor{
         bool getFluidBrushCircle(std::vector<Vector2>& points);
         // a world point in pixels of this view (y down) through the editor camera; false behind it
         bool projectToView(const Vector3& world, Vector2& point);
+
+        // Pose animation (phase 5): the Pose Animation window's session poses a model of this
+        // scene. Its handles take a click first (poseMouseDown, x/y as screenToRay); a drag they
+        // took goes through mouseDragEvent / mouseReleaseEvent like a gizmo's.
+        bool isPoseEditing() const;
+        bool poseMouseDown(float x, float y, bool shift, bool ctrl);
+        bool isPoseDragging() const;
+        PoseViewport* getPoseViewport() const { return poseViewport.get(); }
 
         void setChildSceneLayers(const std::vector<Scene*>& layers);
         // Prefab Mode In Context: activate() makes `scene` the Engine's main scene, seen
@@ -430,6 +568,21 @@ namespace jasperengine::editor{
         // the Scene view's frame draws without the scene's post-processing (update)
         bool viewDisablesPostProcessing = false;
         void endGameViewPass();
+
+        // An inactive pane of the Split and Quad layouts (S26 R20, D8): the scene and its inline
+        // child scenes through the pane's own camera into target, after this frame's draw, with
+        // the icons, grid and selection outlines but no tools layer. gridPlane: 0 the XZ plane,
+        // 1 XY (front and back views), 2 YZ (side views).
+        struct PaneViewFlags {
+            bool shadows = false;
+            bool postProcessing = false;
+            int gridPlane = 0;
+        };
+        void drawPaneView(uint32_t viewId, Entity paneCamera, Framebuffer* target, int width, int height, const PaneViewFlags& flags);
+        // the plane the 3D grid lies in (the 2D views have none)
+        virtual void setGridPlane(int plane) { (void)plane; }
+        virtual int getGridPlane() const { return 0; }
+
         ToolsLayer* getToolsLayer();
         UILayer* getUILayer();
 
@@ -470,6 +623,23 @@ namespace jasperengine::editor{
         OBB getOccluderPointOBB(Entity entity, int pointIndex);
 
         // Lines endpoint sub-selection (index = lineIndex * 2 + endpoint, 0 = A, 1 = B)
+        // A Line Renderer's point handles by index: a polyline's positions, or each segment's
+        // A and B (lineIndex * 2 + end). Their world positions, the property that stores one and
+        // a world position in that property's space
+        static std::vector<Vector3> getLinePointWorldPositions(const LineRendererComponent& lines, const Transform& transform);
+        static std::string getLinePointProperty(const LineRendererComponent& lines, int pointIndex);
+        static Vector3 toLinePointSpace(const LineRendererComponent& lines, const Transform& transform, const Vector3& world);
+        // the line's points (either mode) in the GameObject's local space, merged into aabb
+        static void mergeLineLocalPoints(AABB& aabb, const LineRendererComponent& lines, const Transform& transform);
+        // Inspector > Line Renderer > Edit Points: Ctrl+click on a selected polyline inserts a
+        // point there (insertLinePointAt)
+        bool isLinePointEditing() const { return linePointEditing; }
+        void setLinePointEditing(bool editing) { linePointEditing = editing; }
+        // a point on the selected polyline under (x, y), inserted (one undo step) and selected:
+        // its index, -1 when the click is not on the line
+        int insertLinePointAt(Project* project, uint32_t commandSceneId, Entity entity, float x, float y);
+        // the selected point of a polyline removed (one undo step): false without one
+        bool removeSelectedLinePoint(Project* project, uint32_t commandSceneId);
         int getSelectedLinePointIndex() const { return selectedLinePointIndex; }
         Entity getSelectedLinePointEntity() const { return selectedLinePointEntity; }
         void selectLinePoint(Entity entity, int pointIndex);
@@ -493,6 +663,21 @@ namespace jasperengine::editor{
         // a gizmo drag of lattice points is under way (the mouse wheel sizes the falloff)
         bool isLatticeDragActive() const { return latticeDrag.active; }
 
+        // Spline knots and Bezier handles under the cursor (the Edit Spline context)
+        int hitTestSplineKnot(Entity entity, float x, float y);
+        bool hitTestSplineHandle(Entity entity, float x, float y, uint32_t& knot, bool& out);
+        std::vector<uint32_t> getSplineKnotsInRect(Entity entity, Vector2 start, Vector2 end);
+        // the point of the curve under the cursor, within a few pixels (Ctrl+click inserts there)
+        bool hitTestSplineCurve(Entity entity, float x, float y, Vector3& worldPoint);
+        // the world point under the cursor for a new knot or stroke point: the snap's surface,
+        // else the plane through the spline (y 0, or z 0 in 2D)
+        bool splinePointUnderCursor(Entity entity, float x, float y, bool snapToSurface, Vector3& worldPoint);
+        // a Bezier handle tip dragged to the cursor, in the plane facing the camera through it
+        void dragSplineHandle(Project* project, uint32_t sceneId, Entity entity, uint32_t knot, bool out, float x, float y);
+        bool isSplineDragActive() const { return splineDrag.active; }
+        // world units of one pixel at a point (the Draw tool's pixel tolerances)
+        float worldPerPixelAt(const Vector3& worldPoint) const;
+
         // Polygon / MeshPolygon vertex sub-selection
         int getSelectedPolygonPointIndex() const { return selectedPolygonPointIndex; }
         Entity getSelectedPolygonPointEntity() const { return selectedPolygonPointEntity; }
@@ -501,6 +686,14 @@ namespace jasperengine::editor{
         void clearPolygonPointSelection();
         int hitTestPolygonPoint(Entity entity, bool isMesh, float x, float y);
         OBB getPolygonPointOBB(Entity entity, bool isMesh, int pointIndex);
+
+        // Joint 2D anchor handles (the Move tool drags them)
+        int getSelectedJointAnchorIndex() const { return selectedJointAnchorIndex; }
+        Entity getSelectedJointAnchorEntity() const { return selectedJointAnchorEntity; }
+        void selectJointAnchor(Entity entity, int index);
+        void clearJointAnchorSelection();
+        int hitTestJointAnchor(Entity entity, float x, float y);
+        OBB getJointAnchorOBB(Entity entity, int index);
 
         // TranslateTracks keyframe point sub-selection
         int getSelectedTrackPointIndex() const { return selectedTrackPointIndex; }

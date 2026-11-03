@@ -31,6 +31,18 @@ public:
 	bool EraseAliases(Element* element);
 	void CopyAliases(Element* source_element, Element* target_element);
 
+	// Fork (P7-D): rebindable row aliases, for the pooled rows of the engine's virtual views. A row alias is an alias of
+	// `row` whose address is looked up when it is read: the views under the row resolve it to [first name of target,
+	// row entry] once, and every evaluation reads the row's current target. SetRowAlias re-points it and updates only
+	// the views in the row's subtree (at the next Update). Returns the alias's handle, -1 when the target is invalid.
+	int InsertRowAlias(Element* row, const String& alias_name, DataAddress target);
+	// Re-points a row alias (its handle from InsertRowAlias); the row's views are updated when the target changed.
+	void SetRowAlias(int handle, DataAddress target);
+	// The current target of a row alias (empty for an unknown handle).
+	const DataAddress& GetRowAlias(int handle) const;
+	// The entry naming a row alias inside a resolved address: its name.
+	static constexpr const char* RowAliasEntryName = "#row";
+
 	DataAddress ResolveAddress(const String& address_str, Element* element) const;
 	const DataEventFunc* GetEventCallback(const String& name);
 
@@ -67,6 +79,19 @@ private:
 
 	using ScopedAliases = UnorderedMap<Element*, SmallUnorderedMap<String, DataAddress>>;
 	ScopedAliases aliases;
+
+	// Fork (P7-D): the row aliases by handle (row null: a free handle), the handles of each row, the rows re-pointed
+	// since the last Update.
+	struct RowAlias {
+		Element* row = nullptr;
+		DataAddress target;
+	};
+	Vector<RowAlias> row_aliases;
+	Vector<int> free_row_aliases;
+	UnorderedMap<Element*, Vector<int>> row_alias_handles;
+	SmallUnorderedSet<Element*> dirty_rows;
+
+	DataVariable GetVariable(const DataAddress& head, const DataAddress& address, size_t address_begin) const;
 
 	DataTypeRegister* data_type_register;
 	bool allow_missing_variables;

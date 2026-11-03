@@ -730,6 +730,9 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 		.AddParser("keyword", "xx-small, x-small, small, medium, large, x-large, xx-large, xxx-large, smaller, larger, math")
 		.AddParser("length").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ParentFontSize);
 	RegisterProperty(PropertyId::FontKerning, "font-kerning", "auto", true, true).AddParser("keyword", "auto, normal, none");
+	// Fork (S16-F3): no layout change, the text is drawn again
+	RegisterProperty(PropertyId::TextRendering, "text-rendering", "auto", true, false)
+		.AddParser("keyword", "auto, optimizespeed, optimizelegibility, geometricprecision");
 	RegisterProperty(PropertyId::LetterSpacing, "letter-spacing", "normal", true, true).AddParser("keyword", "normal").AddParser("length_percent").SetRelativeTarget(RelativeTarget::FontSize);
 	RegisterShorthand(ShorthandId::Font, "font", "font-style, font-weight, font-size, line-height, font-family", ShorthandType::Custom);
 
@@ -1057,6 +1060,9 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::WebkitLineClamp, "-webkit-line-clamp", "none", false, true).AddParser("keyword", "none").AddParser("positive_integer");
 	RegisterProperty(PropertyId::WebkitBoxOrient, "-webkit-box-orient", "horizontal", false, true)
 		.AddParser("keyword", "horizontal, vertical");
+	// Pointer Events (fork, engine-gaps G5-4): 'auto | none | pan-x | pan-y | pan-x pan-y | manipulation', not inherited;
+	// the context reads it from a touch's target up to its scroll container when the touch starts.
+	RegisterProperty(PropertyId::TouchAction, "touch-action", "auto", false, false).AddParser("string");
 
 	// -- Values (p3-values), continued: the logical shorthands, which name the physical properties and shorthands of
 	// the other packages (border-<side> of p3-paint) --
@@ -1073,12 +1079,13 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	instance->properties.property_map->ReserveUnnamed(PropertyId::NumDefinedIds);
 	instance->properties.shorthand_map->ReserveUnnamed(ShorthandId::NumDefinedIds);
 
+	// (checked before the fork's own ids below: they are past the defined ones and would count as extra)
+	RMLUI_ASSERTMSG(instance->properties.shorthand_map->AssertAllInserted(ShorthandId::NumDefinedIds), "Missing specification for one or more Shorthand IDs.");
+	RMLUI_ASSERTMSG(instance->properties.property_map->AssertAllInserted(PropertyId::NumDefinedIds), "Missing specification for one or more Property IDs.");
+
 	// Fork (phase 5, P5-1): a filter list applied before 'filter' (the engine's gradient text of effect layers); after the
 	// reservation, so its id is past the defined ones
 	text_fill_id = RegisterProperty(PropertyId::Invalid, "-jfx-text-fill", "", false, false).AddParser("filter", "filter").GetId();
-
-	RMLUI_ASSERTMSG(instance->properties.shorthand_map->AssertAllInserted(ShorthandId::NumDefinedIds), "Missing specification for one or more Shorthand IDs.");
-	RMLUI_ASSERTMSG(instance->properties.property_map->AssertAllInserted(PropertyId::NumDefinedIds), "Missing specification for one or more Property IDs.");
 	// clang-format on
 }
 

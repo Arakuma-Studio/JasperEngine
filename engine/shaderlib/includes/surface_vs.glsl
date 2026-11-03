@@ -19,6 +19,8 @@
 //   SURFACE_COLOR     @require color     out vec4 v_color      vertex x instance colour
 //   SURFACE_RAW_COLOR @require rawcolor  out vec4 v_rawColor   the vertex colour alone
 //   SURFACE_SMOOTH_NORMALS @require smoothnormals  (no varying) surfaceSmoothNormal
+//   SURFACE_NORMAL_MAP @require normalmap with the material's normal map under 2D lights:
+//                      as SURFACE_TANGENTS (read by includes/lighting2d.glsl's getNormal2D)
 //
 // surfaceSmoothNormal (SURFACE_SMOOTH_NORMALS) is, for the displacement hooks below, the
 // object-space normal averaged over every vertex sharing the vertex's position (the
@@ -63,6 +65,15 @@
 //   #define SURFACE_DISPLACE_NORMAL
 //   vec3 surfaceDisplaceNormal(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv){ ... }
 //
+// Per-vertex work of a fork at the final world position and normal (vertex lighting read
+// from global shader values, u_vs_globals: docs/mcp/guide/shaders.md "Global values"), with
+// the vertex colour and UV the varyings get; it writes varyings of its own:
+//
+//   #define SURFACE_VERTEX
+//   #include "includes/surface_vs.glsl"
+//   out vec3 v_light;
+//   void surfaceVertex(vec3 worldPosition, vec3 worldNormal, vec4 color, vec2 uv){ v_light = ...; }
+//
 // Lattices (HAS_LATTICE, includes/lattice.glsl): the vertex goes through the lattices bound
 // to the mesh with its normal, smoothed normal and tangent, the before-skinning ones on the
 // bind pose, the others after the instance matrix and the instance fade, so the hooks above
@@ -70,6 +81,10 @@
 // in its fragment stage (latticeStretch(), library/lattice_stretch) defines LATTICE_STRETCH
 // before including, and in its .frag LATTICE_FS and LATTICE_STRETCH before including
 // includes/lattice.glsl.
+//
+// Vertex Animation (HAS_VAT, includes/vat.glsl): a Vertex Animator's baked animation moves the
+// rest position, normal, tangent and smoothed normal first, in place of the morph targets and
+// the skinning the variant has not got, so lattices and the hooks above see the animated vertex.
 //
 // Lighting (includes/lights.glsl, which documents the units):
 //   - USE_PUNCTUAL (pixel, mixed): the compiler adds SURFACE_POSITION and SURFACE_NORMALS,
@@ -81,8 +96,8 @@
 //     mode a shader that handles the ambient itself defines, before including, either
 //     SURFACE_NO_VERTEX_AMBIENT (v_vertexLight leaves it out) or SURFACE_VERTEX_AMBIENT
 //     (it comes apart, in out vec3 v_vertexAmbient, which the fragment stage must read).
-//   - USE_SHADOWS (pixel lights that receive shadows): out vec4 v_lightProjPos[], the
-//     shadow-map coordinates lightShadow reads; the fragment stage must call lightShadow.
+//   - USE_SHADOWS (pixel lights that receive shadows): nothing here; the fragment stage
+//     calls lightShadow, which computes the shadow coordinates from v_position.
 
 uniform u_vs_pbrParams {
     mat4 modelMatrix;
@@ -92,6 +107,17 @@ uniform u_vs_pbrParams {
 
 // same expression as the depth programs, so a depth pre-pass and this pass agree bit for bit
 invariant gl_Position;
+
+// @require normalmap (SURFACE_NORMAL_MAP): a variant with the material's normal map, tangents
+// and uv1 (the engine gives it the 2D lights' normal map, RenderSystem) writes the tangent
+// frame, which includes/lighting2d.glsl declares and reads in the fragment stage (the same
+// test there)
+#if defined(SURFACE_NORMAL_MAP) && defined(HAS_NORMAL_MAP) && defined(HAS_TANGENTS) && defined(HAS_UV_SET1)
+    #define SURFACE_NORMAL_MAP_ACTIVE
+    #ifndef SURFACE_TANGENTS
+        #define SURFACE_TANGENTS
+    #endif
+#endif
 
 #if defined(SURFACE_TANGENTS) && !defined(SURFACE_NORMALS)
     #define SURFACE_NORMALS
@@ -201,19 +227,23 @@ in vec3 a_position;
     #endif
 #endif
 
-#ifdef USE_SHADOWS
-    uniform u_vs_shadows {
-        mat4 lightVPMatrix[MAX_SHADOW_ATLAS_SLOTS];
-        vec4 shadowParams[MAX_SHADOW_ATLAS_SLOTS]; // normalBias in .x
-    };
-
-    out vec4 v_lightProjPos[MAX_SHADOW_ATLAS_SLOTS];
-#endif
-
 #include "includes/skinning.glsl"
 #include "includes/instance_normal.glsl"
 #include "includes/morphtarget.glsl"
 #include "includes/lattice.glsl"
+#include "includes/vat.glsl"
+#ifdef SURFACE_TANGENTS
+    // mirrorTangentFrame, tangentFrameMirror: a mirroring transform or texture rect
+    #include "includes/tangent_frame.glsl"
+#endif
+
+// the rest normal vatSmoothNormal turns the smoothed normal from (the smoothed one itself on a
+// mesh without normals)
+#ifdef HAS_NORMALS
+    #define SURFACE_REST_NORMAL a_normal
+#else
+    #define SURFACE_REST_NORMAL a_smoothNormal
+#endif
 
 // the object-space smoothed normal the hooks may read (SURFACE_SMOOTH_NORMALS)
 vec3 surfaceSmoothNormal;
@@ -229,6 +259,9 @@ float surfaceFadeVisible;
 #ifdef SURFACE_DISPLACE_NORMAL
     // the same inputs as surfaceDisplace; returns the moved object-space normal
     vec3 surfaceDisplaceNormal(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv);
+#endif
+#ifdef SURFACE_VERTEX
+    void surfaceVertex(vec3 worldPosition, vec3 worldNormal, vec4 color, vec2 uv);
 #endif
 
 // the vertex colour attribute, white without one
@@ -286,24 +319,26 @@ vec2 surfaceUV2(){
 }
 
 void main() {
+    // the baked vertex animation first (HAS_VAT): it takes the place of morph targets and skinning
+    vatEvaluate();
     mat4 boneTransform = getBoneTransform();
 
-    vec3 position = getMorphPosition(a_position);
+    vec3 position = getMorphPosition(vatPosition(a_position));
     #ifdef HAS_LATTICE
         // the before-skinning lattices deform the bind pose: position, normals and tangent
         // together, then skinned as without a lattice
         float latticeStretchValue = 1.0;
         vec3 latticeNormal = vec3(0.0, 1.0, 0.0);
         #ifdef HAS_NORMALS
-            latticeNormal = getMorphNormal(a_normal);
+            latticeNormal = getMorphNormal(vatNormal(a_normal));
         #endif
         #ifdef SURFACE_SMOOTH_NORMAL_INPUT
-            vec3 latticeSmoothNormal = a_smoothNormal;
+            vec3 latticeSmoothNormal = vatSmoothNormal(a_smoothNormal, SURFACE_REST_NORMAL);
         #else
             vec3 latticeSmoothNormal = latticeNormal;
         #endif
         #if defined(SURFACE_TANGENTS) && defined(HAS_TANGENTS)
-            vec3 latticeTangent = getMorphTangent(a_tangent.xyz);
+            vec3 latticeTangent = getMorphTangent(vatTangent(a_tangent.xyz));
         #else
             vec3 latticeTangent = vec3(1.0, 0.0, 0.0);
         #endif
@@ -322,7 +357,7 @@ void main() {
         #ifdef HAS_LATTICE
             objectNormal = getSkinNormal(latticeNormal, boneTransform);
         #else
-            objectNormal = getSkinNormal(getMorphNormal(a_normal), boneTransform);
+            objectNormal = getSkinNormal(getMorphNormal(vatNormal(a_normal)), boneTransform);
         #endif
         #ifdef HAS_TERRAIN
             objectNormal = getTerrainNormal(objectNormal, position);
@@ -335,7 +370,7 @@ void main() {
         #ifdef HAS_LATTICE
             vec3 smoothNormal = normalize(getSkinNormal(latticeSmoothNormal, boneTransform));
         #else
-            vec3 smoothNormal = normalize(getSkinNormal(a_smoothNormal, boneTransform));
+            vec3 smoothNormal = normalize(getSkinNormal(vatSmoothNormal(a_smoothNormal, SURFACE_REST_NORMAL), boneTransform));
         #endif
     #endif
 
@@ -343,7 +378,7 @@ void main() {
         #ifdef HAS_LATTICE
             vec3 objectTangent = normalize(getSkinTangent(latticeTangent, boneTransform));
         #else
-            vec3 objectTangent = normalize(getSkinTangent(getMorphTangent(a_tangent.xyz), boneTransform));
+            vec3 objectTangent = normalize(getSkinTangent(getMorphTangent(vatTangent(a_tangent.xyz)), boneTransform));
         #endif
     #endif
 
@@ -440,8 +475,17 @@ void main() {
         vec3 worldTangent = normalize(vec3(pbrParams.modelMatrix * vec4(objectTangent, 0.0)));
         // re-orthogonalised against the (possibly fallback) normal
         worldTangent = normalize(worldTangent - worldNormal * dot(worldNormal, worldTangent));
+        vec3 worldBitangent = cross(worldNormal, worldTangent) * tangentSign;
+        // mirrored by a negative determinant and a mirrored texture rect
+        // (includes/tangent_frame.glsl); the fallback tangent is not tied to u, so only by the
+        // determinant
+        #ifdef HAS_TANGENTS
+            mirrorTangentFrame(worldTangent, worldBitangent);
+        #else
+            worldBitangent *= tangentFrameMirror();
+        #endif
         v_tangent = worldTangent;
-        v_bitangent = cross(worldNormal, worldTangent) * tangentSign;
+        v_bitangent = worldBitangent;
     #endif
     #ifdef SURFACE_UV1
         v_uv1 = uv1;
@@ -469,10 +513,8 @@ void main() {
         #endif
     #endif
 
-    #ifdef USE_SHADOWS
-    for (int i = 0; i < MAX_SHADOW_ATLAS_SLOTS; ++i){
-        v_lightProjPos[i] = lightVPMatrix[i] * (worldPos + vec4(worldNormal * shadowParams[i].x, 0.0));
-    }
+    #ifdef SURFACE_VERTEX
+        surfaceVertex(worldPos.xyz / worldPos.w, worldNormal, color, uv1);
     #endif
 
     gl_Position = pbrParams.mvpMatrix * pos;

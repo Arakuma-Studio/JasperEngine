@@ -164,10 +164,65 @@ namespace jasperengine::editor{
             return cssExtensions.find(ext) != cssExtensions.end();
         }
 
+        // colour LUTs a scene's post-processing grades with besides image strips (.cube)
+        inline static bool isColorLutFile(const std::string& path) {
+            return fileExtension(path) == ".cube";
+        }
+
+        // particle effects (S20)
+        inline static bool isParticleEffectFile(const std::string& path) {
+            return fileExtension(path) == ".particles";
+        }
+
+        // Pose animations (PoseAnimatorComponent::animation)
+        inline static bool isPoseAnimationFile(const std::string& path) {
+            return fileExtension(path) == ".poseanim";
+        }
+
+        // Animation clips (AnimationPlayerComponent clips, the Animation window); a model
+        // sub-clip reference ("hero.gltf#Walk") is not a file and is not one
+        inline static bool isAnimationClipFile(const std::string& path) {
+            return fileExtension(path) == ".anim";
+        }
+
+        // The Animator's assets (S21): controllers, avatar masks, montages
+        inline static bool isAnimatorControllerFile(const std::string& path) {
+            return fileExtension(path) == ".controller";
+        }
+        inline static bool isAvatarMaskFile(const std::string& path) {
+            return fileExtension(path) == ".mask";
+        }
+        inline static bool isMontageFile(const std::string& path) {
+            return fileExtension(path) == ".montage";
+        }
+        inline static bool isAnimatorAssetFile(const std::string& path) {
+            return isAnimatorControllerFile(path) || isAvatarMaskFile(path) || isMontageFile(path);
+        }
+        // Vertex Animation assets (VertexAnimatorComponent::animation); their generated mesh is
+        // "<name>.vat.glb", a model file
+        inline static bool isVertexAnimationFile(const std::string& path) {
+            return fileExtension(path) == ".vat";
+        }
+
+        // the GUID-tracked JSON assets of the animation system: clips, Vertex Animations, Avatar
+        // Masks, Animator Controllers (their references follow by GUID: remapClipFilePath)
+        inline static bool isGuidJsonAssetFile(const std::string& path) {
+            return isAnimationClipFile(path) || isVertexAnimationFile(path) || isAvatarMaskFile(path) || isAnimatorControllerFile(path);
+        }
+
+        // (upstream's isAvatarMaskFile / isAnimatorControllerFile: S21's above, the same extensions)
+
+        // Shake Presets (CameraShakerComponent::startPreset, CameraShake.shake("x.shake"))
+        inline static bool isShakePresetFile(const std::string& path) {
+            return fileExtension(path) == ".shake";
+        }
+
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
-                   isHtmlFile(path) || isCssFile(path);
+                   isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isParticleEffectFile(path) || isPoseAnimationFile(path) ||
+                   isAnimationClipFile(path) || isAnimatorAssetFile(path) ||
+                   isShakePresetFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

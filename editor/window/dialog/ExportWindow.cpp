@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ExportWindow.h"
+#include "player/PlayerModules.h"
+#include "texture/TextureCookReport.h"
 #include "util/FileDialogs.h"
 #include "AppSettings.h"
 #include "Backend.h"
@@ -16,7 +18,13 @@
 #include "Factory.h"
 #include "SettingsCategoryList.h"
 
+#include <algorithm>
+#include "util/CommandRunner.h"
+
 #include <cstdlib>
+#include <iterator>
+
+#include <vector>
 
 namespace jasperengine::editor {
 
@@ -48,7 +56,7 @@ namespace {
         return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     }
 
-    void beginSettingsRow(const char* label) {
+    void exportBeginSettingsRow(const char* label) {
         ImGui::TableNextRow(ImGuiTableRowFlags_None, ImGui::GetFrameHeight());
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
@@ -96,6 +104,7 @@ void ExportWindow::open(Project* project) {
     m_runAfterBuild = false;
     m_launchDone = false;
     m_playerSettingsRequested = false;
+    m_publishingLoaded = false;
 
     populateBackendList();
     // Remember the platform between openings, like Unity's active build target.
@@ -107,6 +116,13 @@ void ExportWindow::open(Project* project) {
 }
 
 const char* ExportWindow::localExportMode() const {
+    if (m_mode == ExportMode::Player) {
+        // the keys build_project uses too: this computer's platform keeps the Desktop one
+        static const char* const keys[] = {"player-windows", "player-linux", "player-macos", "player-android", "player-ios", "web"};
+        const ShipPlatform platform = shipPlatform();
+        if (platform == hostBuildPlatform()) return "desktop";
+        return keys[static_cast<int>(platform)];
+    }
     return m_mode == ExportMode::SourceCode ? "sourceCode" : m_mode == ExportMode::Desktop ? "desktop" : "web";
 }
 
@@ -180,6 +196,14 @@ void ExportWindow::selectMode(ExportMode mode) {
         m_missingBuildTools = Generator::checkBuildTools();
     } else if (mode == ExportMode::Web) {
         refreshEmsdkStatus();
+    } else if (mode == ExportMode::Player) {
+        // a player build compiles when the project needs native code: this computer's tools
+        if (shipPlatform() == hostBuildPlatform()) m_missingBuildTools = Generator::checkBuildTools();
+        if (shipPlatform() == ShipPlatform::Web) {
+            m_emsdkOverride = AppSettings::getEmsdkPath();
+            refreshEmsdkStatus();
+        }
+        refreshPlayerState();
     }
     m_step = Step::Settings;
 }
@@ -247,6 +271,15 @@ void ExportWindow::loadSettingsFromProject() {
         }
     } else if (m_mode == ExportMode::Web) {
         m_emsdkOverride = AppSettings::getEmsdkPath();
+    } else if (m_mode == ExportMode::Player && shipPlatform() == hostBuildPlatform()) {
+        // this computer's player remembers its graphics API as the Desktop build did
+        const DesktopExportSettings& settings = m_project->getDesktopExportSettings();
+        if (settings.graphicBackendConfigured) {
+            const std::string wanted = normalizeBackend(Exporter::getCMakeGraphicBackend(settings.graphicBackend));
+            const std::vector<std::string> backends = jasperengine::editor::platformBackends(shipPlatform());
+            auto it = std::find(backends.begin(), backends.end(), wanted);
+            if (it != backends.end()) m_playerBackendIndex[static_cast<int>(m_platform)] = static_cast<int>(it - backends.begin());
+        }
     }
 
     const auto file = m_project->getProjectPath() / "project.yaml";
@@ -273,7 +306,7 @@ bool ExportWindow::saveCurrentSettingsToProject(bool saveProjectFile) {
         return false;
     }
 
-    if (m_mode == ExportMode::Desktop) {
+    if (m_mode == ExportMode::Desktop || (m_mode == ExportMode::Player && shipPlatform() == hostBuildPlatform())) {
         // Only the job count belongs to this dialog, so the rest is re-read: the
         // compiler may have changed in Editor Settings since the mode was selected
         const unsigned int jobs = static_cast<unsigned int>(m_desktopBuildJobs);
@@ -296,6 +329,13 @@ bool ExportWindow::saveCurrentSettingsToProject(bool saveProjectFile) {
     } else if (m_mode == ExportMode::Desktop && m_desktopBackendConfigured) {
         auto& settings = m_project->getDesktopExportSettings();
         const auto backend = desktopGraphicBackends[m_graphicBackendIndex];
+        changed = !settings.graphicBackendConfigured || settings.graphicBackend != backend;
+        settings.graphicBackend = backend;
+        settings.graphicBackendConfigured = true;
+    } else if (m_mode == ExportMode::Player && shipPlatform() == hostBuildPlatform() &&
+               m_playerBackendIndex.count(static_cast<int>(m_platform))) {
+        auto& settings = m_project->getDesktopExportSettings();
+        const ShaderBackend backend = shaderBackendOf(shipPlatform(), playerBackend());
         changed = !settings.graphicBackendConfigured || settings.graphicBackend != backend;
         settings.graphicBackend = backend;
         settings.graphicBackendConfigured = true;
@@ -405,7 +445,8 @@ const char* ExportWindow::platformIcon(BuildPlatform platform) {
 }
 
 bool ExportWindow::platformCanBuildPlayer(BuildPlatform platform) const {
-    return platform == hostPlatform() || platform == BuildPlatform::Web;
+    // S30: every platform builds a game (iOS: an Xcode project, built on a Mac)
+    return platform != BuildPlatform::Custom && platform != BuildPlatform::Count;
 }
 
 std::set<ShaderBackend> ExportWindow::platformBackends(BuildPlatform platform) const {
@@ -427,11 +468,7 @@ void ExportWindow::selectPlatform(BuildPlatform platform, bool buildPlayer) {
     m_buildPlayer = buildPlayer;
     m_platformInitialized = true;
 
-    ExportMode mode = ExportMode::SourceCode;
-    if (buildPlayer) {
-        mode = platform == BuildPlatform::Web ? ExportMode::Web : ExportMode::Desktop;
-    }
-    selectMode(mode);
+    selectMode(buildPlayer ? ExportMode::Player : ExportMode::SourceCode);
 }
 
 void ExportWindow::setStartScene(uint32_t sceneId) {
@@ -560,7 +597,9 @@ void ExportWindow::drawPlatformList() {
             if (m_platform != platform) selectPlatform(platform, platformCanBuildPlayer(platform));
         }
         if (platform == hostPlatform()) {
-            ImGui::SetItemTooltip("This computer: builds a ready-to-run player.");
+            ImGui::SetItemTooltip("This computer: builds a ready-to-run game.");
+        } else if (platform == BuildPlatform::IOS) {
+            ImGui::SetItemTooltip("Requires a Mac with Xcode to build and sign; elsewhere the build is the Xcode project.");
         } else if (platform == BuildPlatform::Custom) {
             ImGui::SetItemTooltip("C++ source project with hand-picked graphics APIs.");
         }
@@ -583,7 +622,7 @@ void ExportWindow::drawPlatformList() {
 }
 
 void ExportWindow::drawBuildTypeRow() {
-    beginSettingsRow("Build Type");
+    exportBeginSettingsRow("Build Type");
     if (!platformCanBuildPlayer(m_platform)) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("C++ Source Project");
@@ -591,7 +630,8 @@ void ExportWindow::drawBuildTypeRow() {
         return;
     }
 
-    const char* playerLabel = m_platform == BuildPlatform::Web ? "WebAssembly Player" : "Executable Player";
+    const char* playerLabel = m_platform == BuildPlatform::Web ? "Web Game" : m_platform == BuildPlatform::IOS ? "Xcode Project / IPA"
+                            : m_platform == BuildPlatform::Android ? "APK / App Bundle" : "Executable Game";
     const char* labels[] = {playerLabel, "C++ Source Project"};
     int index = m_buildPlayer ? 0 : 1;
     ImGui::SetNextItemWidth(-1);
@@ -600,8 +640,19 @@ void ExportWindow::drawBuildTypeRow() {
     }
 }
 
+// Unity's Development Build: a Release game that keeps the profiler (and its --profile options)
+void ExportWindow::drawDevelopmentBuildRow() {
+    exportBeginSettingsRow("Development Build");
+    bool development = m_project->isDevelopmentBuild();
+    if (ImGui::Checkbox("##DevelopmentBuild", &development)) {
+        m_project->setDevelopmentBuild(development);
+        m_projectSettingsDirty = true;
+    }
+    ImGui::SetItemTooltip("Keeps the profiler in a Release build: --profile and --profile-capture=<file> record it (docs/profiling.md). Debug builds always have it.");
+}
+
 void ExportWindow::drawSourceBackendsRow() {
-    beginSettingsRow("Graphics APIs");
+    exportBeginSettingsRow("Graphics APIs");
     std::string names;
     for (ShaderBackend backend : platformBackends(m_platform)) {
         if (!names.empty()) names += ", ";
@@ -622,38 +673,39 @@ fs::path ExportWindow::builtPlayerPath() const {
 }
 
 void ExportWindow::launchBuiltPlayer() {
-    if (m_mode != ExportMode::Desktop) return;
+    if (m_mode != ExportMode::Desktop && !(m_mode == ExportMode::Player && shipPlatform() == hostBuildPlatform())) return;
 
-    const fs::path exePath = builtPlayerPath();
+    fs::path exePath = builtPlayerPath();
+    if (m_mode == ExportMode::Player) {
+        exePath = m_exporter.getResult().executable;
+        #ifdef __APPLE__
+        // a bundle opens through LaunchServices
+        if (exePath.extension() == ".app") {
+            const std::string command = "open '" + exePath.string() + "'";
+            if (std::system(command.c_str()) != 0) Out::error("Build And Run: could not open %s", exePath.string().c_str());
+            return;
+        }
+        #endif
+    }
     std::error_code ec;
     if (!fs::exists(exePath, ec)) {
         Out::error("Build And Run: player not found at %s", exePath.string().c_str());
         return;
     }
 
-    // The player resolves assets and lua relative to its working directory.
-    #ifdef _WIN32
-    const std::string command = "start \"\" /D \"" + exePath.parent_path().string() + "\" \"" + exePath.string() + "\"";
-    #else
-    auto quote = [](const std::string& value) {
-        std::string quoted = "'";
-        for (char c : value) {
-            if (c == '\'') quoted += "'\\''";
-            else quoted += c;
-        }
-        return quoted + "'";
-    };
-    const std::string command = "cd " + quote(exePath.parent_path().string()) + " && " + quote(exePath.string()) + " >/dev/null 2>&1 &";
-    #endif
-    if (std::system(command.c_str()) != 0) {
-        Out::error("Build And Run: could not start %s", exePath.string().c_str());
+    // The player resolves assets and lua relative to its working directory. Launched detached
+    // WITHOUT a shell (the path is one argument), inheriting no descriptor, and never left as a
+    // zombie child of the editor; an exec failure is reported (CommandRunner::launchDetached)
+    std::string error;
+    if (!CommandRunner::launchDetached(exePath, exePath.parent_path(), error)) {
+        Out::error("Build And Run: could not start %s: %s", exePath.string().c_str(), error.c_str());
     } else {
         Out::info("Running %s", exePath.string().c_str());
     }
 }
 
 void ExportWindow::drawOutputDirRow(const char* label) {
-    beginSettingsRow(label);
+    exportBeginSettingsRow(label);
     {
         float browseWidth = ImGui::CalcTextSize("Browse").x + ImGui::GetStyle().FramePadding.x * 2;
         float inputWidth = ImGui::GetContentRegionAvail().x - browseWidth - ImGui::GetStyle().ItemSpacing.x;
@@ -683,7 +735,7 @@ void ExportWindow::drawOutputDirRow(const char* label) {
 }
 
 void ExportWindow::drawGraphicBackendRow() {
-    beginSettingsRow("Graphics API");
+    exportBeginSettingsRow("Graphics API");
 
     if (m_mode == ExportMode::Web) {
         ImGui::AlignTextToFramePadding();
@@ -729,12 +781,12 @@ void ExportWindow::drawDesktopKitRows() {
         }
     }
 
-    beginSettingsRow("Compiler");
+    exportBeginSettingsRow("Compiler");
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("%s", kitDisplay.c_str());
     ImGui::SetItemTooltip("Change in Preferences > External Tools");
 
-    beginSettingsRow("Build Jobs");
+    exportBeginSettingsRow("Build Jobs");
     ImGui::SetNextItemWidth(-1);
     const int previousJobs = m_desktopBuildJobs;
     if (ImGui::InputInt("##DesktopBuildJobs", &m_desktopBuildJobs, 1, 8)) {
@@ -925,7 +977,12 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
     settingsui::boldText(platformName(m_platform), 1.3f);
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     ImGui::PushTextWrapPos(0.0f);
-    if (m_mode == ExportMode::Desktop) {
+    if (m_mode == ExportMode::Player) {
+        if (m_methodChoice.method == BuildMethod::Compile)
+            ImGui::Text("Builds the game from source: %s.", m_methodChoice.reasons.empty() ? "Compile chosen" : m_methodChoice.reasons.front().c_str());
+        else
+            ImGui::TextUnformatted("Builds the game with a prebuilt player: no compiler needed.");
+    } else if (m_mode == ExportMode::Desktop) {
         ImGui::TextUnformatted("Builds a ready-to-run native player for this computer.");
     } else if (m_mode == ExportMode::Web) {
         ImGui::TextUnformatted("Builds an HTML and WebAssembly player with Emscripten.");
@@ -946,8 +1003,12 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
         if (!isCustom) drawBuildTypeRow();
+        drawDevelopmentBuildRow();
         drawOutputDirRow("Output Directory");
-        if (m_mode == ExportMode::Desktop) {
+        if (m_mode == ExportMode::Player) {
+            drawPlayerRows();
+            if (m_methodChoice.method == BuildMethod::Compile && shipPlatform() == hostBuildPlatform()) drawDesktopKitRows();
+        } else if (m_mode == ExportMode::Desktop) {
             drawGraphicBackendRow();
             drawDesktopKitRows();
         } else if (m_mode == ExportMode::Web) {
@@ -967,6 +1028,11 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
 
     if (Theme::foldoutHeader("Shaders")) {
         drawShaderSection();
+        ImGui::Spacing();
+    }
+
+    if (Theme::foldoutHeader("Textures")) {
+        drawTextureSection();
         ImGui::Spacing();
     }
 
@@ -1013,6 +1079,12 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
                 canExport = false;
             }
         }
+    } else if (m_mode == ExportMode::Player) {
+        std::string why;
+        if (playerBuildBlocked(why)) {
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " %s", why.c_str());
+            canExport = false;
+        }
     } else if (m_mode == ExportMode::Desktop) {
         if (!m_missingBuildTools.empty()) {
             ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Missing build tools:\n%s", m_missingBuildTools.c_str());
@@ -1023,13 +1095,101 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
             ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Emscripten SDK not found. Set it in Preferences > External Tools.");
             canExport = false;
         }
+        // emcc.bat runs through cmd.exe on Windows: no '%' in the project, build tree or output path
+        const std::string pathRefusal = Exporter::webBuildRefusal(
+            {m_project->getProjectPath(), Exporter::buildCacheDirFor(m_project, ExportMode::Web), m_targetDir});
+        if (!pathRefusal.empty()) {
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " %s.", pathRefusal.c_str());
+            canExport = false;
+        }
     }
     ImGui::PopTextWrapPos();
 
     return canExport;
 }
 
+void ExportWindow::drawTextureSection() {
+    // the families the platform loads (R9) and what their cooks weigh (R25)
+    std::vector<std::string> platforms;
+    switch (m_platform) {
+        case BuildPlatform::Windows: platforms = {"windows"}; break;
+        case BuildPlatform::MacOS: platforms = {"macos"}; break;
+        case BuildPlatform::Linux: platforms = {"linux"}; break;
+        case BuildPlatform::Android: platforms = {"android"}; break;
+        case BuildPlatform::IOS: platforms = {"ios"}; break;
+        case BuildPlatform::Web: platforms = {"web"}; break;
+        default: platforms = {"windows", "linux", "macos", "ios", "android", "web"}; break;
+    }
+    const std::vector<TextureFamily> families =
+        TextureCookQueue::familiesForExport(platforms, m_project->getTextureSettings().androidEtc2Fallback);
+    TextureCookQueue& cooks = TextureCookQueue::get();
+    if (cooks.getProject() != m_project) {
+        ImGui::TextDisabled("Texture cooks start once the project is open.");
+        return;
+    }
+    const std::vector<std::string> textures = projectTextureSources(*m_project, true);
+    bool missing = false;
+    if (ImGui::BeginTable("export_textures", 4, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerH)) {
+        ImGui::TableSetupColumn("Family");
+        ImGui::TableSetupColumn("Cooked");
+        ImGui::TableSetupColumn("Download");
+        ImGui::TableSetupColumn("VRAM");
+        ImGui::TableHeadersRow();
+        for (TextureFamily family : families) {
+            int cooked = 0, total = 0;
+            uint64_t disk = 0, vram = 0;
+            for (const std::string& path : textures) {
+                TextureCookState state;
+                const bool known = cooks.getState(path, family, state);
+                if (known && state.status == TextureCookStatus::Source) continue;
+                total++;
+                if (known && state.status == TextureCookStatus::Cooked) {
+                    cooked++;
+                    disk += state.record.diskBytes;
+                    vram += state.record.gpuBytes;
+                }
+            }
+            missing = missing || cooked < total;
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(textureFamilyLabel(family));
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d / %d", cooked, total);
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextUnformatted(TextureCookReport::formatBytes(disk).c_str());
+            ImGui::TableSetColumnIndex(3);
+            ImGui::TextUnformatted(TextureCookReport::formatBytes(vram).c_str());
+        }
+        ImGui::EndTable();
+    }
+    if (missing) {
+        ImGui::TextDisabled("The totals cover the cooked textures; the export cooks the rest.");
+    }
+    if (std::find(families.begin(), families.end(), TextureFamily::AndroidEtc2) != families.end()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION
+                           " Android ETC2 Fallback is on: the APK carries every texture twice (ASTC and ETC2)");
+    }
+    if (ImGui::Button("Cook Textures Now")) {
+        cooks.requestAll(families, TextureCookQueue::Selected);
+    }
+    ImGui::SetItemTooltip("Cooks every texture for these families in the background, so the export finds them in the cache");
+}
+
 void ExportWindow::drawSettings() {
+    if (ImGui::BeginTabBar("##BuildSettingsTabs")) {
+        if (ImGui::BeginTabItem("Build")) {
+            drawBuildTab();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Publish")) {
+            drawPublishTab();
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+}
+
+void ExportWindow::drawBuildTab() {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float footerHeight = ImGui::GetFrameHeight() + style.ItemSpacing.y;
 
@@ -1071,6 +1231,10 @@ void ExportWindow::drawSettings() {
         ImGui::CloseCurrentPopup();
     }
     ImGui::SetItemTooltip("Open Project Settings > Player");
+    // S04: a build referencing missing assets fails unless exported anyway
+    ImGui::SameLine();
+    ImGui::Checkbox("Export Anyway", &m_allowMissingAssets);
+    ImGui::SetItemTooltip("Build even when the build's scenes reference missing assets (Window > Assets > Missing Assets lists them)");
 
     const float actionWidth = Theme::dpi(120.0f);
     const float buttonsWidth = actionWidth * 2.0f + style.ItemSpacing.x;
@@ -1086,18 +1250,20 @@ void ExportWindow::drawSettings() {
         }
     };
 
-    ImGui::BeginDisabled(!canExport);
+    const bool runnable = m_mode == ExportMode::Desktop || (m_mode == ExportMode::Player && m_platform == hostPlatform());
+    ImGui::BeginDisabled(!canExport || (m_download && m_download->running.load()));
     if (ImGui::Button("Build", ImVec2(actionWidth, 0))) startBuild(false);
     ImGui::SameLine();
-    ImGui::BeginDisabled(m_mode != ExportMode::Desktop);
+    ImGui::BeginDisabled(!runnable);
     if (ImGui::Button("Build And Run", ImVec2(actionWidth, 0))) startBuild(true);
     ImGui::EndDisabled();
     ImGui::EndDisabled();
-    if (m_mode != ExportMode::Desktop && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("Build And Run needs an Executable Player for this computer.");
+    if (!runnable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("Build And Run needs a game for this computer.");
     }
 
     drawOverwriteConfirmDialog();
+    drawKeystorePasswordDialog();
     m_scenesWindow.show();
 }
 
@@ -1120,7 +1286,11 @@ void ExportWindow::drawOverwriteConfirmDialog() {
 
     ImGui::Spacing();
     ImGui::PushTextWrapPos();
-    ImGui::Text("Files with the same name will be overwritten.");
+    if (m_mode == ExportMode::Player) {
+        ImGui::Text("Its contents are replaced by the new build once that is complete (until then they stay as they are).");
+    } else {
+        ImGui::Text("Files with the same name will be overwritten.");
+    }
     if (m_mode == ExportMode::SourceCode) {
         ImGui::TextDisabled("Files left from an earlier build are not removed and may break it.");
     }
@@ -1151,8 +1321,34 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     ExportConfig exportConfig;
     exportConfig.mode = m_mode;
     exportConfig.overwriteTarget = overwriteTarget;
+    exportConfig.allowMissingAssets = m_allowMissingAssets;
 
-    if (m_mode == ExportMode::SourceCode) {
+    if (m_mode == ExportMode::Player) {
+        // an Android release build with a keystore asks its passwords first (never saved)
+        const AndroidProjectSettings& android = m_project->getAndroidProjectSettings();
+        if (shipPlatform() == ShipPlatform::Android && !android.keystorePath.empty() && !m_askKeystorePasswords &&
+            m_keystorePassword[0] == '\0' && !std::getenv("JASPER_ANDROID_KS_PASS")) {
+            m_askKeystorePasswords = true;
+            m_pendingOverwrite = overwriteTarget;
+            return;
+        }
+        exportConfig.destinationDir = m_targetDir;
+        exportConfig.platform = shipPlatform();
+        exportConfig.graphicBackend = playerBackend();
+        exportConfig.androidFormat = AndroidFormat::Aab;
+        parseAndroidFormat(android.packageFormat, exportConfig.androidFormat);
+        exportConfig.keystorePassword = m_keystorePassword;
+        exportConfig.keyPassword = m_keyPassword;
+        std::fill(std::begin(m_keystorePassword), std::end(m_keystorePassword), '\0');
+        std::fill(std::begin(m_keyPassword), std::end(m_keyPassword), '\0');
+        // what a Compile build of this computer or the web uses
+        const LocalBuildSettings build = AppSettings::getBuildSettings(m_project->getProjectPath() / "project.yaml");
+        exportConfig.cmakeCCompiler = build.cCompiler;
+        exportConfig.cmakeCxxCompiler = build.cxxCompiler;
+        exportConfig.cmakeGenerator = build.generator;
+        exportConfig.buildJobs = static_cast<unsigned int>(m_desktopBuildJobs);
+        exportConfig.emsdkPath = m_emsdkOverride;
+    } else if (m_mode == ExportMode::SourceCode) {
         exportConfig.targetDir = m_targetDir;
         exportConfig.packNativeResources = m_project->shouldPackNativeResources();
         if (m_platform == BuildPlatform::Custom) {
@@ -1243,7 +1439,9 @@ void ExportWindow::drawAddShaderDialog() {
             ShaderType::SSR, ShaderType::SSR_BLUR, ShaderType::COMPOSITE,
             ShaderType::SHADOW2D, ShaderType::BLIT, ShaderType::POSTPROCESS, ShaderType::BLOOM,
             ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT, ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT,
-            ShaderType::PROBE_FILTER
+            ShaderType::PROBE_FILTER,
+            ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
+            ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE, ShaderType::HTMLUI_PRIM
         };
         constexpr int typeCount = (int)(sizeof(typeValues) / sizeof(typeValues[0]));
         std::vector<std::string> typeNameStrs;
@@ -1377,7 +1575,7 @@ void ExportWindow::drawProgress() {
     }
 
     ImGui::Dummy(ImVec2(0.0f, Theme::dpi(6.0f)));
-    ImGui::TextUnformatted(m_mode == ExportMode::SourceCode ? "Exporting project..." : "Building player...");
+    ImGui::TextUnformatted(m_mode == ExportMode::SourceCode ? "Exporting project..." : m_mode == ExportMode::Player ? "Building the game..." : "Building player...");
     ImGui::Spacing();
 
     ImGui::ProgressBar(progress.overallProgress, ImVec2(-1.0f, 0.0f));
@@ -1413,6 +1611,32 @@ void ExportWindow::drawProgress() {
         }
         ImGui::Spacing();
         ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " Build completed successfully!");
+        if (m_mode == ExportMode::Player) {
+            const ExportResult result = m_exporter.getResult();
+            ImGui::PushTextWrapPos(0.0f);
+            if (result.methodUsed == BuildMethod::Prebuilt) ImGui::TextDisabled("Prebuilt player %s", result.playerId.c_str());
+            else ImGui::TextDisabled("Compiled from source%s%s", result.compileReasons.empty() ? "" : ": ",
+                                     result.compileReasons.empty() ? "" : result.compileReasons.front().c_str());
+            // S34: the engine modules the game ships (Strip Engine Code), why each, and the rest
+            if (!result.modules.empty() || !result.modulesLeftOut.empty()) {
+                auto joined = [](const std::vector<std::string>& names) {
+                    std::string text;
+                    for (const std::string& name : names) text += (text.empty() ? "" : ", ") + player::moduleDisplayName(name);
+                    return text.empty() ? std::string("none") : text;
+                };
+                ImGui::TextDisabled("Engine modules: %s. Left out: %s.", joined(result.modules).c_str(), joined(result.modulesLeftOut).c_str());
+                if (ImGui::IsItemHovered() && !result.moduleEvidence.empty()) {
+                    ImGui::BeginTooltip();
+                    for (const ModuleEvidence& evidence : result.moduleEvidence)
+                        ImGui::Text("%s: %s: %s", evidence.module.c_str(), evidence.where.c_str(), evidence.what.c_str());
+                    ImGui::EndTooltip();
+                }
+            }
+            for (const BuildWarning& warning : result.warnings)
+                ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.2f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " %s: %s", warning.code.c_str(), warning.message.c_str());
+            for (const std::string& note : result.notes) ImGui::TextUnformatted(note.c_str());
+            ImGui::PopTextWrapPos();
+        }
         ImGui::Spacing();
 
         float closeWidth = Theme::dpi(120.0f);

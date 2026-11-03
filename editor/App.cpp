@@ -2,33 +2,82 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "spline/SplineSceneTools.h"
+#include "spline/SplineEditor.h"
+#include "particles/ParticleEffectLibrary.h"
+#include "util/ParticleMigrationReport.h"
+#include "AppMenuCommand.h"
+#include "util/NumericExpression.h"
+#include "util/EditorFingerprint.h"
+#include "util/ScriptReloadService.h"
+#include "util/ScriptStatus.h"
+#include "util/EditorScripts.h"
+#include "profiler/Profile.h"
+#include "asset/AssetRefEditor.h"
+#include "util/Scheduler.h"
+#include "window/AnimationWindowClip.h"
+#include "thread/ResourceProgress.h"
 
 #include "imgui_internal.h"
 #include "Platform.h"
 #include "Backend.h"
+#include "manager/SceneManager.h"
 #include "Engine.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
 
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
+#include "command/UndoTimeline.h"
+#include "command/type/AddComponentCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
 #include "lattice/LatticeSceneTools.h"
+#include "navigation/NavigationEditor.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
+#include "window/JobsMemoryWindow.h"
+#include "window/profiler/FrameDebuggerWindow.h"
+#include "window/profiler/ProfilerWindow.h"
+#include "profiler/FrameTimes.h"
+#include "profiler/Profiler.h"
+#include "window/PlayModeChangesWindow.h"
+#include "window/UndoHistoryWindow.h"
+#include "window/vcs/VcsUi.h"
+#include "window/InputActionsWindow.h"
+#include "navigation/NavigationWindow.h"
+#include "command/PlayChangeReview.h"
+#include "pose/PoseEditSession.h"
+#include "widget/ColorPickerWindow.h"
+#include "util/GraphicUtils.h"
+#include "recorder/RecorderSession.h"
+#include "hub/HubPaths.h"
+#include "platform/LaunchKeys.h"
+#include "io/AtomicFile.h"
+#include "widget/CurveField.h"
+#include "widget/GradientField.h"
+#include "widget/FieldEdit.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
 #include "mcp/tools/McpTools.h"
+#include "reload/HotReloadService.h"
+#include "search/SearchPalette.h"
+#include "shortcuts/DefaultCommands.h"
+#include "shortcuts/ShortcutsWindow.h"
+#include "window/BookmarksWindow.h"
+#include "texture/TextureCookQueue.h"
 
 #include "util/CrashHandler.h"
+#include "util/EditorDiagnostics.h"
+#include "diag/HangWatchdog.h"
 #include "util/FileDialogs.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
 
 #include "EditorVersion.h"
 #include "Out.h"
+#include "window/HumanoidConvertDialog.h"
 #include "AppSettings.h"
 #include "Theme.h"
 #include "resources/fonts/fa-solid-900_ttf.h"
@@ -44,6 +93,16 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUiAutoImport.h"
+#include "render/preview/PoseRender.h"
+#include "render/preview/VatPreviewRender.h"
+#include "util/FileUtils.h"
+#include "io/UserSettings.h"
+#include "io/UserSettingsStore.h"
+#include "pose/PoseTemplates.h"
+#include "pose/PoseViewport.h"
+#include "animation/AnimationClipAppHooks.h"
+#include "animation/AnimationClipController.h"
+#include "unity/UnityParticleImport.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -110,13 +169,20 @@ ImFont* editor::App::codeFont = nullptr;
 ImFont* editor::App::boldFont = nullptr;
 
 editor::App::App(){
+    scheduler().setOwnerThread();
     mainThreadId = std::this_thread::get_id();
     inspectorWindow = new InspectorWindow(&project);
     consoleWindow = new ConsoleWindow();
     playInput = new PlayInput(&project);
     sceneWindow = new SceneWindow(&project);
     gameWindow = new GameWindow(&project, playInput);
+    // the open project's files changing on disk reload (S05)
+    project.setWatchFiles(true);
     mainToolbar = new MainToolbar(&project);
+    statusBar = new StatusBar([this]() {
+        editorSettingsWindow.open(&project);
+        editorSettingsWindow.showPage("Asset Pipeline");
+    });
     inspectorWindow->setSceneWindow(sceneWindow);
     hierarchyWindow = new HierarchyWindow(&project, sceneWindow);
     codeEditor = new CodeEditor(&project);
@@ -124,10 +190,48 @@ editor::App::App(){
     projectWindow = new ProjectWindow(&project, codeEditor, imageViewerWindow);
     loadingWindow = new LoadingWindow();
     animationWindow = new AnimationWindow(&project);
+    poseAnimationWindow = new PoseAnimationWindow(&project);
+    animatorWindow = new AnimatorWindow(&project, poseAnimationWindow);
+    avatarWindow = new AvatarWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
+    audioMixerWindow = new AudioMixerWindow(&project);
+    vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
+    spriteNormalsWindow = new SpriteNormalsWindow(&project);
+    spriteNormalsWatcher = new SpriteNormalsWatcher(&project);
+    SpriteNormalsWatcher::setActive(spriteNormalsWatcher);
     mcpActivityWindow = new mcp::McpActivityWindow();
+    systemsWindow = new SystemsWindow(&project);
+    missingAssetsWindow = new MissingAssetsWindow(&project);
+    assetReferencesWindow = new AssetReferencesWindow(&project);
+    jobsMemoryWindow = new JobsMemoryWindow();
+    profilerWindow = new ProfilerWindow(this);
+    frameDebuggerWindow = new FrameDebuggerWindow(this);
+    undoHistoryWindow = new UndoHistoryWindow(&project);
+    vcsUi = new vcs::VcsUi(&project);
+    StatusBar::setVersionControlSegment([this]() { vcsUi->drawStatusBarSegment(); });
+    inputActionsWindow = new InputActionsWindow(&project);
+    navigationWindow = new NavigationWindow(&project);
+    playModeChangesWindow = new PlayModeChangesWindow(&project);
+    searchPalette = new SearchPalette(this);
+    shortcutsWindow = new ShortcutsWindow(CommandCatalog::editor(), shortcutDispatcher);
+    bookmarksWindow = new BookmarksWindow(&project);
+    // Stop found edits that can be kept: the window opens, or after an agent's Stop the
+    // Console says where they are (S24 R30)
+    PlayChangeReview::get().onPending = [this](uint32_t sceneId, size_t rows) {
+        if (PlayChangeReview::get().isQuietStop()) {
+            Out::info("%zu play-mode change%s can be kept: Window > General > Play Mode Changes", rows, rows == 1 ? "" : "s");
+            return;
+        }
+        playModeChangesWindow->openFor(sceneId);
+    };
+    // pose templates saved or deleted (and their undo/redo): the asset database and the Project
+    // window see the files (MCP writes templates through the pose document, which syncs itself)
+    PoseTemplates::setFilesChangedHook([this](const std::vector<std::filesystem::path>&){
+        project.refreshAssetDatabase(true);
+        projectWindow->refreshCurrentDirectory();
+    });
 
     isInitialized = false;
     dockspaceNeedsRebuild = false;
@@ -194,24 +298,8 @@ void editor::App::openProjectFunc(){
         return;
     }
 
-    auto openProject = [this]() {
-        #ifdef _WIN32
-        const char* homeDir = std::getenv("USERPROFILE");
-        #else
-        const char* homeDir = std::getenv("HOME");
-        #endif
-        const std::string selectedDir = FileDialogs::openFileDialog(
-            homeDir ? homeDir : "", FILE_DIALOG_ALL, true);
-        if (selectedDir.empty()) return;
-
-        const std::filesystem::path projectDir(selectedDir);
-        if (!std::filesystem::exists(projectDir / "project.yaml")) {
-            registerAlert("Error", "The selected directory is not a valid project. No project.yaml file found!");
-            return;
-        }
-
-        requestProjectChange([this, projectDir]() { project.loadProject(projectDir); });
-    };
+    // the Project Hub's Open page (S27 R17)
+    auto openProject = [this]() { openProjectHub(ProjectHubWindow::Page::Open); };
     if (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges() || project.isTempUnsavedProject()) {
         registerConfirmAlert(
             "Unsaved Changes",
@@ -225,71 +313,7 @@ void editor::App::openProjectFunc(){
 
 namespace {
 
-enum class AppMenuCommand : uint32_t {
-    NewProject = 1,
-    NewScene3D,
-    NewScene2D,
-    NewSceneUI,
-    OpenProject,
-    OpenRecentProject,
-    ClearRecentProjects,
-    SaveProjectAs,
-    Save,
-    SaveAll,
-    ExportProject,
-    EditorSettings,
-    Exit,
-    Undo,
-    Redo,
-    SelectAll,
-    CutSelection,
-    CopySelection,
-    PasteSelection,
-    PasteAsChild,
-    DuplicateSelection,
-    DeleteSelection,
-    RenameSelection,
-    FrameSelected,
-    ToggleHierarchy,
-    ToggleInspector,
-    ToggleProject,
-    ToggleConsole,
-    ToggleAnimation,
-    ToggleTerrain,
-    ToggleTextureSynthesis,
-    TogglePhysicsPlacement,
-    ToggleMcpActivity,
-    FocusScene,
-    FocusGame,
-    StepFrame,
-    ToggleDetachableWindows,
-    ResetLayout,
-    ProjectSettings,
-    ProjectScenes,
-    ProjectPrefabs,
-    ClearTrash,
-    TogglePlay,
-    TogglePause,
-    StopScene,
-    RemoveScene,
-    CreateGameObject,     // payload: index into HierarchyWindow::getCreateMenuEntries()
-    CreateEmptyChild,
-    AddComponent,
-    AssetsCreateFolder,
-    AssetsCreateLuaScript,
-    AssetsCreateHtmlDocument,
-    AssetsCreateCppScript,
-    AssetsShowInFileManager,
-    AssetsOpen,
-    AssetsRename,
-    AssetsDelete,
-    AssetsImport,
-    AssetsRefresh,
-    About,
-    Documentation,
-    KeyboardShortcuts,
-    ReportIssue
-};
+using editor::AppMenuCommand;
 
 editor::PlatformMenuItem menuCommand(AppMenuCommand command,
                                      std::string label,
@@ -305,23 +329,19 @@ editor::PlatformMenuItem menuCommand(AppMenuCommand command,
     return item;
 }
 
-editor::PlatformMenuItem menuShortcut(AppMenuCommand command,
-                                      std::string label,
-                                      std::string shortcut,
-                                      bool enabled = true) {
-    editor::PlatformMenuItem item = menuCommand(command, std::move(label), enabled);
-    item.shortcut = std::move(shortcut);
-    return item;
-}
-
-editor::PlatformMenuItem menuToggle(AppMenuCommand command,
-                                    std::string label,
-                                    bool checked,
-                                    std::string shortcut = {},
-                                    bool enabled = true) {
-    editor::PlatformMenuItem item = menuCommand(command, std::move(label), enabled);
+// The menu item of a catalog command: its AppMenuCommand and payload, its shortcut text (the
+// user's binding) and its enabled state, under `label` (the menu's wording) or its name
+editor::PlatformMenuItem catalogItem(const char* id, std::string label = {}, bool checked = false) {
+    const editor::CommandCatalog& catalog = editor::CommandCatalog::editor();
+    const editor::CommandDef* def = catalog.find(id);
+    editor::PlatformMenuItem item;
+    if (!def || !def->menuCommand) return item;
+    item = menuCommand(static_cast<AppMenuCommand>(*def->menuCommand), label.empty() ? def->name : std::move(label),
+                       !def->enabled || def->enabled());
+    if (!item.enabled && def->disabledReason) item.tooltip = def->disabledReason();
+    item.command.payload = def->menuPayload;
+    item.shortcut = catalog.menuShortcutText(id);
     item.checked = checked;
-    item.shortcut = std::move(shortcut);
     return item;
 }
 
@@ -360,10 +380,8 @@ std::string windowMenuLabel(const char* windowName) {
 }
 
 // GameObject menu from the Hierarchy's create table (HierarchyWindow::getCreateMenuEntries),
-// in the same order and grouping the Hierarchy's own menus use.
-std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* scene,
-                                                          bool canCreate,
-                                                          bool canCreateChild) {
+// in the same order and grouping the Hierarchy's own menus use. Each entry is a catalog command.
+std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* scene, bool canCreate) {
     using editor::HierarchyWindow;
     using editor::CreateMenuEntry;
     const auto& entries = HierarchyWindow::getCreateMenuEntries();
@@ -371,11 +389,7 @@ std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* 
         return !scene || HierarchyWindow::isCreateEntryAvailable(entry, scene->sceneType);
     };
     auto entryItem = [&](size_t index) {
-        const CreateMenuEntry& entry = entries[index];
-        editor::PlatformMenuItem item = menuPayloadCommand(AppMenuCommand::CreateGameObject,
-            entry.label, std::to_string(index), canCreate);
-        if (entry.shortcut) item.shortcut = entry.shortcut;
-        return item;
+        return catalogItem(editor::createEntryCommandId(index).c_str(), entries[index].label);
     };
 
     std::vector<editor::PlatformMenuItem> items;
@@ -390,8 +404,7 @@ std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* 
             items.push_back(entryItem(i));
             // Unity lists Create Empty Child right under Create Empty
             if (entry.type == editor::EntityCreationType::GAMEOBJECT) {
-                items.push_back(menuShortcut(AppMenuCommand::CreateEmptyChild, "Create Empty Child",
-                                             "Alt+Shift+N", canCreateChild));
+                items.push_back(catalogItem("gameobject.createEmptyChild"));
             }
             continue;
         }
@@ -415,56 +428,99 @@ std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* 
 
 } // namespace
 
+namespace {
+
+    // An editor script's item at its path in a menu's items (submenus made as needed), after a
+    // separator from the editor's own items
+    void insertScriptMenuItem(std::vector<editor::PlatformMenuItem>& items, const std::vector<std::string>& parts, size_t at,
+                              const editor::EditorMenuItem& script, bool& separated) {
+        if (at + 1 >= parts.size()) {
+            if (!separated && !items.empty() && items.back().type != editor::PlatformMenuItemType::Separator) items.push_back(menuSeparator());
+            separated = true;
+            editor::PlatformMenuItem item = menuPayloadCommand(AppMenuCommand::ScriptMenu, parts.back(), script.id,
+                                                               editor::EditorScripts::get().isEnabled(script));
+            // the annotation's shortcut is the default of its catalog command (S23 R42), rebindable
+            item.shortcut = editor::CommandCatalog::editor().menuShortcutText("script." + script.path);
+            items.push_back(std::move(item));
+            return;
+        }
+        for (editor::PlatformMenuItem& item : items) {
+            if (item.type == editor::PlatformMenuItemType::Submenu && item.label == parts[at]) {
+                bool inner = true;
+                insertScriptMenuItem(item.children, parts, at + 1, script, inner);
+                return;
+            }
+        }
+        if (!separated && !items.empty() && items.back().type != editor::PlatformMenuItemType::Separator) items.push_back(menuSeparator());
+        separated = true;
+        std::vector<editor::PlatformMenuItem> children;
+        bool inner = true;
+        insertScriptMenuItem(children, parts, at + 1, script, inner);
+        items.push_back(menuSubmenu(parts[at], std::move(children)));
+    }
+
+    std::vector<std::string> splitMenuPath(const std::string& path) {
+        std::vector<std::string> parts;
+        size_t start = 0;
+        while (start <= path.size()) {
+            const size_t slash = path.find('/', start);
+            const std::string part = path.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
+            if (!part.empty()) parts.push_back(part);
+            if (slash == std::string::npos) break;
+            start = slash + 1;
+        }
+        return parts;
+    }
+
+}
+
+// The project's editor-script menu items (Tools/..., GameObject/..., Assets/...) in the main
+// menu: an existing top-level menu, or a new one before Window
+void editor::App::addScriptMenus(PlatformMenuModel& menu){
+    std::map<std::string, bool> separated;
+    for (const EditorMenuItem* script : EditorScripts::get().itemsFor("main")) {
+        const std::vector<std::string> parts = splitMenuPath(script->path);
+        if (parts.size() < 2) continue;
+        auto top = std::find_if(menu.menus.begin(), menu.menus.end(), [&](const PlatformMenuItem& item) { return item.label == parts[0]; });
+        if (top == menu.menus.end()) {
+            auto window = std::find_if(menu.menus.begin(), menu.menus.end(), [](const PlatformMenuItem& item) { return item.label == "Window"; });
+            top = menu.menus.insert(window, menuSubmenu(parts[0], {}));
+            separated[parts[0]] = true;
+        }
+        insertScriptMenuItem(top->children, parts, 1, *script, separated[parts[0]]);
+    }
+}
+
 editor::PlatformMenuModel editor::App::buildMenuModel(){
     SceneProject* selectedScene = project.getSelectedScene();
     uint32_t selectedSceneId = project.getSelectedSceneId();
     bool hasSelectedScene = selectedScene != nullptr;
     bool isProjectBusy = project.isAnyScenePlaying();
-    bool canRemove = hasSelectedScene && !isProjectBusy && project.getScenes().size() > 1;
-    const bool textInput = ImGui::GetIO().WantTextInput;
-
-    bool canSave = false;
-    if (!saveDialogInProgress) {
-        if (project.isTempProject()) {
-            canSave = !isProjectBusy;
-        } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-            canSave = codeEditor->hasLastFocusedUnsavedChanges();
-        } else {
-            canSave = !isProjectBusy && project.hasSelectedSceneUnsavedChanges();
-        }
-    }
-    // Project settings are not tracked by the scene and script dirty flags.
-    bool canSaveAll = !isProjectBusy && !saveDialogInProgress;
-
-    bool canUndo = false;
-    bool canRedo = false;
-    if (!textInput) {
-        if (lastFocusedWindow == LastFocusedWindow::Resources) {
-            canUndo = project.getProjectCommandHistory()->canUndo();
-            canRedo = project.getProjectCommandHistory()->canRedo();
-        } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-            canUndo = codeEditor->canUndoLastFocused();
-            canRedo = codeEditor->canRedoLastFocused();
-        } else if (hasSelectedScene) {
-            canUndo = CommandHandle::get(selectedSceneId)->canUndo();
-            canRedo = CommandHandle::get(selectedSceneId)->canRedo();
-        }
-    }
-
-    // Single-key shortcuts (F, F2) must not steal keys from text fields, the code
-    // editor or a running game (native menus own their key equivalents)
-    const bool sceneContext = !textInput && !isProjectBusy && lastFocusedWindow == LastFocusedWindow::AnySceneWindow;
-    const size_t selectedCount = hasSelectedScene ? project.getSelectedEntities(selectedSceneId).size() : 0;
-    // the selection may be of a scene layered over the selected one (Scene view picks)
-    const bool canFrame = sceneContext && hasSelectedScene && sceneWindow->hasFrameableSelection(selectedSceneId);
-    const bool canRename = sceneContext && selectedCount == 1;
     const bool canCreate = hasSelectedScene && selectedScene->scene;
-    const bool canCreateChild = canCreate && hierarchyWindow->getSelectedParentForCreate() != NULL_ENTITY;
-    const bool canAddComponent = hasSelectedScene && selectedCount > 0 && !isProjectBusy;
 
-    const bool assetSelected = projectWindow->hasAssetSelection();
-    const bool singleAsset = projectWindow->hasSingleAssetSelection();
+    // One timeline whatever window had focus (S24 R21): only a text field or the Code editor
+    // keep their own undo, and then the items say plain Undo/Redo
+    std::string undoLabel = "Undo";
+    std::string redoLabel = "Redo";
+    if (undoTarget() == UndoTimeline::Target::Timeline) {
+        const uint32_t sceneId = hasSelectedScene ? selectedSceneId : NULL_PROJECT_SCENE;
+        undoLabel = UndoTimeline::undoLabel(sceneId);
+        redoLabel = UndoTimeline::redoLabel(sceneId);
+        // the step Undo would take refused the last try (a file it changes resolves out of the
+        // project through a link: the console says which and how to fix it): the menu says so
+        const UndoTimeline::EntryView next = UndoTimeline::nextUndo(sceneId);
+        if (next && next.history && !next.history->undoRefusedLastTry().empty()) undoLabel = "Undo (refused, see the Console)";
+        // the Sprite Normal Map window's paint strokes come first
+        if (lastFocusedWindow == LastFocusedWindow::SpriteNormals && spriteNormalsWindow) {
+            if (spriteNormalsWindow->canUndoPaint()) undoLabel = "Undo Paint Stroke";
+            if (spriteNormalsWindow->canRedoPaint()) redoLabel = "Redo Paint Stroke";
+        }
+    }
 
+    // Every item below is a catalog command (shortcuts/DefaultCommands.cpp): its shortcut
+    // text is the user's binding and its enabled state the command's (AppCommands.cpp).
+    // Enabled items keep their native key equivalents (macOS), so single-key items are
+    // disabled while typing, in the Code editor or with a game running.
     std::vector<PlatformMenuItem> recentItems;
     std::vector<std::filesystem::path> recentProjects = AppSettings::getRecentProjects();
     if (recentProjects.empty()) {
@@ -478,130 +534,242 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
                 path.string()));
         }
         recentItems.push_back(menuSeparator());
-        recentItems.push_back(menuCommand(AppMenuCommand::ClearRecentProjects,
-                                          "Clear Recent Projects"));
+        recentItems.push_back(catalogItem("file.clearRecentProjects"));
     }
 
     auto newSceneItems = [&]() {
         return std::vector<PlatformMenuItem>{
-            menuCommand(AppMenuCommand::NewScene3D, "3D"),
-            menuCommand(AppMenuCommand::NewScene2D, "2D"),
-            menuCommand(AppMenuCommand::NewSceneUI, "UI")
+            catalogItem("file.newScene3D", "3D"),
+            catalogItem("file.newScene2D", "2D"),
+            catalogItem("file.newSceneUI", "UI")
         };
     };
 
     PlatformMenuModel menu;
     menu.menus.push_back(menuSubmenu("File", {
         menuSubmenu("New Scene", newSceneItems(), !isProjectBusy),
-        menuShortcut(AppMenuCommand::Save, "Save", "Ctrl+S", canSave),
-        menuShortcut(AppMenuCommand::SaveAll, "Save All", "Ctrl+Shift+S", canSaveAll),
-        menuCommand(AppMenuCommand::RemoveScene, "Remove Scene from Project", canRemove),
+        catalogItem("file.save"),
+        catalogItem("file.saveAll"),
+        catalogItem("file.removeScene"),
         menuSeparator(),
-        menuCommand(AppMenuCommand::NewProject, "New Project...", !isProjectBusy),
-        menuShortcut(AppMenuCommand::OpenProject, "Open Project...", "Ctrl+O", !isProjectBusy),
+        catalogItem("file.newProject"),
+        catalogItem("file.openProject"),
+        catalogItem("file.projectHub"),
         menuSubmenu("Recent Projects", std::move(recentItems), !isProjectBusy),
-        menuCommand(AppMenuCommand::SaveProjectAs, "Save Project As...", canSaveAll),
+        catalogItem("file.saveProjectAs"),
+        catalogItem("file.saveProjectAsTemplate"),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::ExportProject, "Build Settings...", "Ctrl+Shift+B"),
+        catalogItem("file.buildSettings"),
         menuSeparator(),
-        menuCommand(AppMenuCommand::Exit, "Exit")
+        catalogItem("file.exit")
     }));
 
     menu.menus.push_back(menuSubmenu("Edit", {
-        menuShortcut(AppMenuCommand::Undo, "Undo", "Ctrl+Z", canUndo),
-#if defined(__APPLE__)
-        menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Shift+Z", canRedo),
-#else
-        menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Y", canRedo),
-#endif
+        catalogItem("edit.undo", undoLabel),
+        catalogItem("edit.redo", redoLabel),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::SelectAll, "Select All", "Ctrl+A", canSelectAll()),
+        catalogItem("edit.selectAll"),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::CutSelection, "Cut", "Ctrl+X", canCutSelection()),
-        menuShortcut(AppMenuCommand::CopySelection, "Copy", "Ctrl+C", canCopySelection()),
-        menuShortcut(AppMenuCommand::PasteSelection, "Paste", "Ctrl+V", canPasteSelection(false)),
-        menuShortcut(AppMenuCommand::PasteAsChild, "Paste As Child", "Ctrl+Shift+V", canPasteSelection(true)),
+        catalogItem("edit.cut"),
+        catalogItem("edit.copy"),
+        catalogItem("edit.paste"),
+        catalogItem("edit.pasteAsChild"),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::DuplicateSelection, "Duplicate", "Ctrl+D", canEditSelection(true)),
-        menuShortcut(AppMenuCommand::RenameSelection, "Rename", "F2", canRename),
-        menuShortcut(AppMenuCommand::DeleteSelection, "Delete", "Delete", canEditSelection(false)),
+        catalogItem("edit.duplicate"),
+        catalogItem("edit.rename"),
+        catalogItem("edit.delete"),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::FrameSelected, "Frame Selected", "F", canFrame),
+        catalogItem("edit.frameSelected"),
+        catalogItem("edit.searchAll"),
         menuSeparator(),
-        menuToggle(AppMenuCommand::TogglePlay, "Play", mainToolbar->isInPlayMode(), "Ctrl+P", mainToolbar->canTogglePlay()),
-        menuToggle(AppMenuCommand::TogglePause, "Pause", mainToolbar->isPaused(), "Ctrl+Shift+P", mainToolbar->canPause()),
-        menuShortcut(AppMenuCommand::StepFrame, "Step", "Ctrl+Alt+P", mainToolbar->canStep()),
-        menuCommand(AppMenuCommand::StopScene, "Stop", mainToolbar->isInPlayMode()),
+        catalogItem("edit.play", "Play", mainToolbar->isInPlayMode()),
+        catalogItem("edit.pause", "Pause", mainToolbar->isPaused()),
+        catalogItem("edit.step"),
+        catalogItem("edit.stop"),
         menuSeparator(),
-        menuCommand(AppMenuCommand::ProjectSettings, "Project Settings..."),
-        menuCommand(AppMenuCommand::EditorSettings, "Preferences...")
+        catalogItem("edit.projectSettings"),
+        catalogItem("edit.clearUserSettings"),
+        catalogItem("edit.preferences"),
+        catalogItem("edit.shortcuts")
     }));
+
+    std::vector<PlatformMenuItem> assetsCreateItems = {
+        catalogItem("assets.createFolder", "Folder"),
+        menuSeparator(),
+        catalogItem("assets.createLuaScript", "Lua Script"),
+        catalogItem("assets.createCppScript", "C++ Script"),
+        menuSeparator(),
+        catalogItem("assets.createHtmlDocument", "HTML Document"),
+        menuSeparator(),
+        catalogItem("assets.createAudioMixer", "Audio Mixer"),
+        menuSeparator(),
+        catalogItem("assets.createPoseAnimation", "Pose Animation"),
+        menuSeparator(),
+        catalogItem("assets.createNativePlugin", "Native Plugin...")
+    };
+    // Animation Clip: once the clip asset task set its hook
+    if (animationClipAppHooks().createClipAsset) {
+        assetsCreateItems.push_back(catalogItem("assets.createAnimationClip", "Animation Clip"));
+    }
+    assetsCreateItems.push_back(catalogItem("assets.createAnimatorController", "Animator Controller"));
+    assetsCreateItems.push_back(catalogItem("assets.createAvatarMask", "Avatar Mask"));
+    assetsCreateItems.push_back(catalogItem("assets.createAnimationMontage", "Animation Montage"));
+    assetsCreateItems.push_back(catalogItem("assets.createShakePreset", "Shake Preset"));
+    assetsCreateItems.push_back(menuSeparator());
+    assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
 
     menu.menus.push_back(menuSubmenu("Assets", {
-        menuSubmenu("Create", {
-            menuCommand(AppMenuCommand::AssetsCreateFolder, "Folder"),
+        menuSubmenu("Create", assetsCreateItems),
+        catalogItem("assets.showInFileManager"),
+        catalogItem("assets.open"),
+        catalogItem("assets.rename", "Rename"),
+        catalogItem("assets.delete", "Delete"),
+        menuSeparator(),
+        catalogItem("assets.import"),
+        catalogItem("assets.refresh"),
+        catalogItem("assets.reimportTextures"),
+        menuSubmenu("Version Control", {
+            catalogItem("assets.vcs.commit"),
+            catalogItem("assets.vcs.revert"),
+            catalogItem("assets.vcs.lock"),
+            catalogItem("assets.vcs.unlock"),
             menuSeparator(),
-            menuCommand(AppMenuCommand::AssetsCreateLuaScript, "Lua Script"),
-            menuCommand(AppMenuCommand::AssetsCreateCppScript, "C++ Script"),
+            catalogItem("assets.vcs.history"),
+            catalogItem("assets.vcs.diff"),
             menuSeparator(),
-            menuCommand(AppMenuCommand::AssetsCreateHtmlDocument, "HTML Document"),
-            menuSeparator(),
-            menuSubmenu("Scene", newSceneItems(), !isProjectBusy)
+            catalogItem("assets.vcs.refresh", "Refresh")
         }),
-        menuCommand(AppMenuCommand::AssetsShowInFileManager, "Show in File Manager"),
-        menuCommand(AppMenuCommand::AssetsOpen, "Open", singleAsset),
-        menuCommand(AppMenuCommand::AssetsRename, "Rename", singleAsset),
-        menuCommand(AppMenuCommand::AssetsDelete, "Delete", assetSelected),
+        menuSubmenu("Asset Database", {
+            catalogItem("window.missingAssets", "Missing Assets..."),
+            catalogItem("assets.migrateReferences")
+        }),
+        menuSubmenu("Scripts", {
+            catalogItem("scripts.reload"),
+            catalogItem("scripts.rebuildCpp"),
+            catalogItem("scripts.cancelBuild")
+        }),
         menuSeparator(),
-        menuCommand(AppMenuCommand::AssetsImport, "Import New Asset..."),
-        menuCommand(AppMenuCommand::AssetsRefresh, "Refresh"),
-        menuSeparator(),
-        menuCommand(AppMenuCommand::ProjectScenes, "Scenes in Build...", !isProjectBusy),
-        menuCommand(AppMenuCommand::ProjectPrefabs, "Prefabs..."),
-        menuCommand(AppMenuCommand::ClearTrash, "Empty Trash...", !isProjectBusy)
+        catalogItem("assets.scenesInBuild"),
+        catalogItem("assets.prefabs"),
+        catalogItem("assets.emptyTrash")
     }));
 
-    menu.menus.push_back(menuSubmenu("GameObject",
-        gameObjectMenuItems(selectedScene, canCreate, canCreateChild)));
+    // Camera Shaker on the scene's main camera (camera shake spec 9), after the create items
+    std::vector<PlatformMenuItem> gameObjectItems = gameObjectMenuItems(selectedScene, canCreate);
+    {
+        const Entity mainCamera = hasSelectedScene ? project.getGameCamera(selectedSceneId) : NULL_ENTITY;
+        const bool canAddShaker = hasSelectedScene && !isProjectBusy && mainCamera != NULL_ENTITY && selectedScene->scene &&
+                                  !selectedScene->scene->findComponent<CameraShakerComponent>(mainCamera);
+        gameObjectItems.push_back(menuSeparator());
+        gameObjectItems.push_back(menuCommand(AppMenuCommand::AddCameraShakerToMainCamera, "Add Camera Shaker to Main Camera", canAddShaker));
+    }
+    menu.menus.push_back(menuSubmenu("GameObject", std::move(gameObjectItems)));
 
     menu.menus.push_back(menuSubmenu("Component", {
-        menuShortcut(AppMenuCommand::AddComponent, "Add...", "Ctrl+Shift+A", canAddComponent)
+        catalogItem("component.add", "Add...")
     }));
 
     menu.menus.push_back(menuSubmenu("Window", {
         menuSubmenu("General", {
-            menuShortcut(AppMenuCommand::FocusScene, "Scene", "Ctrl+1", hasSelectedScene),
-            menuShortcut(AppMenuCommand::FocusGame, "Game", "Ctrl+2"),
-            menuShortcut(AppMenuCommand::ToggleInspector, windowMenuLabel(InspectorWindow::WINDOW_NAME), "Ctrl+3"),
-            menuShortcut(AppMenuCommand::ToggleHierarchy, windowMenuLabel(HierarchyWindow::WINDOW_NAME), "Ctrl+4"),
-            menuShortcut(AppMenuCommand::ToggleProject, windowMenuLabel(ProjectWindow::WINDOW_NAME), "Ctrl+5"),
-            menuShortcut(AppMenuCommand::ToggleConsole, windowMenuLabel(ConsoleWindow::WINDOW_NAME), "Ctrl+Shift+C")
+            catalogItem("window.scene"),
+            catalogItem("window.game"),
+            catalogItem("window.inspector", windowMenuLabel(InspectorWindow::WINDOW_NAME)),
+            catalogItem("window.hierarchy", windowMenuLabel(HierarchyWindow::WINDOW_NAME)),
+            catalogItem("window.project", windowMenuLabel(ProjectWindow::WINDOW_NAME)),
+            catalogItem("window.console", windowMenuLabel(ConsoleWindow::WINDOW_NAME)),
+            catalogItem("window.bookmarks", windowMenuLabel(BookmarksWindow::WINDOW_NAME)),
+            catalogItem("window.undoHistory", windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
+            catalogItem("window.playModeChanges", windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME)),
+            catalogItem("window.colorPicker"),
+            catalogItem("window.recorder", windowMenuLabel(RecorderWindow::WINDOW_NAME))
         }),
         menuSubmenu("Animation", {
-            menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
+            catalogItem("window.animation", windowMenuLabel(AnimationWindow::WINDOW_NAME)),
+            catalogItem("window.poseAnimation", windowMenuLabel(PoseAnimationWindow::WINDOW_NAME)),
+            catalogItem("window.animator", windowMenuLabel(AnimatorWindow::WINDOW_NAME)),
+            catalogItem("window.vertexAnimationBaker", windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
         }),
-        menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
-        menuCommand(AppMenuCommand::ToggleTextureSynthesis, windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
-        menuCommand(AppMenuCommand::TogglePhysicsPlacement, windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
+        menuSubmenu("Audio", {
+            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME))
+        }),
+        catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
+        menuSubmenu("AI", {
+            catalogItem("window.navigation", windowMenuLabel(NavigationWindow::WINDOW_NAME))
+        }),
+        menuSubmenu("Assets", {
+            catalogItem("window.missingAssets", windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
+            catalogItem("window.assetReferences", windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
+        }),
+        menuSubmenu("Analysis", {
+            catalogItem("window.profiler", windowMenuLabel(ProfilerWindow::WINDOW_NAME)),
+            catalogItem("window.frameDebugger", windowMenuLabel(FrameDebuggerWindow::WINDOW_NAME)),
+            catalogItem("window.systems", windowMenuLabel(SystemsWindow::WINDOW_NAME)),
+            catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
+        }),
+        catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
+        catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
+        catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("MCP", {
-            menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
+            catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
+        }),
+        menuSubmenu("Version Control", {
+            catalogItem("window.vcs.commit", "Commit", vcsUi->isWindowOpen(vcs::VcsUi::COMMIT_WINDOW)),
+            catalogItem("window.vcs.history", "History", vcsUi->isWindowOpen(vcs::VcsUi::HISTORY_WINDOW)),
+            catalogItem("window.vcs.sceneDiff", "Scene Diff", vcsUi->isWindowOpen(vcs::VcsUi::SCENE_DIFF_WINDOW)),
+            catalogItem("window.vcs.conflicts", "Conflicts", vcsUi->isWindowOpen(vcs::VcsUi::CONFLICTS_WINDOW))
         }),
         menuSeparator(),
-        menuSubmenu("Layouts", {
-            menuCommand(AppMenuCommand::ResetLayout, "Reset Layout")
-        }),
-        menuToggle(AppMenuCommand::ToggleDetachableWindows, "Detachable Windows",
-                   AppSettings::getMultiViewportEnabled())
+        menuSubmenu("Layouts", layoutMenuItems()),
+        catalogItem("window.detachableWindows", "Detachable Windows", AppSettings::getMultiViewportEnabled())
     }));
 
     menu.menus.push_back(menuSubmenu("Help", {
-        menuCommand(AppMenuCommand::About, "About JasperEngine"),
+        catalogItem("help.about"),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::Documentation, "Documentation", "F1"),
-        menuCommand(AppMenuCommand::KeyboardShortcuts, "Keyboard Shortcuts"),
-        menuCommand(AppMenuCommand::ReportIssue, "Report an Issue...")
+        catalogItem("help.documentation"),
+        catalogItem("help.keyboardShortcuts"),
+        catalogItem("help.reportIssue")
     }));
+    addScriptMenus(menu);
     return menu;
+}
+
+// Window > Layouts and the toolbar's Layout menu (S25 R16): the presets (the active one
+// checked), then Save Layout..., Rename Layout >, Delete Layout >, the file items, Reset Layout
+std::vector<editor::PlatformMenuItem> editor::App::layoutMenuItems(){
+    std::vector<PlatformMenuItem> items;
+    std::vector<PlatformMenuItem> renameItems;
+    std::vector<PlatformMenuItem> deleteItems;
+    for (const LayoutPresetInfo& preset : layouts.presets()) {
+        PlatformMenuItem apply = catalogItem("window.layouts.apply", preset.name, preset.active);
+        apply.command.payload = preset.name;
+        items.push_back(std::move(apply));
+        if (preset.builtin) continue;
+        PlatformMenuItem rename = catalogItem("window.layouts.rename", preset.name);
+        rename.command.payload = preset.name;
+        rename.shortcut.clear();
+        renameItems.push_back(std::move(rename));
+        PlatformMenuItem remove = catalogItem("window.layouts.delete", preset.name);
+        remove.command.payload = preset.name;
+        remove.shortcut.clear();
+        deleteItems.push_back(std::move(remove));
+    }
+    const bool hasUserPresets = !renameItems.empty();
+    items.push_back(menuSeparator());
+    items.push_back(catalogItem("window.layouts.save"));
+    items.push_back(menuSubmenu("Rename Layout", std::move(renameItems), hasUserPresets));
+    items.push_back(menuSubmenu("Delete Layout", std::move(deleteItems), hasUserPresets));
+    items.push_back(menuSeparator());
+    items.push_back(catalogItem("window.layouts.saveToFile"));
+    items.push_back(catalogItem("window.layouts.loadFromFile"));
+    items.push_back(menuSeparator());
+    items.push_back(catalogItem("window.layouts.reset"));
+    return items;
+}
+
+void editor::App::drawLayoutsMenu(){
+    showImGuiMenuItems(layoutMenuItems());
 }
 
 // Window menu items open the window if needed and bring it to the front (Unity).
@@ -615,15 +783,16 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
     if (projectLoading || pendingProjectChange) return;
 
     const auto action = static_cast<AppMenuCommand>(command.id);
+    // the Project Hub covers the editor: only the project commands (a native menu still shows)
+    if (projectHub.isOpen() && action != AppMenuCommand::NewProject && action != AppMenuCommand::OpenProject &&
+        action != AppMenuCommand::ProjectHub && action != AppMenuCommand::Exit) {
+        return;
+    }
     switch (action) {
         case AppMenuCommand::NewProject: {
             if (project.isAnyScenePlaying()) return;
-            std::string projectName = "MyJasperEngineProject";
-            auto startFreshProject = [this, projectName]() {
-                requestProjectChange([this, projectName]() {
-                    project.createTempProject(projectName, true);
-                });
-            };
+            // the Project Hub's New Project page (S27 R17)
+            auto startFreshProject = [this]() { openProjectHub(ProjectHubWindow::Page::NewProject); };
             if (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges() ||
                 project.isTempUnsavedProject()) {
                 registerConfirmAlert(
@@ -650,6 +819,36 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::OpenProject:
             openProjectFunc();
+            break;
+        case AppMenuCommand::ProjectHub: {
+            if (project.isAnyScenePlaying()) return;
+            auto openHub = [this]() { openProjectHub(ProjectHubWindow::Page::Projects); };
+            if (!hubOverTemp && (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges())) {
+                registerConfirmAlert("Unsaved Changes", "There are unsaved changes. Do you want to save them before opening the Project Hub?",
+                                     [this, openHub]() { saveAllAndProject(openHub); }, openHub);
+            } else {
+                openHub();
+            }
+            break;
+        }
+        case AppMenuCommand::ToggleColorPicker:
+            ui::ColorPickerWindow::get().openStandalone();
+            break;
+        case AppMenuCommand::ToggleRecorder:
+            recorderWindow.setOpen(!recorderWindow.isOpen());
+            break;
+        case AppMenuCommand::ToggleRecording:
+            toggleRecording();
+            break;
+        case AppMenuCommand::SaveProjectAsTemplate:
+            if (project.isTempProject()) {
+                registerAlert("Save Project as Template", "Save the project first: a template is made from a saved project.");
+                return;
+            }
+            saveTemplatePopup = true;
+            std::snprintf(saveTemplateName.data(), saveTemplateName.size(), "%s", project.getName().c_str());
+            saveTemplateDescription.fill(0);
+            saveTemplateMessage.clear();
             break;
         case AppMenuCommand::OpenRecentProject: {
             if (command.payload.empty() || project.isAnyScenePlaying()) return;
@@ -689,24 +888,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             exit();
             break;
         case AppMenuCommand::Undo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) {
-                project.getProjectCommandHistory()->undo();
-                projectWindow->refreshCurrentDirectory();
-            } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-                codeEditor->undoLastFocused();
-            } else if (project.getSelectedScene()) {
-                CommandHandle::get(project.getSelectedSceneId())->undo();
-            }
+            undoRedo(true);
             break;
         case AppMenuCommand::Redo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) {
-                project.getProjectCommandHistory()->redo();
-                projectWindow->refreshCurrentDirectory();
-            } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-                codeEditor->redoLastFocused();
-            } else if (project.getSelectedScene()) {
-                CommandHandle::get(project.getSelectedSceneId())->redo();
-            }
+            undoRedo(false);
             break;
         case AppMenuCommand::RenameSelection:
             if (!hierarchyWindow->renameSelected()) inspectorWindow->focusNameInput();
@@ -746,17 +931,65 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleAnimation:
             showEditorWindow(animationWindow);
             break;
+        case AppMenuCommand::TogglePoseAnimation:
+            showEditorWindow(poseAnimationWindow);
+            break;
+        case AppMenuCommand::ToggleAnimator:
+            showEditorWindow(animatorWindow);
+            break;
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
             break;
+        case AppMenuCommand::ToggleProfiler:
+            showEditorWindow(profilerWindow);
+            break;
+        case AppMenuCommand::ToggleFrameDebugger:
+            showEditorWindow(frameDebuggerWindow);
+            break;
+        case AppMenuCommand::ToggleSystems:
+            showEditorWindow(systemsWindow);
+            break;
+        case AppMenuCommand::ToggleJobsMemory:
+            showEditorWindow(jobsMemoryWindow);
+            break;
+        case AppMenuCommand::ToggleUndoHistory:
+            showEditorWindow(undoHistoryWindow);
+            break;
+        case AppMenuCommand::ToggleInputActions:
+            showEditorWindow(inputActionsWindow);
+            break;
+        case AppMenuCommand::ToggleNavigation:
+            showEditorWindow(navigationWindow);
+            break;
+        case AppMenuCommand::TogglePlayModeChanges:
+            showEditorWindow(playModeChangesWindow);
+            break;
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
+            break;
+        case AppMenuCommand::ToggleAudioMixer:
+            audioMixerWindow->open();
+            break;
+        case AppMenuCommand::ToggleSpriteNormals:
+            spriteNormalsWindow->open();
+            break;
+        case AppMenuCommand::ToggleVertexAnimationBaker:
+            vertexAnimationBakerWindow->open();
             break;
         case AppMenuCommand::TogglePhysicsPlacement:
             showEditorWindow(physicsPlacementWindow);
             break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
+            break;
+        case AppMenuCommand::ToggleMissingAssets:
+            showEditorWindow(missingAssetsWindow);
+            break;
+        case AppMenuCommand::ToggleAssetReferences:
+            showEditorWindow(assetReferencesWindow);
+            break;
+        case AppMenuCommand::MigrateAssetReferences:
+            migrateAssetReferences();
             break;
         case AppMenuCommand::FocusGame:
             gameWindow->requestFocus();
@@ -788,17 +1021,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         }
         case AppMenuCommand::ResetLayout:
-            hierarchyWindow->setOpen(true);
-            inspectorWindow->setOpen(true);
-            projectWindow->setOpen(true);
-            consoleWindow->setOpen(true);
-            animationWindow->setOpen(true);
-            terrainEditWindow->setOpen(false);
-            textureSynthesisWindow->setOpen(false);
-            physicsPlacementWindow->setOpen(false);
-            mcpActivityWindow->setOpen(false);
-            gameWindow->setOpen(true);
-            buildDockspace(true);
+            // Unity's Reset Layout: the Default preset
+            layouts.requestSwitch(LayoutPresets::DEFAULT_NAME);
             break;
         case AppMenuCommand::ProjectSettings:
             projectSettingsWindow.open(&project);
@@ -806,6 +1030,21 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::EditorSettings:
             editorSettingsWindow.open(&project);
             break;
+        case AppMenuCommand::ClearUserSettings: {
+            // the store Play mode uses (.jasperengine/user/rundata/UserSettings.xml): a running
+            // game sees the keys gone at once
+            const size_t count = UserSettingsStore::instance().entries().size();
+            const std::string file = UserSettingsStore::instance().getFilePath();
+            registerConfirmAlert("Clear User Settings",
+                "Delete every UserSettings / PlayerPrefs key of this project (" + std::to_string(count) +
+                (count == 1 ? " key" : " keys") + ")?\n" + file + "\nThis cannot be undone.",
+                []() {
+                    UserSettings::deleteAll();
+                    UserSettings::save();
+                    Out::info("Cleared the project's User Settings (PlayerPrefs)");
+                });
+            break;
+        }
         case AppMenuCommand::ProjectScenes:
             if (!project.isAnyScenePlaying())
                 scenesWindow.open(&project);
@@ -886,6 +1125,44 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateHtmlDocument:
             projectWindow->assetsCreateHtmlDocument();
             break;
+        case AppMenuCommand::AssetsCreateAudioMixer:
+            projectWindow->assetsCreateAudioMixer();
+            break;
+        case AppMenuCommand::AssetsCreatePoseAnimation:
+            projectWindow->assetsCreatePoseAnimation();
+            break;
+        case AppMenuCommand::AssetsCreateShakePreset:
+            projectWindow->assetsCreateShakePreset();
+            break;
+        case AppMenuCommand::AddCameraShakerToMainCamera: {
+            SceneProject* scene = project.getSelectedScene();
+            const Entity mainCamera = scene ? project.getGameCamera(scene->id) : NULL_ENTITY;
+            if (scene && scene->scene && !project.isAnyScenePlaying() && mainCamera != NULL_ENTITY &&
+                !scene->scene->findComponent<CameraShakerComponent>(mainCamera)) {
+                CommandHandle::get(scene->id)->addCommandNoMerge(
+                    new AddComponentCmd(&project, scene->id, mainCamera, ComponentType::CameraShakerComponent));
+                project.setSelectedEntity(scene->id, mainCamera);
+            }
+            break;
+        }
+        case AppMenuCommand::AssetsCreateNativePlugin:
+            nativePluginDialog.open(&project);
+            break;
+        case AppMenuCommand::AssetsCreateAnimationClip:
+            if (animationClipAppHooks().createClipAsset) {
+                animationClipAppHooks().createClipAsset(&project);
+                projectWindow->refreshCurrentDirectory();
+            }
+            break;
+        case AppMenuCommand::AssetsCreateAnimatorController:
+            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller);
+            break;
+        case AppMenuCommand::AssetsCreateAvatarMask:
+            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask);
+            break;
+        case AppMenuCommand::AssetsCreateAnimationMontage:
+            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Montage);
+            break;
         case AppMenuCommand::AssetsShowInFileManager:
             projectWindow->assetsShowInFileManager();
             break;
@@ -901,17 +1178,86 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsImport:
             projectWindow->assetsImport();
             break;
+        case AppMenuCommand::VcsCommit:
+            vcsUi->run(vcs::VcsAction::Commit, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsRevert:
+            vcsUi->run(vcs::VcsAction::Revert, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsLock:
+            vcsUi->run(vcs::VcsAction::Lock, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsUnlock:
+            vcsUi->run(vcs::VcsAction::Unlock, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsShowHistory:
+            vcsUi->run(vcs::VcsAction::ShowHistory, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsDiffAgainstBaseline:
+            vcsUi->run(vcs::VcsAction::DiffAgainstBaseline, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsRefresh:
+            vcsUi->run(vcs::VcsAction::Refresh, {});
+            break;
+        case AppMenuCommand::ToggleVcsCommit:
+            vcsUi->toggleWindow(vcs::VcsUi::COMMIT_WINDOW);
+            break;
+        case AppMenuCommand::ToggleVcsHistory:
+            vcsUi->toggleWindow(vcs::VcsUi::HISTORY_WINDOW);
+            break;
+        case AppMenuCommand::ToggleVcsSceneDiff:
+            vcsUi->toggleWindow(vcs::VcsUi::SCENE_DIFF_WINDOW);
+            break;
+        case AppMenuCommand::ToggleVcsConflicts:
+            vcsUi->toggleWindow(vcs::VcsUi::CONFLICTS_WINDOW);
+            break;
         case AppMenuCommand::AssetsRefresh:
+            // what changed on disk (the journal with Auto Refresh off), then the open folder
+            HotReloadService::get().refresh();
             projectWindow->assetsRefresh();
+            break;
+        case AppMenuCommand::AssetsReimportTextures:
+            if (TextureCookQueue::get().getProject() == &project) {
+                TextureCookQueue::get().invalidateAll();
+                TextureCookQueue::get().requestAll({TextureCookQueue::get().getViewFamily()});
+            }
             break;
         case AppMenuCommand::About:
             aboutWindow.open();
             break;
+        case AppMenuCommand::ScriptsReload:
+            ScriptReloadService::get().requestReload({}, true, ScriptReloadService::cppReloadEnabled());
+            break;
+        case AppMenuCommand::ScriptsRebuildCpp: {
+            std::string message;
+            if (!ScriptReloadService::get().rebuildCpp(message)) Out::warning("Rebuild C++ Scripts: %s", message.c_str());
+            break;
+        }
+        case AppMenuCommand::ScriptsCancelBuild:
+            ScriptReloadService::get().cancelCppBuild();
+            break;
+        case AppMenuCommand::ScriptMenu: {
+            EditorMenuRunContext context;
+            context.sceneId = project.getSelectedSceneId();
+            for (Entity entity : project.getSelectedEntities(context.sceneId)) context.selection.push_back(entity);
+            if (projectWindow) {
+                for (const fs::path& path : projectWindow->getSelectedFiles()) {
+                    const fs::path rel = path.lexically_relative(project.getProjectPath());
+                    context.assets.push_back(rel.generic_string());
+                }
+            }
+            EditorScripts::get().runFromMenu(command.payload, context);
+            break;
+        }
         case AppMenuCommand::DuplicateSelection:
             duplicateSelection();
             break;
         case AppMenuCommand::DeleteSelection:
-            deleteSelection();
+            if (inputActionsWindow->canDelete()) inputActionsWindow->requestDelete();
+            // the Animator window's selected state, sub-state machine, transition or layer
+            else if (animatorWindow->canDelete()) animatorWindow->removeSelection();
+            // the Draw Spline tool's last knot, the edited spline's knots
+            else if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
             break;
         case AppMenuCommand::Documentation:
         case AppMenuCommand::ReportIssue: {
@@ -924,41 +1270,35 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         }
         case AppMenuCommand::KeyboardShortcuts:
-            registerAlert("Keyboard Shortcuts",
-                "FILE AND EDIT\n"
-                "Ctrl+S    Save current scene or script\n"
-                "Ctrl+Shift+S    Save all scenes, scripts, and project\n"
-                "Ctrl+O    Open project\n"
-                "Ctrl+Shift+B    Build Settings\n"
-                "Ctrl+Z    Undo\n"
-                "Ctrl+Y / Ctrl+Shift+Z    Redo\n"
-                "Ctrl+A    Select All\n"
-                "Ctrl+X / Ctrl+C / Ctrl+V    Cut / Copy / Paste GameObjects\n"
-                "Ctrl+Shift+V    Paste As Child\n"
-                "Ctrl+D    Duplicate\n"
-                "F2    Rename\n"
-                "Delete / Backspace    Delete\n\n"
-                "GAMEOBJECT AND COMPONENT\n"
-                "Ctrl+Shift+N    Create Empty\n"
-                "Alt+Shift+N    Create Empty Child\n"
-                "Ctrl+Shift+A    Add Component\n\n"
-                "PLAY MODE\n"
-                "Ctrl+P    Play / Stop (F5 plays, F7 stops)\n"
-                "Ctrl+Shift+P    Pause / Resume (F6 pauses)\n\n"
-                "WINDOWS\n"
-                "Ctrl+1 Scene   Ctrl+3 Inspector   Ctrl+4 Hierarchy\n"
-                "Ctrl+5 Project   Ctrl+6 Animation   Ctrl+Shift+C Console\n\n"
-                "SCENE VIEW\n"
-                "Q / W / E / R / T    Hand / Move / Rotate / Scale / Rect\n"
-                "X    Toggle local / global transforms\n"
-                "F / Home    Frame selected / all (3D)\n\n"
-                "PHYSICS PLACEMENT (3D)\n"
-                "G    Physics on / off for Move, Rotate and Scale\n"
-                "Hold Space    Drop the selection under gravity\n"
-                "Shift + drag    Snap a selected object onto surfaces\n"
-                "Esc    Cancel the running gesture (Ctrl+Z too)\n\n"
-                "F1    Documentation",
-                "On macOS, menu shortcuts use Command instead of Ctrl.");
+            // generated from the command catalog, filterable (R5)
+            shortcutsWindow->openReference();
+            break;
+        case AppMenuCommand::Shortcuts:
+            shortcutsWindow->openEditor();
+            break;
+        case AppMenuCommand::SearchAll:
+            searchPalette->open();
+            break;
+        case AppMenuCommand::ToggleBookmarks:
+            showEditorWindow(bookmarksWindow);
+            break;
+        case AppMenuCommand::LayoutApply:
+            layouts.requestSwitch(command.payload);
+            break;
+        case AppMenuCommand::LayoutSave:
+            layouts.openSaveDialog();
+            break;
+        case AppMenuCommand::LayoutRename:
+            layouts.openRenameDialog(command.payload);
+            break;
+        case AppMenuCommand::LayoutDelete:
+            layouts.confirmDelete(command.payload);
+            break;
+        case AppMenuCommand::LayoutSaveToFile:
+            layouts.exportToFile();
+            break;
+        case AppMenuCommand::LayoutLoadFromFile:
+            layouts.importFromFile();
             break;
     }
 }
@@ -969,16 +1309,40 @@ void editor::App::showImGuiMenuItems(const std::vector<PlatformMenuItem>& items)
             ImGui::Separator();
         } else if (item.type == PlatformMenuItemType::Submenu) {
             if (ImGui::BeginMenu(item.label.c_str(), item.enabled)) {
+                // editor scripts' ---@validate run when a menu with their items opens
+                if (ImGui::IsWindowAppearing()) validateScriptMenus(item);
                 showImGuiMenuItems(item.children);
                 ImGui::EndMenu();
             }
-        } else if (ImGui::MenuItem(
-                       item.label.c_str(),
-                       item.shortcut.empty() ? nullptr : item.shortcut.c_str(),
-                       item.checked, item.enabled)) {
-            executeMenuCommand(item.command);
+        } else {
+            if (ImGui::MenuItem(item.label.c_str(), item.shortcut.empty() ? nullptr : item.shortcut.c_str(), item.checked, item.enabled)) {
+                executeMenuCommand(item.command);
+            }
+            if (!item.enabled && !item.tooltip.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("%s", item.tooltip.c_str());
+            }
         }
     }
+}
+
+void editor::App::validateScriptMenus(const PlatformMenuItem& menu){
+    bool hasScripts = false;
+    std::function<void(const PlatformMenuItem&)> scan = [&](const PlatformMenuItem& item) {
+        if (item.command.id == static_cast<uint32_t>(AppMenuCommand::ScriptMenu)) hasScripts = true;
+        for (const PlatformMenuItem& child : item.children) scan(child);
+    };
+    scan(menu);
+    if (!hasScripts) return;
+    EditorMenuRunContext context;
+    context.sceneId = project.getSelectedSceneId();
+    for (Entity entity : project.getSelectedEntities(context.sceneId)) context.selection.push_back(entity);
+    std::function<void(const PlatformMenuItem&)> validate = [&](const PlatformMenuItem& item) {
+        if (item.command.id == static_cast<uint32_t>(AppMenuCommand::ScriptMenu)) {
+            if (const EditorMenuItem* script = EditorScripts::get().find(item.command.payload)) EditorScripts::get().menuOpened(script->path, context);
+        }
+        for (const PlatformMenuItem& child : item.children) validate(child);
+    };
+    validate(menu);
 }
 
 void editor::App::showImGuiMenu(const PlatformMenuModel& menu){
@@ -989,6 +1353,7 @@ void editor::App::showImGuiMenu(const PlatformMenuModel& menu){
                 if (topLevel.label == "Edit" && ImGui::IsWindowAppearing()) {
                     EntityClipboard::refresh();
                 }
+                if (ImGui::IsWindowAppearing()) validateScriptMenus(topLevel);
                 showImGuiMenuItems(topLevel.children);
                 ImGui::EndMenu();
             }
@@ -997,8 +1362,120 @@ void editor::App::showImGuiMenu(const PlatformMenuModel& menu){
     }
 }
 
+editor::UndoTimeline::Target editor::App::undoTarget() const{
+    UndoTimeline::FocusedWindow focused = UndoTimeline::FocusedWindow::None;
+    switch (lastFocusedWindow) {
+        case LastFocusedWindow::None: focused = UndoTimeline::FocusedWindow::None; break;
+        case LastFocusedWindow::AnySceneWindow: focused = UndoTimeline::FocusedWindow::Scene; break;
+        case LastFocusedWindow::Resources: focused = UndoTimeline::FocusedWindow::Resources; break;
+        case LastFocusedWindow::Code: focused = UndoTimeline::FocusedWindow::Code; break;
+        // their edits are steps of the project history: the timeline orders them with the scene's
+        case LastFocusedWindow::PoseAnimation:
+        case LastFocusedWindow::AnimationClip:
+        // its assigns are steps too; its paint strokes are its own (undoRedo takes them first)
+        case LastFocusedWindow::SpriteNormals: focused = UndoTimeline::FocusedWindow::Other; break;
+    }
+    return UndoTimeline::resolveTarget(ImGui::GetIO().WantTextInput, codeEditor->isFocused(), focused);
+}
+
+void editor::App::undoRedo(bool undo){
+    switch (undoTarget()) {
+        case UndoTimeline::Target::TextField:
+            return;
+        case UndoTimeline::Target::CodeEditor:
+            if (undo) codeEditor->undoLastFocused();
+            else codeEditor->redoLastFocused();
+            return;
+        case UndoTimeline::Target::Timeline:
+            break;
+    }
+    // the Sprite Normal Map window: its paint strokes (window-local until Save) first, then the
+    // scene of its last Save & Assign while that assign is the scene's newest step
+    if (lastFocusedWindow == LastFocusedWindow::SpriteNormals && spriteNormalsWindow) {
+        if (undo ? spriteNormalsWindow->canUndoPaint() : spriteNormalsWindow->canRedoPaint()) {
+            if (undo) spriteNormalsWindow->undoPaint();
+            else spriteNormalsWindow->redoPaint();
+            return;
+        }
+        // another history's step undone: the stroke redos go (Ctrl+Y redoes that step first)
+        if (undo) spriteNormalsWindow->dropPaintRedo();
+        uint32_t routedScene = 0;
+        if (undo ? spriteNormalsWindow->undoGoesToScene(routedScene) : spriteNormalsWindow->redoGoesToScene(routedScene)) {
+            if (undo) CommandHandle::get(routedScene)->undo();
+            else CommandHandle::get(routedScene)->redo();
+            return;
+        }
+    }
+    const bool dragging = CommandHistory::anyInteractiveOpen();
+    std::string why;
+    const uint32_t sceneId = project.getSelectedScene() ? project.getSelectedSceneId() : NULL_PROJECT_SCENE;
+    const bool done = undo ? UndoTimeline::undo(sceneId, &why) : UndoTimeline::redo(sceneId, &why);
+    if (dragging) {
+        // the cancelled drag's widget lets go of the mouse
+        ImGui::ClearActiveID();
+    }
+    if (!done && why.rfind("Busy", 0) == 0) {
+        Out::warning(why);
+    }
+}
+
+void editor::App::handleInteractiveEdits(bool popupOpen){
+    ImGuiIO& io = ImGui::GetIO();
+    // Esc puts a drag's values back; a text field keeps Esc for its own revert. First: ImGui
+    // lets go of the dragged widget on Esc itself, which must not read as a drag that ended
+    if (CommandHistory::anyInteractiveOpen() && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        for (CommandHistory* history : std::vector<CommandHistory*>(CommandHistory::all())) {
+            history->cancelInteractive();
+        }
+        ImGui::ClearActiveID();
+        return;
+    }
+    // the widget let go last frame: its drag is one step
+    const ImGuiID active = ImGui::GetActiveID();
+    if (widgetEdit.isOpen() && active != widgetEditItem) {
+        widgetEdit.commit();
+    }
+    if (active == 0) {
+        // no widget can hold a command the history dropped
+        CommandHistory::flushReleased();
+    }
+    if (!CommandHistory::anyInteractiveOpen()) {
+        return;
+    }
+    // A menu or popup opening, or the editor window losing focus, ends the drag as it is
+    if (popupOpen || io.AppFocusLost) {
+        CommandHistory::commitInteractiveEdits();
+    }
+}
+
+// The catalog learns where each command sits in the main menu (the palette's detail, the
+// Shortcuts window's menu path) and which chord its item shows (macOS NSMenu owns that one)
+void editor::App::recordMenuItems(const PlatformMenuModel& menu){
+    CommandCatalog& catalog = CommandCatalog::editor();
+    catalog.clearMenuItems();
+    std::function<void(const std::vector<PlatformMenuItem>&, const std::string&)> walk =
+        [&](const std::vector<PlatformMenuItem>& items, const std::string& path) {
+            for (const PlatformMenuItem& item : items) {
+                if (item.type == PlatformMenuItemType::Separator) continue;
+                const std::string itemPath = path.empty() ? item.label : path + " > " + item.label;
+                if (item.type == PlatformMenuItemType::Submenu) {
+                    walk(item.children, itemPath);
+                    continue;
+                }
+                const CommandDef* def = catalog.findByMenuCommand(item.command.id, item.command.payload);
+                if (!def || !catalog.menuPath(def->id).empty()) continue;
+                catalog.setMenuItem(def->id, itemPath, item.shortcut.empty() ? Chord() : catalog.bindings(def->id).front());
+            }
+        };
+    walk(menu.menus, "");
+}
+
 void editor::App::showMenu(){
     PlatformMenuModel menu = buildMenuModel();
+    if (menu.menus != lastMenuModel.menus) {
+        recordMenuItems(menu);
+        lastMenuModel = menu;
+    }
     const float nativeMenuHeight = Backend::setMainMenu(
         menu, [this](const PlatformMenuCommand& command) {
             executeMenuCommand(command);
@@ -1084,6 +1561,16 @@ void editor::App::showFooter(){
         if (queuedResources > 0) {
             indicators.emplace_back(std::string(ICON_FA_SPINNER " Loading resources: ") + std::to_string(queuedResources), busyCol);
         }
+        // S04 R27: the Missing Assets badge, a click opens the panel
+        size_t missingIndicator = SIZE_MAX;
+        if (project.getAssetIndex().isReady()) {
+            const size_t missing = project.getMissingAssets().count();
+            if (missing > 0) {
+                missingIndicator = indicators.size();
+                indicators.emplace_back(std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") + std::to_string(missing) +
+                                        (missing == 1 ? " missing asset" : " missing assets"), Theme::Colors::WarningText);
+            }
+        }
         if (selectedScene) {
             indicators.emplace_back(std::string(ICON_FA_CUBE " ") + selectedScene->name, dimCol);
             const size_t selectionCount = selectedScene->selectedEntities.size();
@@ -1096,6 +1583,7 @@ void editor::App::showFooter(){
         char statText[160];
         const Engine::FrameStats& frameStats = Engine::getFrameStats();
         snprintf(statText, sizeof(statText), ICON_FA_GAUGE_HIGH " %.1f FPS  %.2f ms", fps, deltaMs);
+        const size_t fpsIndicator = indicators.size();
         indicators.emplace_back(statText, textCol);
         snprintf(statText, sizeof(statText), ICON_FA_CUBES " %u  " ICON_FA_DRAW_POLYGON " %llu",
                  frameStats.drawCalls, (unsigned long long)frameStats.triangles);
@@ -1159,6 +1647,24 @@ void editor::App::showFooter(){
         for (size_t i = 0; i < indicators.size(); i++) {
             if (i > 0) ImGui::SameLine(0.0f, gap);
             ImGui::TextColored(indicators[i].second, "%s", indicators[i].first.c_str());
+            if (i == missingIndicator) {
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                    ImGui::SetTooltip("Open Window > Assets > Missing Assets");
+                }
+                if (ImGui::IsItemClicked()) {
+                    showEditorWindow(missingAssetsWindow);
+                }
+            }
+            if (i == fpsIndicator) {
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                    ImGui::SetTooltip("Open Window > Analysis > Profiler");
+                }
+                if (ImGui::IsItemClicked()) {
+                    showEditorWindow(profilerWindow);
+                }
+            }
         }
     }
     ImGui::End();
@@ -1168,6 +1674,119 @@ void editor::App::showFooter(){
 
     // Reserve space from the viewport work area so dockspace doesn't overlap
     viewport->WorkSize.y -= footerHeight;
+}
+
+void editor::App::showCrashNotice(){
+    // after the S03 "Recover Unsaved Changes" modal and the other data-safety questions
+    if (dataSafetyDialogs.isShowing()) return;
+    const std::optional<diag::crash::ReportInfo> notice = EditorDiagnostics::notice();
+    if (!notice) return;
+    const std::string text = EditorDiagnostics::noticeText(*notice);
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
+                                   ImGuiWindowFlags_NoScrollWithMouse;
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.36f, 0.27f, 0.08f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(8.0f, 4.0f)));
+    if (ImGui::BeginViewportSideBar("##CrashNotice", viewport, ImGuiDir_Up, ImGui::GetFrameHeight() + Theme::dpi(8.0f), flags)) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SameLine();
+        ImGui::TextUnformatted(text.c_str());
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const char* labels[] = {"Open Report", "Show in Folder", "Copy Report Path", "Dismiss"};
+        float buttons = 0.0f;
+        for (const char* label : labels) buttons += ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.0f + style.ItemSpacing.x;
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttons + style.ItemSpacing.x));
+        if (ImGui::Button("Open Report")) {
+            EditorSettingsWindow::openInFileManager(EditorDiagnostics::primaryFile(*notice));
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Show in Folder")) {
+            EditorSettingsWindow::openInFileManager(notice->folder);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Copy Report Path")) {
+            ImGui::SetClipboardText(notice->folder.string().c_str());
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Dismiss")) {
+            EditorDiagnostics::dismiss(notice->id);
+        }
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+}
+
+void editor::App::showHangToast(){
+    const std::optional<EditorDiagnostics::Toast> toast = EditorDiagnostics::activeToast();
+    if (!toast) return;
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    // the work area ends at the footer's top (showFooter reserved it)
+    const ImVec2 corner(viewport->WorkPos.x + viewport->WorkSize.x - Theme::dpi(12.0f),
+                        viewport->WorkPos.y + viewport->WorkSize.y - Theme::dpi(12.0f));
+    ImGui::SetNextWindowViewport(viewport->ID);
+    ImGui::SetNextWindowPos(corner, ImGuiCond_Always, ImVec2(1.0f, 1.0f));
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                   ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDocking;
+    if (ImGui::Begin("##HangToast", nullptr, flags)) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SameLine();
+        ImGui::TextUnformatted(toast->text.c_str());
+        if (!toast->file.empty()) {
+            ImGui::SameLine();
+            if (ImGui::Button("Open")) {
+                EditorSettingsWindow::openInFileManager(toast->file);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton(ICON_FA_XMARK "##CloseHangToast")) {
+            EditorDiagnostics::closeToast();
+        }
+    }
+    ImGui::End();
+}
+
+// Assets > Asset Database > Migrate References (S04 R35): every scene, prefab, material and
+// project.yaml written with the GUIDs of what it references. A document with unsaved edits is
+// left to its next save, which writes them too.
+void editor::App::migrateAssetReferences(){
+    project.getAssetIndex().waitUntilReady();
+    std::vector<std::string> files;
+    project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        if (info.type == AssetType::Scene || info.type == AssetType::Prefab || info.type == AssetType::Material) {
+            files.push_back(info.path);
+        }
+    });
+    std::sort(files.begin(), files.end());
+    files.push_back("project.yaml");
+    size_t written = 0;
+    size_t skipped = 0;
+    for (const std::string& file : files) {
+        bool unsaved = false;
+        for (SceneProject* sceneProject : project.getScenesAndPrefabStages()) {
+            const PrefabStage* stage = project.getPrefabStage(sceneProject->id);
+            const fs::path path = stage ? stage->assetPath : sceneProject->filepath;
+            unsaved |= sceneProject->scene && sceneProject->isModified && !path.empty() &&
+                       project.normalizeToProjectRelative(path).generic_string() == file;
+        }
+        if (unsaved) {
+            skipped++;
+            continue;
+        }
+        bool changed = false;
+        std::string error;
+        if (!AssetRefEditor::migrateFile(project, file, changed, error)) {
+            Out::error("%s", error.c_str());
+        } else if (changed) {
+            written++;
+        }
+    }
+    project.refreshAssetDatabase(true);
+    Out::info("Migrate References: %zu file(s) written%s", written,
+              skipped ? (", " + std::to_string(skipped) + " with unsaved edits get the GUIDs when saved").c_str() : "");
 }
 
 void editor::App::showAlert(){
@@ -1439,7 +2058,16 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderSetNodeSize(dock_id_left, ImVec2(viewport.x - rightWidth, viewport.y - bottomHeight));
     ImGui::DockBuilderDockWindow(ProjectWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(ConsoleWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(UndoHistoryWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(PlayModeChangesWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(BookmarksWindow::WINDOW_NAME, dock_id_middle_bottom);
+    // Systems: an eight-column table, wide enough only here (in the Inspector's column the
+    // system names and the Enabled checkboxes were cut off)
+    ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
     ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Left, 0.0f, &dock_id_left_top, &dock_id_middle_top);
@@ -1449,6 +2077,12 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
     // Texture Synthesis is mostly a preview: a tab next to the Scene and Game views
     ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
+    // the Audio Mixer's strips want the width of the views
+    ImGui::DockBuilderDockWindow(AudioMixerWindow::WINDOW_NAME, dock_id_middle_top);
+    // the baker too (its preview), so the Inspector entries that open it stay in view
+    ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
+    // the Sprite Normal Map window: a preview too
+    ImGui::DockBuilderDockWindow(SpriteNormalsWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -1467,6 +2101,12 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(ProjectWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(ConsoleWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
+    stampPanelDockOrder(PoseAnimationWindow::WINDOW_NAME, 3);
+    stampPanelDockOrder(UndoHistoryWindow::WINDOW_NAME, 4);
+    stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 5);
+    stampPanelDockOrder(SystemsWindow::WINDOW_NAME, 6);
+    stampPanelDockOrder(AnimatorWindow::WINDOW_NAME, 7);
+    stampPanelDockOrder(BookmarksWindow::WINDOW_NAME, 7);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -1686,7 +2326,12 @@ ImFont* editor::App::getBoldFont() {
 }
 
 void editor::App::setup() {
+    // DontDestroyOnLoad moves nothing in edit mode (Play installs the session's factory)
+    Project::refusePersistentScenes();
     mainThreadId = std::this_thread::get_id();
+
+    // a queued offscreen pose render keeps the loop drawing until processFrame serves it
+    PoseRender::setFrameRequester([this]() { requestRedraw(); });
 
     // Initialize application settings
     initializeSettings();
@@ -1702,14 +2347,26 @@ void editor::App::setup() {
 
     io.ConfigWindowsMoveFromTitleBarOnly = true;
 
-    // Persist the docking layout next to settings.yaml at a stable absolute
-    // path, so it survives restarts regardless of the working directory or
-    // build type. (initializeSettings() above has already set the config dir.)
-    // Versioned so a layout saved before the Unity-style default (and window
-    // titles) is left behind instead of restored: bump when the default changes.
-    layoutIniPath = (AppSettings::getConfigDirectory() / "editor_layout_v2.ini").string();
-    io.IniFilename = layoutIniPath.c_str();
-    registerLayoutSettings();
+    // math in every numeric field (2*1.5, 25cm, +=10): libs/imgui/JASPER_PATCHES.md
+    NumericExpression::installImGuiHook();
+    // scripts: the compile status the toolbar badge shows, the reload of what is saved while
+    // a scene plays, and the toolchain the C++ script libraries must match (S23)
+    ScriptStatus::get().followBuilds();
+    ScriptReloadService::get().attach(&project);
+    checkEditorEngineFingerprint();
+
+    // The window layout is the project's working layout (.jasperengine/user/layout.yaml), or
+    // without a saved project editor_layout_v2.ini next to settings.yaml: LayoutManager reads
+    // and writes it, so ImGui's own ini file is off (S25 R19). At most one write a second.
+    io.IniFilename = nullptr;
+    io.IniSavingRate = 1.0f;
+    // the Animation window's saved label width and view: an ImGui settings handler, in the
+    // layout's ini text (before the first layout loads)
+    AnimationWindowClip::registerSettingsHandler();
+    layouts.loadGlobalIni();
+    setupLayouts();
+    // the command catalog and the user's rebindings (shortcuts.yaml, next to settings.yaml)
+    registerCommands();
 
     // Separate from the window scale: the layout keeps the scale it was built at,
     // while the window is measured on whichever monitor it closes on.
@@ -1808,6 +2465,9 @@ void editor::App::setup() {
 bool editor::App::canEditSelection(bool duplicate) {
     // Enabled items keep their native key equivalent, stealing it from a focused text field.
     if (ImGui::GetIO().WantTextInput) return false;
+    // the focused Animation window owns Delete / Backspace / Ctrl+D (AnimationClipAppHooks::takesKeys):
+    // covers the scene key block and the native menu key equivalents
+    if (animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys()) return false;
     if (lastFocusedWindow != LastFocusedWindow::AnySceneWindow || project.isAnyScenePlaying()) return false;
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t targetSceneId = sceneId;
@@ -1827,6 +2487,8 @@ bool editor::App::canEditSelection(bool duplicate) {
 
 void editor::App::deleteSelection() {
     if (!canEditSelection(false)) return;
+    // a posed character goes back to its rest bones first, so they are what the undo keeps
+    PoseEditSession::suspendActive();
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t selectedSceneForProperties = project.getSelectedSceneForProperties();
     uint32_t targetSceneId = sceneId;
@@ -1840,6 +2502,10 @@ void editor::App::deleteSelection() {
     bool tileDeleted = false;
     bool instanceDeleted = false;
     if (sp && sp->sceneRender) {
+        // a polyline point selected in the Scene view: that point goes, not the GameObject
+        if (sp->sceneRender->removeSelectedLinePoint(&project, targetSceneId)) {
+            return;
+        }
         int tileIdx = sp->sceneRender->getSelectedTileIndex();
         Entity tileEntity = sp->sceneRender->getSelectedTileEntity();
         if (tileIdx >= 0) {
@@ -1887,6 +2553,8 @@ void editor::App::deleteSelection() {
 
 void editor::App::duplicateSelection() {
     if (!canEditSelection(true)) return;
+    // a posed character goes back to its rest bones first, so they are what gets copied
+    PoseEditSession::suspendActive();
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t targetSceneId = sceneId;
     SceneProject* sp = project.getScene(targetSceneId);
@@ -1963,6 +2631,8 @@ void editor::App::selectAll() {
 
 void editor::App::copySelection(bool cut) {
     if (!(cut ? canCutSelection() : canCopySelection())) return;
+    // a posed character goes back to its rest bones first, so they are what gets copied
+    PoseEditSession::suspendActive();
     const uint32_t sceneId = project.getSelectedSceneId();
     std::vector<Entity> selection = EntityClipboard::getCopyableSelection(&project, sceneId);
     if (selection.empty()) return;
@@ -1998,9 +2668,36 @@ void editor::App::show(){
         return;
     }
 
+    // S27: the Project Hub alone (as the loading window above): the editor's windows wait
+    updateHubCreation();
+    if (projectHub.isOpen()) {
+        if (isInitialized) {
+            ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_KeepAliveOnly);
+        }
+        projectHub.show();
+        if (hubCreation) {
+            ImGui::OpenPopup("Creating Project##hub");
+        }
+        if (ImGui::BeginPopupModal("Creating Project##hub", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+            if (!hubCreation) ImGui::CloseCurrentPopup();
+            else ImGui::Text("Creating %s from %s...", hubCreation->name.c_str(), hubCreation->info.name.c_str());
+            ImGui::EndPopup();
+        }
+        if (!hubMessage.empty()) {
+            registerAlert("Project Hub", hubMessage);
+            hubMessage.clear();
+        }
+        showAlert();
+        mcp::McpServer::get().tick();
+        return;
+    }
+
+    // the spline tools: Live Terrain's re-bake, a spline that went away (S18 R12)
+    SplineEditor::get().update(&project);
+
     EntityClipboard::update();
 
-    pollHtmlUI();
+    pollExternalChanges();
 
     // Scripts ran in engineRender, so drop what they destroyed before any window reads the selection
     for (SceneProject& sceneProject : project.getScenes()) {
@@ -2013,69 +2710,38 @@ void editor::App::show(){
     project.syncPlayRuntimeSelections();
 
     if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
-        if (projectWindow->isFocused()) {
+        // the Jobs & Memory panel shows the threading settings: its undo is the project's.
+        // A Physics Placement gesture of the selected scene keeps the keys on the scene while it
+        // runs (the timeline's undo cancels it first: CommandHistory::beforeChange)
+        const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
+        // the Animator window edits project assets (its selection in the Inspector too)
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
+                (focusedWindowName() == InspectorWindow::WINDOW_NAME && animatorWindow->inspectorShowsSelection())) {
+            lastFocusedWindow = LastFocusedWindow::Resources;
+        } else if (animatorWindow->isFocused()) {
+            // the Animator window's edits are project steps (its controller file)
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
+        } else if (spriteNormalsWindow->isFocused()) {
+            lastFocusedWindow = LastFocusedWindow::SpriteNormals;
+        } else if (poseAnimationWindow->ownsUndo(sceneWindow->isFocused())) {
+            lastFocusedWindow = LastFocusedWindow::PoseAnimation;
+        } else if (clipUndoGoesToProject(placementBusy)) {
+            lastFocusedWindow = LastFocusedWindow::AnimationClip;
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
     }
 
-    ImGuiIO& io = ImGui::GetIO();
-    bool isUndo = !io.WantTextInput && (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && !io.KeyShift);
-    bool isRedo = !io.WantTextInput && ((io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y)) || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && io.KeyShift));
+    // the selection changes of one frame are one undo step
+    project.nextSelectionFrame();
 
-    const bool popupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
-    if (!popupOpen) {
-        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S)) {
-            if (ImGui::GetIO().KeyShift) {
-                // Save scenes, scripts, and project configuration together.
-                saveAllFunc();
-            } else {
-                saveFunc();
-            }
-        }
+    handleInteractiveEdits(ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
 
-        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O)) {
-            // CTRL+O opens a project
-            openProjectFunc();
-        }
-
-        // Play mode (Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P, F5/F6/F7) and tool shortcuts
-        mainToolbar->handleShortcuts(!codeEditor->isFocused());
-        if (ImGui::IsKeyPressed(ImGuiKey_F1)) executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::Documentation), {}});
-
-        // Unity menu shortcuts. Not while typing: text fields and the code editor
-        // use modifier+letter chords of their own.
-        if (!io.WantTextInput && !codeEditor->isFocused()) {
-            auto chord = [&io](bool ctrl, bool shift, bool alt, ImGuiKey key) {
-                return io.KeyCtrl == ctrl && io.KeyShift == shift && io.KeyAlt == alt && ImGui::IsKeyPressed(key, false);
-            };
-            auto run = [this](AppMenuCommand menuCommand, std::string payload = {}) {
-                executeMenuCommand({static_cast<uint32_t>(menuCommand), std::move(payload)});
-            };
-            if (chord(true, true, false, ImGuiKey_B)) run(AppMenuCommand::ExportProject);
-            if (chord(true, true, false, ImGuiKey_N)) {
-                const auto& entries = HierarchyWindow::getCreateMenuEntries();
-                for (size_t i = 0; i < entries.size(); i++) {
-                    if (entries[i].type == EntityCreationType::GAMEOBJECT) {
-                        run(AppMenuCommand::CreateGameObject, std::to_string(i));
-                        break;
-                    }
-                }
-            }
-            if (chord(false, true, true, ImGuiKey_N)) run(AppMenuCommand::CreateEmptyChild);
-            if (chord(true, true, false, ImGuiKey_A)) run(AppMenuCommand::AddComponent);
-            if (chord(true, false, false, ImGuiKey_1)) run(AppMenuCommand::FocusScene);
-            if (chord(true, false, false, ImGuiKey_2)) run(AppMenuCommand::FocusGame);
-            if (chord(true, false, false, ImGuiKey_3)) run(AppMenuCommand::ToggleInspector);
-            if (chord(true, false, false, ImGuiKey_4)) run(AppMenuCommand::ToggleHierarchy);
-            if (chord(true, false, false, ImGuiKey_5)) run(AppMenuCommand::ToggleProject);
-            if (chord(true, false, false, ImGuiKey_6)) run(AppMenuCommand::ToggleAnimation);
-            if (chord(true, true, false, ImGuiKey_C)) run(AppMenuCommand::ToggleConsole);
-        }
-    }
+    // Every editor key binding: the command catalog's one dispatcher (S25 R3). Local keys
+    // (Esc in dialogs, the Console's arrows, the text editors, Play input) stay with their windows.
+    processShortcuts();
 
     if (isDroppedExternalPaths) {
         isDroppedExternalPaths = false;
@@ -2086,68 +2752,24 @@ void editor::App::show(){
         }
     }
 
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()){
-        // space to keys events
-    }
-
-    if (!popupOpen && !projectWindow->isFocused() && !codeEditor->isFocused()){
-        uint32_t sceneId = project.getSelectedSceneId();
-
-        // Update the Undo and Redo button logic (during a physics gesture or its settle, undo
-        // cancels it and redo waits: CommandHistory::beforeChange)
-        if (isUndo) {
-            CommandHandle::get(sceneId)->undo();
-        }
-        if (isRedo) {
-            CommandHandle::get(sceneId)->redo();
-        }
-
-        if (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace)) deleteSelection();
-
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D)) duplicateSelection();
-
-        // Clipboard and Select All: only for the Hierarchy and the Scene view, where the keys
-        // are not text operations (the Console and the Project window have their own)
-        if (!io.WantTextInput && io.KeyCtrl && !io.KeyAlt && (hierarchyWindow->isFocused() || sceneWindow->isFocused())) {
-            auto run = [this](AppMenuCommand menuCommand) {
-                executeMenuCommand({static_cast<uint32_t>(menuCommand), {}});
-            };
-            if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_A, false)) run(AppMenuCommand::SelectAll);
-            if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_X, false)) run(AppMenuCommand::CutSelection);
-            if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_C, false)) run(AppMenuCommand::CopySelection);
-            if (ImGui::IsKeyPressed(ImGuiKey_V, false)) run(io.KeyShift ? AppMenuCommand::PasteAsChild : AppMenuCommand::PasteSelection);
-        }
-
-        // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
-        if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
-            if (!(hierarchyWindow->isFocused() && hierarchyWindow->renameSelected())) inspectorWindow->focusNameInput();
-        }
-
-        // Frame Selected (Edit menu): the Scene view handles F itself while it has focus
-        if (!io.WantTextInput && !io.KeyCtrl && !io.KeyShift && !io.KeyAlt &&
-            hierarchyWindow->isFocused() && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
-            executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::FrameSelected), {}});
-        }
-    }
-
-    if (!popupOpen && projectWindow->isFocused()) {
-        if (isUndo) {
-            project.getProjectCommandHistory()->undo();
-            projectWindow->refreshCurrentDirectory();
-        }
-        if (isRedo) {
-            project.getProjectCommandHistory()->redo();
-            projectWindow->refreshCurrentDirectory();
-        }
-    }
-
     dockspace_id = ImGui::GetID("MyDockspace");
 
+    // the version control snapshot and the diffs before the windows read them (S29)
+    vcsUi->update();
     showMenu();
+    EditorDiagnostics::pollNotices();
+    showCrashNotice();
     mainToolbar->show();
+    statusBar->show();
     showFooter();
+    showHangToast();
 
     isInitialized = true;
+
+    // a layout applied between frames: its panels, central node, scale and documents
+    layouts.inFrame();
+    // the asset labels a background read found (S25)
+    project.getAssetLabels().update();
 
     // Before DockSpaceOverViewport() below lays the restored sizes out.
     rescaleRestoredLayout();
@@ -2163,12 +2785,21 @@ void editor::App::show(){
 
     sceneSaveDialog.show();
     projectSaveDialog.show();
+    dataSafetyDialogs.show(project);
     exportWindow.show();
     if (exportWindow.consumePlayerSettingsRequest()) projectSettingsWindow.open(&project, "Player");
     if (inspectorWindow->consumeTagsAndLayersRequest()) projectSettingsWindow.open(&project, "Tags and Layers");
+    if (inspectorWindow->consumeShaderGlobalsRequest()) projectSettingsWindow.open(&project, "Graphics");
     editorSettingsWindow.show();
     aboutWindow.show();
     projectSettingsWindow.show();
+    nativePluginDialog.show();
+    // a native plugin was made (either dialog): its Lua mock opens in the code editor
+    for (const fs::path& created : {nativePluginDialog.consumeCreatedFile(), projectSettingsWindow.consumeCreatedFile()}) {
+        if (created.empty()) continue;
+        projectWindow->refreshCurrentDirectory();
+        codeEditor->openFile(created.string());
+    }
     prefabsWindow.show();
     scenesWindow.show();
 
@@ -2181,12 +2812,36 @@ void editor::App::show(){
     imageViewerWindow->show();
     consoleWindow->show();
     animationWindow->show();
+    animatorWindow->show();
+    avatarWindow->show();
+    HumanoidConvertDialog::draw(&project);
+    poseAnimationWindow->show();
+    animatorWindow->show();
+    // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
+    PoseViewport::frame(&project);
     terrainEditWindow->show();
     textureSynthesisWindow->show();
+    audioMixerWindow->show();
+    // also the tick of its Shift-click generations (with the window closed)
+    spriteNormalsWindow->show();
+    // also the tick of a running bake (a Shift-click bake runs with the window closed)
+    vertexAnimationBakerWindow->show();
     // also the tick of the Scene view's physics sessions, with the panel closed too
     physicsPlacementWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
+    systemsWindow->show();
+    missingAssetsWindow->show();
+    assetReferencesWindow->show();
+    jobsMemoryWindow->show();
+    profilerWindow->show();
+    frameDebuggerWindow->show();
+    undoHistoryWindow->show();
+    vcsUi->show();
+    inputActionsWindow->show();
+    navigationWindow->show();
+    playModeChangesWindow->show();
+    bookmarksWindow->show();
     codeEditor->show();
     gameWindow->show();
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows
@@ -2196,7 +2851,27 @@ void editor::App::show(){
     sceneWindow->show();
     Backend::setGameCursorInSceneRect(gameWindow->isGameCursorInView());
 
+    drawSaveProjectAsTemplate();
+
+    // S27: the Recorder's session and window
+    recorder::RecorderSession::get().update();
+    recorderWindow.setProjectPath(project.getProjectPath());
+    recorderWindow.show();
+    if (isRecording()) requestRedraw();
+
+    // S27: the field windows after every window with a field (a field takes its window's
+    // changes on its next draw, before the window ends a session); the Gradient Editor's colour
+    // keys open the Color window, so it comes last
+    ui::CurveWindow::get().setProjectPath(project.getProjectPath());
+    ui::CurveWindow::get().show();
+    ui::GradientWindow::get().show();
+    ui::ColorPickerWindow::get().setProjectPath(project.getProjectPath());
+    ui::ColorPickerWindow::get().show();
+
     loadingWindow->show();
+
+    // an expression typed into a numeric field that did not evaluate
+    NumericExpression::drawErrorTooltip();
 
     // Keep the persisted tab list in sync with the live tab order so a user's
     // drag-reordering of scene/code tabs is saved (and restored on next launch).
@@ -2205,6 +2880,12 @@ void editor::App::show(){
     // Closing a panel through its title-bar button changes the same state as the
     // View menu, so mirror the live state after all panels have rendered.
     persistPanelVisibilitySettings();
+
+    // S25: the Search palette, the Shortcuts window, the layout dialogs, over everything
+    searchPalette->show();
+    shortcutsWindow->show();
+    layouts.drawDialogs();
+    layouts.endFrame();
 
     // MCP calls waiting on a condition or on frames (waitUntil / afterFrames)
     mcp::McpServer::get().tick();
@@ -2216,6 +2897,8 @@ void editor::App::setLoadingPump(std::function<void(bool)> pump) {
 
 void editor::App::reportLoadingProgress(const std::string& status) {
     if (!isMainThread() || !projectLoading || pumpingLoading) return;
+    // a load that keeps reporting progress is alive
+    diag::heartbeat();
     if (!status.empty()) loadingStatus = status;
     if (!loadingPump) return;
 
@@ -2288,12 +2971,32 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--depth-prepass") {
             if (const char* value = requireValue(i, "--depth-prepass"))
                 benchmarkDepthPrepass = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--lit-quality") {
+            if (const char* value = requireValue(i, "--lit-quality")) {
+                if (std::strcmp(value, "standard") == 0) benchmarkLitQuality = 0;
+                else if (std::strcmp(value, "high") == 0) benchmarkLitQuality = 1;
+                else failBenchmark(std::string("--lit-quality must be standard or high, not ") + value);
+            }
+        } else if (arg == "--play") {
+            benchmarkPlay = true;
         } else if (arg == "--name") {
             if (const char* value = requireValue(i, "--name"))
                 benchmarkName = value;
         } else if (arg == "--out") {
             if (const char* value = requireValue(i, "--out"))
                 benchmarkOut = CommandLine::absoluteArgPath(value);
+        } else if (arg == "--ui-stats") {
+            benchmarkUiStats = true;
+        } else if (arg == "--gpu-passes") {
+            benchmarkGpuPasses = true;
+        } else if (arg == "--profile") {
+            benchmarkProfile = true;
+        } else if (arg == "--profile-capture" || arg.rfind("--profile-capture=", 0) == 0) {
+            const char* value = arg.size() > 17 ? argv[i] + 18 : requireValue(i, "--profile-capture");
+            if (value && value[0])
+                benchmarkCapturePath = CommandLine::absoluteArgPath(value);
+            else if (value)
+                failBenchmark("--profile-capture needs a file path");
         } else if (arg == "-h" || arg == "--help") {
             continue;
         } else {
@@ -2358,14 +3061,31 @@ bool editor::App::consumeBenchmarkExit() {
 void editor::App::engineInit(int argc, char** argv) {
     parseBenchmarkArgs(argc, argv);
     reportLoadingProgress("Initializing engine...");
-    Engine::systemInit(argc, argv, new editor::Platform(&project));
+    // the editor's loop marks the frames and publishes the off-thread GPU creations (EditorFrame::run,
+    // BackendMac's own loop on macOS), not each Engine::systemDraw
+    FrameTimes::setExternalFrames(true);
+    // the profiler's command line (--profile, --profile-capture, --profile-frames), wherever it
+    // was given (CommandLine::takeProfilerFlags); a benchmark captures its measured frames itself
+    std::vector<char*> engineArgs(argv, argv + argc);
+    std::vector<std::string> profilerFlags = benchmarkEnabled ? std::vector<std::string>() : CommandLine::takenProfilerFlags();
+    for (std::string& flag : profilerFlags)
+        engineArgs.push_back(flag.data());
+    Engine::systemInit((int)engineArgs.size(), engineArgs.data(), new editor::Platform(&project));
 
     Engine::pauseGameEvents(true);
 
     // Any edit/undo/redo flags its scene for redraw, so the loop can idle otherwise.
+    // a scene undo / redo while a character is posed runs on its rest bones (PoseEditSession)
+    CommandHistory::beforeStep = [](size_t sceneId){
+        PoseEditSession::suspendActiveForScene(static_cast<uint32_t>(sceneId));
+    };
     CommandHistory::onSceneModified = [this](size_t sceneId, bool structural){
         if (SceneProject* sceneProject = project.getScene((uint32_t)sceneId)){
             sceneProject->needUpdateRender = true;
+            // the next change after a command is newer than the command's (Changed<T>)
+            if (sceneProject->scene){
+                sceneProject->scene->advanceChangeTick();
+            }
             // Only structural commands, so a gizmo drag doesn't rebuild the tree each frame.
             if (structural){
                 sceneProject->structureVersion++;
@@ -2374,16 +3094,54 @@ void editor::App::engineInit(int argc, char** argv) {
         // a prefab stage's Auto Save writes after its changes
         project.notePrefabStageChange((uint32_t)sceneId);
     };
+    // An undo puts back the modified flag of before its step; a save since wrote the step to
+    // the file, so the scene now differs from it (and the next save writes the undone state)
+    CommandHistory::onUndoPastSave = [this](size_t sceneId){
+        if (SceneProject* sceneProject = project.getScene((uint32_t)sceneId)){
+            sceneProject->isModified = true;
+        }
+    };
+    // A drag on a widget is one undo step (S24 R11): its first command opens the edit; a
+    // command the history drops waits until no widget may still point at it
+    CommandHistory::deferReleases = true;
+    CommandHistory::beforeRecord = [this](CommandHistory& history){
+        if (UndoOriginScope::current().kind != UndoOriginKind::User || !ImGui::GetCurrentContext()) {
+            return;
+        }
+        const ImGuiID active = ImGui::GetActiveID();
+        if (active == 0 || (widgetEdit.isOpen() && widgetEditItem == active)) {
+            return;
+        }
+        // a Color / Curve / Gradient window's session is one step for all its widgets (S27 R3)
+        if (ui::FieldEditSession::isOpen()) {
+            return;
+        }
+        widgetEdit.commit();
+        widgetEdit = history.beginInteractive(std::string());
+        widgetEditItem = active;
+    };
+    // The Edit menu labels and the Undo History panel follow every history change; the loop
+    // idles otherwise. An undo or redo of an asset step refreshes the Project window.
+    UndoTimeline::onChanged = [this](){
+        requestRedraw();
+    };
+    UndoTimeline::onProjectChanged = [this](){
+        if (projectWindow) {
+            projectWindow->refreshCurrentDirectory();
+        }
+    };
     // A physics gesture previews poses in the scene: before any other edit, undo or redo of that
     // scene it settles and commits (or, still held, is cancelled), so nothing records its preview
     CommandHistory::beforeChange = [this](size_t sceneId, CommandHistory::Change change){
         return physicsPlacementWindow->beforeHistoryChange((uint32_t)sceneId, change);
     };
+    // the clip editor's history timeline (undo routing, R5b) after the listeners above
+    AnimationClipController::installHistoryTimeline(&project);
 
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
         return builder.buildShader(shaderKey, &project);
-    });
+    }, &jasperengine::editor::ShaderBuilder::getRunningBuildCount);
     // a project UI effect's .frag changed (hot reload, phase 5): its compiled variants go from
     // the builder's cache too, so they compile from the new source (and what draws with a forked
     // shader the registry's reset reached re-binds, as after any shader edit)
@@ -2392,6 +3150,13 @@ void editor::App::engineInit(int argc, char** argv) {
     });
 
     Engine::setAsyncLoading(true);
+
+    // Test hook: the harness holds model parses back on their worker, so a save while a load still
+    // runs is not left to timing (test_save_determinism.py)
+    if (const char* delay = std::getenv("JASPER_TEST_MODEL_LOAD_DELAY_MS")) {
+        const long ms = std::strtol(delay, nullptr, 10);
+        if (ms > 0) MeshSystem::setModelLoadDelayForTest(static_cast<int>(std::min(ms, 60000L)));
+    }
 
     // Before the project loads, so an MCP client's initialize is answered at once;
     // its tool calls wait in the main-thread queue until the project is ready.
@@ -2406,6 +3171,8 @@ void editor::App::engineViewLoaded(){
 void editor::App::loadStartupProject() {
     lastLoadingFrame = {};
     reportLoadingProgress("Loading project...");
+    // the Recorder in every mode (MCP record_game, `call` included)
+    setupRecorder();
 
     // a failed benchmark still runs one frame: the main loop exits on benchmarkExit, and
     // closing before the first frame would leave the render queue waiting on shutdown
@@ -2438,7 +3205,19 @@ void editor::App::loadStartupProject() {
     const mcp::McpLaunchOptions& mcpOptions = mcp::mcpLaunchOptions();
     if (!mcpOptions.project.empty() || !mcpOptions.createDir.empty()) {
         // `jasperengine-editor mcp --project/--create`: no fallback to the last project
+        project.setIgnoreProjectLock(mcpOptions.ignoreLock);
         if (!loadMcpStartupProject(mcpOptions)) {
+            if (project.wasProjectLocked()) {
+                // another editor writes this project: an agent here would overwrite its work
+                std::fprintf(stderr, "[mcp] project_locked: %s Pass --ignore-lock to open it anyway.\n",
+                             project.getProjectLockMessage().c_str());
+                std::fprintf(stderr, "[mcp] project_locked: closing the editor\n");
+                startupExitCode = 3;
+                // the main loop exits after the next frame (consumeBenchmarkExit): closing
+                // before the first frame leaves the render queue waiting on shutdown, and that
+                // frame wants a project (the empty temporary one, as when a load fails)
+                benchmarkExit = true;
+            }
             project.createTempProject("MyJasperEngineProject");
         }
         projectLoading = false;
@@ -2446,20 +3225,295 @@ void editor::App::loadStartupProject() {
         return;
     }
 
-    std::filesystem::path lastProjectPath = AppSettings::getLastProjectPath();
-
-    if (!lastProjectPath.empty() && std::filesystem::exists(lastProjectPath)) {
-        if (project.loadProject(lastProjectPath)) {
-            Out::info("Loaded last opened project: \"%s\"", lastProjectPath.string().c_str());
-        } else {
+    setupProjectHub();
+    // --project <dir>: that project, never the hub (a failed load keeps the old fallback)
+    const hub::LaunchOptions& launch = hub::launchOptions();
+    if (!launch.project.empty()) {
+        if (!project.loadProject(launch.project)) {
             project.createTempProject("MyJasperEngineProject");
         }
-    } else {
+        projectLoading = false;
+        requestRedraw();
+        return;
+    }
+
+    // S27 R16: the Project Hub when Shift is held, --hub, the "Always" preference, or the last
+    // project is missing or does not load; otherwise the last project as before
+    bool showHub = startupShowsHub();
+    std::filesystem::path lastProjectPath = AppSettings::getLastProjectPath();
+    if (!showHub) {
+        if (!lastProjectPath.empty() && std::filesystem::exists(lastProjectPath) && project.loadProject(lastProjectPath)) {
+            Out::info("Loaded last opened project: \"%s\"", lastProjectPath.string().c_str());
+        } else {
+            if (!lastProjectPath.empty()) Out::warning("The last project \"%s\" is missing or did not load", lastProjectPath.string().c_str());
+            showHub = true;
+        }
+    }
+    if (showHub) {
+        // the editor's own temporary project stays behind the hub: never shown, never saved
         project.createTempProject("MyJasperEngineProject");
+        hubOverTemp = true;
+        projectHub.open(ProjectHubWindow::Page::Projects);
     }
 
     projectLoading = false;
     requestRedraw();
+}
+
+bool editor::App::startupShowsHub() {
+    return hub::launchOptions().forceHub || platform::shiftHeld() || AppSettings::getProjectHubAlways();
+}
+
+bool editor::App::isRecording() const {
+    return recorder::RecorderSession::get().recording();
+}
+
+void editor::App::toggleRecording() {
+    recorderWindow.toggleRecording();
+}
+
+void editor::App::playStarting(uint32_t) {
+    recorder::RecorderSession::get().onPlayStarting(recorderWindow.settings());
+}
+
+void editor::App::setupRecorder() {
+    recorder::Host host;
+    auto playScene = [this]() -> SceneProject* { return project.getScene(project.getPlaySessionSceneId()); };
+    host.isPlaying = [playScene]() {
+        const SceneProject* scene = playScene();
+        return scene && (scene->playState == ScenePlayState::PLAYING || scene->playState == ScenePlayState::PAUSED);
+    };
+    host.isPlayStarting = [playScene]() {
+        const SceneProject* scene = playScene();
+        return scene && scene->playState == ScenePlayState::LOADING;
+    };
+    host.startPlay = [this](std::string& error) {
+        if (!mainToolbar->canTogglePlay() || mainToolbar->isInPlayMode()) {
+            error = "Play cannot start now";
+            return false;
+        }
+        mainToolbar->togglePlay();
+        return project.getPlaySessionSceneId() != NULL_PROJECT_SCENE;
+    };
+    host.stopPlay = [this]() { mainToolbar->stopSession(); };
+    host.gameFramebuffer = [this]() { return gameWindow->getFramebuffer(); };
+    host.setGameRenderSize = [this](int w, int h) { gameWindow->setRenderSizeOverride(w, h); };
+    host.gameViewSize = [this](int& w, int& h) {
+        w = gameWindow->getWidth();
+        h = gameWindow->getHeight();
+    };
+    host.sceneName = [this, playScene]() {
+        const SceneProject* scene = playScene();
+        if (!scene) scene = project.getSelectedScene();
+        return scene ? scene->name : std::string("Scene");
+    };
+    host.projectPath = [this]() { return project.getProjectPath(); };
+    host.maxTextureSize = []() { return sg_query_limits().max_image_size_2d; };
+    recorder::RecorderSession::get().setHost(std::move(host));
+    recorderWindow.openPreferences = [this]() { editorSettingsWindow.open(&project, "External Tools"); };
+}
+
+void editor::App::setupProjectHub() {
+    ProjectHubWindow::Actions actions;
+    actions.openProject = [this](const std::filesystem::path& dir, bool withoutLastScene) { hubOpenProject(dir, withoutLastScene); };
+    actions.createProject = [this](const hub::ProjectTemplate& info, const std::string& name, const std::filesystem::path& location) {
+        hubCreateProject(info, name, location / hub::folderName(name));
+    };
+    actions.hasProject = [this]() { return !hubOverTemp; };
+    projectHub.setActions(std::move(actions));
+}
+
+std::string editor::App::projectUnavailableReason() const {
+    if (projectHub.isOpen() && hubOverTemp) {
+        return "No project is open (the Project Hub is showing): use create_project, open_project or import_project first.";
+    }
+    return std::string();
+}
+
+void editor::App::openProjectHub(ProjectHubWindow::Page page) {
+    projectHub.open(page);
+    requestRedraw();
+}
+
+void editor::App::hubOpenProject(const std::filesystem::path& dir, bool withoutLastScene) {
+    if (project.isAnyScenePlaying() || projectLoading || pendingProjectChange) return;
+    auto open = [this, dir, withoutLastScene]() {
+        requestProjectChange([this, dir, withoutLastScene]() {
+            project.setSkipWorkspaceTabs(withoutLastScene);
+            if (project.loadProject(dir)) {
+                projectHub.close();
+                hubOverTemp = false;
+            } else {
+                project.setSkipWorkspaceTabs(false);
+                // the hub stays, over the editor's temporary project again
+                project.createTempProject("MyJasperEngineProject");
+                hubOverTemp = true;
+                hubMessage = "Could not open " + dir.string() + ": see the Console.";
+            }
+        });
+    };
+    if (!hubOverTemp && (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges())) {
+        registerConfirmAlert("Unsaved Changes", "There are unsaved changes. Do you want to save them before opening another project?",
+                             [this, open]() { saveAllAndProject(open); }, open);
+    } else {
+        open();
+    }
+}
+
+bool editor::App::createProjectFromTemplate(const std::string& templateId, const std::string& name, const std::filesystem::path& dir,
+                                            std::string& error) {
+    const std::vector<hub::ProjectTemplate> list = hub::templates::all(hub::templates::userDirectory(AppSettings::getConfigDirectory()));
+    const hub::ProjectTemplate* info = hub::templates::find(list, templateId);
+    if (!info) {
+        std::string known;
+        for (const hub::ProjectTemplate& t : list) known += (known.empty() ? "" : ", ") + t.id;
+        error = "no template \"" + templateId + "\" (templates: " + known + ")";
+        return false;
+    }
+    const std::string problem = hub::targetProblem(dir);
+    if (!problem.empty()) {
+        error = problem;
+        return false;
+    }
+    if (isCreatingFromTemplate() || projectLoading || pendingProjectChange) {
+        error = "a project is being created or opened";
+        return false;
+    }
+    hubCreateProject(*info, name.empty() ? dir.filename().string() : name, dir);
+    // the caller (MCP create_project) settled the unsaved changes already
+    hubCreationPrompt = false;
+    return true;
+}
+
+void editor::App::hubCreateProject(const hub::ProjectTemplate& info, const std::string& name, const std::filesystem::path& dir) {
+    if (hubCreation || projectLoading || pendingProjectChange) return;
+    hubCreationError.clear();
+    hubCreationPrompt = true;
+    auto creation = std::make_unique<HubCreation>();
+    creation->info = info;
+    creation->name = name;
+    creation->dir = dir;
+    const hub::ProjectTemplate copyOf = info;
+    const std::filesystem::path target = dir;
+    // the files are copied off the main thread; the project then loads on it
+    creation->copy = std::async(std::launch::async, [copyOf, target]() {
+        std::string error;
+        if (!hub::templates::materialize(copyOf, target, error)) return error.empty() ? std::string("the copy failed") : error;
+        return std::string();
+    });
+    hubCreation = std::move(creation);
+    requestRedraw();
+}
+
+void editor::App::updateHubCreation() {
+    if (!hubCreation || hubCreation->copy.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        if (hubCreation) requestRedraw();
+        return;
+    }
+    const std::string error = hubCreation->copy.get();
+    struct Done {
+        hub::ProjectTemplate info;
+        std::string name;
+        std::filesystem::path dir;
+    };
+    const Done done{hubCreation->info, hubCreation->name, hubCreation->dir};
+    const bool prompt = hubCreationPrompt;
+    hubCreation.reset();
+    if (!error.empty()) {
+        hubCreationError = error;
+        hubMessage = "Could not create the project: " + error;
+        return;
+    }
+    hubCreationOpening = true;
+    auto open = [this, done]() {
+        requestProjectChange([this, done]() {
+            hubCreationOpening = false;
+            if (!project.loadProject(done.dir)) {
+                hubCreationError = "the new project did not load";
+                std::error_code ec;
+                std::filesystem::remove_all(done.dir, ec);
+                project.createTempProject("MyJasperEngineProject");
+                hubOverTemp = true;
+                hubMessage = "Could not open the new project: see the Console.";
+                return;
+            }
+            // the template's project, renamed, saved, with the VCS files (R18; loadProject copied
+            // the engine API in)
+            project.setName(done.name);
+            VcsProjectSettings vcs = project.getVcsProjectSettings();
+            vcs.lfs = true;   // S29 R21: a new project's binaries are LFS objects
+            project.setVcsProjectSettings(vcs, false);
+            project.saveProject();
+            project.writeVersionControlMetadata();
+            const std::filesystem::path start = done.dir / (done.info.startScene + ".scene");
+            std::error_code ec;
+            if (!done.info.startScene.empty() && std::filesystem::exists(start, ec)) project.openScene(start);
+            AppSettings::addToRecentProjects(done.dir, true, done.name);
+            projectHub.close();
+            hubOverTemp = false;
+        });
+    };
+    if (prompt && !hubOverTemp && (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges())) {
+        registerConfirmAlert("Unsaved Changes", "There are unsaved changes. Do you want to save them before opening the new project?",
+                             [this, open]() { saveAllAndProject(open); }, open);
+    } else {
+        open();
+    }
+}
+
+void editor::App::writeHubThumbnail() {
+    if (project.getProjectPath().empty() || project.isEditorTempProject()) return;
+    SceneProject* scene = project.getSelectedScene();
+    if (!scene || !scene->sceneRender) return;
+    std::vector<uint8_t> png;
+    if (!GraphicUtils::encodeFramebufferThumbnailPng(scene->sceneRender->getFramebuffer(), 320, 180, png) || png.empty()) return;
+    const std::filesystem::path file = project.getProjectInternalPath() / "user" / "hub-thumbnail.png";
+    const io::WriteResult written = io::writeFileAtomic(file, std::string_view(reinterpret_cast<const char*>(png.data()), png.size()));
+    if (!written.ok()) Out::warning("Project Hub thumbnail: %s", written.message.c_str());
+}
+
+void editor::App::drawSaveProjectAsTemplate() {
+    if (saveTemplatePopup) {
+        ImGui::OpenPopup("Save Project as Template##saveTemplate");
+        saveTemplatePopup = false;
+    }
+    if (!ImGui::BeginPopupModal("Save Project as Template##saveTemplate", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    ImGui::TextUnformatted("Name");
+    ImGui::SetNextItemWidth(Theme::dpi(320.0f));
+    ImGui::InputText("##templateName", saveTemplateName.data(), saveTemplateName.size());
+    ImGui::TextUnformatted("Description");
+    ImGui::InputTextMultiline("##templateDescription", saveTemplateDescription.data(), saveTemplateDescription.size(),
+                              ImVec2(Theme::dpi(320.0f), Theme::dpi(70.0f)));
+    const std::string id = hub::slugify(saveTemplateName.data());
+    const std::filesystem::path userDir = hub::templates::userDirectory(AppSettings::getConfigDirectory());
+    std::error_code ec;
+    std::string problem = !hub::isValidCatalogId(id) ? "The name needs letters or digits." : std::string();
+    if (problem.empty() && std::filesystem::exists(userDir / id, ec)) problem = "A template \"" + id + "\" exists.";
+    if (!problem.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", problem.c_str());
+    else ImGui::TextDisabled("%s", (userDir / id).string().c_str());
+    if (!saveTemplateMessage.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", saveTemplateMessage.c_str());
+    ImGui::BeginDisabled(!problem.empty());
+    if (ImGui::Button("Save", ImVec2(Theme::dpi(100.0f), 0))) {
+        // the thumbnail is the Scene view (480 wide)
+        std::vector<uint8_t> png;
+        if (SceneProject* scene = project.getSelectedScene(); scene && scene->sceneRender) {
+            GraphicUtils::encodeFramebufferThumbnailPng(scene->sceneRender->getFramebuffer(), 480, 270, png);
+        }
+        std::string startScene;
+        if (SceneProject* scene = project.getSelectedScene(); scene && !scene->filepath.empty()) startScene = scene->filepath.stem().string();
+        std::string savedId, error;
+        if (hub::templates::saveProjectAsTemplate(project.getProjectPath(), userDir, saveTemplateName.data(), saveTemplateDescription.data(),
+                                                  startScene, png, savedId, error)) {
+            Out::info("Saved the project as the template \"%s\" (%s)", saveTemplateName.data(), (userDir / savedId).string().c_str());
+            ImGui::CloseCurrentPopup();
+        } else {
+            saveTemplateMessage = error;
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(Theme::dpi(100.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 
 bool editor::App::loadMcpStartupProject(const mcp::McpLaunchOptions& options) {
@@ -2469,8 +3523,10 @@ bool editor::App::loadMcpStartupProject(const mcp::McpLaunchOptions& options) {
             Out::info("Opened project for the MCP client: \"%s\"", options.project.string().c_str());
             return true;
         }
-        std::fprintf(stderr, "[mcp] could not open the project at %s: %s; an empty temporary project is open instead\n",
-                     options.project.string().c_str(), error.c_str());
+        if (!project.wasProjectLocked()) {
+            std::fprintf(stderr, "[mcp] could not open the project at %s: %s; an empty temporary project is open instead\n",
+                         options.project.string().c_str(), error.c_str());
+        }
         return false;
     }
 
@@ -2537,10 +3593,12 @@ bool editor::App::getOpenDialog(EditorDialogInfo& out) const {
         return true;
     }
     if (ImGuiWindow* modal = ImGui::GetTopMostAndVisiblePopupModal()) {
-        out.kind = "modal";
         std::string name = modal->Name ? modal->Name : "";
         const size_t idPos = name.find("##");
         if (idPos != std::string::npos) name.resize(idPos);
+        // LoadingWindow's progress of the shader, texture and model builds: no answer, it
+        // closes when they are done
+        out.kind = name == "Loading" && ResourceProgress::hasActiveBuilds() ? "progress" : "modal";
         out.title = name;
         return true;
     }
@@ -2554,7 +3612,9 @@ bool editor::App::answerDialog(const std::string& choice, std::string& error) {
         return false;
     }
     if (std::find(dialog.choices.begin(), dialog.choices.end(), choice) == dialog.choices.end()) {
-        if (dialog.choices.empty()) {
+        if (dialog.kind == "progress") {
+            error = "The editor is building shaders, textures or models (\"" + dialog.title + "\"): it closes by itself when they are done.";
+        } else if (dialog.choices.empty()) {
             error = "The dialog \"" + dialog.title + "\" can only be closed by a human in the editor window.";
         } else {
             error = "Choice must be one of:";
@@ -2576,8 +3636,24 @@ bool editor::App::answerDialog(const std::string& choice, std::string& error) {
 
 void editor::App::requestProjectChange(std::function<void()> change) {
     if (projectLoading || pendingProjectChange) return;
+    // the Sprite Normal Map window's unsaved paint strokes are asked about first
+    if (spriteNormalsWindow && spriteNormalsWindow->hasUnsavedPaint()) {
+        registerConfirmAlert("Discard Paint Changes?",
+                             "The Sprite Normal Map window has paint strokes that are not saved into the normal map.\n\nDiscard them and switch projects?",
+                             [this, change]() {
+                                 spriteNormalsWindow->discardPaint();
+                                 requestProjectChange(change);
+                             });
+        return;
+    }
     pendingProjectChange = std::move(change);
     requestRedraw();
+}
+
+void editor::App::beforeFrame() {
+    processProjectChange();
+    // a layout applies between frames: a preset picked, or a project that opened (S25 R17)
+    layouts.beforeFrame();
 }
 
 void editor::App::processProjectChange() {
@@ -2602,12 +3678,27 @@ void editor::App::processProjectChange() {
     requestRedraw();
 }
 
-// Every loop iteration, idle ones too (engineRender only runs on drawn frames): HTML UI hot
-// reload, and the document animations due now wake the loop up
-void editor::App::pollHtmlUI(){
-    // (held while an MCP call that may write files runs: its sync reloads them once)
-    bool wake = !project.getHtmlUIWatcher().update(&project, mcp::McpAutoSync::get().writingCallInFlight()).empty();
+// Every loop iteration, idle ones too (engineRender only runs on drawn frames): the file
+// watcher's changes and the reloads they started (S05), HTML UI imports, and the document
+// animations due now wake the loop up
+void editor::App::pollExternalChanges(){
+    HotReloadService& reloads = HotReloadService::get();
+    // an MCP call that may write files holds the watcher's batches: its own sync reloads
+    // them once (R30)
+    reloads.setPaused(mcp::McpAutoSync::get().writingCallInFlight());
+    bool wake = FileWatchService::get().pump(PUMP_BUDGET_MS);
+    wake = reloads.update() || wake;
+    wake = ScriptStatus::get().update() || wake;
+    wake = ScriptReloadService::get().busy() || wake;
     wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
+    // the asset database's walk a watcher batch started (S04 refresh, no poll)
+    project.updateAssetScan();
+    // texture cooks (S14 R8): planned and cooked on the Background lane, swapped in here
+    if (!projectLoading && !project.getProjectPath().empty()) {
+        TextureCookQueue& cooks = TextureCookQueue::get();
+        if (cooks.getProject() != &project) cooks.attach(&project);
+        wake = cooks.update() || wake;
+    }
 
     const auto now = std::chrono::steady_clock::now();
     for (const auto& pair : htmlUIRedrawTimes) {
@@ -2651,14 +3742,49 @@ void editor::App::engineRender(){
         return;
     }
 
+    // S27: the game frame the last editor frame drew, read back before this one updates
+    recorder::RecorderSession::get().captureFrame();
+
+    // a frame that began drawing (EditorFrame: frameReady): PoseRender::renderNow may draw
+    // from here on, main-thread tasks included, until the end of this function
+    struct PoseFrameScope {
+        PoseFrameScope() { PoseRender::setInEditorFrame(true); }
+        ~PoseFrameScope() { PoseRender::setInEditorFrame(false); }
+    } poseFrameScope;
+
     processMainThreadTasks();
-    project.refreshLinkedMaterials();
+    // upstream's FBX reimports: their own throttled check, hashing on a Background job
+    // (not the hot reload's watcher yet)
     project.refreshFbxImports();
-    project.refreshAssetDatabase();
+    // scripts saved while a scene plays swap in here, at the frame boundary (no Lua runs now)
+    ScriptStatus::get().update();
+    ScriptReloadService::get().update();
+    // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
+    NavigationEditor::get().update(&project);
+    // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
+    spriteNormalsWatcher->tick();
     project.updateGeneratedSources();
+    // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
+    if (animationClipAppHooks().frame) {
+        animationClipAppHooks().frame(&project, ImGui::GetIO().DeltaTime, ImGui::GetFrameCount());
+    }
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
         || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
+    // scene Auto Save (backups only), never in the middle of a drag, a field being typed or a
+    // Physics Placement gesture (its preview poses are in the scene)
+    project.tickAutosave(ImGui::GetIO().DeltaTime, ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
+        || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
+    // the title says when the scene shown did not load completely (its tab does too)
+    {
+        const SceneProject* shown = project.getSelectedScene();
+        const std::string suffix = shown && shown->loadReport.dropped() > 0 ?
+            " - " + (shown->filepath.empty() ? shown->name : shown->filepath.filename().string()) + " (Partial Load)" : std::string();
+        if (suffix != windowTitleSuffix) {
+            windowTitleSuffix = suffix;
+            Backend::updateWindowTitle((windowTitleProject.empty() ? project.getName() : windowTitleProject) + windowTitleSuffix);
+        }
+    }
     renderedSceneThisFrame = false;
     const uint32_t selectedSceneId = project.getSelectedSceneId();
 
@@ -2677,7 +3803,7 @@ void editor::App::engineRender(){
     auto sceneNeedsRender = [&](SceneProject& sp, bool isSelected) -> bool {
         bool active = sp.needUpdateRender;
         bool gaugeAnimating = false;
-        if (benchmarkEnabled) active = true;
+        if (benchmarkEnabled || wantsContinuousFrames()) active = true;
         // A running play session must advance and redraw its simulation every frame.
         // (unless a held simulation, which only draws on demand like a paused one)
         if (sp.playState == ScenePlayState::PLAYING && !Engine::isSimulationHeld()) active = true;
@@ -2870,6 +3996,8 @@ void editor::App::engineRender(){
 
             project.beginPrefabStageDraw(sceneProject.id);
             Engine::systemDraw();
+            // Split and Quad: the other panes, after the frame (only those that changed)
+            sceneWindow->renderInactivePanes(sceneProject);
             project.endPrefabStageDraw(sceneProject.id);
 
             if (steppingFrame) {
@@ -2892,6 +4020,10 @@ void editor::App::engineRender(){
             } else {
                 // no Scene view frame to share (its tab is hidden): the preview is the frame
                 renderGameViewPass(sceneProject);
+                // (and what it drew for the Project window is taken here)
+                projectWindow->processMaterialThumbnails();
+                projectWindow->processModelThumbnails();
+                projectWindow->processPrefabThumbnails();
             }
         }
     }
@@ -2905,6 +4037,15 @@ void editor::App::engineRender(){
         footerDeltaMs = 0.0f;
     }
     renderedScenePrevFrame = renderedSceneThisFrame;
+
+    // offscreen pose renders (PoseRender): private scenes drawn as views of their own after
+    // this frame's views, so the open scenes, the Scene view and the Game view are untouched
+    if (PoseRender::processFrame()) {
+        requestRedraw();
+    }
+    // the Vertex Animation Baker's preview views (private scenes too, drawn the same way)
+    VatPreviewView::processFrame();
+
     if (benchmarkEnabled)
         tickBenchmark();
 }
@@ -2926,6 +4067,9 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     // the runtime manages its own layers while it plays
     sceneRender->setChildSceneLayers({});
+    // the frame is the game: it runs at the Game view's Preview Atmosphere Quality
+    if (sceneProject.scene)
+        sceneProject.scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
     bool viewChanged = false;
     if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
@@ -2934,6 +4078,15 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
         std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
         sceneRender->activateGame(gameTarget);
 
+        if (project.isPlayedSceneReplaced(sceneProject.id)) {
+            // a scene load replaced the played scene (or rebuilt it, Restart): the game is the
+            // stack that load made, its main scene first
+            Engine::removeScene(sceneProject.scene);
+            Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
+            if (loadedMain && std::find(runtimeLayers.begin(), runtimeLayers.end(), loadedMain) != runtimeLayers.end()) {
+                Engine::setScene(loadedMain);
+            }
+        }
         for (Scene* runtimeLayer : runtimeLayers) {
             Engine::addSceneLayer(runtimeLayer);
         }
@@ -2952,9 +4105,14 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
         || gameTarget->getWidth() != static_cast<unsigned int>(gameWidth)
         || gameTarget->getHeight() != static_cast<unsigned int>(gameHeight);
 
-    // the Engine's view is the game's: the Scene view never changes it
+    // the Engine's view is the game's: the Scene view never changes it. A simulated device's
+    // orientation goes with the size it was laid out for (Screen.orientation, onOrientationChanged).
+    Platform::setShownOrientation(gameWindow->getLayoutOrientation());
     if (Platform::setSizes(gameWidth, gameHeight) || viewChanged || framebufferMismatch){
         Engine::systemViewChanged();
+    }else{
+        // a half turn keeps the size
+        Engine::systemOrientationChanged();
     }
 
     // the Scene view's camera follows its size before the frame updates the scene
@@ -2981,6 +4139,7 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     if (sceneViewShown){
         project.updateSceneRender(sceneProject.id);
         sceneRender->drawSceneView(sceneWidth, sceneHeight, project.getRunningRuntimeLayers(sceneProject.id), true);
+        sceneWindow->renderInactivePanes(sceneProject);
     }
 
     projectWindow->processMaterialThumbnails();
@@ -3028,6 +4187,7 @@ void editor::App::renderSceneBesideGame(SceneProject& sceneProject) {
 
     project.beginPrefabStageDraw(sceneProject.id);
     sceneRender->drawSceneView(width, height, childLayers, false);
+    sceneWindow->renderInactivePanes(sceneProject);
     project.endPrefabStageDraw(sceneProject.id);
 
     renderedSceneThisFrame = true;
@@ -3050,6 +4210,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
         target->destroy();
         target->setWidth((unsigned int)width);
         target->setHeight((unsigned int)height);
+        JE_GPU_ALLOC_SCOPE(RenderTargets, "Game view");
         target->create();
     }
 
@@ -3059,8 +4220,24 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     Engine::computeViewLayout(width, height, (int)project.getCanvasWidth(), (int)project.getCanvasHeight(), project.getScalingMode(),
                               canvasWidth, canvasHeight, viewRect);
 
+    // a UI scene's camera covers its Canvas Scaler UI size (what it is laid out at), any other the canvas
+    auto layerCanvas = [&](SceneProject* layerScene, Entity layerCamera, float& layerWidth, float& layerHeight) {
+        layerWidth = (float)canvasWidth;
+        layerHeight = (float)canvasHeight;
+        CameraComponent* camera = layerScene->scene->findComponent<CameraComponent>(layerCamera);
+        if (layerScene->sceneType == SceneType::SCENE_UI && layerScene->scene->getCanvasScale().scaled &&
+            camera && camera->type == CameraType::CAMERA_UI) {
+            const Vector2 ui = layerScene->scene->getSystem<UISystem>()->getCanvasSize();
+            layerWidth = ui.x;
+            layerHeight = ui.y;
+        }
+    };
+
     std::vector<Engine::ViewLayer> layers;
-    layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, (float)canvasWidth, (float)canvasHeight});
+    float mainCanvasWidth = 0.0f, mainCanvasHeight = 0.0f;
+    layerCanvas(&sceneProject, cameraEntity, mainCanvasWidth, mainCanvasHeight);
+    layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, mainCanvasWidth, mainCanvasHeight});
+    layers.back().atmosphereQuality = gameWindow->getSettings().atmosphereQuality;
 
     for (const ChildSceneRef& childSceneRef : sceneProject.childScenes) {
         SceneProject* childScene = project.getScene(childSceneRef.id);
@@ -3075,7 +4252,9 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
             childScene->scene->getSystem<UIDocumentSystem>()->update(0);
             childScene->scene->getSystem<RenderSystem>()->update(0);
         }
-        layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, (float)canvasWidth, (float)canvasHeight});
+        float childCanvasWidth = 0.0f, childCanvasHeight = 0.0f;
+        layerCanvas(childScene, childCamera, childCanvasWidth, childCanvasHeight);
+        layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, childCanvasWidth, childCanvasHeight});
     }
 
     Engine::drawView(GAME_VIEW_ID, target, layers);
@@ -3136,8 +4315,15 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
         childScene->getSystem<RenderSystem>()->update(0);
     }
     sceneRender->updateRenderSystem();
+    // the Game view's atmosphere: the scene's fog and clouds whatever the Scene view's toggles
+    // show, at its Preview Atmosphere Quality
+    RenderSystem* renderSystem = sceneProject.scene->getSystem<RenderSystem>().get();
+    renderSystem->setDisableFog(false);
+    renderSystem->setDisableClouds(false);
+    renderSystem->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
     Engine::systemDraw();
+    renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
     Engine::setCanvasSize(editCanvasWidth, editCanvasHeight);
     Engine::setScalingMode(editScaling);
@@ -3164,19 +4350,49 @@ void editor::App::tickBenchmark() {
         return;
     }
 
+    if (benchmarkPlay) {
+        // Play first, then measure the running scene (scripts, animation, physics) once it plays
+        if (!benchmarkPlayStarted) {
+            project.start(benchmarkSceneId);
+            benchmarkPlayStarted = true;
+            benchmarkWaitStart = std::chrono::steady_clock::now();
+            return;
+        }
+        if (selected->playState != ScenePlayState::PLAYING) {
+            if (selected->playState == ScenePlayState::STOPPED || selected->playState == ScenePlayState::CANCELLING) {
+                failBenchmark("the scene did not start playing (see the log)");
+            } else if (std::chrono::steady_clock::now() - benchmarkWaitStart > std::chrono::seconds(90)) {
+                failBenchmark("timed out waiting for the scene to start playing");
+            }
+            return;
+        }
+        // the resource wait below counts from the start of play, not from the start request
+        if (!benchmarkCameraReady)
+            benchmarkWaitStart = {};
+    }
+
     if (!benchmarkCameraReady) {
-        // the scene tab decides the selected scene, so bring it to front like Play does
-        if (sceneWindow)
-            sceneWindow->requestPlayFocus(benchmarkSceneId);
-        Entity camera = selected->scene->getCamera();
-        if (camera == NULL_ENTITY)
-            camera = selected->mainCamera;
-        if (selected->sceneRender->setPreviewCamera(camera))
+        if (benchmarkPlay) {
+            // the playing scene is the Game view's frame, through the scene's camera; in front,
+            // it hides the Scene view (the same dock), which would draw a second view of it
+            gameWindow->requestFocus();
             benchmarkCameraReady = true;
+        } else {
+            // the scene tab decides the selected scene, so bring it to front like Play does
+            if (sceneWindow)
+                sceneWindow->requestPlayFocus(benchmarkSceneId);
+            Entity camera = selected->scene->getCamera();
+            if (camera == NULL_ENTITY)
+                camera = selected->mainCamera;
+            if (selected->sceneRender->setPreviewCamera(camera))
+                benchmarkCameraReady = true;
+        }
         if (benchmarkMeshLod >= 0)
             selected->scene->setMeshLodEnabled(benchmarkMeshLod != 0);
         if (benchmarkDepthPrepass >= 0)
             selected->scene->setDepthPrepassEnabled(benchmarkDepthPrepass != 0);
+        if (benchmarkLitQuality >= 0)
+            selected->scene->setLitQuality(benchmarkLitQuality ? LitQuality::HIGH : LitQuality::STANDARD);
         selected->displaySettings.showGrid3D = false;
         selected->displaySettings.showOrigin = false;
         selected->displaySettings.hideSelectionOutline = true;
@@ -3203,7 +4419,7 @@ void editor::App::tickBenchmark() {
             }
             return;
         }
-        if (!renderedSceneThisFrame || sceneWindow->getWidth(selected->id) <= 0)
+        if (!renderedSceneThisFrame || (!benchmarkPlay && sceneWindow->getWidth(selected->id) <= 0))
             return;
         benchmarkPhase = 1;
         benchmarkPhaseFrames = 0;
@@ -3214,6 +4430,9 @@ void editor::App::tickBenchmark() {
         return;
 
     if (benchmarkPhase == 1) {
+        // GPU timing runs from the warmup on, so its first (partial) frames are not measured
+        if (benchmarkPhaseFrames == 0 && benchmarkGpuPasses)
+            SystemRender::acquireGpuTiming();
         if (++benchmarkPhaseFrames >= benchmarkWarmupFrames) {
             benchmarkPhase = 2;
             benchmarkPhaseFrames = 0;
@@ -3221,6 +4440,22 @@ void editor::App::tickBenchmark() {
             benchmarkDraws.clear();
             benchmarkInstances.clear();
             benchmarkTris.clear();
+            benchmarkUiTotals.clear();
+            benchmarkCpuMs.clear();
+            benchmarkGpuFrameMs.clear();
+            benchmarkGpuPassList.clear();
+            // the frames drawn from the next one on are the measured ones
+            benchmarkFirstFrame = FrameTimes::currentFrame() + 1;
+            // --profile: the measured frames record (the profiler's overhead, tools/perf/profiler_overhead.py)
+            if (benchmarkProfile)
+                profiler::setEnabled(true);
+            benchmarkGpuCollected = benchmarkFirstFrame - 1;
+            if (!benchmarkCapturePath.empty()) {
+                if (!benchmarkGpuPasses)
+                    SystemRender::acquireGpuTiming();
+                profiler::setGpuSemantics(SystemRender::getGpuTimingState().semantics);
+                benchmarkCaptureId = profiler::startCapture((uint32_t)std::min(benchmarkMeasureFrames, 600));
+            }
             benchmarkMeasureStart = std::chrono::steady_clock::now();
         }
         return;
@@ -3232,8 +4467,75 @@ void editor::App::tickBenchmark() {
         benchmarkDraws.push_back(stats.drawCalls);
         benchmarkInstances.push_back(stats.instances);
         benchmarkTris.push_back(stats.triangles);
-        if (static_cast<int>(benchmarkFps.size()) >= benchmarkMeasureFrames)
+        if (benchmarkUiStats) {
+            // the scene's documents (screen and texture-mode contexts), this frame
+            std::shared_ptr<UIDocumentSystem> documents = selected->scene->getSystem<UIDocumentSystem>();
+            const HtmlUIRenderStats ui = documents ? documents->getRenderStats() : HtmlUIRenderStats();
+            size_t field = 0;
+            ui.forEachField([this, &field](const char* name, uint32_t value) {
+                if (field == benchmarkUiTotals.size())
+                    benchmarkUiTotals.emplace_back(name, 0.0);
+                benchmarkUiTotals[field++].second += (double)value;
+            });
+        }
+        collectBenchmarkGpuFrame();
+        if (static_cast<int>(benchmarkFps.size()) >= benchmarkMeasureFrames) {
+            benchmarkLastFrame = FrameTimes::currentFrame();
+            benchmarkPhase = 3;
+            benchmarkDrainFrames = 0;
+        }
+        return;
+    }
+
+    if (benchmarkPhase == 3) {
+        // the GPU times of the last measured frames, and the capture, arrive a few frames late
+        collectBenchmarkGpuFrame();
+        profiler::CaptureInfo capture;
+        const bool captureDone = !benchmarkCaptureId || !profiler::captureInfo(benchmarkCaptureId, capture) || capture.complete;
+        const bool gpuDone = !benchmarkGpuPasses || benchmarkGpuCollected >= benchmarkLastFrame;
+        if ((captureDone && gpuDone) || ++benchmarkDrainFrames > 60)
             finishBenchmark();
+    }
+}
+
+// The newest frame whose GPU times all arrived, once, while it is a measured one: each pass
+// label's time (its passes summed) and count, and the frame's GPU time
+void editor::App::collectBenchmarkGpuFrame() {
+    if (!benchmarkGpuPasses)
+        return;
+    const PassList list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, true);
+    if (list.frame <= benchmarkGpuCollected || list.frame < benchmarkFirstFrame || list.gpuPending)
+        return;
+    if (benchmarkLastFrame && list.frame > benchmarkLastFrame)
+        return;
+    bool timed = false;
+    for (const PassRecord& pass : list.passes)
+        timed = timed || pass.gpuValid;
+    if (!timed)
+        return;
+    benchmarkGpuCollected = list.frame;
+    if (list.gpuFrameValid)
+        benchmarkGpuFrameMs.push_back(list.gpuFrameMs);
+    const size_t sampleIndex = benchmarkGpuFrameMs.size() - (list.gpuFrameValid ? 1 : 0);
+    for (BenchmarkPass& pass : benchmarkGpuPassList) {
+        pass.frameMs.resize(sampleIndex + 1, 0.0);
+        pass.counts.resize(sampleIndex + 1, 0.0);
+    }
+    for (const PassRecord& pass : list.passes) {
+        if (!pass.gpuValid)
+            continue;
+        auto it = std::find_if(benchmarkGpuPassList.begin(), benchmarkGpuPassList.end(),
+                               [&](const BenchmarkPass& entry) { return entry.label == pass.label; });
+        if (it == benchmarkGpuPassList.end()) {
+            BenchmarkPass entry;
+            entry.label = pass.label;
+            entry.frameMs.assign(sampleIndex + 1, 0.0);
+            entry.counts.assign(sampleIndex + 1, 0.0);
+            benchmarkGpuPassList.push_back(entry);
+            it = benchmarkGpuPassList.end() - 1;
+        }
+        it->frameMs[sampleIndex] += pass.gpuMs;
+        it->counts[sampleIndex] += 1.0;
     }
 }
 
@@ -3267,9 +4569,32 @@ void editor::App::finishBenchmark() {
 
     const double wallFps = (elapsed > 0.0 && n > 0) ? static_cast<double>(n) / elapsed : 0.0;
 
+    // the measured frames' CPU time (FrameTimes: the editor loop's work, presenting excluded)
+    benchmarkCpuMs.clear();
+    for (const FrameTimeSample& sample : FrameTimes::snapshot()) {
+        if (sample.frame >= benchmarkFirstFrame && (benchmarkLastFrame == 0 || sample.frame <= benchmarkLastFrame))
+            benchmarkCpuMs.push_back(sample.cpuMs);
+    }
+    auto stat = [](std::vector<double> values, double p) {
+        if (values.empty())
+            return 0.0;
+        std::sort(values.begin(), values.end());
+        const double position = p * static_cast<double>(values.size() - 1);
+        const size_t low = static_cast<size_t>(position);
+        const size_t high = std::min(low + 1, values.size() - 1);
+        return values[low] + (values[high] - values[low]) * (position - static_cast<double>(low));
+    };
+    auto mean = [](const std::vector<double>& values) {
+        double sum = 0.0;
+        for (double value : values)
+            sum += value;
+        return values.empty() ? 0.0 : sum / static_cast<double>(values.size());
+    };
+
     SceneProject* selected = project.getScene(benchmarkSceneId);
-    const int width = selected && sceneWindow ? sceneWindow->getWidth(selected->id) : 0;
-    const int height = selected && sceneWindow ? sceneWindow->getHeight(selected->id) : 0;
+    // the view measured: the Scene view's, or the Game view's while playing
+    const int width = benchmarkPlay ? gameWindow->getRenderWidth() : (selected && sceneWindow ? sceneWindow->getWidth(selected->id) : 0);
+    const int height = benchmarkPlay ? gameWindow->getRenderHeight() : (selected && sceneWindow ? sceneWindow->getHeight(selected->id) : 0);
 
     std::ostringstream json;
     json << std::fixed;
@@ -3279,6 +4604,7 @@ void editor::App::finishBenchmark() {
          << "  \"scene\": \"" << jsonEscape(selected ? selected->name : benchmarkScene) << "\",\n"
          << "  \"meshLod\": " << ((selected && selected->scene && selected->scene->isMeshLodEnabled()) ? "true" : "false") << ",\n"
          << "  \"depthPrepass\": " << ((selected && selected->scene && selected->scene->isDepthPrepassEnabled()) ? "true" : "false") << ",\n"
+         << "  \"play\": " << (benchmarkPlay ? "true" : "false") << ",\n"
          << "  \"viewport\": [" << width << ", " << height << "],\n"
          << "  \"frames\": " << n << ",\n"
          << "  \"warmupFrames\": " << benchmarkWarmupFrames << ",\n"
@@ -3290,8 +4616,54 @@ void editor::App::finishBenchmark() {
          << "  \"avgMs\": " << (wallFps > 0.0 ? 1000.0 / wallFps : 0.0) << ",\n"
          << "  \"avgDrawCalls\": " << avgDraws << ",\n"
          << "  \"avgInstances\": " << avgInstances << ",\n"
-         << "  \"avgTriangles\": " << avgTris << "\n"
-         << "}\n";
+         << "  \"avgTriangles\": " << avgTris << ",\n"
+         << "  \"profiling\": " << (benchmarkProfile ? "true" : "false") << ",\n";
+    json.precision(3);
+    json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
+         << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
+    if (benchmarkUiStats) {
+        // HtmlUIRenderStats averaged over the measured frames
+        json << ",\n  \"htmlUi\": {";
+        for (size_t i = 0; i < benchmarkUiTotals.size(); i++) {
+            json << (i ? ", " : "") << "\"" << benchmarkUiTotals[i].first << "\": "
+                 << (n > 0 ? benchmarkUiTotals[i].second / static_cast<double>(n) : 0.0);
+        }
+        json << "}";
+    }
+    if (benchmarkGpuPasses) {
+        const GpuTimingState gpu = SystemRender::getGpuTimingState();
+        json << ",\n  \"gpu\": {\n"
+             << "    \"available\": " << (gpu.available ? "true" : "false") << ",\n"
+             << "    \"reason\": \"" << jsonEscape(gpu.reason) << "\",\n"
+             << "    \"backend\": \"" << jsonEscape(SystemRender::getBackendName()) << "\",\n"
+             << "    \"device\": \"" << jsonEscape(SystemRender::getDeviceName()) << "\",\n"
+             << "    \"semantics\": \"" << jsonEscape(gpu.semantics) << "\",\n"
+             << "    \"frameIsSum\": " << (gpu.frameIsSum ? "true" : "false") << ",\n"
+             << "    \"frames\": " << benchmarkGpuFrameMs.size() << ",\n"
+             << "    \"frameMs\": {\"median\": " << stat(benchmarkGpuFrameMs, 0.5) << ", \"p95\": " << stat(benchmarkGpuFrameMs, 0.95)
+             << ", \"mean\": " << mean(benchmarkGpuFrameMs) << "},\n"
+             << "    \"passes\": [";
+        for (size_t i = 0; i < benchmarkGpuPassList.size(); i++) {
+            const BenchmarkPass& pass = benchmarkGpuPassList[i];
+            json << (i ? ",\n" : "\n") << "      {\"label\": \"" << jsonEscape(pass.label) << "\", \"perFrame\": " << stat(pass.counts, 0.5)
+                 << ", \"medianMs\": " << stat(pass.frameMs, 0.5) << ", \"p95Ms\": " << stat(pass.frameMs, 0.95)
+                 << ", \"meanMs\": " << mean(pass.frameMs) << "}";
+        }
+        json << (benchmarkGpuPassList.empty() ? "]\n" : "\n    ]\n") << "  }";
+        SystemRender::releaseGpuTiming();
+    }
+    if (benchmarkCaptureId) {
+        std::string error;
+        if (profiler::saveCapture(benchmarkCaptureId, benchmarkCapturePath.string(), &error)) {
+            json << ",\n  \"profileCapture\": \"" << jsonEscape(benchmarkCapturePath.string()) << "\"";
+            std::cerr << "Profiler capture written: " << benchmarkCapturePath.string() << "\n";
+        } else {
+            failBenchmark("the profiler capture was not written: " + error);
+        }
+        if (!benchmarkGpuPasses)
+            SystemRender::releaseGpuTiming();
+    }
+    json << "\n}\n";
 
     const std::string text = json.str();
     std::cout << text;
@@ -3310,22 +4682,37 @@ void editor::App::finishBenchmark() {
 
 void editor::App::enqueueMainThreadTask(std::function<void()> task) {
     if (!task) return;
-    {
-        std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-        mainThreadTasks.push(std::move(task));
-    }
+    scheduler().post(std::move(task));
     // Wake an idle backend loop so cross-thread work runs promptly.
     std::lock_guard<std::mutex> lock(wakeMutex);
     if (wakeCallback) wakeCallback();
 }
 
 bool editor::App::hasPendingMainThreadTasks() {
-    std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-    return !mainThreadTasks.empty();
+    return scheduler().hasPosted();
+}
+
+double editor::App::idleWaitSeconds(double maxSeconds) const {
+    const double next = scheduler().nextDueRealTime();
+    return next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
 }
 
 // Counts as activity, so the loop also keeps drawing for the idle delay past the
 // last request: enough for ImGui to auto-resize a window whose content just grew.
+void editor::App::recordFrameTime(double ms) {
+    if (frameTimes.size() < 100000) frameTimes.push_back(static_cast<float>(ms));
+}
+
+nlohmann::json editor::App::takeFrameStats() {
+    std::vector<float> times;
+    times.swap(frameTimes);
+    if (times.empty()) return {{"median", 0}, {"p99", 0}, {"max", 0}, {"frames", 0}};
+    std::sort(times.begin(), times.end());
+    auto round1 = [](float v) { return std::round(v * 10.0f) / 10.0f; };
+    const size_t p99 = std::min(times.size() - 1, static_cast<size_t>(std::ceil(times.size() * 0.99)) - 1);
+    return {{"median", round1(times[times.size() / 2])}, {"p99", round1(times[p99])}, {"max", round1(times.back())}, {"frames", times.size()}};
+}
+
 void editor::App::requestRedraw() {
     redrawRequested = true;
 }
@@ -3340,6 +4727,22 @@ void editor::App::requestFrame() {
     frameRequested = true;
 }
 
+void editor::App::requestContinuousFrames(double seconds) {
+    const auto until = std::chrono::steady_clock::now() +
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(seconds));
+    if (until > continuousFramesUntil)
+        continuousFramesUntil = until;
+}
+
+bool editor::App::wantsContinuousFrames() const {
+    if (profiler::activeCapture() != 0)
+        return true;
+    // every editor frame is one game frame of a recording (S27 R27)
+    if (recorder::RecorderSession::get().active())
+        return true;
+    return std::chrono::steady_clock::now() < continuousFramesUntil;
+}
+
 bool editor::App::consumeFrameRequest() {
     const bool requested = frameRequested;
     frameRequested = false;
@@ -3352,6 +4755,18 @@ void editor::App::setWakeCallback(std::function<void()> cb) {
 }
 
 void editor::App::shutdownBackgroundWork() {
+    // clip previews restored while the scenes still exist (nothing of them runs at static exit)
+    if (animationClipAppHooks().projectClosed) {
+        animationClipAppHooks().projectClosed();
+    }
+    // teardown is watched on its own window (the job system is not read from here on)
+    EditorDiagnostics::beginShutdown();
+    // the window layout as it is, for the next start
+    layouts.saveWorkingLayoutNow();
+    // the Project Hub's picture of the project (S27 R21)
+    writeHubThumbnail();
+    // a clean quit: this session's crash backups and the project lock go
+    project.endProjectSession();
     loadingPump = nullptr;
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
@@ -3359,12 +4774,28 @@ void editor::App::shutdownBackgroundWork() {
     if (!editor::texsynth::SynthesisRun::cancelAll()) {
         Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
     }
+    HotReloadService::get().stopWatching();
+    if (spriteNormalsWatcher) spriteNormalsWatcher->shutdown(1.0);
+    // Shift-click generations and Regenerates: cancelled, waited for a moment
+    if (spriteNormalsWindow) spriteNormalsWindow->shutdownJobs(2.0);
+    if (!editor::spritenormals::SpriteNormalsRun::cancelAll()) {
+        Out::warning("A sprite normal map generation did not stop in time; it is left to finish without effect.");
+    }
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
+    PoseRender::setFrameRequester(nullptr);
 }
 
 void editor::App::engineViewDestroyed(){
     imageViewerWindow->closeAll();
+    // no thumbnail step renders off the main thread (and commits to the render queue) from
+    // here on, nor touches the scenes the view's destruction removes
+    projectWindow->stopThumbnailWork();
+    // the offscreen pose renderers' private scenes are not the Engine's: they free their GPU
+    // objects here, while the view still exists (not on Engine::onViewDestroyed, which a play
+    // session's stop fires too)
+    PoseRender::releaseGpu();
+    VatPreviewView::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
     // consumes them. Drain that batch before shutdown waits to flush the queue.
     SystemRender::executeQueue();
@@ -3374,6 +4805,8 @@ void editor::App::engineViewDestroyed(){
 void editor::App::engineShutdown(){
     ::jasperengine::htmlui::EffectRegistry::get().setProjectEffectListener(nullptr);
     Engine::systemShutdown();
+    // a clean exit: the watchdog stops and the session marker goes
+    EditorDiagnostics::end();
 }
 
 void editor::App::addNewSceneToDock(uint32_t sceneId){
@@ -3404,6 +4837,21 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
     if (animationWindow) {
         animationWindow->clearSceneState(sceneId);
     }
+    if (animationClipAppHooks().sceneClosed) {
+        animationClipAppHooks().sceneClosed(sceneId);
+    }
+
+    if (poseAnimationWindow) {
+        poseAnimationWindow->clearSceneState(sceneId);
+    }
+
+    if (animatorWindow) {
+        animatorWindow->clearSceneState(sceneId);
+    }
+
+    if (avatarWindow) {
+        avatarWindow->clearSceneState(sceneId);
+    }
 
     if (lastActivatedScene == sceneId) {
         resetLastActivatedScene();
@@ -3411,9 +4859,32 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 }
 
 void editor::App::prepareForProjectSwitch() {
+    // the Project Hub's picture of the project closing (S27 R21)
+    writeHubThumbnail();
+    // the project's working layout, before another project's replaces it (S25 R19)
+    layouts.saveWorkingLayoutNow();
+    // the watcher stops before the project goes (S05 D2)
+    HotReloadService::get().stopWatching();
+    // the posed bones go back while their scenes still exist
+    poseAnimationWindow->prepareForProjectSwitch();
+    // the Animator window's preview goes back, its controller document is dropped
+    animatorWindow->prepareForProjectSwitch();
+    avatarWindow->stopPreview();
+    avatarWindow->projectClosed();
+    // and the clip previews (documents and the shared clip controller are released)
+    if (animationClipAppHooks().projectClosed) {
+        animationClipAppHooks().projectClosed();
+    }
     imageViewerWindow->closeAll();
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
+    audioMixerWindow->resetForProjectSwitch();
+    // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
+    spriteNormalsWindow->resetForProjectSwitch();
+    spriteNormalsWatcher->reset();
+    editor::spritenormals::SpriteNormalsRun::cancelRunning();
+    // a running bake or import is cancelled, its source and result forgotten
+    vertexAnimationBakerWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
     // physics gestures are cancelled, the sessions and the decomposition cache dropped
     physicsPlacementWindow->resetForProjectSwitch();
@@ -3428,6 +4899,10 @@ void editor::App::prepareForProjectSwitch() {
     consoleWindow->clear();
     sceneWindow->resetProjectState();
     gameWindow->resetProjectState();
+    inputActionsWindow->reset();
+    // the next project's .particles files are other files under the same paths
+    particles::ParticleEffectLibrary::clear();
+    ParticleMigrationReport::clear();
     dockspaceNeedsRebuild = true;
 }
 
@@ -3515,10 +4990,30 @@ void editor::App::updateResourcesPath(){
 }
 
 void editor::App::updateWindowTitle(const std::string& projectName) {
-    Backend::updateWindowTitle(projectName);
+    windowTitleProject = projectName;
+    Backend::updateWindowTitle(projectName + windowTitleSuffix);
 }
 
 void editor::App::stopTransientPreviews() {
+    // before a scene save or play: posed bones go back to their saved transforms
+    if (poseAnimationWindow) {
+        poseAnimationWindow->stopTransientPreviews();
+    }
+    // the Animator window's edit-mode preview (the bones go back)
+    if (animatorWindow) {
+        animatorWindow->stopPreview();
+    }
+    if (avatarWindow) {
+        avatarWindow->stopTransientPreviews();
+    }
+    // and the Animation window's previewed targets to their snapshots (animation clips 9.R6):
+    // the entity-sequence mode, then the clip mode
+    if (animationWindow) {
+        animationWindow->stopTransientPreviews();
+    }
+    if (animationClipAppHooks().stopTransientPreviews) {
+        animationClipAppHooks().stopTransientPreviews();
+    }
     if (terrainEditWindow) {
         terrainEditWindow->endStroke();
         terrainEditWindow->updateFoliagePreview();
@@ -3533,6 +5028,12 @@ void editor::App::stopTransientPreviews() {
         physicsPlacementWindow->finaliseGestures();
     }
     mcp::stopPlacementPreviews(&project);
+    mcp::stopAnimatorPreviews(&project);
+}
+
+bool editor::App::dispatchClipDrop(uint32_t sceneId, Entity target, const std::vector<std::string>& paths) {
+    if (!animationClipAppHooks().dropClips) return false;
+    return animationClipAppHooks().dropClips(&project, sceneId, target, paths);
 }
 
 void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {
@@ -3544,6 +5045,35 @@ void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {
 void editor::App::saveAllCodeEditors() {
     if (codeEditor) {
         codeEditor->saveAll();
+    }
+}
+
+void editor::App::importUnityParticles() {
+    const std::string file = FileDialogs::openFileDialog("", FILE_DIALOG_UNITY_PREFAB_SCENE);
+    if (file.empty()) return;
+    unity::ImportOptions options;
+    options.file = fs::u8path(file);
+    const unity::ImportResult result = unity::importParticlesIntoProject(&project, options);
+    if (!result.ok) {
+        Out::error("Import Unity Particle System: %s", result.error.c_str());
+        registerAlert("Import Unity Particle System", result.error);
+        return;
+    }
+    for (const std::string& prefab : result.prefabs) {
+        Out::info("Imported Unity particles: %s", prefab.c_str());
+    }
+    // the report's notes, one line each
+    for (const auto& system : result.report["systems"]) {
+        for (const auto& note : system["notes"]) {
+            Out::warning("%s: %s: %s", system["path"].get<std::string>().c_str(), note["code"].get<std::string>().c_str(),
+                         note["message"].get<std::string>().c_str());
+        }
+    }
+    for (const auto& warning : result.report["warnings"]) {
+        Out::warning("Import Unity Particle System: %s", warning.get<std::string>().c_str());
+    }
+    if (!result.reportFile.empty()) {
+        Out::info("Import report: %s", result.reportFile.c_str());
     }
 }
 
@@ -3604,11 +5134,41 @@ void editor::App::registerSaveDiscardAlert(std::string title, std::string messag
     alert.noLabel = "Discard Changes";
 }
 
+void editor::App::openInputActions(const std::filesystem::path& path) {
+    inputActionsWindow->openFile(path);
+    ImGui::SetWindowFocus(InputActionsWindow::WINDOW_NAME);
+}
+
 void editor::App::openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId, uint32_t contextRoot, bool inContext) {
     // Next frame: the window asking is in the middle of drawing the scene it may replace
     enqueueMainThreadTask([this, path, contextSceneId, contextRoot, inContext]() {
         project.openPrefabStage(path, contextSceneId, contextRoot, inContext);
     });
+}
+
+// An editor serving an MCP client on stdio has nobody to answer a modal: it decides like a
+// headless host (Refuse, Keep, no) and the agent passes allow_data_loss / recovery / --ignore-lock
+editor::DegradedSavePolicy editor::App::confirmDegradedSave(const DegradedSaveRequest& request) {
+    // the modal's Save Anyway runs the save again; this attempt writes nothing
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestDegradedSave(request);
+    }
+    return DegradedSavePolicy::Refuse;
+}
+
+editor::RecoveryChoice editor::App::resolveSceneRecovery(const SceneBackupInfo& backup) {
+    // the saved file opens now; the modal's Restore reloads the scene from the backup
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestRecovery(backup);
+    }
+    return RecoveryChoice::Keep;
+}
+
+bool editor::App::confirmOpenLockedProject(const ProjectLockInfo& info) {
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestLockedProject(info);
+    }
+    return false;
 }
 
 void editor::App::registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback) {
@@ -3773,7 +5333,36 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and the surface includes (MESH bit 32 'Ltc', DEPTH bit 15, GBUFFER bits 11-13), the
     //      tangent of includes/surface_vs.glsl transformed before the hooks. (Builds of the lattice
     //      branch used v34/v35 with 'Ltc' at MESH bit 5, then v37 before this v37 of main.)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v38";
+    // (oe-port) v34: (the S12 branch only: mesh bit 5 as a height fog bit; S10 has it as 'Shq')
+    // (oe-port) v35: atmosphere (S12): the fogged mesh variants (HAS_FOG) carry the height fog
+    //      (HAS_HEIGHT_FOG, u_fs_heightFog), so every cached 'Fog' variant is stale; the
+    //      atmosphere pass types after S10's SHADOW_CACHE.
+    // S16 side, v36: HTML UI rendering cost (S16): htmlui.vert/.frag gain the document position and
+    //      u_fs_htmluiClip (analytic clip, R8 coverage textures); HTMLUI_PRIM (instanced SDF
+    //      boxes, borders, shadows and glyph quads) appended after the atmosphere types.
+    // v37: S15's PASS_PREVIEW before HTMLUI_PRIM (the merge of both); the HTML UI's rounded-rect
+    //      distance and border colours changed (S16).
+    // v38: HTMLUI_PRIM samples four textures (u_htmluiTexture0-3, u_fs_htmluiSlots, S16).
+    // S16 v39: HTMLUI_PRIM gradients take their origin and tile period (S16-F5).
+    // v39: upstream (v34-v38 above) and oe-port's S10/S12 (its v34/v35) together: MESH bit 5 is
+    //      'Sto' and S10's high shadow filters moved to bit 33 ('Shq', USE_SHADOWS_HQ); the
+    //      fogged variants carry the height fog. Either side's v34-v38 cache holds other variants.
+    // v40: S11's built-in Lit (lobes, hex tiling, Lit Quality: pbr.glsl, mesh.frag, terrain) with
+    //      upstream's Stochastic Tiling in the same Lit and terrain sources and block layout.
+    // v41: S16's HTMLUI_PRIM and htmlui changes (its v36-v39) with upstream's and S11's (v39, v40).
+    // v42: S20's PARTICLES before HTMLUI_PRIM (the merge of both): a v41 cache numbers them otherwise.
+    // (upstream) v39: vertex animation (includes/vat.glsl): vatEvaluate() and the vatPosition/
+    //      vatNormal/... wrappers in every vertex entry point, HAS_VAT / HAS_VAT_BONES (MESH bits
+    //      33/34, DEPTH 16/17, GBUFFER 14/15).
+    // v43: upstream's vertex animation (its v39) with oe-port's v42: MESH 'Vat'/'Vab' are bits 34/35
+    //      (S10's 'Shq' keeps 33), DEPTH 16/17, GBUFFER 14/15; an upstream cache's MESH bit 33 is 'Vat'.
+    // (upstream) v40: sprite normal maps: the 2D tangent frame (includes/tangent_frame.glsl, mesh.vert,
+    //      includes/surface_vs.glsl: OpenGL green, mirroring), the Light 2D normal response
+    //      (includes/lighting2d.glsl: LIGHT2D_NORMAL_RESPONSE, getNormal2DAt, mesh.frag's
+    //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
+    // v44: upstream's sprite normal maps and shader globals (u_vs_globals / u_fs_globals, its v40)
+    //      with oe-port's v43: either side's v40-v43 cache holds other variants.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v44";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -3825,6 +5414,26 @@ editor::AnimationWindow* editor::App::getAnimationWindow() const{
     return animationWindow;
 }
 
+editor::JobsMemoryWindow* editor::App::getJobsMemoryWindow() const{
+    return jobsMemoryWindow;
+}
+
+editor::PoseAnimationWindow* editor::App::getPoseAnimationWindow() const{
+    return poseAnimationWindow;
+}
+
+editor::AvatarWindow* editor::App::getAvatarWindow() const{
+    return avatarWindow;
+}
+
+void editor::App::openAvatarWindow(uint32_t sceneId, Entity entity){
+    std::string error;
+    // the bound model keeps its edits; another one asks about unsaved edits first
+    if (!avatarWindow->requestOpen(sceneId, entity, &error)){
+        Out::warning("Configure Avatar: %s", error.c_str());
+    }
+}
+
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }
@@ -3833,12 +5442,63 @@ editor::TextureSynthesisWindow* editor::App::getTextureSynthesisWindow() const{
     return textureSynthesisWindow;
 }
 
+editor::VertexAnimationBakerWindow* editor::App::getVertexAnimationBakerWindow() const{
+    return vertexAnimationBakerWindow;
+}
+
+void editor::App::openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow){
+    std::string error;
+    const std::string file = FileUtils::pathToUtf8(path);
+    if (!vertexAnimationBakerWindow->setSourcePath(file, error)) {
+        registerAlert("Vertex Animation Baker", "Can't open " + FileUtils::pathToUtf8(path.filename()) + ": " + error);
+        return;
+    }
+    vertexAnimationBakerWindow->open();
+    if (bakeNow && !vertexAnimationBakerWindow->bake(true, error)) {
+        registerAlert("Vertex Animation Baker", "Can't bake " + FileUtils::pathToUtf8(path.filename()) + ": " + error);
+    }
+}
+
 editor::PhysicsPlacementWindow* editor::App::getPhysicsPlacementWindow() const{
     return physicsPlacementWindow;
 }
 
+editor::SpriteNormalsWindow* editor::App::getSpriteNormalsWindow() const{
+    return spriteNormalsWindow;
+}
+
+editor::SpriteNormalsWatcher* editor::App::getSpriteNormalsWatcher() const{
+    return spriteNormalsWatcher;
+}
+
+void editor::App::openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe){
+    std::string error;
+    if (editRecipe && !images.empty()) {
+        if (!spriteNormalsWindow->openRecipe(images[0], error)) {
+            registerAlert("Sprite Normal Map", "Can't open " + FileUtils::pathToUtf8(images[0].filename()) + ": " + error);
+        }
+        return;
+    }
+    if (!spriteNormalsWindow->openSources(images, error)) {
+        registerAlert("Sprite Normal Map", "Can't open " + (images.size() == 1 ? FileUtils::pathToUtf8(images[0].filename()) : std::string("the images")) + ": " + error);
+    }
+}
+
+void editor::App::openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now){
+    std::string error;
+    if (!spriteNormalsWindow->openForEntity(sceneId, static_cast<Entity>(entity), submesh, now, error)) {
+        SceneProject* sp = project.getScene(sceneId);
+        const std::string name = sp && sp->scene && sp->scene->isEntityCreated(static_cast<Entity>(entity)) ? sp->scene->getEntityName(static_cast<Entity>(entity)) : "the GameObject";
+        registerAlert("Sprite Normal Map", "Can't open " + name + ": " + error);
+    }
+}
+
 editor::MainToolbar* editor::App::getMainToolbar() const{
     return mainToolbar;
+}
+
+void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){
+    audioMixerWindow->open(mixer);
 }
 
 void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool editRecipe){
@@ -3850,6 +5510,10 @@ void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool 
     if (!textureSynthesisWindow->openRecipe(image, error)) {
         registerAlert("Edit Synthesis", "Can't restore the synthesis of " + image.filename().string() + ": " + error);
     }
+}
+
+editor::SystemsWindow* editor::App::getSystemsWindow() const{
+    return systemsWindow;
 }
 
 editor::HierarchyWindow* editor::App::getHierarchyWindow() const{
@@ -3876,8 +5540,129 @@ editor::GameWindow* editor::App::getGameWindow() const{
     return gameWindow;
 }
 
+// ---- window layouts (S25 R15-R19, layout/LayoutManager.h)
+
+namespace {
+
+    // The dockable panels a layout opens or closes, by window name (the preset's `panels:`)
+    template <typename F>
+    void forEachPanel(F&& visit, editor::HierarchyWindow* hierarchy, editor::InspectorWindow* inspector,
+                      editor::ProjectWindow* projectWindow, editor::ConsoleWindow* console, editor::AnimationWindow* animation,
+                      editor::TerrainEditWindow* terrain, editor::mcp::McpActivityWindow* mcpActivity, editor::SystemsWindow* systems,
+                      editor::MissingAssetsWindow* missing, editor::AssetReferencesWindow* references, editor::JobsMemoryWindow* jobs,
+                      editor::ProfilerWindow* profiler, editor::FrameDebuggerWindow* frameDebugger, editor::UndoHistoryWindow* undo,
+                      editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
+                      editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
+                      editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator) {
+        visit(editor::GameWindow::WINDOW_NAME, game);
+        visit(editor::InspectorWindow::WINDOW_NAME, inspector);
+        visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
+        visit(editor::ProjectWindow::WINDOW_NAME, projectWindow);
+        visit(editor::ConsoleWindow::WINDOW_NAME, console);
+        visit(editor::AnimationWindow::WINDOW_NAME, animation);
+        visit(editor::TerrainEditWindow::WINDOW_NAME, terrain);
+        visit(editor::mcp::McpActivityWindow::WINDOW_NAME, mcpActivity);
+        visit(editor::SystemsWindow::WINDOW_NAME, systems);
+        visit(editor::MissingAssetsWindow::WINDOW_NAME, missing);
+        visit(editor::AssetReferencesWindow::WINDOW_NAME, references);
+        visit(editor::JobsMemoryWindow::WINDOW_NAME, jobs);
+        visit(editor::ProfilerWindow::WINDOW_NAME, profiler);
+        visit(editor::FrameDebuggerWindow::WINDOW_NAME, frameDebugger);
+        visit(editor::UndoHistoryWindow::WINDOW_NAME, undo);
+        visit(editor::PlayModeChangesWindow::WINDOW_NAME, playChanges);
+        visit(editor::BookmarksWindow::WINDOW_NAME, bookmarks);
+        visit(editor::TextureSynthesisWindow::WINDOW_NAME, textureSynthesis);
+        visit(editor::PhysicsPlacementWindow::WINDOW_NAME, physicsPlacement);
+        visit(editor::PoseAnimationWindow::WINDOW_NAME, poseAnimation);
+        visit(editor::AnimatorWindow::WINDOW_NAME, animator);
+        visit(editor::VertexAnimationBakerWindow::WINDOW_NAME, vertexAnimationBaker);
+    }
+
+}
+
+std::string editor::App::focusedWindowName() const{
+    const ImGuiContext* context = ImGui::GetCurrentContext();
+    if (!context || !context->NavWindow) return {};
+    const ImGuiWindow* window = context->NavWindow->RootWindow ? context->NavWindow->RootWindow : context->NavWindow;
+    return window->Name ? std::string(window->Name) : std::string();
+}
+
+std::map<std::string, bool> editor::App::panelStates() const{
+    std::map<std::string, bool> panels;
+    forEachPanel([&panels](const char* name, auto* window) { panels[name] = window->isOpen(); },
+                 hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
+                 mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
+                 frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow);
+    return panels;
+}
+
+void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
+    // panels the layout does not name keep their state (a window newer than the layout)
+    forEachPanel([&panels](const char* name, auto* window) {
+        auto it = panels.find(name);
+        if (it != panels.end()) window->setOpen(it->second);
+    }, hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
+       mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
+       frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow);
+}
+
+void editor::App::applyDefaultLayout(){
+    hierarchyWindow->setOpen(true);
+    inspectorWindow->setOpen(true);
+    projectWindow->setOpen(true);
+    consoleWindow->setOpen(true);
+    animationWindow->setOpen(true);
+    poseAnimationWindow->setOpen(false);
+    animatorWindow->setOpen(false);
+    terrainEditWindow->setOpen(false);
+    textureSynthesisWindow->setOpen(false);
+    vertexAnimationBakerWindow->setOpen(false);
+    physicsPlacementWindow->setOpen(false);
+    mcpActivityWindow->setOpen(false);
+    systemsWindow->setOpen(false);
+    gameWindow->setOpen(true);
+    buildDockspace(true);
+}
+
+void editor::App::setupLayouts(){
+    LayoutManager::Host host;
+    host.panelStates = [this]() { return panelStates(); };
+    host.applyPanels = [this](const std::map<std::string, bool>& panels) { applyPanelStates(panels); };
+    host.applyDefault = [this]() { applyDefaultLayout(); };
+    host.afterIniLoaded = [this](float uiScale) {
+        if (ImGui::DockBuilderGetNode(dockspace_id) == nullptr) return false;
+        // sizes in the ini are pixels at the layout's scale (rescaleRestoredLayout)
+        layoutUiScale = uiScale;
+        layoutScaleApplied = false;
+        rescaleRestoredLayout();
+        // the central node, then the open documents (not in a layout) into it
+        forceDockTabs = false;
+        dock_id_middle_top = getCentralDockId();
+        dockProjectTabs();
+        ImGui::DockBuilderFinish(dockspace_id);
+        return true;
+    };
+    host.currentUiScale = [this]() { return layoutScaleApplied ? layoutUiScale : mainViewportScale(); };
+    host.projectPath = [this]() {
+        return (project.isEditorTempProject() || project.getProjectPath().empty()) ? std::filesystem::path() : project.getProjectPath();
+    };
+    host.promptUnsaved = [this](const std::string& title, const std::string& message, std::function<void()> onSave,
+                                std::function<void()> onDontSave) {
+        registerThreeButtonAlert(title, message, std::move(onSave), std::move(onDontSave));
+        alert.yesLabel = "Save";
+        alert.noLabel = "Don't Save";
+    };
+    host.confirm = [this](const std::string& title, const std::string& message, std::function<void()> onYes) {
+        registerConfirmAlert(title, message, std::move(onYes));
+    };
+    host.alert = [this](const std::string& title, const std::string& message) { registerAlert(title, message); };
+    layouts.setHost(std::move(host));
+}
+
 void editor::App::resetLayout(){
-    executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::ResetLayout), {}});
+    layouts.requestSwitch(LayoutPresets::DEFAULT_NAME);
 }
 
 void editor::App::processNextSaveDialog() {
@@ -4016,26 +5801,18 @@ void editor::App::processNextSaveDialog() {
 void editor::App::processMainThreadTasks() {
     if (projectLoading) return;
 
-    std::queue<std::function<void()>> tasks;
-    {
-        std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-        std::swap(tasks, mainThreadTasks);
+    // FIFO, one failing task neither drops the ones behind it (an MCP call waiting for its
+    // turn would never be answered) nor takes the editor down (Scheduler logs it)
+    Scheduler& tasks = scheduler();
+    tasks.processPosted();
+    const auto now = std::chrono::steady_clock::now();
+    if (lastSchedulerTime != std::chrono::steady_clock::time_point{}) {
+        tasks.advance(TimeDomain::Real, std::chrono::duration<double>(now - lastSchedulerTime).count());
     }
-
-    while (!tasks.empty()) {
-        auto task = std::move(tasks.front());
-        tasks.pop();
-        if (!task) continue;
-        // One failing task must not drop the ones queued behind it (an MCP call waiting
-        // for its turn would never be answered) nor take the editor down
-        try {
-            task();
-        } catch (const std::exception& e) {
-            Out::error("A main-thread task failed: %s", e.what());
-        } catch (...) {
-            Out::error("A main-thread task failed with an unknown error.");
-        }
-    }
+    lastSchedulerTime = now;
+    tasks.process(TimeDomain::Real);
+    tasks.advance(TimeDomain::Frames, 1.0);
+    tasks.process(TimeDomain::Frames);
 }
 
 bool editor::App::isMainThread() const {
@@ -4048,7 +5825,8 @@ void editor::App::initializeSettings() {
     // Next to settings.yaml, where a user can find it to report a crash.
     const std::filesystem::path logFile = AppSettings::getConfigDirectory() / "editor.log";
     Out::setLogFile(logFile);
-    CrashHandler::install(logFile);
+    // report folders, the session marker and the hang watchdog (docs/crash-diagnostics.md)
+    EditorDiagnostics::install(AppSettings::getConfigDirectory());
 
     applyPanelVisibilitySettings();
 }
@@ -4060,11 +5838,17 @@ void editor::App::applyPanelVisibilitySettings() {
     projectWindow->setOpen(visibility.project);
     consoleWindow->setOpen(visibility.console);
     animationWindow->setOpen(visibility.animation);
+    poseAnimationWindow->setOpen(visibility.poseAnimation);
+    animatorWindow->setOpen(visibility.animator);
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
+    audioMixerWindow->setOpen(visibility.audioMixer);
+    spriteNormalsWindow->setOpen(visibility.spriteNormals);
+    vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
+    undoHistoryWindow->setOpen(visibility.undoHistory);
 }
 
 void editor::App::persistPanelVisibilitySettings() {
@@ -4074,11 +5858,17 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.project = projectWindow->isOpen();
     visibility.console = consoleWindow->isOpen();
     visibility.animation = animationWindow->isOpen();
+    visibility.poseAnimation = poseAnimationWindow->isOpen();
+    visibility.animator = animatorWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
+    visibility.audioMixer = audioMixerWindow->isOpen();
+    visibility.spriteNormals = spriteNormalsWindow->isOpen();
+    visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();
+    visibility.undoHistory = undoHistoryWindow->isOpen();
 
     if (visibility != AppSettings::getPanelVisibility()) {
         AppSettings::setPanelVisibility(visibility);
@@ -4132,6 +5922,17 @@ void editor::App::exit() {
 
     if (project.isAnySceneSaving()) {
         registerAlert("Saving Scene", "Wait for the current scene save to finish before exiting.");
+        return;
+    }
+
+    // the Sprite Normal Map window's unsaved paint strokes (not in any file): asked first, like its close
+    if (spriteNormalsWindow && spriteNormalsWindow->hasUnsavedPaint()) {
+        registerConfirmAlert("Discard Paint Changes?",
+                             "The Sprite Normal Map window has paint strokes that are not saved into the normal map.\n\nDiscard them and exit?",
+                             [this]() {
+                                 spriteNormalsWindow->discardPaint();
+                                 exit();
+                             });
         return;
     }
 

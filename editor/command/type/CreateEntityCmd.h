@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
 #include "Project.h"
 #include <cstdint>
 #include <string>
@@ -32,9 +34,16 @@ namespace jasperengine::editor{
         SCROLLBAR,
         PROGRESSBAR,
         INPUT_FIELD,
+        // ui-multitouch: on-screen controls (the stick in Joystick Pack's three modes)
+        ONSCREEN_STICK_FIXED,
+        ONSCREEN_STICK_FLOATING,
+        ONSCREEN_STICK_DYNAMIC,
+        ONSCREEN_BUTTON,
+        TOUCH_AREA,
         PANEL,
         POLYGON,
         LAYOUT_GROUP,
+        CANVAS_GROUP,
         POINT_LIGHT,
         DIRECTIONAL_LIGHT,
         SPOT_LIGHT,
@@ -62,18 +71,49 @@ namespace jasperengine::editor{
         MORPH_TRACKS,
         LATTICE_TRACKS,
         MODEL,
+        // a version 2 Particle System on its own GameObject (Unity's: the default quad renderer)
         PARTICLE_SYSTEM,
+        FORCE_FIELD,
+        // a Particle System in UI units under a UI element (unscaled time, local space, the soft
+        // image): its particles drawn in canvas order, clipped by panels
+        UI_PARTICLE_SYSTEM,
         POINTS,
         LINE_RENDERER,
+        TRAIL_RENDERER,
         MESH_POLYGON,
         TERRAIN,
         REFLECTION_PROBE,
         UI_DOCUMENT,
         WATER,
         FLUID_SIMULATION,
+        // a Video Player into its render texture (video|<entity>), and one on the main
+        // camera's far plane (a looping background)
+        VIDEO_PLAYER,
+        VIDEO_BACKGROUND,
         // a unit lattice (Transform + LatticeComponent); the menus create one through
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
-        LATTICE
+        LATTICE,
+        LOCAL_VOLUMETRIC_FOG,
+        VOLUMETRIC_CLOUDS,
+        // GameObject › Spline (S18 R23): a spline configured by its preset (SplinePresets).
+        // SPLINE_DRAW is an empty spline the Draw Spline tool starts on.
+        SPLINE_EMPTY,
+        SPLINE_DRAW,
+        SPLINE_ROAD,
+        SPLINE_PATH,
+        SPLINE_WALL,
+        SPLINE_FENCE,
+        SPLINE_RIVER,
+        SPLINE_LAKE,
+        SPLINE_CIRCLE,
+        SPLINE_SQUARE,
+        SPLINE_EDGE_2D,
+        SPLINE_FILL_2D,
+        SPLINE_CIRCLE_2D,
+        // not a GameObject: the Hierarchy's "3D Object > Ragdoll..." opens the wizard on the selection
+        RAGDOLL_WIZARD,
+        // a full-stretch RectTransform the Safe Area component drives (GameObject > UI > Safe Area)
+        SAFE_AREA
     };
 
     class CreateEntityCmd: public Command{
@@ -110,6 +150,17 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        // "Create Cube": the name it got
+        std::string describe() const override { return "Create " + entityName; }
+        const char* typeName() const override { return "CreateEntityCmd"; }
+        // The GameObject as it is now, pasted back with its id
+        void collectKeepCommands(KeepContext& context) const override { context.addCreated(entity); }
+        size_t memoryBytes() const override {
+            return sizeof(*this) + entityName.size() + childEntities.capacity() * sizeof(ChildEntityData);
+        }
+        uint32_t getSceneId() const { return sceneId; }
+        Entity getParent() const { return parent; }
 
 
         Entity getEntity();

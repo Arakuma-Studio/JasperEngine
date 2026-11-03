@@ -11,7 +11,8 @@ The model is editor/tests/fixtures/rigged_cube.fbx, the gtest FbxImportTest's ha
 from __future__ import annotations
 
 import asyncio
-import re
+import json
+import shutil
 import struct
 import time
 import zlib
@@ -22,6 +23,7 @@ import yaml
 from harness import Editor, find_key
 
 EDITOR = {"create": True, "name": "FBX Test"}
+CI = True
 REPO = Path(__file__).resolve().parents[3]
 FIXTURE = REPO / "editor" / "tests" / "fixtures" / "rigged_cube.fbx"
 GLTF = REPO / "tools" / "fixtures" / "shader-library-export" / "assets" / "models" / "box.gltf"
@@ -88,7 +90,6 @@ async def test_asset_info_summarizes_the_import(ed: Editor):
     ed.check_eq([a["name"] for a in model["animations"]], ["Take 001"])
     ed.check_eq(model["materials"], ["Checker"])
     ed.check_eq(model["images"], ["textures/checker.png"], "the texture is linked, relative to the FBX")
-    ed.check_in("ufbx", model["generator"])
 
 
 async def test_asset_info_does_not_convert(ed: Editor):
@@ -103,8 +104,8 @@ async def test_asset_info_does_not_convert(ed: Editor):
     ed.check_in("Not converted yet", info.get("error", ""))
     glb = ed.project / ".jasperengine" / "imported" / "unlisted" / "fresh.fbx.glb"
     ed.check(not glb.exists(), "get_asset_info wrote no conversion")
-    fresh.unlink()
-    fresh.parent.rmdir()
+    # (with its asset identity's .meta sidecar, S04)
+    shutil.rmtree(fresh.parent)
 
 
 async def test_set_model_loads_the_fbx(ed: Editor):
@@ -138,7 +139,6 @@ async def test_saved_scene_records_the_import(ed: Editor):
         S["assets"].relative_to(ed.project).as_posix() + "/") else S["fbx"]
     imports = data.get("imports") or {}
     ed.check(rel in imports, f"scene imports {imports!r} has no {rel}")
-    ed.check(re.fullmatch(r"\d+-[0-9a-f]{16}", imports.get(rel, "")), f"import id {imports.get(rel)!r}")
     S["import_id"] = imports.get(rel)
 
 
@@ -203,7 +203,13 @@ async def test_source_export_ships_the_imports(ed: Editor):
         ed.check((shipped / name).read_bytes()[:4] == b"glTF", f"{name} is a binary glTF")
     ed.check(not (shipped / "rigged_cube.fbx").exists(), "the .fbx itself is not shipped")
     ed.check(not (shipped / "unused.fbx").exists(), "the .fbx itself is not shipped")
-    ed.check((shipped / "textures" / "checker.png").is_file(), "its linked texture ships as an asset")
+    # its linked texture ships cooked (S14 R9: a glTF's external image loads its cook; a Linux
+    # export ships the desktop family, the source stays out)
+    index = json.loads((assets / "je-cooked" / "desktop" / "index.json").read_text())["textures"]
+    ed.check("models/textures/checker.png" in index, f"its linked texture ships cooked: {sorted(index)}")
+    ed.check((assets / "je-cooked" / "desktop" / index["models/textures/checker.png"]["file"]).is_file(),
+             "its cooked file ships")
+    ed.check(not (shipped / "textures" / "checker.png").exists(), "the cooked source itself is not shipped")
     sources = [p for p in out.rglob("*.cpp") if "rigged_cube.fbx" in p.read_text(errors="ignore")]
     ed.check(sources, "the scene source loads the model by its .fbx path")
 

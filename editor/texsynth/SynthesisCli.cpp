@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SynthesisCli.h"
+#include "util/FileUtils.h"
 
 #include "SynthesisRecipe.h"
 #include "TextureSynthesis.h"
@@ -143,7 +144,7 @@ namespace jasperengine::editor::texsynth {
                     o.help = true;
                 } else if (arg == "-p" || arg == "--project") {
                     if (!need()) return false;
-                    o.project = CommandLine::projectArgPath(fs::u8path(value));
+                    o.project = CommandLine::projectArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--mode") {
                     if (!need()) return false;
                     if (!parseMode(value, o.mode)) {
@@ -153,7 +154,7 @@ namespace jasperengine::editor::texsynth {
                 } else if (arg == "-e" || arg == "--example") {
                     if (!need()) return false;
                     ExampleArg ex;
-                    ex.path = CommandLine::absoluteArgPath(fs::u8path(value));
+                    ex.path = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                     o.examples.push_back(ex);
                 } else if (arg == "--companion") {
                     if (!need()) return false;
@@ -163,29 +164,29 @@ namespace jasperengine::editor::texsynth {
                     std::error_code ec;
                     const size_t eq = value.rfind('=');
                     if (eq != std::string::npos && eq > 0 && eq + 1 < value.size() &&
-                        !fs::exists(CommandLine::absoluteArgPath(fs::u8path(value)), ec)) {
-                        companion.path = CommandLine::absoluteArgPath(fs::u8path(value.substr(0, eq)));
-                        companion.out = CommandLine::absoluteArgPath(fs::u8path(value.substr(eq + 1)));
+                        !fs::exists(CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value)), ec)) {
+                        companion.path = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value.substr(0, eq)));
+                        companion.out = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value.substr(eq + 1)));
                     } else {
-                        companion.path = CommandLine::absoluteArgPath(fs::u8path(value));
+                        companion.path = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                     }
                     ex->companions.push_back(companion);
                 } else if (arg == "--sample-mask") {
                     if (!need()) return false;
                     ExampleArg* ex = lastExample();
                     if (!ex) return false;
-                    ex->sampleMask = CommandLine::absoluteArgPath(fs::u8path(value));
+                    ex->sampleMask = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--guide") {
                     if (!need()) return false;
                     ExampleArg* ex = lastExample();
                     if (!ex) return false;
-                    ex->guide = CommandLine::absoluteArgPath(fs::u8path(value));
+                    ex->guide = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--target-guide") {
                     if (!need()) return false;
-                    o.targetGuide = CommandLine::absoluteArgPath(fs::u8path(value));
+                    o.targetGuide = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--mask") {
                     if (!need()) return false;
-                    o.mask = CommandLine::absoluteArgPath(fs::u8path(value));
+                    o.mask = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--mask-channel") {
                     if (!need()) return false;
                     if (!parseMaskChannel(value, o.maskChannel)) {
@@ -196,10 +197,10 @@ namespace jasperengine::editor::texsynth {
                     o.invertMask = true;
                 } else if (arg == "-o" || arg == "--out") {
                     if (!need()) return false;
-                    o.out = CommandLine::absoluteArgPath(fs::u8path(value));
+                    o.out = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--uncertainty-out") {
                     if (!need()) return false;
-                    o.uncertaintyOut = CommandLine::absoluteArgPath(fs::u8path(value));
+                    o.uncertaintyOut = CommandLine::absoluteArgPath(editor::FileUtils::pathFromUtf8(value));
                 } else if (arg == "--size") {
                     if (!need()) return false;
                     if (!parseSize(value, o.width, o.height)) {
@@ -266,11 +267,11 @@ namespace jasperengine::editor::texsynth {
                 return false;
             }
             if (!isPng(o.out)) {
-                error = "--out must be a .png file: " + o.out.u8string();
+                error = "--out must be a .png file: " + FileUtils::pathToUtf8(o.out);
                 return false;
             }
             if (!o.uncertaintyOut.empty() && !isPng(o.uncertaintyOut)) {
-                error = "--uncertainty-out must be a .png file: " + o.uncertaintyOut.u8string();
+                error = "--uncertainty-out must be a .png file: " + FileUtils::pathToUtf8(o.uncertaintyOut);
                 return false;
             }
             const bool needsSize = o.mode == Mode::Extend || o.mode == Mode::Tileable;
@@ -316,11 +317,11 @@ namespace jasperengine::editor::texsynth {
                 for (size_t i = 0; i < ex.companions.size(); i++) {
                     CompanionArg& companion = ex.companions[i];
                     char separator = '_';
-                    companion.name = companionSuffix(ex.path.stem().u8string(), companion.path.stem().u8string(), separator);
+                    companion.name = companionSuffix(FileUtils::pathToUtf8(ex.path.stem()), FileUtils::pathToUtf8(companion.path.stem()), separator);
                     if (companion.name.empty()) companion.name = "companion" + std::to_string(i + 1);
                     if (companion.name == "primary" || companion.name == "uncertainty") companion.name += "_map";
                     if (!seen.insert(companion.name).second) {
-                        error = "two companions of " + ex.path.filename().u8string() + " are named '" + companion.name + "' (rename one file)";
+                        error = "two companions of " + FileUtils::pathToUtf8(ex.path.filename()) + " are named '" + companion.name + "' (rename one file)";
                         return false;
                     }
                 }
@@ -335,7 +336,7 @@ namespace jasperengine::editor::texsynth {
                     std::string names;
                     for (const std::string& n : a) names += (names.empty() ? "" : ", ") + n;
                     error = "every example needs the same companions (by name: " + (names.empty() ? std::string("none") : names) + "); " +
-                            ex.path.filename().u8string() + " differs";
+                            FileUtils::pathToUtf8(ex.path.filename()) + " differs";
                     return false;
                 }
             }
@@ -345,9 +346,9 @@ namespace jasperengine::editor::texsynth {
         std::string shown(const fs::path& path, const fs::path& project) {
             if (!project.empty()) {
                 const fs::path rel = path.lexically_relative(project);
-                if (!rel.empty() && *rel.begin() != ".." && !rel.is_absolute()) return rel.generic_u8string();
+                if (!rel.empty() && *rel.begin() != ".." && !rel.is_absolute()) return FileUtils::pathToGenericUtf8(rel);
             }
-            return path.u8string();
+            return FileUtils::pathToUtf8(path);
         }
 
         std::string fixed(double v, int digits) {
@@ -431,7 +432,7 @@ namespace jasperengine::editor::texsynth {
         }
         std::error_code ec;
         if (!o.project.empty() && !fs::is_regular_file(o.project / "project.yaml", ec)) {
-            err << prefix << "no project.yaml in " << o.project.u8string() << "\n";
+            err << prefix << "no project.yaml in " << FileUtils::pathToUtf8(o.project) << "\n";
             return 2;
         }
         if (!nameCompanions(o, error)) {
@@ -455,11 +456,11 @@ namespace jasperengine::editor::texsynth {
             }
             if (path.empty()) {
                 char separator = '_';
-                companionSuffix(o.examples.front().path.stem().u8string(), companion.path.stem().u8string(), separator);
-                path = o.out.parent_path() / fs::u8path(o.out.stem().u8string() + separator + companion.name + ".png");
+                companionSuffix(FileUtils::pathToUtf8(o.examples.front().path.stem()), FileUtils::pathToUtf8(companion.path.stem()), separator);
+                path = o.out.parent_path() / editor::FileUtils::pathFromUtf8(FileUtils::pathToUtf8(o.out.stem()) + separator + companion.name + ".png");
             }
             if (!isPng(path)) {
-                err << prefix << "companion output must be a .png file: " << path.u8string() << "\n";
+                err << prefix << "companion output must be a .png file: " << FileUtils::pathToUtf8(path) << "\n";
                 return 2;
             }
             outputs[companion.name] = path;
@@ -483,14 +484,14 @@ namespace jasperengine::editor::texsynth {
         for (const std::string& role : roles) {
             const fs::path& path = outputs[role];
             if (!written.insert(path).second) {
-                err << prefix << "two outputs would be written to " << path.u8string() << "\n";
+                err << prefix << "two outputs would be written to " << FileUtils::pathToUtf8(path) << "\n";
                 return 2;
             }
             if (inputs.count(path)) {
-                err << prefix << "the " << role << " output would replace an input: " << path.u8string() << " (write it elsewhere)\n";
+                err << prefix << "the " << role << " output would replace an input: " << FileUtils::pathToUtf8(path) << " (write it elsewhere)\n";
                 return 2;
             }
-            if (fs::exists(path, ec)) existing.push_back(path.u8string());
+            if (fs::exists(path, ec)) existing.push_back(FileUtils::pathToUtf8(path));
         }
         if (!existing.empty() && !o.overwrite) {
             for (const std::string& path : existing) err << prefix << path << " exists (pass --overwrite to replace it)\n";
@@ -507,7 +508,7 @@ namespace jasperengine::editor::texsynth {
                 for (const std::string& other : roles) named.push_back(outputs[other]);
                 for (const fs::path& path : named) {
                     if (isValidUtf8(recipePath(path, recorded))) continue;
-                    err << prefix << printableUtf8(path.u8string()) << ": the file name is not valid UTF-8, so the recipe (JSON text) could not "
+                    err << prefix << printableUtf8(FileUtils::pathToUtf8(path)) << ": the file name is not valid UTF-8, so the recipe (JSON text) could not "
                         << "record it; rename it\n";
                     return 2;
                 }
@@ -529,14 +530,14 @@ namespace jasperengine::editor::texsynth {
             Example ex;
             ex.image = ImageInput::fromPath(arg.path);
             const std::string field = "examples[" + std::to_string(e) + "]";
-            fieldPaths[field + ".image"] = arg.path.u8string();
+            fieldPaths[field + ".image"] = FileUtils::pathToUtf8(arg.path);
             if (!arg.sampleMask.empty()) {
                 ex.sampleMask = ImageInput::fromPath(arg.sampleMask);
-                fieldPaths[field + ".sampleMask"] = arg.sampleMask.u8string();
+                fieldPaths[field + ".sampleMask"] = FileUtils::pathToUtf8(arg.sampleMask);
             }
             if (!arg.guide.empty()) {
                 ex.guide = ImageInput::fromPath(arg.guide);
-                fieldPaths[field + ".guide"] = arg.guide.u8string();
+                fieldPaths[field + ".guide"] = FileUtils::pathToUtf8(arg.guide);
             }
             request.examples.push_back(ex);
         }
@@ -546,7 +547,7 @@ namespace jasperengine::editor::texsynth {
             for (size_t e = 0; e < o.examples.size(); e++) {
                 for (const CompanionArg& arg : o.examples[e].companions) {
                     if (arg.name != companion.name) continue;
-                    fieldPaths["companions[" + std::to_string(c) + "].images[" + std::to_string(companion.images.size()) + "]"] = arg.path.u8string();
+                    fieldPaths["companions[" + std::to_string(c) + "].images[" + std::to_string(companion.images.size()) + "]"] = FileUtils::pathToUtf8(arg.path);
                     companion.images.push_back(ImageInput::fromPath(arg.path));
                 }
             }
@@ -554,13 +555,13 @@ namespace jasperengine::editor::texsynth {
         }
         if (!o.mask.empty()) {
             request.inpaintMask.image = ImageInput::fromPath(o.mask);
-            fieldPaths["inpaintMask"] = o.mask.u8string();
+            fieldPaths["inpaintMask"] = FileUtils::pathToUtf8(o.mask);
         }
         request.inpaintMask.channel = o.maskChannel;
         request.inpaintMask.invert = o.invertMask;
         if (!o.targetGuide.empty()) {
             request.targetGuide = ImageInput::fromPath(o.targetGuide);
-            fieldPaths["targetGuide"] = o.targetGuide.u8string();
+            fieldPaths["targetGuide"] = FileUtils::pathToUtf8(o.targetGuide);
         }
 
         Control control;
@@ -599,7 +600,7 @@ namespace jasperengine::editor::texsynth {
                 file.path = path;
                 std::string encodeError;
                 if (!encodePngWithRecipe(*image, makeRecipe(request, result, role, paths), file.bytes, encodeError)) {
-                    writeErrors.push_back({path.u8string(), encodeError + "; nothing was written"});
+                    writeErrors.push_back({FileUtils::pathToUtf8(path), encodeError + "; nothing was written"});
                     break;
                 }
                 files.push_back(std::move(file));

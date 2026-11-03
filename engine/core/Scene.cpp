@@ -2,23 +2,38 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "script/ScriptRuntime.h"
 #include "Scene.h"
+#include "shader/ShaderGlobals.h"
+#include "script/AsyncOwner.h"
 
 #include "object/Camera.h"
 #include "Engine.h"
+#include "Screen.h"
 
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/LatticeSystem.h"
+#include "subsystem/VertexAnimatorSystem.h"
+#include "subsystem/TrailSystem.h"
+#include "subsystem/CameraControlSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
+#include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/PoseAnimatorSystem.h"
+#include "subsystem/AnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/NavigationSystem.h"
+#include "picking/SceneBvh.h"
+#include "subsystem/ParticleSubsystem.h"
+#include "subsystem/SplineSystem.h"
 #include "util/Color.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace jasperengine;
 
@@ -34,13 +49,34 @@ void Scene::init(){
     lifetime = std::make_shared<char>(0);
 
     registerSystem<ActionSystem>();
+    // the Animators: after the Animation Players' blend is flushed (they own the bones they
+    // bind), before the Pose Animators (whose weight blends over them) and the skinning
+    registerSystem<AnimatorSystem>();
+    // after the clips' blend is flushed, before the world matrices and the skinning
+    registerSystem<PoseAnimatorSystem>();
+    // after the scripts, before the meshes and transforms: generated chunks and followers are
+    // drawn in the frame they change (docs/specs/S18-splines.md D3)
+    registerSystem<SplineSystem>();
     registerSystem<MeshSystem>();
     registerSystem<LatticeSystem>();
+    // after the lattices, before Render reads the GPU state it writes (vertex animation spec 3.4)
+    registerSystem<VertexAnimatorSystem>();
+    // Camera Follow, then the Camera Shakers: after this frame's animation, physics interpolation
+    // and onUpdate, before the layout and Render build the matrices (camera shake spec 5.2)
+    registerSystem<CameraControlSystem>();
     registerSystem<UISystem>();
     registerSystem<UIDocumentSystem>();
     registerSystem<FluidSystem>();
+    // after the scripts' frame, before RenderSystem converts the frames it hands over
+    registerSystem<VideoPlayerSystem>();
     registerSystem<RenderSystem>();
+    // after Render, whose update makes this frame's world transforms (the trails' heads)
+    registerSystem<TrailSystem>();
+    // before physics: agents set their bodies' velocities before the world steps (S19 D2)
+    registerSystem<NavigationSystem>();
     registerSystem<PhysicsSystem>();
+    // after physics (world collisions query it, never while it steps) and the transforms
+    registerSystem<ParticleSubsystem>();
     registerSystem<AudioSystem>();
 
     camera = NULL_ENTITY;
@@ -52,11 +88,16 @@ void Scene::init(){
 }
 
 Scene::~Scene(){
+    tearingDown = true;
+    // async work owned by the scene or its GameObjects ends without its callbacks
+    AsyncOwners::sceneDestroyed(this);
     // first: handles that own entities of this scene and go during (or after) its teardown
     // leave them to it
     lifetime.reset();
     // GameObject::destroy calls still pending for it
     ObjectManager::forgetScene(this);
+    // and the starts of its scripts still queued
+    ScriptRuntime::forgetScene(this);
     // sounds of a deleted scene would play on; not in destroy(), which also runs on view recreation
     getSystem<AudioSystem>()->stopSceneSounds();
     destroy();
@@ -71,6 +112,14 @@ static void removeComponentSubscriptionsByTag(Scene* scene, const std::string& s
     }
 }
 
+bool Scene::isActivationObserved() const{
+    return ScriptRuntime::hasStarted(const_cast<Scene*>(this));
+}
+
+void Scene::onActiveInHierarchyChanged(const std::vector<Entity>& changed, bool nowActive){
+    ScriptRuntime::onActiveInHierarchyChanged(this, changed, nowActive);
+}
+
 std::weak_ptr<char> Scene::getLifetime() const{
     return lifetime;
 }
@@ -83,10 +132,40 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
         action.onStep.removeByTagSubstring(tag);
     });
 
+    removeComponentSubscriptionsByTag<SplineAnimateComponent>(this, substring, [](SplineAnimateComponent& animate, const std::string& tag) {
+        animate.onComplete.removeByTagSubstring(tag);
+    });
+
     removeComponentSubscriptionsByTag<AudioSourceComponent>(this, substring, [](AudioSourceComponent& sound, const std::string& tag) {
         sound.onStart.removeByTagSubstring(tag);
         sound.onPause.removeByTagSubstring(tag);
         sound.onStop.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<PoseAnimatorComponent>(this, substring, [](PoseAnimatorComponent& animator, const std::string& tag) {
+        animator.onFinish.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<AnimationPlayerComponent>(this, substring, [](AnimationPlayerComponent& player, const std::string& tag) {
+        player.onEvent.removeByTagSubstring(tag);
+        player.onFinish.removeByTagSubstring(tag);
+        player.onStateEnter.removeByTagSubstring(tag);
+        player.onStateExit.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<VertexAnimatorComponent>(this, substring, [](VertexAnimatorComponent& animator, const std::string& tag) {
+        animator.onEvent.removeByTagSubstring(tag);
+        animator.onFinish.removeByTagSubstring(tag);
+        animator.onInstanceEvent.removeByTagSubstring(tag);
+        animator.onInstanceFinish.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<AnimatorComponent>(this, substring, [](AnimatorComponent& animator, const std::string& tag) {
+        animator.onEvent.removeByTagSubstring(tag);
+        animator.onStateEnter.removeByTagSubstring(tag);
+        animator.onStateExit.removeByTagSubstring(tag);
+        animator.onMontageEnded.removeByTagSubstring(tag);
+        animator.onAnimatorMove.removeByTagSubstring(tag);
     });
 
     removeComponentSubscriptionsByTag<UIComponent>(this, substring, [](UIComponent& ui, const std::string& tag) {
@@ -123,6 +202,21 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
         inputField.onSubmit.removeByTagSubstring(tag);
     });
 
+    removeComponentSubscriptionsByTag<OnScreenStickComponent>(this, substring, [](OnScreenStickComponent& stick, const std::string& tag) {
+        stick.onValueChanged.removeByTagSubstring(tag);
+        stick.onPress.removeByTagSubstring(tag);
+        stick.onRelease.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<OnScreenButtonComponent>(this, substring, [](OnScreenButtonComponent& button, const std::string& tag) {
+        button.onPress.removeByTagSubstring(tag);
+        button.onRelease.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<TouchAreaComponent>(this, substring, [](TouchAreaComponent& area, const std::string& tag) {
+        area.onDrag.removeByTagSubstring(tag);
+    });
+
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
 }
 
@@ -148,6 +242,17 @@ void Scene::setCamera(Entity camera){
 
 Entity Scene::getCamera() const{
     return camera;
+}
+
+void Scene::useDefaultCamera(){
+    if (defaultCamera == NULL_ENTITY || !isEntityCreated(defaultCamera)){
+        defaultCamera = createDefaultCamera();
+    }
+    camera = defaultCamera;
+    if (CameraComponent* cameracomp = findComponent<CameraComponent>(camera)){
+        cameracomp->needUpdate = true;
+    }
+    updateCameraSize();
 }
 
 Entity Scene::createDefaultCamera(){
@@ -189,6 +294,42 @@ void Scene::setShadowQuality(ShadowQuality quality){
 
 ShadowQuality Scene::getShadowQuality() const{
     return settings.shadowQuality;
+}
+
+void Scene::setShadowDistance(float distance){
+    settings.shadowDistance = (std::isfinite(distance) && distance > 0.0f) ? distance : 0.0f;
+}
+
+float Scene::getShadowDistance() const{
+    return settings.shadowDistance;
+}
+
+void Scene::setShadowFadeFraction(float fraction){
+    settings.shadowFadeFraction = std::isfinite(fraction) ? std::clamp(fraction, 0.0f, 1.0f) : SceneSettings().shadowFadeFraction;
+}
+
+float Scene::getShadowFadeFraction() const{
+    return settings.shadowFadeFraction;
+}
+
+void Scene::setShadowCascadeBlend(bool blend){
+    settings.shadowCascadeBlend = blend;
+}
+
+bool Scene::isShadowCascadeBlend() const{
+    return settings.shadowCascadeBlend;
+}
+
+ShadowTier Scene::getEffectiveShadowTier() const{
+    return const_cast<Scene*>(this)->getSystem<RenderSystem>()->getEffectiveShadowTier();
+}
+
+void Scene::setShadowDebugView(ShadowDebugView view){
+    shadowDebugView = view;
+}
+
+ShadowDebugView Scene::getShadowDebugView() const{
+    return shadowDebugView;
 }
 
 void Scene::setMeshLodEnabled(bool enabled){
@@ -424,6 +565,25 @@ int Scene::getMaxLightsPerObject() const{
     return settings.maxLightsPerObject;
 }
 
+void Scene::setLitQuality(LitQuality litQuality){
+    // a new quality reloads the lit meshes' variants (RenderSystem::update)
+    settings.litQuality = litQuality;
+}
+
+LitQuality Scene::getLitQuality() const{
+    return settings.litQuality;
+}
+
+void Scene::setPhysicalLightEV100(float ev100){
+    // the lights in physical units resolve again (RenderSystem::resolveLights)
+    if (std::isfinite(ev100))
+        settings.physicalLightEV100 = std::clamp(ev100, -6.0f, 24.0f);
+}
+
+float Scene::getPhysicalLightEV100() const{
+    return settings.physicalLightEV100;
+}
+
 void Scene::setAmbientLight2D(float intensity, Vector3 color){
     settings.ambientLight2DIntensity = intensity;
     settings.ambientLight2DColor = Color::sRGBToLinear(color);
@@ -488,6 +648,22 @@ void Scene::setPhysicsInterpolation(bool interpolation){
 
 bool Scene::isPhysicsInterpolation() const{
     return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->isInterpolation();
+}
+
+void Scene::setPhysics2DSubSteps(int subSteps){
+#ifdef JASPERENGINE_PHYSICS_2D
+    getSystem<PhysicsSystem>()->setSubSteps2D(subSteps);
+#else
+    (void)subSteps;
+#endif
+}
+
+int Scene::getPhysics2DSubSteps() const{
+#ifdef JASPERENGINE_PHYSICS_2D
+    return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->getSubSteps2D();
+#else
+    return SceneSettings().physics2DSubSteps;
+#endif
 }
 
 void Scene::setDefaultMeshShader(const std::string& path){
@@ -568,6 +744,30 @@ const std::string& Scene::getDefaultCustomShader(ShaderType type) const{
     }
 }
 
+const ShaderRef& Scene::getDefaultShaderRef(ShaderType type) const{
+    static const ShaderRef empty;
+    switch (type){
+        case ShaderType::MESH:   return settings.defaultMeshShader;
+        case ShaderType::UI:     return settings.defaultUIShader;
+        case ShaderType::SKYBOX: return settings.defaultSkyShader;
+        case ShaderType::POINTS: return settings.defaultPointsShader;
+        case ShaderType::LINES:  return settings.defaultLinesShader;
+        default: return empty;
+    }
+}
+
+void Scene::setDefaultShaderRef(ShaderType type, const ShaderRef& ref){
+    setDefaultCustomShader(type, ref.path);
+    switch (type){
+        case ShaderType::MESH:   settings.defaultMeshShader = ref;   break;
+        case ShaderType::UI:     settings.defaultUIShader = ref;     break;
+        case ShaderType::SKYBOX: settings.defaultSkyShader = ref;    break;
+        case ShaderType::POINTS: settings.defaultPointsShader = ref; break;
+        case ShaderType::LINES:  settings.defaultLinesShader = ref;  break;
+        default: break;
+    }
+}
+
 const std::vector<PostProcessPass>& Scene::getPostProcessPasses() const{
     return settings.postProcess;
 }
@@ -629,6 +829,25 @@ bool Scene::removePostProcessUniform(unsigned int index, const std::string& name
 
     getSystem<RenderSystem>()->needUpdatePostProcessUniforms();
     return true;
+}
+
+bool Scene::setPostProcessGlobalBinding(unsigned int index, const std::string& member, const std::string& global){
+    if (index >= settings.postProcess.size()){
+        Log::error("Post-process pass %u does not exist, cannot bind '%s'", index, member.c_str());
+        return false;
+    }
+    if (!ShaderGlobals::setBinding(settings.postProcess[index].shaderGlobalBindings, member, global))
+        return false;
+
+    getSystem<RenderSystem>()->needUpdatePostProcessUniforms();
+    return true;
+}
+
+std::string Scene::getPostProcessGlobalBinding(unsigned int index, const std::string& member) const{
+    if (index >= settings.postProcess.size())
+        return "";
+
+    return ShaderGlobals::getBinding(settings.postProcess[index].shaderGlobalBindings, member);
 }
 
 const PostProcessingSettings& Scene::getPostProcessing() const{
@@ -712,31 +931,159 @@ void Scene::load(){
     }
 }
 
+SceneBvh& Scene::getPickBvh(){
+    if (!pickBvh){
+        pickBvh = std::make_unique<SceneBvh>(this);
+    }
+    return *pickBvh;
+}
+
+void Scene::notifyPickStructure(Signature components){
+    if (pickBvh && pickBvh->tracks(components)){
+        pickBvh->markStructureChanged();
+    }
+}
+
+void Scene::notifyPickDirty(Entity entity){
+    if (pickBvh){
+        pickBvh->markDirty(entity);
+    }
+}
+
 void Scene::destroy(){
     for (auto const& pair : systems){
         pair.second->destroy();
     }
 }
 
-void Scene::draw(){
-    for (auto const& pair : systems){
-        pair.second->draw();
-    }
+void Scene::scheduleSubSystem(const std::string& name, SubSystem* system, const SystemDescriptor& descriptor){
+    SystemDescriptor entry = descriptor;
+    entry.name = name;
+
+    entry.phase = SystemPhase::FixedUpdate;
+    scheduler.add(entry, [system](SystemContext& context){ system->fixedUpdate(context.dt); }, system);
+    entry.phase = SystemPhase::Update;
+    scheduler.add(entry, [system](SystemContext& context){ system->update(context.dt); }, system);
+    entry.phase = SystemPhase::Draw;
+    scheduler.add(entry, [system](SystemContext&){ system->draw(); }, system);
 }
 
+ScheduledSystem& Scene::addSystemFunction(SystemDescriptor descriptor, std::function<void(SystemContext&)> function){
+    return scheduler.add(std::move(descriptor), std::move(function));
+}
+
+SystemScheduler& Scene::getScheduler(){
+    return scheduler;
+}
+
+void Scene::destroyHierarchyNow(Entity entity){
+    ObjectManager::destroyImmediate(this, entity);
+}
+
+// Each phase starts with the holes of entities destroyed since closed (ComponentArray): the
+// systems then find a settled array, and nothing destroyed before keeps a hole across frames
+void Scene::draw(){
+    compactComponents();
+    scheduler.runPhase(*this, SystemPhase::Draw, 0.0);
+    endFrame();
+}
 
 void Scene::update(double dt){
-    for (auto const& pair : systems){
-        pair.second->update(dt);
-    }
+    compactComponents();
+    scheduler.runPhase(*this, SystemPhase::Update, dt);
+    scheduler.runPhase(*this, SystemPhase::PostUpdate, dt);
 }
 
 void Scene::fixedUpdate(double dt){
-    for (auto const& pair : systems){
-        pair.second->fixedUpdate(dt);
+    compactComponents();
+    scheduler.runPhase(*this, SystemPhase::FixedUpdate, dt);
+}
+
+void Scene::endFrame(){
+    // what every enabled system's gate is past, else what is older than two frames
+    Tick trimmed = frameEndTicks[0];
+    Tick gate;
+    if (scheduler.oldestGate(gate)){
+        trimmed = gate;
     }
+    if (trimmed > 0){
+        trimRemovedComponents(trimmed);
+    }
+    frameEndTicks[0] = frameEndTicks[1];
+    frameEndTicks[1] = getChangeClock().peek();
 }
 
 void Scene::updateCameraSize(){
-    getSystem<RenderSystem>()->updateCameraSize(getCamera());
+    const Rect view = Engine::getViewRect();
+    updateCanvasScale(view.getWidth(), view.getHeight(), (float)Engine::getCanvasWidth(), (float)Engine::getCanvasHeight(), Screen::getDpi());
+
+    if (isUIScaled()){
+        getSystem<RenderSystem>()->updateCameraSizeForCanvas(getCamera(), canvasScale.uiWidth, canvasScale.uiHeight);
+    }else{
+        getSystem<RenderSystem>()->updateCameraSize(getCamera());
+    }
+}
+
+void Scene::setCanvasScaler(const CanvasScalerSettings& settings){
+    this->settings.canvasScaler = settings;
+    // a scene the Engine runs lays out in it from the next frame (the editor applies its own)
+    if (Engine::isViewLoaded() && Engine::isSceneRunning(this))
+        updateCameraSize();
+}
+
+const CanvasScalerSettings& Scene::getCanvasScaler() const{
+    return settings.canvasScaler;
+}
+
+void Scene::setCanvasScalerUseProjectDefault(bool useProjectDefault){
+    settings.canvasScalerUseProjectDefault = useProjectDefault;
+    if (Engine::isViewLoaded() && Engine::isSceneRunning(this))
+        updateCameraSize();
+}
+
+bool Scene::isCanvasScalerUseProjectDefault() const{
+    return settings.canvasScalerUseProjectDefault;
+}
+
+const CanvasScalerSettings& Scene::getEffectiveCanvasScaler() const{
+    return settings.canvasScalerUseProjectDefault ? Engine::getDefaultCanvasScaler() : settings.canvasScaler;
+}
+
+void Scene::updateCanvasScale(float viewWidth, float viewHeight, float canvasWidth, float canvasHeight, float screenDpi){
+    canvasScale = CanvasScaler::compute(getEffectiveCanvasScaler(), viewWidth, viewHeight, canvasWidth, canvasHeight, screenDpi, canvasScale);
+    // a FollowGameCanvas result before a valid view: nothing is scaled
+    if (getEffectiveCanvasScaler().mode == UIScaleMode::FollowGameCanvas)
+        canvasScale.scaled = false;
+}
+
+const CanvasScalerResult& Scene::getCanvasScale() const{
+    return canvasScale;
+}
+
+bool Scene::isUIScaled() const{
+    if (!canvasScale.scaled)
+        return false;
+    // (EntityRegistry has no const lookup)
+    const CameraComponent* cameraComponent = const_cast<Scene*>(this)->findComponent<CameraComponent>(camera);
+    return cameraComponent && cameraComponent->type == CameraType::CAMERA_UI;
+}
+
+bool Scene::isDocumentScaled() const{
+    return canvasScale.scaled;
+}
+
+Vector2 Scene::canvasToUI(const Vector2& canvasPoint) const{
+    const int canvasWidth = Engine::getCanvasWidth();
+    const int canvasHeight = Engine::getCanvasHeight();
+    if (!isUIScaled() || canvasWidth <= 0 || canvasHeight <= 0)
+        return canvasPoint;
+    return Vector2(canvasPoint.x * canvasScale.uiWidth / (float)canvasWidth, canvasPoint.y * canvasScale.uiHeight / (float)canvasHeight);
+}
+
+Vector2 Scene::uiToCanvas(const Vector2& uiPoint) const{
+    const int canvasWidth = Engine::getCanvasWidth();
+    const int canvasHeight = Engine::getCanvasHeight();
+    if (!isUIScaled() || canvasScale.uiWidth <= 0.0f || canvasScale.uiHeight <= 0.0f)
+        return uiPoint;
+    return Vector2(uiPoint.x * (float)canvasWidth / canvasScale.uiWidth, uiPoint.y * (float)canvasHeight / canvasScale.uiHeight);
 }

@@ -4,7 +4,15 @@
 #ifndef UIDOCUMENTSYSTEM_H
 #define UIDOCUMENTSYSTEM_H
 
+#include "Export.h"
+
+#if !JASPERENGINE_HTMLUI
+// a build without the HTML UI: its scenes' document system has no documents
+#include "UIDocumentSystemNone.h"
+#else
+
 #include "SubSystem.h"
+#include "UIDocumentInput.h"
 #include "math/Rect.h"
 #include "render/Render.h"
 #include "component/UIDocumentComponent.h"
@@ -14,6 +22,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <optional>
 #include <unordered_map>
 #include <functional>
 #include <vector>
@@ -22,6 +31,7 @@ typedef struct lua_State lua_State;
 
 // RmlUi stays out of the engine API (swappable core): forward declarations only
 namespace Rml {
+    class Context;
     class Element;
     class ElementDocument;
 }
@@ -48,20 +58,6 @@ namespace jasperengine{
     struct HtmlUIReloadState;   // p1-editor  (UIDocumentSystemReload.cpp)
     struct HtmlUITextureState;  // p1-rtt     (UIDocumentSystemTexture.cpp)
     struct HtmlUICompatState;   // p2-html    (UIDocumentSystemCompat.cpp)
-
-    // phase of a pointer event handed to texture-mode documents (dispatchWorldPointer)
-    enum class PointerPhase { DOWN, MOVE, UP, CANCEL };
-
-    // What a gamepad gives documents (phase-4 p4-input; Engine::systemGamepad*): its buttons, the four
-    // directions of the left stick and the two triggers, each a key of keydown/keyup events (DOM `code`
-    // "GamepadDPadUp", "GamepadA", ...; RmlKeyMap::gamepadDomCode)
-    enum class GamepadUIKey {
-        DPAD_UP, DPAD_DOWN, DPAD_LEFT, DPAD_RIGHT,
-        LEFT_STICK_UP, LEFT_STICK_DOWN, LEFT_STICK_LEFT, LEFT_STICK_RIGHT,
-        A, B, X, Y, LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_TRIGGER, RIGHT_TRIGGER,
-        VIEW, MENU, GUIDE, LEFT_THUMB, RIGHT_THUMB,
-        COUNT   // none
-    };
 
     enum class HtmlUIMessageLevel { Info, Warning, Error };
 
@@ -101,6 +97,18 @@ namespace jasperengine{
         // (mirrors UISystem::setAnchorReferenceSize)
         void setReferenceSize(int width, int height);
         void clearReferenceSize();
+        // where the editor lays a scaled document out at the UI size: the world size it covers
+        // (0 = from the layout size, getFrameSize)
+        void setFrameSize(float width, float height);
+
+        // the scene of an RmlUi context a document system made (nullptr: none): the elements
+        // that need their scene (<particle-system>) find it this way
+        static Scene* sceneOfContext(const Rml::Context* context);
+        // runtime entities a document made (a <particle-system>'s prefab): the editor does
+        // not list them (nor their children) with what the game made
+        void addRuntimeEntity(Entity entity);
+        void removeRuntimeEntity(Entity entity);
+        bool isRuntimeEntity(Entity entity) const;
 
         bool loadDocumentNow(Entity entity);           // UIDocument::load, getters in init: synchronous, also before the view loads
         bool isDocumentLoaded(Entity entity) const;
@@ -121,11 +129,19 @@ namespace jasperengine{
         void drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY,
                            int msaaSamples = 1);
         const HtmlUIRenderStats& getRenderStats() const;    // last frame, summed over the scene's contexts
+        // the last frame of the context that draws the entity's document (its own in texture mode,
+        // else the screen context; empty without one)
+        HtmlUIRenderStats getRenderStats(Entity entity) const;
         // MSAA samples of every UI target (1/2/4/8, default 4): the exported entry to
         // HtmlUIContext::setPreferredSampleCount for the editor's project setting and the
         // generated game init code (neither can reach the internal HtmlUIContext)
         static void setPreferredSampleCount(int samples);
         static int getPreferredSampleCount();
+        // S16 (D1, R13): the glyph atlas budget in MiB (0: the platform's default), SDF primitives
+        // and transform-aware text; the exported entry for the project's htmlUiGlyphAtlasMiB,
+        // htmlUiSdfPrimitives and htmlUiTransformAwareText. Documents already drawn generate
+        // their backgrounds and text again
+        static void setHtmlUiRenderOptions(int glyphAtlasMiB, bool sdfPrimitives, bool transformAwareText);
 
         // --- p1-input (UIDocumentSystemInput.cpp, §3.6.2); the phase-0 pointer methods above become wrappers ---
         // world = false: the screen documents only (and a pointer a texture-mode document
@@ -135,6 +151,11 @@ namespace jasperengine{
         bool eventOnPointerUp(int pointer, int button, float x, float y, int mods, bool touch, bool world = true);
         bool eventOnPointerMove(int pointer, float x, float y, int mods, bool touch, bool world = true);
         bool eventOnTouchCancel(int pointer);
+        // ui-multitouch D6: a mouse button released outside the canvas. The mouse pointer ends
+        // without a click or drop (pointercancel; every held button: one DOM pointer)
+        bool eventOnMouseCancel(int button);
+        // D6: every finger and the mouse end without a click (pause, focus loss)
+        void cancelAllPointers();
         bool eventOnWheel(float dx, float dy, int mods);
         void eventOnMouseLeave();
         bool eventOnKeyDown(int key, bool repeat, int mods);
@@ -145,6 +166,10 @@ namespace jasperengine{
         bool hasFocusedTextInput() const;
         // a document took this pointer's down (touch: pointer id; mouse: button) and keeps it until the up
         bool hasPointerCapture(int pointer, int button, bool touch) const;
+        // Input.isPointerOverUI (ui-multitouch D15), native pointer ids: -1 / -2 / -3 the mouse,
+        // >= 0 a finger, INT_MIN the mouse or any finger. Over shown document content, or held
+        // by a document since its press.
+        bool isPointerOverUI(int pointerId) const;
         // the CSS cursor of the element under the pointer, ARROW when the pointer is not over content
         CursorType getPointerCursor() const;
         // p4-input: a gamepad key (Engine's routing turns buttons, the left stick and the triggers into
@@ -163,6 +188,17 @@ namespace jasperengine{
         struct Reloaded { Entity entity; bool stylesheetOnly; };
         std::vector<std::string> getDocumentFiles(Entity entity) const;   // document + union(scanner, runtime log)
         void reloadDocument(Entity entity, bool preserveState = true);
+        // S17 (UIDocumentSystemPatch.cpp): preserveState with PATCH patches an .html document in
+        // place (R27-R31), falling back to the rebuild when it cannot; the 2-argument form uses
+        // the system's mode (setReloadMode: the editor preference, PATCH by default)
+        void reloadDocument(Entity entity, bool preserveState, UIReloadMode mode);
+        // this system's mode (tests, tools); the editor preference is the process-wide default
+        void setReloadMode(UIReloadMode mode);
+        UIReloadMode getReloadMode() const;
+        static void setDefaultReloadMode(UIReloadMode mode);
+        static UIReloadMode getDefaultReloadMode();
+        // the last reload's report of the document (empty mode before one)
+        const UIReloadReport& getLastReloadReport(Entity entity) const;
         void reloadStyleSheets(Entity entity);
         void reloadTexture(const std::string& path);               // Rml::RenderManager::ReleaseTexture(path) on every context
         const std::vector<HtmlUIMessage>& getDocumentMessages(Entity entity) const;
@@ -175,6 +211,10 @@ namespace jasperengine{
         // modified less than that long ago is left for a later call, its stamps untouched, so
         // files written back to back (one edit) reload once, not once per file the poll saw
         std::vector<Reloaded> reloadChangedFiles(const std::vector<std::string>& files, double settleSeconds = 0.0);
+        // The editor's hot reload knows these files changed since the documents read them (a
+        // save can keep the time and size of the one before, in the same timestamp tick): the
+        // next reloadChangedFiles naming them reloads the documents reading them
+        void forgetFileStamps(const std::vector<std::string>& files);
         // Tests: called after a document's files were read by a (re)load and before the load
         // records what they were (p5-tooling: a file changed in that window is still seen as
         // changed by the next reloadChangedFiles); nullptr removes it
@@ -236,8 +276,14 @@ namespace jasperengine{
         bool ensureContext();
         // unloads every document, then drops the GPU objects, the RmlUi context and RmlUi
         void destroyContext();
-        // context dimensions: the reference size where set, else the canvas
+        // context dimensions: the reference size where set, else the Canvas Scaler's UI size
+        // (Scene::isDocumentScaled), else the canvas
         void getLayoutSize(int& width, int& height) const;
+        // the world rectangle (0,0)-(w,h) a screen document covers under a UI or 2D camera: the
+        // frame size where set, else the UI size (UI camera) or the game canvas (2D camera) of a
+        // scaled scene, else the layout size
+        void getFrameSize(float& width, float& height) const;
+        static std::unordered_map<const Rml::Context*, Scene*>& contextScenes();
         // load/unload, z-index and visibility of one component's document
         void applyComponent(Entity entity, UIDocumentComponent& document);
         void unloadEntityDocument(Entity entity);
@@ -252,7 +298,21 @@ namespace jasperengine{
         std::unordered_map<Entity, Rml::ElementDocument*> documents;
         bool acquired = false;
         int referenceWidth = 0, referenceHeight = 0;
+        float frameWidth = 0.0f, frameHeight = 0.0f;
+        std::vector<Entity> runtimeEntities;
         bool debuggerVisible = false;   // asked before the context existed
+
+        // safe-area spec 6.4: env(safe-area-inset-*) reads the --jasper-safe-area-inset-* custom
+        // properties set on each document root; what each document got last
+        struct SafeAreaApplied {
+            Rml::ElementDocument* document = nullptr;
+            uint64_t revision = 0;
+            int width = 0, height = 0;
+        };
+        std::unordered_map<Entity, SafeAreaApplied> safeAreaApplied;
+        // sets them on the documents whose values are out of date (a load, a reload, a change of
+        // Screen's safe area or of the layout size)
+        void updateSafeAreaProperties();
 
         // ---- phase 1: per-package state and private helpers (each package adds its own in its block) ----
         // shared_ptr: the deleter is bound where the state is created, so ~UIDocumentSystem
@@ -325,6 +385,7 @@ namespace jasperengine{
         bool isWorldPointerCaptured(int pointer, int button, bool touch) const;   // button < 0: any mouse button
         bool dispatchWorldWheel(float dx, float dy, int mods);   // the hovered texture document
         void textureMouseLeave();
+        void textureCancelAll();   // ui-multitouch D6: pause, focus loss
 
         // --- p2-html ---
         std::shared_ptr<HtmlUICompatState> compatState;
@@ -340,10 +401,28 @@ namespace jasperengine{
         // hook H2: a stylesheet-only change of an .html document: the new compile's sheets swap
         // in place when its RML (and scripts, templates) did not change; false = needs a full reload
         bool compatRestyle(Entity entity);
+        // one <script type="text/lua"> of a loaded .html document (its listeners scoped to it); errors
+        // logged and kept with the document's diagnostics
+        bool compatRunScript(Entity entity, Rml::ElementDocument* document, const htmlui::compat::CompatDocument& compiled, size_t index);
+        // the document scripts run (play)
+        bool compatScriptsRun() const;
         // hook H2: the compat dependencies of a loaded .html document (CSS, imports, Lua src, manifest)
         std::vector<std::string> compatDependencies(Rml::ElementDocument* document) const;
+
+        // --- S17 (UIDocumentSystemPatch.cpp) ---
+        std::optional<UIReloadMode> reloadMode;   // unset: the default (setDefaultReloadMode)
+        std::unordered_map<Entity, UIReloadReport> reloadReports;
+        // the live tree patch; false (report.fallbackReason set) when the document needs the rebuild
+        bool patchDocument(Entity entity, UIReloadReport& report);
+        // the report kept, logged as one Console line and the document's message, onReload queued (patches)
+        void finishReload(Entity entity, UIReloadReport report);
+        // a reload that keeps the document (the live patch): `work` runs inside the runtime file
+        // log; then the document's files, their stamps and the load count, as for a restyle
+        bool reloadInPlace(Entity entity, const std::function<bool()>& work);
     };
 
 }
+
+#endif // JASPERENGINE_HTMLUI
 
 #endif //UIDOCUMENTSYSTEM_H

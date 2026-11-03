@@ -41,6 +41,9 @@ namespace jasperengine::editor{
             // that much client space, a negative result means the menu lives in the
             // non-client area, and zero asks App to render its ImGui fallback.
             static float setMainMenu(const PlatformMenuModel& menu, PlatformMenuCallback callback);
+            // The native menu runs its items' key equivalents itself (macOS NSMenu): the
+            // shortcut dispatcher then leaves a menu item's chord to it, so it fires once
+            static bool nativeMenuHandlesKeyEquivalents();
 
             static ImTextureID getImGuiTexture(TextureRender* texture);
 

@@ -1,0 +1,6 @@
+id: 1
+name: Main Scene
+sceneType: scene_2d
+scene:
+  backgroundColor: [0.09, 0.1, 0.13, 1]
+entities: []

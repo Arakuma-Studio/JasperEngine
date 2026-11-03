@@ -17,8 +17,10 @@
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "math/Ray.h"
+#include "texture/TexturePack.h"
 
-#include <future>
+#include "jobs/JobSystem.h"
+
 #include <memory>
 #include <mutex>
 #include <set>
@@ -28,6 +30,7 @@
 namespace tinygltf {
     struct Accessor;
     struct Image;
+    struct Material;
     class Model;
     class TinyGLTF;
 }
@@ -38,7 +41,7 @@ namespace jasperengine{
 
     private:
         struct AsyncModelLoadResult;
-        typedef std::unordered_map<std::string, std::shared_future<std::shared_ptr<AsyncModelLoadResult>>> async_model_loads_t;
+        typedef std::unordered_map<std::string, jobs::Task<std::shared_ptr<AsyncModelLoadResult>>> async_model_loads_t;
 
         static std::mutex& getAsyncModelMutex();
         static async_model_loads_t& getPendingModelLoads();
@@ -71,8 +74,6 @@ namespace jasperengine{
         std::unordered_map<Entity, std::vector<TerrainFoliageInstances>> terrainFoliage;
 
         static void decodeGLTFImage(tinygltf::Image& image, size_t index, int maxDimension);
-        template<typename Fn>
-        static void parallelForIndexed(size_t count, Fn&& fn);
         static void decodeGLTFImagesParallel(tinygltf::Model& model, int maxDimension);
         static std::shared_ptr<std::array<TextureData,6>> buildGLTFTextureFaces(tinygltf::Model& model, int textureIndex);
 
@@ -102,10 +103,18 @@ namespace jasperengine{
         std::string getAsyncModelLoadKey(const std::string& filename) const;
         static std::shared_ptr<AsyncModelLoadResult> pollOrStartAsyncModelLoad(const Scene* scene, const std::string& filename, bool obj);
         static void cancelAsyncModelLoadByKey(const std::string& key);
+        // A finished load of this scene that nobody took for UNCLAIMED_LOAD_FRAMES updates in a
+        // row (its GameObject names another file now, or found the parse in ModelPool): dropped,
+        // its build closed. A waiting GameObject or editor command takes a result on the frame
+        // it is ready, so only abandoned ones get that old.
+        void collectUnclaimedAsyncModelLoads();
+        static constexpr int UNCLAIMED_LOAD_FRAMES = 60;
+        std::unordered_map<std::string, int> unclaimedLoadFrames;
         bool isAsyncModelLoadPending(const std::string& filename) const;
         static bool isAsyncModelLoadPending(const Scene* scene, const std::string& filename);
         static bool isModelPreloading(const std::string& filename);
-        static std::shared_ptr<AsyncModelLoadResult> loadModelFileOnWorker(const std::string& filename, bool obj, uint64_t buildId);
+        // parses the model file from `bytes`, its main file as the asset reader read it
+        static std::shared_ptr<AsyncModelLoadResult> loadModelFileOnWorker(const std::string& filename, bool obj, uint64_t buildId, std::vector<uint8_t>& bytes);
         template<typename T>
         static bool isValidGLTFIndex(int index, const std::vector<T>& values) {
             return index >= 0 && static_cast<size_t>(index) < values.size();
@@ -113,7 +122,8 @@ namespace jasperengine{
         static void applyDefaultObjMaterial(Submesh& submesh);
         std::vector<std::pair<MeshComponent*, unsigned int>> getSubmeshRuns(Entity entity, const ModelComponent& model) const;
         void addSubmeshAttribute(Submesh& submesh, const std::string& bufferName, AttributeType attribute, unsigned int elements, AttributeDataType dataType, size_t size, size_t offset, bool normalized);
-        bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers);
+        // false as well when the view has no buffer to add; capacityReached: the mesh has no room for it
+        bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers, bool& capacityReached);
         int convertGLTFByteIndicesToShort(const tinygltf::Accessor& indexAccessor, ModelComponent& model);
         int materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, ModelComponent& model);
         int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model);
@@ -122,6 +132,23 @@ namespace jasperengine{
         bool canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason = nullptr) const;
         int convertGLTFColorToVec4(const tinygltf::Accessor& accessor, ModelComponent& model);
         bool loadGLTFTexture(int textureIndex, ModelComponent& model, Texture& texture, const std::string& textureName);
+        // glTF material extensions (MeshSystemGltfPbr.cpp): the KHR_materials_* lobes into
+        // Material::pbr and emissiveStrength, KHR_materials_unlit as the library Unlit shader
+        // (vertexColor: the primitive has COLOR_0). False only when a texture cannot be made.
+        bool loadGLTFMaterialExtensions(const tinygltf::Material& gltfMaterial, ModelComponent& model, Material& material, bool vertexColor);
+        // a lobe's map from its glTF textures: one as it is, two (or one in another channel
+        // than the lobe's layout puts it) packed into the layout on a job
+        struct GltfLobeMap{
+            int first = -1;
+            int second = -1;
+            int firstTexCoord = 0;
+            int secondTexCoord = 0;
+            const TexturePack::Layout* layout = nullptr; // null: a lobe with one texture
+            const char* name = "";
+        };
+        bool loadGLTFLobeMap(ModelComponent& model, const GltfLobeMap& lobeMap, Texture& map, int& texCoord);
+        // one warning per extension a model uses and the engine does not read (an error when required)
+        static void reportGLTFExtensions(const tinygltf::Model& gltf, const std::string& filename);
         std::string getBufferName(int bufferViewIndex, ModelComponent& model);
         Matrix4 getGLTFNodeMatrix(int nodeIndex, ModelComponent& model);
         Matrix4 getGLTFMeshGlobalMatrix(int nodeIndex, ModelComponent& model, std::map<int, int>& nodesParent);
@@ -172,8 +199,17 @@ namespace jasperengine{
         static bool usesTextureRect(const Submesh& submesh);
         // Puts the fields a model load must keep (Submesh::overrideFields) on a loaded submesh
         static void applySubmeshOverride(const Submesh& saved, Submesh& submesh);
+        // The edited lobes over the ones a load made: all of them (one override bit), but a map
+        // that is still the file's keeps the loaded texture, which knows how to make its pixels
+        // (a map packed from two of the file's images, TexturePack)
+        static void restorePbrExtensions(const MaterialPbrExtensions& saved, OutOfLineValue<MaterialPbrExtensions>& loaded);
         // true when a frame of another size needs the sprite rebuilt for its texture scale factor
         static bool changesSpriteInset(const SpriteComponent& sprite, const Rect& oldRect, const Rect& newRect);
+        // The handedness (tangent w) of the flat 2D meshes (sprite, sprite grid, MeshPolygon,
+        // Tilemap: N = +Z, T = +X along u): the bitangent cross(N, T) * w points up the image,
+        // where v shrinks, so normal maps read OpenGL style (green up), as Lit. v shrinks toward
+        // +y exactly when flipY is on (world cameras): +1 then, -1 without flipY (UI cameras)
+        static float flatTangentHandedness(bool flipY);
 
         bool setFoliagePreviewEntity(Entity entity);
         bool hasPendingFoliageUpdates() const;
@@ -208,6 +244,14 @@ namespace jasperengine{
 
         // Canonical form of a model path: the same file spelled in different ways maps to one key.
         static std::string getModelFilenameKey(const std::string& filename);
+        // The key that starts the ids of the textures a model makes, which scenes store: a file
+        // in the assets directory by its path there, never this machine's absolute path
+        static std::string getModelTextureKey(const std::string& filename);
+        // A model texture id ("<model key>|...") as getModelTextureKey keys it now. Scenes saved
+        // before ids were relative carry the model's absolute path: inside assetsRoot it becomes
+        // relative; from a project since moved, the longest tail of it that names a file in
+        // assetsRoot. Any other id is returned unchanged.
+        static std::string migrateModelTextureId(const std::string& id, const std::string& assetsRoot);
         // The .glb an FBX is imported into: in the editor's import cache (System::getImportPath),
         // next to the FBX in an exported game (<name>.fbx.glb)
         static std::string getImportedModelPath(const std::string& filename);
@@ -231,11 +275,51 @@ namespace jasperengine{
         // Drops a preloaded model and its images from the pools, unless a scene uses them
         static void releasePreloadedModel(const std::string& filename);
         // Drops the cached parse and images of a file that changed on disk, even while in use
+        // (and the file's sub-clips in AnimationClipPool), for a reload of the entities using it
+        // that follows (their images are gone from the pools)
         static void invalidateModelFile(const std::string& filename);
+        // Drops only the cached parse and the file's sub-clips: they are built again from the file
+        // (animation clips spec 9.R13) while the entities that use it, not reloaded, keep showing
+        // their images. A later invalidateModelFile still drops those images.
+        static void invalidateModelParse(const std::string& filename);
+
+        // Loads of a pooled tinygltf::Model take turns under this mutex: loadGLTF appends
+        // synthetic buffers to it, so a reader of the shared model (the sub-clip builder) holds it too
+        static std::recursive_mutex& getPooledGLTFMutex();
+        // Parses a glTF/GLB/FBX (its import) into `model` without decoding images and without
+        // ModelPool, on any thread
+        static bool parseGLTFFile(const std::string& filename, tinygltf::Model& model, std::string* err);
+
+        // Animation clips spec 9.R3: a model on or under an entity with an Animation Player loads in
+        // the node-hierarchy layout (one entity per glTF node: the paths sub-clips address)
+        bool isNodeHierarchyForced(Entity entity) const;
+        // The model is forced into the node-hierarchy layout but loaded in another one: reloading
+        // its file (the editor's ModelLoadCmd) rebuilds it
+        bool needsNodeHierarchyReload(Entity entity) const;
+        // A loaded model in the legacy layout (no node hierarchy) that the node-hierarchy layout
+        // would change: not an OBJ, not a merged static model (those animate only at the root).
+        // needsNodeHierarchyReload without the player condition; the editor's one rule for it.
+        static bool isLegacyLayout(const ModelComponent& model);
+        // A loaded model in the legacy layout whose entity stands in for the glTF scene root (a
+        // lone mesh, or a skin without the node hierarchy): true with that node's global matrix.
+        // The node hierarchy gives the root node an entity of its own, so a switch takes it off
+        // the model entity (local * inverse(sceneRoot)) to keep everything where it was.
+        bool getLegacyRootTransform(Entity entity, Matrix4& sceneRoot);
 
         // Caps the resolution glTF images are decoded to on the CALLING thread (0 = full resolution).
         // Used by the thumbnail worker so previews don't decode/upload full-size 4K maps.
         static void setImageDecodeMaxDimension(int dimension);
+        // What a load on the calling thread adds to the ids of a model's embedded images: ""
+        // at full resolution, "|max<N>" for a load capped by setImageDecodeMaxDimension (a
+        // thumbnail's preview). The preview's pixels are another image than the scene's: under
+        // the scene's ids it shared (and freed) the scene's pooled pixels and took over the
+        // generator that makes them again, bound to the preview's model (BF15).
+        static std::string getImageKeySuffix();
+
+        // tests: JASPER_MESH_LOAD_HOLD_FILE=<path> holds the first load (RenderSystem::loadMesh)
+        // of the meshes of a scene that loaded a model in the background, while that file exists:
+        // what else loads the same model meanwhile (a Project window thumbnail) comes first
+        static bool isMeshLoadHeld(const Scene* scene);
 
         void createInstancedMesh(Entity entity);
         void removeInstancedMesh(Entity entity);
@@ -250,7 +334,8 @@ namespace jasperengine{
 
         bool raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint);
         // Height and normal in terrain-local space, the surface the foliage scatter uses
-        void sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal);
+        // (static and read-only: particle collisions call it from the job system's workers)
+        static void sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal);
 
         // Heightmap lookups as the terrain vertex shader does them (so collider, ray casts,
         // height queries and brushes meet the rendered surface): linear filtering with texel
@@ -263,6 +348,9 @@ namespace jasperengine{
         static float sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ);
 
         bool hasPendingAsyncModelLoads() const;
+        // Test hook: each asynchronous parse of a model file waits this long first, so a load is still
+        // running when a test acts (0, the default: none)
+        static void setModelLoadDelayForTest(int milliseconds);
         void cancelAsyncModelLoads();
         static void cancelAllAsyncModelLoads();
         bool isAsyncModelLoadPending(Entity entity, const std::string& filename) const;
@@ -273,6 +361,23 @@ namespace jasperengine{
         bool createOrUpdateMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh);
         bool createOrUpdateTilemap(TilemapComponent& tilemap, MeshComponent& mesh);
         bool createOrUpdateModel(Entity entity, ModelComponent& model, MeshComponent& mesh);
+
+        // Hot reload of a model file (S05 R11). parseModelForReload reads and parses it again
+        // on any thread (throws with the parser's error); on the main thread,
+        // modelHierarchyMatches says whether its nodes (names and parents) are the loaded
+        // ones, and adoptModelReload puts the parse and its textures in the pools. Then every
+        // MeshSystem's reloadModelFile rebuilds the meshes, skins, morphs and animations of
+        // the ModelComponents using the file on their existing GameObjects (transforms, added
+        // components and submesh overrides are kept).
+        struct ModelReload;
+        static std::shared_ptr<ModelReload> parseModelForReload(const std::string& filename);
+        static bool modelHierarchyMatches(const ModelReload& reload, std::string& why);
+        static void adoptModelReload(const std::shared_ptr<ModelReload>& reload);
+        // The components of `filename` load again (true: there was one)
+        bool reloadModelFile(const std::string& filename);
+        // The same, after the GameObjects the load generated are destroyed: a hierarchy that
+        // changed is created again from the file (what was edited on those GameObjects goes)
+        bool rebuildModelFile(const std::string& filename);
 
         void calculateMeshAABB(MeshComponent& mesh);
 

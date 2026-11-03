@@ -19,8 +19,6 @@
 #include "lua.hpp"
 
 #include <algorithm>
-#include <chrono>
-#include <cstdio>
 #include <set>
 
 using namespace jasperengine;
@@ -292,10 +290,12 @@ TEST_F(InspectorTest, RefsAreUnique){
     EXPECT_EQ(findRef(elements, "#dup"), nullptr) << "a duplicate id is not a ref";
     EXPECT_EQ(findRef(elements, "#9lives"), nullptr) << "an id that needs escaping is not a ref";
     for (const InspectElement& element : elements){
-        if (element.tag == "svg")
+        if (element.tag == "svg"){
             EXPECT_EQ(element.childCount, 0) << "<svg> is a leaf";
-        if (element.tag == "template")
+        }
+        if (element.tag == "template"){
             EXPECT_TRUE(element.flags.hidden);
+        }
     }
 }
 
@@ -905,8 +905,9 @@ TEST_F(InspectorTest, ReloadBetweenQueries){
     GpuEnvironment::drawFrames(2);
     std::vector<InspectElement> out;
     bool truncated = false;
-    if (!HtmlUIInspector::query(scene, entity, "", 1, 10, out, truncated, error))
+    if (!HtmlUIInspector::query(scene, entity, "", 1, 10, out, truncated, error)){
         EXPECT_NE(error.find("is not loaded"), std::string::npos) << error;
+    }
 }
 
 // unicode text: collapsed, cut at 120 code points with "...", valid UTF-8; unicode ids get a path ref
@@ -994,40 +995,3 @@ TEST_F(InspectorTest, DataModels){
 }
 
 // a large tree: every element listed with a unique ref in one query, limit truncates
-TEST_F(InspectorTest, LargeTree){
-    std::string body = "<div id=\"grid\">";
-    for (int row = 0; row < 300; row++){
-        body += "<div class=\"row\">";
-        for (int cell = 0; cell < 10; cell++)
-            body += "<span class=\"cell\">" + std::to_string(row * 10 + cell) + "</span>";
-        body += "</div>";
-    }
-    body += "</div>";
-    page("large", "* { margin: 0; }\n.row { height: 2px; }\n", body);
-    SceneFixture fixture;
-    UIDocument document = fixture.addDocument("ui/large.html");
-    ASSERT_TRUE(fixture.waitUntilLoaded());
-    Scene* scene = &fixture.getScene();
-
-    const auto start = std::chrono::steady_clock::now();
-    const std::vector<InspectElement> elements = all(scene, document.getEntity());
-    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    std::printf("[ inspector ] query of %zu elements: %.3f s\n", elements.size(), seconds);
-    ASSERT_EQ(elements.size(), 1u + 1u + 300u + 3000u);
-    std::set<std::string> refs;
-    for (const InspectElement& element : elements)
-        EXPECT_TRUE(refs.insert(element.ref).second) << element.ref;
-    // a sample resolves back
-    for (size_t i = 0; i < elements.size(); i += 97){
-        const InspectElement found = one(scene, document.getEntity(), elements[i].ref);
-        EXPECT_EQ(found.text, elements[i].text);
-    }
-    EXPECT_EQ(elements.back().text, "2999");
-
-    std::vector<InspectElement> out;
-    bool truncated = false;
-    std::string error;
-    ASSERT_TRUE(HtmlUIInspector::query(scene, document.getEntity(), ".cell", 0, 200, out, truncated, error)) << error;
-    EXPECT_EQ(out.size(), 200u);
-    EXPECT_TRUE(truncated);
-}

@@ -2,8 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // W4: Lua/C++ scripts, compile check, code editor sync
+#include "camera/ShakePreset.h"
+#include "media/VideoFormats.h"
 #include "McpTools.h"
+#include "DocumentFile.h"
+#include "jobs/JobSystem.h"
 #include "W4Shared.h"
+#include "PlayViewCommon.h"
 
 #include "mcp/McpAutoSync.h"
 #include "mcp/McpCall.h"
@@ -13,6 +18,7 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
+#include "util/SafeWrite.h"
 
 #include "App.h"
 #include "AppSettings.h"
@@ -21,8 +27,11 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
+#include "asset/AssetTypes.h"
+#include "util/ExternalCodeEditor.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/CommandNames.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -37,15 +46,21 @@
 #include "texture/Material.h"
 #include "texture/Texture.h"
 #include "util/FileUtils.h"
+#include "io/watch/FileWatchService.h"
 #include "util/ProjectChecks.h"
+#include "vat/VatBakeSession.h"
+#include "animation/VertexAnimation.h"
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
+#include "reload/HotReloadService.h"
+#include "reload/handlers/ReloadHandlers.h"
 #include "window/dialog/ScriptCreateDialog.h"
 
 #include "lua.hpp"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <atomic>
@@ -73,7 +88,12 @@ namespace w4 {
 
 // A failed write keeps the file as it was
 bool writeFile(const fs::path& path, const std::string& content) {
-    return FileUtils::writeFileReplacing(path, content);
+    // agent writes are user documents: atomic, synced, never over a read-only file
+    const io::WriteResult written = DocumentFiles::write(path, content);
+    if (!written.ok()) {
+        Out::error(DocumentFiles::saveFailureMessage(path, written));
+    }
+    return written.ok();
 }
 
 std::string projectRelative(Project* project, const fs::path& absolute) {
@@ -94,8 +114,12 @@ std::string extensionOf(const fs::path& path) {
 std::string assetType(const fs::path& path) {
     const std::string p = path.string();
     if (Util::isImageFile(p)) return "texture";
+    if (Util::isColorLutFile(p)) return "color_lut";
+    if (Util::isParticleEffectFile(p)) return "particle_effect";
     if (Util::isModelFile(p)) return "model";
     if (Util::isAudioFile(p)) return "audio";
+    // .webm, .mkv, .mp4, .m4v, .mov (the probe decides what plays where)
+    if (jasperengine::VideoFormats::isPlayableExtension(p)) return "video";
     if (Util::isFontFile(p)) return "font";
     if (Util::isHtmlFile(p)) return "html";
     if (Util::isCssFile(p)) return "css";
@@ -104,6 +128,12 @@ std::string assetType(const fs::path& path) {
     if (Util::isPrefabFile(p)) return "prefab";
     if (Util::isMaterialFile(p)) return "material";
     if (Util::isShaderFile(p)) return "shader";
+    // clips (.anim) and pose animations (.poseanim), spec 9.R47
+    if (Util::isAnimationClipFile(p) || Util::isPoseAnimationFile(p) || Util::isAnimatorAssetFile(p)) return "animation";
+    // Vertex Animations (.vat; the generated .vat.glb is a model)
+    if (Util::isVertexAnimationFile(p)) return "vertex_animation";
+    // Shake Presets (.shake, camera shake spec 6)
+    if (Util::isShakePresetFile(p)) return "shake";
     return "other";
 }
 
@@ -112,136 +142,33 @@ bool isTextFile(const fs::path& path) {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
         ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
-        ".html", ".htm", ".css", ".rml", ".rcss"
+        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake"
     };
     if (path.filename() == "CMakeLists.txt" || path.filename() == "AGENTS.md") return true;
     return text.count(extensionOf(path)) > 0;
 }
 
 bool isEditorOwnedFile(Project* project, const fs::path& absolute, std::string& why) {
-    const std::string rel = projectRelative(project, absolute);
-    const std::string ext = extensionOf(absolute);
-    if (rel == "project.yaml") {
-        why = "project.yaml is written by the editor (it would overwrite your edit); use the project settings tools.";
+    // hidden folders, project.yaml (any folder), CMakeLists.txt: as named and where it resolves,
+    // names compared as the file system may (letter case, Windows aliases)
+    if (const std::string place = McpRefs::protectedPlace(project, absolute); !place.empty()) {
+        why = projectRelative(project, absolute) + ": " + place + ".";
         return true;
     }
-    if (rel == "CMakeLists.txt") {
-        why = "CMakeLists.txt is regenerated on every build; put custom build settings in ProjectBuild.cmake.";
-        return true;
-    }
-    if (!rel.empty() && rel[0] == '.') {
-        why = "Files under hidden directories (.jasperengine is generated by the editor) can't be written.";
-        return true;
-    }
-    if (ext == ".scene" || ext == ".prefab") {
-        why = ext + " files are written by the editor from its in-memory state: edit them with the scene, entity and prefab tools.";
-        return true;
+    // scenes and prefabs, also through a link or under an alias ("a.SCENE.")
+    for (const fs::path& name : {absolute, safewrite::resolvedPath(absolute)}) {
+        if (name.empty()) continue;
+        const std::string ext = extensionOf(fs::path(safewrite::comparableName(name)));
+        if (ext == ".scene" || ext == ".prefab") {
+            why = ext + " files are written by the editor from its in-memory state: edit them with the scene, entity and prefab tools.";
+            return true;
+        }
     }
     return false;
 }
 
-// ------------------------------------------------------------------ WriteFilesCmd
-
-WriteFilesCmd::WriteFilesCmd(std::vector<Item> items, std::function<void(const std::vector<fs::path>&)> afterChange)
-    : items(std::move(items))
-    , afterChange(std::move(afterChange)) {
-}
-
-std::vector<fs::path> WriteFilesCmd::paths() const {
-    std::vector<fs::path> out;
-    for (const Item& item : items) out.push_back(item.path);
-    return out;
-}
-
-void WriteFilesCmd::fail(const std::string& message) {
-    if (failureSink) *failureSink = message;
-}
-
-bool WriteFilesCmd::restore(size_t i) {
-    std::error_code ec;
-    if (previous[i].existed) return writeFile(items[i].path, previous[i].content);
-    // a file it created (or began to): gone again; never a directory that was there
-    if (fs::is_regular_file(items[i].path, ec) || fs::is_symlink(items[i].path, ec)) fs::remove(items[i].path, ec);
-    return !fs::exists(fs::symlink_status(items[i].path, ec));
-}
-
-void WriteFilesCmd::removeCreatedDirs() {
-    std::vector<fs::path> dirs = createdDirs;
-    std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) { return a.native().size() > b.native().size(); });
-    for (const fs::path& dir : dirs) {
-        std::error_code ec;
-        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
-    }
-    createdDirs.clear();
-}
-
-bool WriteFilesCmd::execute() {
-    if (!captured) {
-        previous.clear();
-        for (const Item& item : items) {
-            Previous prev;
-            std::error_code ec;
-            prev.existed = fs::is_regular_file(item.path, ec);
-            if (prev.existed && !ProjectChecks::readFile(item.path, prev.content)) {
-                fail("can't read " + FileUtils::pathToGenericUtf8(item.path) + " (its content is kept for undo); nothing was written");
-                return false;
-            }
-            previous.push_back(std::move(prev));
-        }
-        captured = true;
-    }
-    createdDirs.clear();
-    // on a failure at item `failed`: items [0, touched) back to their previous state, the
-    // directories created removed
-    auto rollback = [&](size_t touched, const std::string& why) {
-        std::string unrestored;
-        for (size_t j = touched; j-- > 0;) {
-            if (!restore(j)) unrestored += (unrestored.empty() ? "" : ", ") + FileUtils::pathToGenericUtf8(items[j].path);
-        }
-        removeCreatedDirs();
-        fail(why + (unrestored.empty() ? "; nothing was changed (the files written before it were put back)"
-                                       : "; and " + unrestored + " could not be put back"));
-        return false;
-    };
-    for (size_t i = 0; i < items.size(); i++) {
-        const Item& item = items[i];
-        std::error_code ec;
-        const fs::path parent = item.path.parent_path();
-        if (!parent.empty() && !fs::exists(parent, ec)) {
-            // every directory created, for undo (and a rollback)
-            std::vector<fs::path> missing;
-            for (fs::path dir = parent; !dir.empty() && !fs::exists(dir, ec); dir = dir.parent_path()) {
-                missing.push_back(dir);
-                if (dir.parent_path() == dir) break;
-            }
-            fs::create_directories(parent, ec);
-            for (const fs::path& dir : missing) {
-                std::error_code exists;
-                if (fs::is_directory(dir, exists)) createdDirs.push_back(dir);
-            }
-            if (ec) return rollback(i, "can't create the directory " + FileUtils::pathToGenericUtf8(parent) + " for " +
-                                       FileUtils::pathToGenericUtf8(item.path) + ": " + ec.message());
-        }
-        errno = 0;
-        if (!writeFile(item.path, item.content)) {
-            const int code = errno;
-            std::string reason = code ? std::strerror(code) : std::string("write failed");
-            if (fs::is_directory(item.path, ec)) reason = "it is a directory";
-            // the file itself may be half written: restored too
-            return rollback(i + 1, "can't write " + FileUtils::pathToGenericUtf8(item.path) + ": " + reason);
-        }
-    }
-    if (afterChange) afterChange(paths());
-    return true;
-}
-
-void WriteFilesCmd::undo() {
-    for (size_t i = 0; i < items.size() && i < previous.size(); i++) restore(i);
-    removeCreatedDirs();
-    if (afterChange) afterChange(paths());
-}
-
-bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error) {
+bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error,
+                        std::vector<fs::path> alsoSync) {
     for (const WriteFilesCmd::Item& item : items) {
         std::error_code ec;
         if (fs::is_directory(item.path, ec)) {
@@ -250,8 +177,10 @@ bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items,
         }
     }
     McpContext* context = &ctx;
-    auto* cmd = new WriteFilesCmd(std::move(items), [context](const std::vector<fs::path>& changed) {
-        syncFiles(*context, changed, false);
+    auto* cmd = new WriteFilesCmd(std::move(items), [context, alsoSync](const std::vector<fs::path>& changed) {
+        std::vector<fs::path> files = changed;
+        files.insert(files.end(), alsoSync.begin(), alsoSync.end());
+        syncFiles(*context, files, false);
     });
     cmd->setNoMerge();
     auto failure = std::make_shared<std::string>();
@@ -278,6 +207,7 @@ std::mutex snapshotMutex;
 fs::path snapshotProject;
 std::map<std::string, FileStamp> snapshot;   // project-relative path -> stamp
 bool snapshotValid = false;
+uint64_t editorWritesCursor = 0;             // the file watcher's journal, read up to here
 
 std::map<std::string, FileStamp> scanProject(Project* project) {
     std::map<std::string, FileStamp> files;
@@ -335,119 +265,57 @@ void updateSnapshotEntries(Project* project, const std::vector<fs::path>& paths,
     }
 }
 
-// Where an entry's file lives (absolute): the Lua file, or the C++ header (the properties)
-fs::path entryPropertyFile(Project* project, const ScriptEntry& entry) {
-    if (entry.type == ScriptType::LUA) {
-        return entry.path.empty() ? fs::path() : project->resolveLuaPath(entry.path).lexically_normal();
+// The editor's own writes since the last look (announced with ScopedExpectedWrite, S05 R10: the
+// watcher's journal has them with origin Editor; an inferred texture import setting written
+// into a meta after the project opened, say): the snapshot takes their stamps, so a full sync
+// does not list them as changed. Only while the file still has what the editor wrote (an edit
+// made after it stays a change), and only the files scanProject looks at.
+void absorbEditorWrites(Project* project) {
+    FileWatchService& watcher = FileWatchService::get();
+    if (!watcher.isAttached()) return;
+    uint64_t cursor = 0;
+    {
+        std::lock_guard<std::mutex> lock(snapshotMutex);
+        if (!snapshotValid || snapshotProject != project->getProjectPath()) return;
+        cursor = editorWritesCursor;
     }
-    if (entry.headerPath.empty()) return {};
-    fs::path header = entry.headerPath;
-    if (header.is_relative()) header = project->getProjectPath() / header;
-    return header.lexically_normal();
-}
-
-fs::path entrySourceFile(Project* project, const ScriptEntry& entry) {
-    if (entry.type == ScriptType::LUA) return entryPropertyFile(project, entry);
-    if (entry.path.empty()) return {};
-    fs::path source = entry.path;
-    if (source.is_relative()) source = project->getProjectPath() / source;
-    return source.lexically_normal();
-}
-
-int reloadTextures(Project* project, const std::set<std::string>& images) {
-    if (images.empty()) return 0;
-    int count = 0;
-    auto matches = [&](const Texture& texture) {
-        const std::string path = texture.getPath(0);
-        if (path.empty()) return false;
-        return images.count(McpValues::assetPathToJson(project, path)) > 0;
+    const std::vector<FileChange> journal = watcher.journalSince(cursor);
+    std::lock_guard<std::mutex> lock(snapshotMutex);
+    editorWritesCursor = cursor;
+    if (!snapshotValid || snapshotProject != project->getProjectPath()) return;
+    // the project-relative path of a file scanProject lists, else empty
+    auto scanned = [&](const fs::path& path) {
+        const std::string rel = projectRelative(project, path);
+        const fs::path relative = FileUtils::pathFromUtf8(rel);
+        const std::string name = relative.filename().string();
+        if (rel.empty() || relative.is_absolute() || *relative.begin() == ".." || ProjectChecks::isInSkippedDir(relative) ||
+            name.empty() || name[0] == '.') {
+            return std::string();
+        }
+        return rel;
     };
-    auto reload = [&](Texture& texture) {
-        texture.invalidateRender();
-        TextureDataPool::remove(texture.getId());
-        texture.destroy();
-        count++;
-    };
-    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
-        if (!sceneProject->scene) continue;
-        bool touched = false;
-        for (Entity entity : sceneProject->entities) {
-            for (ComponentType component : Catalog::findComponents(sceneProject->scene, entity)) {
-                for (auto& [name, property] : Catalog::findEntityProperties(sceneProject->scene, entity, component)) {
-                    if (!property.ref) continue;
-                    if (property.type == PropertyType::Texture) {
-                        Texture* texture = static_cast<Texture*>(property.ref);
-                        if (matches(*texture)) {
-                            reload(*texture);
-                            touched = true;
-                        }
-                    } else if (property.type == PropertyType::Material) {
-                        Material* material = static_cast<Material*>(property.ref);
-                        for (Texture* texture : {&material->baseColorTexture, &material->emissiveTexture,
-                                                 &material->metallicRoughnessTexture, &material->occlusionTexture,
-                                                 &material->normalTexture}) {
-                            if (matches(*texture)) {
-                                reload(*texture);
-                                touched = true;
-                            }
-                        }
-                    } else if (property.type == PropertyType::Custom && name.size() >= 14 &&
-                               name.compare(name.size() - 14, 14, "shaderTextures") == 0) {
-                        // shader library textures, of a submesh material or a component; which
-                        // textures it binds is resolved when it loads
-                        bool reloaded = false;
-                        for (auto& shaderTexture : *static_cast<std::vector<std::pair<std::string, Texture>>*>(property.ref)) {
-                            if (matches(shaderTexture.second)) {
-                                reload(shaderTexture.second);
-                                reloaded = true;
-                            }
-                        }
-                        if (reloaded) {
-                            Catalog::updateEntity(sceneProject->scene, entity, property.updateFlags);
-                            touched = true;
-                        }
-                    }
-                }
-            }
+    for (const FileChange& change : journal) {
+        if (change.origin != ChangeOrigin::Editor || change.directory || change.kind == FileChangeKind::Rescan) continue;
+        watch::PathStat now;
+        const bool present = watch::statPath(change.path, now, false);
+        if (change.kind == FileChangeKind::Moved) {
+            const std::string from = scanned(change.oldPath);
+            watch::PathStat old;
+            if (!from.empty() && !watch::statPath(change.oldPath, old, false)) snapshot.erase(from);
         }
-        // the scene's post-processing images (phase 4): the user passes' textures and the LUT
-        // strip, which the renderer caches by path
-        bool postImages = false;
-        std::vector<PostProcessPass> passes = sceneProject->scene->getPostProcessPasses();
-        for (PostProcessPass& pass : passes) {
-            for (auto& entry : pass.textures) {
-                if (matches(entry.second)) {
-                    // the GPU texture is held by the chain's copies, not by the scene's: the
-                    // pool entry is marked stale for them to rebuild it from the new pixels
-                    TexturePool::invalidate(entry.second.getId());
-                    reload(entry.second);
-                    postImages = true;
-                }
-            }
+        const std::string rel = scanned(change.path);
+        if (rel.empty()) continue;
+        if (change.kind == FileChangeKind::Removed) {
+            if (!present) snapshot.erase(rel);
+            continue;
         }
-        // the scene keeps the released textures (no pixels held), so the chain's reload below
-        // reads the file again; same paths, so this is no edit (and no undo step)
-        if (postImages) sceneProject->scene->setPostProcessPasses(passes);
-        const std::string lut = sceneProject->scene->getPostProcessing().lutTexture;
-        if (!lut.empty() && images.count(McpValues::assetPathToJson(project, lut)) > 0) {
-            count++;
-            postImages = true;
-        }
-        if (postImages) {
-            if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>())
-                render->invalidatePostProcessTextures();
-            touched = true;
-        }
-
-        if (touched) sceneProject->needUpdateRender = true;
+        if (!present || now.directory || now.size != change.size || now.mtimeNs != change.mtimeNs) continue;
+        std::error_code ec;
+        FileStamp stamp;
+        stamp.time = fs::last_write_time(change.path, ec);
+        stamp.size = fs::file_size(change.path, ec);
+        if (!ec) snapshot[rel] = stamp;
     }
-    return count;
-}
-
-std::vector<std::string> propertyNames(const ScriptEntry& entry) {
-    std::vector<std::string> names;
-    for (const ScriptProperty& prop : entry.properties) names.push_back(prop.name);
-    return names;
 }
 
 } // namespace
@@ -465,138 +333,21 @@ void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlre
     snapshot = std::move(now);
     snapshotProject = project->getProjectPath();
     snapshotValid = true;
+    editorWritesCursor = FileWatchService::get().journalHead();
 }
 
 bool isHtmlUiFile(const std::string& path) {
-    if (ProjectChecks::isUiFile(path) || Util::isImageFile(path) || Util::isFontFile(path)) return true;
-    const std::string ext = extensionOf(fs::u8path(path));
-    // .frag and .glsl: a project UI effect (@effect src) and its includes, which the documents
-    // declaring it read (phase 5)
-    return ext == ".json" || ext == ".lottie" || ext == ".frag" || ext == ".glsl";
+    return reload::isHtmlUiFile(path);
 }
 
 Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
-    Json reloadedOut = Json::array();
-    Json problems = Json::array();
-    int current = 0;
-    Project* project = ctx.project();
-    if (!project || project->getProjectPath().empty()) {
-        return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
-    }
-    const fs::path projectRoot = project->getProjectPath().lexically_normal();
-    const fs::path assets = project->getAssetsPath().lexically_normal();
-
-    // asset-relative, as UIDocumentSystem names files
-    std::vector<std::string> assetPaths;
-    std::set<std::string> changedAssets;
-    for (const fs::path& path : changed) {
-        const fs::path rel = path.lexically_normal().lexically_relative(assets);
-        if (rel.empty() || rel == "." || *rel.begin() == ".." || rel.is_absolute()) continue;
-        const std::string assetPath = jasperengine::normalizeHtmlUIPath(rel.generic_u8string());
-        if (!assetPath.empty() && changedAssets.insert(assetPath).second) assetPaths.push_back(assetPath);
-    }
-    if (assetPaths.empty()) return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
-
-    std::set<std::string> problemKeys;
-    auto addProblem = [&](const ProjectChecks::Finding& finding) {
-        const std::string key = finding.path + "\n" + std::to_string(finding.line) + "\n" + std::to_string(finding.col) + "\n" +
-                                finding.severity + "\n" + finding.code + "\n" + finding.message;
-        if (!problemKeys.insert(key).second) return;
-        problems.push_back({{"path", finding.path}, {"line", finding.line}, {"col", finding.col}, {"severity", finding.severity},
-                            {"code", finding.code}, {"message", finding.message}, {"suggestion", finding.suggestion}});
-    };
-    auto shown = [&](const std::string& assetPath) {
-        return projectRelative(project, (assets / fs::u8path(assetPath)).lexically_normal());
-    };
-
-    std::set<std::string> covered;   // changed files a live document reads
-    for (SceneProject* sceneProject : project->getHtmlUIScenes()) {
-        Scene* scene = sceneProject->scene;
-        if (!scene || !scene->isComponentRegistered<UIDocumentComponent>()) continue;
-        auto components = scene->getComponentArray<UIDocumentComponent>();
-        if (components->size() == 0) continue;
-        UIDocumentSystem* system = scene->getSystem<UIDocumentSystem>().get();
-        if (!system) continue;
-
-        // the documents reading a changed file, found before the reload changes their files
-        struct Document {
-            Entity entity;
-            std::string filename;
-        };
-        std::vector<Document> documents;
-        for (size_t i = 0; i < components->size(); i++) {
-            const UIDocumentComponent& component = components->getComponentFromIndex(i);
-            if (component.filename.empty()) continue;
-            const Entity entity = components->getEntity(i);
-            Document document{entity, jasperengine::normalizeHtmlUIPath(component.filename)};
-            bool reads = false;
-            std::vector<std::string> files = system->getDocumentFiles(entity);
-            files.push_back(document.filename);
-            for (const std::string& file : files) {
-                const std::string normal = jasperengine::normalizeHtmlUIPath(file);
-                if (changedAssets.count(normal)) {
-                    covered.insert(normal);
-                    reads = true;
-                }
-            }
-            if (reads) documents.push_back(document);
-        }
-        if (documents.empty()) continue;
-
-        const std::vector<UIDocumentSystem::Reloaded> reloaded = system->reloadChangedFiles(assetPaths);
-        if (!reloaded.empty()) sceneProject->needUpdateRender = true;
-        for (const UIDocumentSystem::Reloaded& entry : reloaded) {
-            const UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entry.entity);
-            const std::string filename = component ? jasperengine::normalizeHtmlUIPath(component->filename) : std::string();
-            reloadedOut.push_back({{"scene", sceneProject->id}, {"entity", McpRefs::entityJson(sceneProject, entry.entity)},
-                                   {"html", shown(filename)}, {"stylesheet_only", entry.stylesheetOnly}});
-            Out::info("[HTML UI] %s %s in scene '%s'", entry.stylesheetOnly ? "Restyled" : "Reloaded", filename.c_str(),
-                      sceneProject->name.c_str());
-        }
-        for (const Document& document : documents) {
-            const bool wasReloaded = std::any_of(reloaded.begin(), reloaded.end(),
-                                                 [&](const UIDocumentSystem::Reloaded& entry) { return entry.entity == document.entity; });
-            // the editor's poller saw the change first: reloaded already, nothing to do but report
-            if (!wasReloaded) current++;
-            for (const jasperengine::htmlui::compat::Diagnostic& diagnostic : system->getDiagnostics(document.entity)) {
-                if (diagnostic.severity == jasperengine::htmlui::compat::Severity::Info) continue;
-                if (!changedAssets.count(jasperengine::normalizeHtmlUIPath(diagnostic.file))) continue;
-                addProblem(ProjectChecks::uiFinding(projectRoot, assets, diagnostic));
-            }
-            std::error_code ec;
-            if (changedAssets.count(document.filename) && !fs::is_regular_file(assets / fs::u8path(document.filename), ec)) {
-                ProjectChecks::Finding missing;
-                missing.tool = "ui";
-                missing.path = shown(document.filename);
-                missing.severity = "error";
-                missing.code = jasperengine::htmlui::compat::codes::FileNotFound.id();
-                missing.message = "the document file is missing: '" + scene->getEntityName(document.entity) + "' shows nothing";
-                missing.suggestion = "restore the file or set the UI Document's filename to an existing .html";
-                addProblem(missing);
-            }
-        }
-    }
-
-    // changed .html/.htm/.css no live document reads: checked on their own
-    std::vector<fs::path> unused;
-    for (const std::string& assetPath : assetPaths) {
-        std::error_code ec;
-        const fs::path file = (assets / fs::u8path(assetPath)).lexically_normal();
-        if (!covered.count(assetPath) && ProjectChecks::isUiFile(assetPath) && fs::is_regular_file(file, ec)) unused.push_back(file);
-    }
-    if (!unused.empty()) {
-        std::set<std::string> changedShown;
-        for (const std::string& assetPath : assetPaths) changedShown.insert(shown(assetPath));
-        for (const ProjectChecks::Finding& finding : ProjectChecks::checkUiFiles(projectRoot, unused).findings) {
-            if (changedShown.count(finding.path)) addProblem(finding);
-        }
-    }
-    return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
+    return reload::syncHtmlUi(ctx.project(), changed);
 }
 
-Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool full) {
+// SYNC4: upstream (camera-shake) reports an invalid .shake as a sync problem; on our S05 funnel that
+// belongs in editor/reload (classification + reload::addAnimationFileProblems), not here yet.
+Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool full, const SyncOptions& sync) {
     Project* project = ctx.project();
-    Json problems = Json::array();
     Json notes = Json::array();
     Json added = Json::array(), modified = Json::array(), removed = Json::array();
 
@@ -608,6 +359,7 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
 
     // What changed on disk since the last sync (full syncs scan the project)
     if (full) {
+        absorbEditorWrites(project);
         std::map<std::string, FileStamp> now = scanProject(project);
         std::lock_guard<std::mutex> lock(snapshotMutex);
         if (snapshotValid && snapshotProject == project->getProjectPath()) {
@@ -637,170 +389,67 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     } else {
         updateSnapshotEntries(project, changedIn, &added, &modified, &removed);
     }
+    const bool firstFull = full && !notes.empty();
+    if (firstFull) project->invalidateCustomShaders();
 
-    bool anyShader = false, anyMaterial = false;
-    std::set<std::string> images;
-    std::vector<std::string> changedRel;
-    for (const fs::path& path : changed) {
-        const std::string rel = projectRelative(project, path);
-        changedRel.push_back(rel);
-        if (Util::isShaderFile(rel)) anyShader = true;
-        if (Util::isMaterialFile(rel)) anyMaterial = true;
-        if (Util::isImageFile(rel)) images.insert(rel);
+    // the one reload funnel (S05 D3): the watcher, Ctrl+R and McpAutoSync come here too
+    ApplyOptions options;
+    options.full = firstFull;
+    options.fromMcp = true;
+    options.force = sync.force;
+    options.rebuildModels = sync.rebuildModels;
+    // a tool's own writes reload what reads them, quietly
+    options.quiet = !sync.external;
+    ChangeSet set = ChangeSet::fromPaths(std::vector<fs::path>(changed.begin(), changed.end()));
+    for (FileChange& change : set.changes) {
+        auto it = sync.sequences.find(change.path);
+        if (it != sync.sequences.end()) change.sequence = it->second;
     }
-    bool firstFull = full && !notes.empty();
+    const ApplyResult applied = HotReloadService::get().apply(set, options);
+    // the schema changes the watcher found when it reloaded an edited script before this sync
+    // (a change it reloaded already is not reloaded again: its report comes from the watcher)
+    Json scriptProperties = applied.scriptProperties;
+    for (const Json& item : HotReloadService::get().takeLateScriptProperties()) scriptProperties.push_back(item);
 
-    // Code editor buffers
-    Json codeEditor = {{"reloaded", Json::array()}, {"conflicts", Json::array()}};
-    if (CodeEditor* editor = ctx.codeEditor()) {
-        std::vector<std::string> reloaded, conflicts;
-        editor->syncWithDisk(reloaded, conflicts);
-        codeEditor["reloaded"] = reloaded;
-        codeEditor["conflicts"] = conflicts;
-        for (const std::string& path : conflicts) {
-            problems.push_back({{"path", path}, {"message",
-                "Changed on disk while the code editor has unsaved edits of it: the editor shows a Files Changed prompt. "
-                "Resolve with code_editor (action reload = take the disk version, save = keep the buffer)."}});
-        }
+    Json allNotes = notes;
+    for (const Json& note : applied.notes) allNotes.push_back(note);
+    // a changed .vat that doesn't match its .vat.glb does not load (vat-layout-mismatch,
+    // vat-mesh-mismatch): reported whether this call or the watcher reloaded it (upstream's
+    // vatFileChanged; the animation handler reports it with the reload it runs)
+    Json problems = applied.problems;
+    // and the sprite normal maps made from a changed image (their recipe's source SHA-1 no longer
+    // matches: the editor's watcher marks them stale, its badge and check --normals say so)
+    if (Project* project = ctx.project()) {
+        for (const fs::path& path : changed) spriteNormalsFileChanged(project, path, problems);
     }
-
-    // Script properties of every GameObject using a changed (or, on a full sync, any) script
-    Json scriptChanges = Json::array();
-    std::set<fs::path> checkedLua;
-    if (project->isAnyScenePlaying()) {
-        notes.push_back("A scene is playing: script properties are re-parsed after Play stops.");
-    } else {
-        for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
-            if (!sceneProject->scene) continue;
-            for (Entity entity : sceneProject->entities) {
-                ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
-                if (!component || component->scripts.empty()) continue;
-
-                bool relevant = full;
-                for (const ScriptEntry& entry : component->scripts) {
-                    if (changed.count(entryPropertyFile(project, entry)) || changed.count(entrySourceFile(project, entry))) relevant = true;
-                }
-                if (!relevant) continue;
-
-                std::vector<ScriptEntry> scripts = component->scripts;
-                for (const ScriptEntry& entry : scripts) {
-                    const fs::path file = entryPropertyFile(project, entry);
-                    std::error_code ec;
-                    if (file.empty()) continue;
-                    if (!fs::exists(file, ec)) {
-                        problems.push_back({{"path", projectRelative(project, file)},
-                                            {"entity", McpRefs::entityJson(sceneProject, entity)},
-                                            {"message", "Script file of " + entry.className + " is missing."}});
-                        continue;
-                    }
-                    if (entry.type == ScriptType::LUA && checkedLua.insert(file).second) {
-                        std::string code;
-                        if (ProjectChecks::readFile(file, code)) {
-                            ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, projectRelative(project, file));
-                            if (!syntax.ok) {
-                                problems.push_back({{"path", projectRelative(project, file)}, {"line", syntax.line},
-                                                    {"message", "Lua syntax error: " + syntax.message +
-                                                                " (the Inspector keeps the last properties it could read)."}});
-                            }
-                        }
-                    }
-                }
-
-                std::vector<std::vector<std::string>> before;
-                for (const ScriptEntry& entry : scripts) before.push_back(propertyNames(entry));
-                if (project->updateScriptProperties(sceneProject, entity, scripts)) {
-                    PropertyCmd<std::vector<ScriptEntry>> refresh(project, sceneProject->id, entity, ComponentType::ScriptComponent, "scripts", scripts);
-                    refresh.execute();
-                    for (size_t i = 0; i < scripts.size(); i++) {
-                        std::vector<std::string> after = propertyNames(scripts[i]);
-                        Json plus = Json::array(), minus = Json::array();
-                        for (const std::string& name : after) {
-                            if (std::find(before[i].begin(), before[i].end(), name) == before[i].end()) plus.push_back(name);
-                        }
-                        for (const std::string& name : before[i]) {
-                            if (std::find(after.begin(), after.end(), name) == after.end()) minus.push_back(name);
-                        }
-                        Json item = {{"scene", sceneProject->id}, {"entity", McpRefs::entityJson(sceneProject, entity)},
-                                     {"script_index", i}, {"script", scripts[i].className}, {"properties", after}};
-                        if (!plus.empty()) item["added"] = plus;
-                        if (!minus.empty()) item["removed"] = minus;
-                        scriptChanges.push_back(item);
-                    }
-                }
+    if (Project* project = ctx.project()) {
+        for (const fs::path& path : changed) {
+            const std::string text = FileUtils::pathToUtf8(path);
+            std::error_code ec;
+            if (!Util::isVertexAnimationFile(text) || !fs::is_regular_file(path, ec)) continue;
+            std::string content;
+            if (!ProjectChecks::readFile(path, content) || !::jasperengine::vat::parseVat(content).ok()) continue;
+            const std::string rel = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(path));
+            for (const ::jasperengine::editor::vat::VatIssue& issue : ::jasperengine::editor::vat::checkVatStaleness(project, rel)) {
+                if (!issue.error) continue;
+                const Json problem = {{"path", rel}, {"message", issue.kind + ": " + issue.message + ". Fix: " + issue.fix + "."}};
+                if (std::find(problems.begin(), problems.end(), problem) == problems.end()) problems.push_back(problem);
             }
         }
     }
-
-    // Lua files changed but attached nowhere still get a syntax check
-    for (const fs::path& path : changed) {
-        if (!Util::isLuaFile(path.string()) || checkedLua.count(path)) continue;
-        std::string code;
-        std::error_code ec;
-        if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, code)) continue;
-        ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, projectRelative(project, path));
-        if (!syntax.ok) {
-            problems.push_back({{"path", projectRelative(project, path)}, {"line", syntax.line},
-                                {"message", "Lua syntax error: " + syntax.message}});
-        }
-    }
-
-    // lua-language-server's classes of the changed scripts (of every script on a full sync)
-    std::vector<fs::path> changedLua;
-    for (const fs::path& path : changed) {
-        if (Util::isLuaFile(path.string())) changedLua.push_back(path);
-    }
-    if (full || !changedLua.empty()) {
-        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(),
-                                       full ? std::vector<fs::path>() : changedLua);
-    }
-
-    if (anyMaterial || firstFull) project->refreshLinkedMaterials(true);
-    if (anyShader || firstFull) project->invalidateCustomShaders();
-    const int texturesReloaded = reloadTextures(project, images);
-
-    // HTML UI documents reading a changed file reload now (edit mode and play alike)
-    Json uiReloaded = Json::array();
-    int uiCurrent = 0;
-    std::vector<fs::path> uiChanged;
-    for (const fs::path& path : changed) {
-        if (isHtmlUiFile(path.generic_u8string())) uiChanged.push_back(path);
-    }
-    if (!uiChanged.empty()) {
-        const Json ui = syncHtmlUi(ctx, uiChanged);
-        uiReloaded = ui["reloaded"];
-        uiCurrent = ui.value("current", 0);
-        for (const Json& problem : ui["problems"]) problems.push_back(problem);
-    }
-
-    for (const std::string& rel : changedRel) {
-        if (!(Util::isSceneFile(rel) || Util::isPrefabFile(rel) || rel == "project.yaml")) continue;
-        bool open = rel == "project.yaml";
-        for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
-            if (!sceneProject->filepath.empty() && projectRelative(project, sceneProject->filepath) == rel && sceneProject->scene) open = true;
-        }
-        if (open) {
-            notes.push_back(rel + " changed on disk but the editor has it loaded: its in-memory copy wins and is written "
-                            "back on the next save. Edit scenes, prefabs and settings with the editor tools instead.");
-        }
-    }
-
-    project->refreshAssetDatabase(true);
-    if (ProjectWindow* window = ctx.projectWindow()) {
-        for (const fs::path& path : changed) window->notifyResourceFileChanged(path);
-        window->refreshCurrentDirectory();
-    }
-
     Json result = {
         {"changed", {{"added", added}, {"modified", modified}, {"removed", removed}}},
-        {"code_editor", codeEditor},
-        {"script_properties", scriptChanges},
+        {"code_editor", applied.codeEditor},
+        {"script_properties", scriptProperties},
         {"problems", problems},
-        {"notes", notes}
+        {"notes", allNotes},
+        {"reloaded", applied.reloaded},
+        {"pending", applied.pending}
     };
-    if (texturesReloaded > 0) result["textures_reloaded"] = texturesReloaded;
-    if (anyShader) result["shaders_invalidated"] = true;
-    if (!uiReloaded.empty()) result["ui_reloaded"] = uiReloaded;
-    if (uiCurrent > 0) result["ui_current"] = uiCurrent;
+    if (applied.texturesReloaded > 0) result["textures_reloaded"] = applied.texturesReloaded;
+    if (applied.shadersInvalidated) result["shaders_invalidated"] = true;
+    if (!applied.uiReloaded.empty()) result["ui_reloaded"] = applied.uiReloaded;
+    if (applied.uiCurrent > 0) result["ui_current"] = applied.uiCurrent;
     // Handled now: not an external change for the automatic pick-up before the next call
     McpAutoSync::get().filesSynced(ctx, std::vector<fs::path>(changed.begin(), changed.end()), full);
     return result;
@@ -863,6 +512,7 @@ std::string scriptPropertyTypeName(const ScriptProperty& prop) {
         case ScriptPropertyType::EntityReference:
             return prop.ptrTypeName.empty() ? "entity" : "entity:" + prop.ptrTypeName;
         case ScriptPropertyType::Prefab: return "prefab";
+        case ScriptPropertyType::Asset: return prop.assetType.empty() ? "asset" : "asset:" + prop.assetType;
     }
     return "unknown";
 }
@@ -1135,7 +785,7 @@ void createScriptTool(const CallPtr& call) {
     fs::path dir;
     std::string error;
     if (dirArg == ".") dir = project->getProjectPath();
-    else if (!McpRefs::resolveProjectPath(project, dirArg, dir, error)) {
+    else if (!McpRefs::resolveProjectWritePath(project, dirArg, dir, error)) {
         call->fail(error);
         return;
     }
@@ -1301,7 +951,61 @@ void detachScriptTool(const CallPtr& call) {
              Json{{"entity", McpRefs::entityJson(target.scene, target.entity)}, {"scripts", remaining}});
 }
 
+// While playing only `enabled` changes, on the running GameObject: onEnable / onDisable at once
+// (as the Inspector checkbox), undone with the other play-time edits at Stop
+void updateScriptEntryInPlay(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    for (auto it = args.begin(); it != args.end(); ++it) {
+        if (it.key() != "scene" && it.key() != "entity" && it.key() != "script" && it.key() != "enabled") {
+            call->fail("While playing, update_script_entry changes only enabled (it runs onEnable / onDisable); stop Play "
+                       "(play action \"stop\") to change " + it.key() + ".");
+            return;
+        }
+    }
+    if (!args.contains("enabled") || !args["enabled"].is_boolean()) {
+        call->fail("Nothing to change: pass enabled (true/false); while playing it is the only field.");
+        return;
+    }
+    std::string error;
+    SceneProject* sp = w3::resolveRuntimeScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+    if (!sp) {
+        call->fail(error);
+        return;
+    }
+    const Entity entity = args.contains("entity") ? w3::resolveLiveEntity(project, sp, args["entity"], error) : NULL_ENTITY;
+    if (entity == NULL_ENTITY) {
+        call->fail(args.contains("entity") ? error : "entity is required: a GameObject id or path.");
+        return;
+    }
+    ScriptComponent* component = sp->scene->findComponent<ScriptComponent>(entity);
+    std::vector<ScriptEntry> scripts = component ? component->scripts : std::vector<ScriptEntry>();
+    size_t index = 0;
+    if (!resolveScriptIndex(project, scripts, args.contains("script") ? args["script"] : Json(), index, error)) {
+        call->fail(error);
+        return;
+    }
+    const std::string key = "scripts[" + std::to_string(index) + "].enabled";
+    if (!addSceneCommand(sp->id, new PropertyCmd<bool>(project, sp->id, entity, ComponentType::ScriptComponent, key,
+                                                      args["enabled"].get<bool>()))) {
+        call->fail("The editor refused the change.");
+        return;
+    }
+    ScriptComponent* updated = sp->scene->isEntityCreated(entity) ? sp->scene->findComponent<ScriptComponent>(entity) : nullptr;
+    Json list = Json::array();
+    for (size_t i = 0; updated && i < updated->scripts.size(); i++) {
+        list.push_back(scriptEntryJson(project, sp, entity, i, updated->scripts[i], i == index));
+    }
+    Json data = {{"entity", McpRefs::entityJson(sp, entity)}, {"scripts", list}};
+    call->ok("Set script " + std::to_string(index) + " enabled = " + (args["enabled"].get<bool>() ? "true" : "false") +
+             " on the live GameObject (onEnable / onDisable ran). Play-time change: reverted when play stops.", data);
+}
+
 void updateScriptEntryTool(const CallPtr& call) {
+    if (call->ctx().project()->isAnyScenePlaying()) {
+        updateScriptEntryInPlay(call);
+        return;
+    }
     Target target;
     if (!resolveTarget(call, target)) return;
     Project* project = call->ctx().project();
@@ -1506,6 +1210,55 @@ void listScriptsTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ check_script
 
+// Lifecycle mistakes a static scan finds (script-lifecycle 8.2): Unity method names the engine
+// never calls, update methods never registered, reserved property names
+Json luaLifecycleWarnings(const std::string& code, const std::vector<ScriptProperty>& properties) {
+    static const std::vector<std::pair<std::string, std::string>> renamed = {
+        {"Awake", "init"}, {"awake", "init"}, {"Start", "start"}, {"OnEnable", "onEnable"}, {"OnDisable", "onDisable"},
+        {"OnDestroy", "onDestroy"}, {"OnApplicationQuit", "onApplicationQuit"}, {"OnApplicationPause", "onApplicationPause"},
+        {"OnApplicationFocus", "onApplicationFocus"},
+        {"Update", "onUpdate"}, {"update", "onUpdate"}, {"FixedUpdate", "onFixedUpdate"}, {"fixedUpdate", "onFixedUpdate"},
+        {"LateUpdate", "onPostUpdate"}, {"lateUpdate", "onPostUpdate"},
+    };
+    static const std::set<std::string> registered = {"onUpdate", "onFixedUpdate", "onPostUpdate"};
+    Json warnings = Json::array();
+    // without comments: a commented-out method is not one
+    std::vector<std::string> lines;
+    {
+        std::istringstream in(code);
+        std::string line;
+        while (std::getline(in, line)) {
+            const size_t comment = line.find("--");
+            lines.push_back(comment == std::string::npos ? line : line.substr(0, comment));
+        }
+    }
+    std::string text;
+    for (const std::string& line : lines) text += line + "\n";
+    static const std::regex method(R"(function\s+[A-Za-z_][A-Za-z0-9_]*\s*[:.]\s*([A-Za-z_][A-Za-z0-9_]*)\s*\()");
+    for (size_t i = 0; i < lines.size(); i++) {
+        std::smatch match;
+        if (!std::regex_search(lines[i], match, method)) continue;
+        const std::string name = match[1].str();
+        for (const auto& [unity, engine] : renamed) {
+            if (name != unity) continue;
+            std::string message = "function " + name + " is never called by the engine: name it " + engine;
+            if (registered.count(engine)) message += " and register it in init with RegisterEngineEvent(self, \"" + engine + "\")";
+            warnings.push_back({{"line", (int)i + 1}, {"message", message + "."}});
+        }
+        if (registered.count(name) && text.find("\"" + name + "\"") == std::string::npos && text.find("'" + name + "'") == std::string::npos) {
+            warnings.push_back({{"line", (int)i + 1}, {"message", name + " is defined but never registered: the engine calls it only after "
+                                                                   "RegisterEngineEvent(self, \"" + name + "\") (in init)."}});
+        }
+    }
+    for (const ScriptProperty& prop : properties) {
+        if (prop.name == "enabled" || prop.name == "isActiveAndEnabled" || prop.name == "gameObject") {
+            warnings.push_back({{"line", 0}, {"message", "property \"" + prop.name + "\" uses a reserved name (every script has enabled, "
+                                                         "isActiveAndEnabled and gameObject): the script will not run until it is renamed."}});
+        }
+    }
+    return warnings;
+}
+
 void checkScriptTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -1553,15 +1306,25 @@ void checkScriptTool(const CallPtr& call) {
         Json props = Json::array();
         for (const ScriptProperty& prop : check.properties) props.push_back({{"name", prop.name}, {"type", scriptPropertyTypeName(prop)}});
         data["properties"] = props;
+        const Json warnings = luaLifecycleWarnings(code, check.properties);
+        std::string warningText;
+        if (!warnings.empty()) {
+            data["warnings"] = warnings;
+            warningText = " WARNINGS:";
+            for (const Json& warning : warnings) {
+                const int line = warning.value("line", 0);
+                warningText += "\n- " + (line > 0 ? "line " + std::to_string(line) + ": " : std::string()) + warning.value("message", std::string());
+            }
+        }
         if (!check.findings.empty()) {
             const ProjectChecks::Finding& error = check.findings.front();
             data["errors"] = Json::array({{{"line", error.line}, {"message", error.message}}});
             call->ok("Lua syntax OK, but loading the script failed" +
-                     (error.line > 0 ? " at line " + std::to_string(error.line) : std::string()) + ": " + error.message, data);
+                     (error.line > 0 ? " at line " + std::to_string(error.line) : std::string()) + ": " + error.message + warningText, data);
             return;
         }
         call->ok("Lua syntax OK; " + std::to_string(props.size()) + " propert" + (props.size() == 1 ? "y" : "ies") +
-                 " declared. Runtime errors only show in Play (read the Console).", data);
+                 " declared. Runtime errors only show in Play (read the Console)." + warningText, data);
         return;
     }
     if (language == "cpp_header") {
@@ -1603,22 +1366,63 @@ void syncFilesTool(const CallPtr& call) {
             paths.push_back(abs.lexically_normal());
         }
     }
-    const bool full = args.value("full", true);
-    Json result = syncFiles(call->ctx(), paths, full);
-    const Json& changed = result["changed"];
-    std::string text = "Synced: " + std::to_string(changed["added"].size()) + " added, " +
-                       std::to_string(changed["modified"].size()) + " modified, " + std::to_string(changed["removed"].size()) +
-                       " removed; " + std::to_string(result["code_editor"]["reloaded"].size()) + " editor buffer(s) reloaded; " +
-                       std::to_string(result["script_properties"].size()) + " script(s) with new properties.";
-    if (!result["problems"].empty()) {
-        text += " PROBLEMS:";
-        for (const Json& problem : result["problems"]) {
-            text += "\n- " + problem.value("path", std::string()) +
-                    (problem.contains("line") ? ":" + std::to_string(problem["line"].get<int>()) : std::string()) + ": " +
-                    problem.value("message", std::string());
-        }
+    // Auto Refresh (Edit > Preferences > Asset Pipeline): off, external changes wait for a
+    // call or Assets > Refresh
+    if (args.contains("auto_refresh") && args["auto_refresh"].is_boolean()) {
+        AppSettings::setAutoRefresh(args["auto_refresh"].get<bool>());
+        AppSettings::saveSettings();
+        HotReloadService::get().setAutoRefresh(args["auto_refresh"].get<bool>());
     }
-    call->ok(text, result);
+    const bool full = args.value("full", true);
+    const bool wait = args.value("wait", true);
+    const bool rebuildModels = args.value("rebuild_models", false);
+    HotReloadService& reloads = HotReloadService::get();
+    const uint64_t serial = reloads.lastSerial();
+    reloads.takeLateProblems();
+    SyncOptions sync;
+    sync.force = !paths.empty();
+    sync.rebuildModels = rebuildModels;
+    sync.external = true;
+    auto result = std::make_shared<Json>(syncFiles(call->ctx(), paths, full, sync));
+
+    auto finish = [call, result, serial](bool timedOut) {
+        HotReloadService& reloads = HotReloadService::get();
+        Json& out = *result;
+        // what finished on a worker: reloaded, or a problem (the old version is kept)
+        Json stillPending = Json::array();
+        for (const Json& path : out["pending"]) {
+            HotReloadService::Record record;
+            const bool done = reloads.lastRecordOf(path.get<std::string>(), record) && record.serial > serial;
+            if (!done) stillPending.push_back(path);
+            else if (record.ok) out["reloaded"].push_back({{"path", record.path}, {"kind", record.kind}, {"ms", std::round(record.ms)}});
+        }
+        out["pending"] = stillPending;
+        for (const Json& problem : reloads.takeLateProblems()) out["problems"].push_back(problem);
+        const Json& changed = out["changed"];
+        std::string text = "Synced: " + std::to_string(changed["added"].size()) + " added, " +
+                           std::to_string(changed["modified"].size()) + " modified, " + std::to_string(changed["removed"].size()) +
+                           " removed; " + std::to_string(out["code_editor"]["reloaded"].size()) + " editor buffer(s) reloaded; " +
+                           std::to_string(out["script_properties"].size()) + " script(s) with new properties; " +
+                           std::to_string(out["reloaded"].size()) + " file(s) reloaded.";
+        if (!stillPending.empty()) text += " Still reloading" + std::string(timedOut ? " after 30 s" : "") + ": " + std::to_string(stillPending.size()) + ".";
+        if (!out["problems"].empty()) {
+            text += " PROBLEMS:";
+            for (const Json& problem : out["problems"]) {
+                text += "\n- " + problem.value("path", std::string()) +
+                        (problem.contains("line") ? ":" + std::to_string(problem["line"].get<int>()) : std::string()) + ": " +
+                        problem.value("message", std::string());
+            }
+        }
+        call->ok(text, out);
+    };
+    if (!wait || (*result)["pending"].empty()) {
+        finish(false);
+        return;
+    }
+    // the reloads it started run on workers: the reply waits for them (R32, at most 30 s)
+    std::vector<fs::path> pending;
+    for (const Json& path : (*result)["pending"]) pending.push_back((project->getProjectPath() / path.get<std::string>()).lexically_normal());
+    call->waitUntil([pending]() { return HotReloadService::get().idleFor(pending); }, 30000, finish);
 }
 
 // ------------------------------------------------------------------ compile_scripts
@@ -1647,6 +1451,12 @@ void compileScriptsTool(const CallPtr& call) {
         return;
     }
 
+    // the build writes generated sources and its build tree into the internal folder (CMake and
+    // the compiler with their own writers): it must stay inside the project, checked up front
+    if (const std::string escape = McpRefs::internalFoldersEscape(project); !escape.empty()) {
+        call->fail(escape);
+        return;
+    }
     ProjectChecks::CppBuildPlan plan;
     std::string error;
     switch (ProjectChecks::prepareCppBuild(project, plan, error)) {
@@ -1684,7 +1494,12 @@ void compileScriptsTool(const CallPtr& call) {
     job->setProgress(-1.0, "Configuring and building " + std::to_string(plan.scripts.size()) + " script(s)");
     ProjectChecks::startCppBuild(project, *generator, plan);
 
-    std::thread([job, generator, firstLog, projectPath, scriptList, started]() {
+    // polls the build (on the process channel) until it ends: a channel of its own, which
+    // cannot hold the process slot the build waits for
+    static jobs::JobChannel* watchChannel = new jobs::JobChannel("script-build-watch", 1);
+    jobs::SubmitOptions watchOptions;
+    watchOptions.name = "script-build-watch";
+    watchChannel->submit([job, generator, firstLog, projectPath, scriptList, started]() {
         const std::vector<std::string> output =
             ProjectChecks::waitCppBuild(*generator, firstLog, [&job](const std::string& line) { job->log(line); });
         const bool success = generator->didLastBuildSucceed();
@@ -1710,7 +1525,7 @@ void compileScriptsTool(const CallPtr& call) {
                                                        ": " + errors[0]["message"].get<std::string>();
             job->fail(message, result);
         }
-    }).detach();
+    }, watchOptions);
 
     replyWhenJobDone(call, job, wait, timeout, [](const McpJob& finished) {
         Json result = finished.result();
@@ -1758,7 +1573,9 @@ void codeEditorTool(const CallPtr& call) {
     const std::string path = args.value("path", "");
     fs::path file;
     std::string error;
-    if (!McpRefs::resolveProjectPath(project, path, file, error, action == "open")) {
+    // a save writes the file: inside the project once links are resolved (an open only reads)
+    if (action == "save" ? !McpRefs::resolveProjectWritePath(project, path, file, error, false)
+                         : !McpRefs::resolveProjectPath(project, path, file, error, action == "open")) {
         call->fail(error.empty() ? "path is required." : error);
         return;
     }
@@ -1768,9 +1585,21 @@ void codeEditorTool(const CallPtr& call) {
             call->fail(rel + " is not a text file the code editor opens.");
             return;
         }
-        editor->openFileAt(file.string(), args.value("line", 0), args.value("column", 0));
+        // target preferred: Preferences > External Tools > External Script Editor (S23 R28)
+        const std::string target = args.value("target", std::string("builtin"));
+        if (target != "builtin" && target != "preferred") {
+            call->fail("target is builtin or preferred.");
+            return;
+        }
+        std::string openError;
+        const bool external = target == "preferred" && ExternalCodeEditor::hasExternalPreference();
+        if (!ExternalCodeEditor::open(file, args.value("line", 0), args.value("column", 0), target == "preferred", &openError)) {
+            call->fail("Couldn't open " + rel + ": " + openError);
+            return;
+        }
         call->ok("Opened " + rel + (args.value("line", 0) > 0 ? " at line " + std::to_string(args.value("line", 0)) : std::string()) +
-                 " in the code editor.", Json{{"buffers", status()}});
+                 (external ? " in the external editor (" + AppSettings::getExternalScriptEditor() + ")." : " in the code editor."),
+                 Json{{"buffers", status()}, {"opened_in", external ? AppSettings::getExternalScriptEditor() : std::string("builtin")}});
         return;
     }
     if (!editor->isFileOpen(file.string())) {
@@ -1805,7 +1634,7 @@ void codeEditorTool(const CallPtr& call) {
 void registerScriptTools(McpRegistry& registry) {
     using namespace schema;
 
-    const Json scriptSelector = any("Index, class name or file (optional with one script).");
+    const Json scriptSelector = any("Index, class or file (optional with one script).");
 
     {
         ToolDef tool;
@@ -1824,7 +1653,7 @@ void registerScriptTools(McpRegistry& registry) {
             {"header_content", string("")},
             {"source_content", string("")},
             {"scene", sceneRef()},
-            {"entity", entityRef("Attach to (needed for cpp_subclass).")},
+            {"entity", entityRef("")},
             {"overwrite", withDefault(boolean(""), false)}
         }, {"kind", "name"});
         tool.allowedWhilePlaying = false;
@@ -1842,7 +1671,7 @@ void registerScriptTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
-            {"path", assetPath(".lua, .h or .cpp.")},
+            {"path", assetPath("")},
             {"class_name", string("C++: the class, if several in the header.")},
             {"index", integer("Position (default: last); run order.")},
             {"enabled", withDefault(boolean(""), true)}
@@ -1874,8 +1703,9 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "update_script_entry";
         tool.title = "Update Script Entry";
         tool.description =
-            "Change one attached script: enabled, move_to (reorder = run order), path (repoint to another file of "
-            "the same language, e.g. after a rename; same-name property values kept), class_name (C++ class renamed).";
+            "Change one attached script: enabled (also in Play: onEnable/onDisable), move_to (reorder = run order), "
+            "path (another file of the same language, e.g. after a rename; property values kept), class_name (C++ "
+            "class renamed).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1885,7 +1715,8 @@ void registerScriptTools(McpRegistry& registry) {
             {"path", assetPath("")},
             {"class_name", string("")}
         }, {"entity"});
-        tool.allowedWhilePlaying = false;
+        // in Play: enabled only (the handler refuses the rest)
+        tool.allowedWhilePlaying = true;
         tool.handler = updateScriptEntryTool;
         registry.addTool(std::move(tool));
     }
@@ -1902,7 +1733,7 @@ void registerScriptTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"script", scriptSelector},
-            {"values", anyObject("{propertyName: value}")}
+            {"values", anyObject("")}
         }, {"entity", "values"});
         tool.allowedWhilePlaying = false;
         tool.handler = setScriptPropertiesTool;
@@ -1933,11 +1764,11 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "check_script";
         tool.title = "Check Script";
         tool.description =
-            "Check a script without playing: Lua syntax (not run; ok false + error line) and its properties; C++ "
-            "header: class, kind, DPROPERTY fields (code: compile_scripts). path, or code + language.";
+            "Check a script without playing: Lua syntax (not run; ok false + error line), properties, lifecycle "
+            "warnings; C++ header: class, kind, DPROPERTY fields (code: compile_scripts).";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"code", string("Source instead of a file.")},
+            {"code", string("")},
             {"language", stringEnum("Default: from the extension.", {"lua", "cpp_header", "cpp_source"})}
         });
         tool.annotations.readOnly = true;
@@ -1956,7 +1787,10 @@ void registerScriptTools(McpRegistry& registry) {
             "returns what changed and the problems. Not for .scene/.prefab/project.yaml.";
         tool.inputSchema = object({
             {"paths", array(string(""), "Changed files (optional).")},
-            {"full", withDefault(boolean("Scan the project, recheck all scripts."), true)}
+            {"full", withDefault(boolean("Scan the project, recheck all scripts."), true)},
+            {"wait", withDefault(boolean("Return after the reloads it started finish (30 s max)."), true)},
+            {"rebuild_models", withDefault(boolean("Rebuild a model whose node hierarchy changed (its GameObjects are made again)."), false)},
+            {"auto_refresh", boolean("Set Auto Refresh: off, external edits wait for a call or Assets > Refresh.")}
         });
         tool.annotations.idempotent = true;
         tool.handler = syncFilesTool;
@@ -1969,9 +1803,9 @@ void registerScriptTools(McpRegistry& registry) {
         tool.activity = ToolActivity::ScriptCompile;  // busy policy (McpServer::busyRefusal)
         tool.title = "Compile C++ Scripts";
         tool.description =
-            "Build the C++ scripts without playing (Play's CMake build; the next Play is incremental): success, "
-            "errors and warnings [{file, line, column, message}], log tail; compile errors are no tool error. Past "
-            "timeout_seconds: a job id. Don't Play meanwhile.";
+            "Build the C++ scripts without playing (Play's CMake build; the next Play is incremental): "
+            "success, errors and warnings [{file, line, column, message}], log tail; compile errors are no "
+            "tool error. Don't Play meanwhile.";
         tool.inputSchema = object({
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", withDefault(number("", 1, 3600), 300)}
@@ -1993,6 +1827,7 @@ void registerScriptTools(McpRegistry& registry) {
             {"path", assetPath("All actions but status.")},
             {"line", integer("open: 1-based.")},
             {"column", integer("open: 1-based.")},
+            {"target", withDefault(stringEnum("open: preferred = the External Script Editor of the preferences.", {"builtin", "preferred"}), "builtin")},
             {"discard_unsaved", withDefault(boolean("close: drop unsaved edits."), false)}
         });
         tool.annotations.destructive = true;

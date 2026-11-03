@@ -3,8 +3,13 @@
 
 #include "HtmlUIInspector.h"
 #include "HtmlUIInspectorInternal.h"
+#if JASPERENGINE_VIDEO
 #include "media/UIVideoControls.h"
 #include "media/UIVideoElement.h"
+#endif
+#include "widgets/DragDropSession.h"
+#include "widgets/ItemsViewElement.h"
+#include "widgets/TooltipManager.h"
 
 #include "Scene.h"
 #include "component/UIDocumentComponent.h"
@@ -1252,9 +1257,11 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
         }
         out.effects.push_back(std::move(effect));
     }
+#if JASPERENGINE_VIDEO
     if (UIVideoElement* video = rmlui_dynamic_cast<UIVideoElement*>(element)){
         auto media = std::make_shared<InspectMedia>();
         media->currentSrc = video->getCurrentSrc();
+        media->backend = video->getVideoBackend();
         media->currentTime = video->getCurrentTime();
         const double duration = video->getDuration();
         media->duration = std::isfinite(duration) ? duration : -1.0;
@@ -1294,6 +1301,33 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
             media->muteButton = toRect(rects.mute);
         }
         out.media = std::move(media);
+    }
+#endif
+    if (const ItemsViewElement* view = rmlui_dynamic_cast<const ItemsViewElement*>(element)){
+        const ItemsViewElement::State state = view->getState();
+        auto widget = std::make_shared<InspectWidget>();
+        static const char* const kinds[] = {"list", "grid", "tree", "table"};
+        static const char* const selections[] = {"none", "single", "multiple"};
+        widget->kind = kinds[(int)state.kind];
+        widget->count = state.count;
+        widget->first = state.first;
+        widget->last = state.last;
+        widget->pool = state.pool;
+        widget->poolBound = state.poolBound;
+        widget->overscan = state.overscan;
+        widget->lanes = state.lanes;
+        widget->selection = selections[(int)state.selection];
+        widget->selected = state.selected;
+        widget->selectedKeys = state.selectedKeys;
+        widget->active = state.active;
+        widget->scrollTop = state.scrollTop;
+        widget->totalHeight = state.totalHeight;
+        widget->source = state.source;
+        widget->layoutBoundary = state.layoutBoundary;
+        widget->rowAliases = state.rowAliases;
+        widget->sortKey = view->getSortKey();
+        widget->sortDirection = view->getSortDirection();
+        out.widget = std::move(widget);
     }
     return out;
 }
@@ -1405,6 +1439,43 @@ bool HtmlUIInspector::documentInfo(Scene* scene, Entity entity, DocumentInfo& ou
     out.diagnostics = system->getDiagnostics(entity);
     out.dependencies = system->getDocumentFiles(entity);
     out.dataModels = system->getDataModelNames(entity);
+
+    // S17: the tooltip, the drag in progress, the last reload
+    const UIReloadReport& report = system->getLastReloadReport(entity);
+    out.reload.mode = report.mode;
+    out.reload.kept = report.kept;
+    out.reload.updated = report.updated;
+    out.reload.inserted = report.inserted;
+    out.reload.removed = report.removed;
+    out.reload.replaced = report.replaced;
+    out.reload.runtimeKept = report.runtimeKept;
+    out.reload.scriptsRerun = report.scriptsRerun;
+    out.reload.fallbackReason = report.fallbackReason;
+    out.reload.ms = report.ms;
+    out.reload.causes = report.causes;
+    inspect::Doc doc;
+    std::string unopened;
+    if (out.loaded && inspect::open(scene, entity, doc, unopened)){
+        inspect::Refs refs(doc);
+        auto elementRef = [&refs](Rml::Element* element){ return refs.of(element); };
+        Rml::ElementDocument* document = doc.document;
+        const TooltipState tooltip = TooltipManager::stateOf(document);
+        out.tooltip.visible = tooltip.visible;
+        out.tooltip.source = tooltip.source ? elementRef(tooltip.source) : std::string();
+        out.tooltip.text = tooltip.text;
+        out.tooltip.rect = InspectRect{tooltip.x, tooltip.y, tooltip.width, tooltip.height};
+        out.tooltip.side = tooltip.side;
+        const DragState drag = DragDropSession::stateOf(document->GetContext());
+        if (drag.active && drag.source && drag.source->GetOwnerDocument() == document){
+            out.drag.active = true;
+            out.drag.source = elementRef(drag.source);
+            out.drag.target = drag.target ? elementRef(drag.target) : std::string();
+            out.drag.types = drag.types;
+            out.drag.allowed = drag.allowed;
+            out.drag.effect = drag.effect;
+            out.drag.programmatic = drag.programmatic;
+        }
+    }
     return true;
 }
 
@@ -1477,6 +1548,16 @@ bool HtmlUIInspector::hitTest(Scene* scene, Entity entity, float x, float y, std
     return true;
 }
 
+bool HtmlUIInspector::renderStats(Scene* scene, Entity entity, std::vector<std::pair<std::string, uint32_t>>& out, std::string& error){
+    out.clear();
+    Doc doc;
+    if (!open(scene, entity, doc, error))
+        return false;
+    std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
+    system->getRenderStats(entity).forEachField([&out](const char* name, uint32_t value){ out.emplace_back(name, value); });
+    return true;
+}
+
 bool HtmlUIInspector::detail(Scene* scene, Entity entity, const std::string& ref, const std::vector<std::string>& properties,
                              InspectDetail& out, std::string& error){
     out = InspectDetail();
@@ -1536,6 +1617,25 @@ bool HtmlUIInspector::detail(Scene* scene, Entity entity, const std::string& ref
         InspectStyle style;
         computeStyle(element, target, &sources, style);
         out.styles.push_back(std::move(style));
+    }
+
+    // S16: the box as primitives or meshes, and the raster of its own text (its first text child)
+    const char* reason = "";
+    out.paint.path = element->IsPaintedAsPrimitives(&reason) ? "primitive" : "mesh";
+    out.paint.reason = reason ? reason : "";
+    for (int i = 0; i < element->GetNumChildren(); i++){
+        Rml::ElementText* text = rmlui_dynamic_cast<Rml::ElementText*>(element->GetChild(i));
+        if (!text || text->GetText().empty())
+            continue;
+        float scale = 0.0f;
+        switch (text->GetRasterMode(scale)){
+        case Rml::ElementText::RasterMode::Bitmap: out.raster.mode = "bitmap"; break;
+        case Rml::ElementText::RasterMode::DistanceField: out.raster.mode = "msdf"; break;
+        case Rml::ElementText::RasterMode::Stretched: out.raster.mode = "stretched"; break;
+        }
+        out.raster.scale = scale;
+        out.raster.hasText = true;
+        break;
     }
     return true;
 }

@@ -10,9 +10,33 @@ namespace Rml {
 
 struct LineClampEllipsis;
 
+class ElementText;
+
+/**
+    Per-character text animation (fork, T21-1/T21-2): the engine's provider gives a text the state of its effect, which the
+    font engine reads in GenerateString (TextShapingContext::text_effect).
+ */
+class RMLUICORE_API TextEffectProvider {
+public:
+	virtual ~TextEffectProvider() {}
+	/// The effect state of 'text' (null: none) and, in 'first_index', the index of its first visible character (not white
+	/// space) among the characters its effect animates in its inline formatting context.
+	virtual const void* GetTextEffect(ElementText& text, int& first_index) = 0;
+	/// True when 'changed' holds a property of the effect (a text then generates its geometry again).
+	virtual bool IsTextEffectChange(const PropertyIdSet& changed) = 0;
+};
+
 class RMLUICORE_API ElementText final : public Element {
 public:
 	RMLUI_RTTI_DeclareWithParent(ElementText, Element)
+
+	/// The provider of text effects (null: none); not owned.
+	static void SetTextEffectProvider(TextEffectProvider* provider);
+	static TextEffectProvider* GetTextEffectProvider();
+	/// Generates the text's geometry again before it is next drawn, keeping its layout (an animating text effect).
+	void DirtyGeometry();
+	/// The visible characters (not white space) of the text's lines, as the text effect index counts them.
+	static int CountEffectCharacters(StringView text);
 
 	ElementText(const String& tag);
 	virtual ~ElementText();
@@ -121,14 +145,23 @@ public:
 		float blur = 0.f;                  // CSS blur radius
 		Rectanglef ink;                    // what it covers before blurring, in the element's space
 		CompiledFilter filter;             // the blur, compiled for the render manager when first drawn
+		bool gpu = false;                  // fork (S16-F3): blurred by the font engine (distance glyphs), no layer
 	};
 	/// Draws text shadows, the last one first (the first is on top, CSS Text Decoration 3 §4); a blurred shadow through a
 	/// layer and the blur filter. Used by the text and by the line-clamp ellipsis a block container draws (fork, P6-L1).
 	/// @param[in] transformed The geometry is drawn under a transform (no scissor from the shadows' ink then).
 	static void RenderShadowList(RenderManager& render_manager, Vector<Shadow>& shadows, Vector2f translation, bool transformed);
 
+	/// Fork (S16-F3): how the text was last drawn. Bitmap: rasterized at 'scale' device px per document px (0: the font
+	/// engine's own scale, no transform-aware text); DistanceField: from distance glyphs; Stretched: a bitmap of another
+	/// scale, waiting to settle at the on-screen one.
+	enum class RasterMode { Bitmap, DistanceField, Stretched };
+	RasterMode GetRasterMode(float& scale) const;
+
 protected:
 	void OnRender() override;
+	/// Fork (S16-F6): its lines' boxes with a font size of margin, and its shadows' and effects' reach.
+	bool GetPaintBounds(Rectanglef& out_bounds) override;
 
 	void OnPropertyChange(const PropertyIdSet& properties) override;
 
@@ -140,6 +173,14 @@ private:
 
 	// Clears and regenerates all of the text's geometry: the text, its decoration lines and its shadows.
 	void GenerateGeometry(RenderManager& render_manager, FontFaceHandle font_face_handle);
+	// Fork (S16-F3): transform-aware text. At render: the text's on-screen scale, and how it is drawn (a bitmap at that scale,
+	// distance glyphs while it animates, above 128 device px or under perspective, the bitmap stretched while neither is
+	// ready); regenerates the geometry when that changes and asks for another frame while the text settles.
+	void UpdateRasterScale(RenderManager& render_manager, FontFaceHandle font_face_handle);
+	// The base raster scale times the larger singular value of the text's transform at its centre; non_affine: perspective there.
+	float ComputeScreenScale(float base_scale, bool& non_affine);
+	// Every line's glyphs ready at the on-screen scale (bitmaps within the font engine's budget) or as distance glyphs.
+	bool PrepareLines(FontFaceHandle font_face_handle, bool distance);
 	// Generates the decoration lines of 'text-decoration' (phase 3: underline and overline into 'under', drawn below the
 	// text, line-through into 'over', drawn above it), in the given colour and offset from the lines.
 	void GenerateDecoration(Mesh& under, Mesh& over, FontFaceHandle font_face_handle, ColourbPremultiplied decoration_colour, Vector2f offset);
@@ -170,6 +211,15 @@ private:
 	float opacity;
 
 	int font_handle_version;
+
+	// Fork (S16-F3): the scale the geometry was made at (0: the font engine's own), the on-screen scale of the last render,
+	// the renders since it last changed, and whether the geometry draws distance glyphs.
+	float raster_scale = 0.f;
+	float last_screen_scale = 0.f;
+	int frames_since_scale_change = 0;
+	// the font engine's base scale (the context's pixel ratio) the last render had
+	float last_base_scale = 0.f;
+	bool distance_field = false;
 
 	// The line-break opportunities of the text (TextUnicode::GetLineBreakOpportunities, tailored as Chromium), by the byte
 	// offset of the character a line may break before; computed when lines are first generated after the text changes.

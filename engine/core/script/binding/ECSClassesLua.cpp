@@ -7,6 +7,7 @@
 
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
+#include "LuaComponentSetters.h"
 
 #include "ecs/Entity.h"
 #include "ecs/Signature.h"
@@ -15,6 +16,7 @@
 
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "audio/AudioMixer.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -25,13 +27,27 @@
 #include "component/UIComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "object/GameObject.h"
+#include "PointerEventData.h"
 #include "component/ParticleSystemComponent.h"
+#include "particles/LegacyParticleSystem.h"
 #include "component/AudioSourceComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/VertexAnimatorComponent.h"
+#include "component/AnimatorComponent.h"
+#include "animation/AnimationEvent.h"
 #include "component/SpriteComponent.h"
 #include "component/FogComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/VolumetricCloudsComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
@@ -39,6 +55,158 @@
 #include "component/LatticeTracksComponent.h"
 
 using namespace jasperengine;
+
+// a PointerEventData GameObject field: the GameObject, or nil for none (and once its scene
+// was deleted: an event a script kept, review LOW-MEDIUM 5)
+static luabridge::LuaRef pointerEventEntity(lua_State* L, Scene* scene, Entity entity){
+    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity))
+        return luabridge::LuaRef(L);
+    return luabridge::LuaRef(L, GameObject(scene, entity));
+}
+
+// The audio mixer (audio-mixer spec 8): the functions with option tables ({unscaled = true}) and
+// table results read and push the Lua stack themselves
+namespace {
+
+    struct LuaAudioListener {};
+
+    // opts.unscaled of an optional table at `index`
+    bool luaOptUnscaled(lua_State* L, int index){
+        if (!lua_istable(L, index)) return false;
+        lua_getfield(L, index, "unscaled");
+        const bool unscaled = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        return unscaled;
+    }
+
+    void luaPushStrings(lua_State* L, const std::vector<std::string>& values){
+        lua_createtable(L, (int)values.size(), 0);
+        for (size_t i = 0; i < values.size(); i++) {
+            lua_pushstring(L, values[i].c_str());
+            lua_rawseti(L, -2, (int)i + 1);
+        }
+    }
+
+    // AudioMixer.setFloat(name, value [, seconds [, opts]]) -> boolean
+    int luaMixerSetFloat(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        const float value = (float)luaL_checknumber(L, 2);
+        const float seconds = (float)luaL_optnumber(L, 3, 0.0);
+        lua_pushboolean(L, AudioMixer::setFloat(name, value, seconds, luaOptUnscaled(L, 4)));
+        return 1;
+    }
+
+    // AudioMixer.getFloat(name) -> number | nil
+    int luaMixerGetFloat(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        float value = 0.0f;
+        if (AudioMixer::getFloat(name, value)) lua_pushnumber(L, value);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    int luaMixerGetParameterNames(lua_State* L){
+        luaPushStrings(L, AudioMixer::getParameterNames());
+        return 1;
+    }
+
+    // AudioMixer.transitionTo(snapshot, seconds [, opts]) -> boolean
+    int luaMixerTransitionTo(lua_State* L){
+        const std::string name = luaL_checkstring(L, 1);
+        const float seconds = (float)luaL_optnumber(L, 2, 0.0);
+        lua_pushboolean(L, AudioMixer::transitionTo(name, seconds, luaOptUnscaled(L, 3)));
+        return 1;
+    }
+
+    // AudioMixer.transitionToSnapshots(names, weights, seconds [, opts]) -> boolean
+    int luaMixerTransitionToSnapshots(lua_State* L){
+        luaL_checktype(L, 1, LUA_TTABLE);
+        luaL_checktype(L, 2, LUA_TTABLE);
+        std::vector<std::string> names;
+        std::vector<float> weights;
+        const int count = (int)lua_rawlen(L, 1);
+        for (int i = 1; i <= count; i++) {
+            lua_rawgeti(L, 1, i);
+            if (lua_type(L, -1) == LUA_TSTRING) names.push_back(lua_tostring(L, -1));
+            lua_pop(L, 1);
+            lua_rawgeti(L, 2, i);
+            weights.push_back(lua_isnumber(L, -1) ? (float)lua_tonumber(L, -1) : 0.0f);
+            lua_pop(L, 1);
+        }
+        const float seconds = (float)luaL_optnumber(L, 3, 0.0);
+        lua_pushboolean(L, AudioMixer::transitionToSnapshots(names, weights, seconds, luaOptUnscaled(L, 4)));
+        return 1;
+    }
+
+    int luaMixerGetSnapshotNames(lua_State* L){
+        luaPushStrings(L, AudioMixer::getSnapshotNames());
+        return 1;
+    }
+
+    int luaMixerGetGroupNames(lua_State* L){
+        luaPushStrings(L, AudioMixer::getGroupNames());
+        return 1;
+    }
+
+    // AudioMixer.getGroup(name) -> AudioMixerGroup | nil
+    int luaMixerGetGroup(lua_State* L){
+        const std::string id = AudioMixer::findGroupId(luaL_checkstring(L, 1));
+        if (id.empty()) {
+            lua_pushnil(L);
+            return 1;
+        }
+        if (!luabridge::push(L, AudioMixerGroup(id))) lua_pushnil(L);
+        return 1;
+    }
+
+    // AudioMixerGroup:getEffect(indexOrType) -> AudioMixerEffect | nil (index 1-based)
+    int luaGroupGetEffect(lua_State* L){
+        AudioMixerGroup* self = luabridge::detail::Userdata::get<AudioMixerGroup>(L, 1, true);
+        std::string id;
+        if (self) {
+            if (lua_type(L, 2) == LUA_TNUMBER) id = AudioMixer::findEffectId(self->getId(), (int)lua_tointeger(L, 2) - 1);
+            else if (lua_type(L, 2) == LUA_TSTRING) id = AudioMixer::findEffectId(self->getId(), std::string(lua_tostring(L, 2)));
+        }
+        if (id.empty() || !luabridge::push(L, AudioMixerEffect(id))) lua_pushnil(L);
+        return 1;
+    }
+
+    // AudioMixerGroup:setVolume(db [, seconds [, opts]])
+    int luaGroupSetVolume(lua_State* L){
+        AudioMixerGroup* self = luabridge::detail::Userdata::get<AudioMixerGroup>(L, 1, false);
+        const float db = (float)luaL_checknumber(L, 2);
+        if (self) self->setVolumeOver(db, (float)luaL_optnumber(L, 3, 0.0), luaOptUnscaled(L, 4));
+        return 0;
+    }
+
+    // AudioMixerEffect:setParameter(name, value [, seconds [, opts]]) -> boolean
+    int luaEffectSetParameter(lua_State* L){
+        AudioMixerEffect* self = luabridge::detail::Userdata::get<AudioMixerEffect>(L, 1, false);
+        const std::string name = luaL_checkstring(L, 2);
+        const float value = (float)luaL_checknumber(L, 3);
+        const float seconds = (float)luaL_optnumber(L, 4, 0.0);
+        lua_pushboolean(L, self && self->setParameter(name, value, seconds, luaOptUnscaled(L, 5)));
+        return 1;
+    }
+
+    // AudioMixerEffect:getParameter(name) -> number | nil
+    int luaEffectGetParameter(lua_State* L){
+        AudioMixerEffect* self = luabridge::detail::Userdata::get<AudioMixerEffect>(L, 1, true);
+        float value = 0.0f;
+        if (self && self->getParameter(luaL_checkstring(L, 2), value)) lua_pushnumber(L, value);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    // AudioSystem.preload(path [, loadType]) -> boolean
+    int luaAudioPreload(lua_State* L){
+        const std::string path = luaL_checkstring(L, 1);
+        const AudioLoadType type = lua_isnumber(L, 2) ? (AudioLoadType)lua_tointeger(L, 2) : AudioLoadType::Auto;
+        lua_pushboolean(L, AudioSystem::preload(path, type));
+        return 1;
+    }
+
+}
 
 void LuaBinding::registerECSClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
@@ -56,6 +224,14 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("INVERSE_DISTANCE", AudioSourceAttenuation::INVERSE_DISTANCE)
         .addVariable("LINEAR_DISTANCE", AudioSourceAttenuation::LINEAR_DISTANCE)
         .addVariable("EXPONENTIAL_DISTANCE", AudioSourceAttenuation::EXPONENTIAL_DISTANCE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AudioLoadType")
+        .addVariable("Auto", AudioLoadType::Auto)
+        .addVariable("DecompressOnLoad", AudioLoadType::DecompressOnLoad)
+        .addVariable("CompressedInMemory", AudioLoadType::CompressedInMemory)
+        .addVariable("Streaming", AudioLoadType::Streaming)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -101,9 +277,35 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("CanvasGroupRenderMode")
+        .addVariable("PER_ELEMENT", CanvasGroupRenderMode::PER_ELEMENT)
+        .addVariable("FLATTEN", CanvasGroupRenderMode::FLATTEN)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("ScrollbarType")
         .addVariable("VERTICAL", ScrollbarType::VERTICAL)
         .addVariable("HORIZONTAL", ScrollbarType::HORIZONTAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("OnScreenStickMode")
+        .addVariable("FIXED", OnScreenStickMode::FIXED)
+        .addVariable("FLOATING", OnScreenStickMode::FLOATING)
+        .addVariable("DYNAMIC", OnScreenStickMode::DYNAMIC)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("OnScreenStickAxes")
+        .addVariable("BOTH", OnScreenStickAxes::BOTH)
+        .addVariable("HORIZONTAL", OnScreenStickAxes::HORIZONTAL)
+        .addVariable("VERTICAL", OnScreenStickAxes::VERTICAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("OnScreenVisibility")
+        .addVariable("ALWAYS", OnScreenVisibility::ALWAYS)
+        .addVariable("TOUCH_DEVICES_ONLY", OnScreenVisibility::TOUCH_DEVICES_ONLY)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -117,6 +319,56 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("LINEAR", FogType::LINEAR)
         .addVariable("EXPONENTIAL", FogType::EXPONENTIAL)
         .addVariable("EXPONENTIALSQUARED", FogType::EXPONENTIALSQUARED)
+        .addVariable("HEIGHT", FogType::HEIGHT)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FogColorMode")
+        .addVariable("COLOR", FogColorMode::COLOR)
+        .addVariable("SKY", FogColorMode::SKY)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FogVolumeShape")
+        .addVariable("BOX", FogVolumeShape::BOX)
+        .addVariable("SPHERE", FogVolumeShape::SPHERE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FogVolumeFalloff")
+        .addVariable("LINEAR", FogVolumeFalloff::LINEAR)
+        .addVariable("EXPONENTIAL", FogVolumeFalloff::EXPONENTIAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CloudsPreset")
+        .addVariable("CUSTOM", CloudsPreset::CUSTOM)
+        .addVariable("SPARSE", CloudsPreset::SPARSE)
+        .addVariable("CLOUDY", CloudsPreset::CLOUDY)
+        .addVariable("OVERCAST", CloudsPreset::OVERCAST)
+        .addVariable("STORMY", CloudsPreset::STORMY)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CloudsRendering")
+        .addVariable("AUTO", CloudsRendering::AUTO)
+        .addVariable("SKY_MAP", CloudsRendering::SKY_MAP)
+        .addVariable("SCREEN", CloudsRendering::SCREEN)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AtmosphereQuality")
+        .addVariable("OFF", AtmosphereQuality::OFF)
+        .addVariable("LOW", AtmosphereQuality::LOW)
+        .addVariable("MEDIUM", AtmosphereQuality::MEDIUM)
+        .addVariable("HIGH", AtmosphereQuality::HIGH)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AtmosphereQualityOverride")
+        .addVariable("PROJECT", AtmosphereQualityOverride::PROJECT)
+        .addVariable("LOW", AtmosphereQualityOverride::LOW)
+        .addVariable("MEDIUM", AtmosphereQualityOverride::MEDIUM)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -185,6 +437,64 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addStaticFunction("resumeAll", &AudioSystem::resumeAll)
         .addStaticFunction("checkActive", &AudioSystem::checkActive)
         .addStaticProperty("globalVolume", &AudioSystem::getGlobalVolume,  &AudioSystem::setGlobalVolume)
+        .addStaticFunction("preload", &luaAudioPreload)
+        .addStaticFunction("isOutputAvailable", &AudioSystem::isOutputAvailable)
+        .addStaticFunction("getVoiceCount", &AudioSystem::getVoiceCount)
+        .endClass();
+
+    // Unity AudioListener: the pause of every source but the ignoreListenerPause ones, and the
+    // volume of everything (AudioSystem.globalVolume)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<LuaAudioListener>("AudioListener")
+        .addStaticProperty("pause", &AudioSystem::isListenerPaused, &AudioSystem::setListenerPaused)
+        .addStaticProperty("volume", &AudioSystem::getGlobalVolume, &AudioSystem::setGlobalVolume)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AudioMixerEffect>("AudioMixerEffect")
+        .addProperty("id", &AudioMixerEffect::getId)
+        .addProperty("type", &AudioMixerEffect::getType)
+        .addProperty("bypass", &AudioMixerEffect::getBypass, &AudioMixerEffect::setBypass)
+        .addProperty("wet", &AudioMixerEffect::getWet, &AudioMixerEffect::setWet)
+        .addFunction("isValid", &AudioMixerEffect::isValid)
+        .addFunction("hasParameter", &AudioMixerEffect::hasParameter)
+        .addFunction("setParameter", &luaEffectSetParameter)
+        .addFunction("getParameter", &luaEffectGetParameter)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AudioMixerGroup>("AudioMixerGroup")
+        .addProperty("id", &AudioMixerGroup::getId)
+        .addProperty("name", &AudioMixerGroup::getName)
+        .addProperty("volume", &AudioMixerGroup::getVolume, &AudioMixerGroup::setVolume)
+        .addProperty("mute", &AudioMixerGroup::getMute, &AudioMixerGroup::setMute)
+        .addProperty("solo", &AudioMixerGroup::getSolo, &AudioMixerGroup::setSolo)
+        .addProperty("bypassEffects", &AudioMixerGroup::getBypassEffects, &AudioMixerGroup::setBypassEffects)
+        .addFunction("isValid", &AudioMixerGroup::isValid)
+        .addFunction("setVolume", &luaGroupSetVolume)
+        .addFunction("getEffect", &luaGroupGetEffect)
+        .addFunction("getEffectCount", &AudioMixerGroup::getEffectCount)
+        .addFunction("getMeter", &AudioMixerGroup::getMeter)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AudioMixer>("AudioMixer")
+        .addStaticFunction("setFloat", &luaMixerSetFloat)
+        .addStaticFunction("getFloat", &luaMixerGetFloat)
+        .addStaticFunction("clearFloat", &AudioMixer::clearFloat)
+        .addStaticFunction("hasParameter", &AudioMixer::hasParameter)
+        .addStaticFunction("getParameterNames", &luaMixerGetParameterNames)
+        .addStaticFunction("transitionTo", &luaMixerTransitionTo)
+        .addStaticFunction("transitionToSnapshots", &luaMixerTransitionToSnapshots)
+        .addStaticFunction("getSnapshotNames", &luaMixerGetSnapshotNames)
+        .addStaticFunction("getCurrentSnapshot", &AudioMixer::getCurrentSnapshot)
+        .addStaticFunction("getGroup", &luaMixerGetGroup)
+        .addStaticFunction("getGroupNames", &luaMixerGetGroupNames)
+        .addStaticFunction("getMeter", &AudioMixer::getMeterDb)
+        .addStaticFunction("saveParameters", &AudioMixer::saveRemembered)
+        .addStaticFunction("loadParameters", &AudioMixer::loadRemembered)
+        .addStaticFunction("dbToLinear", &AudioMixer::dbToLinear)
+        .addStaticFunction("linearToDb", &AudioMixer::linearToDb)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -220,6 +530,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("interpolation", &PhysicsSystem::isInterpolation, &PhysicsSystem::setInterpolation)
 #ifdef JASPERENGINE_PHYSICS_2D
         .addProperty("pointsToMeterScale2D", &PhysicsSystem::getPointsToMeterScale2D,  &PhysicsSystem::setPointsToMeterScale2D)
+        // Box2D sub-steps of each fixed step (1-16, the scene setting physics2DSubSteps)
+        .addProperty("subSteps2D", &PhysicsSystem::getSubSteps2D, &PhysicsSystem::setSubSteps2D)
         .addProperty("beginContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->beginContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->beginContact2D = L; })
         .addProperty("endContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->endContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->endContact2D = L; })
         .addProperty("beginSensorContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->beginSensorContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->beginSensorContact2D = L; })
@@ -227,6 +539,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("hitContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->hitContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->hitContact2D = L; })
         .addProperty("preSolve2D", [] (PhysicsSystem* self, lua_State* L) { return &self->preSolve2D; }, [] (PhysicsSystem* self, lua_State* L) { self->preSolve2D = L; })
         .addProperty("shouldCollide2D", [] (PhysicsSystem* self, lua_State* L) { return &self->shouldCollide2D; }, [] (PhysicsSystem* self, lua_State* L) { self->shouldCollide2D = L; })
+        .addProperty("stayContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->stayContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->stayContact2D = L; })
+        .addProperty("staySensorContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->staySensorContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->staySensorContact2D = L; })
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         .addProperty("lock3DBodies", &PhysicsSystem::isLock3DBodies, &PhysicsSystem::setLock3DBodies)
@@ -238,6 +552,10 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("onContactPersisted3D", [] (PhysicsSystem* self, lua_State* L) { return &self->onContactPersisted3D; }, [] (PhysicsSystem* self, lua_State* L) { self->onContactPersisted3D = L; })
         .addProperty("onContactRemoved3D", [] (PhysicsSystem* self, lua_State* L) { return &self->onContactRemoved3D; }, [] (PhysicsSystem* self, lua_State* L) { self->onContactRemoved3D = L; })
         .addProperty("shouldCollide3D", [] (PhysicsSystem* self, lua_State* L) { return &self->shouldCollide3D; }, [] (PhysicsSystem* self, lua_State* L) { self->shouldCollide3D = L; })
+        .addProperty("onControllerColliderHit", [] (PhysicsSystem* self, lua_State* L) { return &self->onControllerColliderHit; }, [] (PhysicsSystem* self, lua_State* L) { self->onControllerColliderHit = L; })
+        .addFunction("setRootMotion", &PhysicsSystem::setRootMotion)
+        // global 3D contact events inside the step with live Contact3D (main thread)
+        .addProperty("synchronousContactEvents3D", &PhysicsSystem::isSynchronousContactEvents3D, &PhysicsSystem::setSynchronousContactEvents3D)
 #endif
 #ifdef JASPERENGINE_PHYSICS_2D
         .addFunction("createRigidbody2D", &PhysicsSystem::createRigidbody2D)
@@ -294,9 +612,20 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("isInputFieldFocused", &UISystem::isInputFieldFocused)
         .addFunction("eventOnCharInput", &UISystem::eventOnCharInput)
         .addFunction("eventOnKeyDown", &UISystem::eventOnKeyDown)
-        .addFunction("eventOnPointerDown", &UISystem::eventOnPointerDown)
-        .addFunction("eventOnPointerUp", &UISystem::eventOnPointerUp)
-        .addFunction("eventOnPointerMove", &UISystem::eventOnPointerMove)
+        // (x, y): the mouse's left button; (pointerId, button, x, y, touch): any pointer (ui-multitouch)
+        .addFunction("eventOnPointerDown",
+            luabridge::overload<float, float>(&UISystem::eventOnPointerDown),
+            luabridge::overload<int, int, float, float, bool>(&UISystem::eventOnPointerDown))
+        .addFunction("eventOnPointerUp",
+            luabridge::overload<float, float>(&UISystem::eventOnPointerUp),
+            luabridge::overload<int, int, float, float, bool>(&UISystem::eventOnPointerUp))
+        .addFunction("eventOnPointerMove",
+            luabridge::overload<float, float>(&UISystem::eventOnPointerMove),
+            luabridge::overload<int, float, float, bool>(&UISystem::eventOnPointerMove))
+        .addFunction("eventOnPointerCancel", &UISystem::eventOnPointerCancel)
+        .addFunction("isPointerOverUI",
+            luabridge::overload<>(&UISystem::isPointerOverUI),
+            luabridge::overload<int>(&UISystem::isPointerOverUI))
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -320,12 +649,12 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginClass<ActionComponent>("ActionComponent")
         .addProperty("state", &ActionComponent::state)
         .addProperty("timecount", &ActionComponent::timecount)
-        .addProperty("speed", &ActionComponent::speed, &ActionComponent::speed)
-        .addProperty("startTrigger", &ActionComponent::startTrigger, &ActionComponent::startTrigger)
-        .addProperty("stopTrigger", &ActionComponent::stopTrigger, &ActionComponent::stopTrigger)
-        .addProperty("pauseTrigger", &ActionComponent::pauseTrigger, &ActionComponent::pauseTrigger)
-        .addProperty("ownedTarget", &ActionComponent::ownedTarget, &ActionComponent::ownedTarget)
-        .addProperty("target", &ActionComponent::target, &ActionComponent::target)
+        .addProperty("speed", &ActionComponent::speed, &setTrackedMember<&ActionComponent::speed>)
+        .addProperty("startTrigger", &ActionComponent::startTrigger, &setTrackedMember<&ActionComponent::startTrigger>)
+        .addProperty("stopTrigger", &ActionComponent::stopTrigger, &setTrackedMember<&ActionComponent::stopTrigger>)
+        .addProperty("pauseTrigger", &ActionComponent::pauseTrigger, &setTrackedMember<&ActionComponent::pauseTrigger>)
+        .addProperty("ownedTarget", &ActionComponent::ownedTarget, &setTrackedMember<&ActionComponent::ownedTarget>)
+        .addProperty("target", &ActionComponent::target, &setTrackedMember<&ActionComponent::target>)
         .addProperty("onStart", [] (ActionComponent* self, lua_State* L) { return &self->onStart; }, [] (ActionComponent* self, lua_State* L) { self->onStart = L; })
         .addProperty("onPause", [] (ActionComponent* self, lua_State* L) { return &self->onPause; }, [] (ActionComponent* self, lua_State* L) { self->onPause = L; })
         .addProperty("onStop", [] (ActionComponent* self, lua_State* L) { return &self->onStop; }, [] (ActionComponent* self, lua_State* L) { self->onStop = L; })
@@ -341,44 +670,57 @@ void LuaBinding::registerECSClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<AnimationComponent>("AnimationComponent")
-        .addProperty("actions", &AnimationComponent::actions, &AnimationComponent::actions)
-        .addProperty("ownedActions", &AnimationComponent::ownedActions, &AnimationComponent::ownedActions)
-        .addProperty("loop", &AnimationComponent::loop, &AnimationComponent::loop)
-        .addProperty("duration", &AnimationComponent::duration, &AnimationComponent::duration)
+        .addProperty("actions", &AnimationComponent::actions, &setTrackedMember<&AnimationComponent::actions>)
+        .addProperty("ownedActions", &AnimationComponent::ownedActions, &setTrackedMember<&AnimationComponent::ownedActions>)
+        .addProperty("loop", &AnimationComponent::loop, &setTrackedMember<&AnimationComponent::loop>)
+        .addProperty("duration", &AnimationComponent::duration, &setTrackedMember<&AnimationComponent::duration>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<TweenComponent>("TweenComponent")
         .addProperty("time", &TweenComponent::time)
         .addProperty("value", &TweenComponent::value)
-        .addProperty("duration", &TweenComponent::duration, &TweenComponent::duration)
-        .addProperty("loop", &TweenComponent::loop, &TweenComponent::loop)
-        .addProperty("pingPong", &TweenComponent::pingPong, &TweenComponent::pingPong)
+        .addProperty("duration", &TweenComponent::duration, &setTrackedMember<&TweenComponent::duration>)
+        .addProperty("loop", &TweenComponent::loop, &setTrackedMember<&TweenComponent::loop>)
+        .addProperty("pingPong", &TweenComponent::pingPong, &setTrackedMember<&TweenComponent::pingPong>)
+        .addProperty("useUnscaledTime", &TweenComponent::useUnscaledTime, &setTrackedMember<&TweenComponent::useUnscaledTime>)
         .addProperty("function", [] (TweenComponent* self, lua_State* L) { return &self->function; }, [] (TweenComponent* self, lua_State* L) { self->function = L; })
+        .addProperty("curve", &TweenComponent::curve, &setTrackedMember<&TweenComponent::curve>)
         .endClass();
     
+    // the Safe Area component: which edges of the RectTransform follow Screen.safeArea
+    luabridge::getGlobalNamespace(L)
+        .beginClass<SafeAreaComponent>("SafeAreaComponent")
+        .addProperty("enabled", &SafeAreaComponent::enabled, &SafeAreaComponent::enabled)
+        .addProperty("left", &SafeAreaComponent::left, &SafeAreaComponent::left)
+        .addProperty("top", &SafeAreaComponent::top, &SafeAreaComponent::top)
+        .addProperty("right", &SafeAreaComponent::right, &SafeAreaComponent::right)
+        .addProperty("bottom", &SafeAreaComponent::bottom, &SafeAreaComponent::bottom)
+        .addProperty("includeExtraInsets", &SafeAreaComponent::includeExtraInsets, &SafeAreaComponent::includeExtraInsets)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .beginClass<RectTransformComponent>("RectTransformComponent")
-        .addProperty("width", &RectTransformComponent::width, &RectTransformComponent::width)
-        .addProperty("height", &RectTransformComponent::height, &RectTransformComponent::height)
-        .addProperty("anchorPointLeft", &RectTransformComponent::anchorPointLeft, &RectTransformComponent::anchorPointLeft)
-        .addProperty("anchorPointTop", &RectTransformComponent::anchorPointTop, &RectTransformComponent::anchorPointTop)
-        .addProperty("anchorPointRight", &RectTransformComponent::anchorPointRight, &RectTransformComponent::anchorPointRight)
-        .addProperty("anchorPointBottom", &RectTransformComponent::anchorPointBottom, &RectTransformComponent::anchorPointBottom)
-        .addProperty("anchorOffsetLeft", &RectTransformComponent::anchorOffsetLeft, &RectTransformComponent::anchorOffsetLeft)
-        .addProperty("anchorOffsetTop", &RectTransformComponent::anchorOffsetTop, &RectTransformComponent::anchorOffsetTop)
-        .addProperty("anchorOffsetRight", &RectTransformComponent::anchorOffsetRight, &RectTransformComponent::anchorOffsetRight)
-        .addProperty("anchorOffsetBottom", &RectTransformComponent::anchorOffsetBottom, &RectTransformComponent::anchorOffsetBottom)
-        .addProperty("positionOffset", &RectTransformComponent::positionOffset, &RectTransformComponent::positionOffset)
-        .addProperty("pivot", &RectTransformComponent::pivot, &RectTransformComponent::pivot)
-        .addProperty("anchorPreset", &RectTransformComponent::anchorPreset, &RectTransformComponent::anchorPreset)
-        .addProperty("usingAnchors", &RectTransformComponent::usingAnchors, &RectTransformComponent::usingAnchors)
+        .addProperty("width", &RectTransformComponent::width, &setTrackedMember<&RectTransformComponent::width>)
+        .addProperty("height", &RectTransformComponent::height, &setTrackedMember<&RectTransformComponent::height>)
+        .addProperty("anchorPointLeft", &RectTransformComponent::anchorPointLeft, &setTrackedMember<&RectTransformComponent::anchorPointLeft>)
+        .addProperty("anchorPointTop", &RectTransformComponent::anchorPointTop, &setTrackedMember<&RectTransformComponent::anchorPointTop>)
+        .addProperty("anchorPointRight", &RectTransformComponent::anchorPointRight, &setTrackedMember<&RectTransformComponent::anchorPointRight>)
+        .addProperty("anchorPointBottom", &RectTransformComponent::anchorPointBottom, &setTrackedMember<&RectTransformComponent::anchorPointBottom>)
+        .addProperty("anchorOffsetLeft", &RectTransformComponent::anchorOffsetLeft, &setTrackedMember<&RectTransformComponent::anchorOffsetLeft>)
+        .addProperty("anchorOffsetTop", &RectTransformComponent::anchorOffsetTop, &setTrackedMember<&RectTransformComponent::anchorOffsetTop>)
+        .addProperty("anchorOffsetRight", &RectTransformComponent::anchorOffsetRight, &setTrackedMember<&RectTransformComponent::anchorOffsetRight>)
+        .addProperty("anchorOffsetBottom", &RectTransformComponent::anchorOffsetBottom, &setTrackedMember<&RectTransformComponent::anchorOffsetBottom>)
+        .addProperty("positionOffset", &RectTransformComponent::positionOffset, &setTrackedMember<&RectTransformComponent::positionOffset>)
+        .addProperty("pivot", &RectTransformComponent::pivot, &setTrackedMember<&RectTransformComponent::pivot>)
+        .addProperty("anchorPreset", &RectTransformComponent::anchorPreset, &setTrackedMember<&RectTransformComponent::anchorPreset>)
+        .addProperty("usingAnchors", &RectTransformComponent::usingAnchors, &setTrackedMember<&RectTransformComponent::usingAnchors>)
         .addProperty("panel", &RectTransformComponent::panel)
         .addProperty("containerBoxIndex", &RectTransformComponent::containerBoxIndex)
-        .addProperty("scissor", &RectTransformComponent::scissor, &RectTransformComponent::scissor)
-        .addProperty("ignoreScissor", &RectTransformComponent::ignoreScissor, &RectTransformComponent::ignoreScissor)
-        .addProperty("ignoreEvents", &RectTransformComponent::ignoreEvents, &RectTransformComponent::ignoreEvents)
-        .addProperty("needUpdateSizes", &RectTransformComponent::needUpdateSizes, &RectTransformComponent::needUpdateSizes)
+        .addProperty("scissor", &RectTransformComponent::scissor, &setTrackedMember<&RectTransformComponent::scissor>)
+        .addProperty("ignoreScissor", &RectTransformComponent::ignoreScissor, &setTrackedMember<&RectTransformComponent::ignoreScissor>)
+        .addProperty("ignoreEvents", &RectTransformComponent::ignoreEvents, &setTrackedMember<&RectTransformComponent::ignoreEvents>)
+        .addProperty("needUpdateSizes", &RectTransformComponent::needUpdateSizes, &setTrackedMember<&RectTransformComponent::needUpdateSizes>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -386,11 +728,11 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("loaded", &UIComponent::loaded)
         .addProperty("minBufferCount", &UIComponent::minBufferCount)
         .addProperty("minIndicesCount", &UIComponent::minIndicesCount)
-        .addProperty("primitiveType", &UIComponent::primitiveType, &UIComponent::primitiveType)
+        .addProperty("primitiveType", &UIComponent::primitiveType, &setTrackedMember<&UIComponent::primitiveType>)
         .addProperty("vertexCount", &UIComponent::vertexCount)
-        .addProperty("texture", &UIComponent::texture, &UIComponent::texture)
+        .addProperty("texture", &UIComponent::texture, &setTrackedMember<&UIComponent::texture>)
         // linear, unlike Image::setColor which converts from sRGB
-        .addProperty("color", &UIComponent::color, &UIComponent::color)
+        .addProperty("color", &UIComponent::color, &setTrackedMember<&UIComponent::color>)
         .addProperty("onGetFocus", [] (UIComponent* self, lua_State* L) { return &self->onGetFocus; }, [] (UIComponent* self, lua_State* L) { self->onGetFocus = L; })
         .addProperty("onLostFocus", [] (UIComponent* self, lua_State* L) { return &self->onLostFocus; }, [] (UIComponent* self, lua_State* L) { self->onLostFocus = L; })
         .addProperty("onPointerEnter", [] (UIComponent* self, lua_State* L) { return &self->onPointerEnter; }, [] (UIComponent* self, lua_State* L) { self->onPointerEnter = L; })
@@ -403,33 +745,133 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("onDragStart", [] (UIComponent* self, lua_State* L) { return &self->onDragStart; }, [] (UIComponent* self, lua_State* L) { self->onDragStart = L; })
         .addProperty("onDrag", [] (UIComponent* self, lua_State* L) { return &self->onDrag; }, [] (UIComponent* self, lua_State* L) { self->onDrag = L; })
         .addProperty("onDragEnd", [] (UIComponent* self, lua_State* L) { return &self->onDragEnd; }, [] (UIComponent* self, lua_State* L) { self->onDragEnd = L; })
-        .addProperty("automaticFlipY", &UIComponent::automaticFlipY, &UIComponent::automaticFlipY)
-        .addProperty("flipY", &UIComponent::flipY, &UIComponent::flipY)
+        // the PointerEventData of the legacy callback running now (onPointerDown(x, y) ...), else nil
+        .addFunction("getPointerEventData", [] (const UIComponent*, lua_State* L) -> luabridge::LuaRef {
+            const PointerEventData* event = UISystem::getCurrentLegacyEvent();
+            return event ? luabridge::LuaRef(L, *event) : luabridge::LuaRef(L);
+        })
+        .addProperty("automaticFlipY", &UIComponent::automaticFlipY, &setTrackedMember<&UIComponent::automaticFlipY>)
+        .addProperty("flipY", &UIComponent::flipY, &setTrackedMember<&UIComponent::flipY>)
         .addProperty("pointerMoved", &UIComponent::pointerMoved)
         .addProperty("focused", &UIComponent::focused)
-        .addProperty("needReload", &UIComponent::needReload, &UIComponent::needReload)
-        .addProperty("needUpdateBuffer", &UIComponent::needUpdateBuffer, &UIComponent::needUpdateBuffer)
-        .addProperty("needUpdateTexture", &UIComponent::needUpdateTexture, &UIComponent::needUpdateTexture)
+        .addProperty("needReload", &UIComponent::needReload, &setTrackedMember<&UIComponent::needReload>)
+        .addProperty("needUpdateBuffer", &UIComponent::needUpdateBuffer, &setTrackedMember<&UIComponent::needUpdateBuffer>)
+        .addProperty("needUpdateTexture", &UIComponent::needUpdateTexture, &setTrackedMember<&UIComponent::needUpdateTexture>)
+        // the Canvas Groups' state over the element (runtime, UISystem)
+        .addProperty("groupAlpha", &UIComponent::groupAlpha)
+        .addProperty("groupInteractable", &UIComponent::groupInteractable)
+        .addProperty("groupBlocksRaycasts", &UIComponent::groupBlocksRaycasts)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<CanvasGroupComponent>("CanvasGroupComponent")
+        .addProperty("enabled", &CanvasGroupComponent::enabled, &setTrackedMember<&CanvasGroupComponent::enabled>)
+        .addProperty("alpha", &CanvasGroupComponent::alpha, &setTrackedMember<&CanvasGroupComponent::alpha>)
+        .addProperty("interactable", &CanvasGroupComponent::interactable, &setTrackedMember<&CanvasGroupComponent::interactable>)
+        .addProperty("blocksRaycasts", &CanvasGroupComponent::blocksRaycasts, &setTrackedMember<&CanvasGroupComponent::blocksRaycasts>)
+        .addProperty("ignoreParentGroups", &CanvasGroupComponent::ignoreParentGroups, &setTrackedMember<&CanvasGroupComponent::ignoreParentGroups>)
+        .addProperty("renderMode", &CanvasGroupComponent::renderMode, &setTrackedMember<&CanvasGroupComponent::renderMode>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<ButtonComponent>("ButtonComponent")
         .addProperty("label", &ButtonComponent::label)
-        .addProperty("textureNormal", &ButtonComponent::textureNormal, &ButtonComponent::textureNormal)
-        .addProperty("textureHovered", &ButtonComponent::textureHovered, &ButtonComponent::textureHovered)
-        .addProperty("texturePressed", &ButtonComponent::texturePressed, &ButtonComponent::texturePressed)
-        .addProperty("textureDisabled", &ButtonComponent::textureDisabled, &ButtonComponent::textureDisabled)
+        .addProperty("textureNormal", &ButtonComponent::textureNormal, &setTrackedMember<&ButtonComponent::textureNormal>)
+        .addProperty("textureHovered", &ButtonComponent::textureHovered, &setTrackedMember<&ButtonComponent::textureHovered>)
+        .addProperty("texturePressed", &ButtonComponent::texturePressed, &setTrackedMember<&ButtonComponent::texturePressed>)
+        .addProperty("textureDisabled", &ButtonComponent::textureDisabled, &setTrackedMember<&ButtonComponent::textureDisabled>)
         // linear, unlike Button::setColorNormal and friends which convert from sRGB
-        .addProperty("colorNormal", &ButtonComponent::colorNormal, &ButtonComponent::colorNormal)
-        .addProperty("colorHovered", &ButtonComponent::colorHovered, &ButtonComponent::colorHovered)
-        .addProperty("colorPressed", &ButtonComponent::colorPressed, &ButtonComponent::colorPressed)
-        .addProperty("colorDisabled", &ButtonComponent::colorDisabled, &ButtonComponent::colorDisabled)
+        .addProperty("colorNormal", &ButtonComponent::colorNormal, &setTrackedMember<&ButtonComponent::colorNormal>)
+        .addProperty("colorHovered", &ButtonComponent::colorHovered, &setTrackedMember<&ButtonComponent::colorHovered>)
+        .addProperty("colorPressed", &ButtonComponent::colorPressed, &setTrackedMember<&ButtonComponent::colorPressed>)
+        .addProperty("colorDisabled", &ButtonComponent::colorDisabled, &setTrackedMember<&ButtonComponent::colorDisabled>)
         .addProperty("onPress", [] (ButtonComponent* self, lua_State* L) { return &self->onPress; }, [] (ButtonComponent* self, lua_State* L) { self->onPress = L; })
         .addProperty("onRelease", [] (ButtonComponent* self, lua_State* L) { return &self->onRelease; }, [] (ButtonComponent* self, lua_State* L) { self->onRelease = L; })
         .addProperty("pressed", &ButtonComponent::pressed)
         .addProperty("hovered", &ButtonComponent::hovered)
-        .addProperty("disabled", &ButtonComponent::disabled, &ButtonComponent::disabled)
-        .addProperty("needUpdateButton", &ButtonComponent::needUpdateButton, &ButtonComponent::needUpdateButton)
+        .addProperty("disabled", &ButtonComponent::disabled, &setTrackedMember<&ButtonComponent::disabled>)
+        .addProperty("needUpdateButton", &ButtonComponent::needUpdateButton, &setTrackedMember<&ButtonComponent::needUpdateButton>)
+        .endClass();
+
+    // ui-multitouch: the EventSystem callbacks' argument (Unity's PointerEventData)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<PointerEventData>("PointerEventData")
+        .addProperty("pointerId", &PointerEventData::pointerId)
+        .addProperty("button", &PointerEventData::button)
+        .addProperty("isTouch", &PointerEventData::isTouch)
+        .addProperty("position", &PointerEventData::position)
+        .addProperty("delta", &PointerEventData::delta)
+        .addProperty("pressPosition", &PointerEventData::pressPosition)
+        .addProperty("localPosition", &PointerEventData::localPosition)
+        .addProperty("uiPosition", &PointerEventData::uiPosition)
+        .addProperty("uiDelta", &PointerEventData::uiDelta)
+        .addProperty("scrollDelta", &PointerEventData::scrollDelta)
+        .addProperty("clickCount", &PointerEventData::clickCount)
+        .addProperty("clickTime", &PointerEventData::clickTime)
+        .addProperty("dragging", &PointerEventData::dragging)
+        .addProperty("eligibleForClick", &PointerEventData::eligibleForClick)
+        .addProperty("canceled", &PointerEventData::canceled)
+        .addProperty("used", &PointerEventData::used)
+        .addProperty("useDragThreshold", &PointerEventData::useDragThreshold, &PointerEventData::useDragThreshold)
+        .addProperty("pointerEnter", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->pointerEnter); })
+        .addProperty("pointerPress", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->pointerPress); })
+        .addProperty("rawPointerPress", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->rawPointerPress); })
+        .addProperty("pointerDrag", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->pointerDrag); })
+        .addProperty("target", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->target); })
+        .addFunction("use", &PointerEventData::use)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<OnScreenStickComponent>("OnScreenStickComponent")
+        .addProperty("enabled", &OnScreenStickComponent::enabled, &OnScreenStickComponent::enabled)
+        .addProperty("mode", &OnScreenStickComponent::mode, &OnScreenStickComponent::mode)
+        .addProperty("background", &OnScreenStickComponent::background, &OnScreenStickComponent::background)
+        .addProperty("handle", &OnScreenStickComponent::handle, &OnScreenStickComponent::handle)
+        .addProperty("handleRange", &OnScreenStickComponent::handleRange, &OnScreenStickComponent::handleRange)
+        .addProperty("deadZone", &OnScreenStickComponent::deadZone, &OnScreenStickComponent::deadZone)
+        .addProperty("moveThreshold", &OnScreenStickComponent::moveThreshold, &OnScreenStickComponent::moveThreshold)
+        .addProperty("axes", &OnScreenStickComponent::axes, &OnScreenStickComponent::axes)
+        .addProperty("snapX", &OnScreenStickComponent::snapX, &OnScreenStickComponent::snapX)
+        .addProperty("snapY", &OnScreenStickComponent::snapY, &OnScreenStickComponent::snapY)
+        .addProperty("hideWhenReleased", &OnScreenStickComponent::hideWhenReleased, &OnScreenStickComponent::hideWhenReleased)
+        .addProperty("clampToArea", &OnScreenStickComponent::clampToArea, &OnScreenStickComponent::clampToArea)
+        .addProperty("horizontalAction", &OnScreenStickComponent::horizontalAction, &OnScreenStickComponent::horizontalAction)
+        .addProperty("verticalAction", &OnScreenStickComponent::verticalAction, &OnScreenStickComponent::verticalAction)
+        .addProperty("visibility", &OnScreenStickComponent::visibility, &OnScreenStickComponent::visibility)
+        .addProperty("value", &OnScreenStickComponent::value)
+        .addProperty("pressed", &OnScreenStickComponent::pressed)
+        .addProperty("pointerId", &OnScreenStickComponent::pointerId)
+        .addProperty("onValueChanged", [] (OnScreenStickComponent* self, lua_State* L) { return &self->onValueChanged; }, [] (OnScreenStickComponent* self, lua_State* L) { self->onValueChanged = L; })
+        .addProperty("onPress", [] (OnScreenStickComponent* self, lua_State* L) { return &self->onPress; }, [] (OnScreenStickComponent* self, lua_State* L) { self->onPress = L; })
+        .addProperty("onRelease", [] (OnScreenStickComponent* self, lua_State* L) { return &self->onRelease; }, [] (OnScreenStickComponent* self, lua_State* L) { self->onRelease = L; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<OnScreenButtonComponent>("OnScreenButtonComponent")
+        .addProperty("enabled", &OnScreenButtonComponent::enabled, &OnScreenButtonComponent::enabled)
+        .addProperty("action", &OnScreenButtonComponent::action, &OnScreenButtonComponent::action)
+        .addProperty("value", &OnScreenButtonComponent::value, &OnScreenButtonComponent::value)
+        .addProperty("pressWhenPointerEnters", &OnScreenButtonComponent::pressWhenPointerEnters, &OnScreenButtonComponent::pressWhenPointerEnters)
+        .addProperty("releaseWhenPointerLeaves", &OnScreenButtonComponent::releaseWhenPointerLeaves, &OnScreenButtonComponent::releaseWhenPointerLeaves)
+        .addProperty("visibility", &OnScreenButtonComponent::visibility, &OnScreenButtonComponent::visibility)
+        .addProperty("pressed", &OnScreenButtonComponent::pressed)
+        .addProperty("onPress", [] (OnScreenButtonComponent* self, lua_State* L) { return &self->onPress; }, [] (OnScreenButtonComponent* self, lua_State* L) { self->onPress = L; })
+        .addProperty("onRelease", [] (OnScreenButtonComponent* self, lua_State* L) { return &self->onRelease; }, [] (OnScreenButtonComponent* self, lua_State* L) { self->onRelease = L; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<TouchAreaComponent>("TouchAreaComponent")
+        .addProperty("enabled", &TouchAreaComponent::enabled, &TouchAreaComponent::enabled)
+        .addProperty("horizontalAction", &TouchAreaComponent::horizontalAction, &TouchAreaComponent::horizontalAction)
+        .addProperty("verticalAction", &TouchAreaComponent::verticalAction, &TouchAreaComponent::verticalAction)
+        .addProperty("sensitivity", &TouchAreaComponent::sensitivity, &TouchAreaComponent::sensitivity)
+        .addProperty("invertX", &TouchAreaComponent::invertX, &TouchAreaComponent::invertX)
+        .addProperty("invertY", &TouchAreaComponent::invertY, &TouchAreaComponent::invertY)
+        .addProperty("visibility", &TouchAreaComponent::visibility, &TouchAreaComponent::visibility)
+        .addProperty("delta", &TouchAreaComponent::delta)
+        .addProperty("pressed", &TouchAreaComponent::pressed)
+        .addProperty("pointerId", &TouchAreaComponent::pointerId)
+        .addProperty("onDrag", [] (TouchAreaComponent* self, lua_State* L) { return &self->onDrag; }, [] (TouchAreaComponent* self, lua_State* L) { self->onDrag = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -437,45 +879,45 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("headerimage", &PanelComponent::headerimage)
         .addProperty("headercontainer", &PanelComponent::headercontainer)
         .addProperty("headertext", &PanelComponent::headertext)
-        .addProperty("titleAnchorPreset", &PanelComponent::titleAnchorPreset, &PanelComponent::titleAnchorPreset)
-        .addProperty("minWidth", &PanelComponent::minWidth, &PanelComponent::minWidth)
-        .addProperty("minHeight", &PanelComponent::minHeight, &PanelComponent::minHeight)
-        .addProperty("resizeMargin", &PanelComponent::resizeMargin, &PanelComponent::resizeMargin)
-        .addProperty("canMove", &PanelComponent::canMove, &PanelComponent::canMove)
-        .addProperty("canResize", &PanelComponent::canResize, &PanelComponent::canResize)
-        .addProperty("canBringToFront", &PanelComponent::canBringToFront, &PanelComponent::canBringToFront)
+        .addProperty("titleAnchorPreset", &PanelComponent::titleAnchorPreset, &setTrackedMember<&PanelComponent::titleAnchorPreset>)
+        .addProperty("minWidth", &PanelComponent::minWidth, &setTrackedMember<&PanelComponent::minWidth>)
+        .addProperty("minHeight", &PanelComponent::minHeight, &setTrackedMember<&PanelComponent::minHeight>)
+        .addProperty("resizeMargin", &PanelComponent::resizeMargin, &setTrackedMember<&PanelComponent::resizeMargin>)
+        .addProperty("canMove", &PanelComponent::canMove, &setTrackedMember<&PanelComponent::canMove>)
+        .addProperty("canResize", &PanelComponent::canResize, &setTrackedMember<&PanelComponent::canResize>)
+        .addProperty("canBringToFront", &PanelComponent::canBringToFront, &setTrackedMember<&PanelComponent::canBringToFront>)
         .addProperty("headerPointerDown", &PanelComponent::headerPointerDown)
         .addProperty("onMove", [] (PanelComponent* self, lua_State* L) { return &self->onMove; }, [] (PanelComponent* self, lua_State* L) { self->onMove = L; })
         .addProperty("onResize", [] (PanelComponent* self, lua_State* L) { return &self->onResize; }, [] (PanelComponent* self, lua_State* L) { self->onResize = L; })
-        .addProperty("needUpdatePanel", &PanelComponent::needUpdatePanel, &PanelComponent::needUpdatePanel)
+        .addProperty("needUpdatePanel", &PanelComponent::needUpdatePanel, &setTrackedMember<&PanelComponent::needUpdatePanel>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<ScrollbarComponent>("ScrollbarComponent")
         .addProperty("bar", &ScrollbarComponent::bar)
-        .addProperty("type", &ScrollbarComponent::type, &ScrollbarComponent::type)
+        .addProperty("type", &ScrollbarComponent::type, &setTrackedMember<&ScrollbarComponent::type>)
         .addProperty("onChange", [] (ScrollbarComponent* self, lua_State* L) { return &self->onChange; }, [] (ScrollbarComponent* self, lua_State* L) { self->onChange = L; })
-        .addProperty("barSize", &ScrollbarComponent::barSize, &ScrollbarComponent::barSize)
-        .addProperty("step", &ScrollbarComponent::step, &ScrollbarComponent::step)
-        .addProperty("barMarginLeft", &ScrollbarComponent::barMarginLeft, &ScrollbarComponent::barMarginLeft)
-        .addProperty("barMarginRight", &ScrollbarComponent::barMarginRight, &ScrollbarComponent::barMarginRight)
-        .addProperty("barMarginTop", &ScrollbarComponent::barMarginTop, &ScrollbarComponent::barMarginTop)
-        .addProperty("barMarginBottom", &ScrollbarComponent::barMarginBottom, &ScrollbarComponent::barMarginBottom)
+        .addProperty("barSize", &ScrollbarComponent::barSize, &setTrackedMember<&ScrollbarComponent::barSize>)
+        .addProperty("step", &ScrollbarComponent::step, &setTrackedMember<&ScrollbarComponent::step>)
+        .addProperty("barMarginLeft", &ScrollbarComponent::barMarginLeft, &setTrackedMember<&ScrollbarComponent::barMarginLeft>)
+        .addProperty("barMarginRight", &ScrollbarComponent::barMarginRight, &setTrackedMember<&ScrollbarComponent::barMarginRight>)
+        .addProperty("barMarginTop", &ScrollbarComponent::barMarginTop, &setTrackedMember<&ScrollbarComponent::barMarginTop>)
+        .addProperty("barMarginBottom", &ScrollbarComponent::barMarginBottom, &setTrackedMember<&ScrollbarComponent::barMarginBottom>)
         .addProperty("barPointerDown", &ScrollbarComponent::barPointerDown)
         .addProperty("barPointerPos", &ScrollbarComponent::barPointerPos)
-        .addProperty("needUpdateScrollbar", &ScrollbarComponent::needUpdateScrollbar, &ScrollbarComponent::needUpdateScrollbar)
+        .addProperty("needUpdateScrollbar", &ScrollbarComponent::needUpdateScrollbar, &setTrackedMember<&ScrollbarComponent::needUpdateScrollbar>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<ProgressbarComponent>("ProgressbarComponent")
         .addProperty("fill", &ProgressbarComponent::fill)
-        .addProperty("type", &ProgressbarComponent::type, &ProgressbarComponent::type)
-        .addProperty("value", &ProgressbarComponent::value, &ProgressbarComponent::value)
-        .addProperty("fillMarginLeft", &ProgressbarComponent::fillMarginLeft, &ProgressbarComponent::fillMarginLeft)
-        .addProperty("fillMarginRight", &ProgressbarComponent::fillMarginRight, &ProgressbarComponent::fillMarginRight)
-        .addProperty("fillMarginTop", &ProgressbarComponent::fillMarginTop, &ProgressbarComponent::fillMarginTop)
-        .addProperty("fillMarginBottom", &ProgressbarComponent::fillMarginBottom, &ProgressbarComponent::fillMarginBottom)
-        .addProperty("needUpdateProgressbar", &ProgressbarComponent::needUpdateProgressbar, &ProgressbarComponent::needUpdateProgressbar)
+        .addProperty("type", &ProgressbarComponent::type, &setTrackedMember<&ProgressbarComponent::type>)
+        .addProperty("value", &ProgressbarComponent::value, &setTrackedMember<&ProgressbarComponent::value>)
+        .addProperty("fillMarginLeft", &ProgressbarComponent::fillMarginLeft, &setTrackedMember<&ProgressbarComponent::fillMarginLeft>)
+        .addProperty("fillMarginRight", &ProgressbarComponent::fillMarginRight, &setTrackedMember<&ProgressbarComponent::fillMarginRight>)
+        .addProperty("fillMarginTop", &ProgressbarComponent::fillMarginTop, &setTrackedMember<&ProgressbarComponent::fillMarginTop>)
+        .addProperty("fillMarginBottom", &ProgressbarComponent::fillMarginBottom, &setTrackedMember<&ProgressbarComponent::fillMarginBottom>)
+        .addProperty("needUpdateProgressbar", &ProgressbarComponent::needUpdateProgressbar, &setTrackedMember<&ProgressbarComponent::needUpdateProgressbar>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -483,39 +925,22 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("text", &InputFieldComponent::text)
         .addProperty("selection", &InputFieldComponent::selection)
         .addProperty("cursor", &InputFieldComponent::cursor)
-        .addProperty("cursorBlink", &InputFieldComponent::cursorBlink, &InputFieldComponent::cursorBlink)
-        .addProperty("cursorWidth", &InputFieldComponent::cursorWidth, &InputFieldComponent::cursorWidth)
+        .addProperty("cursorBlink", &InputFieldComponent::cursorBlink, &setTrackedMember<&InputFieldComponent::cursorBlink>)
+        .addProperty("cursorWidth", &InputFieldComponent::cursorWidth, &setTrackedMember<&InputFieldComponent::cursorWidth>)
         // linear, unlike InputField::setCursorColor and friends which convert from sRGB
-        .addProperty("cursorColor", &InputFieldComponent::cursorColor, &InputFieldComponent::cursorColor)
-        .addProperty("selectionColor", &InputFieldComponent::selectionColor, &InputFieldComponent::selectionColor)
-        .addProperty("placeholderColor", &InputFieldComponent::placeholderColor, &InputFieldComponent::placeholderColor)
-        .addProperty("placeholder", &InputFieldComponent::placeholder, &InputFieldComponent::placeholder)
-        .addProperty("passwordChar", &InputFieldComponent::passwordChar, &InputFieldComponent::passwordChar)
-        .addProperty("cursorIndex", &InputFieldComponent::cursorIndex, &InputFieldComponent::cursorIndex)
-        .addProperty("selectionAnchor", &InputFieldComponent::selectionAnchor, &InputFieldComponent::selectionAnchor)
-        .addProperty("scrollOffset", &InputFieldComponent::scrollOffset, &InputFieldComponent::scrollOffset)
-        .addProperty("disabled", &InputFieldComponent::disabled, &InputFieldComponent::disabled)
-        .addProperty("password", &InputFieldComponent::password, &InputFieldComponent::password)
+        .addProperty("cursorColor", &InputFieldComponent::cursorColor, &setTrackedMember<&InputFieldComponent::cursorColor>)
+        .addProperty("selectionColor", &InputFieldComponent::selectionColor, &setTrackedMember<&InputFieldComponent::selectionColor>)
+        .addProperty("placeholderColor", &InputFieldComponent::placeholderColor, &setTrackedMember<&InputFieldComponent::placeholderColor>)
+        .addProperty("placeholder", &InputFieldComponent::placeholder, &setTrackedMember<&InputFieldComponent::placeholder>)
+        .addProperty("passwordChar", &InputFieldComponent::passwordChar, &setTrackedMember<&InputFieldComponent::passwordChar>)
+        .addProperty("cursorIndex", &InputFieldComponent::cursorIndex, &setTrackedMember<&InputFieldComponent::cursorIndex>)
+        .addProperty("selectionAnchor", &InputFieldComponent::selectionAnchor, &setTrackedMember<&InputFieldComponent::selectionAnchor>)
+        .addProperty("scrollOffset", &InputFieldComponent::scrollOffset, &setTrackedMember<&InputFieldComponent::scrollOffset>)
+        .addProperty("disabled", &InputFieldComponent::disabled, &setTrackedMember<&InputFieldComponent::disabled>)
+        .addProperty("password", &InputFieldComponent::password, &setTrackedMember<&InputFieldComponent::password>)
         .addProperty("onChange", [] (InputFieldComponent* self, lua_State* L) { return &self->onChange; }, [] (InputFieldComponent* self, lua_State* L) { self->onChange = L; })
         .addProperty("onSubmit", [] (InputFieldComponent* self, lua_State* L) { return &self->onSubmit; }, [] (InputFieldComponent* self, lua_State* L) { self->onSubmit = L; })
-        .addProperty("needUpdateInputField", &InputFieldComponent::needUpdateInputField, &InputFieldComponent::needUpdateInputField)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleLifeInitializer>("ParticleLifeInitializer")
-        .addProperty("minLife", &ParticleLifeInitializer::minLife, &ParticleLifeInitializer::minLife)
-        .addProperty("maxLife", &ParticleLifeInitializer::maxLife, &ParticleLifeInitializer::maxLife)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticlePositionInitializer>("ParticlePositionInitializer")
-        .addProperty("shape", &ParticlePositionInitializer::shape, &ParticlePositionInitializer::shape)
-        .addProperty("minPosition", &ParticlePositionInitializer::minPosition, &ParticlePositionInitializer::minPosition)
-        .addProperty("maxPosition", &ParticlePositionInitializer::maxPosition, &ParticlePositionInitializer::maxPosition)
-        .addProperty("radius", &ParticlePositionInitializer::radius, &ParticlePositionInitializer::radius)
-        .addProperty("innerRadius", &ParticlePositionInitializer::innerRadius, &ParticlePositionInitializer::innerRadius)
-        .addProperty("coneAngle", &ParticlePositionInitializer::coneAngle, &ParticlePositionInitializer::coneAngle)
-        .addProperty("coneHeight", &ParticlePositionInitializer::coneHeight, &ParticlePositionInitializer::coneHeight)
+        .addProperty("needUpdateInputField", &InputFieldComponent::needUpdateInputField, &setTrackedMember<&InputFieldComponent::needUpdateInputField>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -526,212 +951,166 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<ParticlePositionModifier>("ParticlePositionModifier")
-        .addProperty("fromTime", &ParticlePositionModifier::fromTime, &ParticlePositionModifier::fromTime)
-        .addProperty("toTime", &ParticlePositionModifier::toTime, &ParticlePositionModifier::toTime)
-        .addProperty("fromPosition", &ParticlePositionModifier::fromPosition, &ParticlePositionModifier::fromPosition)
-        .addProperty("toPosition", &ParticlePositionModifier::toPosition, &ParticlePositionModifier::toPosition)
-        .addProperty("function", [] (ParticlePositionModifier* self, lua_State* L) { return &self->function; }, [] (ParticlePositionModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleVelocityInitializer>("ParticleVelocityInitializer")
-        .addProperty("minVelocity", &ParticleVelocityInitializer::minVelocity, &ParticleVelocityInitializer::minVelocity)
-        .addProperty("maxVelocity", &ParticleVelocityInitializer::maxVelocity, &ParticleVelocityInitializer::maxVelocity)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleVelocityModifier>("ParticleVelocityModifier")
-        .addProperty("fromTime", &ParticleVelocityModifier::fromTime, &ParticleVelocityModifier::fromTime)
-        .addProperty("toTime", &ParticleVelocityModifier::toTime, &ParticleVelocityModifier::toTime)
-        .addProperty("fromVelocity", &ParticleVelocityModifier::fromVelocity, &ParticleVelocityModifier::fromVelocity)
-        .addProperty("toVelocity", &ParticleVelocityModifier::toVelocity, &ParticleVelocityModifier::toVelocity)
-        .addProperty("function", [] (ParticleVelocityModifier* self, lua_State* L) { return &self->function; }, [] (ParticleVelocityModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleAccelerationInitializer>("ParticleAccelerationInitializer")
-        .addProperty("minAcceleration", &ParticleAccelerationInitializer::minAcceleration, &ParticleAccelerationInitializer::minAcceleration)
-        .addProperty("maxAcceleration", &ParticleAccelerationInitializer::maxAcceleration, &ParticleAccelerationInitializer::maxAcceleration)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleAccelerationModifier>("ParticleAccelerationModifier")
-        .addProperty("fromTime", &ParticleAccelerationModifier::fromTime, &ParticleAccelerationModifier::fromTime)
-        .addProperty("toTime", &ParticleAccelerationModifier::toTime, &ParticleAccelerationModifier::toTime)
-        .addProperty("fromAcceleration", &ParticleAccelerationModifier::fromAcceleration, &ParticleAccelerationModifier::fromAcceleration)
-        .addProperty("toAcceleration", &ParticleAccelerationModifier::toAcceleration, &ParticleAccelerationModifier::toAcceleration)
-        .addProperty("function", [] (ParticleAccelerationModifier* self, lua_State* L) { return &self->function; }, [] (ParticleAccelerationModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleColorInitializer>("ParticleColorInitializer")
-        .addProperty("minColor", &ParticleColorInitializer::minColor, &ParticleColorInitializer::minColor)
-        .addProperty("maxColor", &ParticleColorInitializer::maxColor, &ParticleColorInitializer::maxColor)
-        .addProperty("useSRGB", &ParticleColorInitializer::useSRGB, &ParticleColorInitializer::useSRGB)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleColorModifier>("ParticleColorModifier")
-        .addProperty("fromTime", &ParticleColorModifier::fromTime, &ParticleColorModifier::fromTime)
-        .addProperty("toTime", &ParticleColorModifier::toTime, &ParticleColorModifier::toTime)
-        .addProperty("fromColor", &ParticleColorModifier::fromColor, &ParticleColorModifier::fromColor)
-        .addProperty("toColor", &ParticleColorModifier::toColor, &ParticleColorModifier::toColor)
-        .addProperty("function", [] (ParticleColorModifier* self, lua_State* L) { return &self->function; }, [] (ParticleColorModifier* self, lua_State* L) { self->function = L; })
-        .addProperty("useSRGB", &ParticleColorModifier::useSRGB, &ParticleColorModifier::useSRGB)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
         .beginClass<ParticleColorGradientStop>("ParticleColorGradientStop")
         .addProperty("time", &ParticleColorGradientStop::time, &ParticleColorGradientStop::time)
         .addProperty("color", &ParticleColorGradientStop::color, &ParticleColorGradientStop::color)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleColorGradient>("ParticleColorGradient")
-        .addProperty("stops", &ParticleColorGradient::stops, &ParticleColorGradient::stops)
-        .addProperty("useSRGB", &ParticleColorGradient::useSRGB, &ParticleColorGradient::useSRGB)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleAlphaInitializer>("ParticleAlphaInitializer")
-        .addProperty("minAlpha", &ParticleAlphaInitializer::minAlpha, &ParticleAlphaInitializer::minAlpha)
-        .addProperty("maxAlpha", &ParticleAlphaInitializer::maxAlpha, &ParticleAlphaInitializer::maxAlpha)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleAlphaModifier>("ParticleAlphaModifier")
-        .addProperty("fromTime", &ParticleAlphaModifier::fromTime, &ParticleAlphaModifier::fromTime)
-        .addProperty("toTime", &ParticleAlphaModifier::toTime, &ParticleAlphaModifier::toTime)
-        .addProperty("fromAlpha", &ParticleAlphaModifier::fromAlpha, &ParticleAlphaModifier::fromAlpha)
-        .addProperty("toAlpha", &ParticleAlphaModifier::toAlpha, &ParticleAlphaModifier::toAlpha)
-        .addProperty("function", [] (ParticleAlphaModifier* self, lua_State* L) { return &self->function; }, [] (ParticleAlphaModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleSizeInitializer>("ParticleSizeInitializer")
-        .addProperty("minSize", &ParticleSizeInitializer::minSize, &ParticleSizeInitializer::minSize)
-        .addProperty("maxSize", &ParticleSizeInitializer::maxSize, &ParticleSizeInitializer::maxSize)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleSizeModifier>("ParticleSizeModifier")
-        .addProperty("fromTime", &ParticleSizeModifier::fromTime, &ParticleSizeModifier::fromTime)
-        .addProperty("toTime", &ParticleSizeModifier::toTime, &ParticleSizeModifier::toTime)
-        .addProperty("fromSize", &ParticleSizeModifier::fromSize, &ParticleSizeModifier::fromSize)
-        .addProperty("toSize", &ParticleSizeModifier::toSize, &ParticleSizeModifier::toSize)
-        .addProperty("function", [] (ParticleSizeModifier* self, lua_State* L) { return &self->function; }, [] (ParticleSizeModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleSpriteInitializer>("ParticleSpriteInitializer")
-        .addProperty("frames", &ParticleSpriteInitializer::frames, &ParticleSpriteInitializer::frames)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleSpriteModifier>("ParticleSpriteModifier")
-        .addProperty("fromTime", &ParticleSpriteModifier::fromTime, &ParticleSpriteModifier::fromTime)
-        .addProperty("toTime", &ParticleSpriteModifier::toTime, &ParticleSpriteModifier::toTime)
-        .addProperty("frames", &ParticleSpriteModifier::frames, &ParticleSpriteModifier::frames)
-        .addProperty("function", [] (ParticleSpriteModifier* self, lua_State* L) { return &self->function; }, [] (ParticleSpriteModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleRotationInitializer>("ParticleRotationInitializer")
-        .addProperty("minRotation", &ParticleRotationInitializer::minRotation, &ParticleRotationInitializer::minRotation)
-        .addProperty("maxRotation", &ParticleRotationInitializer::maxRotation, &ParticleRotationInitializer::maxRotation)
-        .addProperty("shortestPath", &ParticleRotationInitializer::shortestPath, &ParticleRotationInitializer::shortestPath)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleRotationModifier>("ParticleRotationModifier")
-        .addProperty("fromTime", &ParticleRotationModifier::fromTime, &ParticleRotationModifier::fromTime)
-        .addProperty("toTime", &ParticleRotationModifier::toTime, &ParticleRotationModifier::toTime)
-        .addProperty("fromRotation", &ParticleRotationModifier::fromRotation, &ParticleRotationModifier::fromRotation)
-        .addProperty("toRotation", &ParticleRotationModifier::toRotation, &ParticleRotationModifier::toRotation)
-        .addProperty("function", [] (ParticleRotationModifier* self, lua_State* L) { return &self->function; }, [] (ParticleRotationModifier* self, lua_State* L) { self->function = L; })
-        .addProperty("shortestPath", &ParticleRotationModifier::shortestPath, &ParticleRotationModifier::shortestPath)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleScaleInitializer>("ParticleScaleInitializer")
-        .addProperty("minScale", &ParticleScaleInitializer::minScale, &ParticleScaleInitializer::minScale)
-        .addProperty("maxScale", &ParticleScaleInitializer::maxScale, &ParticleScaleInitializer::maxScale)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleScaleModifier>("ParticleScaleModifier")
-        .addProperty("fromTime", &ParticleScaleModifier::fromTime, &ParticleScaleModifier::fromTime)
-        .addProperty("toTime", &ParticleScaleModifier::toTime, &ParticleScaleModifier::toTime)
-        .addProperty("fromScale", &ParticleScaleModifier::fromScale, &ParticleScaleModifier::fromScale)
-        .addProperty("toScale", &ParticleScaleModifier::toScale, &ParticleScaleModifier::toScale)
-        .addProperty("function", [] (ParticleScaleModifier* self, lua_State* L) { return &self->function; }, [] (ParticleScaleModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
         .beginClass<ParticleSystemComponent>("ParticleSystemComponent")
-        .addProperty("newParticlesCount", &ParticleSystemComponent::newParticlesCount)
-        .addProperty("lastUsedParticle", &ParticleSystemComponent::lastUsedParticle)
-        .addProperty("emitter", &ParticleSystemComponent::emitter, &ParticleSystemComponent::emitter)
-        .addProperty("loop", &ParticleSystemComponent::loop, &ParticleSystemComponent::loop)
-        .addProperty("localSpace", &ParticleSystemComponent::localSpace, &ParticleSystemComponent::localSpace)
-        .addProperty("rate", &ParticleSystemComponent::rate, &ParticleSystemComponent::rate)
-        .addProperty("maxPerUpdate", &ParticleSystemComponent::maxPerUpdate, &ParticleSystemComponent::maxPerUpdate)
-        .addProperty("bursts", &ParticleSystemComponent::bursts, &ParticleSystemComponent::bursts)
-        .addProperty("currentBurst", &ParticleSystemComponent::currentBurst)
-        .addProperty("lifeInitializer", &ParticleSystemComponent::lifeInitializer, &ParticleSystemComponent::lifeInitializer)
-        .addProperty("positionInitializer", &ParticleSystemComponent::positionInitializer, &ParticleSystemComponent::positionInitializer)
-        .addProperty("positionModifier", &ParticleSystemComponent::positionModifier, &ParticleSystemComponent::positionModifier)
-        .addProperty("velocityInitializer", &ParticleSystemComponent::velocityInitializer, &ParticleSystemComponent::velocityInitializer)
-        .addProperty("velocityModifier", &ParticleSystemComponent::velocityModifier, &ParticleSystemComponent::velocityModifier)
-        .addProperty("accelerationInitializer", &ParticleSystemComponent::accelerationInitializer, &ParticleSystemComponent::accelerationInitializer)
-        .addProperty("accelerationModifier", &ParticleSystemComponent::accelerationModifier, &ParticleSystemComponent::accelerationModifier)
-        .addProperty("colorInitializer", &ParticleSystemComponent::colorInitializer, &ParticleSystemComponent::colorInitializer)
-        .addProperty("colorModifier", &ParticleSystemComponent::colorModifier, &ParticleSystemComponent::colorModifier)
-        .addProperty("colorGradient", &ParticleSystemComponent::colorGradient, &ParticleSystemComponent::colorGradient)
-        .addProperty("alphaInitializer", &ParticleSystemComponent::alphaInitializer, &ParticleSystemComponent::alphaInitializer)
-        .addProperty("alphaModifier", &ParticleSystemComponent::alphaModifier, &ParticleSystemComponent::alphaModifier)
-        .addProperty("sizeInitializer", &ParticleSystemComponent::sizeInitializer, &ParticleSystemComponent::sizeInitializer)
-        .addProperty("sizeModifier", &ParticleSystemComponent::sizeModifier, &ParticleSystemComponent::sizeModifier)
-        .addProperty("spriteInitializer", &ParticleSystemComponent::spriteInitializer, &ParticleSystemComponent::spriteInitializer)
-        .addProperty("spriteModifier", &ParticleSystemComponent::spriteModifier, &ParticleSystemComponent::spriteModifier)
-        .addProperty("rotationInitializer", &ParticleSystemComponent::rotationInitializer, &ParticleSystemComponent::rotationInitializer)
-        .addProperty("rotationModifier", &ParticleSystemComponent::rotationModifier, &ParticleSystemComponent::rotationModifier)
-        .addProperty("scaleInitializer", &ParticleSystemComponent::scaleInitializer, &ParticleSystemComponent::scaleInitializer)
-        .addProperty("scaleModifier", &ParticleSystemComponent::scaleModifier, &ParticleSystemComponent::scaleModifier)
+        .addProperty("enabled", &ParticleSystemComponent::enabled, &setTrackedMember<&ParticleSystemComponent::enabled>)
+        .addProperty("playOnAwake", &ParticleSystemComponent::playOnAwake, &setTrackedMember<&ParticleSystemComponent::playOnAwake>)
+        .addProperty("seed", &ParticleSystemComponent::seed, &setTrackedMember<&ParticleSystemComponent::seed>)
+        .addProperty("playbackSpeed", &ParticleSystemComponent::playbackSpeed, &setTrackedMember<&ParticleSystemComponent::playbackSpeed>)
+        .addProperty("useUnscaledTime", &ParticleSystemComponent::useUnscaledTime, &setTrackedMember<&ParticleSystemComponent::useUnscaledTime>)
+        .addProperty("effect", [] (const ParticleSystemComponent* self) { return self->effect.path; },
+                     [] (ParticleSystemComponent* self, std::string path) { self->effect = path; self->needReload = true; })
+        .addProperty("onCollision", [] (ParticleSystemComponent* self, lua_State* L) { return &self->onCollision; }, [] (ParticleSystemComponent* self, lua_State* L) { self->onCollision = L; })
+        .addProperty("onParticleDeath", [] (ParticleSystemComponent* self, lua_State* L) { return &self->onParticleDeath; }, [] (ParticleSystemComponent* self, lua_State* L) { self->onParticleDeath = L; })
+        .addProperty("onSubEmit", [] (ParticleSystemComponent* self, lua_State* L) { return &self->onSubEmit; }, [] (ParticleSystemComponent* self, lua_State* L) { self->onSubEmit = L; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<PoseAnimatorComponent>("PoseAnimatorComponent")
+        .addProperty("animation", &PoseAnimatorComponent::animation, &setTrackedMember<&PoseAnimatorComponent::animation>)
+        .addProperty("autoplay", &PoseAnimatorComponent::autoplay, &setTrackedMember<&PoseAnimatorComponent::autoplay>)
+        .addProperty("speed", &PoseAnimatorComponent::speed, &setTrackedMember<&PoseAnimatorComponent::speed>)
+        .addProperty("weight", &PoseAnimatorComponent::weight, &setTrackedMember<&PoseAnimatorComponent::weight>)
+        .addProperty("playing", &PoseAnimatorComponent::playing)
+        .addProperty("time", &PoseAnimatorComponent::time)
+        .addProperty("needsLoad", &PoseAnimatorComponent::needsLoad, &PoseAnimatorComponent::needsLoad)
+        .addProperty("onFinish", [] (PoseAnimatorComponent* self, lua_State* L) { return &self->onFinish; }, [] (PoseAnimatorComponent* self, lua_State* L) { self->onFinish = L; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AnimationPlayerComponent>("AnimationPlayerComponent")
+        .addProperty("enabled", &AnimationPlayerComponent::enabled, &setTrackedMember<&AnimationPlayerComponent::enabled>)
+        .addProperty("defaultClip", &AnimationPlayerComponent::defaultClip, &setTrackedMember<&AnimationPlayerComponent::defaultClip>)
+        .addProperty("playAutomatically", &AnimationPlayerComponent::playAutomatically, &setTrackedMember<&AnimationPlayerComponent::playAutomatically>)
+        .addProperty("speed", &AnimationPlayerComponent::speed, &setTrackedMember<&AnimationPlayerComponent::speed>)
+        .addProperty("defaultFadeTime", &AnimationPlayerComponent::defaultFadeTime, &setTrackedMember<&AnimationPlayerComponent::defaultFadeTime>)
+        .addProperty("needsLoad", &AnimationPlayerComponent::needsLoad, &AnimationPlayerComponent::needsLoad)
+        .addProperty("onEvent", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onEvent; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onEvent = L; })
+        .addProperty("onFinish", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onFinish; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onFinish = L; })
+        .addProperty("onStateEnter", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onStateEnter; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onStateEnter = L; })
+        .addProperty("onStateExit", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onStateExit; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onStateExit = L; })
+        .endClass();
+
+    // The Vertex Animator's data (the VertexAnimator object plays it: play, crossFade, blend...)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<VertexAnimatorComponent>("VertexAnimatorComponent")
+        .addProperty("enabled", &VertexAnimatorComponent::enabled, &setTrackedMember<&VertexAnimatorComponent::enabled>)
+        // the .vat, relative to the assets folder
+        .addProperty("animation", &VertexAnimatorComponent::animation, &setTrackedMember<&VertexAnimatorComponent::animation>)
+        .addProperty("defaultClip", &VertexAnimatorComponent::defaultClip, &setTrackedMember<&VertexAnimatorComponent::defaultClip>)
+        .addProperty("playAutomatically", &VertexAnimatorComponent::playAutomatically, &setTrackedMember<&VertexAnimatorComponent::playAutomatically>)
+        .addProperty("speed", &VertexAnimatorComponent::speed, &setTrackedMember<&VertexAnimatorComponent::speed>)
+        .addProperty("randomStart", &VertexAnimatorComponent::randomStart, &setTrackedMember<&VertexAnimatorComponent::randomStart>)
+        .addProperty("defaultFadeTime", &VertexAnimatorComponent::defaultFadeTime, &setTrackedMember<&VertexAnimatorComponent::defaultFadeTime>)
+        .addProperty("instanceEvents", &VertexAnimatorComponent::instanceEvents, &setTrackedMember<&VertexAnimatorComponent::instanceEvents>)
+        // editor: animate in edit mode
+        .addProperty("preview", &VertexAnimatorComponent::preview, &VertexAnimatorComponent::preview)
+        .addProperty("needsLoad", &VertexAnimatorComponent::needsLoad, &VertexAnimatorComponent::needsLoad)
+        // why it does not play: a load error or "mesh_mismatch: ..." ("" when it plays)
+        .addProperty("loadError", &VertexAnimatorComponent::loadError)
+        // the asset is loaded and plays on this mesh
+        .addProperty("gpuActive", &VertexAnimatorComponent::gpuActive)
+        // a function called with an AnimationEvent when a clip event fires
+        .addProperty("onEvent", [] (VertexAnimatorComponent* self, lua_State*) { return &self->onEvent; }, [] (VertexAnimatorComponent* self, lua_State* L) { self->onEvent = L; })
+        // a function called with the clip name when a once clip ends
+        .addProperty("onFinish", [] (VertexAnimatorComponent* self, lua_State*) { return &self->onFinish; }, [] (VertexAnimatorComponent* self, lua_State* L) { self->onFinish = L; })
+        // a function called with (instance, AnimationEvent) when instanceEvents is on
+        .addProperty("onInstanceEvent", [] (VertexAnimatorComponent* self, lua_State*) { return &self->onInstanceEvent; }, [] (VertexAnimatorComponent* self, lua_State* L) { self->onInstanceEvent = L; })
+        // a function called with (instance, clip name) when instanceEvents is on
+        .addProperty("onInstanceFinish", [] (VertexAnimatorComponent* self, lua_State*) { return &self->onInstanceFinish; }, [] (VertexAnimatorComponent* self, lua_State* L) { self->onInstanceFinish = L; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AnimatorComponent>("AnimatorComponent")
+        .addProperty("enabled", &AnimatorComponent::enabled, &setTrackedMember<&AnimatorComponent::enabled>)
+        .addProperty("controller", &AnimatorComponent::controller, &setTrackedMember<&AnimatorComponent::controller>)
+        .addProperty("speed", &AnimatorComponent::speed, &setTrackedMember<&AnimatorComponent::speed>)
+        .addProperty("applyRootMotion", &AnimatorComponent::applyRootMotion, &setTrackedMember<&AnimatorComponent::applyRootMotion>)
+        .addProperty("rootMotionBone", &AnimatorComponent::rootMotionBone, &setTrackedMember<&AnimatorComponent::rootMotionBone>)
+        .addProperty("updateMode", &AnimatorComponent::updateMode, &setTrackedMember<&AnimatorComponent::updateMode>)
+        .addProperty("cullingMode", &AnimatorComponent::cullingMode, &setTrackedMember<&AnimatorComponent::cullingMode>)
+        .addProperty("writeBones", &AnimatorComponent::writeBones, &setTrackedMember<&AnimatorComponent::writeBones>)
+        .addProperty("eventMode", &AnimatorComponent::eventMode, &setTrackedMember<&AnimatorComponent::eventMode>)
+        .addProperty("sendEventsToScripts", &AnimatorComponent::sendEventsToScripts, &setTrackedMember<&AnimatorComponent::sendEventsToScripts>)
+        .addProperty("retarget", &AnimatorComponent::retarget, &setTrackedMember<&AnimatorComponent::retarget>)
+        .addProperty("needsLoad", &AnimatorComponent::needsLoad, &AnimatorComponent::needsLoad)
+        .addProperty("onEvent", [] (AnimatorComponent* self, lua_State*) { return &self->onEvent; }, [] (AnimatorComponent* self, lua_State* L) { self->onEvent = L; })
+        .addProperty("onStateEnter", [] (AnimatorComponent* self, lua_State*) { return &self->onStateEnter; }, [] (AnimatorComponent* self, lua_State* L) { self->onStateEnter = L; })
+        .addProperty("onStateExit", [] (AnimatorComponent* self, lua_State*) { return &self->onStateExit; }, [] (AnimatorComponent* self, lua_State* L) { self->onStateExit = L; })
+        .addProperty("onMontageEnded", [] (AnimatorComponent* self, lua_State*) { return &self->onMontageEnded; }, [] (AnimatorComponent* self, lua_State* L) { self->onMontageEnded = L; })
+        .addProperty("onAnimatorMove", [] (AnimatorComponent* self, lua_State*) { return &self->onAnimatorMove; }, [] (AnimatorComponent* self, lua_State* L) { self->onAnimatorMove = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<AudioSourceComponent>("AudioSourceComponent")
         .addProperty("handle", &AudioSourceComponent::handle)
         .addProperty("state", &AudioSourceComponent::state)
-        .addProperty("filename", &AudioSourceComponent::filename, &AudioSourceComponent::filename)
+        .addProperty("filename", &AudioSourceComponent::filename, &setTrackedMember<&AudioSourceComponent::filename>)
         .addProperty("loaded", &AudioSourceComponent::loaded)
         .addProperty("loadFailed", &AudioSourceComponent::loadFailed)
-        .addProperty("enableClocked", &AudioSourceComponent::enableClocked, &AudioSourceComponent::enableClocked)
+        .addProperty("enableClocked", &AudioSourceComponent::enableClocked, &setTrackedMember<&AudioSourceComponent::enableClocked>)
         .addProperty("lastPosition", &AudioSourceComponent::lastPosition)
-        .addProperty("startTrigger", &AudioSourceComponent::startTrigger, &AudioSourceComponent::startTrigger)
-        .addProperty("stopTrigger", &AudioSourceComponent::stopTrigger, &AudioSourceComponent::stopTrigger)
-        .addProperty("pauseTrigger", &AudioSourceComponent::pauseTrigger, &AudioSourceComponent::pauseTrigger)
+        .addProperty("startTrigger", &AudioSourceComponent::startTrigger, &setTrackedMember<&AudioSourceComponent::startTrigger>)
+        .addProperty("stopTrigger", &AudioSourceComponent::stopTrigger, &setTrackedMember<&AudioSourceComponent::stopTrigger>)
+        .addProperty("pauseTrigger", &AudioSourceComponent::pauseTrigger, &setTrackedMember<&AudioSourceComponent::pauseTrigger>)
         .addProperty("onStart", [] (AudioSourceComponent* self, lua_State* L) { return &self->onStart; }, [] (AudioSourceComponent* self, lua_State* L) { self->onStart = L; })
         .addProperty("onPause", [] (AudioSourceComponent* self, lua_State* L) { return &self->onPause; }, [] (AudioSourceComponent* self, lua_State* L) { self->onPause = L; })
         .addProperty("onStop", [] (AudioSourceComponent* self, lua_State* L) { return &self->onStop; }, [] (AudioSourceComponent* self, lua_State* L) { self->onStop = L; })
-        .addProperty("volume", &AudioSourceComponent::volume, &AudioSourceComponent::volume)
-        .addProperty("pan", &AudioSourceComponent::pan, &AudioSourceComponent::pan)
-        .addProperty("speed", &AudioSourceComponent::speed, &AudioSourceComponent::speed)
-        .addProperty("looping", &AudioSourceComponent::looping, &AudioSourceComponent::looping)
-        .addProperty("loopingPoint", &AudioSourceComponent::loopingPoint, &AudioSourceComponent::loopingPoint)
-        .addProperty("protectVoice", &AudioSourceComponent::protectVoice, &AudioSourceComponent::protectVoice)
-        .addProperty("inaudibleBehaviorMustTick", &AudioSourceComponent::inaudibleBehaviorMustTick, &AudioSourceComponent::inaudibleBehaviorMustTick)
-        .addProperty("inaudibleBehaviorKill", &AudioSourceComponent::inaudibleBehaviorKill, &AudioSourceComponent::inaudibleBehaviorKill)
-        .addProperty("minDistance", &AudioSourceComponent::minDistance, &AudioSourceComponent::minDistance)
-        .addProperty("maxDistance", &AudioSourceComponent::maxDistance, &AudioSourceComponent::maxDistance)
-        .addProperty("attenuationModel", &AudioSourceComponent::attenuationModel, &AudioSourceComponent::attenuationModel)
-        .addProperty("attenuationRolloffFactor", &AudioSourceComponent::attenuationRolloffFactor, &AudioSourceComponent::attenuationRolloffFactor)
-        .addProperty("dopplerFactor", &AudioSourceComponent::dopplerFactor, &AudioSourceComponent::dopplerFactor)
+        .addProperty("volume", &AudioSourceComponent::volume, &setTrackedMember<&AudioSourceComponent::volume>)
+        .addProperty("pan", &AudioSourceComponent::pan, &setTrackedMember<&AudioSourceComponent::pan>)
+        .addProperty("speed", &AudioSourceComponent::speed, &setTrackedMember<&AudioSourceComponent::speed>)
+        .addProperty("looping", &AudioSourceComponent::looping, &setTrackedMember<&AudioSourceComponent::looping>)
+        .addProperty("loopingPoint", &AudioSourceComponent::loopingPoint, &setTrackedMember<&AudioSourceComponent::loopingPoint>)
+        .addProperty("protectVoice", &AudioSourceComponent::protectVoice, &setTrackedMember<&AudioSourceComponent::protectVoice>)
+        .addProperty("inaudibleBehaviorMustTick", &AudioSourceComponent::inaudibleBehaviorMustTick, &setTrackedMember<&AudioSourceComponent::inaudibleBehaviorMustTick>)
+        .addProperty("inaudibleBehaviorKill", &AudioSourceComponent::inaudibleBehaviorKill, &setTrackedMember<&AudioSourceComponent::inaudibleBehaviorKill>)
+        .addProperty("minDistance", &AudioSourceComponent::minDistance, &setTrackedMember<&AudioSourceComponent::minDistance>)
+        .addProperty("maxDistance", &AudioSourceComponent::maxDistance, &setTrackedMember<&AudioSourceComponent::maxDistance>)
+        .addProperty("attenuationModel", &AudioSourceComponent::attenuationModel, &setTrackedMember<&AudioSourceComponent::attenuationModel>)
+        .addProperty("attenuationRolloffFactor", &AudioSourceComponent::attenuationRolloffFactor, &setTrackedMember<&AudioSourceComponent::attenuationRolloffFactor>)
+        .addProperty("dopplerFactor", &AudioSourceComponent::dopplerFactor, &setTrackedMember<&AudioSourceComponent::dopplerFactor>)
         .addProperty("length", &AudioSourceComponent::length)
         .addProperty("playingTime", &AudioSourceComponent::playingTime)
-        .addProperty("needUpdate", &AudioSourceComponent::needUpdate, &AudioSourceComponent::needUpdate)
+        .addProperty("needUpdate", &AudioSourceComponent::needUpdate, &setTrackedMember<&AudioSourceComponent::needUpdate>)
+        .addProperty("outputGroup", &AudioSourceComponent::outputGroup, &AudioSourceComponent::outputGroup)
+        .addProperty("outputGroupName", &AudioSourceComponent::outputGroupName, &AudioSourceComponent::outputGroupName)
+        .addProperty("loadType", &AudioSourceComponent::loadType, &AudioSourceComponent::loadType)
+        .addProperty("priority", &AudioSourceComponent::priority, &AudioSourceComponent::priority)
+        .addProperty("maxVoices", &AudioSourceComponent::maxVoices, &AudioSourceComponent::maxVoices)
+        .addProperty("ignoreListenerPause", &AudioSourceComponent::ignoreListenerPause, &AudioSourceComponent::ignoreListenerPause)
+        .endClass();
+
+    // the raw fields of a Video Player (VideoPlayer's setters clamp; entity fields are entity numbers here)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<VideoPlayerComponent>("VideoPlayerComponent")
+        .addProperty("enabled", &VideoPlayerComponent::enabled, &VideoPlayerComponent::enabled)
+        .addProperty("source", &VideoPlayerComponent::source, &VideoPlayerComponent::source)
+        .addProperty("clip", &VideoPlayerComponent::clip, &VideoPlayerComponent::clip)
+        .addProperty("url", &VideoPlayerComponent::url, &VideoPlayerComponent::url)
+        .addProperty("playOnAwake", &VideoPlayerComponent::playOnAwake, &VideoPlayerComponent::playOnAwake)
+        .addProperty("waitForFirstFrame", &VideoPlayerComponent::waitForFirstFrame, &VideoPlayerComponent::waitForFirstFrame)
+        .addProperty("isLooping", &VideoPlayerComponent::isLooping, &VideoPlayerComponent::isLooping)
+        .addProperty("skipOnDrop", &VideoPlayerComponent::skipOnDrop, &VideoPlayerComponent::skipOnDrop)
+        .addProperty("playbackSpeed", &VideoPlayerComponent::playbackSpeed, &VideoPlayerComponent::playbackSpeed)
+        .addProperty("timeUpdateMode", &VideoPlayerComponent::timeUpdateMode, &VideoPlayerComponent::timeUpdateMode)
+        .addProperty("renderMode", &VideoPlayerComponent::renderMode, &VideoPlayerComponent::renderMode)
+        .addProperty("targetCamera", &VideoPlayerComponent::targetCamera, &VideoPlayerComponent::targetCamera)
+        .addProperty("targetCameraAlpha", &VideoPlayerComponent::targetCameraAlpha, &VideoPlayerComponent::targetCameraAlpha)
+        .addProperty("aspectRatio", &VideoPlayerComponent::aspectRatio, &VideoPlayerComponent::aspectRatio)
+        .addProperty("targetMaterialRenderer", &VideoPlayerComponent::targetMaterialRenderer, &VideoPlayerComponent::targetMaterialRenderer)
+        .addProperty("targetMaterialProperty", &VideoPlayerComponent::targetMaterialProperty, &VideoPlayerComponent::targetMaterialProperty)
+        .addProperty("targetSubmesh", &VideoPlayerComponent::targetSubmesh, &VideoPlayerComponent::targetSubmesh)
+        .addProperty("renderTextureWidth", &VideoPlayerComponent::renderTextureWidth, &VideoPlayerComponent::renderTextureWidth)
+        .addProperty("renderTextureHeight", &VideoPlayerComponent::renderTextureHeight, &VideoPlayerComponent::renderTextureHeight)
+        .addProperty("audioOutputMode", &VideoPlayerComponent::audioOutputMode, &VideoPlayerComponent::audioOutputMode)
+        .addProperty("directVolume", &VideoPlayerComponent::directVolume, &VideoPlayerComponent::directVolume)
+        .addProperty("directMute", &VideoPlayerComponent::directMute, &VideoPlayerComponent::directMute)
+        .addProperty("targetAudioSource", &VideoPlayerComponent::targetAudioSource, &VideoPlayerComponent::targetAudioSource)
         .endClass();
 
     // the raw fields (no validation: FluidSimulation's setters check their values)
@@ -803,14 +1182,14 @@ void LuaBinding::registerECSClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<TilemapComponent>("TilemapComponent")
-        .addProperty("width", &TilemapComponent::width, &TilemapComponent::width)
-        .addProperty("height", &TilemapComponent::height, &TilemapComponent::height)
-        .addProperty("automaticFlipY", &TilemapComponent::automaticFlipY, &TilemapComponent::automaticFlipY)
-        .addProperty("flipY", &TilemapComponent::flipY, &TilemapComponent::flipY)
-        .addProperty("textureScaleFactor", &TilemapComponent::textureScaleFactor, &TilemapComponent::textureScaleFactor)
-        .addProperty("reserveTiles", &TilemapComponent::reserveTiles, &TilemapComponent::reserveTiles)
-        .addProperty("numTiles", &TilemapComponent::numTiles, &TilemapComponent::numTiles)
-        .addProperty("needUpdateTilemap", &TilemapComponent::needUpdateTilemap, &TilemapComponent::needUpdateTilemap)
+        .addProperty("width", &TilemapComponent::width, &setTrackedMember<&TilemapComponent::width>)
+        .addProperty("height", &TilemapComponent::height, &setTrackedMember<&TilemapComponent::height>)
+        .addProperty("automaticFlipY", &TilemapComponent::automaticFlipY, &setTrackedMember<&TilemapComponent::automaticFlipY>)
+        .addProperty("flipY", &TilemapComponent::flipY, &setTrackedMember<&TilemapComponent::flipY>)
+        .addProperty("textureScaleFactor", &TilemapComponent::textureScaleFactor, &setTrackedMember<&TilemapComponent::textureScaleFactor>)
+        .addProperty("reserveTiles", &TilemapComponent::reserveTiles, &setTrackedMember<&TilemapComponent::reserveTiles>)
+        .addProperty("numTiles", &TilemapComponent::numTiles, &setTrackedMember<&TilemapComponent::numTiles>)
+        .addProperty("needUpdateTilemap", &TilemapComponent::needUpdateTilemap, &setTrackedMember<&TilemapComponent::needUpdateTilemap>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

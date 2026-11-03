@@ -16,7 +16,7 @@ through MCP tools, well enough to build and ship a game with no human in the loo
   overrides recorded, Hierarchy/Inspector refreshed. A human watching the editor sees it live.
 - Never blocks the UI thread waiting on something the UI thread must do (play startup,
   export, C++ build, rendering a frame).
-- Works on Linux, Windows, macOS (portable C++17; only Linux is tested here).
+- Works on Linux, Windows, macOS (portable C++20; only Linux is tested here).
 
 ## Process model and transports
 
@@ -100,41 +100,56 @@ editor/mcp/
   McpContext.{h,cpp}      access to App, Project, windows from tool handlers
   McpRefs.{h,cpp}         scene + entity + component + asset reference resolution
   McpValues.{h,cpp}       JSON <-> engine property values, PropertyCmd building
+  McpUndo.{h,cpp}         agent undo attribution: folding a call's steps, undo history JSON
   McpSchema.{h,cpp}       JSON Schema builders (object, vec3, entityRef...)
+  McpToolGroups.{h,cpp}   the tool groups tools/list hides until a session enables them
   McpInstructions.cpp     const char* mcpServerInstructions(): the agent guide text
   McpActivityWindow.{h,cpp}  editor panel: server status, connected clients, call log
   McpJobs.{h,cpp}         long operations (export, build, compile, play startup) as jobs
   McpLaunch.{h,cpp}       `jasperengine-editor mcp` command line, stdio fd setup, --headless Xvfb
-  McpAutoSync.{h,cpp}     picks up files the agent edited on disk before every tools/call
+  McpAutoSync.{h,cpp}     picks up files the agent edited on disk before every tools/call (the watcher's journal)
   EngineApiContext.{h,cpp}, TerrainMaps.{h,cpp}   helpers of the docs and terrain tools
   tools/
     McpTools.h            the register functions; W4Shared.h, PlayViewCommon.h, HtmlUiShared.h: helpers shared by modules
-    CoreTools.cpp         batch, get_job, cancel_job, undo/redo, editor_status, respond_dialog
+    McpTools.cpp          buildToolRegistry: the module table (docs section, group), no App needed
+    CoreTools.cpp         batch, get_job, cancel_job, undo/redo, get_undo_history, editor_status, respond_dialog, tool_groups
     ProjectTools.cpp      project lifecycle and settings
     SceneTools.cpp        scenes and scene settings
     EntityTools.cpp       hierarchy, GameObjects, selection and clipboard
     ComponentTools.cpp    components and properties
     PrefabTools.cpp       prefabs, variants, overrides and Prefab Mode
-    PlayTools.cpp         play control, runtime inspection and Lua evaluation
+    PlayTools.cpp         play control, runtime inspection, Lua evaluation and the Play Mode Changes review
     ViewTools.cpp         screenshots and scene camera
     ConsoleTools.cpp      console logs
     ScriptTools.cpp       Lua/C++ scripts and compilation
     AssetTools.cpp        assets, imports, materials and shaders
     SynthesisTools.cpp    texture synthesis (synthesize_texture; the recipe summary get_asset_info shows),
                           sharing texsynth/SynthesisSession with Window > Texture Synthesis
+    SpriteNormalsTools.cpp sprite normal maps (generate_sprite_normals; the recipe summary get_asset_info shows),
+                          sharing spritenormals/SpriteNormalsSession with Window > Sprite Normal Map and the
+                          generate-sprite-normals CLI
     DocsTools.cpp         engine API docs and resources
     BuildTools.cpp        export, build and player jobs
     WorldTools.cpp        terrain, tilemaps, animation, physics, UI and audio
+    AnimationClipTools.cpp the clip-file mode of edit/get/preview_animation (.anim through
+                          AnimationClipDocument, bindings, preview through AnimationClipController),
+                          the .anim parts of get_asset_info / write_file (no tools of its own)
     LatticeTools.cpp      edit_lattice (lattice deformer cages)
     PlacementTools.cpp    physics placement (place_with_physics: drop, separate, move, snap, gather,
                           distribute in edit mode), sharing physics/PlacementSession with the Scene
                           view's Physics tool and the place-physics CLI
     HtmlUiTools.cpp       HTML/CSS UI: inspect_ui, assert_ui, create_ui_document, the example resources
+    VatTools.cpp          bake_vertex_animation (vat/VatBakeSession and the vat/import importers, sharing
+                          vat/VatFrontEnd with the bake-vat CLI; the contact sheet: vat/VatContactSheet)
+                          and the .vat parts of get_asset_info, write_file, view_asset, move/delete_asset
+                          and the file sync
 ```
 
 Every `tools/*.cpp` defines one function, e.g. `void registerSceneTools(McpRegistry&)`;
-`McpServer` calls them all in a fixed order (Core first, then the rest; a later module may
-replace a tool by registering the same name). Every file above is listed in `CMakeLists.txt`.
+`buildToolRegistry` (`tools/McpTools.cpp`) calls them all in the fixed order of its module
+table (Core first, then the rest; a later module may replace a tool by registering the same
+name) and stamps each tool's module and default group. The server calls it at start, the
+`jasperengine-editor call` CLI offline. Every file above is listed in `CMakeLists.txt`.
 
 ## Registry API
 
@@ -151,6 +166,9 @@ struct ToolDef {
     Json outputSchema;         // optional
     ToolAnnotations annotations;
     bool allowedWhilePlaying = true;   // registry refuses the call during play if false
+    ToolActivity activity = ToolActivity::Auto;  // busy policy
+    std::string group;         // McpToolGroups.cpp; empty = core (always listed)
+    std::string module;        // docs section, stamped by buildToolRegistry
     std::function<void(CallPtr)> handler;  // runs on the MAIN thread
 };
 
@@ -200,9 +218,21 @@ result); if not done within the timeout the tool returns the job id and the agen
 a private physics world) advances a slice of a few milliseconds per editor frame, so the editor
 keeps drawing while the job runs.
 
-`batch` (CoreTools): `{calls: [{tool, arguments}], undo_group: bool, stop_on_error: bool}`
-runs several tool calls in one round-trip, sequentially on the main thread; with
-`undo_group` all scene edits are one Ctrl+Z step where possible.
+`batch` (CoreTools): `{calls: [{tool, arguments}], undo_group: bool, undo_name: string,
+stop_on_error: bool}` runs several tool calls in one round-trip, sequentially on the main
+thread; with `undo_group` each history the batch changed gets one step (`mark`/`groupSince`),
+named `undo_name` (default "Batch (N calls)") and linked across histories, so one Ctrl+Z
+undoes the whole batch; `complete` is false when a history refused to group.
+
+Undo attribution (`McpUndo`, docs/undo.md): `McpServer::execute` runs every edit tool's handler
+and its deferred continuations under an `UndoOriginScope` {agent, client name, request id,
+tool}; the steps are named "<client>: <name>". When the call replies, each history's
+contiguous top run of the call's steps is folded into one step ("<client>: <Tool Title>
+(<subject>)") and the folded steps are linked; `structured.undo` {id, name} names the newest.
+Read-only and control tools (batch, play) are not attributed. `undo`/`redo` take `scope:
+"timeline"` (UndoTimeline, Ctrl+Z), `to_id` and `expect_top_id`; `get_undo_history` lists the
+steps; the play-change tools (`get_play_changes`, `apply_play_changes`, `discard_play_changes`,
+`play stop keep_changes`) drive the Play Mode Changes review.
 
 ## Addressing (McpRefs)
 
@@ -220,6 +250,113 @@ runs several tool calls in one round-trip, sequentially on the main thread; with
   `scripts[0].speed`).
 - **Asset**: project-relative path. Paths are sandboxed to the project (no `..`, no
   absolute paths outside it) except explicit import-from-disk tools.
+- **Symbolic links** (and Windows junctions). Reads follow them wherever they lead: an assets
+  folder deliberately linked in from a shared library reads, lists, previews and imports fine
+  (`McpRefs::resolveProjectPath` is lexical). Every tool that **writes, creates, deletes, moves or
+  renames** a file resolves its path through `McpRefs::resolveProjectWritePath` /
+  `McpRefs::writeEscape`: once every link on the way is followed (a dangling one too; the shared
+  walk `safewrite::resolvedPath` in `editor/util/SafeWrite.h`, the same one sprite normals'
+  output containment uses), the location must be inside one of the project's **trusted roots**:
+  the project directory, its configured assets directory and its configured Lua scripts
+  directory (project.yaml `assetsDir` / `luaDir`, as loaded), each resolved once. So a project
+  opened through a link works, and so does a project whose assets or Lua folder is itself a link
+  (to a shared drive): agents write its assets and scripts there. Links
+  BELOW those roots are what is checked (one pointing further out is refused); links pointing
+  inside a trusted root work. A tool that changes an asset root (`set_project_settings`
+  `editor.assets_dir` / `scripting.lua_dir`) must name a plain project-relative folder (no absolute
+  path, no `..` step, even one that comes back in) inside the project directory itself once
+  resolved (`McpRefs::projectOnlyEscape`): an agent can't make a folder outside the project a
+  trusted root. The MCP trusted roots are only the configured roots **as the user opened them**:
+  `open_project` (and `create_project`) refuse a project whose project.yaml gives an absolute
+  `assetsDir` / `luaDir` or one with `..` ("points outside the project folder; open it from the
+  editor"); the GUI keeps opening such a project, and once the user has opened it the agent works
+  in its roots. **Deny by default (owned and hidden places).** Inside a strict (MCP) scope the
+  writers themselves (`safewrite`: every write, create, rename-to and copy) refuse an editor-owned
+  or hidden place — any path component starting with `.` (`.jasperengine` and all of it, including
+  `user/build.yaml` and the workspace; `.git`, `.trash`, `.vscode`, ...), a file named
+  project.yaml at any depth (the project's own included), and the project's root `CMakeLists.txt`
+  (`ProjectBuild.cmake` is the agent's, so it is not owned) — checked on the spelled path AND where
+  it resolves (a link inside the project to its `.jasperengine` or its root is no way in). The
+  editor's own internal writers (the project.yaml save, the workspace, the asset-database cache,
+  build logs, the trash move, generated sources and the engine-API / Lua / clangd tooling) name the
+  one place they write with a narrow `safewrite::EditorInternal` token; an agent-named write has
+  none, so a tool makes no second project.yaml and reaches nothing under `.jasperengine`. Per-tool
+  checks (`McpRefs::protectedPlace`, `import_files`' destination, `screenshot`'s `save_path`) only
+  turn this into a clear up-front error. Names the editor owns (project.yaml, CMakeLists.txt,
+  `.jasperengine` and other hidden folders, `.scene` / `.prefab`) are compared as the file system
+  may see them (`safewrite::comparableName`: letter case, trailing dots and spaces, NTFS stream
+  suffixes, Windows short names; Windows folder containment folds case with `CompareStringOrdinal`,
+  elsewhere ASCII, macOS an ASCII approximation).
+  Machine-level preferences (`preferences.default_export_dir`, `cmake_path`, `emsdk_path`,
+  `ffmpeg_path`, `build_c_compiler`, `build_cxx_compiler`: a folder outside the project or a program
+  to run) are read-only over MCP (`set_project_settings`: "change it in Edit > Preferences"). The roots are resolved when the project loads (or a root setting is
+  applied) and **pinned** (`Project::getTrustedRoots`, `safewrite::pinTrustedRoot`): never resolved
+  again, so a root moved away and replaced by a link is refused, not followed. A tool can't move,
+  rename or delete a trusted root or a folder holding one, nor move anything into a root's place
+  (`McpRefs::trustedRootTouched`); `move_asset` never moves into a hidden or editor-owned place
+  (`.jasperengine`, `.trash`, project.yaml ...) and never moves a link that leads out of the
+  project, or a folder holding one at any depth (copying what it holds is fine). Build, Play and
+  script compiles refuse an internal folder holding a link out of the project (any depth, links
+  not followed so loops are harmless, bounded at 200,000 entries: `McpRefs::linkOutInside`). `build_project` /
+  `generate_shaders` build only into the project's chosen export folder, the default export
+  location (or below it) or a folder of the project, and never save an agent's folder as the
+  export folder (both outside folders are the user's: neither can be set over MCP); `run_build`
+  runs only the last build's executable or a player inside a folder builds are allowed into, never
+  an arbitrary program. `create_project` (and Save As) needs a new or empty folder beside the
+  current project or under the editor's default projects/export folder, never inside the open
+  project (a nested project would be a trusted root an agent chose). A delete or
+  a move's source acts on the entry itself: a link there is trashed or moved, never followed.
+  Refused: isError naming the path and where the link leads, with the fix ("use a path that is not
+  behind a link to elsewhere, or replace the link with a real folder").
+- **Threat model.** The sandbox stops misdirected or accidental agent writes (a wrong path, a
+  stale assumption about a folder) and link tricks that would carry a write, delete or move
+  outside the trusted roots or into the editor's own files. It does **not** contain a
+  deliberately malicious agent: project content executes code by design (C++ scripts are compiled
+  and loaded into the editor on Play, `ProjectBuild.cmake` runs at CMake configure time, Lua runs in
+  Play), and an agent may edit all of it. What only the user decides stays out of the agent's reach:
+  machine-level preferences (programs to run, folders outside the project), the export folders,
+  and which project (with which roots) is opened with roots outside its folder.
+- **Writes beneath the project.** The check and the write are two steps; a link planted between
+  them must not redirect the write. `editor/util/SafeWrite.h` never follows a link below the root
+  at the moment it acts (POSIX: `openat` with `O_NOFOLLOW` folder by folder, `O_PATH` / `O_SEARCH`
+  for search-only folders, an exclusive temporary file renamed with `renameat` in the same folder,
+  `renameat2(RENAME_NOREPLACE)` / `renameatx_np(RENAME_EXCL)` for no-replace moves, tree removal
+  with `fdopendir` + `unlinkat`; Windows: every folder opened relative to the handle of the one
+  before (`NtCreateFile` with `RootDirectory`, `FILE_OPEN_REPARSE_POINT`), name-surrogate reparse
+  points refused, cloud-file placeholders treated as ordinary entries, files created relative to
+  the held folder and renamed by handle with `FileRenameInfoEx`): a folder on the way that became a
+  link is refused (the error names it: remove the link, then try again); a link at the final name
+  is replaced, not followed.
+- **The write scope.** `McpServer` runs every tool's main-thread handler, its deferred
+  continuations (`waitUntil` / `afterFrames`) and resource reads inside a `safewrite::Scope` of the
+  project directory (`McpWriteScope`); the tools' own continuations (enqueued main-thread tasks,
+  the remote importers' worker thread) open one too. Inside it `FileUtils::writeFileReplacing`,
+  `writeFile` / `writeIfChanged` and the `FileUtils::createDirectories` / `removePath` /
+  `removeAll` / `renamePath` / `copyPath` helpers route paths inside the project to the
+  resolve-then-beneath functions, so the editor code the tools call (scene, prefab and project.yaml
+  saves, the clip, pose and Vertex Animation documents, shader forks, code editor saves, the asset
+  root relocation, the clip-hint and `.vat` mesh-field rewrites, thumbnails, HTML UI imports, the
+  workspace file, terrain maps, lattice bakes, AGENTS.md / CLAUDE.md) writes beneath the project
+  without changes of its own — except where it writes an editor-owned or hidden place (project.yaml,
+  the workspace and other `.jasperengine` files, build logs, the trash, generated sources), which
+  the deny-by-default guard refuses unless that writer holds a narrow `safewrite::EditorInternal`
+  token for the one path it writes (a token is thread-local and not inherited by a worker, so the
+  writer names it where it acts). Paths outside the project (another project, the editor's settings)
+  and everything outside a scope (the GUI) keep their plain behaviour.
+- **Commands remember the scope.** A `Command` made inside a scope records its root
+  (`Command::writeRoot`); `CommandHistory` runs its execute, undo and redo in a scope of that root
+  again, also when the GUI triggers them. The file commands (`WriteFilesCmd`, `CreateDirCmd`,
+  `DeleteFileCmd`, `RenameFileCmd`, `CopyFileCmd`, the copy of `move_asset`) list the paths they
+  act on (`Command::touchedPaths`): a step whose path now resolves outside its root is refused
+  (`canUndo` / `canRedo`: the history keeps its place; the console and the `undo` tool say which
+  file, with "remove the link, then undo again"); a restore that still fails after the check is
+  reported (`CommandHistory::lastUndoProblem`, the `undo` tool's `problems`). The `undo` tool also
+  checks a step the GUI made (no root of its own) against the project (`Command::escapeFor`) before
+  taking it. A redo whose execute fails is not taken.
+- **Checked up front only.** What external programs write: CMake and the compilers in a build
+  (`build_project`, `generate_shaders` refuse an internal or output folder inside the project that
+  resolves outside it; their logs are opened once beneath the project and kept open), FFmpeg's
+  video conversions (the destination folder is checked).
 
 ## Values (McpValues)
 
@@ -243,13 +380,20 @@ Reads return the same shapes. Writes build typed `PropertyCmd<T>`s inside a
 
 ## Tool conventions
 
+[conventions.md](conventions.md) is the rule book (names, schemas, groups, budget, docs and
+coverage gates); in short:
+
 - Prefer fewer, more powerful tools with excellent descriptions and schemas over many
   narrow ones. A tool description says what it does, what it returns, and the common
-  mistakes. Target well under 150 tools in total.
+  mistakes. The default listing (`core`) stays within 150 tools and 100,000 characters;
+  other tools sit in groups (`McpToolGroups.cpp`) that tools/list shows once a session
+  enables them (`tool_groups`), and every tool stays callable by name.
+- `buildToolRegistry` (`tools/McpTools.cpp`) builds the registry without an `App`, so the
+  CLI lists and validates tools offline exactly as the server serves them.
 - Edits through commands (undoable); file writes refresh the Project window, the asset
   database and open code editor buffers.
 - Every tool has a test in `tools/mcp/tests/` run through the harness against a real
-  editor under Xvfb.
+  editor under Xvfb (`test_tool_coverage.py`).
 
 ## Code lives on disk: agents edit it with their own tools
 
@@ -269,63 +413,68 @@ for clients without file access (remote HTTP).
 top-level tools/call (not for calls nested in `batch`, nor before `sync_files`, which does
 the same work and reports it itself):
 
-- **Scan**: stat-based against a cached map (mtime + size) of the project's tracked files
-  (Lua, C++ `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`,
-  `.material`, HTML UI `.html/.htm/.css`; assets: images (`.svg` included), fonts `.ttf/.otf`,
-  `.json/.lottie`) and folders (mtime: an added, removed or renamed entry), skipping
-  hidden folders (`.jasperengine`, `.git`...), `build`, `node_modules` and `trash`.
-  `.scene`, `.prefab`, `project.yaml` and the terrain maps the editor writes from its
-  in-memory terrain (`terrain_maps/terrain_edit_*.png`, written asynchronously after a
-  sculpt) are not tracked: the editor owns them. Files changed
-  this session, folders and code files (HTML UI included) are checked whole on every call (up to
-  2000 of each); assets rotate within a ~2 ms budget, resuming where the last scan stopped. The
-  baseline is taken (in `McpServer::tick`) when a project opens.
-- **Pick-up**: changed paths go through `w4::syncFiles` (ScriptTools.cpp; the same as
-  `sync_files` with paths): clean code editor buffers reloaded, script properties re-parsed,
-  Lua syntax checked, materials refreshed, shader forks invalidated, textures reloaded, HTML UI
-  documents reloaded, asset database and Project window refreshed. Shader forks using a changed
-  shader file are then compiled (`w4::checkShadersAsync`; the call waits for it through
-  `waitUntil`) so their errors are reported with the call.
+- **What changed**: the file watcher's journal (`FileWatchService::journalSince` after
+  `flush(250 ms)`, S05 R29; `source: "watcher"`), its external changes to tracked files since
+  the last call. The editor's own writes (origin Editor) and changes stamped inside a writing
+  call's run are left out. When the watcher is off, degraded, fell behind its 65,536-entry
+  journal or the flush timed out, the stat scan (`source: "scan"`): stat-based against a cached
+  map (mtime + size) of the project's tracked files (Lua, C++
+  `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`, `.material`, HTML UI
+  `.html/.htm/.css`, pose files `.poseanim/.humanoid`, animation clips `.anim`, Vertex
+  Animations `.vat`; models `.gltf/.glb/.obj/.fbx` and glTF `.bin` buffers, picked up but not
+  reported; assets: images (`.svg` included), fonts `.ttf/.otf`, `.json/.lottie`) and folders
+  (mtime: an added, removed or renamed entry), skipping hidden folders (`.jasperengine`,
+  `.git`...), `build`, `node_modules` and `trash`. `.scene`, `.prefab`, `project.yaml` and the
+  terrain maps the editor writes from its in-memory terrain (`terrain_maps/terrain_edit_*.png`)
+  are not tracked: the editor owns them. Files changed this session, folders and code files (HTML
+  UI included) are checked whole on every call (up to 2000 of each); assets rotate within a ~2 ms
+  budget. The baseline is taken (in `McpServer::tick`) when a project opens.
+- **Pick-up**: changed paths go through `w4::syncFiles` (ScriptTools.cpp), which is
+  `HotReloadService::apply` (editor/reload, the one reload funnel of the watcher, `sync_files`,
+  Assets > Refresh and the code editor's saves): clean code editor buffers reloaded, script
+  properties re-parsed, Lua syntax checked, textures, materials, models, audio and fonts decoded
+  on workers and swapped in, the shader forks whose sources or includes hold a changed file
+  compiled before they swap, HTML UI documents reloaded, the open `PoseAnimationDocument`s,
+  `AnimationClipDocument`s and `VatDocument`s of changed `.poseanim`/`.anim`/`.vat` files
+  reloaded (`AnimationClipPool` drops the clips and the Animation Players using them reload,
+  `VertexAnimationPool` drops the Vertex Animations and their Vertex Animators reload, during play
+  too; a changed model drops its sub-clips the same way, a changed `.vat.glb` its `.vat`), asset
+  database and Project window updated. The call waits (`waitUntil`, 10 s at most) for the reloads
+  it started; their failures (the previous version kept), the forks' compile errors, the load
+  errors and warnings of `.anim`, `.poseanim` and `.vat` files and a `.vat` / `.vat.glb` mismatch
+  are reported with the call. A path the watcher reloaded before the call is current (the
+  applied-stamp table): reported, with its `reloaded` entry, not reloaded again.
 - **HTML UI**: UI documents reload live, before the tool runs, in edit mode and during play
-  (`w4::syncHtmlUi`: `UIDocumentSystem::reloadChangedFiles` of every open scene, prefab stage and
-  running Play scene), sharing the per-document stamps with the editor's own poller
-  (`HtmlUIWatcher`, 0.25 s): whichever sees an edit first reloads it, the other finds it current,
-  so a change is reloaded once. A CSS-only change restyles in place (elements and listeners
-  kept); any other change rebuilds the document (`onLoad` again). The diagnostics located in the
-  changed files, from the documents' (re)load, or from `ProjectChecks::checkUiFiles` for a changed
-  `.html/.css` no live document uses (the same code as `check --ui`), become `problems`.
+  (`UIDocumentSystem::reloadChangedFiles` of every open scene, prefab stage and running Play
+  scene, whose per-document stamps make a change reload once, whoever sees it first). A CSS-only
+  change restyles in place (elements and listeners kept); any other change rebuilds the document
+  (`onLoad` again). The diagnostics located in the changed files, from the documents' (re)load,
+  or from `ProjectChecks::checkUiFiles` for a changed `.html/.css` no live document uses (the
+  same code as `check --ui`), become `problems`.
 - **Report**: the call's result gets `structuredContent.external_changes` = `{changed,
-  added?, removed?, changed_count?, problems: [{path, line, message}], script_properties?,
-  reloaded_buffers?, ui_reloaded?, ui_current?, deferred?}` and one text content item; nothing
-  when nothing changed. UI problems also carry `col`, `severity`, `code` and `suggestion` (the
-  text prints a warning as `path:line: warning: message [code]`); `ui_reloaded` =
+  added?, removed?, changed_count?, source, reloaded: [{path, kind, ms}], pending: [path],
+  problems: [{path, line, message}], script_properties?, reloaded_buffers?, ui_reloaded?,
+  ui_current?, deferred?}` and one text content item; nothing when nothing changed. UI problems
+  also carry `col`, `severity`, `code` and `suggestion`; `ui_reloaded` =
   `[{scene, entity: {id, name, path}, html, stylesheet_only}]`, `ui_current` = how many documents
-  reading a changed file the poller had already reloaded (text: `Reloaded UI: assets/ui/menu.html
-  in "Menu" (styles only); 1 document(s) were already current.`).
-- **Not the agent's changes**: `syncFiles` (the funnel of `write_file`, `create_script`,
-  the material and asset tools, `code_editor` save, undo of file writes) restamps what it
-  handled (`McpAutoSync::filesSynced`). After a call that may write files (not read-only, or
-  with `save_path`), a settle scan posted to the main thread attributes changes stamped
-  inside the call's time window to the tool, which handled them (`fork_shader`, screenshots
-  saved into the project, terrain maps): their stamps are taken, nothing is re-run (a texture
-  reload would undo a terrain tool's in-memory edit). Older ones are reported by the next
-  call. Limitation: an external edit made *while* a writing call runs is taken as the tool's
-  (neither picked up nor reported; `sync_files` or the editor's own poll catch it).
+  reading a changed file were already reloaded.
+- **Not the agent's changes**: the editor's writes go through the atomic writer, whose publishes
+  feed the watcher's self-write ledger: delivered as the editor's own, their echoes dropped
+  (`editor_status.file_watcher.echoes_suppressed`). `syncFiles` (the funnel of `write_file`,
+  `create_script`, the material and asset tools, `code_editor` save, undo of file writes)
+  restamps what it handled (`McpAutoSync::filesSynced`). After a call that may write files (not
+  read-only, or with `save_path`), the settle scan stays as a safety net: changes stamped inside
+  the call's time window are the tool's (absorbed, not re-run: a texture reload would undo a
+  terrain tool's in-memory edit). While such a call runs the hot reload holds the watcher's
+  batches, so the call's writes reload once, with its sync.
 - **Play**: the editor does not re-parse scripts during play (Play restores the scene from a
-  snapshot when it stops; `CodeEditor::checkExternalScriptChanges` waits too). Changes found
-  then are reported with `deferred` (Lua syntax still checked) and picked up by the first
-  call after play stops. HTML UI files are not deferred: `.html/.htm/.css`, fonts and
-  `.json/.lottie` go through the pick-up at once (the running and the edit-time documents
-  reload); a changed image reaches the documents at once and the scene textures after play;
-  `deferred` is set only when non-UI files wait.
-- **The editor's own 1 s poll** (`CodeEditor::checkFileChanges` for open buffers,
-  `checkExternalScriptChanges` for attached scripts) keeps running for humans. Buffers are
-  reloaded through the same `checkFileChanges` (one shared `lastWriteTime`, so never twice);
-  after a sync `CodeEditor::markScriptFilesCurrent` updates the script watch so it does not
-  re-parse the same file again; if the poll was first, the re-parse finds no property change.
-- Cost: `editor_status.auto_sync` = `{files, dirs, checked, complete, scan_ms, settle_ms,
-  scan_cpu_ms, settle_cpu_ms}`; ~0.1 ms per call (0.25 ms with the settle) on the fixture
-  project (`tools/mcp/tests/test_autosync.py` measures it, and a 25k-file project).
+  snapshot when it stops; S23 will register a hook for Lua in Play). Script changes found then
+  are reported with `deferred` (Lua syntax still checked) and picked up after play stops.
+  Textures, materials, shaders, models, audio, fonts and HTML UI reload at once.
+- Cost: `editor_status.auto_sync` = `{source, files, dirs, checked, complete, scan_ms, settle_ms,
+  scan_cpu_ms, settle_cpu_ms}`; `editor_status.file_watcher` = the watcher's counts and the
+  last reload; `editor_status.frame_ms` = the frame times since the previous `editor_status`
+  (`tools/mcp/tests/test_autosync.py` and `test_hot_reload.py` measure them).
 
 ## Agent guide (instructions)
 
@@ -333,8 +482,10 @@ the same work and reports it itself):
 (`McpInstructions.cpp`): how the engine maps to Unity, scene/entity addressing, the loop
 (inspect → edit → save → play → screenshot → read console → fix), working on code with the
 agent's own tools, play and time control, Lua and C++ scripting conventions, 2D/3D and UI,
-physics, prefabs, the shader library and forking, shipping. It is sent every session: keep it
-tight (at most 16 KB, 16,384 bytes); deeper references are the `jasper://docs/...` resources
-(`docs/mcp/guide/*.md`): move detail there rather than growing the guide.
-`test_autosync.py::test_instructions_name_real_tools` checks the size and that every tool and
-parameter name it mentions exists.
+physics, prefabs, the shader library and forking, shipping. It is sent every session, so it
+holds the workflow and a short digest per area; the detail is in the `jasper://docs/...`
+resources (`docs/mcp/guide/*.md`) the digests name. Its limits are the `guide` entry of
+`tools/mcp/budget.json` (16,384 bytes in all, 1,500 per `##` section), gated by
+`tool_budget.py --check` ([conventions.md](conventions.md), "The agent guide").
+`test_autosync.py::test_instructions_name_real_tools` checks that every tool and parameter name
+it mentions exists.

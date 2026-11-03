@@ -4,9 +4,11 @@
 #pragma once
 
 #include "McpCall.h"
+#include "McpInstances.h"
 #include "McpJobs.h"
 #include "McpJson.h"
 #include "McpRegistry.h"
+#include "log/Logger.h"
 
 #include <atomic>
 #include <chrono>
@@ -16,6 +18,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -39,6 +42,9 @@ namespace jasperengine::editor::mcp {
         std::filesystem::path createDir;  // --create: make a new project here
         std::string createName;           // --name for --create
         bool headless = false;
+        bool toolGroupsSet = false;       // --tool-groups given (else settings mcp.tool_groups)
+        std::vector<std::string> toolGroups;
+        bool ignoreLock = false;          // --ignore-lock: open a project another editor holds
     };
 
     McpLaunchOptions& mcpLaunchOptions();
@@ -54,6 +60,11 @@ namespace jasperengine::editor::mcp {
         std::string clientName;
         std::string clientVersion;
         std::string protocolVersion;
+        // Tool groups tools/list includes besides core (tool_groups changes them). Guarded by
+        // the server's session mutex: McpServer::sessionToolGroups / setSessionToolGroups.
+        std::set<std::string> toolGroups;
+        // logging/setLevel: the lowest level sent as notifications/message (-1: none asked)
+        int logLevel = -1;
         bool stateless = false;
     };
     using SessionPtr = std::shared_ptr<McpSession>;
@@ -74,6 +85,9 @@ namespace jasperengine::editor::mcp {
         // The client cancelled the request: MCP says no response is sent. Transports that
         // hold a connection open for the answer release it here.
         virtual void cancelled() {}
+        // Whether notify() reaches the client: an HTTP request that does not accept
+        // text/event-stream can only carry the response.
+        virtual bool streamsNotifications() const { return true; }
     };
     using ReplyPtr = std::shared_ptr<McpReply>;
 
@@ -147,6 +161,11 @@ namespace jasperengine::editor::mcp {
         SessionPtr createStatelessSession(const std::string& transport);
         SessionPtr findSession(const std::string& id) const;
         void closeSession(const std::string& id);
+        // The tool groups a session lists besides core; any thread
+        std::set<std::string> sessionToolGroups(const SessionPtr& session) const;
+        void setSessionToolGroups(const SessionPtr& session, std::set<std::string> groups);
+        // The tool groups new sessions start with (--tool-groups, else settings mcp.tool_groups)
+        const std::set<std::string>& defaultToolGroups() const { return initialToolGroups; }
         // Handles one parsed JSON-RPC message (request, notification or response) from
         // any thread. Requests get exactly one reply->respond(); notifications and
         // responses get none.
@@ -162,6 +181,11 @@ namespace jasperengine::editor::mcp {
         // activity entry of its own. done runs when the nested call completes.
         void runNested(const CallPtr& parent, const std::string& tool, const Json& args,
                        std::function<void(const ToolResult&)> done);
+        // Runs a tool for the editor itself (an editor script's menu item clicked by the user):
+        // the same gates as a top-level call, its undo steps attributed to `client`, no
+        // activity entry. done runs when it completes.
+        void runLocal(const std::string& tool, const Json& args, const std::string& client,
+                      std::function<void(const ToolResult&)> done);
 
         struct Deferred {
             CallPtr call;
@@ -192,6 +216,16 @@ namespace jasperengine::editor::mcp {
         // Whether this call may change the project or write files: a tool not annotated
         // read-only, or a read-only one with arguments that write (ToolDef::writesFiles)
         static bool mayChange(const ToolDef& def, const Json& args);
+
+        // --- log notifications (logging/setLevel, set_log_level sink "mcp") ---
+        // A session's level for notifications/message (LogLevel::Off: none); the "mcp" sink
+        // takes the lowest level any session asked for
+        void setSessionLogLevel(const SessionPtr& session, LogLevel level);
+        // every session (set_log_level sink "mcp"): main thread
+        void setAllSessionsLogLevel(LogLevel level);
+        // "debug" ... "emergency" (MCP's syslog names) for a level, and back
+        static const char* mcpLogLevelName(LogLevel level);
+        static bool parseMcpLogLevel(const std::string& name, LogLevel& out);
 
         static Json makeError(const Json& id, int code, const std::string& message, Json data = nullptr);
         static Json makeResult(const Json& id, Json result);
@@ -231,14 +265,25 @@ namespace jasperengine::editor::mcp {
 
         std::unique_ptr<McpTransportStdio> stdioTransport;
         std::unique_ptr<McpTransportHttp> httpTransport;
+        // this editor's file in the instance registry while HTTP serves (McpInstances.h)
+        InstanceRecord instanceRecord;
+        std::string currentProjectPath() const;
 
         mutable std::mutex sessionMutex;
         std::map<std::string, SessionPtr> sessions;
         uint64_t sessionCounter = 0;
+        std::set<std::string> initialToolGroups;
 
         // In-flight requests by session id + JSON-RPC id, for notifications/cancelled
         mutable std::mutex inflightMutex;
         std::map<std::string, std::weak_ptr<McpCall>> inflight;
+        // the replies of in-flight requests, by key: an HTTP session's log notifications ride
+        // their SSE streams
+        std::map<std::string, std::weak_ptr<McpReply>> inflightReplies;
+
+        Logger::SinkId logSink = 0;
+        void sendLogNotification(const LogRecord& record);
+        void updateLogSinkLevel();
 
         std::vector<Deferred> deferred;   // main thread only
 
@@ -248,7 +293,8 @@ namespace jasperengine::editor::mcp {
         std::deque<McpActivityEntry> activityLog;
         uint64_t activitySeq = 0;
 
-        void registerAllTools();
+        void chooseInitialToolGroups();
+        Json listTools(const SessionPtr& session, const Json& params) const;
         void handleRequest(const SessionPtr& session, const Json& message, const ReplyPtr& reply, bool modern);
         void handleToolsCall(const SessionPtr& session, const Json& id, const Json& params, const ReplyPtr& reply);
         // HTTP clients get only the read-only tools while changes are off

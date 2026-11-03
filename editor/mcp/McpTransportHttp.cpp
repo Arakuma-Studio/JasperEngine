@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpTransportHttp.h"
+#include "thread/ThreadUtil.h"
 
 #include "McpServer.h"
+#include "McpSocket.h"
 
 #include "util/Base64.h"
 
@@ -48,49 +50,22 @@ namespace {
 #ifdef _WIN32
 using socket_t = SOCKET;
 const socket_t INVALID_SOCK = INVALID_SOCKET;
-void closeSock(socket_t s) { closesocket(s); }
-void shutdownSock(socket_t s) { shutdown(s, SD_BOTH); }
-int lastSocketError() { return WSAGetLastError(); }
 #else
 using socket_t = int;
 const socket_t INVALID_SOCK = -1;
-void closeSock(socket_t s) { ::close(s); }
-void shutdownSock(socket_t s) { ::shutdown(s, SHUT_RDWR); }
-int lastSocketError() { return errno; }
 #endif
 
-#if defined(MSG_NOSIGNAL)
-constexpr int SEND_FLAGS = MSG_NOSIGNAL;
-#else
-constexpr int SEND_FLAGS = 0;
-#endif
+// The socket primitives are shared with the CLI's HTTP client (McpSocket.h)
+net::Handle handle(socket_t s) { return static_cast<net::Handle>(s); }
+void closeSock(socket_t s) { net::close(handle(s)); }
+void shutdownSock(socket_t s) { net::shutdown(handle(s)); }
+int lastSocketError() { return net::lastError(); }
+void setNoInherit(socket_t s) { net::setNoInherit(handle(s)); }
+bool ensureSocketsInitialized() { return net::initialize(); }
+bool sendAll(socket_t s, const std::string& data) { return net::sendAll(handle(s), data); }
 
 constexpr size_t MAX_HEADER_BYTES = 64 * 1024;
 constexpr size_t MAX_BODY_BYTES = 64 * 1024 * 1024;
-
-// Child processes (cmake, a run player, Xvfb) must not inherit the server's sockets: a
-// child holding the listen socket keeps the port bound after the editor quits, and one
-// holding a connection keeps it from closing
-void setNoInherit(socket_t s) {
-#ifdef _WIN32
-    SetHandleInformation(reinterpret_cast<HANDLE>(s), HANDLE_FLAG_INHERIT, 0);
-#else
-    const int flags = ::fcntl(s, F_GETFD);
-    if (flags >= 0) ::fcntl(s, F_SETFD, flags | FD_CLOEXEC);
-#endif
-}
-
-bool ensureSocketsInitialized() {
-#ifdef _WIN32
-    static bool ok = []() {
-        WSADATA data;
-        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
-    }();
-    return ok;
-#else
-    return true;
-#endif
-}
 
 // The client closed its end (or the connection broke). Bytes waiting to be read are not
 // a close: they are left for the next request.
@@ -113,21 +88,6 @@ bool peerClosed(socket_t s) {
     if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) return false;
 #endif
     return n <= 0;
-}
-
-bool sendAll(socket_t s, const std::string& data) {
-    size_t sent = 0;
-    while (sent < data.size()) {
-        const int n = static_cast<int>(::send(s, data.data() + sent, static_cast<int>(data.size() - sent), SEND_FLAGS));
-        if (n <= 0) {
-#ifndef _WIN32
-            if (n < 0 && errno == EINTR) continue;
-#endif
-            return false;
-        }
-        sent += static_cast<size_t>(n);
-    }
-    return true;
 }
 
 std::string lowerCase(std::string value) {
@@ -356,6 +316,11 @@ Json jsonError(int code, const std::string& message) {
 // One request's answer, handed from whatever thread completes it to the connection thread
 class HttpReply : public McpReply {
 public:
+    // streams: the client accepts text/event-stream, so notifications can go before the answer
+    explicit HttpReply(bool streams): streams(streams) {}
+
+    bool streamsNotifications() const override { return streams; }
+
     void respond(const Json& message) override {
         respondError(message, 200);
     }
@@ -371,7 +336,7 @@ public:
 
     void notify(const Json& notification) override {
         std::lock_guard<std::mutex> lock(mutex);
-        if (responded) return;
+        if (responded || !streams) return;
         notifications.push_back(notification);
         cv.notify_all();
     }
@@ -403,6 +368,7 @@ public:
     }
 
 private:
+    const bool streams;
     std::mutex mutex;
     std::condition_variable cv;
     std::deque<Json> notifications;
@@ -594,7 +560,7 @@ bool McpTransportHttp::start(int port, std::string& errorOut) {
         error.clear();
     }
     running = true;
-    acceptThread = std::thread([this, s]() { acceptLoop(static_cast<intptr_t>(s)); });
+    acceptThread = jasperengine::thread::spawnNamed("je-mcp-accept", [this, s]() { acceptLoop(static_cast<intptr_t>(s)); });
     return true;
 }
 
@@ -640,7 +606,8 @@ void McpTransportHttp::acceptLoop(intptr_t listenFd) {
             std::lock_guard<std::mutex> lock(mutex);
             clients.insert(static_cast<intptr_t>(client));
         }
-        std::thread([this, client]() {
+        // one long-lived service thread per client (not job-system work)
+        jasperengine::thread::spawnNamed("je-mcp-client", [this, client]() {
             serveConnection(static_cast<intptr_t>(client));
             {
                 std::lock_guard<std::mutex> lock(mutex);
@@ -768,14 +735,10 @@ void McpTransportHttp::serveConnection(intptr_t clientFd) {
             continue;
         }
 
-        // SSE only pays off when there will be progress notifications before the answer
+        // SSE only pays off when notifications (progress, tools/list_changed) come before the
+        // answer: the stream starts with the first one, else the answer goes as plain JSON
         const bool acceptsSse = request.header("accept").find("text/event-stream") != std::string::npos;
-        const Json& params = message.contains("params") ? message["params"] : Json();
-        const bool wantsProgress = params.is_object() && params.contains("_meta") && params["_meta"].is_object() &&
-                                   params["_meta"].contains("progressToken");
-        const bool sse = acceptsSse && wantsProgress;
-
-        auto reply = std::make_shared<HttpReply>();
+        auto reply = std::make_shared<HttpReply>(acceptsSse);
         server.handleMessage(session, message, reply);
 
         // The next message for the client; false when a 2026-07-28 client closed the
@@ -794,10 +757,11 @@ void McpTransportHttp::serveConnection(intptr_t clientFd) {
 
         Json out;
         bool isResponse = false;
-        // Up to 2025-11-25 the stream opens at once, as it always did. 2026-07-28 waits for the
-        // first message: answered before any notification (every protocol error, with its
-        // HTTP status), it goes as plain JSON
-        const bool streamNow = sse && !modern;
+        // Every protocol waits for the first message (S31): answered before any notification
+        // (every protocol error, with its HTTP status), it goes as plain JSON; a notification
+        // first opens the stream
+        const bool sse = acceptsSse;
+        const bool streamNow = false;
         if (!streamNow && !waitNext(out, isResponse)) return;
         if (!streamNow && (!sse || isResponse)) {
             while (!isResponse) {

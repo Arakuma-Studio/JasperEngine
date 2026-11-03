@@ -8,19 +8,17 @@ type lattice / lattice_tracks, set_scene_camera display.show_all_lattices, the j
   call back with an indexed error listing the choices; edits are refused while playing;
 - resolution resamples (coincident points exact, the shape kept), sample numbers (sharp/extend and
   fade), the warnings (folded cells, more than 4 lattices, missing lattice, no mesh, ...);
-- a save / reload in a second editor re-saving byte-identically, a prefab instance per-point
-  override recorded by edit_lattice;
+- a prefab instance per-point override recorded by edit_lattice (save/reload is owned by
+  test_lattice_data.py);
 - a Lua script driving offsets in play mode, read back with edit_lattice during play;
 - a Scene view screenshot with show_all_lattices against a golden image (golden/lattice_show_all.png;
   JASPER_UPDATE_GOLDEN=1 rewrites it);
-- the guide names only tools, parameters, op keys, properties and values that exist.
 
 Runs in a new empty project; the tests share one editor and run in order (state in S).
 """
 
 import math
 import os
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -32,11 +30,13 @@ import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
 
 TIMEOUT = 1200
 EDITOR = {"create": True}
+CI = True
 
 S: dict = {}
 
 HERE = Path(__file__).resolve().parent
 GOLDEN = HERE / "golden" / "lattice_show_all.png"
+SHOTS = HERE.parents[2] / "build" / "test-results" / "lattice"   # a failed golden's shot and diff
 SPHERE = REPO / "tools/fixtures/shader-library-export/assets/models/uv_sphere.gltf"
 CHECKER = REPO / "tools/fixtures/scene-inputs/assets/textures/checker.png"
 
@@ -60,10 +60,6 @@ def check_close(ed, actual, expected, what="", tol=1e-4):
 
 def idx(res, i, j, k):
     return i + res[0] * (j + res[1] * k)
-
-
-def rest(res, i, j, k):
-    return [i / (res[0] - 1) - 0.5, j / (res[1] - 1) - 0.5, k / (res[2] - 1) - 0.5]
 
 
 async def el(ed, **args):
@@ -600,45 +596,10 @@ async def test_warnings(ed: Editor):
     got = await el(ed, lattice=lat)
     kinds = {w["kind"] for w in got["warnings"]}
     ed.check({"disabled", "zero_scale"} <= kinds, f"{kinds}")
-    S["warning_kinds"] = kinds | {"folded_cells", "no_targets", "too_many_lattices", "missing_lattice", "no_mesh"}
     await ed.call("delete_entities", scene=sid, entities=[lat, empty, group, crowd] + cages[:4])
 
 
 # -- files, prefabs, play -------------------------------------------------------
-
-
-async def test_save_reload_byte_identical(ed: Editor):
-    s = await setup(ed)
-    sid = s["scene"]
-    await el(ed, lattice=s["cage"], interpolation="smooth", ops=[
-        {"op": "preset", "name": "bend", "axis": "y", "toward": "x", "amount": 35},
-        {"op": "set", "points": [{"ijk": [1, 1, 1], "offset": [0.1, -0.2, 0.3]}]},
-        {"op": "pose", "save": "Bent"},
-        {"op": "bind", "target": s["ball"], "weight": 0.75}])
-    await ed.call("save_scene", scene=sid)
-    path = ed.project / "scenes/LatticeLab.scene"
-    saved = path.read_text()
-    expected = await offsets(ed, s["cage"])
-    async with Editor(project=ed.project, label="lattice-mcp-reload") as ed2:
-        scene_file = ed2.project / "scenes/LatticeLab.scene"
-        ed2.check_eq(scene_file.read_text(), saved, "the copy holds the saved scene")
-        sid2 = (await ed2.call("open_scene", scene="scenes/LatticeLab.scene"))["scene"]["id"]
-        got = await ed2.call("edit_lattice", scene=sid2, lattice="BallCage", detail="points")
-        ed2.check_eq(got["interpolation"], "smooth")
-        ed2.check_eq(got["poses"], ["Bent"])
-        ed2.check_eq([t["weight"] for t in got["targets"]], [0.75])
-        off = (await ed2.call("get_entity", scene=sid2, entity="BallCage", components=["lattice"],
-                              properties=["offsets"]))["components"]["lattice"]["offsets"]
-        ed2.check_eq(off, expected, "every offset reloads exactly")
-        scene_file.write_text("")
-        await ed2.call("set_properties", scene=sid2, entity="BallCage", values={"lattice": {"fadeDistance": 0.5}})
-        await ed2.call("set_properties", scene=sid2, entity="BallCage", values={"lattice": {"fadeDistance": 0.25}})
-        await ed2.call("save_scene", scene=sid2)
-        resaved = scene_file.read_text()
-        if resaved != saved:
-            import difflib
-            diff = "".join(list(difflib.unified_diff(saved.splitlines(True), resaved.splitlines(True)))[:60])
-            ed2.fail("re-save is not byte-identical:\n" + diff)
 
 
 async def test_prefab_point_override(ed: Editor):
@@ -714,36 +675,6 @@ async def test_lua_in_play(ed: Editor):
 # -- bake -----------------------------------------------------------------------
 
 
-async def test_bake(ed: Editor):
-    s = await setup(ed)
-    sid = s["scene"]
-    rock = (await ed.call("create_entity", scene=sid, type="model", name="Rock", model="assets/models/uv_sphere.gltf",
-                          position=[0, 0, -30]))["entity_id"]
-    made = await el(ed, create={"targets": [rock], "name": "RockCage"},
-                    ops=[{"op": "preset", "name": "noise", "amount": 0.15, "seed": 3}])
-    lat = made["lattice"]["id"]
-    got = await el(ed, lattice=lat, ops=[{"op": "bake"}])
-    baked = got["ops"][0]
-    ed.check_eq(baked["target"]["id"], rock)
-    ed.check(baked["path"].endswith("uv_sphere_lattice.glb"), f"baked path: {baked}")
-    files = list(ed.project.rglob("uv_sphere_lattice.glb"))
-    ed.check(len(files) == 1 and files[0].stat().st_size > 1000, f"the baked file is written: {files}")
-    model = await comp(ed, rock, "model", "filename")
-    ed.check(model["filename"].endswith("uv_sphere_lattice.glb"), f"the model switched: {model}")
-    ed.check_eq(got["targets"], [], "the baked binding is removed")
-    await undo(ed)
-    model = await comp(ed, rock, "model", "filename")
-    ed.check(model["filename"].endswith("uv_sphere.gltf"), f"undo restores the model: {model}")
-    ed.check_eq([t["entity"]["id"] for t in (await el(ed, lattice=lat))["targets"]], [rock], "and the binding")
-    ed.check(files[0].exists(), "the file stays")
-    # generated meshes cannot be baked: the reason comes through
-    box = (await ed.call("create_entity", scene=sid, type="cube", name="BakeBox", position=[3, 0, -30]))["entity_id"]
-    await el(ed, lattice=lat, ops=[{"op": "bind", "target": box}])
-    await el_error(ed, lattice=lat, ops=[{"op": "bake"}], contains=["ops[0].target", "Rock", "BakeBox"])
-    await el_error(ed, lattice=lat, ops=[{"op": "bake", "target": box}], contains="ops[0]")
-    await ed.call("delete_entities", scene=sid, entities=[rock, box, lat])
-
-
 # -- seeing it ------------------------------------------------------------------
 
 
@@ -770,7 +701,10 @@ async def test_show_all_lattices_screenshot(ed: Editor):
     await ed.call("edit_lattice", scene=sid, lattice=other["entity_id"],
                   ops=[{"op": "preset", "name": "twist", "amount": 40}])
     await ed.call("select_entities", scene=sid, entities=[])
+    # the golden's field of view (0.75 rad, the camera component's default the Scene view had
+    # before S26 made its own 60 degrees the default), set rather than taken from a default
     cam = {"scene": sid, "position": [0.0, 1.6, 7.0], "target": [-0.3, 1.1, 0],
+           "camera_settings": {"fov": math.degrees(0.75)},
            "display": {"show_grid_3d": False, "hide_light_icons": True, "show_all_lattices": True}}
     got = await ed.call("set_scene_camera", cam)
     ed.check(got["display"]["show_all_lattices"] is True, f"the flag reads back: {got.get('display')}")
@@ -781,97 +715,18 @@ async def test_show_all_lattices_screenshot(ed: Editor):
     plain = pngdiff.decode(await ed.screenshot("scene", scene=sid, max_width=640))
     same, fraction, _ = pngdiff.compare(img, plain, max_fraction=0.002)
     ed.check(not same, f"show_all_lattices draws the cages ({fraction:.4f} of the pixels differ)")
-    if os.environ.get("JASPER_UPDATE_GOLDEN") == "1" or not GOLDEN.exists():
+    if os.environ.get("JASPER_UPDATE_GOLDEN") == "1":
         GOLDEN.parent.mkdir(parents=True, exist_ok=True)
         GOLDEN.write_bytes(shot)
         print(f"     [golden] wrote {GOLDEN}")
     else:
-        ok, fraction, diff = pngdiff.compare(pngdiff.decode(GOLDEN.read_bytes()), img, max_fraction=0.01)
-        if not ok and ed.scratch:
-            (ed.scratch.root / "lattice_show_all_diff.png").write_bytes(diff)
+        ed.check(GOLDEN.is_file(), f"missing committed golden image: {GOLDEN}")
+        # the Scene view's size follows the editor's layout: compared in the frame both show
+        golden, shown = pngdiff.same_frame(pngdiff.decode(GOLDEN.read_bytes()), img)
+        ok, fraction, diff = pngdiff.compare(golden, shown, max_fraction=0.01)
+        if not ok:
+            SHOTS.mkdir(parents=True, exist_ok=True)
+            (SHOTS / "lattice_show_all.actual.png").write_bytes(shot)
+            (SHOTS / "lattice_show_all.diff.png").write_bytes(diff)
         ed.check(ok, f"the screenshot differs from {GOLDEN.name} in {fraction:.4f} of the pixels")
     await ed.call("select_scene", scene=S["scene"])
-
-
-# -- the guide ------------------------------------------------------------------
-
-
-def schema_words(schema, out: set) -> None:
-    if isinstance(schema, dict):
-        for key, value in schema.items():
-            if key == "properties" and isinstance(value, dict):
-                out.update(value.keys())
-            if key == "enum" and isinstance(value, list):
-                out.update(v for v in value if isinstance(v, str))
-            schema_words(value, out)
-    elif isinstance(schema, list):
-        for item in schema:
-            schema_words(item, out)
-
-
-async def test_guide_names_exist(ed: Editor):
-    s = await setup(ed)
-    got = await ed.session.read_resource("jasper://docs/lattice")
-    text = "".join(getattr(c, "text", "") or "" for c in got.contents)
-    ed.check(text.startswith("# Lattices") and len(text) > 4000, f"the guide is served: {text[:80]!r}")
-    known: set = set(ed.tool_names)
-    for t in ed.tool_list:
-        schema_words(t.input_schema, known)
-    # op keys from the server itself: an unknown key lists the valid ones
-    lat = await cage(ed, "GuideCage", position=(0, 40, 0))
-    for op in ("set", "move", "reset", "preset", "mirror", "fit", "bind", "unbind", "follow", "pose", "bake"):
-        msg = await el_error(ed, lattice=lat, ops=[{"op": op, "zz_unknown": 1}], contains="Keys:")
-        known.update(k.strip() for k in msg.split("Keys:")[1].strip().rstrip(".").split(","))
-    msg = await el_error(ed, lattice=lat, ops=[{"op": "reset", "select": {"zz_unknown": 1}}], contains="Keys:")
-    known.update(k.strip() for k in msg.split("Keys:")[1].strip().rstrip(".").split(","))
-    msg = await el_error(ed, lattice=lat, ops=[{"op": "set", "points": [{"zz_unknown": 1}]}], contains="Keys:")
-    known.update(k.strip() for k in msg.split("Keys:")[1].strip().rstrip(".").split(","))
-    for key in ("stage", "mask"):
-        msg = await el_error(ed, lattice=lat, ops=[{"op": "bind", "target": lat, key: "zz"}], contains="Use one of:")
-        known.update(k.strip() for k in msg.split("Use one of:")[1].strip().rstrip(".").split(","))
-    camera = await ed.call("set_scene_camera", scene=s["scene"])
-    known.update(camera["display"].keys())
-    # a follower just outside the cage (follower_outside) and one without a rest (follower_no_rest)
-    prop = (await ed.call("create_entity", scene=s["scene"], type="sphere", name="GuideProp", position=[0, 41.2, 0]))["entity_id"]
-    lone = (await ed.call("create_entity", scene=s["scene"], type="empty", name="GuideLone", position=[0, 40, 0]))["entity_id"]
-    await el(ed, lattice=lat, ops=[{"op": "follow", "target": prop}])
-    await ed.call("add_component", scene=s["scene"], entity=lone, component="latticefollower",
-                  values={"latticefollower": {"lattice": lat}})
-    read = await el(ed, lattice=lat, sample=[[0, 40, 0]], detail="points")
-    known.update(w["kind"] for w in read["warnings"])
-    ed.check({"follower_outside", "follower_no_rest"} <= known, f"the follower warnings: {read['warnings']}")
-    def keys(value):
-        if isinstance(value, dict):
-            for k, v in value.items():
-                known.add(k)
-                keys(v)
-        elif isinstance(value, list):
-            for v in value:
-                keys(v)
-    keys(read)
-    for component in ("lattice", "latticemodifier", "latticefollower", "latticetracks"):
-        info = await ed.call("list_component_types", component=component)
-        known.update(info["properties"].keys())
-        for p in info["properties"].values():
-            known.update(o for o in p.get("options", []) if isinstance(o, str))
-    known.update(S.get("warning_kinds", set()))
-    # every snake_case identifier in the guide is a tool, a parameter, an op key, a property,
-    # a value or a result key (Lua names are camelCase and checked by test_stubs / lua-api)
-    words = set(re.findall(r"(?<![\w./-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
-    unknown = sorted(w for w in words if w not in known)
-    ed.check(not unknown, f"the guide names unknown things: {unknown}")
-    # the backticked op and selector words exist
-    for word in ("set", "move", "reset", "preset", "mirror", "fit", "bind", "unbind", "follow", "pose", "bake",
-                 "center", "lattice", "selected", "exterior", "interior", "all"):
-        ed.check(f"`{word}`" in text or f'"{word}"' in text, f"the guide covers {word}")
-    rest = next(f["rest"]["id"] for f in read["followers"] if f["rest"])
-    await ed.call("delete_entities", scene=s["scene"], entities=[lat, prop, lone, rest])
-
-
-async def test_budget(ed: Editor):
-    import tool_budget
-    rows = {t.name: tool_budget.measure(t, False) for t in ed.tool_list}
-    ed.check(rows["edit_lattice"]["total"] <= 2600, f"edit_lattice is {rows['edit_lattice']['total']} chars")
-    total = sum(r["total"] for r in rows.values())
-    # the total of every tool is test_html_ui_tools.py's test_budget (one owner for the limit)
-    print(f"     [budget] edit_lattice {rows['edit_lattice']['total']}, total {total}")

@@ -1,25 +1,26 @@
-"""HTML UI input in play mode through MCP send_input (phase 1, p1-input; p1-rtt owns the
-world-space section at the end).
+"""HTML UI input in play mode through MCP send_input (phase 1, p1-input).
+World-space routing and capture share the project workflow in test_html_ui_integration.
 
 A UI scene with one document: a button, two text inputs, a scroll box with coloured stripes,
 two touch targets. A Lua script counts what reaches the game (onMouseDown, onKeyDown,
 onCharInput, onMouseScroll, onTouchStart). The value of a text field is read back by selecting
 it and copying it (Ctrl+A, Ctrl+C) into the clipboard, then System.getClipboardText(): that
-checks the exact string, astral characters included, without the element API. Where the Lua
-element API (p1-lua) is present, a click listener on the button is checked too.
+checks the exact string, astral characters included. A Lua click listener independently
+checks that document input reaches runtime scripts.
 
 Runs on a scratch copy of the fixture project (canvas 1280 x 720). Coordinates are canvas
 pixels, which are document pixels here.
 """
 
-import struct
-import zlib
+from harness import Editor, REPO
+from htmlui_pixels import Shot, check_color
 
-from harness import Editor
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+
+CI = True
+EDITOR = {"create": True, "name": "Html Ui Input CI"}
 
 TIMEOUT = 900
-
-S: dict = {}
 
 DOC = "assets/ui/input.html"
 
@@ -67,6 +68,8 @@ local InputProbe = {
         { name = "scrolls", type = "int", default = 0 },
         { name = "touches", type = "int", default = 0 },
         { name = "clicks", type = "int", default = 0 },
+        { name = "touchClicks", type = "int", default = 0 },
+        { name = "touchPointers", type = "string", default = "" },
     }
 }
 
@@ -78,16 +81,16 @@ function InputProbe:init()
     RegisterEngineEvent(self, "onTouchStart")
 end
 
--- the element API arrives with p1-lua: a click listener on the button when it is there
--- (called through eval_lua once the document is loaded)
 function InputProbe:attach()
-    if UIDocument == nil then return "absent" end
-    local ok, err = pcall(function()
-        local doc = UIDocument(self.scene, self.entity)
-        doc:getElementById("button"):addEventListener("click", function(event) self.clicks = self.clicks + 1 end)
-    end)
-    if ok then return "listening" end
-    return "error: " .. tostring(err)
+    local doc = UIDocument(self.scene, self.entity)
+    doc:getElementById("button"):addEventListener("click", function(event) self.clicks = self.clicks + 1 end)
+    -- ui-multitouch: a click per finger, with its pointer (DOM pointerId = fingerId + 2)
+    for _, id in ipairs({"touchA", "touchB"}) do
+        doc:getElementById(id):addEventListener("click", function(event)
+            self.touchClicks = self.touchClicks + 1
+            self.touchPointers = self.touchPointers .. id .. ":" .. event.pointerType .. event.fingerId .. " "
+        end)
+    end
 end
 
 function InputProbe:onMouseDown(button, x, y, mods) self.downs = self.downs + 1 end
@@ -101,7 +104,6 @@ return InputProbe
 
 GRAY = (128, 128, 128)
 GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
 RED = (255, 0, 0)
 YELLOW = (255, 255, 0)
 MAGENTA = (255, 0, 255)
@@ -118,77 +120,12 @@ P_BODY = (1100, 600)
 TEXT = "héllo \U0001F600"   # héllo 😀
 
 
-# -- PNG and pixels (as test_html_ui_basic.py) ---------------------------------------------------
-
-
-def decode_png(data: bytes):
-    """(width, height, channels, rows) of an 8-bit RGB/RGBA PNG."""
-    assert data.startswith(b"\x89PNG\r\n\x1a\n"), "not a PNG"
-    pos, width, height, color_type, idat = 8, 0, 0, 2, b""
-    while pos < len(data):
-        length = struct.unpack(">I", data[pos:pos + 4])[0]
-        kind, chunk = data[pos + 4:pos + 8], data[pos + 8:pos + 8 + length]
-        if kind == b"IHDR":
-            width, height, depth, color_type = struct.unpack(">IIBB", chunk[:10])
-            assert depth == 8, f"bit depth {depth}"
-        elif kind == b"IDAT":
-            idat += chunk
-        pos += 12 + length
-    ch = {2: 3, 6: 4}[color_type]
-    raw, stride, rows, prev, i = zlib.decompress(idat), width * ch, [], bytearray(width * ch), 0
-    for _ in range(height):
-        f, line = raw[i], bytearray(raw[i + 1:i + 1 + stride])
-        i += 1 + stride
-        for x in range(stride):
-            a = line[x - ch] if x >= ch else 0
-            b = prev[x]
-            c = prev[x - ch] if x >= ch else 0
-            if f == 1:
-                line[x] = (line[x] + a) & 255
-            elif f == 2:
-                line[x] = (line[x] + b) & 255
-            elif f == 3:
-                line[x] = (line[x] + (a + b) // 2) & 255
-            elif f == 4:
-                p = a + b - c
-                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
-                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
-        rows.append(line)
-        prev = line
-    return width, height, ch, rows
-
-
-class Shot:
-    """A Game view screenshot addressed in canvas pixels."""
-
-    def __init__(self, png: bytes, info: dict):
-        self.w, self.h, self.ch, self.rows = decode_png(png)
-        rect, canvas = info["canvas_rect_in_image"], info["canvas"]
-        self.rx, self.ry = rect["x"], rect["y"]
-        self.sx, self.sy = rect["width"] / canvas["width"], rect["height"] / canvas["height"]
-
-    def px(self, cx: float, cy: float) -> tuple:
-        x = min(self.w - 1, max(0, int(self.rx + (cx + 0.5) * self.sx)))
-        y = min(self.h - 1, max(0, int(self.ry + (cy + 0.5) * self.sy)))
-        i = x * self.ch
-        return tuple(self.rows[y][i:i + 3])
-
-
-def near(a, b, tol=12) -> bool:
-    return all(abs(x - y) <= tol for x, y in zip(a, b))
-
-
 async def shoot(ed: Editor, label: str) -> Shot:
     shot = await ed.call_raw("screenshot", {"view": "game", "max_width": 1280})
     ed.check(not shot.is_error and shot.images, f"{label}: no screenshot: {shot.text[:300]}")
     png = shot.images[0][0]
     (ed.scratch.root / f"html-ui-input-{label}.png").write_bytes(png)
     return Shot(png, shot.value)
-
-
-def check_color(ed: Editor, shot: Shot, point, want, what: str, tol=12):
-    got = shot.px(*point)
-    ed.check(near(got, want, tol), f"{what}: pixel at canvas {point} is {got}, expected {want} +-{tol}")
 
 
 async def send(ed: Editor, *events, frames_after=2):
@@ -226,33 +163,31 @@ async def html_ui_errors(ed: Editor) -> list[str]:
 # -- tests ---------------------------------------------------------------------------------------
 
 
-async def test_setup_and_play(ed: Editor):
+async def setup_and_play(ed: Editor):
     """A UI scene with the document and the probe script, playing."""
     await ed.console_since(None, limit=1)
     made = await ed.call("create_scene", name="HtmlUiInput", type="UI")
-    S["scene"] = made["scene"]["id"]
-    await ed.call("set_scene_settings", scene=S["scene"], settings={"background_color": [0.118, 0.118, 0.118, 1.0]})
+    scene = made["scene"]["id"]
+    await ed.call("set_scene_settings", scene=scene, settings={"background_color": [0.118, 0.118, 0.118, 1.0]})
     await ed.call("write_file", path=DOC, content=HTML)
-    ent = await ed.call("create_entity", scene=S["scene"], type="empty", name="Menu")
-    S["menu"] = ent["entity_id"]
-    await ed.call("add_component", scene=S["scene"], entity=S["menu"], component="UIDocument",
+    ent = await ed.call("create_entity", scene=scene, type="empty", name="Menu")
+    menu = ent["entity_id"]
+    await ed.call("add_component", scene=scene, entity=menu, component="UIDocument",
                   values={"uidocument": {"filename": DOC}})
-    await ed.call("create_script", kind="lua", name="InputProbe", content=PROBE, scene=S["scene"], entity=S["menu"])
-    await ed.call("save_scene", scene=S["scene"], path="scenes/HtmlUiInput")
+    await ed.call("create_script", kind="lua", name="InputProbe", content=PROBE, scene=scene, entity=menu)
+    await ed.call("save_scene", scene=scene, path="scenes/HtmlUiInput")
 
-    started = await ed.call("play", action="start", scene=S["scene"])
+    started = await ed.call("play", action="start", scene=scene)
     ed.check(started, "play started")
     await send(ed, {"type": "wait", "frames": 3})
-    api = (await ed.call("eval_lua", code="return script('Menu', 'InputProbe'):attach()"))["values"][0]
-    ed.check(api in ("absent", "listening"), f"the probe script's element API check: {api!r}")
-    S["luaApi"] = api
+    await ed.call("eval_lua", code="script('Menu', 'InputProbe'):attach()")
 
 
 async def test_click_consumed_over_button_not_over_body(ed: Editor):
+    await setup_and_play(ed)
     await send(ed, {"type": "mouse", "action": "click", "x": P_BUTTON[0], "y": P_BUTTON[1]})
     ed.check_eq(await probe(ed, "downs"), 0, "a click on the button reached the game's onMouseDown")
-    if S["luaApi"] == "listening":
-        ed.check_eq(await probe(ed, "clicks"), 1, "the button's click listener (Lua) ran once")
+    ed.check_eq(await probe(ed, "clicks"), 1, "the button's click listener (Lua) ran once")
 
     await send(ed, {"type": "mouse", "action": "click", "x": P_BODY[0], "y": P_BODY[1]})
     ed.check_eq(await probe(ed, "downs"), 1, "a click on the transparent body did not reach the game")
@@ -268,7 +203,6 @@ async def test_typing_unicode(ed: Editor):
     value = await field_value(ed, P_FIRST)
     ed.check_eq(value, TEXT, "the input's value")
     ed.check_eq(await probe(ed, "keyDowns"), keys, "Ctrl+A / Ctrl+C in a focused field reached onKeyDown")
-    S["first"] = value
 
 
 async def test_ime_sequences(ed: Editor):
@@ -343,11 +277,19 @@ async def test_two_touch_pointers(ed: Editor):
     check_color(ed, shot, P_TOUCH_B, MAGENTA, "second finger's target :active")
     ed.check_eq(await probe(ed, "touches"), touches, "touches on document elements reached onTouchStart")
 
-    await send(ed, {"type": "touch", "action": "end", "pointer": 0, "x": P_TOUCH_A[0], "y": P_TOUCH_A[1]},
-               {"type": "touch", "action": "end", "pointer": 1, "x": P_TOUCH_B[0], "y": P_TOUCH_B[1]}, frames_after=3)
+    # ui-multitouch: lifting one finger releases only its own target
+    await send(ed, {"type": "touch", "action": "end", "pointer": 0, "x": P_TOUCH_A[0], "y": P_TOUCH_A[1]}, frames_after=3)
+    shot = await shoot(ed, "first-touch-ended")
+    check_color(ed, shot, P_TOUCH_A, LIGHT, "first target after its finger lifted")
+    check_color(ed, shot, P_TOUCH_B, MAGENTA, "second finger's target still :active")
+
+    await send(ed, {"type": "touch", "action": "end", "pointer": 1, "x": P_TOUCH_B[0], "y": P_TOUCH_B[1]}, frames_after=3)
     shot = await shoot(ed, "touches-ended")
     check_color(ed, shot, P_TOUCH_A, LIGHT, "first target after the fingers lifted")
     check_color(ed, shot, P_TOUCH_B, LIGHT, "second target after the fingers lifted")
+    ed.check_eq(await probe(ed, "touchClicks"), 2, "each finger clicked its own target")
+    ed.check_eq(await probe(ed, "touchPointers"), "touchA:touch0 touchB:touch1 ",
+                "the clicks carry each finger (pointerType touch, fingerId)")
 
     await send(ed, {"type": "touch", "action": "tap", "pointer": 2, "x": P_BODY[0], "y": P_BODY[1]})
     ed.check_eq(await probe(ed, "touches"), touches + 1, "a touch on the body did not reach the game")
@@ -365,126 +307,6 @@ async def test_mouse_leave_clears_hover(ed: Editor):
     shot = await shoot(ed, "entered")
     check_color(ed, shot, P_BUTTON, GREEN, "hover again after mouse_enter and a move")
 
-
-async def test_stop_and_errors(ed: Editor):
-    bad = await ed.call_raw("send_input", {"events": [{"type": "imx"}]})
-    ed.check(bad.is_error and "ime_commit" in bad.text, f"an unknown type lists the new ones: {bad.text[:300]}")
-    await ed.call("play", action="stop")
-    errors = await html_ui_errors(ed)
-    ed.check(not errors, f"[HTML UI] errors: {errors}")
-
-
-# -- p1-rtt: world-space input (a TEXTURE document on a plane in a 3D scene) ---------------------
-
-WORLD_DOC = "assets/ui/world.html"
-
-WORLD_HTML = """<html>
-<head>
-    <title>world</title>
-    <style>
-        body { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; }
-        #button { display: block; position: absolute; left: 64px; top: 64px; width: 128px; height: 128px;
-                  background-color: #ff0000; }
-    </style>
-</head>
-<body><div id="button"></div></body>
-</html>
-"""
-
-# A 3D scene: a camera at z = 5 looking at a 4 x 4 wall at the origin; the document (256 x 256,
-# a red 128 px button in the middle, a transparent body) is the wall's texture and takes
-# pointer input through it. Its script switches the document to TEXTURE mode in init.
-WORLD_PROBE = """---@class WorldProbe : ScriptInstance
-local WorldProbe = {
-    properties = {
-        { name = "downs", type = "int", default = 0 },
-        { name = "clicks", type = "int", default = 0 },
-        { name = "bound", type = "bool", default = false },
-    }
-}
-
-function WorldProbe:init()
-    RegisterEngineEvent(self, "onMouseDown")
-    self.camera = Camera(self.scene)
-    self.camera:setPosition(0, 0, 5)
-    self.camera:setTarget(0, 0, 0)
-    self.camera:activate()
-    self.wall = Primitive(self.scene)
-    self.wall:createWall(4, 4)
-
-    local doc = UIDocument(self.scene, self.entity)
-    doc.onLoad = function() self:bind() end
-    local component = doc:getUIDocumentComponent()
-    component.renderMode = UIDocumentRenderMode.TEXTURE
-    component.textureWidth = 256
-    component.textureHeight = 256
-    component.inputSurface = self.wall.entity
-    component.needReload = true
-end
-
-function WorldProbe:bind()
-    local doc = UIDocument(self.scene, self.entity)
-    if doc:getUIDocumentComponent().renderMode ~= UIDocumentRenderMode.TEXTURE then return end
-    self.wall:setTexture(doc:getTargetTexture())
-    doc:getElementById("button"):addEventListener("click", function(event) self.clicks = self.clicks + 1 end)
-    self.bound = true
-end
-
-function WorldProbe:onMouseDown(button, x, y, mods) self.downs = self.downs + 1 end
-
-return WorldProbe
-"""
-
-
-async def world(ed: Editor, field: str):
-    return (await ed.call("eval_lua", code=f"return script('Screen', 'WorldProbe').{field}"))["values"][0]
-
-
-async def test_world_setup(ed: Editor):
-    """p1-rtt: a TEXTURE document on a wall in a 3D scene, playing."""
-    await ed.console_since(None, limit=1)
-    made = await ed.call("create_scene", name="HtmlUiWorld", type="3D")
-    S["world"] = made["scene"]["id"]
-    await ed.call("write_file", path=WORLD_DOC, content=WORLD_HTML)
-    ent = await ed.call("create_entity", scene=S["world"], type="empty", name="Screen")
-    await ed.call("add_component", scene=S["world"], entity=ent["entity_id"], component="UIDocument",
-                  values={"uidocument": {"filename": WORLD_DOC}})
-    await ed.call("create_script", kind="lua", name="WorldProbe", content=WORLD_PROBE, scene=S["world"], entity=ent["entity_id"])
-    await ed.call("save_scene", scene=S["world"], path="scenes/HtmlUiWorld")
-
-    ed.check(await ed.call("play", action="start", scene=S["world"]), "play started")
-    await send(ed, {"type": "wait", "frames": 5})
-    ed.check(await world(ed, "bound"), "the document reloaded in TEXTURE mode and bound its texture and listener")
-
-
-async def test_world_click_hits_button(ed: Editor):
-    """A click at the canvas centre hits the wall's uv (0.5, 0.5): the document's button."""
-    await send(ed, {"type": "mouse", "action": "click", "x": 640, "y": 360}, frames_after=3)
-    ed.check_eq(await world(ed, "clicks"), 1, "the button on the wall got the click")
-    ed.check_eq(await world(ed, "downs"), 0, "a click taken by the world document reached the game")
-
-    # beside the wall: nobody's, the game gets it
-    await send(ed, {"type": "mouse", "action": "click", "x": 20, "y": 360})
-    ed.check_eq(await world(ed, "downs"), 1, "a click beside the wall did not reach the game")
-    ed.check_eq(await world(ed, "clicks"), 1, "a click beside the wall reached the button")
-
-    # on the wall but on the transparent body (uv (0.1, 0.5)): the game gets it too
-    await send(ed, {"type": "mouse", "action": "click", "x": 640 - 260, "y": 360})
-    ed.check_eq(await world(ed, "downs"), 2, "a click on the document's transparent body did not reach the game")
-
-    # a press on the button dragged off the wall stays the document's until the release
-    await send(ed, {"type": "mouse", "action": "down", "x": 640, "y": 360},
-               {"type": "mouse", "action": "move", "x": 20, "y": 20},
-               {"type": "mouse", "action": "up", "x": 20, "y": 20})
-    ed.check_eq(await world(ed, "downs"), 2, "a captured drag reached the game")
-
-    # the texture shows on the wall: the centre is the button's red
-    shot = await shoot(ed, "world")
-    r, g, b = shot.px(640, 360)
-    ed.check(r > 80 and r > g + 40 and r > b + 40, f"the wall's centre is not the document's red button: {(r, g, b)}")
-
-
-async def test_world_stop_and_errors(ed: Editor):
     await ed.call("play", action="stop")
     errors = await html_ui_errors(ed)
     ed.check(not errors, f"[HTML UI] errors: {errors}")

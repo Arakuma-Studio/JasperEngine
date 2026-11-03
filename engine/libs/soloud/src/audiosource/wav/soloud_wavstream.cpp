@@ -104,7 +104,10 @@ namespace SoLoud
 		else
 		if (aParent->mStreamFile)
 		{
-			mFile = aParent->mStreamFile;
+			// JasperEngine: a voice may read a file of its own (WavStream::openInstanceFile), which
+			// it deletes like the files it opens itself (it is not mStreamFile)
+			File *own = aParent->openInstanceFile();
+			mFile = own ? own : aParent->mStreamFile;
 			mFile->seek(0); // stb_vorbis assumes file offset to be at start of ogg
 		}
 		else
@@ -289,29 +292,35 @@ namespace SoLoud
 		break;
 		case WAVSTREAM_OGG:
 			{
-				if (mOggFrameOffset < mOggFrameSize)
+				// JasperEngine local patch: the stream ends at its length, the last page's granule, as
+				// Wav::loadogg cuts it. stb_vorbis decodes the last packet whole (valid files a few
+				// hundred frames past the granule), and upstream played those frames before a loop
+				// wrapped: every wrap came that much late.
+				unsigned int want = aSamplesToRead;
+				if (mOffset >= mParent->mSampleCount)
+					want = 0;
+				else if (mParent->mSampleCount - mOffset < want)
+					want = mParent->mSampleCount - mOffset;
+				while (offset < want)
 				{
-					int b = getOggData(mOggOutputs, aBuffer, aSamplesToRead, aBufferSize, mOggFrameSize, mOggFrameOffset, mChannels);
-					mOffset += b;
-					offset += b;
-					mOggFrameOffset += b;
-				}
-
-				while (offset < aSamplesToRead)
-				{
-					mOggFrameSize = stb_vorbis_get_frame_float(mCodec.mOgg, NULL, &mOggOutputs);
-					mOggFrameOffset = 0;
-					int b = getOggData(mOggOutputs, aBuffer + offset, aSamplesToRead - offset, aBufferSize, mOggFrameSize, mOggFrameOffset, mChannels);
-					mOffset += b;
-					offset += b;
-					mOggFrameOffset += b;
-
-					if (mOffset >= mParent->mSampleCount || b == 0)
+					if (mOggFrameOffset >= mOggFrameSize)
 					{
-						mOffset += offset;
-						return offset;
+						mOggFrameSize = stb_vorbis_get_frame_float(mCodec.mOgg, NULL, &mOggOutputs);
+						mOggFrameOffset = 0;
+						if (mOggFrameSize <= 0)
+						{
+							// the decoder ended before the length: so does the stream
+							mOggFrameSize = 0;
+							mOffset = mParent->mSampleCount;
+							break;
+						}
 					}
+					int b = getOggData(mOggOutputs, aBuffer + offset, want - offset, aBufferSize, mOggFrameSize, mOggFrameOffset, mChannels);
+					mOffset += b;
+					offset += b;
+					mOggFrameOffset += b;
 				}
+				return offset;
 			}
 			break;
 		case WAVSTREAM_WAV:
@@ -341,21 +350,66 @@ namespace SoLoud
 
 	result WavStreamInstance::seek(double aSeconds, float* mScratch, unsigned int mScratchSize)
 	{
-		if (mCodec.mOgg)
+		// JasperEngine local patch: a seek lands on its frame, floor(rate x seconds), in every
+		// format, found with the decoder's own seek. Upstream tested mCodec.mOgg, a member of the
+		// decoder union that is set for WAV, FLAC and MP3 too, and handed their decoders to
+		// stb_vorbis_seek (memory corruption at every loop wrap of a streamed WAV, FLAC or MP3); its
+		// Ogg seek decoded the sought frame for stb_vorbis_get_samples_*, which getAudio does not use
+		// (the next stb_vorbis_get_frame_float dropped it), and kept the frame cache from before the
+		// seek, so a streamed Ogg's loop went on from the wrong place.
+		(void)mScratch;
+		(void)mScratchSize;
+		if (mFile == NULL)
+			return INVALID_PARAMETER;
+		double frame = floor(mBaseSamplerate * aSeconds);
+		unsigned int pos = 0;
+		if (frame >= (double)mParent->mSampleCount)
+			pos = mParent->mSampleCount;
+		else if (frame > 0)
+			pos = (unsigned int)frame;
+		bool sought = true;
+		switch (mParent->mFiletype)
 		{
-			int pos = (int)floor(mBaseSamplerate * aSeconds);
-			stb_vorbis_seek(mCodec.mOgg, pos);
-			// Since the position that we just sought to might not be *exactly*
-			// the position we asked for, we're re-calculating the position just
-			// for the sake of correctness.
-			mOffset = stb_vorbis_get_sample_offset(mCodec.mOgg);
-			double newPosition = float(mOffset / mBaseSamplerate);
-			mStreamPosition = newPosition;
-			return 0;
+		case WAVSTREAM_OGG:
+			mOggFrameSize = 0;
+			mOggFrameOffset = 0;
+			if (pos < mParent->mSampleCount)
+			{
+				// the frame that holds pos, decoded, and the offset of pos in it
+				sought = stb_vorbis_seek_frame(mCodec.mOgg, pos) != 0;
+				int start = stb_vorbis_get_sample_offset(mCodec.mOgg);
+				if (sought && start >= 0 && (unsigned int)start <= pos)
+				{
+					int frameSize = stb_vorbis_get_frame_float(mCodec.mOgg, NULL, &mOggOutputs);
+					if (frameSize > 0 && pos - (unsigned int)start < (unsigned int)frameSize)
+					{
+						mOggFrameSize = frameSize;
+						mOggFrameOffset = pos - start;
+					}
+					else
+					{
+						sought = false;
+					}
+				}
+				else
+				{
+					sought = false;
+				}
+			}
+			break;
+		case WAVSTREAM_FLAC:
+			sought = drflac_seek_to_pcm_frame(mCodec.mFlac, pos) != 0;
+			break;
+		case WAVSTREAM_MP3:
+			sought = drmp3_seek_to_pcm_frame(mCodec.mMp3, pos) != 0;
+			break;
+		case WAVSTREAM_WAV:
+			sought = drwav_seek_to_pcm_frame(mCodec.mWav, pos) != 0;
+			break;
 		}
-		else {
-			return AudioSourceInstance::seek(aSeconds, mScratch, mScratchSize);
-		}
+		mOffset = pos;
+		mStreamPosition = pos / mBaseSamplerate;
+		return sought ? SO_NO_ERROR : UNKNOWN_ERROR;
 	}
 
 	result WavStreamInstance::rewind()
@@ -394,6 +448,11 @@ namespace SoLoud
 
 	bool WavStreamInstance::hasEnded()
 	{
+		// JasperEngine: a voice whose file or decoder did not open is over (it would play silence forever)
+		if (mFile == NULL)
+		{
+			return 1;
+		}
 		if (mOffset >= mParent->mSampleCount)
 		{
 			return 1;

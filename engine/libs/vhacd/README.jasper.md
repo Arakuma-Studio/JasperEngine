@@ -19,6 +19,12 @@ library. `VHACD.h` carries the patch below (`jasper.patch`); `LICENSE` is byte f
   - The cost-matrix jobs are waited for even when the decomposition is cancelled. Upstream skips
     the wait on cancel and returns while queued jobs still read the task list and the hulls it
     frees (a use after free whenever a cancel lands in that stage).
+  - A cancel during the last stage (merged hulls reduced and handed to the output) frees the hulls
+    it did not hand over. Upstream's loop stops on the cancel and then clears the map that owns
+    the rest, which leaked every merged hull of a decomposition cancelled at that point (~1 MB in
+    the editor tests under LeakSanitizer). Each hull now leaves the map as it moves to the output,
+    and what the map still holds after the loop is released
+    (`ConvexDecomposition.CancelWhileFinalizingFreesTheHulls`).
 - `ConvexDecomposition.cpp` is the only translation unit that includes the header, with
   `ENABLE_VHACD_IMPLEMENTATION` and its warnings silenced around the include. It runs the
   synchronous `CreateVHACD()`/`Compute()` on the cache's worker with `m_asyncACD` on and a pool of

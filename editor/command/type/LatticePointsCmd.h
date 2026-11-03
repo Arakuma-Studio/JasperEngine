@@ -40,6 +40,10 @@ namespace jasperengine::editor{
         bool wholeState;  // resolution and poses are part of the edit
         bool continuous;
         bool wasModified;
+        // the first execute ran (offsets left as a clip preview showed them were put back to rest)
+        bool executed = false;
+        // the points the edit sets by index (setExplicitPoints)
+        std::vector<int> explicitPoints;
         PrefabEditUndo prefabUndo;
 
         static LatticePointsState capture(const LatticeComponent& lattice);
@@ -51,12 +55,24 @@ namespace jasperengine::editor{
         // resolution, offsets and poses
         LatticePointsCmd(Project* project, uint32_t sceneId, Entity lattice, const LatticePointsState& state);
 
+        // the points the edit sets on purpose (LatticeEditorOps::setOffsets: an Inspector Offset
+        // row, MCP edit_lattice): the new rest of a clip preview even when equal to what it shows;
+        // the other points follow "left as shown"
+        void setExplicitPoints(std::vector<int> points){ explicitPoints = std::move(points); }
+
         bool execute() override;
         void undo() override;
         bool mergeWith(Command* otherCommand) override;
 
         // the Hierarchy shows nothing of a lattice's points
         bool affectsStructure() const override { return false; }
+
+        // "Move Lattice Points (Cage)" for offsets, "Edit Lattice (Cage)" for a whole state
+        std::string describe() const override;
+        const char* typeName() const override { return "LatticePointsCmd"; }
+        // the lattice is as it was (a drag back where it started)
+        bool isNoOp() const override;
+        size_t memoryBytes() const override;
     };
 
 }

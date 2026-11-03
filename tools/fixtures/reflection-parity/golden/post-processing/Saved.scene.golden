@@ -1,0 +1,122 @@
+formatVersion: 7
+guid: d03b260f33fbad2534a87b618e82d620
+id: 2
+name: Saved
+scene:
+  backgroundColor: [0.16, 0.18, 0.24, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: auto
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+  postProcessing:
+    tonemap: aces
+    colorGradingEnabled: true
+    temperature: 0.25
+    contrast: 1.15
+    saturation: 1.2
+    vignetteEnabled: true
+    vignetteIntensity: 0.45
+    ditherEnabled: true
+    fxaaEnabled: true
+    chromaticAberrationEnabled: true
+    chromaticAberrationIntensity: 0.3
+sceneType: scene_3d
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 0
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 0
+shaderKeys:
+  - type: blit
+  - type: blit
+    properties: 387
+  - type: blit
+    properties: 643
+  - type: blit
+    properties: 771
+  - type: blit
+    properties: 897
+  - type: blit
+    properties: 898
+  - type: blit
+    properties: 899
+  - type: blit
+    properties: 903
+  - type: blit
+    properties: 907
+  - type: blit
+    properties: 915
+  - type: blit
+    properties: 931
+  - type: blit
+    properties: 963
+  - type: blit
+    properties: 1923
+  - type: blit
+    properties: 2947
+  - type: blit
+    properties: 9090
+  - type: blit
+    properties: 17283
+  - type: blit
+    properties: 33667
+  - type: blit
+    properties: 66467
+  - type: blit
+    properties: 132003
+  - type: bloom
+  - type: bloom
+    properties: 1
+  - type: bloom
+    properties: 3
+  - type: bloom
+    properties: 4
+  - type: bloom
+    properties: 12
+entities:
+  - type: Entity
+    entity: 1001
+    name: Game
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      script:
+        scripts:
+          - type: lua
+            path: PostProcessing.lua
+            pathGuid: 2e35c8d2b2025aeb3b746a5ef19b4176
+            className: PostProcessing
+            enabled: true

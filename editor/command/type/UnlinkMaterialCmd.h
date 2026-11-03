@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include "command/PrefabEditUndo.h"
 #include "Catalog.h"
@@ -28,7 +29,7 @@ namespace jasperengine::editor{
         struct EntityData {
             Material oldMaterial;
             std::string linkedFilePath;
-            uint32_t oldOverrideFields = 0;
+            uint64_t oldOverrideFields = 0;
         };
         std::map<Entity, EntityData> entities;
 
@@ -40,6 +41,15 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        std::string describe() const override {
+            std::vector<Entity> targets;
+            for (const auto& [entity, data] : entities) {
+                targets.push_back(entity);
+            }
+            return "Unlink Material (" + CommandNames::entities(project, sceneId, targets) + ")";
+        }
+        const char* typeName() const override { return "UnlinkMaterialCmd"; }
 
     };
 

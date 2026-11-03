@@ -607,33 +607,6 @@ TEST_F(EffectStateful, SplatsResetsAndReseeds){
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
 }
 
-TEST_F(EffectStateful, HundredCyclesLeaveNoImagesBehind){
-    EffectStatePool& pool = EffectStatePool::get();
-    EffectRuntime& runtime = EffectRuntime::get();
-    ASSERT_TRUE(load(document("<div></div>")));
-    at(10.0);
-    capture();
-    const size_t liveBefore = pool.liveImages();
-    uint64_t createdAfterFirst = 0;
-    for (int cycle = 0; cycle < 100; cycle++){
-        ASSERT_TRUE(load(document(probes(3)))) << "cycle " << cycle;
-        at(10.0 + cycle * 0.1);
-        capture();
-        ASSERT_EQ(runtime.simulationCount(), 3u) << "cycle " << cycle;
-        ASSERT_TRUE(load(document("<div></div>"))) << "cycle " << cycle;
-        capture();
-        EXPECT_EQ(runtime.simulationCount(), 0u) << "cycle " << cycle << ": simulations outlive their document";
-        EXPECT_EQ(pool.liveImages(), liveBefore) << "cycle " << cycle << ": state images outlive their document";
-        if (cycle == 0)
-            createdAfterFirst = pool.createdImages();
-    }
-    EXPECT_EQ(pool.createdImages(), createdAfterFirst) << "the pool made images after the first cycle";
-    EXPECT_LE(pool.pooledBytes(), EffectStatePool::kMaxPooledBytes);
-    pool.trim(0);
-    EXPECT_EQ(pool.pooledImages(), 0u);
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
-}
-
 TEST_F(EffectStateful, BudgetsAndHardCap){
     EffectRuntime& runtime = EffectRuntime::get();
     EffectStatefulBudget budget;

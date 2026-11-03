@@ -17,8 +17,14 @@ namespace {
 
     void cleanupTextureFace(void* cleanupData){
         TextureFaceCleanup* cleanup = static_cast<TextureFaceCleanup*>(cleanupData);
-        TextureData::cleanupTexture(&cleanup->data->at(cleanup->face));
+        TextureDataPool::releasePixels(cleanup->data, cleanup->face);
         delete cleanup;
+    }
+
+    void clearPathGuids(Guid (&guids)[6]){
+        for (Guid& guid : guids){
+            guid = Guid();
+        }
     }
 }
 
@@ -56,11 +62,13 @@ Texture::Texture(const std::string& id, TextureData data): Texture(){
 
     this->data = std::make_shared<std::array<TextureData,6>>();
     this->data->at(0) = data;
-    this->data = TextureDataPool::get(id, *this->data.get());
+    adoptPoolData(TextureDataPool::get(id, *this->data.get()));
 }
 
 namespace {
     TextureRender* destroyedFramebufferFallback = nullptr;
+    // getRender's stand-ins on this thread (getStandInCount)
+    thread_local uint32_t standInCount = 0;
 
     // a framebuffer owned by a std::shared_ptr is shared with the textures showing it
     std::shared_ptr<Framebuffer> ownerOf(Framebuffer* framebuffer){
@@ -79,14 +87,18 @@ Texture::Texture(Framebuffer* framebuffer): Texture(){
 
 Texture::Texture(const Texture& rhs){
     render = rhs.render;
+    renderRevision = rhs.renderRevision;
     framebuffer = rhs.framebuffer;
     framebufferOwner = rhs.framebufferOwner;
     type = rhs.type;
     id = rhs.id;
     for (int i = 0; i < 6; i++){
         paths[i] = rhs.paths[i];
+        pathGuids[i] = rhs.pathGuids[i];
     }
     data = rhs.data;
+    dataGeneration = rhs.dataGeneration;
+    checkedEpoch = rhs.checkedEpoch;
     numFaces = rhs.numFaces;
     loadFromPath = rhs.loadFromPath;
     releaseDataAfterLoad = rhs.releaseDataAfterLoad;
@@ -103,14 +115,18 @@ Texture::Texture(const Texture& rhs){
 Texture& Texture::operator=(const Texture& rhs){
     if (this != &rhs) {
         render = rhs.render;
+        renderRevision = rhs.renderRevision;
         framebuffer = rhs.framebuffer;
         framebufferOwner = rhs.framebufferOwner;
         type = rhs.type;
         id = rhs.id;
         for (int i = 0; i < 6; i++){
             paths[i] = rhs.paths[i];
+            pathGuids[i] = rhs.pathGuids[i];
         }
         data = rhs.data;
+        dataGeneration = rhs.dataGeneration;
+        checkedEpoch = rhs.checkedEpoch;
         numFaces = rhs.numFaces;
         loadFromPath = rhs.loadFromPath;
         releaseDataAfterLoad = rhs.releaseDataAfterLoad;
@@ -138,6 +154,9 @@ bool Texture::operator == ( const Texture& rhs ) const{
         paths[3] == rhs.paths[3] &&
         paths[4] == rhs.paths[4] &&
         paths[5] == rhs.paths[5] &&
+        pathGuids[0] == rhs.pathGuids[0] && pathGuids[1] == rhs.pathGuids[1] &&
+        pathGuids[2] == rhs.pathGuids[2] && pathGuids[3] == rhs.pathGuids[3] &&
+        pathGuids[4] == rhs.pathGuids[4] && pathGuids[5] == rhs.pathGuids[5] &&
         numFaces == rhs.numFaces &&
         loadFromPath == rhs.loadFromPath &&
         releaseDataAfterLoad == rhs.releaseDataAfterLoad &&
@@ -164,7 +183,14 @@ void Texture::setPath(const std::string& path){
     // Legacy form "<path>?svgScale=N" is absorbed into the svgScale field so paths[] always
     // holds a real file path. A new path resets the scale of the previous source.
     this->svgScale = 1.0f;
-    this->paths[0] = TextureData::parseSvgScalePath(path, &this->svgScale);
+    const std::string newPath = TextureData::parseSvgScalePath(path, &this->svgScale);
+    if (newPath != this->paths[0] || this->type != TextureType::TEXTURE_2D){
+        this->pathGuids[0] = Guid();
+    }
+    for (int f = 1; f < 6; f++){
+        this->pathGuids[f] = Guid();
+    }
+    this->paths[0] = newPath;
     this->framebuffer = NULL;
     this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_2D;
@@ -186,28 +212,51 @@ void Texture::setData(const std::string& id, TextureData data){
     this->type = TextureType::TEXTURE_2D;
     this->numFaces = 1;
     this->loadFromPath = false;
+    clearPathGuids(pathGuids);
     this->releaseDataAfterLoad = false;
     this->needLoad = true;
     this->svgScale = 1.0f;
 
     this->data = std::make_shared<std::array<TextureData,6>>();
     this->data->at(0) = data;
-    this->data = TextureDataPool::get(id, *this->data.get());
+    adoptPoolData(TextureDataPool::get(id, *this->data.get()));
 
     this->render = TexturePool::get(getRenderId());
 }
 
 void Texture::setId(const std::string& id){
     this->id = id;
+    clearPathGuids(pathGuids);
     if (!id.empty()) {
         this->render = TexturePool::get(getRenderId());
-        this->data = TextureDataPool::get(id);
+        adoptPoolData(TextureDataPool::get(id));
     }
+}
+
+void Texture::setGenerated(const std::string& id){
+    destroy();
+
+    this->id = id;
+    this->framebuffer = NULL;
+    this->type = TextureType::TEXTURE_2D;
+    this->numFaces = 1;
+    this->loadFromPath = false;
+    this->releaseDataAfterLoad = true;
+    this->needLoad = true;
+    this->svgScale = 1.0f;
+    this->data = TextureDataPool::get(id);
+    this->render = TexturePool::get(id);
 }
 
 void Texture::setCubeMap(const std::string& path){
     destroy();
 
+    if (path != this->paths[0] || this->type != TextureType::TEXTURE_CUBE){
+        this->pathGuids[0] = Guid();
+    }
+    for (int f = 1; f < 6; f++){
+        this->pathGuids[f] = Guid();
+    }
     this->paths[0] = path;
 
     // Single-file cubemap uses only paths[0]. Clear previous per-face paths
@@ -230,6 +279,9 @@ void Texture::setCubeMap(const std::string& path){
 }
 
 void Texture::setCubePath(size_t index, const std::string& path){
+    if (path != this->paths[index]){
+        this->pathGuids[index] = Guid();
+    }
     this->paths[index] = path;
 
     // Allow setting faces one-by-one. Only when all faces are set we rebuild the id and
@@ -264,6 +316,12 @@ void Texture::setCubePaths(const std::string& front, const std::string& back,
     // OpenGL-style cubemap naming:
     // Front = +Z (face index 4)
     // Back  = -Z (face index 5)
+    const std::string* faces[6] = {&right, &left, &up, &down, &front, &back};
+    for (int f = 0; f < 6; f++){
+        if (*faces[f] != this->paths[f]){
+            this->pathGuids[f] = Guid();
+        }
+    }
     this->paths[4] = front;
     this->paths[5] = back;
     this->paths[1] = left;
@@ -293,6 +351,7 @@ void Texture::setCubeDatas(const std::string& id, TextureData front, TextureData
     this->type = TextureType::TEXTURE_CUBE;
     this->numFaces = 6;
     this->loadFromPath = false;
+    clearPathGuids(pathGuids);
     this->releaseDataAfterLoad = false;
     this->needLoad = true;
     this->svgScale = 1.0f;
@@ -307,7 +366,7 @@ void Texture::setCubeDatas(const std::string& id, TextureData front, TextureData
     this->data->at(0) = right;
     this->data->at(2) = up;
     this->data->at(3) = down;
-    this->data = TextureDataPool::get(id, *this->data.get());
+    adoptPoolData(TextureDataPool::get(id, *this->data.get()));
 
     this->render = TexturePool::get(getRenderId());
 }
@@ -318,6 +377,7 @@ void Texture::setFramebuffer(Framebuffer* framebuffer){
     this->framebuffer = framebuffer;
     this->framebufferOwner = ownerOf(framebuffer);
     this->id.clear();
+    clearPathGuids(pathGuids);
     this->numFaces = 1;
     this->loadFromPath = false;
     this->releaseDataAfterLoad = false;
@@ -332,9 +392,12 @@ void Texture::setFramebuffer(Framebuffer* framebuffer){
 // GPU upload.
 bool Texture::hasTexturePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t numFaces) {
     if (!data) return false;
+    // levels of every face (a cooked or prepared cube) sit in the first entry
+    if (data->at(0).hasLevels() && data->at(0).getFaceCount() == (int)numFaces) {
+        return true;
+    }
     for (size_t f = 0; f < numFaces; f++) {
-        TextureData& face = data->at(f);
-        if (!face.getData() || face.getSize() == 0) {
+        if (!data->at(f).hasPixels()) {
             return false;
         }
     }
@@ -361,6 +424,29 @@ std::string Texture::buildPathTextureId() const {
     return pathId;
 }
 
+void Texture::adoptPoolData(std::shared_ptr<std::array<TextureData,6>> pooled) const {
+    data = std::move(pooled);
+    dataGeneration = TextureDataPool::generation(id);
+    checkedEpoch = TextureDataPool::getReplaceEpoch();
+}
+
+void Texture::refreshFromPool() const {
+    const uint32_t epoch = TextureDataPool::getReplaceEpoch();
+    if (epoch == checkedEpoch || id.empty() || framebuffer) {
+        return;
+    }
+    checkedEpoch = epoch;
+    const uint32_t generation = TextureDataPool::generation(id);
+    if (generation == dataGeneration) {
+        return;
+    }
+    // hot reloaded: the new pixels for this copy too (undo history, prefab caches...)
+    if (std::shared_ptr<std::array<TextureData,6>> pooled = TextureDataPool::get(id)) {
+        data = std::move(pooled);
+        dataGeneration = generation;
+    }
+}
+
 TextureLoadResult Texture::load() {
     TextureLoadResult result;
     result.id = id;
@@ -370,12 +456,14 @@ TextureLoadResult Texture::load() {
         return result;
     }
 
+    refreshFromPool();
+
     // Refresh from the data pool if we don't have a local reference yet, skipping
     // a released entry that other Texture copies keep alive while it is replaced.
     if (!data) {
         std::shared_ptr<std::array<TextureData,6>> pooledData = TextureDataPool::get(id);
         if (hasTexturePixels(pooledData, numFaces)) {
-            data = pooledData;
+            adoptPoolData(pooledData);
         }
     }
 
@@ -395,6 +483,16 @@ TextureLoadResult Texture::load() {
         }
     }
 
+    // pixels a job makes instead of a file (a packed lobe map, TextureDataPool::setGenerator)
+    if (!loadFromPath && !id.empty()) {
+        TextureLoadResult generated = TextureDataPool::loadGenerated(id);
+        if (generated.state != ResourceLoadState::NotStarted) {
+            if (generated && generated.data)
+                data = generated.data;
+            return generated;
+        }
+    }
+
     if (!needLoad) {
         result.state = ResourceLoadState::NotStarted;
         return result;
@@ -411,7 +509,7 @@ TextureLoadResult Texture::load() {
         }
         result = TextureDataPool::loadFromFile(id, aPaths, numFaces, isAlphaBorderFixed());
         if (result && result.data) {
-            data = result.data;
+            adoptPoolData(result.data);
             needLoad = false;
         } else if (result.state == ResourceLoadState::Failed) {
             needLoad = false;
@@ -492,6 +590,7 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     // Fast path: GPU texture already created and cached.
     render = TexturePool::get(getRenderId());
     if (render){
+        renderRevision = render->getRevision();
         return render.get();
     }
 
@@ -502,6 +601,14 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     }
 
     if (texResult.state != ResourceLoadState::Finished || !hasTexturePixels(data, numFaces)){
+        if (!id.empty())
+            standInCount++;
+        // nothing newer to make it of: a stale GPU texture keeps drawing what it has
+        if (std::shared_ptr<TextureRender> kept = TexturePool::getKept(getRenderId())){
+            render = std::move(kept);
+            renderRevision = render->getRevision();
+            return render.get();
+        }
         return fallBackTexture;
     }
 
@@ -516,21 +623,42 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     }
 
     if (render){
+        renderRevision = render->getRevision();
         return render.get();
     }
 
+    if (!id.empty())
+        standInCount++;
     return fallBackTexture;
+}
+
+bool Texture::isRenderOutdated() const{
+    return render && (render->isStale() || render->getRevision() != renderRevision);
+}
+
+uint32_t Texture::getStandInCount(){
+    return standInCount;
 }
 
 std::string Texture::getPath(size_t index) const{
     return paths[index];
 }
 
+const Guid& Texture::getPathGuid(size_t index) const{
+    return pathGuids[index];
+}
+
+void Texture::setPathGuid(size_t index, const Guid& guid){
+    pathGuids[index] = guid;
+}
+
 TextureData& Texture::getData(size_t index) const{
+    refreshFromPool();
     return data->at(index);
 }
 
 bool Texture::hasData() const{
+    refreshFromPool();
     return data != nullptr;
 }
 
@@ -558,6 +686,7 @@ unsigned int Texture::getWidth() const{
     if (this->framebuffer){
         return framebuffer->getWidth();
     }
+    refreshFromPool();
     if (data){
         return static_cast<unsigned int>(data->at(0).getOriginalWidth());
     }
@@ -572,6 +701,7 @@ unsigned int Texture::getHeight() const{
     if (this->framebuffer){
         return framebuffer->getHeight();
     }
+    refreshFromPool();
     if (data){
         return static_cast<unsigned int>(data->at(0).getOriginalHeight());
     }
@@ -583,6 +713,7 @@ unsigned int Texture::getHeight() const{
 }
 
 bool Texture::isTransparent() const{
+    refreshFromPool();
     if (data){
         return getData().isTransparent();
     }
@@ -592,6 +723,47 @@ bool Texture::isTransparent() const{
         return render->isTransparent();
     }
     return false;
+}
+
+bool Texture::isCompressed() const{
+    if (render && render->isCreated()){
+        return gpuFormatInfo(render->getGpuFormat()).compressed;
+    }
+    refreshFromPool();
+    return data && data->at(0).isCompressed();
+}
+
+std::string Texture::getGpuFormat() const{
+    if (render && render->isCreated()){
+        return gpuFormatName(render->getGpuFormat());
+    }
+    refreshFromPool();
+    if (data && data->at(0).hasPixels()){
+        return gpuFormatName(data->at(0).getGpuFormat());
+    }
+    return std::string();
+}
+
+unsigned int Texture::getStoredWidth() const{
+    if (framebuffer){
+        return framebuffer->getWidth();
+    }
+    if (render && render->isCreated()){
+        return (unsigned int)render->getWidth();
+    }
+    refreshFromPool();
+    return data ? (unsigned int)data->at(0).getWidth() : 0;
+}
+
+unsigned int Texture::getStoredHeight() const{
+    if (framebuffer){
+        return framebuffer->getHeight();
+    }
+    if (render && render->isCreated()){
+        return (unsigned int)render->getHeight();
+    }
+    refreshFromPool();
+    return data ? (unsigned int)data->at(0).getHeight() : 0;
 }
 
 void Texture::setReleaseDataAfterLoad(bool releaseDataAfterLoad){
@@ -609,7 +781,9 @@ void Texture::releaseData(){
 }
 
 bool Texture::empty() const{
-    if (!needLoad && !data && !render && !framebuffer)
+    // an id that is not a file path names a pooled or generated image (setId, setData,
+    // setGenerated): it is there while its pixels and GPU texture come and go
+    if (!needLoad && !data && !render && !framebuffer && (id.empty() || loadFromPath))
         return true;
 
     return false;

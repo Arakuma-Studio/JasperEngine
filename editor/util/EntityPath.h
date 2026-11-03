@@ -41,6 +41,22 @@ namespace jasperengine::editor {
         // not found; one: found; more: ambiguous (list them by of() so the caller can pick).
         static std::vector<Entity> resolve(EntityRegistry* registry, const std::vector<Entity>& entities, const std::string& ref);
         static std::vector<Entity> resolve(const SceneProject& sceneProject, const std::string& ref);
+
+        // ---- Paths relative to an animated root: the clip binding grammar (animation clips spec
+        // 2.2, 9.R39). One grammar with of() / find() above, implemented by the engine's
+        // anim::relativePath / anim::resolvePath (ClipBinding), so a clip path is exactly the
+        // scene path below the root: of(entity) == of(root) + "/" + relative(root, entity). ----
+
+        // The path of `entity` below `root` ("" for the root itself); false when it is not the
+        // root or under it, or a name on the way can't be addressed (isAddressableName)
+        static bool relative(EntityRegistry* registry, Entity root, Entity entity, std::string& out);
+        // The entity at `path` below `root`, NULL_ENTITY when none (or a malformed path)
+        static Entity findRelative(EntityRegistry* registry, Entity root, const std::string& path);
+        // False for names a path can't address: empty, containing '/' or ending in "#<digits>"
+        // (such a name reads back as a sibling index). Add Property and keying warn about them.
+        static bool isAddressableName(const std::string& name);
+        // The warning for such a name (empty when it is addressable)
+        static std::string unaddressableReason(const std::string& name);
     };
 
 }

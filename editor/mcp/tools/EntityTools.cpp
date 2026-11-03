@@ -15,6 +15,7 @@
 
 #include "Out.h"
 #include "Project.h"
+#include "command/PlayChangeReview.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -70,7 +71,7 @@ SceneProject* sceneArg(const CallPtr& call, bool requireLoaded = true) {
 // move_entity's parent: null = the scene root
 Json nullableEntityRef(const std::string& description) {
     Json ref = entityRef(description);
-    ref["type"].push_back("null");
+    ref["type"] = Json::array({"string", "null"});
     return ref;
 }
 
@@ -101,7 +102,7 @@ Entity parentOf(Scene* scene, Entity entity) {
     return transform ? transform->parent : NULL_ENTITY;
 }
 
-// Children by parent, in Transform (Hierarchy) order; roots in the scene's entity order
+// Children by parent, in Transform (Hierarchy) order; roots in the Hierarchy window's order
 struct Hierarchy {
     std::vector<Entity> roots;
     std::unordered_map<Entity, std::vector<Entity>> children;
@@ -122,30 +123,21 @@ Hierarchy buildHierarchy(SceneProject* scene) {
     const size_t count = transforms ? transforms->size() : 0;
     std::unordered_set<Entity> withTransform;
     withTransform.reserve(count);
+    std::vector<Entity> transformRoots;
     for (size_t i = 0; i < count; i++) {
         const Entity entity = transforms->getEntity(i);
         if (!playing && !authored.count(entity)) continue;
         withTransform.insert(entity);
         const Entity parent = transforms->getComponentFromIndex(i).parent;
-        if (parent == NULL_ENTITY) hierarchy.roots.push_back(entity);
+        if (parent == NULL_ENTITY) transformRoots.push_back(entity);
         else hierarchy.children[parent].push_back(entity);
     }
-    // GameObjects without a Transform are roots, kept in the scene's order among the others
-    std::vector<Entity> ordered;
-    ordered.reserve(hierarchy.roots.size());
-    std::unordered_set<Entity> rootSet;
-    rootSet.reserve(hierarchy.roots.size());
-    rootSet.insert(hierarchy.roots.begin(), hierarchy.roots.end());
+    // As the Hierarchy window lists them (HierarchyWindow::rebuildEntityTree): the GameObjects
+    // without a Transform first, in the scene's order, then the Transform roots in Transform order
     for (Entity entity : scene->entities) {
-        if (rootSet.count(entity) || (!withTransform.count(entity) && registry->isEntityCreated(entity))) {
-            ordered.push_back(entity);
-            rootSet.erase(entity);
-        }
+        if (!withTransform.count(entity) && registry->isEntityCreated(entity)) hierarchy.roots.push_back(entity);
     }
-    for (Entity entity : hierarchy.roots) {
-        if (rootSet.count(entity)) ordered.push_back(entity);  // runtime-made roots
-    }
-    hierarchy.roots = std::move(ordered);
+    hierarchy.roots.insert(hierarchy.roots.end(), transformRoots.begin(), transformRoots.end());
     return hierarchy;
 }
 
@@ -197,11 +189,17 @@ const std::vector<EntityKind>& entityKinds() {
         {"spot_light", EntityCreationType::SPOT_LIGHT, "Spot Light"},
         {"skybox", EntityCreationType::SKYBOX, "Skybox"},
         {"fog", EntityCreationType::FOG, "Fog"},
+        {"local_volumetric_fog", EntityCreationType::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog"},
+        {"volumetric_clouds", EntityCreationType::VOLUMETRIC_CLOUDS, "Volumetric Clouds"},
         {"reflection_probe", EntityCreationType::REFLECTION_PROBE, "Reflection Probe"},
         {"particle_system", EntityCreationType::PARTICLE_SYSTEM, "Particle System"},
+        {"force_field", EntityCreationType::FORCE_FIELD, "Force Field"},
         {"fluid_simulation", EntityCreationType::FLUID_SIMULATION, "Fluid Simulation"},
+        {"video_player", EntityCreationType::VIDEO_PLAYER, "Video Player"},
+        {"video_background", EntityCreationType::VIDEO_BACKGROUND, "Video Background"},
         {"points", EntityCreationType::POINTS, "Points"},
         {"line_renderer", EntityCreationType::LINE_RENDERER, "Line Renderer"},
+        {"trail_renderer", EntityCreationType::TRAIL_RENDERER, "Trail Renderer"},
         {"mesh_polygon", EntityCreationType::MESH_POLYGON, "Mesh Polygon"},
         {"sprite", EntityCreationType::SPRITE, "Sprite"},
         {"tilemap", EntityCreationType::TILEMAP, "Tilemap"},
@@ -219,9 +217,14 @@ const std::vector<EntityKind>& entityKinds() {
         {"scrollbar", EntityCreationType::SCROLLBAR, "Scrollbar"},
         {"progressbar", EntityCreationType::PROGRESSBAR, "Progress Bar"},
         {"input_field", EntityCreationType::INPUT_FIELD, "Input Field"},
+        {"onscreen_stick", EntityCreationType::ONSCREEN_STICK_FIXED, "On-Screen Stick"},
+        {"onscreen_button", EntityCreationType::ONSCREEN_BUTTON, "On-Screen Button"},
+        {"touch_area", EntityCreationType::TOUCH_AREA, "Touch Area"},
         {"panel", EntityCreationType::PANEL, "Panel"},
         {"polygon", EntityCreationType::POLYGON, "Polygon"},
         {"layout_group", EntityCreationType::LAYOUT_GROUP, "Layout Group"},
+        {"canvas_group", EntityCreationType::CANVAS_GROUP, "Canvas Group"},
+        {"safe_area", EntityCreationType::SAFE_AREA, "Safe Area"},
         {"ui_document", EntityCreationType::UI_DOCUMENT, "UI Document"},
         {"animation", EntityCreationType::ANIMATION, "Animation"},
         {"sprite_animation", EntityCreationType::SPRITE_ANIMATION, "Sprite Animation"},
@@ -251,7 +254,8 @@ const EntityKind* findKind(const std::string& given) {
         {"rigidbody3d", "rigidbody"}, {"joint", "joint3d"}, {"joint_2d", "joint2d"}, {"progress_bar", "progressbar"},
         {"sun", "directional_light"}, {"audio", "audio_source"}, {"ui_image", "image"}, {"ui_text", "text"},
         {"label", "text"}, {"quad", "plane"}, {"uidocument", "ui_document"}, {"html", "ui_document"},
-        {"fluid", "fluid_simulation"}
+        {"fluid", "fluid_simulation"}, {"line", "line_renderer"}, {"trail", "trail_renderer"}, {"video", "video_player"},
+        {"videoplayer", "video_player"}, {"video_camera_background", "video_background"}
     };
     auto alias = aliases.find(key);
     if (alias != aliases.end()) key = alias->second;
@@ -671,6 +675,10 @@ void createEntityRun(const CallPtr& call, bool waited) {
                     return true;
                 }
                 void undo() override { inner->undo(); }
+                std::string describe() const override { return inner->describe(); }
+                const char* typeName() const override { return inner->typeName(); }
+                size_t memoryBytes() const override { return sizeof(*this) + inner->memoryBytes(); }
+                void collectKeepCommands(KeepContext& context) const override { inner->collectKeepCommands(context); }
             };
             why = "The GameObject could not be created.";
             return new Capture(cmd, created);
@@ -705,7 +713,8 @@ void createEntityRun(const CallPtr& call, bool waited) {
     const bool stepsOk = stepCount == 0 ? (delete steps, true) : runSceneCommand(sceneId, steps, error);
     if (kind->type == EntityCreationType::LATTICE) {
         if (!stepsOk) {
-            while (history->position() > start && history->canUndo()) history->undo();
+            // a refused undo leaves the position (CommandHistory::undo false): it ends the loop too
+            while (history->position() > start && history->canUndo() && history->undo()) {}
         } else {
             history->groupSince(start);
             if (!select) project->replaceSelectedEntities(sceneId, selectedBefore);
@@ -1169,7 +1178,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"root", entityRef("Only this subtree.")},
             {"depth", integer("Max depth (0: start nodes only).", 0, 1000)},
-            {"limit", withDefault(integer("Max nodes.", 1, 100000), 400)},
+            {"limit", withDefault(integer("", 1, 100000), 400)},
             {"format", withDefault(stringEnum("", {"text", "json"}), "text")},
             {"components", withDefault(boolean(""), true)},
             {"runtime", withDefault(boolean("While playing: the running copy."), false)}
@@ -1193,7 +1202,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"tag", string("")},
             {"layer", {{"type", {"integer", "string"}}, {"description", "0-31 or name."}}},
             {"under", entityRef("Only descendants of this.")},
-            {"active", boolean("Active in hierarchy or not.")},
+            {"active", boolean("")},
             {"with_components", withDefault(boolean("Add component names."), false)},
             {"limit", withDefault(integer("", 1, 100000), 100)},
             {"runtime", withDefault(boolean("While playing: the running copy."), false)}
@@ -1210,21 +1219,22 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create with parent, name, local transform, extra components and initial values in one "
-            "step. empty = Transform only; bare = no components (root only); model needs model (imports a project "
-            "model); *_tween/*_tracks are animation actions. values {component: {property: value}} or changes, as "
-            "set_properties.";
+            "GameObject > Create in one step: parent, name (default: the type's Unity name), local transform, extra "
+            "components, values ({component: "
+            "{property: value}} or set_properties changes). empty: Transform only; bare: "
+            "no components (root only); model: a project .gltf/.glb/.obj/.fbx; lattice: fitted and bound to "
+            "targets; *_tween/*_tracks: animation actions.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"type", withDefault(stringEnum("", types), "empty")},
-            {"name", string("Default: the type's Unity name.")},
+            {"name", string("")},
             {"parent", entityRef()},
             {"position", vec3("")},
             {"rotation", quat()},
             {"scale", vec3("")},
-            {"model", assetPath("type model: .gltf/.glb/.obj/.fbx.")},
-            {"targets", entities("type lattice: fitted, bound.")},
-            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Extra components."}}},
+            {"model", assetPath("")},
+            {"targets", entities()},
+            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}}},
             {"values", anyObject("")},
             {"changes", array(anyObject(""), "")},
             {"select", withDefault(boolean(""), true)}
@@ -1270,9 +1280,9 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "move_entity";
         tool.title = "Move Entity";
         tool.description =
-            "Reparent/reorder GameObjects (Hierarchy drag): exactly one of parent (null = root; index among its "
-            "children, default last), before or after (a sibling). Several keep their order and their world pose "
-            "unless keep_world_transform=false. Prefab instance children cannot be rearranged.";
+            "Reparent/reorder GameObjects: exactly one of parent (null = root; index among its children, "
+            "default last), before or after (a sibling). Several keep their order and world pose unless "
+            "keep_world_transform=false. Prefab instance children cannot be rearranged.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1329,6 +1339,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"add", withDefault(boolean(""), false)}
         });
         tool.annotations.idempotent = true;
+        tool.attributesUndo = true;  // a selection step of the agent (S24 R40)
         tool.handler = selectEntitiesTool;
         registry.addTool(std::move(tool));
     }

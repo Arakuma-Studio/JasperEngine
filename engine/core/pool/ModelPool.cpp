@@ -29,6 +29,30 @@ obj_models_t& ModelPool::getObjMap(){
     return *map;
 }
 
+std::map<std::string, uint32_t>& ModelPool::getGenerations(){
+    static auto* generations = new std::map<std::string, uint32_t>();
+    return *generations;
+}
+
+void ModelPool::replaceGLTF(const std::string& id, std::shared_ptr<tinygltf::Model> model){
+    if (!model)
+        return;
+    getMap()[id] = std::move(model);
+    getGenerations()[id]++;
+}
+
+void ModelPool::replaceObj(const std::string& id, std::shared_ptr<ObjModelData> model){
+    if (!model)
+        return;
+    getObjMap()[id] = std::move(model);
+    getGenerations()[id]++;
+}
+
+uint32_t ModelPool::generation(const std::string& id){
+    auto it = getGenerations().find(id);
+    return it == getGenerations().end() ? 0 : it->second;
+}
+
 std::shared_ptr<tinygltf::Model> ModelPool::getGLTF(const std::string& id){
     std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     auto it = getMap().find(id);
@@ -88,6 +112,7 @@ void ModelPool::clear(){
 }
 
 void ModelPool::invalidate(const std::string& id){
+    std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     getMap().erase(id);
     getObjMap().erase(id);
 }

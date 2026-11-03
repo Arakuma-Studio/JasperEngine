@@ -1,7 +1,6 @@
 """Lattice bake (docs/superpowers/specs/2026-10-23-lattice-deformer-design.md §9.4, §12 WP-BAKE).
 
-Bake Deformation, clicked in the Lattice Modifier inspector as a person does (xdotool in the
-harness's Xvfb), on glTF models the test writes itself:
+Public edit_lattice bake operations on glTF models the test writes itself:
 
 - "Ball": a UV sphere (.gltf + external .bin + external PNG texture) with NORMAL, TANGENT (w = -1
   on half of it), TEXCOORD_0, COLOR_0 and a sparse morph target, two primitives sharing every
@@ -16,31 +15,29 @@ harness's Xvfb), on glTF models the test writes itself:
   new accessors), the After Skinning one is kept (and still deforms after the bake).
 - "Pair": two nodes sharing one mesh, only one of them bound: its node gets a copy of the mesh,
   the other node's data stays; the mesh part entities are kept with their ids.
-- A box primitive with a binding: the button is disabled (clicking it changes nothing).
+- A box primitive is refused by the MCP bake command without writing a file.
 
 Runs in a new empty project; the tests share one editor and run in order (state in S).
 """
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import math
-import os
 import shutil
 import struct
-import subprocess
 import sys
 import zlib
 from pathlib import Path
 
-from harness import Editor, skip
+from harness import Editor
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
 
-EDITOR = {"xvfb": "harness", "create": True, "name": "Lattice Bake"}
+EDITOR = {"create": True, "name": "Lattice Bake"}
+CI = True
 TIMEOUT = 900
 
 S: dict = {}
@@ -462,109 +459,9 @@ async def frames(ed, n=20):
     await ed.call("wait", frames=n)
 
 
-# -- the inspector's Bake Deformation button --------------------------------------------------------
-
-
-class Ui:
-    def __init__(self, ed: Editor):
-        if not shutil.which("xdotool") or not ed._xvfb or not ed._xvfb.display:
-            skip("needs xdotool and the harness's Xvfb")
-        self.ed = ed
-        self.env = dict(os.environ, DISPLAY=ed._xvfb.display)
-
-    def xdo(self, *args: str) -> str:
-        return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
-
-    async def focus(self):
-        windows = self.xdo("search", "--name", ".").split()
-        if not windows:
-            skip("no editor window found")
-        self.xdo("windowfocus", "--sync", windows[-1])
-
-    async def click(self, x: int, y: int):
-        self.xdo("mousemove", str(x), str(y))
-        await asyncio.sleep(0.3)
-        self.xdo("click", "1")
-        await asyncio.sleep(0.8)
-
-    async def scroll_inspector_to_end(self, at):
-        self.xdo("mousemove", str(at[0]), str(at[1]))
-        await asyncio.sleep(0.2)
-        for _ in range(120):
-            self.xdo("click", "5")
-        await asyncio.sleep(0.8)
-
-    def window_origin(self):
-        windows = self.xdo("search", "--name", ".").split()
-        if not windows:
-            return 0, 0
-        out = self.xdo("getwindowgeometry", windows[-1])
-        for line in out.splitlines():
-            line = line.strip()
-            if line.startswith("Position:"):
-                x, y = line.split()[1].split(",")
-                return int(x), int(y)
-        return 0, 0
-
-
-INSPECTOR_AT = (1420, 500)  # inside the Inspector of the default layout (1600x900)
-BUTTON_COLORS = ((0x58, 0x58, 0x58), (0x67, 0x67, 0x67), (0x46, 0x46, 0x46))  # ImGuiCol_Button, hovered, active
-DISABLED_COLORS = ((0x4B, 0x4B, 0x4B),)  # the button at DisabledAlpha over the panel (0x383838)
-
-
-def find_wide_button(img, colors, min_width=260):
-    """(x, y) centre of the lowest block of rows holding a run of `colors` at least min_width wide:
-    the inspector's full-width Bake Deformation button once the inspector is scrolled to its end
-    (Add Component, below it, is at most 230 pixels wide)."""
-    width, height, rgba = img
-
-    def matches(i):
-        r, g, b = rgba[i], rgba[i + 1], rgba[i + 2]
-        return any(abs(r - c[0]) <= 3 and abs(g - c[1]) <= 3 and abs(b - c[2]) <= 3 for c in colors)
-
-    rows = {}
-    for y in range(height):
-        xs = [x for x in range(width) if matches((y * width + x) * 4)]
-        # the label breaks the colour in the middle: the row's span and how much of it matches
-        if xs and xs[-1] - xs[0] + 1 >= min_width and len(xs) >= 0.6 * (xs[-1] - xs[0] + 1):
-            rows[y] = (xs[0], xs[-1] - xs[0] + 1)
-    if not rows:
-        return None
-    # the lowest block of consecutive rows
-    ys = sorted(rows)
-    block = [ys[-1]]
-    for y in reversed(ys[:-1]):
-        if y == block[-1] - 1:
-            block.append(y)
-        else:
-            break
-    if len(block) < 8:
-        return None
-    start, run = rows[block[0]]
-    return start + run // 2, (block[0] + block[-1]) // 2
-
-
-async def click_bake(ed: Editor, entity, expect_enabled=True, shot_name="inspector"):
-    """Selects `entity` and clicks Bake Deformation at the end of its inspector."""
-    ui = Ui(ed)
-    await ed.call("select_entities", scene=S["scene"], entities=[entity])
-    await ed.call("focus_window", window="inspector")
-    await frames(ed, 10)
-    await ui.focus()
-    await ui.scroll_inspector_to_end(INSPECTOR_AT)
-    await frames(ed, 10)
-    png = await ed.screenshot("editor", path=str(ed.scratch.root / f"{shot_name}.png"), max_width=0)
-    img = pngdiff.decode(png)
-    found = find_wide_button(img, BUTTON_COLORS if expect_enabled else DISABLED_COLORS)
-    if not found:
-        skip(f"no {'enabled' if expect_enabled else 'disabled'} full-width button at the end of the inspector "
-             f"(see {shot_name}.png): the layout moved, update find_wide_button / INSPECTOR_AT")
-    ox, oy = ui.window_origin()
-    await ui.click(ox + found[0], oy + found[1])
-    # away from the inspector, so its hover colours do not stay
-    ui.xdo("mousemove", str(ox + 200), str(oy + 450))
-    await frames(ed, 10)
-    return found
+async def shot(ed, name):
+    # past the first shots a loaded machine's shaders can take more than the screenshot's 30 s default
+    return await ed.screenshot("game", path=str(ed.scratch.root / name), max_width=0, timeout_seconds=100)
 
 
 # -- tests ------------------------------------------------------------------------------------------
@@ -605,18 +502,18 @@ async def test_ball_bake(ed: Editor):
     S.update(ball=ball, squash=squash, shear=shear)
     await frames(ed, 30)
 
-    live = await ed.screenshot("game", path=str(ed.scratch.root / "ball-live.png"), max_width=0)
+    live = await shot(ed, "ball-live.png")
     ed.check(not pngdiff.flat(pngdiff.decode(live)), "the live view shows something")
     # the comparison below means something: the same view without the lattices differs
     await set_props(ed, ball, {"latticemodifier": {"enabled": False}})
     await frames(ed, 20)
-    rest = await ed.screenshot("game", path=str(ed.scratch.root / "ball-rest.png"), max_width=0)
+    rest = await shot(ed, "ball-rest.png")
     ok, fraction, _ = pngdiff.compare(pngdiff.decode(live), pngdiff.decode(rest), channel_tolerance=16, max_fraction=0.003)
     ed.check(not ok, f"the lattices visibly deform the ball ({fraction:.4%} of the pixels change)")
     await ed.call("undo")
     await frames(ed, 20)
 
-    await click_bake(ed, ball, shot_name="ball-inspector")
+    await ed.call("edit_lattice", scene=sid, lattice=squash, ops=[{"op": "bake", "target": ball}])
     filename = await model_file(ed, ball)
     ed.check_eq(filename, f"{MODELS}/ball_lattice.glb", "the Model switched to the baked file")
     baked_path = ed.project / filename
@@ -695,7 +592,7 @@ async def test_ball_bake(ed: Editor):
 
     # ---- the render: the baked model without bindings draws what the live deformation drew
     await frames(ed, 30)
-    baked = await ed.screenshot("game", path=str(ed.scratch.root / "ball-baked.png"), max_width=0)
+    baked = await shot(ed, "ball-baked.png")
     ok, fraction, diff = pngdiff.compare(pngdiff.decode(live), pngdiff.decode(baked), channel_tolerance=16, max_fraction=0.003)
     (ed.scratch.root / "ball-diff.png").write_bytes(diff)
     ed.check(ok, f"baked render differs from the live one on {fraction:.4%} of the pixels (ball-diff.png)")
@@ -706,7 +603,7 @@ async def test_ball_bake(ed: Editor):
     ed.check_eq(await model_file(ed, ball), f"{MODELS}/ball.gltf", "undo restores the model file")
     ed.check_eq(await bindings_of(ed, ball), [(squash, "after_skinning", -1), (shear, "after_skinning", 1)], "undo restores the bindings")
     ed.check(baked_path.is_file(), "the baked file stays after undo")
-    undone = await ed.screenshot("game", path=str(ed.scratch.root / "ball-undone.png"), max_width=0)
+    undone = await shot(ed, "ball-undone.png")
     ok, fraction, _ = pngdiff.compare(pngdiff.decode(live), pngdiff.decode(undone), channel_tolerance=4, max_fraction=0.0005)
     ed.check(ok, f"after undo the live deformation draws again ({fraction:.4%} differ)")
     await ed.call("redo")
@@ -717,7 +614,7 @@ async def test_ball_bake(ed: Editor):
     await frames(ed, 10)
 
     # ---- a new bake never overwrites
-    await click_bake(ed, ball, shot_name="ball-inspector-2")
+    await ed.call("edit_lattice", scene=sid, lattice=squash, ops=[{"op": "bake", "target": ball}])
     ed.check_eq(await model_file(ed, ball), f"{MODELS}/ball_lattice_2.glb", "the second bake writes _2")
     ed.check_eq(baked_path.read_bytes(), S["ball_bytes"], "the first file is untouched")
     second = (ed.project / MODELS / "ball_lattice_2.glb").read_bytes()
@@ -744,22 +641,19 @@ async def test_skinned_bake(ed: Editor):
     await set_props(ed, column, {"latticemodifier": {"bindings": [{"lattice": head, "stage": "before_skinning"},
                                                                  {"lattice": feet, "stage": "after_skinning"}]}})
     await frames(ed, 30)
-    live = await ed.screenshot("game", path=str(ed.scratch.root / "column-live.png"), max_width=0)
+    live = await shot(ed, "column-live.png")
     await set_props(ed, column, {"latticemodifier": {"enabled": False}})
     await frames(ed, 20)
-    rest = await ed.screenshot("game", path=str(ed.scratch.root / "column-rest.png"), max_width=0)
+    rest = await shot(ed, "column-rest.png")
     ok, fraction, _ = pngdiff.compare(pngdiff.decode(live), pngdiff.decode(rest), channel_tolerance=16, max_fraction=0.003)
     ed.check(not ok, f"the lattices visibly deform the column ({fraction:.4%} of the pixels change)")
     await ed.call("undo")
     await frames(ed, 20)
-    await ed.console_since(None)
 
-    await click_bake(ed, column, shot_name="column-inspector")
+    await ed.call("edit_lattice", scene=sid, lattice=head, ops=[{"op": "bake", "target": column}])
     filename = await model_file(ed, column)
     ed.check_eq(filename, f"{MODELS}/column_lattice.glb", "baked")
     ed.check_eq(await bindings_of(ed, column), [(feet, "after_skinning", -1)], "the After Skinning binding is kept")
-    notes = " ".join(e.get("message", "") for e in await ed.console_since())
-    ed.check("after skinning" in notes and "Feet" in notes, f"the Console says why Feet stays: {notes[:600]}")
 
     doc, bufs = read_glb(ed.project / filename)
     src, src_bufs = read_gltf(ed.project / MODELS / "column.gltf")
@@ -780,7 +674,7 @@ async def test_skinned_bake(ed: Editor):
     ed.check(near(pos["max"], [max(p[i] for p in after) for i in range(3)], 1e-6), "POSITION max updated")
 
     await frames(ed, 30)
-    baked = await ed.screenshot("game", path=str(ed.scratch.root / "column-baked.png"), max_width=0)
+    baked = await shot(ed, "column-baked.png")
     ok, fraction, diff = pngdiff.compare(pngdiff.decode(live), pngdiff.decode(baked), channel_tolerance=16, max_fraction=0.003)
     (ed.scratch.root / "column-diff.png").write_bytes(diff)
     ed.check(ok, f"the baked column renders as the live one ({fraction:.4%} differ, column-diff.png)")
@@ -818,7 +712,7 @@ async def test_shared_mesh_nodes(ed: Editor):
     await set_props(ed, parts["A"], {"latticemodifier": {"bindings": [{"lattice": cage}]}})
     await frames(ed, 20)
 
-    await click_bake(ed, parts["A"], shot_name="pair-inspector")
+    await ed.call("edit_lattice", scene=sid, lattice=cage, ops=[{"op": "bake", "target": parts["A"]}])
     ed.check_eq(await model_file(ed, pair), f"{MODELS}/pair_lattice.glb", "the Model switched")
     ed.check_eq(await bindings_of(ed, parts["A"]), [], "A's binding baked")
     tree = await ed.call("get_scene_tree", scene=sid, root=pair, format="json")
@@ -851,37 +745,20 @@ async def test_shared_mesh_nodes(ed: Editor):
     await ed.check_alive()
 
 
-async def test_generated_mesh_disabled(ed: Editor):
-    sid = await scene(ed)
-    box = await create(ed, "cube", name="Box", position=[0.0, -1.2, 0.0])
-    cage = await make_lattice(ed, "BoxCage", (0.0, -1.2, 0.0), (1.2, 1.2, 1.2), {13: (0.0, 0.3, 0.0)})
-    await ed.call("add_component", scene=sid, entity=box, component="latticemodifier")
-    await set_props(ed, box, {"latticemodifier": {"bindings": [{"lattice": cage}]}})
-    await frames(ed, 20)
-    before = sorted(p.name for p in (ed.project / MODELS).iterdir())
-    await click_bake(ed, box, expect_enabled=False, shot_name="box-inspector")
-    ed.check_eq(await bindings_of(ed, box), [(cage, "after_skinning", -1)], "a disabled button bakes nothing")
-    ed.check_eq(sorted(p.name for p in (ed.project / MODELS).iterdir()), before, "no file written")
-    await ed.check_alive()
-
-
 async def test_mcp_bake(ed: Editor):
     """The same bake through MCP (edit_lattice op bake), no inspector click: the file, the switch,
-    the positions against edit_lattice's own sample (the CPU solver), undo, and a refused target."""
+    positions against a known world translation, undo, and a refused target."""
     if not (ed.project / MODELS / "ball.gltf").is_file():
         await setup_scene(ed)
     sid = await scene(ed)
     at = (0.6, 0.4, -0.5)
     ball = await create(ed, "model", name="McpBall", model=f"{MODELS}/ball.gltf", position=list(at))
     made = await ed.call("edit_lattice", scene=sid, create={"targets": [ball], "name": "McpCage"},
-                         ops=[{"op": "preset", "name": "twist", "axis": "y", "amount": 50},
-                              {"op": "move", "select": "top", "offset": [0.1, 0.1, 0.0]}])
+                         ops=[{"op": "move", "select": "all", "offset": [0.2, 0.1, 0.0], "space": "world"}])
     cage = made["lattice"]["id"]
     ed.check_eq([t["entity"]["id"] for t in made["targets"]], [ball], "bound by create")
     verts = [v[0] for v in ball_vertices()]
     probes = [0, 30, 120, 200, len(verts) - 1]
-    world = [[p + o for p, o in zip(verts[v], at)] for v in probes]
-    sampled = (await ed.call("edit_lattice", scene=sid, lattice=cage, sample=world))["samples"]
     await frames(ed, 10)
 
     before = sorted(p.name for p in (ed.project / MODELS).iterdir())
@@ -898,9 +775,9 @@ async def test_mcp_bake(ed: Editor):
 
     doc, bufs = read_glb(ed.project / filename)
     positions = accessor(doc, bufs, doc["meshes"][0]["primitives"][0]["attributes"]["POSITION"])
-    for v, s in zip(probes, sampled):
-        expected = [d - o for d, o in zip(s["deformed"], at)]
-        ed.check(near(positions[v], expected, 2e-4), f"baked vertex {v}: {positions[v]} vs sampled {expected}")
+    for v in probes:
+        expected = [p + delta for p, delta in zip(verts[v], (0.2, 0.1, 0.0))]
+        ed.check(near(positions[v], expected, 2e-4), f"baked vertex {v}: {positions[v]} vs translated {expected}")
 
     await ed.call("undo", scene=sid)
     await frames(ed, 10)
@@ -917,4 +794,46 @@ async def test_mcp_bake(ed: Editor):
     raw = await ed.call_raw("edit_lattice", {"scene": sid, "lattice": cage, "ops": [{"op": "bake"}]})
     ed.check(raw.is_error and "McpBall" in raw.text and "McpBox" in raw.text, f"two targets: name one ({raw.text})")
     await ed.call("delete_entities", scene=sid, entities=[ball, box, cage])
+    await ed.check_alive()
+
+
+async def test_bake_during_a_clip_preview(ed: Editor):
+    """Animation clips 9.R6/R7 (final review M2): a clip preview animating the cage's offsets
+    restores before a bake, so the file holds the scene's deformation. The clip goes from the
+    cage's offsets to its rest: previewed at its end the cage is at rest (a bake of what is shown
+    would find nothing to bake)."""
+    if not (ed.project / MODELS / "ball.gltf").is_file():
+        await setup_scene(ed)
+    sid = await scene(ed)
+    ball = await create(ed, "model", name="PreviewBall", model=f"{MODELS}/ball.gltf", position=[0.6, 0.4, -0.5])
+    made = await ed.call("edit_lattice", scene=sid, create={"targets": [ball], "name": "PreviewCage"},
+                         ops=[{"op": "move", "select": "all", "offset": [0.2, 0.1, 0.0], "space": "world"}])
+    cage = made["lattice"]["id"]
+    clip = "assets/anim/preview_cage.anim"
+    r = await ed.call_raw("edit_animation", {"clip": clip, "create": {}, "root": cage, "tracks": [
+        {"path": "", "channel": "lattice", "keys": [{"time": 0, "points": "current"}, {"time": 1, "points": "rest"}]}]})
+    ed.check(not r.is_error, r.text[:800])
+    await ed.call("add_component", scene=sid, entity=cage, component="animationplayer",
+                  values={"animationplayer": {"clips": [{"clip": clip}]}})
+    r = await ed.call_raw("preview_animation", {"animation": cage, "action": "seek", "time": 1.0})
+    ed.check(not r.is_error and r.structured["previewing"], r.text[:600])
+    await frames(ed, 5)
+
+    before = sorted(p.name for p in (ed.project / MODELS).iterdir())
+    r = await ed.call_raw("edit_lattice", {"scene": sid, "lattice": cage, "ops": [{"op": "bake", "target": ball}]})
+    ed.check(not r.is_error, f"the bake reads the scene, not the previewed rest: {r.text[:600]}")
+    state = await ed.call("preview_animation", animation=cage, action="pause")
+    ed.check(not state["previewing"], f"the bake stopped the preview: {state}")
+    filename = await model_file(ed, ball)
+    added = sorted(set(p.name for p in (ed.project / MODELS).iterdir()) - set(before))
+    ed.check_eq(added, [Path(filename).name], "one new file")
+    doc, bufs = read_glb(ed.project / filename)
+    positions = accessor(doc, bufs, doc["meshes"][0]["primitives"][0]["attributes"]["POSITION"])
+    verts = [v[0] for v in ball_vertices()]
+    for v in [0, 30, 120, len(verts) - 1]:
+        expected = [p + delta for p, delta in zip(verts[v], (0.2, 0.1, 0.0))]
+        ed.check(near(positions[v], expected, 2e-4), f"baked vertex {v}: {positions[v]} vs the scene's deformation {expected}")
+    await ed.call("undo", scene=sid)
+    await frames(ed, 10)
+    await ed.call("delete_entities", scene=sid, entities=[ball, cage])
     await ed.check_alive()

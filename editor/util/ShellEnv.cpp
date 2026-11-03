@@ -7,7 +7,11 @@
 #include <filesystem>
 #include <vector>
 
-#ifndef _WIN32
+#ifdef _WIN32
+    #include <windows.h>
+    #include <shlobj.h>
+    #include <knownfolders.h>
+#else
     #include <errno.h>
     #include <fcntl.h>
     #include <poll.h>
@@ -371,12 +375,6 @@ void editor::ShellEnv::bootstrapPath() {
 #endif
 }
 
-#ifndef _WIN32
-std::string editor::ShellEnv::runCapture(const std::string& command, int timeoutMs) {
-    bool aborted = false;
-    return runShellCapture("/bin/sh", { "-c", command }, timeoutMs, aborted);
-}
-#endif
 
 std::string editor::ShellEnv::findExecutable(const std::string& command) {
     if (command.empty()) return "";
@@ -407,4 +405,19 @@ std::string editor::ShellEnv::findExecutable(const std::string& command) {
 #endif
 
     return "";
+}
+
+std::filesystem::path editor::ShellEnv::homeDirectory() {
+#ifdef _WIN32
+    if (const wchar_t* profile = _wgetenv(L"USERPROFILE"); profile && *profile) return fs::path(profile);
+    PWSTR known = nullptr;
+    fs::path home;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Profile, 0, nullptr, &known)) && known) home = fs::path(known);
+    if (known) CoTaskMemFree(known);
+    return home;
+#else
+    if (const char* home = std::getenv("HOME"); home && *home) return fs::path(home);
+    if (const struct passwd* pw = getpwuid(getuid()); pw && pw->pw_dir && *pw->pw_dir) return fs::path(pw->pw_dir);
+    return fs::path();
+#endif
 }

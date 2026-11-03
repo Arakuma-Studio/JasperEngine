@@ -4,9 +4,7 @@
 #ifndef COMPAT_CSS_CASE_RUNNER_H
 #define COMPAT_CSS_CASE_RUNNER_H
 
-// The CSS rewrite cases of p2-css (fixtures/compat/css/<case>.css -> <case>.rcss,
-// <case>.diag.txt, <case>.fork.rcss), shared by compat_css_golden_test.cpp and
-// compat_css_rmlui_accepts_test.cpp. A case may start with a directive comment:
+// CSS inputs parsed by compat_css_rmlui_accepts_test.cpp. A case may start with a directive comment:
 //   /* htmlui-test: kind=style-attribute root-id=app root-class=dark,theme root-attr=data-theme dir=rtl viewport=800x1200 touch */
 // kind=style-attribute: every later non-empty line is one style="" attribute (baseOffset = the
 // line); kind=inline: the sheet is an inline <style> of "ui/page.html". Files are read from
@@ -29,16 +27,6 @@
 namespace jasperengine::test::compat {
 
     using namespace jasperengine::htmlui::compat;
-
-    struct CssCaseResult {
-        std::string rcss;                         // the .rcss golden text
-        std::string diagnostics;                  // the .diag.txt golden text
-        std::vector<Diagnostic> list;
-        RewriteResult result;
-        std::shared_ptr<SourceFiles> files;
-        // the sheets RmlUi must accept: (rcss, line map); style attributes are wrapped in a rule
-        std::vector<std::pair<std::string, RcssLineMap>> sheets;
-    };
 
     inline std::string cssCaseRoot(){
         return std::string(JASPER_HTMLUI_TEST_SOURCE_DIR) + "/fixtures";
@@ -89,8 +77,8 @@ namespace jasperengine::test::compat {
         return manifest;
     }
 
-    inline CssCaseResult runCssCase(const std::string& root, const std::string& name, const ForkFeatures& fork){
-        CssCaseResult out;
+    inline std::vector<std::string> runCssCase(const std::string& root, const std::string& name, const ForkFeatures& fork){
+        std::vector<std::string> sheets;
         const std::string path = "compat/css/" + name + ".css";
         std::string text;
         readCaseFile(root, path, text);
@@ -140,8 +128,7 @@ namespace jasperengine::test::compat {
             bodyStart = end + 2;
         }
 
-        out.files = std::make_shared<SourceFiles>();
-        SourceFiles& files = *out.files;
+        SourceFiles files;
         const std::string registered = kind == "file" ? path : "ui/page.html";
         const uint32_t file = files.add(registered, text);
         DiagnosticSink sink(files);
@@ -189,36 +176,20 @@ namespace jasperengine::test::compat {
             inputs.push_back(input);
         }
 
-        {
-            CssRewriter rewriter(options, files, sink, context);
-            out.result = rewriter.rewrite(Span<const StylesheetInput>(inputs));
-        }
-        std::ostringstream rcss;
+        CssRewriter rewriter(options, files, sink, context);
+        const RewriteResult result = rewriter.rewrite(Span<const StylesheetInput>(inputs));
         if (kind == "style-attribute"){
-            std::ostringstream wrapped;
-            for (const StylesheetOutput& sheet : out.result.sheets){
-                rcss << sheet.rcss << "\n";
-                wrapped << "div {\n" << sheet.rcss << "\n}\n";
-            }
-            RcssLineMap none;
-            out.sheets.emplace_back(wrapped.str(), none);
+            std::string wrapped;
+            for (const StylesheetOutput& sheet : result.sheets)
+                wrapped += "div {\n" + sheet.rcss + "\n}\n";
+            sheets.push_back(std::move(wrapped));
         }else{
-            for (const StylesheetOutput& sheet : out.result.sheets){
-                rcss << sheet.rcss;
-                out.sheets.emplace_back(sheet.rcss, sheet.lines);
-            }
+            for (const StylesheetOutput& sheet : result.sheets)
+                sheets.push_back(sheet.rcss);
         }
-        if (!out.result.importantSheet.rcss.empty()){
-            rcss << "/* important */\n" << out.result.importantSheet.rcss;
-            out.sheets.emplace_back(out.result.importantSheet.rcss, out.result.importantSheet.lines);
-        }
-        out.rcss = rcss.str();
-        out.list = sink.take();
-        std::ostringstream diagnostics;
-        for (const Diagnostic& d : out.list)
-            diagnostics << toText(d) << "\n";
-        out.diagnostics = diagnostics.str();
-        return out;
+        if (!result.importantSheet.rcss.empty())
+            sheets.push_back(result.importantSheet.rcss);
+        return sheets;
     }
 
 }

@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "Backend.h"
+#include "diag/HangWatchdog.h"
 #include "EditorHost.h"
 #include "EditorFrame.h"
 #include "GamepadWin.h"
 #include "WindowWin.h"
+#include "WglWorkerContext.h"
 #include "renderer/Renderer.h"
 
 #include "Engine.h"
@@ -608,6 +610,8 @@ constexpr int WGL_LOSE_CONTEXT_ON_RESET = 0x8252;
 
 HGLRC glContext = nullptr;
 bool glContextResetNotification = false;
+// the attributes glContext was made with, which its worker context repeats (spec S32)
+const int* workerAttributes = nullptr;
 int pixelFormat = 0;
 SwapIntervalProc swapIntervalEXT = nullptr;
 void (*imguiDestroyWindow)(ImGuiViewport*) = nullptr;
@@ -721,7 +725,7 @@ editor::RendererPlatform rendererPlatform() {
         if (createContext) {
             // A GPU reset goes unnoticed without a reset notification strategy:
             // the context keeps taking calls that never reach the screen.
-            const int robustAttributes[] = {
+            static const int robustAttributes[] = {
                 WGL_CONTEXT_MAJOR_VERSION, 4,
                 WGL_CONTEXT_MINOR_VERSION, 1,
                 WGL_CONTEXT_PROFILE_MASK, WGL_CONTEXT_CORE_PROFILE_BIT,
@@ -731,13 +735,15 @@ editor::RendererPlatform rendererPlatform() {
             };
             glContext = createContext(deviceContext, nullptr, robustAttributes);
             glContextResetNotification = glContext != nullptr;
+            workerAttributes = robustAttributes;
             if (!glContext) {
-                const int attributes[] = {
+                static const int attributes[] = {
                     WGL_CONTEXT_MAJOR_VERSION, 4,
                     WGL_CONTEXT_MINOR_VERSION, 1,
                     WGL_CONTEXT_PROFILE_MASK, WGL_CONTEXT_CORE_PROFILE_BIT,
                     0
                 };
+                workerAttributes = attributes;
                 glContext = createContext(deviceContext, nullptr, attributes);
             }
         }
@@ -753,9 +759,14 @@ editor::RendererPlatform rendererPlatform() {
             return false;
         }
         swapIntervalEXT = wglProc<SwapIntervalProc>("wglSwapIntervalEXT");
+        // the engine's shader creation thread (spec S32), with the same attributes
+        jasperengine::setGpuWorkerContextFactory([]() {
+            return jasperengine::WglWorkerContext::create(glContext, pixelFormat, pixelFormatDescriptor(), workerAttributes);
+        });
         return true;
     };
     platform.destroyContext = []() {
+        jasperengine::setGpuWorkerContextFactory(nullptr);
         if (glContext) {
             wglMakeCurrent(nullptr, nullptr);
             wglDeleteContext(glContext);
@@ -833,10 +844,11 @@ void translateAndDispatch(MSG& message) {
         ImGui::GetIO().AddInputCharacter(control);
 }
 
-void processMessages(bool waitForMessage) {
-    if (waitForMessage)
+// waitSeconds > 0: an idle loop sleeps until a message or then (the editor scheduler's next timer)
+void processMessages(double waitSeconds) {
+    if (waitSeconds > 0.0)
         MsgWaitForMultipleObjectsEx(
-            0, nullptr, 100, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+            0, nullptr, static_cast<DWORD>(waitSeconds * 1000.0), QS_ALLINPUT, MWMO_INPUTAVAILABLE);
     MSG message{};
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
         if (message.message == WM_QUIT) {
@@ -870,7 +882,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         shutdownWindow();
         return -1;
     }
-    processMessages(false);
+    processMessages(0.0);
 
     if (NFD_Init() != NFD_OKAY) {
         std::fprintf(stderr, "Error: NFD_Init failed: %s\n", NFD_GetError());
@@ -892,7 +904,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     installViewportHooks(platformIO);
 
     app.setup();
-    processMessages(false);
+    processMessages(0.0);
     int clientWidth = 0;
     int clientHeight = 0;
     WindowWin::getClientSize(clientWidth, clientHeight);
@@ -906,7 +918,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         shutdownWindow();
         return -1;
     }
-    processMessages(false);
+    processMessages(0.0);
 
     backend->editorFrame.init(*backend->renderer, app, []() {
         ImGui_ImplWin32_NewFrame();
@@ -936,7 +948,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     };
 
     app.setLoadingPump([&](bool render) {
-        processMessages(false);
+        processMessages(0.0);
         if (render && !backend->shouldClose)
             renderFrame(true);
     });
@@ -962,9 +974,10 @@ int editor::Backend::init(int argc, char* argv[]) {
 
     backend->liveResizeFrame = [&]() { renderFrame(true); };
     while (!backend->shouldClose) {
-        processMessages(backend->editorFrame.isIdle());
+        processMessages(backend->editorFrame.isIdle() ? app.idleWaitSeconds(0.1) : 0.0);
+        diag::heartbeat();
         if (backend->shouldClose) break;
-        app.processProjectChange();
+        app.beforeFrame();
         if (backend->shouldClose) break;
         renderFrame(false);
         if (app.consumeBenchmarkExit())
@@ -1090,6 +1103,11 @@ float editor::Backend::setMainMenu(const PlatformMenuModel& model,
     // reserving an in-client side bar.
     return -1.0f;
 #endif
+}
+
+bool editor::Backend::nativeMenuHandlesKeyEquivalents() {
+    // the native menus here show their shortcuts as text; the keys reach ImGui
+    return false;
 }
 
 ImTextureID editor::Backend::getImGuiTexture(TextureRender* texture) {

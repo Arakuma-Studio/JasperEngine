@@ -1,0 +1,33 @@
+type: Prefab
+version: 8
+guid: f0f0f0f0f0f0f0f0f0f0f0f0f0f00002
+nextEntity: 1010
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: Wheel
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+    children:
+      - type: Entity
+        entity: 1002
+        name: Hub
+        components:
+          transform:
+            position: [0, 0, 0.5]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false

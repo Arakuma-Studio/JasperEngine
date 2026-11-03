@@ -24,6 +24,10 @@ namespace jasperengine{
         void setShading(LightShading shading);
         LightShading getShading() const;
 
+        // how much of this point or spot light the volumetric fog scatters (0: none)
+        void setVolumetricIntensity(float volumetricIntensity);
+        float getVolumetricIntensity() const;
+
         Light(Scene* scene);
         Light(Scene* scene, Entity entity);
         virtual ~Light();
@@ -49,6 +53,22 @@ namespace jasperengine{
 
         void setIntensity(float intensity);
         float getIntensity() const;
+
+        // Photometric units (util/LightPhotometry.h): what the intensity is in. ENGINE, LUX
+        // (directional), CANDELA or LUMEN (point, spot); a unit the type cannot take draws as
+        // its neighbour. setIntensityUnit(unit, true) converts the intensity so the light stays
+        // as bright (through the scene's Physical Light Exposure); the property sets the unit
+        // alone (the number then means the new unit).
+        void setIntensityUnit(LightUnit unit);
+        void setIntensityUnit(LightUnit unit, bool preserveBrightness);
+        LightUnit getIntensityUnit() const;
+
+        // A black body's colour at colorTemperature (Kelvin, 1000-20000; 6500 is white), with
+        // the light's colour as its filter
+        void setUseColorTemperature(bool use);
+        bool isUseColorTemperature() const;
+        void setColorTemperature(float kelvin);
+        float getColorTemperature() const;
 
         void setConeAngle(float inner, float outer);
         void setInnerConeAngle(float inner);
@@ -81,6 +101,33 @@ namespace jasperengine{
 
         void setNumCascades(unsigned int numCascades);
         float getNumCascades() const;
+
+        // Shadows (docs/rendering/shadows.md): Unity's Shadow Type (NONE, HARD, SOFT)
+        void setShadowType(ShadowType type);
+        ShadowType getShadowType() const;
+        void setShadowStrength(float strength);
+        float getShadowStrength() const;
+        // in shadow texels (1 by default)
+        void setShadowNormalBias(float bias);
+        float getShadowNormalBias() const;
+        void setCascadeSplitMode(CascadeSplitMode mode);
+        CascadeSplitMode getCascadeSplitMode() const;
+        // MANUAL: the first three splits as fractions of the shadow distance
+        void setCascadeSplits(Vector3 splits);
+        Vector3 getCascadeSplits() const;
+        // metres of directional shadows; 0: the scene's, else the quality tier's
+        void setShadowDistance(float distance);
+        float getShadowDistance() const;
+        // degrees of a directional light's disc
+        void setShadowAngularDiameter(float degrees);
+        float getShadowAngularDiameter() const;
+        // metres, spot and point lights
+        void setShadowSourceRadius(float radius);
+        float getShadowSourceRadius() const;
+        void setShadowUpdateMode(ShadowUpdateMode mode);
+        ShadowUpdateMode getShadowUpdateMode() const;
+        // redraws the light's shadow maps (On Demand lights)
+        void requestShadowUpdate();
     };
 }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "VulkanContext.h"
+#include "render/SystemRender.h"
 
 #include <cstdio>
 #include <cstring>
@@ -35,11 +36,14 @@ namespace {
     };
 
     VulkanContextConfig gConfig;
+    // Engine.vSyncCount asked for since the last frame began (-1: nothing pending)
+    int gPendingVsync = -1;
 
     VkInstance gInstance = VK_NULL_HANDLE;
     VkSurfaceKHR gSurface = VK_NULL_HANDLE;
     VkSurfaceFormatKHR gSurfaceFormat{};
     VkPhysicalDevice gPhysicalDevice = VK_NULL_HANDLE;
+    char gDeviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE] = {};
     uint32_t gQueueFamily = UINT32_MAX;
     VkDevice gDevice = VK_NULL_HANDLE;
     VkQueue gQueue = VK_NULL_HANDLE;
@@ -184,6 +188,8 @@ namespace {
 
             gPhysicalDevice = candidate;
             gQueueFamily = family;
+            std::memcpy(gDeviceName, properties.deviceName, sizeof(gDeviceName));
+            gDeviceName[sizeof(gDeviceName) - 1] = '\0';
             // A software device only stands in until real hardware turns up
             if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU) break;
         }
@@ -201,8 +207,11 @@ namespace {
     }
 
     bool createDevice() {
+        VkPhysicalDeviceVulkan12Features supported12{};
+        supported12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
         VkPhysicalDeviceFeatures2 supported{};
         supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        supported.pNext = &supported12;
         vkGetPhysicalDeviceFeatures2(gPhysicalDevice, &supported);
 
         VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBuffer{};
@@ -220,6 +229,9 @@ namespace {
         vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
         vulkan12.pNext = &extendedDynamicState;
         vulkan12.bufferDeviceAddress = VK_TRUE;
+        // the GPU timer resets its timestamp pools from the host (profiling, dynamic resolution)
+        vulkan12.hostQueryReset = supported12.hostQueryReset;
+        SystemRender::setVulkanHostQueryReset(supported12.hostQueryReset == VK_TRUE);
 
         VkPhysicalDeviceVulkan13Features vulkan13{};
         vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
@@ -516,6 +528,7 @@ namespace {
 
 bool VulkanContext::create(const VulkanContextConfig& config) {
     gConfig = config;
+    gPendingVsync = -1;
     if (!gConfig.surfaceExtension || !gConfig.createSurface) {
         std::fprintf(stderr, "Error: The Vulkan backend needs a window surface.\n");
         return false;
@@ -559,6 +572,15 @@ void VulkanContext::destroy() {
 
 void VulkanContext::beginFrame() {
     if (gDevice == VK_NULL_HANDLE) return;
+
+    if (gPendingVsync >= 0) {
+        const bool vsync = gPendingVsync == 1;
+        gPendingVsync = -1;
+        if (vsync != gConfig.vsync) {
+            gConfig.vsync = vsync;
+            gSwapchainValid = false;
+        }
+    }
 
     VkSurfaceCapabilitiesKHR capabilities{};
     if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
@@ -621,6 +643,12 @@ void VulkanContext::endFrame() {
     gSyncSlot = (gSyncSlot + 1) % gImageCount;
 }
 
+void VulkanContext::setVSync(bool vsync) {
+    // a script can ask mid-frame, with an image acquired and its semaphores in flight: the
+    // swapchain is made again at the start of the next frame, before it acquires
+    gPendingVsync = vsync ? 1 : 0;
+}
+
 sg_environment VulkanContext::environment() {
     sg_environment environment{};
     environment.defaults.sample_count = 1;
@@ -657,4 +685,8 @@ sg_swapchain VulkanContext::swapchain() {
     swapchain.vulkan.render_finished_semaphore = gSync[gImageIndex].renderFinished;
     swapchain.vulkan.present_complete_semaphore = gSync[gSyncSlot].presentComplete;
     return swapchain;
+}
+
+const char* VulkanContext::deviceName() {
+    return gDeviceName;
 }

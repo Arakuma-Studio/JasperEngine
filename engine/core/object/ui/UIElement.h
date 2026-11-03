@@ -8,6 +8,7 @@
 #include "math/Rect.h"
 #include "math/Vector3.h"
 #include "UIValue.h"
+#include "object/ParticleSystem.h"
 
 #include <cstdint>
 #include <functional>
@@ -25,6 +26,7 @@ namespace Rml {
 namespace jasperengine{
 
     class UIEvent;
+    class UIItemsView;        // UIItemsView.h (S17)
     struct UIElementHandle;   // UIElementInternal.h: holds Rml::ObserverPtr<Rml::Element>
     struct UIElementAccess;   // UIElementInternal.h: engine-internal access to the RmlUi element
 
@@ -68,6 +70,17 @@ namespace jasperengine{
     // Phase-0 members and the phase-1 DOM API are defined in UIElement.cpp (p1-lua), the
     // Lottie control by p1-vector (htmlui/vector/UIElementLottie.cpp). On an invalid handle
     // every C++ method returns a default and logs a warning (once per method).
+
+    // How a tooltip set by setTooltip shows (S17 R15): on a side of the element ("top", "bottom",
+    // "left", "right", or "auto": the side with the most room), after `delay` seconds (the
+    // document's otherwise), with an arrow pointing at the element; an interactive one stays while
+    // the pointer is on it (it takes the pointer)
+    struct UITooltipOptions {
+        std::string placement = "top";
+        std::optional<float> delay;
+        bool arrow = false;
+        bool interactive = false;
+    };
 
     // HTMLMediaElement's MediaError (phase 6): code 1 aborted, 2 network, 3 decode, 4 source not supported
     struct UIMediaError {
@@ -146,6 +159,10 @@ namespace jasperengine{
         // focus / interaction / scroll / geometry
 
         void focus(); void blur(); void click();
+        // DOM pointer capture (ui-multitouch): the element gets that pointer's move, up and cancel
+        // events until released or the pointer is up; pointerId as event.pointerId (1 the mouse,
+        // fingerId + 2 a finger). false when the pointer is not pressed (set) or not captured here (release)
+        bool setPointerCapture(int pointerId); bool releasePointerCapture(int pointerId); bool hasPointerCapture(int pointerId) const;
         void scrollIntoView(bool alignToTop = true);
         void scrollTo(float x, float y, bool smooth = false); void scrollBy(float dx, float dy, bool smooth = false);
         float getScrollTop() const; void setScrollTop(float value); float getScrollLeft() const; void setScrollLeft(float value);
@@ -193,9 +210,31 @@ namespace jasperengine{
         int effectPointerPath(const std::vector<Vector3>& path, const std::string& effect = std::string());
         int effectClearSplats(const std::string& effect = std::string());
 
+        // --- S17: widgets (htmlui/widgets/UIElementWidgets.cpp) ---
+
+        // <list-view>, <grid-view>, <tree-view>, <table-view>: the view (invalid on other elements)
+        UIItemsView getItemsView() const;
+        // the content becomes the rendered Markdown (any element; HTML in it is shown as text)
+        void setMarkdown(const std::string& markdown);
+        // a rich tooltip, in place of the title attribute: a text, a clone of an element, or a
+        // text a function gives on each show; clearTooltip removes it
+        void setTooltip(const std::string& text, const UITooltipOptions& options = UITooltipOptions());
+        void setTooltip(const UIElement& content, const UITooltipOptions& options = UITooltipOptions());
+        void setTooltip(std::function<std::string()> text, const UITooltipOptions& options = UITooltipOptions());
+        void clearTooltip();
+
         // --- phase 1 (p1-vector): <lottie> control; logs an error on other elements ---
 
         void play(); void pause(); void stop(); void seek(float seconds); void setFrame(float frame);
+        // <particle-system> (ui-scaling-text): play/pause/stop/isPlaying above, its live particles
+        // gone, and the ParticleSystem of its hidden entity (every particle API works). Before the
+        // prefab is made (document scripts, onLoad, edit mode) or when its src failed there is none:
+        // hasParticleSystem() is false and getParticleSystem() an empty handle (Lua: nil)
+        void clear();
+        bool hasParticleSystem() const;
+        ParticleSystem getParticleSystem() const;
+        // text-effect: the effect of this element (or the one its text inherits) from the start
+        void restartTextEffect();
         void setSpeed(float speed); void setDirection(int direction); void setLoop(bool loop); void setLoopCount(int count);
         void setSegment(float startFrame, float endFrame); void setMarker(const std::string& marker);
         bool isPlaying() const; float getCurrentFrame() const; float getTotalFrames() const; float getDuration() const;
@@ -226,6 +265,9 @@ namespace jasperengine{
         int getReadyState() const; int getNetworkState() const;
         int getVideoWidth() const; int getVideoHeight() const;
         std::string getCurrentSrc() const;
+        // what decodes it: "webm" (AV1/Opus in software), "ffmpeg", "mediacodec", "avfoundation",
+        // "mediafoundation", "browser" ("" before a source opened)
+        std::string getVideoBackend() const;
         std::string getPoster() const; void setPoster(const std::string& poster);
         std::string getPreload() const; void setPreload(const std::string& preload);
         std::optional<UIMediaError> getMediaError() const;

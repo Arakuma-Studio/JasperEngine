@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LatticeBindingsCmd.h"
+#include "command/CommandNames.h"
 
 #include "Catalog.h"
 #include "util/EntityClipboard.h"
@@ -77,4 +78,33 @@ void editor::LatticeBindingsCmd::undo(){
     prefabUndo.restore(project, sceneId);
 
     sceneProject->isModified = wasModified;
+}
+
+std::string editor::LatticeBindingsCmd::describe() const{
+    const std::string subject = " (" + CommandNames::entity(project, sceneId, entity) + ")";
+    if (newBindings.size() > oldBindings.size() || addedComponent){
+        return "Bind Lattice" + subject;
+    }
+    if (newBindings.size() < oldBindings.size()){
+        return "Unbind Lattice" + subject;
+    }
+    return "Set Lattice Bindings" + subject;
+}
+
+bool editor::LatticeBindingsCmd::isNoOp() const{
+    if (addedComponent || oldIncludeChildren != newIncludeChildren || oldBindings.size() != newBindings.size()){
+        return false;
+    }
+    for (size_t i = 0; i < oldBindings.size(); i++){
+        const LatticeBinding& a = oldBindings[i];
+        const LatticeBinding& b = newBindings[i];
+        if (a.lattice != b.lattice || a.weight != b.weight || a.stage != b.stage || a.submesh != b.submesh || a.mask != b.mask){
+            return false;
+        }
+    }
+    return true;
+}
+
+size_t editor::LatticeBindingsCmd::memoryBytes() const{
+    return sizeof(*this) + (oldBindings.capacity() + newBindings.capacity()) * sizeof(LatticeBinding);
 }

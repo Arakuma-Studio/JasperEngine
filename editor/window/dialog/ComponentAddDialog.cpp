@@ -5,6 +5,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
 #include "Theme.h"
+#include "search/SearchScorer.h"
 #include <cctype>
 #include <cstring>
 
@@ -13,7 +14,7 @@ namespace editor {
 
 namespace {
 
-    std::string toLower(std::string text) {
+    std::string componentAddToLower(std::string text) {
         std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return (char)std::tolower(c); });
         return text;
     }
@@ -64,49 +65,87 @@ ComponentAddDialog::ComponentAddDialog() {
         }},
         {"Rendering", ICON_FA_CAMERA, {
             {ComponentType::CameraComponent, "Renders the scene to the screen or a texture"},
+            {ComponentType::CameraShakerComponent, "Shakes the camera (or this GameObject) from presets and trauma, never fighting what moves it"},
+            {ComponentType::CameraFollowComponent, "Follows a target with damping, look-at, a 2D dead zone and bounds"},
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
             {ComponentType::TilemapComponent, "Grid of tiles from a texture atlas"},
-            {ComponentType::LineRendererComponent, "Draws line segments"},
+            {ComponentType::LineRendererComponent, "Draws lines: a polyline with width, colour gradient, joints and caps, or debug segments"},
             {ComponentType::PointsComponent, "Draws a point cloud"},
             {ComponentType::SkyboxComponent, "Skybox cube map and scene environment"},
-            {ComponentType::FogComponent, "Distance fog"},
+            {ComponentType::FogComponent, "Distance or height fog, optionally volumetric"},
             {ComponentType::MirrorComponent, "Planar reflection surface"},
             {ComponentType::ReflectionProbeComponent, "Local environment reflection"},
             {ComponentType::Light2DComponent, "2D light with radius falloff"},
             {ComponentType::ShadowCaster2DComponent, "Casts shadows from 2D lights"},
         }},
         {"Effects", ICON_FA_FIRE, {
-            {ComponentType::ParticleSystemComponent, "Emits and animates particles"},
+            {ComponentType::ParticleSystemComponent, "Emits and animates particles (a .particles effect, or its own)"},
+            {ComponentType::ForceFieldComponent, "Pushes the particles of systems with External Forces"},
             {ComponentType::FluidSimulationComponent, "GPU fluid with dye, bloom and sunrays, drawn on the sprite or mesh"},
+            {ComponentType::LocalVolumetricFogComponent, "A box or sphere of extra volumetric fog"},
+            {ComponentType::VolumetricCloudsComponent, "Raymarched clouds lit by the sun and the sky"},
+            {ComponentType::TrailRendererComponent, "Draws a fading ribbon behind a moving object"},
         }},
         {"Physics", ICON_FA_CUBE, {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},
             {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
+            {ComponentType::CharacterControllerComponent, "A capsule moved by script that climbs steps and slopes"},
+            {ComponentType::WaterVolumeComponent, "A body of water: what has a Buoyancy floats in it"},
+            {ComponentType::BuoyancyComponent, "Floats its dynamic Rigidbody in Water Volumes"},
+            {ComponentType::RagdollComponent, "Switches a character's bone bodies between animated and simulated"},
         }},
         {"Physics 2D", ICON_FA_CIRCLE, {
             {ComponentType::Rigidbody2DComponent, "2D Rigidbody with colliders, simulated by Box2D"},
             {ComponentType::Joint2DComponent, "Connects two 2D Rigidbodies"},
+            {ComponentType::CharacterController2DComponent, "A capsule moved by script that climbs steps and slopes"},
+        }},
+        {"Navigation", ICON_FA_ROUTE, {
+            {ComponentType::NavMeshSurfaceComponent, "Bakes a navmesh for one agent type from the scene's static geometry"},
+            {ComponentType::NavMeshAgentComponent, "Walks to destinations on the navmesh or a Nav Grid, avoiding others"},
+            {ComponentType::NavMeshObstacleComponent, "Agents steer around it, or it carves the navmesh at runtime"},
+            {ComponentType::NavMeshLinkComponent, "A jump, gap or ladder connection agents can traverse"},
+            {ComponentType::NavMeshModifierComponent, "Sets the area of a GameObject or a volume, or leaves it out of bakes"},
+            {ComponentType::NavGridComponent, "A square or hex grid with area costs for tile and strategy games"},
+        }},
+        {"Spline", ICON_FA_BEZIER_CURVE, {
+            {ComponentType::SplineComponent, "A curve of knots that roads, fences and followers use"},
+            {ComponentType::SplineExtrudeComponent, "Sweeps a road, path, wall, tube or water along the Spline"},
+            {ComponentType::SplineInstantiateComponent, "Places models or prefabs along the Spline (rows, tiles, fences)"},
+            {ComponentType::SplineAnimateComponent, "Moves this GameObject along another GameObject's Spline"},
         }},
         {"Audio", ICON_FA_VOLUME_HIGH, {
             {ComponentType::AudioSourceComponent, "Plays an audio clip"},
+        }},
+        {"Video", ICON_FA_FILM, {
+            {ComponentType::VideoPlayerComponent, "Plays a video (MP4, WebM) or a URL into a texture, a material or a camera plane"},
         }},
         {"UI", ICON_FA_WINDOW_RESTORE, {
             {ComponentType::RectTransformComponent, "Size, anchors and pivot of a UI element"},
             {ComponentType::UIComponent, "Draws a UI element"},
             {ComponentType::ImageComponent, "Displays an image"},
             {ComponentType::TextComponent, "Displays text"},
+            {ComponentType::TextEffectComponent, "Animates a Text per character: wave, typewriter, gradient..."},
             {ComponentType::ButtonComponent, "Clickable button"},
             {ComponentType::InputFieldComponent, "Editable text field"},
             {ComponentType::PanelComponent, "Movable, resizable window"},
             {ComponentType::ScrollbarComponent, "Scroll control"},
             {ComponentType::ProgressbarComponent, "Progress indicator"},
+            {ComponentType::OnScreenStickComponent, "Touch joystick feeding Input actions (Horizontal / Vertical)"},
+            {ComponentType::OnScreenButtonComponent, "Touch button feeding an Input action (Fire1)"},
+            {ComponentType::TouchAreaComponent, "Drag area feeding Input actions (Mouse X / Mouse Y): touch look"},
             {ComponentType::LayoutGroupComponent, "Arranges child elements in a row, column or grid"},
+            {ComponentType::CanvasGroupComponent, "Fades, disables or makes click-through a UI subtree"},
+            {ComponentType::SafeAreaComponent, "Fits the RectTransform to the screen's safe area (notch, rounded corners, banner)"},
             {ComponentType::PolygonComponent, "Filled UI polygon"},
             {ComponentType::UIDocumentComponent, "HTML/CSS document rendered by the engine"},
         }},
         {"Animation", ICON_FA_FILM, {
+            {ComponentType::AnimationPlayerComponent, "Plays shared animation clips (.anim, model clips) with fades and events"},
             {ComponentType::AnimationComponent, "Plays a sequence of actions"},
+            {ComponentType::PoseAnimatorComponent, "Plays a pose animation (.poseanim) on a humanoid model"},
+            {ComponentType::AnimatorComponent, "Plays an Animator Controller: state machines, blend trees, layers, IK, root motion"},
+            {ComponentType::VertexAnimatorComponent, "Plays baked vertex animation (.vat) on the GPU: crowds with a clip and time per instance"},
             {ComponentType::SpriteAnimationComponent, "Flips through sprite frames"},
             {ComponentType::ActionComponent, "Start, pause and stop state of an animation step"},
             {ComponentType::TweenComponent, "Duration, easing and looping of a tween"},
@@ -132,14 +171,41 @@ ComponentAddDialog::ComponentAddDialog() {
     };
 }
 
+const std::vector<ComponentCategory>& ComponentAddDialog::listing() {
+    static const ComponentAddDialog dialog;
+    return dialog.m_categories;
+}
+
 bool ComponentAddDialog::isListed(ComponentType type) {
-    static const ComponentAddDialog listing;
-    for (const ComponentCategory& category : listing.m_categories) {
+    for (const ComponentCategory& category : listing()) {
         for (const ComponentEntry& entry : category.entries) {
             if (entry.type == type) return true;
         }
     }
     return false;
+}
+
+std::vector<ComponentAddDialog::Ranked> ComponentAddDialog::rank(const std::string& query) {
+    const std::string normalized = search::normalize(query);
+    std::vector<Ranked> ranked;
+    std::vector<std::string> labels;
+    const std::vector<ComponentCategory>& categories = listing();
+    for (int c = 0; c < static_cast<int>(categories.size()); c++) {
+        for (const ComponentEntry& entry : categories[c].entries) {
+            const std::string label = search::normalize(Catalog::getComponentDisplayName(entry.type));
+            const std::string more = search::normalize(std::string(categories[c].name) + " " + entry.description);
+            int score = search::fuzzyScore(normalized, label);
+            const int broad = search::fuzzyScore(normalized, more);
+            score = std::max(score, broad < 0 ? -1 : broad - 80);
+            if (score < 0) continue;
+            ranked.push_back({entry.type, c, score});
+        }
+    }
+    std::stable_sort(ranked.begin(), ranked.end(), [](const Ranked& a, const Ranked& b) {
+        if (a.score != b.score) return a.score > b.score;
+        return Catalog::getComponentDisplayName(a.type) < Catalog::getComponentDisplayName(b.type);
+    });
+    return ranked;
 }
 
 void ComponentAddDialog::open(
@@ -220,7 +286,7 @@ void ComponentAddDialog::show() {
     if (strcmp(previousSearch, m_searchBuffer) != 0) {
         m_highlighted = 0;
     }
-    const std::string search = toLower(m_searchBuffer);
+    const std::string search = componentAddToLower(m_searchBuffer);
     const bool searching = !search.empty();
 
     // Rows of the current page
@@ -238,13 +304,14 @@ void ComponentAddDialog::show() {
     };
 
     if (searching) {
-        for (int c = 0; c < (int)m_categories.size(); c++) {
-            for (const ComponentEntry& entry : m_categories[c].entries) {
-                std::string name = toLower(Catalog::getComponentDisplayName(entry.type));
-                if (name.find(search) == std::string::npos) continue;
-                if (!canAdd(entry.type)) continue;
-                rows.push_back({Row::Component, c, entry.type, entry.description, true});
+        // one flat list, ranked by the editor's scorer (typos forgiven: "rigdbody")
+        for (const Ranked& match : rank(m_searchBuffer)) {
+            if (!canAdd(match.type)) continue;
+            const char* description = nullptr;
+            for (const ComponentEntry& entry : m_categories[match.category].entries) {
+                if (entry.type == match.type) description = entry.description;
             }
+            rows.push_back({Row::Component, match.category, match.type, description, true});
         }
     } else if (m_category < 0) {
         for (int c = 0; c < (int)m_categories.size(); c++) {

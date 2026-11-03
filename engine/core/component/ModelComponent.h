@@ -4,6 +4,7 @@
 #ifndef MODEL_COMPONENT_H
 #define MODEL_COMPONENT_H
 
+#include "asset/AssetRef.h"
 #include "ecs/Entity.h"
 #include "math/Matrix4.h"
 #include <vector>
@@ -21,6 +22,8 @@ namespace jasperengine{
         Entity mesh = NULL_ENTITY;
         std::vector<Entity> joints;
         std::vector<Matrix4> inverseBindMatrices;
+        // runtime: an Animator writes this skin's matrices (RenderSystem skips it; S21 R21)
+        bool animatorDriven = false;
     };
 
     struct JASPERENGINE_API ModelComponent{
@@ -32,7 +35,7 @@ namespace jasperengine{
 
         Matrix4 inverseDerivedTransform;
         
-        Entity skeleton;
+        Entity skeleton = NULL_ENTITY;
 
         std::map<std::string, Entity> bonesNameMapping;
         std::map<int, Entity> bonesIdMapping;
@@ -50,13 +53,23 @@ namespace jasperengine{
         std::map<std::string, int> morphNameMapping;
 
         std::vector<Entity> animations;
+        // The sub-clip names of the file's glTF animations, in file order (anim::subClipNames:
+        // the second "Wave" is "Wave 2"), set by loadGLTF while it holds the pooled-glTF lock and
+        // cleared with the parse: Model::playAnimation / findAnimation read these instead of the
+        // shared tinygltf::Model, so they never wait for another model's load
+        std::vector<std::string> animationClipNames;
 
-        std::string filename;
+        AssetRef filename;
 
         // Bake static multi-node GLTF meshes into this entity's MeshComponent instead of
         // generating one child entity per mesh node. This makes the model compatible with
         // same-entity features such as InstancedMeshComponent.
         bool mergeStaticMeshes = false;
+
+        // The loader makes one entity per glTF animation (an AnimationComponent with its tracks,
+        // in `animations`). False when an Animation Player plays the model's sub-clips instead
+        // (Inspector "Use Animation Player", animation clips spec 9.R15): loads and reloads skip them.
+        bool animationEntities = true;
 
         std::string loadedFilename;
         bool loadedMergeStaticMeshes = false;

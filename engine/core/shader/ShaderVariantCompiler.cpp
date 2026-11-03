@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderVariantCompiler.h"
+#include "ShaderGlobals.h"
 
 #include "Engine.h"
 #include "pool/ShaderPool.h"
 #include "component/TerrainComponent.h"
 #include "lattice/LatticeTypes.h"
+#include "animation/VertexAnimation.h"
 #include "shader/ShaderManifest.h"
+#include "texture/MaterialPbr.h"
 
 #include <algorithm>
 #include <cctype>
@@ -373,11 +376,17 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & shaderPropertyBit(9))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});     // 'Vc3'
     if (prop & shaderPropertyBit(10)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});     // 'Vc4'
     if (prop & shaderPropertyBit(11)) defs.push_back({"HAS_TEXTURERECT", "1"});           // 'Txr'
-    if (prop & shaderPropertyBit(12)) defs.push_back({"HAS_FOG", "1"});                   // 'Fog'
-    if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_SKINNING", "1"});              // 'Ski'
-    if (prop & shaderPropertyBit(14)) defs.push_back({"HAS_MORPHTARGET", "1"});           // 'Mta'
-    if (prop & shaderPropertyBit(15)) defs.push_back({"HAS_MORPHNORMAL", "1"});           // 'Mnr'
-    if (prop & shaderPropertyBit(16)) defs.push_back({"HAS_MORPHTANGENT", "1"});          // 'Mtg'
+    if (prop & shaderPropertyBit(12)) {                                                    // 'Fog'
+        defs.push_back({"HAS_FOG", "1"});
+        // the height fog, chosen by its block at run time (includes/fog.glsl, S12)
+        defs.push_back({"HAS_HEIGHT_FOG", "1"});
+    }
+    // a Vertex Animation ('Vat', 'Vab'; never on a terrain) replaces skinning and morph targets
+    const bool vat = (prop & ShaderPool::getVatProperties(ShaderType::MESH)) && !(prop & shaderPropertyBit(17));
+    if ((prop & shaderPropertyBit(13)) && !vat) defs.push_back({"HAS_SKINNING", "1"});    // 'Ski'
+    if ((prop & shaderPropertyBit(14)) && !vat) defs.push_back({"HAS_MORPHTARGET", "1"}); // 'Mta'
+    if ((prop & shaderPropertyBit(15)) && !vat) defs.push_back({"HAS_MORPHNORMAL", "1"}); // 'Mnr'
+    if ((prop & shaderPropertyBit(16)) && !vat) defs.push_back({"HAS_MORPHTANGENT", "1"}); // 'Mtg'
     if (prop & shaderPropertyBit(17)) defs.push_back({"HAS_TERRAIN", "1"});               // 'Ter'
     if (prop & shaderPropertyBit(18)) defs.push_back({"HAS_INSTANCING", "1"});            // 'Ist'
     if (prop & shaderPropertyBit(19)) defs.push_back({"USE_IBL", "1"});                   // 'Ibl'
@@ -395,14 +404,20 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & shaderPropertyBit(31)) defs.push_back({"USE_POST_COLOR", "1"});          // 'Pcl'
     // a terrain is never deformed (its variant keeps the bit inert)
     if ((prop & shaderPropertyBit(32)) && !(prop & shaderPropertyBit(17))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc'
+    if (prop & shaderPropertyBit(33)) defs.push_back({"USE_SHADOWS_HQ", "1"});         // 'Shq' (S10; bit 5 is 'Sto')
+    // includes/vat.glsl: Bones mode ('Vab') wins when a key has both
+    if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
+    if (vat && (prop & ShaderPool::getVatProperty(ShaderType::MESH, true))) defs.push_back({"HAS_VAT_BONES", "1"}); // 'Vab'
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_TEXTURE", "1"});       // 'Tex'
-    if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_SKINNING", "1"});      // 'Ski'
-    if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_MORPHTARGET", "1"});   // 'Mta'
-    if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_MORPHNORMAL", "1"});   // 'Mnr'
-    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_MORPHTANGENT", "1"});  // 'Mtg'
+    // a Vertex Animation ('Vat', 'Vab'; never on a terrain) replaces skinning and morph targets
+    const bool vat = (prop & (shaderPropertyBit(16) | shaderPropertyBit(17))) && !(prop & shaderPropertyBit(5));
+    if ((prop & shaderPropertyBit(1)) && !vat) defs.push_back({"HAS_SKINNING", "1"});      // 'Ski'
+    if ((prop & shaderPropertyBit(2)) && !vat) defs.push_back({"HAS_MORPHTARGET", "1"});   // 'Mta'
+    if ((prop & shaderPropertyBit(3)) && !vat) defs.push_back({"HAS_MORPHNORMAL", "1"});   // 'Mnr'
+    if ((prop & shaderPropertyBit(4)) && !vat) defs.push_back({"HAS_MORPHTANGENT", "1"});  // 'Mtg'
     if (prop & shaderPropertyBit(5))  defs.push_back({"HAS_TERRAIN", "1"});       // 'Ter'
     if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_INSTANCING", "1"});    // 'Ist'
     if (prop & shaderPropertyBit(7))  defs.push_back({"ALPHA_MASK", "1"});         // 'Ams'
@@ -414,15 +429,19 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_TEXTURERECT", "1"});       // 'Txr'
     if (prop & shaderPropertyBit(14)) defs.push_back({"USE_STOCHASTIC_TILING", "1"}); // 'Sto'
     if ((prop & shaderPropertyBit(15)) && !(prop & shaderPropertyBit(5))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
+    if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
+    if (vat && (prop & shaderPropertyBit(17))) defs.push_back({"HAS_VAT_BONES", "1"});      // 'Vab'
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_BASECOLOR_TEXTURE", "1"});         // 'Bct'
     if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_NORMALS", "1"});                   // 'Nor'
-    if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_SKINNING", "1"});                  // 'Ski'
-    if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_MORPHTARGET", "1"});               // 'Mta'
-    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_MORPHNORMAL", "1"});               // 'Mnr'
-    if (prop & shaderPropertyBit(5))  defs.push_back({"HAS_MORPHTANGENT", "1"});              // 'Mtg'
+    // a Vertex Animation ('Vat', 'Vab'; never on a terrain) replaces skinning and morph targets
+    const bool vat = (prop & (shaderPropertyBit(14) | shaderPropertyBit(15))) && !(prop & shaderPropertyBit(6));
+    if ((prop & shaderPropertyBit(2)) && !vat) defs.push_back({"HAS_SKINNING", "1"});         // 'Ski'
+    if ((prop & shaderPropertyBit(3)) && !vat) defs.push_back({"HAS_MORPHTARGET", "1"});      // 'Mta'
+    if ((prop & shaderPropertyBit(4)) && !vat) defs.push_back({"HAS_MORPHNORMAL", "1"});      // 'Mnr'
+    if ((prop & shaderPropertyBit(5)) && !vat) defs.push_back({"HAS_MORPHTANGENT", "1"});     // 'Mtg'
     if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_TERRAIN", "1"});                   // 'Ter'
     if (prop & shaderPropertyBit(7))  defs.push_back({"HAS_INSTANCING", "1"});                // 'Ist'
     if (prop & shaderPropertyBit(8))  defs.push_back({"HAS_METALLICROUGHNESS_TEXTURE", "1"}); // 'Mrt'
@@ -431,6 +450,8 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if ((prop & shaderPropertyBit(11)) && !(prop & shaderPropertyBit(6))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
     if (prop & shaderPropertyBit(12)) defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});         // 'Vc3' (a lattice mask's)
     if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});         // 'Vc4'
+    if (vat) defs.push_back({"HAS_VAT", "1"});                                                  // 'Vat', 'Vab'
+    if (vat && (prop & shaderPropertyBit(15))) defs.push_back({"HAS_VAT_BONES", "1"});          // 'Vab'
 }
 
 void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -438,6 +459,7 @@ void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const
     if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_FONTATLAS_TEXTURE", "1"});    // 'Ftx'
     if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
     if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
+    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_FONTATLAS_SDF", "1"});        // 'Sdf' (with 'Ftx')
 }
 
 void addHtmlUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -467,13 +489,33 @@ void addLinesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, co
     if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
     if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
     if (prop & shaderPropertyBit(2))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
+    if (prop & shaderPropertyBit(3))  defs.push_back({"LINE_RIBBON", "1"});              // 'Rib'
+    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
+    if (prop & shaderPropertyBit(5))  defs.push_back({"LINE_PIXEL_WIDTH", "1"});         // 'Pxw'
+}
+
+// ShaderPool::getParticlesProperties; the effect's modules pick them (the Renderer module, Texture
+// Sheet Animation's frame blending, Custom Data)
+void addParticlesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
+    if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
+    if (prop & (1 << 1))  defs.push_back({"PARTICLE_MESH", "1"});            // 'Msh'
+    if (prop & (1 << 2))  defs.push_back({"PARTICLE_TRAIL", "1"});           // 'Trl'
+    if (prop & (1 << 3))  defs.push_back({"STRETCH", "1"});                  // 'Str'
+    if (prop & (1 << 4))  defs.push_back({"FRAME_BLEND", "1"});              // 'Fbl'
+    if (prop & (1 << 5))  defs.push_back({"LIT", "1"});                      // 'Lit'
+    if (prop & (1 << 6))  defs.push_back({"SIXWAY", "1"});                   // 'Sxw'
+    if (prop & (1 << 7))  defs.push_back({"CUSTOM_DATA", "1"});              // 'Cus'
+    if (prop & (1 << 8))  defs.push_back({"RECEIVE_SHADOWS", "1"});          // 'Rsh'
+    if (prop & (1 << 9))  defs.push_back({"HAS_FOG", "1"});                  // 'Fog'
+    if (prop & (1 << 10)) defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
 
 // the uber pass's features (RenderSystem::UberFeature)
 void addUberPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     static const char* const defines[] = {"UBER_FXAA", "UBER_CHROMATIC", "UBER_PIXELATE", "UBER_CRT", "UBER_EDGE", "UBER_GRAIN",
                                           "UBER_SHARPEN", "UBER_LUT", "UBER_VIGNETTE", "UBER_DITHER", "UBER_BLOOM", "UBER_BLUR",
-                                          "UBER_UPSCALE"};
+                                          "UBER_UPSCALE", "UBER_VHS", "UBER_HALATION", "UBER_FILM_DAMAGE", "UBER_GRAIN_LENS",
+                                          "UBER_GRAIN_FILMIC"};
     for (int bit = 0; bit < (int)(sizeof(defines) / sizeof(defines[0])); bit++) {
         if (prop & shaderPropertyBit(bit)) defs.push_back({defines[bit], "1"});
     }
@@ -518,6 +560,10 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.vert_file = "points.vert";
         args.frag_file = "points.frag";
         addPointsPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::PARTICLES){
+        args.vert_file = "particles.vert";
+        args.frag_file = "particles.frag";
+        addParticlesPropertyDefinitions(args.defines, properties);
     }else if (shaderType == ShaderType::LINES){
         args.vert_file = "lines.vert";
         args.frag_file = "lines.frag";
@@ -573,10 +619,16 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.vert_file = "htmlui.vert";
         args.frag_file = "htmlui_gradient.frag";
         args.defines.push_back({"HAS_TEXTURE", "1"});
+    }else if (shaderType == ShaderType::HTMLUI_PRIM){
+        args.vert_file = "htmlui_prim.vert";
+        args.frag_file = "htmlui_prim.frag";
     }else if (shaderType == ShaderType::HTMLUI_POST){
         args.vert_file = "htmlui_post.vert";
         args.frag_file = "htmlui_post.frag";
         addHtmlUIPostPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::SHADOW_CACHE){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = (properties & (1 << 0)) ? "shadow_atlas_view.frag" : "shadow_restore.frag";  // 'Vis'
     }else if (shaderType == ShaderType::UI_EFFECT){
         // the fragment is the effect's (compile: effects/<name>.frag, or a project's .frag)
         const bool filterForm = (properties & shaderPropertyBit(0)) != 0;                   // 'Flt'
@@ -600,6 +652,32 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.vert_file = "fluid.vert";
         args.frag_file = "fluid.frag";
         addFluidPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::ATMOSPHERE_DEPTH){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "atmosphere_depth.frag";
+    }else if (shaderType == ShaderType::VOLUMETRIC_FOG){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "volumetric_fog.frag";
+    }else if (shaderType == ShaderType::ATMOSPHERE_DENOISE){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "atmosphere_denoise.frag";
+    }else if (shaderType == ShaderType::VOLUMETRIC_CLOUDS){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "volumetric_clouds.frag";
+    }else if (shaderType == ShaderType::SKY_COMPOSITE){
+        // at the far plane: the depth test passes on the sky pixels only
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "sky_composite.frag";
+        args.defines.push_back({"FULLSCREEN_AT_FAR", "1"});
+    }else if (shaderType == ShaderType::VOLUMETRIC_COMPOSITE){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "volumetric_composite.frag";
+    }else if (shaderType == ShaderType::PASS_PREVIEW){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "pass_preview.frag";
+        if (properties & (1 << 0)) args.defines.push_back({"PREVIEW_ARRAY", "1"});   // 'Arr'
+        if (properties & (1 << 1)) args.defines.push_back({"PREVIEW_CUBE", "1"});    // 'Cub'
+        if (properties & (1 << 2)) args.defines.push_back({"PREVIEW_3D", "1"});      // 'Tx3'
     }else{
         return false;
     }
@@ -612,6 +690,25 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.defines.push_back({"LATTICE_MAX_PER_MESH", std::to_string(LATTICE_MAX_PER_MESH)});
         args.defines.push_back({"LATTICE_TEXTURE_WIDTH", std::to_string(LATTICE_TEXTURE_WIDTH)});
         args.defines.push_back({"LATTICE_RECORD_HEADER", std::to_string(LATTICE_RECORD_HEADER)});
+        // the clip table of includes/vat.glsl (animation/VertexAnimation.h)
+        args.defines.push_back({"VAT_MAX_CLIPS", std::to_string(vat::VAT_MAX_CLIPS)});
+    }
+    if (shaderType == ShaderType::VOLUMETRIC_FOG){
+        // the light shafts sample S10's directional cascades (includes/shadow_sampling.glsl)
+        args.defines.push_back({"MAX_SHADOW_ATLAS_SLOTS", std::to_string(MAX_SHADOW_ATLAS_SLOTS)});
+        args.defines.push_back({"MAX_POINT_SHADOW_ATLAS_SLOTS", std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS)});
+        args.defines.push_back({"MAX_SHADOWCASCADES", std::to_string(MAX_SHADOWCASCADES)});
+        args.defines.push_back({"MAX_POINT_SHADOW_LIGHTS", std::to_string(MAX_POINT_SHADOW_LIGHTS)});
+        args.defines.push_back({"SHADOW_CUBE_FACES", std::to_string(SHADOW_CUBE_FACES)});
+    }
+    if (shaderType == ShaderType::PARTICLES){
+        // RECEIVE_SHADOWS samples S10's directional cascades (includes/shadow_sampling.glsl)
+        args.defines.push_back({"MAX_SHADOW_ATLAS_SLOTS", std::to_string(MAX_SHADOW_ATLAS_SLOTS)});
+        args.defines.push_back({"MAX_POINT_SHADOW_ATLAS_SLOTS", std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS)});
+        args.defines.push_back({"MAX_SHADOWCASCADES", std::to_string(MAX_SHADOWCASCADES)});
+        args.defines.push_back({"MAX_POINT_SHADOW_LIGHTS", std::to_string(MAX_POINT_SHADOW_LIGHTS)});
+        args.defines.push_back({"SHADOW_CUBE_FACES", std::to_string(SHADOW_CUBE_FACES)});
+        args.defines.push_back({"MAX_PARTICLE_LIGHTS", std::to_string(MAX_PARTICLE_LIGHTS)});
     }
     if (shaderType == ShaderType::MESH){
         args.defines.push_back({"MAX_LIGHTS", std::to_string(MAX_LIGHTS)}); // legacy u_fs_lighting
@@ -620,6 +717,8 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.defines.push_back({"MAX_SHADOW_ATLAS_SLOTS", std::to_string(MAX_SHADOW_ATLAS_SLOTS)});
         args.defines.push_back({"MAX_POINT_SHADOW_ATLAS_SLOTS", std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS)});
         args.defines.push_back({"MAX_SHADOWCASCADES", std::to_string(MAX_SHADOWCASCADES)});
+        args.defines.push_back({"MAX_POINT_SHADOW_LIGHTS", std::to_string(MAX_POINT_SHADOW_LIGHTS)});
+        args.defines.push_back({"SHADOW_CUBE_FACES", std::to_string(SHADOW_CUBE_FACES)});
     }
     if (shaderType == ShaderType::GBUFFER){
         // suppresses the terrain texture-coordinate varyings in the shared includes
@@ -701,7 +800,9 @@ uint64_t ShaderVariantCompiler::getLibraryHash(){
             std::to_string(MAX_SHADOW_ATLAS_SLOTS) + "," + std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS) + "," +
             std::to_string(MAX_SHADOWCASCADES) + "," + std::to_string(MAX_LIGHTS) + "," +
             std::to_string(SPOT_MASK_ATLAS_TILES) + "," + std::to_string(LATTICE_MAX_PER_MESH) + "," +
-            std::to_string(LATTICE_TEXTURE_WIDTH) + "," + std::to_string(LATTICE_RECORD_HEADER));
+            std::to_string(LATTICE_TEXTURE_WIDTH) + "," + std::to_string(LATTICE_RECORD_HEADER) + "," +
+            std::to_string(MAX_POINT_SHADOW_LIGHTS) + "," + std::to_string(SHADOW_CUBE_FACES) + "," +
+            std::to_string(vat::VAT_MAX_CLIPS));
 
         const auto& sources = getLibrarySources();
         std::vector<std::string> names;
@@ -845,6 +946,31 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
         appendSignaturePart(signatureInput, "define", define);
     }
 
+    // the built-in Lit with the defines its property bits have no room for (MaterialPbr)
+    if (ShaderReference::isBuiltin(base)){
+        if (base != ShaderReference::BUILTIN_LIT || shaderType != ShaderType::MESH){
+            result.error = "Unknown built-in shader: " + customShader;
+            return result;
+        }
+        for (const std::string& define : result.defines){
+            if (!MaterialPbr::isBuiltinLitDefine(define)){
+                result.error = "The built-in Lit has no define '" + define + "' (" + customShader + ")";
+                return result;
+            }
+        }
+        result.library = true;
+        result.vertFile = "mesh.vert";
+        result.fragFile = "mesh.frag";
+        if (!getLibrarySources().count(result.vertFile) || !getLibrarySources().count(result.fragFile)){
+            result.error = "This build has no engine shader library to compile " + base + " from";
+            return result;
+        }
+        appendSignaturePart(signatureInput, "library-hash", std::to_string(getLibraryHash()));
+        result.signature = signatureInput;
+        result.valid = true;
+        return result;
+    }
+
     if (ShaderReference::isLibrary(base)){
         result.library = true;
         result.manifest = true;
@@ -960,68 +1086,62 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     return result;
 }
 
-bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
-                                    ShaderData& out, std::string* error, std::string* log,
-                                    const ProgressFn& progress, const std::function<bool()>& cancelled){
-    auto fail = [&](const std::string& message) {
-        if (error)
-            *error = message;
-        return false;
-    };
-    auto report = [&](float value) {
-        if (progress)
-            progress(value);
-    };
-    auto stopped = [&]() {
-        return cancelled && cancelled();
-    };
-
 #ifdef JASPERENGINE_RUNTIME_SHADERS
-    if (!isAvailable())
-        return fail("This build has no shader library to compile from");
+namespace {
 
-    retainCompilerProcess();
-
+// The compiler arguments of one variant for a backend: entry points, sources and #defines
+// (compile and preprocess). False with an error when the key or its sources are unusable.
+bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
+                        shadercompiler::args_t& args, std::string& error){
     const ShaderType shaderType = ShaderPool::getShaderTypeFromKey(key);
     const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
     const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
 
-    shadercompiler::args_t args = shadercompiler::initialize_args();
+    args = shadercompiler::initialize_args();
     args.useBuffers = true;
-    args.fileBuffers = getLibrarySources();
+    args.fileBuffers = ShaderVariantCompiler::getLibrarySources();
     applyShaderBackend(args, backend);
-
-    std::string compileLog;
-    args.error_output = &compileLog;
 
     // Built-in entry-point files + property #defines (the variant system is identical
     // for forked shaders)
-    if (!setupShaderArgs(args, shaderType, properties))
-        return fail("Unknown shader type");
+    if (!setupShaderArgs(args, shaderType, properties)){
+        error = "Unknown shader type";
+        return false;
+    }
 
     if (args.lang == shadercompiler::LANG_GLSL &&
             (shaderType == ShaderType::MESH || shaderType == ShaderType::DEPTH ||
              shaderType == ShaderType::GBUFFER))
         args.defines.push_back({"SKINNING_TEXTURE", "1"});
 
-    if (shaderType == ShaderType::UI_EFFECT && customId == 0)
-        return fail("A UI effect shader needs its effect (the custom shader id)");
+    if (shaderType == ShaderType::UI_EFFECT && customId == 0){
+        error = "A UI effect shader needs its effect (the custom shader id)";
+        return false;
+    }
 
     if (ShaderPool::isLibraryCustomShader(customId)) {
         // an effect of the engine library ("@effects/<name>"): its sources are built in
         const std::string custom = ShaderPool::getCustomShaderName(customId);
         const std::string prefix = "@effects/";
-        if (shaderType != ShaderType::UI_EFFECT || custom.rfind(prefix, 0) != 0)
-            return fail("Unknown library shader: " + custom);
+        if (shaderType != ShaderType::UI_EFFECT || custom.rfind(prefix, 0) != 0){
+            error = "Unknown library shader: " + custom;
+            return false;
+        }
         const std::string fragFile = "effects/" + custom.substr(prefix.size()) + ".frag";
-        if (!args.fileBuffers.count(fragFile))
-            return fail("Unknown UI effect: " + custom.substr(prefix.size()));
+        if (!args.fileBuffers.count(fragFile)){
+            error = "Unknown UI effect: " + custom.substr(prefix.size());
+            return false;
+        }
         args.frag_file = fragFile;
     } else if (customId != 0) {
-        if (!customSources)
-            return fail("Custom shader requested without its sources");
-        if (!customSources->valid)
-            return fail(customSources->error.empty() ? "Could not resolve custom shader sources" : customSources->error);
+        if (!customSources){
+            error = "Custom shader requested without its sources";
+            return false;
+        }
+        if (!customSources->valid){
+            error = customSources->error.empty() ? "Could not resolve custom shader sources" : customSources->error;
+            return false;
+        }
 
         // Overlay the fork's entry points and every project include they reach onto the
         // engine library. Resolution order is the entry point's own directory, the
@@ -1053,6 +1173,110 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
         if (source != args.fileBuffers.end())
             addUiEffectStateDefinitions(source->second, args);
     }
+    return true;
+}
+
+} // namespace
+#endif // JASPERENGINE_RUNTIME_SHADERS
+
+bool ShaderVariantCompiler::preprocess(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
+                                       std::string& vertexSource, std::string& fragmentSource, std::string* error){
+    vertexSource.clear();
+    fragmentSource.clear();
+    auto fail = [&](const std::string& message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+
+#ifdef JASPERENGINE_RUNTIME_SHADERS
+    if (!isAvailable())
+        return fail("This build has no shader library to preprocess");
+
+    retainCompilerProcess();
+
+    shadercompiler::args_t args;
+    std::string setupError;
+    if (!prepareVariantArgs(key, backend, customSources, args, setupError))
+        return fail(setupError);
+    std::string log;
+    args.error_output = &log;
+
+    std::vector<shadercompiler::input_t> inputs;
+    if (!shadercompiler::load_input(inputs, args))
+        return fail("Error loading shader input");
+
+    std::vector<std::string> outputs;
+    if (!shadercompiler::preprocess(outputs, inputs, args))
+        return fail("Error preprocessing: " + log);
+
+    for (size_t i = 0; i < inputs.size(); i++)
+        (inputs[i].stage_type == shadercompiler::STAGE_VERTEX ? vertexSource : fragmentSource) = outputs[i];
+    return true;
+#else
+    (void)key; (void)backend; (void)customSources;
+    return fail("This build has no runtime shader compiler (JASPERENGINE_RUNTIME_SHADERS is off)");
+#endif
+}
+
+std::string ShaderVariantCompiler::normalizePreprocessed(const std::string& source){
+    std::string normalized;
+    normalized.reserve(source.size());
+    size_t start = 0;
+    while (start < source.size()){
+        size_t end = source.find('\n', start);
+        if (end == std::string::npos)
+            end = source.size();
+        size_t first = start;
+        while (first < end && (source[first] == ' ' || source[first] == '\t' || source[first] == '\r'))
+            first++;
+        size_t last = end;
+        while (last > first && (source[last - 1] == ' ' || source[last - 1] == '\t' || source[last - 1] == '\r'))
+            last--;
+        // a #line directive only numbers what follows: an added comment or a guarded-out
+        // block moves it without changing the program
+        if (last > first && source.compare(first, 5, "#line") != 0){
+            normalized.append(source, first, last - first);
+            normalized += '\n';
+        }
+        start = end + 1;
+    }
+    return normalized;
+}
+
+bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
+                                    ShaderData& out, std::string* error, std::string* log,
+                                    const ProgressFn& progress, const std::function<bool()>& cancelled){
+    auto fail = [&](const std::string& message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+    auto report = [&](float value) {
+        if (progress)
+            progress(value);
+    };
+    auto stopped = [&]() {
+        return cancelled && cancelled();
+    };
+
+#ifdef JASPERENGINE_RUNTIME_SHADERS
+    if (!isAvailable())
+        return fail("This build has no shader library to compile from");
+
+    retainCompilerProcess();
+
+    const ShaderType shaderType = ShaderPool::getShaderTypeFromKey(key);
+    const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
+    const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
+
+    shadercompiler::args_t args;
+    std::string setupError;
+    if (!prepareVariantArgs(key, backend, customSources, args, setupError))
+        return fail(setupError);
+
+    std::string compileLog;
+    args.error_output = &compileLog;
 
     if (stopped())
         return fail("Cancelled");
@@ -1101,6 +1325,16 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
                            getLangSuffix(args.lang, args.version, args.es, args.platform);
     out = convertToShaderData(spirvcrossvec, args);
 
+    // a globals block (ShaderGlobals) takes at most 64 vec4 slots of a stage's uniform space
+    // (GLES3 guarantees 256 vertex uniform vectors in all): a larger one fails like any error
+    const std::string globalsProblem = checkGlobalsBlocks(out);
+    if (!globalsProblem.empty()) {
+        compileLog += globalsProblem + "\n";
+        if (log)
+            *log = compileLog;
+        return fail(globalsProblem);
+    }
+
     if (log)
         *log = compileLog;
     report(1.0f);
@@ -1110,6 +1344,19 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
     (void)report; (void)stopped;
     return fail("This build has no runtime shader compiler (JASPERENGINE_RUNTIME_SHADERS is off)");
 #endif
+}
+
+std::string ShaderVariantCompiler::checkGlobalsBlocks(const ShaderData& data) {
+    for (const ShaderStage& stage : data.stages) {
+        for (const ShaderUniformBlock& block : stage.uniformblocks) {
+            if ((block.name == ShaderGlobals::VERTEX_BLOCK || block.name == ShaderGlobals::FRAGMENT_BLOCK) &&
+                    block.sizeBytes > ShaderGlobals::MAX_BLOCK_BYTES) {
+                return "globals-block-too-large: " + block.name + " is " + std::to_string(block.sizeBytes) + " bytes, over the " +
+                       std::to_string(ShaderGlobals::MAX_BLOCK_BYTES) + " (64 vec4) a globals block may take: declare only the globals the stage reads";
+            }
+        }
+    }
+    return "";
 }
 
 std::string ShaderVariantCompiler::checkResourceBudget(const ShaderData& data) {

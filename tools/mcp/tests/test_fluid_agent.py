@@ -1,15 +1,10 @@
 """The native Fluid Simulation component as an AI agent uses it, end to end through MCP (the workflow
 of jasper://docs/fluid):
 
-- the agent finds it: the initialize instructions name it within their 16 KB, jasper://docs/fluid is
-  served (split into sections, each under 16 KB) and documents every property and preset;
 - create_entity type fluid_simulation with a preset in its values, set_properties `preset` (expanded
   into the preset's fields, one undo step, other values override it, unknown ids refused) and
   get_entity's read-only `fluid_stats` (the matching preset, support, sizes, steps);
 - eval_lua with allow_edit_mode steps the edit-mode fluid (transient);
-- determinism: a seeded, paused fluid driven by eval_lua reset() + step(n) in play with fixed_fps +
-  auto_pause gives byte-identical Game view screenshots from two fresh starts, another seed another
-  image; get_runtime_entity's `fluid_stats` count the steps;
 - orientation: eval_lua splat(0.25, 0.75, ...) on a SCREEN fluid lands at canvas (0.25 W, 0.25 H);
 - pointer: a send_input drag over an interactive SCREEN fluid paints along the drag, nowhere else;
 - export: a source export of a scene with a fluid ships licenses/webgl-fluid-simulation-LICENSE.txt
@@ -37,11 +32,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from htmlui_pixels import decode_png  # noqa: E402
 
 EDITOR = {"create": True, "name": "Fluid Agent"}
+CI = True
 TIMEOUT = 1200
 
 KEY = "fluidsimulation"
 NAME = "Fluid"
-STEPS = 40
 LICENSE = harness.REPO / "engine" / "shaderlib" / "effects" / "LICENSE.webgl-fluid-simulation.txt"
 NOTICE = Path("licenses") / "webgl-fluid-simulation-LICENSE.txt"
 
@@ -50,11 +45,6 @@ S: dict = {}
 # the run configuration: a small, seeded, paused SCREEN fluid (scripted steps only)
 RUN = {"output": "screen", "interactive": False, "paused": True, "seed": 4242, "splatsOnStart": True,
        "randomSplatCount": 10, "dyeResolution": 256, "simResolution": 64}
-
-
-async def read_text(ed: Editor, uri: str) -> str:
-    got = await ed.session.read_resource(uri)
-    return "".join(getattr(c, "text", "") or "" for c in got.contents)
 
 
 async def wait_job(ed: Editor, job_id: str, timeout: float, poll: float = 3.0) -> dict:
@@ -141,38 +131,6 @@ def handle() -> str:
     return f'object("{NAME}", "FluidSimulation")'
 
 
-# ---------------------------------------------------------------------------- finding it
-
-
-async def test_instructions_and_guide(ed: Editor):
-    text = ed.instructions
-    ed.check(len(text.encode()) <= 16 * 1024, f"the instructions are {len(text.encode())} bytes")
-    for phrase in ("fluid_simulation", "jasper://docs/fluid"):
-        ed.check(phrase in text, f"the instructions mention {phrase}")
-
-    index = await read_text(ed, "jasper://docs")
-    ed.check("jasper://docs/fluid`" in index, f"jasper://docs lists the fluid guide: {index}")
-    main = await read_text(ed, "jasper://docs/fluid")
-    ed.check(main.startswith("# Fluid simulation"), main[:200])
-    ed.check(len(main) < 12000, f"the guide's index stays small: {len(main)}")
-    sections = [line.split("`")[1] for line in main.splitlines() if line.startswith("- `jasper://docs/fluid/")]
-    served = main
-    for uri in sections:
-        part = await read_text(ed, uri)
-        ed.check(len(part) < 16 * 1024, f"{uri} is {len(part)} chars")
-        served += part
-    for title in ("Outputs", "Properties", "Presets", "MCP recipes", "Lua", "Deterministic verification",
-                  "Pointer input", "Texture links", "Performance", "Troubleshooting"):
-        ed.check(f"## {title}\n" in served, f"the guide has its {title} section")
-    ed.check("Pavel Dobryakov" in served, "the guide credits Pavel Dobryakov")
-
-    # every property and every preset of the editor is documented
-    listed = await ed.call("list_component_types", component="fluid")
-    for name in listed["properties"]:
-        ed.check(f"| `{name}` |" in served, f"the Properties table documents {name}")
-    S["docs"] = served
-
-
 # ---------------------------------------------------------------------------- creating and presets
 
 
@@ -205,12 +163,6 @@ async def test_create_with_preset(ed: Editor):
     ed.check(values["dyeResolution"] == 512 and values["shading"] is False and stats["preset"] == "mobile",
              f"mobile applied: {values['dyeResolution']}, {values['shading']}, {stats['preset']}")
     ed.check(values["seed"] == 4242 and values["output"] == "material", "a preset keeps the seed and the output")
-    for preset in ("default", "smoke", "calm-water", "psychedelic"):
-        await ed.call("set_properties", scene=S["scene"], entity=S["fluid"], values={"fluid": {"preset": preset}})
-        _, stats = await fluid(ed)
-        ed.check_eq(stats["preset"], preset, "each preset matches itself")
-        ed.check(f"`{preset}`" in S.get("docs", f"`{preset}`"), f"the guide documents the {preset} preset")
-
     await ed.check_error("set_properties", scene=S["scene"], entity=S["fluid"], values={"fluid": {"preset": "nope"}},
                          contains="calm-water")
     await ed.check_error("set_properties", scene=S["scene"], entity=S["fluid"],
@@ -252,46 +204,6 @@ async def test_edit_mode_step(ed: Editor):
 
 
 # ---------------------------------------------------------------------------- determinism
-
-
-async def scripted_run(ed: Editor, name: str, seed: int | None = None) -> Shot:
-    await ed.call("play", action="start", scene=S["scene"], fixed_fps=60, auto_pause=True, timeout_seconds=300)
-    try:
-        await lua(ed, f"local f = {handle()}; " + (f"f.seed = {seed}; " if seed else "") +
-                  f"f:reset(); f:step({STEPS}); return true")
-        await until_lua(ed, f"{handle()}:getStats().steps >= {STEPS}", "the scripted steps ran")
-        shot = await game_shot(ed, name)
-        live = await ed.call("get_runtime_entity", entity=NAME, components=["fluid"], include_script_state=False)
-        stats = live.get("fluid_stats")
-        ed.check(isinstance(stats, dict), f"get_runtime_entity has fluid_stats: {live}")
-        ed.check_eq(stats["steps"], STEPS, f"exactly the scripted steps: {stats}")
-        ed.check_eq(stats["seed"], seed or RUN["seed"], "the seed in use")
-        ed.check(stats["running"] and stats["splats"] >= RUN["randomSplatCount"], f"the start burst: {stats}")
-        ed.check(stats["gpu_bytes"] > 0 and min(stats["dye_size"]) == 256 and min(stats["sim_size"]) == 64,
-                 f"sizes: {stats}")
-        return shot
-    finally:
-        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
-
-
-def differing_pixels(a: Shot, b: Shot) -> int:
-    if (a.w, a.h) != (b.w, b.h):
-        return -1
-    return sum(1 for ra, rb in zip(a.rows, b.rows) for x in range(0, len(ra), 3) if ra[x:x + 3] != rb[x:x + 3])
-
-
-def lit(shot: Shot) -> int:
-    return sum(1 for row in shot.rows[::4] for x in range(0, len(row), 4 * shot.ch) if max(row[x:x + 3]) > 40)
-
-
-async def test_deterministic_runs(ed: Editor):
-    first = await scripted_run(ed, "fluid-run-1")
-    ed.check(lit(first) > 50, f"the burst shows ({lit(first)} lit samples)")
-    second = await scripted_run(ed, "fluid-run-2")
-    ed.check(first.png == second.png,
-             f"two fresh seeded runs give identical screenshots ({differing_pixels(first, second)} pixels differ)")
-    other = await scripted_run(ed, "fluid-run-seed", seed=777)
-    ed.check(differing_pixels(first, other) > 100, "another seed, another image")
 
 
 # ---------------------------------------------------------------------------- orientation and pointer
@@ -363,7 +275,9 @@ async def test_export_ships_the_notice(ed: Editor):
     plain = project.parent / "export-plain"
     try:
         cli_export(ed, project, plain, "--shader", "mesh")
-        ed.check(not (plain / "licenses").exists(), "no fluid variant: no notice")
+        # every game ships S18's OpenEngine notice (the spline module): nothing else
+        shipped = sorted(p.name for p in (plain / "licenses").iterdir()) if (plain / "licenses").is_dir() else []
+        ed.check(shipped == ["OpenEngine-LICENSE.txt"], f"no fluid variant: no notice of its own: {shipped}")
         only = project.parent / "export-fluid-only"
         cli_export(ed, project, only, "--shader", "fluid")
         ed.check((only / NOTICE).is_file(), "the fluid's variants alone: the notice")

@@ -68,9 +68,64 @@ namespace jasperengine::editor::mcp {
         static bool hasComponent(SceneProject* scene, Entity entity, ComponentType type);
 
         // Project-relative path → absolute, sandboxed to the project (no '..' escaping it,
-        // no absolute paths). mustExist adds an existence check.
+        // no absolute paths). mustExist adds an existence check. Lexical only: reads follow
+        // symbolic links (an assets folder deliberately linked in from a shared library reads
+        // fine); every tool that writes, creates, deletes, moves or renames uses
+        // resolveProjectWritePath instead.
         static bool resolveProjectPath(Project* project, const std::string& relative,
                                        std::filesystem::path& absolute, std::string& error, bool mustExist = false);
+
+        // What a write acts on: the final name followed too when it is a link (a dangling one
+        // included: a plain write would create its target), or (Entry) only the folders on the
+        // way, the entry itself acted on (a delete or a move's source: a link there is removed or
+        // moved, never followed)
+        enum class WriteUse { Write, Entry };
+        // resolveProjectPath for a path a tool writes, creates, deletes, moves or renames: also
+        // refused when, once symbolic links (and Windows junctions) are resolved
+        // (util/SafeWrite.h, resolvedPath), it lies outside the project directory (itself
+        // resolved: a project opened through a link works) or a link on the way loops. `absolute`
+        // is the path as named (under the project's spelling). The error names the path, where
+        // the link leads and how to fix it.
+        static bool resolveProjectWritePath(Project* project, const std::string& relative, std::filesystem::path& absolute,
+                                            std::string& error, bool mustExist = false, WriteUse use = WriteUse::Write);
+        // The same check for an absolute path a tool computed itself (a default output beside its
+        // source, a generated file): "" when it stays inside the project, else the error
+        static std::string writeEscape(Project* project, const std::filesystem::path& absolute, WriteUse use = WriteUse::Write);
+        // The project's trusted roots: its directory, its configured assets directory and its
+        // configured Lua scripts directory (as loaded from project.yaml; each resolved once). Containment = the link-resolved target
+        // lies inside one of them resolved; links below them are what is checked.
+        static std::vector<std::filesystem::path> trustedRoots(Project* project);
+        // The trusted root a beneath-root write of `absolute` goes under (the one holding it once
+        // resolved; the project directory when none does: the write then refuses the escape)
+        static std::filesystem::path rootFor(Project* project, const std::filesystem::path& absolute, WriteUse use = WriteUse::Write);
+        // writeEscape against the project directory alone: for a path that becomes a trusted root
+        // (an asset root setting), so an agent can't make a folder outside the project trusted
+        static std::string projectOnlyEscape(Project* project, const std::filesystem::path& absolute);
+        // An asset or Lua root value (assetsDir / luaDir in project.yaml, editor.assets_dir /
+        // scripting.lua_dir): "" when it is a plain project-relative folder, else why it isn't
+        // (absolute, a drive, a ".." step, a hidden or editor-owned folder, a file the editor owns)
+        static std::string rootValueRefusal(const std::string& text);
+        // writeEscape of every editor-owned folder a build, Play or a script compile writes or
+        // sweeps (the internal folder, its build tree and hot-reload staging, the engine API
+        // snapshot and Lua stubs, the generated sources, the logs, the external build, the
+        // imported models, the thumbnails, the terrain maps, .vscode): their writers are CMake,
+        // the compilers and editor code running later, so they are checked up front. "" or the refusal.
+        static std::string internalFoldersEscape(Project* project);
+        // A move, rename or delete of `absolute` (or a move to it, `destination`) that would touch
+        // a trusted root: the assets or Lua folder itself or a folder holding one (moving it away
+        // and a link in its place must not re-point a root). "" or the refusal.
+        static std::string trustedRootTouched(Project* project, const std::filesystem::path& absolute, bool destination);
+        // A place no tool writes, moves, copies or creates something at: under a hidden folder
+        // (.jasperengine, .git, .trash ...), a file named project.yaml (any folder), the project's
+        // CMakeLists.txt. Checked on the path as named and on where it resolves (a link inside the
+        // project to its .jasperengine or its root is no way in); names compared as the file system
+        // may (letter case, Windows aliases: safewrite::comparableName). "" or the refusal.
+        static std::string protectedPlace(Project* project, const std::filesystem::path& absolute, WriteUse use = WriteUse::Write);
+        // The first symbolic link (or junction) inside the folder `dir` (any depth, links not
+        // followed, so loops are harmless) that leads out of the trusted roots: its writeEscape;
+        // also a refusal when the folder holds more than `maxEntries` entries (too many to check).
+        // "" none.
+        static std::string linkOutInside(Project* project, const std::filesystem::path& dir, size_t maxEntries = 200000);
     };
 
 }

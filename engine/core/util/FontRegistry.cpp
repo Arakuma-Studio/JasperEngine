@@ -236,7 +236,7 @@ std::shared_ptr<FontFace> FontRegistry::getOrLoadFile(const std::string& path, i
     return face;
 }
 
-int FontRegistry::reloadFile(const std::string& path, std::string* error){
+int FontRegistry::reloadFile(const std::string& path, std::string* error, std::vector<std::shared_ptr<FontFace>>* replacedFaces){
     Registry& reg = registry();
     std::lock_guard<std::recursive_mutex> lock(reg.mutex);
 
@@ -260,6 +260,8 @@ int FontRegistry::reloadFile(const std::string& path, std::string* error){
         }
         std::replace(reg.fallbacks.begin(), reg.fallbacks.end(), oldFace, newFace);
         file.second = newFace;
+        if (replacedFaces)
+            replacedFaces->push_back(oldFace);
         replaced++;
     }
     return replaced;

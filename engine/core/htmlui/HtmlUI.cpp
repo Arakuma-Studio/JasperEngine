@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "htmlui/HtmlTextEffects.h"
+#include "htmlui/UIParticleSystemElement.h"
 #include "HtmlUI.h"
 
 #include "HtmlUIContext.h"
@@ -8,15 +10,19 @@
 #include "RmlFontEngine.h"
 #include "RmlSystem.h"
 #include "vector/UILottieElement.h"
+#if JASPERENGINE_VIDEO
 #include "media/UIVideoElement.h"
+#endif
+#include "controls/OnScreenControls.h"
 #include "compat/runtime/RuntimeRegistry.h"
+#include "widgets/WidgetsRuntime.h"
 #include "effects/EffectRegistry.h"
 #include "effects/EffectSimulator.h"
 
 #include "Engine.h"
 #include "Log.h"
-#include "LunaSVGRuntime.h"
-#include "ThorVGRuntime.h"
+#include "util/LunaSVGRuntime.h"
+#include "util/ThorVGRuntime.h"
 
 #include <RmlUi/Core.h>
 #ifdef JASPERENGINE_HTMLUI_DEBUGGER
@@ -93,9 +99,18 @@ bool HtmlUI::acquire(){
     LunaSVGRuntime::ensureFonts();
     ThorVGRuntime::acquire();
     UILottieElement::registerInstancer();
+#if JASPERENGINE_VIDEO
     UIVideoElement::registerInstancer();
+#endif
+    UIParticleSystemElement::registerInstancer();
+    // text-effect (per-character animation): the fork's text effect provider
+    htmlui::HtmlTextEffects::install();
+    // the on-screen controls (ui-multitouch): <onscreen-stick>, <onscreen-button>, <touch-area>
+    UIOnScreenControl::registerInstancers();
     // the compat layer's runtime emulations (phase-2 hook H1), before any document loads
     htmlui::compat::registerRuntime();
+    // the S17 widgets: virtual views, markdown, tooltips, drag and drop
+    htmlui::WidgetsRuntime::registerAll();
     // the UI effects (phase 5): their typed instancers, property parsers and runtime plugin
     htmlui::EffectRegistry::get().initialise();
 
@@ -128,12 +143,18 @@ void HtmlUI::release(){
     debuggerContext = nullptr;
     debuggerVisible = false;
 
+    htmlui::HtmlTextEffects::uninstall();
     Rml::Shutdown();
 
     // after Rml::Shutdown: the documents (and their ThorVG animations) are gone
     UILottieElement::releaseInstancer();
+#if JASPERENGINE_VIDEO
     UIVideoElement::releaseInstancer();
+#endif
+    UIParticleSystemElement::releaseInstancer();
+    UIOnScreenControl::releaseInstancers();
     htmlui::compat::releaseRuntime();
+    htmlui::WidgetsRuntime::releaseAll();
     htmlui::EffectRegistry::get().shutdown();
     ThorVGRuntime::release();
 
@@ -180,6 +201,10 @@ RmlFile& HtmlUI::getFileInterface(){
 RmlFontEngine& HtmlUI::getFontEngine(){
     static RmlFontEngine fontEngine;
     return fontEngine;
+}
+
+const std::vector<HtmlUIContext*>& HtmlUI::getContexts(){
+    return registeredContexts();
 }
 
 void HtmlUI::registerContext(HtmlUIContext* context){

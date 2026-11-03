@@ -1,2 +1,0 @@
-compat/html/misnested.html:2:23: info: HTML parse error: unexpected element in open elements stack; recovered as browsers do [HTMLUI-HTML-0001]
-compat/html/misnested.html:3:33: info: HTML parse error: characters in table text; recovered as browsers do [HTMLUI-HTML-0001]

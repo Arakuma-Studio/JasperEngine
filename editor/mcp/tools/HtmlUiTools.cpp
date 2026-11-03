@@ -28,6 +28,8 @@
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIAssertions.h"
 #include "htmlui/HtmlUIInspector.h"
+#include "object/ui/UIDocument.h"
+#include "object/ui/UIItemsView.h"
 #include "script/LuaBinding.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "util/Base64.h"
@@ -38,6 +40,7 @@
 
 #include "stb_image.h"
 #include "stb_image_write.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -114,7 +117,7 @@ std::string viewportText(double width, double height) {
 // An asset-relative engine path shown project-relative ("ui/menu.css" -> "assets/ui/menu.css")
 std::string assetToProject(Project* project, const std::string& assetPath) {
     if (assetPath.empty()) return assetPath;
-    return w4::projectRelative(project, (project->getAssetsPath() / fs::u8path(assetPath)).lexically_normal());
+    return w4::projectRelative(project, (project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath)).lexically_normal());
 }
 
 bool isRunning(ScenePlayState state) {
@@ -711,7 +714,7 @@ Json elementJson(const hui::InspectElement& e, const std::vector<hui::InspectSty
     // a <video>'s state and its controls' rectangles (phase 6)
     if (e.media) {
         const hui::InspectMedia& m = *e.media;
-        Json media = {{"currentSrc", m.currentSrc}, {"currentTime", m.currentTime}, {"paused", m.paused}, {"ended", m.ended},
+        Json media = {{"currentSrc", m.currentSrc}, {"backend", m.backend}, {"currentTime", m.currentTime}, {"paused", m.paused}, {"ended", m.ended},
                       {"seeking", m.seeking}, {"loop", m.loop}, {"muted", m.muted}, {"volume", m.volume}, {"playbackRate", m.playbackRate},
                       {"readyState", m.readyState}, {"networkState", m.networkState}, {"videoWidth", m.videoWidth},
                       {"videoHeight", m.videoHeight}, {"frame", m.frame}, {"droppedFrames", m.droppedFrames},
@@ -725,11 +728,46 @@ Json elementJson(const hui::InspectElement& e, const std::vector<hui::InspectSty
         }
         out["media"] = media;
     }
+    // S17: a virtual view's window (0-based indices)
+    if (e.widget) {
+        const hui::InspectWidget& w = *e.widget;
+        out["widget"] = {{"kind", w.kind}, {"count", w.count}, {"first", w.first}, {"last", w.last}, {"pool", w.pool},
+                         {"pool_bound", w.poolBound}, {"overscan", w.overscan}, {"lanes", w.lanes}, {"selection", w.selection},
+                         {"selected", w.selected}, {"selected_keys", w.selectedKeys}, {"active", w.active},
+                         {"scrollTop", round1(w.scrollTop)}, {"totalHeight", round1(w.totalHeight)}, {"source", w.source},
+                         {"layout_boundary", w.layoutBoundary}, {"row_aliases", w.rowAliases}};
+        if (!w.sortKey.empty()) out["widget"]["sort"] = {{"key", w.sortKey}, {"direction", w.sortDirection}};
+    }
     if (styles && !styles->empty()) {
         Json map = Json::object();
         for (const hui::InspectStyle& s : *styles) map[s.property] = s.value;
         out["styles"] = map;
     }
+    return out;
+}
+
+// S17: the document's tooltip, the drag in progress and the last reload
+Json tooltipJson(const hui::InspectTooltip& t) {
+    Json out = {{"visible", t.visible}};
+    if (t.visible)
+        out.update({{"source", t.source}, {"text", t.text}, {"rect", boxInt(t.rect)}, {"side", t.side}});
+    return out;
+}
+
+Json dragJson(const hui::InspectDrag& d) {
+    Json out = {{"active", d.active}};
+    if (d.active)
+        out.update({{"source", d.source}, {"target", d.target}, {"types", d.types}, {"allowed", d.allowed}, {"effect", d.effect},
+                    {"programmatic", d.programmatic}});
+    return out;
+}
+
+Json reloadJson(const hui::InspectReload& r) {
+    if (r.mode.empty()) return nullptr;
+    Json out = {{"mode", r.mode}, {"kept", r.kept}, {"updated", r.updated}, {"inserted", r.inserted}, {"removed", r.removed},
+                {"replaced", r.replaced}, {"runtimeKept", r.runtimeKept}, {"scriptsRerun", r.scriptsRerun},
+                {"ms", std::round(r.ms * 100.0) / 100.0}, {"causes", r.causes}};
+    out["fallbackReason"] = r.fallbackReason.empty() ? Json(nullptr) : Json(r.fallbackReason);
     return out;
 }
 
@@ -748,6 +786,11 @@ std::string elementLine(const hui::InspectElement& e, const std::vector<hui::Ins
     }
     // phase 6: a paused simulation is marked "~"
     for (const hui::InspectEffect& effect : e.effects) line += " fx:" + effect.name + (effect.stateful && effect.paused ? "~" : "");
+    // S17: "list[0..12 of 10000, pool 22]"
+    if (e.widget) {
+        line += " " + e.widget->kind + "[" + std::to_string(e.widget->first) + ".." + std::to_string(e.widget->last) + " of " +
+                std::to_string(e.widget->count) + ", pool " + std::to_string(e.widget->pool) + "]";
+    }
     if (e.media) {
         char buffer[96];
         std::snprintf(buffer, sizeof(buffer), " media:%s %.3fs/%s ready%d", e.media->paused ? "paused" : "playing", e.media->currentTime,
@@ -790,7 +833,17 @@ Json detailJson(Project* project, const hui::InspectDetail& d, std::string& text
     }
     Json attributes = Json::object();
     for (const auto& [name, value] : d.attributes) attributes[name] = value;
-    return {
+    // S16: primitive or mesh, and the raster of its own text
+    text += "\n  paint: " + d.paint.path + (d.paint.reason.empty() ? std::string() : " (" + d.paint.reason + ")");
+    Json paint = {{"path", d.paint.path}};
+    if (!d.paint.reason.empty()) paint["reason"] = d.paint.reason;
+    Json raster = nullptr;
+    if (d.raster.hasText) {
+        raster = {{"mode", d.raster.mode}, {"scale", std::round(d.raster.scale * 100.0) / 100.0}};
+        text += "\n  raster: " + d.raster.mode + (d.raster.mode == "bitmap" && d.raster.scale > 0.0f ? " x" + number(d.raster.scale, 2) : std::string()) +
+                (d.raster.mode == "stretched" ? " (settling)" : "");
+    }
+    Json out = {
         {"ref", d.element.ref},
         {"box", {{"content", box1(b.content)}, {"padding", box1(b.padding)}, {"border", box1(b.border)}, {"margin", box1(b.margin)},
                  {"padding_edges", edges1(b.paddingEdges)}, {"border_edges", edges1(b.borderEdges)},
@@ -799,8 +852,11 @@ Json detailJson(Project* project, const hui::InspectDetail& d, std::string& text
                              {"client_width", round1(b.clientWidth)}, {"client_height", round1(b.clientHeight)},
                              {"left", round1(b.scrollLeft)}, {"top", round1(b.scrollTop)}}}}},
         {"attributes", attributes},
-        {"styles", styles}
+        {"styles", styles},
+        {"paint", paint}
     };
+    if (!raster.is_null()) out["raster"] = raster;
+    return out;
 }
 
 std::vector<std::string> stringList(const Json& value) {
@@ -827,7 +883,7 @@ void inspectFile(const CallPtr& call) {
     file = file.lexically_normal();
     const std::string rel = w4::projectRelative(project, file);
     std::error_code ec;
-    if (!ProjectChecks::isUiFile(file.generic_u8string()) || !fs::is_regular_file(file, ec)) {
+    if (!ProjectChecks::isUiFile(FileUtils::pathToGenericUtf8(file)) || !fs::is_regular_file(file, ec)) {
         call->fail(rel + " is not a .html, .htm or .css file.");
         return;
     }
@@ -844,7 +900,7 @@ void inspectFile(const CallPtr& call) {
 
     // the live documents reading it
     const fs::path assetRel = file.lexically_relative(project->getAssetsPath().lexically_normal());
-    const std::string assetPath = assetRel.generic_u8string();
+    const std::string assetPath = FileUtils::pathToGenericUtf8(assetRel);
     Json using_ = Json::array();
     std::string usingText;
     std::vector<SceneProject*> scenes = documentScenes(project);
@@ -874,7 +930,7 @@ void inspectUiTool(const CallPtr& call) {
     const Json& args = call->args();
     if (has(args, "file")) {
         std::vector<std::string> conflicts;
-        for (const char* key : {"selector", "at", "detail", "styles", "models", "viewport", "screenshot", "entity"}) {
+        for (const char* key : {"selector", "at", "detail", "styles", "models", "reload", "viewport", "screenshot", "entity", "render_stats"}) {
             if (has(args, key)) conflicts.push_back(key);
         }
         if (!conflicts.empty()) {
@@ -1034,6 +1090,21 @@ void inspectUiTool(const CallPtr& call) {
             text += detailText;
         }
 
+        if (args.value("render_stats", false)) {
+            std::vector<std::pair<std::string, uint32_t>> fields;
+            std::string statsError;
+            if (hui::HtmlUIInspector::renderStats(sp->scene, target.entity, fields, statsError)) {
+                Json stats = Json::object();
+                for (const auto& [name, value] : fields) stats[name] = value;
+                data["render_stats"] = stats;
+                text += "\nRender (last frame): " + std::to_string(stats.value("drawCalls", 0u)) + " draws (" +
+                        std::to_string(stats.value("runsMerged", 0u)) + " merged, " + std::to_string(stats.value("instancesDrawn", 0u)) +
+                        " instances), " + std::to_string(stats.value("stencilDraws", 0u)) + " stencil draws, " +
+                        std::to_string(stats.value("layersPushed", 0u)) + " layers, glyph atlas " +
+                        number((double)stats.value("atlasBytes", 0u) / (1024.0 * 1024.0)) + " MiB.";
+            }
+        }
+
         if (args.value("models", false)) {
             Json models = Json::object();
             lua_State* L = LuaBinding::getLuaState();
@@ -1050,6 +1121,25 @@ void inspectUiTool(const CallPtr& call) {
                 text += "\nData models: " + (models.empty() ? std::string("none (createDataModel makes one)") : models.dump());
             }
             data["models"] = models;
+        }
+
+        // S17: the tooltip and the drag, the last reload when asked
+        data["tooltip"] = tooltipJson(view.info.tooltip);
+        data["drag"] = dragJson(view.info.drag);
+        if (view.info.tooltip.visible)
+            text += "\nTooltip of " + view.info.tooltip.source + ": \"" + view.info.tooltip.text + "\"";
+        if (view.info.drag.active) {
+            text += "\nDragging " + view.info.drag.source + (view.info.drag.target.empty() ? std::string() : " over " + view.info.drag.target) +
+                    (view.info.drag.allowed ? " (accepted, " + view.info.drag.effect + ")" : " (not accepted)");
+        }
+        if (args.value("reload", false)) {
+            data["reload"] = reloadJson(view.info.reload);
+            text += view.info.reload.mode.empty() ? std::string("\nNo hot reload yet.")
+                                                  : "\nLast reload: " + view.info.reload.mode + ", " + std::to_string(view.info.reload.updated) +
+                                                        " updated, " + std::to_string(view.info.reload.inserted) + " inserted, " +
+                                                        std::to_string(view.info.reload.removed) + " removed, " +
+                                                        std::to_string(view.info.reload.replaced) + " replaced" +
+                                                        (view.info.reload.fallbackReason.empty() ? std::string() : " (" + view.info.reload.fallbackReason + ")");
         }
 
         ToolResult result = ToolResult::success(text, data);
@@ -1076,7 +1166,8 @@ const KindName ASSERT_KINDS[] = {
     {"exists", hui::AssertKind::Exists}, {"count", hui::AssertKind::Count}, {"visible", hui::AssertKind::Visible},
     {"text_fits", hui::AssertKind::TextFits}, {"no_overlap", hui::AssertKind::NoOverlap},
     {"within_parent", hui::AssertKind::WithinParent}, {"within_viewport", hui::AssertKind::WithinViewport},
-    {"contrast", hui::AssertKind::Contrast}, {"min_size", hui::AssertKind::MinSize}
+    {"contrast", hui::AssertKind::Contrast}, {"min_size", hui::AssertKind::MinSize},
+    {"virtual_window", hui::AssertKind::VirtualWindow}, {"tooltip", hui::AssertKind::Tooltip}, {"selected", hui::AssertKind::Selected}
 };
 
 std::vector<std::string> assertKindNames() {
@@ -1151,6 +1242,20 @@ bool parseCheck(const Json& item, size_t index, hui::AssertSpec& spec, std::stri
         !real("min_ratio", spec.minRatio, 1, 21) || !real("width", spec.minWidth, 0, 10000) ||
         !real("height", spec.minHeight, 0, 10000) || !flag("unobstructed", spec.unobstructed) ||
         !flag("allow_scroll", spec.allowScroll) || !flag("single_line", spec.singleLine)) {
+        return false;
+    }
+    // virtual_window: max is the most rows the view may hold (default its own bound)
+    if (spec.kind == hui::AssertKind::VirtualWindow)
+        spec.maxPool = spec.max;
+    if (has(item, "text")) {
+        if (!item["text"].is_string()) {
+            error = at + ".text must be a string.";
+            return false;
+        }
+        spec.text = item["text"].get<std::string>();
+    }
+    if (spec.kind == hui::AssertKind::Selected && spec.count < 0 && spec.min < 0 && spec.max < 0) {
+        error = at + ": selected needs count, min or max.";
         return false;
     }
     if (spec.kind == hui::AssertKind::Count && spec.count < 0 && spec.min < 0 && spec.max < 0) {
@@ -1383,13 +1488,13 @@ void createUiDocumentTool(const CallPtr& call) {
         return;
     }
     fs::path htmlAbs;
-    if (!McpRefs::resolveProjectPath(project, args["html"].get<std::string>(), htmlAbs, error, false)) {
+    if (!McpRefs::resolveProjectWritePath(project, args["html"].get<std::string>(), htmlAbs, error, false)) {
         call->fail(error);
         return;
     }
     htmlAbs = htmlAbs.lexically_normal();
-    const std::string stem = htmlAbs.stem().u8string();
-    if (!endsWithHtml(htmlAbs.filename().u8string())) {
+    const std::string stem = FileUtils::pathToUtf8(htmlAbs.stem());
+    if (!endsWithHtml(FileUtils::pathToUtf8(htmlAbs.filename()))) {
         call->fail("html must be an .html (or .htm) file, e.g. " + assetsDir + "/ui/" + (stem.empty() ? "menu" : stem) +
                    ".html; its .css is created next to it.");
         return;
@@ -1440,7 +1545,7 @@ void createUiDocumentTool(const CallPtr& call) {
         const bool isLua = !instance.luaPath.empty() && rel == instance.luaPath;
         if (isLua && !wantScript) continue;
         if (!isLua && htmlExists && !overwrite) continue;   // an existing html: nothing from the template but its Lua
-        const fs::path abs = (project->getProjectPath() / fs::u8path(rel)).lexically_normal();
+        const fs::path abs = (project->getProjectPath() / FileUtils::pathFromUtf8(rel)).lexically_normal();
         if (fs::exists(abs, ec) && !overwrite) {
             kept.push_back(rel);
             continue;
@@ -1466,6 +1571,16 @@ void createUiDocumentTool(const CallPtr& call) {
         while (history->position() > mark && history->canUndo() && history->undo()) {}
         while (projectHistory->position() > projectMark && projectHistory->canUndo() && projectHistory->undo()) {}
         sp->needUpdateRender = true;
+        // a refused undo stops the rollback: what stayed is said (the history positions against the marks)
+        const bool sceneLeft = history->position() > mark, projectLeft = projectHistory->position() > projectMark;
+        if (sceneLeft || projectLeft) {
+            std::string left = sceneLeft ? std::to_string(history->position() - mark) + " scene step(s)" : std::string();
+            if (projectLeft) left += std::string(left.empty() ? "" : " and ") + std::to_string(projectHistory->position() - projectMark) + " project step(s)";
+            const std::string refusal = projectLeft ? projectHistory->lastRefusal() : history->lastRefusal();
+            call->fail(why + " The rollback stopped: " + left + " of this call could not be undone" +
+                       (refusal.empty() ? std::string(".") : " (" + refusal + ")") + " Undo them with the undo tool once fixed.");
+            return;
+        }
         call->fail(undone ? "Nothing was created (the call was rolled back): " + why : why);
     };
     auto add = [history](Command* command) {
@@ -1595,7 +1710,7 @@ void createUiDocumentTool(const CallPtr& call) {
 // ------------------------------------------------------------------ resources
 
 std::string mimeOf(const std::string& path) {
-    const std::string ext = lowerCopy(fs::u8path(path).extension().u8string());
+    const std::string ext = lowerCopy(FileUtils::pathToUtf8(FileUtils::pathFromUtf8(path).extension()));
     if (ext == ".html" || ext == ".htm") return "text/html";
     if (ext == ".css") return "text/css";
     if (ext == ".lua") return "text/x-lua";
@@ -1765,6 +1880,87 @@ bool elementCenter(McpContext& ctx, const Json& documentRef, const std::string& 
 
 // ------------------------------------------------------------------ registration
 
+// ------------------------------------------------------------------ edit_ui_view (S17 R41)
+
+// edit_ui_view {entity, selector, action, index|key|column}: drives a virtual view in play (runtime only,
+// not undoable): scroll_to, select, activate, expand, collapse, sort. Indices are 0-based.
+void editUiViewTool(const CallPtr& call) {
+    const Json& args = call->args();
+    static const char* const actions[] = {"scroll_to", "select", "activate", "expand", "collapse", "sort"};
+    const std::string action = args.value("action", std::string());
+    if (std::find(std::begin(actions), std::end(actions), action) == std::end(actions)) {
+        call->fail("action must be scroll_to, select, activate, expand, collapse or sort.");
+        return;
+    }
+    if (!args.contains("selector") || !args["selector"].is_string() || args["selector"].get<std::string>().empty()) {
+        call->fail("selector is required: the view (e.g. \"#servers\").");
+        return;
+    }
+    if (has(args, "index") && (!args["index"].is_number_integer() || args["index"].get<long long>() < 0)) {
+        call->fail("index must be an item index >= 0 (0-based, as data-for's i).");
+        return;
+    }
+    withDocument(call, [call, action](const DocTarget& target) {
+        const Json& args = call->args();
+        Project* project = call->ctx().project();
+        SceneProject* sp = targetScene(project, target);
+        if (!isPlaying(project) || !isRunning(sp->playState)) {
+            call->fail("edit_ui_view acts on a playing document (its views' data come from Lua): start play first.");
+            return;
+        }
+        UIDocument document(sp->scene, target.entity);
+        const std::string selector = args["selector"].get<std::string>();
+        UIItemsView view = document.querySelector(selector).getItemsView();
+        if (!view.isValid()) {
+            call->fail("\"" + selector + "\" is not a list-view, grid-view, tree-view or table-view of this document.");
+            return;
+        }
+        const int count = view.getCount();
+        int index = has(args, "index") ? static_cast<int>(args["index"].get<long long>()) : -1;
+        const std::string key = has(args, "key") ? (args["key"].is_string() ? args["key"].get<std::string>() : args["key"].dump()) : std::string();
+        if (index < 0 && !key.empty() && action != "expand" && action != "collapse") {
+            index = view.indexOfKey(key) - 1;
+            if (index < 0) {
+                call->fail("no item has the key \"" + key + "\".");
+                return;
+            }
+        }
+        bool done = true;
+        if (action == "sort") {
+            const std::string column = args.value("column", std::string());
+            done = view.sortBy(column, args.value("direction", std::string()));
+            if (!done) {
+                call->fail("\"" + column + "\" is no sortable column of the table.");
+                return;
+            }
+        } else if (action == "expand" || action == "collapse") {
+            const std::string node = !key.empty() ? key : (index >= 0 ? view.keyOf(index + 1) : std::string());
+            if (node.empty()) {
+                call->fail(action + " needs key or index.");
+                return;
+            }
+            done = action == "expand" ? view.expand(node) : view.collapse(node);
+        } else {
+            if (index < 0 || index >= count) {
+                call->fail(action + " needs an index of 0.." + std::to_string(count - 1) + " (or a key).");
+                return;
+            }
+            if (action == "scroll_to")
+                view.scrollToIndex(index + 1, args.value("align", std::string("nearest")));
+            else if (action == "select")
+                view.setActiveIndex(index + 1), view.setSelection({index + 1});
+            else
+                view.activate(index + 1);
+        }
+        const UIItemsViewState state = view.getState();
+        Json data = {{"done", done}, {"count", state.count}, {"first", state.first - 1}, {"last", state.last - 1}, {"active", state.active - 1},
+                     {"selected", Json::array()}};
+        for (int selected : state.selected) data["selected"].push_back(selected - 1);
+        call->ok(selector + ": " + action + (done ? "" : " (nothing to do)") + "; items " + std::to_string(state.first - 1) + ".." +
+                 std::to_string(state.last - 1) + " of " + std::to_string(state.count) + " shown.", data);
+    });
+}
+
 void registerHtmlUiTools(McpRegistry& registry) {
     using namespace schema;
 
@@ -1775,22 +1971,24 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.description =
             "A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = "
             "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, "
-            "computed styles + each rule's file:line. at: hit test. file: a .html/.css's diagnostics, no document (= "
+            "styles + rule file:line. at: hit test. file: a .html/.css's diagnostics (= "
             "`jasperengine-editor check --ui`). Lua-made content: play only.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("UI Document (default: the only one).")},
-            {"file", assetPath(".html/.css: its diagnostics only, no live document.")},
+            {"file", assetPath(".html/.css: diagnostics only.")},
             {"selector", string("Default: whole document.")},
-            {"at", vec2("Hit test (canvas px): the element stack.")},
-            {"detail", withDefault(stringEnum("full: box model, attributes, computed styles + sources (max 20 elements).",
+            {"at", vec2("Hit test (canvas px): element stack.")},
+            {"detail", withDefault(stringEnum("full: box model, attributes, styles + sources (max 20 elements).",
                                               {"tree", "full"}), "tree")},
             {"depth", integer("Descendant levels (default tree 3, full 0).", 0, 16)},
             {"styles", array(Json{{"type", "string"}}, "Computed CSS properties.")},
             {"limit", withDefault(integer("", 1, 1000), 200)},
             {"models", boolean("Data-model values (play).")},
-            {"viewport", vec2("Lay out at [w,h] first (restored after).")},
-            {"screenshot", boolean("Game view image of the matches, outlined.")},
+            {"reload", boolean("Last hot reload's report.")},
+            {"viewport", vec2("Lay out at [w,h], then restore.")},
+            {"screenshot", boolean("Game view image, matches outlined.")},
+            {"render_stats", boolean("Last frame's draw counters.")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
         });
         tool.annotations.readOnly = true;
@@ -1807,10 +2005,11 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.title = "Assert UI Layout";
         tool.description =
             "Assert a live HTML/CSS UI document's layout: passed + each failure (element ref, numbers, rects), "
-            "on failure an image with failing boxes outlined. Checks {type, selector}: exists, count (count|min|max), "
-            "visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent "
-            "(container), within_viewport, contrast (min_ratio, background where the UI is transparent), min_size "
-            "(width, height). viewports: other sizes too. Zero matches fail.";
+            "on failure an image with failing boxes outlined. Checks {type, selector}: exists, count and selected "
+            "(count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), "
+            "within_parent (container), within_viewport, contrast (min_ratio, background where the UI is "
+            "transparent), min_size (width, height), virtual_window (max rows), tooltip (text). viewports: other "
+            "sizes too. Zero matches fail.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("UI Document (default: the only one).")},
@@ -1829,7 +2028,8 @@ void registerHtmlUiTools(McpRegistry& registry) {
                 {"allow_scroll", boolean("")},
                 {"single_line", boolean("")},
                 {"width", Json{{"type", "number"}, {"minimum", 0}}},
-                {"height", Json{{"type", "number"}, {"minimum", 0}}}
+                {"height", Json{{"type", "number"}, {"minimum", 0}}},
+                {"text", string("")}
             }, {"type", "selector"})}}},
             {"viewports", array(vec2(""), "Up to 6 [w,h]; default: current.")},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
@@ -1853,13 +2053,13 @@ void registerHtmlUiTools(McpRegistry& registry) {
             "kept unless overwrite. Returns the files and the first load's diagnostics.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"parent", entityRef("Default: scene root.")},
-            {"name", string("Default: the file name.")},
-            {"html", assetPath(".html in the assets dir, e.g. assets/ui/menu.html.")},
+            {"parent", entityRef()},
+            {"name", string("Default: from the file name.")},
+            {"html", assetPath(".html in the assets dir.")},
             {"template", withDefault(stringEnum("", HtmlUiExamples::names()), "blank")},
             {"script", boolean("Attach the template's Lua (default: examples yes, blank no).")},
             {"sort_order", integer("", -32768, 32767)},
-            {"overwrite", boolean("Replace existing files.")},
+            {"overwrite", boolean("")},
             {"properties", anyObject("Other UI Document properties.")}
         }, {"html"});
         tool.annotations.readOnly = false;
@@ -1867,6 +2067,34 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.allowedWhilePlaying = false;
         tool.activity = ToolActivity::Edit;
         tool.handler = createUiDocumentTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "edit_ui_view";
+        tool.title = "Edit UI View";
+        tool.description =
+            "Drive a list-view, grid-view, tree-view or table-view of a playing HTML UI document (runtime only, not "
+            "undoable): scroll_to (align), select, activate (its activate event), expand / collapse (tree), sort (table: "
+            "its sort event, column, direction). index is 0-based; key names an item instead.";
+        tool.inputSchema = object({
+            {"scene", sceneRef()},
+            {"entity", entityRef("With the UI Document (default: the only one).")},
+            {"selector", string("The view, e.g. #servers.")},
+            {"action", stringEnum("", {"scroll_to", "select", "activate", "expand", "collapse", "sort"})},
+            {"index", integer("0-based item.", 0, 10000000)},
+            {"key", string("An item's key instead of index.")},
+            {"column", string("sort: the column key.")},
+            {"direction", stringEnum("sort: default toggles.", {"asc", "desc"})},
+            {"align", stringEnum("scroll_to: default nearest.", {"start", "center", "end", "nearest"})}
+        }, {"selector", "action"});
+        tool.annotations.readOnly = false;
+        tool.annotations.destructive = false;
+        tool.allowedWhilePlaying = true;
+        tool.activity = ToolActivity::Control;
+        tool.group = "html_ui";   // S17: a group tool (docs/mcp/conventions.md)
+        tool.handler = editUiViewTool;
         registry.addTool(std::move(tool));
     }
 

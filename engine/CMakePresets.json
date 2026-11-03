@@ -1,0 +1,86 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 27, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "description": "Standalone engine tree (engine/project sample, jasperengine-core-tests). Repository only: never copied into the editor install or an export. tools/build.sh overrides binaryDir with -B and adds the ccache launcher; see docs/testing.md",
+      "binaryDir": "${sourceDir}/../build/presets/${presetName}",
+      "generator": "Ninja"
+    },
+    { "name": "release", "hidden": true, "inherits": "base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
+    { "name": "debug", "hidden": true, "inherits": "base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
+    {
+      "name": "tests", "hidden": true, "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "JASPERENGINE_TESTS": "ON",
+        "JASPERENGINE_WARNINGS": "ON",
+        "JASPERENGINE_WERROR": "ON"
+      }
+    },
+    {
+      "name": "sanitizer-tests", "hidden": true, "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "JASPERENGINE_TESTS": "ON", "JASPERENGINE_WARNINGS": "ON" }
+    },
+    {
+      "name": "web", "hidden": true, "inherits": "base",
+      "description": "Emscripten; the web build image (docker/web.Dockerfile) sets EMSDK",
+      "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
+    },
+
+    { "name": "engine-linux-release", "displayName": "Linux Release (OpenGL)", "inherits": "release" },
+    { "name": "engine-linux-debug", "displayName": "Linux Debug (OpenGL)", "inherits": "debug" },
+    { "name": "engine-linux-tests", "displayName": "Linux core tests (OpenGL GPU suites), warnings as errors", "inherits": "tests" },
+    {
+      "name": "engine-linux-tests-vulkan", "displayName": "Linux core tests (Vulkan GPU suites), warnings as errors", "inherits": "tests",
+      "cacheVariables": { "GRAPHIC_BACKEND": "vulkan" }
+    },
+    {
+      "name": "engine-linux-asan", "displayName": "Linux core tests, Debug, ASan + UBSan", "inherits": "sanitizer-tests",
+      "cacheVariables": { "JASPERENGINE_SANITIZE": "address;undefined" }
+    },
+    {
+      "name": "engine-linux-tsan", "displayName": "Linux core tests, Debug, TSan", "inherits": "sanitizer-tests",
+      "cacheVariables": { "JASPERENGINE_SANITIZE": "thread" }
+    },
+    {
+      "name": "engine-windows-msvc-tests", "displayName": "Windows MSVC core tests (Ninja; needs the MSVC environment)", "inherits": "tests",
+      "cacheVariables": { "CMAKE_C_COMPILER": "cl", "CMAKE_CXX_COMPILER": "cl", "CMAKE_BUILD_TYPE": "Release" }
+    },
+    { "name": "engine-macos-tests", "displayName": "macOS core tests (Metal)", "inherits": "tests" },
+    { "name": "engine-web-debug", "displayName": "Web Debug (Emscripten)", "inherits": ["web", "debug"] },
+    { "name": "engine-web-release", "displayName": "Web Release (Emscripten)", "inherits": ["web", "release"] },
+    {
+      "name": "engine-web-threads", "displayName": "Web Debug with pthreads (Emscripten)", "inherits": ["web", "debug"],
+      "cacheVariables": { "EMSCRIPTEN_THREAD_SUPPORT": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "engine-linux-release", "configurePreset": "engine-linux-release", "targets": ["jasperengine-project"] },
+    { "name": "engine-linux-debug", "configurePreset": "engine-linux-debug", "targets": ["jasperengine-project"] },
+    { "name": "engine-linux-tests", "configurePreset": "engine-linux-tests", "targets": ["jasperengine-core-tests"] },
+    { "name": "engine-linux-tests-vulkan", "configurePreset": "engine-linux-tests-vulkan", "targets": ["jasperengine-core-tests"] },
+    { "name": "engine-linux-asan", "configurePreset": "engine-linux-asan", "targets": ["jasperengine-core-tests"] },
+    { "name": "engine-linux-tsan", "configurePreset": "engine-linux-tsan", "targets": ["jasperengine-core-tests"] },
+    { "name": "engine-windows-msvc-tests", "configurePreset": "engine-windows-msvc-tests", "targets": ["jasperengine-core-tests"] },
+    { "name": "engine-macos-tests", "configurePreset": "engine-macos-tests", "targets": ["jasperengine-core-tests"] },
+    { "name": "engine-web-debug", "configurePreset": "engine-web-debug", "targets": ["jasperengine-project"] },
+    { "name": "engine-web-release", "configurePreset": "engine-web-release", "targets": ["jasperengine-project"] },
+    { "name": "engine-web-threads", "configurePreset": "engine-web-threads", "targets": ["jasperengine-project"] }
+  ],
+  "testPresets": [
+    {
+      "name": "base", "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" }
+    },
+    { "name": "engine-linux-tests", "inherits": "base", "configurePreset": "engine-linux-tests" },
+    { "name": "engine-linux-tests-vulkan", "inherits": "base", "configurePreset": "engine-linux-tests-vulkan", "filter": { "include": { "label": "gpu" } } },
+    { "name": "engine-linux-asan", "inherits": "base", "configurePreset": "engine-linux-asan" },
+    { "name": "engine-linux-tsan", "inherits": "base", "configurePreset": "engine-linux-tsan", "filter": { "exclude": { "label": "gpu" } } },
+    { "name": "engine-windows-msvc-tests", "inherits": "base", "configurePreset": "engine-windows-msvc-tests", "filter": { "exclude": { "label": "gpu" } } },
+    { "name": "engine-macos-tests", "inherits": "base", "configurePreset": "engine-macos-tests", "filter": { "exclude": { "label": "gpu" } } }
+  ]
+}

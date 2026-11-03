@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Points.h"
+#include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 
@@ -60,6 +61,7 @@ void Points::addPoint(PointData point){
     }
 
     pointscomp.needUpdate = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::addPoint(Vector3 position){
@@ -131,6 +133,7 @@ void Points::updatePoint(size_t index, PointData point){
     }
 
     pointscomp.needUpdate = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::updatePoint(size_t index, Vector3 position){
@@ -193,6 +196,7 @@ void Points::removePoint(size_t index){
     pointscomp.points.erase(pointscomp.points.begin() + index);
 
     pointscomp.needUpdate = true;
+    markChanged<PointsComponent>();
 }
 
 bool Points::isPointVisible(size_t index){
@@ -208,6 +212,7 @@ void Points::setPointVisible(size_t index, bool visible) const{
         pointscomp.points.at(index).visible = visible;
 
         pointscomp.needUpdate = true;
+        markChanged<PointsComponent>();
     }
 }
 
@@ -215,6 +220,7 @@ void Points::updatePoints(){
     PointsComponent& pointscomp = getComponent<PointsComponent>();
 
     pointscomp.needUpdate = true;
+    markChanged<PointsComponent>();
 }
 
 size_t Points::getNumPoints(){
@@ -227,6 +233,7 @@ void Points::clearPoints(){
     pointscomp.points.clear();
 
     pointscomp.needUpdate = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::setTexture(const std::string& path){
@@ -235,6 +242,7 @@ void Points::setTexture(const std::string& path){
     pointscomp.texture.setPath(path);
 
     pointscomp.needUpdateTexture = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::setTexture(const std::string& id, TextureData data){
@@ -243,6 +251,7 @@ void Points::setTexture(const std::string& id, TextureData data){
     pointscomp.texture.setData(id, data);
 
     pointscomp.needUpdateTexture = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::setTexture(Framebuffer* framebuffer){
@@ -251,6 +260,7 @@ void Points::setTexture(Framebuffer* framebuffer){
     pointscomp.texture.setFramebuffer(framebuffer);
 
     pointscomp.needUpdateTexture = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::setTransparent(bool transparent){
@@ -289,7 +299,7 @@ void Points::addSpriteFrame(int id, const std::string& name, Rect rect){
             pointscomp.needReload = true;
         }
     }else{
-        Log::error("Cannot set frame id %s less than 0 or greater than %i", name.c_str(), pointscomp.framesRect.size());
+        Log::error("Cannot set frame id %s less than 0 or greater than %zu", name.c_str(), pointscomp.framesRect.size());
     }
 }
 
@@ -301,7 +311,7 @@ void Points::addSpriteFrame(const std::string& name, float x, float y, float wid
     if (pointscomp.framesRect.validIndex(id)){
         addSpriteFrame(id, name, Rect(x, y, width, height));
     }else{
-        Log::error("Cannot set frame %s. Sprite frames reached limit of %i", name.c_str(), pointscomp.framesRect.size());
+        Log::error("Cannot set frame %s. Sprite frames reached limit of %zu", name.c_str(), pointscomp.framesRect.size());
     }
 }
 
@@ -358,8 +368,10 @@ std::string Points::getCustomShader() const{
 void Points::setShaderUniform(const std::string& name, const Vector4& value){
     PointsComponent& points = getComponent<PointsComponent>();
 
-    if (ShaderUniforms::set(points.shaderUniforms, name, value))
+    if (ShaderUniforms::set(points.shaderUniforms, name, value)){
         points.needUpdateShaderUniforms = true;
+        markChanged<PointsComponent>();
+    }
 }
 
 void Points::setShaderUniform(const std::string& name, const Vector3& value){
@@ -387,13 +399,29 @@ bool Points::removeShaderUniform(const std::string& name){
         return false;
 
     points.needUpdateShaderUniforms = true;
+    markChanged<PointsComponent>();
     return true;
 }
 
 Vector4 Points::getShaderParam(const std::string& name) const{
     PointsComponent& points = getComponent<PointsComponent>();
 
-    return ShaderLibraryValues::getParam(points.shaderUniforms, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, name);
+    return ShaderLibraryValues::getParam(points.shaderUniforms, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path, name);
+}
+
+bool Points::setShaderGlobalBinding(const std::string& member, const std::string& global){
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    if (!ShaderGlobals::setBinding(points.shaderGlobalBindings, member, global))
+        return false;
+    points.needUpdateShaderUniforms = true;
+    return true;
+}
+
+std::string Points::getShaderGlobalBinding(const std::string& member) const{
+    const PointsComponent& points = getComponent<PointsComponent>();
+
+    return ShaderGlobals::getBinding(points.shaderGlobalBindings, member);
 }
 
 void Points::setShaderTexture(const std::string& name, const std::string& path){
@@ -414,14 +442,14 @@ void Points::setShaderFeature(const std::string& define, bool enabled){
     PointsComponent& points = getComponent<PointsComponent>();
 
     // features are compiled in: another shader variant
-    if (ShaderLibraryValues::setFeature(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, define, enabled))
+    if (ShaderLibraryValues::setFeature(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path, define, enabled))
         points.needReload = true;
 }
 
 bool Points::isShaderFeatureEnabled(const std::string& define) const{
     PointsComponent& points = getComponent<PointsComponent>();
 
-    return ShaderLibraryValues::isFeatureEnabled(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, define);
+    return ShaderLibraryValues::isFeatureEnabled(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path, define);
 }
 
 void Points::setBlendMode(MaterialBlendMode blendMode){

@@ -17,15 +17,11 @@ Runs in a new empty project (EDITOR create).
 from __future__ import annotations
 
 import asyncio
-import sys
-from pathlib import Path
 
 from harness import Editor
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from htmlui_pixels import decode_png  # noqa: E402,F401  (the screenshots are compared as PNG bytes)
-
 EDITOR = {"create": True, "name": "Fluid Fixed"}
+CI = True
 TIMEOUT = 1200
 
 KEY = "fluidsimulation"
@@ -117,7 +113,7 @@ async def stop(ed: Editor):
 # ---------------------------------------------------------------------------- texture links
 
 
-async def test_setup(ed: Editor):
+async def test_delete_unbinds_links(ed: Editor):
     made = await ed.call("create_scene", name="FluidFixed", type="2D")
     S["scene"] = made["scene"]["id"]
     await ed.call("select_scene", scene=S["scene"])
@@ -126,8 +122,6 @@ async def test_setup(ed: Editor):
     await link(ed, "Display", "Source")
     ed.check(await bound(ed, "Display"), "the linked sprite shows the fluid's output")
 
-
-async def test_delete_unbinds_links(ed: Editor):
     await ed.call("delete_entities", scene=S["scene"], entity=S["source"])
     tex = await texture_of(ed, S["display"])
     ed.check(isinstance(tex, dict) and "fluid" in tex, f"the link stays (saved as one): {tex}")

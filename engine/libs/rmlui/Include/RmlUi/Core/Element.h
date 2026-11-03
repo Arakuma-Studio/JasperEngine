@@ -40,6 +40,7 @@ class TransformState;
 class LayoutDetails;
 class ElementCascade;
 class LineClampAccess;
+class ElementEffects;
 struct ElementMeta;
 struct StackingContextChild;
 
@@ -502,6 +503,13 @@ public:
 	void Blur();
 	/// Fakes a mouse click on this element.
 	void Click();
+	/// Fork (engine-gaps G5-3): DOM pointer capture. The element gets the pointer's move, up and cancel events until it
+	/// releases it or the pointer is released ('gotpointercapture' / 'lostpointercapture' before the pointer's next event).
+	/// @return False when the pointer is not pressed in this element's context (SetPointerCapture) or not captured by
+	/// this element (ReleasePointerCapture).
+	bool SetPointerCapture(PointerId pointer_id);
+	bool ReleasePointerCapture(PointerId pointer_id);
+	bool HasPointerCapture(PointerId pointer_id) const;
 
 	/// Adds an event listener to this element.
 	/// @param[in] event Event to attach to.
@@ -612,6 +620,9 @@ public:
 	String GetEventDispatcherSummary() const;
 	/// Access the element background and border.
 	ElementBackgroundBorder* GetElementBackgroundBorder() const;
+	/// Fork (S16-F1): whether the background, border and box shadows were last generated as box primitives
+	/// (RenderInterface::RenderPrimitives); when not, why (a static string, empty when the renderer draws none).
+	bool IsPaintedAsPrimitives(const char** reason = nullptr) const;
 	/// Returns the element's scrollbar functionality.
 	ElementScroll* GetElementScroll() const;
 	/// Returns the element's nearest scroll container that can be scrolled, if any.
@@ -638,6 +649,15 @@ public:
 	/// Return the computed values of the element's properties. These values are updated as appropriate on every Context::Update.
 	const ComputedValues& GetComputedValues() const;
 
+	/// Fork (P7-L): makes the element a layout boundary, or a normal element again. A boundary is a box whose size its
+	/// descendants cannot change (the owner decides: a positioned scroll container of a definite width and height, as
+	/// the engine's virtual list views are): a layout dirtied inside it formats the boundary alone, again in its
+	/// current box, instead of the whole document (ElementDocument::UpdateLayout). A change of the boundary itself or
+	/// outside it lays the document out as before.
+	void SetLayoutBoundary(bool boundary);
+	/// Fork (P7-L): true when the element is a layout boundary.
+	bool IsLayoutBoundary() const;
+
 protected:
 	void Update(float dp_ratio, Vector2f vp_dimensions);
 	void Render();
@@ -660,6 +680,10 @@ protected:
 	virtual void OnUpdate();
 	/// Called during render after backgrounds, borders, decorators, but before children, are rendered.
 	virtual void OnRender();
+	/// Fork (S16-F6): the rectangle (absolute, before any transform) everything the element paints of its own lies in,
+	/// false when unknown: an element of no subclass has its border box widened by its box shadows' reach; a subclass
+	/// that paints more in OnRender says so by overriding this (the default for every subclass is false).
+	virtual bool GetPaintBounds(Rectanglef& out_bounds);
 	/// Called during update if the element size has been changed.
 	virtual void OnResize();
 	/// Called during a layout operation, when the element is being positioned and sized.
@@ -832,6 +856,9 @@ private:
 	bool line_clamp_hidden : 1;
 	// It draws a line-clamp ellipsis itself as a block container (ElementMeta::line_clamp_ellipsis, fork P6-L1).
 	bool draws_line_clamp_ellipsis : 1;
+	// A layout boundary (fork P7-L, SetLayoutBoundary), and queued for a layout of its own by its document.
+	bool layout_boundary : 1;
+	bool layout_boundary_dirty : 1;
 
 	OwnedElementList children;
 	int num_non_dom_children;
@@ -904,6 +931,8 @@ private:
 	friend class Rml::ElementScroll;
 	friend class Rml::ElementCascade;
 	friend class Rml::LineClampAccess;
+	friend class Rml::ElementDocument;
+	friend class Rml::ElementEffects; // fork (P7-F2): a descendant's filters extend its ancestor's filter region
 	friend RMLUICORE_API void Rml::ReleaseFontResources();
 };
 

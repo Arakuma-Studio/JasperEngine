@@ -2,12 +2,19 @@
 // SPDX-License-Identifier: MIT
 
 #include "AppSettings.h"
+#include "diag/HangWatchdog.h"
 #include "Backend.h"
 #include "EditorHost.h"
 
 #include "JasperEngineGameController.h"
 #include "Engine.h"
+#include "Platform.h"
+#include "util/FrameLimiter.h"
 #include "WindowMac.h"
+#include "profiler/FrameTimes.h"
+#include "profiler/Profile.h"
+#include "render/SystemRender.h"
+#include "shader/ShaderWarmup.h"
 
 #include "imgui_impl_metal.h"
 #include "imgui_impl_osx.h"
@@ -984,18 +991,20 @@ int editor::Backend::init(int argc, char* argv[]) {
         Project* activeProject = app.getProject();
         double lastActivityTime = monotonicSeconds();
         bool currentFrameSync = true;
+        FrameLimiter playLimiter;
 
         while (!backend->shouldClose) {
             @autoreleasepool {
                 const double frameStart = monotonicSeconds();
-                const bool idleFrame =
+                const bool idleFrame = !app.isBenchmarkMode() && !app.wantsContinuousFrames() &&
                     frameStart - lastActivityTime > IDLE_ENTER_DELAY;
                 NSDate* deadline = idleFrame
-                    ? [NSDate dateWithTimeIntervalSinceNow:IDLE_WAIT_TIMEOUT]
+                    ? [NSDate dateWithTimeIntervalSinceNow:app.idleWaitSeconds(IDLE_WAIT_TIMEOUT)]
                     : NSDate.distantPast;
                 processEvents(deadline);
+                diag::heartbeat();
                 if (backend->shouldClose) break;
-                app.processProjectChange();
+                app.beforeFrame();
                 if (backend->shouldClose) break;
 
                 const bool minimized = backend->window.miniaturized;
@@ -1005,8 +1014,12 @@ int editor::Backend::init(int argc, char* argv[]) {
                 const bool focused = NSApp.active;
                 const bool playSessionActive =
                     activeProject->isPlaySessionActive();
+                // the window's focus reaches the game as Engine::onFocus
+                editor::Platform::forwardHostFocus(focused, playSessionActive);
+                // while playing, the game's Engine.vSyncCount decides
+                const FramePacing& pacing = Engine::getFramePacing();
                 const bool frameSync = app.isBenchmarkMode() ? false : (playSessionActive
-                    ? activeProject->isVSyncEnabled()
+                    ? pacing.swapInterval > 0
                     : AppSettings::getEditorVSyncEnabled());
                 setMouseControlSuspended(playSessionActive &&
                     !activeProject->isMainScenePlaying());
@@ -1019,12 +1032,31 @@ int editor::Backend::init(int argc, char* argv[]) {
                     currentFrameSync = desiredFrameSync;
                 }
 
+                // as EditorFrame::run (the other backends' loop): a frame asked for, a text field's
+                // caret, the shaders and pipelines still being created off the render thread
+                // (spec S32) and a due Auto Save backup (it runs in a frame) keep it drawing
+                const bool frameRequest = app.consumeFrameRequest();
+                const bool textFocused = ImGui::GetIO().WantTextInput;
                 const bool renderRequested = playSessionActive || !idleFrame ||
                     backend->redrawRequested ||
-                    app.hasPendingMainThreadTasks();
+                    app.hasPendingMainThreadTasks() || frameRequest || textFocused ||
+                    !SystemRender::isGpuCreationIdle() || activeProject->isAutosaveDue();
+                const bool frameReady = visible && renderRequested;
 
-                if (visible && renderRequested)
+                if (frameReady)
                     acquireMainWindowDrawable();
+
+                // The per-frame work of EditorFrame::run, which this loop had none of: the shaders
+                // and pipelines created off the render thread were never published (a Lines
+                // object waited forever for its shader, so no view finished loading and no
+                // screenshot completed), no profiler frame was marked and editor_status counted
+                // no frame
+                if (frameReady){
+                    FrameTimes::beginFrame();
+                    JE_PROFILE_FRAME();
+                    Engine::latchShaderTime();
+                    Engine::updateGpuCreation();
+                }
 
                 backend->frameInProgress = true;
                 ImGui_ImplMetal_NewFrame(backend->frameDescriptor);
@@ -1034,7 +1066,7 @@ int editor::Backend::init(int argc, char* argv[]) {
                 applyRelativeMouseData();
                 ImGui::NewFrame();
 
-                if (visible && renderRequested) app.engineRender();
+                if (frameReady) app.engineRender();
                 else app.processMainThreadTasks();
                 app.show();
 
@@ -1056,6 +1088,8 @@ int editor::Backend::init(int argc, char* argv[]) {
                 if (activity) lastActivityTime = monotonicSeconds();
 
                 ImGui::Render();
+                if (frameReady)
+                    FrameTimes::endFrameWork();
                 if (visible && (renderRequested || activity))
                     renderMainWindow(ImGui::GetDrawData());
 
@@ -1065,8 +1099,20 @@ int editor::Backend::init(int argc, char* argv[]) {
                         ImGui::RenderPlatformWindowsDefault();
                 }
                 backend->frameInProgress = false;
+                if (frameReady)
+                    app.recordFrameTime((monotonicSeconds() - frameStart) * 1000.0);
 
-                if (!focused || minimized) {
+                // Engine.targetFrameRate without vsync: the game's frame limiter
+                const bool playLimited = playSessionActive && !app.isBenchmarkMode() && !minimized &&
+                    pacing.limiterFps > 0.0;
+                if (playLimited) {
+                    const double limit = focused || backend->framePeriod <= 0.0
+                        ? pacing.limiterFps : std::min(pacing.limiterFps, 1.0 / backend->framePeriod);
+                    playLimiter.wait(limit);
+                } else {
+                    playLimiter.reset();
+                }
+                if (!playLimited && (!focused || minimized)) {
                     const double remaining = backend->framePeriod -
                         (monotonicSeconds() - frameStart);
                     if (remaining > 0.0)
@@ -1192,6 +1238,14 @@ float editor::Backend::setMainMenu(const PlatformMenuModel& model,
 
     // The macOS menu bar is global and consumes no window client area.
     return -1.0f;
+#endif
+}
+
+bool editor::Backend::nativeMenuHandlesKeyEquivalents() {
+#if defined(JASPERENGINE_NATIVE_MENU)
+    return backend && !backend->menu.model.menus.empty();
+#else
+    return false;
 #endif
 }
 

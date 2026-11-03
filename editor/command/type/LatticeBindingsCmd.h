@@ -39,6 +39,13 @@ namespace jasperengine::editor{
 
         // a component added shows in the Hierarchy's icons
         bool affectsStructure() const override { return addedComponent; }
+
+        // "Bind Lattice (Flag)", "Unbind Lattice (Flag)", "Set Lattice Bindings (Flag)"
+        std::string describe() const override;
+        const char* typeName() const override { return "LatticeBindingsCmd"; }
+        // the same bindings again, on a modifier that was there
+        bool isNoOp() const override;
+        size_t memoryBytes() const override;
     };
 
 }

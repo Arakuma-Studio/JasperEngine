@@ -235,24 +235,37 @@ TEST_F(ScriptEventTest, CustomEvents){
 
 TEST_F(ScriptEventTest, UnsupportedEventsWarn){
     UIElement btn = document->getElementById("btn");
-    EXPECT_EQ(btn.addEventListener("mouseenter", [](UIEvent&){}), 0u);
-    EXPECT_EQ(btn.addEventListener("pointerdown", [](UIEvent&){}), 0u);
+    EXPECT_EQ(btn.addEventListener("contextmenu", [](UIEvent&){}), 0u);
+    EXPECT_EQ(btn.addEventListener("beforeinput", [](UIEvent&){}), 0u);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "supported: click"), 2u);
+    // Touch Events: Pointer Events cover them (ui-multitouch)
     EXPECT_EQ(btn.addEventListener("touchstart", [](UIEvent&){}), 0u);
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "supported: click"), 3u);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "use the Pointer Events"), 1u);
+    // the pointer events and mouseenter / mouseleave are supported now
+    EXPECT_NE(btn.addEventListener("pointerdown", [](UIEvent&){}), 0u);
+    EXPECT_NE(btn.addEventListener("mouseenter", [](UIEvent&){}), 0u);
     TestSystem::get().clearLogs();
 }
 
 TEST_F(ScriptEventTest, ListenersFreedWithTheirElements){
     UIElement list = document->getElementById("list");
-    const size_t before = HtmlUIEventListener::liveCount();
-    list.addEventListener("click", [](UIEvent&){});
-    document->getElementById("i1").addEventListener("click", [](UIEvent&){});
-    EXPECT_EQ(HtmlUIEventListener::liveCount(), before + 2);
+    auto listResource = std::make_shared<int>(1);
+    auto childResource = std::make_shared<int>(2);
+    std::weak_ptr<int> listLifetime = listResource;
+    std::weak_ptr<int> childLifetime = childResource;
+    list.addEventListener("click", [listResource](UIEvent&){});
+    document->getElementById("i1").addEventListener("click", [childResource](UIEvent&){});
+    listResource.reset();
+    childResource.reset();
+    ASSERT_FALSE(listLifetime.expired());
+    ASSERT_FALSE(childLifetime.expired());
+
     list.setInnerHTML("");
-    EXPECT_EQ(HtmlUIEventListener::liveCount(), before + 1);
+    EXPECT_TRUE(childLifetime.expired());
+    EXPECT_FALSE(listLifetime.expired());
     ASSERT_TRUE(document->load("ecs/basic.rml"));
     update();
-    EXPECT_EQ(HtmlUIEventListener::liveCount(), before);
+    EXPECT_TRUE(listLifetime.expired());
 }
 
 // ---- fork patch: Event::PreventDefault ----
