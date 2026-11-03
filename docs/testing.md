@@ -735,7 +735,10 @@ GCC 11's TSan (the Linux image) does not intercept `pthread_cond_clockwait` or
 through on the steady clock: one such wait makes its mutex look held, reports double locks there,
 and, since a `std::mutex` never tells TSan it is gone, breaks the next mutex at its address (reports
 of races under a mutex both sides hold). Core timed waits go through `jobs::detail::timedWait`
-(`jobs/detail/TimedWait.h`), and `Crash*` and `HangWatchdog.*` run under TSan with the rest. A budget
+(`jobs/detail/TimedWait.h`), a lock with a deadline is a `try_lock` loop (`Logger.cpp`, `lockUntil`;
+`io/watch/backends/Backends.h`, `lockWithin`; the editor's timed waits are not moved yet), and
+`Crash*` and `HangWatchdog.*` run under TSan with the rest. The GPU suites run with
+`halt_on_error=1` too: `tsan.supp` has Mesa's `swrast_dri.so`, whose reports are about its own mutexes. A budget
 in wall clock is printed under a sanitizer, never enforced there: `perfSlack()`, or the build's
 `JASPERENGINE_SANITIZE_*` where a test's own limit is unconditional.
 
