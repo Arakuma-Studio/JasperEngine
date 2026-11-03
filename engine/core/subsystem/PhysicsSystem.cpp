@@ -3487,6 +3487,8 @@ bool PhysicsSystem::buildJoint2D(Entity entity, Joint2DComponent& joint){
             }else{
                 joint.length = jointDef.length * ptm;
             }
+            // Box2D asserts a length above 0 (two anchors at one point), then clamps to its linear slop
+            jointDef.length = std::max(jointDef.length, 0.005f);
             jointDef.enableSpring = joint.enableSpring;
             jointDef.hertz = nonNegative(joint.frequency);
             jointDef.dampingRatio = nonNegative(joint.dampingRatio);
