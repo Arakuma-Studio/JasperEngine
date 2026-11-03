@@ -5,7 +5,7 @@
 
 #include "Log.h"
 #include "System.h"
-#include "htmlui/compat/Hash.h"
+#include "util/Sha256.h"
 #include "net/Http.h"
 
 #include <algorithm>
@@ -336,7 +336,7 @@ std::string MediaCache::getDirectory(){
 }
 
 std::string MediaCache::pathFor(const std::string& url){
-    return getDirectory() + "/" + htmlui::compat::sha256Hex(url) + "." + extensionOf(url);
+    return getDirectory() + "/" + sha256Hex(url) + "." + extensionOf(url);
 }
 
 std::shared_ptr<MediaDownload> MediaCache::acquire(const std::string& url){
