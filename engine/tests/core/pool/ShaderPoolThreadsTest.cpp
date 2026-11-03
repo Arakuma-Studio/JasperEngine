@@ -346,7 +346,7 @@ TEST(ShaderPoolThreadsGpu, APreviewLoadsWhileTheMainThreadFreesGpuObjectsOutside
     freeFinishedPreview(true);
     GpuEnvironment::drawFrames(2);
     Engine::removeScene(&scene);
-    // (no look at the engine's errors: TexturePoolThreadsTest.cpp says why)
+    EXPECT_NO_ENGINE_ERRORS();
 }
 
 // Two threads make the same new variant at once, as neither knows of the other: the main thread
