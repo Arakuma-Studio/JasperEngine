@@ -348,3 +348,185 @@ TEST(ShaderPoolThreadsGpu, APreviewLoadsWhileTheMainThreadFreesGpuObjectsOutside
     Engine::removeScene(&scene);
     // (no look at the engine's errors: TexturePoolThreadsTest.cpp says why)
 }
+
+// Two threads make the same new variant at once, as neither knows of the other: the main thread
+// loads a scene outside a frame, which the frames' semaphore does not keep off a preview's strand
+// loading its own. One makes the variant, the other finds it being made, and no GPU shader is left
+// over by the one that lost (without a sanitizer too).
+TEST(ShaderPoolThreadsGpu, TwoThreadsLoadScenesThatMakeTheSameNewVariant){
+    JASPER_REQUIRE_GPU();
+    struct LeavesNoShaders {
+        ~LeavesNoShaders(){
+            GpuEnvironment::drawFrames(2);
+            ShaderPool::clearUnused();
+        }
+    } leavesNoShaders;
+    Scene scene;
+    Camera camera(&scene);
+    camera.setType(CameraType::CAMERA_PERSPECTIVE);
+    camera.activate();
+    Engine::setScene(&scene);
+    ASSERT_TRUE(GpuEnvironment::runFrames(nullptr, 4));
+
+    struct Loaded {
+        Scene scene{EntityPool::System};
+        Camera camera{&scene};
+        Primitive plane{&scene};
+        Loaded(){
+            scene.setCamera(&camera);
+            camera.setType(CameraType::CAMERA_PERSPECTIVE);
+            camera.setFramebufferSize(16, 16);
+            camera.setRenderToTexture(true);
+            plane.createPlane(1.0f, 1.0f);
+        }
+    };
+    const auto aliveShaders = [](){ return sg_query_stats().total.shaders.alive; };
+    const auto settle = [](){
+        ShaderPool::clearUnused();
+        // (what is destroyed goes when its creation ended, frames later)
+        EXPECT_TRUE(GpuEnvironment::runFrames(nullptr, 4));
+    };
+    settle();
+    const uint32_t aliveBefore = aliveShaders();
+
+    constexpr int rounds = 12;
+    for (int round = 0; round < rounds; round++){
+        std::atomic<int> arrived{0};
+        std::atomic<bool> done{false};
+        Loaded* preview = nullptr;
+        std::thread strand([&](){
+            {
+                Engine::AsyncThreadScope loadScope;
+                preview = new Loaded();
+                arrived.fetch_add(1);
+                while (arrived.load() < 2)
+                    std::this_thread::yield();
+                Engine::executeSceneOnce(&preview->scene);
+            }
+            done.store(true);
+        });
+        {
+            Loaded own;
+            arrived.fetch_add(1);
+            while (arrived.load() < 2)
+                std::this_thread::yield();
+            Engine::executeSceneOnce(&own.scene);
+            // (a commit of the strand's queue waits for a frame)
+            while (!done.load())
+                GpuEnvironment::drawFrames(1);
+            strand.join();
+            GpuEnvironment::drawFrames(2);
+            Engine::removeScene(&own.scene);
+            Engine::removeScene(&preview->scene);
+            delete preview;
+        }
+        settle();
+    }
+    EXPECT_EQ(aliveShaders(), aliveBefore) << "a GPU shader was left over";
+    Engine::removeScene(&scene);
+}
+
+// A thread looks at a variant it holds while the main thread destroys it outside a frame (a shader
+// hot reload, ShaderPool::destroyCustomShaders; a failed one retired by get()) and then makes it
+// again. (The frames only between the rounds, with the thread waiting: on the real path it looks
+// from inside Engine::executeSceneOnce, which the frames' semaphore keeps off them.)
+TEST(ShaderPoolThreadsGpu, AThreadLooksAtAVariantTheMainThreadDestroys){
+    JASPER_REQUIRE_GPU();
+    std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::BLIT, 0);
+    ASSERT_TRUE(shader);
+    ASSERT_TRUE(GpuEnvironment::runFrames([]{ return ShaderPool::get(ShaderType::BLIT, 0)->isCreated(); }, 600));
+
+    constexpr int rounds = 20;
+    std::atomic<int> looking{0};
+    std::atomic<int> looked{0};
+    std::atomic<bool> stop{false};
+    std::thread strand([&](){
+        Engine::AsyncThreadScope scope;
+        int round = 0;
+        while (!stop.load()){
+            if (looking.load() <= round){
+                std::this_thread::yield();
+                continue;
+            }
+            round++;
+            for (int i = 0; i < 200; i++){
+                (void)shader->isCreated();
+                (void)shader->isFailed();
+                (void)shader->isPending();
+                (void)shader->backend.get();
+            }
+            looked.store(round);
+        }
+    });
+    for (int round = 1; round <= rounds; round++){
+        looking.store(round);
+        shader->destroyShader();
+        while (looked.load() < round)
+            std::this_thread::yield();
+        EXPECT_FALSE(shader->isCreated());
+        // made again, by the frames' get()
+        ASSERT_TRUE(GpuEnvironment::runFrames([]{ return ShaderPool::get(ShaderType::BLIT, 0)->isCreated(); }, 600));
+    }
+    stop.store(true);
+    // (its scope's end commits: a batch nobody executes would wait)
+    GpuEnvironment::drawFrames(1);
+    strand.join();
+    GpuEnvironment::drawFrames(2);
+    shader.reset();
+    ShaderPool::remove(ShaderType::BLIT, 0);
+}
+
+// A variant asked for off the main thread is made by that thread's queue, later, on the main thread:
+// the queued MAKE_SHADER reads the variant's sources and a queued cleanup writes to the variant. Let
+// go before that batch runs, by that thread or by the main thread, the variant has to be there for
+// them. (Under SANITIZE=address a heap-use-after-free stops the run.)
+TEST(ShaderPoolThreadsGpu, AVariantLetGoBeforeTheQueueThatMakesItRuns){
+    JASPER_REQUIRE_GPU();
+    GpuEnvironment::drawFrames(1);
+    for (const bool mainThreadLetsGo : {false, true}){
+        ShaderPool::remove(ShaderType::BLIT, 0);
+        ASSERT_EQ(ShaderPool::getShaderState(ShaderPool::getShaderKey(ShaderType::BLIT, 0)), ResourceLoadState::NotStarted);
+        std::atomic<bool> queued{false};
+        std::atomic<bool> letGo{false};
+        std::atomic<bool> done{false};
+        std::thread strand([&](){
+            {
+                Engine::AsyncThreadScope scope;
+                // (compiled at runtime on some backends: a later get() queues it)
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(1);
+                {
+                    std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::BLIT, 0);
+                    while (!shader->loading.load() && std::chrono::steady_clock::now() < deadline){
+                        std::this_thread::yield();
+                        shader = ShaderPool::get(ShaderType::BLIT, 0);
+                    }
+                    EXPECT_TRUE(shader->loading.load());
+                }
+                if (mainThreadLetsGo){
+                    queued.store(true);
+                    while (!letGo.load())
+                        std::this_thread::yield();
+                }else{
+                    ShaderPool::remove(ShaderType::BLIT, 0);
+                }
+            }
+            done.store(true);
+        });
+        if (mainThreadLetsGo){
+            while (!queued.load())
+                std::this_thread::yield();
+            ShaderPool::remove(ShaderType::BLIT, 0);
+            letGo.store(true);
+        }
+        // the batch runs here
+        while (!done.load())
+            GpuEnvironment::drawFrames(1);
+        strand.join();
+        GpuEnvironment::drawFrames(2);
+        // whatever became of it, the pool still works and it goes when asked now
+        ASSERT_TRUE(GpuEnvironment::runFrames([]{ return ShaderPool::get(ShaderType::BLIT, 0)->isCreated(); }, 600));
+        ShaderPool::remove(ShaderType::BLIT, 0);
+        EXPECT_EQ(ShaderPool::getShaderState(ShaderPool::getShaderKey(ShaderType::BLIT, 0)), ResourceLoadState::NotStarted);
+    }
+    GpuEnvironment::drawFrames(2);
+}

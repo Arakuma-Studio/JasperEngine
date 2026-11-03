@@ -1520,17 +1520,24 @@ std::vector<std::string> TextureDataPool::getLoadingIds(size_t max){
     return out;
 }
 
+void TextureDataPool::discardPending(const std::string& id, PendingTexture& pending, bool cancel) {
+    if (cancel) {
+        // the queued reads go, a decode in progress sees the token
+        pending.cancel.cancel();
+        if (pending.task.cancel())
+            ResourceProgress::failBuild(std::hash<std::string>{}(id));
+    }
+    pending.task.wait();
+    if (pending.task.status() == jobs::TaskStatus::Completed){
+        for (TextureData& face : pending.task.get().data)
+            face.releaseImageData();
+    }
+}
+
 void TextureDataPool::quiescePending(bool cancel) {
     for (auto* builds : {&pendingBuilds, &backgroundBuilds}){
-        for (auto& [id, pending] : *builds) {
-            if (cancel) {
-                // the queued reads go, a decode in progress sees the token
-                pending.cancel.cancel();
-                if (pending.task.cancel())
-                    ResourceProgress::failBuild(std::hash<std::string>{}(id));
-            }
-            pending.task.wait();
-        }
+        for (auto& [id, pending] : *builds)
+            discardPending(id, pending, cancel);
         builds->clear();
     }
     basisJobs.clear();
@@ -1556,11 +1563,7 @@ void TextureDataPool::remove(const std::string& id){
             if (pendingIt != builds->end()) {
                 // a load not started never runs; a running one is waited for, so it cannot
                 // overlap a replacement request with this id
-                pendingIt->second.cancel.cancel();
-                if (pendingIt->second.task.cancel()) {
-                    ResourceProgress::failBuild(std::hash<std::string>{}(id));
-                }
-                pendingIt->second.task.wait();
+                discardPending(id, pendingIt->second);
                 builds->erase(pendingIt);
                 removedPending = true;
             }
@@ -1603,11 +1606,7 @@ void TextureDataPool::invalidate(const std::string& id){
         auto pendingIt = pendingBuilds.find(id);
         if (pendingIt != pendingBuilds.end()) {
             // as remove(): a load not started never runs, a running one is waited for
-            pendingIt->second.cancel.cancel();
-            if (pendingIt->second.task.cancel()) {
-                ResourceProgress::failBuild(std::hash<std::string>{}(id));
-            }
-            pendingIt->second.task.wait();
+            discardPending(id, pendingIt->second);
             pendingBuilds.erase(pendingIt);
         }
     }

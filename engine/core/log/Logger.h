@@ -186,6 +186,10 @@ namespace jasperengine {
         // queued at entry is written, using only atomics and sleeps. False on the drain
         // thread, before init or when the deadline passes; unwritten (optional) gets how
         // many records were still queued.
+        // The rate limit's summaries of what it held back, now rather than when their second is
+        // over, and every window starts anew. Then as flush(): a summary logged after this says
+        // what was logged after it (a test's log capture).
+        static void flushSummaries();
         static bool flushForCrash(std::chrono::milliseconds timeout, uint64_t* unwritten = nullptr) noexcept;
 
         // The engine frame records are stamped with (Engine::systemDraw)
