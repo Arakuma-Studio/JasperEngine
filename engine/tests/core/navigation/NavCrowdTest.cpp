@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -100,13 +101,31 @@ TEST_F(NavObstacleTest, CarveBlocksAndRestores){
     const nav::NavPath open = nav->calculatePath(from, to);
     ASSERT_EQ(open.status, nav::PathStatus::Complete);
 
+    // A tick rebuilds tiles for 1 ms of wall clock, and at least one (NavigationSystem's
+    // CARVE_BUDGET_MS). Under a sanitizer's instrumentation one tile is over that budget on its
+    // own: the 2 ticks are every other build's, there the state is waited for, in ticks
+    const auto carvingCatchesUp = [&](const std::function<bool()>& caughtUp){
+#if defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
+        const auto start = std::chrono::steady_clock::now();
+        int ticks = 0;
+        while (ticks < 240 && !caughtUp()){
+            step();
+            ticks++;
+        }
+        printf("[bench] the carving caught up in %d ticks, %.1f ms (under a sanitizer, no budget)\n", ticks,
+               std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+#else
+        steps(2);
+#endif
+    };
+
     const Entity blocker = obstacleBox(*scene, Vector3(0.0f, 1.0f, 0.0f), Vector3(1.5f, 2.0f, 3.0f), true);
-    steps(2);
+    carvingCatchesUp([&](){ return nav->calculatePath(from, to).status != nav::PathStatus::Complete; });
     // blocked: the only way through is cut
     EXPECT_NE(nav->calculatePath(from, to).status, nav::PathStatus::Complete);
 
     scene->destroyEntity(blocker);
-    steps(2);
+    carvingCatchesUp([&](){ return nav->calculatePath(from, to).status == nav::PathStatus::Complete; });
     const nav::NavPath restored = nav->calculatePath(from, to);
     ASSERT_EQ(restored.status, nav::PathStatus::Complete);
     EXPECT_NEAR(restored.length, open.length, 1e-3f);

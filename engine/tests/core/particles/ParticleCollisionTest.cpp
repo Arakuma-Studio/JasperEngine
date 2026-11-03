@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <vector>
 
@@ -64,7 +65,8 @@ namespace {
 
     // a box floor: the top face of [-50, 50] x [-1, 0] x [-50, 50], answered as rays
     struct BoxFloor {
-        mutable uint32_t rays = 0;
+        // (the world collision stage casts its rays in parallel: a provider is called from jobs)
+        mutable std::atomic<uint32_t> rays{0};
         static bool ray(const void* self, const float from[3], const float to[3], float radius, uint32_t, CollisionHit& hit){
             const BoxFloor& b = *static_cast<const BoxFloor*>(self);
             b.rays++;
@@ -234,7 +236,7 @@ TEST(ParticleCollision, WorldMediumCapsQueriesWithoutTunnelling){
     for (int t = 0; t < 360; t++){
         floor.rays = 0;
         sim.ticks(1);
-        worstQueries = std::max(worstQueries, floor.rays);
+        worstQueries = std::max(worstQueries, floor.rays.load());
         if (t < 200)
             continue;
         uint32_t below = 0;

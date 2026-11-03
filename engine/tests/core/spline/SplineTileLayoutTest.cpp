@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -1288,5 +1289,11 @@ TEST(SplineTileLayoutTests, TwoThousandPiecesAreCheapToPlace){
         best = std::min(best, std::chrono::duration<double, std::milli>(stop - start).count());
     }
     RecordProperty("best_ms", std::to_string(best));
+    // (a sanitizer's build is a Debug build under its instrumentation: the budget says nothing
+    // there, docs/testing.md; every other build holds it)
+#if defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
+    printf("[bench] 2,000 pieces: %.1f ms (under a sanitizer, no budget)\n", best);
+#else
     EXPECT_LT(best, 20.0) << "2,000 pieces took " << best << " ms";
+#endif
 }

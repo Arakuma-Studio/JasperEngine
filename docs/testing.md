@@ -729,6 +729,15 @@ drops `/RTC1`, links with `/INCREMENTAL:NO`, defines `_DISABLE_STL_ANNOTATION`, 
 The suppression files list third-party code only (Mesa, X11, fontconfig, vendored libraries),
 each entry with its reason. Engine and editor code is never suppressed: fix it.
 
+GCC 11's TSan (the Linux image) does not intercept `pthread_cond_clockwait` or
+`pthread_mutex_clocklock`, which `std::condition_variable::wait_for` and `std::timed_mutex` lock
+through on the steady clock: one such wait makes its mutex look held, reports double locks there,
+and, since a `std::mutex` never tells TSan it is gone, breaks the next mutex at its address (reports
+of races under a mutex both sides hold). Core timed waits go through `jobs::detail::timedWait`
+(`jobs/detail/TimedWait.h`), and `Crash*` and `HangWatchdog.*` run under TSan with the rest. A budget
+in wall clock is printed under a sanitizer, never enforced there: `perfSlack()`, or the build's
+`JASPERENGINE_SANITIZE_*` where a test's own limit is unconditional.
+
 ### Warnings
 
 `jasperengine_target_warnings()` (`engine/cmake/JasperWarnings.cmake`) puts
