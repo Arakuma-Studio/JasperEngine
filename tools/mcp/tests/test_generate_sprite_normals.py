@@ -862,13 +862,20 @@ async def test_description_and_guide_line(ed: Editor):
 
 async def test_project_switch_during_a_run(ed: Editor):
     original = ed.project.resolve()
-    other = ed.scratch.root / "switched" / "Other"
     out = f"{SPR}/switch_normal.png"
-    r = await ed.call_raw("generate_sprite_normals", {"source": BIG, "preset": "detailed", "params": {"smoothing": 8}, "output": out, "wait": False})
-    check(not r.is_error, r.text)
-    job = r.structured.get("job_id") or r.structured.get("id")
-    await ed.call("create_project", path=str(other), name="Other", unsaved="discard")
-    state = await poll(ed, job)
+    # the job has to outlast create_project, and how long each takes depends on the machine: a job
+    # that finished first tested nothing, so again, heavier and with the new project's shaders warm
+    for attempt, smoothing in enumerate((8, 16, 32)):
+        other = ed.scratch.root / "switched" / f"Other{attempt}"
+        r = await ed.call_raw("generate_sprite_normals", {"source": BIG, "preset": "detailed", "params": {"smoothing": smoothing}, "output": out, "wait": False})
+        check(not r.is_error, r.text)
+        job = r.structured.get("job_id") or r.structured.get("id")
+        await ed.call("create_project", path=str(other), name="Other", unsaved="discard")
+        state = await poll(ed, job)
+        if state["status"] != "succeeded":
+            break
+        (original / out).unlink(missing_ok=True)
+        await ed.call("open_project", path=str(original), unsaved="discard")
     check(state["status"] == "failed" and "project_changed" in json.dumps(state), f"the job says why: {state}")
     check(not (original / out).exists() and not (other / out).exists(), "nothing written in either project")
     await ed.call("open_project", path=str(original), unsaved="discard")
