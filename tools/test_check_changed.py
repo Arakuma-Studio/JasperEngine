@@ -133,6 +133,9 @@ class Builds(unittest.TestCase):
         p = self.plan("tools/check_changed.py")
         self.assertEqual((p.builds, p.self_tests, p.mcp_all), ([], ["tools/test_check_changed.py"], False))
         self.assertEqual(self.plan("tools/mcp/shard.py").self_tests, ["tools/mcp/test_shard.py"])
+        # an engine shader: the shader lint and its tests
+        self.assertEqual(self.plan("engine/shaderlib/includes/lights.glsl").self_tests, ["tools/ci/test_check_shader_lod.py"])
+        self.assertEqual(self.plan("tools/check_shader_lod.py").self_tests, ["tools/ci/test_check_shader_lod.py"])
         for trigger in ("CMakeLists.txt", "docker/linux.Dockerfile", "tools/build.sh", "engine/cmake/JasperPch.cmake",
                         "tools/mcp/requirements.txt"):
             p = self.plan(trigger)

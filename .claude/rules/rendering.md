@@ -15,6 +15,8 @@ paths:
   fragment-shader and CPU (job system) solutions; a desktop-only fast path needs an equivalent
   fallback.
 - A disabled effect adds no pass, no draw and no allocation.
+- In a loop with a per-fragment exit (`continue`, `discard`), sample with textureLod/textureGrad and
+  take derivatives before the loop: `python3 tools/check_shader_lod.py` checks it.
 - Rendering changes come with golden images: `tools/build.sh htmlui-tests` and the core GPU
   suites of `tools/build.sh unit-tests` (`JASPER_TEST_UPDATE_GOLDEN=1` rewrites, glcore only;
   review every rewritten image). Check Vulkan too with `GRAPHIC_BACKEND=vulkan`.

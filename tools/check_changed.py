@@ -83,7 +83,11 @@ MCP_ALL_TRIGGERS = ("tools/mcp/harness.py", "tools/mcp/run_tests.py", "tools/mcp
 SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/check-changed": "tools/test_check_changed.py",
               "tools/test_check_changed.py": "tools/test_check_changed.py", "tools/mcp/coverage_map.py": "tools/test_check_changed.py",
               "tools/mcp/shard.py": "tools/mcp/test_shard.py", "tools/mcp/test_shard.py": "tools/mcp/test_shard.py",
-              "tools/mcp/build_cache.py": "tools/mcp/test_build_cache.py", "tools/mcp/test_build_cache.py": "tools/mcp/test_build_cache.py"}
+              "tools/mcp/build_cache.py": "tools/mcp/test_build_cache.py", "tools/mcp/test_build_cache.py": "tools/mcp/test_build_cache.py",
+              "tools/check_shader_lod.py": "tools/ci/test_check_shader_lod.py",
+              "tools/ci/test_check_shader_lod.py": "tools/ci/test_check_shader_lod.py"}
+# the shader lint, with its own tests, when an engine shader changes (.claude/rules/rendering.md)
+SHADER_LINT_TEST = "tools/ci/test_check_shader_lod.py"
 # C/C++ and what the engine's builds read
 CXX = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".mm", ".m")
 HEADER = (".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp")
@@ -270,6 +274,8 @@ def plan_builds(files: list[str], plan: Plan) -> None:
     if engine or editor:
         plan.add_build("linux", f"{(cxx or engine or editor)[0]} changed")
     shaders = [f for f in engine if f.startswith(("engine/shaders/", "engine/shaderlib/"))]
+    if [f for f in shaders if f.startswith("engine/shaderlib/")] and SHADER_LINT_TEST not in plan.self_tests:
+        plan.self_tests.append(SHADER_LINT_TEST)
     # (a test's data: a golden, a fixture; no dependency database sees it)
     test_data = [f for f in files if f.startswith(("engine/tests/", "editor/tests/")) and not f.endswith(CXX)
                  and not f.startswith("engine/tests/htmlui/")]

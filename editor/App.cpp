@@ -5362,7 +5362,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
     // v44: upstream's sprite normal maps and shader globals (u_vs_globals / u_fs_globals, its v40)
     //      with oe-port's v43: either side's v40-v43 cache holds other variants.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v44";
+    // v45: render-correctness: includes/instance_fade.glsl (the near fade, the G-buffer's 'Ifd',
+    //      GBUFFER bit 16), lighting2d's and the SSAO's explicit-LOD lookups, mesh.frag's shadow
+    //      derivatives before the light loop (lightShadowD).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v45";
 }
 
 void editor::App::pushTabNotificationStyle(){

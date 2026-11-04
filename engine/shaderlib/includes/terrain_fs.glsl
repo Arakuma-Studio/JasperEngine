@@ -216,7 +216,7 @@ struct TerrainStochastic{
     #endif
 };
 
-TerrainStochastic setupTerrainStochastic(vec2 scale, vec2 offset, vec4 settings, uint seed){
+TerrainStochastic setupTerrainStochastic(vec2 scale, vec2 offset, vec4 settings, uint seed){ // lod-safe: the derivatives are taken before the layer loop (terrainFlatDX/DY, terrainSide*DX/DY)
     vec4 params = stochasticParams(settings.x, settings.y, settings.z, settings.w);
     TerrainStochastic ts;
     ts.flatTiling = stochasticSetup(v_terrainTextureDetailTiled * scale + offset, terrainFlatDX * scale, terrainFlatDY * scale, params, seed);

@@ -41,7 +41,8 @@
 // (u_spotMaskAtlas, declared here); with USE_SHADOWS the shadow maps and their blocks are
 // declared here (includes/shadow_data.glsl) and lightShadow samples them
 // (includes/shadow_sampling.glsl). Call lightShadow in uniform control flow (as the loop above
-// does): it takes the derivatives of the position for the receiver-plane bias. Vertex lights
+// does): it takes the derivatives of the position for the receiver-plane bias. Inside a
+// per-fragment branch, take dFdx/dFdy(v_position) before it and call lightShadowD. Vertex lights
 // are diffuse only: no specular, no shadows and no mask (the cone still applies).
 
 #ifndef LIGHT_CAPACITY
@@ -271,12 +272,10 @@ vec3 vertexDiffuse(vec3 worldPosition, vec3 worldNormal){
 }
 
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
-// 1 = lit, 0 = in shadow; a pixel light without a shadow map is always lit
-float lightShadow(int index, vec3 worldPosition, vec3 worldNormal){
-    // the receiver plane's derivatives, before any branch on the fragment
-    vec3 dpdx = dFdx(worldPosition);
-    vec3 dpdy = dFdy(worldPosition);
-
+// 1 = lit, 0 = in shadow; a pixel light without a shadow map is always lit. dpdx and dpdy are
+// the receiver plane's derivatives (dFdx/dFdy of worldPosition) taken in uniform control flow:
+// a caller that calls this inside a per-fragment branch takes them before it
+float lightShadowD(int index, vec3 worldPosition, vec3 worldNormal, vec3 dpdx, vec3 dpdy){
     Light light = getLightData(index);
     if (!light.shadows){
         return 1.0;
@@ -289,6 +288,13 @@ float lightShadow(int index, vec3 worldPosition, vec3 worldNormal){
         return shadowSpot(light.shadowMapIndex, light.position, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
     }
     return shadowPoint(light.shadowMapIndex, light.position, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
+}
+
+// the same, taking the derivatives here: call it in uniform control flow (the light loop)
+float lightShadow(int index, vec3 worldPosition, vec3 worldNormal){
+    vec3 dpdx = dFdx(worldPosition);
+    vec3 dpdy = dFdy(worldPosition);
+    return lightShadowD(index, worldPosition, worldNormal, dpdx, dpdy);
 }
 
 // The shadow debug views of the Scene view (shadowData.header.w): a colour replacing the
