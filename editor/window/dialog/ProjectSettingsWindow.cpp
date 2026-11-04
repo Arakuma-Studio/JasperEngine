@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectSettingsWindow.h"
+#include "io/watch/LinkedFolders.h"
 #include "widget/ColorMath.h"
 #include "window/PlayInput.h"
 #include "widget/ColorField.h"
@@ -968,10 +969,10 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     {
         std::error_code ec;
         const fs::path assets = project->getAssetsPath();
-        for (auto it = fs::recursive_directory_iterator(assets, fs::directory_options::skip_permission_denied, ec);
-             !ec && it != fs::recursive_directory_iterator(); it.increment(ec)){
+        for (watch::LinkedDirectoryIterator it(assets, fs::directory_options::skip_permission_denied, ec), end;
+             !ec && it != end; it.increment(ec)){
             if (it->is_regular_file(ec) && it->path().extension() == ".inputactions")
-                m_inputActionsFiles.push_back(fs::relative(it->path(), project->getProjectPath(), ec));
+                m_inputActionsFiles.push_back(project->normalizeToProjectRelative(it->path()));
         }
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }

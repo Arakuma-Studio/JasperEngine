@@ -3,6 +3,7 @@
 
 // W4: assets, import, materials, shaders, text files, placeholder art
 #include "asset/AssetOps.h"
+#include "io/watch/LinkedFolders.h"
 #include "asset/AssetTypes.h"
 #include "camera/ShakePreset.h"
 #include "camera/ShakeInstance.h"
@@ -812,7 +813,7 @@ void listAssetsTool(const CallPtr& call) {
         entries.push_back(item);
     };
     if (recursive) {
-        for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec; it.increment(ec)) {
+        for (watch::LinkedDirectoryIterator it(root, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec; it.increment(ec)) {
             if (it->is_directory(ec) && ProjectChecks::isSkippedDir(it->path())) {
                 it.disable_recursion_pending();
                 continue;
@@ -1993,7 +1994,7 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     };
     for (const fs::path& path : changed) {
         if (fs::is_directory(path, ec)) {
-            for (fs::recursive_directory_iterator it(path, fs::directory_options::skip_permission_denied, ec), end;
+            for (watch::LinkedDirectoryIterator it(path, fs::directory_options::skip_permission_denied, ec), end;
                  !ec && it != end; it.increment(ec)) {
                 if (it->is_regular_file(ec)) importFbx(it->path());
             }

@@ -2500,6 +2500,9 @@ namespace jasperengine::editor{
         std::vector<Entity> importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene = true, const PrefabInstanceData* instanceData = nullptr, std::unordered_map<Entity, Entity>* entityRemap = nullptr, const PrefabMemberIds* preferredIds = nullptr, const std::vector<PrefabInstanceData*>& assetLayers = {});
         // The prefab asset, read from its file when not loaded yet (nullptr when it cannot be)
         Prefab* loadPrefabAsset(const std::filesystem::path& filepath);
+        // The path of the prefab asset a path names: one file has one asset, whichever link or hard
+        // link it is reached by (the path as it is when no asset is known at it)
+        std::filesystem::path getPrefabAssetPath(const std::filesystem::path& filepath) const;
         // reconcileTracked false leaves dropping the destroyed entities from the scene's
         // tracked list to the caller (one pass after unimporting many instances); keepRoot
         // leaves the root entity in the scene (a Missing Prefab conversion)

@@ -258,7 +258,13 @@ void listMissingAssetsTool(const CallPtr& call) {
         for (const Json& group : missing) {
             text += "\n" + group["last_path"].get<std::string>() + " (" + std::to_string(group["referrers"].size()) + " reference(s))";
         }
-        call->ok(text, Json{{"missing", missing}, {"resolved_by_path", healed}, {"orphan_metas", orphans}});
+        Json result{{"missing", missing}, {"resolved_by_path", healed}, {"orphan_metas", orphans}};
+        // only when a linked folder can't be written: a project without one reads as it did
+        if (!openOnly && !tracker.getReadOnlyLinked().empty()) {
+            result["read_only_linked"] = tracker.getReadOnlyLinked();
+            text += "\n" + std::to_string(tracker.getReadOnlyLinked().size()) + " asset(s) in a read-only linked folder.";
+        }
+        call->ok(text, result);
     });
 }
 
@@ -417,7 +423,8 @@ void registerAssetIdentityTools(McpRegistry& registry) {
         tool.title = "List Missing Assets";
         tool.description =
             "Every reference that resolves to no asset, by missing GUID (expected type, last path, referrers); "
-            "references bound only by path (resolved_by_path); metas whose asset is gone (orphan_metas).";
+            "references bound only by path (resolved_by_path); metas whose asset is gone (orphan_metas); "
+            "assets in read-only linked folders (read_only_linked, when any).";
         tool.inputSchema = object({
             {"scope", withDefault(stringEnum("", {"project", "open_scenes"}), "project")}
         });

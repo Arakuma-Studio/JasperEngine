@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CodeEditor.h"
+#include "io/watch/LinkedFolders.h"
 
 #include "reload/HotReloadService.h"
 #include "DocumentFile.h"
@@ -436,7 +437,7 @@ void collectProjectSources(const fs::path& projectPath, const std::unordered_set
     if (projectPath.empty() || !fs::exists(projectPath)) return;
 
     std::error_code ec;
-    for (fs::recursive_directory_iterator it(projectPath, fs::directory_options::skip_permission_denied, ec), end;
+    for (watch::LinkedDirectoryIterator it(projectPath, fs::directory_options::skip_permission_denied, ec), end;
          it != end && !ec; it.increment(ec)) {
         const fs::directory_entry& entry = *it;
 
