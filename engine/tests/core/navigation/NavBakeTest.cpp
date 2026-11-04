@@ -380,7 +380,7 @@ TEST_F(NavBakeTest, HeightmapReleasedIsReadAgain){
     EXPECT_GT(middle, corner + 1.0f);
 }
 
-// S42 R12 (AC9): the probe's sources ride along with the input but never into its tile hashes
+// S54 R12 (AC9): the probe's sources ride along with the input but never into its tile hashes
 TEST_F(NavBakeTest, SourcesDoNotChangeHashes){
     const Entity floor = plane(*scene, Vector3(), 40.0f, 40.0f);
     const Entity statics = box(*scene, Vector3(-5.0f, 0.5f, 0.0f), Vector3(2.0f, 1.0f, 2.0f));

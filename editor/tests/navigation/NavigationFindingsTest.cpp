@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The project's navigation findings (docs/specs/S42-navigation-diagnostics.md R13, R36; AC10):
+// The project's navigation findings (docs/specs/S54-navigation-diagnostics.md R13, R36; AC10):
 // every loaded scene with a file, in scene order, the scene named; agent types unused by every
 // scene once; and the export preflight's lines.
 
@@ -21,7 +21,7 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    Entity unbakedSurface(Scene& scene, const char* name) {
+    Entity navSurface(Scene& scene, const char* name) {
         const Entity entity = scene.createEntity();
         scene.addComponent<Transform>(entity);
         scene.setEntityName(entity, name);
@@ -29,7 +29,7 @@ namespace {
         return entity;
     }
 
-    void addScene(Project& project, Scene& scene, uint32_t id, const std::string& name, const std::string& file) {
+    void addNavScene(Project& project, Scene& scene, uint32_t id, const std::string& name, const std::string& file) {
         SceneProject sceneProject;
         sceneProject.id = id;
         sceneProject.name = name;
@@ -57,8 +57,8 @@ TEST(NavigationFindings, ProjectWrapper){
     // scene A: an unbaked Humanoid surface; scene B: an unbaked Giant surface and an agent of an
     // unknown type (an error); scene C has no file (not checked)
     Scene a, b, c;
-    unbakedSurface(a, "Ground A");
-    const Entity giantSurface = unbakedSurface(b, "Ground B");
+    navSurface(a, "Ground A");
+    const Entity giantSurface = navSurface(b, "Ground B");
     b.getComponent<NavMeshSurfaceComponent>(giantSurface).agentType = 1;
     const Entity stray = b.createEntity();
     b.addComponent<Transform>(stray);
@@ -66,12 +66,12 @@ TEST(NavigationFindings, ProjectWrapper){
     NavMeshAgentComponent agent;
     agent.agentType = 9;
     b.addComponent<NavMeshAgentComponent>(stray, agent);
-    unbakedSurface(c, "Ground C");
+    navSurface(c, "Ground C");
 
     Project project;
-    addScene(project, a, 1, "A", "Scenes/A.scene");
-    addScene(project, b, 2, "B", "Scenes/B.scene");
-    addScene(project, c, 3, "C", "");
+    addNavScene(project, a, 1, "A", "Scenes/A.scene");
+    addNavScene(project, b, 2, "B", "Scenes/B.scene");
+    addNavScene(project, c, 3, "C", "");
 
     size_t surfaces = 0;
     const std::vector<ProjectNavFinding> findings = collectProjectFindings(&project, &surfaces);

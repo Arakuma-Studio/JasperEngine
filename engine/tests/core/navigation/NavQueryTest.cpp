@@ -47,7 +47,7 @@ TEST_F(NavQueryTest, AreaCosts){
     const Vector3 from(-10.0f, 0.0f, 0.0f), to(10.0f, 0.0f, 0.0f);
     const nav::NavPath path = nav->calculatePath(from, to);
     ASSERT_EQ(path.status, nav::PathStatus::Complete);
-    // S42 R2: Complete exactly when nothing failed
+    // S54 R2: Complete exactly when nothing failed
     EXPECT_EQ(path.failure, nav::PathFailure::None);
     // the strip costs 10 per metre: the path detours through the gap (z > 3) instead
     float maxZ = -1e9f;

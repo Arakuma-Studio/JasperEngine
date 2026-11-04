@@ -640,10 +640,10 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
 
 ## Deviations
 
-- S42 P1: island labels are one flat `int32_t` array with a per-tile-slot offset table
+- S54 P1: island labels are one flat `int32_t` array with a per-tile-slot offset table
   (`NavIslandLabels::tileBase`) instead of a vector per tile slot (D2): a vector header per slot
   alone would cost 0.6 B per polygon of `bench_nav_city` and break R21's 4 B per polygon.
-- S42 P1: additions beyond the §6 sketch, all additive: `NavMesh::getPolyAt` (the reference
+- S54 P1: additions beyond the §6 sketch, all additive: `NavMesh::getPolyAt` (the reference
   `setPolyFlags` takes), `covers` (a polygon right under a point), `isReachable` (R6 on one mesh),
   `getSearchCount`, `getLabelledRevision`, `getIslandMemoryBytes`; `nav::labelIslands` /
   `NavIslandLabels` and `bakeErrorFromName` in `NavDiagnostics.h`;
@@ -654,30 +654,30 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
   string, and for `filtered` the area name, go in `detail`); `ProjectNavFinding::sceneId` and an
   options argument of `collectProjectFindings` (`stale`, a per-scene `dirtyTilesOf`) for P3's
   Problems list.
-- S42 P1: `bakeNow` returns the report as it landed (`islandCount` -1): only
+- S54 P1: `bakeNow` returns the report as it landed (`islandCount` -1): only
   `getLastBakeResult` labels (R8), so a synchronous bake (the bench's incremental bake) never
   pays for islands.
-- S42 P1: a bake that cannot start (`nothing_collected`, `too_large`, `unavailable`) becomes the
+- S54 P1: a bake that cannot start (`nothing_collected`, `too_large`, `unavailable`) becomes the
   surface's last result, so `bake_failed` and the Inspector see it; `busy` and `no_surface` do not
   replace it.
-- S42 P1: AC7's "allocate nothing" is checked as exactly one allocation per path: S19's corners
+- S54 P1: AC7's "allocate nothing" is checked as exactly one allocation per path: S19's corners
   vector, which every path had before; nothing else (no labels, no second search) allocates.
-- S42 P1: the probe calls a point walkable when a polygon lies right under it (a cell wide, Step
+- S54 P1: the probe calls a point walkable when a polygon lies right under it (a cell wide, Step
   Height + 2 cell heights tall), not when one is in the query search box: R10's `onMesh` (the
   search box, 2 x radius) would call a point 0.2 m from a wall on the mesh and never explain it.
   The location it returns is still R10's.
-- S42 P1: when the tile under a point is stale, the probe first rebuilds it with the baked limits;
+- S54 P1: when the tile under a point is stale, the probe first rebuilds it with the baked limits;
   if that already covers the point, `stale_tile` is the only reason (a bake fixes it). That case
   takes 4 single-tile rebuilds instead of R24's 3.
-- S42 P1: AC8 locates "off the mesh" 1.5 m from the edge: 1 m is exactly the search box's half
+- S54 P1: AC8 locates "off the mesh" 1.5 m from the edge: 1 m is exactly the search box's half
   width (2 x 0.5 m radius) and Detour's box test is inclusive.
-- S42 P1: `agent_type_unused` is raised only in scenes with navigation components (else every
+- S54 P1: `agent_type_unused` is raised only in scenes with navigation components (else every
   project without navigation would get an info for Humanoid); `collectProjectFindings` keeps a
   type only when no scene uses it, once, without a scene.
-- S42 P1: grid answers report an end outside the grid or on a Not Walkable / masked cell as
+- S54 P1: grid answers report an end outside the grid or on a Not Walkable / masked cell as
   `*_off_mesh` / `*_filtered` also when `allowPartial` gives a Partial path to it (the reason is
   more useful than `disconnected`).
-- S42 P1: files outside P1 touched minimally: `editor/navigation/NavigationEditorSources.cmake`
+- S54 P1: files outside P1 touched minimally: `editor/navigation/NavigationEditorSources.cmake`
   (P3's; the two new sources) and `engine/core/navigation/NavBakeInput.cpp` (`memoryBytes` counts
   the sources).
 

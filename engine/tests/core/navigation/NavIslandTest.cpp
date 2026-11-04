@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Navmesh islands (docs/specs/S42-navigation-diagnostics.md R7, R8, R20; AC6, AC7): components
+// Navmesh islands (docs/specs/S54-navigation-diagnostics.md R7, R8, R20; AC6, AC7): components
 // joined through links, area and bounds, relabelled when the revision changes (carving, flags),
 // deterministic ids, and path queries that never label.
 

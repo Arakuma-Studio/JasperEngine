@@ -195,7 +195,7 @@ int main(int argc, char** argv) {
         results.add("query_raycast_p95_ms", bench::percentile(raycasts, 0.95), "ms");
     }
 
-    // ---- S42 diagnostics: island labelling, a disconnected reject, locate (islands current)
+    // ---- S54 diagnostics: island labelling, a disconnected reject, locate (islands current)
     {
         static_assert(sizeof(nav::NavIsland) <= 48, "R21: an island is at most 48 bytes");
         nav::NavIslandLabels labels;
@@ -257,7 +257,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ---- S42 findings: bench_nav_city with 100 agents and 20 links, stale counts cached
+    // ---- S54 findings: bench_nav_city with 100 agents and 20 links, stale counts cached
     {
         Scene findingsScene;
         test::disableSubSystems(findingsScene);

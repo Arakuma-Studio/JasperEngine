@@ -47,7 +47,7 @@ TEST_F(NavStubTest, QueriesFail){
     EXPECT_FALSE(NavMeshAgent(scene.get(), walker).isOnNavMesh());
 }
 
-// S42 R18 (AC8): the diagnostics answer Not baked, no islands and an empty location
+// S54 R18 (AC8): the diagnostics answer Not baked, no islands and an empty location
 TEST_F(NavStubTest, DiagnosticsStubs){
     test::LogCapture log;
     const Entity surface = planeSurface();
