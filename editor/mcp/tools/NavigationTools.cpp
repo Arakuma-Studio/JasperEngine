@@ -254,6 +254,8 @@ void bakeNavigationTool(const CallPtr& call) {
     state->sceneId = scene->id;
     state->surfaces = surfaces;
     state->job = ctx.jobs().create("bake_navigation", "Bake " + std::to_string(surfaces.size()) + " NavMesh Surface(s) (" + modeName + ")");
+    // before any start: when every start is refused the job ends in the loop, with the reasons
+    state->job->setProgress(0.0, "baking");
     std::weak_ptr<BakeCall> weak = state;
     state->job->setCancelHandler([weak, project]() {
         if (auto s = weak.lock()) {
@@ -332,7 +334,6 @@ void bakeNavigationTool(const CallPtr& call) {
         }
     }
     finishIfDone();
-    state->job->setProgress(0.0, "baking");
     call->detach();
     replyWhenJobDone(call, state->job, args.value("wait", true), args.value("timeout_seconds", 120.0), [state](const McpJob& finished) {
         Json result = finished.result();
