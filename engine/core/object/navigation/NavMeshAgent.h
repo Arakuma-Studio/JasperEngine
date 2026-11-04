@@ -99,6 +99,16 @@ namespace jasperengine{
         // the link it is on: false when it is on none
         bool getCurrentOffMeshLink(Vector3& start, Vector3& end, Entity& link) const;
 
+        // ---- S55 queries
+
+        // its own area cost (Unity's SetAreaCost), runtime only: it applies to its crowd planning
+        // and its queries; the areas it does not set cost the project's
+        void setAreaCost(int area, float cost);
+        // its cost of an area: its own, else the project's
+        float getAreaCost(int area) const;
+        // back to the project's cost
+        void resetAreaCost(int area);
+
         FunctionSubscribe<void(NavMeshAgent)>& getOnDestinationReached();
         FunctionSubscribe<void(NavMeshAgent)>& getOnPathFailed();
         FunctionSubscribe<void(NavMeshAgent)>& getOnOffMeshLinkStart();

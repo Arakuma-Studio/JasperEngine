@@ -4,6 +4,8 @@
 #include "NavTypes.h"
 #include "NavHash.h"
 
+#include "Log.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -258,4 +260,37 @@ bool nav::pathFailureFromName(const std::string& name, PathFailure& out) {
         }
     }
     return false;
+}
+
+// ---------------------------------------------------------------- S55 queries: area costs
+
+float nav::clampAreaCost(float cost) {
+    if (cost >= 1.0f && std::isfinite(cost))
+        return cost;
+    static std::atomic<bool> warned{false};
+    if (!warned.exchange(true))
+        Log::warn("Navigation: an area cost below 1 (%g) is used as 1 (A*'s estimate needs costs >= 1)", (double)cost);
+    return 1.0f;
+}
+
+void QueryFilter::setAreaCost(int area, float cost) {
+    if (area < 0 || area >= AREA_COUNT)
+        return;
+    areaCosts[(size_t)area] = clampAreaCost(cost);
+    costMask = (uint16_t)(costMask | (1u << area));
+}
+
+float QueryFilter::getAreaCost(int area) const {
+    if (area < 0 || area >= AREA_COUNT)
+        return 0.0f;
+    if (costMask & (1u << area))
+        return areaCosts[(size_t)area];
+    return getSettings().areas[(size_t)area].cost;
+}
+
+void QueryFilter::resetAreaCost(int area) {
+    if (area < 0 || area >= AREA_COUNT)
+        return;
+    costMask = (uint16_t)(costMask & ~(1u << area));
+    areaCosts[(size_t)area] = 0.0f;
 }
