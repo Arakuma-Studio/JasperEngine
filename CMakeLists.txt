@@ -697,6 +697,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cook/SceneCooker.cpp
     ${EDITOR_DIR}/cook/VoxelVolumeCook.cpp
     ${EDITOR_DIR}/voxel/VoxelAssetFile.cpp
+    ${EDITOR_DIR}/voxel/VoxelGeneration.cpp
     ${EDITOR_DIR}/voxel/VoxelProjectSettings.cpp
     ${EDITOR_DIR}/cook/JPakWriter.cpp
     ${EDITOR_DIR}/util/ZipArchive.cpp
