@@ -1,6 +1,6 @@
 # S54 — Noise graphs and terrain generation
 
-Wave 5 (terrain programme, spec-first). Binding decisions: `TERRAIN-LEDGER.md` D1-D18, cited here as
+Wave 5 (terrain programme, spec-first). Binding decisions: `TERRAIN-LEDGER.md` D1-D21, cited here as
 D1, D4 ...; this spec's own decisions are N1 ... N17. Reports: `/tmp/terrain-research/reports/`
 (`fastnoise2.md`, `voxel-meshing-generators.md` section 3, `our-terrain-authoring.md`,
 `engine-constraints.md`), checked against the code where cited. Seams: S53 owns the writes (D4), S58
@@ -109,7 +109,7 @@ behaviour below is inferred from reading, except what is marked as a grep.
   no ports. The only caller is the Animator (`editor/window/AnimatorWindow.cpp:1396-1501`), probed as
   `animator.canvas` (`:1502`).
 
-**Jobs, modules, CI**
+**Jobs, modules**
 - `engine/core/jobs/JobSystem.h:18-25`: jobs never touch sokol, Lua or ImGui, and with 0 workers nothing
   runs at submit. `jobs::GateClass::Heavy` is `JobTypes.h:30-33`; the web budget is 4 ms of Background per
   frame (`S06:250-253`). `MainThreadQueue` does not drain while paused (`engine/core/thread/MainThreadQueue.h:14-19`).
@@ -124,12 +124,8 @@ behaviour below is inferred from reading, except what is marked as a grep.
 - `Exporter::copyAssets` ships every file under the assets directory (`editor/Exporter.cpp:2753-2800,3022`),
   so a `.noisegraph` would ship today.
 - The asset table is `editor/asset/AssetTypes.cpp:30-55`; `.particles` is the sidecar precedent (`:40`).
-- CI (`.github/workflows/ci.yml`):
-  - Core tests run on Linux GCC (`unit`, `:48`), Windows `cl` Release (`:658,666`) and macOS Debug
-    on `macos-latest` (`:811,819`), the last two with `--gtest_filter=-*Gpu*`.
-  - The web job (`:499`) runs three gates, and the particles gate is not one of them (grep).
-  - The Android job only runs `assembleDebug` (`:565-589`). The emulator tests need KVM
-    (`docs/testing.md:225`), which this host lacks.
+- There is no CI: upstream removed the GitHub workflows (`297562c95`), so nothing runs after a push. Section 6's matrix says
+  what runs here and what a person runs elsewhere. Android emulator tests need KVM (`docs/testing.md:223`), which this host lacks.
 - `generate` and `preview` are in `VERBS` (`tools/mcp/tests/test_tool_conventions.py:37-41`), which
   `our-terrain-authoring.md` left unverified. `tools/mcp/budget.json` has no `terrain` entry in
   `groups`, so `group_default` applies (15,000 characters, 12 tools) until D17's raise.
@@ -139,10 +135,11 @@ behaviour below is inferred from reading, except what is marked as a grep.
 
 ## 4. Reference
 
-Nothing is vendored. `NOTICE.md` gains no entry unless an implementer ports a specific FastNoise2
-algorithm, which this spec does not ask for (MIT; it would need a kept header and an entry). The
-do-not-copy list (`docs/specs/README.md:23-36`) does not touch this work. **OpenEngine's erosion filter
-(MPL-2.0) is banned: do not open it.**
+Nothing is vendored. `NOTICE.md` gains no entry, and `engine/notices.json` none (it covers `engine/libs` only), unless an implementer
+ports a specific FastNoise2 algorithm, which this spec does not ask for (MIT; it would need a kept header and an entry). The
+do-not-copy list (`docs/specs/README.md:23-36`) does not touch this work. Upstream dropped the README's "Licences" bullet with its
+MPL-2.0 line; the README now says only that copied code keeps its header and gets a `NOTICE.md` entry. That lifts nothing here:
+**OpenEngine's erosion filter (MPL-2.0) stays banned by ledger D14: do not open it.**
 
 | Source | Take | Leave |
 |---|---|---|
@@ -235,7 +232,7 @@ do-not-copy list (`docs/specs/README.md:23-36`) does not touch this work. **Open
   indent, unknown keys kept at every level. Nodes and parameters are keyed by name, never by position
   (N3). `metadata.noise.space` is `terrain` (coordinates in terrain widths, the default) or `world`
   (metres). Exposed `variables` are the graph's public knobs.
-- **R13. Identity.** `AssetType::NoiseGraph` is a sidecar asset under the assets base, in `editor/asset/AssetTypes.cpp`.
+- **R13. Identity.** `AssetType::NoiseGraph = 28` (reserved, D19: pixel art holds 24-27; the value is stored in `assetmap.bin`, so it never moves) is a sidecar asset under the assets base, in `editor/asset/AssetTypes.cpp`.
   It gets a GUID through S04, moves and renames keep it, and it appears in the Project window with an icon.
 - **R14. Versions.** `formatVersion` follows S23; `kindVersion` starts at 1 with a migrations list. A
   shipped node's parameter defaults and its output are frozen, by a golden of the node-type table and
@@ -405,8 +402,7 @@ beyond that the code is profiled.
 
   armv7 runs Scalar on a slow core: the target is 10 % of the x86-64 column. Single-point calls take at
   most 60 ns (Perlin 2D). Web numbers are gated only on an idle machine (`?noise_bench=1`, as the
-  particles project does) and reported in CI. Arm64 is reported from CI's macOS job, a proxy; a phone
-  is unverified (section 7).
+  particles project does) and otherwise only reported. The arm64 and phone columns are targets: unverified here (section 7).
 - **R47. Whole maps.** `mountains` without erosion (12 octaves in all):
   1024² at most 1.2 s on one thread and 0.4 s on the workers; 4096² at most 4 s on the workers.
 - **R48. Erosion.** Hydraulic at least 8 M droplet steps/s per thread; thermal at least 40 M texel
@@ -484,12 +480,13 @@ beyond that the code is profiled.
   `range_analytic`, `range_observed`, `mean`, `hash`, `ms`, `ns_per_point`, `share`, `dead`, `folded`, `issues`.
 - **R65. Discoverability.** `docs/mcp/guide/noise-graphs.md` (`jasper://docs/noise-graphs`) holds the node
   table, a worked example, the loop (`edit_graph`, `preview_noise_graph`, `generate_terrain dry_run`, real run,
-  `sample_terrain`) and the fact that `edit_graph` lives in group `scripting` while calls reach every tool. The
-  agent guide's terrain digest gets at most one line. `list_graph_node_types` carries ranges of
-  parameters from `ParamDesc`.
-- **R66. Budget.** `generate_terrain` at most 1,400 characters, `preview_noise_graph` at most 1,200, and both
-  within the `terrain` group limits of S53 R74 (D17, `tools/mcp/budget.json`). Adding `create` to `edit_graph` keeps
-  `scripting` within its limit. Tool test, hidden-until-enabled test and regenerated `docs/mcp/TOOLS.md`.
+  `sample_terrain`) and the fact that `edit_graph` lives in group `scripting` while calls reach every tool. The agent guide gets no
+  line for it: `generate_terrain`'s description points at the doc, and `terrain.md` (S53 R73) at both. A graph error's result names
+  the fix in `next` in `structuredContent` (`edit_graph` on that node), since that is what a client shows the model.
+  `list_graph_node_types` carries ranges of parameters from `ParamDesc`.
+- **R66. Budget.** `generate_terrain` at most 1,400 characters (1,249 by script over N12), `preview_noise_graph` at most 1,200 (883),
+  both with no `exceptions` entry and within the `terrain` group limits of S53 R74 (D17, `tools/mcp/budget.json`). Adding `create` to
+  `edit_graph` keeps it and `scripting` within their limits. Tool test, hidden-until-enabled test and regenerated `docs/mcp/TOOLS.md`.
 
 ### Lua and runtime (module `noise`, D18)
 
@@ -516,6 +513,31 @@ beyond that the code is profiled.
 - **R71. Docs.** `docs/terrain-generation.md` (people), `docs/scripting/noise.md` and `docs/mcp/guide/lua-api.md`
   (Lua, doctested), `docs/mcp/guide/noise-graphs.md`, `docs/perf/noise.md` (measurements), `docs/testing.md` rows
   (the golden tool, the gate), `docs/mcp/TOOLS.md` regenerated.
+
+### Upstream revision: no CI, lean MCP, Doriax
+
+- **R72. Self-check on any platform.** There is no CI, so the golden tool is what a person runs where this host cannot. It takes
+  `--all-backends` and `--report <file>|-`, prints `noise-golden <target> <backend> <cases> pass|FAIL table=<hash>` per back end, names
+  each failing case, and exits 0 on pass and 1 on any mismatch. `--self-test` flips one expected hash and must exit 1. From the repository root:
+
+  | Platform | Command |
+  |---|---|
+  | Windows x64, with `vcvars64` | `cmake -S tools/noise/golden -B build/noise-golden -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl && cmake --build build/noise-golden && build\noise-golden\jasperengine-noise-golden.exe --all-backends --report noise-golden-windows.txt` |
+  | macOS arm64 | `cmake -S tools/noise/golden -B build/noise-golden -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/noise-golden && build/noise-golden/jasperengine-noise-golden --all-backends --report noise-golden-macos.txt` |
+  | macOS x86_64 | The same with `-DCMAKE_OSX_ARCHITECTURES=x86_64`, run as `arch -x86_64 build/noise-golden/jasperengine-noise-golden --all-backends --report noise-golden-macos-x64.txt` |
+  | iOS Simulator | `cmake -S tools/noise/golden -B build/noise-golden-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator -DCMAKE_OSX_ARCHITECTURES=arm64 && cmake --build build/noise-golden-ios --config Release && xcrun simctl spawn booted build/noise-golden-ios/Release-iphonesimulator/jasperengine-noise-golden --all-backends --report -` |
+  | iOS device | Export `tools/test-projects/noise` for iOS, run it from Xcode; its script compares every preset's hash with the table and logs `noise_selfcheck=pass table=<hash>` (the `noise` web gate expects the same line, AC48) |
+
+  These commands are written from CMake's options and the removed CI jobs, and none was run here (*assumed* until a person does). The person pastes the report into `docs/perf/noise.md`'s determinism record. Until a platform has a row there it is reported
+  **unverified**, and a mismatch is a kernel bug (section 9), never a new table.
+- **R73. Tool names and shape.** `generate_terrain` and `preview_noise_graph` follow the gated `verb_noun` rule (`docs/mcp/conventions.md`,
+  `VERBS` in `test_tool_conventions.py`), not `AGENTS.md`'s "area noun first", which no gate enforces. Both were challenged against merging
+  (S53 R95): `preview_noise_graph` could fold into `generate_terrain dry_run`, but it needs no terrain, works in Play and reports per node, so
+  it stays. `preset` is a string the handler checks; schemas carry no field or result lists.
+- **R74. Eval cases.** Each new tool and its text gets a case in `tools/mcp/eval/cases.py` that fails without it (AC49).
+- **R75. Doriax (D21).** Nothing in S54 duplicates a Doriax capability. `agent-authoring` adds `edit_terrain_details` and restructures
+  the guide; `output_density` writes density by a details index, and R65's doc is its own file. Whichever lands second merges. No shader
+  changes here, so no variant bit and no shader cache bump.
 
 ## 6. Design constraints & decisions
 
@@ -608,21 +630,19 @@ S34 already has variants carrying unused modules. A new `lite3d` plus noise vari
 platform.
 
 **N12. Tool shapes.** Built with `McpSchema.h`; both tools are in `editor/mcp/tools/TerrainGenerationTools.cpp`, a new
-module row in `McpTools.cpp`'s table (group `terrain`).
+module row in `McpTools.cpp`'s table (group `terrain`). Schemas are lean, and the handler validates.
 
 ```text
-generate_terrain {scene?, entity? (S53's terrain ref), graph?, preset? (enum), seed=1, variables? (anyObject name -> number),
-  region? {min:[x,z], max:[x,z]}, feather=0, resolution?, apply_to? [height|layers|density],
+generate_terrain {scene?, entity? (S53's terrain ref), graph?, preset? (string), seed=1, variables? (anyObject name -> number),
+  region? (anyObject {min:[x,z], max:[x,z]}), feather=0, resolution?, apply_to? (array of strings),
   dry_run=false, max_width=512, wait=true, timeout_seconds=120}
-  "Generate a Terrain from a Noise Graph as one undo step (job): graph (.noisegraph) or preset, seed, region,
-   resolution, apply_to (height, layers, density). dry_run writes nothing and returns stats and a heightmap
-   image. Result: hash, stats, changed rect. wait:false returns job_id for get_job. Guide: jasper://docs/noise-graphs."
+  "Generate a Terrain from a Noise Graph or preset as one undo step (a job). dry_run writes nothing and returns statistics and a
+   heightmap image. wait false returns job_id for get_job. Default seed 1, always echoed. Node graphs: jasper://docs/noise-graphs."
 
-preview_noise_graph {path?, preset? (enum), ops?, seed=1, size=128, extent=1, images=outputs, max_width=256,
+preview_noise_graph {path?, preset? (string), ops?, seed=1, size=128, extent=1, images=outputs, max_width=256,
   wait=true, timeout_seconds=60}
-  "Evaluate a Noise Graph without writing: per-node ranges (analytic and observed), ms per node, dead and folded
-   nodes, output hashes and images. ops previews edits as edit_graph would make them. images: none, outputs or all.
-   Guide: jasper://docs/noise-graphs."
+  "Evaluate a Noise Graph without writing: per-node ranges, ms, dead and folded nodes, output hashes and images. ops previews edits
+   as edit_graph would make them. Needs no terrain and works in Play. To see a terrain's result use generate_terrain dry_run."
 
 edit_graph: + create? {kind, from_preset?}
 ```
@@ -730,40 +750,36 @@ Existing files touched, smallest hooks only:
 - `GraphCanvas.{h,cpp}`: the additions.
 - The module wiring of R42, `AssetTypes.cpp`, `Project.h` and `Stream.cpp` (two keys), `App.cpp`,
   `DefaultCommands.cpp` (the menu row), `ProjectWindow.cpp` (Create), `McpTools.cpp`, root `CMakeLists.txt`.
-- `docker/android.Dockerfile` (`qemu-user-static`), `.github/workflows/ci.yml` (below).
+- No Docker image and no workflow: `docker/android.Dockerfile` has no qemu-user, and this spec does not add it (see below).
 - `MeshSystem.cpp`, `RenderSystem.cpp`, `InspectorWindow.cpp`, `WorldTools.cpp`: **nothing**.
 
 **Cross-target determinism: the matrix.** All compare against the one table of R41. A difference is a bug in the
 kernel or its flags: never regenerate the table for one target, and never add a per-target table.
 
-| Target | Back end | Compiler | Where | Runs on this host? |
+| Target | Back end | Compiler | How | On this host |
 |---|---|---|---|---|
-| Linux x86-64 | Sse2, Scalar | GCC 11 | core tests (`unit`), golden tool | yes |
-| Web | Wasm simd128, Scalar (`WASM_SIMD=0`) | emsdk 6.0.10, V8 | `GATE=noise` in Chrome (SwiftShader), new CI steps in `web` | yes |
-| Android x86_64, x86 | Sse2 | NDK clang | golden tool, static bionic, run natively; new CI job `noise-android` | yes |
-| Android arm64-v8a | Neon A64 | NDK clang | the same tool under `qemu-aarch64-static` (user mode, no KVM) | yes |
-| Android armeabi-v7a | Scalar (R39) | NDK clang | the same tool under `qemu-arm-static` | yes |
-| Windows x64 | Sse2, Scalar | `cl` | core tests (`windows`, Release), golden tool | no: CI only |
-| macOS arm64 | Neon A64, Scalar | Apple clang | core tests (`macos`, Debug) **and** golden tool in Release, since Debug alone would not exercise the optimizer | no: CI only |
-| macOS x86_64 | Sse2 | Apple clang | golden tool under Rosetta when the runner has it, else it reports a skip | no; inferred from NDK x86_64 clang |
-| iOS arm64 | Neon A64 | Apple clang | builds only (Xcode job); no simulator run | inferred from macOS arm64 |
-| Any Android on a device | | | `ANDROID_PROJECT=noise` with `tools/android-emulator-test.sh`, on a KVM host | no: not in CI; manual on a KVM host |
+| Linux x86-64 | Sse2, Scalar | GCC 11 | `tools/build.sh unit-tests` (`NoiseGolden.*`), golden tool | **checked** |
+| Web | Wasm simd128, Scalar (`WASM_SIMD=0`) | emsdk 6.0.10, V8 | `WEB_PROJECT=noise tools/build.sh web`, `GATE=noise tools/build.sh web-gate`, both twice, in headless Chrome (SwiftShader) | **checked** |
+| Android arm64-v8a | Neon A64 | NDK clang | `tools/noise/cross_check.sh`: the tool under `qemu-aarch64-static` (user mode, no KVM) | only if the Android image has qemu-user; it has none today, so **unverified** |
+| Android armeabi-v7a | Scalar (R39) | NDK clang | the same under `qemu-arm-static` | as above: **unverified** |
+| Android x86_64, x86 | Sse2 | NDK clang | `cross_check.sh`: the tool, static bionic, run natively | checked if a static bionic binary starts here (*inferred*); else **unverified** |
+| Windows x64 | Sse2, Scalar | `cl` | R72 | **not verifiable here**, unverified until run |
+| macOS arm64 | Neon A64, Scalar | Apple clang | R72, in Release, since Debug would not exercise the optimizer | **not verifiable here**, unverified until run |
+| macOS x86_64 | Sse2 | Apple clang | R72 under Rosetta | **not verifiable here**; *inferred* from NDK x86_64 clang |
+| iOS arm64 | Neon A64 | Apple clang | R72, Simulator or device | **not verifiable here**; *inferred* from macOS arm64 |
+| Any Android on a device | | | On a host with `/dev/kvm`: `ANDROID_PROJECT=noise ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh` | **not verifiable here** |
 
-CI changes (`.github/workflows/ci.yml`):
-- `web`: build and gate `noise`, simd128 and `WASM_SIMD=0`.
-- `windows` and `macos`: one step each that builds and runs `tools/noise/golden` in Release, after the core tests.
-- New job `noise-android` (same `if` as `android`): `tools/noise/cross_check.sh` in the Android image.
-- `unit`: `python3 tools/noise/check_kernels.py --self-test` and `python3 tools/noise/check_kernels.py`.
-
-`tools/noise/cross_check.sh` builds the tool for the four ABIs with the release flags of the player (`-O2`, ThinLTO,
-the noise flags), static, and runs each. `--red-contract` builds it with `-ffp-contract=fast -mfma` on x86-64 and
-must fail.
+`tools/noise/cross_check.sh` runs in the Android image (`tools/build.sh exec android tools/noise/cross_check.sh`). It builds the tool for
+the four ABIs with the release flags of the player (`-O2`, ThinLTO, the noise flags), static, and runs each it can. A row it cannot run
+prints `UNVERIFIED (no qemu-user in the image)` and never counts as a pass. `--red-contract` builds it with `-ffp-contract=fast -mfma`
+on x86-64 and must fail. `python3 tools/noise/check_kernels.py` is a lint `tools/check-changed` does not run: run it for this area.
 
 ## 7. Acceptance criteria
 
 Unit tests live in `jasperengine-core-tests` (`engine/tests/core/...`) or `jasperengine-editor-tests`
-(`editor/tests/...`). Every MCP test file declares `CI = True` and runs on its own project. "CI-only" results are
-pending until the push, and the report must say so.
+(`editor/tests/...`). Every MCP test file declares `CI = True` (the default MCP suite's marker) and runs on its own project. There is no
+CI: gates are `tools/check-changed` per commit and the full suite before the push (`AGENTS.md`, Test). A result this host cannot produce is
+labelled unverified, with R72's command, in the report.
 
 - **AC1. Scalar and Native.** `NoiseDeterminism.ScalarMatchesNativeBitForBit`: every kernel, 2D and 3D, 10,000 random
   points including negative cells, the wrap and tiny coordinates, compares `uint32` bits. `NoiseKernels.SinglePointMatchesBatch`.
@@ -839,16 +855,17 @@ pending until the push, and the report must say so.
 - **AC28. What stays.** `git diff` of `engine/core/math/Noise.h`, `engine/core/render/AtmosphereNoise.cpp`,
   `engine/core/math/noise/` and the particle sources is empty; `CurlNoise.*`, `AtmosphereNoise*` and the camera shake tests
   are green. → R37, N1
-- **AC29. Flags and guards.** `tools/noise/check_kernels.py` as AC5; `python3 tools/noise/xcode_sync_noise.py --check` (the
-  Xcode job compiles it, CI-only); `tools/noise/cross_check.sh --red-contract` fails. Red-control output is in the evidence.
+- **AC29. Flags and guards.** `tools/noise/check_kernels.py` as AC5; `python3 tools/noise/xcode_sync_noise.py --check` here (compiling the project needs a Mac and the
+  Xcode workspace: not verifiable here); `tools/noise/cross_check.sh --red-contract` fails. Red-control output is in the evidence.
   → R38, R40
-- **AC30. armv7.** `tools/noise/cross_check.sh` passes armeabi-v7a under `qemu-arm-static`; a scratch patch forcing Neon on
-  armv7 is run against the tiny-coordinate cases. If it goes red, the reason in N2 is verified; if not, keep Scalar, and
-  report N2 as inferred. → R39
-- **AC31. Cross-target, on this host.** `tools/build.sh unit-tests`; `tools/noise/cross_check.sh` for all four ABIs;
-  `WEB_PROJECT=noise tools/build.sh web`, `GATE=noise tools/build.sh web-gate`, and both again with `WASM_SIMD=0`. → R41
-- **AC32. Cross-target, CI-only.** `windows` and `macos` runs of `NoiseGolden.*` through `tools/ci/gtest-gate.py --max-skipped
-  0` and the Release golden tool; `noise-android`; `web`. The final report lists each job's result or says pending. → R41
+- **AC30. armv7.** If the image has qemu-user, `tools/noise/cross_check.sh` passes armeabi-v7a under `qemu-arm-static`, and a scratch patch
+  forcing Neon on armv7 is run against the tiny-coordinate cases. If it goes red, the reason in N2 is verified; if not, keep Scalar, and report N2
+  as inferred. Without qemu-user the row is reported unverified and N2 stays inferred. → R39
+- **AC31. Cross-target, on this host.** `tools/build.sh unit-tests` (Linux x64, Scalar and SSE2, `NoiseDeterminism.*`, `NoiseGolden.*`);
+  `WEB_PROJECT=noise tools/build.sh web`, `GATE=noise tools/build.sh web-gate`, and both again with `WASM_SIMD=0`;
+  `tools/build.sh exec android tools/noise/cross_check.sh`, reporting each ABI as passed or `UNVERIFIED`. → R41
+- **AC32. Cross-target, not verifiable here.** Windows, macOS and iOS: R72's commands. Android on a device: the matrix's command. The final
+  report lists each as a recorded row of `docs/perf/noise.md` or says unverified. → R41, R72
 - **AC33. Module.** `PlayerModules.*` includes `noise`; `tools/ci/check-presets.sh` covers the option error; a player
   built with `-DJASPERENGINE_NOISE=OFF` links; `tools/players/lib_size.py --modules` gives 0 for `noise`, and `nm` finds no
   `NoiseGraph`, `CompiledGraph` or `HeightfieldErosion` symbol, while `curlNoiseBatch` is still there (curl stays).
@@ -863,7 +880,7 @@ pending until the push, and the report must say so.
   `bench-thresholds.json`: R46's x86-64 and Scalar columns, R47, R48, R49. Measurements in `docs/perf/noise.md`. The first run is
   the record; a budget lowered is a Deviation. → R46-R49
 - **AC37. Web cost.** `?noise_bench=1` on the `noise` project reports R46's web columns (simd128 and scalar);
-  `?noise_bench=1 --expect=noise_web_budgets=pass` is run on an idle host, and CI runs it in report mode. → R46
+  `?noise_bench=1 --expect=noise_web_budgets=pass` is run on an idle host; on a busy one the run only reports. → R46
 - **AC38. Editor cost.** `test_noise_graph_window.py::test_closed_costs_nothing`: after closing, `get_job_system_stats` shows
   no noise job and no thumbnail textures remain. `NoiseGraphDocument.PreviewsAreSkippedWhenClosed`. Main-thread budget measured with
   the profiler in the evidence (`manual`: a 64-node fixture under Xvfb). → R50
@@ -892,6 +909,16 @@ pending until the push, and the report must say so.
 - **AC46. Old projects.** `test_upgrade_from_main.py` green; `tools/ci/upgrade_from_main/check.sh` green if run; a project with neither
   key in `TerrainEditorSettings` loads with defaults (`StreamTerrainSettings.GenerateKeysDefault`). → R70
 - **AC47. Docs.** `gen_tool_docs.py --check`; `python3 tools/check_agent_docs.py`; guide README row; `test_docs.py`. → R71
+- **AC48. Self-check tool.** On this host `jasperengine-noise-golden --all-backends --report -` passes and `--self-test` exits 1; the line format is
+  pinned by `NoiseGoldenTool.ReportFormat`; `GATE=noise tools/build.sh web-gate` expects `noise_selfcheck=pass`. → R72
+- **AC49. Eval.** Cases in `tools/mcp/eval/cases.py`, run as S53 AC74 says (`-k noise_`, `-k terrain_generate`; lent accounts, else reported unverified).
+  **Red:** a surface from before the tool. `terrain_generate_preset` (bad; "make mountains, seed 7": `generate_terrain` with `preset`, must not script
+  `edit_terrain add_noise`), `noise_graph_edit_loop` (guard; "tune this graph": `edit_graph`, `preview_noise_graph`, then `generate_terrain dry_run`),
+  `noise_graph_create` (guard; "start a new graph from alpine": `edit_graph {create}`, no `write_file`), `terrain_generate_error_next` (guard; a graph error's `next` is
+  followed). → R65, R74
+- **AC50. Asset type.** `AssetTypes.NoiseGraphValueIs28` pins the value, and `assetTypeFromName`'s bound covers it. → R13
+- **AC51. Doriax merge.** Run by whichever lands second: `test_terrain_details.py` and `test_generate_terrain.py::test_layers_and_density` both green on the
+  merged tree, with one `docs/mcp/guide/terrain.md`. → R75
 
 **Red controls in one place** (each run recorded in the evidence folder, with the output):
 
@@ -906,17 +933,16 @@ pending until the push, and the report must say so.
 | Dry run writes nothing | Scratch patch applying in dry run fails AC19 |
 | armv7 scalar is needed | AC30, recorded as either outcome |
 
-**What this host can and cannot verify** (8 cores, software GL, no KVM, no Windows, macOS or iOS):
+**What this host can and cannot verify** (8 cores, software GL, no KVM, no Windows, macOS or iOS; there is no CI, so nothing else checks a push):
 
 | Result | Status here |
 |---|---|
 | All unit, MCP and sanitizer suites on Linux x86-64 | runs |
 | Web gate, simd128 and scalar, in headless Chrome | runs |
-| Android four ABIs: golden tool, x86 and x86_64 native, arm under qemu-user | runs; a CPU emulator's FP is high fidelity for these operations but is not a phone |
+| Android golden tool: x86 and x86_64 native; arm under qemu-user only if the image has it | see the matrix; a CPU emulator's FP is high fidelity for these operations but is not a phone. Android APK builds run; no emulator |
 | Bench gates | runs, on an idle host only: run them with the queue empty and say so |
 | Screenshots and UI tests | runs, software GL |
-| Windows `cl`, macOS arm64 | CI only, pending until the push |
-| iOS | build only in CI; determinism inferred |
+| Windows `cl`, macOS arm64, macOS x86_64, iOS | not verifiable here: R72's commands, unverified until recorded |
 | Phone timings, `arm64 mobile` budgets, Android emulator gate | not verified anywhere in this programme; targets only, say so |
 
 ## 8. Dependencies & conflicts
@@ -938,7 +964,7 @@ runs need S53's `TerrainMapDeltaCmd`, and R61 its dialog, so those parts land af
 - Whichever of S53 or S54 lands second completes the removal of `TerrainNoise.h`.
 - `paint_by_rules` in `edit_terrain` (S53) and `output_layer` (S54) must use the same normalization (R30): S53's
   `setLayerWeights` is the single encoder.
-- The `terrain` group's `groups` entry in `budget.json` (D17) is S53 R74's, added by S53's foundation, sized for all of S53-S57.
+- The `terrain` group's `groups` entry in `budget.json` (D17) is S53 R74's (16,000 characters, 10 tools), added by S53's foundation, sized for all of S53-S57.
 
 **Seams S58 must honour**
 - It uses `NoiseGraphRuntime.h` only (R69, N15), one `EvalScratch` per worker, `evaluatePoints` or `evaluateGrid3D`, `rangeOver` for
@@ -961,21 +987,26 @@ runs need S53's `TerrainMapDeltaCmd`, and R61 its dialog, so those parts land af
 | `engine/CMakeLists.txt`, `variants.json`, `PlayerModules.*`, `ModuleUsage.cpp:43`, `JasperPlayerVariants.cmake`, `Exporter.cpp:3589-3598,4611` | S56, S58 | Each adds a module: keep both lines |
 | `tools/mcp/budget.json`, `McpTools.cpp` table, `docs/mcp/TOOLS.md` | S53, S55, S56, S57 | Regenerate after merging |
 | `TerrainEditWindow.cpp` | S53, S55, S56, S57 | S54 touches two lines and adds one call |
-| `.github/workflows/ci.yml`, `docker/android.Dockerfile` | S56, S58 | Additive steps |
+| `AssetType.h`, `AssetTypes.cpp` | S43-S45, S50, S56, S57, S58 | Reserved values; move `assetTypeFromName`'s bound |
 | `GraphCanvas.*` | S21 follow-ups | Additive; AC41 guards it |
-| `docs/mcp/guide/` digest in `McpInstructions.cpp` | S53 | One line |
+| `docs/mcp/guide/terrain.md`, `tools/mcp/eval/cases.py` | S53, S55, S56, S57, S58, `agent-authoring` | Sections and cases only; no line in `McpInstructions.cpp` |
 | `engine/core/terrain/` | S53 | S54 only adds `HeightfieldErosion.*` |
 
 **Blocks:** S58 (noise), parts of S53's Create dialog (presets; S53 can ship with a flat option first).
 
+**Doriax overlap (D21; none landed: whichever lands second merges onto the first).** `agent-authoring`: `docs/mcp/guide/terrain.md`, the guide restructure and
+`edit_terrain_details`' layer indices, which `output_density` writes by. `render-correctness`, `draw-perf`, `ssr-probes`, `mesh-memory`: nothing in common with S54, whose
+hooks stay out of `MeshSystem.cpp` and `RenderSystem.cpp`.
+**Pixel art.** S50's "terrain" is tile autotiling and shares no name with S54; pixel art's `AssetType` values are 24-27.
+
 ## 9. Risks & defaults
 
-- **A static bionic binary may not start under qemu-user.** Default: it does (inferred; untested). Fallback: the same tool with
-  Ubuntu's `aarch64-linux-gnu` and `arm-linux-gnueabihf` cross compilers under qemu-user, which proves the ISA and flags but not
-  NDK clang, recorded as a Deviation; NDK clang coverage then rests on `ANDROID_PROJECT=noise` on a KVM host.
+- **qemu-user is not in the Android image** (`docker/android.Dockerfile`). Default: the ARM rows stay unverified. If the owner adds it, a static bionic binary may still not start under
+  qemu-user (*inferred*; untested); the fallback is Ubuntu's `aarch64-linux-gnu` and `arm-linux-gnueabihf` cross compilers under qemu-user, which proves the ISA and flags but not
+  NDK clang, recorded as a Deviation.
 - **SSE2 emulates `floor` and the 32-bit multiply** (`SimdFloat4.h:13`), and this may miss R46. Default: budgets stand within the 30 %
   rule. An AVX2 path is a later spec that must pass the same table.
-- **A CI target differs after the push.** Default: it is a kernel bug. Fix the kernel, which may change Linux bits too; before
+- **Another platform differs when a person runs R72.** Default: it is a kernel bug. Fix the kernel, which may change Linux bits too; before
   a kernel's first landing to `main` the table may be regenerated in the same commit, after that R14 applies.
 - **Erosion can look wrong while being deterministic.** Hash tests cannot judge beauty. Default: AC17's behaviour tests plus a
   reviewed screenshot. Tile rounds (N6) may show a faint grid. Default: 4 rounds; if the screenshot shows it, more rounds with

@@ -1,6 +1,6 @@
 # S57 — Foliage upgrade
 
-Terrain programme, step 5 of 6 (`TERRAIN-LEDGER.md`; decisions D1-D18 there are binding and are
+Terrain programme, step 5 of 6 (`TERRAIN-LEDGER.md`; decisions D1-D21 there are binding and are
 cited as "ledger D*n*"). Reports: `terrain3d-shaders-instancer.md` §4,
 `voxel-meshing-generators.md` §5, `our-terrain-runtime.md` §3. Decisions of this spec are F1-F16 in
 §6, so they don't collide with the ledger's numbers.
@@ -29,7 +29,7 @@ an agent with a deterministic `scatter_by_rules`. Scenes made before this spec l
   rebuilds.
 - Runtime removal, Lua API, hit events, navigation obstacles, picking.
 - Paint Trees and Paint Details panels, Mass Place Trees, stats, density overlay, impostor button.
-- `bake_terrain_impostors`, `sample_terrain` foliage statistics, the benchmark scene and budgets.
+- `edit_terrain` foliage ops with `bake_impostors`, `sample_terrain` foliage statistics, the benchmark scene and budgets.
 
 **Out of scope** (default decisions, not open questions)
 - **GPU grass, GPU-driven culling, compute, SSBOs, bindless, indirect draws, `base_instance`.** GPU
@@ -176,7 +176,7 @@ Inside the repository, follow `SplineSystem` for jobs, `bake_navigation` (`Navig
   **prototype entity** with the mesh. Loads pass `asyncLoad = true`. A 900-cell ring makes one mesh
   load, not 900. The prototype entity is unsaved, outside the hierarchy (the existing foliage
   precedent), and has an empty `instances` list. `MeshSystem`'s public foliage functions stay as
-  one-line forwards to `FoliageSystem` (ledger D2), so `getFoliageOwner`, `getFoliageEntities`,
+  one-line forwards to `FoliageSystem` (ledger D2), so `getFoliageOwner`, `getFoliageEntities`, `getFoliageInstanceCount` (agent-authoring),
   `setFoliagePreviewEntity`, `hasPendingFoliageUpdates` and `reloadFoliageMesh` keep their callers.
 - **R7. Surface query.** Placement, re-snap and queries use S53's surface query (ledger D5, D9) for
   height, normal and is-hole. The copied-texel form for jobs is S53's `SurfaceView` (S53 R93), with
@@ -261,20 +261,21 @@ Inside the repository, follow `SplineSystem` for jobs, `bake_navigation` (`Navig
   | Max Mesh Trees | `maxMeshTrees` | 200 | 200 |
   | Wind Direction, Speed, Size, Bending | `windDirection`, `windSpeed`, `windSize`, `windBending` | +Z, 1, 8, 0.5 | same; no layer bends |
 
-  A layer's effective draw distance is `min(drawDistance, detailDistance)`, ignoring zero. A Directional
+  A layer's effective draw distance is `min(drawDistance, detailDistance)`, ignoring zero, times Foliage Distance (R66). A Directional
   Force Field with an Infinite shape (the first enabled one) overrides the wind direction and
   multiplies the strength with its pulse, as Unity's Wind Zone does; it is read once per frame and only
   if some layer or prototype bends.
 - **R21. Foliage Quality.** `Project Settings > Quality > Foliage Quality (Desktop / Mobile / Web)`,
   values Low, Medium, High, as Atmosphere Quality (`Engine.h:617-627`, `ProjectSettingsWindow.cpp:1974`),
   and `Engine.setFoliageQuality`. New projects: High, Low, Low. A project without the field: High on
-  all three, so it looks the same (F12). The tier scales and caps; it never writes the Terrain's values:
+  all three, so it looks the same (F12). The tier scales and caps; it never writes the Terrain's values.
+  **Distance is not in the tier:** `render-correctness`'s Foliage Distance (per platform group, `Engine.foliageDistanceScale`) is the one global
+  distance multiplier, on Detail Distance, Tree Distance and Billboard Start (R66). New project templates write Foliage Distance 0.5 on Mobile and Web; old
+  projects keep 1, as that spec decides.
 
   | | Low | Medium | High |
   |---|---|---|---|
-  | Detail Distance and Tree Distance × | 0.5 | 0.75 | 1 |
   | Detail Density × | 0.5 | 0.75 | 1 |
-  | Billboard Start × | 0.5 | 0.75 | 1 |
   | Fade Length × | 0.5 | 1 | 1 |
   | Max visible detail instances per view | 30,000 | 120,000 | 400,000 |
   | Max Mesh Trees cap | 60 | 200 | 500 |
@@ -316,7 +317,7 @@ Inside the repository, follow `SplineSystem` for jobs, `bake_navigation` (`Navig
   changed layer settings. `FoliageStats` counts cells rebuilt, so tests can assert it.
 - **R27. Existing detail layers.** `foliageLayers` keeps its name, keys and semantics: a layer made
   before S57 places the same positions and scales from the same seed (F2), and new fields default to
-  no change. **No conversion runs on load.**
+  no change. **No conversion runs on load**, nothing is moved or re-typed, so there is no version bump or migration (`AGENTS.md`, Invariants).
 - **R28. Existing placed trees.** Placed GameObjects and instanced hosts stay what they are, and draw
   as they do today. `Convert Placed Instances to Trees` in the panel and `convert_placed_to_trees` move
   a host's instances into the store, as one undo step; GameObjects with components stay untouched.
@@ -357,8 +358,8 @@ Inside the repository, follow `SplineSystem` for jobs, `bake_navigation` (`Navig
 - **R36. All five backends and six targets.** Foliage draws the same on GL 3.3, GLES3/WebGL2, Metal,
   D3D11 and Vulkan. Only vertex formats the engine already maps are used (FLOAT4, SHORT4N, UBYTE4N:
   `SokolObject.cpp:216-248`). No `gl_InstanceID` dependency, no integer attributes.
-- **R37. Variants reach exports.** New variant bits (`Cin` MESH 38, DEPTH 20, GBUFFER 20; `Wnd` 39, 21, 21;
-  `Dth` 40, 22, 22; S55 D2's table) are collected by the export
+- **R37. Variants reach exports.** New variant bits (`Cin`, `Wnd`, `Dth`: appended at landing, S55 D2's table) are collected by the export
+  collector through the prototype entities, so a lite player with no runtime compiler draws foliage.
   collector through the prototype entities, so a lite player with no runtime compiler draws foliage.
   They aren't in the fallback lists, since they change a uniform block or inputs. A material whose
   custom vertex program lacks a compact variant draws through a 96-byte expanded stream for that layer
@@ -408,7 +409,7 @@ Linux x64 Release build, idle, with `JE_JOB_WORKERS` as stated.
   assets): 1024-unit Terrain; 1024² 16-bit hash-fractal height; 512² density maps; 4 detail layers at
   4, 2, 1 and 0.5 per square unit; 3 tree prototypes (trunk and leaves) with 50,000 trees in total; 600
   frames on a fixed path at 5 units per second, turning 30° per second; Detail Distance 120, Tree Distance
-  1000, Billboard Start 80, before the tier's scales. `je-bench-foliage` gates its
+  1000, Billboard Start 80, before Foliage Distance. `je-bench-foliage` gates its
   numbers through `tools/perf/bench-thresholds.json`. Measured results go in `docs/perf/foliage.md`,
   along with the same detail-only scene on the commit before S57 as the before-picture.
 - **R45. Editing.** A brush stamp adding 8 trees costs ≤ 2 ms total on the main thread, host. Mass
@@ -427,14 +428,14 @@ decal apply, and these bindings are what S57 adds for these two tools.
     and it's one undo step.
   - Rows: Brush Size, Tree Density, Tree Height with a random range, Lock Width to Height, Tree Width,
     Random Tree Rotation, Color Variation, Normal Alignment, Place As (Tree or GameObject; Prefabs
-    are GameObject only), Spacing.
+    are GameObject only; a new key `placeAs`, default Tree, while stored `placeInstanced` keeps its meaning for GameObject), Spacing.
   - **Shift erases** every prototype, **Ctrl+Shift** erases only the selected one, Ctrl still erases
     as today (TEW:3741-3749), and **Alt+click** with no drag selects the prototype under the cursor (S53 R56's
     drag threshold; Alt+drag orbits, as in every tool).
   - Selected prototype foldout: LODs, Wind, Shadows (a per-LOD checkbox row), Collision with Fit from
     Mesh and a capsule gizmo in the Scene view, Nav Obstacle, Impostor (R49).
 - **R47. Paint Details.** A thumbnail grid of layers, replacing the combo at TEW:3370. All existing rows
-  (TEW:3413-3476) stay, renamed to Unity's where they differ (Min/Max Width, Min/Max Height, Healthy
+  (TEW:3413-3476) stay, renamed to Unity's where they differ, in the UI only (Draw range, R66; Min/Max Width, Min/Max Height, Healthy
   Color, Dry Color, Noise Spread, Bend Factor). New layers: `castShadows` off, `windBend` 0.5,
   `densityFalloffStart` 0.5, `farDensity` 0.3. Brush rows: Brush Size, Opacity, Target Strength. Shift
   erases; Ctrl keeps erasing as today.
@@ -462,7 +463,7 @@ decal apply, and these bindings are what S57 adds for these two tools.
 
 ### Agent UX (MCP, CLI)
 
-All in the `terrain` group (ledger D17), in new `editor/mcp/tools/FoliageTools.cpp` and hooks in S53's
+All in the `terrain` group (ledger D17): S57 adds no tool. `editor/mcp/tools/FoliageTools.cpp` holds the op handlers, with hooks in S53's
 tools. Guidance goes into `docs/mcp/guide/terrain.md`, read through `jasper://docs/terrain`, and the
 agent guide isn't grown.
 
@@ -471,34 +472,32 @@ agent guide isn't grown.
   step per call. Results: `instances_added`, `instances_removed`, `rejected` by rule (slope, height,
   layer, noise, hole, spline, spacing), `changed_rects`, `hash`. Sketch in F15.
 - **R55. `sample_terrain` statistics.** A `foliage: true` parameter on `sample_terrain`, with S53's
-  `region`. Per layer: mesh, instances in region (exact up to 4,096 cells, else `estimated: true`),
-  mean density. Per prototype: mesh, count, impostor state. Totals: resident, visible, cells, draws,
-  stream and buffer bytes, CPU and GPU bytes, last-frame main-thread ms, pending cells, `budget_exceeded`,
-  placement `hash`. No `get_foliage_stats` tool: conventions prefer a parameter on an existing tool
-  (`docs/mcp/conventions.md`, checklist item 1). Allowed while playing, so runtime removals are visible.
-- **R56. `bake_terrain_impostors`.** A new job tool: `scene`, `entity`, `prototypes`, `views`,
-  `resolution`, `wait`, `timeout_seconds`, like `bake_navigation`. Result per prototype: atlas paths,
-  bounds, source hash, ms. It's one undo step, refuses while playing, and is in the `terrain` group,
-  hidden until `tool_groups` enables it.
+  `region`, returns `foliage`: `details` per layer (mesh, instances in region, exact up to 4,096 cells, else `estimated: true`, mean density), `trees`
+  per prototype (mesh, count, impostor state), and totals (resident, visible, cells, draws, stream and buffer bytes, CPU and GPU bytes, last-frame main-thread
+  ms, pending cells, `budget_exceeded`, placement `hash`). `info.details[i].drawn` stays agent-authoring's field and reads `FoliageStats` (R65). No `get_foliage_stats` tool:
+  conventions prefer a parameter on an existing tool (`docs/mcp/conventions.md`, checklist item 1). Allowed while playing, so runtime removals are visible.
+- **R56. `bake_impostors`.** An `edit_terrain` op (S53 R89, with `spansFrames`), registered by `editor/util/ImpostorBaker`, not a tool of its own (S53 R95):
+  `{op, prototypes?, views?, resolution?}`, with the call's `wait` and `timeout_seconds`. Result entry per prototype: atlas paths,
+  bounds, source hash, ms. One undo step; refused in Play as `edit_terrain` is; `dry_run` reports sizes without rendering. Hidden until `tool_groups` enables `terrain`, as
+  `edit_terrain` is. Lua's `applyOps` does not know it: it is registered in the editor only.
 - **R57. `visualize_terrain`.** S53's tool gets overlay values `density` (with `layer`) and `tree_density`,
   and takes a `foliage_quality` for the capture only. The impostor can be verified by screenshot:
   set `billboardStart` through `set_properties`, frame, and capture.
 - **R58. Prototypes and settings.** `set_properties` reaches `treePrototypes[n].*`, `foliageLayers[n].*`
-  and R20's fields through reflection. No new tool.
-- **R59. Budget.** The group stays within `tools/mcp/budget.json`: S57 adds one tool, at most 700
-  characters for `bake_terrain_impostors`, and at most 300 to `sample_terrain`'s schema. The group's entry
-  and limits are S53 R74's, added by S53's foundation, sized for all of S53-S57 (ledger D17; S54 §8).
-  `docs/mcp/TOOLS.md` is regenerated.
+  and R20's fields through reflection, with agent-authoring's `checkDetailLayer` guard on `foliageLayers`. No new tool.
+- **R59. Budget.** The group stays within `tools/mcp/budget.json`: S57 adds no tool and at most 300
+  characters to `sample_terrain`'s schema, already in S53 §6's count. The group's entry and limits are S53 R74's (16,000 characters, 10 tools), added
+  by S53's foundation, sized for all of S53-S57 (ledger D17; S54 §8). `docs/mcp/TOOLS.md` is regenerated.
 
 ### Data and compatibility
 
 - **R60. Format.** No scene version bump (S03 R22; as S53 R81, S55 R50, S56 R54 and S58 R80): all new keys are
   optional, and a missing key loads as F12's default. There is no migration. All serializers change together: `StreamComponents.cpp`,
-  `RuntimeFields.gen.inc` (regenerated, CI checks), `ComponentHooks.cpp`, the terrain codec in
+  `RuntimeFields.gen.inc` (regenerated with `jasperengine-editor reflect --emit-runtime-fields` and committed), `ComponentHooks.cpp`, the terrain codec in
   `engine/core/serialization/codecs/` and its editor encoder, `Factory.cpp`, `RenderReflect.cpp`,
   `editor/tests/reflect/catalog_snapshot.json`.
 - **R61. Asset plumbing.**
-  - S04: `.jetrees` gets a row in `editor/asset/AssetTypes` (sidecar, assets base).
+  - S04: `.jetrees` is `AssetType::TreeData = 29` (reserved, D19; stored in `assetmap.bin`), name `tree_data`, a row in `editor/asset/AssetTypes` (sidecar, assets base).
   - Maps folder: files are `terrain_edit_trees_<scene>_<entity>_<serial>.jetrees`, so the orphan collector
     (TEW:160, 525-575) handles them; the active-file list gets the tree path; written with
     `writeFileAtomic` and reported through S05's self-write suppression; flushed when maps flush.
@@ -510,6 +509,26 @@ agent guide isn't grown.
   scene clones share the immutable store plus their own overlay.
 - **R63. Docs.** `docs/scripting/foliage.md`, `docs/perf/foliage.md`, `docs/mcp/guide/terrain.md` (Foliage
   section), `docs/specs/checklists/S57.md`, a row in `docs/testing.md`.
+
+### Upstream revision: no CI, lean MCP, Doriax, writes
+
+- **R64. Where each AC runs.** There is no CI (`AGENTS.md`, Test): the gate per commit is `tools/check-changed`, and the full suite runs before the push. Each AC runs on this host or
+  is labelled not verifiable here with the command a person runs (§7's table). A row not run is reported unverified.
+- **R65. Details build on `agent-authoring` (D21; not landed: whichever lands second merges onto the first).** It owns `edit_terrain_details`, `TerrainDetailRules`, `density_map {fill}`,
+  the `details` key with `drawn` and `MeshSystem::getFoliageInstanceCount`. S57 adds no near-duplicate: creating, updating and removing detail layers stays that tool; S57's
+  new layer fields (`min_height_ratio`, `max_height_ratio`, `healthy_color`, `dry_color`, `noise_spread`, `wind_bend`, `density_falloff_start`, `far_density`) join its `detailRanges()` table with validated
+  ranges, and so reach that tool, `set_properties`' guard and the load clamp. `scatter_by_rules` with a `detail_layer` target fills an existing layer's density map by rules; it creates no layer. If S57 lands
+  first, these fields go in through `set_properties` and agent-authoring's table adds them when it lands; if it lands second, the forward and `drawn` move to `FoliageStats`. Names stay consistent:
+  **Details** in tools and docs, `foliageLayers` in data, and Detail Distance, Detail Density, Tree Distance, Billboard Start as R20.
+- **R66. Ring and distance come from `render-correctness` (D21; whichever lands second merges).** S57's move and rewrite absorb its fixes rather than losing them:
+  the ring side is fixed from the draw distance (`ceil(2 * distance / cell) + 1`), never from the view span, so walking fills only cells that enter; a slot outside the span stays as it is, and is cleared only on a whole refill;
+  `TerrainFoliageLayer::minDrawDistance` and its near fade are that spec's field and formula (`nearFadeStart = minDistance * TERRAIN_FOLIAGE_FADE_START`), applied by R9's cull to the instance scale, and a cell whose farthest corner is
+  nearer than the start is skipped. Foliage Distance and `Engine.foliageDistanceScale` multiply effective Draw, Min Draw, Tree and Billboard Start distances (not in preview), 0 removes foliage, and S57 adds no other global distance knob. Its instanced-batch
+  slack stays on non-foliage instanced meshes; foliage's equivalent is R9. If `render-correctness` lands second, its §6.6 and §6.8 engine edits go into `FoliageSystem`; if first, F1's move takes them, and AC6's verbatim copy is of the code after it.
+- **R67. Eval cases and names.** S57 adds no tool, but its ops, `foliage` key and guide section need cases that fail without them (AC41). Op and key names follow the lean rules: no agent guide line, hints in `next` (a tree count past the Mobile budget, an
+  out-of-date impostor), and the handler validates. The tool names it uses keep the gated `verb_noun` form (`docs/mcp/conventions.md`), not `AGENTS.md`'s "area noun first".
+- **R68. Writes, assets, shaders.** `.jetrees` writes through `writeFileAtomic` (R61). The baker encodes PNGs to memory (`stbi_write_png_to_func`) and writes them through `writeFileAtomic`, because `stbi_write_png` to a path fails `tools/check_raw_writes.py`. So
+  `tools/raw_writes_allowlist.txt` gets no line. Nothing is vendored: `NOTICE.md` and `engine/notices.json` do not change. Each commit that changes a shader (`mesh.vert` and siblings, `foliage_instance.glsl`, `foliage_wind.glsl`, `library:impostor`) bumps the shader cache version in `editor/App.cpp` by one over its `main`.
 
 ## 6. Design constraints & decisions
 
@@ -523,7 +542,7 @@ define; `engine/core/script/binding/FoliageLua.cpp`; `engine/shaderlib/includes/
 
 Hooks in hotspots (ledger D2), and nothing more:
 - `MeshSystem.cpp`: the foliage functions (MS:3763-4298, except `sampleTerrainSurface`) move to
-  `FoliageSystem`; the loop at MS:7177-7190 goes; five one-line forwards stay.
+  `FoliageSystem`; the loop at MS:7177-7190 goes; six one-line forwards stay.
 - `RenderSystem.cpp`: one call in `buildInstanceViews`, one in `uploadInstanceViews`, and one branch at
   the top of `drawSubmeshGeometry` (`if (instmesh && instmesh->foliage) { drawFoliageSubmesh(...); return; }`).
   The three passes share it (RS:8973, 9141, 9951).
@@ -597,7 +616,7 @@ one draw per prototype. Cells stay the unit of culling and LOD. Rejected: all tr
 (wasted upload for the near band, and a chop still has to reach it) and per-cell mesh entities (the
 cost this spec removes).
 
-**F6. Fade by dither.** Bit `Dth` (MESH 40, GBUFFER 22; DEPTH 22 is for depth passes that must match the colour's discard, and shadow draws never set it, R17) discards by a screen-space pattern against a
+**F6. Fade by dither.** Bit `Dth` (on MESH and GBUFFER; its DEPTH bit is for depth passes that must match the colour's discard, and shadow draws never set it, R17) discards by a screen-space pattern against a
 factor computed per instance from distance in the vertex shader. Mesh fade: 1 before
 `billboardStart − fadeLength`, 0 at `billboardStart`. Impostor fade: the complement, and fading out over
 `fadeLength` before Tree Distance. Blended alternatives need sorting; a shrink looks wrong at tree size. Cells
@@ -608,7 +627,7 @@ RGBA8 textures: albedo with alpha; normal with AO. The baker renders the prototy
 isolated preview scene (`editor/render/preview/ModelRender.h`) with an orthographic fitted camera,
 one view per frame on the main thread, taking the G-buffer's base colour and normal
 (`gbuffer.frag:3-6`) through `FrameReadback::readFramebuffer` (`FrameReadback.h:31`), dilating colour past
-the alpha edge, and writing PNGs on a job. The output is deterministic on one renderer. Edit time only:
+the alpha edge, and writing PNGs on a job through `writeFileAtomic` (R68). The output is deterministic on one renderer. Edit time only:
 no player code bakes. `library:impostor` picks the view with a polynomial arctangent in the vertex stage,
 costs two fragment textures on Low and four on Medium and High. Octahedral is rejected: it costs more
 texture memory and a three-view blend on phones, and trees are mostly seen from the side.
@@ -720,28 +739,25 @@ local treeId = terrain:getTreeFromHit(r)                -- also a Physics ray re
 {"tool": "edit_terrain", "ops": [{"op": "scatter_by_rules",
   "shape": {"type": "rect", "min": [-200, -200], "max": [200, 200]},
   "seed": 42,
-  "params": {
-    "target": {"trees": [{"prototype": "Pine", "weight": 3}, {"prototype": "Birch", "weight": 1}]},
-    "density": 0.02, "mode": "replace",
-    "rules": {"slope": [0, 30], "height": [10, 140],
-              "layer": [{"index": 1, "min": 0.5, "max": 1}],
-              "noise_mask": {"graph": "noise/forest.noisegraph", "output": "mask", "threshold": 0.45},
-              "density_map": {"layer": 2},
-              "exclude": {"holes": true, "splines": ["Road"], "spline_margin": 4},
-              "min_spacing": 3},
-    "jitter": {"scale": [0.8, 1.3], "height_ratio": [0.9, 1.2], "yaw": 1, "align_to_normal": 0}}}],
+  "target": {"trees": [{"prototype": "Pine", "weight": 3}, {"prototype": "Birch", "weight": 1}]},
+  "density": 0.02, "mode": "replace",
+  "rules": {"slope": [0, 30], "height": [10, 140],
+            "layer": [{"index": 1, "min": 0.5, "max": 1}],
+            "noise_mask": {"graph": "noise/forest.noisegraph", "output": "mask", "threshold": 0.45},
+            "density_map": {"layer": 2},
+            "exclude": {"holes": true, "splines": ["Road"], "spline_margin": 4},
+            "min_spacing": 3},
+  "jitter": {"scale": [0.8, 1.3], "height_ratio": [0.9, 1.2], "yaw": 1, "align_to_normal": 0}}],
  "dry_run": true}
 ```
 
-An op's own keys travel in `params` (S53 R89); `shape`, `seed` and `dry_run` are S53's, and rule ranges use
+An op's own keys are flat in the op object, which the listed schema leaves open and the handler closes (S53 R89); `shape`, `seed` and `dry_run` are S53's, and rule ranges use
 the units of S53 R6 (degrees; world units on the MCP). `target` may instead be `{"detail_layer": 0}`, and then
 `density` is in the layer's instances per
-square unit, written to its density map as an absolute value, with no rate arithmetic. Other ops, by their
-`params`, with a region as S53's `shape`:
+square unit, written to its density map as an absolute value, with no rate arithmetic. Other ops, with a region as S53's `shape`:
 `clear_foliage {target, spline?, margin?}`, `place_trees {prototype, points: [[x, z, yaw?, scale?]]}`
-returning ids, `remove_trees {ids?, prototype?}`, `convert_placed_to_trees {host}`.
+returning ids, `remove_trees {ids?, prototype?}`, `convert_placed_to_trees {host}`, `bake_impostors {prototypes?, views?, resolution?}`.
 
-`bake_terrain_impostors {scene?, entity?, prototypes?, views?, resolution?, wait?, timeout_seconds?}`.
 `sample_terrain {…, region?, foliage: true}`.
 
 **F16. Accepted behaviour changes**, each documented in `docs/upgrading-from-main.md`:
@@ -755,33 +771,33 @@ returning ids, `remove_trees {ids?, prototype?}`, `convert_placed_to_trees {host
 ## 7. Acceptance criteria
 
 Backends: **gl** glcore on llvmpipe, **vk** Vulkan on lavapipe, **gles** the `linux-backends` image with
-`SMOKE_BACKEND=gles3`, **web** headless Chromium WebGL2 through `tools/build.sh web-gate`, **CPU-CI**
-Windows, macOS, Linux CPU suites, **metal** macOS CI's GPU suites (`docs/testing.md:513-515`). "Red" is the
+`SMOKE_BACKEND=gles3`, **web** headless Chromium WebGL2 through `tools/build.sh web-gate`, **CPU**
+the Linux x64 CPU suites here (Windows and macOS: the commands below, unverified until run), **metal** the macOS command below (the default Metal device, `docs/testing.md:492-493`), unverified until run. "Red" is the
 red control: what to break, to see the named test fail, recorded in the commit or PR.
 
 | AC | Covers | Test | Runs on | Red control |
 |---|---|---|---|---|
-| AC1 | R1, R2 | `FoliageScatter.GoldenHashOnEveryTarget`, `.GoldenHashWithSeedChanges` (pinned hash of a fixture of 4 layers, 16-bit heights, both tilted and upright) | CPU-CI, web gate `GATE=foliage` prints and compares the same constant | Compile the kernel with `std::sin`, or remove `-ffp-contract=off`, and run on an FMA target; change one `mixFoliage` constant locally |
-| AC2 | R2, R4 | `FoliageSystemCore.SameHashWithZeroOneAndFourWorkers`, `.SameHashForAnyCameraPath` | CPU-CI | Let the cell order depend on job completion |
+| AC1 | R1, R2 | `FoliageScatter.GoldenHashOnEveryTarget`, `.GoldenHashWithSeedChanges` (pinned hash of a fixture of 4 layers, 16-bit heights, both tilted and upright) | CPU, web gate `GATE=foliage` prints and compares the same constant | Compile the kernel with `std::sin`, or remove `-ffp-contract=off`, and run on an FMA target; change one `mixFoliage` constant locally |
+| AC2 | R2, R4 | `FoliageSystemCore.SameHashWithZeroOneAndFourWorkers`, `.SameHashForAnyCameraPath` | CPU | Let the cell order depend on job completion |
 | AC3 | R3, R5 | `FoliageSystemCore.NoCellPlacedOnTheMainThreadWithWorkers`, `.ApplyStaysWithinBudget` (job names counted through S06's profiler hooks) | gl host | Call the scatter inline in `update` |
 | AC4 | R4 | `GATE=foliage` in `tools/web/gates/foliage.json`: single-thread; camera jump; p99 frame foliage work ≤ 4 ms; all cells complete; hash equal | web | Run placement synchronously in `update` |
 | AC5 | R6 | `FoliageSystemCore.OneMeshLoadPerLayer` (a 900-cell ring makes one mesh load and one prototype entity; `MeshBufferPool::getBufferCount` constant) | gl | Create one entity per cell |
 | AC6 | R27, F2 | `FoliageScatter.LegacyParity` (a verbatim test copy of today's `appendFoliageCell`: same count, position and scale bytes on x64; rotation within 2e-4) | Linux CPU | Change one attempt's order |
 | AC7 | R27 | Golden `foliage_legacy_layer` (`FoliageGpu.LegacyLayerLooksTheSame`): **committed first on the pre-S57 engine** as a characterization test, unchanged afterwards; mean error ≤ 0.6/255 and ≤ 0.5% of pixels beyond 16/255 | gl, vk, metal | Change the fade start or drop the tilt |
-| AC8 | R8, R9 | `FoliageTypes.InstanceIs32BytesAtFixedOffsets`; `FoliageCull.KeepsExactlyTheInstancesInTheFrustum`, `.InsideCellsSkipPlaneTests`, `.LodBucketsMatchSelectMeshLod` | CPU-CI | Off-by-one in a plane test |
+| AC8 | R8, R9 | `FoliageTypes.InstanceIs32BytesAtFixedOffsets`; `FoliageCull.KeepsExactlyTheInstancesInTheFrustum`, `.InsideCellsSkipPlaneTests`, `.LodBucketsMatchSelectMeshLod` | CPU | Off-by-one in a plane test |
 | AC9 | R9 | `FoliageGpu.StillCameraUploadsNothing` (buffer update counter), `FoliageGpu.DrawsThroughOffsets` (`base_instance` never used: sokol frame stats, draw count = expected) | gl, vk | Rebuild every frame |
-| AC10 | R10 | `FoliageCull.DensityIsAStableSubset`, `.FalloffFollowsTheCurve`, `.FadeMatchesTheOldShaderRange` | CPU-CI | Re-randomize rank by frame |
+| AC10 | R10 | `FoliageCull.DensityIsAStableSubset`, `.FalloffFollowsTheCurve`, `.FadeMatchesTheOldShaderRange` | CPU | Re-randomize rank by frame |
 | AC11 | R11, R19 | Goldens `foliage_wind_pinned` (time pinned, colour and shadow) and `FoliageGpu.WindZeroUsesNoWindVariant`; `FoliageGpu.ShadowSwaysWithThePlant` (shadow moves between two pinned times by the expected direction) | gl, vk, metal | Use the wind only in colour |
-| AC12 | R12 | `FoliageScatter.DefaultColoursAreWhite`, `.HealthyDryNoiseIsDeterministic` | CPU-CI | Default dry colour non-white |
-| AC13 | R13-R15 | Golden `foliage_trees_lod_bands` (three cameras); `FoliageTreesCore.CellLodBandsFromDistance`, `.MaxMeshTreesFallsBackToImpostors`, `.ExplicitLodMeshesAreUsed`, `.MeshBandBufferIsPerCell`, `.ImpostorBandIsOneDrawPerPrototype` | gl, vk, metal; CPU-CI | Choose LOD by Terrain, not cell |
+| AC12 | R12 | `FoliageScatter.DefaultColoursAreWhite`, `.HealthyDryNoiseIsDeterministic` | CPU | Default dry colour non-white |
+| AC13 | R13-R15 | Golden `foliage_trees_lod_bands` (three cameras); `FoliageTreesCore.CellLodBandsFromDistance`, `.MaxMeshTreesFallsBackToImpostors`, `.ExplicitLodMeshesAreUsed`, `.MeshBandBufferIsPerCell`, `.ImpostorBandIsOneDrawPerPrototype` | gl, vk, metal; CPU | Choose LOD by Terrain, not cell |
 | AC14 | R15, F6 | `FoliageGpu.FadeBandShowsNoCellRing` (a ring of trees across a cell edge; a neighbouring-column luminance jump under a threshold) | gl, vk | Remove per-instance dither |
 | AC15 | R16, F7 | Golden `foliage_tree_impostor_far`; `test_foliage_impostor.py::test_silhouette_matches_mesh` (bake by tool; at the same camera, mesh-only and impostor-only captures: coverage IoU ≥ 0.85 and mean colour within 20/255) | gl, vk, gles; web for the draw | Rotate view selection by 90° |
 | AC16 | R17 | Golden `foliage_shadow_lod` and `FoliageGpu.ShadowMaskOffCastsNothing` | gl, vk | Ignore the mask |
 | AC17 | R18 | `FoliagePhysics.CapsuleStopsADynamicBody`, `.ColliderIndexIdentifiesTheTree`, `.NoCollisionMeansNoBody`, `ModuleUsage.TreeCapsulesNeedPhysics3d`; `tools/build.sh` with `JASPERENGINE_PHYSICS_3D=OFF` builds | gl (headless), editor suite; Linux | Build the shape with the wrong scale |
-| AC18 | R20, R21 | `FoliageSettings.EffectiveDistanceIsTheMinimum`, `.TierScalesWithoutWriting`, `.CapsDropTheFarthestFirst`, `.OldProjectIsHighEverywhereAndUncapped`; `test_foliage.py::test_force_field_overrides_wind` | CPU-CI; gl | Write the tier into the component |
-| AC19 | R22, F9 | `TreeStore.RoundTripIsByteIdentical`, `.RejectsTruncatedFile`, `.RejectsFutureVersion`, `.RejectsBadHash`, `.IdsAreNeverReused`, `.CorruptFileIsNotOverwritten` | CPU-CI | Skip the hash check |
-| AC20 | R23, R24, R54 | `FoliageRules.SlopeHeightLayerRules`, `.NoiseMask`, `.HolesAreExcluded`, `.SplineZoneIsExcluded`, `.MinSpacingHolds`, `.DryRunMatchesARealRun`, `.GoldenHashOnEveryTarget`; `test_foliage.py::test_scatter_by_rules_is_deterministic`, `::test_invalid_op_changes_nothing`, `::test_one_undo_step` | CPU-CI, web gate; gl | Omit the hole check |
-| AC21 | R7, R25, R26 | `FoliageTreesCore.ResnapFollowsTheSurface`, `.UndoRestoresTheBytes`, `.HoleHidesAndRestores`, `.TouchesOnlyDirtyCells`; `test_foliage.py::test_sculpt_resnaps_trees` (S53 surface agrees within 1e-4 at each tree) | CPU-CI; gl | Re-snap all cells |
+| AC18 | R20, R21 | `FoliageSettings.EffectiveDistanceIsTheMinimum`, `.TierScalesWithoutWriting`, `.CapsDropTheFarthestFirst`, `.OldProjectIsHighEverywhereAndUncapped`; `test_foliage.py::test_force_field_overrides_wind` | CPU; gl | Write the tier into the component |
+| AC19 | R22, F9 | `TreeStore.RoundTripIsByteIdentical`, `.RejectsTruncatedFile`, `.RejectsFutureVersion`, `.RejectsBadHash`, `.IdsAreNeverReused`, `.CorruptFileIsNotOverwritten` | CPU | Skip the hash check |
+| AC20 | R23, R24, R54 | `FoliageRules.SlopeHeightLayerRules`, `.NoiseMask`, `.HolesAreExcluded`, `.SplineZoneIsExcluded`, `.MinSpacingHolds`, `.DryRunMatchesARealRun`, `.GoldenHashOnEveryTarget`; `test_foliage.py::test_scatter_by_rules_is_deterministic`, `::test_invalid_op_changes_nothing`, `::test_one_undo_step` | CPU, web gate; gl | Omit the hole check |
+| AC21 | R7, R25, R26 | `FoliageTreesCore.ResnapFollowsTheSurface`, `.UndoRestoresTheBytes`, `.HoleHidesAndRestores`, `.TouchesOnlyDirtyCells`; `test_foliage.py::test_sculpt_resnaps_trees` (S53 surface agrees within 1e-4 at each tree) | CPU; gl | Re-snap all cells |
 | AC22 | R45 | `FoliageBench` thresholds for a stamp; `test_foliage.py::test_mass_place_does_not_stall` (`harness.over_budget`, enforced with `JASPER_MCP_PERF_SLACK` on an idle host) | gl | Run Mass Place on the main thread |
 | AC23 | R28, R29 | `TreeEditCmdTests.ConvertHostIsOneUndoStep`, `TerrainSplineBakeTests.ClearTreesRemovesFootprint` | editor suite | Leave the host populated |
 | AC24 | R30, R31 | `FoliageLua.RemoveHidesAndFreesThePath`, `.RestoreReturnsIt`, `.StateRoundTrips`, `.ReloadDropsTheOverlay`; `test_foliage.py::test_chop_in_play_leaves_the_file_alone` (file hash before and after) | core suite; gl | Write removals into the store |
@@ -798,20 +814,24 @@ red control: what to break, to see the named test fail, recorded in the commit o
 | AC35 | R49 | `test_foliage_impostor.py::test_panel_state_goes_out_of_date` (touch the model: Out of Date), plus AC15 | gl | Ignore the source hash |
 | AC36 | R50, R55 | `test_foliage.py::test_stats_match_a_count` (`sample_terrain` exact counts equal a Python count of `dry_run` plus scene; memory equals records × sizes within 10%); UI row presence in `test_foliage_ui.py` | gl | Report the resident count as total |
 | AC37 | R51, R57 | `test_foliage.py::test_density_overlay_changes_the_capture` (structural: heat map appears, off leaves no pass via `get_gpu_passes`), golden `foliage_density_overlay` | gl | Leave the pass on |
-| AC38 | R56, R58, R59, R63 | `test_foliage_impostor.py::test_bake_tool_job_and_refuses_in_play`; `test_foliage.py::test_group_hidden_until_enabled`, `::test_set_properties_reaches_prototypes`, `::test_docs_exist`; `tools/mcp/tool_budget.py --check`; `gen_tool_docs.py --check` | gl | Register in core |
-| AC39 | R60-R62 | `StreamTerrainFoliage.OldSceneLoadsWithDefaults` (a fixture from the pre-S57 format), `.SaveKeepsTheSceneVersion`, `.SaveAndLoadRoundTrip`, `.FactoryEmitsTheNewFields`, `CookedScene.TerrainFoliageRoundTrip`, CI's `reflect --emit-runtime-fields` diff, `VersionControlMetadata.ListsTreeFiles`; `test_foliage.py::test_duplicate_terrain_copies_on_first_write`; `test_foliage_export.py::test_trees_ship_in_the_pack` | editor suite; gl | Drop a field from one serializer |
+| AC38 | R56, R58, R59, R63 | `test_foliage_impostor.py::test_bake_op_job_and_refuses_in_play`; `test_foliage.py::test_group_hidden_until_enabled`, `::test_set_properties_reaches_prototypes`, `::test_docs_exist`; `tools/mcp/tool_budget.py --check`; `gen_tool_docs.py --check` | gl | Register in core |
+| AC39 | R60-R62 | `StreamTerrainFoliage.OldSceneLoadsWithDefaults` (a fixture from the pre-S57 format), `.SaveKeepsTheSceneVersion`, `.SaveAndLoadRoundTrip`, `.FactoryEmitsTheNewFields`, `CookedScene.TerrainFoliageRoundTrip`, `jasperengine-editor reflect --emit-runtime-fields` leaving no diff, `VersionControlMetadata.ListsTreeFiles`; `test_foliage.py::test_duplicate_terrain_copies_on_first_write`; `test_foliage_export.py::test_trees_ship_in_the_pack` | editor suite; gl | Drop a field from one serializer |
 | AC40 | all visible | `docs/specs/checklists/S57.md`, by hand with screenshots from an isolated editor: painting feel, thumbnails, thinning at distance, wind in motion, fade band in motion, a phone (Android, iOS) and D3D11 frame times | a person with devices | n/a |
+| AC41 | R67, R65 | Cases in `tools/mcp/eval/cases.py`, run as S53 AC74 says (`-k terrain_foliage`; lent accounts, else reported unverified): `terrain_foliage_add_details` (guard; "add grass on the flats": `edit_terrain_details`, then `scatter_by_rules` with `detail_layer` or `density_map {fill}`, then `sample_terrain` `details[0].drawn`), `terrain_foliage_mass_trees` (bad; "plant a forest": `scatter_by_rules` with `dry_run` first, must not call `create_entity` or `sculpt_terrain place_object`), `terrain_foliage_impostors` (guard; "far trees cost too much": `edit_terrain` op `bake_impostors`) | eval | A surface from before S57's text |
+| AC42 | R65, R55 | `TerrainDetailRulesTest` gains S57's fields; `test_terrain_details.py` green with them; `test_foliage.py::test_drawn_reads_foliage_stats`. Run by whichever of S57 and `agent-authoring` lands second | editor suite; gl | Omit a field from `detailRanges()` |
+| AC43 | R66, R21 | `FoliageSystemCore.WalkingFillsOnlyEnteringCells` (the 4-and-5 column walk of that spec's §4.6: 0 refills in cells that stay), `FoliageCull.MinDrawDistanceFadesAndSkips`, `.ScaleZeroRemovesFoliage`, `FoliageSettings.OneGlobalDistanceScale` (no second multiplier: a tier change leaves distances alone); `test_foliage.py::test_distance_scale_from_lua`. Run by whichever of S57 and `render-correctness` lands second | CPU; gl | Size the ring from the view span |
+| AC44 | R68, R61 | `python3 tools/check_raw_writes.py` with no new allowlist line; `python3 tools/check_stream_keys.py`; `ShaderKey.CompactInstanceBitIsPinned`, `.FoliageWindBitIsPinned`, `.FoliageDitherBitIsPinned`; `AssetTypes.TreeDataValueIs29`; `TerrainSettingsStream.PlaceInstancedKeepsItsMeaning` | CPU, editor suite | `tools/check_raw_writes.py --self-test` |
 
-**Verifiable where.** Decided up front, so no report overstates it:
+**Verifiable where.** Decided up front, so no report overstates it. There is no CI: a command below is run by a person, and the row is unverified until then.
 
-| Can run on this 8-core host (software GL, no KVM) | Only in CI or by hand |
+| Runs on this 8-core host (software GL, no KVM) | Not verifiable here: the command |
 |---|---|
-| Linux build, CPU suites, `FoliageGpu.*` goldens on llvmpipe (gl) and lavapipe (vk) | **Metal**: GPU suites on macOS CI; macOS and iOS builds |
-| GLES3 through `linux-backends` | **D3D11, Windows**: CPU suites in CI. No automated D3D11 pixel test exists (`docs/testing.md:515`), so its look is AC40 by hand; attribute formats are D3D11's native ones (*inferred*) |
-| WebGL2 in headless Chromium, single-thread, gate and hash | **Android**: APK **builds** here; running needs KVM, so its hash check and frame time are CI or AC40 |
-| MCP tests with their own projects; those needing `fixture-unity` skip, so S57's use their own | **Real-device frame times and memory**: R41's mobile column, AC40 |
+| Linux build, CPU suites, `FoliageGpu.*` goldens on llvmpipe (gl) and lavapipe (vk) | **Metal, macOS arm64 hash:** `cmake -S engine -B build-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_TESTS=ON && cmake --build build-engine --target jasperengine-core-tests && build-engine/tests/core/jasperengine-core-tests --gtest_filter=Foliage*` |
+| GLES3 through `linux-backends` | **Windows hash, CPU suites:** with `vcvars64`, `cmake -S engine -B build-engine-gl -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DJASPERENGINE_TESTS=ON && cmake --build build-engine-gl --target jasperengine-core-tests && build-engine-gl/tests/core/jasperengine-core-tests.exe --gtest_filter=Foliage*-*Gpu*`. **D3D11:** no automated pixel test exists, so AC40 by hand; attribute formats are D3D11's native ones (*inferred*) |
+| WebGL2 in headless Chromium, single-thread, gate and hash | **Android:** APK **builds** here; running needs `/dev/kvm`: `ANDROID_PROJECT=foliage ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh`; frame time by AC40 |
+| MCP tests with their own projects; those needing `fixture-unity` skip, so S57's use their own | **iOS hash:** `python3 tools/xcode_sync_engine.py --check`, then the `foliage` project from the Xcode workspace; its gate script prints the hash. **Real-device frame times and memory:** R41's mobile column, AC40 |
 | Counts and bytes of every budget (AC31), CPU kernels on host (AC32) | **Host timings under load**: gated only on an idle host. `rb.sh` has 2 slots, so run `je-bench-foliage` with nothing else queued, or the result is reported, not enforced |
-| Hash on Linux x64, wasm | **Hash on arm64, Windows, macOS**: CPU-CI; **iOS, Android hash**: no runner on this host |
+| Hash on Linux x64, wasm | Hash everywhere else: the rows above |
 
 Software GL says nothing about GPU cost: a golden proves correctness, and AC31 proves counts. No ms-per-frame
 claim for a GPU can come from this host, and a report must say so.
@@ -837,8 +857,7 @@ claim for a GPU can come from this host, and a report must say so.
   | S58 | Nothing now | May use the scatter later through a region |
   | S18 | `SplineTerrainSettings` extended by one field | Trees cleared by a bake |
   | S19 | `updateTiles` | `collectTrees` |
-- **Variant bits.** S55 D2's table is the one list: `Cin` MESH 38, DEPTH 20, GBUFFER 20; `Wnd` 39, 21, 21; `Dth` 40,
-  22, 22.
+- **Variant bits.** S55 D2's table is the one list: `Cin`, `Wnd`, `Dth`, in that order among ours, appended at landing; each is pinned by a test (AC44).
 - **Merge hotspots:** `MeshSystem.cpp` (a big deletion, no additions), `RenderSystem.cpp`/`.h` (three hooks,
   `InstancedMeshComponent` one flag), `TerrainEditWindow.*` (S53, S55 too), `TerrainComponent.h`,
   `StreamComponents.cpp`, `RuntimeFields.gen.inc` (regenerate after merging, don't hand-merge),
@@ -846,6 +865,17 @@ claim for a GPU can come from this host, and a report must say so.
   `ShaderPool.cpp` and `ShaderVariantCompiler.cpp` (bits), `Render.h` (`AttributeType`,
   `UniformBlockType`), `mesh.vert` and its siblings, `PickTypes.h`, `NavBakeCollector.cpp`,
   `tools/mcp/budget.json`, `docs/mcp/TOOLS.md` (generated), `docs/specs/README.md`.
+- **Doriax overlap (D21; none landed: whichever lands second merges onto the first).**
+
+  | Doriax spec | What S57 touches in common | Rule |
+  |---|---|---|
+  | `agent-authoring` | Details tool and rules, `details`, `drawn`, `getFoliageInstanceCount`, `terrain.md`, load clamp in `StreamComponents.cpp:554` | R65 |
+  | `render-correctness` | Foliage ring, `minDrawDistance`, Foliage Distance, `InstancedMeshComponent` near fade and slack, `TerrainComponent.h:154`, Terrain window Draw range | R66 |
+  | `draw-perf` | `updateAllTerrainRenderTextures`; state sort in `drawSubmeshGeometry`, where F1's branch goes; `Dlo` on lit foliage keys | F1's branch stays first in the function. `Cin`, `Wnd`, `Dth` keys ship with their `Dlo` twins |
+  | `ssr-probes` | G-buffer variants of `Cin` and `Wnd`: `Occ` and `Uv2` are appended beside them | Bits by name. Detail meshes with an AO map take its rule as any mesh does |
+  | `mesh-memory` | `MeshComponent` containers; R6's prototype entities and `MeshSystem` use | Prototype entities hold `StableArray` submeshes; keep indices across writes. R6's memory claim gets better, and R42 does not count on it |
+
+- **Pixel art.** S52's 40-byte sprite instance and `HAS_SPRITE_INSTANCING` are a separate format from `FoliageInstance`; both append to `AttributeType` and both branch in `drawSubmeshGeometry` (with `sprite-batching` too), so the merge keeps each branch guarded. S49's `Pixel` and `Analytic` bits are PARTICLES bits. S50's "terrain" is autotiling; no shared names.
 
 ## 9. Risks & defaults
 

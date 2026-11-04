@@ -82,6 +82,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - D21. Doriax's unlanded `agent-authoring` and `render-correctness` also touch terrain and foliage. We align with their
   specs instead of duplicating them, and whichever lands second merges onto the first. New MCP text follows the lean
   rules (a failing eval case for new text, guide limits, budget ratchet).
+- D22. Keep `sculpt_terrain`, pointing agents at `edit_terrain` through its result. Add `qemu-user` to the Android image so ARM
+  determinism can be checked here. Asset types: NoiseGraph 28, TreeData 29, TerrainWorld 30, VoxelVolume 31.
 
 ## How the work runs
 
@@ -111,7 +113,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | S58 spec | done | 80 and 53 |
 | Spec reconciliation | done | One bit table, one landing order, S53's names win |
 | Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to S53-S58 |
-| Spec revision for the upstream changes | in progress | |
+| Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
 | S53 foundation | in progress | Seams everything else builds on |
 | S53 implementation | not started | |
 | S54 implementation | not started | |
@@ -133,3 +135,4 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - Owner flagged remote changes. `origin/main` had 28 new commits: pixel-art specs S41-S52, 19 Doriax specs, lean MCP rules,
   an AGENTS.md rewrite and removal of all CI. Renumbered our specs to S53-S58, merged, restarted the baseline, and started a
   revision of the specs. Doriax's agent-authoring and render-correctness overlap terrain and foliage.
+- Specs revised for no CI, the lean MCP rules and the Doriax overlap. Six near-duplicate tools merged away.

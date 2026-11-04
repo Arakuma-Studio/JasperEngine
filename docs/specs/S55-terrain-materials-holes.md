@@ -1,6 +1,6 @@
 # S55 — Terrain materials and holes
 
-Wave 5 (terrain programme, `TERRAIN-LEDGER.md`). Owns D7: the hole representation and the terrain
+Wave 5 (terrain programme, `TERRAIN-LEDGER.md`, D1-D21 binding). Owns D7: the hole representation and the terrain
 material shader changes. Reports: `/tmp/terrain-research/reports/terrain3d-shaders-instancer.md`,
 `our-terrain-runtime.md`, `engine-constraints.md`.
 
@@ -27,7 +27,7 @@ A terrain that uses none of this draws what it drew, for what it cost.
 - The hole map, its behaviour in every consumer, `cut_holes` / `fill_holes` semantics for S53's
   engine, a hole overlay, the Hole brush.
 - Terrain Layers panel, Inspector and Project Settings Quality UI with a live fetch readout, Scene view
-  per-tier preview; `sample_terrain`, `visualize_terrain` and `set_terrain_maps` extensions; Lua.
+  per-tier preview; `sample_terrain` and `visualize_terrain` extensions; Lua.
 
 **Out of scope**
 - S53's operation engine, surface query, undo store and `edit_terrain` / `visualize_terrain` tools:
@@ -132,14 +132,14 @@ engine calls neither today. An odd sample count is padded to the block size with
 (`HeightFieldShape.cpp:405`).
 
 **Serialization** must change in step: `editor/StreamComponents.cpp:573` (encode, decode just after),
-`engine/core/serialization/RuntimeFields.gen.inc:492-512,941-943` (generated; CI regenerates),
+`engine/core/serialization/RuntimeFields.gen.inc:492-512,941-943` (generated: `jasperengine-editor reflect --emit-runtime-fields`, output committed),
 `engine/core/serialization/codecs/ComponentHooks.cpp:152-158`, `editor/Factory.cpp:1639`,
 `editor/cook/SceneCooker.cpp:112`, `editor/Project.cpp:635-645`.
 
 **Tests today.** No terrain golden: `engine/tests/core/golden/` has only `spline_road_terrain.png` of the
 kind. `ShaderZeroCost.DefaultVariantsUnchanged` hashes the default terrain variants
 (`engine/tests/core/shader/ShaderZeroCostTest.cpp:61-66,133`). `tools/test-projects/terrain` has a web gate
-(`docs/testing.md:123-125`).
+(`docs/testing.md:121-123`).
 
 **A small bug found on the way.** `terrainLayerFromMaterial` keeps a layer's tiling and Stochastic Tiling
 but loses `hexTiling` and `hexRotation` (TC:218-225), against its own comment. R13 fixes it.
@@ -288,13 +288,13 @@ layers stay raw there, TF:577-579). Each costs nothing when off.
 - **R20 Rendering, every pass.** Fragments in a hole are discarded, at the top of the shader, with the same texel test
   and the same interpolated local XZ, in: colour (`mesh.frag`), the extra pass, depth (shadow atlas, SSAO, depth
   pre-pass, scene depth, atmosphere depth), G-buffer, and the library's `finalizeColor` and
-  `includes/surface_depth_fs.glsl`. Variant bit: MESH 36, DEPTH 18, GBUFFER 16, name `Thl`, define `TERRAIN_HOLES`. The UV
+  `includes/surface_depth_fs.glsl`. Variant bit named `Thl`, define `TERRAIN_HOLES`, on MESH, DEPTH and GBUFFER (appended at landing, D2). The UV
   is one varying set in `getTerrainPosition` (TV:69), the function every path shares. Morphing moves the
   vertices, not the hole. A custom or forked shader that does not read it draws over holes: the Inspector warns.
 - **R21 Slot.** The hole map takes the slot of the base material's occlusion map: `TERRAIN_HOLES` leaves
   `u_occlusionTexture` out on every tier, on the precedent of the emissive map (`mesh.frag:70-74`). The base occlusion then
   reads 1, the layers' own occlusion still applies (`mesh.frag:408`), and the Inspector warns if the base material has one.
-  Depth and G-buffer have free slots.
+  Depth and G-buffer have free slots, but a `Thl` G-buffer leaves the occlusion map out too, so its AO matches the colour pass (R57).
 - **R22 Jolt.** A lattice square is **open** when every hole texel its local rectangle overlaps is a hole. A sample
   becomes `cNoCollisionValue` when all its existing adjacent squares (4, 2 at an edge, 1 at a corner) are open
   (`JoltShapeBuilder`, with the mirror of JSB:276-281 applied). No hole map: not one extra instruction in the loop. So the
@@ -428,15 +428,14 @@ No new tool (D15, `docs/mcp/conventions.md`). Group `terrain` (D17).
 - **R44 `visualize_terrain`** (S53's tool) gains overlays `layer_count` (1-12 on a fixed ramp), `fetch_cost` (reads per pixel on
   a fixed ramp) and `holes` (R30), and a `quality` argument that renders one frame at that tier without changing anything. Its
   result includes the per-pixel maximum and a histogram read back from the frame.
-- **R45 Setting tiers.** `set_properties` on `terrain.quality` and the other new fields (`terrain.surfaceLayers[i].cliffProjection`);
-  `set_project_settings` on `graphics.terrainQuality.<platform>`; `set_terrain_maps` takes `hole_map` (path or null) and layer
-  `cliff_projection`. All validated and undoable through the existing paths.
+- **R45 Setting tiers.** `set_properties` on `terrain.quality` and the other new fields (`terrain.surfaceLayers[i].cliffProjection`,
+  `terrain.holeMap` with a path or null); `set_project_settings` on `graphics.terrainQuality.<platform>`. All validated and undoable through
+  the existing paths. `set_terrain_maps` does not change for S55: reflection reaches these fields, and its exception does not rise.
 - **R46 `edit_terrain`** (S53's tool) exposes R27 with the same arguments and result. `get_project_settings` returns the shipped
   tiers an export would have.
-- **R47 Guide.** `docs/mcp/guide/terrain.md` (S53 creates it; S55 adds its section; created if S53 has not landed) with how to
-  check a budget and a hole end to end. `docs/mcp/TOOLS.md` regenerated. Stay within `tools/mcp/budget.json`: the `terrain` group's
-  limits are S53 R74's, `set_terrain_maps`, already at its cap, raises its exception by what R45 measures, and `sample_terrain`
-  gets an exception only if measured above its limit, with the reason recorded.
+- **R47 Guide.** `docs/mcp/guide/terrain.md` (S53 or `agent-authoring` creates it; S55 adds its section, and creates it if neither has landed) with how to
+  check a budget and a hole end to end. No agent guide line. `docs/mcp/TOOLS.md` regenerated. Stay within `tools/mcp/budget.json`: the `terrain` group's
+  limits are S53 R74's, and no `exceptions` entry is added or raised: `sample_terrain` and `visualize_terrain` stay within 1,500 with S55's keys (S53 §6).
 - **R48 Lua.** On `Terrain`: `terrainQuality`, `effectiveQuality` (read only), `limitLayersPerPixel`, `offscreenShadows`,
   `macroMode`, `macroScale`, `macroStrength`, `resampleEnabled`, `resampleNear`, `resampleFar`, `heightBlendSharpness`, `macroNormal`,
   `setHoleMap(path)`, `getHoleMapPath()`. On `TerrainSurfaceLayer`: `cliffProjection`. Globally
@@ -450,7 +449,7 @@ No new tool (D15, `docs/mcp/conventions.md`). Group `terrain` (D17).
   `macroStrength` (0.35), `macroTintA` (0.80, 0.84, 0.76), `macroTintB` (1.04, 1.0, 0.92), `macroSlopeFade` (0.33),
   `resampleEnabled` (false), `resampleNear` (30), `resampleFar` (120), `resampleReduction` (0.25), `heightBlendSharpness` (0),
   `macroNormal` (false), and the non-saved, not reflected `holeMapHolds` (0, R29; reset on clone). `TerrainSurfaceLayer` gains `cliffProjection` (Auto), appended and in `operator==`.
-- **R50 No format bump.** All additive, and S03's unknown-data preservation covers an older editor. The encoder omits every field at its default, so an old scene re-saves byte-identical.
+- **R50 No format bump.** All additive (`AGENTS.md`: an optional new field gets a default and no version bump). The blend alpha of R15 is no change of meaning: it is read only on a terrain with more than 9 layers, which no old scene has, and S03's unknown-data preservation covers an older editor. The encoder omits every field at its default, so an old scene re-saves byte-identical.
   `StreamComponents`, `RuntimeFields.gen.inc`, `ComponentHooks`, `Factory`, `SceneCooker`, the catalog snapshot and
   `Project.cpp:635-645` change together (S30:174-178).
 - **R51 Project defaults.** `graphics.terrainQuality` absent means **High on every platform**: an old project keeps its look on
@@ -466,6 +465,26 @@ No new tool (D15, `docs/mcp/conventions.md`). Group `terrain` (D17).
   and the tests at `RenderSystem.cpp:3270-3272,14816-14819`, `editor/Project.cpp:3788`, `editor/mcp/tools/MaterialsLightingTools.cpp:45-46,82`,
   `editor/window/InspectorMaterialPbr.cpp:197`. A `static_assert` ties the table's size to the width. The field is runtime only
   and variant names use the codes, not the bits, so no file or basename changes.
+
+### Upstream revision: no CI, lean MCP, Doriax
+
+- **R55 Where each AC runs.** There is no CI (`AGENTS.md`, Test): the gate per commit is `tools/check-changed`, and the full suite runs before the push when it
+  needs it. Each AC runs on this host or is labelled not verifiable here with the command a person runs (§8's table). A row not run is reported unverified.
+- **R56 Shaders.** Every commit that changes a shader bumps the shader cache version in `editor/App.cpp` (`App::getUserShaderCacheDir`, `v44` at this writing) by one over its
+  `main`, with a comment line as `v40`-`v44` have; on a merge with another programme, re-bump so each change has its own version (Doriax ledger).
+- **R57 Doriax overlap (D21; none landed: whichever lands second merges onto the first).**
+
+  | Doriax spec | What S55 touches in common | Rule |
+  |---|---|---|
+  | `draw-perf` | `Dlo`, MESH's next free bit, guards point and spot code in `lights.glsl`, `mesh.frag` and shadow includes, and frees two texture units in sun-only scenes. `updateAllTerrainRenderTextures` walks `TerrainComponent` | Bits by name (D2). D4's worst case stays the general variant, so S55 relies on no freed unit. Terrain tiers and `Thl` combine with `Dlo`, and the collector ships each `Dlo` key with its twin, tiers included (AC49). S55's hooks in that function follow whichever loop calls it |
+  | `ssr-probes` | G-buffer terrain occlusion: `g_occlusion` is set when the colour variant samples the map, plus `terrainSurface.occlusion` under `HAS_TERRAIN_PBR`; GBUFFER bits `Occ`, `Uv2`; `color[2].a` | `Thl` drops `u_occlusionTexture` from colour (R21), so `g_occlusion` is off with `Thl` and the swap's AO matches. Low has no surface map, so its G-buffer occlusion reads 1 as colour does. Bits by name (AC50) |
+  | `mesh-memory` | `MeshComponent::litDefineBits` and `Submesh` move into `StableArray` and `GrowArray`; capacities go | R54's widening applies to the field wherever it lives. `sg_` limits on slots are unaffected |
+  | `render-correctness` | G-buffer variants and the variant match at `RenderSystem.cpp:3270`, shader loops rule ("lod-safe" comments, `terrain_fs.glsl:565`), Foliage Distance | `terrain_select.glsl` and `terrain_macro.glsl` follow that rule. `pbrVariantMatches` learns S55's defines through the one helper of D2, on whichever form lands |
+  | `agent-authoring` | `set_terrain_maps` factors and blend slots 0-2, `terrain.md` | S55 adds no factor and no blend parameter. A terrain using layers 10-12 still paints through `terrainLayerChannel` |
+
+  **Pixel art.** S41's `Pxs` and S52's stream bits are appended to MESH and DEPTH too, in landing order: bits by name. S49's Analytic particles do not collide, so R26's particle row applies to S20's path only. No name clash.
+- **R58 Eval cases.** S55 adds no tool, but its new keys and its `terrain.md` section need cases that fail without them (AC51).
+- **R59 Vendored text.** `terrain_height_blend.glsl` holds a transcribed formula under `engine/shaderlib`, so it gets a `NOTICE.md` entry and no `engine/notices.json` entry (that file covers `engine/libs`). `python3 tools/ci/check-notices.py` covers it.
 
 ## 6. Design constraints & decisions
 
@@ -486,7 +505,7 @@ No new tool (D15, `docs/mcp/conventions.md`). Group `terrain` (D17).
 `RenderSystem.cpp`, `MeshSystem.cpp`, `TerrainEditWindow.cpp`, `InspectorWindow.cpp`, `WorldTools.cpp` take one-line hooks only (§8).
 
 **D2 Variants.** One shader source, `#ifdef`, offline (no splicing). New Lit defines, appended to `defineCodes` so existing
-basenames do not change; 30 of 64 bits used once R54 widens them:
+basenames do not change; 30 entries of 64 once R54 widens them, more if another programme appended first:
 
 | Define | Code | When |
 |---|---|---|
@@ -500,22 +519,24 @@ basenames do not change; 30 of 64 bits used once R54 widens them:
 
 `pbrVariantMatches` (RS:3270) and the reload hook (RS:14811-14826) learn them through one helper. Medium and Low never define the hex
 or stochastic paths. Holes are a **property bit** instead of a Lit define because every shader type and library shader needs them, and Lit
-defines reach only non-manifest colour shaders (RS:3907). G-buffer takes `Thl` and two new tier bits (17, 18) so SSR on a Low terrain
+defines reach only non-manifest colour shaders (RS:3907). G-buffer takes `Thl` and two new tier bits, `Tqm` and `Tql`, so SSR on a Low terrain
 stays within budget; it ignores Macro Variation and Macro Normal, as it ignores hex today.
 
-The programme's property bits, the one table S56, S57 and S58 cite. Read free at `b4f7816ea`: MESH ends at 35, DEPTH at 17, GBUFFER at 15
-(`ShaderPool.cpp:650-654,737`), masks are `uint64_t` (`ShaderBuildTypes.h:17`). Each spec raises `getShaderPropertyCount` to cover its bits
-and adds a case to `getShaderPropertyName` and to `ShaderVariantCompiler.cpp`'s definitions, using `shaderPropertyBit`.
+The programme's property bits are names plus an order among our streams, not reservations (D19), the one table S56, S57 and S58 cite. Each bit
+takes the next free one of its type when it lands, in landing order; pixel art (`Pxs`), Doriax (`Dlo`, `Occ`, `Uv2`) and others are appended the same way. Masks
+are `uint64_t` (`ShaderBuildTypes.h:17`). The spec that lands a bit raises `getShaderPropertyCount` to cover it, adds a case to `getShaderPropertyName` and to
+`ShaderVariantCompiler.cpp`'s definitions, using `shaderPropertyBit`, adds one test pinning the number it got (the form of draw-perf's `ShaderKey.DirectionalOnlyIsMeshBit36`), and bumps
+the shader cache by one (R56).
 
-| Bit | Spec | Define | MESH | DEPTH | GBUFFER |
-|---|---|---|---|---|---|
-| `Thl` | S55 R20 | `TERRAIN_HOLES` | 36 | 18 | 16 |
-| Tier bits, Medium and Low | S55 | as the Lit defines above | no: Lit defines | no | 17, 18 |
-| `Twd` | S56 D4 | `HAS_TERRAIN_WORLD` | 37 | 19 | 19 |
-| `Cin` | S57 F3 | `HAS_COMPACT_INSTANCE` | 38 | 20 | 20 |
-| `Wnd` | S57 F8 | its wind define | 39 | 21 | 21 |
-| `Dth` | S57 F6 | its dither define | 40 | 22 | 22 |
-| `Vox` | S58 R49 | `HAS_VOXEL` (G-buffer only: Lit defines do not reach it) | no | no | 23 |
+| Order | Bit | Spec | Define | MESH | DEPTH | GBUFFER |
+|---|---|---|---|---|---|---|
+| 1 | `Thl` | S55 R20 | `TERRAIN_HOLES` | yes | yes | yes |
+| 2 | `Tqm`, `Tql` | S55 | the Medium and Low Lit defines above | no: Lit defines | no | yes |
+| 3 | `Cin` | S57 F3 | `HAS_COMPACT_INSTANCE` | yes | yes | yes |
+| 4 | `Wnd` | S57 F8 | its wind define | yes | yes | yes |
+| 5 | `Dth` | S57 F6 | its dither define | yes | yes | yes |
+| 6 | `Vox` | S58 R49 | `HAS_VOXEL` (G-buffer only: Lit defines do not reach it) | no | no | yes |
+| 7 | `Twd` | S56 D4 | `HAS_TERRAIN_WORLD` | yes | yes | yes |
 
 **D3 Hole map: its own R8, not a blend map's alpha.** A blend alpha is free (no slot, no fetch) and was the serious option. Rejected:
 - blend maps may be absent or bound black (RS:5819-5834: a map not covered by the array binds `emptyBlack`), and that binding would need
@@ -594,17 +615,17 @@ void terrainDiscardHole(){
 (2) tiers, cap, budgets, readouts; (3) holes in shaders, then each consumer; (4) shadow cut; (5) material features;
 (6) layers 10-12; (7) compressed arrays; (8) UX and agent surface. S53's foundation lands before any of them (S53 §8), then S55 runs in
 parallel with S53's rest, S54, S57 and S58, and S56 lands last. Steps 1, 2, 4, 5, 6 and 7 need only that foundation; hole authoring in step 3 and
-the overlays of step 8 need S53's rest (`edit_terrain`, `visualize_terrain`). Until it lands, `TerrainHoles` is driven directly by tests and `set_terrain_maps hole_map`.
+the overlays of step 8 need S53's rest (`edit_terrain`, `visualize_terrain`). Until it lands, `TerrainHoles` is driven directly by tests and `set_properties` on `holeMap`.
 
 ## 7. Acceptance criteria
 
 A GPU test is listed with its backends: **G** is glcore on llvmpipe, **V** is Vulkan on lavapipe, both on this host; goldens are written on G and must
-match on V (`docs/testing.md:662-663`). Every test named below is new unless it names an existing file. **Red** says what proves the test can fail: for
+match on V (`docs/testing.md:643-644`). Every test named below is new unless it names an existing file. **Red** says what proves the test can fail: for
 a mutation, disable the named line and show the failure, and record the run.
 
 | AC | R | Test | Backends | Criterion | Red |
 |---|---|---|---|---|---|
-| AC1 | R4, R6 | `TerrainMaterialsGpu.LegacyHighMatchesPreS43` | G, V | Four scenes (3 colour layers; 4 PBR layers with a cliff; hex and stochastic; post colour with shadows), 640x360. **Golden drawn at the commit before any render change.** G: 0 pixels differ by more than 1/255, at most 0.01 % by 1/255. V: within the Vulkan-to-glcore difference measured on that same pre-change commit, recorded in the test | Change `TERRAIN_HEIGHT_CONTRAST` to 5: fails |
+| AC1 | R4, R6 | `TerrainMaterialsGpu.LegacyHighMatchesPreS55` | G, V | Four scenes (3 colour layers; 4 PBR layers with a cliff; hex and stochastic; post colour with shadows), 640x360. **Golden drawn at the commit before any render change.** G: 0 pixels differ by more than 1/255, at most 0.01 % by 1/255. V: within the Vulkan-to-glcore difference measured on that same pre-change commit, recorded in the test | Change `TERRAIN_HEIGHT_CONTRAST` to 5: fails |
 | AC2 | R4, R7 | `ShaderZeroCost.DefaultVariantsUnchanged` (existing) | CPU | Only the 4 terrain rows of the list are regenerated, once, for the far-read skip; all other rows unchanged; each S55 define and bit off gives the same hash | Add a line to `mesh.frag` outside a guard: fails |
 | AC3 | R3 | `TerrainLayerSelect.Continuity` | CPU | 10,000 weight pairs across each swap: the kept shares change by at most 2x the input step; the sum and the base weight are conserved | Hard top-K without the subtraction: fails |
 | AC4 | R3 | `TerrainMaterialsGpu.LayerCapSeamless` | G, V | A ramp through 5 layers at each tier: no neighbour pixel step above 6/255 beyond the High render's own largest step; golden | Same mutation in `terrain_select.glsl` |
@@ -625,7 +646,7 @@ a mutation, disable the named line and show the failure, and record the run.
 | AC19 | R15 | `TerrainLayers.ChannelMapping`, `TerrainMaterialsGpu.TwelveLayers` | CPU; G, V | Mapping table; 12 flat layers each draw their colour; an opaque map with 12 layers draws layers 10-12 at 0 | Non-inverted alpha: every terrain goes wrong |
 | AC20 | R16 | `TerrainDetailBuilder.CookedSlicesConcatenate`, `TerrainMaterialsGpu.CompressedArray` | CPU; G (BC7), V (BC7) | Levels equal expected sizes; PSNR of the array against raw ≥ 38 dB on colour; all slices one format | Mix formats: refused with an error |
 | AC21 | R16, R38 | `test_terrain_materials.py::test_export_ships_cooked_slices` | Linux export, G | Index has the slices, sources are absent, the player draws within AC20's PSNR, `detail_array.bytes` matches R38 ±5 % | Setting off: sources ship |
-| AC22 | R16 | `ANDROID_PROJECT=terrain-materials tools/build.sh android` | build only | Builds with ASTC slices, no emulator here (see §9) | Not run; CI or manual |
+| AC22 | R16 | `ANDROID_PROJECT=terrain-materials tools/build.sh android` | build only | Builds with ASTC slices, no emulator here (see §9) | Not run here; emulator command in §8 |
 | AC23 | R31, R20, R1 | `GATE=terrain-materials tools/build.sh web-gate` with `tools/test-projects/terrain-materials`, `tools/web/gates/terrain-materials.json` | WebGL2, headless Chrome | Low tier, hole, compressed slices: centre pixel is the sky seen through a hole, a second is painted ground; no console error | Fill the hole: centre pixel fails |
 | AC24 | R17 | `TerrainShadowsGpu.OffscreenRidgeCastsShadow` | G, V | Ridge behind the camera, sun behind the ridge: the visible ground is in shadow at the expected pixel. **Run first on unchanged code: it must fail there, which confirms §3.** | That run |
 | AC25 | R17 | `TerrainShadowsGpu.VisibleShadowsDoNotMove`, `.OffRestoresOldBehaviour`, `.NoAllocationWhenOff` | G, V | A scene with no off-screen caster matches AC1 with the cut on; Off matches the red run; no buffer created at Off or with shadows off | Select the cut with a different LOD: first test fails |
@@ -645,13 +666,17 @@ a mutation, disable the named line and show the failure, and record the run.
 | AC39 | R43, R45, R46 | `test_terrain_materials.py::test_agent_fields`, group check | MCP, G | Every field of R43; tiers set by `set_properties` and `set_project_settings`; invalid value refused atomically; the `terrain` group hidden until `tool_groups` enables it | Invalid value accepted |
 | AC40 | R47 | `tools/mcp/gen_tool_docs.py --check`, `tools/mcp/tool_budget.py --check tools/mcp/budget.json`, doc test | CPU | Pass | Stale docs |
 | AC41 | R48 | `LuaTerrainMaterials` in `engine/tests/core/script/`, doc test of Lua blocks | CPU | Every member reads and writes; S53's `isHoleAt` matches `TerrainHoles`; `setTerrainQuality` takes effect | Binding removed |
-| AC42 | R49, R50 | `StreamComponent.TerrainMaterialsRoundTrip`, `StreamComponent.OldTerrainResavesIdentical`, `GeneratedScenes` (existing), `Compat.CorpusRoundTrip` (existing), reflection-parity fixture | CPU | Every field round-trips by Stream, Factory and runtime codec; an old scene re-saves byte-identical; CI's regenerated table has no diff | Encode a default: fails |
+| AC42 | R49, R50 | `StreamComponent.TerrainMaterialsRoundTrip`, `StreamComponent.OldTerrainResavesIdentical`, `GeneratedScenes` (existing), `Compat.CorpusRoundTrip` (existing), reflection-parity fixture | CPU | Every field round-trips by Stream, Factory and runtime codec; an old scene re-saves byte-identical; `jasperengine-editor reflect --emit-runtime-fields` leaves no diff | Encode a default: fails |
 | AC43 | R51, R53 | `test_terrain_materials.py::test_project_defaults` | MCP, G | Old project: High everywhere and no key written; new template: table of R51; new terrain has the limit on | Change the default |
 | AC44 | R52 | `TextureTypeInference.HoleMapStaysReadable` in `editor/tests/texture/TextureTypeInferenceTest.cpp` | CPU | Cooks to uncompressed R8; CPU pixels present in a cooked build | Remove from the list |
 | AC45 | R35, R36, R37 | `tools/perf/terrain_tiers.py` (new; uses S15's timers), `TerrainHolesBench` | Host, llvmpipe | Each ratio and time, 5 runs, median; results in `terrain-evidence` | The High run is the control |
 | AC46 | R35 | `docs/specs/checklists/S55.md` | Campaign GPU and Android: **manual, not on this host** | Same ratios on the RTX at 4K; Low ≤ 4 ms on the phone; recorded when run | n/a |
-| AC47 | all | `tools/check-changed`, then `tools/build.sh web`, `android`, `tools/smoke-test.sh`, `GRAPHIC_BACKEND=vulkan` unit tests | Host | Green | n/a |
+| AC47 | all | `tools/check-changed` per commit; before the push, the full suite (R55), then `tools/build.sh web`, `android`, `tools/smoke-test.sh`, `GRAPHIC_BACKEND=vulkan` unit tests | Host | Green | n/a |
 | AC48 | R54 | `MaterialPbrDefines.BitsAreSixtyFourWide` in `engine/tests/core/texture/` | CPU | The three functions and `litDefineBits` are `uint64_t`; every table entry round-trips through `getDefineBit`, `getDefineBits` and `getDefinesFromBits`; S58's defines take this past bit 31 | Leave `litDefineBits` at `uint32_t`: fails |
+| AC49 | R57 | `ShaderVariantCollectorTerrain.DloTwinsCoverTiers`, `TerrainMaterialsGpu.TiersUnderDlo` | CPU; G, V | Every S55 tier and `Thl` key with `Dlo` has its general twin; a sun-only terrain draws the same as its twin within the strict tolerance. Runs once `draw-perf` is on the tree, by whichever lands second | Remove the twin for a tier key |
+| AC50 | R20, D2 | `ShaderKey.TerrainHolesBitIsPinned`, `.TerrainTierBitsArePinned`, and for G-buffer `TerrainHolesGpu.GBufferAoMatchesColourWithHoles` | CPU; G, V | Each bit's name maps to the number it got at landing; a `Thl` terrain's G-buffer has no occlusion map, once `ssr-probes` is on the tree, by whichever lands second | Set `g_occlusion` with `Thl`: AO differs |
+| AC51 | R58, R47 | Cases in `tools/mcp/eval/cases.py`, run as S53 AC74 says (`-k terrain_`; lent accounts, else unverified): `terrain_cut_hole_check` (guard; "cut a cave mouth and check a ball falls in": `edit_terrain cut_holes`, then `sample_terrain` `collision_gap`), `terrain_mobile_budget` (bad; "why is this slow on phones": `sample_terrain` `info.material`, `visualize_terrain fetch_cost`, must not only list materials), `terrain_set_quality_tier` (guard; "use Low on Android": `set_project_settings graphics.terrainQuality.android`) | eval | Each fails on a surface from before S55's text | That surface |
+| AC52 | R59, R12 | `python3 tools/ci/check-notices.py`; `python3 tools/check_raw_writes.py` (no new raw write: the hole map goes through S53's writer) | CPU | Pass | `--self-test` |
 
 ## 8. Dependencies & conflicts
 
@@ -675,17 +700,19 @@ a mutation, disable the named line and show the failure, and record the run.
 9801 region: one panel call. `TerrainEditWindow.cpp`: brush modes via S53. `WorldTools.cpp`: `terrainSample`, `terrainInfo` call a new `TerrainMaterialInfo` helper in `editor/mcp/`. Shared hotspots with other
 streams: `terrain_fs.glsl`, `terrain_vs.glsl`, `TerrainComponent.h`, `MaterialPbr.cpp` table, `Render.h` texture enum (append only), `tools/mcp/budget.json`, `NOTICE.md`.
 
-**Verifiable on this host (8 cores, software rendering, no KVM, no Windows or macOS)**
+**Verifiable on this host (8 cores, software rendering, no KVM, no Windows or macOS).** There is no CI, so a row marked No is unverified until a person runs its command.
 
-| Check | Here? |
-|---|---|
-| glcore on llvmpipe, Vulkan on lavapipe: all GPU tests and goldens | Yes |
-| GLES3 path actually executing: WebGL2 in headless Chrome (AC23) | Yes (software) |
-| Transpile for Metal, D3D11, GLES3 (`ShaderLibraryMatrix`) | Yes, compile only, never drawn |
-| Android APK build | Yes, build only; no emulator (no KVM), so ASTC draw is **not** verified here |
-| Windows, macOS, iOS builds; real Metal and D3D11 draws | **No**: CI on push; keep them by `#ifdef` discipline and reading |
-| Real GPU timing, mobile timing | **No**: AC46, manual |
-| `fixture-unity` MCP tests | No: they skip; S55's tests use their own project (CI-capable) |
+| Check | Here? | Elsewhere: command a person runs |
+|---|---|---|
+| glcore on llvmpipe, Vulkan on lavapipe: all GPU tests and goldens | Yes | |
+| GLES3 path actually executing: WebGL2 in headless Chrome (AC23) | Yes (software) | |
+| Transpile for Metal, D3D11, GLES3 (`ShaderLibraryMatrix`) | Yes, compile only, never drawn | |
+| Android APK build | Yes, build only; no emulator (no KVM), so ASTC draw is **not** verified here | On a host with `/dev/kvm`: `ANDROID_PROJECT=terrain-materials ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh` |
+| Windows build and CPU suites | **No** | With `vcvars64`: `cmake -S engine -B build-engine-gl -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DJASPERENGINE_TESTS=ON && cmake --build build-engine-gl --target jasperengine-core-tests && build-engine-gl/tests/core/jasperengine-core-tests.exe --gtest_filter=Terrain*-*Gpu*` |
+| macOS build; real Metal draws | **No** | `cmake -S engine -B build-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_TESTS=ON && cmake --build build-engine --target jasperengine-core-tests && build-engine/tests/core/jasperengine-core-tests --gtest_filter=TerrainMaterialsGpu*:TerrainHolesGpu*:TerrainShadowsGpu*` |
+| iOS build; real D3D11 draws | **No**: no automated pixel test exists | iOS: `python3 tools/xcode_sync_engine.py --check`, then `terrain-materials` from the Xcode workspace. D3D11: `docs/specs/checklists/S55.md` on Windows |
+| Real GPU timing, mobile timing | **No**: AC46, manual | `docs/specs/checklists/S55.md` |
+| `fixture-unity` MCP tests | No: they skip; S55's tests use their own project (the default MCP suite) | |
 
 ## 9. Risks & defaults
 
@@ -710,4 +737,5 @@ a fourth blend map has no slot. Base Map macro multiplies with a neutral at 0.5 
 
 ## Deviations
 
-(None yet. An implementer records deviations here.)
+- Upstream revision, 2026-11-04: `set_terrain_maps` keeps its schema (R45); bits are names plus order (D2); guide text goes in `docs/mcp/guide/terrain.md`, not the agent guide, with eval cases (R47, R58).
+- Implementers record further deviations here.
