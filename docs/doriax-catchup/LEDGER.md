@@ -77,10 +77,10 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | impl |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
 | 13 | `ui-batching` (was `sprite-batching`) | batching of component UI quads and buffers shared by content for non-sprite meshes; sprite batching itself is pixel-art S52's | specced (rescope pending) |
-| 14 | `ssr-probes` | SSR under local probes and AO, early-out | specced |
-| 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | specced |
+| 14 | `ssr-probes` | SSR under local probes and AO, early-out | impl |
+| 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
-| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | specced |
+| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | impl |
 | 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | impl |
 | 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | impl |
 
@@ -97,5 +97,6 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   specs, lean MCP surface). Merged (`59c2a964f`) and pushed. Feature 13 rescoped (see decisions). Wave 1 started
   (12 features): mobile-shipping, unicode-text, export-pipeline, build-toolchain, scene-integrity,
   project-window, runtime-core, scripting, mesh-memory, render-correctness, agent-authoring, code-editor-git.
-  Waiting: ui-components (after unicode-text), platform-lifecycle, ssr-probes, water-reflections, draw-perf (after
-  mesh-memory), water-boats (after water-reflections), ui-batching (after S52).
+  Also started, as they depend on nothing in flight: ssr-probes, water-reflections, platform-lifecycle (15 agents).
+  Waiting: ui-components (after unicode-text), draw-perf (after mesh-memory), water-boats (after
+  water-reflections), ui-batching (after pixel-art S52).
