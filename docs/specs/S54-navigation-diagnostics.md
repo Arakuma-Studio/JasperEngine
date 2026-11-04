@@ -682,3 +682,15 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
   the sources).
 
 ## Progress (implementation notes, keep updated)
+
+- S54 P1 (branch `nav/s42-p1`): the contract (`nav: S42 contract`, aba8fb7e8) carries the whole
+  §6 sketch with working bodies. Done: R1-R10 (failure detection in `NavMesh::findPath`, the
+  ranking, `isReachable`'s island reject, islands by union-find cached per revision, coverage,
+  `locate`), R11-R12 (`NavWalkabilityProbe`, `NavCollectOptions::recordSources`, the builder's
+  config override), R13-R15 (`getFindings`, `collectProjectFindings`, `logNavigationPreflight`),
+  R16-R17 (bake codes and hints, sources, tile reports kept per surface), R18 stubs, R35 Lua
+  (path reason fields, `isReachable`'s reason, `locate`, `getCoverage`, `getIslands`,
+  `NavMeshSurface.lastBakeResult`, stubs and parser overrides), the bench metrics of AC12 and the
+  docs' "Why navigation fails". P2 switches the CLI and the export to `collectProjectFindings` /
+  `logNavigationPreflight`; P3 sets `NavBakeError::SaveFailed` where the editor writes the asset
+  (`NavigationEditor::finish`).
