@@ -282,7 +282,28 @@ TEST(AssetTypes, TableDecidesTracking) {
     EXPECT_EQ(AssetTypes::assetPathForMeta("a/hero.png.meta"), fs::path("a/hero.png"));
 }
 
+// BF23 F24: every file the texture cook takes has an identity
+TEST(AssetTypes, ExrIsATexture) {
+    const AssetTypeInfo* exr = AssetTypes::find("assets/env.exr", "assets");
+    ASSERT_NE(exr, nullptr);
+    EXPECT_EQ(exr->type, AssetType::Texture);
+    EXPECT_EQ(exr->identity, AssetIdentity::Sidecar);
+    EXPECT_NE(AssetTypes::find("assets/env.EXR", "assets"), nullptr);
+}
+
 // ==================================================================== AssetDatabase
+
+// BF23 F24: an .exr of an existing project gains its sidecar on the next scan, at the same path
+TEST(AssetDatabase, ExistingExrGainsASidecar) {
+    AssetTestDir dir;
+    write(dir.path / "assets/env.exr", "exr content");
+    AssetDatabase database;
+    database.open(dir.path, "assets");
+    database.waitForBackgroundWork();
+    EXPECT_FALSE(database.getAssetGuid("assets/env.exr").isNull());
+    EXPECT_TRUE(fs::exists(dir.path / "assets/env.exr.meta"));
+    EXPECT_TRUE(fs::exists(dir.path / "assets/env.exr")) << "the source stays where old references point";
+}
 
 // AC1: two machines upgrading the same commit write the same identities
 TEST(AssetIdentity, UpgradeIsDeterministic) {
