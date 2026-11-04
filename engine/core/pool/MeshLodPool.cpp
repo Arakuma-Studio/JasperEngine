@@ -161,7 +161,7 @@ std::shared_ptr<MeshLodData> MeshLodPool::buildLevels(const MeshLodSource& sourc
     const float targetError = recipe.targetError >= FLT_MAX ? FLT_MAX
         : recipe.targetError * meshopt_simplifyScale(positions.data(), vertexCount, sizeof(float) * 3);
     const unsigned int options = meshopt_SimplifyErrorAbsolute | meshopt_SimplifyPrune |
-                                 (recipe.permissive ? meshopt_SimplifyPermissive : 0u);
+                                 (recipe.permissive ? (unsigned int)meshopt_SimplifyPermissive : 0u);
     const unsigned int levels = std::min<unsigned int>(recipe.levels, MAX_MESH_LODS - 1);
     float share = 1.0f;
 
