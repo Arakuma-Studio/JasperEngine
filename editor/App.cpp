@@ -5561,7 +5561,8 @@ namespace {
                       editor::ProfilerWindow* profiler, editor::FrameDebuggerWindow* frameDebugger, editor::UndoHistoryWindow* undo,
                       editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
-                      editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator) {
+                      editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator,
+                      editor::AudioMixerWindow* audioMixer) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -5584,6 +5585,7 @@ namespace {
         visit(editor::PoseAnimationWindow::WINDOW_NAME, poseAnimation);
         visit(editor::AnimatorWindow::WINDOW_NAME, animator);
         visit(editor::VertexAnimationBakerWindow::WINDOW_NAME, vertexAnimationBaker);
+        visit(editor::AudioMixerWindow::WINDOW_NAME, audioMixer);
     }
 
 }
@@ -5601,7 +5603,8 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
+                 audioMixerWindow);
     return panels;
 }
 
@@ -5613,7 +5616,8 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
     }, hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
+                 audioMixerWindow);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -5626,6 +5630,7 @@ void editor::App::applyDefaultLayout(){
     animatorWindow->setOpen(false);
     terrainEditWindow->setOpen(false);
     textureSynthesisWindow->setOpen(false);
+    audioMixerWindow->setOpen(false);
     vertexAnimationBakerWindow->setOpen(false);
     physicsPlacementWindow->setOpen(false);
     mcpActivityWindow->setOpen(false);

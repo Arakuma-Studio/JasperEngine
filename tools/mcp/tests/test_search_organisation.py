@@ -169,6 +169,20 @@ async def test_palette_lists_every_window(ed: Editor):
     ed.check_eq(missing, [], f"window.* commands the palette lacks (it lists {sorted(keys)})")
 
 
+async def test_layout_presets_record_the_audio_mixer(ed: Editor):
+    """BF23 F20: the Audio Mixer's visibility is in a preset like any other panel's"""
+    await ed.call("run_command", id="window.audioMixer")
+    ed.check_eq((await wait_frames(ed, 3))["windows"]["open"].get("Audio Mixer"), True, "the Audio Mixer is open")
+    saved = await ed.call("edit_layout_presets", action="save", name="Mixer")
+    ed.check_in("Audio Mixer", Path(saved["files_written"][0]).read_text(), "the preset's panels")
+    await ed.call("edit_layout_presets", action="apply", name="Default")
+    ed.check_eq((await wait_frames(ed, 3))["windows"]["open"].get("Audio Mixer"), False, "the Default layout closes it")
+    await ed.call("edit_layout_presets", action="apply", name="Mixer")
+    ed.check_eq((await wait_frames(ed, 3))["windows"]["open"].get("Audio Mixer"), True, "the preset restores it")
+    await ed.call("edit_layout_presets", action="apply", name="Default")
+    await ed.call("edit_layout_presets", action="delete", name="Mixer")
+
+
 async def test_layout_presets(ed: Editor):
     saved = await ed.call("edit_layout_presets", action="save", name="A")
     ed.check(saved["files_written"], f"the preset file: {saved}")
