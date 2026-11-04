@@ -740,7 +740,7 @@ a library:underwater pass, an orthographic main camera straight down.
 - Lua doc test over `docs/mcp/guide/lua-api.md`; `tools/mcp/gen_tool_docs.py --check`;
   `tools/mcp/tool_budget.py --check tools/mcp/budget.json`; `tools/check_agent_docs.py` if the guide README
   changes.
-- `tools/check-changed` on a build server per commit; the web gate (`tools/build.sh web`, `web-gate`) once, for
+- `tools/check-changed` per commit; the web gate (`tools/build.sh web`, `web-gate`) once, for
   WebGL2 texture arrays and the REPEAT dynamic texture.
 
 ## 11. Acceptance criteria

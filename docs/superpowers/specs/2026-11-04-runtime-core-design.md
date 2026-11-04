@@ -660,7 +660,7 @@ Lint and docs:
     line), animation.md (Scene mode `start_offset`, `random_start`; preview keeps edits),
     docs/testing.md (the lint in the unit job); `docs/mcp/TOOLS.md` regenerated; `tool_budget.py --check`
     passes; `check_agent_docs.py` if the agent guide changed.
-13. `tools/check-changed` passes on a build server; every red control was run red and recorded.
+13. `tools/check-changed` passes; every red control was run red and recorded.
 
 ## 12. Files likely touched
 

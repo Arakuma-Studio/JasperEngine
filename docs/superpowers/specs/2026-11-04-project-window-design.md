@@ -699,7 +699,7 @@ MCP tests (`tools/build.sh linux`, then `tools/mcp/run-tests.sh -k ...`; `CI = T
   **red** for `removed_folders` (and the emptied folder gone on disk); `test_unsaved_buffer_of_a_moving_file_refuses`.
 - M5 `test_tool_conventions.py`, `test_call_cli.py`, the budget check and `gen_tool_docs.py --check` pass.
 
-Per commit: `tools/check-changed` on the build server (AGENTS.md); the full suite at the batch landing.
+Per commit: `tools/check-changed` (AGENTS.md); the full suite at the batch landing.
 
 ## 11. Acceptance criteria
 
