@@ -70,6 +70,6 @@ Identity (D-1, D-2):
   is refused with its message. That stands: it is the same line as D1, an operation that moves files stays out of linked
   targets, and nothing here needs it to change. Its `AssetOps` refusals sit before the rename; `AssetDatabase::moveAssets` and
   `removeAssets` treat a link's own name as the link (not what it leads to) after it.
-- D9 (MCP text, AGENTS.md "MCP text"). `list_missing_assets`' description is unchanged; `read_only_linked` is a result key only when non-empty,
-  with the eval case `guard_read_only_linked`. The eval needs owner-approved accounts and was not run: that this case fails without the text is not shown.
-
+- D9 (MCP text, AGENTS.md "MCP text"). `list_missing_assets`' description is unchanged; `read_only_linked` is a result key, and its text names the assets, only when any
+  exist. Eval: `guard_read_only_linked` and `guard_linked_folder_rules` pass with the text and fail without it (surfaces of this branch and of the control editor). The first
+  run of the read-only case changed the tool: agents said "the check doesn't say which asset", as Claude Code shows them the text of this result, so the text names them.

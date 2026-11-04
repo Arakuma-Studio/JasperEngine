@@ -340,6 +340,8 @@ async def test_a_link_out_of_the_project_is_a_project_folder(ed: Editor):
             ed.check(not (outside / "locked" / "tile.png.meta").is_file(), "no meta there")
             listing = await ed.call("list_missing_assets")
             ed.check_in("assets/lib/locked/tile.png", listing.get("read_only_linked", []), f"the Missing list says so: {listing}")
+            shown = await ed.call_raw("list_missing_assets", {})
+            ed.check_in("assets/lib/locked/tile.png", shown.text, "and its text names it: a client may show the model only the text")
             await pickup(ed)
         finally:
             os.chmod(outside / "locked", 0o755)

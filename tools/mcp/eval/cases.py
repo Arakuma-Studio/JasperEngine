@@ -180,9 +180,9 @@ CASES = [
                   "guide: where do the .meta files of those assets go, do the files ship in an exported game, and can your write_file "
                   "tool add a new file there? Answer in a few lines, change nothing.",
         "checks": {"must_not_call": ["write_file", "create_folder", "move_asset"],
-                   "reply_must": [r"beside|next to|alongside|same folder|linked folder|target", r"ship|included|exported",
-                                  r"refus|can.?t|cannot|not allowed|blocked|won.?t"],
-                   "reply_must_not": [r"(copy|move) (it|them|the (folder|files|library)) into the project (first|to ship|so (it|they) ship)"]},
+                   "reply_must": [r"beside|next to|alongside|same folder", r"ship|included|exported", r"refus"],
+                   "reply_must_not": [r"(copy|move) (it|them|the (folder|files|library)) into the project (first|to ship|so (it|they) ship)",
+                                      r"(guide|docs?) (says nothing|doesn.?t)|isn.?t stated|doesn.?t say|inference|probably|haven.?t (tested|confirmed)"]},
         "max_turns": 8,
     },
     {
@@ -192,10 +192,12 @@ CASES = [
                          "The result says so, and the agent reports it rather than taking it for a failure or changing permissions.",
         "text_at_issue": "list_missing_assets result: read_only_linked and its line",
         "source": "docs/specs/S68-linked-folders.md R7",
-        "prompt": "Is anything wrong with this project's assets? Just tell me, change nothing.",
+        "prompt": "Run the editor's missing assets check and tell me what it says about this project. Change nothing.",
+        "groups_enabled": ["assets_pipeline"],
         "mocks": [
             {"tool": "list_missing_assets", "result": ok(
-                "0 missing asset(s), 0 resolved by path, 0 orphan meta(s).\n1 asset(s) in a read-only linked folder.",
+                "0 missing asset(s), 0 resolved by path, 0 orphan meta(s).\n1 asset(s) in a read-only linked folder "
+                "(they work; their GUIDs are not saved beside them):\nassets/lib/locked/tile.png",
                 {"missing": [], "resolved_by_path": [], "orphan_metas": [], "read_only_linked": ["assets/lib/locked/tile.png"]})},
         ],
         "checks": {"calls": ["list_missing_assets"], "reply_must": [r"read-only", r"tile\.png"],
