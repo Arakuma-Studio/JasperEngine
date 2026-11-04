@@ -21,10 +21,12 @@ Repeat until everything is pushed.
 
 ## Other programs on `main`
 
-Two other programs push to `origin/main` at the same time, so fetch before every landing. Whoever lands second merges onto the first.
+Other programs push to `origin/main` at the same time, so fetch before every landing. Whoever lands second merges onto the first.
 
 - Pixel art: specs S41-S52, `PIXEL-ART-LEDGER.md`, `feature/sNN-*`.
 - Doriax catch-up: `docs/doriax-catchup/LEDGER.md`, `docs/superpowers/specs/2026-11-04-*`, `dc/*`.
+- Forge/meshoptimizer: S53-S57, `docs/forge-meshopt-analysis/LEDGER.md`.
+- Engine gaps: `docs/engine-gaps/LEDGER.md`.
 
 This program's specs are S61-S73, because the pixel art specs took S41-S52 first. Worktree folders keep their old names (`je-wt/s41` holds S61, add 20).
 
@@ -73,10 +75,10 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 | Spec | What | Branch | Needs | Status |
 |---|---|---|---|---|
-| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | In progress: M1 |
-| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1 | Waiting |
-| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Waiting |
-| S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S38 M1; M5 needs S36 M1 | Waiting |
+| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | M1 landed; rest in progress |
+| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1 | In progress |
+| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | In progress: M1-M5 |
+| S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S62 first (same file); M5 needs S36 M1 | Waiting |
 | S39 | Music | `feat/s39-music` | S35, S36, S37 | Waiting |
 | S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37 | Waiting |
 
@@ -107,6 +109,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 ## Done
 
+- S38 M1: `AudioMeter` and `TruePeak`. Meter tests 61 passed, 0 failed, 0 skipped; pyloudnorm agrees within 0.1 LU; WERROR build. Whole check-changed not run, on my say: a library nothing else uses cannot change the CI suite's result. Open for S38 M6: file mode took 1964 ms against a 300 ms budget on loaded H.
 - `fix/ci-suite-classify`: `--suite ci` runs again. 26 files CI = True, 20 CI_EXCLUDED with reasons, a guard in check-changed. Also fixed two tests pinning guide text origin cut. New CI files 112 passed, 0 failed, 0 skipped; both edited files whole 55 passed. Whole check-changed not run: it would select 47 MCP files, some building real players, for a change that only adds a constant to the 20 excluded files.
 
 ## Log
@@ -117,3 +120,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: User pointed to new remote changes. Merged origin/main `297562c95`: pixel art specs, Doriax catch-up specs, AGENTS.md rewrite, GitHub workflows removed. Renumbered this program to S61-S73. Told every agent.
 - 2026-11-04: S68's red run: 4 of its tests fail on the control editor as intended; one more was fixed so it does too (not yet rerun).
 - 2026-11-04: First landing: `fix/ci-suite-classify`. S69 found a real bug: the Loading popup swallows a dialog opened once; fixing with a red test. S63's guard: 42 of 45 fixture scenes differ on the unfixed tree (somewhat inflated).
+- 2026-11-04: S38 M1 landed; S36 and S37 started. S61's red runs: Delete in the Curve window really did delete GameObjects. It waits on `fix/texture-synth-death-test` and its eval case. Other programs on `main`: also Forge/meshoptimizer S53-S57 and engine-gaps.
