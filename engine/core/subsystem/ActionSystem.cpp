@@ -12,6 +12,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "lattice/LatticeSolver.h"
+#include "math/HashRandom.h"
 #include "subsystem/UISystem.h"
 
 #include <algorithm>
@@ -21,6 +22,15 @@
 #include <unordered_set>
 
 using namespace jasperengine;
+
+namespace {
+    // an editor preview is running (ActionSystem::previewDepth): its starts take no offset
+    struct PreviewScope {
+        int& depth;
+        explicit PreviewScope(int& depth): depth(depth) { depth++; }
+        ~PreviewScope() { depth--; }
+    };
+}
 
 ActionSystem::ActionSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<ActionComponent>());
@@ -34,7 +44,8 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
     Signature signature = scene->getSignature(entity);
 
     // a paused action resumes where it was, a new run starts from the target's current pose
-    if (action.state == ActionState::Stopped && newRun){
+    const bool startsNewRun = action.state == ActionState::Stopped && newRun;
+    if (startsNewRun){
         if (AnimationComponent* animcomp = scene->findComponent<AnimationComponent>(entity)){
             for (ActionFrame& frame : animcomp->actions){
                 frame.started = false;
@@ -45,6 +56,10 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
         if (keyframe && keyframe->relative){
             keyframe->hasBase = getRelativeTrackPose(action.target, keyframe->basePosition, keyframe->baseRotation, keyframe->baseScale);
         }
+
+        // Start Offset / Random Start: the run begins that far into the action's own time
+        action.phase = startPhase(entity, action);
+        action.timecount = action.phase;
     }
 
     actionComponentStart(action);
@@ -79,6 +94,9 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(target);
 
                 spriteActionStart(mesh, sprite, spriteanim);
+                if (startsNewRun && started->phase > 0){
+                    spriteSeek(mesh, sprite, spriteanim, (double)started->phase * 1000.0);
+                }
 
             }
         }
@@ -289,14 +307,18 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
                     continue;
                 }
 
-                iaction->timecount = timeDiff * iaction->speed;
+                // a child's own Start Offset shifts its time (kept across the parent's loops)
+                iaction->timecount = iaction->phase + timeDiff * iaction->speed;
                 iaction->weight = anim->weight;
 
-                float frameDuration = getFrameDuration(anim->actions[i]) / iaction->speed;
-                actionsEnd = std::max(actionsEnd, anim->actions[i].startTime + frameDuration);
+                // a stopped clock (speed 0) never passes its frame (no division by zero)
+                if (iaction->speed != 0) {
+                    float frameDuration = getFrameDuration(anim->actions[i]) / iaction->speed;
+                    actionsEnd = std::max(actionsEnd, anim->actions[i].startTime + frameDuration);
 
-                if (timeDiff > frameDuration) {
-                    totalActionsPassed++;
+                    if (timeDiff > frameDuration) {
+                        totalActionsPassed++;
+                    }
                 }
             }
 
@@ -334,7 +356,8 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
 void ActionSystem::animationApplyEnd(ActionComponent& action, AnimationComponent& animcomp, bool durationPassed){
     float endTime = action.timecount;
     if (durationPassed){
-        endTime = std::min(endTime, animcomp.duration / action.speed);
+        // the duration is clip time: timecount already runs at the action's speed
+        endTime = std::min(endTime, animcomp.duration);
     }
     // the tracks' onStop callbacks are user code that may edit the frames
     std::vector<ActionFrame> frames = animcomp.actions;
@@ -352,7 +375,7 @@ void ActionSystem::animationApplyEnd(ActionComponent& action, AnimationComponent
         if (timeDiff < 0 || childAction->speed <= 0){
             continue;
         }
-        childAction->timecount = timeDiff * childAction->speed;
+        childAction->timecount = childAction->phase + timeDiff * childAction->speed;
         processRunningAction(0, child, *childAction);
     }
 }
@@ -425,6 +448,53 @@ void ActionSystem::spriteActionStart(MeshComponent& mesh, SpriteComponent& sprit
     spriteanim.spriteFrameCount = 0;
 
     setSpriteTextureRect(mesh, sprite, spriteanim);
+}
+
+void ActionSystem::spriteSeek(MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim, double milliseconds){
+    if (spriteanim.framesSize == 0 || spriteanim.framesTimeSize == 0 || milliseconds <= 0){
+        return;
+    }
+    double total = 0;
+    for (unsigned int i = 0; i < spriteanim.framesTimeSize; i++){
+        total += std::max(0, (int)spriteanim.framesTime[i]);
+    }
+    // a looping one wraps (whole cycles change nothing); one cycle = every frame once
+    if (spriteanim.loop && total > 0 && spriteanim.framesTimeSize == spriteanim.framesSize){
+        milliseconds = std::fmod(milliseconds, total);
+    }
+    unsigned int remaining = (unsigned int)milliseconds;
+    // at most one pass over the frames past the first (zero time frames cannot loop it forever)
+    for (unsigned int steps = 0; steps < spriteanim.framesSize + spriteanim.framesTimeSize; steps++){
+        const int frameTime = std::max(0, (int)spriteanim.framesTime[spriteanim.frameTimeIndex]);
+        if (remaining < (unsigned int)frameTime){
+            break;
+        }
+        if (spriteanim.frameIndex >= (int)spriteanim.framesSize - 1 && !spriteanim.loop){
+            // the end: the last frame shows, the first update stops it
+            remaining = (unsigned int)frameTime;
+            break;
+        }
+        remaining -= frameTime;
+        spriteanim.frameIndex = (spriteanim.frameIndex + 1) % (int)spriteanim.framesSize;
+        spriteanim.frameTimeIndex = (spriteanim.frameTimeIndex + 1) % (int)spriteanim.framesTimeSize;
+    }
+    spriteanim.spriteFrameCount = remaining;
+    setSpriteTextureRect(mesh, sprite, spriteanim);
+}
+
+float ActionSystem::startPhase(Entity entity, ActionComponent& action){
+    if (previewDepth > 0 || (!action.randomStart && action.startOffset <= 0) || isParticleController(entity, action)){
+        return 0;
+    }
+    if (!action.randomStart){
+        return std::isfinite(action.startOffset) ? action.startOffset : 0.0f;
+    }
+    action.runs++;
+    const float duration = getDuration(entity);
+    if (!(duration > 0) || !std::isfinite(duration)){
+        return 0;
+    }
+    return (float)(hashUnit((uint64_t)entity, (int64_t)action.runs) * duration);
 }
 
 void ActionSystem::spriteActionStop(MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim){
@@ -1404,6 +1474,7 @@ void ActionSystem::updateAnimationPreview(double dt, Entity entity){
 void ActionSystem::updateAnimationPreview(double dt, const std::vector<Entity>& entities){
     // Drives one or more top-level animations into a single pose-blend scope so
     // concurrently running clips crossfade (used by the editor transition preview).
+    PreviewScope preview(previewDepth);
     clearPoseBlend();
 
     std::unordered_set<Entity> visitedAnimations;
@@ -1473,6 +1544,7 @@ void ActionSystem::updateAnimationPreview(double dt, const std::vector<Entity>& 
 
 void ActionSystem::updateActionPreview(double dt, Entity entity){
     if (!scene->isEntityCreated(entity)) return;
+    PreviewScope preview(previewDepth);
 
     Signature signature = scene->getSignature(entity);
     if (!signature.test(scene->getComponentId<ActionComponent>())) return;

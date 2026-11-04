@@ -3504,6 +3504,9 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
         item["kind"] = kind;
         if (ActionComponent* ac = scene->findComponent<ActionComponent>(frame.action)) {
             item["target"] = ac->target != NULL_ENTITY && scene->isEntityCreated(ac->target) ? entityJson(target, ac->target) : Json(nullptr);
+            // a nested action's own start (only when set: most have none)
+            if (ac->startOffset > 0.0f) item["start_offset"] = ac->startOffset;
+            if (ac->randomStart) item["random_start"] = true;
         }
         for (const auto& c : channels()) {
             if (kind == std::string(c.first) + "_track") item["keys"] = keysJson(scene, frame.action, c.second, keyLimit);
@@ -3533,6 +3536,8 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
         out["target"] = action->target != NULL_ENTITY && scene->isEntityCreated(action->target) ? entityJson(target, action->target) : Json(nullptr);
         out["autoplay"] = action->state == ActionState::Running;
         out["speed"] = action->speed;
+        out["start_offset"] = action->startOffset;
+        out["random_start"] = action->randomStart;
     }
     return out;
 }
@@ -3843,6 +3848,14 @@ void editAnimationTool(const CallPtr& call) {
                              boolOr(args, "autoplay", false) ? ActionState::Running : ActionState::Stopped);
     }
     if (has(args, "speed")) addProp<float>(*edits, target, animation, ComponentType::ActionComponent, "speed", numberOr(args, "speed", 1.0f));
+    if (has(args, "start_offset")) {
+        const float offset = numberOr(args, "start_offset", 0.0f);
+        if (!std::isfinite(offset) || offset < 0.0f) { failWith("start_offset: seconds into the animation, 0 or more."); return; }
+        addProp<float>(*edits, target, animation, ComponentType::ActionComponent, "startOffset", offset);
+    }
+    if (has(args, "random_start")) {
+        addProp<bool>(*edits, target, animation, ComponentType::ActionComponent, "randomStart", boolOr(args, "random_start", false));
+    }
     if (!step.add(editsGuard.release())) { failWith("The editor rejected the animation edit."); return; }
     if (!toDelete.empty()) {
         if (!step.add(new DeleteEntityCmd(target.project, target.sceneId(), toDelete))) { failWith("Could not delete the removed actions."); return; }
@@ -5739,6 +5752,8 @@ void registerWorldTools(McpRegistry& registry) {
             {"loop", boolean("")},
             {"duration", number("")},
             {"speed", number("")},
+            {"start_offset", number("Seconds each new run starts in (Play).")},
+            {"random_start", boolean("")},
             {"autoplay", boolean("")},
             {"max_keys", withDefault(integer("Per track."), 20)}
         }),

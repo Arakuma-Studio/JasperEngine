@@ -49,6 +49,12 @@ namespace {
     constexpr FieldDesc kActionFields[] = {
         JE_FIELD(ActionComponent, state, .ops = &kActionStateOps, .enumDesc = &enums::kActionState, .flags = NoDefault),
         JE_FIELD(ActionComponent, speed),
+        // runtime-core spec 6.7: where each new run starts, in Play mode and builds
+        JE_FIELD(ActionComponent, startOffset, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Seconds, .min = 0.0f,
+                 .tooltip = "Seconds into the action each new run starts at, in Play mode and builds (previews start at 0)"),
+        JE_FIELD(ActionComponent, randomStart, .flags = OmitIfDefault | CodegenIfChanged,
+                 .tooltip = "Each new run starts at a random point of one cycle (different per GameObject, the same every "
+                            "playthrough); overrides Start Offset"),
         JE_FIELD(ActionComponent, target, .ops = &ops::Entity),
         JE_FIELD(ActionComponent, ownedTarget),
     };
@@ -57,6 +63,8 @@ namespace {
     void actionPostDecode(void* comp, const DecodeContext&) {
         ActionComponent& action = *static_cast<ActionComponent*>(comp);
         action.timecount = 0;
+        action.phase = 0;
+        action.runs = 0;
         action.startTrigger = false;
         action.stopTrigger = false;
         action.pauseTrigger = false;

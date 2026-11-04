@@ -3,6 +3,8 @@
 
 #include "VertexAnimatorRuntime.h"
 
+#include "math/HashRandom.h"
+
 #include "component/VertexAnimatorComponent.h"
 
 #include <algorithm>
@@ -128,15 +130,7 @@ double vat::vatClipPeriod(const VatClip& clip){
 }
 
 double vat::vatRandomUnit(uint64_t seed, int64_t index){
-    // splitmix64 over (seed, index): well spread for neighbouring entities and instances
-    uint64_t x = seed * 0x9E3779B97F4A7C15ull + (uint64_t)index * 0xBF58476D1CE4E5B9ull + 0x94D049BB133111EBull;
-    x ^= x >> 30;
-    x *= 0xBF58476D1CE4E5B9ull;
-    x ^= x >> 27;
-    x *= 0x94D049BB133111EBull;
-    x ^= x >> 31;
-    // 53 bits: exact in a double, < 1
-    return (double)(x >> 11) * (1.0 / 9007199254740992.0);
+    return hashUnit(seed, index);
 }
 
 void vat::vatCrossedEvents(const VatClip& clip, double from, double to, bool includeStart, std::vector<VatCrossedEvent>& out){

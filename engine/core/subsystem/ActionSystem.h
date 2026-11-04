@@ -176,6 +176,15 @@ namespace jasperengine{
 		void spriteActionStart(MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim);
 		void spriteActionStop(MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim);
 		void spriteActionUpdate(double dt, Entity entity, ActionComponent& action, MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim);
+		// a new run with a start offset: the frame that many milliseconds in (a non-looping one
+		// past its end holds its last frame and stops on its first update)
+		void spriteSeek(MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim, double milliseconds);
+
+		// Where a new run starts (ActionComponent::startOffset / randomStart): 0 in an editor
+		// preview and for a particle controller
+		float startPhase(Entity entity, ActionComponent& action);
+		// inside updateActionPreview / updateAnimationPreview (the editor's previews start at 0)
+		int previewDepth = 0;
 
 		void tweenStop(TweenComponent& tween);
 		// true when a non-looping tween reached its end
@@ -188,9 +197,6 @@ namespace jasperengine{
 		void colorTweenUpdate(TweenComponent& tween, ColorTweenComponent& colortween, Vector4& targetColor);
 		void alphaTweenUpdate(TweenComponent& tween, AlphaTweenComponent& alphatween, Vector4& targetColor);
 
-		// an action whose target is a particle system and which has no other kind (D1): its
-		// start, stop and pause play, stop and pause the system
-		bool isParticleController(Entity entity, const ActionComponent& action);
 		// an editor preview steps no systems: a running controller advances its particles itself
 		void previewParticleController(double dt, Entity entity, const ActionComponent& action);
 
@@ -351,6 +357,10 @@ namespace jasperengine{
 		void updateAnimationPreview(double dt, Entity entity);
 		void updateAnimationPreview(double dt, const std::vector<Entity>& entities);
 		void updateActionPreview(double dt, Entity entity);
+
+		// an action whose target is a particle system and which has no other kind (D1): its
+		// start, stop and pause play, stop and pause the system (Start Offset does not apply)
+		bool isParticleController(Entity entity, const ActionComponent& action);
 
 		float getDuration(Entity entity);
 		float getFrameDuration(const ActionFrame& frame);
