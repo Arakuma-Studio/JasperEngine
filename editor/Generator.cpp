@@ -8,6 +8,7 @@
 #include "EditorVersion.h"
 #include "editor/Out.h"
 #include "AppSettings.h"
+#include "util/CMakeText.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
@@ -501,19 +502,9 @@ static std::string toProjectRootCMakePath(const fs::path& projectPath, const fs:
 }
 
 std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& projectPath, const fs::path& assetsPath, const fs::path& luaPath) {
-    // The title crosses two quoting layers: the generated CMake string and the
-    // C string literal passed to the platform backend. Escape both, matching the
-    // exported-project configuration produced by Exporter.
-    std::string title;
-    for (char c : windowSettings.title) {
-        if (c == '\\' || c == '"') title += '\\';
-        title += c;
-    }
-    std::string cmakeTitle;
-    for (char c : title) {
-        if (c == '\\' || c == '"' || c == '$') cmakeTitle += '\\';
-        cmakeTitle += c;
-    }
+    // The title becomes the C string literal passed to the platform backend: carried as
+    // escaped bytes (util/CMakeText.h), as in the exported project's configuration.
+    const std::string cmakeTitle = cmaketext::cStringDefinitionValue(windowSettings.title);
 
     std::string content;
     content += "if (NOT JASPERENGINE_EDITOR_PLUGIN)\n";

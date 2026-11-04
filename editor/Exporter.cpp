@@ -6,6 +6,7 @@
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderVariantCollector.h"
 #include "player/PlayerModules.h"
+#include "util/CMakeText.h"
 #include "util/EditorScripts.h"
 #include "util/ExportFeatureScan.h"
 #include "yaml-cpp/yaml.h"
@@ -3549,20 +3550,10 @@ bool editor::Exporter::copyEngine() {
     if (projectSettingsPos != std::string::npos) {
         const WindowSettings window = project->getWindowSettings();
 
-        // The title crosses two quoting layers: the CMake string literal here and
-        // the C string literal it becomes through add_definitions. Escape for the
-        // C level first, then for the CMake level ($ stops variable expansion).
+        // The title becomes a C string literal through the engine's compile definitions: carried
+        // as escaped bytes (util/CMakeText.h), so any character in any language builds.
         // Control characters are sanitized upstream in Project::getWindowSettings().
-        std::string title;
-        for (char c : window.title) {
-            if (c == '\\' || c == '"') title += '\\';
-            title += c;
-        }
-        std::string cmakeTitle;
-        for (char c : title) {
-            if (c == '\\' || c == '"' || c == '$') cmakeTitle += '\\';
-            cmakeTitle += c;
-        }
+        const std::string cmakeTitle = cmaketext::cStringDefinitionValue(window.title);
 
         // First line reuses the marker's existing indentation; subsequent lines
         // match the surrounding standalone setup block (4 spaces).
