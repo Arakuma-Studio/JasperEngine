@@ -115,6 +115,11 @@ namespace jasperengine::editor {
         void drawGizmosMenu(SceneProject& sceneProject);
         // the right-click menu of the selected lattice (LatticeSceneTools draws its items)
         void drawLatticeContextMenu(SceneProject& sceneProject);
+        // the Path Tester's press, drag and release in the view (engine canvas x, y): true when it
+        // took the left button
+        bool pathTesterInput(SceneProject& sceneProject, float x, float y, bool hovered);
+        // the AI Navigation overlay's tile labels and the Path Tester's panel over the canvas
+        void drawNavigationHud(SceneProject& sceneProject, ImVec2 canvasMin, ImVec2 canvasSize);
         // the camera moves to show bounds whole (focusOnEntities' framing)
         void focusOnBounds(SceneProject* sceneProject, const AABB& bounds);
         std::string getWindowTitle(const SceneProject& sceneProject) const;

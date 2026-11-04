@@ -274,6 +274,14 @@ void NavigationEditor::update(Project* project) {
         finish(project, done, result);
     }
     if (!pending.empty()) Backend::getApp().requestFrame();
+    // a kept input can be MBs: only while the slope overlay or the Path Tester asks for it; an
+    // entry no one read for a minute (a closed scene, a removed surface) goes
+    const double now = nowSeconds();
+    for (InputCache& cache : inputCache) {
+        if (cache.report.input && now - cache.inputAskedAt > 2.0) cache.report.input.reset();
+    }
+    inputCache.erase(std::remove_if(inputCache.begin(), inputCache.end(), [&](const InputCache& cache) { return now - cache.checkedAt > 60.0; }),
+                     inputCache.end());
 }
 
 void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeResult& bakeResult) {
@@ -301,9 +309,9 @@ void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeRes
                 Out::error("NavMeshSurface '%s': %s", sceneProject->scene->getEntityName(entry.surface).c_str(), result.error.c_str());
             }
         }
-        dirtyCache.erase(std::remove_if(dirtyCache.begin(), dirtyCache.end(), [&](const DirtyCache& cache) {
+        inputCache.erase(std::remove_if(inputCache.begin(), inputCache.end(), [&](const InputCache& cache) {
             return cache.sceneId == entry.sceneId && cache.surface == entry.surface;
-        }), dirtyCache.end());
+        }), inputCache.end());
         sceneProject->needUpdateRender = true;
     }
     if (sceneProject && sceneProject->scene && !result.cancelled) {
@@ -398,25 +406,39 @@ bool NavigationEditor::resetGridOverrides(Project* project, uint32_t sceneId, En
 
 int NavigationEditor::dirtyTiles(Project* project, uint32_t sceneId, Entity surface) {
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
-    NavigationSystem* system = sceneProject ? systemOf(*sceneProject) : nullptr;
-    if (!system || isBaking(sceneId, surface)) return -1;
+    const NavigationSystem::InputReport* report = sceneProject ? inputReport(*sceneProject, surface) : nullptr;
+    return report ? report->dirtyTiles : -1;
+}
+
+const NavigationSystem::InputReport* NavigationEditor::inputReport(SceneProject& sceneProject, Entity surface, bool keepInput) {
+    NavigationSystem* system = systemOf(sceneProject);
+    // a game's surfaces keep no tile records to compare with
+    if (!system || sceneProject.playState != ScenePlayState::STOPPED || isBaking(sceneProject.id, surface)) return nullptr;
     const double now = nowSeconds();
-    for (DirtyCache& cache : dirtyCache) {
-        if (cache.sceneId == sceneId && cache.surface == surface) {
-            // collecting reads the whole scene: once a second at most
-            if (now - cache.checkedAt < 1.0) return cache.dirty;
-            cache.dirty = system->countDirtyTiles(surface);
-            cache.checkedAt = now;
-            return cache.dirty;
-        }
+    auto it = std::find_if(inputCache.begin(), inputCache.end(),
+                           [&](const InputCache& cache) { return cache.sceneId == sceneProject.id && cache.surface == surface; });
+    if (it == inputCache.end()) {
+        InputCache cache;
+        cache.sceneId = sceneProject.id;
+        cache.surface = surface;
+        inputCache.push_back(std::move(cache));
+        it = inputCache.end() - 1;
+    } else if (now - it->checkedAt < 1.0 && (!keepInput || it->report.input)) {
+        // collecting reads the whole scene: once a second at most
+        if (keepInput) it->inputAskedAt = now;
+        return &it->report;
     }
-    DirtyCache cache;
-    cache.sceneId = sceneId;
-    cache.surface = surface;
-    cache.dirty = system->countDirtyTiles(surface);
-    cache.checkedAt = now;
-    dirtyCache.push_back(cache);
-    return cache.dirty;
+    nav::NavCollectOptions options;
+    options.recordSources = keepInput;
+    it->report = system->inspectInputs(surface, options, keepInput);
+    it->checkedAt = now;
+    if (keepInput) it->inputAskedAt = now;
+    return &it->report;
+}
+
+std::shared_ptr<const nav::NavBakeInput> NavigationEditor::keptInput(SceneProject& sceneProject, Entity surface) {
+    const NavigationSystem::InputReport* report = inputReport(sceneProject, surface, true);
+    return report ? report->input : nullptr;
 }
 
 // ---------------------------------------------------------------- the overlay's query
