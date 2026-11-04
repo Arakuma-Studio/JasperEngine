@@ -102,3 +102,8 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S38 | Loudness: `AudioMeter` (LUFS, true peak), true-peak lookahead `limiter`, new-project mixer and audio defaults | 4A (sound; M1 first) |
 | S39 | Music system: tracks and playlists, tempo, bars and beats, quantized transitions with snapshots, stingers, tempo detection | 4B (sound; spec-first) |
 | S40 | Timeline audio: audio cues on animation clips for the Animation Player, Animator and montages | 4B (sound; spec-first) |
+| S41 | Model import and cook: meshopt/quantized/Draco/WebP/Basis glTF, Model Importer (.meta, per platform), lossless and lossy Mesh Compression, baked LODs, Read/Write, Audit window, Build Report, `meshes` MCP group | 5 |
+| S42 | LOD and cross-fade: LOD on by default, fixed selection, baked levels, dithered cross-fade, shadow LOD, culled level, instanced LOD, Scene view Draw Modes, Stats, `capture_model_lods` | 5 |
+| S43 | Draw submission: automatic GPU instancing, state sort, constants once per pass, visible lists on jobs, shadow geometry, stream-budget fix, mesh benchmark gate | 5 |
+| S44 | Device tiers (GPU database after The Forge), tier overrides and Game view simulation, thermal and memory response, upload pacing | 5 |
+| S45 | Lighting after The Forge: screen-tile light lists, capsule shadows, contact shadows, weighted blended OIT, hair lobe | 5 |
