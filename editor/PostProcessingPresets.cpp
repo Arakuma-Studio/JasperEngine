@@ -7,6 +7,9 @@
 #include "command/CommandGroup.h"
 #include "command/CommandNames.h"
 #include "command/type/ScenePropertyCmd.h"
+#include "pixelart/BuiltinPalettes.h"
+#include "pixelart/Palette.h"
+#include "pixelart/PaletteUse.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 
@@ -163,6 +166,24 @@ std::vector<PostProcessingPreset> makePostProcessingPresets() {
                            "light grain and a faded grade. One uber pass.", s});
     }
 
+    // an exact palette over the whole frame (S43 R22): the built-in is copied into the project
+    // when the preset is applied (resolvePostProcessingPreset), so the scene stores the copy
+    {
+        PostProcessingSettings s;
+        s.paletteEnabled = true;
+        s.palette = std::string(pixelart::kBuiltinPrefix) + "game-boy";
+        s.paletteDither = PaletteDither::BAYER4;
+        presets.push_back({"handheld_4", "Handheld (4 Shades)",
+                           "The four greens of the Game Boy (DMG) palette over the frame, Bayer 4x4 dithered per art pixel "
+                           "(Palette Quantize). One uber pass.", s});
+
+        s.palette = std::string(pixelart::kBuiltinPrefix) + "pico-8";
+        s.paletteDither = PaletteDither::NONE;
+        presets.push_back({"pico_8", "PICO-8",
+                           "Every pixel onto the 16 colours of PICO-8, the nearest one without a dither (Palette Quantize). "
+                           "One uber pass.", s});
+    }
+
     return presets;
 }
 
@@ -215,11 +236,32 @@ const PostProcessingPreset* findPostProcessingPreset(const std::string& idOrName
     return nullptr;
 }
 
-const PostProcessingPreset* matchPostProcessingPreset(const PostProcessingSettings& settings) {
+const PostProcessingPreset* matchPostProcessingPreset(const PostProcessingSettings& settings, const Project* project) {
     for (const PostProcessingPreset& preset : getPostProcessingPresets()) {
         if (preset.settings == settings) return &preset;
+        const std::string& named = preset.settings.palette.path;
+        if (!project || settings.palette.empty() || named.rfind(pixelart::kBuiltinPrefix, 0) != 0) continue;
+        // everything else first: the palette's file is only read for a preset that otherwise matches
+        PostProcessingSettings asPreset = settings;
+        asPreset.palette = preset.settings.palette;
+        if (!(asPreset == preset.settings)) continue;
+        // the project's copy of the built-in names its origin (R7: source {kind: builtin, id})
+        std::shared_ptr<const jasperengine::pixelart::Palette> palette = jasperengine::pixelart::PaletteLibrary::get(settings.palette.path);
+        if (palette && palette->source.kind == "builtin" && palette->source.id == named.substr(std::char_traits<char>::length(pixelart::kBuiltinPrefix)))
+            return &preset;
     }
     return nullptr;
+}
+
+bool resolvePostProcessingPreset(Project& project, const PostProcessingPreset& preset, PostProcessingSettings& settings,
+                                 bool& wroteCopy, std::string& error) {
+    settings = preset.settings;
+    wroteCopy = false;
+    if (settings.palette.path.rfind(pixelart::kBuiltinPrefix, 0) != 0) return true;
+    pixelart::ResolvedPalette resolved;
+    if (!pixelart::usePalette(project, settings.palette.path, resolved, wroteCopy, error)) return false;
+    settings.palette = resolved.assetPath;
+    return true;
 }
 
 PostProcessingCostTier getPostProcessingCostTier(const PostProcessingSettings& onlyThisEffect) {
@@ -289,6 +331,19 @@ PostProcessingRowState getPostProcessingRowState(const PostProcessingSettings& s
             state.inactiveReason = "Inactive while Fixed Resolution is on: the scene renders at its fixed size.";
             state.inactiveTag = "inactive with Fixed Resolution";
         }
+    } else if (snakeName == "palette_dither_strength") {
+        state.shown = settings.paletteDither != PaletteDither::NONE;
+    } else if (snakeName == "dither_enabled") {
+        if (settings.paletteEnabled && !settings.palette.empty()) {
+            state.inactiveReason = "Inactive while Palette Quantize is on: its own dither between palette colours replaces the "
+                                   "anti-banding noise.";
+            state.inactiveTag = "inactive with Palette Quantize";
+        }
+    }
+    // Palette Quantize does nothing without a palette (RenderSystem's paletteMissing)
+    if (snakeName == "palette_enabled" && settings.paletteEnabled && settings.palette.empty()) {
+        state.inactiveReason = "Palette Quantize is on without a palette: it stays off until one is set.";
+        state.inactiveTag = "no palette: off";
     }
     return state;
 }

@@ -46,6 +46,7 @@
 #include "shader/ShaderGlobals.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "render/LineRibbonBuilder.h"
+#include "pixelart/PaletteQuantize.h"
 #include "pixelart/PaletteSwap.h"
 #include <cstddef>
 #include <memory>
@@ -889,6 +890,7 @@ void RenderSystem::load(){
 }
 
 void RenderSystem::destroy(){
+    paletteQuantizer.reset();
     // View teardown keeps the scene alive; retain CPU assets for its next load.
     const bool reloadView = !Engine::isViewLoaded();
 
@@ -4263,6 +4265,10 @@ void RenderSystem::updatePassFrame(const CameraComponent& camera, const Transfor
     fillPassPostColor(false, Rect(), 0.0f);
 }
 
+bool RenderSystem::isPaletteQuantizeBaking() const{
+    return paletteQuantizer && paletteQuantizer->baking();
+}
+
 PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings){
     // the LUT only matters when it applies (its stage decides curve or grade)
     std::shared_ptr<const CubeLut> lut;
@@ -4302,6 +4308,13 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
             settings.filmScratchAmount > 0.0f || settings.filmDustAmount > 0.0f)) || settings.filmGateWeave > 0.0f ||
             settings.filmGateMask != FilmGateMask::NONE))
         features |= UBER_FILM_DAMAGE;
+    // Palette Quantize, with a palette (none: off, and said so)
+    if (settings.paletteEnabled){
+        if (settings.palette.empty())
+            tiers.paletteMissing = true;
+        else
+            features |= UBER_PALETTE;
+    }
 
     const bool curve = PostColorLut::hasCurve(settings, lut);
     const bool grade = PostColorLut::hasGrade(settings, lut);
@@ -4320,7 +4333,8 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
         // the shaders, which have the unclamped linear colour
         if (grade) features |= UBER_LUT;
         if (vignette) features |= UBER_VIGNETTE;
-        if (dither) features |= UBER_DITHER;
+        // the anti-banding noise would push pixels off the palette: not with Palette Quantize
+        if (dither && !(features & UBER_PALETTE)) features |= UBER_DITHER;
         tiers.tailColor = curve;
         tiers.tailGrade = false;
     }else{
@@ -4390,6 +4404,11 @@ void RenderSystem::applyPostProcessing(){
         destroyUber();
     if (!(tiers.uberFeatures & (UBER_BLOOM | UBER_BLUR | UBER_HALATION)))
         destroyBloomPrograms();
+    // no Palette Quantize: no table, no bake
+    if (!(tiers.uberFeatures & UBER_PALETTE) && paletteQuantizer)
+        paletteQuantizer.reset();
+    if (tiers.paletteMissing)
+        Log::warn("Palette Quantize is on but has no palette: it stays off until post_processing.palette names one");
 
     // the in-shader LUT: exposure, curve and (without the uber pass) the grade
     if (tiers.tailColor){
@@ -4599,6 +4618,8 @@ bool RenderSystem::loadUber(uint32_t features){
     uberSlotBlur = shaderData.getTextureIndexByName("u_blurTexture");
     uberSlotHalation = shaderData.getTextureIndexByName("u_halationTexture");
     uberSlotHalationWide = shaderData.getTextureIndexByName("u_halationWideTexture");
+    uberSlotPaletteCells = shaderData.getTextureIndexByName("u_paletteQuantize");
+    uberSlotPaletteRow = shaderData.getTextureIndexByName("u_paletteQuantizeRow");
     // a pass of the frame: created at once, never skipped (spec S32 §6.4)
     uberRender.setImmediatePipelines(true);
     if (!uberRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW)){
@@ -4628,6 +4649,8 @@ void RenderSystem::destroyUber(){
     uberSlotBlur = {-1, -1};
     uberSlotHalation = {-1, -1};
     uberSlotHalationWide = {-1, -1};
+    uberSlotPaletteCells = {-1, -1};
+    uberSlotPaletteRow = {-1, -1};
 }
 
 bool RenderSystem::ensurePostSceneFramebuffer(unsigned int width, unsigned int height){
@@ -4759,6 +4782,26 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
             uberRender.addTexture(uberSlotHalation, ShaderStageType::FRAGMENT, uberHalationTexture ? uberHalationTexture : &emptyBlack);
         if (uberSlotHalationWide.first != -1)
             uberRender.addTexture(uberSlotHalationWide, ShaderStageType::FRAGMENT, uberHalationWideTexture ? uberHalationWideTexture : &emptyBlack);
+        // Palette Quantize: its table once baked (the previous one meanwhile; none: the pass leaves
+        // the colour as it is, w 0)
+        fs_uber.palette = Vector4(32.0f, 0.0f, 0.0f, 0.0f);
+        if (uberSlotPaletteCells.first != -1 && uberSlotPaletteRow.first != -1){
+            if (!paletteQuantizer)
+                paletteQuantizer = std::make_shared<pixelart::PaletteQuantizer>();
+            pixelart::PaletteQuantizer::Request request;
+            request.palette = settings.palette.path;
+            request.metric = settings.paletteDistance == PaletteDistance::RGB ? pixelart::ColorMetric::Rgb : pixelart::ColorMetric::OkLab;
+            request.ditherSize = settings.paletteDither == PaletteDither::BAYER2 ? 2 :
+                                 settings.paletteDither == PaletteDither::BAYER4 ? 4 :
+                                 settings.paletteDither == PaletteDither::BAYER8 ? 8 : 0;
+            request.strength = settings.paletteDitherStrength;
+            request.cellsPerAxis = settings.palettePrecision == PalettePrecision::HIGH ? 64 : 32;
+            paletteQuantizer->update(request);
+            const bool ready = paletteQuantizer->ready();
+            uberRender.addTexture(uberSlotPaletteCells, ShaderStageType::FRAGMENT, ready ? &paletteQuantizer->cells() : &emptyBlack);
+            uberRender.addTexture(uberSlotPaletteRow, ShaderStageType::FRAGMENT, ready ? &paletteQuantizer->row() : &emptyBlack);
+            fs_uber.palette = Vector4((float)paletteQuantizer->cellsPerAxis(), (float)paletteQuantizer->ditherSize(), 0.0f, ready ? 1.0f : 0.0f);
+        }
 
         const Vector4 uvScaleOffset = flipGL ? Vector4(1.0f, 0.0f, -1.0f, 1.0f) : Vector4(1.0f, 0.0f, 1.0f, 0.0f);
         const float sw = (float)std::max(sourceWidth, 1u);

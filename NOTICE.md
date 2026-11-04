@@ -336,3 +336,17 @@ downloads of the palettes above. The palette importers follow GIMP's `gimppalett
 and the ramp generator's Hue Shift mode ports Pixelorama's `src/Tools/DesignTools/Shading.gd`
 (MIT, Copyright (c) 2019-present Orama Interactive and contributors) with Godot's `Color` semantics
 (MIT, Copyright (c) 2014-present Godot Engine contributors).
+
+## Pixel-art colour code of the engine and editor (S43)
+
+Ported, each file keeping the original notice next to ours:
+
+| Code | Taken from | Licence |
+|---|---|---|
+| OKLab conversions (`engine/core/pixelart/PixelColor.cpp`, `engine/shaderlib/includes/palette.glsl`) | Björn Ottosson, [A perceptual color space for image processing](https://bottosson.github.io/posts/oklab/) (2020), his reference matrices | public domain / MIT |
+| CIELAB D65, CIEDE2000 and the cached nearest-colour matcher (`engine/core/pixelart/PixelColor.cpp`); Apply Palette's lost-colour groups (`editor/pixelart/ApplyPalette.cpp`) | [ritmo](https://github.com/typeonce-dev/ritmo) `packages/tools/src/pixel/core/color.ts`, `lost.ts` | MIT, Copyright (c) 2026 Sandro Maglione |
+| `fitRamp` and `rampAt` (`engine/core/pixelart/PixelColor.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/core/color.js` `fit` and `at` | MIT, Copyright (c) 2026 Patch |
+| The ordered pair-mix dither (`PaletteMatcher::ditherPair`, Palette Quantize's table) | Joel Yliluoma, "Arbitrary-palette positional dithering algorithm" (the algorithm, no code) | — |
+
+The CIEDE2000 test pairs (`engine/tests/core/pixelart/PixelColorTest.cpp`) are Sharma, Wu and Dalal's
+published data (2005).

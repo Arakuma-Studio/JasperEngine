@@ -3,7 +3,7 @@
 // @shader postprocess
 // @name "Posterize"
 // @category "Post-processing"
-// @description "Fewer colours: each channel rounded to a few levels, with an optional ordered dither that trades the bands for a fine pattern."
+// @description "Fewer colours: each channel rounded to a few levels, with an optional ordered dither that trades the bands for a fine pattern; for an exact palette use Post-processing ▸ Palette Quantize."
 // @property levels range(2, 32) 5 "Levels per channel"
 // @property dither range(0, 1) 0.5 "Dither"
 // @property saturation range(0, 2) 1 "Saturation"

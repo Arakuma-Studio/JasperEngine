@@ -88,6 +88,10 @@ namespace jasperengine::editor {
         float m_inputDeadzone = 0.15f;
         std::vector<fs::path> m_inputActionsFiles;
         std::string m_inputStatus;
+        // Pixel Art: the Default Palette (project-relative, or "builtin:<id>" until OK copies it
+        // into the project), and the project's palettes as the picker lists them (path, name)
+        std::string m_defaultPalette;
+        std::vector<std::pair<std::string, std::string>> m_paletteFiles;
         Physics3DWorldSettings m_physics3DWorld;
         bool m_runtimeShadersEnabled = true;
         int m_mobilePbrTierIndex = 1;
@@ -244,6 +248,7 @@ namespace jasperengine::editor {
         void drawInputSettings();
         void drawAudioSettings();
         void drawNavigationSettings();
+        void drawPixelArtSettings();
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);

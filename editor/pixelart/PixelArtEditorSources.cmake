@@ -16,3 +16,36 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pixelart/PaletteUsage.cpp
     ${EDITOR_DIR}/pixelart/ApplyPalette.cpp
 )
+
+# the palette edits shared by edit_palette and the Palette window (S43 R10, R11, R32, R39)
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/PaletteEdit.cpp
+    ${EDITOR_DIR}/pixelart/PaletteAssets.cpp
+)
+
+# the colour decisions give the same bits on every platform, as engine/core/pixelart's
+if(MSVC)
+    set(JASPERENGINE_EDITOR_PIXELART_FLAGS /fp:precise)
+else()
+    set(JASPERENGINE_EDITOR_PIXELART_FLAGS -ffp-contract=off)
+endif()
+set_source_files_properties(
+    ${EDITOR_DIR}/pixelart/ApplyPalette.cpp
+    ${EDITOR_DIR}/pixelart/PaletteUsage.cpp
+    ${EDITOR_DIR}/pixelart/RampGenerator.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_EDITOR_PIXELART_FLAGS}")
+
+# inspectors and checks (S43 M4, M6): the Palette Swap checks, using a named palette, the
+# inspectors' palette field
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/PaletteSwapChecks.cpp
+    ${EDITOR_DIR}/pixelart/PaletteUse.cpp
+    ${EDITOR_DIR}/window/PaletteAssetField.cpp
+)
+
+# the Palette window and its dialogs (S43 M3, M5)
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/window/PaletteWindow.cpp
+    ${EDITOR_DIR}/window/ApplyPaletteDialog.cpp
+    ${EDITOR_DIR}/widget/PaletteSwatchAdapter.cpp
+)

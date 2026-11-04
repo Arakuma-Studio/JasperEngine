@@ -1052,4 +1052,114 @@ come from the same cache (content hash), within the R29 budgets.
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+Recorded while implementing (`feature/s43-palettes`).
+
+- **Two linear conventions.** The colour science (OKLab, CIELAB) decodes sRGB with the piecewise
+  IEC curve, as R12 says. The engine's linear colours are gamma 2.2 (`util/Color.h`,
+  `includes/srgb.glsl`), so everything that hands a palette colour to the renderer or to Lua as
+  "linear" (`p:getColor`, `p:rampColor`, the SwatchLibrary adapter, `Palette.new` from a
+  `Vector4`) uses that convention through `pixelart::toEngineLinear`/`fromEngineLinear`: a palette
+  colour then draws as its exact byte. `ColorMath.h` keeps the picker's gamma-2.2 sRGB (the
+  piecewise curve there would make the picker's hex disagree with the drawn byte); its HSV is the
+  library's.
+- **Determinism.** Powers and roots are fixed Newton iterations and the pixel-art sources build
+  without floating-point contraction. CIEDE2000 and OKLCh hues use the C library's trigonometry, so
+  only those may differ in the last bit between C libraries (the default OKLab metric does not).
+  AC5's `-O0` build is checked against the optimised one and a golden hash on Linux x86-64.
+- **CIEDE2000 at half a turn.** Sharma's pair 10 lies exactly on the formula's hue discontinuity;
+  with `Lab` in floats the hue difference lands a few ulps past 180°. The boundary tests allow
+  1e-6°, which gives all 34 published values.
+- **Ramp sub-assets.** A palette is a sub-asset container (`hasSubAssets`, its ramps listed in its
+  `.meta` as `ramp:<name>`), so `hero.palette#ramp:fire` resolves by GUID like a model's parts.
+- **Palette Swap textures.** The rows texture is always 256 x (16 + 1 + cycling ramps): rows past
+  the last defined one repeat it, so the shader's clamp to 0-15 is the clamp to rows - 1; row 16
+  is the cycle table (an index's position + 1, its ramp's length, its order row); each cycling
+  ramp's speed is a signed 8.8 number at x = 255 of its order row. A source slot of alpha 0 is never
+  matched (an opaque black must not take a `#00000000` slot's place); Remap Indices follows the
+  same rule. Without a source the binding is a shared full-size empty table, not 1 x 1 (a 1 x 1
+  texture would be fetched out of bounds).
+- **Palette targets** are stored as `{palette: AssetRef, variant}` (YAML `targets: [{palette,
+  paletteGuid, variant}]`) rather than one `"<palette>#<variant>"` path, so a rename keeps the
+  variant; the text form stays for Lua, MCP and the inspector.
+- **Material layout.** `Material::shaderPalettes` is held out of line (`OutOfLineValue`, one
+  pointer): S11's size budget of a Material (16 of them inline per MeshComponent) leaves room for
+  one pointer only.
+- **`paletteRow`** is declared `@property paletteRow int 0` over a `float` member (the
+  convention of every `int` property: a GL upload of mixed int and float members is wrong).
+  `instance=fx.x` (S52 R22/R23) is not written: the directive is S52's, and S52 adds it to this
+  line when it lands.
+- **Palette Cycling's clock** is `customParams.time`, the frame's shader clock (as HUE_SHIFT's): it
+  is the wall clock, pinned or fixed-step for captures, and does not stop at a time scale of 0.
+  Freezing is `paletteCycleSpeed = 0`. AC10's "pause holds" is checked as "a held clock holds".
+- **Palette Quantize** draws nothing different until its first table is baked (`uber.palette.w`
+  0: the pass leaves the colour as it is); later changes keep the previous table until the new one
+  is done. Two palette colours in one cell of the grid keep only the first one's identity, with the
+  warning `palette_cell_shared` (High precision separates colours 4/255 apart).
+- **What an export ships.** The exporter copies every file under `Assets/` (as for particle
+  effects and LUTs); a palette referenced only from Lua (`Palette.load("...")`) could not be found
+  by the dependency graph. Built-ins never ship unless used: using one copies it into the project
+  (R7), and the runtime never reads editor resources.
+- **Error kinds.** A Lospec 404 is `lospec_not_found` everywhere (R8 said `not_found`, §6.6
+  `lospec_not_found`). With `JASPERENGINE_IMPORT_MIRROR` naming a directory that does not exist the
+  fetch is `network_unavailable` (AC3's offline control); a missing file in an existing mirror is a
+  404.
+- **Built-in data.** Commodore 64 is Pepto's 2001 palette (VICE's "pepto"); ZX Spectrum has 15
+  colours (bright black is black); EGA is the full 64-colour palette; "pixelfx: Effects" holds 203
+  colours (the 220 entries before exact duplicates share an index).
+- **AC2 fixtures** reproduce the writers' layouts (GIMP 2.10, Aseprite and Pixelorama `.gpl`,
+  Paint.NET's `.txt` header, a Photoshop-style ASE with a group, Windows' RIFF PAL) and were built
+  by hand from the published formats: no GIMP, Paint.NET, Photoshop or Windows sample was
+  available. The Lospec downloads of Endesga 32 in every format are real files.
+- **Formats.** GPL export writes no alpha (a fully transparent colour becomes Pixelorama's empty
+  slot); ASE export keeps a ramp as a group only when it is a run of consecutive colours (others are
+  dropped with a warning); ASE's Lab colours are read too (D50 through Bradford, with a warning).
+- **Hue Shift** writes each step to 8 bits as Godot's `Image::set_pixel` does (truncation) and
+  keeps the base's alpha. OKLCh (left open by R10): L falls evenly to Darkest L and rises evenly to
+  Lightest L, the hue turns toward 60°/240° the short way and stops there, the chroma follows the
+  parabola relative to the base's, and an out-of-gamut colour loses chroma at constant L and hue.
+- **Lost colours** follow ritmo's grouping (a lost pixel joins an 8-connected group when it is
+  within 0.06 OKLab of the group's mean; groups under 2 px are not listed), not "the same original
+  colour", which gives no groups on a photo. ΔE and lost colours are measured per pixel also when
+  dithering.
+- **Aseprite palette import** (`.ase`/`.aseprite`, magic 0xA5E0) is recognised and refused with
+  `format_unsupported` ("Export the palette from Aseprite as .gpl or .hex, then import that"): S44's
+  codec is not on `main` yet, and S43 does not write a second Aseprite parser. The R5 Aseprite row
+  and its test go to whichever of S43 and S44 lands second.
+- **The guide.** Per the upstream MCP rules (ledger): no `## Pixel art` digest line; the palette
+  guidance lives in `docs/mcp/guide/palettes.md`, and the area gets its "Other areas" entry.
+- **Shortcuts.** The Palette window's Delete, Ctrl+D, Alt+←/→ and the Apply dialog's Space are catalog
+  commands (`palette.delete`, `palette.duplicate`, `palette.moveLeft`, `palette.moveRight`,
+  `palette.flickerCompare`) in a new `ShortcutContext::Palette` (in the Editor context they would collide
+  with Edit ▸ Delete / Duplicate).
+- **Undo merging** of picker drags uses `WriteFilesCmd` merge keys (as the physics material Inspector) rather
+  than `InteractiveEdit`; Esc restores the starting value under the same key.
+- **The Apply Palette dialog** is one window with an Apply Palette / Reduce Colours switch. Apply rewrites a
+  `.png` in place; a BMP, TGA or GIF texture is written with Save As as a new PNG (the encoder writes PNG), and
+  `apply_palette` `output: true` on one is `format_unsupported` with the fix `output: "<stem>.png"`.
+- **Sort into a New Palette** writes `<name> Sorted.palette` beside the palette and opens it.
+- **Default Palette** lives on a new Project Settings page, **Pixel Art** (R4b's "Pixel Art ▸ Default Palette";
+  there is no 2D page); S42's rows join it. A built-in chosen there is copied into the project.
+- **The offline setting** is the preference `preferences.network.offline` (Preferences ▸ General ▸ Network ▸
+  Offline): every preference key starts with `preferences.`.
+- **Detect** on ticking Palette Swap fills an empty Source as its own undo step (the texture is read on a
+  worker). The lossy-texture check (R15) also counts a sampler that is not Nearest; its Fix writes the import
+  settings and the sampler as two steps linked into one undo.
+- **Presets** `handheld_4` ("Handheld (4 Shades)") and `pico_8` hold `builtin:<id>`; applying one stores the
+  project copy's path, and a scene holding the copy still reads as that preset.
+- **The `pixel_art` group row** says "Pixel art: palettes and Apply Palette (jasper://docs/palettes).": no spec
+  has written `jasper://docs/pixel-art` and the validator, cleanup and effect tools do not exist yet; the first
+  of S42/S46/S48 to land rewrites it.
+- **CLI exit codes (R43).** A successful result's integer `structuredContent.cli_exit` (1-125) becomes the exit
+  code of `jasperengine-editor call`; `apply_palette` sets it with `measure_only` (3 fixable, 4 needs_person).
+  `exit_code` was taken (`build_project`'s game exit code). 3 and 4 are also the CLI's `connection` and
+  `internal` codes: the `--json` envelope says `code: "tool_exit"` for a tool's own code (`docs/mcp/cli.md`).
+- **`apply_palette`**: `image` defaults to false with `measure_only` (a check wants the verdict);
+  `save_palette` needs `reduce` and is written only with `output`; built-ins are read without copying them
+  (nothing stores the reference). `edit_palette`'s `written` is a list (the palette and an export).
+- **`shaderPalettes` through `set_properties`** takes the material's scene-file encoding: assets-relative paths
+  (both tools return `asset_path`), no `builtin:` alias there.
+- **Lospec waits** up to 30 s for its job (the request is bounded by 10 s); AC3's red control blocks the
+  network with an unroutable proxy (`https_proxy=http://127.0.0.1:9`), the harness having no network block.
+- **`get_entity`** returns `palette_rows: [{submesh, rows, row}]` and the R15 warning in `warnings`
+  (`palette_swap_lossy_texture`).
+

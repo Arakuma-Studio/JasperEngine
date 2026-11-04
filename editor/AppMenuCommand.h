@@ -132,7 +132,9 @@ namespace jasperengine::editor {
         AssetsCreateAudioMixer,
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
-        AddCameraShakerToMainCamera   // GameObject > Add Camera Shaker to Main Camera
+        AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
+        // S43: Window > 2D > Palette (payload: a .palette to open)
+        TogglePalette
     };
 
 }

@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -177,13 +179,16 @@ TEST(PaletteSwapCache, RowsResolveVariantsThenTargets) {
     hero.variants.push_back({"Team Blue", {std::nullopt, Rgba8{0, 0, 255}}});
     Palette other = paletteOf({{90, 90, 90}});
     other.name = "Other";
-    other.variants.push_back({"Night", {Rgba8{1, 1, 1}, Rgba8{2, 2, 2}, Rgba8{3, 3, 3}}});
+    Palette night = paletteOf({{9, 9, 9}, {8, 8, 8}, {7, 7, 7}});
+    night.name = "Night palette";
+    night.variants.push_back({"Night", {Rgba8{1, 1, 1}, Rgba8{2, 2, 2}, Rgba8{3, 3, 3}}});
     PaletteLibrary::set("tests/rows-hero.palette", hero);
     PaletteLibrary::set("tests/rows-other.palette", other);
+    PaletteLibrary::set("tests/rows-night.palette", night);
 
     PaletteBinding binding;
     binding.source = "tests/rows-hero.palette";
-    binding.targets = {PaletteTarget::parse("tests/rows-other.palette"), PaletteTarget::parse("tests/rows-other.palette#Night"),
+    binding.targets = {PaletteTarget::parse("tests/rows-other.palette"), PaletteTarget::parse("tests/rows-night.palette#Night"),
                        PaletteTarget::parse("tests/missing.palette")};
     std::vector<Diagnostic> diagnostics;
     const std::vector<PaletteSwapRow> rows = resolvePaletteRows(hero, binding, diagnostics);
@@ -230,4 +235,24 @@ TEST(PaletteSwapManifest, ParsesThePaletteDirective) {
         undeclared = undeclared || diagnostic.message.find("undeclared feature 'C'") != std::string::npos;
     }
     EXPECT_TRUE(undeclared);
+}
+
+// R29: building one (source, targets) set costs <= 0.3 ms on a mid desktop: printed (judged on an
+// idle machine, docs/testing.md)
+TEST(PaletteSwapCache, BuildTime) {
+    Palette source;
+    source.name = "64";
+    for (int i = 0; i < 64; i++) source.colors.push_back(unpackRgb(((uint32_t)i * 2654435761u) & 0xFFFFFFu));
+    source.ramps.push_back({"cycle", {0, 1, 2, 3}, 4.0f});
+    std::vector<PaletteSwapRow> targets;
+    for (int t = 0; t < 15; t++) targets.push_back({"row " + std::to_string(t), source.colors});
+    const int runs = 50;
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < runs; i++) {
+        PaletteSwapData data;
+        std::vector<Diagnostic> diagnostics;
+        ASSERT_TRUE(buildPaletteSwapData(source, targets, data, diagnostics));
+    }
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / runs;
+    std::printf("[bench] palette swap build, 64 colours, 15 targets, 1 cycling ramp: %.3f ms\n", ms);
 }

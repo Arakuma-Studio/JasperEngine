@@ -881,6 +881,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
     ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SpriteNormalsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PaletteTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp

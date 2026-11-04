@@ -2540,6 +2540,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         quality["web"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[2]);
         root["atmosphereQuality"] = quality;
     }
+    // Project Settings > Default Palette (S43), omitted when there is none
+    if (!project->getDefaultPalette().empty()) {
+        YAML::Node palettes;
+        palettes["default"] = project->getDefaultPalette().generic_string();
+        root["palettes"] = palettes;
+    }
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
         YAML::Node input;
@@ -3137,6 +3143,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     {
+        const YAML::Node palettes = node["palettes"];
+        project->setDefaultPalette(palettes.IsMap() && palettes["default"].IsScalar() ? fs::path(palettes["default"].as<std::string>()) : fs::path());
         const YAML::Node input = node["input"];
         project->setUnreadableInputNode("");
         project->setInputActionsMigration(InputActionsMigration());

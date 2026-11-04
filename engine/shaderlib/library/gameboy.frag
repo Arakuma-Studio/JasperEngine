@@ -3,7 +3,7 @@
 // @shader postprocess
 // @name "Game Boy"
 // @category "Post-processing"
-// @description "A four-shade handheld screen: big pixels, the brightness mapped to four greens with an ordered dither between them."
+// @description "A four-shade handheld screen: big pixels, the brightness mapped to four greens with an ordered dither between them; for an exact palette use Post-processing ▸ Palette Quantize."
 // @property pixelSize range(1, 16) 4 "Pixel size (output pixels)"
 // @property dither range(0, 1) 0.6 "Dither"
 // @property contrast range(0.5, 2) 1.1 "Contrast"

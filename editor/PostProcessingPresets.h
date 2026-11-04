@@ -12,6 +12,8 @@
 
 namespace jasperengine::editor {
 
+    class Project;
+
     // One-click post-processing setups (shader library phase 4, section 2.1): a whole
     // PostProcessingSettings each, applied as one scene property command ("post_processing")
     // so a preset is one undo step. The inspector's Post-processing section and the MCP tools
@@ -25,8 +27,15 @@ namespace jasperengine::editor {
     const std::vector<PostProcessingPreset>& getPostProcessingPresets();
     // the preset with this id (or name, any case), or null
     const PostProcessingPreset* findPostProcessingPreset(const std::string& idOrName);
-    // the preset equal to these settings, or null (custom settings)
-    const PostProcessingPreset* matchPostProcessingPreset(const PostProcessingSettings& settings);
+    // the preset equal to these settings, or null (custom settings). With a project, a preset's
+    // built-in palette ("builtin:<id>") matches the project's copy of it
+    const PostProcessingPreset* matchPostProcessingPreset(const PostProcessingSettings& settings, const Project* project = nullptr);
+    // The settings a preset applies in a project (S43 R7, R22): a built-in palette it names
+    // becomes the project's copy (its assets-relative path), written first when there is none
+    // (one step of the project history: wroteCopy; link it with the scene's step). False with
+    // `error` when the copy cannot be written.
+    bool resolvePostProcessingPreset(Project& project, const PostProcessingPreset& preset, PostProcessingSettings& settings,
+                                     bool& wroteCopy, std::string& error);
 
     // The cost tier of an effect (RenderSystem::getPostProcessingTiers of a set with only it on)
     enum class PostProcessingCostTier {
@@ -83,9 +92,10 @@ namespace jasperengine::editor {
 
     // The inspector's rule for a post_processing field row (S13): whether it shows (the LUT
     // Input Encoding with a .cube LUT only; the grain's Size, Colored and Frame Rate with the
-    // types that use them), and why it does nothing now ("" when it does): FXAA and Sharpen
-    // while VHS is on, Halation's Threshold while bloom is on, Dynamic Resolution while the scene
-    // renders at a fixed resolution
+    // types that use them; Palette Quantize's Dither Strength with a dither), and why it does
+    // nothing now ("" when it does): FXAA and Sharpen while VHS is on, Halation's Threshold while
+    // bloom is on, Dynamic Resolution while the scene renders at a fixed resolution, Palette
+    // Quantize without a palette, the anti-banding Dither while Palette Quantize is on
     struct PostProcessingRowState {
         bool shown = true;
         std::string inactiveReason;
@@ -104,7 +114,6 @@ namespace jasperengine::editor {
     const char* getLutInputEncodingName(LutInputEncoding encoding);
 
     class Command;
-    class Project;
 
     // One undo step that replaces a scene's whole post_processing, named by the label in the
     // undo history ("Apply Film Preset (Main)"); the plain property command without a label

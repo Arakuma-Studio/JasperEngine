@@ -224,6 +224,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
+    b.menu("window.palette", "Palette", AppMenuCommand::TogglePalette).description =
+        "Pixel-art palettes: swatches, ramps, variants and how a texture uses them";
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
@@ -375,6 +377,15 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("pose.paste", "Paste Pose", C::PoseAnimation, "Ctrl+V");
     b.add("pose.add", "Add Pose", C::PoseAnimation, "N");
     b.add("pose.globalEdit", "Global Edit", C::PoseAnimation, "E").description = "Edit every pose at once";
+
+    // The Palette window (S43): while it, or its Apply Palette dialog, has focus
+    b.group = "Palette";
+    b.add("palette.delete", "Delete Colours", C::Palette, "Delete", "Backspace");
+    b.add("palette.duplicate", "Duplicate Colours", C::Palette, "Ctrl+D");
+    b.add("palette.moveLeft", "Move Colours Left", C::Palette, "Alt+Left").repeat = true;
+    b.add("palette.moveRight", "Move Colours Right", C::Palette, "Alt+Right").repeat = true;
+    b.add("palette.flickerCompare", "Flicker Compare", C::Palette, "Space").description =
+        "Apply Palette: the After half shows Before, and back";
 
     b.group = "Project";
     b.add("project.copy", "Copy Assets", C::Project, "Ctrl+C");

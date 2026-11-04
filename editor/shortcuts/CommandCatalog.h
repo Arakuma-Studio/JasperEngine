@@ -32,8 +32,8 @@ namespace jasperengine::editor {
     // included; Editor in any editor window but the Code Editor, and not while typing; a panel
     // context while that window has focus (SceneView: focused or under the mouse; Animation: the
     // Animation window editing a clip; PoseAnimation: the Pose Animation window, or a Scene view
-    // posing its character).
-    enum class ShortcutContext : uint8_t { Global, Editor, SceneView, Hierarchy, Project, Console, Animation, PoseAnimation };
+    // posing its character; Palette: the Palette window or the Apply Palette dialog, S43).
+    enum class ShortcutContext : uint8_t { Global, Editor, SceneView, Hierarchy, Project, Console, Animation, PoseAnimation, Palette };
 
     const char* shortcutContextName(ShortcutContext context);       // "Global", "Scene View", ...
     const char* shortcutContextKey(ShortcutContext context);        // "global", "scene_view", ...

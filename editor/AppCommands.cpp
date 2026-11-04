@@ -409,6 +409,7 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
     if (clipWindowTakesKeys()) state.panels.push_back(ShortcutContext::Animation);
     if (poseKeysActive()) state.panels.push_back(ShortcutContext::PoseAnimation);
+    if (paletteWindow->takesKeys() || applyPaletteDialog->takesKeys()) state.panels.push_back(ShortcutContext::Palette);
     return state;
 }
 

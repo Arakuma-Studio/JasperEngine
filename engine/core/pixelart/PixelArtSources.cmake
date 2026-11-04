@@ -6,6 +6,7 @@ set(JASPERENGINE_PIXELART_SRCS
     core/pixelart/Palette.cpp
     core/pixelart/PaletteCodec.cpp
     core/pixelart/PaletteMaterial.cpp
+    core/pixelart/PaletteQuantize.cpp
     core/pixelart/PaletteRampTexture.cpp
     core/pixelart/PaletteSwap.cpp
     core/pixelart/PixelColor.cpp

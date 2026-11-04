@@ -34,6 +34,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, graph files."},
         {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
         {"shipping", "Player runtimes, native plugins, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
+        {"pixel_art", "Pixel art: palettes and Apply Palette (jasper://docs/palettes)."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

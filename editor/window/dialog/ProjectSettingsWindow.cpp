@@ -38,6 +38,9 @@
 #include "command/type/HtmlUiRenderSettingsCmd.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
+#include "pixelart/BuiltinPalettes.h"
+#include "pixelart/PaletteAssets.h"
+#include "pixelart/PaletteUse.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "util/Color.h"
 #include "imgui_internal.h"
@@ -189,6 +192,7 @@ enum class ProjectCategory {
     NativePlugins,
     Editor,
     Navigation,
+    PixelArt,
     Count
 };
 
@@ -975,6 +979,10 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
         }
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }
+    m_defaultPalette = FileUtils::pathToGenericUtf8(project->getDefaultPalette());
+    m_paletteFiles.clear();
+    for (const pixelart::ProjectPalette& entry : pixelart::listProjectPalettes(*project))
+        m_paletteFiles.push_back({entry.path, entry.palette.name});
     m_physics3DWorld = project->getPhysics3DWorldSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
@@ -1201,6 +1209,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::NativePlugins: drawNativePluginsSettings(); break;
         case ProjectCategory::Editor: drawEditorSettings(); break;
         case ProjectCategory::Navigation: drawNavigationSettings(); break;
+        case ProjectCategory::PixelArt: drawPixelArtSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -2390,6 +2399,48 @@ void ProjectSettingsWindow::drawNavigationSettings() {
             ImGui::EndTable();
         }
         drawSectionNote("Agent types and areas: Window > AI > Navigation (Agents and Areas tabs).");
+    }
+    endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawPixelArtSettings() {
+    if (beginSettingsPanel("##PixelArtSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("palettes.default")) {
+                if (projectBeginSettingsRow("Default Palette", !m_defaultPalette.empty())) {
+                    m_defaultPalette.clear();
+                }
+                std::string current = m_defaultPalette.empty() ? std::string("None") : m_defaultPalette;
+                for (const auto& [path, name] : m_paletteFiles) {
+                    if (path == m_defaultPalette && !name.empty()) current = name + "  (" + path + ")";
+                }
+                if (const pixelart::BuiltinPalette* builtin = pixelart::findBuiltinPalette(m_defaultPalette)) {
+                    if (m_defaultPalette.rfind(pixelart::kBuiltinPrefix, 0) == 0) current = builtin->palette.name + "  (built-in)";
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::BeginCombo("##DefaultPalette", current.c_str(), ImGuiComboFlags_HeightLarge)) {
+                    if (ImGui::Selectable("None", m_defaultPalette.empty())) m_defaultPalette.clear();
+                    ImGui::SeparatorText("Project");
+                    if (m_paletteFiles.empty()) ImGui::TextDisabled("No .palette in the project yet");
+                    for (const auto& [path, name] : m_paletteFiles) {
+                        const std::string label = (name.empty() ? path : name + "  (" + path + ")") + "##" + path;
+                        if (ImGui::Selectable(label.c_str(), path == m_defaultPalette)) m_defaultPalette = path;
+                    }
+                    ImGui::SeparatorText("Built-in");
+                    for (const pixelart::BuiltinPalette& builtin : pixelart::builtinPalettes()) {
+                        const std::string alias = pixelart::kBuiltinPrefix + builtin.id;
+                        const std::string label = (builtin.palette.name.empty() ? builtin.id : builtin.palette.name) + "##" + alias;
+                        if (ImGui::Selectable(label.c_str(), alias == m_defaultPalette)) m_defaultPalette = alias;
+                        ImGui::SetItemTooltip("%s: copied to the project's Palettes folder on OK", alias.c_str());
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("The palette used where none is named: Apply Palette without a palette, the colour picker's "
+                    "Snap to Palette, the Palette window's first open and new pixel art. A built-in is copied into the "
+                    "project when you press OK.");
+            }
+            ImGui::EndTable();
+        }
     }
     endSettingsPanel();
 }
@@ -4387,6 +4438,18 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
+    // a built-in Default Palette is the project's copy of it (S43 R7), made now
+    if (m_defaultPalette.rfind(pixelart::kBuiltinPrefix, 0) == 0) {
+        pixelart::ResolvedPalette resolved;
+        bool wroteCopy = false;
+        std::string error;
+        if (pixelart::usePalette(*m_project, m_defaultPalette, resolved, wroteCopy, error))
+            m_defaultPalette = resolved.path;
+        else
+            Out::warning("Default Palette: %s", error.c_str());
+    }
+    if (m_defaultPalette.rfind(pixelart::kBuiltinPrefix, 0) != 0)
+        m_project->setDefaultPalette(FileUtils::pathFromUtf8(m_defaultPalette));
     m_project->setPhysics3DWorldSettings(m_physics3DWorld);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);

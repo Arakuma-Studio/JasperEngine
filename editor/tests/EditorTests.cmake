@@ -121,3 +121,11 @@ endif()
 # headers, with the compiler that builds the tests)
 file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
 "$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,\n>\n")
+
+# The ramp generator's golden lists (S43 AC6): the test's own transcription of Pixelorama's rule
+# without floating-point contraction, as the generator itself (editor/pixelart/PixelArtEditorSources.cmake)
+if(MSVC)
+    set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/pixelart/RampGeneratorTest.cpp PROPERTIES COMPILE_OPTIONS "/fp:precise")
+else()
+    set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/pixelart/RampGeneratorTest.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()

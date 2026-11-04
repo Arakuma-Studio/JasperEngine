@@ -24,7 +24,7 @@ EDITOR = {"create": True, "name": "MCP Resources"}
 CI = True
 
 DOCS = ["animation", "assets", "camera", "cpp-scripting", "data-safety", "debugging", "html-ui", "input",
-        "lattice", "lines-trails", "lua-api", "lua-scripting", "particles", "physics",
+        "lattice", "lines-trails", "lua-api", "lua-scripting", "palettes", "particles", "physics",
         "platform-services", "post-processing", "prefabs", "safe-area", "scene-view", "shaders",
         "sprite-normals", "ui", "undo", "unity-glossary", "vertex-animation"]
 

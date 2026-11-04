@@ -54,7 +54,8 @@ namespace jasperengine::editor {
         ANIMATION_CLIP,     // .anim (the Animation window; an icon, no thumbnail)
         ANIMATOR_ASSET,     // .controller (the Animator window), .mask, .montage (the Inspector)
         VERTEX_ANIMATION,   // .vat (the Inspector's asset view / the baker; an icon, no thumbnail)
-        PHYSICS_MATERIAL    // .physicsmaterial (the Inspector's asset view; an icon)
+        PHYSICS_MATERIAL,   // .physicsmaterial (the Inspector's asset view; an icon)
+        PALETTE             // .palette (the Palette window; a thumbnail of its swatches)
     };
 
     struct FileEntry {
@@ -170,6 +171,9 @@ namespace jasperengine::editor {
         Texture animationClipIcon;
         Texture physicsMaterialIcon;
         std::vector<uint8_t> physicsMaterialIconPixels;
+        // .palette files until their swatch thumbnail is made (S43 R37)
+        Texture paletteIcon;
+        std::vector<uint8_t> paletteIconPixels;
         std::vector<uint8_t> animationClipIconPixels;
         // and a crowd of three figures for .vat files (vertex animation spec 5.3)
         Texture vertexAnimationIcon;
@@ -385,6 +389,9 @@ namespace jasperengine::editor {
         // staleness), and the image context menu's items
         void updateSpriteNormalsBadge(FileEntry& file, const fs::path& path);
         void drawSpriteNormalsMenuItems(const FileEntry& file, const fs::path& imagePath);
+        // S43 R37: a palette's Export menu, a texture's Apply Palette... / Reduce Colours... /
+        // Extract Palette, a foreign palette file's Import as Palette
+        void drawPaletteMenuItems(const FileEntry& file, const fs::path& filePath);
         void collectSearchResults();
 
         // ---- S25 (ProjectWindowSearch.cpp)
@@ -535,6 +542,9 @@ namespace jasperengine::editor {
         // Unity's Create > Physics Material / Physics Material 2D (the 2D preset: friction 0.4,
         // geometric mean / maximum)
         void assetsCreatePhysicsMaterial(bool preset2D);
+        // Create > Palette: "New Palette.palette" (black and white) in the current folder, one
+        // project undo step, then renamed in place (S43 R37)
+        void assetsCreatePalette();
         void assetsShowInFileManager();
         // The files selected in the folder view (absolute), for editor-script menu items
         std::vector<fs::path> getSelectedFiles() const;

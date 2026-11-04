@@ -28,6 +28,8 @@
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/AudioMixerWindow.h"
+#include "window/ApplyPaletteDialog.h"
+#include "window/PaletteWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/SystemsWindow.h"
@@ -245,6 +247,9 @@ namespace jasperengine::editor{
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
+        // S43: Window > 2D > Palette and the Apply Palette / Reduce Colours dialog
+        PaletteWindow* paletteWindow = nullptr;
+        ApplyPaletteDialog* applyPaletteDialog = nullptr;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;
@@ -670,6 +675,9 @@ namespace jasperengine::editor{
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         void openAudioMixerWindow(const std::filesystem::path& mixer = {}) override;
+        void openPaletteWindow(const std::string& palettePath, const std::string& texturePath) override;
+        PaletteWindow* getPaletteWindow() const { return paletteWindow; }
+        ApplyPaletteDialog* getApplyPaletteDialog() const { return applyPaletteDialog; }
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;

@@ -197,6 +197,8 @@ editor::App::App(){
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
+    applyPaletteDialog = new ApplyPaletteDialog(&project);
+    paletteWindow = new PaletteWindow(&project, projectWindow, applyPaletteDialog);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
@@ -693,6 +695,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSubmenu("Audio", {
             catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME))
         }),
+        menuSubmenu("2D", {
+            catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME))
+        }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
         menuSubmenu("AI", {
@@ -970,6 +975,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleAudioMixer:
             audioMixerWindow->open();
+            break;
+        case AppMenuCommand::TogglePalette:
+            paletteWindow->open(FileUtils::pathFromUtf8(command.payload));
             break;
         case AppMenuCommand::ToggleSpriteNormals:
             spriteNormalsWindow->open();
@@ -2368,6 +2376,9 @@ void editor::App::setup() {
     setupLayouts();
     // the command catalog and the user's rebindings (shortcuts.yaml, next to settings.yaml)
     registerCommands();
+    // the Palette context's commands (a later add takes the user's stored binding too)
+    paletteWindow->bindCommands(CommandCatalog::editor());
+    applyPaletteDialog->bindCommands(CommandCatalog::editor());
 
     // Separate from the window scale: the layout keeps the scale it was built at,
     // while the window is measured on whichever monitor it closes on.
@@ -2823,6 +2834,9 @@ void editor::App::show(){
     terrainEditWindow->show();
     textureSynthesisWindow->show();
     audioMixerWindow->show();
+    // also the tick of its workers (Lospec, Usage, From Texture) with the window closed
+    paletteWindow->show();
+    applyPaletteDialog->show();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
@@ -2867,6 +2881,7 @@ void editor::App::show(){
     ui::CurveWindow::get().show();
     ui::GradientWindow::get().show();
     ui::ColorPickerWindow::get().setProjectPath(project.getProjectPath());
+    ui::ColorPickerWindow::get().setProject(&project);
     ui::ColorPickerWindow::get().show();
 
     loadingWindow->show();
@@ -4880,6 +4895,9 @@ void editor::App::prepareForProjectSwitch() {
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
     audioMixerWindow->resetForProjectSwitch();
+    // a Lospec fetch is cancelled; the palette, its selection and the dialogs are forgotten
+    paletteWindow->resetForProjectSwitch();
+    applyPaletteDialog->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
@@ -5499,6 +5517,11 @@ void editor::App::openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, un
 
 editor::MainToolbar* editor::App::getMainToolbar() const{
     return mainToolbar;
+}
+
+void editor::App::openPaletteWindow(const std::string& palettePath, const std::string& texturePath){
+    // the material inspector's Show: the palette's Usage of the sprite's texture (project-relative)
+    paletteWindow->showUsage(FileUtils::pathFromUtf8(palettePath), FileUtils::pathFromUtf8(texturePath));
 }
 
 void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){

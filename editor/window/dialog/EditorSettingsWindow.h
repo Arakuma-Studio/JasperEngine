@@ -49,6 +49,7 @@ namespace jasperengine::editor {
         int m_uiScalePercent = 100;
         bool m_autosaveEnabled = true;
         int m_autosaveInterval = 60;
+        bool m_networkOffline = false;
         bool m_htmlUiAutoImport = true;
         // Asset Pipeline (S05 R26)
         bool m_autoRefresh = true;
