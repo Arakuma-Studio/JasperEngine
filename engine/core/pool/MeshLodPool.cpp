@@ -14,8 +14,6 @@
 using namespace jasperengine;
 
 namespace{
-    // share of the source triangles each level keeps
-    const float LOD_TARGETS[MAX_MESH_LODS] = {1.0f, 0.5f, 0.25f, 0.125f};
     // normal xyz and uv deltas weighed against position error
     const float ATTRIBUTE_WEIGHTS[5] = {0.5f, 0.5f, 0.5f, 0.3f, 0.3f};
     // rounding between copies of a vertex, as a share of the mesh size
@@ -76,6 +74,11 @@ namespace{
     }
 }
 
+MeshLodRecipe MeshLodRecipe::runtime(){
+    // levels keeping 1/2, 1/4 and 1/8 of the source's triangles, as far as the error allows
+    return MeshLodRecipe();
+}
+
 lods_t& MeshLodPool::getMap(){
     static lods_t* map = new lods_t();
     return *map;
@@ -130,13 +133,13 @@ void MeshLodPool::build(uint64_t key, MeshLodSource&& source){
     options.name = "mesh-lod-simplify";
     options.tags = jobs::Tag::Asset;
     getMap()[key] = jobs::submit([shared]() {
-        return simplify(*shared);
+        return buildLevels(*shared, MeshLodRecipe::runtime());
     }, options);
 }
 
 // levels are appended while they keep shrinking; a result without any means the source
 // could not be reduced and stays at numLevels 1
-std::shared_ptr<MeshLodData> MeshLodPool::simplify(const MeshLodSource& source){
+std::shared_ptr<MeshLodData> MeshLodPool::buildLevels(const MeshLodSource& source, const MeshLodRecipe& recipe){
     auto data = std::make_shared<MeshLodData>();
     data->indexType = source.indexType;
 
@@ -154,20 +157,28 @@ std::shared_ptr<MeshLodData> MeshLodPool::simplify(const MeshLodSource& source){
     std::vector<uint32_t> level(indexCount);
     size_t previousCount = indexCount;
 
-    for (unsigned int l = 1; l < MAX_MESH_LODS; l++){
+    // the error budget in mesh units (the levels' errors are absolute)
+    const float targetError = recipe.targetError >= FLT_MAX ? FLT_MAX
+        : recipe.targetError * meshopt_simplifyScale(positions.data(), vertexCount, sizeof(float) * 3);
+    const unsigned int options = meshopt_SimplifyErrorAbsolute | meshopt_SimplifyPrune |
+                                 (recipe.permissive ? meshopt_SimplifyPermissive : 0u);
+    const unsigned int levels = std::min<unsigned int>(recipe.levels, MAX_MESH_LODS - 1);
+    float share = 1.0f;
+
+    for (unsigned int l = 1; l <= levels; l++){
         // every level is cut from the source, so its error is a true deviation
-        const size_t target = static_cast<size_t>(indexCount * LOD_TARGETS[l]) / 3 * 3;
-        const unsigned int options = meshopt_SimplifyErrorAbsolute | meshopt_SimplifyPrune;
+        share *= recipe.ratio;
+        const size_t target = static_cast<size_t>(indexCount * share) / 3 * 3;
         float error = 0.0f;
         size_t count;
         if (source.attributeCount > 0){
             count = meshopt_simplifyWithAttributes(level.data(), source.indices.data(), indexCount,
                 positions.data(), vertexCount, sizeof(float) * 3,
                 source.attributes.data(), sizeof(float) * source.attributeCount,
-                ATTRIBUTE_WEIGHTS, source.attributeCount, nullptr, target, FLT_MAX, options, &error);
+                ATTRIBUTE_WEIGHTS, source.attributeCount, nullptr, target, targetError, options, &error);
         }else{
             count = meshopt_simplify(level.data(), source.indices.data(), indexCount,
-                positions.data(), vertexCount, sizeof(float) * 3, target, FLT_MAX, options, &error);
+                positions.data(), vertexCount, sizeof(float) * 3, target, targetError, options, &error);
         }
 
         if (count < 3 || count > previousCount * 0.9f){

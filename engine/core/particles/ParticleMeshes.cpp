@@ -8,6 +8,7 @@
 #include "io/File.h"
 #include "io/FileData.h"
 #include "io/ResourcePack.h"
+#include "subsystem/MeshSystem.h"
 
 #include "tiny_gltf.h"
 #include "tiny_obj_loader.h"
@@ -191,8 +192,8 @@ namespace {
         tinygltf::TinyGLTF loader;
         loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &fileSize});
         std::string err, warn;
-        const bool binary = FileData::getFilePathExtension(path) == "glb";
-        const bool ok = binary ? loader.LoadBinaryFromFile(&model, &err, &warn, path) : loader.LoadASCIIFromFile(&model, &err, &warn, path);
+        // through the models' one redirect (a cooked .glb, an FBX's import: S53 R12)
+        const bool ok = MeshSystem::loadGLTFFile(loader, &model, &err, &warn, path);
         if (!ok){
             if (error) *error = err.empty() ? "cannot read " + path : err;
             return false;

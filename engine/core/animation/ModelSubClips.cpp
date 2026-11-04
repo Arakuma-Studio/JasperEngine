@@ -264,10 +264,12 @@ namespace{
         return true;
     }
 
-    // the file parseGLTFFile reads for `modelPath` (system path): an FBX's imported .glb
+    // the file parseGLTFFile reads for `modelPath` (system path): a cooked .glb, an FBX's
+    // imported .glb, or the file
     std::string parsedFile(const std::string& modelPath){
-        if (lower(FileData::getFilePathExtension(modelPath)) == "fbx"){
-            return FileData::getSystemPath(MeshSystem::getImportedModelPath(modelPath));
+        const std::string read = MeshSystem::getImportedModelPath(modelPath);
+        if (read != modelPath){
+            return FileData::getSystemPath(read);
         }
         return MeshSystem::getModelFilenameKey(modelPath);
     }
@@ -396,7 +398,7 @@ namespace{
             if (error){
                 File imported;
                 if (lower(FileData::getFilePathExtension(modelPath)) == "fbx" &&
-                        imported.open(MeshSystem::getImportedModelPath(modelPath).c_str()) != FileErrors::FILEDATA_OK){
+                        imported.open(MeshSystem::getFbxImportPath(modelPath).c_str()) != FileErrors::FILEDATA_OK){
                     *error = "cannot load " + modelPath + ": the FBX is not imported yet (the editor makes its .glb "
                              "when it imports the file)";
                 }else{
@@ -684,7 +686,7 @@ bool anim::readModelFile(const std::string& modelPath, const std::function<bool(
         if (error){
             File imported;
             if (lower(FileData::getFilePathExtension(modelPath)) == "fbx" &&
-                    imported.open(MeshSystem::getImportedModelPath(modelPath).c_str()) != FileErrors::FILEDATA_OK){
+                    imported.open(MeshSystem::getFbxImportPath(modelPath).c_str()) != FileErrors::FILEDATA_OK){
                 *error = "cannot load " + modelPath + ": the FBX is not imported yet (the editor makes its .glb when it imports the file)";
             }else{
                 *error = "cannot load " + modelPath + ": " + parseError;

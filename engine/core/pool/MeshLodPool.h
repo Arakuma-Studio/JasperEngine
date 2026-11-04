@@ -8,6 +8,7 @@
 #include "Engine.h"
 #include "render/Render.h"
 #include "jobs/JobSystem.h"
+#include <cfloat>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -38,6 +39,22 @@ namespace jasperengine{
         AttributeDataType indexType = AttributeDataType::UNSIGNED_SHORT;
     };
 
+    // How the levels of a mesh are cut: the runtime's (S54 owns it) or, in the model cook, the
+    // importer's LOD Count and Reduction (S53 R10)
+    struct MeshLodRecipe{
+        unsigned int levels = MAX_MESH_LODS - 1; // levels after LOD 0, at most MAX_MESH_LODS - 1
+        float ratio = 0.5f;                      // share of the triangles of the level before that a level keeps
+        float targetError = FLT_MAX;             // the most a level may deviate, as a share of the mesh's size
+        bool permissive = false;                 // collapses across attribute seams too (meshopt_SimplifyPermissive)
+
+        // the levels the runtime builds when nothing baked them
+        static MeshLodRecipe runtime();
+    };
+
+    // The version of the runtime's recipe and level builder. A cooked model's baked levels
+    // (JE_mesh_lods.recipe) of another version are not used, and the cook's cache key carries it.
+    constexpr int kMeshLodRecipe = 1;
+
     typedef std::unordered_map< uint64_t, jobs::Task<std::shared_ptr<MeshLodData>> > lods_t;
 
     // Detail levels keyed by a hash of the geometry, simplified as Background Heavy jobs
@@ -46,9 +63,11 @@ namespace jasperengine{
         static lods_t& getMap();
         static std::mutex& getMutex();
 
-        static std::shared_ptr<MeshLodData> simplify(const MeshLodSource& source);
-
     public:
+        // The levels of one submesh: the pure function the runtime's builds and the model cook's
+        // baked levels share (no pool, no job)
+        static std::shared_ptr<MeshLodData> buildLevels(const MeshLodSource& source, const MeshLodRecipe& recipe);
+
         static uint64_t hash(uint64_t seed, const void* data, size_t size);
 
         static std::shared_ptr<MeshLodData> get(uint64_t key); // null while a build is pending
