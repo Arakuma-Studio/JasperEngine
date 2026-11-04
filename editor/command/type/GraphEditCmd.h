@@ -5,14 +5,17 @@
 
 #include "command/Command.h"
 
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 
 namespace jasperengine::editor{
 
     // A batch of graph edits (graph/Graph.h ops) on a graph file, as one step of the project
     // history (S23 R24, S24 names): the file's text before and after. "Connect Speed → Blend",
-    // "Edit Graph (3 Changes)".
+    // "Edit Graph (3 Changes)". An open window or a pool of the kind learns of the change through a
+    // change listener, whoever made the edit.
     class GraphEditCmd: public Command{
     private:
         std::filesystem::path file;     // absolute
@@ -22,7 +25,14 @@ namespace jasperengine::editor{
         bool write(const std::string& text) const;
 
     public:
+        using ChangeListener = std::function<void(const std::filesystem::path& file)>;
+
         GraphEditCmd(std::filesystem::path file, std::string before, std::string after, std::string label);
+
+        // Called after each write of execute (a redo too) and undo, with the absolute path; not when
+        // the write failed. Main thread, like the history. Returns what removes it.
+        static uint64_t addChangeListener(ChangeListener listener);
+        static void removeChangeListener(uint64_t id);
 
         bool execute() override;
         void undo() override;
