@@ -12,6 +12,7 @@
 // a button shows once its hook is set. Owner: T2c.
 
 #include "media/VideoFormats.h"
+#include "component/Transform.h"
 #include "util/NativePlugins.h"
 #include "InspectorWindow.h"
 #include "window/HumanoidConvertDialog.h"

@@ -1278,7 +1278,7 @@ path)` through `CreatePrefabVariantAssetCmd` ("<base> Variant.prefab"; undo dele
     stripped references) is promoted into the scene layer
     (`promoteNestedAssetData(..., includeBase=true)`), so nothing visible changes.
   - *Unpack Completely* removes every level, leaving plain GameObjects.
-  - Both undo (`PrefabUnpackRecord::NestedState::path`).
+  - Both undo (`PrefabNestedState::path`).
 
 ### Prefab Mode on a variant
 

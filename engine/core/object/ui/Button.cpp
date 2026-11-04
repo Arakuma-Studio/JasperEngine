@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Button.h"
+#include "component/ButtonComponent.h"
+#include "util/Color.h"
 
 #include "component/TextComponent.h"
 #include "component/UIComponent.h"

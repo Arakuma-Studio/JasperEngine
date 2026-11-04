@@ -5,6 +5,7 @@
 // import, edit and override code share, and external-reference override promotion.
 
 #include "Project.h"
+#include "component/Transform.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"

@@ -4,6 +4,7 @@
 // The Hierarchy's and Add Component's searches (S25 R14, AC12)
 
 #include "search/HierarchyFilter.h"
+#include "graph/Graph.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "Catalog.h"
 

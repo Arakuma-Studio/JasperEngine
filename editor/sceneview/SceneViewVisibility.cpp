@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneViewVisibility.h"
+#include "render/SceneRender.h"
 
 #include "component/CameraComponent.h"
 #include "component/Transform.h"

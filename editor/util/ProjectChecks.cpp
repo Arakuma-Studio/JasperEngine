@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectChecks.h"
+#include "component/ScriptComponent.h"
 #include "io/AtomicFile.h"
 #include "io/watch/LinkedFolders.h"
 #include "component/ActionComponent.h"

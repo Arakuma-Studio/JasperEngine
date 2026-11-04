@@ -7,6 +7,7 @@
 #include "FileWatchService.h"
 #include "ProjectFileIndex.h"
 #include "WatchTestSupport.h"
+#include "backends/Backends.h"
 
 #include <algorithm>
 #include <mutex>
@@ -306,3 +307,50 @@ TEST(FileWatcherRules, BackendNames) {
     EXPECT_FALSE(parseWatchBackendKind("inotify", kind));
     EXPECT_STREQ(watchBackendKindName(WatchBackendKind::Native), "native");
 }
+
+#if defined(JASPERENGINE_WATCH_FSEVENTS)
+// On macOS 26 some new streams are never served: start() replaces them (S05, macOS native run)
+namespace {
+
+    // restores the seam when a test ends early
+    struct DeadStreams {
+        explicit DeadStreams(int count) { watch::setFsEventsDeadStreamsForTesting(count); }
+        ~DeadStreams() { watch::setFsEventsDeadStreamsForTesting(0); }
+    };
+
+    void expectChangesReported(const WatchTempDir& dir, FileWatchService& service, FileWatchService::State state) {
+        std::mutex mutex;
+        std::vector<FileChange> changes;
+        FileWatchSubscription subscription = service.subscribe({}, [&](std::span<const FileChange> batch) {
+            std::lock_guard<std::mutex> lock(mutex);
+            changes.insert(changes.end(), batch.begin(), batch.end());
+        }, DeliverOn::Worker);
+        ASSERT_TRUE(waitFor([&]() { return service.stats().indexReady; }, timeLimit(ms(10000))));
+        EXPECT_EQ(service.stats().state, state);
+        writeText(dir.path / "new.lua", "return 1");
+        EXPECT_TRUE(waitFor([&]() {
+            std::lock_guard<std::mutex> lock(mutex);
+            return !changes.empty();
+        }, timeLimit(ms(3000))));
+    }
+
+}
+
+TEST(FsEventsStart, AStreamThatIsNotServedIsReplaced) {
+    WatchTempDir dir;
+    FileWatchService service;
+    service.setWarningHandler([](const std::string&) {});
+    DeadStreams dead(1);
+    ASSERT_TRUE(service.start(dir.path, WatchBackendKind::Native, POLL_INTERVAL));
+    expectChangesReported(dir, service, FileWatchService::State::Watching);
+}
+
+TEST(FsEventsStart, WithNoStreamServedTheServicePolls) {
+    WatchTempDir dir;
+    FileWatchService service;
+    service.setWarningHandler([](const std::string&) {});
+    DeadStreams dead(3);
+    ASSERT_TRUE(service.start(dir.path, WatchBackendKind::Native, POLL_INTERVAL));
+    expectChangesReported(dir, service, FileWatchService::State::Degraded);
+}
+#endif
