@@ -103,6 +103,12 @@ jobs:
           python3 tools/check_raw_writes.py
           python3 tools/check_stream_keys.py
 
+      # every engine event is cleared at Stop and on tag removal (runtime-core spec 6.5)
+      - name: Event clears lint
+        run: |
+          python3 tools/check_event_clears.py --self-test
+          python3 tools/check_event_clears.py
+
       - name: CMake presets and option errors
         run: tools/build.sh exec linux tools/ci/check-presets.sh
 

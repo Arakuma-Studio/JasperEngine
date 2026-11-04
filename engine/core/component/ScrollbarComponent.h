@@ -20,6 +20,9 @@ namespace jasperengine{
 
         FunctionSubscribe<void(float)> onChange;
 
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onChange); }
+
         float barSize = 0.5;  // from 0 to 1
         float step = 0; // from 0 to 1
 

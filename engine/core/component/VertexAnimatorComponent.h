@@ -101,6 +101,11 @@ namespace jasperengine{
         FunctionSubscribe<void(const std::string&)> onFinish;
         FunctionSubscribe<void(int, const AnimationEvent&)> onInstanceEvent;
         FunctionSubscribe<void(int, const std::string&)> onInstanceFinish;
+
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) {
+            f(onEvent); f(onFinish); f(onInstanceEvent); f(onInstanceFinish);
+        }
     };
 
 }

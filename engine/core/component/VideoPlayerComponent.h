@@ -103,6 +103,12 @@ namespace jasperengine{
         FunctionSubscribe<void(VideoPlayer, const std::string&)> onErrorReceived;
         FunctionSubscribe<void(VideoPlayer)> onSeekCompleted;
         FunctionSubscribe<void(VideoPlayer, int)> onFrameReady;      // only when set: a call per frame
+
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) {
+            f(onPrepareCompleted); f(onStarted); f(onLoopPointReached); f(onErrorReceived); f(onSeekCompleted);
+            f(onFrameReady);
+        }
     };
 
 }
