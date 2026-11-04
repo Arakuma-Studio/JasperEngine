@@ -267,15 +267,16 @@ namespace {
     // the oblique projection puts the near plane on the clip plane (points on it at NDC -1, the
     // side it faces inside, the other side clipped) and keeps the x, y and w rows
     void m4ExpectObliqueNearClip(const Matrix4& projection){
-        // view-space plane y + 0.2 z + 1 = 0, facing +y
-        const Vector4 plane(0.0f, 1.0f, 0.2f, 1.0f);
+        // view-space plane y + 0.02 z + 1 = 0, facing +y; the frustum's far corner on its facing
+        // side stays in front of it, as the method needs (a reflection plane under the eye)
+        const Vector4 plane(0.0f, 1.0f, 0.02f, 1.0f);
         const Matrix4 oblique = projection.obliqueNearClip(plane);
-        EXPECT_NEAR(m4NdcDepth(oblique, Vector3(0.0f, 0.0f, -5.0f)), -1.0f, 1e-4f);
-        EXPECT_NEAR(m4NdcDepth(oblique, Vector3(0.5f, 1.0f, -10.0f)), -1.0f, 1e-4f);
-        const float front = m4NdcDepth(oblique, Vector3(0.0f, 0.5f, -5.0f));
+        EXPECT_NEAR(m4NdcDepth(oblique, Vector3(0.0f, -0.9f, -5.0f)), -1.0f, 1e-4f);
+        EXPECT_NEAR(m4NdcDepth(oblique, Vector3(0.5f, -0.8f, -10.0f)), -1.0f, 1e-4f);
+        const float front = m4NdcDepth(oblique, Vector3(0.0f, 0.0f, -5.0f));
         EXPECT_GT(front, -1.0f);
         EXPECT_LT(front, 1.0f);
-        EXPECT_LT(m4NdcDepth(oblique, Vector3(0.0f, -0.5f, -5.0f)), -1.0f);
+        EXPECT_LT(m4NdcDepth(oblique, Vector3(0.0f, -2.0f, -5.0f)), -1.0f);
         for (int col = 0; col < 4; col++){
             EXPECT_FLOAT_EQ(oblique.get(col, 0), projection.get(col, 0));
             EXPECT_FLOAT_EQ(oblique.get(col, 1), projection.get(col, 1));
