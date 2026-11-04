@@ -810,8 +810,8 @@ device or a decision; recorded by BF23 (`docs/specs/BF23-authoring-audit-fixes.m
 | Nothing runs on Windows or macOS unless a person does | `AGENTS.md`: there is no CI | A machine for each, or accepting it |
 | Particle goldens run on glcore and Vulkan only | `docs/specs/S20-particles.md`, "Goldens" under Deviations | Devices for Metal, D3D11 and GLES3 |
 | Mobile particle performance rows are unmeasured | `docs/perf/particles.md`, "Not measured here" | A person with reference phones |
-| S20's "Web: est. X ms" hint was never built | `docs/specs/S20-particles.md` (Risks), no match in `editor/window/InspectorParticles.cpp` | Delivered by S54's `cost` table |
-| The agent guide has about 110 bytes free, and S35, S53 and S54 all want some | `tools/mcp/budget.json`, `guide`; estimated, not measured | The second to land moves its own detail out, per `docs/mcp/conventions.md`. Measure with `tool_budget.py --groups all` |
+| S20's "Web: est. X ms" hint was never built | `docs/specs/S20-particles.md` (Risks), no match in `editor/window/InspectorParticles.cpp` | Delivered by S91's `cost` table |
+| The agent guide has about 110 bytes free, and S35, S90 and S91 all want some | `tools/mcp/budget.json`, `guide`; estimated, not measured | The second to land moves its own detail out, per `docs/mcp/conventions.md`. Measure with `tool_budget.py --groups all` |
 
 ## Record (S02)
 

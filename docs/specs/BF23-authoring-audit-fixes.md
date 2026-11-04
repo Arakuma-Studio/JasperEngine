@@ -258,3 +258,25 @@ result changes S91's first milestone.
   (`engine/libs/sokol/PATCHES.md`, `TextureFallback.cpp:121`, `TextureFallbackTest.cpp:244`),
   `docs/textures.md:177` and `TestRenderHalfFloatTargets.cpp:176`, and the requirements in S20 and
   S21, were not re-checked or edited. No test: docs only.
+- **F17's red is an MCP test, not `AnimatorWindowTest`.** The unit binary has no `App`, whose frame
+  has the double call, and a count in `AnimatorWindowTest` would only count that test's own calls.
+  `test_animator_selection.py` reads `begins` from the UI probe, which reports top-level windows
+  begun more than once a frame (ImGui's `BeginCount`). The red run reported `{'Animator': 2}`.
+- **F21 adds more than the two windows named.** The comparison with the catalog also found Pose
+  Animation, Vertex Animation Baker, Color Picker, Recorder, Navigation, Texture Synthesis, Sprite
+  Normal Map and Physics Placement missing; they are added too. The named exclusions are the
+  layouts' actions, Detachable Windows and the version control windows.
+- **F18 goes a little further in the canvas and the menus.** A plain click on one of several selected
+  nodes now leaves that one, or a multi-selection could not be narrowed by clicking. A right click on a
+  link selects it, or the link menu's Delete would remove the selected states. A right click on a
+  selected node makes it the Inspector's and the menu's node. Copy still copies that one node.
+- **F19 also restores the selection,** as `docs/undo.md` says Esc does, not only the positions.
+- **F23's premise did not hold: the Inspector had no `.material` view** ("our Inspector already can").
+  Owner's ruling: it must be editable, with undo, reusing `InspectorMaterialPbr`. It is: the Inspector
+  draws the rows of a submesh's material (moved into `drawSubmeshMaterialRows`, so Advanced Surface,
+  Surface, Extra pass and presets are the same rows) on a mesh in a scene of its own that no scene list
+  holds. An edit reaches the linked submeshes as it is made and the file when the gesture ends, as one
+  project undo step through `update_material`'s write path (`Project::materialFileText`). The rows'
+  own commands go to that scene's history (`CommandHandle::Redirect`), so they never enter the open
+  scene's undo. Open as Text was prefab-only at the cited line, so `.material` and `.particles` get
+  the context menu item.
