@@ -73,6 +73,7 @@
 #include "diag/HangWatchdog.h"
 #include "util/FileDialogs.h"
 #include "util/ProjectUtils.h"
+#include "util/UIProbe.h"
 #include "util/Util.h"
 
 #include "EditorVersion.h"
@@ -2670,11 +2671,13 @@ void editor::App::show(){
 
     // S27: the Project Hub alone (as the loading window above): the editor's windows wait
     updateHubCreation();
+    if (projectHub.pollSweep()) requestRedraw();
     if (projectHub.isOpen()) {
         if (isInitialized) {
             ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_KeepAliveOnly);
         }
         projectHub.show();
+        UIProbe::flush();   // the Inspector flushes it otherwise, and it is not drawn here
         if (hubCreation) {
             ImGui::OpenPopup("Creating Project##hub");
         }
@@ -3695,7 +3698,6 @@ void editor::App::pollExternalChanges(){
     wake = ScriptStatus::get().update() || wake;
     wake = ScriptReloadService::get().busy() || wake;
     wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
-    wake = projectHub.pollSweep() || wake;
     // the asset database's walk a watcher batch started (S04 refresh, no poll)
     project.updateAssetScan();
     // texture cooks (S14 R8): planned and cooked on the Background lane, swapped in here

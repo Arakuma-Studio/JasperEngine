@@ -11,12 +11,15 @@ import asyncio
 import contextlib
 import json
 import os
+import shutil
 import signal
+import subprocess
+import tempfile
 import time
 import zipfile
 from pathlib import Path
 
-from harness import Editor, Scratch, TestFailure
+from harness import Editor, GuiEditor, Scratch, TestFailure
 
 CI = True
 TIMEOUT = 900
@@ -135,8 +138,17 @@ async def test_a_live_owner_in_another_editor_is_never_touched():
                 with contextlib.suppress(BaseException):
                     await asyncio.wait_for(call, 30)
 
-                swept = await second.call("clean_project_leftovers")
-                second.check_eq(swept["removed"], [staging.as_posix()], "its owner died: it goes")
+                # This project is under the system's temp folder, so it is no recent project and its
+                # parent no known one: `remove` names the folder. The client sees the editor's pipe close
+                # before the system has closed the rest of its files, the lock among them: in use for a
+                # moment longer, then its owner is dead and the sweep takes it
+                deadline = time.monotonic() + 30
+                got = await second.call_raw("clean_project_leftovers", {"remove": [str(staging)]})
+                while got.is_error and got.structured["in_use"] and time.monotonic() < deadline:
+                    await asyncio.sleep(0.05)
+                    got = await second.call_raw("clean_project_leftovers", {"remove": [str(staging)]})
+                second.check(not got.is_error, f"its owner died: {got.text}")
+                second.check_eq(got.structured["removed"], [staging.as_posix()], "it goes")
                 second.check_eq(sorted(os.listdir(into)), ["Packed"], "the folder and its marker")
     finally:
         scratch.remove()
@@ -185,3 +197,50 @@ async def test_a_folder_without_a_marker_is_kept_and_reported():
         ed.check_eq(swept["removed"], [old.as_posix()], "asked: it goes")
         ed.check_eq(swept["leftovers"], [], "none left")
         ed.check(not old.exists(), "the folder is gone")
+
+
+async def test_the_hub_shows_a_leftover_with_its_buttons():
+    """R3: in the Hub, a marker-less folder is listed with Show in Folder and Remove. Remove asks first:
+    Keep changes nothing, Delete removes the folder and its row."""
+    root = Path(tempfile.mkdtemp(prefix="jasper-leftovers-"))
+    try:
+        games = root / "Games"
+        old = games / "Old Game.importing"
+        old.mkdir(parents=True)
+        (old / "my-work.txt").write_text("my work\n")
+        probe = root / "ui-probe.json"
+
+        def items() -> dict:
+            with contextlib.suppress(OSError, ValueError):
+                return json.loads(probe.read_text()).get("items", {})
+            return {}
+
+        # the whole X screen: the probe's window pixels are xdotool's screen pixels
+        hub = GuiEditor(root, ["--hub"], {"editor": {"hub_last_location": str(games)}, "window": {"width": 1600, "height": 900, "maximized": True}}, env={"JASPER_UI_PROBE": str(probe)})
+        async with hub as gui:
+            env = dict(os.environ, DISPLAY=hub.xvfb.display)
+
+            async def click(name: str) -> None:
+                x0, y0, x1, y1 = items()[name]
+                subprocess.run(["xdotool", "mousemove", str(int((x0 + x1) / 2)), str(int((y0 + y1) / 2))], env=env, check=True, timeout=20)
+                await asyncio.sleep(0.3)
+                subprocess.run(["xdotool", "click", "1"], env=env, check=True, timeout=20)
+
+            await wait_for(lambda: "hub.leftover.0.remove" in items(), 120, "the Hub to list the folder")
+            gui.check("hub.leftover.0.show" in items(), f"Show in Folder: {sorted(items())}")
+            gui.check("hub.leftover.1.remove" not in items(), f"one row: {sorted(items())}")
+
+            await click("hub.leftover.0.remove")
+            await wait_for(lambda: "hub.leftover.0.delete" in items(), 30, "Remove to ask first")
+            gui.check((old / "my-work.txt").is_file(), "Remove alone removes nothing")
+            await click("hub.leftover.0.keep")
+            await wait_for(lambda: "hub.leftover.0.remove" in items(), 30, "Keep to go back")
+            gui.check((old / "my-work.txt").is_file(), "Keep removes nothing")
+
+            await click("hub.leftover.0.remove")
+            await wait_for(lambda: "hub.leftover.0.delete" in items(), 30, "Remove to ask again")
+            await click("hub.leftover.0.delete")
+            await wait_for(lambda: not old.exists(), 30, "Delete to remove the folder")
+            await wait_for(lambda: not any(name.startswith("hub.leftover") for name in items()), 30, "the row to go")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

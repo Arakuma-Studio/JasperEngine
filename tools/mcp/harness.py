@@ -1032,6 +1032,53 @@ class Editor:
 # Raw stdio access (protocol-level tests)
 
 
+class GuiEditor:
+    """The editor's GUI (no `mcp` subcommand) under a private Xvfb, reached over its HTTP MCP server."""
+
+    def __init__(self, root: Path, args: list[str], settings: dict, env: dict[str, str] | None = None):
+        self.root, self.args, self.settings, self.extra_env = root, args, settings, env or {}
+        self.proc: subprocess.Popen | None = None
+        self.xvfb: Xvfb | None = None
+        self.ed: Editor | None = None
+
+    async def __aenter__(self) -> Editor:
+        port = free_port()
+        cwd = self.root / f"gui-{port}"
+        home = cwd / "home"
+        home.mkdir(parents=True)
+        settings = {"window": {"width": 1280, "height": 720},
+                    "mcp": {"http_enabled": True, "http_port": port, "http_token": HTTP_TOKEN}}
+        settings.update(self.settings)
+        (cwd / "settings.yaml").write_text(yaml.safe_dump(settings, sort_keys=False))
+        self.xvfb = Xvfb()
+        display = self.xvfb.start()
+        env = {k: v for k, v in os.environ.items() if not k.startswith("XDG_") and k not in ("WAYLAND_DISPLAY", "JASPER_MCP_URL")}
+        env.update({"DISPLAY": display, "HOME": str(home), "LIBGL_ALWAYS_SOFTWARE": "1"})
+        env.update(self.extra_env)
+        self.log = open(cwd / "editor.log", "w")
+        self.proc = subprocess.Popen(editor_command() + self.args, cwd=str(cwd), env=env,
+                                     stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True)
+        await wait_for_port(port, timeout=180)
+        self.ed = Editor(url=f"http://127.0.0.1:{port}/mcp", token=HTTP_TOKEN)
+        await self.ed.__aenter__()
+        return self.ed
+
+    async def __aexit__(self, *exc) -> None:
+        if self.ed:
+            with contextlib.suppress(Exception):
+                await self.ed.__aexit__(None, None, None)
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                await asyncio.to_thread(self.proc.wait, 60)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                await asyncio.to_thread(self.proc.wait, 30)
+        if self.xvfb:
+            self.xvfb.stop()
+        self.log.close()
+
+
 class RawEditor:
     """The editor launched as a plain subprocess speaking newline-delimited JSON-RPC on stdio,
     with no MCP client in between. For protocol tests (stdout purity, version negotiation).

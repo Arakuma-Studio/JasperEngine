@@ -528,6 +528,8 @@ void cleanProjectLeftoversTool(const CallPtr& call) {
         }
         bool removedAny = false;
         for (const fs::path& folder : requested) {
+            // its owner had died: the sweep has just removed it, as asked
+            if (std::find(swept.removed.begin(), swept.removed.end(), folder) != swept.removed.end()) continue;
             const auto listed = std::find_if(swept.leftovers.begin(), swept.leftovers.end(), [&](const hub::staging::Leftover& l) { return l.folder == folder; });
             std::string error;
             if (listed == swept.leftovers.end()) {

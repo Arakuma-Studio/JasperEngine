@@ -12,6 +12,7 @@
 #include "texture/TextureData.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
+#include "util/UIProbe.h"
 #include "widget/ColorMath.h"
 
 #include "imgui.h"
@@ -241,7 +242,9 @@ void ProjectHubWindow::drawLeftovers() {
     ImGui::TextWrapped("A stopped import or template copy may have left these, and they may hold your files, so the Hub does not remove them by itself.");
     if (!leftoverMessage.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", leftoverMessage.c_str());
     const bool working = sweepTask.valid();
-    for (const hub::staging::Leftover& leftover : leftovers) {
+    for (size_t i = 0; i < leftovers.size(); i++) {
+        const hub::staging::Leftover& leftover = leftovers[i];
+        const std::string probe = "hub.leftover." + std::to_string(i);
         ImGui::PushID(leftover.folder.generic_string().c_str());
         ImGui::BeginGroup();
         ImGui::TextUnformatted(FileUtils::pathToUtf8(leftover.folder).c_str());
@@ -252,19 +255,24 @@ void ProjectHubWindow::drawLeftovers() {
             std::string error;
             if (!Platform::openWithSystemDefault(FileUtils::pathToUtf8(leftover.folder), &error)) leftoverMessage = error;
         }
+        UIProbe::item(probe + ".show");
         ImGui::SameLine();
         if (removalToConfirm == leftover.folder) {
             ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "Delete this folder and all its files?");
             ImGui::SameLine();
-            if (ImGui::SmallButton("Delete")) {
+            const bool remove = ImGui::SmallButton("Delete");
+            UIProbe::item(probe + ".delete");
+            ImGui::SameLine();
+            const bool keep = ImGui::SmallButton("Keep");
+            UIProbe::item(probe + ".keep");
+            if (remove) {
                 removalRequests.push_back(leftover.folder);
-                removalToConfirm.clear();
                 startSweep(true);
             }
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Keep")) removalToConfirm.clear();
-        } else if (ImGui::SmallButton("Remove")) {
-            removalToConfirm = leftover.folder;
+            if (remove || keep) removalToConfirm.clear();
+        } else {
+            if (ImGui::SmallButton("Remove")) removalToConfirm = leftover.folder;
+            UIProbe::item(probe + ".remove");
         }
         ImGui::EndDisabled();
         ImGui::PopID();
