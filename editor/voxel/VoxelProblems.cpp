@@ -11,6 +11,7 @@
 #include "component/VoxelVolumeComponent.h"
 #include "subsystem/VoxelSystem.h"
 #include "util/FileUtils.h"
+#include "voxel/VoxelGeneration.h"
 #include "voxel/VoxelProjectSettings.h"
 
 #include <cmath>
@@ -117,8 +118,10 @@ std::vector<VoxelProblem> editor::voxelProblems(Project& project, const ScenePro
                         !scene->findComponent<TerrainComponent>(component->terrain))) {
         add(VoxelProblemCode::MissingTerrain, "The Terrain this volume is attached to is missing.", "Pick a Terrain in the Terrain field, or clear it to leave the volume free-standing.");
     }
-    // nothing above said why the base cannot be built, or it can and is out of date (V10)
-    if (!asset->baseResolved && generator.kind != "empty" && problems.empty()) {
+    // Unless a source being gone already says why: the source changed since the stored hash (V10), or
+    // this session could not build the base from the file's description
+    const bool sourceGone = !problems.empty() && (problems.back().code == VoxelProblemCode::MissingNoiseGraph || problems.back().code == VoxelProblemCode::MissingTerrain);
+    if (!sourceGone && (isVoxelBaseStale(scene, owner) || (!asset->baseResolved && generator.kind != "empty"))) {
         add(VoxelProblemCode::BaseStale, "The base of this volume (" + generator.kind + ") is not up to date with its source.",
             "Regenerate rebuilds it and keeps modified blocks. Until then untouched blocks read as they were.");
     }

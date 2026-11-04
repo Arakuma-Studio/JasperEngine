@@ -56,7 +56,7 @@ VoxelGenerationTask::~VoxelGenerationTask() {
     if (worker.joinable()) worker.join();
 }
 
-bool VoxelGenerationTask::start(Project* targetProject, uint32_t targetScene, Entity owner, const VoxelGenerateRequest& request, std::string& error) {
+bool VoxelGenerationTask::start(Project* targetProject, uint32_t targetScene, Entity owner, const VoxelGenerateRequest& request, bool recordUndo, std::string& error) {
     if (running) {
         error = "A generation is already running on this volume.";
         return false;
@@ -77,6 +77,7 @@ bool VoxelGenerationTask::start(Project* targetProject, uint32_t targetScene, En
     sceneId = targetScene;
     target = owner;
     running = true;
+    record = recordUndo;
     done.store(false);
     cancelled.store(false);
     progressValue.store(0.0f);
@@ -94,8 +95,8 @@ bool VoxelGenerationTask::poll(VoxelGenerateResult& result) {
     SceneProject* sceneProject = project->getScene(sceneId);
     VoxelGenerateUndo undo;
     if (sceneProject && sceneProject->scene) {
-        result = steps->finish(sceneProject->scene, &undo);
-        if (result.ok && !cancelled.load()) {
+        result = steps->finish(sceneProject->scene, record ? &undo : nullptr);
+        if (record && result.ok && !cancelled.load()) {
             CommandHandle::get(sceneId)->addCommandNoMerge(new VoxelGenerateCmd(project, sceneId, target, std::move(undo)));
         }
     } else {

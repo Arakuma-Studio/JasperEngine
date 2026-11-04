@@ -22,8 +22,9 @@ namespace jasperengine::editor {
 
     class VoxelGenerationTask {
     public:
-        // False, leaving nothing running, with what the steps said (a code and what to do)
-        bool start(Project* project, uint32_t sceneId, Entity owner, const VoxelGenerateRequest& request, std::string& error);
+        // False, leaving nothing running, with what the steps said (a code and what to do). recordUndo
+        // false: it belongs to the step that made the volume, so it adds none of its own.
+        bool start(Project* project, uint32_t sceneId, Entity owner, const VoxelGenerateRequest& request, bool recordUndo, std::string& error);
         // Main thread, each frame: true once it finished, and `result` says how
         bool poll(VoxelGenerateResult& result);
         void cancel() { cancelled.store(true); }
@@ -38,6 +39,7 @@ namespace jasperengine::editor {
         uint32_t sceneId = 0;
         Entity target = NULL_ENTITY;
         bool running = false;
+        bool record = true;
         std::shared_ptr<VoxelGeneration> steps;
         std::thread worker;
         std::atomic<bool> done{false};

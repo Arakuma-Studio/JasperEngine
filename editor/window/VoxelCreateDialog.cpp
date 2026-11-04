@@ -6,6 +6,7 @@
 #include "App.h"
 #include "Backend.h"
 #include "Project.h"
+#include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "object/Camera.h"
@@ -16,6 +17,7 @@
 
 #include "imgui.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 
@@ -123,15 +125,29 @@ void VoxelCreateDialog::draw() {
         }
         ImGui::EndCombo();
     }
-    if (options.base == VoxelCreateBase::NoiseGraph || options.base == VoxelCreateBase::FromMesh) {
-        std::string& path = options.base == VoxelCreateBase::NoiseGraph ? options.graphPath : options.meshPath;
+    if (options.base == VoxelCreateBase::NoiseGraph) {
         char text[256];
-        std::snprintf(text, sizeof(text), "%s", path.c_str());
-        ImGui::InputTextWithHint(options.base == VoxelCreateBase::NoiseGraph ? "Graph" : "Mesh", "None", text, sizeof(text), ImGuiInputTextFlags_ReadOnly);
+        std::snprintf(text, sizeof(text), "%s", options.graphPath.c_str());
+        ImGui::InputTextWithHint("Graph", "None", text, sizeof(text), ImGuiInputTextFlags_ReadOnly);
         ImGui::SameLine();
         if (ImGui::Button(ICON_FA_FOLDER_OPEN "##source")) {
-            const std::string chosen = FileDialogs::openFileDialog(project->getAssetsPath().string(), options.base == VoxelCreateBase::FromMesh ? FILE_DIALOG_MODEL : FILE_DIALOG_ALL);
-            if (!chosen.empty() && project->isInsideAssetsPath(chosen)) path = project->normalizeToAssetsRelative(chosen).generic_string();
+            const std::string chosen = FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_ALL);
+            if (!chosen.empty() && project->isInsideAssetsPath(chosen)) options.graphPath = project->normalizeToAssetsRelative(chosen).generic_string();
+        }
+    }
+    if (options.base == VoxelCreateBase::FromMesh) {
+        // R36 voxelizes a GameObject's mesh; a model file comes in as GameObjects first
+        const std::string current = options.mesh == NULL_ENTITY ? std::string("None") : sceneProject->scene->getEntityName(options.mesh);
+        if (ImGui::BeginCombo("Mesh", current.c_str())) {
+            auto meshes = sceneProject->scene->getComponentArray<MeshComponent>();
+            for (size_t i = 0; i < meshes->size(); i++) {
+                const Entity entity = meshes->getEntity(i);
+                if (std::find(sceneProject->entities.begin(), sceneProject->entities.end(), entity) == sceneProject->entities.end()) continue;
+                ImGui::PushID(static_cast<int>(entity));
+                if (ImGui::Selectable(sceneProject->scene->getEntityName(entity).c_str(), entity == options.mesh)) options.mesh = entity;
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
         }
     }
     int seed = static_cast<int>(options.seed);
@@ -176,7 +192,8 @@ void VoxelCreateDialog::draw() {
             if (voxelCreateNeedsGeneration(options)) {
                 if (VoxelEditWindow* window = Backend::getApp().getVoxelEditWindow()) {
                     window->openForEntity(entity, sceneId);
-                    window->startRegenerate(sceneId, entity);
+                    // part of the step that made the volume (R59): undoing that takes the GameObject away
+                    window->startGenerate(sceneId, entity, voxelCreateRequest(options), false);
                 }
             }
             isOpen = false;

@@ -9,6 +9,7 @@
 
 #include "ecs/Entity.h"
 #include "math/Vector3.h"
+#include "voxel/VoxelGeneration.h"
 #include "voxel/VoxelGenerator.h"
 #include "voxel/VoxelTypes.h"
 
@@ -38,7 +39,7 @@ namespace jasperengine::editor {
         uint64_t seed = 0;
         Entity terrain = NULL_ENTITY;
         std::string graphPath;                // Noise Graph..., relative to the assets
-        std::string meshPath;                 // From Mesh..., relative to the assets
+        Entity mesh = NULL_ENTITY;            // From Mesh...: a GameObject of the scene with a Mesh
         Vector3 position = Vector3(0, 0, 0);
         Entity parent = NULL_ENTITY;
     };
@@ -49,6 +50,8 @@ namespace jasperengine::editor {
     voxel::GeneratorDesc voxelCreateGenerator(const VoxelCreateOptions& options);
     // Whether the base needs the generation steps (VoxelGeneration); the rest resolve on their own
     bool voxelCreateNeedsGeneration(const VoxelCreateOptions& options);
+    // What those steps are asked
+    VoxelGenerateRequest voxelCreateRequest(const VoxelCreateOptions& options);
 
     struct VoxelCreateEstimate {
         int64_t bytes = 0;

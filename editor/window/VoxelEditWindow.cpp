@@ -147,14 +147,23 @@ void VoxelEditWindow::startRegenerate(uint32_t scene, Entity owner) {
         request.terrain = component.terrain;
         request.blendWidth = asset->generator.blendWidth;
     } else if (asset->generator.kind == "mesh") {
+        // the file keeps the mesh's hash, not the GameObject: it is the panel's Mesh that is read again
+        if (meshSource == NULL_ENTITY) {
+            setStatus("Choose the GameObject with the mesh in the Brush tab's Mesh shape first.", true);
+            return;
+        }
         request.source = "mesh";
-        request.meshPath = asset->generator.sourcePath;
+        request.mesh = meshSource;
     } else {
         request.source = "preset";
         request.preset = asset->generator.kind == "preset" ? asset->generator.preset : asset->generator.kind;
     }
+    startGenerate(scene, owner, request, true);
+}
+
+void VoxelEditWindow::startGenerate(uint32_t scene, Entity owner, const VoxelGenerateRequest& request, bool recordUndo) {
     std::string error;
-    if (generation.start(project, scene, owner, request, error)) setStatus("Regenerating...", false);
+    if (generation.start(project, scene, owner, request, recordUndo, error)) setStatus("Generating...", false);
     else setStatus(error, true);
 }
 

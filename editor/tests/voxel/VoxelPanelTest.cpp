@@ -244,8 +244,13 @@ TEST_F(VoxelPanel, ErrorStripPerCode) {
     }
     graph.sourcePath = "voxels/there.noisegraph";
     addVolumeWith("voxels/stale.voxelvolume", desc, graph);
-    EXPECT_TRUE(has(VoxelProblemCode::BaseStale));
+    EXPECT_TRUE(has(VoxelProblemCode::BaseStale)) << "this session could not build it";
     EXPECT_FALSE(has(VoxelProblemCode::MissingNoiseGraph));
+    // ... and built, against the hash the generator stored (V10)
+    asset->baseResolved = true;
+    EXPECT_FALSE(has(VoxelProblemCode::BaseStale)) << "no hash stored, nothing to compare";
+    asset->generator.sourceHash = 1;
+    EXPECT_TRUE(has(VoxelProblemCode::BaseStale)) << "the source changed since its hash";
 
     // missing_terrain
     voxel::GeneratorDesc terrain;

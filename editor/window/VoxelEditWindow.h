@@ -36,6 +36,7 @@ namespace jasperengine::editor {
 
         // Regenerate and Re-seed live here so both the panel and the Inspector run the one task
         void startRegenerate(uint32_t sceneId, Entity owner);
+        void startGenerate(uint32_t sceneId, Entity owner, const VoxelGenerateRequest& request, bool recordUndo);
         bool isGenerating() const { return generation.isRunning(); }
 
     private:

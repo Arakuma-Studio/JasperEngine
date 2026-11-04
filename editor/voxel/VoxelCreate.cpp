@@ -154,7 +154,6 @@ voxel::GeneratorDesc editor::voxelCreateGenerator(const VoxelCreateOptions& opti
             break;
         case VoxelCreateBase::FromMesh:
             generator.kind = "mesh";
-            generator.sourcePath = options.meshPath;
             break;
     }
     return generator;
@@ -164,8 +163,9 @@ bool editor::voxelCreateNeedsGeneration(const VoxelCreateOptions& options) {
     switch (options.base) {
         case VoxelCreateBase::Empty:
         case VoxelCreateBase::SolidGround:
-        case VoxelCreateBase::FromTerrain:
             return false;
+        // the terrain's too: only the steps store the hash that says when it has gone stale (V10)
+        case VoxelCreateBase::FromTerrain:
         case VoxelCreateBase::Caves:
         case VoxelCreateBase::Overhangs:
         case VoxelCreateBase::CaveEntrance:
@@ -174,6 +174,30 @@ bool editor::voxelCreateNeedsGeneration(const VoxelCreateOptions& options) {
             return true;
     }
     return false;
+}
+
+VoxelGenerateRequest editor::voxelCreateRequest(const VoxelCreateOptions& options) {
+    VoxelGenerateRequest request;
+    request.seed = options.seed;
+    request.terrain = options.terrain;
+    request.keepEdits = false;
+    switch (options.base) {
+        case VoxelCreateBase::FromTerrain: request.source = "terrain"; break;
+        case VoxelCreateBase::NoiseGraph:
+            request.source = "noise_graph";
+            request.graphPath = options.graphPath;
+            break;
+        case VoxelCreateBase::FromMesh:
+            request.source = "mesh";
+            request.mesh = options.mesh;
+            break;
+        case VoxelCreateBase::Empty: request.source = "preset"; request.preset = "empty"; break;
+        case VoxelCreateBase::SolidGround: request.source = "preset"; request.preset = "solid_ground"; break;
+        case VoxelCreateBase::Caves: request.source = "preset"; request.preset = "caves"; break;
+        case VoxelCreateBase::Overhangs: request.source = "preset"; request.preset = "overhangs"; break;
+        case VoxelCreateBase::CaveEntrance: request.source = "preset"; request.preset = "cave_entrance"; break;
+    }
+    return request;
 }
 
 VoxelCreateEstimate editor::estimateVoxelCreate(const VoxelCreateOptions& options, const VoxelProjectSettings& settings) {
@@ -209,8 +233,9 @@ VoxelCreateEstimate editor::estimateVoxelCreate(const VoxelCreateOptions& option
 std::string editor::voxelCreateProblem(const VoxelCreateOptions& options) {
     if (!(options.voxelSize > 0.0f) || !std::isfinite(options.voxelSize)) return "Voxel Size must be above zero.";
     if (options.base == VoxelCreateBase::FromTerrain && options.terrain == NULL_ENTITY) return "From Terrain needs a Terrain.";
+    if (options.base == VoxelCreateBase::CaveEntrance && options.terrain == NULL_ENTITY) return "Cave Entrance digs from a Terrain: choose one.";
     if (options.base == VoxelCreateBase::NoiseGraph && options.graphPath.empty()) return "Choose a Noise Graph.";
-    if (options.base == VoxelCreateBase::FromMesh && options.meshPath.empty()) return "Choose a mesh.";
+    if (options.base == VoxelCreateBase::FromMesh && options.mesh == NULL_ENTITY) return "Choose a GameObject with a Mesh.";
     const voxel::Int3 size = voxelCreateDimensions(options);
     const int largest = std::max({size.x, size.y, size.z});
     if (largest > voxelTargetLimits(BuildPlatform::Linux).maxDimension) return "A dimension is over the largest a target takes (1024 voxels).";
@@ -239,7 +264,7 @@ Entity editor::createVoxelVolume(Project* project, uint32_t sceneId, const Voxel
     std::vector<VoxelMaterialSlot> slots;
     Scene* scene = sceneProject->scene;
     const TerrainComponent* terrain = options.terrain != NULL_ENTITY ? scene->findComponent<TerrainComponent>(options.terrain) : nullptr;
-    if (options.base == VoxelCreateBase::FromTerrain && terrain) {
+    if ((options.base == VoxelCreateBase::FromTerrain || options.base == VoxelCreateBase::CaveEntrance) && terrain) {
         for (size_t i = 0; i < terrain->surfaceLayers.size() && i < static_cast<size_t>(voxel::MAX_SLOTS); i++) {
             VoxelMaterialSlot slot;
             slot.name = "Layer " + std::to_string(i);

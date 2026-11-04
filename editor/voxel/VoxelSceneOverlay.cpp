@@ -12,6 +12,8 @@
 #include "object/LineRenderer.h"
 #include "object/Mesh.h"
 #include "object/TerrainEdit.h"
+#include "terrain/TerrainMapStore.h"
+#include "terrain/TerrainSurface.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/VoxelSystem.h"
@@ -386,32 +388,39 @@ namespace {
                 break;
             }
             case VoxelOverlay::Holes: {
-                // each run of texels this volume cut, as a box on the terrain's surface (T3 R30's holes)
-                const std::shared_ptr<VoxelAsset> asset = system.getAsset(owner);
+                // the attached terrain's hole map in place (T3 R30): each run of hole texels, on its surface
                 const VoxelVolumeComponent* component = scene->findComponent<VoxelVolumeComponent>(owner);
-                if (!asset || !component || component->terrain == NULL_ENTITY) break;
+                if (!component || component->terrain == NULL_ENTITY) break;
                 TerrainComponent* terrain = scene->findComponent<TerrainComponent>(component->terrain);
                 const Transform* terrainTransform = scene->findComponent<Transform>(component->terrain);
-                const voxel::TerrainCutRuns& cut = asset->terrainCut;
-                if (!terrain || !terrainTransform || cut.width <= 0 || cut.height <= 0) break;
+                if (!terrain || !terrainTransform) break;
+                TerrainComponentStore holes(scene, component->terrain, *terrain);
+                const terrain::MapId holeMap{terrain::MapKind::Hole, 0};
+                const terrain::MapFormat format = holes.format(holeMap);
+                if (!format.exists) break;
+                const int width = format.bounds.w, height = format.bounds.h;
+                std::vector<float> texels(static_cast<size_t>(width) * static_cast<size_t>(height));
+                if (!holes.read(holeMap, format.bounds, texels)) break;
                 TerrainSurfaceSnapshot snapshot;
                 snapshotTerrainSurface(*terrain, snapshot);
-                const float size = terrain->terrainSize;
-                const float cellX = size / static_cast<float>(cut.width);
-                const float cellZ = size / static_cast<float>(cut.height);
+                const float half = terrain->terrainSize / static_cast<float>(width) * 0.5f;
                 const Vector4 colour(1.0f, 0.2f, 0.9f, 1.0f);
-                for (const voxel::TerrainCutRuns::Run& run : cut.runs) {
-                    const float x0 = -size * 0.5f + static_cast<float>(run.start) * cellX;
-                    const float x1 = x0 + static_cast<float>(run.length) * cellX;
-                    const float z0 = -size * 0.5f + static_cast<float>(run.row) * cellZ;
-                    const float z1 = z0 + cellZ;
-                    const auto at = [&](float x, float z) {
-                        return terrainTransform->modelMatrix * Vector3(x, terrain::sampleHeight(snapshot.view, x, z) + 0.05f, z);
-                    };
-                    state.overlay->line(at(x0, z0), at(x1, z0), colour);
-                    state.overlay->line(at(x1, z0), at(x1, z1), colour);
-                    state.overlay->line(at(x1, z1), at(x0, z1), colour);
-                    state.overlay->line(at(x0, z1), at(x0, z0), colour);
+                const auto at = [&](float x, float z) {
+                    return terrainTransform->modelMatrix * Vector3(x, terrain::sampleHeight(snapshot.view, x, z) + 0.05f, z);
+                };
+                for (int y = 0; y < height && state.overlay->size() < MAX_OVERLAY_LINES; y++) {
+                    for (int x = 0; x < width; x++) {
+                        if (texels[static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x)] != terrain::HOLE_VALUE) continue;
+                        const int first = x;
+                        while (x + 1 < width && texels[static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x) + 1] == terrain::HOLE_VALUE) x++;
+                        const Vector2 low = holes.worldOfTexel(holeMap, first, y);
+                        const Vector2 high = holes.worldOfTexel(holeMap, x, y);
+                        const float x0 = low.x - half, x1 = high.x + half, z0 = low.y - half, z1 = low.y + half;
+                        state.overlay->line(at(x0, z0), at(x1, z0), colour);
+                        state.overlay->line(at(x1, z0), at(x1, z1), colour);
+                        state.overlay->line(at(x1, z1), at(x0, z1), colour);
+                        state.overlay->line(at(x0, z1), at(x0, z0), colour);
+                    }
                 }
                 break;
             }
