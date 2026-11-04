@@ -59,8 +59,8 @@ namespace {
 
     class ApplyColorTable {
     public:
-        ApplyColorTable(const pxa::PaletteMatcher& paletteMatcher, std::span<const pxa::Rgba8> colors, bool orderedDither, float ditherStrength)
-            : matcher(paletteMatcher), palette(colors), ordered(orderedDither), strength(ditherStrength) {}
+        ApplyColorTable(const pxa::PaletteMatcher& paletteMatcher, std::span<const pxa::Rgba8> colors, int bayerSize, float ditherStrength)
+            : matcher(paletteMatcher), palette(colors), ordered(bayerSize > 0), strength(ditherStrength), steps(std::max(1, bayerSize * bayerSize)) {}
 
         // the entry of the colour's RGB, added on first sight; entries never move index
         uint32_t find(pxa::Rgba8 color) {
@@ -85,7 +85,7 @@ namespace {
             ApplyColor resolved;
             resolved.lab = pxa::toOklab(color);
             if (ordered) {
-                resolved.mix = matcher.ditherPair(color, strength);
+                resolved.mix = matcher.ditherPair(color, strength, steps);
             } else {
                 const uint16_t nearest = (uint16_t)matcher.nearestUncached(color).first;
                 resolved.mix.a = resolved.mix.b = nearest;
@@ -115,6 +115,7 @@ namespace {
         std::span<const pxa::Rgba8> palette;
         bool ordered = false;
         float strength = 1.0f;
+        int steps = 16;              // the matrix's cells: the ratio's steps
         std::vector<ApplyColor> resolvedColors;
         std::vector<uint32_t> keys;       // rgb + 1, 0 is empty
         std::vector<uint32_t> entries;    // the index into resolvedColors, per key slot
@@ -303,7 +304,7 @@ namespace {
         paletteLabs.reserve(palette.size());
         for (const pxa::Rgba8& color : palette) paletteLabs.push_back(pxa::toOklab(color));
         const pxa::PaletteMatcher matcher(palette, request.metric);
-        ApplyColorTable table(matcher, palette, bayerSize > 0, strength);
+        ApplyColorTable table(matcher, palette, bayerSize, strength);
 
         float thresholds[64] = {};
         for (int y = 0; y < bayerSize; y++) {
@@ -345,7 +346,7 @@ namespace {
                 int index = own.mix.a;
                 if (bayerSize > 0) {
                     const float threshold = thresholds[(y & (bayerSize - 1)) * bayerSize + (x & (bayerSize - 1))];
-                    if (threshold < own.mix.ratio16 / 16.0f) index = own.mix.b;
+                    if (threshold < own.mix.ratio16 / (float)(bayerSize * bayerSize)) index = own.mix.b;
                 } else if (diffuse && !own.exact) {
                     // an exact palette colour stays itself and swallows the error it receives
                     const pxa::Lab incoming = errorHere[x + 1];

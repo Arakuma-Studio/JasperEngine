@@ -113,6 +113,11 @@ TEST(PaletteQuantize, SlicedBakeEqualsTheWholeOne) {
     EXPECT_EQ(job.result().cells, whole.cells);
     EXPECT_EQ(job.result().row, whole.row);
     EXPECT_EQ(bakeQuantizeLut(palette, ColorMetric::OkLab, 4, 0.75f, 32).cells, whole.cells);
+    // on the job system's workers: the same bytes
+    QuantizeLutJob parallel(palette, ColorMetric::OkLab, 4, 0.75f, 32);
+    parallel.bakeParallel();
+    EXPECT_TRUE(parallel.done());
+    EXPECT_EQ(parallel.result().cells, whole.cells);
 }
 
 TEST(PaletteQuantize, LayoutAndSharedCells) {
@@ -138,8 +143,14 @@ TEST(PaletteQuantize, BakeTimes) {
     for (int cells : {32, 64}) {
         const auto start = std::chrono::steady_clock::now();
         const QuantizeLut lut = bakeQuantizeLut(palette, ColorMetric::OkLab, 4, 1.0f, cells);
-        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-        std::printf("[bench] palette quantize bake %d^3, 64 colours, dithered: %.1f ms\n", cells, ms);
+        const double single = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        const auto parallelStart = std::chrono::steady_clock::now();
+        QuantizeLutJob job(palette, ColorMetric::OkLab, 4, 1.0f, cells);
+        job.bakeParallel();
+        const double parallel = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - parallelStart).count();
+        std::printf("[bench] palette quantize bake %d^3, 64 colours, dithered: %.1f ms on one thread, %.1f ms on the job system\n",
+                    cells, single, parallel);
         EXPECT_FALSE(lut.cells.empty());
+        EXPECT_EQ(job.result().cells, lut.cells);
     }
 }

@@ -179,6 +179,7 @@ TEST_F(PaletteQuantizeGpu, GradientAtFixedResolution){
     camera.setOrtho(-80.0f, 80.0f, -45.0f, 45.0f, -100.0f, 100.0f);
     const char* goldens[] = {"palette_quantize_none", "palette_quantize_bayer2", "palette_quantize_bayer4", "palette_quantize_bayer8"};
     int index = 0;
+    std::vector<std::vector<uint8_t>> frames;
     for (PaletteDither dither : {PaletteDither::NONE, PaletteDither::BAYER2, PaletteDither::BAYER4, PaletteDither::BAYER8}){
         quantize(dither, true);
         ASSERT_TRUE(settle());
@@ -197,7 +198,13 @@ TEST_F(PaletteQuantizeGpu, GradientAtFixedResolution){
         EXPECT_EQ(outside, 0) << goldens[index];
         EXPECT_EQ(smeared, 0) << goldens[index] << ": the dither must not change inside an art pixel";
         EXPECT_GOLDEN(goldens[index]);
+        frames.push_back(frame);
         index++;
+    }
+    // each dither size draws its own pattern (8 x 8 has its 64 levels, not 4 x 4's 16)
+    for (size_t a = 0; a < frames.size(); a++){
+        for (size_t b = a + 1; b < frames.size(); b++)
+            EXPECT_NE(frames[a], frames[b]) << goldens[a] << " and " << goldens[b];
     }
     EXPECT_NO_ENGINE_ERRORS();
 }

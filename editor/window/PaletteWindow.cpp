@@ -230,7 +230,7 @@ struct editor::PaletteWindow::UsageCache {
 
 // ---------------------------------------------------------------------------------- GPU images
 
-bool editor::PaletteGpuImage::upload(const pixelart::RgbaImage& image, std::vector<Texture>& retired) {
+bool editor::PaletteGpuImage::upload(const jasperengine::editor::pixelart::RgbaImage& image, std::vector<Texture>& retired) {
     static_assert(sizeof(pxc::Rgba8) == 4, "RGBA8 pixels are 4 bytes, tightly packed");
     retire(retired);
     if (image.empty() || !image.valid()) return false;
@@ -313,7 +313,7 @@ bool editor::PaletteWindow::isForeignPaletteFile(const fs::path& path) {
     return extension == ".gpl" || extension == ".hex" || extension == ".pal" || extension == ".txt" || extension == ".ase";
 }
 
-const std::vector<pixelart::PaletteFormat>& editor::PaletteWindow::exportFormats() {
+const std::vector<jasperengine::editor::pixelart::PaletteFormat>& editor::PaletteWindow::exportFormats() {
     using F = pixelart::PaletteFormat;
     static const std::vector<F> formats = [] {
         std::vector<F> all;
@@ -325,7 +325,7 @@ const std::vector<pixelart::PaletteFormat>& editor::PaletteWindow::exportFormats
     return formats;
 }
 
-const char* editor::PaletteWindow::exportLabel(pixelart::PaletteFormat format) {
+const char* editor::PaletteWindow::exportLabel(jasperengine::editor::pixelart::PaletteFormat format) {
     switch (format) {
         case pixelart::PaletteFormat::Gpl: return "GIMP (.gpl)";
         case pixelart::PaletteFormat::Hex: return "Hex (.hex)";
@@ -640,7 +640,7 @@ void editor::PaletteWindow::importFile(const fs::path& source) {
     if (!created.empty() && !result.warnings.empty()) setNotice(result.warnings.front().message, false);
 }
 
-void editor::PaletteWindow::exportPalette(const fs::path& paletteFile, pixelart::PaletteFormat format) {
+void editor::PaletteWindow::exportPalette(const fs::path& paletteFile, jasperengine::editor::pixelart::PaletteFormat format) {
     pxc::Palette exported;
     if (paletteFile == file && loaded) {
         exported = palette;

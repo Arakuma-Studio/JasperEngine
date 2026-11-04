@@ -194,6 +194,8 @@ namespace {
         row(Scope::SceneSettings, "postProcess[].shader", Shape::Shader, AssetType::Shader, Base::Project, Kind::SceneSettings);
         row(Scope::SceneSettings, "postProcess[].textures{}", Shape::Texture, AssetType::Texture, Base::Assets, Kind::SceneSettings);
         row(Scope::SceneSettings, "postProcessing.lutTexture", Shape::Asset, AssetType::Texture, Base::Assets, Kind::SceneSettings);
+        // Palette Quantize's palette (S43)
+        row(Scope::SceneSettings, "postProcessing.palette", Shape::Asset, AssetType::Palette, Base::Assets, Kind::SceneSettings);
 
         row(Scope::SceneFile, "prefabs[]", Shape::PrefabRef, AssetType::Prefab, Base::Project, Kind::ScenePrefabList);
         row(Scope::SceneFile, "cppScripts[].path", Shape::Asset, AssetType::Script, Base::Project, Kind::CppScript);
@@ -1186,6 +1188,11 @@ bool AssetRefSchema::forEachSceneSettingsRef(Scene& scene, const AssetRefVisitor
     if (visit.asset(settings.lutTexture, documentRow(Scope::SceneSettings, "postProcessing.lutTexture"), "postProcessing.lutTexture",
                     AssetPathBase::Project, false, lutExpectedType(settings.lutTexture.path)) ||
         settings.lutTexture != scene.getPostProcessing().lutTexture) {
+        scene.setPostProcessing(settings);
+    }
+    settings = scene.getPostProcessing();
+    if (visit.asset(settings.palette, documentRow(Scope::SceneSettings, "postProcessing.palette"), "postProcessing.palette") ||
+        settings.palette != scene.getPostProcessing().palette) {
         scene.setPostProcessing(settings);
     }
     return visit.changed;

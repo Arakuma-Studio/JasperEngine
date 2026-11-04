@@ -185,7 +185,8 @@ std::string editor::pixelart::todayIsoDate() {
     const long long day = dayOfYear - (153 * monthIndex + 2) / 5 + 1;
     const long long month = monthIndex < 10 ? monthIndex + 3 : monthIndex - 9;
     const long long year = yearOfEra + era * 400 + (month <= 2 ? 1 : 0);
-    char text[16];
-    std::snprintf(text, sizeof(text), "%04lld-%02lld-%02lld", year, month, day);
+    // (int: a year past 9999 is not a date this writes; month and day are 1-12 and 1-31)
+    char text[32];
+    std::snprintf(text, sizeof(text), "%04d-%02d-%02d", (int)year, (int)month, (int)day);
     return text;
 }

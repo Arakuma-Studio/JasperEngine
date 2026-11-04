@@ -208,6 +208,16 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Add Pose | N | Pose Animation |
 | Global Edit | E | Pose Animation |
 
+## Palette
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Delete Colours | Delete / Backspace | Palette |
+| Duplicate Colours | Ctrl+D | Palette |
+| Move Colours Left | Alt+Left | Palette |
+| Move Colours Right | Alt+Right | Palette |
+| Flicker Compare | Space | Palette |
+
 ## Project
 
 | Command | Shortcut | Context |

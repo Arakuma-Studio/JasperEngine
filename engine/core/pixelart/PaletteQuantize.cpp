@@ -45,7 +45,8 @@ Rgba8 QuantizeLut::pick(Rgba8 display, int ditherSize, int x, int y) const {
     const int shift = cellsPerAxis == 64 ? 2 : 3;
     const size_t at = quantizeTexel(display.r >> shift, display.g >> shift, display.b >> shift, cellsPerAxis, width);
     int index = cells[at];
-    if (cells[at + 2] > 0 && ditherSize > 0 && bayerThreshold(ditherSize, x, y) < cells[at + 2] / 16.0f) index = cells[at + 1];
+    if (cells[at + 2] > 0 && ditherSize > 0 && bayerThreshold(ditherSize, x, y) < cells[at + 2] / (float)(ditherSize * ditherSize))
+        index = cells[at + 1];
     return Rgba8{row[index * 4], row[index * 4 + 1], row[index * 4 + 2], display.a};
 }
 
@@ -64,6 +65,7 @@ QuantizeLutJob::QuantizeLutJob(const Palette& palette, ColorMetric metric, int d
     }
     strength = std::clamp(ditherStrength, 0.0f, 1.0f);
     dither = ditherSize > 0 && strength > 0.0f;
+    steps = ditherSize >= 8 ? 64 : (ditherSize >= 4 ? 16 : 4);
     total = lut.cellsPerAxis * lut.cellsPerAxis * lut.cellsPerAxis;
 
     // the identity: a cell holding a palette colour is that colour; two in one cell keep the first
@@ -90,20 +92,18 @@ QuantizeLutJob::QuantizeLutJob(const Palette& palette, ColorMetric metric, int d
     if (matcher.candidates().empty()) finished = true;
 }
 
-bool QuantizeLutJob::step(double budgetSeconds) {
-    if (finished) return true;
-    const auto start = std::chrono::steady_clock::now();
+void QuantizeLutJob::bakeRange(int begin, int end) {
     const int n = lut.cellsPerAxis;
     const int span = 256 / n;
-    while (next < total) {
-        const int r = next % n, g = (next / n) % n, b = next / (n * n);
+    for (int cell = begin; cell < end; cell++) {
+        const int r = cell % n, g = (cell / n) % n, b = cell / (n * n);
         // the display colour at the cell's centre
         const Rgba8 centre{(uint8_t)(r * span + span / 2), (uint8_t)(g * span + span / 2), (uint8_t)(b * span + span / 2), 255};
         PaletteMatcher::Mix mix;
-        if (identity[next] >= 0) {
-            mix.a = mix.b = (uint16_t)identity[next];
+        if (identity[cell] >= 0) {
+            mix.a = mix.b = (uint16_t)identity[cell];
         } else if (dither) {
-            mix = matcher.ditherPair(centre, strength);
+            mix = matcher.ditherPair(centre, strength, steps);
         } else {
             mix.a = mix.b = (uint16_t)matcher.nearestUncached(centre).first;
         }
@@ -112,13 +112,28 @@ bool QuantizeLutJob::step(double budgetSeconds) {
         lut.cells[at + 1] = (uint8_t)mix.b;
         lut.cells[at + 2] = mix.ratio16;
         lut.cells[at + 3] = 255;
-        next++;
-        if (budgetSeconds > 0.0 && (next & 255) == 0 &&
-                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() >= budgetSeconds)
-            return false;
+    }
+}
+
+bool QuantizeLutJob::step(double budgetSeconds) {
+    if (finished) return true;
+    const auto start = std::chrono::steady_clock::now();
+    while (next < total) {
+        const int end = std::min(total, next + 256);
+        bakeRange(next, end);
+        next = end;
+        if (budgetSeconds > 0.0 && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() >= budgetSeconds)
+            return next >= total ? (finished = true) : false;
     }
     finished = true;
     return true;
+}
+
+void QuantizeLutJob::bakeParallel() {
+    if (finished) return;
+    jobs::parallelForChunked((size_t)next, (size_t)total, 1024, [this](size_t begin, size_t end) { bakeRange((int)begin, (int)end); });
+    next = total;
+    finished = true;
 }
 
 float QuantizeLutJob::progress() const {
@@ -197,7 +212,7 @@ void PaletteQuantizer::update(const Request& request) {
             std::weak_ptr<Bake> weak = next;
             jobs::enqueueDetached([weak]() {
                 if (std::shared_ptr<Bake> running = weak.lock()) {
-                    running->job->step(0.0);
+                    running->job->bakeParallel();
                     running->done.store(true, std::memory_order_release);
                 }
             }, jobs::Lane::Background, "palette-quantize");

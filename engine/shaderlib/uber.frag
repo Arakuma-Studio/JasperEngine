@@ -186,7 +186,8 @@ mediump vec3 sceneTap(highp vec2 uv){
                                        ivec2(cell.r + cellsPerAxis * (cell.b % 8), cell.g + cellsPerAxis * (cell.b / 8)), 0) * 255.0 + 0.5);
         int index = entry.r;
         int ditherSize = int(uber.palette.y + 0.5);
-        if (entry.b > 0 && ditherSize > 0 && bayerThreshold(ditherSize, ditherCell) < float(entry.b) / 16.0)
+        // the ratio is in steps of the matrix's cells (4, 16, 64)
+        if (entry.b > 0 && ditherSize > 0 && bayerThreshold(ditherSize, ditherCell) < float(entry.b) / float(ditherSize * ditherSize))
             index = entry.g;
         return texelFetch(sampler2D(u_paletteQuantizeRow, u_paletteQuantize_smp), ivec2(index, 0), 0).rgb;
     }

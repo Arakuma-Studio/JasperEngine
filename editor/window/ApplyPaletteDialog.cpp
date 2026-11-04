@@ -167,7 +167,7 @@ void editor::ApplyPaletteDialog::open(const fs::path& requested, const std::stri
     focusRequested = true;
 }
 
-pixelart::ApplyRequest editor::ApplyPaletteDialog::request() const {
+jasperengine::editor::pixelart::ApplyRequest editor::ApplyPaletteDialog::request() const {
     pixelart::ApplyRequest wanted;
     if (resolved.ok) {
         wanted.palette = resolved.palette.colors;

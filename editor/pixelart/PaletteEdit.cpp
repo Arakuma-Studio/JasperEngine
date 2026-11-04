@@ -30,11 +30,11 @@ namespace {
 
     struct OpContext {
         const Json& op;
-        size_t index;
+        size_t position;
         std::vector<OpError>& errors;
 
         std::string field(const std::string& key) const {
-            return "ops[" + std::to_string(index) + "]" + (key.empty() ? "" : "." + key);
+            return "ops[" + std::to_string(position) + "]" + (key.empty() ? "" : "." + key);
         }
         void fail(const std::string& key, const std::string& message, const std::string& fix, const std::string& kind = "invalid_value") const {
             errors.push_back({kind, field(key), message, fix});

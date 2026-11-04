@@ -9,7 +9,8 @@
 // the CPU; the uber pass reads the cell, compares the Bayer threshold of the art pixel with the
 // ratio and shows a or b. Laid out as texelFetch textures:
 // - cells, 256 x 128 (N 32) or 512 x 512 (N 64), texel (r + N (b % 8), g + N (b / 8)): r index a,
-//   g index b, b ratio in 1/16 (0: a alone);
+//   g index b, b ratio in 1/(dither size)^2 steps (0: a alone): 4 levels for Bayer 2 x 2, 16 for
+//   4 x 4, 64 for 8 x 8, each the cell count of its matrix;
 // - row, 256 x 1: the palette's colours.
 // A cell that holds a palette colour bakes that colour alone, so an image already in the palette
 // passes through unchanged with any dither. The bake is deterministic and single-threaded (one
@@ -48,15 +49,21 @@ namespace jasperengine::pixelart {
 
         // bakes until done or the budget is spent (seconds; <= 0: to the end); true when done
         bool step(double budgetSeconds);
+        // the whole table on the job system's workers (every cell is its own: the result is the
+        // same bytes whatever the thread count)
+        void bakeParallel();
         bool done() const { return finished; }
         float progress() const;
         const QuantizeLut& result() const { return lut; }
 
     private:
+        void bakeRange(int begin, int end);
+
         PaletteMatcher matcher;
         std::vector<int> identity;      // per cell: the palette colour it holds, or -1
         float strength = 0.0f;
         bool dither = false;
+        int steps = 16;
         int next = 0;
         int total = 0;
         bool finished = false;

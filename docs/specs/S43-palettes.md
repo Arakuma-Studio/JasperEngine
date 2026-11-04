@@ -1162,4 +1162,10 @@ Recorded while implementing (`feature/s43-palettes`).
   network with an unroutable proxy (`https_proxy=http://127.0.0.1:9`), the harness having no network block.
 - **`get_entity`** returns `palette_rows: [{submesh, rows, row}]` and the R15 warning in `warnings`
   (`palette_swap_lossy_texture`).
+- **The dither ratio's steps.** R20 bakes the ratio in 1/16 steps; with that, Bayer 8×8 draws exactly what
+  4×4 draws (the third level of an 8×8 threshold never changes a comparison against a multiple of 1/16) and
+  2×2 can only show 5 of the 17 levels. The ratio is in steps of the chosen matrix's cells instead (4, 16 or
+  64): `PaletteMatcher::ditherPair(color, strength, steps = 16)` (16 by default, the spec's API), Palette
+  Quantize's table and Apply Palette's Bayer dithers. `PaletteQuantizeGpu.GradientAtFixedResolution`
+  checks the four dithers draw four different images.
 

@@ -110,7 +110,9 @@ namespace applypalette_test {
         int64_t total = 0;
         for (size_t i = 0; i < result.lost.size(); i++) {
             const LostGroup& group = result.lost[i];
-            if (i > 0) EXPECT_GE(result.lost[i - 1].count, group.count);
+            if (i > 0) {
+                EXPECT_GE(result.lost[i - 1].count, group.count);
+            }
             EXPECT_GE(group.count, 2);
             EXPECT_GE(group.x, 0);
             EXPECT_GE(group.y, 0);
@@ -244,6 +246,9 @@ namespace applypalette_test {
         const struct { Dither dither; int size; } cases[] = {{Dither::Bayer2, 2}, {Dither::Bayer4, 4}, {Dither::Bayer8, 8}};
         for (const auto& c : cases) {
             SCOPED_TRACE(ditherName(c.dither));
+            // the ratio in steps of the matrix's cells: half of them at every size
+            const px::PaletteMatcher::Mix sized = matcher.ditherPair(kGrey99, 1.0f, c.size * c.size);
+            ASSERT_EQ(sized.ratio16, c.size * c.size / 2);
             const ApplyResult result = applyWith(image, palette, c.dither);
             for (int by = 0; by < 16; by += c.size) {
                 for (int bx = 0; bx < 16; bx += c.size) {
@@ -253,8 +258,8 @@ namespace applypalette_test {
                             const Rgba8 pixel = result.image.at(x, y);
                             EXPECT_TRUE(pixel == kWhite || pixel == kBlack);
                             if (pixel == kWhite) white++;
-                            const bool showsB = px::bayerThreshold(c.size, x, y) < mix.ratio16 / 16.0f;
-                            EXPECT_EQ(pixel, palette[showsB ? mix.b : mix.a]) << x << "," << y;
+                            const bool showsB = px::bayerThreshold(c.size, x, y) < sized.ratio16 / (float)(c.size * c.size);
+                            EXPECT_EQ(pixel, palette[showsB ? sized.b : sized.a]) << x << "," << y;
                         }
                     }
                     EXPECT_EQ(white, c.size * c.size / 2) << "block " << bx << "," << by;

@@ -108,11 +108,13 @@ namespace jasperengine::pixelart {
         std::pair<int, float> nearestUncached(Rgba8 color) const;
 
         // Yliluoma's positional dither (algorithm 1) over the 8 nearest colours: the pair (a, b)
-        // and ratio r (in 1/16, up to `strength`) whose mix minimises |mix(a, b, r) - c|^2 +
+        // and ratio r (in 1/steps, up to `strength`) whose mix minimises |mix(a, b, r) - c|^2 +
         // 0.1 r (1 - r) |a - b|^2 in the metric's space. A colour of the palette gives itself
-        // with ratio 0. The ratio says how many of every 16 dither cells show b.
+        // with ratio 0. The ratio says how many of every `steps` dither cells show b: steps is
+        // the cell count of the Bayer matrix that shows it (4, 16 or 64; a finer one could not
+        // show the difference, a coarser one wastes 8 x 8's levels). ratio16 is in 1/steps.
         struct Mix { uint16_t a = 0, b = 0; uint8_t ratio16 = 0; };
-        Mix ditherPair(Rgba8 color, float strength) const;
+        Mix ditherPair(Rgba8 color, float strength, int steps = 16) const;
 
         ColorMetric metric() const { return colorMetric; }
         int size() const { return (int)palette.size(); }

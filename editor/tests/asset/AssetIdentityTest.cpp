@@ -613,6 +613,9 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::MeshComponent, "submeshes[].material.shader"}, {C::MeshComponent, "submeshes[].material.name"},
         {C::MeshComponent, "submeshes[].material.extraPass.shader"}, {C::MeshComponent, "submeshes[].material.extraPass.shaderTextures{}"},
         {C::MeshComponent, "customShader"}, {C::MeshComponent, "customDepthShader"},
+        // S43: Palette Swap's source and target palettes
+        {C::MeshComponent, "submeshes[].material.shaderPalettes{}.source"},
+        {C::MeshComponent, "submeshes[].material.shaderPalettes{}.targets[].palette"},
         // the built-in Lit's extended lobes' maps (S11)
         {C::MeshComponent, "submeshes[].material.pbr.clearcoat.map"}, {C::MeshComponent, "submeshes[].material.pbr.clearcoat.normalMap"},
         {C::MeshComponent, "submeshes[].material.pbr.sheen.map"}, {C::MeshComponent, "submeshes[].material.pbr.anisotropy.map"},

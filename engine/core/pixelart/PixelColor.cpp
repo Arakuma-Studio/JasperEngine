@@ -548,7 +548,7 @@ int PaletteMatcher::nearest(Rgba8 color) {
     return nearestWithDistance(color).first;
 }
 
-PaletteMatcher::Mix PaletteMatcher::ditherPair(Rgba8 color, float strength) const {
+PaletteMatcher::Mix PaletteMatcher::ditherPair(Rgba8 color, float strength, int steps) const {
     Mix mix;
     if (candidateIndices.empty()) return mix;
     const Lab lab = space(color);
@@ -571,11 +571,13 @@ PaletteMatcher::Mix PaletteMatcher::ditherPair(Rgba8 color, float strength) cons
     mix.a = mix.b = nearestList[0].second;
     float bestCost = squaredDistance(lab, labs[mix.a]);
     if (bestCost == 0.0f) return mix;   // a palette colour stays itself
-    const int maxSteps = (int)std::floor(std::clamp(std::isfinite(strength) ? strength : 0.0f, 0.0f, 1.0f) * 16.0f + 1e-4f);
+    steps = std::clamp(steps, 1, 64);
+    const float stepCount = (float)steps;
+    const int maxSteps = (int)std::floor(std::clamp(std::isfinite(strength) ? strength : 0.0f, 0.0f, 1.0f) * stepCount + 1e-4f);
     if (maxSteps <= 0) return mix;
 
     // cost(r) = |e + r d|^2 + 0.1 r (1 - r) |d|^2 with e = A - c and d = B - A: a convex
-    // quadratic in r, so the best 1/16 step is one of the two around its minimum
+    // quadratic in r, so the best step is one of the two around its minimum
     for (int i = 0; i < found; i++) {
         for (int j = 0; j < found; j++) {
             if (i == j) continue;
@@ -588,10 +590,10 @@ PaletteMatcher::Mix PaletteMatcher::ditherPair(Rgba8 color, float strength) cons
             const float ed = el * dl + ea * da + eb * db;
             const float ee = el * el + ea * ea + eb * eb;
             const float minimum = -(2.0f * ed + 0.1f * dd) / (1.8f * dd);
-            const int lower = (int)std::floor(minimum * 16.0f);
+            const int lower = (int)std::floor(minimum * stepCount);
             for (int step : {lower, lower + 1}) {
                 if (step < 1 || step > maxSteps) continue;
-                const float r = step / 16.0f;
+                const float r = step / stepCount;
                 const float cost = ee + r * (2.0f * ed + 0.1f * dd) + r * r * (0.9f * dd);
                 if (cost < bestCost) {
                     bestCost = cost;
@@ -602,7 +604,7 @@ PaletteMatcher::Mix PaletteMatcher::ditherPair(Rgba8 color, float strength) cons
             }
         }
     }
-    if (mix.ratio16 == 16) {
+    if (mix.ratio16 == steps) {
         mix.a = mix.b;
         mix.ratio16 = 0;
     }
