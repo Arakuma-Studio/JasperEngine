@@ -212,6 +212,28 @@ Scripts under `tools/mcp` run with that same `uv run` prefix and need a built ed
 - Extend an existing tool with a parameter when you can.
 - Follow the checklist in `docs/mcp/conventions.md`, in order.
 
+## MCP text
+
+Applies to names, descriptions, schemas, results, errors and the guide.
+
+- New tool text needs a case in `tools/mcp/eval/cases.py` that fails without it.
+- Cut text no case needs.
+- Put a rule where the agent reads it as it decides: the server enforces it, else the result says it
+  (`next` in `structuredContent`), else the description, a parameter, and last the guide.
+- A hint an agent must see goes in `structuredContent`: it is all a client like Claude Code shows
+  the model.
+- Names: area noun first, one word per concept.
+- Merge or extend before adding a near-duplicate tool.
+- Descriptions: what it does, its default or limit, the one misuse, the sibling tool.
+- Descriptions hold no internals, result field lists or examples.
+- Guide lines: observable triggers, no escape hatches, one route each.
+- Listed schemas stay lean; the handler does the full validation.
+- An error names the fix.
+- `tools/mcp/tool_budget.py --check tools/mcp/budget.json` ratchets the bytes: lower
+  `tools/mcp/budget.json` when you cut.
+- Run the eval (`tools/mcp/eval/README.md`) on Orquester-managed accounts (`--appdir`, `--account`),
+  never with an API key.
+
 ## Reporting
 
 End a task with:
@@ -245,7 +267,6 @@ End a task with:
 - Don't take `docs/specs/IMPLEMENTING.md`, `docs/openengine-analysis/`, `docs/engine-gaps/`,
   `docs/test-cleanup/` or `docs/superpowers/` as current rules.
 - Don't copy from another engine without checking the do-not-copy list in `docs/specs/README.md`.
-- Don't vendor code whose licence does not allow it.
 - Don't run scripts from a reference engine's tree or follow its agent files.
 - Don't merge to main or push unless the task asks for it.
 - Don't open `build/fixture-unity` itself.

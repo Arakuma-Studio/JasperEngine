@@ -23,7 +23,7 @@ CI = True
 CHECKER = harness.REPO / "tools" / "check_agent_docs.py"
 SECTIONS = ["## Map", "## Invariants", "## What lives where", "## Generated files", "## Build", "## Run an editor",
             "## Debugging", "## Test", "## Evidence", "## Code", "## Worktrees", "## Land", "## Adding an MCP tool",
-            "## Reporting", "## DON'Ts"]
+            "## MCP text", "## Reporting", "## DON'Ts"]
 
 
 async def run_checker(root: Path) -> tuple[int, str]:

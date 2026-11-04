@@ -165,7 +165,7 @@ ed.check("get_frame_stats" in {t.name for t in await ed.tools(groups=None)}, "li
 
 | Limit | Value |
 |---|---|
-| default listing (`core`) | ≤ 100,000 characters and ≤ 150 tools |
+| default listing (`core`) | ≤ 99,000 characters and ≤ 150 tools |
 | each other group | ≤ 15,000 characters and ≤ 12 tools (`group_default`), unless `groups` has an entry |
 | each tool | ≤ 1,500 characters (`tool_default`), unless `exceptions` gives `{limit, reason}` |
 
@@ -192,16 +192,16 @@ has a budget too: the `guide` entry of `tools/mcp/budget.json`.
 
 | Limit | Value |
 |---|---|
-| the whole guide, with its generated Tool groups section | ≤ 16,384 bytes (UTF-8) |
-| headroom: what the whole guide must leave free under that limit, for later specs' groups and lines | ≥ 1,500 bytes (`headroom_bytes`), so the guide itself stays ≤ 14,884 |
+| the whole guide, with its generated Tool groups section | ≤ 8,192 bytes (UTF-8) |
+| headroom: what the whole guide must leave free under that limit, for later specs' groups and lines | ≥ 1,500 bytes (`headroom_bytes`), so the guide itself stays ≤ 6,692 |
 | each `## ` section (the text before the first one counts as one) | ≤ 1,500 bytes (`section_bytes`), unless `sections` gives `{limit, reason}` |
 
-- The guide holds what every agent needs before its first call, whatever it works on: Unity
-  names, addressing, the loop, undo, code, project layout, data safety, pitfalls, how to find
-  tools and groups and read the docs. Each area (scripting, physics, prefabs, shaders, HTML UI,
-  assets, ...) has at most one short **digest** section there: the few rules an agent breaks
-  without it (no tables of method names, defaults or field lists), and the
-  `jasper://docs/<area>` resource with the rest.
+- The guide holds only what an agent must know before it picks a tool, whatever it works on:
+  Unity names, addressing, the loop, undo, code, how to find tools and groups and read the docs.
+  An area gets a short **digest** section only for the rules agents broke without it (Lua, C++,
+  physics, prefabs, shaders, HTML UI); every other area is one entry of the "Other areas" index
+  (its key tool and `jasper://docs/<area>`). A guide line needs a case of `tools/mcp/eval` that
+  fails without it (`tools/mcp/eval/README.md`).
 - An area's detail lives in `docs/mcp/guide/<area>.md`. A file there is embedded at build time
   and served as `jasper://docs/<area>` (`docs/mcp/guide/README.md` lists them); long ones split
   into `### ` section resources.
