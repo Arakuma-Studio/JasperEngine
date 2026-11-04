@@ -50,7 +50,9 @@ TEST(SoundSlicer, CutsOneSlicePerTake) {
         EXPECT_NEAR(start, times[i], 0.012) << i;
         EXPECT_LT(start, times[i] + 1e-3) << "the pre_ms lead";
         EXPECT_GT(slices[i].endFrame, slices[i].startFrame);
-        if (i + 1 < slices.size()) EXPECT_LE(slices[i].endFrame, slices[i + 1].startFrame) << "a take never bleeds into the next";
+        if (i + 1 < slices.size()) {
+            EXPECT_LE(slices[i].endFrame, slices[i + 1].startFrame) << "a take never bleeds into the next";
+        }
     }
 }
 

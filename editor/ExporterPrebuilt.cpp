@@ -474,6 +474,7 @@ bool editor::Exporter::runPrebuilt() {
     if (!cookTextures()) return false;
     if (cancelled()) return false;
     if (!copyAssets()) return false;
+    if (!writeAudioImports()) return false;
     if (!writeAssetMap()) return false;
     if (!copyCustomShaderSources()) return false;
     if (cancelled()) return false;

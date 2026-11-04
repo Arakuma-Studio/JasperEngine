@@ -207,7 +207,7 @@ void runSlice(SliceJob& job) {
     SoundSlicer::plan(job.source, job.sourceRel, Sha256::toHex(sha.finish()), job.signal, job.slices, job.pick, job.eventFile, job.files, job.error);
 }
 
-void sliceSoundEvent(const CallPtr& call, Project* project, const fs::path& file, const std::string& rel, const Json& slice) {
+void sliceSoundEvent(const CallPtr& call, Project* project, const fs::path& file, const std::string& rel, const Json& slice, int audition) {
     static const std::vector<std::string> keys = {"source", "gate_db", "min_gap_ms", "pre_ms", "max_ms", "pick", "variation", "preview"};
     for (auto it = slice.begin(); it != slice.end(); ++it) {
         if (std::find(keys.begin(), keys.end(), it.key()) == keys.end()) {
@@ -256,7 +256,7 @@ void sliceSoundEvent(const CallPtr& call, Project* project, const fs::path& file
         runSlice(*job);
         job->finished = true;
     }).detach();
-    call->waitUntil([job]() { return job->finished.load(); }, SOUND_EVENT_WORK_TIMEOUT_MS, [call, job, project, file, rel, variation](bool timedOut) {
+    call->waitUntil([job]() { return job->finished.load(); }, SOUND_EVENT_WORK_TIMEOUT_MS, [call, job, project, file, rel, variation, audition](bool timedOut) {
         if (timedOut) {
             call->fail("Slicing took over " + std::to_string(SOUND_EVENT_WORK_TIMEOUT_MS / 1000) + " s. Nothing was written.");
             return;
@@ -312,7 +312,7 @@ void sliceSoundEvent(const CallPtr& call, Project* project, const fs::path& file
         }
         std::vector<std::string> problems;
         if (!job->licensed) problems.push_back("source has no licence: the slices' licence is unknown");
-        finishEdit(call, project, file, rel, true, def, true, 0, slices, problems);
+        finishEdit(call, project, file, rel, true, def, true, audition, slices, problems);
     });
 }
 
@@ -346,7 +346,11 @@ void editSoundEventTool(const CallPtr& call) {
             call->fail("slice is an object: {source, gate_db, min_gap_ms, pre_ms, max_ms, pick, variation, preview}.");
             return;
         }
-        sliceSoundEvent(call, project, file, rel, args["slice"]);
+        if (args.contains("values") || args.value("match_levels", false)) {
+            call->fail("slice makes the whole event: change it with values or match_levels in a second call.");
+            return;
+        }
+        sliceSoundEvent(call, project, file, rel, args["slice"], args.value("audition", 0));
         return;
     }
     SoundEventDef def;

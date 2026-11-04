@@ -295,16 +295,20 @@ unsigned int AudioClipSourceInstance::getAudio(float* buffer, unsigned int sampl
     }
     const unsigned int count = std::min<uint32_t>(samplesToRead, limit - position);
     const bool gained = parent->settings.gainDb != 0.0f;
+    // a local: the buffer could alias the member, which would keep the loops from vectorizing (R31)
+    const float gain = parent->gain;
 
     if (parent->samples) {
         const float* data = parent->samples;
         for (unsigned int c = 0; c < mChannels; c++) {
             float* out = buffer + (size_t)c * bufferSize;
-            std::memcpy(out, data + (size_t)c * parent->fileFrames + position, sizeof(float) * count);
+            const float* from = data + (size_t)c * parent->fileFrames + position;
             if (gained) {
                 for (unsigned int i = 0; i < count; i++) {
-                    out[i] *= parent->gain;
+                    out[i] = from[i] * gain;
                 }
+            } else {
+                std::memcpy(out, from, sizeof(float) * count);
             }
         }
     }else{
@@ -327,7 +331,7 @@ unsigned int AudioClipSourceInstance::getAudio(float* buffer, unsigned int sampl
                 std::memset(out + got, 0, sizeof(float) * (chunk - got));
                 if (gained) {
                     for (unsigned int i = 0; i < got; i++) {
-                        out[i] *= parent->gain;
+                        out[i] *= gain;
                     }
                 }
             }

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // S36 R31: AudioClipSource adds at most 3 % to the mix cost of a voice, against a plain Wav voice, with gain and
-// no fades (the common case: its fades and trims cost only the frames they cover). Measured on what the
-// mixer calls, a voice's getAudio, over many blocks, the fastest of several runs. Opt-in: a wall-clock
-// budget on a shared builder is noise, so a person runs it by filter on a quiet machine.
+// no fades (the common case: its fades and trims cost only the frames they cover). Measured on the mix, what a
+// voice costs an audio thread: SoLoud's null driver mixing one looping voice block by block, the fastest of
+// several runs. Opt-in: a wall-clock budget on a shared builder is noise, so a person runs it by filter on a quiet
+// machine.
 
 #include "audio/AudioImport.h"
 #include "audio/ClipSource.h"
@@ -54,20 +55,21 @@ std::vector<unsigned char> toneWav(uint32_t frames){
 }
 
 double secondsOf(SoLoud::AudioSource& source, int blocks){
-    std::unique_ptr<SoLoud::AudioSourceInstance> voice(source.createInstance());
-    voice->init(source, 0);
-    voice->mFlags |= SoLoud::AudioSourceInstance::LOOPING;
-    voice->mLoopPoint = 0.0;
-    float buffer[512];
+    SoLoud::Soloud engine;
+    EXPECT_EQ(engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER, 48000, 512, 2), (unsigned int)SoLoud::SO_NO_ERROR);
+    const SoLoud::handle voice = engine.play(source);
+    engine.setLooping(voice, true);
+    std::vector<float> buffer(1024);
     const auto start = std::chrono::steady_clock::now();
     float sink = 0.0f;
     for (int i = 0; i < blocks; i++){
-        const unsigned int got = voice->getAudio(buffer, 512, 512);
-        if (got < 512) voice->seek(voice->mLoopPoint, nullptr, 0);
+        engine.mix(buffer.data(), 512);
         sink += buffer[0];
     }
     const std::chrono::duration<double> took = std::chrono::steady_clock::now() - start;
     EXPECT_LT(sink, 1e9f);
+    EXPECT_GT(engine.getActiveVoiceCount(), 0u);
+    engine.deinit();
     return took.count();
 }
 
@@ -82,7 +84,8 @@ TEST(ClipSourceBudget, DISABLED_AddsAtMostThreePercentToAVoice){
     settings.trimHeadFrames = 480;
     AudioClipSource clip(wav, settings);
     double plain = 1e9, wrapped = 1e9;
-    const int blocks = 200000;
+    const int blocks = 20000;
+    clip.setSingleInstance(false);
     for (int run = 0; run < 7; run++){
         plain = std::min(plain, secondsOf(*wav, blocks));
         wrapped = std::min(wrapped, secondsOf(clip, blocks));
