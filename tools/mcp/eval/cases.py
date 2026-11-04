@@ -5,6 +5,8 @@ fixes, with no user data. Results are in the editor's real shapes: {"recorded": 
 result dump_surface.py recorded from a built editor; hand-written ones copy the server's text.
 """
 
+import json
+
 KINDS = ("bad", "guard", "control")
 
 PLAYER_LUA = """---@class player : ScriptInstance
@@ -37,6 +39,16 @@ YAML_WRITE = r"(sed\s+-i|perl\s+-i|>>?\s*\S*project\.yaml|tee\s+\S*project\.yaml
 
 NOT_OPEN = ("Scene 3 \"Level2\" is not open (its contents are not loaded). Open it first: open_scene "
             "{\"scene\": \"scenes/Level2.scene\", \"close_previous\": false} (then select_scene to switch back).")
+
+
+# import_project's structuredContent with a leftover beside the new project
+LEFTOVER_IMPORT = {
+    "path": "/home/me/Games/Game", "opened": True, "log": [],
+    "leftovers": [{"path": "/home/me/Games/Old.importing",
+                   "reason": "It has no owner marker: an older editor left it, or it is your own folder."}],
+    "next": "Leftovers may hold the user's files: tell the user. Once they agree, clear_project_leftovers {remove} "
+            "(tool_groups: editor_tools) deletes one.",
+}
 
 
 def ok(text, structured=None):
@@ -155,6 +167,38 @@ CASES = [
                    "must_not_call": [{"tool": "open_scene", "args": {"close_previous": True}}],
                    "reply_must": [r"Gun"], "max_calls": {"open_scene": 1}},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_curve_keys_rebind",
+        "kind": "guard",
+        "what_happened": "Asked to rebind a Curve window key, agents read the project, then the engine source, and told the user "
+                         "to change the editor's code. The key is a catalog command: curve.frame, not the scene's Frame Selected, "
+                         "which shares the key.",
+        "text_at_issue": "Generated AGENTS.md, Source references: 'An editor key is rebound with `set_shortcut` (tool group "
+                         "`editor_ux`), not in that source.'; list_shortcuts context: 'curve', 'color_picker'",
+        "source": "docs/specs/S61-window-commands.md R5",
+        "prompt": "In the Curve window, make the key that frames the curve J instead of F.",
+        "mocks": [
+            {"tool": "list_shortcuts", "args": {"context": "curve"}, "result": ok(
+                "4 command(s); with keys:\ncurve.frame  F\ncurve.delete  Delete / Backspace\ncurve.copy  Ctrl+C\ncurve.paste  Ctrl+V",
+                {"shortcuts": [{"id": "curve.frame", "group": "Curve", "name": "Frame Curve", "context": "curve", "chords": ["F"]}]})},
+            {"tool": "list_shortcuts", "result": ok(
+                "3 command(s); with keys:\nedit.frameSelected  F\nsceneView.frameAll  Home / Alt+F\ncurve.frame  F",
+                {"shortcuts": [{"id": "edit.frameSelected", "group": "Edit", "name": "Frame Selected", "context": "editor", "chords": ["F"]},
+                               {"id": "sceneView.frameAll", "group": "Scene View", "name": "Frame All", "context": "scene_view", "chords": ["Home", "Alt+F"]},
+                               {"id": "curve.frame", "group": "Curve", "name": "Frame Curve", "context": "curve", "chords": ["F"]}]})},
+            {"tool": "set_shortcut", "args": {"id": "curve.frame"}, "result": ok(
+                "curve.frame is now J.", {"id": "curve.frame", "chords": ["J"]})},
+            # the engine source has the curve type, not the editor's windows
+            {"tool": "search_engine_source", "result": ok(
+                "2 match(es).\nmath/Curve.h:24: class Curve {\nmath/Curve.cpp:18: float Curve::evaluate(float time) const {",
+                {"count": 2, "matches": [{"line": 24, "path": "math/Curve.h", "text": "class Curve {"},
+                                         {"line": 18, "path": "math/Curve.cpp", "text": "float Curve::evaluate(float time) const {"}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_shortcut", "args": {"id": "curve.frame"}}],
+                   "must_not_call": [{"tool": "set_shortcut", "args": {"id": "edit.frameSelected"}}],
+                   "max_calls": {"set_shortcut": 1}},
+        "max_turns": 8,
     },
     {
         "id": "guard_placeholder_art_path",
@@ -799,5 +843,46 @@ CASES = [
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_import_reports_a_leftover",
+        "kind": "guard",
+        "what_happened": "A crashed older editor left a staging folder without an owner marker beside the import. It may hold the "
+                         "user's files: the agent tells the user and removes nothing unasked.",
+        "text_at_issue": "EditorToolsTools.cpp import_project: leftovers and next in the result",
+        "source": "docs/specs/S66-crash-leftovers.md R3",
+        "prompt": "Import the game project from /home/me/Downloads/Game.zip into /home/me/Games with the editor and open it.",
+        "mocks": [
+            {"tool": "import_project", "result": dict(ok("Imported /home/me/Games/Game and opened it. Kept as leftover(s): "
+                                                         "/home/me/Games/Old.importing.", LEFTOVER_IMPORT), real=True)},
+        ],
+        "checks": {"calls": [{"tool": "import_project", "args": {"source": "re:Game\\.zip"}}],
+                   "must_not_call": [{"tool": "clear_project_leftovers", "args": {"remove": "*"}}],
+                   "shell_must_not": [r"\brm\b.*importing"], "reply_must": [r"Old\.importing"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_leftover_removed_with_the_shell",
+        "kind": "bad",
+        "what_happened": "The import reported a leftover and the user says to remove it. The shell can delete a folder a running "
+                         "editor is copying into; the tool the result names refuses that one, but sits in a group that is not listed.",
+        "text_at_issue": "EditorToolsTools.cpp import_project: next in the result; clear_project_leftovers: name and description",
+        "source": "docs/specs/S66-crash-leftovers.md R2, R3",
+        "history": [
+            {"user": "Import the game project from /home/me/Downloads/Game.zip into /home/me/Games with the editor and open it."},
+            {"assistant": "Importing it.", "calls": [{"tool": "import_project",
+                "args": {"source": "/home/me/Downloads/Game.zip", "path": "/home/me/Games"}, "result": json.dumps(LEFTOVER_IMPORT)}]},
+            {"assistant": "Imported to /home/me/Games/Game and opened it. A leftover folder, /home/me/Games/Old.importing, was kept "
+                          "because it may hold your files. Should it go?"},
+        ],
+        "prompt": "I looked in Old.importing, there's nothing of mine in it. Remove it.",
+        "mocks": [
+            {"tool": "clear_project_leftovers", "args": {"remove": ["re:Old\\.importing"]}, "result": ok(
+                "1 staging folder(s) removed, 0 leftover(s) kept, 0 in use by a running editor.",
+                {"removed": ["/home/me/Games/Old.importing"], "leftovers": [], "in_use": [], "failed": []})},
+        ],
+        "checks": {"calls": [{"tool": "clear_project_leftovers", "args": {"remove": ["re:Old\\.importing"]}}],
+                   "shell_must_not": [r"\brm\b.*importing"]},
+        "max_turns": 10,
     },
 ]

@@ -405,6 +405,7 @@ namespace jasperengine::editor{
         uint64_t scriptCommandsRevision = 0;
         PlatformMenuModel lastMenuModel;
         void registerCommands();
+        void registerPanelClaims();
         void syncScriptCommands();
         ShortcutState shortcutState() const;
         void processShortcuts();
@@ -535,6 +536,8 @@ namespace jasperengine::editor{
         // the Project Hub on a page (File > New Project..., Project Hub..., Open Project...)
         void openProjectHub(ProjectHubWindow::Page page);
         bool isProjectHubOpen() const { return projectHub.isOpen(); }
+        // the hub's list of leftover staging folders changed outside it (MCP)
+        void refreshHubLeftovers() { projectHub.startSweep(true); }
         // a project from a template (the Hub's Create, MCP create_project template=...): false
         // with `error` when it cannot start; the project opens once the copy is done
         bool createProjectFromTemplate(const std::string& templateId, const std::string& name, const std::filesystem::path& dir,
