@@ -304,9 +304,7 @@ New surface, none of it in core:
 - **D2. Interpreter, not a second node set.** Writing each node in C++ would double the library and
   drift. A software rasterizer shipped everywhere is large and still needs a context. Running the
   same SPIR-V keeps one definition per node. The price is speed, which only tier 3 pays.
-- **D3. Interpreting SPIR-V gives us a reference.** Windows and macOS CI run CPU suites only
-  (`docs/testing.md:513-515`). Tier 3 gives the evaluator and every node test coverage there, where
-  no GPU suite runs.
+- **D3. Interpreting SPIR-V gives us a reference.** There is no CI, and only Linux builds on our hosts. The CPU tier needs no context, so the evaluator and every node test can run anywhere the unit tests run, including a Windows or macOS machine with `--gtest_filter=-*Gpu*`.
 - **D4. A tier is a property of the process.** A running editor cannot change its renderer, so a
   hardware failure in a live editor drops to tier 3, not tier 2. Tier 2 is reached by starting on a
   software renderer, which R39 does on Linux.
@@ -336,9 +334,7 @@ namespace jasperengine::editor::procmat {
 
 **Budget** (characters, drafted in the design study; `tool_budget.py` replaces them):
 `preview_procedural_material` about 1,350, `bake_procedural_material` about 930, graph tool
-extensions +514. Core +0. Guide: one line, paid for by moving the 87-byte async-shader sentence out
-of the Shaders digest in the same change, because the guide has about 110 bytes free. Coordinate
-with S35, which wants the same bytes.
+extensions +514. Core +0. Guide: at most one line in its "Other areas" index, under the 8,192-byte limit, with a case in `tools/mcp/eval/cases.py`; detail lives in `docs/mcp/guide/procedural-materials.md`.
 
 ## 7. Acceptance criteria
 

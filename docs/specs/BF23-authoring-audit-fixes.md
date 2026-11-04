@@ -163,8 +163,7 @@ Priority: **P1** wrong behaviour users or agents hit, **P2** real but narrow, **
 
 ### D. Docs
 
-- **F25 (P2). "GL 3.3 core" is wrong.** `CLAUDE.md:5`, `.claude/rules/rendering.md:11` and
-  `docs/specs/README.md:17` say 3.3. The code targets GLSL 410 (`ShaderBuildTypes.h:59`,
+- **F25 (P2). "GL 3.3 core" is wrong.** `AGENTS.md` (Invariants), `.claude/rules/rendering.md` and `docs/specs/README.md` say 3.3. The code targets GLSL 410 (`ShaderBuildTypes.h:59`,
   `ShaderPool.cpp:31`) and refuses to start below a 4.1 context (`BackendLinux.cpp:2633`,
   `BackendWin.cpp:753`).
   - **Fix:** say GL 4.1 core, then run `tools/check_agent_docs.py`.
@@ -187,8 +186,8 @@ These are real, but each needs money, a device or a decision. BF23 records them 
 
 | Gap | Evidence | What it would take |
 |---|---|---|
-| No native compile check for generated HLSL and MSL | No `fxc`, `dxc` or `metal` step in `.github/workflows/ci.yml` | A CI step on the Windows and macOS jobs, which bill at 2x and 10x |
-| Windows and macOS CI run no GPU suites | `ci.yml:666,668` (`-*Gpu*`) | A self-hosted runner, or accepting it |
+| No native compile check for generated HLSL and MSL | There is no CI, and `tools/check-changed` has no `fxc`, `dxc` or `metal` step | A check someone runs on a Windows and a macOS machine |
+| Nothing runs on Windows or macOS unless a person does: there is no CI | `AGENTS.md`, "There is no CI" | A machine for each, or accepting it |
 | Particle goldens run on glcore and Vulkan only | `S20:638-639` | Devices for Metal, D3D11 and GLES3 |
 | Mobile particle performance rows are unmeasured | `docs/perf/particles.md:129-136` | A person with reference phones |
 | S20's "Web: est. X ms" hint was never built | `S20:573`, no match in `InspectorParticles.cpp` | Delivered by S54's `cost` table |
