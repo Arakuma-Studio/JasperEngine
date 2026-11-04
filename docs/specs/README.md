@@ -107,3 +107,6 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S38 | Loudness: `AudioMeter` (LUFS, true peak), true-peak lookahead `limiter`, new-project mixer and audio defaults | 4A (sound; M1 first) |
 | S39 | Music system: tracks and playlists, tempo, bars and beats, quantized transitions with snapshots, stingers, tempo detection | 4B (sound; spec-first) |
 | S40 | Timeline audio: audio cues on animation clips for the Animation Player, Animator and montages | 4B (sound; spec-first) |
+| BF23 | Fixes from the authoring audit: sub-emitter drawing, silent agent failures in the graph and particle tools, Animator window bugs, doc drift; lands before S41 and S42 | Authoring (fixes first) |
+| S41 | Procedural Material: `.procmat` node graphs baked in the editor to 8-bit textures and a `.material`, evaluated on GPU, then software renderer, then a CPU SPIR-V interpreter; node library ported as data from Material Maker behind a licence deny-list | Authoring (spec-first) |
+| S42 | Effect authoring on S20: Particle Effect window, timing bars, `preview_particle_effect` filmstrip and checks, sub-emitter drawing, distortion, ring renderer, triggers, dynamic parameters, sprite-sheet bake; ideas only from Effekseer | Authoring (spec-first) |

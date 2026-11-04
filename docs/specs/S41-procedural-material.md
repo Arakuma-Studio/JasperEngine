@@ -1,0 +1,412 @@
+# S41 — Procedural Material: node graphs baked in the editor to textures and a material
+
+**Wave / Depends on.** Authoring wave (spec-first). Depends on S23's graph model
+(`engine/core/graph`), S04 (GUIDs), S05 (hot reload), S14 (texture cooks) and S24 (undo), all on
+`main`, and on **BF23**, which fixes the graph tools first. Independent of S42. Owner area:
+`editor/procmat/` (new), `editor/window/widget/GraphCanvas.*`,
+`editor/window/ProceduralMaterialWindow.*` (new), `editor/mcp/tools/ProceduralMaterialTools.cpp`
+(new), `docs/mcp/guide/procedural-materials.md` (new).
+
+**Basis of this spec.** The current state below comes from reading the code at `b4f7816ea`. Nothing
+was built or run. Effort figures, timings and thresholds are estimates or defaults until M0 measures
+them.
+
+## 1. Goal
+
+A user or an agent builds a material from a graph of procedural nodes, sees every step live, and
+bakes it to ordinary PNGs and an ordinary `.material`. A game never knows a graph existed: nothing
+new ships, and a baked material runs on all five backends and six targets through S14.
+
+The node library is ported as data from Material Maker (MIT). Its Godot host, its compute pipeline
+and its export system are not. Evaluation runs on the best device available, in a fixed order: the
+GPU, then a software renderer, then the CPU. All three run the same generated shader, so no node is
+written twice.
+
+A human and an agent see the same evidence: one implementation per contact sheet and per check.
+
+## 2. Scope
+
+**In scope**
+
+- `.procmat` asset, a new S23 graph kind, with a version and migrations.
+- The evaluation pipeline with its three device tiers, including a SPIR-V interpreter for the CPU
+  tier.
+- A bake that writes 8-bit PNGs and a `.material` as one undo step, with staleness tracking.
+- The ported node library, behind a licence deny-list.
+- `GraphCanvas` ports, wires and thumbnails; the Procedural Material window.
+- MCP tools, a `check` CLI flag, a bake CLI subcommand, docs.
+
+**Out of scope**
+
+- **Live generated shaders (a Shader Graph).** A later spec. The name "Shader Graph" stays reserved
+  for it, which is why this feature is not called that. `S11:40` excludes OpenEngine's shader graph,
+  and this spec does not change that: a bake adds no shader to any game.
+- **16-bit or float output.** 8-bit only in this spec (decided by the owner).
+- **Running a graph in a game.** No runtime evaluator, no Lua API: this is not runtime behaviour.
+- `.ptex` import, 3D painting, Mesh Map nodes, the website and sharing, and user-written GLSL nodes.
+- Vendoring a software rasterizer (§9, risk 1).
+
+**Do not copy from Material Maker**
+
+- `pipeline/*.gd`, `buffer_compute.tres`, `iterate_buffer_compute.tres`: compute code.
+- `custom` export scripts, `process_option_*`, the `$(expr:...)` evaluator, `website:` loading.
+  These execute or fetch from data files.
+- The deny-listed nodes in R18. Licences live in comments inside data files, so a folder-level MIT
+  check would pass and be wrong.
+- Non-code assets: HDRIs, meshes, fonts, splash screens.
+
+The do-not-copy list in `docs/specs/README.md` is respected: `GraphCanvas` is our own, and no
+OpenEngine canvas, toolkit or `SurfaceOutput` adapter is taken. `S21` D14 rejected imnodes and
+imgui-node-editor; this spec keeps that.
+
+## 3. Current state
+
+- **Graph model.** `engine/core/graph` has typed ports, JSON, validation, invertible ops and
+  migrations. MCP has `list_graph_kinds` to `edit_graph`
+  (`editor/mcp/tools/GraphTools.cpp:230-272`). The only registered kind is a test one
+  (`GraphTools.cpp:36`). `S23:50-51` names shader and VFX graphs as intended uses.
+- **Canvas.** `editor/window/widget/GraphCanvas.{h,cpp}` (448 lines), used only by the Animator. It
+  has pan, zoom, grid, box select and straight arrows. It has no ports, no curved wires and no node
+  images.
+- **Texture asset path.** Texture Synthesis and Sprite Normals already write a PNG with a `jasper.*`
+  recipe chunk as one undo step, with a session class, window, MCP tool and CLI. The chunks are
+  stripped at export (`Exporter.cpp:2882-2885`). `SynthesisSession.h`, `VatBakeSession.h`,
+  `SpriteNormalsWatcher.h` and `Project::writeMaterialFile` are the patterns to follow.
+- **Offscreen passes.** There is no helper, but the parts exist: a vertexless fullscreen pass
+  (`RenderSystem.cpp:2941-3060`) and a synchronous read back (`GraphicUtils`, RGBA8 or R8 only).
+- **Editor backends.** GL 4.1 core, Vulkan or Metal only (`CMakeLists.txt:88-98`). D3D11 and GLES3
+  are never live in the editor, so a bake never needs them.
+- **No GPU today.** With no GL 4.1 context the editor prints an error and exits
+  (`BackendLinux.cpp:2633`, `BackendWin.cpp:753`). Vulkan prefers a non-CPU device and accepts a CPU
+  one (`RendererVulkan.cpp:203`). `--headless` on Linux runs on Xvfb with `LIBGL_ALWAYS_SOFTWARE=1`
+  (`McpLaunch.cpp:285-299`). Windows and macOS have no software path. `SystemRender::getDeviceName`
+  names the device.
+- **Shader compiler.** glslang and SPIRV-Cross run in-process
+  (`ShaderVariantCompiler.cpp:1293-1316`). `compile_to_spirv` returns `std::vector<uint32_t>`. The
+  `shaders` CLI subcommand runs before the backend starts (`editor/main.cpp:47-53`), so compiling
+  needs no window.
+- **Agent traps in the graph tools.** Listed and fixed in BF23 (F5 to F12).
+
+## 4. Reference: Material Maker at `7d6daae`
+
+Clone it to a scratch directory and treat it as untrusted: read it, never run it.
+
+- **Take as data:** `addons/material_maker/nodes/*.mmg` (GLSL and metadata),
+  `shader_functions.tres`, `io_types.mmt`, and `material_maker/library/base.json` with
+  `aliases.json` for categories and search.
+- **Use as a behaviour reference only:** `engine/nodes/gen_shader.gd` (macro expansion),
+  `gen_base.gd:362-390` (uniform-only edits and the 0.2 s rebuild debounce), `gen_buffer.gd`,
+  `gen_iterate_buffer.gd`.
+- **Library shape, by count of the JSON:** 328 entries: 285 single pass, 31 Buffer, 6 Iterate
+  Buffer, 6 host-dependent. None of the 399 `.mmg` files contains a compute construct, and none uses
+  `dFdx`, `dFdy` or `fwidth`. One uses `discard`. Only the host's compute pipeline needs compute.
+- **What it gets wrong, on purpose not copied:** no format version; nodes bound by name; a
+  text-level code generator; a manual Buffer workflow; export scripts that evaluate data; float
+  parameters inlined into GLSL unchecked; a CLI that exits 0 on failure.
+
+Its random functions are float hashes (`fract(cos(mod(dot(x, ...), 3.14)) * 43758.5)`,
+`shader_functions.tres:12`). These vary across devices, which R10 must fix.
+
+## 5. Requirements
+
+### Functional: the asset
+
+- **R1.** `.procmat` is deterministic S23 graph JSON: kind id `procedural_material`, `kindVersion`
+  1, `AssetType::ProceduralMaterial = 24` with its GUID in the file. It is a new file type, so old
+  projects are unaffected.
+- **R2.** Nodes are referenced by a stable type id. A change to a node's output gives it a new
+  `typeVersion` with a kind migration that keeps the old behaviour selectable. A graph never changes
+  look silently because the library was updated.
+- **R3.** A file is data only. No field is executed or fetched. Parameter values are validated
+  against their declared type and range before reaching GLSL, and strings never do.
+- **R4.** `.procmat` files never ship: add them to the export skip list. Test it, because
+  `copyAssets` copies whatever it does not skip (`Exporter.cpp:2886`).
+
+### Functional: evaluation
+
+- **R5. Code generation.** A graph becomes one fragment shader per pass, not per node. A pass is the
+  upstream subgraph inlined, cut at a Buffer. Use a C++ expander with stable graph-local names and
+  Material Maker's macro semantics, resolving `global` functions by id rather than by exact text.
+- **R6. Automatic caching.** The generator inserts a Buffer when a pass would exceed the 16-texture
+  limit, the shader size limit (M0 sets it), or when one output is sampled repeatedly. Users never
+  need to place Buffers to manage performance.
+- **R7. Live edits.** Float, colour and same-size ramp edits update a uniform block with no rebuild.
+  Structural, enum and size edits rebuild after a 0.2 s debounce, and the previous image stays
+  visible marked as out of date until the new one is ready.
+- **R8. Device tiers.** A single interface, `ProceduralEvaluator`, with three implementations tried
+  in this order:
+
+  | Tier | Name in UI and results | Used when |
+  |---|---|---|
+  | 1 | `gpu` | The editor's context is on hardware |
+  | 2 | `software` | The editor's context is on a software renderer (llvmpipe, lavapipe, or any other detected) |
+  | 3 | `cpu` | No context exists, or a pass failed on the current device |
+
+  Detection uses the Vulkan `deviceType`, or a list of known software names against `GL_RENDERER`.
+  An unrecognised name counts as `gpu`.
+- **R9. Falling back.** If a pass fails to compile or read back on tier 1 or 2, evaluation of that
+  graph continues on tier 3 and reports a warning naming the failed pass, device and compiler log.
+  It never fails silently and never leaves stale pixels in the output.
+- **R10. The same noise on every tier.** The ported `rand` functions use an integer hash of
+  coordinates quantized to 1/65536, with no `sin`, `cos` or `fract` of a large float. A cross-tier
+  difference must be rounding, never a different pattern. Any node with its own float hash (four
+  today) is changed the same way or dropped.
+- **R11. The CPU tier is a SPIR-V interpreter.** `compile_to_spirv` turns the same generated source
+  into SPIR-V, and a new `SpirvInterpreter` (`editor/procmat/`) runs it per pixel on the S06 job
+  system's background lane. It covers the arithmetic, control flow and `GLSL.std.450` that the
+  library uses, with no derivatives. Samplers do bilinear, repeat and box-filtered mips, matching
+  the GPU tiers. An unsupported instruction is a reported error naming the node, found at load
+  rather than per pixel.
+- **R12. Intermediate precision.** Buffers are RGBA16F on tiers 1 and 2 (renderable on all editor
+  backends, `Render.h:387-392`). Tier 3 rounds to half precision when storing a Buffer, so
+  differences do not accumulate across passes. Final outputs are RGBA8 through a quantize pass,
+  because read back is RGBA8 only.
+- **R13. Same inputs, same output.** On one device and tier, the same graph, seed and size give the
+  same bytes. Across tiers, the difference stays within the tolerance in AC8. No claim of byte
+  equality across devices is made anywhere, in the UI or in tool output.
+
+### Functional: bake
+
+- **R14. Outputs.** Base Color (sRGB), Normal, ORM (occlusion, roughness, metallic in one PNG), and,
+  when connected, Emission and Height. 8-bit RGBA or R8. Square, power of two, 64 to 8192. Normals
+  are computed from the float height before quantizing, in the engine's convention
+  (`docs/textures.md`).
+- **R15. Writing.** One undo step (`writeOutputsUndoable`) writes the PNGs and the `.material`:
+  - Import settings are written explicitly in `.meta` rather than inferred, since an ORM in both
+    slots meets the occlusion inference rule (`docs/textures.md:66`).
+  - Each PNG holds a `jasper.procmat` recipe chunk: graph GUID, input hash, seed, size, tier and
+    device.
+  - A re-bake updates only the slots and factors it owns. Other edits to the `.material` survive.
+
+  Default output: a sibling folder named after the graph. Baked PNGs are committed like any texture.
+- **R16. Staleness.** The hash covers the graph, resolved node sources, and input image GUIDs and
+  content. It excludes tier and device, so a CPU bake is not stale against a GPU bake. A stale bake
+  shows a badge and an Inspector line, and `check` reports it. Nothing re-bakes automatically.
+
+### Functional: node library
+
+- **R17. Import tool.** `tools/procmat/import_mm_nodes.py` runs once, by a developer, on a scratch
+  clone, with `python3 -I`. It writes our own descriptors to `editor/procmat/nodes/`, tolerating the
+  trailing commas in `smooth_curvature2.mmg` and `io_types.mmt`. It fails on any attribution comment
+  it does not recognise.
+- **R18. Deny-list, never imported as they stand.** `skewed_bricks` and `skewed_uneven_bricks` (CC
+  BY-SA: rewrite `get_line_intersection` from scratch and they may return), `shard_fbm`,
+  `voronoi_triangle`, `splines`, `hbao`, `sdf3d_fbm`, `sdf3d_fbm2` (no stated licence).
+  `pentagram.ptex` must not be a test file.
+- **R19. Notices.** The 26 nodes under their own MIT or BSD-2 notices keep them in the descriptor
+  and get entries in `NOTICE.md`, as does the library as a whole.
+- **R20. What ships.** Single-pass nodes and Buffer and Iterate Buffer graphs, excluding the 3D
+  category, that pass M0's compile sweep and a per-node image test on all tiers. A node that fails
+  is left out and listed in the Deviations section, not patched around.
+
+### Platform and backends
+
+- **R21.** Evaluation runs only in the editor, on its GL, Vulkan or Metal context and on tier 3. No
+  engine or runtime code changes. No compute, SSBO, bindless, indirect draw or 64-bit atomic is
+  used, even in the editor, which keeps a future runtime path open.
+- **R22.** A player build's size and frame cost are unchanged. The evaluator and interpreter are
+  editor-only targets.
+
+### Performance (defaults; M0 replaces them with measurements)
+
+- **R23.** Slider drag on tier 1: the frame cost stays under 16 ms on the reference GPU, for a
+  30-node graph with 256² previews.
+- **R24.** Thumbnails: at most one node re-rendered per frame, one shared quad scene, an LRU of 128²
+  framebuffers. No `MaterialRender` per node: the sokol pools are 2048.
+  - Tier 2: thumbnails render for the selected node and the outputs only.
+  - Tier 3: only on selection, as a cancellable job.
+- **R25.** A 1024² bake of a 30-node graph: under 2 s on tier 1, under 60 s on tier 2, under 5 min
+  on tier 3 on 8 cores. Over 1 s is a job with progress and cancel; a cancelled bake writes nothing.
+
+### Editor UX (human)
+
+Window name **Procedural Material**. Double-clicking a `.procmat` opens it. Create it from **Assets
+> Create > Procedural Material**. Add the row to `docs/unity-glossary.md`.
+
+- **R26. Graph interaction.**
+  - Ports and curved wires, coloured by type.
+  - Dropping a wire on empty canvas opens search filtered to compatible nodes, auto-connects, and
+    places the new port under the cursor.
+  - Ranked search with aliases, and enum values as entries (`SearchScorer`).
+  - A thumbnail and a cost in ms on every node. Zooming out fades controls and keeps the thumbnails.
+  - Parameters are edited in the Inspector through `colorField`, `curveField` and `gradientField`,
+    never in modal dialogs. Procedural ramps can have up to 32 keys, while the particle limit of 8
+    stays.
+  - Esc cancels any drag and adds no undo step. No overloaded mouse chords.
+  - Copy and paste nodes and values as JSON text.
+- **R27. Preview pane.**
+  - Follows the selection, with Pin output and two slots. Shows a lit ball (`MaterialRender`), a 2×2
+    tile and one image per output.
+  - A Problems strip with the same rows as the agent's checks. Clicking selects the node, and Fix
+    applies `fix_hint` when it is a single edit.
+  - Seed field with lock and reroll, plus Variations: a grid of 9 seeds, click to adopt.
+  - The tier and device always show. On tiers 2 and 3 the Bake button shows an estimated time, and
+    the window says why: "No GPU available, baking on the CPU."
+  - Exposed Properties and Presets for values a user changes often.
+
+### Agent UX (MCP, CLI)
+
+BF23 delivers the graph tool fixes this feature relies on: strict parameters and did-you-mean (F5,
+F9), new ids from `edit_graph` (F6), defaults with a supplied id (F7), edge ids on load (F8),
+tracked and text graph extensions (F11), and the after-change hook (F12). On top of them:
+
+- **R28.** The `procedural_material` kind sets `strictParams`.
+- **R29.** `.procmat` is the kind's `fileExtension`, so a direct file edit reports problems through
+  `external_changes`.
+- **R30.** Nodes with no position get an automatic layout when the graph opens, plus a `layout` op,
+  so a human opening an agent's graph never sees a pile.
+- **R31.** Symbolic ids such as `bricks` stay legal, with a test pinning it.
+
+New surface, none of it in core:
+
+- **R32. Groups.** New group `graphs` holds the five graph tools, moved from `scripting`. Hidden
+  tools stay callable, so no client breaks. New group `materials` holds the two tools below.
+- **R33. Catalog.** `list_graph_node_types` gains `category`, `search`, `ids` and `detail`. Its
+  default reply is one signature line per node: `stones(scale=8[1..64] variation=.5[0..1] seed:int)
+  -> height:gray mask:gray`. An unfiltered large kind returns categories and counts only.
+- **R34. `preview_procedural_material`** (read-only unless `save_path`). Takes `path` (`.procmat`,
+  `.material` or an image), or `entity` and `submesh`; `sheet`, `size`, `seed`, `checks`, `fail_on`,
+  `reference`, `save_path`, `wait`, `timeout_seconds`. Returns a contact sheet, metrics and checks.
+  `sheet: []` means metrics only. It always returns `device: {tier, name}`.
+- **R35. `bake_procedural_material`.** Takes `path`, `output`, `size`, `seed`, `outputs`, `fail_on`,
+  `overwrite`, `wait`, `timeout_seconds`. Refuses while the graph has errors, and returns the undo
+  id and the device.
+- **R36. Metrics and checks.** Use S35's row shape (`id, kind, status, measured, threshold,
+  threshold_source, limited_by, at[], fix_hint, method`) and its anti-gaming rules: changed
+  thresholds are reported, and thresholds are project settings rather than tool parameters. Blocks:
+  `tileability` (fail above seam 1.5, as in `synthesize_texture`), `repetition`, `histogram`,
+  `base_color`, `normal`, `roughness`, `metallic`, `cost`. New check `height_8bit`: warns when a
+  height output drives parallax, because steps will show.
+- **R37. Reference comparison** is advisory and has no status: `palette`, `spectrum`, `edges`, from
+  a local file the agent names.
+- **R38. Never a stale sheet.** A sheet waits on `MaterialRender::isPending`, and past the wait
+  bound it fails with an error. The thumbnail path's give-up-and-save (`ProjectWindow.cpp:604-617`)
+  must not be reused.
+- **R39. CLI.**
+  - `jasperengine-editor check --materials` reports stale bakes and graph problems, in compiler
+    style.
+  - `jasperengine-editor procedural-material bake <file>` first tries a one-shot editor (tier 1, or
+    tier 2 through `--headless` on Linux) and, if none can start, evaluates in-process on tier 3
+    with no window. It exits non-zero on any failure and on unknown flags.
+
+### Data and compatibility
+
+- **R40.** `kindVersion` migrations go through `GraphRegistry` from the first version. Unknown keys
+  are preserved at file level, as S23 specifies.
+- **R41.** Recipes and metadata use existing fields. No change to `.material` format.
+
+## 6. Design constraints and decisions
+
+- **D1. Bake first.** Rejected for now: a runtime generated shader, which needs a surface hook in
+  `pbr.glsl`, a depth fork for displacement, and a graph evaluated per pixel on phones. Rejected
+  outright: a compiler in games, which costs 1.42 MB and draws nothing until compiled. The emitter
+  in R5 is written so a later Shader Graph can reuse it.
+- **D2. Interpreter, not a second node set.** Writing each node in C++ would double the library and
+  drift. A software rasterizer shipped everywhere is large and still needs a context. Running the
+  same SPIR-V keeps one definition per node. The price is speed, which only tier 3 pays.
+- **D3. Interpreting SPIR-V gives us a reference.** Windows and macOS CI run CPU suites only
+  (`docs/testing.md:513-515`). Tier 3 gives the evaluator and every node test coverage there, where
+  no GPU suite runs.
+- **D4. A tier is a property of the process.** A running editor cannot change its renderer, so a
+  hardware failure in a live editor drops to tier 3, not tier 2. Tier 2 is reached by starting on a
+  software renderer, which R39 does on Linux.
+- **D5. A graph is authored from one text format.** No DSL: the JSON stays, and BF23 with R30 removes what makes writing it by hand painful. No per-node tools.
+- **D6. Two tools rather than one with a flag,** because annotations must be accurate: a read-only
+  preview works in read-only HTTP mode (`conventions.md:84-85`).
+- **D7. Reuse over new widgets:** `GraphCanvas` is extended, `AnimatorAssetDocument` is the model
+  for `GraphDocument`, and the Animator's Problems strip is the pattern for R27.
+
+```cpp
+namespace jasperengine::editor::procmat {
+    enum class EvaluatorTier : uint8_t { Gpu, Software, Cpu };
+
+    class ProceduralEvaluator {
+    public:
+        virtual ~ProceduralEvaluator() = default;
+        virtual EvaluatorTier tier() const = 0;
+        virtual std::string deviceName() const = 0;
+        virtual bool prepare(const PassPlan& plan, std::string& error) = 0;
+        virtual void setUniforms(uint32_t pass, const UniformBlock& block) = 0;
+        // false when more work remains; a slice stays within budgetMs
+        virtual bool advance(double budgetMs, EvaluationResult& result) = 0;
+        virtual void cancel() = 0;
+    };
+}
+```
+
+**Budget** (characters, drafted in the design study; `tool_budget.py` replaces them):
+`preview_procedural_material` about 1,350, `bake_procedural_material` about 930, graph tool
+extensions +514. Core +0. Guide: one line, paid for by moving the 87-byte async-shader sentence out
+of the Shaders digest in the same change, because the guide has about 110 bytes free. Coordinate
+with S35, which wants the same bytes.
+
+## 7. Acceptance criteria
+
+| AC | Check | Verified by |
+|---|---|---|
+| AC1 | A `.procmat` round-trips byte-identically and migrates from a synthetic older `kindVersion` | `GraphProcMatTest` |
+| AC2 | A `.procmat` under `assets/` is absent from an exported game, and baked PNGs have no `jasper.*` chunk there | MCP export test, with red control |
+| AC3 | A float edit causes no rebuild; an enum edit causes exactly one after the debounce | Unit test counting `prepare` calls |
+| AC4 | A hardware device reports `gpu`; llvmpipe and lavapipe report `software`; an injected compile failure falls back to `cpu` with a warning naming the pass | Editor test plus MCP test on `--headless` and the RTX lane |
+| AC5 | The bake CLI succeeds on tier 3 with no `DISPLAY` and no Xvfb on `PATH`, and exits non-zero on a bad graph and on an unknown flag | MCP harness shell test |
+| AC6 | Same graph, seed, size and tier: identical bytes across two runs | Unit test per tier |
+| AC7 | `SpirvInterpreter` matches an independent Python oracle on an instruction test set | `SpirvInterpreterTest` |
+| AC8 | Tiers differ by at most 2/255 mean and 4/255 at p99, per output, per node in the shipped library (defaults; M0 confirms) | `ProcMatCrossTierTest`, with a red control using the old float hash |
+| AC9 | A bake is one undo step, and undo removes every file. Re-baking keeps a hand-edited field in the `.material` | `test_procedural_material.py` |
+| AC10 | Editing an input image marks the bake stale; a tier change alone does not | Unit test |
+| AC11 | The import tool fails on an unrecognised attribution comment, and no deny-listed node appears in the output | `test_import_mm_nodes.py` |
+| AC12 | A misspelled parameter returns an error with did-you-mean, new ids come back from `edit_graph`, and a positionless graph opens laid out | `test_graph.py` |
+| AC13 | `materials` and `graphs` are hidden until `tool_groups` enables them, tested with `ed.tools(groups=None)` | `test_procedural_material.py` |
+| AC14 | Past its wait bound a preview returns an error, never an image of the previous material | MCP test with a forced slow compile |
+| AC15 | The window: wire-drop search, Esc cancel, Fix, Variations and the tier line, with real input | `test_procedural_material_window.py` (`ui_probe`), and screenshots from an isolated editor |
+| AC16 | A baked material renders on glcore and Vulkan goldens, and goes through S14 cooks for web and Android | Golden test, `tools/smoke-test.sh` |
+| AC17 | R23 to R25 hold, or the measured numbers replace them here | Bench recorded in `docs/perf/procedural-material.md` |
+| AC18 | Player size and frame cost are unchanged | S34 size check |
+
+## 8. Dependencies and conflicts
+
+- **Merge hotspots:** `AssetType.h`, `AssetTypes.cpp`, `ProjectWindow.cpp`, `App.cpp`,
+  `McpToolGroups.cpp`, `tools/mcp/budget.json`, the agent guide.
+- **S35** shares the check row shape and the guide bytes. Put the row in `editor/util/QaChecks` and
+  let the second to land adopt it.
+- **S42** shares only `QaChecks`, and does not touch `GraphCanvas`. Either can go first.
+- **S11's** exclusion of a shader graph stands. **S23's** group table and S31's recorded groups
+  change with R32.
+
+## 9. Risks and defaults
+
+1. **No software tier on Windows or macOS.** Default: detect one if the system provides it, and go
+   straight to tier 3 otherwise. Shipping Mesa or SwiftShader adds tens of MB for a rare case, so it
+   stays out unless asked for.
+2. **A hardware failure in a live editor skips tier 2** (D4). Default: accept it. Spawning a child
+   editor is possible on Linux only.
+3. **Tier 3 could be too slow.** Default: M0 measures it, and the plan stands if a 1024² bake is
+   minutes rather than hours. It is a fallback, and the UI says so.
+4. **The library may compile less widely than expected.** Only GLSL 450 and Godot's language are
+   proven upstream. Default: ship what passes (R20), and M0 gives the real count.
+5. **Tile checks can be gamed,** and a metric cannot judge taste. Default: S35's rules plus
+   `look_at`, handing the call to a human.
+6. **8-bit height shows steps under parallax.** Default: `height_8bit` warns. 16-bit needs per-API
+   read back and is a later change. The `RED16` format cannot be sampled on GLES3 or WebGL2 anyway
+   (`S11:718-720`).
+7. **Shader size blowup from repeated sampling.** Default: R6 cuts passes.
+
+## Milestones
+
+Effort in person-weeks, estimates at ±50%.
+
+- **M0 (about 1).** Spike. Compile every single-pass node through `shadercompiler` for GLSL 410,
+  SPIR-V and MSL, and count failures. Prototype the interpreter on three nodes and measure. Measure
+  cold compile and 2048² bake time. Replace the defaults in R23 to R25 and AC8. **Decides whether
+  the plan stands.**
+- **M1 (under 1).** BF23 merged. Group move R32, R28 to R31.
+- **M2 (4–6).** `GraphCanvas` ports, wires and thumbnails, `GraphDocument`, `GraphEditorWindow`,
+  node search and Inspector (R26).
+- **M3 (3–4).** Kind, generator, GPU evaluator, node import, R1 to R7, R10, R12, R17 to R20.
+- **M4 (3–5).** Bake, staleness, preview tools, metrics, Problems strip, R14 to R16, R27, R33 to
+  R38.
+- **M5 (3–5).** `SpirvInterpreter`, tier selection and fallback, bake CLI, R8, R9, R11, R39, AC4 to
+  AC8.
+- **M6 (about 1).** Budgets, docs, guide, final gate. AC17, AC18.
+
+## Deviations
