@@ -94,6 +94,7 @@ namespace jasperengine::editor{
         uint64_t linkSource = 0;
         // gestures
         bool draggingNodes = false;
+        uint64_t collapseTo = 0;        // a plain press on a selected node: the only one if no drag follows
         ImVec2 dragStartMouse;
         std::vector<std::pair<uint64_t, ImVec2>> dragStart;
         std::vector<uint64_t> selectionAtPress;     // what Esc gives back

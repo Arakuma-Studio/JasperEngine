@@ -193,6 +193,8 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
                 for (Node& n : nodes) n.selected = false;
                 for (Link& l : links) l.selected = false;
                 node->selected = true;
+            }else{
+                collapseTo = node->id;
             }
             result.selectionChanged = true;
             draggingNodes = true;
@@ -228,6 +230,7 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
             }
             draggingNodes = false;
             boxSelecting = false;
+            collapseTo = 0;
             result.cancelled = true;
             result.selectionChanged = true;
         }
@@ -258,7 +261,11 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
                 for (const auto& start : dragStart){
                     for (const Node& n : nodes) if (n.id == start.first) result.moved.push_back({n.id, n.position});
                 }
+            }else if (collapseTo != 0 && dragStart.size() > 1){
+                for (Node& n : nodes) n.selected = n.id == collapseTo;
+                result.selectionChanged = true;
             }
+            collapseTo = 0;
         }
     }
     if (boxSelecting){

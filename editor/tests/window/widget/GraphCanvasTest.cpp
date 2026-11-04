@@ -130,6 +130,22 @@ TEST(GraphCanvas, EscEndsABoxSelect) {
     EXPECT_FALSE(rig.nodes[1].selected);
 }
 
+// BF23 F18: a plain click on a member of a multi-selection leaves that one; its drag moves them all
+TEST(GraphCanvas, APlainClickOnASelectedNodeCollapsesTheSelection) {
+    Rig rig;
+    rig.nodes[0].selected = true;
+    rig.nodes[1].selected = true;
+    const ImVec2 at = rig.centre(1);
+    rig.moveTo(at);
+    rig.frame();
+    const GraphCanvas::Result pressed = rig.press();
+    EXPECT_EQ(pressed.selectedNodes.size(), 2u) << "still both at the press: a drag would move them";
+    const GraphCanvas::Result released = rig.release();
+    EXPECT_TRUE(released.selectionChanged);
+    EXPECT_FALSE(rig.nodes[0].selected);
+    EXPECT_TRUE(rig.nodes[1].selected);
+}
+
 // the gesture still ends normally without Esc
 TEST(GraphCanvas, ADragWithoutEscReportsItsMove) {
     Rig rig;
