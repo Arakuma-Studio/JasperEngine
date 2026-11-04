@@ -1,6 +1,6 @@
 """Tests of tools/check-changed (tools/check_changed.py) and its coverage map (tools/mcp/coverage_map.py).
 
-    python3 -I tools/test_check_changed.py        # stdlib only: on a build server, or in the image
+    python3 -I tools/test_check_changed.py        # stdlib only
 
 On scratch git repositories and synthetic inputs: the diff (committed, staged, unstaged, untracked,
 deleted; the base and its fallbacks; rb.sh's diff and a stale one), the build plan, the unit test
