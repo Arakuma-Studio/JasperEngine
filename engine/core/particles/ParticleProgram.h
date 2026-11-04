@@ -446,7 +446,6 @@ namespace jasperengine { namespace particles {
         bool sizeAffectsWidth = true;
         bool sizeAffectsLifetime = false;
         TrailTextureMode textureMode = TrailTextureMode::Stretch;
-        bool lightingData = false;
     };
 
     // ---------------------------------------------------------------- the program

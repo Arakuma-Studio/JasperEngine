@@ -1275,7 +1275,6 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             t.sizeAffectsWidth = tm.sizeAffectsWidth;
             t.sizeAffectsLifetime = tm.sizeAffectsLifetime;
             t.textureMode = tm.textureMode;
-            t.lightingData = tm.generateLightingData;
         }
     }
 }
