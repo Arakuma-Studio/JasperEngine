@@ -95,6 +95,11 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: S67: Android Vulkan is no longer offered. It could never have compiled: no sokol backend is set for it,
   and Android only creates an EGL context. Android uses GLES3. A real Android Vulkan backend is a separate feature (see Left).
 
+- 2026-11-04: S68 vs `dc/export-pipeline`: that spec's §6.1 and §7 rule 2 say the export walk does not follow links. S68 ships
+  linked folders, because that is what users expect and what the editor already reads. Whoever lands second makes `copyAssets`,
+  `copyLua` and `copyCustomShaderSources` follow links. `test_linked_folders_export.py` fails if they stop.
+- 2026-11-04: MCP eval: agents add cases but cannot run them. The integrator runs new cases at landing, on Orquester accounts.
+
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
@@ -109,3 +114,4 @@ Nothing yet.
 - 2026-11-04: Started 15 agents, each in its own worktree: the Mac check, S38 M1, S61-S73.
 - 2026-11-04: Merged origin/main (`e8142a81e`, lean MCP surface; someone else is pushing to origin, so fetch before every landing). B's jobs per slot cut from 8 to 4 (load was 28 on 12 cores).
 - 2026-11-04: User pointed to new remote changes. Merged origin/main `297562c95`: pixel art specs, Doriax catch-up specs, AGENTS.md rewrite, GitHub workflows removed. Renumbered this program to S61-S73. Told every agent.
+- 2026-11-04: S68's red run: 4 of its tests fail on the control editor as intended; one more was fixed so it does too (not yet rerun).
