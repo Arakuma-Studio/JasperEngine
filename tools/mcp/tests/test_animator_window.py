@@ -26,6 +26,8 @@ from pathlib import Path
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "pose-animation", "xvfb": "harness", "ui_probe": True}
+CI_EXCLUDED = ("long-running (about 5 minutes on a loaded server: the windows driven with real X input on the pose-animation rig); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 900
 
 CONTROLLER = "assets/anim/window.controller"
