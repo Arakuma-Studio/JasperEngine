@@ -261,6 +261,8 @@ namespace jasperengine::nav {
         float webBakeBudgetMs = 4.0f;
         // grid path requests solved per fixed tick
         int maxGridSolvesPerTick = 64;
+        // tile-cache builds a carving surface does per fixed tick (S53 R14); 0: Auto
+        int carveTilesPerTick = 0;
 
         NavigationSettings();
 
@@ -277,6 +279,8 @@ namespace jasperengine::nav {
         int nextAgentTypeId() const;
         // area by name ("Walkable", ...), -1 when none
         int findArea(const std::string& name) const;
+        // carveTilesPerTick, Auto resolved: 4 on desktop, 2 on Android, iOS and the web
+        int effectiveCarveTilesPerTick() const;
 
         // costs clamped to >= 1, names and fixed areas restored, at least one agent type,
         // positive sizes, unique ids

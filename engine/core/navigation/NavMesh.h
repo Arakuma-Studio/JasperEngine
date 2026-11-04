@@ -132,6 +132,37 @@ namespace jasperengine::nav {
         float bmax[3] = {0, 0, 0};
     };
 
+    // A carving obstacle (S53 R11), in nav space: Detour's cylinders and yaw-only boxes
+    struct NavObstacleDesc {
+        enum class Shape : uint8_t {
+            Cylinder,
+            Box
+        };
+        Shape shape = Shape::Box;
+        // cylinder: the centre of its base; box: its centre
+        Vector3 position;
+        float radius = 0.5f;
+        float height = 2.0f;
+        Vector3 halfExtents{0.5f, 0.5f, 0.5f};
+        float yRadians = 0.0f;
+    };
+
+    struct NavMeshCreateOptions {
+        // carving: the tiles built from the layers are queued and built by updateCarving (a bake
+        // landing in play, S53 R15) instead of all at once
+        bool deferCarvedBuilds = false;
+        // the carving obstacles the mesh may hold (Max Carving Obstacles); -1: the header's
+        int maxObstacles = -1;
+    };
+
+    // What one updateCarving may do (S53 R14): a count of tile builds, and a wall-clock ceiling
+    // that stops it after at least one build
+    struct NavCarveBudget {
+        int maxTileBuilds = 4;
+        // 0: no ceiling (tests, benchmarks)
+        double ceilingMs = 4.0;
+    };
+
     class JASPERENGINE_API NavMesh {
     public:
         NavMesh();
@@ -141,9 +172,14 @@ namespace jasperengine::nav {
 
         // Builds the runtime mesh from baked data. keepData keeps the records (the editor saves
         // them and rebakes incrementally); a game drops them once Detour has its copies.
-        bool create(NavMeshData data, bool keepData, std::string& error);
+        bool create(NavMeshData data, bool keepData, std::string& error, const NavMeshCreateOptions& options = {});
         void clear();
         bool isValid() const;
+        // no carved tile build is queued (deferred builds, S53 R15)
+        bool isComplete() const;
+        int getQueuedBuilds() const;
+        // changes on every create() and clear(): a new Detour mesh (crowds are made again, S53 R9)
+        uint64_t getGeneration() const;
 
         const NavMeshHeader& getHeader() const;
         // the baked records, when kept (create's keepData)
@@ -189,16 +225,35 @@ namespace jasperengine::nav {
         // the polygon height under a point (false off the mesh)
         bool getHeight(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents, float& height) const;
 
-        // ---- runtime carving (a carving surface; 0 when it is not, or the request queue is full)
-        uint32_t addCylinderObstacle(const Vector3& position, float radius, float height);
-        uint32_t addBoxObstacle(const Vector3& center, const Vector3& halfExtents, float yRadians);
-        bool removeObstacle(uint32_t obstacle);
-        // Processes obstacle requests and rebuilds touched tiles until upToDate or budgetMs is spent
-        bool updateCarving(double budgetMs, bool& upToDate, int& tilesRebuilt);
+        // ---- runtime carving (S53 R11-R17). The mesh owns its obstacles: ids are stable and never
+        // 0, requests queue and reach Detour's tile cache as it has room, so none is lost.
+        // 0 when the mesh does not carve, or holds its Max Carving Obstacles
+        uint32_t addObstacle(const NavObstacleDesc& desc);
+        void moveObstacle(uint32_t id, const NavObstacleDesc& desc);
+        void removeObstacle(uint32_t id);
+        // whether the id is one of this mesh's obstacles (an adoption keeps at most Max Carving Obstacles)
+        bool hasObstacle(uint32_t id) const;
+        // takes the obstacles of the mesh this one replaces (a full bake, a reload): same ids,
+        // queued as adds on this tile cache
+        void adoptObstacles(NavMesh& previous);
+        // the tile-cache layers the obstacle's bounds touch (Detour cuts at most 8)
+        int countTileLayers(const NavObstacleDesc& desc) const;
+        // Queued builds first, then obstacle requests and the tiles they touch, within the budget
+        bool updateCarving(const NavCarveBudget& budget, bool& upToDate, int& tilesRebuilt);
+        // the carved tile builds of replaceTiles and updateLink are queued for updateCarving (in
+        // play) instead of built at once; create() sets it from its options
+        void setDeferCarvedBuilds(bool defer);
+        // the obstacles Detour's tile cache holds (added, or being removed)
+        int getTileCacheObstacleCount() const;
+        // tile-cache builds that failed (each logged once per tile)
+        int getFailedCarveBuilds() const;
 
         // ---- links: moves the connections of a link to new endpoints (an auto-updating
         // NavMeshLink that moved). False when a start left its tile (the surface must be rebaked).
+        // A carving mesh created with deferCarvedBuilds queues the rebuilt tiles (S53 R15).
         bool updateLink(uint32_t userId, const std::vector<NavLinkInput>& connections, std::string& error);
+        // the connections of a link as the mesh holds them now (false: it holds none)
+        bool getLinkConnections(uint32_t userId, std::vector<NavLinkInput>& out) const;
 
         // ---- overlays: the tiles `visible` accepts (nav-space bounds), at most maxTriangles;
         // extras: DEBUG_ISLANDS, DEBUG_TILES (islands label the mesh when stale)

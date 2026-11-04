@@ -132,4 +132,100 @@ void MeshProcess::process(dtNavMeshCreateParams* params, unsigned char* polyArea
     }
 }
 
+namespace {
+
+    bool isHex(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
+    bool isWordChar(char c) {
+        return isHex(c) || (c >= 'g' && c <= 'z') || (c >= 'G' && c <= 'Z') || c == '_';
+    }
+
+    // A Recast message with its pointer values (%p: "0x55d0...", glibc's "(nil)", MSVC's 8 or 16
+    // upper-case digits) written as "?", so two bakes of the same input report the same text
+    std::string withoutPointers(const char* msg, int len) {
+        std::string out;
+        out.reserve((size_t)len);
+        int i = 0;
+        while (i < len) {
+            const bool wordStart = i == 0 || !isWordChar(msg[i - 1]);
+            if (wordStart && msg[i] == '0' && i + 2 < len && (msg[i + 1] == 'x' || msg[i + 1] == 'X') && isHex(msg[i + 2])) {
+                int j = i + 2;
+                while (j < len && isHex(msg[j]))
+                    j++;
+                if (j == len || !isWordChar(msg[j])) {
+                    out += '?';
+                    i = j;
+                    continue;
+                }
+            }
+            if (wordStart && len - i >= 5 && std::memcmp(msg + i, "(nil)", 5) == 0) {
+                out += '?';
+                i += 5;
+                continue;
+            }
+            if (wordStart && isHex(msg[i])) {
+                int j = i;
+                bool upper = true;
+                while (j < len && isHex(msg[j])) {
+                    upper = upper && !(msg[j] >= 'a' && msg[j] <= 'f');
+                    j++;
+                }
+                if ((j - i == 8 || j - i == 16) && upper && (j == len || !isWordChar(msg[j]))) {
+                    out += '?';
+                    i = j;
+                    continue;
+                }
+                out.append(msg + i, (size_t)(j - i));
+                i = j;
+                continue;
+            }
+            out += msg[i++];
+        }
+        return out;
+    }
+
+    // rcBuildContours grows its buffer and says so: an allocation notice, not a finding
+    constexpr const char* CONTOUR_GROWTH = "rcBuildContours: Expanding max contours";
+
+}
+
+NavRecastLog::NavRecastLog(): rcContext(true) {
+    enableTimer(false);
+}
+
+void NavRecastLog::takeMessages(std::vector<std::string>& out) {
+    for (std::string& message : messages)
+        out.push_back(std::move(message));
+    if (dropped > 0)
+        out.push_back("... and " + std::to_string(dropped) + " more Recast messages");
+    messages.clear();
+    dropped = 0;
+}
+
+void NavRecastLog::doResetLog() {
+    messages.clear();
+    lastError.clear();
+    dropped = 0;
+    errors = 0;
+}
+
+void NavRecastLog::doLog(const rcLogCategory category, const char* msg, const int len) {
+    if (category != RC_LOG_WARNING && category != RC_LOG_ERROR)
+        return;
+    const size_t growth = std::strlen(CONTOUR_GROWTH);
+    if (len >= (int)growth && std::memcmp(msg, CONTOUR_GROWTH, growth) == 0)
+        return;
+    std::string text = withoutPointers(msg, len);
+    if (category == RC_LOG_ERROR) {
+        errors++;
+        lastError = text;
+    }
+    if (messages.size() < MAX_MESSAGES)
+        messages.push_back(std::move(text));
+    else
+        dropped++;
+}
+
 #endif // JASPERENGINE_NAVIGATION

@@ -145,7 +145,10 @@ struct NavMeshBuilder::TileJob::State {
     std::chrono::steady_clock::time_point started;
     double busyMs = 0.0;
 
-    rcContext context{false};
+    // Recast's warnings and errors (spec S53 R4); errorsAtStep: its error count when the running
+    // step began, so a failure names Recast's reason only when that step logged one
+    detail::NavRecastLog context;
+    int errorsAtStep = 0;
     rcConfig cfg{};
     RecastScratch scratch;
 
@@ -164,6 +167,8 @@ struct NavMeshBuilder::TileJob::State {
     void fail(const std::string& message) {
         result.ok = false;
         result.error = "tile (" + std::to_string(result.coord.x) + ", " + std::to_string(result.coord.y) + "): " + message;
+        if (context.getErrorCount() > errorsAtStep && !context.getLastError().empty())
+            result.error += ": " + context.getLastError();
         result.blobs.clear();
         stage = Stage::Done;
         scratch.release();
@@ -546,11 +551,24 @@ void NavMeshBuilder::TileJob::State::buildLayers() {
     rcFreeCompactHeightfield(scratch.compact);
     scratch.compact = nullptr;
 
+    // past the tile cache's MAX_LAYERS, the lowest layers are kept (in Recast's order)
+    std::vector<int> kept;
+    for (int i = 0; i < scratch.layers->nlayers; i++)
+        kept.push_back(i);
+    if (scratch.layers->nlayers > MAX_LAYERS) {
+        const rcHeightfieldLayer* all = scratch.layers->layers;
+        std::stable_sort(kept.begin(), kept.end(), [all](int a, int b) { return all[a].hmin < all[b].hmin; });
+        kept.resize(MAX_LAYERS);
+        std::sort(kept.begin(), kept.end());
+        result.warnings.push_back(std::to_string(scratch.layers->nlayers) + " walkable layers, the lowest " + std::to_string(MAX_LAYERS) +
+                                  " kept");
+    }
+
     detail::DeflateCompressor compressor;
-    const int count = std::min(scratch.layers->nlayers, MAX_LAYERS);
+    const int count = (int)kept.size();
     result.blobs.clear();
     for (int i = 0; i < count; i++) {
-        const rcHeightfieldLayer& layer = scratch.layers->layers[i];
+        const rcHeightfieldLayer& layer = scratch.layers->layers[kept[(size_t)i]];
         dtTileCacheLayerHeader header;
         std::memset(&header, 0, sizeof(header));
         header.magic = DT_TILECACHE_MAGIC;
@@ -624,6 +642,7 @@ bool NavMeshBuilder::TileJob::step() {
     if (s.stage == Stage::Done)
         return true;
     const auto begin = std::chrono::steady_clock::now();
+    s.errorsAtStep = s.context.getErrorCount();
     switch (s.stage) {
         case Stage::Gather: s.gather(); break;
         case Stage::Rasterize: s.rasterize(); break;
@@ -636,8 +655,12 @@ bool NavMeshBuilder::TileJob::step() {
         case Stage::Done: break;
     }
     s.busyMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
-    if (s.stage == Stage::Done)
+    if (s.stage == Stage::Done) {
         s.result.milliseconds = s.busyMs;
+        // a failed tile reports its error; a built one what Recast warned about
+        if (s.result.ok)
+            s.context.takeMessages(s.result.warnings);
+    }
     return s.stage == Stage::Done;
 }
 

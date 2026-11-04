@@ -691,9 +691,13 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addProperty("updateRotation", &NavMeshAgent::isUpdateRotation, &NavMeshAgent::setUpdateRotation)
         .addProperty("driver", &NavMeshAgent::getDriver, &NavMeshAgent::setDriver)
         .addProperty("surface", &NavMeshAgent::getSurface, &NavMeshAgent::setSurface)
+        // along the crowd's corridor; past a truncated corridor's end (paths over 256 polygons)
+        // plus the straight line to the destination, a lower bound
         .addProperty("remainingDistance", &NavMeshAgent::getRemainingDistance)
         .addProperty("pathPending", &NavMeshAgent::isPathPending)
         .addProperty("hasPath", &NavMeshAgent::hasPath)
+        // from the crowd's corridor: Complete when the path reaches the destination (also while
+        // the crowd extends a long one), Partial when none does
         .addProperty("pathStatus", &NavMeshAgent::getPathStatus)
         .addProperty("velocity", &NavMeshAgent::getVelocity, &NavMeshAgent::setVelocity)
         .addProperty("desiredVelocity", &NavMeshAgent::getDesiredVelocity)
@@ -739,6 +743,7 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addProperty("onStuck",
             [](NavMeshAgent* self, lua_State*) { return &self->getOnStuck(); },
             [](NavMeshAgent* self, lua_State* L) { self->getOnStuck() = L; })
+        // once per destination, within stoppingDistance of it; never at the end of a Partial path
         .addProperty("onDestinationReached",
             [](NavMeshAgent* self, lua_State*) { return &self->getOnDestinationReached(); },
             [](NavMeshAgent* self, lua_State* L) { self->getOnDestinationReached() = L; })

@@ -12,6 +12,10 @@
 #include <mutex>
 #include <set>
 
+#if defined(__APPLE__)
+    #include <TargetConditionals.h>
+#endif
+
 using namespace jasperengine;
 using namespace jasperengine::nav;
 
@@ -124,6 +128,17 @@ int NavigationSettings::findArea(const std::string& name) const {
     return -1;
 }
 
+int NavigationSettings::effectiveCarveTilesPerTick() const {
+    if (carveTilesPerTick > 0)
+        return std::min(carveTilesPerTick, 64);
+    // Auto: the tile builds a frame of the platform affords next to everything else (spec S53 R14)
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+    return 2;
+#else
+    return 4;
+#endif
+}
+
 void NavigationSettings::sanitize() {
     for (int i = 0; i < AREA_COUNT; i++) {
         AreaSettings& area = areas[(size_t)i];
@@ -161,11 +176,13 @@ void NavigationSettings::sanitize() {
         webBakeBudgetMs = 4.0f;
     webBakeBudgetMs = std::clamp(webBakeBudgetMs, 0.5f, 100.0f);
     maxGridSolvesPerTick = std::clamp(maxGridSolvesPerTick, 1, 100000);
+    carveTilesPerTick = std::clamp(carveTilesPerTick, 0, 64);
 }
 
 bool NavigationSettings::operator==(const NavigationSettings& other) const {
     return areas == other.areas && agentTypes == other.agentTypes && crowdMaxAgents == other.crowdMaxAgents &&
-           webBakeBudgetMs == other.webBakeBudgetMs && maxGridSolvesPerTick == other.maxGridSolvesPerTick;
+           webBakeBudgetMs == other.webBakeBudgetMs && maxGridSolvesPerTick == other.maxGridSolvesPerTick &&
+           carveTilesPerTick == other.carveTilesPerTick;
 }
 
 const NavigationSettings& nav::getSettings() {

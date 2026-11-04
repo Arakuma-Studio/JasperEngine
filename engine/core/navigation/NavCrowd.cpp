@@ -411,6 +411,20 @@ bool NavCrowd::isPathPartial(int agent) const {
     return impl->agent(agent)->partial;
 }
 
+NavCrowdPath NavCrowd::getPathState(int agent) const {
+    const dtCrowdAgent* ag = impl->agent(agent);
+    if (ag->partial)
+        return NavCrowdPath::Partial;
+    // not partial, so the search reached the target (DT_PARTIAL_RESULT unset): a corridor
+    // ending elsewhere holds the path's first polygons only (spec S53 D5)
+    return ag->corridor.getPathCount() > 0 && ag->corridor.getLastPoly() == ag->targetRef ? NavCrowdPath::Complete
+                                                                                          : NavCrowdPath::Truncated;
+}
+
+int NavCrowd::getCorridorSize(int agent) const {
+    return impl->agent(agent)->corridor.getPathCount();
+}
+
 Vector3 NavCrowd::getTargetPosition(int agent) const {
     return vec(impl->agent(agent)->targetPos);
 }
@@ -667,11 +681,19 @@ float NavCrowd::getSteeringRemaining(int agent, bool& reachedEnd) const {
     reachedEnd = false;
     if (!ag->active || ag->corridor.getPathCount() == 0)
         return 0.0f;
-    if (ag->ncorners == 0)
-        return dtVdist(ag->npos, ag->corridor.getTarget());
-    float distance = getSteeringDistance(agent, reachedEnd);
-    if (!reachedEnd)
-        distance += dtVdist(&ag->cornerVerts[(ag->ncorners - 1) * 3], ag->corridor.getTarget());
+    float distance = 0.0f;
+    if (ag->ncorners == 0) {
+        distance = dtVdist(ag->npos, ag->corridor.getTarget());
+    } else {
+        distance = getSteeringDistance(agent, reachedEnd);
+        if (!reachedEnd)
+            distance += dtVdist(&ag->cornerVerts[(ag->ncorners - 1) * 3], ag->corridor.getTarget());
+    }
+    // a truncated corridor: on to the target as the crow flies (a lower bound, spec S53 R7)
+    if (getPathState(agent) == NavCrowdPath::Truncated) {
+        distance += dtVdist(ag->corridor.getTarget(), ag->targetPos);
+        reachedEnd = false;
+    }
     return distance;
 }
 
@@ -1070,6 +1092,8 @@ bool NavCrowd::requestMoveTarget(int, const Vector3&) { return false; }
 void NavCrowd::resetMoveTarget(int) {}
 NavCrowdTarget NavCrowd::getTargetState(int) const { return NavCrowdTarget::Failed; }
 bool NavCrowd::isPathPartial(int) const { return false; }
+NavCrowdPath NavCrowd::getPathState(int) const { return NavCrowdPath::Partial; }
+int NavCrowd::getCorridorSize(int) const { return 0; }
 Vector3 NavCrowd::getTargetPosition(int) const { return Vector3(); }
 void NavCrowd::update(float) {}
 Vector3 NavCrowd::getPosition(int) const { return Vector3(); }
