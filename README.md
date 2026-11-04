@@ -166,10 +166,6 @@ jasperengine-editor generate-sprite-normals --help  # normal maps for sprites, s
 jasperengine-editor check --project . --normals    # stale or mismatched sprite normal maps (docs/mcp/checks.md)
 ```
 
-## Continuous integration
-
-`.github/workflows/ci.yml` builds Linux, Web, and Android on every push. Windows (MSVC) and macOS/iOS run on demand — the **Run workflow** button, pull requests into `main`, `v*` tags, and releases — because those runners are billed at a multiple of Linux minutes.
-
 ## Repository layout
 
 - `editor/` — desktop editor, MCP server for AI agents (`editor/mcp`, see `docs/mcp`), project tools, build orchestration, and export flow
