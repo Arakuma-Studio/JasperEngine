@@ -154,8 +154,7 @@ namespace {
             return GpuEnvironment::runFrames([current](){
                 auto tilemaps = current->getComponentArray<TilemapComponent>();
                 for (size_t i = 0; i < tilemaps->size(); i++){
-                    const MeshComponent* mesh = current->findComponent<MeshComponent>(tilemaps->getEntity(i));
-                    if (mesh && mesh->buffer.getCount() == 0)
+                    if (tilemaps->getComponentFromIndex(i).needUpdateTilemap)
                         return false;
                 }
                 return current->getSystem<RenderSystem>()->isAllLoaded();
@@ -548,6 +547,7 @@ TEST_F(PixelPerfectGpu, Rotation){
     const float c = std::cos(radians), s = std::sin(radians);
     const float pivotX = pixelart::snap(160.0f), pivotY = pixelart::snap(90.0f);
     size_t off = 0;
+    std::string offPixels;
     for (int by = 0; by < layout.baseHeight; by++){
         for (int bx = 0; bx < layout.baseWidth; bx++){
             const float wx = (float)bx + 0.5f - pivotX, wy = (float)by + 0.5f - pivotY;
@@ -557,11 +557,13 @@ TEST_F(PixelPerfectGpu, Rotation){
                 expected = ringTexel((int)lx, (int)ly, 17, 11);
             const int x0 = (int)layout.viewport.getX() + bx * k;
             const int y0 = rotated.height - (int)layout.viewport.getY() - (by + 1) * k;
-            if (rotated.at(x0, y0) != expected)
-                off++;
+            const PixelColor got = rotated.at(x0, y0);
+            if (got != expected && off++ < 64)
+                offPixels += " (" + std::to_string(bx) + "," + std::to_string(by) + (got == kGreen ? " green" : got == kRed ? " red" : " other") +
+                             (expected == kGreen ? "/green)" : expected == kRed ? "/red)" : "/black)");
         }
     }
-    EXPECT_LE(off, 8u);
+    EXPECT_LE(off, 8u) << "base pixels (x, y drawn/expected):" << offPixels;
     EXPECT_NO_ENGINE_ERRORS();
 }
 

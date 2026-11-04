@@ -9,6 +9,7 @@
 #include "Scene.h"
 #include "component/MeshComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
 #include "object/Camera.h"
 #include "object/Sprite.h"
 #include "object/Tilemap.h"
@@ -126,11 +127,13 @@ TEST(SpritePpuTest, TilemapQuadsArePixelsOverPixelsPerUnit){
     tilemap.addTile(0, Vector2(16, 0), 16, 16);
     // a tilemap builds once its texture's size is known (its load may finish on a worker)
     const MeshComponent& mesh = scene.getComponent<MeshComponent>(tilemap.getEntity());
-    for (int frame = 0; frame < 500 && mesh.buffer.getCount() == 0; frame++){
+    const TilemapComponent& built = scene.getComponent<TilemapComponent>(tilemap.getEntity());
+    for (int frame = 0; frame < 500 && built.needUpdateTilemap; frame++){
         scene.getSystem<MeshSystem>()->update(0);
-        if (mesh.buffer.getCount() == 0)
+        if (built.needUpdateTilemap)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    ASSERT_FALSE(built.needUpdateTilemap) << "the tilemap never built";
     EXPECT_FLOAT_EQ(mesh.aabb.getMaximum().x, 2.0f);
     EXPECT_FLOAT_EQ(mesh.aabb.getMaximum().y, 1.0f);
 }

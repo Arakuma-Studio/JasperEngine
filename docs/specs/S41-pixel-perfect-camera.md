@@ -682,7 +682,7 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
    `tools/mcp/eval/cases.py` (`guard_pixel_perfect_camera`, `guard_game_view_pixel_scale`).
 2. **YAML key and fields.** The component's key is `pixelperfectcamera`, lowercase as every other
    component key (the YAML and MCP key are one, `ComponentDesc::key`); the sketch's
-   `pixelPerfectCamera` is read as an alias. The reference resolution is stored as the struct's
+   `pixelPerfectCamera` names it in MCP and Lua calls (a key alias), not in a scene file. The reference resolution is stored as the struct's
    two fields `referenceWidth` and `referenceHeight` (the sketch's `referenceResolution: [w, h]`);
    Lua keeps `referenceResolution` as a `Vector2`. The read-only layout values are catalog
    properties in the catalog's camelCase: `pixelRatio`, `baseWidth`, `baseHeight`, `targetWidth`,
@@ -732,3 +732,16 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
     frames of R22 are drawn as an overlay of the Scene view (a 2D scene's UI camera has no frustum
     gizmo).
 14. **Lua.** The handle has no `getGameObject()` (Camera already is one).
+15. **AC6 floor size.** The floor is 40 x 23 tiles of 8 pixels (a 320 x 184 floor over the 320 x 180
+    base) instead of 64 x 36 tiles of 5: a tilemap holds at most `MAX_TILEMAP_TILES` (2,048) tiles.
+16. **R17, the vertex snap's instruction count.** `PixelSnapShaderTest.VertexCost` counts 18 SPIR-V
+    arithmetic instructions on the per-vertex path (`pixelSnapClip` with its helpers), not 14:
+    glslang runs without an optimizer, and the bias is two additions so that the GPU's float32
+    sequence is the CPU's (`p + 0.5`, then `+ 2^-7`), which AC3's bit-for-bit agreement needs. The
+    whole `mesh.vert` sprite variant goes from 6 to 23 counted instructions. The test pins 18.
+17. **R17, R18, measured.** On this host only (llvmpipe, no reference device):
+    | Measure | Budget | Measured |
+    | --- | --- | --- |
+    | `pixel_perfect_bench` frame CPU, snapping on vs off (`PixelPerfectBenchGpu.SnappingFrameCost`) | ≤ 102 % | 40.600 ms vs 39.815 ms, 102.0 % |
+    | `mesh.vert` per-vertex snap path, SPIR-V | ≤ 14 | 18 (item 16) |
+    | GPU time, blit times on the reference devices | R17 | not measured: no reference GPU here |

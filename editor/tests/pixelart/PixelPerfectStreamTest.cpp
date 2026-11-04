@@ -10,6 +10,7 @@
 
 #include "DocumentFile.h"
 #include "Stream.h"
+#include "reflect/Reflect.h"
 #include "component/CameraComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SpriteComponent.h"
@@ -26,11 +27,13 @@ using namespace jasperengine::editor::test;
 
 namespace {
 
-    // a scene of one camera GameObject: the components block given
+    // a scene of one camera GameObject: the components block given (a scene without its
+    // settings block gets no Scene to decode into)
     std::string cameraScene(const std::string& components){
         return "formatVersion: 7\n"
                "id: 4141\n"
                "name: PixelPerfect\n"
+               "scene: {}\n"
                "sceneType: scene_2d\n"
                "mainCamera: 1001\n"
                "entities:\n"
@@ -113,18 +116,11 @@ TEST(PixelPerfectStream, UnknownKeysSurvive){
     EXPECT_GE(decoded.report.preserved(), 1u);
     const std::string saved = encodeSceneText(decoded);
     EXPECT_NE(saved.find("cropBehaviour: zoom"), std::string::npos) << saved;
-    // and the spelling of the spec's sketch reads as the key
-    DecodedScene aliased = decodeSceneText(cameraScene(
-        "      transform:\n"
-        "        position: [0, 0, 1]\n"
-        "      camera:\n"
-        "        type: camera_ortho\n"
-        "      pixelPerfectCamera:\n"
-        "        referenceWidth: 256\n"), "alias.scene");
-    const Entity aliasedCamera = firstEntity(aliased);
-    ASSERT_NE(aliasedCamera, NULL_ENTITY);
-    ASSERT_TRUE(aliased.scene->scene->findComponent<PixelPerfectCameraComponent>(aliasedCamera));
-    EXPECT_EQ(aliased.scene->scene->getComponent<PixelPerfectCameraComponent>(aliasedCamera).referenceWidth, 256u);
+    // the spelling of the spec's sketch names the component in MCP and Lua calls; a scene file
+    // has the lowercase key of every component
+    const reflect::ComponentDesc* aliased = reflect::findByKey("pixelPerfectCamera");
+    ASSERT_NE(aliased, nullptr);
+    EXPECT_EQ(aliased->type, ComponentType::PixelPerfectCameraComponent);
 }
 
 // Sprite and Tilemap Pixels Per Unit and Pixel Rotation: written only away from their defaults
