@@ -7964,9 +7964,11 @@ void RenderSystem::requestSubmeshBatchShaders(MeshComponent& mesh, Submesh& subm
     submesh.batchShaderId = shaderId;
     submesh.batchDepthShaderProperties = batch.depthProperties;
     submesh.batchDepthShaderId = depthShaderId;
-    if (batch.properties && !submesh.batchShader)
+    // asked again every load: ShaderPool::get makes a program the runtime compiler finished
+    // since the last call (holding the handle never sees it created)
+    if (batch.properties)
         submesh.batchShader = ShaderPool::get(ShaderType::MESH, batch.properties, shaderId);
-    if (batch.depthProperties && !submesh.batchDepthShader)
+    if (batch.depthProperties)
         submesh.batchDepthShader = ShaderPool::get(ShaderType::DEPTH, batch.depthProperties, depthShaderId);
 }
 
@@ -7977,9 +7979,12 @@ void RenderSystem::loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submes
     submesh.batchRender.destroy();
     submesh.batchDepthRender.destroy();
 
-    auto ready = [&pending](const std::shared_ptr<ShaderRender>& shader, ShaderType type, uint64_t properties, uint16_t id){
+    auto ready = [&pending](std::shared_ptr<ShaderRender>& shader, ShaderType type, uint64_t properties, uint16_t id){
         if (!shader)
             return false;
+        // (get makes it when its background build finished: see requestSubmeshBatchShaders)
+        if (!shader->isCreated())
+            shader = ShaderPool::get(type, properties, id);
         if (shader->isCreated())
             return true;
         if (!ShaderPool::isShaderBuildFailed(type, properties, id))
