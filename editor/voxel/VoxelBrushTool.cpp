@@ -269,11 +269,18 @@ void VoxelBrushTool::updateCursor(Scene* scene, const Ray& ray) {
         hideCursor();
         return;
     }
-    pointerMoved = std::chrono::steady_clock::now();
     std::shared_ptr<VoxelSystem> system = scene->findSystem<VoxelSystem>();
     voxel::Store* store = system->getStore(owner);
     voxel::RaycastHit hit;
     const VoxelTool effective = stroke.active ? stroke.effective : liveEffective;
+
+    // The view reports the pointer every frame. Resting means the same ray: the decal must fade (T1 R55),
+    // and the rays draping it and the dry run behind the strip wait for something to change.
+    const bool sameRay = cursor.valid && cursor.origin == ray.getOrigin() && cursor.direction == ray.getDirection();
+    if (!sameRay) pointerMoved = std::chrono::steady_clock::now();
+    if (sameRay && cursor.version == store->version() && cursor.tool == effective && cursor.radius == brush.radius && cursor.shape == brush.shape) return;
+    cursor = CursorKey{true, ray.getOrigin(), ray.getDirection(), store->version(), effective, brush.radius, brush.shape};
+
     if (!hitVolume(*system, owner, ray, effective == VoxelTool::Add, hit, stroke.active ? stroke.surface.get() : nullptr)) {
         hideCursor();
         return;
@@ -331,6 +338,7 @@ void VoxelBrushTool::tick(VoxelBrushModifiers modifiers, bool cameraMoving) {
 }
 
 void VoxelBrushTool::hideCursor() {
+    cursor.valid = false;
     hasCursorHit = false;
     info.valid = false;
     if (decalShown) decalRev++;

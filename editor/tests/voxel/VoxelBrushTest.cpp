@@ -84,6 +84,13 @@ TEST_F(VoxelBrush, CtrlInvertsAndDecalColour) {
     tool.tick(VoxelBrushModifiers{}, false);
     expectColour(tool.decal().colour, 0.2f, 0.2f, 0.2f);
 
+    // the view reports the pointer every frame: the same ray builds nothing and does not count as moving
+    const uint64_t built = tool.decalRevision();
+    for (int frame = 0; frame < 3; frame++) tool.updateCursor(scene(), rayDown(32.0f, 32.0f));
+    EXPECT_EQ(tool.decalRevision(), built);
+    tool.updateCursor(scene(), rayDown(33.0f, 32.0f));
+    EXPECT_NE(tool.decalRevision(), built);
+
     // fades after the pointer rests, and hides at once while the camera moves
     EXPECT_FLOAT_EQ(voxelDecalAlpha(0.0, false), 1.0f);
     EXPECT_FLOAT_EQ(voxelDecalAlpha(0.5, false), 1.0f);

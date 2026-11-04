@@ -148,6 +148,17 @@ namespace jasperengine::editor {
         Stroke stroke;
         VoxelAltGesture alt;
 
+        // what the decal and the strip were last built from
+        struct CursorKey {
+            bool valid = false;
+            Vector3 origin;
+            Vector3 direction;
+            uint64_t version = 0;
+            VoxelTool tool = VoxelTool::Dig;
+            float radius = 0.0f;
+            VoxelBrushShape shape = VoxelBrushShape::Sphere;
+        };
+        CursorKey cursor;
         bool hasCursorHit = false;
         voxel::RaycastHit cursorHit;
         VoxelDecal cursorDecal;
