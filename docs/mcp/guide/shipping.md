@@ -42,6 +42,9 @@ compiles when this computer can.
 `get_build_info platforms.<name>.tools_missing[]` names what a platform's build lacks (Android:
 build-tools, platform, JDK; the bundletool jar is downloaded for `aab`).
 
+Before exporting: the scenes saved, the Console clean in play, the start scene right
+(`edit_build_scenes`).
+
 ## Running a build
 
 `run_build` starts a desktop build. With `quit_after` (frames), `fixed_fps`, `after_ready`
