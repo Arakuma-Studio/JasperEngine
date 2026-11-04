@@ -8829,6 +8829,12 @@ bool RenderSystem::prepareSubmeshLodFade(Submesh& submesh, PipelineType pipType,
     }
     ShaderRender* shader = submesh.lodFadeShader.get();
     if (!shader->isCreated()){
+        // asked again each frame until it exists: a variant the runtime compiler builds in the
+        // background is made into a program by the next get() after the build ends
+        submesh.lodFadeShader = ShaderPool::get(ShaderType::MESH, submesh.lodFadeShaderProperties, submesh.lodFadeShaderId);
+        shader = submesh.lodFadeShader.get();
+    }
+    if (!shader->isCreated()){
         if (ShaderPool::isShaderBuildFailed(ShaderType::MESH, submesh.lodFadeShaderProperties, submesh.lodFadeShaderId)){
             Log::warn("The LOD cross-fade variant %s did not build; meshes drawn with it switch levels without fading",
                       ShaderPool::getShaderStr(ShaderType::MESH, submesh.lodFadeShaderProperties, submesh.lodFadeShaderId).c_str());
