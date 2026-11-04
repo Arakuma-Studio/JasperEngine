@@ -573,10 +573,8 @@ about 0.7 s.
 - **This branch merges `feat/s37-sound-events` (M9).** `edit_sound_event` and S37's writer are S37 M1 and M5, which were on
   its branch and not on `main`, so the branch holds S37 M1-M5 and whichever of the two lands second has nothing to merge
   but its own commits.
-- **`soundlayer` is wired here, ahead of S37 M7.** S37 §6.6 defines the module; it was not on `main` or on S37's branch. The
-  option, the module name, the variants and the detection of "the export writes `je-audio-imports.json`" are in, and
-  `engine/core/audio/SoundLayerSources.cmake` is the list S37, S39 and S40 add their sources to. S37's event runtime is
-  outside the module until S37 M7 moves it. `ModuleScan::audioImportTable` is one flag S37 adds its own detections beside.
+- **`soundlayer` is wired in both streams.** S37 §6.6 defines the module; S36 added the option, the module name, the variants and
+  `engine/core/audio/SoundLayerSources.cmake`, S37 M7 its own detections and sources. The merge keeps one of each.
 - **`like` refuses `params`,** which the search owns: a fit's result can be adjusted afterwards with `params` and its seed.
   `compare` is the default image of one fitted file and not a value of `image`, which keeps the schema inside its budget.
 - **`SoundFit` measures a file's head and tail at -60 dB re its peak,** not dBFS: phase 7 §2.3.2 calls every measure
