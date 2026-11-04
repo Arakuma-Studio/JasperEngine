@@ -30,7 +30,8 @@ the same editor stand in for a quiet machine, as the wave's brief allows).**
   1.79 s after one that changed nothing, 0.65 to 0.74 s rebuilding the 600 a Play destroyed (ratios 2.2, 2.27, 2.2).
 
 **After.** 1.3 to 1.5 µs a call for a Mesh, under 2 µs for every other component. Stop, in the same conditions: 1.32 to 1.47 times
-rebuilding the boxes after a Play that changed each Mesh, 0.95 to 1.04 after one that moved each.
+rebuilding the boxes after a Play that changed each Mesh, 0.95 to 1.04 after one that moved each. The test's own figures, totals of
+five rounds on a server at load 25 to 50: 1.52 and 1.03 (red control, the old flags and every Mesh decoded: 2.2 and 2.3).
 Nothing depends on the Mesh's field layout or submesh capacity (`dc/mesh-memory` changes both): the walk reads the reflection
 tables and their array operations, and the tests size the slots through the same operations.
 
@@ -62,3 +63,6 @@ tables and their array operations, and the tests size the slots through the same
 6. Decoding a Mesh over a live one no longer leaves its 16 slots with an allocated default extra pass and PBR block (reading them
    allocated them). Inferred harmless from reading the code: an unset value reads and compares as its defaults, and the Inspector's
    listing still allocates them, so nothing can depend on either state.
+7. Outside the spec, because it blocked the gate: `CanvasGroupTest.PerformanceBudgets` skipped itself above a load of half the cores, and
+   a skip fails `tools/check-changed`, so no change that selects it could pass on a busy server. Its wall-clock budgets now go through
+   `perfSlack()`, as `AGENTS.md` asks.
