@@ -21,11 +21,11 @@ async def foliage_scale(ed: Editor) -> float:
 
 async def test_foliage_distance_settings(ed: Editor):
     keys = ["quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"]
-    values = (await ed.call("get_project_settings", keys=keys))["values"]
+    values = (await ed.call("get_project_settings", keys=keys))["settings"]
     ed.check_eq([values[k] for k in keys], [1, 1, 1], "Foliage Distance defaults to 1 on every platform group")
 
     await ed.call("set_project_settings", values={"quality.foliage_distance_desktop": 0.75, "quality.foliage_distance_mobile": 0.5})
-    values = (await ed.call("get_project_settings", keys=keys))["values"]
+    values = (await ed.call("get_project_settings", keys=keys))["settings"]
     ed.check_eq([values[k] for k in keys], [0.75, 0.5, 1], "the scales set")
     refused = await ed.call_raw("set_project_settings", {"values": {"quality.foliage_distance_web": 11}})
     ed.check(refused.is_error, f"a scale above 10 is refused: {refused.text[:200]}")
