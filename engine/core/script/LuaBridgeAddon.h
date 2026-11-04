@@ -4,6 +4,8 @@
 #ifndef LuaBridgeAddon_h
 #define LuaBridgeAddon_h
 
+#include "lua.hpp"
+#include "LuaBridge.h"
 #include "Scene.h"
 #include "util/CanvasScaler.h"
 #include "util/TextEffects.h"

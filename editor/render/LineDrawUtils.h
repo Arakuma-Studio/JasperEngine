@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include "math/Vector3.h"
+#include "math/Vector4.h"
+#include "object/LineRenderer.h"
+
 #include <cmath>
 #include <tuple>
 

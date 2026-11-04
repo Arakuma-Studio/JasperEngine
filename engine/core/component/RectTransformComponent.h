@@ -5,6 +5,7 @@
 #define RECT_TRANSFORM_COMPONENT_H
 
 #include "util/FunctionSubscribe.h"
+#include "ecs/Entity.h"
 #include "math/Rect.h"
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
