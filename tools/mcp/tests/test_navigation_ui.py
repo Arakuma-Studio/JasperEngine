@@ -89,8 +89,9 @@ async def test_bake_failure_shown(ed: Editor):
     await ed.call("run_command", id="window.navigation")
     ui.focus()
     await ui.click_item("Surfaces", window="Navigation")
-    # the Inspector scrolled to the surface's Bake / Clear row, where the failure line is
-    await ui.reveal("Bake", window="Inspector")
+    # the Inspector scrolled to the surface's Bake / Clear row, where the failure line is (by the
+    # button's whole label, its hammer icon included: found while scrolled away too)
+    await ui.reveal("\uf6e3 Bake", window="Inspector")
     await ui.frames(4)
     await editor_shot(ed, "navigation-bake-failed.png")
 

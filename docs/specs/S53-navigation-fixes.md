@@ -701,3 +701,20 @@ P2 order:
   `test_grade.py` only; the live eval is the integrator's call).
 
 ## Progress
+
+- S53 P2 (editor, MCP, test infrastructure), branch `nav/s41-p2`:
+  - Done: R24 play policy and annotations, `visualize_navigation` on the running scene with the
+    path's `agent_type`/`area_mask` (AC27); R28 golden (AC28 first half); R20 labels and the
+    regenerated catalog snapshot (AC23); R21 (no fix needed, guard AC24); R2/R3 in
+    `NavigationEditor`, the Inspector, the Surfaces tab and `last_bake` (AC5, AC6); R17/R23/R27
+    serialization, reflection, codegen, rows and `carve_tiles_per_tick` (AC23, AC26); R22
+    `gridCellColors` and the tint in play (AC25 editor half); the OFF gate and its check-changed
+    plan (AC28); the prebuilt-player export test (AC29); docs (`docs/mcp/guide/navigation.md`,
+    `docs/testing.md`, `docs/navigation.md` bake failures and brush keys, S19 Deviations).
+  - Red controls (base editor of `e14f0f55e`): `test_tool_play_policy` (not destructive),
+    `test_bake_failures_reported` (0 Console lines for a refused start), `test_carving_settings_undo`
+    (no field), `test_bake_failure_shown` (no `last_bake`), the old `test_overlay_golden` passing
+    and writing a missing golden, `test_check_changed.py` against the old `check_changed.py`.
+  - Waits on P1: `test_bake_failures_reported` case (b) needs the engine to set
+    `NavBakeResult::logged` (two lines until then), and `test_bake_warnings` needs R4's Recast
+    warnings.
