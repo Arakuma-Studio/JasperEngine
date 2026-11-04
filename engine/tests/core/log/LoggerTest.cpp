@@ -159,6 +159,31 @@ TEST(LoggerTest, TruncationKeepsWholeCharacters) {
     EXPECT_EQ(found[0].text.find("\xEF\xBF\xBD"), std::string::npos) << "and none was replaced";
 }
 
+// A repaired record whose call emits the rate limit's summary (a logger without a drain thread
+// sweeps from inside the call, back through logSubmit) keeps its own text; the summary's sample,
+// cut at 80 bytes, is cut between characters and the summary is UTF-8
+TEST(LoggerTest, RepairedRecordSurvivesTheSummaryItsCallEmits) {
+    FreshLogger logger(1024 * 1024, false);
+    auto sink = recordingSink();
+    static char burstKey;
+    static char recordKey;
+    const std::string head(79, 'r');
+    const std::string burst = head + "\xC3\xA9 burst";
+    for (int i = 0; i < 250; i++) {
+        Logger::write(LogLevel::Info, logCategoryLoggerTest(), burst, nullptr, 0, &burstKey);
+    }
+    // the burst's window ends; the next call sweeps it
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    Logger::write(LogLevel::Info, logCategoryLoggerTest(), "repaired \xFF record", nullptr, 0, &recordKey);
+    Logger::flush();
+    const auto repaired = sink->containing("record");
+    ASSERT_EQ(repaired.size(), 1u);
+    EXPECT_EQ(repaired[0].text, "repaired \xEF\xBF\xBD record");
+    const auto summaries = sink->containing("suppressed 50 similar messages");
+    ASSERT_EQ(summaries.size(), 1u);
+    EXPECT_EQ(summaries[0].text, "suppressed 50 similar messages: \"" + head + "\"");
+}
+
 TEST(LoggerTest, IdsMonotonicAcrossThreads) {
     FreshLogger logger(32 * 1024 * 1024);
     auto async = recordingSink();

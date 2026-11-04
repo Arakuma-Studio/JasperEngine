@@ -167,8 +167,6 @@ namespace je_logger {
         uint32_t currentSink = 0;
         char formatBuffer[1024];
         std::string largeText;
-        // a text that was not valid UTF-8, repaired (logSubmit)
-        std::string repairedText;
         void* frames[LogRecord::MAX_FRAMES];
         // Inline sinks written under the lock that want afterWrite() once it is released
         std::vector<std::shared_ptr<SinkEntry>> afterWrite;
@@ -697,7 +695,9 @@ namespace je_logger {
         slot->count++;
         if (slot->count <= kValveLimit) {
             if (slot->count == 1) {
-                const size_t length = std::min(sample.size(), kValveSampleBytes);
+                size_t length = std::min(sample.size(), kValveSampleBytes);
+                // between characters, so the summary quoting it is UTF-8
+                while (length > 0 && length < sample.size() && (static_cast<unsigned char>(sample[length]) & 0xC0) == 0x80) length--;
                 std::memcpy(slot->sample, sample.data(), length);
                 slot->sample[length] = '\0';
             }
@@ -945,10 +945,12 @@ namespace je_logger {
         ThreadState& thread = logCurrentThread();
 
         // every sink gets UTF-8: a child's output in another code page, a cut string or, on
-        // Windows, ANSI text (StringUtils::legacyToUtf8); valid text costs one scan
+        // Windows, ANSI text (StringUtils::legacyToUtf8); valid text costs one scan. A local, not
+        // the thread's buffer: the summaries this call emits come back into logSubmit.
+        std::string repaired;
         if (!StringUtils::isValidUtf8(text)) {
-            thread.repairedText = StringUtils::legacyToUtf8(text);
-            text = thread.repairedText;
+            repaired = StringUtils::legacyToUtf8(text);
+            text = repaired;
         }
 
         if (!s.initialized.load(std::memory_order_acquire)) {
