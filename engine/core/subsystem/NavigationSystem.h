@@ -89,7 +89,7 @@ namespace jasperengine{
         // the agents and obstacles of its crowd
         int crowdAgents = 0;
         int crowdCapacity = 0;
-        // carved tile builds left before its navmesh is complete (a bake landing in play, S41 R15)
+        // carved tile builds left before its navmesh is complete (a bake landing in play, S53 R15)
         int queuedBuilds = 0;
     };
 
@@ -263,9 +263,9 @@ namespace jasperengine{
         uint64_t getWorkingTicks() const { return workingTicks; }
         uint32_t getFixedTick() const { return fixedTick; }
         // path searches run on the main thread (calculatePath*, isReachable); crowd agents never
-        // add to it (S41 R6)
+        // add to it (S53 R6)
         uint64_t getPathQueryCount() const { return pathQueryCount; }
-        // the wall-clock ceiling of a tick's carving builds, ms (S41 R14); 0 turns it off
+        // the wall-clock ceiling of a tick's carving builds, ms (S53 R14); 0 turns it off
         void setCarveTimeCeiling(double ms) { carveTimeCeilingMs = ms; }
         // the tile-cache builds of the last fixed tick, every surface together
         int getCarveTileBuilds() const { return carveTileBuilds; }

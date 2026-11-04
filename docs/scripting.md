@@ -233,6 +233,35 @@ inverses for undo. Graph kinds (a material graph, an animation graph) register t
 with `GraphRegistry`. MCP `list_graph_kinds`, `get_graph`, `validate_graph` and `edit_graph`
 work on any kind. This spec ships no graph editor and no visual scripting.
 
+## Navigation agents in scripts
+
+A `NavMeshAgent`'s path is planned by its crowd, over several fixed ticks, and its state is read
+from the crowd's corridor ([navigation.md](navigation.md#agents) has the details):
+
+- `pathPending` is true while the crowd plans; `pathStatus` is then `Complete` when the path
+  reaches the destination and `Partial` when none does. A path longer than the corridor's 256
+  polygons is `Complete`: the crowd extends the corridor as the agent walks, even with
+  `autoRepath` off.
+- `remainingDistance` follows the corridor; past a truncated corridor's end it adds the straight
+  line to the destination (a lower bound).
+- `onDestinationReached` fires once, within `stoppingDistance` of the destination, and never at the
+  end of a `Partial` path; `onPathFailed` fires once per destination when the path is `Partial`
+  or cannot be planned.
+
+```lua
+local Guard = {}
+function Guard:init()
+    self.agent = NavMeshAgent(self.scene, self.entity)
+    self.agent.onDestinationReached = function(agent) print("at the post") end
+    self.agent.onPathFailed = function(agent)
+        if agent.pathStatus == NavMeshPathStatus.Partial then
+            print("cannot reach it; " .. agent.remainingDistance .. " m to the nearest point")
+        end
+    end
+end
+return Guard
+```
+
 ## The Lua API as data
 
 One parser (`tools/lua_api`) reads the Lua bindings at build time and writes `lua-api.json`.

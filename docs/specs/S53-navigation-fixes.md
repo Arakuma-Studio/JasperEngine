@@ -674,11 +674,41 @@ P2 order:
 
 ## Deviations
 
+- S53 P1: R15, a full bake landing in play: the staged mesh adopts the obstacles when the bake
+  lands, not at the swap. Its tiles are then built with their cuts and the swap leaves no tick
+  without them; until the swap, obstacle changes reach the staged mesh and the mesh in service
+  keeps the cuts it had. The swap waits for the adopted cuts (`NavMesh::isComplete`).
+- S53 P1: R15, `replaceTiles`' pool-growth fallback (a new Detour mesh inside the same `NavMesh`)
+  builds every tile at once even in play: no old Detour tile survives it to stay in service.
+- S53 P1: R14, a deferred build is one tile (x, y) with all its layers, counted as one build, so
+  a tile never serves half old and half new layers.
+- S53 P1: R11, an add whose obstacle touches no tile-cache layer is not handed to Detour (it would
+  cut nothing, and Detour never frees the slot of such an obstacle); it is handed over when
+  `replaceTiles` adds layers under it. Detour's slots are Max Carving Obstacles + 8 (the removals
+  of one batch in flight).
+- S53 P1: R6, `onPathFailed` and `pathStatus` read dtCrowd's corridor; `cancelBake` cannot cancel
+  a bake that landed and is building its carved tiles (`isBaking` stays true until they are done).
+- S53 P1: R4, a tile keeps at most 64 Recast messages, then `... and N more Recast messages`.
+- S53 P1: interface additions beyond §6, used by the tests and the editor: `NavMesh::hasObstacle`,
+  `getTileCacheObstacleCount`, `getFailedCarveBuilds`, `getLinkConnections`,
+  `setDeferCarvedBuilds`; `NavCrowd::getCorridorSize`; `NavSurfaceStatus::queuedBuilds`;
+  `NavigationSystem::getCarveTileBuilds`; `detail::NavRecastLog` in `NavDetourSupport.h`.
+- S53 P1: R19 needed `GridReservations::reserve` (`GridPathfinder.cpp`) to reuse an agent's cell
+  list: it allocated on every reservation.
+- S53 P1: AC7, a stack of slabs alone never overflows Recast's layer set (a column keeps at most
+  63 regions, each overlapping at most 62 others): the carving case adds a ground plate under the
+  stack and 10 slabs beside it, so the plate overlaps more than 63 platforms.
+- S53 P1: AC14 RemoveNeverLost, 70 boxes disabled the tick after they appear do not lose a cut
+  (the removals follow the adds' tile order); the test disables 60 cut boxes while it enables 10
+  others, 70 requests in one tick, which is what loses cuts in the S19 code.
+- S53 P1: AC21's carving fixture lives in `tools/test-projects/navigation` (the web gate's and the
+  Android test's project), with two gate lines.
 - S53 P2: R21 held already, so §3's item 8 is wrong there: the brush keys' enable predicate
   `dyePainting()` is `SceneRender::isFluidPainting()`, which counts the nav-grid brush
   (`SceneRender.cpp:2579-2581`). The red run of AC24 on the base editor saw `run_command
-  terrain.brushLarger` succeed once Paint was clicked, so no fix was made and `AppCommands.cpp` is unchanged; `test_navigation_ui.py::test_brush_size_keys`
-  stays as a guard without a red control. It reads the brush size from a UIProbe item the
+  terrain.brushLarger` succeed once Paint was clicked, so no fix was made and `AppCommands.cpp`
+  is unchanged; `test_navigation_ui.py::test_brush_size_keys` stays as a guard without a red
+  control. It reads the brush size from a UIProbe item the
   Inspector's brush slider names (`inspector.navBrushSize.<n>`): `find_ui_item` reports where a
   control is, not its value.
 - S53 P2: R28 "CI runs it": the repository has no CI any more (origin/main removed the

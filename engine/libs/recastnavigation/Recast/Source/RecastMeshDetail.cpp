@@ -843,6 +843,7 @@ static bool buildPolyDetail(rcContext* ctx, const float* in, const int nin,
 				pt[0] = s[0]*sampleDist + getJitterX(i)*cs*0.1f;
 				pt[1] = s[1]*chf.ch;
 				pt[2] = s[2]*sampleDist + getJitterY(i)*cs*0.1f;
+				if (tris.size() == 0) continue; // JasperEngine patch: upstream 9f4ce64 (#796), delaunayHull may drop every face
 				float d = distToTriMesh(pt, verts, nverts, &tris[0], tris.size()/4);
 				if (d < 0) continue; // did not hit the mesh.
 				if (d > bestd)

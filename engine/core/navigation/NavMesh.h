@@ -129,7 +129,7 @@ namespace jasperengine::nav {
         float bmax[3] = {0, 0, 0};
     };
 
-    // A carving obstacle (S41 R11), in nav space: Detour's cylinders and yaw-only boxes
+    // A carving obstacle (S53 R11), in nav space: Detour's cylinders and yaw-only boxes
     struct NavObstacleDesc {
         enum class Shape : uint8_t {
             Cylinder,
@@ -146,13 +146,13 @@ namespace jasperengine::nav {
 
     struct NavMeshCreateOptions {
         // carving: the tiles built from the layers are queued and built by updateCarving (a bake
-        // landing in play, S41 R15) instead of all at once
+        // landing in play, S53 R15) instead of all at once
         bool deferCarvedBuilds = false;
         // the carving obstacles the mesh may hold (Max Carving Obstacles); -1: the header's
         int maxObstacles = -1;
     };
 
-    // What one updateCarving may do (S41 R14): a count of tile builds, and a wall-clock ceiling
+    // What one updateCarving may do (S53 R14): a count of tile builds, and a wall-clock ceiling
     // that stops it after at least one build
     struct NavCarveBudget {
         int maxTileBuilds = 4;
@@ -172,10 +172,10 @@ namespace jasperengine::nav {
         bool create(NavMeshData data, bool keepData, std::string& error, const NavMeshCreateOptions& options = {});
         void clear();
         bool isValid() const;
-        // no carved tile build is queued (deferred builds, S41 R15)
+        // no carved tile build is queued (deferred builds, S53 R15)
         bool isComplete() const;
         int getQueuedBuilds() const;
-        // changes on every create() and clear(): a new Detour mesh (crowds are made again, S41 R9)
+        // changes on every create() and clear(): a new Detour mesh (crowds are made again, S53 R9)
         uint64_t getGeneration() const;
 
         const NavMeshHeader& getHeader() const;
@@ -203,7 +203,7 @@ namespace jasperengine::nav {
         // the polygon height under a point (false off the mesh)
         bool getHeight(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents, float& height) const;
 
-        // ---- runtime carving (S41 R11-R17). The mesh owns its obstacles: ids are stable and never
+        // ---- runtime carving (S53 R11-R17). The mesh owns its obstacles: ids are stable and never
         // 0, requests queue and reach Detour's tile cache as it has room, so none is lost.
         // 0 when the mesh does not carve, or holds its Max Carving Obstacles
         uint32_t addObstacle(const NavObstacleDesc& desc);
@@ -228,7 +228,7 @@ namespace jasperengine::nav {
 
         // ---- links: moves the connections of a link to new endpoints (an auto-updating
         // NavMeshLink that moved). False when a start left its tile (the surface must be rebaked).
-        // A carving mesh created with deferCarvedBuilds queues the rebuilt tiles (S41 R15).
+        // A carving mesh created with deferCarvedBuilds queues the rebuilt tiles (S53 R15).
         bool updateLink(uint32_t userId, const std::vector<NavLinkInput>& connections, std::string& error);
         // the connections of a link as the mesh holds them now (false: it holds none)
         bool getLinkConnections(uint32_t userId, std::vector<NavLinkInput>& out) const;

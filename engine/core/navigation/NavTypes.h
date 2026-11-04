@@ -210,7 +210,7 @@ namespace jasperengine::nav {
         float webBakeBudgetMs = 4.0f;
         // grid path requests solved per fixed tick
         int maxGridSolvesPerTick = 64;
-        // tile-cache builds a carving surface does per fixed tick (S41 R14); 0: Auto
+        // tile-cache builds a carving surface does per fixed tick (S53 R14); 0: Auto
         int carveTilesPerTick = 0;
 
         NavigationSettings();
