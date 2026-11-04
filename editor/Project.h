@@ -35,6 +35,7 @@
 #include "physics/PlacementSettings.h"
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
+#include "device/DeviceSettings.h"
 #include "texture/TextureImportSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
@@ -865,6 +866,9 @@ namespace jasperengine::editor{
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
         HtmlUiRenderSettings htmlUiRender;
+        // Project Settings > Quality > Device Tiers, LOD biases, Thermal Response and Graphics >
+        // Upload Budget (spec S44): project.yaml's device block
+        DeviceSettings deviceSettings;
         // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
         WindowMode windowMode;
@@ -1583,6 +1587,11 @@ namespace jasperengine::editor{
         // editor's documents at once and written into exports
         void setHtmlUiRenderSettings(const HtmlUiRenderSettings& settings);
         const HtmlUiRenderSettings& getHtmlUiRenderSettings() const;
+        // the Device Tier table and the rest of the device settings (docs/device-tiers.md): the
+        // editor's QualityResolver takes them at once (its Game view simulates a tier in Play),
+        // exports bake them in (main.cpp's Device::configure, game.json's device)
+        void setDeviceSettings(const DeviceSettings& settings);
+        const DeviceSettings& getDeviceSettings() const;
         static bool isValidHtmlUiGlyphAtlasMiB(int mib);
 
         // the shadow quality tier of a platform (Engine::Platform as an int), applied to the

@@ -4373,6 +4373,21 @@
 		4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A4609FEFF72DC9EF /* PlayerModules.h */; };
 		4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4760C1D1328627EB69 /* UIDocumentInput.h */; };
 		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
+		4A534E4747DC7ED994006F86 /* Device.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47539D8B5FA21FD5A7 /* Device.cpp */; };
+		4A534E470FBB2B1FE7122390 /* Device.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47539D8B5FA21FD5A7 /* Device.cpp */; };
+		4A534E470086C256993A97F8 /* DeviceSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470AE6A59AC0128552 /* DeviceSettings.cpp */; };
+		4A534E4712ABAF4476184C08 /* DeviceSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470AE6A59AC0128552 /* DeviceSettings.cpp */; };
+		4A534E472BEFAE7CAA9C628D /* GpuTierDatabase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CE004B1C352D630C /* GpuTierDatabase.cpp */; };
+		4A534E478A3531CB5AE7C77C /* GpuTierDatabase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CE004B1C352D630C /* GpuTierDatabase.cpp */; };
+		4A534E470E3DCD9BD7DBED00 /* GpuTiersData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477DB1FF32025C88D1 /* GpuTiersData.cpp */; };
+		4A534E47E1F6904E982FEF44 /* GpuTiersData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477DB1FF32025C88D1 /* GpuTiersData.cpp */; };
+		4A534E475ADE61B4A47E94C0 /* QualityResolver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F7E4B371A659A225 /* QualityResolver.cpp */; };
+		4A534E470EBB52B03236B0B4 /* QualityResolver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F7E4B371A659A225 /* QualityResolver.cpp */; };
+		4A534E470088295FA52EEF59 /* Device.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FC90497AFF17FDE5 /* Device.h */; };
+		4A534E4793145727CE8CD739 /* DeviceSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477456722B6398FCA4 /* DeviceSettings.h */; };
+		4A534E4713FB8FA083EDB374 /* DeviceTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4733E849AD8672E52D /* DeviceTypes.h */; };
+		4A534E47D97D6F576E7F073B /* GpuTierDatabase.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472AFCDD32755F0D28 /* GpuTierDatabase.h */; };
+		4A534E479C367C99840EB47F /* QualityResolver.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B7168D0FCCFB915F /* QualityResolver.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8574,6 +8589,16 @@
 		4A534E47A4609FEFF72DC9EF /* PlayerModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerModules.h; sourceTree = "<group>"; };
 		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
 		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
+		4A534E47539D8B5FA21FD5A7 /* Device.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Device.cpp; sourceTree = "<group>"; };
+		4A534E470AE6A59AC0128552 /* DeviceSettings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DeviceSettings.cpp; sourceTree = "<group>"; };
+		4A534E47CE004B1C352D630C /* GpuTierDatabase.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GpuTierDatabase.cpp; sourceTree = "<group>"; };
+		4A534E477DB1FF32025C88D1 /* GpuTiersData.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GpuTiersData.cpp; sourceTree = "<group>"; };
+		4A534E47F7E4B371A659A225 /* QualityResolver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = QualityResolver.cpp; sourceTree = "<group>"; };
+		4A534E47FC90497AFF17FDE5 /* Device.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Device.h; sourceTree = "<group>"; };
+		4A534E477456722B6398FCA4 /* DeviceSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DeviceSettings.h; sourceTree = "<group>"; };
+		4A534E4733E849AD8672E52D /* DeviceTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DeviceTypes.h; sourceTree = "<group>"; };
+		4A534E472AFCDD32755F0D28 /* GpuTierDatabase.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GpuTierDatabase.h; sourceTree = "<group>"; };
+		4A534E47B7168D0FCCFB915F /* QualityResolver.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = QualityResolver.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10355,6 +10380,23 @@
 			path = debug;
 			sourceTree = "<group>";
 		};
+		4A534E473659413B6A589E09 /* device */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47539D8B5FA21FD5A7 /* Device.cpp */,
+				4A534E470AE6A59AC0128552 /* DeviceSettings.cpp */,
+				4A534E47CE004B1C352D630C /* GpuTierDatabase.cpp */,
+				4A534E477DB1FF32025C88D1 /* GpuTiersData.cpp */,
+				4A534E47F7E4B371A659A225 /* QualityResolver.cpp */,
+				4A534E47FC90497AFF17FDE5 /* Device.h */,
+				4A534E477456722B6398FCA4 /* DeviceSettings.h */,
+				4A534E4733E849AD8672E52D /* DeviceTypes.h */,
+				4A534E472AFCDD32755F0D28 /* GpuTierDatabase.h */,
+				4A534E47B7168D0FCCFB915F /* QualityResolver.h */,
+			);
+			path = device;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -10432,6 +10474,7 @@
 				4A534E470A099A4C30353C59 /* media */,
 				4A534E476646E8233CC78BAC /* native */,
 				4A534E47B1D2BFA5C64803C4 /* debug */,
+				4A534E473659413B6A589E09 /* device */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -15241,6 +15284,11 @@
 				4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */,
 				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
+				4A534E470088295FA52EEF59 /* Device.h in Headers */,
+				4A534E4793145727CE8CD739 /* DeviceSettings.h in Headers */,
+				4A534E4713FB8FA083EDB374 /* DeviceTypes.h in Headers */,
+				4A534E47D97D6F576E7F073B /* GpuTierDatabase.h in Headers */,
+				4A534E479C367C99840EB47F /* QualityResolver.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17738,6 +17786,11 @@
 				4A534E47A6F7345580E0D892 /* ProcessMemory.cpp in Sources */,
 				4A534E47C9D7644B70C96ACD /* AudioFileCheck.cpp in Sources */,
 				4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */,
+				4A534E4747DC7ED994006F86 /* Device.cpp in Sources */,
+				4A534E470086C256993A97F8 /* DeviceSettings.cpp in Sources */,
+				4A534E472BEFAE7CAA9C628D /* GpuTierDatabase.cpp in Sources */,
+				4A534E470E3DCD9BD7DBED00 /* GpuTiersData.cpp in Sources */,
+				4A534E475ADE61B4A47E94C0 /* QualityResolver.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18529,6 +18582,11 @@
 				4A534E4702E0F1BB649CA319 /* ProcessMemory.cpp in Sources */,
 				4A534E4787F0A52BE790720B /* AudioFileCheck.cpp in Sources */,
 				4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */,
+				4A534E470FBB2B1FE7122390 /* Device.cpp in Sources */,
+				4A534E4712ABAF4476184C08 /* DeviceSettings.cpp in Sources */,
+				4A534E478A3531CB5AE7C77C /* GpuTierDatabase.cpp in Sources */,
+				4A534E47E1F6904E982FEF44 /* GpuTiersData.cpp in Sources */,
+				4A534E470EBB52B03236B0B4 /* QualityResolver.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -8,6 +8,7 @@
 
 #include "RenderSystem.h"
 #include "RenderSystemShared.h"
+#include "device/QualityResolver.h"
 #include "Scene.h"
 #include "Engine.h"
 #include "Log.h"
@@ -110,6 +111,8 @@ void RenderSystem::updateShadowTier(){
             shadowTier = ShadowTiers::getPlatformTier(static_cast<int>(Engine::getPlatform()));
             break;
     }
+    // the device tier's cap (and a Critical thermal step's, the tier below's)
+    shadowTier = QualityResolver::shadowTier(shadowTier);
 
     // a build with no shader compiler has the High filters only where its export cooked them
     // (spec S10 R25): above that it renders the Medium tier
@@ -169,6 +172,7 @@ float RenderSystem::lightShadowDistance(const LightComponent& light, const Camer
         distance = scene->getShadowDistance();
     if (!(distance > 0.0f))
         distance = shadowTierSettings().shadowDistance;
+    distance = QualityResolver::shadowDistance(distance);
     if (camera.farClip > camera.nearClip)
         distance = std::min(distance, camera.farClip);
     return distance;

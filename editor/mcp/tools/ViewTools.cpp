@@ -108,6 +108,8 @@ bool sceneContentLoaded(SceneProject* sp) {
     if (ms && ms->hasPendingAsyncModelLoads()) return false;
     // a frame drawn while a texture loads shows a stand-in for it (the texture before, or none)
     if (TextureDataPool::getLoadingCount() > 0) return false;
+    // and while a queued upload waits for the upload budget (spec S44 R8), its object is not drawn
+    if (SystemRender::getDeferredUploadCount() > 0) return false;
     return true;
 }
 
@@ -115,6 +117,7 @@ bool sceneContentLoaded(SceneProject* sp) {
 // for one, and past the call's timeout it fails naming them
 bool assetsLoading(SceneProject* sp) {
     if (TextureDataPool::getLoadingCount() > 0) return true;
+    if (SystemRender::getDeferredUploadCount() > 0) return true;
     auto ms = sp && sp->scene ? sp->scene->getSystem<MeshSystem>() : nullptr;
     return ms && ms->hasPendingAsyncModelLoads();
 }
@@ -124,6 +127,8 @@ std::string describeLoading(SceneProject* sp) {
     std::string out;
     auto add = [&out](const std::string& part) { out += (out.empty() ? "" : "; ") + part; };
     if (!ShaderPool::isCreationIdle()) add("shaders or pipelines being made");
+    if (const size_t uploads = SystemRender::getDeferredUploadCount())
+        add(std::to_string(uploads) + " queued upload(s) waiting for the upload budget");
     if (const size_t textures = TextureDataPool::getLoadingCount()) {
         std::string list;
         for (const std::string& id : TextureDataPool::getLoadingIds(8)) list += (list.empty() ? "" : ", ") + id;

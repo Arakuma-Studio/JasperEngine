@@ -21,6 +21,8 @@
 #include "PrefabAsset.h"
 #include "ObjectManager.h"
 #include "System.h"
+#include "device/Device.h"
+#include "device/QualityResolver.h"
 #include "Screen.h"
 
 #include "action/Action.h"

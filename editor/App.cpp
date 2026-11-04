@@ -23,6 +23,7 @@
 #include "Backend.h"
 #include "manager/SceneManager.h"
 #include "Engine.h"
+#include "device/Device.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
 
@@ -4070,6 +4071,9 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // the frame is the game: it runs at the Game view's Preview Atmosphere Quality
     if (sceneProject.scene)
         sceneProject.scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
+    // and with the Game view's simulated Device Tier, platform family and thermal state (Play
+    // stop ends it: Engine::resetApplicationState)
+    Device::setSimulation(gameWindow->getDeviceSimulation());
 
     bool viewChanged = false;
     if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
