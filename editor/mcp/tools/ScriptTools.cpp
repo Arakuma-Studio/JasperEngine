@@ -1546,6 +1546,23 @@ void compileScriptsTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ code_editor
 
+// a buffer's changes against its baseline: 1-based inclusive line ranges ([] when empty); a
+// deletion's lines are the line it is marked at
+Json codeEditorChangesJson(const CodeEditor::BufferState& state) {
+    Json changes = Json::array();
+    for (const LineChange& change : state.changes) {
+        auto range = [](int start, int end) { return end > start ? Json::array({start + 1, end}) : Json::array(); };
+        Json lines = range(change.modifiedStart, change.modifiedEnd);
+        if (change.kind() == LineChange::Kind::Deleted) {
+            const int marked = std::min(change.modifiedStart, std::max(0, state.lineCount - 1)) + 1;
+            lines = Json::array({marked, marked});
+        }
+        changes.push_back({{"kind", lineChangeKindName(change.kind())}, {"lines", lines},
+                           {"base_lines", range(change.originalStart, change.originalEnd)}});
+    }
+    return Json{{"state", state.baselineState}, {"revision", state.baselineRevision}, {"changes", changes}};
+}
+
 void codeEditorTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -1558,7 +1575,10 @@ void codeEditorTool(const CallPtr& call) {
     auto status = [&]() {
         Json buffers = Json::array();
         for (const CodeEditor::BufferState& state : editor->getBufferStates()) {
-            buffers.push_back({{"path", FileUtils::pathToUtf8(fs::path(state.path))}, {"unsaved", state.modified}, {"cursor_line", state.cursorLine}});
+            Json buffer = {{"path", FileUtils::pathToUtf8(fs::path(state.path))}, {"unsaved", state.modified}, {"cursor_line", state.cursorLine}};
+            // version control: the changes against the baseline, as the gutter marks them
+            if (state.baselineState != "none") buffer["vcs"] = codeEditorChangesJson(state);
+            buffers.push_back(std::move(buffer));
         }
         return buffers;
     };
@@ -1606,6 +1626,22 @@ void codeEditorTool(const CallPtr& call) {
         call->fail(rel + " is not open in the code editor.", Json{{"buffers", status()}});
         return;
     }
+    if (action == "revert_change") {
+        if (!args.contains("line")) {
+            call->fail("revert_change needs line: a line of the change (1-based), or the line a deletion is marked at.");
+            return;
+        }
+        std::string error;
+        if (!editor->revertChangeAt(file.string(), args.value("line", 0), error)) {
+            call->fail("Couldn't revert a change of " + rel + " at line " + std::to_string(args.value("line", 0)) + ": " + error + ".",
+                       Json{{"buffers", status()}});
+            return;
+        }
+        call->ok("Reverted the change at line " + std::to_string(args.value("line", 0)) + " of " + rel +
+                 " in the buffer (unsaved: save writes it, undo brings it back).",
+                 Json{{"buffers", status()}});
+        return;
+    }
     bool done = false;
     if (action == "save") done = editor->saveFile(file.string());
     else if (action == "reload") done = editor->reloadFile(file.string());
@@ -1617,7 +1653,7 @@ void codeEditorTool(const CallPtr& call) {
         editor->closeFile(file.string());
         done = true;
     } else {
-        call->fail("action must be status, open, save, reload or close.");
+        call->fail("action must be status, open, save, reload, close or revert_change.");
         return;
     }
     if (!done) {
@@ -1820,12 +1856,13 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "code_editor";
         tool.title = "Code Editor";
         tool.description =
-            "The editor's code editor (for the human): open at line/column, status, save, reload (drop buffer "
-            "edits), close. An unsaved buffer means the human is editing it: don't overwrite that file.";
+            "The editor's code editor (for the human): open at line/column, status (with each buffer's VCS changes), "
+            "save, reload (drop buffer edits), close, revert_change (the VCS change at line, unsaved). An unsaved "
+            "buffer means the human is editing it: don't overwrite that file.";
         tool.inputSchema = object({
-            {"action", withDefault(stringEnum("", {"status", "open", "save", "reload", "close"}), "status")},
+            {"action", withDefault(stringEnum("", {"status", "open", "save", "reload", "close", "revert_change"}), "status")},
             {"path", assetPath("All actions but status.")},
-            {"line", integer("open: 1-based.")},
+            {"line", integer("open, revert_change: 1-based.")},
             {"column", integer("open: 1-based.")},
             {"target", withDefault(stringEnum("open: preferred = the External Script Editor of the preferences.", {"builtin", "preferred"}), "builtin")},
             {"discard_unsaved", withDefault(boolean("close: drop unsaved edits."), false)}

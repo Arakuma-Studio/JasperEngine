@@ -800,4 +800,66 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
+    {
+        "id": "guard_scene_default_shader_values",
+        "kind": "guard",
+        "what_happened": "New text (code-editor-git): a look shared by every object on the scene's default shader is one "
+                         "scene-level value (set_shader_uniform shader_type), not the same value set on each object.",
+        "text_at_issue": "set_shader_uniform: 'shader_type: the scene's default shader, inherited by objects without their own'",
+        "source": "docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.8; Doriax e3243c29b",
+        "prompt": "Every mesh in the Main scene is drawn with the scene's default mesh shader (library:toon). Make their rim "
+                  "colour orange, all of them at once.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\": default_mesh_shader library:toon, default_mesh_shader_uniforms {} ...",
+                {"settings": {"default_mesh_shader": "library:toon", "default_mesh_shader_uniforms": {}}})},
+            {"tool": "get_shader_uniforms", "args": {"shader_type": "mesh"}, "result": ok(
+                "Scene default mesh shader library:toon: used by 3 object(s), 3 member(s), 0 value(s) set.",
+                {"shader_type": "mesh", "default_shader": "library:toon", "used_by": 3, "values": {},
+                 "parameters": [{"member": "rimColor", "kind": "color", "default": [1, 1, 1, 1]},
+                                {"member": "shadeSteps", "kind": "range", "default": [3, 0, 0, 0]}]})},
+            {"tool": "list_shaders", "result": ok(
+                "library:toon (mesh): parameters shadeSteps, rimColor (colour), rimPower",
+                {"shaders": [{"name": "library:toon", "type": "mesh"}]})},
+            {"tool": "set_shader_uniform", "args": {"shader_type": "mesh"}, "result": ok(
+                "Set rimColor on the scene's default mesh shader (inherited by 3 object(s)).",
+                {"shader_type": "mesh", "property": "default_mesh_shader_uniforms", "name": "rimColor", "declared": True,
+                 "used_by": 3, "value": [1, 0.216, 0, 1]})},
+            {"tool": "set_scene_settings", "result": ok("Set 1 scene setting(s) (one undo step).", {"scene_id": 1})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_shader_uniform", "args": {"shader_type": "mesh", "name": "rimColor"}}]},
+                              {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"default_mesh_shader_uniforms": "*"}}}]}],
+                   "must_not_call": ["fork_shader"], "max_calls": {"set_properties": 0}},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_code_editor_unsaved_diff",
+        "kind": "guard",
+        "what_happened": "New text (code-editor-git): what the user changed in a script they have open with unsaved edits is "
+                         "the code editor's buffer (diff_file source editor, the default), which git diff on disk cannot see.",
+        "text_at_issue": "diff_file: 'the code editor's unsaved buffer when it has one (source editor), else the file on disk'",
+        "source": "docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.8",
+        "files": GAME_FILES,
+        "groups_enabled": ["vcs"],
+        "prompt": "I have scripts/player.lua open in the editor's code editor with edits I haven't saved yet. What have I "
+                  "changed in it since the last commit? Don't modify anything.",
+        "mocks": [
+            {"tool": "code_editor", "result": ok(
+                "1 open file(s), 1 with unsaved edits.",
+                {"buffers": [{"path": "scripts/player.lua", "unsaved": True, "cursor_line": 12,
+                              "vcs": {"state": "ready", "revision": "HEAD",
+                                      "changes": [{"kind": "modified", "lines": [12, 12], "base_lines": [12, 12]}]}}]})},
+            {"tool": "diff_file", "result": ok(
+                "scripts/player.lua (the code editor's unsaved buffer) against HEAD:\n--- a/scripts/player.lua\n"
+                "+++ b/scripts/player.lua\n@@ -10,5 +10,5 @@\n ...\n-    self.speed = 5\n+    self.speed = 9\n ...\n",
+                {"path": "scripts/player.lua", "rev": "HEAD", "source": "editor", "unsaved": True,
+                 "diff": "-    self.speed = 5\n+    self.speed = 9\n", "truncated": False})},
+            {"tool": "get_vcs_status", "result": ok("git main: 0 entries", {"state": "active", "provider": "git", "entries": []})},
+        ],
+        "shell": [{"match": r"git (diff|status|log)", "output": ""}],
+        "checks": {"calls": ["diff_file"], "must_not_call": [{"tool": "code_editor", "args": {"action": "save"}}, "write_file"],
+                   "reply_must": [r"(?i)speed|\b9\b"]},
+        "max_turns": 10,
+    },
 ]

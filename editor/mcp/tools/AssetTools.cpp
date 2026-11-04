@@ -2790,6 +2790,69 @@ void appendUniformMembers(Json& members, const CustomUniformBlock& block, const 
     }
 }
 
+// What each editable member renders with and where that value comes from (its own value, the
+// mesh's under a material, the scene's default-shader value, the shader's default, ...)
+void annotateEffectiveValues(Json& members, const UniformChain& chain) {
+    for (Json& member : members) {
+        if (!member.value("editable", false)) continue;
+        UniformSource source;
+        member["effective"] = vec4Array(ShaderUniforms::resolve(chain, member["name"].get<std::string>(), &source));
+        member["source"] = uniformSourceName(source);
+    }
+}
+
+const char* sceneDefaultTypeName(ShaderType type) {
+    switch (type) {
+        case ShaderType::MESH: return "mesh";
+        case ShaderType::UI: return "ui";
+        case ShaderType::SKYBOX: return "sky";
+        case ShaderType::POINTS: return "points";
+        case ShaderType::LINES: return "lines";
+        default: return "";
+    }
+}
+
+// shader_type of get/set_shader_uniform: the scene's default shader of that type
+bool sceneDefaultShaderType(const CallPtr& call, ShaderType& type) {
+    const std::string name = call->args().value("shader_type", std::string());
+    for (ShaderType candidate : {ShaderType::MESH, ShaderType::UI, ShaderType::SKYBOX, ShaderType::POINTS, ShaderType::LINES}) {
+        if (name == sceneDefaultTypeName(candidate)) {
+            type = candidate;
+            return true;
+        }
+    }
+    call->fail("shader_type is mesh, ui, sky, points or lines.");
+    return false;
+}
+
+Json manifestParameters(const ShaderManifest* manifest, const ShaderUniformValues& values, const UniformChain* chain = nullptr);
+
+// The scene default's members (the union over the objects drawing with it), values and status
+Json sceneDefaultUniformsJson(Scene* scene, ShaderType type, Json& members) {
+    const std::string shader = scene->getDefaultCustomShader(type);
+    const ShaderUniformValues& values = scene->getDefaultShaderUniforms(type);
+    const Catalog::DefaultShaderUse use = Catalog::getDefaultShaderUse(scene, type);
+    for (const CustomUniformBlock* block : use.blocks) appendUniformMembers(members, *block, values);
+    const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(shader);
+    UniformChain chain;
+    chain.values = &values;
+    chain.manifest = manifest.get();
+    annotateEffectiveValues(members, chain);
+    Json unused = Json::array();
+    if (!use.blocks.empty()) {
+        for (const auto& value : values) {
+            if (std::none_of(members.begin(), members.end(), [&](const Json& m) { return m.value("name", "") == value.first; }))
+                unused.push_back(value.first);
+        }
+    }
+    Json data = {{"shader_type", sceneDefaultTypeName(type)}, {"default_shader", shader}, {"used_by", use.users},
+                 {"build_failed", use.users > 0 && use.failed == use.users}, {"members", members},
+                 {"warnings", Catalog::getShaderUniformWarnings(use.blocks)}, {"values", uniformValuesJson(values)},
+                 {"unused_values", unused}, {"property", Catalog::getDefaultShaderUniformsProperty(type)}};
+    if (manifest) data["parameters"] = manifestParameters(manifest.get(), values);
+    return data;
+}
+
 void componentUniformMembers(Json& members, Json& warnings, Scene* scene, Entity entity, ComponentType component,
                              const ShaderUniformValues& values) {
     std::vector<const CustomUniformBlock*> blocks = Catalog::getShaderUniformBlocks(scene, entity, component);
@@ -2912,7 +2975,7 @@ bool passIndexArg(const CallPtr& call, const std::vector<PostProcessPass>& passe
 }
 
 // The manifest parameters of a shader with what is stored for each (else its default)
-Json manifestParameters(const ShaderManifest* manifest, const ShaderUniformValues& values) {
+Json manifestParameters(const ShaderManifest* manifest, const ShaderUniformValues& values, const UniformChain* chain) {
     Json list = Json::array();
     if (!manifest) return list;
     const Json described = McpValues::manifestToJson("", *manifest)["properties"];
@@ -2920,6 +2983,12 @@ Json manifestParameters(const ShaderManifest* manifest, const ShaderUniformValue
         Json entry = described[list.size()];
         entry["value"] = vec4Array(ShaderUniforms::has(values, property.member) ? ShaderUniforms::get(values, property.member) : property.defaultValue);
         entry["has_value"] = ShaderUniforms::has(values, property.member);
+        // what it renders with, and where that comes from (the scene's default-shader value, ...)
+        if (chain) {
+            UniformSource source;
+            entry["effective"] = vec4Array(ShaderUniforms::resolve(*chain, property.member, &source));
+            entry["source"] = uniformSourceName(source);
+        }
         list.push_back(entry);
     }
     return list;
@@ -2956,11 +3025,26 @@ bool materialParamsTarget(const CallPtr& call, Scene* scene, Entity entity, Comp
 void getShaderUniformsTool(const CallPtr& call) {
     const Json& args = call->args();
     const bool pass = args.contains("pass_index");
+    // shader_type without an entity: the scene's default shader of that type
+    const bool sceneDefault = !pass && args.contains("shader_type") && (!args.contains("entity") || args["entity"].is_null());
     Target where;
-    if (!resolveTarget(call, where, !pass)) return;
+    if (!resolveTarget(call, where, !pass && !sceneDefault)) return;
     Scene* scene = where.scene->scene;
     Json members = Json::array();
     Json warnings;
+    if (sceneDefault) {
+        ShaderType type;
+        if (!sceneDefaultShaderType(call, type)) return;
+        Json data = sceneDefaultUniformsJson(scene, type, members);
+        const std::string shader = data["default_shader"].get<std::string>();
+        std::string text = shader.empty() ? std::string("The scene has no default ") + sceneDefaultTypeName(type) + " shader"
+                                          : "Scene default " + std::string(sceneDefaultTypeName(type)) + " shader " + shader + ": used by " +
+                                                std::to_string(data["used_by"].get<int>()) + " object(s), " + std::to_string(members.size()) +
+                                                " member(s)";
+        text += ", " + std::to_string(data["values"].size()) + " value(s) set.";
+        call->ok(text, data);
+        return;
+    }
     if (pass) {
         const std::vector<PostProcessPass>& passes = scene->getPostProcessPasses();
         int index;
@@ -2996,6 +3080,8 @@ void getShaderUniformsTool(const CallPtr& call) {
         const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(shader);
         std::vector<const CustomUniformBlock*> blocks = {&sub.customVSParams, &sub.customFSParams, &sub.customVSDepthParams, &sub.customFSDepthParams};
         for (const CustomUniformBlock* block : blocks) appendUniformMembers(members, *block, sub.material.shaderParams);
+        const Catalog::UniformChainRefs submeshChain = Catalog::getShaderUniformChain(scene, where.entity, where.component, submesh);
+        annotateEffectiveValues(members, submeshChain.chain);
         Json data = {{"entity", McpRefs::entityJson(where.scene, where.entity)},
                      {"component", McpRefs::componentName(where.component)},
                      {"submesh", submesh},
@@ -3008,7 +3094,7 @@ void getShaderUniformsTool(const CallPtr& call) {
                      {"values", uniformValuesJson(sub.material.shaderParams)},
                      {"globals", componentGlobalMembers(scene, where.entity, where.component, submesh)},
                      {"global_bindings", globalBindingsJson(sub.material.shaderGlobalBindings)}};
-        if (manifest) data["parameters"] = manifestParameters(manifest.get(), sub.material.shaderParams);
+        if (manifest) data["parameters"] = manifestParameters(manifest.get(), sub.material.shaderParams, &submeshChain.chain);
         // what this variant reads of the scene (phase 3) and the cost
         if (const uint32_t reads = Catalog::getMaterialSceneInputs(scene, where.entity, submesh, false)) {
             data["scene_inputs"] = McpValues::sceneInputsToJson(reads);
@@ -3025,6 +3111,8 @@ void getShaderUniformsTool(const CallPtr& call) {
         return;
     }
     componentUniformMembers(members, warnings, scene, where.entity, where.component, *values);
+    const Catalog::UniformChainRefs chain = Catalog::getShaderUniformChain(scene, where.entity, where.component);
+    annotateEffectiveValues(members, chain.chain);
     Json data = {{"entity", McpRefs::entityJson(where.scene, where.entity)},
                  {"component", McpRefs::componentName(where.component)},
                  {"custom_shader", *custom},
@@ -3043,7 +3131,7 @@ void getShaderUniformsTool(const CallPtr& call) {
     }
     // a shader with a manifest (a library shader) lists its parameters with labels and defaults
     if (const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(data["effective_shader"].get<std::string>())) {
-        data["parameters"] = manifestParameters(manifest.get(), *values);
+        data["parameters"] = manifestParameters(manifest.get(), *values, &chain.chain);
     }
     if (const uint32_t reads = Catalog::getComponentSceneInputs(scene, where.entity, where.component)) {
         data["scene_inputs"] = McpValues::sceneInputsToJson(reads);
@@ -3055,8 +3143,10 @@ void getShaderUniformsTool(const CallPtr& call) {
 void setShaderUniformTool(const CallPtr& call) {
     const Json& args = call->args();
     const bool pass = args.contains("pass_index");
+    // shader_type without an entity: the scene's default shader of that type
+    const bool sceneDefault = !pass && args.contains("shader_type") && (!args.contains("entity") || args["entity"].is_null());
     Target where;
-    if (!resolveTarget(call, where, !pass)) return;
+    if (!resolveTarget(call, where, !pass && !sceneDefault)) return;
     const std::string name = args.value("name", "");
     if (name.empty()) {
         call->fail("name is required: the uniform block member.");
@@ -3090,6 +3180,56 @@ void setShaderUniformTool(const CallPtr& call) {
     Json declaredMembers = Json::array();
     Json warnings;
     bool declared = false;
+    if (sceneDefault) {
+        ShaderType type;
+        if (!sceneDefaultShaderType(call, type)) return;
+        const std::string shader = scene->getDefaultCustomShader(type);
+        const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(shader);
+        const ShaderManifestProperty* declaredProperty = manifest ? manifest->findProperty(name) : nullptr;
+        if (!remove && manifest && !declaredProperty) {
+            std::string names;
+            for (const ShaderManifestProperty& p : manifest->properties) names += (names.empty() ? "" : ", ") + p.member;
+            call->fail(shader + " has no parameter '" + name + "'; its parameters: " + (names.empty() ? "(none)" : names) + ".");
+            return;
+        }
+        if (!remove) {
+            std::string why;
+            if (!McpValues::shaderParamFromJson(declaredProperty, name, rawValue, value, why)) {
+                call->fail(why);
+                return;
+            }
+        }
+        ShaderUniformValues values = scene->getDefaultShaderUniforms(type);
+        if (remove) {
+            if (!ShaderUniforms::remove(values, name)) {
+                call->fail(std::string("The scene's default ") + sceneDefaultTypeName(type) + " shader has no value '" + name + "'.");
+                return;
+            }
+        } else {
+            ShaderUniforms::set(values, name, value);
+        }
+        const char* property = Catalog::getDefaultShaderUniformsProperty(type);
+        if (!addSceneCommand(sceneId, new ScenePropertyCmd<ShaderUniformValues>(project, sceneId, property, values))) {
+            call->fail("Could not change the scene's default shader value.");
+            return;
+        }
+        Json members = Json::array();
+        Json data = sceneDefaultUniformsJson(scene, type, members);
+        std::string note;
+        if (shader.empty()) {
+            note = std::string(" Note: the scene has no default ") + sceneDefaultTypeName(type) +
+                   " shader; the value is kept and applies once one is set (fork_shader target scene_default).";
+        } else if (!remove && !declaredProperty) {
+            note = uniformSetNote(members, name, declared);
+        }
+        declared = declared || declaredProperty != nullptr;
+        Json result = {{"shader_type", sceneDefaultTypeName(type)}, {"property", property}, {"name", name}, {"declared", declared},
+                       {"used_by", data["used_by"]}};
+        if (!remove) result["value"] = vec4Array(value);
+        call->ok((remove ? "Removed " : "Set ") + name + " on the scene's default " + sceneDefaultTypeName(type) + " shader (inherited by " +
+                 std::to_string(data["used_by"].get<int>()) + " object(s))." + note, result);
+        return;
+    }
     if (pass) {
         std::vector<PostProcessPass> passes = scene->getPostProcessPasses();
         int index;
@@ -4068,13 +4208,15 @@ void registerAssetTools(McpRegistry& registry) {
         tool.description =
             "A custom or library shader's parameters (u_vs/u_fs_customParams, a pass's u_fs_postParams): GLSL type, "
             "engine-written (time, resolution), value; library shaders add label, kind, default; globals read "
-            "(u_vs/u_fs_globals) and global_bindings. entity (+ component, + submesh) or pass_index; known once compiled.";
+            "(u_vs/u_fs_globals) and global_bindings; effective value and its source. entity (+ component, + submesh), "
+            "pass_index, or shader_type (the scene's default shader); known once compiled.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
             {"submesh", integer("Submesh (default 0 if its material has a shader).")},
-            {"pass_index", integer("A post-process pass instead.")}
+            {"pass_index", integer("A post-process pass instead.")},
+            {"shader_type", stringEnum("Without entity: the scene's default shader.", {"mesh", "ui", "sky", "points", "lines"})}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -4088,13 +4230,15 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Set Shader Uniform";
         tool.description =
             "Set or remove one parameter of a custom or library shader by member (entity (+ component, + submesh for "
-            "a material) or pass_index). Undeclared names are stored but unused (the result says so).";
+            "a material), pass_index, or shader_type: the scene's default shader, inherited by objects without their "
+            "own). Undeclared names are stored but unused (the result says so).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
             {"submesh", integer("Submesh (default 0 if its material has a shader).")},
             {"pass_index", integer("A post-process pass instead.")},
+            {"shader_type", stringEnum("Without entity: the scene's default shader.", {"mesh", "ui", "sky", "points", "lines"})},
             {"name", string("")},
             {"value", {{"type", {"number", "array", "string"}}, {"items", {{"type", "number"}}},
                        {"description", "Number or [x,y(,z(,w))] (colours linear), or \"#RRGGBB[AA]\" (sRGB) for a colour."}}},

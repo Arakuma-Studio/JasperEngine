@@ -164,3 +164,38 @@ async def test_commit_and_log(ed: Editor):
     ed.check_eq(log["entries"][0]["message"], "Move the spawner", f"{log}")
     status = await ed.call("get_vcs_status", refresh=True)
     ed.check(SCENE not in {e["path"] for e in status["entries"]}, f"clean after the commit: {status}")
+
+
+async def test_detached_and_merge_state(ed: Editor):
+    """get_vcs_status names a detached HEAD by its tag and reports a merge left unfinished."""
+    await setup(ed)
+    branch = git(ed, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    git(ed, "tag", "v1")
+    git(ed, "checkout", "-q", "--detach", "v1")
+    try:
+        status = await ed.call("get_vcs_status", refresh=True)
+        ed.check_eq(status["branch"].get("detached"), True, f"{status['branch']}")
+        ed.check_eq(status["branch"].get("tag"), "v1", f"{status['branch']}")
+        ed.check_eq(status["branch"].get("label"), "tag v1", f"{status['branch']}")
+    finally:
+        git(ed, "checkout", "-q", branch)
+
+    # a merge that stopped on a conflict
+    git(ed, "checkout", "-q", "-b", "side")
+    (ed.project / "notes.txt").write_text("side\n")
+    git(ed, "commit", "-q", "-m", "side", "--", "notes.txt")
+    git(ed, "checkout", "-q", branch)
+    (ed.project / "notes.txt").write_text("ours\n")
+    git(ed, "commit", "-q", "-m", "ours", "--", "notes.txt")
+    env = dict(os.environ, HOME=str(ed.scratch.home), GIT_CONFIG_NOSYSTEM="1", LC_ALL="C")
+    merged = subprocess.run(["git", "merge", "-q", "side"], cwd=ed.project, env=env, capture_output=True, text=True, timeout=60)
+    ed.check(merged.returncode != 0, f"the merge conflicts: {merged.stdout} {merged.stderr}")
+    try:
+        status = await ed.call("get_vcs_status", refresh=True)
+        ed.check_eq(status["branch"].get("operation"), "merge", f"{status['branch']}")
+        ed.check(status["branch"]["label"].endswith("| MERGING"), f"{status['branch']}")
+        ed.check(status["counts"]["conflicted"] >= 1, f"{status['counts']}")
+    finally:
+        git(ed, "merge", "--abort")
+    status = await ed.call("get_vcs_status", refresh=True)
+    ed.check("operation" not in status["branch"], f"the merge is over: {status['branch']}")

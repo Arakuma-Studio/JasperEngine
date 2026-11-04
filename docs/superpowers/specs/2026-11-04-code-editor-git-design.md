@@ -666,3 +666,35 @@ Changed (hot files marked *):
   involved), repository paths are UTF-8 `RepoPath`s already.
 - Follow-up for the lead (not in any feature): Subversion scene diff and `diff_scene`/`diff_file` defaults use
   `HEAD` where D5 says BASE (section 4); `VcsService::baselineRevision()` from this feature is the fix's helper.
+
+## Deviations
+
+Recorded during the implementation (branch `dc/code-editor-git`).
+
+1. **Subversion's HEAD reads BASE everywhere** (the follow-up of section 4, done here at the lead's request):
+   `VcsService::effectiveRevision` maps `"HEAD"` to `"BASE"` for svn in `VcsService::baseContent`/`textDiff` (the
+   text diff viewer, `diff_file`) and in `SceneDiffTracker`'s baseline reads (the Scene Diff, the Hierarchy and
+   Inspector markers, `diff_scene`, `revert_to_baseline`). A revision number still reads that revision. Red control:
+   `TextBaselines.SvnBaselineIsBase` (an unmodified file of a working copy behind the server diffs empty).
+2. **`SvnProvider::textDiff` of an unchanged versioned file** returned the whole file as added (it treated svn's empty
+   diff as an unversioned file). Found by the test above; fixed: an empty diff of a versioned file is empty, an
+   unversioned file (svn refuses to diff it) is still all added. Same test.
+3. **Prebuilt players**: the spec missed the cooked scene format (`engine/core/serialization/SceneSettingsCodec.cpp`).
+   The five value sets end the scene settings record; `FORMAT_MINOR` goes to 1 (content format 1.1). A 1.0 reader skips
+   them (the record is length-prefixed), a 1.1 reader of a 1.0 file stops at the record's end. Test
+   `SceneDefaultShaderUniforms.CookedRoundTrip`.
+4. **Keyboard shortcuts doc**: `docs/editor/keyboard-shortcuts.md` is generated from the editor's command catalog,
+   which does not list the code editor's own keys (Ctrl+F, Alt+F5 are the widget's). Alt+F5 / Shift+Alt+F5 are
+   documented in `docs/editor/version-control.md` and shown in the code editor's context menu instead.
+5. **Agent guide**: no line added (lead decision: only agent-authoring restructures the guide; lean MCP rules). The
+   detail is in `docs/mcp/guide/vcs.md` and `docs/mcp/guide/shaders.md`; two eval cases
+   (`guard_scene_default_shader_values`, `guard_code_editor_unsaved_diff`) cover the new tool text.
+6. **Tests grouped**: the head-label checks are in `editor/tests/vcs/GitProviderTest.cpp` (`GitProvider.HeadLabels`,
+   `GitProvider.DetachedAndOperations`) rather than a `VcsUiLabelTest`; the stream, factory, cook and undo tests of
+   the scene values share `editor/tests/stream/SceneDefaultShaderUniformsTest.cpp`; the scene flagging test is
+   `engine/tests/core/subsystem/SceneDefaultUniformsTest.cpp`.
+7. **`CodeEditor::isFileModified`** now reads the undo position instead of the flag `show()` refreshes, so an edit
+   between frames (an MCP `revert_change`) counts at once for `diff_file` and `close`.
+8. **Shared helpers**: `ProjectChecks::shaderTypeForComponent` maps components to shader types (no second mapping);
+   `Catalog::getShaderUniformChain` and `Catalog::getDefaultShaderUse` are the one place the Inspector and MCP build
+   the value chain and the default shader's users from.
