@@ -51,6 +51,11 @@ namespace jasperengine::editor::htmlui {
         static bool available();
 
         HttpResponse get(const std::string& url);
+        // A large download: the body goes to `partial`, continuing what it holds with a Range
+        // request. A failed transfer keeps the bytes it got for the next call (no error page is ever
+        // appended to them); a server that ignores the Range fails with "HTTP server doesn't seem to
+        // support byte ranges" and leaves the file alone. A stalled transfer fails after a minute.
+        HttpResponse getResuming(const std::string& url, const std::filesystem::path& partial);
 
         // Tests: URL prefixes replaced before the request ("https://fonts.googleapis.com" ->
         // "http://127.0.0.1:PORT/gf"); responses report the URL as the caller named it
@@ -88,6 +93,7 @@ namespace jasperengine::editor::htmlui {
     private:
         long long maxFileSize = kMaxFileSize;
         HttpResponse getFromMirror(const std::string& mirror, const std::string& url);
+        HttpResponse transfer(const std::string& url, const std::filesystem::path& body, bool resume);
         std::string rewrite(const std::string& url) const;
         std::string unrewrite(const std::string& url) const;
         std::filesystem::path newTempFile(const char* suffix);

@@ -830,22 +830,50 @@ CASES = [
         "source": "docs/specs/S64-shader-lists.md R3",
         "prompt": "How many shader variants will a build of this project ship? I need the exact number.",
         "mocks": [
-            {"tool": "get_build_info", "result": ok(
+            {"tool": "get_build_info", "result": dict(ok(
                 "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 63 "
                 "shader(s). The shader list is incomplete: 2 closed scene(s) left, see next.",
-                {"shader_count": 63, "shaders_complete": False, "shaders_pending_scenes": ["Level2", "Level3"],
+                {"shader_count": 63, "shaders_complete": False, "shaders_pending_scenes": ["Hud", "Level2"],
                  "shaders_job_id": "job-7",
                  "next": "This list is incomplete. get_job {job_id: \"job-7\"} until it ends, then get_build_info again. "
-                         "build_project and generate_shaders finish it themselves."})},
+                         "build_project and generate_shaders finish it themselves."}), real=True)},
             {"tool": "get_job", "result": ok(
                 "Read the closed scenes' shaders: succeeded - The shader list is complete: get_build_info answers now.",
                 {"id": "job-7", "status": "succeeded", "result": {"unreadable_scenes": []}})},
-            {"tool": "get_build_info", "after": "get_job", "result": ok(
+            {"tool": "get_build_info", "after": "get_job", "result": dict(ok(
                 "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 71 "
-                "shader(s).", {"shader_count": 71, "shaders_complete": True, "shaders_unreadable_scenes": []})},
+                "shader(s).", {"shader_count": 71, "shaders_complete": True, "shaders_unreadable_scenes": []}), real=True)},
         ],
         "checks": {"calls": [{"tool": "get_job", "args": {"job_id": "job-7"}}], "last_call": "get_build_info",
                    "reply_must": [r"\b71\b"], "must_not_call": ["generate_shaders", "build_project"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_record_failed_write",
+        "kind": "guard",
+        "what_happened": "A record_game whose write failed leaves Play running and nothing at the output path: the agent stops "
+                         "Play, says what failed and what was kept, and does not record again before the cause is fixed.",
+        "text_at_issue": "record_game's failed result, its text: 'The output path holds nothing and Play is still running: stop it "
+                         "(play action stop), fix the cause, then record again.'",
+        "source": "docs/specs/S62-recorder-integrity.md R1, R2; no failure on record",
+        "groups_enabled": ["editor_tools"],
+        "prompt": "Record 5 seconds of the game with sound to captures/trailer.mp4.",
+        "mocks": [
+            {"tool": "record_game", "result": {
+                "text": "The recording failed: the audio write failed: disk full, 3 MB free; 41 frames were kept as "
+                        "captures/trailer.partial.mp4 (no audio). The output path holds nothing and Play is still running: stop it "
+                        "(play action stop), fix the cause, then record again.",
+                "is_error": True,
+                "real": True,
+                "structured": {"frames": 41, "fps": 30, "failed_step": "audio", "partial": "captures/trailer.partial.mp4", "partial_frames": 41,
+                               "error": "the audio write failed: disk full, 3 MB free; 41 frames were kept as captures/trailer.partial.mp4 (no audio)"}}},
+            {"tool": "play", "args": {"action": "stop"}, "result": ok("Play stopped.", {"state": "stopped"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"calls": [{"tool": "record_game"}, {"tool": "play", "args": {"action": "stop"}}],
+                   "order": [[{"tool": "record_game"}, {"tool": "play", "args": {"action": "stop"}}]],
+                   "max_calls": {"record_game": 1},
+                   "reply_must": [r"disk|space", r"partial"]},
         "max_turns": 10,
     },
     {
@@ -870,6 +898,19 @@ CASES = [
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
+    },
+    {
+        "id": "bad_ios_simulator_without_an_account",
+        "kind": "bad",
+        "what_happened": "Someone with no Apple account wants to try the game on iOS; a device build stops before signing, so only the simulator .app runs.",
+        "text_at_issue": "build_project ios_simulator: 'Unsigned simulator .app.'",
+        "source": "docs/specs/S67-packaging-tests.md R4",
+        "prompt": "I don't have an Apple developer account, but I'd like to try this game in the iOS Simulator on this Mac. Build it for that.",
+        "mocks": [
+            {"tool": "build_project", "result": ok("Build succeeded.", {"status": "succeeded", "result": {"method_used": "prebuilt"}})},
+        ],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "ios", "ios_simulator": True}}]},
+        "max_turns": 8,
     },
     {
         "id": "guard_import_reports_a_leftover",
