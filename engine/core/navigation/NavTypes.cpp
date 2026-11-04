@@ -208,7 +208,7 @@ const char* nav::pathStatusName(PathStatus status) {
     return "invalid";
 }
 
-// ---------------------------------------------------------------- S42: path failures
+// ---------------------------------------------------------------- S54: path failures
 
 namespace {
 

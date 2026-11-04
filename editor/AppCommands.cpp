@@ -17,6 +17,7 @@
 #include "window/AnimationWindowClip.h"
 #include "window/PoseAnimationWindow.h"
 #include "navigation/NavigationEditor.h"
+#include "navigation/NavPathTester.h"
 #include "sceneview/SceneViewController.h"
 #include "shortcuts/DefaultCommands.h"
 #include "util/FluidEditorTools.h"
@@ -256,6 +257,10 @@ void editor::App::registerCommands(){
     onView("sceneView.showAll", [](SceneViewController& view, SceneProject& scene) { view.showAll(scene); });
     onView("sceneView.togglePickLock", [](SceneViewController& view, SceneProject& scene) { view.togglePickLockSelection(scene); });
     onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
+    // the Path Tester (S54 R25): in the selected scene's view, edit or play
+    bind("navigation.pathTester", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) NavPathTester::get().toggle(*scene);
+    }, sceneShown, noDrag);
     onView("sceneView.deleteMeasure", [](SceneViewController& view, SceneProject& scene) { view.deleteMeasure(scene, view.selectedMeasure(scene.id)); },
            [](SceneViewController& view, SceneProject& scene) { return view.hasSelectedMeasure(scene.id); });
     for (int slot = 1; slot <= 9; slot++) {
@@ -289,17 +294,21 @@ void editor::App::registerCommands(){
         const SceneProject* scene = project.getSelectedScene();
         return scene && scene->sceneRender && scene->sceneRender->isFluidPainting();
     };
-    auto brush = [this, &bind, terrainEditing, dyePainting, noDrag](const char* id, bool size, float factor) {
-        bind(id, [this, size, factor, dyePainting](const CommandArgs&) {
-            const SceneProject* selected = project.getSelectedScene();
-            // the nav-grid brush (S19): a cell more or less across
-            if (size && selected && NavigationEditor::get().isBrushPainting(selected->scene)) {
+    // the nav-grid brush (S19 R35) takes them too while it paints in the selected scene
+    auto navPainting = [this]() {
+        const SceneProject* scene = project.getSelectedScene();
+        return scene && NavigationEditor::get().isBrushPainting(scene->scene);
+    };
+    auto brush = [this, &bind, terrainEditing, dyePainting, navPainting, noDrag](const char* id, bool size, float factor) {
+        bind(id, [this, size, factor, dyePainting, navPainting](const CommandArgs&) {
+            // the nav-grid brush: a cell more or less across
+            if (size && navPainting()) {
                 NavigationEditor::Brush& navBrush = NavigationEditor::get().getBrush();
                 navBrush.size = std::clamp(navBrush.size + (factor > 1.0f ? 1 : -1), 1, 64);
             } else if (size && dyePainting()) FluidEditorTools::adjustRadius(factor);
             else if (size) terrainEditWindow->adjustBrushSize(factor);
             else terrainEditWindow->adjustBrushStrength(factor);
-        }, [terrainEditing, dyePainting, size]() { return terrainEditing() || (size && dyePainting()); }, noDrag);
+        }, [terrainEditing, dyePainting, navPainting, size]() { return terrainEditing() || (size && (dyePainting() || navPainting())); }, noDrag);
     };
     brush("terrain.brushSmaller", true, 1.0f / 1.15f);
     brush("terrain.brushLarger", true, 1.15f);

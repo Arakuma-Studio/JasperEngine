@@ -47,6 +47,8 @@ TEST_F(NavQueryTest, AreaCosts){
     const Vector3 from(-10.0f, 0.0f, 0.0f), to(10.0f, 0.0f, 0.0f);
     const nav::NavPath path = nav->calculatePath(from, to);
     ASSERT_EQ(path.status, nav::PathStatus::Complete);
+    // S54 R2: Complete exactly when nothing failed
+    EXPECT_EQ(path.failure, nav::PathFailure::None);
     // the strip costs 10 per metre: the path detours through the gap (z > 3) instead
     float maxZ = -1e9f;
     for (const Vector3& corner : path.corners)
@@ -58,6 +60,7 @@ TEST_F(NavQueryTest, AreaCosts){
     filter.areaMask = (uint16_t)(nav::ALL_AREAS & ~(1u << 3));
     const nav::NavPath masked = nav->calculatePath(from, to, filter);
     ASSERT_EQ(masked.status, nav::PathStatus::Complete);
+    EXPECT_EQ(masked.failure, nav::PathFailure::None);
     for (const Vector3& point : samples(masked)) {
         nav::NavHit hit;
         ASSERT_TRUE(nav->samplePosition(point, 0.3f, hit, filter));
@@ -80,6 +83,7 @@ TEST_F(NavQueryTest, AreaMaskBlocksAcross){
     filter.areaMask = (uint16_t)(nav::ALL_AREAS & ~(1u << 4));
     const nav::NavPath path = nav->calculatePath(Vector3(-10.0f, 0.0f, 0.0f), Vector3(10.0f, 0.0f, 0.0f), filter);
     EXPECT_EQ(path.status, nav::PathStatus::Partial);
+    EXPECT_EQ(path.failure, nav::PathFailure::BlockedByArea);
     ASSERT_FALSE(path.corners.empty());
     EXPECT_LT(path.corners.back().x, -1.0f + CELL);
     EXPECT_FALSE(nav->isReachable(Vector3(-10.0f, 0.0f, 0.0f), Vector3(10.0f, 0.0f, 0.0f), filter));
@@ -143,8 +147,14 @@ TEST_F(NavQueryTest, IsReachable){
     EXPECT_FALSE(nav->isReachable(Vector3(-6.0f, 0.0f, 0.0f), Vector3(6.0f, 0.0f, 0.0f)));
     const nav::NavPath path = nav->calculatePath(Vector3(-6.0f, 0.0f, 0.0f), Vector3(6.0f, 0.0f, 0.0f));
     EXPECT_EQ(path.status, nav::PathStatus::Partial);
+    EXPECT_EQ(path.failure, nav::PathFailure::Disconnected);
     // a target far off every island has no polygon near it: Invalid
-    EXPECT_EQ(nav->calculatePath(Vector3(-6.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 40.0f)).status, nav::PathStatus::Invalid);
+    const nav::NavPath off = nav->calculatePath(Vector3(-6.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 40.0f));
+    EXPECT_EQ(off.status, nav::PathStatus::Invalid);
+    EXPECT_EQ(off.failure, nav::PathFailure::EndOffMesh);
+    const nav::NavPath sameIsland = nav->calculatePath(Vector3(-8.0f, 0.0f, 0.0f), Vector3(-4.0f, 0.0f, 2.0f));
+    EXPECT_EQ(sameIsland.status, nav::PathStatus::Complete);
+    EXPECT_EQ(sameIsland.failure, nav::PathFailure::None);
 }
 
 TEST_F(NavQueryTest, MovedSurfaceMovesItsNavmesh){

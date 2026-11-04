@@ -173,7 +173,7 @@ namespace jasperengine::nav {
         // the cost of each link cost area (index - FIRST_LINK_COST_AREA)
         std::vector<float> linkAreaCosts;
 
-        // S42: with NavCollectOptions::recordSources only (the editor's probe), the GameObject of
+        // S54: with NavCollectOptions::recordSources only (the editor's probe), the GameObject of
         // each triangle, terrain and volume (NULL_ENTITY: one the collector made). Never hashed.
         std::vector<Entity> triangleSources;
         std::vector<Entity> terrainSources;

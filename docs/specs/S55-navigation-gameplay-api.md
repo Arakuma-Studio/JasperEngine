@@ -750,8 +750,6 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
 - S55 P2: AC18's allocation count covers the area sync's share of a tick (`syncAreaOverrides`, 600
   calls with 50 agents, no overrides): S19's tick itself allocates (its sorted agent list), which
   `NavSystemTest.GameplayZeroCost` (P3) measures.
-- S55 P2: R43's `modifiers[].apply_at_runtime` belongs to S54 P2's `modifiers[]` list, which is not on
-  `nav/integration` yet: whichever lands second adds the field.
 
 ## Progress (implementation notes, keep updated)
 

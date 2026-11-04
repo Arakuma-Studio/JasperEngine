@@ -124,7 +124,7 @@ struct NavigationSystem::Runtime {
         std::chrono::steady_clock::time_point bakeStarted;
         std::unique_ptr<NavBakeResult> lastResult;
         int dirtyTiles = -1;
-        // S42 R17: each tile's last build in this session, ms by (y, x); cleared on a load
+        // S54 R17: each tile's last build in this session, ms by (y, x); cleared on a load
         std::map<std::pair<int, int>, double> tileMs;
         // the crowd of its agents and non-carving obstacles, made for one Detour mesh
         std::unique_ptr<NavCrowd> crowd;
@@ -580,7 +580,7 @@ NavigationSystem::InputReport NavigationSystem::inspectInputs(Entity surface, co
 namespace {
 
     // a bake that could not start: its code, and (when the surface exists and no bake runs) the
-    // surface's last result, so the report and the findings see it (S42 R16)
+    // surface's last result, so the report and the findings see it (S54 R16)
     bool refuseBake(std::unique_ptr<NavBakeResult>* last, NavBakeError why, const std::string& error, NavBakeError* code,
                     NavCollectStats* stats = nullptr) {
         if (code)
@@ -964,7 +964,7 @@ namespace {
 namespace {
 
     // what a query needs of a surface: its mesh, frame and the search box of its agent type;
-    // why not (S42 R3 steps 1-2: not an enabled, active surface, or not baked)
+    // why not (S54 R3 steps 1-2: not an enabled, active surface, or not baked)
     bool makeQuery(NavigationSystem& system, Scene* scene, Entity entity, SurfaceQuery& out, PathFailure* why = nullptr) {
         const NavMeshSurfaceComponent* component = scene->findComponent<NavMeshSurfaceComponent>(entity);
         if (!component || !activeSurface(scene, entity, *component)) {
@@ -1073,7 +1073,7 @@ NavPath NavigationSystem::calculatePathOn(Entity surface, const Vector3& from, c
         if (i > 0)
             path.length += path.corners[i - 1].distance(path.corners[i]);
     }
-    // the S42 fields in the world (snap distances and the gap are lengths: the frame keeps them)
+    // the S54 fields in the world (snap distances and the gap are lengths: the frame keeps them)
     path.surface = surface;
     path.start = path.startSnapDistance >= 0.0f ? q.frame.toWorld(path.start, planeZ) : from;
     path.end = path.endSnapDistance >= 0.0f ? q.frame.toWorld(path.end, q.frame.planeZOf(to)) : to;
@@ -1345,7 +1345,7 @@ bool NavigationSystem::getDebugGeometry(Entity surface, const std::function<bool
     return true;
 }
 
-// ---------------------------------------------------------------- S42 diagnostics
+// ---------------------------------------------------------------- S54 diagnostics
 
 namespace {
 
@@ -1365,7 +1365,7 @@ namespace {
         outMax = box.getMaximum();
     }
 
-    std::string quoted(Scene* scene, Entity entity) {
+    std::string navName(Scene* scene, Entity entity) {
         return "'" + scene->getEntityName(entity) + "'";
     }
 
@@ -1550,7 +1550,7 @@ std::vector<NavFinding> NavigationSystem::getFindings(const NavFindingOptions& o
     for (Entity entity : surfaceEntities) {
         const NavMeshSurfaceComponent& surface = scene->getComponent<NavMeshSurfaceComponent>(entity);
         usedTypes.insert(surface.agentType);
-        const std::string name = quoted(scene, entity);
+        const std::string name = navName(scene, entity);
         if (!settings.findAgentType(surface.agentType))
             add("agent_type_missing", FindingSeverity::Error, entity,
                 "NavMesh Surface " + name + " uses agent type " + std::to_string(surface.agentType) +
@@ -1591,7 +1591,7 @@ std::vector<NavFinding> NavigationSystem::getFindings(const NavFindingOptions& o
         if (link.surface == NULL_ENTITY || link.connected)
             continue;
         add("link_unconnected", FindingSeverity::Warning, link.link,
-            "NavMesh Link " + quoted(scene, link.link) + " has an end on no polygon of NavMesh Surface " + quoted(scene, link.surface) +
+            "NavMesh Link " + navName(scene, link.link) + " has an end on no polygon of NavMesh Surface " + navName(scene, link.surface) +
                 ": agents cannot use it (move its ends onto the navmesh, or widen its search with a smaller Voxel Size, then bake)",
             {{"island_start", (double)link.islandStart}, {"island_end", (double)link.islandEnd}, {"connections", (double)link.connections}});
     }
@@ -1611,7 +1611,7 @@ std::vector<NavFinding> NavigationSystem::getFindings(const NavFindingOptions& o
     for (Entity entity : agentEntities) {
         const NavMeshAgentComponent& agent = scene->getComponent<NavMeshAgentComponent>(entity);
         usedTypes.insert(agent.agentType);
-        const std::string name = quoted(scene, entity);
+        const std::string name = navName(scene, entity);
         if (!settings.findAgentType(agent.agentType))
             add("agent_type_missing", FindingSeverity::Error, entity,
                 "NavMesh Agent " + name + " uses agent type " + std::to_string(agent.agentType) +
@@ -1683,7 +1683,7 @@ std::vector<NavFinding> NavigationSystem::getFindings(const NavFindingOptions& o
     for (const auto& entry : crowdMasks) {
         if (entry.second.size() > 16)
             add("crowd_filter_overflow", FindingSeverity::Warning, entry.first,
-                "The agents on NavMesh Surface " + quoted(scene, entry.first) + " use " + std::to_string(entry.second.size()) +
+                "The agents on NavMesh Surface " + navName(scene, entry.first) + " use " + std::to_string(entry.second.size()) +
                     " different Area Masks; a crowd holds 16, the others walk every area (use fewer distinct masks)",
                 {{"masks", (double)entry.second.size()}});
     }
@@ -1725,7 +1725,7 @@ std::vector<NavFinding> NavigationSystem::getFindings(const NavFindingOptions& o
             char area[32];
             std::snprintf(area, sizeof(area), "%.1f", island->area / scale);
             add("small_island", FindingSeverity::Info, entity,
-                "NavMesh Surface " + quoted(scene, entity) + " has a small island (#" + std::to_string(island->id) + ", " + area +
+                "NavMesh Surface " + navName(scene, entity) + " has a small island (#" + std::to_string(island->id) + ", " + area +
                     " m\xC2\xB2) no agent stands on and no link reaches: agents cannot get there (raise Minimum Region Area to drop "
                     "it, or connect it with a NavMesh Link)",
                 {{"island", (double)island->id}, {"area_m2", (double)(island->area / scale)}});
@@ -1747,7 +1747,7 @@ std::vector<NavFinding> NavigationSystem::getFindings(const NavFindingOptions& o
             if (!mesh || mesh->isCarving())
                 continue;
             add("obstacle_carve_ignored", FindingSeverity::Warning, entity,
-                "NavMesh Obstacle " + quoted(scene, entity) + " carves, but NavMesh Surface " + quoted(scene, surface) +
+                "NavMesh Obstacle " + navName(scene, entity) + " carves, but NavMesh Surface " + navName(scene, surface) +
                     " has no Runtime Carving: it is avoided instead (turn on Runtime Carving and bake, or turn off Carve)");
             break;
         }

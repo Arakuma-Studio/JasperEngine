@@ -62,7 +62,7 @@ namespace jasperengine{
         double milliseconds = 0.0;
         std::vector<std::string> warnings;
 
-        // ---- S42 bake report (R16): why it failed, what it collected, the tiles it built
+        // ---- S54 bake report (R16): why it failed, what it collected, the tiles it built
         nav::NavBakeError errorCode = nav::NavBakeError::None;
         // bakeErrorHint(errorCode)
         std::string hint;
@@ -117,7 +117,7 @@ namespace jasperengine{
         // the nearest wall within maxDistance (<= 0: S19's reach); false with out.distance =
         // maxDistance when none is that close
         bool findClosestEdge(const Vector3& point, nav::NavHit& out, const nav::QueryFilter& filter = {}, float maxDistance = -1.0f);
-        // S42 R6: false without a search when the ends' islands are current and differ; why: the
+        // S54 R6: false without a search when the ends' islands are current and differ; why: the
         // failure of the answering surface (None when reachable)
         bool isReachable(const Vector3& from, const Vector3& to, const nav::QueryFilter& filter = {}, nav::PathFailure* why = nullptr);
         // the same on one surface
@@ -160,7 +160,7 @@ namespace jasperengine{
         // system (the Background lane in the editor, Normal in a game) or time-sliced (web).
         // The navmesh changes once every tile is built; a cancel keeps the previous one.
         // A bake that cannot start (nothing collected, too large, unavailable) is the surface's
-        // last result too; code: why (S42)
+        // last result too; code: why (S54)
         bool bake(Entity surface, NavBakeMode mode, std::string& error, nav::NavBakeError* code = nullptr);
         // Re-collects and rebuilds the tiles touching the world box (procedural levels)
         bool updateTiles(Entity surface, const AABB& worldBounds, std::string& error, nav::NavBakeError* code = nullptr);
@@ -169,7 +169,7 @@ namespace jasperengine{
         bool cancelBake(Entity surface);
         bool isBaking(Entity surface) const;
         bool isAnyBaking() const;
-        // the last finished bake (null before any). Not const (S42): the first read fills its
+        // the last finished bake (null before any). Not const (S54): the first read fills its
         // island fields (main thread: the editor, Lua)
         const NavBakeResult* getLastBakeResult(Entity surface);
         // Lands finished bakes and runs time-sliced ones (the editor calls it every frame;
@@ -239,7 +239,7 @@ namespace jasperengine{
         bool getDebugGeometry(Entity surface, const std::function<bool(const AABB& worldBounds)>& visible, size_t maxTriangles,
                               bool detailMesh, nav::NavDebugGeometry& out, uint32_t extras = 0);
 
-        // ---- S42 diagnostics (docs/specs/S42-navigation-diagnostics.md; world positions, m, m^2).
+        // ---- S54 diagnostics (docs/specs/S54-navigation-diagnostics.md; world positions, m, m^2).
         // Islands label on demand here (R8); path queries never label.
         // Where a point is (R10): over the agent type's surfaces, the on-mesh one with the
         // smallest snap distance, else the closest found
