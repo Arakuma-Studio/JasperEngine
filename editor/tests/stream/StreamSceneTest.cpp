@@ -5,7 +5,10 @@
 // .scene file of editor/tests/fixtures/scenes (copies of the tools/fixtures projects' scenes),
 // which must load without an engine error and save back to the same YAML.
 
+#include "component/MeshComponent.h"
 #include "Project.h"
+#include "component/LightComponent.h"
+#include "component/Transform.h"
 #include "Stream.h"
 
 #include "LogCapture.h"

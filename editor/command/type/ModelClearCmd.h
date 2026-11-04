@@ -15,6 +15,7 @@
 
 #include <string>
 #include <vector>
+#include "ecs/ComponentFwd.h"
 
 namespace jasperengine::editor{
 

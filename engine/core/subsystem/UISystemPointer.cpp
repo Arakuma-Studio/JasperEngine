@@ -8,6 +8,15 @@
 // InputField) follow the pointer that pressed them; the on-screen controls feed Input actions.
 
 #include "UISystem.h"
+#include "component/ButtonComponent.h"
+#include "component/ImageComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/PanelComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/TextComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
 
 #include "Scene.h"
 #include "Engine.h"

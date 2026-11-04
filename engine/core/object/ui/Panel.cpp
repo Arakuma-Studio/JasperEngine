@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Panel.h"
+#include "component/PanelComponent.h"
+#include "util/Color.h"
 
 #include "component/LayoutGroupComponent.h"
 #include "component/TextComponent.h"
