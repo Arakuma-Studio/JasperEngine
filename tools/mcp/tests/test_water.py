@@ -321,6 +321,10 @@ async def test_planar_reflection_settings(ed: Editor):
     got = (await ed.call("get_scene_settings", names=["planar_reflection_resolution"]))["settings"]
     ed.check_eq(got["planar_reflection_resolution"], "half", "undo restores the resolution")
     await ed.call("redo")
+    # the same settings in Lua
+    lua_values = await lua(ed, "return scene.planarReflectionResolution == PlanarReflectionResolution.QUARTER, "
+                               "scene.maxPlanarReflections, scene.planarReflectionShadows")
+    ed.check_eq(lua_values, [True, 1, False], "Scene's Lua properties read the settings")
 
     # drawn: a pass for the water's height, at a quarter of the view
     stats = {}
