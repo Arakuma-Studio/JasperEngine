@@ -6,6 +6,7 @@
 // @description "The last LOD of a tree prototype: one quad per instance, facing the camera around Y, showing the baked view nearest the camera and lit through the baked normals. Baked by Bake Impostor in Paint Trees or edit_terrain's bake_impostors."
 // @lighting pixel vertex none
 // @require uv1
+// @require color
 // @state blend=opaque cull=off
 // @property baseColor color (1, 1, 1, 1) "Base colour"
 // @property alphaCutoff range(0, 1) 0.5 "Alpha cutoff"

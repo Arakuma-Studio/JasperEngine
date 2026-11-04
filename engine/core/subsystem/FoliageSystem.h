@@ -259,6 +259,7 @@ namespace jasperengine {
         const FoliageStats& getStats(Entity terrainEntity) const;
         // R2's canonical hash over the resident cells (layer, cell Z, cell X, attempt)
         uint64_t getPlacementHash(Entity terrainEntity) const;
+        // What any view's lists depend on, beyond the camera: a cached shadow reads it, too (R17)
         uint32_t getRevision() const { return residencyRevision; }
         // Waits for what jobs hold: the next update applies it (a test, a capture that must not wait for frames)
         void waitForJobs();
@@ -269,6 +270,8 @@ namespace jasperengine {
 
         // True when any Terrain has something to draw: the render hooks' first check
         bool hasDrawables() const { return drawables; }
+        // Whether the plants of a Terrain move: wind with some bend and some speed (R19)
+        bool isWindBlowing(Entity terrainEntity) const;
         void buildView(FoliageViewList& list, const FoliageViewRequest& request);
         // Tree cell buffers, within the per-frame cap (R14)
         void uploadTreeBuffers();

@@ -7,6 +7,7 @@
 // fit, cache, registry and planner logic are the pure CPU units of render/shadow/.
 
 #include "RenderSystem.h"
+#include "FoliageSystem.h"
 #include "RenderSystemShared.h"
 #include "Scene.h"
 #include "Engine.h"
@@ -594,6 +595,16 @@ void RenderSystem::updateShadowCasters(){
             for (const Vector4& v : mesh.vat.block)
                 revision.add(v);
         }
+        // T5 R17, R19: what a foliage prototype casts is its view's list, which the mesh's own state
+        // does not show; wind moves it every frame, as a Vertex Animator's clips do
+        const InstancedMeshComponent* foliageMesh = scene->findComponent<InstancedMeshComponent>(entity);
+        const bool foliageCaster = foliageMesh && foliageMesh->foliage;
+        bool foliageSways = false;
+        if (foliageCaster){
+            const std::shared_ptr<FoliageSystem> foliage = scene->getSystem<FoliageSystem>();
+            revision.add(foliage->getRevision());
+            foliageSways = foliageMesh->foliageWind && foliage->isWindBlowing(foliage->getOwner(entity));
+        }
         state.revision = (uint32_t)(revision.value ^ (revision.value >> 32));
 
         const bool terrain = scene->findComponent<TerrainComponent>(entity) != nullptr;
@@ -604,9 +615,9 @@ void RenderSystem::updateShadowCasters(){
                 instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
-        state.cameraDependent = terrain || unbounded;
+        state.cameraDependent = terrain || unbounded || foliageCaster;
         // skinned meshes whose bones moved this update
-        state.animated = mesh.needUpdateBones;
+        state.animated = mesh.needUpdateBones || foliageSways;
 
         shadowCasters.update((uint32_t)entity, state);
     }

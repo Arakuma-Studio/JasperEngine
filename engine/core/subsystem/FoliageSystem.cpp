@@ -1231,8 +1231,14 @@ struct FoliageSystem::Impl {
                     prototype.lods[l] = createPrototypeEntity(state, slot, ref);
                     prototype.slots[l] = slot;
                     InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(prototype.lods[l]);
-                    instmesh.foliageWind = authored.bendFactor > 0.0f;
                     instmesh.foliageDither = true;
+                }
+                // the variant follows Bend Factor: an inspector edit reloads the prototype
+                InstancedMeshComponent& protoInstmesh = scene->getComponent<InstancedMeshComponent>(prototype.lods[l]);
+                const bool wantsWind = authored.bendFactor > 0.0f;
+                if (protoInstmesh.foliageWind != wantsWind) {
+                    protoInstmesh.foliageWind = wantsWind;
+                    scene->getComponent<MeshComponent>(prototype.lods[l]).needReload = true;
                 }
                 syncPrototypeTransform(state, prototype.lods[l]);
                 if (!prototype.ready[l] && !prototype.failed[l]) {
@@ -1291,7 +1297,6 @@ struct FoliageSystem::Impl {
             submesh.material.shader = "library:impostor";
             submesh.material.shaderTextures.emplace_back("u_baseTexture", authored.impostorAlbedo);
             submesh.material.shaderTextures.emplace_back("u_normalTexture", authored.impostorNormal);
-            mesh.castShadows = (authored.shadowLodMask & 0x80) != 0;
             InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(prototype.impostor);
             instmesh.foliageWind = true;
             instmesh.foliageDither = true;
@@ -1410,6 +1415,8 @@ struct FoliageSystem::Impl {
 
         const bool preview = state.owner == previewEntity;
         const bool refillAll = state.refill || terrain.needUpdateFoliage;
+        // a setting no cell's bytes show (a shadow mask): the views still have to look again
+        if (terrain.needUpdateFoliage) self->residencyRevision++;
         if (terrain.needUpdateFoliage) state.holeCopyValid = false;
         state.refill = false;
         terrain.needUpdateFoliage = false;
@@ -3164,6 +3171,11 @@ void FoliageSystem::updateContactSubscription() {
             if (state->hitHandler) state->hitHandler(event);
         }
     });
+}
+
+bool FoliageSystem::isWindBlowing(Entity terrainEntity) const {
+    const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
+    return terrain && terrain->windBending > 0.0f && terrain->windSpeed > 0.0f;
 }
 
 void FoliageSystem::setLastUploadBytes(uint64_t bytes) {
