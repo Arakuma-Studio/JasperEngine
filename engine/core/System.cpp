@@ -252,6 +252,10 @@ int System::getSystemMemorySize(){
     return 0;
 }
 
+std::string System::getGpuRendererName(){
+    return "";
+}
+
 int System::getProcessorCount(){
     return std::max(1u, std::thread::hardware_concurrency());
 }

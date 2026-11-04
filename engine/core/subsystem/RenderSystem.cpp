@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenderSystem.h"
+#include "device/QualityResolver.h"
 #include "profiler/Profile.h"
 #include "profiler/FrameTimes.h"
 #include "TransformPropagation.h"
@@ -1841,7 +1842,7 @@ void RenderSystem::updateSceneLights(){
 
     // what every mesh's pick depends on
     const Vector3 ambient = scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity();
-    const int cap = std::clamp(scene->getMaxLightsPerObject(), 1, MAX_LIGHTS_PER_OBJECT);
+    const int cap = std::clamp(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()), 1, MAX_LIGHTS_PER_OBJECT);
     if (restructured || ambient != lightListAmbient || cap != lightListCap){
         lightListEpoch++;
         lightListAmbient = ambient;
@@ -2905,7 +2906,7 @@ void RenderSystem::renderReflectionProbeCapture(){
         opaqueRenders.push_back({entity, mesh, instanced, terrain, tilemap, &transform, distance, mesh->opaqueSortPriority, (uint32_t)opaqueRenders.size()});
     }
     // the face's detail levels, the Shadow LOD Bias coarser than its own view's (spec S55 R5)
-    const LodView probeLod = computeLodView(captureCamera, captureTransform, (float)resolution, Engine::getShadowLodBias());
+    const LodView probeLod = computeLodView(captureCamera, captureTransform, (float)resolution, true);
     std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
     if (SystemRender::isDrawBatching()){
         // GPU Instancing: culled once, drawn in batches (spec S55)
@@ -3133,7 +3134,7 @@ bool RenderSystem::checkPBRTextures(const MeshShaderEnvironment& environment, co
 MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     MeshShaderEnvironment environment;
     environment.lights = hasLights;
-    environment.lightCapacity = getLightCapacity(scene->getMaxLightsPerObject());
+    environment.lightCapacity = getLightCapacity(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()));
     environment.shadows = hasShadows;
     environment.shadowsHQ = shadowHQVariants;
     environment.ibl = hasIBL;
@@ -3142,12 +3143,12 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.atmosphereDepth = atmosphereDepthPrograms;
     environment.lights2D = hasLights2D;
     environment.shadows2D = hasShadows2D;
-    environment.ssao = scene->isSSAOEnabled();
+    environment.ssao = QualityResolver::ssao(scene->isSSAOEnabled());
     environment.ssr = scene->isSSREnabled();
     environment.depthPrepass = scene->isDepthPrepassEnabled();
     environment.sceneDepth = sceneDepthPrograms;
     environment.postColor = postColorVariants;
-    environment.litQualityHigh = scene->getLitQuality() == LitQuality::HIGH;
+    environment.litQualityHigh = QualityResolver::litQuality(scene->getLitQuality()) == LitQuality::HIGH;
     environment.pbrTier = MaterialPbr::getRuntimeTier();
     return environment;
 }
@@ -4235,8 +4236,10 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
 
 PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut){
     PostProcessingTiers tiers;
-    tiers.renderScale = std::min(std::max(settings.renderScale, 0.5f), 1.0f);
-    tiers.msaaSamples = settings.msaaSamples >= 4 ? 4 : (settings.msaaSamples >= 2 ? 2 : 1);
+    // the device tier's and the thermal response's caps (QualityResolver)
+    tiers.renderScale = std::min(std::max(QualityResolver::renderScale(settings.renderScale), 0.5f), 1.0f);
+    const int msaaSamples = QualityResolver::msaaSamples(settings.msaaSamples);
+    tiers.msaaSamples = msaaSamples >= 4 ? 4 : (msaaSamples >= 2 ? 2 : 1);
 
     uint32_t features = 0;
     // VHS replaces the scene tap and filters the lines itself: no FXAA or sharpen with it
@@ -4253,7 +4256,7 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
         if (settings.filmGrainType == FilmGrainType::FILMIC) features |= UBER_GRAIN_FILMIC;
     }
     if (settings.sharpenEnabled && settings.sharpenIntensity > 0.0f && !vhs) features |= UBER_SHARPEN;
-    if (settings.bloomEnabled && settings.bloomIntensity > 0.0f) features |= UBER_BLOOM;
+    if (QualityResolver::bloom(settings.bloomEnabled) && settings.bloomIntensity > 0.0f) features |= UBER_BLOOM;
     if (settings.blurEnabled) features |= UBER_BLUR;
     if (settings.halationEnabled && settings.halationIntensity > 0.0f){
         features |= UBER_HALATION;
@@ -8730,8 +8733,9 @@ void RenderSystem::updateMeshLodErrors(MeshComponent& mesh){
 }
 
 // world units one pixel of the view being drawn spans through camera (viewHeight > 0: a view of
-// that many pixels, else the target's); levelBias: levels coarser than that view selects
-RenderSystem::LodView RenderSystem::computeLodView(const CameraComponent& camera, const Transform& cameraTransform, float viewHeight, unsigned int levelBias) const{
+// that many pixels, else the target's); shadowBias: the Shadow LOD Bias applies (a probe face, a
+// render-to-texture camera: spec S55 R5)
+RenderSystem::LodView RenderSystem::computeLodView(const CameraComponent& camera, const Transform& cameraTransform, float viewHeight, bool shadowBias) const{
     if (viewHeight <= 0.0f){
         viewHeight = targetViewRect().getHeight();
         if (isFixedResolutionActive())
@@ -8740,9 +8744,11 @@ RenderSystem::LodView RenderSystem::computeLodView(const CameraComponent& camera
     viewHeight = std::max(viewHeight, 1.0f);
 
     LodView view;
-    view.levelBias = levelBias;
     view.enabled = scene->isMeshLodEnabled();
     view.threshold = scene->getMeshLodThreshold();
+    // the project's and the device tier's Shadow LOD Bias, as a shadow slot's (QualityResolver, C4)
+    if (shadowBias)
+        view.threshold /= std::max(QualityResolver::shadowLodBias(), 0.001f);
     view.origin = cameraTransform.worldPosition;
     if (camera.type == CameraType::CAMERA_PERSPECTIVE){
         view.perUnit = 2.0f * std::tan(camera.yfov * 0.5f) / viewHeight;
@@ -8767,15 +8773,16 @@ unsigned int RenderSystem::selectMeshLod(const MeshComponent& mesh, const LodVie
     if (!view || !view->enabled || !mesh.lodEnabled || mesh.numLods < 2)
         return 0;
 
-    float allowed = view->threshold * (view->perUnit * std::max(distance, 0.0f) + view->constant) / std::max(mesh.lodBias, 0.001f);
+    // the project's LOD Bias and the device tier's multiply each mesh's (QualityResolver, contract C4)
+    float allowed = view->threshold * (view->perUnit * std::max(distance, 0.0f) + view->constant) /
+                    std::max(mesh.lodBias * QualityResolver::lodBias(), 0.001f);
     unsigned int level = 0;
     for (unsigned int l = 1; l < mesh.numLods; l++){
         if (mesh.lodError[l] * worldScale > allowed)
             break;
         level = l;
     }
-    // a shadow pass, a probe or a render-to-texture camera: coarser by the Shadow LOD Bias
-    return std::min(level + view->levelBias, mesh.numLods - 1);
+    return level;
 }
 
 // culled slice of every instanced mesh for the main camera and each shadow slot;
@@ -15018,6 +15025,20 @@ void RenderSystem::update(double dt){
     // library:underwater passes on while the main camera is under a water (Water.h)
     Water::updateUnderwater(scene);
 
+    // a new device tier, thermal step or project LOD bias (QualityResolver): the post-processing
+    // tiers resolve again, the instance views pick their LODs again, and SSAO's mesh variant
+    // follows a tier that turns it off
+    // (the scene's own SSAO toggle reloads them itself: the last frame's value follows it)
+    const bool qualitySSAONow = QualityResolver::ssao(scene->isSSAOEnabled());
+    if (QualityResolver::getRevision() != qualityRevisionSeen){
+        if (qualityRevisionSeen != 0 && qualitySSAONow != qualitySSAO)
+            needReloadMeshVariants();
+        qualityRevisionSeen = QualityResolver::getRevision();
+        postProcessingDirty = true;
+        instanceViewsDirty = true;
+    }
+    qualitySSAO = qualitySSAONow;
+
     int numLights = checkLightsAndShadow();
 
     // changed post-processing settings: LUT bakes and the variant bit the objects load with below
@@ -15246,15 +15267,16 @@ void RenderSystem::update(double dt){
     // the destination is baked into the pipelines at load, so a scene entering or
     // leaving a stack (or fixed resolution switching) has to reload with the new set
     // the per-object lights blocks' capacity is part of every lit mesh variant
-    const int lightCapacity = getLightCapacity(scene->getMaxLightsPerObject());
+    const int lightCapacity = getLightCapacity(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()));
     if (lightCapacity != lightCapacityTier){
         lightCapacityTier = lightCapacity;
         needReloadMeshVariants();
     }
     // the Lit Quality and the lobe tier are part of the built-in Lit's variants (builtin:lit)
     const PbrTier pbrTier = MaterialPbr::getRuntimeTier();
-    if (scene->getLitQuality() != loadedLitQuality || pbrTier != loadedPbrTier){
-        loadedLitQuality = scene->getLitQuality();
+    const LitQuality litQuality = QualityResolver::litQuality(scene->getLitQuality());
+    if (litQuality != loadedLitQuality || pbrTier != loadedPbrTier){
+        loadedLitQuality = litQuality;
         loadedPbrTier = pbrTier;
         needReloadMeshVariants();
     }
@@ -16376,7 +16398,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             usePostProcess = true;
 
             // a pass sampling depth needs the pre-pass when neither SSR nor SSAO ran
-            if (postProcessNeedsDepth && !useSSR && !scene->isSSAOEnabled()
+            if (postProcessNeedsDepth && !useSSR && !QualityResolver::ssao(scene->isSSAOEnabled())
                     && ensureSSAOFramebuffers(pw, ph)){
                 renderDepthPrePass(camera, perCameraMVP ? &cameraTransform : nullptr);
                 sharedSceneDepth = &rv().ssaoDepthFramebuffer.getRender().getColorTexture();
@@ -16412,7 +16434,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // SSAO reuses it instead of running a second geometry pre-pass. Other cameras
     // sample empty white (AO = 1) so their USE_SSAO meshes are unaffected.
     rv().currentSSAOTexture = &emptyWhite;
-    if (isMainCamera && scene->isSSAOEnabled()){
+    if (isMainCamera && QualityResolver::ssao(scene->isSSAOEnabled())){
         TextureRender* ssaoDepth = renderSSAO(camera, useFixedRes, gbufferDepth, perCameraMVP ? &cameraTransform : nullptr);
         if (ssaoDepth && (ssaoDepth != gbufferDepth || gbufferSceneDepth))
             sharedSceneDepth = ssaoDepth;
@@ -16705,7 +16727,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // only the main camera has a culled instance view; another camera's detail levels are the
     // Shadow LOD Bias coarser than its own view selects (spec S55 R5)
     const int instanceView = isMainCamera ? 0 : -1;
-    const LodView ownLodView = isMainCamera ? LodView() : computeLodView(camera, cameraTransform, 0.0f, Engine::getShadowLodBias());
+    const LodView ownLodView = isMainCamera ? LodView() : computeLodView(camera, cameraTransform, 0.0f, true);
     const LodView* lodView = isMainCamera ? &rv().lodView : &ownLodView;
 
     const bool depthPrepass = isMainCamera && camera.depthTest && scene->isDepthPrepassEnabled();

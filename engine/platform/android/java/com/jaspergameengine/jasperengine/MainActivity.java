@@ -179,6 +179,17 @@ public class MainActivity extends GameActivity {
 		JasperNative.dispatchConfigurationChanged(newConfig);
 	}
 
+	// Device.onLowMemory (spec S56): RUNNING_LOW and above, and every level of an app in the
+	// background (UI_HIDDEN only says the UI went away, not that memory is short). The game
+	// thread sees the count change (NativeEngine::updateDeviceSignals).
+	@Override
+	public void onTrimMemory(int level) {
+		super.onTrimMemory(level);
+		if (level >= TRIM_MEMORY_RUNNING_LOW && level != TRIM_MEMORY_UI_HIDDEN) {
+			JasperPlatform.trimMemoryCount++;
+		}
+	}
+
 	// Player > Android > Fullscreen (android.fullscreen): the export writes false here for a game
 	// that shows the system bars; its safe area then keeps clear of them too (safe-area spec 6.5).
 	// Read once by the native side.

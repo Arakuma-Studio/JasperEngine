@@ -64,6 +64,21 @@ namespace jasperengine::editor::ui {
         EditPhase consume(ImGuiID id, std::vector<Curve>& curves);
         void close();
 
+        // the window has the keyboard focus (App: the Curve context and its claim on the edit commands)
+        bool isFocused() const { return target != 0 && windowFocused; }
+        // the catalog's curve.* commands
+        bool canRun(CurveEditor::Command command);
+        void run(CurveEditor::Command command);
+        // what editor_status shows of it
+        struct UiState {
+            bool open = false;
+            bool focused = false;
+            size_t selectedKeys = 0;
+            size_t clipboardKeys = 0;
+            curveops::View view;
+        };
+        UiState uiState() const;
+
         // built-in first, then user and project libraries
         const std::vector<CurvePresetLibrary>& libraries();
         void reloadLibraries();
@@ -80,6 +95,7 @@ namespace jasperengine::editor::ui {
         std::string title;
         std::vector<Curve> curves;
         bool focusOnOpen = false;
+        bool windowFocused = false;
         int lastSeenFrame = -1;
         CurveEditor editor;
         CommandHistory* history = nullptr;
@@ -98,6 +114,7 @@ namespace jasperengine::editor::ui {
         size_t activeLibrary = 0;
         std::string warning;
 
+        std::vector<CurveBinding> bindings();
         void drawPresets();
         void beginGesture();
         void endGesture(bool cancelled);

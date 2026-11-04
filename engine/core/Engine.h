@@ -93,10 +93,7 @@
 #ifndef MAX_MESH_LODS
 #define MAX_MESH_LODS 4
 #endif
-// the most detail levels a shadow pass may draw coarser than its view selects (Shadow LOD Bias)
-#ifndef MAX_SHADOW_LOD_BIAS
-#define MAX_SHADOW_LOD_BIAS (MAX_MESH_LODS - 1)
-#endif
+
 
 #ifndef MAX_TILEMAP_TILESRECT
 #define MAX_TILEMAP_TILESRECT 200
@@ -413,6 +410,10 @@ namespace jasperengine {
         static int targetFrameRate;
         static int vSyncCount;
         static FramePacing framePacing;
+        // Engine.setTextureQuality's value (the pool drops QualityResolver's resolution of it)
+        static int textureQuality;
+        // the QualityResolver revision the frame pacing, texture quality and upload budget follow
+        static uint32_t qualityRevision;
         // last orientation systemOrientationChanged saw (0: none yet), and since when (system
         // time) a quarter turn waits for its view size (0: none waits)
         static int lastOrientation;
@@ -432,7 +433,6 @@ namespace jasperengine {
         static bool atmosphereQualityOverridden;
         static AtmosphereQuality atmosphereQualityOverride;
         static bool gpuInstancingEnabled;
-        static int shadowLodBias;
 
         static Semaphore drawSemaphore;
 
@@ -478,6 +478,9 @@ namespace jasperengine {
         static void runFrame(bool draw);
         // recomputes the frame pacing and hands it to the System
         static void applyFramePacing();
+        // a new device tier, thermal step or memory drop: the pacing, texture quality and upload
+        // budget again (once a frame, one compare when nothing changed)
+        static void applyQualityChanges();
         // desktop builds: JASPERENGINE_SIMULATE_SAFE_AREA as the platform's insets
         static void applySimulatedSafeArea();
         
@@ -641,11 +644,6 @@ namespace jasperengine {
         // default; off submits every draw as before S55
         static void setGpuInstancingEnabled(bool enabled);
         static bool isGpuInstancingEnabled();
-        // Shadow LOD Bias (Project Settings > Quality, quality.shadow_lod_bias): detail levels a
-        // shadow pass, a point light face, a reflection probe or a render-to-texture camera draws
-        // coarser than its own view selects (spec S55 R5; default 1, 0 the same level)
-        static void setShadowLodBias(int levels);
-        static int getShadowLodBias();
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();

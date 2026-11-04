@@ -220,16 +220,14 @@ From `jasper-render.md`, with file and line citations there:
   memory, no pipelines), no draw is held, nothing is skipped, the queues keep today's order. The
   visible-list culling (R4) and the shadow geometry (R5) do not depend on it: they remove only work
   that draws nothing or lands under the shadow map's texel.
-- **Settings:** `graphics.gpu_instancing` (Project Settings > Graphics > GPU Instancing) and
-  `quality.shadow_lod_bias` (Quality > Shadow LOD Bias, 0-3), one `DrawSubmissionSettings`, undoable
-  (`DrawSubmissionSettingsCmd`), written to `project.yaml` (`graphics.gpuInstancing`,
-  `graphics.shadowLodBias`) only when not the defaults, into exports by the generated main
-  (`Engine::setGpuInstancingEnabled`, `Engine::setShadowLodBias`). C4: the integrator wires the bias
-  to S56's `QualityResolver`.
+- **Settings:** `graphics.gpu_instancing` (Project Settings > Graphics > GPU Instancing), one
+  `DrawSubmissionSettings`, undoable (`DrawSubmissionSettingsCmd`), written to `project.yaml`
+  (`graphics.gpuInstancing`) only when off, into exports by the generated main
+  (`Engine::setGpuInstancingEnabled`).
 - **Allow GPU Instancing** is per Mesh renderer (Unity has it per material), saved only when off.
-- **Shadow LOD Bias** adds levels to what the pass's own view selects (`LodView::levelBias`), in
-  shadow slots, point light faces (which now select levels at all), reflection probe faces and
-  render-to-texture cameras. It is part of the S10 caster revision.
+- **Shadow LOD Bias** is S56's `quality.shadow_lod_bias` (`QualityResolver::shadowLodBias()`, contract
+  C4): a multiplier of the error a shadow pass accepts, which S55 applies the same way to point
+  light faces (which now select levels at all), reflection probe faces and render-to-texture cameras.
 - **Static terrain casters:** a terrain with `staticShadowCaster` draws, in each shadow slot, a cut
   of its own selected from the slot's light camera (from above the cascade's centre by its radius,
   so bigger texels take coarser nodes); it no longer depends on the camera and stays in the S10
@@ -264,3 +262,6 @@ From `jasper-render.md`, with file and line citations there:
 - **R6 "stale data is never drawn"** is held for instance views (their draws skip a frame while their
   upload waits) and terrain nodes; a skinned mesh whose bones upload waits draws the pose before.
 - **Shadow index buffers are made at load time**, not cooked: S53's cook does not write them.
+- **R5 "Shadow LOD Bias, default one coarser level"** is S56's multiplier (default 1, the same level
+  as the error threshold selects), not a count of levels: S55 had made it an integer setting under
+  the same key, dropped when S56 landed (contract C4).

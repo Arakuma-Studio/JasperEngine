@@ -1721,7 +1721,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "## Source references\n\n";
     agentsContent += "The runtime API this project links against: `" + api + "` (use it first). Engine and editor source: "
                      "https://github.com/JasperRaccoon/JasperEngine, at the tag or commit of the editor version above (report it if you "
-                     "cannot match it). The `.scene`, `.prefab` and `project.yaml` formats are defined in its `editor/` directory.\n\n";
+                     "cannot match it). The `.scene`, `.prefab` and `project.yaml` formats are defined in its `editor/` directory. An editor "
+                     "key is rebound with `set_shortcut` (tool group `editor_ux`), not in that source.\n\n";
     agentsContent += "## Generated files\n\n";
     agentsContent += "The editor regenerates these on play and build; never edit them: the root `CMakeLists.txt`, `" + internal +
                      "/LocalPaths.cmake`, `" + internal + "/scene_scripts.cpp`, `" + internal + "/generated/`, `" + api + "/`. After "
@@ -2558,6 +2559,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "    Engine::setTextureDefaults(" + groups[0] + ", " + groups[1] + ", " + groups[2] + ");\n";
     }
 
+    // the Device Tier the GPU gets and its overrides (Project Settings > Quality > Device Tiers),
+    // before any scene: what differs from the defaults, "{}" for a default project
+    mainContent += "    Device::configure(R\"JEDEVICE(" + deviceSettingsJson + ")JEDEVICE\");\n";
+
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
     // the HTML UI's glyph atlas budget, SDF primitives and transform-aware text (S16)
@@ -2578,11 +2583,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
                 tierNames[std::clamp(static_cast<int>(tier), 0, 3)] + ");\n";
         }
     }
-    // GPU Instancing and Shadow LOD Bias (spec S55), written when not the defaults
+    // GPU Instancing (spec S55), written when off
     if (!drawSubmission.gpuInstancing)
         mainContent += "    Engine::setGpuInstancingEnabled(false);\n";
-    if (drawSubmission.shadowLodBias != DrawSubmissionSettings().shadowLodBias)
-        mainContent += "    Engine::setShadowLodBias(" + std::to_string(drawSubmission.shadowLodBias) + ");\n";
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";
     // The native plugins of plugins/native that the platform being built cannot run: a call to

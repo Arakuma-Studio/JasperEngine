@@ -1,6 +1,6 @@
 """Draw submission (spec S55, docs/mcp/guide/meshes.md): get_render_stats' counters by kind of pass
-(R7, AC7), GPU Instancing on and off through the project settings (R10, R11: undoable),
-Shadow LOD Bias (quality.shadow_lod_bias), a Mesh's Allow GPU Instancing (set_properties), and
+(R7, AC7), GPU Instancing on and off through the project settings (R10, R11: undoable), a
+Mesh's Allow GPU Instancing (set_properties), and
 Lua's Scene:getRenderStats() and Mesh.allowGpuInstancing (R12) in Play."""
 
 from __future__ import annotations
@@ -88,9 +88,8 @@ async def test_new_counters(ed: Editor):
 
 async def test_gpu_instancing_setting(ed: Editor):
     scene = await spheres(ed)
-    got = await ed.call("get_project_settings", keys=["graphics.gpu_instancing", "quality.shadow_lod_bias"])
-    text = str(got)
-    ed.check("gpu_instancing" in text and "shadow_lod_bias" in text, f"both keys listed: {got}")
+    got = await ed.call("get_project_settings", keys=["graphics.gpu_instancing"])
+    ed.check("gpu_instancing" in str(got), f"the key is listed: {got}")
 
     await ed.call("set_project_settings", values={"graphics.gpu_instancing": False})
     await ed.call("play", action="start", scene=scene)
@@ -108,12 +107,6 @@ async def test_gpu_instancing_setting(ed: Editor):
     got = await ed.call("get_project_settings", keys=["graphics.gpu_instancing"])
     ed.check("True" in str(got) or "true" in str(got), f"undo turned it back on: {got}")
     ed.check("gpuInstancing" not in (ed.project / "project.yaml").read_text(), "the default is not written")
-
-    msg = await ed.call("set_project_settings", values={"quality.shadow_lod_bias": 9}, expect_error=True)
-    ed.check_in("0", str(msg), "the bias is refused out of its range")
-    await ed.call("set_project_settings", values={"quality.shadow_lod_bias": 2})
-    ed.check("shadowLodBias: 2" in (ed.project / "project.yaml").read_text(), "the bias saved")
-    await ed.call("set_project_settings", values={"quality.shadow_lod_bias": 1})
 
 
 async def test_mesh_opt_out(ed: Editor):

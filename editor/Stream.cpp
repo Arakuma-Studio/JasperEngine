@@ -11,6 +11,7 @@
 #include "stream/CurveCodec.h"
 #include "util/ShaderGlobalsJson.h"
 #include "AppSettings.h"
+#include "mcp/McpValues.h"
 #include "EditorHost.h"
 #include "Out.h"
 #include "ShippingTypes.h"
@@ -2525,6 +2526,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["playerCrash"] = crashNode;
     }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
+    // device: what differs from the defaults of the Device Tier table and the rest (S56)
+    {
+        const nlohmann::json device = nlohmann::json::parse(project->getDeviceSettings().toJson());
+        if (!device.empty())
+            root["device"] = mcp::McpValues::jsonToYaml(device);
+    }
     {
         const HtmlUiRenderSettings& htmlUiRender = project->getHtmlUiRenderSettings();
         root["htmlUiGlyphAtlasMiB"] = htmlUiRender.glyphAtlasMiB;
@@ -2532,7 +2539,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["htmlUiTransformAwareText"] = htmlUiRender.transformAwareText;
     }
     // graphics.shadowTier.<platform>, only the platforms away from their default tier; GPU
-    // Instancing and Shadow LOD Bias (S55) when not their defaults
+    // Instancing (S55) when off
     {
         YAML::Node graphics;
         YAML::Node tiers;
@@ -2546,8 +2553,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         const DrawSubmissionSettings& drawSubmission = project->getDrawSubmissionSettings();
         if (drawSubmission.gpuInstancing != DrawSubmissionSettings().gpuInstancing)
             graphics["gpuInstancing"] = drawSubmission.gpuInstancing;
-        if (drawSubmission.shadowLodBias != DrawSubmissionSettings().shadowLodBias)
-            graphics["shadowLodBias"] = drawSubmission.shadowLodBias;
         if (graphics.size() > 0)
             root["graphics"] = graphics;
     }
@@ -3152,6 +3157,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
     }
 
+    // S56: a project saved before it has no device block, and gets the defaults
+    {
+        DeviceSettings device;
+        if (node["device"].IsDefined()) {
+            std::string deviceError;
+            if (!DeviceSettings::fromJson(mcp::McpValues::yamlToJson(node["device"]).dump(), device, deviceError)) {
+                Out::warning("project.yaml device: %s; the device settings take their defaults", deviceError.c_str());
+                device = DeviceSettings();
+            }
+        }
+        project->setDeviceSettings(device);
+    }
+
     // S16: projects saved before them take the defaults
     {
         HtmlUiRenderSettings htmlUiRender;
@@ -3164,15 +3182,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setHtmlUiRenderSettings(htmlUiRender);
     }
 
-    // graphics.gpuInstancing, graphics.shadowLodBias (S55): projects saved before them take the defaults
+    // graphics.gpuInstancing (S55): projects saved before it take the default
     {
         DrawSubmissionSettings drawSubmission;
         const YAML::Node graphics = node["graphics"];
         if (graphics && graphics.IsMap()){
             if (graphics["gpuInstancing"].IsDefined())
                 drawSubmission.gpuInstancing = YamlNumbers::as<bool>(graphics["gpuInstancing"]);
-            if (graphics["shadowLodBias"].IsDefined())
-                drawSubmission.shadowLodBias = YamlNumbers::as<int>(graphics["shadowLodBias"]);
         }
         project->setDrawSubmissionSettings(drawSubmission);
     }
@@ -4986,7 +5002,7 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
     return prop;
 }
 
-std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities, Project* project, SceneProject* sceneProject, Entity parent, bool createNewIfExists, bool removeMissingComponents, std::unordered_map<Entity, Entity>* entityRemap) {
+std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities, Project* project, SceneProject* sceneProject, Entity parent, bool createNewIfExists, bool removeMissingComponents, std::unordered_map<Entity, Entity>* entityRemap, bool keepSameMeshes) {
     editor::getEditorHost().reportLoadingProgress();
     // its world values (and its children's), once it is in (WorldTransforms.h)
     WorldTransformScope worldTransforms(registry);
@@ -5038,7 +5054,7 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
         if (entityNode["components"]){
             // yaml-cpp only names the key it failed on, so point at the entity holding it
             try {
-                decodeComponents(entity, parent, registry, entityNode["components"]);
+                decodeComponents(entity, parent, registry, entityNode["components"], keepSameMeshes);
             } catch (const std::exception& e) {
                 throw std::runtime_error("entity '" + name + "' (id " + std::to_string(entity) + "): " + e.what());
             }
@@ -5063,7 +5079,7 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
         // Decode children from actualNode
         if (entityNode["children"]) {
             for (const auto& childNode : entityNode["children"]) {
-                std::vector<Entity> childEntities = decodeEntity(childNode, registry, entities, project, sceneProject, entity, createNewIfExists, removeMissingComponents, entityRemap);
+                std::vector<Entity> childEntities = decodeEntity(childNode, registry, entities, project, sceneProject, entity, createNewIfExists, removeMissingComponents, entityRemap, keepSameMeshes);
                 std::copy(childEntities.begin(), childEntities.end(), std::back_inserter(allEntities));
             }
         }
@@ -5391,12 +5407,75 @@ namespace {
     using jasperengine::editor::Catalog;
     using jasperengine::editor::ComponentType;
 
+    // Two encodings say the same (map keys in any order). Both come from one encoder, so map keys
+    // are taken in order and looked up only where the orders part (a yaml-cpp map lookup converts
+    // every key it passes). `except`: a top-level key left out
+    bool sameEncoding(const YAML::Node& a, const YAML::Node& b, const char* except = nullptr) {
+        if (a.Type() != b.Type()) {
+            return false;
+        }
+        switch (a.Type()) {
+            case YAML::NodeType::Scalar:
+                return a.Scalar() == b.Scalar();
+            case YAML::NodeType::Sequence:
+                if (a.size() != b.size()) {
+                    return false;
+                }
+                for (size_t i = 0; i < a.size(); i++) {
+                    if (!sameEncoding(a[i], b[i])) {
+                        return false;
+                    }
+                }
+                return true;
+            case YAML::NodeType::Map: {
+                if (a.size() != b.size()) {
+                    return false;
+                }
+                YAML::const_iterator next = b.begin();
+                for (YAML::const_iterator entry = a.begin(); entry != a.end(); ++entry) {
+                    const std::string& key = entry->first.Scalar();
+                    const bool inOrder = next != b.end() && next->first.Scalar() == key;
+                    const YAML::Node other = inOrder ? YAML::Node(next->second) : b[key];
+                    if (inOrder) {
+                        ++next;
+                    }
+                    if (!other || (!(except && key == except) && !sameEncoding(entry->second, other))) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            default:
+                return true;
+        }
+    }
+
+    // A Mesh that encodes as the node has it but for its worldAABB (a Play that moved its
+    // GameObject, or left it alone) takes the node's worldAABB and stays: the decode would set
+    // only what the encoding holds, and run update flags that always reload a Mesh
+    bool keepSameMesh(const reflect::ComponentDesc& desc, Entity entity, EntityRegistry* registry, void* existing, const YAML::Node& componentNode) {
+        reflect::EncodeContext ctx;
+        ctx.registry = registry;
+        ctx.entity = entity;
+        ctx.signature = registry->getSignature(entity);
+        const YAML::Node worldAABB = componentNode["worldAABB"];
+        if (!worldAABB || !sameEncoding(reflect::encode(desc, existing, ctx), componentNode, "worldAABB")) {
+            return false;
+        }
+        static_cast<MeshComponent*>(existing)->worldAABB = editor::Stream::decodeAABB(worldAABB);
+        return true;
+    }
+
     // One component decoded over the entity's own (or a default one) and stored: a new one with
     // its structural update flags, an existing one with the flags of what changed (or marked
     // changed only, DecodeApply::MarkOnly)
     void decodeComponentInto(const reflect::ComponentDesc& desc, Entity entity, Entity parent, EntityRegistry* registry, bool had,
-                             const YAML::Node& componentNode) {
+                             const YAML::Node& componentNode, bool keepSameMeshes) {
         void* existing = had ? desc.find(registry, entity) : nullptr;
+        if (keepSameMeshes && existing && desc.type == ComponentType::MeshComponent &&
+                keepSameMesh(desc, entity, registry, existing, componentNode)) {
+            return;
+        }
         reflect::Value value(desc.body.ops, existing);
         reflect::DecodeContext ctx;
         ctx.registry = registry;
@@ -5430,7 +5509,7 @@ namespace {
 
 }
 
-void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegistry* registry, const YAML::Node& compNode){
+void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegistry* registry, const YAML::Node& compNode, bool keepSameMeshes){
     const Signature signature = registry->getSignature(entity);
 
     // Each component through StreamLoad::decodeComponent: a value that does not decode, or a
@@ -5439,7 +5518,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
     for (const reflect::ComponentDesc* desc : reflect::serializationOrder()) {
         const bool had = signature.test(desc->componentId(registry));
         StreamLoad::decodeComponent(desc->type, entity, registry, compNode, [&](const YAML::Node& componentNode) {
-            decodeComponentInto(*desc, entity, parent, registry, had, componentNode);
+            decodeComponentInto(*desc, entity, parent, registry, had, componentNode, keepSameMeshes);
         });
     }
 

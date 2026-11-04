@@ -863,9 +863,6 @@ namespace jasperengine{
 			float constant = 0;  // orthographic: units per pixel
 			float threshold = 1;
 			bool enabled = false;
-			// levels coarser than the error selects (Shadow LOD Bias: shadow passes, point light
-			// faces, reflection probes and render-to-texture cameras; spec S55 R5)
-			unsigned int levelBias = 0;
 		};
 
 		// where a pass keeps a UI element's clip rect: the RectTransform's own in draw()
@@ -1715,6 +1712,10 @@ namespace jasperengine{
 		uint64_t postProcessGlobalsVersion = 0; // ShaderGlobals version the pass values bind
 		// the scene's PostProcessingSettings changed since they were applied (phase 4)
 		bool postProcessingDirty = true;
+		// the QualityResolver revision the post-processing tiers, the LOD picks and the SSAO
+		// variants follow (a device tier, a thermal step)
+		uint32_t qualityRevisionSeen = 0;
+		bool qualitySSAO = false;
 		// what the applied settings turn on (getPostProcessingTiers), and their colour LUTs
 		PostProcessingTiers postTiers;
 		// MeshShaderEnvironment::postColor the objects load with (the variant bit)
@@ -2238,7 +2239,7 @@ namespace jasperengine{
 		void releaseMeshLods(MeshComponent& mesh);
 		static bool isMeshLodPending(Submesh& submesh);
 		void updateMeshLodErrors(MeshComponent& mesh);
-		LodView computeLodView(const CameraComponent& camera, const Transform& cameraTransform, float viewHeight = 0.0f, unsigned int levelBias = 0) const;
+		LodView computeLodView(const CameraComponent& camera, const Transform& cameraTransform, float viewHeight = 0.0f, bool shadowBias = false) const;
 		void updateMainLodView(CameraComponent& camera, Transform& cameraTransform);
 		unsigned int selectMeshLod(const MeshComponent& mesh, const LodView* view, float distance, float worldScale) const;
 		LodView shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const;

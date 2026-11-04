@@ -18,6 +18,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.LocaleList;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
@@ -67,13 +68,95 @@ public final class JasperPlatform {
 	private static DisplayManager.DisplayListener displayListener;
 	private static boolean warnedNetworkPermission = false;
 
+	// ---- thermal and memory state (Device.thermalState, Device.onLowMemory; spec S56)
+
+	// PowerManager's thermal status as Device's ThermalState (0 Nominal, 1 Fair, 2 Serious,
+	// 3 Critical): kept by a listener from API 29, read by the game thread every frame
+	public static volatile int thermalState = 0;
+	// onTrimMemory calls at TRIM_MEMORY_RUNNING_LOW and above (MainActivity), counted for the
+	// game thread, which handles each new one as a low-memory warning
+	public static volatile int trimMemoryCount = 0;
+	// a PowerManager.OnThermalStatusChangedListener (API 29), registered while the activity lives
+	private static Object thermalListener;
+
 	private JasperPlatform() {
+	}
+
+	// THERMAL_STATUS_NONE, LIGHT, MODERATE, then SEVERE, CRITICAL, EMERGENCY and SHUTDOWN
+	static int thermalStateOf(int status) {
+		if (status <= 0) return 0;
+		if (status == 1) return 1;
+		if (status == 2) return 2;
+		return 3;
+	}
+
+	// The API 29+ calls, only reached behind an SDK_INT check
+	@android.annotation.TargetApi(29)
+	private static final class Thermal {
+		static void register(Activity activity) {
+			PowerManager power = (PowerManager) activity.getSystemService(Context.POWER_SERVICE);
+			if (power == null) return;
+			thermalState = thermalStateOf(power.getCurrentThermalStatus());
+			PowerManager.OnThermalStatusChangedListener listener = new PowerManager.OnThermalStatusChangedListener() {
+				@Override
+				public void onThermalStatusChanged(int status) {
+					thermalState = thermalStateOf(status);
+				}
+			};
+			power.addThermalStatusListener(activity.getMainExecutor(), listener);
+			thermalListener = listener;
+		}
+
+		static void unregister(Activity activity) {
+			PowerManager power = (PowerManager) activity.getSystemService(Context.POWER_SERVICE);
+			if (power != null && thermalListener != null) {
+				power.removeThermalStatusListener((PowerManager.OnThermalStatusChangedListener) thermalListener);
+			}
+			thermalListener = null;
+		}
+
+		// the status now and, from API 30, the forecast of 10 s ahead (1 is where SEVERE
+		// throttling starts): the game lowers its cost before the OS throttles it
+		@android.annotation.TargetApi(30)
+		static int poll(Activity activity) {
+			PowerManager power = (PowerManager) activity.getSystemService(Context.POWER_SERVICE);
+			if (power == null) return thermalState;
+			int state = thermalStateOf(power.getCurrentThermalStatus());
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+				float headroom = power.getThermalHeadroom(10);
+				if (!Float.isNaN(headroom)) {
+					if (headroom >= 1.0f) state = Math.max(state, 2);
+					else if (headroom >= 0.85f) state = Math.max(state, 1);
+				}
+			}
+			return state;
+		}
+	}
+
+	// Polled by the game thread every 2 s (getThermalHeadroom answers once a second at most): the
+	// fallback where the listener's status alone is all there is (API 29), the forecast from API
+	// 30. Nominal below API 29, which reports nothing.
+	public static int getThermalState(Activity activity) {
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return 0;
+		try {
+			thermalState = Thermal.poll(activity);
+		} catch (RuntimeException e) {
+			Log.w(TAG, "thermal state: " + e);
+		}
+		return thermalState;
 	}
 
 	// ---- lifecycle (MainActivity)
 
 	public static void onCreate(final Activity activity) {
 		updateDisplayRotation(activity);
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+			try {
+				Thermal.register(activity);
+			} catch (RuntimeException e) {
+				Log.w(TAG, "thermal listener: " + e);
+			}
+		}
 		final View content = activity.findViewById(android.R.id.content);
 		if (content != null) {
 			safeAreaListener = new View.OnLayoutChangeListener() {
@@ -135,6 +218,7 @@ public final class JasperPlatform {
 	}
 
 	public static void onDestroy(Activity activity) {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) Thermal.unregister(activity);
 		View content = activity.findViewById(android.R.id.content);
 		if (content != null && safeAreaListener != null) {
 			content.removeOnLayoutChangeListener(safeAreaListener);

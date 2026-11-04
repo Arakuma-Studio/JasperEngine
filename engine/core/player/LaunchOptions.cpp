@@ -3,6 +3,8 @@
 
 #include "LaunchOptions.h"
 
+#include "device/DeviceTypes.h"
+
 #include <cctype>
 #include <cerrno>
 #include <cmath>
@@ -80,6 +82,7 @@ std::string jasperengine::player::usage() {
         "  --screenshot-frame K    the frame of the screenshot (default: the last; K <= --quit-after)\n"
         "  --resolution WxH        the window size\n"
         "  --scene NAME|ID         start in this scene\n"
+        "  --device-tier TIER      low, medium, high or ultra instead of the GPU's detected tier\n"
         "  --silent-audio          open no audio output\n"
         "  --content DIR           read the game's content from DIR\n"
         "  --log-level SPEC        the log level (\"debug\", \"warn,render=debug\")\n"
@@ -211,6 +214,14 @@ std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<co
             if (auto* error = std::get_if<ParseError>(&taken)) return *error;
             options.scene = std::get<std::string>(taken);
             if (options.scene.empty()) return fail("--scene needs a scene name or id, for example --scene Main");
+        } else if (name == "--device-tier") {
+            auto taken = takeValue("low");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+            const std::string text = std::get<std::string>(taken);
+            DeviceTier tier;
+            if (!DeviceNames::tierFromName(text.c_str(), tier))
+                return fail("--device-tier needs low, medium, high or ultra, for example --device-tier=low (got \"" + text + "\")");
+            options.deviceTier = DeviceNames::tier(tier);
         } else if (name == "--content") {
             auto taken = takeValue("path/to/content");
             if (auto* error = std::get_if<ParseError>(&taken)) return *error;

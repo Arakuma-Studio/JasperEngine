@@ -253,7 +253,7 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
 | `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |
 | `onSafeAreaChanged` | none | `Screen.safeArea` changed (rotation, platform insets, `Screen.setExtraInsets`), after `onCanvasChanged` / `onOrientationChanged` |
-| `onLowMemory` | none | the system is short of memory (Android, iOS) |
+| `onLowMemory` | none | the system is short of memory (Android, iOS); `Device.onLowMemory` follows at the next frame, after the engine cleared its caches |
 | `onSceneLoaded` | none | a scene loaded by SceneManager is ready |
 | `onKeyDown`, `onKeyUp` | `key, isRepeat, mods` | key event (`key` is an `Input.KEY_*` value) |
 | `onCharInput` | `codepoint` | text char typed |
@@ -924,6 +924,28 @@ Files (for saves prefer `File.readText` / `File.writeText` / `Json.readFile`, 2.
 
 `require("folder.module")` loads `folder/module.lua` from the Lua directory (or its `lua/`
 subfolder). Use it for shared helper modules.
+
+### 2.5.2 Device (static): Device Tier, thermal state, memory warnings
+
+| Name | Kind | Notes |
+|---|---|---|
+| `Device.tier` | ro | `DeviceTier.Low`, `Medium`, `High`, `Ultra`: the tier in effect (set, simulated or detected) |
+| `Device.gpuName`, `Device.tierReason` | ro | the renderer name, and why it got its tier |
+| `Device.tierApplied` | ro | false in the editor until the Game view simulates a tier or a script sets one |
+| `Device.thermalState` | ro | `ThermalState.Nominal`, `Fair`, `Serious`, `Critical` (desktops and the web: Nominal) |
+| `Device.setTier(tier)`, `Device.resetTier()` | fn | a graphics menu's tier for the rest of the run, and back |
+| `Device.onThermalStateChanged` | event | `function(state)` |
+| `Device.onLowMemory` | event | a low-memory warning was handled (caches cleared, streamed textures a mip lower) |
+
+```lua
+Device.onThermalStateChanged = function(state)
+    if state == ThermalState.Critical then
+        Device.setTier(DeviceTier.Low)
+    end
+end
+```
+
+Details: jasper://docs/device.
 
 ### 2.6 GameObject.instantiate / destroy (static, Unity-style)
 

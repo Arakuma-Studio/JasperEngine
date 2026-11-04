@@ -10,9 +10,8 @@ namespace jasperengine::editor{
 
     class Project;
 
-    // Project Settings > Graphics > GPU Instancing and Quality > Shadow LOD Bias (spec S55): the
-    // editor's scenes draw with them at once, and undo restores them. project.yaml is written
-    // either way.
+    // Project Settings > Graphics > GPU Instancing (spec S55): the editor's scenes draw with it at
+    // once, and undo restores it. project.yaml is written either way.
     class DrawSubmissionSettingsCmd: public Command{
     private:
         Project* project;

@@ -14,9 +14,9 @@ Mesh rendering for agents: what to set, how to check it.
   submeshes, extra passes, sprites and tilemaps, terrains, InstancedMeshes, mirrors, forked
   shaders, and meshes of up to 64 vertices with the built-in shader (dynamic batching's).
   A per-object difference (its own colour, lights or reflection probe) splits a batch.
-- **Shadow LOD Bias** (`quality.shadow_lod_bias`, 0-3, default 1; Project Settings > Quality):
-  detail levels shadow maps, point light faces, reflection probes and render-to-texture cameras
-  draw coarser than their view selects, when the scene's Mesh Detail (LOD) is on.
+- Shadow maps, point light faces, reflection probes and render-to-texture cameras take their detail
+  levels with `quality.shadow_lod_bias` (S56: below 1 coarser) when the scene's Mesh Detail (LOD)
+  is on.
 - A terrain with `staticShadowCaster: true` keeps its shadow in the static shadow cache while the
   camera moves.
 

@@ -112,9 +112,9 @@
   }
  ],
  "extensionsUsed": [
-  "EXT_meshopt_compression"
+  "EXT_unknown_required_extension"
  ],
  "extensionsRequired": [
-  "EXT_meshopt_compression"
+  "EXT_unknown_required_extension"
  ]
 }

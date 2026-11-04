@@ -28,6 +28,7 @@
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
 #include "render/shadow/ShadowTiers.h"
+#include "device/DeviceTypes.h"
 #include "debug/DebugOverlay.h"
 #include "Log.h"
 #include "component/LineRendererComponent.h"
@@ -136,6 +137,8 @@ namespace luabridge
     template<> struct Stack<ScreenOrientation> : EnumWrapper<ScreenOrientation>{};
     template<> struct Stack<DeviceOrientation> : EnumWrapper<DeviceOrientation>{};
     template<> struct Stack<DeviceType> : EnumWrapper<DeviceType>{};
+    template<> struct Stack<DeviceTier> : EnumWrapper<DeviceTier>{};
+    template<> struct Stack<ThermalState> : EnumWrapper<ThermalState>{};
     template<> struct Stack<NetworkReachability> : EnumWrapper<NetworkReachability>{};
     template<> struct Stack<HapticFeedback> : EnumWrapper<HapticFeedback>{};
     template<> struct Stack<SleepTimeout> : EnumWrapper<SleepTimeout>{};

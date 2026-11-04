@@ -161,16 +161,13 @@ namespace jasperengine::editor {
         bool operator!=(const HtmlUiRenderSettings& other) const{ return !(*this == other); }
     };
 
-    // Project Settings > Graphics > GPU Instancing and Quality > Shadow LOD Bias (spec S55): the
-    // automatic instancing of MeshComponent draws, and the detail levels shadow passes, point
-    // light faces, reflection probes and render-to-texture cameras draw coarser than their view
-    // selects (quality.shadow_lod_bias)
+    // Project Settings > Graphics > GPU Instancing (spec S55): the automatic instancing of
+    // MeshComponent draws
     struct DrawSubmissionSettings {
         bool gpuInstancing = true;
-        int shadowLodBias = 1;          // 0 to MAX_SHADOW_LOD_BIAS
 
         bool operator==(const DrawSubmissionSettings& other) const{
-            return gpuInstancing == other.gpuInstancing && shadowLodBias == other.shadowLodBias;
+            return gpuInstancing == other.gpuInstancing;
         }
         bool operator!=(const DrawSubmissionSettings& other) const{ return !(*this == other); }
     };
@@ -251,6 +248,8 @@ namespace jasperengine::editor {
         float inputDeadzone = 0.15f;
         // Project Settings > Navigation: the statements main.cpp runs (nav::setSettings), "" defaults
         std::string navigationSettingsCode;
+        // Project Settings > Quality > Device Tiers and the rest (DeviceSettings::toJson)
+        std::string deviceSettingsJson = "{}";
         // Project Settings > Texture per platform group (desktop, mobile, web; S14 R12)
         std::array<int, 3> textureQuality = {0, 0, 0};
         std::array<int, 3> textureBudgetMB = {0, 512, 384};
@@ -390,6 +389,9 @@ namespace jasperengine::editor {
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
         // the navigation settings the game starts with (generateNavigationSettingsCode); set before configure()
         void setNavigationSettingsCode(const std::string& code) { navigationSettingsCode = code; }
+        // the device settings the game applies its Device Tier with (DeviceSettings::toJson); set
+        // before configure()
+        void setDeviceSettingsJson(const std::string& json) { deviceSettingsJson = json; }
         void setTextureDefaults(const std::array<int, 3>& quality, const std::array<int, 3>& budgetMB, const std::array<bool, 3>& lowMemory) {
             textureQuality = quality;
             textureBudgetMB = budgetMB;

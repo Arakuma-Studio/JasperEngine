@@ -85,6 +85,7 @@ namespace jasperengine::editor::mcp {
     void registerDiagnosticsTools(McpRegistry& registry);
     void registerAtmosphereTools(McpRegistry& registry);
     void registerProfilerTools(McpRegistry& registry);
+    void registerDeviceTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);
     void registerGameplayTools(McpRegistry& registry);

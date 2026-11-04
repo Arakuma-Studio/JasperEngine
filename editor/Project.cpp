@@ -120,6 +120,7 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
+#include "device/Device.h"
 #include "shader/ShaderWarmup.h"
 #include "Input.h"
 #include "input/InputActions.h"
@@ -1720,14 +1721,21 @@ const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() c
 
 void editor::Project::setDrawSubmissionSettings(const DrawSubmissionSettings& settings){
     drawSubmission = settings;
-    drawSubmission.shadowLodBias = std::clamp(drawSubmission.shadowLodBias, 0, MAX_SHADOW_LOD_BIAS);
-    // the editor's scenes draw with them at once (RenderSystem reads them every update)
+    // the editor's scenes draw with it at once (RenderSystem reads it every update)
     Engine::setGpuInstancingEnabled(drawSubmission.gpuInstancing);
-    Engine::setShadowLodBias(drawSubmission.shadowLodBias);
 }
 
 const editor::DrawSubmissionSettings& editor::Project::getDrawSubmissionSettings() const{
     return drawSubmission;
+}
+
+void editor::Project::setDeviceSettings(const DeviceSettings& settings){
+    deviceSettings = settings;
+    Device::setProjectSettings(deviceSettings);
+}
+
+const DeviceSettings& editor::Project::getDeviceSettings() const{
+    return deviceSettings;
 }
 
 void editor::Project::setShadowTier(int platform, ShadowTier tier){
@@ -5683,6 +5691,7 @@ void editor::Project::resetConfigs() {
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     setDrawSubmissionSettings(DrawSubmissionSettings());
+    setDeviceSettings(DeviceSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
     }
@@ -6095,7 +6104,8 @@ bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {
     auto entitiesNode = sceneProject->playStateSnapshot["entities"];
     size_t insertAt = 0;
     for (const auto& entityNode : entitiesNode) {
-        std::vector<Entity> restored = Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true);
+        // a Mesh Play left as it was, moved or not, is kept: decoding it reloads it at the next frame
+        std::vector<Entity> restored = Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true, nullptr, true);
 
         // A script can destroy entities while playing and the decode recreates them, but
         // only the tracked list makes them visible to the editor again
@@ -7453,6 +7463,7 @@ void editor::Project::configureGenerator() {
     generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
@@ -9532,6 +9543,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);

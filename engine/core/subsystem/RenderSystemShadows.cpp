@@ -9,6 +9,7 @@
 #include "RenderSystem.h"
 #include "RenderSystemShared.h"
 #include "render/SystemRender.h"
+#include "device/QualityResolver.h"
 #include "Scene.h"
 #include "Engine.h"
 #include "Log.h"
@@ -111,6 +112,8 @@ void RenderSystem::updateShadowTier(){
             shadowTier = ShadowTiers::getPlatformTier(static_cast<int>(Engine::getPlatform()));
             break;
     }
+    // the device tier's cap (and a Critical thermal step's, the tier below's)
+    shadowTier = QualityResolver::shadowTier(shadowTier);
 
     // a build with no shader compiler has the High filters only where its export cooked them
     // (spec S10 R25): above that it renders the Medium tier
@@ -170,6 +173,7 @@ float RenderSystem::lightShadowDistance(const LightComponent& light, const Camer
         distance = scene->getShadowDistance();
     if (!(distance > 0.0f))
         distance = shadowTierSettings().shadowDistance;
+    distance = QualityResolver::shadowDistance(distance);
     if (camera.farClip > camera.nearClip)
         distance = std::min(distance, camera.farClip);
     return distance;
@@ -580,7 +584,7 @@ void RenderSystem::updateShadowCasters(){
         revision.add(mesh.shadowCasterRevision);
         revision.add(mesh.lodEnabled);
         revision.add(mesh.lodBias);
-        revision.add(Engine::getShadowLodBias());
+        revision.add(QualityResolver::lodBias() * QualityResolver::shadowLodBias());
         revision.add(mesh.shadowsBillboard);
         revision.add(transform->billboard);
         bool morphs = false;
@@ -1037,8 +1041,8 @@ bool RenderSystem::bindViewShadowMaps(ShaderData& shaderData, ObjectRender& rend
 RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const{
     LodView view;
     view.enabled = scene->isMeshLodEnabled();
-    view.threshold = SHADOW_LOD_TEXELS;
-    view.levelBias = (unsigned int)Engine::getShadowLodBias();
+    // the project's Shadow LOD Bias and the device tier's (QualityResolver, contract C4)
+    view.threshold = SHADOW_LOD_TEXELS / std::max(QualityResolver::shadowLodBias(), 0.001f);
 
     const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
     const Matrix4& projection = shadowCamera.lightProjectionMatrix;
@@ -1055,8 +1059,8 @@ RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, i
 RenderSystem::LodView RenderSystem::pointFaceLodView(const LightComponent& light, int lightIndex, int face) const{
     LodView view;
     view.enabled = scene->isMeshLodEnabled();
-    view.threshold = SHADOW_LOD_TEXELS;
-    view.levelBias = (unsigned int)Engine::getShadowLodBias();
+    // as a shadow slot's: the project's and the device tier's Shadow LOD Bias (QualityResolver, C4)
+    view.threshold = SHADOW_LOD_TEXELS / std::max(QualityResolver::shadowLodBias(), 0.001f);
     const LightCamera& faceCamera = lightCamera(lightIndex, light, face);
     const Matrix4& projection = faceCamera.lightProjectionMatrix;
     const int slot = std::max(light.shadowMapIndex, 0) + face;
