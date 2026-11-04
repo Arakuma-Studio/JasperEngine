@@ -1,7 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Title Art's programs on every shader target (docs/specs/S80-title-art-core.md R37; AC33):
+// Title Art's programs on every shader target (docs/specs/S80-title-art-core.md R37; AC33), in
+// the editor's tests (the editor's compiler has every back end; a game's has its own):
 // each of the renderer's programs (ShaderType::TITLE_ART, the program number in the property
 // bits) compiles for GLSL 410, GLSL ES 300, HLSL 5, MSL macOS and iOS and SPIR-V, within the
 // engine's per-stage budget, with at most 12 samplers and 4 uniform blocks, its one block
@@ -48,7 +49,10 @@ TEST(TitleArtShadersTest, CompileAllTargets) {
             SCOPED_TRACE(std::string(titleRenderProgramName(program)) + " on " + backendName(backend));
             ShaderData data;
             std::string error, log;
-            ASSERT_TRUE(ShaderVariantCompiler::compile(key, backend, nullptr, data, &error, &log)) << error << "\n" << log;
+            if (!ShaderVariantCompiler::compile(key, backend, nullptr, data, &error, &log)) {
+                ADD_FAILURE() << error << "\n" << log;
+                continue;
+            }
             EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "");
             for (const ShaderStage& stage : data.stages) {
                 if (stage.type != ShaderStageType::FRAGMENT) continue;

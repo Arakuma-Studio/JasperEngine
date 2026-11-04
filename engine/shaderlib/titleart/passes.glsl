@@ -51,7 +51,7 @@ void main() {
     vec4 s = texture(TA_TEX0, taMapUv(ta.p[6]));
     if (s.a <= 0.0) { frag_color = vec4(0.0); return; }
     vec3 c = taToSrgb(clamp(s.rgb / s.a, 0.0, 1.0));
-    c = clamp(taAdjust(c, TA_TEX1), 0.0, 1.0);
+    c = clamp(taAdjust(c), 0.0, 1.0);
     frag_color = vec4(taToLinear(c) * s.a, s.a);
 }
 #endif

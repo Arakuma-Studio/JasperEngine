@@ -267,6 +267,17 @@ void TitlePlanner::kernel(const std::string& label, const std::string& layerId, 
     step.passes = std::max<uint32_t>(1, passes);
     step.splittable = false;
     if (!shaders.empty()) step.shader = shaders.front();
+    // the effect context's helpers draw with these: the kernel waits until they are built
+    TitleRenderServices* services = &svc;
+    step.ready = [services]() {
+        bool ready = true;
+        for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::Blur, TitleRenderProgram::Adjust, TitleRenderProgram::SeedAlpha,
+                                     TitleRenderProgram::Flood, TitleRenderProgram::ResolveAlpha}) {
+            std::string error;
+            ready = (services->gpu.ensureProgram(p, &error) || !error.empty()) && ready;
+        }
+        return ready;
+    };
     std::shared_ptr<TitleJobState> state = st;
     step.run = [state, run](const TitleRectI&, std::string& error) {
         if (!state->alive(error)) return false;
@@ -696,11 +707,9 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         auto entry = std::make_shared<TitleCacheEntry>();
         entry->key = key;
         entry->rect = leaf2D && !clip ? TitleRectI{rect.x - ax, rect.y - ay, rect.width, rect.height} : rect;
-        // a node clipped by the region edge is not whole at another offset
-        const TitleRectI unclipped = alignToAnchor(TitleRectI{rect.x - 1, rect.y - 1, rect.width + 2, rect.height + 2}, ax, ay);
-        entry->positionFree = positionFree && unclipped == alignToAnchor(rect, ax, ay) && intersectRect(rect, outRegion) == rect &&
-                              rect.x > outRegion.x && rect.y > outRegion.y && rect.x + rect.width < outRegion.x + outRegion.width &&
-                              rect.y + rect.height < outRegion.y + outRegion.height;
+        // a node the region's edge cut is not whole at another offset
+        entry->positionFree = positionFree && rect.x > outRegion.x && rect.y > outRegion.y &&
+                              rect.x + rect.width < outRegion.x + outRegion.width && rect.y + rect.height < outRegion.y + outRegion.height;
         // effects that read canvas positions mark their layer when they run (TitlePassContext)
         store(entry, out.px.slot, node.layerId);
     }

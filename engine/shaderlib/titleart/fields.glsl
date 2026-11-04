@@ -105,16 +105,12 @@ void main() {
 }
 #endif
 
-// a 256 x n LUT row of 16-bit values in RG (texelFetch and a lerp: LUTs need not filter)
-float taLut16(sampler2D lut, int row, float x) {
-    float f = clamp(x, 0.0, 1.0) * 255.0;
-    int i = int(floor(f));
-    int j = min(i + 1, 255);
-    vec4 a = texelFetch(lut, ivec2(i, row), 0), b = texelFetch(lut, ivec2(j, row), 0);
-    float va = (taByte(a.r) * 256.0 + taByte(a.g)) / 65535.0;
-    float vb = (taByte(b.r) * 256.0 + taByte(b.g)) / 65535.0;
-    return mix(va, vb, f - float(i));
-}
+// a 256 x n LUT row of 16-bit values in RG (texelFetch and a lerp: LUTs need not filter). A
+// macro: a constructed sampler cannot be passed to a function (Vulkan GLSL)
+float taLut16Value(vec4 t) { return (taByte(t.r) * 256.0 + taByte(t.g)) / 65535.0; }
+int taLutIndex(float x) { return int(floor(clamp(x, 0.0, 1.0) * 255.0)); }
+float taLutFraction(float x) { float f = clamp(x, 0.0, 1.0) * 255.0; return f - floor(f); }
+#define taLut16(lut, row, x) mix(taLut16Value(texelFetch(lut, ivec2(taLutIndex(x), row), 0)), taLut16Value(texelFetch(lut, ivec2(min(taLutIndex(x) + 1, 255), row), 0)), taLutFraction(x))
 
 #if TA_PROGRAM == TA_PROGRAM_HEIGHT
 // Height 0..1 from the inside distance (TA_RAW0) through the bevel profile (p[2].y; 7 = the

@@ -78,11 +78,12 @@ vec3 taScaleChroma(vec3 c, float k) {
 }
 
 // p[2] = (op, a, b, c), p[3] = (d, e, f, g), p[4], p[5]: the operation's values (Adjustments.cpp)
-vec3 taAdjust(vec3 c, sampler2D lut) {
+// the LUT is TA_TEX1 (a tone LUT, or the gradient map's gradient)
+vec3 taAdjust(vec3 c) {
     int op = int(ta.p[2].x + 0.5);
     vec4 a = ta.p[2], b = ta.p[3], q = ta.p[4], r = ta.p[5];
     if (op == TA_ADJ_LUT) {
-        return vec3(texture(lut, vec2(taLutU(c.r), 0.5)).r, texture(lut, vec2(taLutU(c.g), 0.5)).g, texture(lut, vec2(taLutU(c.b), 0.5)).b);
+        return vec3(texture(TA_TEX1, vec2(taLutU(c.r), 0.5)).r, texture(TA_TEX1, vec2(taLutU(c.g), 0.5)).g, texture(TA_TEX1, vec2(taLutU(c.b), 0.5)).b);
     }
     if (op == TA_ADJ_EXPOSURE) {
         // Adobe: exposure in linear light: scale, offset, a plain power
@@ -147,7 +148,7 @@ vec3 taAdjust(vec3 c, sampler2D lut) {
     if (op == TA_ADJ_GRADIENT_MAP) {
         // the LUT holds the gradient's sRGB colours and straight alpha; a.y reverse
         float l = clamp(taAdjLum(c), 0.0, 1.0);
-        vec4 g = texture(lut, vec2(taLutU(a.y > 0.5 ? 1.0 - l : l), 0.5));
+        vec4 g = texture(TA_TEX1, vec2(taLutU(a.y > 0.5 ? 1.0 - l : l), 0.5));
         return mix(c, g.rgb, g.a);
     }
     if (op == TA_ADJ_INVERT) return 1.0 - c;

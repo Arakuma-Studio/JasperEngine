@@ -134,7 +134,7 @@ TEST_F(TitleArtRendererGpu, JobMembers) {
     }
     // progress rises monotonically to 1; every GPU step has a cost
     float last = 0.0f;
-    for (int frame = 0; frame < 4000 && !job->done(); frame++) {
+    for (int frame = 0; frame < 40000 && !job->done(); frame++) {
         SystemRender::updateGpuCreation();
         RuntimeShaderCompiler::beginFrame();
         if (!job->waiting()) {
@@ -270,9 +270,11 @@ TEST_F(TitleArtRendererGpu, DeviceLoss) {
     auto renderer = makeRenderer();
     auto doc = classicDoc(640, 360);
     Pixels before = render(*renderer, requestOf(doc));
+    // nothing cached: the job runs every pass
+    renderer->trim();
     std::unique_ptr<TitleRenderJob> job = renderer->begin(requestOf(doc));
     // mid-render: a few steps, then the device goes
-    for (int i = 0; i < 40 && !job->done(); i++) {
+    for (int i = 0; i < 8 && !job->done(); i++) {
         SystemRender::updateGpuCreation();
         RuntimeShaderCompiler::beginFrame();
         job->step({0, 1});

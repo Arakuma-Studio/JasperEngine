@@ -61,6 +61,8 @@ precision highp int;
     #define TA_USE_RAW2
     #define TA_USE_RAW3
     #define TA_USE_RAW4
+#elif TA_PROGRAM == TA_PROGRAM_MASK_GRADIENT
+    // analytic: no texture
 #else
     // programs above TA_PROGRAM_RENDERER_LAST are the registry's effects and generators: their
     // definitions add their slots and mains (titleart/effects.glsl) with their pass code
