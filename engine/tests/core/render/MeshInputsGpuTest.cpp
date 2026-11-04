@@ -67,7 +67,7 @@ namespace {
             if (in.normals) mesh.buffer.addVector3(AttributeType::NORMAL, Vector3(0, 1, 0));
             if (in.tangents) mesh.buffer.addVector4(AttributeType::TANGENT, Vector4(1, 0, 0, 1));
         }
-        const std::vector<uint16_t> indices = {0, 1, 2, 0, 2, 3};
+        std::vector<uint16_t> indices = {0, 1, 2, 0, 2, 3};
         mesh.indices.clear();
         mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), indices.size(), (char*)indices.data(), sizeof(uint16_t));
         scene.getSystem<MeshSystem>()->calculateMeshAABB(mesh);
