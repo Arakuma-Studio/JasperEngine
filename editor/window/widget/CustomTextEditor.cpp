@@ -3605,10 +3605,16 @@ void CustomTextEditor::handleTextInput() {
                 } else if (c < 0x800) {
                     utf8[0] = static_cast<char>(0xC0 | (c >> 6));
                     utf8[1] = static_cast<char>(0x80 | (c & 0x3F));
-                } else {
+                } else if (c < 0x10000) {
                     utf8[0] = static_cast<char>(0xE0 | (c >> 12));
                     utf8[1] = static_cast<char>(0x80 | ((c >> 6) & 0x3F));
                     utf8[2] = static_cast<char>(0x80 | (c & 0x3F));
+                } else {
+                    // beyond U+FFFF (an emoji): ImWchar is 32 bits in the editor (IMGUI_USE_WCHAR32)
+                    utf8[0] = static_cast<char>(0xF0 | (c >> 18));
+                    utf8[1] = static_cast<char>(0x80 | ((c >> 12) & 0x3F));
+                    utf8[2] = static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+                    utf8[3] = static_cast<char>(0x80 | (c & 0x3F));
                 }
 
                 InsertText(utf8);

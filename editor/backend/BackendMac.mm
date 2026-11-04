@@ -631,9 +631,11 @@ bool renderEditorFrame() {
     // A screen-change notification can rebuild the list between frames.
     normalizeMonitorDpiScale();
     applyRelativeMouseData();
+    editor::App& app = editor::Backend::getApp();
+    // the system's CJK and emoji fonts join the editor's fonts between frames, once found
+    app.applySystemFonts();
     ImGui::NewFrame();
 
-    editor::App& app = editor::Backend::getApp();
     app.engineRender();
     app.show();
 
@@ -1064,6 +1066,7 @@ int editor::Backend::init(int argc, char* argv[]) {
                 // A screen-change notification can rebuild the list between frames.
                 normalizeMonitorDpiScale();
                 applyRelativeMouseData();
+                app.applySystemFonts();
                 ImGui::NewFrame();
 
                 if (frameReady) app.engineRender();

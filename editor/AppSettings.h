@@ -304,6 +304,9 @@ private:
     static bool editorVSyncEnabled;
     // Preferences > General > Show Project Hub at Startup (S27 R16): "when_no_project" or "always"
     static bool projectHubAlways;
+    // Preferences > General > Editor Font > CJK Font Language: auto, japanese, korean,
+    // simplified_chinese or traditional_chinese (SystemFonts)
+    static std::string cjkFontLanguage;
     static std::filesystem::path hubLastLocation;
     static float uiScale;
     static bool poseDockGrown;
@@ -447,6 +450,8 @@ public:
     static bool getEditorVSyncEnabled();
     static void setEditorVSyncEnabled(bool enabled);
     // Show Project Hub at Startup: Always (true) or When No Project (false, the default)
+    static std::string getCjkFontLanguage();
+    static void setCjkFontLanguage(const std::string& language);
     static bool getProjectHubAlways();
     static void setProjectHubAlways(bool always);
     // the Project Hub's last parent folder of a new or imported project ("" before any)

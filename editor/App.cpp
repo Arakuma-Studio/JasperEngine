@@ -2443,6 +2443,13 @@ void editor::App::setup() {
     configCodeArabic.OversampleV = 2;
     io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, 16.0f, &configCodeArabic);
 
+    // the system's CJK and emoji fonts, merged into these when a background search has found
+    // them (applySystemFonts): CJK names and text show as glyphs, and the start is not slower
+    systemFontTargets = {{font1, uiFontSize, config1.RasterizerMultiply},
+                         {boldFont, uiFontSize, configBold.RasterizerMultiply},
+                         {codeFont, 16.0f, config3.RasterizerMultiply}};
+    SystemFonts::startSearch(SystemFonts::fromSettingName(AppSettings::getCjkFontLanguage()));
+
     io.FontDefault = font1;
 
     io.ConfigDragClickToInputText = true;
@@ -3734,6 +3741,10 @@ bool editor::App::wantsHtmlUIRedraw(const SceneProject& sceneProject){
         return true;
     }
     return false;
+}
+
+void editor::App::applySystemFonts(){
+    SystemFonts::applyPending(systemFontTargets);
 }
 
 void editor::App::engineRender(){
