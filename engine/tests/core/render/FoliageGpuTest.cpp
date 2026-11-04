@@ -14,6 +14,8 @@
 #include "object/Camera.h"
 #include "object/Light.h"
 #include "object/Terrain.h"
+#include "picking/MeshRaycast.h"
+#include "picking/PickTypes.h"
 #include "pool/TextureDataPool.h"
 #include "subsystem/FoliageSystem.h"
 #include "subsystem/MeshSystem.h"
@@ -21,6 +23,7 @@
 #include "terrain/FoliageTypes.h"
 #include "terrain/TreeStore.h"
 #include "texture/TextureData.h"
+#include "util/Angle.h"
 
 #include "GpuEnvironment.h"
 #include "HeadlessContext.h"
@@ -558,4 +561,71 @@ TEST_F(FoliageGpu, DisabledTerrainDrawsNothing){
     GpuEnvironment::drawFrames(3);
     EXPECT_LT(Engine::getFrameStats().drawCalls, enabledDraws);
     EXPECT_EQ(stats().draws, 0u);
+}
+
+// AC27: picking, with no leaves of its own in the BVH
+class MeshRaycastFoliage : public FoliageGpu {};
+
+TEST_F(MeshRaycastFoliage, HitsATreeAndReportsItsId){
+    addPrototype();
+    plant(1, {{0.0f, 0.0f}, {20.0f, 0.0f}});
+    look(Vector3(0.0f, 8.0f, 30.0f), Vector3(0.0f, 4.0f, 0.0f));
+    ASSERT_TRUE(render());
+
+    const std::shared_ptr<TreeStore> store = foliage().getTreeStore(terrain->getEntity());
+    const uint32_t first = store->records()[0].id;
+    // a ray that crosses the first tree's quad, at its height
+    const MeshRaycastHit hit = MeshRaycast::raycast(&scene, Vector3(0.0f, 4.0f, 10.0f), Vector3(0.0f, 0.0f, -1.0f), 30.0f);
+    ASSERT_TRUE(hit.hit);
+    EXPECT_EQ(hit.entity, terrain->getEntity());
+    EXPECT_EQ(treeIdRecord(hit.foliageId), first);
+    EXPECT_EQ(hit.prototype, 0);
+    EXPECT_NEAR(hit.point.z, 0.0f, 0.05f) << "LOD0's triangles, not the bounding sphere";
+
+    // past the quad's edge it misses, though it is inside the sphere
+    const MeshRaycastHit miss = MeshRaycast::raycast(&scene, Vector3(3.5f, 4.0f, 10.0f), Vector3(0.0f, 0.0f, -1.0f), 30.0f);
+    EXPECT_FALSE(miss.hit && miss.foliageId != 0);
+}
+
+TEST_F(MeshRaycastFoliage, GrassIsOptIn){
+    addGrass(4.0f, 60.0f);
+    look(Vector3(0.0f, 8.0f, 20.0f), Vector3(0.0f, 0.0f, 0.0f));
+    ASSERT_TRUE(render());
+
+    MeshRaycastOptions options;
+    const MeshRaycastHit plain = MeshRaycast::raycast(&scene, Vector3(0.0f, 0.5f, 10.0f), Vector3(0.0f, 0.0f, -1.0f), 30.0f, LAYER_MASK_DEFAULT_RAYCAST, options);
+    EXPECT_FALSE(plain.hit && plain.foliageId != 0) << "the default kinds leave details out";
+
+    options.kinds = MeshRaycast::ALL | MeshRaycast::DETAIL;
+    bool found = false;
+    for (int i = -12; i <= 12 && !found; i++){
+        const MeshRaycastHit hit = MeshRaycast::raycast(&scene, Vector3(static_cast<float>(i) * 0.5f, 0.5f, 10.0f), Vector3(0.0f, 0.0f, -1.0f), 30.0f, LAYER_MASK_DEFAULT_RAYCAST, options);
+        found = hit.hit && hit.entity == terrain->getEntity() && hit.prototype == -1;
+    }
+    EXPECT_TRUE(found) << "asked for, a ray through grass finds one";
+}
+
+TEST_F(MeshRaycastFoliage, MatchesDrawnTriangles){
+    addPrototype();
+    plant(1, {{0.0f, 0.0f}});
+    component().maxMeshTrees = 10;
+    look(Vector3(0.0f, 4.5f, 40.0f), Vector3(0.0f, 4.5f, 0.0f));
+    ASSERT_TRUE(render());
+    const ImageData image = captureTarget();
+    // Through the frame's row at the tree's height: where the rays hit, the frame shows the tree
+    const int y = image.height / 2;
+    int agreed = 0;
+    int checked = 0;
+    const float aspect = static_cast<float>(image.width) / static_cast<float>(image.height);
+    const float tangent = std::tan(Angle::defaultToRad(camera.getYFov()) * 0.5f);
+    for (int x = image.width / 2 - 40; x < image.width / 2 + 40; x += 4){
+        const float ndc = (static_cast<float>(x) + 0.5f) / static_cast<float>(image.width) * 2.0f - 1.0f;
+        const Vector3 direction = Vector3(ndc * tangent * aspect, 0.0f, -1.0f).normalized();
+        const MeshRaycastHit hit = MeshRaycast::raycast(&scene, Vector3(0.0f, 4.5f, 40.0f), direction, 60.0f);
+        const unsigned char* pixel = &image.pixels[(static_cast<size_t>(y) * image.width + x) * 4];
+        const bool drawn = pixel[0] > 150 && pixel[2] < 200 ? true : std::abs(int(pixel[0]) - 140) > 40;
+        if (drawn == (hit.hit && hit.foliageId != 0)) agreed++;
+        checked++;
+    }
+    EXPECT_GE(agreed, checked * 9 / 10) << agreed << " of " << checked;
 }

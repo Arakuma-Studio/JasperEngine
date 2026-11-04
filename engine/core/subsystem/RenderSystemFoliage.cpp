@@ -4,6 +4,7 @@
 // RenderSystem's side of foliage (T5 F1, F4, F5): which list a pass draws, the streams' uploads and
 // the draws by vertex-buffer offset. What a view keeps is FoliageSystem's; this file owns the GPU.
 
+#include "profiler/Profile.h"
 #include "RenderSystem.h"
 
 #include "Engine.h"

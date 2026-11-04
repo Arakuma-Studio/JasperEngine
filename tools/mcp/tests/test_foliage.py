@@ -75,14 +75,14 @@ async def test_scatter_by_rules_is_deterministic(ed: Editor):
     dry = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[scatter()], dry_run=True)
     ed.check_eq(await tree_count(ed, sid, terrain), 0, "dry_run writes nothing")
     real = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[scatter()])
-    ed.check_eq(real["instances_added"], dry["instances_added"], f"{dry} {real}")
-    ed.check_eq(real["hash"], dry["hash"], "a dry run reports what a real run does")
-    ed.check(real["instances_added"] > 0, f"{real}")
+    ed.check_eq(real["ops"][0]["instances_added"], dry["ops"][0]["instances_added"], f"{dry} {real}")
+    ed.check_eq(real["ops"][0]["hash"], dry["ops"][0]["hash"], "a dry run reports what a real run does")
+    ed.check(real["ops"][0]["instances_added"] > 0, f"{real}")
     await ed.call("undo", scope="scene")
     again = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[scatter()])
-    ed.check_eq(again["hash"], real["hash"], "the same input, the same trees")
+    ed.check_eq(again["ops"][0]["hash"], real["ops"][0]["hash"], "the same input, the same trees")
     other = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[scatter(seed=43, mode="replace")], dry_run=True)
-    ed.check(other["hash"] != real["hash"], "another seed, other trees")
+    ed.check(other["ops"][0]["hash"] != real["ops"][0]["hash"], "another seed, other trees")
 
 
 async def test_invalid_op_changes_nothing(ed: Editor):
@@ -109,7 +109,7 @@ async def test_sculpt_resnaps_trees(ed: Editor):
     sid, terrain = await terrain_scene(ed, "Resnap")
     placed = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[
         {"op": "place_trees", "prototype": 0, "points": [[0, 0], [10, 5], [-8, 12]]}], space="local")
-    ed.check_eq(len(placed["ids"]), 3, f"{placed}")
+    ed.check_eq(len(placed["ops"][0]["ids"]), 3, f"{placed}")
     await ed.call("sculpt_terrain", scene=sid, entity=terrain, space="local", strokes=[
         {"mode": "raise", "points": [[0, 0], [10, 5], [-8, 12]], "size": 12.0, "strength": 1.0, "seconds_per_point": 0.2}])
     await ed.call("wait", seconds=30, frames=30)
@@ -144,9 +144,9 @@ async def test_stats_match_a_count(ed: Editor):
     sid, terrain = await terrain_scene(ed, "Stats")
     real = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[scatter()])
     got = await ed.call("sample_terrain", scene=sid, entity=terrain, foliage=True, grid=0)
-    ed.check_eq(sum(item["count"] for item in got["foliage"]["trees"]), real["instances_added"], f"{got['foliage']}")
+    ed.check_eq(sum(item["count"] for item in got["foliage"]["trees"]), real["ops"][0]["instances_added"], f"{got['foliage']}")
     totals = got["foliage"]["totals"]
-    stored = real["instances_added"] * 40
+    stored = real["ops"][0]["instances_added"] * 40
     ed.check(totals["cpu_bytes"] >= stored, f"at least the stored trees' bytes: {totals}")
     ed.check(totals["cpu_bytes"] <= (stored + totals["resident"] * 32) * 1.1, f"{totals}")
 
@@ -190,7 +190,7 @@ async def test_pick_at_reports_tree(ed: Editor):
     got = await ed.call("pick_at", scene=sid, u=0.5, v=0.5)
     trees = [hit for hit in got["hits"] if hit["kind"] == "tree"]
     ed.check(trees, f"{got['hits']}")
-    ed.check_eq(trees[0]["tree_id"], placed["ids"][0], f"{trees[0]}")
+    ed.check_eq(trees[0]["tree_id"], placed["ops"][0]["ids"][0], f"{trees[0]}")
     ed.check_eq(trees[0]["prototype"], 0, f"{trees[0]}")
     ed.check_eq(trees[0]["entity"], terrain, "the GameObject is the Terrain")
 

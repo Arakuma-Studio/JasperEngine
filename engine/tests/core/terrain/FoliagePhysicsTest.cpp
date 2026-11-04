@@ -10,7 +10,7 @@
 
 #include "component/RigidbodyComponent.h"
 #include "math/Ray.h"
-#include "object/physics/Physics.h"
+#include "registry/PhysicsLayers.h"
 #include "subsystem/PhysicsSystem.h"
 
 using namespace foliagetest;
@@ -137,14 +137,14 @@ TEST(FoliagePhysics, NoSubscriberNoWork) {
     FoliageFixture fixture;
     collidingTrees(fixture, {{0.0f, 0.0f}});
     fixture.frame();
-    EXPECT_TRUE(fixture.scene->getSystem<PhysicsSystem>()->onContactAdded3D.empty());
+    EXPECT_FALSE(fixture.scene->getSystem<PhysicsSystem>()->onContactAdded3D.hasSubscribers());
     {
         Subscription subscription = fixture.foliage->onTreeHit.subscribe([](Entity, const TreeHitEvent&) {});
         fixture.frame();
-        EXPECT_FALSE(fixture.scene->getSystem<PhysicsSystem>()->onContactAdded3D.empty());
+        EXPECT_TRUE(fixture.scene->getSystem<PhysicsSystem>()->onContactAdded3D.hasSubscribers());
     }
     fixture.frame();
-    EXPECT_TRUE(fixture.scene->getSystem<PhysicsSystem>()->onContactAdded3D.empty());
+    EXPECT_FALSE(fixture.scene->getSystem<PhysicsSystem>()->onContactAdded3D.hasSubscribers());
 }
 
 #endif // JASPERENGINE_PHYSICS_3D

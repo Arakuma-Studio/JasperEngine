@@ -115,11 +115,11 @@ void LuaBinding::registerFoliageClasses(lua_State* L) {
                 luabridge::LuaRef options = luabridge::LuaRef::fromStack(L, 4);
                 const luabridge::LuaRef kindOption = options["kind"];
                 if (kindOption.isString()) {
-                    const std::string text = kindOption.cast<std::string>();
+                    const std::string text = kindOption.unsafe_cast<std::string>();
                     kind = text == "details" ? 1 : text == "all" ? 2 : 0;
                 }
                 const luabridge::LuaRef maxOption = options["max"];
-                if (maxOption.isNumber()) maxResults = static_cast<size_t>(maxOption.cast<int>());
+                if (maxOption.isNumber()) maxResults = static_cast<size_t>(maxOption.unsafe_cast<int>());
             }
             luabridge::LuaRef results = luabridge::newTable(L);
             const std::vector<FoliageInstanceInfo> found = foliageOf(self)->getInstancesInRadius(self->getEntity(), position, radius, kind, maxResults);
@@ -131,7 +131,7 @@ void LuaBinding::registerFoliageClasses(lua_State* L) {
             if (lua_istable(L, 3)) {
                 luabridge::LuaRef options = luabridge::LuaRef::fromStack(L, 3);
                 const luabridge::LuaRef option = options["updateNavigation"];
-                if (option.isBool()) updateNavigation = option.cast<bool>();
+                if (option.isBool()) updateNavigation = option.unsafe_cast<bool>();
             }
             const std::optional<FoliageInstanceInfo> pose = foliageOf(self)->removeTreeInstance(self->getEntity(), static_cast<terrain::TreeId>(id), updateNavigation);
             if (!pose) return luabridge::LuaRef(L);
@@ -147,8 +147,8 @@ void LuaBinding::registerFoliageClasses(lua_State* L) {
             const luabridge::LuaRef yaw = spec["yaw"];
             const luabridge::LuaRef scale = spec["scale"];
             if (!prototype.isNumber() || !position.isUserdata()) return 0;
-            return static_cast<lua_Integer>(foliageOf(self)->addTreeInstance(self->getEntity(), prototype.cast<int>(), position.cast<Vector3>(),
-                yaw.isNumber() ? yaw.cast<float>() : 0.0f, scale.isNumber() ? scale.cast<float>() : 1.0f));
+            return static_cast<lua_Integer>(foliageOf(self)->addTreeInstance(self->getEntity(), prototype.unsafe_cast<int>(), position.unsafe_cast<Vector3>(),
+                yaw.isNumber() ? yaw.unsafe_cast<float>() : 0.0f, scale.isNumber() ? scale.unsafe_cast<float>() : 1.0f));
         })
         .addFunction("clearDetailsInRadius", +[](Terrain* self, Vector3 position, float radius, lua_State* L) {
             const int layer = lua_isnumber(L, 4) ? static_cast<int>(lua_tointeger(L, 4)) : -1;
@@ -163,10 +163,10 @@ void LuaBinding::registerFoliageClasses(lua_State* L) {
         .addFunction("getTreeFromHit", +[](Terrain* self, const luabridge::LuaRef& hit) -> lua_Integer {
             FoliageSystem* foliage = foliageOf(self);
             if (hit.isInstance<MeshRaycastHit>()) {
-                return static_cast<lua_Integer>(hit.cast<MeshRaycastHit>().foliageId);
+                return static_cast<lua_Integer>(hit.unsafe_cast<MeshRaycastHit>().foliageId);
             }
             if (hit.isInstance<RayReturn>()) {
-                const RayReturn ray = hit.cast<RayReturn>();
+                const RayReturn ray = hit.unsafe_cast<RayReturn>();
                 Entity terrainEntity = NULL_ENTITY;
                 terrain::TreeId id = 0;
                 if (foliage->getTreeFromBody(ray.body, ray.colliderIndex, terrainEntity, id) && terrainEntity == self->getEntity()) return static_cast<lua_Integer>(id);
