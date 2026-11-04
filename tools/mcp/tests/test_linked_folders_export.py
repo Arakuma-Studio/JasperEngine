@@ -281,12 +281,14 @@ async def test_web_export_for_the_web_game(ed: Editor):
     docs/testing.md ("Linked folders in a web game") has the build and the browser run of it."""
     with linked_game(ed):
         await make_linked_scene(ed, "Linked Web")
-        target = os.environ.get("JASPER_LINKED_WEB_EXPORT", "")
-        out = Path(target).resolve() if target else ed.scratch.root / "export-linked-web"
-        shutil.rmtree(out, ignore_errors=True)
+        out = ed.scratch.root / "export-linked-web"
         r = await ed.call("build_project", mode="source", output_dir=str(out), platform="web", backends=["opengles"],
                           overwrite=True, timeout_seconds=900)
         ed.check_eq(r["status"], "succeeded", f"{str(r)[:2000]}")
         ed.check((out / "project" / "assets" / "linked_art" / "red.png").is_file() or
                  cooked_at(tree(out / "project" / "assets"), "linked_art/red.png"), "the texture of the linked folder ships")
         ed.check((out / "project" / "lua" / "lib" / "linkedhelper.lua").is_file(), "the Lua module of the linked folder ships")
+        target = os.environ.get("JASPER_LINKED_WEB_EXPORT", "")
+        if target:
+            shutil.rmtree(target, ignore_errors=True)
+            shutil.copytree(out, target, symlinks=True)
