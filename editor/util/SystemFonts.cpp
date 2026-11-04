@@ -6,6 +6,7 @@
 #include "util/CommandRunner.h"
 #include "util/FileUtils.h"
 #include "util/StringUtils.h"
+#include "jobs/JobSystem.h"
 
 #include "imgui.h"
 
@@ -18,7 +19,6 @@
 #include <mutex>
 #include <set>
 #include <sstream>
-#include <thread>
 
 #ifdef _WIN32
     #ifndef NOMINMAX
@@ -337,8 +337,9 @@ void SystemFonts::startSearch(CjkLanguage preference) {
         std::lock_guard<std::mutex> lock(s.mutex);
         s.language = order.front();
     }
-    // off the main thread: fontconfig and CoreText can take a while on a cold start
-    std::thread(search, std::move(order)).detach();
+    // off the main thread, on the jobs' Background lane: fontconfig and CoreText can take a
+    // while on a cold start (and fc-match is given at most 3 s)
+    jobs::enqueueDetached([order = std::move(order)]() { search(order); }, jobs::Lane::Background, "system-fonts");
 }
 
 SystemFonts::State SystemFonts::state() {

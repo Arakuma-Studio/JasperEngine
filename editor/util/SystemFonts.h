@@ -43,7 +43,8 @@ namespace jasperengine::editor {
 
         enum class State { Idle, Searching, Ready, None };
 
-        // Starts the search on a thread of its own, once (later calls do nothing)
+        // Starts the search on the jobs' Background lane, once (later calls do nothing); the job
+        // system runs from Engine::systemInit
         static void startSearch(CjkLanguage preference);
         static State state();
         // The fonts found (empty until Ready)
