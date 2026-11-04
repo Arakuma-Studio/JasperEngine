@@ -1661,6 +1661,7 @@ set(JASPERENGINE_SRCS
     core/render/LineRibbonBuilder.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
+    core/render/SSRProbeSlots.cpp
     core/render/SystemRender.cpp
     core/render/TextureRender.cpp
     core/render/shadow/CascadeFit.cpp
