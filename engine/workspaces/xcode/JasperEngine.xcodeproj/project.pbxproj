@@ -4397,6 +4397,8 @@
 		4A534E4713FB8FA083EDB374 /* DeviceTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4733E849AD8672E52D /* DeviceTypes.h */; };
 		4A534E47D97D6F576E7F073B /* GpuTierDatabase.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472AFCDD32755F0D28 /* GpuTierDatabase.h */; };
 		4A534E479C367C99840EB47F /* QualityResolver.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B7168D0FCCFB915F /* QualityResolver.h */; };
+		4A534E47B1BAAAB3C75B88ED /* CameraType.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475F6FD9951F989C76 /* CameraType.h */; };
+		4A534E4727FAC9DB1C824F50 /* ComponentFwd.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A5E93FFF657430E4 /* ComponentFwd.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8614,6 +8616,8 @@
 		4A534E4733E849AD8672E52D /* DeviceTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DeviceTypes.h; sourceTree = "<group>"; };
 		4A534E472AFCDD32755F0D28 /* GpuTierDatabase.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GpuTierDatabase.h; sourceTree = "<group>"; };
 		4A534E47B7168D0FCCFB915F /* QualityResolver.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = QualityResolver.h; sourceTree = "<group>"; };
+		4A534E475F6FD9951F989C76 /* CameraType.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraType.h; sourceTree = "<group>"; };
+		4A534E47A5E93FFF657430E4 /* ComponentFwd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ComponentFwd.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10309,6 +10313,7 @@
 				4A534E471EDC920A8DCBF993 /* ShakePreset.h */,
 				4A534E4775CFE4EABC3BFB73 /* ShakePresets.h */,
 				4A534E470967CFAF401F9620 /* ShakerRuntime.h */,
+				4A534E475F6FD9951F989C76 /* CameraType.h */,
 			);
 			path = camera;
 			sourceTree = "<group>";
@@ -12390,6 +12395,7 @@
 				71E36B8425D5996400EFEED4 /* EntityManager.h */,
 				71E36B8325D5996400EFEED4 /* Signature.h */,
 				71E36B8625D5996400EFEED4 /* SubSystem.h */,
+				4A534E47A5E93FFF657430E4 /* ComponentFwd.h */,
 			);
 			path = ecs;
 			sourceTree = "<group>";
@@ -15313,6 +15319,8 @@
 				4A534E4713FB8FA083EDB374 /* DeviceTypes.h in Headers */,
 				4A534E47D97D6F576E7F073B /* GpuTierDatabase.h in Headers */,
 				4A534E479C367C99840EB47F /* QualityResolver.h in Headers */,
+				4A534E47B1BAAAB3C75B88ED /* CameraType.h in Headers */,
+				4A534E4727FAC9DB1C824F50 /* ComponentFwd.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
