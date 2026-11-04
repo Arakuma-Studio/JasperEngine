@@ -5,6 +5,9 @@ Lua's Scene:getRenderStats() and Mesh.allowGpuInstancing (R12) in Play."""
 
 from __future__ import annotations
 
+import shutil
+
+import harness
 from harness import Editor
 
 CI = True
@@ -13,21 +16,26 @@ TIMEOUT = 900
 
 S: dict = {}
 
+# a 117-vertex sphere: Models of one file share its buffers, which GPU Instancing batches
+SPHERE = harness.REPO / "engine" / "tests" / "core" / "fixtures" / "gltf" / "instancing" / "sphere.gltf"
+
 NEW_KEYS = ("main_triangles", "shadow_triangles", "draw_calls_by_pass", "instanced_draws", "batched_instances",
             "uniform_bytes_kept", "visible", "culled", "uniform_bytes", "buffer_upload_bytes")
 
 
 async def spheres(ed: Editor) -> int:
-    """A 3D scene of 16 spheres of one mesh and material (over the 64 vertices dynamic batching takes)
-    on a floor, under the default sun (it casts shadows), seen by the game camera."""
+    """A 3D scene of 16 Models of one glTF sphere (over the 64 vertices dynamic batching takes) on a
+    floor, under the default sun (it casts shadows), seen by the game camera."""
     if "scene" in S:
         return S["scene"]
+    (ed.project / "assets" / "models").mkdir(parents=True, exist_ok=True)
+    shutil.copy(SPHERE, ed.project / "assets" / "models" / "sphere.gltf")
     made = await ed.call("create_scene", name="Spheres", type="3D")
     scene = made["scene"]["id"]
     S["balls"] = []
     for i in range(16):
-        ball = await ed.call("create_entity", scene=scene, type="sphere", name=f"Ball{i}", position=[(i % 4) * 2 - 3, 0.5, (i // 4) * 2 - 3],
-                             select=False)
+        ball = await ed.call("create_entity", scene=scene, type="model", model="assets/models/sphere.gltf", name=f"Ball{i}",
+                             position=[(i % 4) * 2 - 3, 0.5, (i // 4) * 2 - 3], select=False)
         S["balls"].append(ball["entity_id"])
     await ed.call("create_entity", scene=scene, type="plane", name="Floor", scale=[20, 1, 20], select=False)
     await ed.call("wait", frames=30)

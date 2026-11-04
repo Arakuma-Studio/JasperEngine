@@ -12,6 +12,7 @@
 #include "Scene.h"
 #include "object/Camera.h"
 #include "object/Light.h"
+#include "object/Model.h"
 #include "object/Primitive.h"
 #include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
@@ -39,6 +40,7 @@ namespace {
         Camera camera{&scene};
         Light sun{&scene};
         std::vector<std::unique_ptr<Primitive>> objects;
+        std::vector<std::unique_ptr<Model>> models;
 
         void SetUp() override{
             scene.setBackgroundColor(0.12f, 0.12f, 0.16f, 1.0f);
@@ -55,6 +57,7 @@ namespace {
 
         void TearDown() override{
             objects.clear();
+            models.clear();
             Engine::removeScene(&scene);
             Engine::setGpuInstancingEnabled(true);
         }
@@ -64,28 +67,27 @@ namespace {
             return *objects.back();
         }
 
-        // a 6 x 6 grid of tiled boxes in two colours, spheres among them, a floor (too small to be
-        // instanced: dynamic batching's), and three overlapping transparent planes nearer the camera
+        // a 6 x 6 grid of glTF boxes and spheres (one vertex buffer per file, shared by its Models:
+        // the meshes GPU Instancing batches) in two colours, a floor (too small to be instanced:
+        // dynamic batching's), and three overlapping transparent planes nearer the camera
         void buildScene(){
             Primitive& floor = add();
             floor.createPlane(14.0f, 14.0f);
             floor.setColor(0.7f, 0.7f, 0.65f);
             for (int z = 0; z < 6; z++){
                 for (int x = 0; x < 6; x++){
-                    Primitive& box = add();
-                    if ((x + z) % 3 == 2){
-                        box.createSphere(0.45f);
-                        box.setColor(0.9f, 0.5f, 0.2f);
-                    }else{
-                        // (tiled past the 64 vertices dynamic batching takes)
-                        box.createBox(0.8f, 0.8f, 0.8f, 3);
-                        if ((x + z) % 2 == 0)
-                            box.setColor(0.2f, 0.6f, 0.9f);
-                        else
-                            box.setColor(0.8f, 0.2f, 0.3f);
-                    }
-                    box.setPosition(-5.0f + 2.0f * (float)x, 0.5f, -5.0f + 2.0f * (float)z);
-                    box.setRotation(0.0f, 15.0f * (float)(x + z), 0.0f);
+                    models.push_back(std::make_unique<Model>(&scene));
+                    Model& model = *models.back();
+                    const bool sphere = (x + z) % 3 == 2;
+                    EXPECT_TRUE(model.loadModel(sphere ? "gltf/instancing/sphere.gltf" : "gltf/instancing/box.gltf"));
+                    if (sphere)
+                        model.setColor(0.9f, 0.5f, 0.2f);
+                    else if ((x + z) % 2 == 0)
+                        model.setColor(0.2f, 0.6f, 0.9f);
+                    else
+                        model.setColor(0.8f, 0.2f, 0.3f);
+                    model.setPosition(-5.0f + 2.0f * (float)x, 0.5f, -5.0f + 2.0f * (float)z);
+                    model.setRotation(0.0f, 15.0f * (float)(x + z), 0.0f);
                 }
             }
             const float colors[3][4] = {{1.0f, 0.2f, 0.2f, 0.5f}, {0.2f, 1.0f, 0.2f, 0.5f}, {0.2f, 0.2f, 1.0f, 0.5f}};
@@ -158,6 +160,8 @@ TEST_F(InstancingGoldenGpu, MeshOptOutDrawsAlone){
     buildScene();
     for (std::unique_ptr<Primitive>& object : objects)
         object->setAllowGpuInstancing(false);
+    for (std::unique_ptr<Model>& model : models)
+        model->setAllowGpuInstancing(false);
 
     ASSERT_TRUE(render()) << "the scene never finished loading";
     EXPECT_EQ(SystemRender::getDrawBatchStats().instancedDraws, 0u);

@@ -18,17 +18,17 @@
 using namespace jasperengine;
 
 namespace {
-    // the box x, y, z in [-10, 10] as a camera's six planes (normals inwards)
+    // the box x, y, z in [-10, 10] as a camera's six planes (normals inwards: n.p + d >= 0 inside)
     struct BoxFrustum {
         Plane planes[6];
         VisibleFrustum frustum;
         BoxFrustum(){
-            planes[FRUSTUM_PLANE_NEAR] = Plane(Vector3(0, 0, -1), 10.0f);
-            planes[FRUSTUM_PLANE_FAR] = Plane(Vector3(0, 0, 1), 10.0f);
-            planes[FRUSTUM_PLANE_LEFT] = Plane(Vector3(1, 0, 0), 10.0f);
-            planes[FRUSTUM_PLANE_RIGHT] = Plane(Vector3(-1, 0, 0), 10.0f);
-            planes[FRUSTUM_PLANE_TOP] = Plane(Vector3(0, -1, 0), 10.0f);
-            planes[FRUSTUM_PLANE_BOTTOM] = Plane(Vector3(0, 1, 0), 10.0f);
+            planes[FRUSTUM_PLANE_NEAR] = Plane(0, 0, -1, 10.0f);
+            planes[FRUSTUM_PLANE_FAR] = Plane(0, 0, 1, 10.0f);
+            planes[FRUSTUM_PLANE_LEFT] = Plane(1, 0, 0, 10.0f);
+            planes[FRUSTUM_PLANE_RIGHT] = Plane(-1, 0, 0, 10.0f);
+            planes[FRUSTUM_PLANE_TOP] = Plane(0, -1, 0, 10.0f);
+            planes[FRUSTUM_PLANE_BOTTOM] = Plane(0, 1, 0, 10.0f);
             frustum.planes = planes;
             frustum.farClip = 20.0f;
             frustum.eye = Vector3(0, 0, 0);
