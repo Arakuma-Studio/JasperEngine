@@ -46,9 +46,10 @@ def _err(text):
 def _entity(eid, path, comps):
     name = path.split("/")[-1]
     values = {c: COMPONENTS[c](eid) for c in comps.split()}
-    return _ok(f"{name} [{eid}] components: {comps}",
-               {"id": eid, "name": name, "path": path, "active": True, "active_in_hierarchy": True, "layer": 0,
-                "tag": "", "scene_id": 1, "components": values})
+    # shaped like the real get_entity (dump_surface.py recorded one), so it goes out as structuredContent
+    return {**_ok(f"{name} [{eid}] components: {comps}",
+                  {"id": eid, "name": name, "path": path, "active": True, "active_in_hierarchy": True, "layer": 0,
+                   "tag": "", "scene_id": 1, "child_count": 0, "components": values}), "real": True}
 
 
 def default_mocks(playing: bool = False) -> list[dict]:
@@ -96,6 +97,11 @@ def default_mocks(playing: bool = False) -> list[dict]:
                                                                                           "height": 720})},
         {"tool": "check_script", "result": _ok("No problems.", {"ok": True, "problems": []})},
         {"tool": "list_component_types", "result": {"recorded": "list_component_types"}},
+        {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings"}},
+        {"tool": "list_post_processing_presets", "result": _ok(
+            "8 presets: none, mobile, mobile_adaptive, console, stylised, crt_retro, film, vhs (each: the post_processing "
+            "fields it sets and its cost)", {"presets": [{"id": p} for p in ("none", "mobile", "mobile_adaptive", "console",
+                                                                            "stylised", "crt_retro", "film", "vhs")]})},
         {"tool": "select_scene", "result": _ok("Selected scene 1 \"Main\".", {"scene_id": 1})},
         {"tool": "set_project_settings", "result": _ok("Set 1 project setting(s); saved project.yaml.", {"changed": []})},
     ]
@@ -114,8 +120,7 @@ def default_mocks(playing: bool = False) -> list[dict]:
                 "=> null\n(edit mode: changes to the scene are not undoable)", {"values": [None]})},
             {"tool": "eval_lua", "result": {"recorded": "eval_lua_edit_mode"}},
             {"tool": "play", "args": {"action": "start"}, "result": _ok(
-                "Playing \"Main\". Started in 0.31 s. No errors in the console.\nNext: wait / send_input / screenshot / "
-                "eval_lua; read_console since 30.", {"running_scenes": [{"id": 1, "main": True, "name": "Main"}],
+                "Playing \"Main\". Started in 0.31 s. No errors in the console. next_cursor: 30", {"running_scenes": [{"id": 1, "main": True, "name": "Main"}],
                                                      "problems": [], "next_cursor": 30})},
             {"tool": "wait", "after": "play", "result": _ok("Waited 2.00 s, 120 frame(s), game time +2.000 s. Playing.",
                                                            {"reason": "seconds", "state": "playing", "console": []})},

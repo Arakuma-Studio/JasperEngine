@@ -199,11 +199,12 @@ CASES = [
                 "Set 1 property of GameObject 21 \"Ghost\".", {"entity": {"id": 21, "path": "Ghost"}})},
             {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).",
                                                 {"scene": {"id": 1, "path": "scenes/Main.scene"}})},
+            {"tool": "list_assets", "result": ok("1 match(es):\nassets/sprites/ghost.png (texture, 64x64)",
+                                                {"assets": [{"path": "assets/sprites/ghost.png", "type": "texture"}]})},
+            {"tool": "get_asset_info", "result": ok("assets/sprites/ghost.png: PNG 64x64, 4 channels, used by nothing.",
+                                                   {"path": "assets/sprites/ghost.png", "width": 64, "height": 64})},
         ],
-        "checks": {"must_not_call": [{"tool": "set_properties", "args": {"entity": "re:^(?!21$)\\d+$"}},
-                                     {"tool": "get_entity", "args": {"entity": "re:^(?!21$)\\d+$"}}],
-                   "calls": [{"tool": "create_entity", "args": {"name": "Ghost"}}],
-                   "max_calls": {"create_entity": 3}},
+        "checks": {"min_calls": {"create_entity": 2}, "max_calls": {"create_entity": 3}},
         "max_turns": 12,
     },
     {
@@ -264,6 +265,9 @@ CASES = [
             {"tool": "capture_profile", "result": ok("Captured 300 frames: top scopes on spike frames: GC 38 ms (Lua).",
                                                     {"frames": 300, "top": [{"scope": "Lua GC", "ms": 38.0}]})},
             {"tool": "read_console", "result": ok("0 entries (0 error(s), 0 warning(s)). next_cursor 88.", {"entries": [], "next_cursor": 88})},
+            {"tool": "search_engine_api", "args": {"query": "re:(?i)draw|frame|profil|stat|fps|perf|stutter|spike"},
+             "result": {"recorded": "search_api_profiling"}},
+            {"tool": "search_engine_source", "result": {"recorded": "search_source_drawcalls"}},
         ],
         "checks": {"any_of": [{"calls": ["get_frame_times"]}, {"calls": ["capture_profile"]}],
                    "reply_must": [r"412|draw"], "shell_must_not": [r"/proc|stderr|FRAME_STATS"]},
@@ -289,6 +293,10 @@ CASES = [
             {"tool": "configure_game_view", "result": ok(
                 "Game view: aspect project (1280x720), resolution free, scale 1, device none.",
                 {"aspect": "project", "resolution": {"name": "free"}, "render_size": [1280, 720]})},
+            {"tool": "search_engine_api", "args": {"query": "re:(?i)game.?view|resolution|aspect|device|screen|window"},
+             "result": {"recorded": "search_api_game_view"}},
+            {"tool": "get_project_settings", "args": {"search": "re:(?i)game.?view|resolution|aspect|device|simulat"},
+             "result": {"recorded": "settings_search_game_view"}},
             {"tool": "screenshot", "result": ok("Game view 2400x1080 (scaled to 768x346).",
                                                {"view": "game", "width": 2400, "height": 1080})},
         ],
@@ -471,8 +479,7 @@ CASES = [
             {"user": "Play the game and check the Console."},
             {"assistant": "Starting play.", "calls": [{"tool": "play", "args": {"action": "start"},
                 "result": "Playing \"Main\". Started in 0.30 s. 1 error in the console:\n[error #41] scripts/player.lua:15: "
-                          "attempt to index a nil value (field 'speed')\nNext: wait / send_input / screenshot / eval_lua; "
-                          "read_console since 41."}]},
+                          "attempt to index a nil value (field 'speed')\nnext_cursor: 41"}]},
             {"assistant": "Stopping to fix it.", "calls": [{"tool": "play", "args": {"action": "stop"},
                 "result": "Stopped. \"Main\" played 3 s and was stopped (1 error(s), 0 warning(s) logged). The scene is back to "
                           "its edit-time state."}]},
@@ -482,8 +489,7 @@ CASES = [
         "prompt": "Play again and wait a couple of seconds. Is the error gone?",
         "mocks": [
             {"tool": "play", "args": {"action": "start"}, "result": ok(
-                "Playing \"Main\". Started in 0.31 s. No errors in the console.\nNext: wait / send_input / screenshot / "
-                "eval_lua; read_console since 52.", {"state": "playing", "console": {"problems": 0, "next_cursor": 52}})},
+                "Playing \"Main\". Started in 0.31 s. No errors in the console. next_cursor: 52", {"state": "playing", "console": {"problems": 0, "next_cursor": 52}})},
             {"tool": "wait", "result": ok("Waited 2.0 s, 120 frame(s); playing. Console: no new lines.",
                                          {"reason": "seconds", "state": "playing", "console": []})},
             {"tool": "read_console", "args": {"since": "*"}, "result": ok("0 entries since #52 (0 error(s), 0 warning(s)). next_cursor 60.",
@@ -539,8 +545,7 @@ CASES = [
         "prompt": "Play the game for a few seconds and tell me whether the player moves and whether anything errors.",
         "mocks": [
             {"tool": "play", "args": {"action": "start"}, "result": ok(
-                "Playing \"Main\". Started in 0.31 s. No errors in the console.\nNext: wait / send_input / screenshot / "
-                "eval_lua; read_console since 52.", {"state": "playing", "console": {"problems": 0, "next_cursor": 52}})},
+                "Playing \"Main\". Started in 0.31 s. No errors in the console. next_cursor: 52", {"state": "playing", "console": {"problems": 0, "next_cursor": 52}})},
             {"tool": "wait", "result": ok("Waited 3.0 s, 180 frame(s), game time +3.000 s; playing. Console: no new lines.",
                                          {"reason": "seconds", "state": "playing", "console": []})},
             {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
@@ -723,5 +728,76 @@ CASES = [
         "checks": {"calls": [{"tool": "create_ui_document", "args": {"template": "main_menu"}}],
                    "must_not_call": ["create_ui"], "file_must_not": {"assets/ui/main_menu.html": [r"<rml|\.rcss"]}},
         "max_turns": 14,
+    },
+    {
+        "id": "guard_post_processing_preset",
+        "kind": "guard",
+        "what_happened": "The guide's Post-processing digest routes a look request to a preset first, then fields; guards the "
+                         "digest when the guide is cut.",
+        "text_at_issue": "Guide 'Post-processing': 'apply_post_processing_preset (film, vhs, ...), then set_scene_settings "
+                         "post_processing.<field>'",
+        "source": "guide digest (S11/S12 post-processing); no failure on record",
+        "prompt": "Give the game an old VHS tape look.",
+        "mocks": [
+            {"tool": "list_post_processing_presets", "result": ok(
+                "8 presets: none, mobile, mobile_adaptive, console, stylised, crt_retro (scanlines, curvature), film (grain, "
+                "vignette), vhs (chromatic shift, noise, tracking lines)", {"presets": [{"id": "vhs"}, {"id": "crt_retro"}]})},
+            {"tool": "apply_post_processing_preset", "result": ok(
+                "Applied post-processing preset vhs to scene 1 \"Main\" (one undo step): chromatic_aberration, noise, "
+                "scanlines, vignette.", {"scene_id": 1, "preset": "vhs"})},
+        ],
+        "checks": {"calls": [{"tool": "apply_post_processing_preset", "args": {"preset": "re:(?i)vhs"}}],
+                   "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_atmosphere_preset",
+        "kind": "guard",
+        "what_happened": "The guide's Atmosphere digest names height fog and apply_atmosphere_preset (a rendering_fx tool); "
+                         "guards the digest and the group route when the guide is cut.",
+        "text_at_issue": "Guide 'Atmosphere': 'A Fog of type \"height\" ... apply_atmosphere_preset sets a look "
+                         "(list_atmosphere_presets)'",
+        "source": "guide digest (atmosphere); no failure on record",
+        "prompt": "Add a soft morning haze over the level.",
+        "mocks": [
+            {"tool": "create_entity", "args": {"type": "re:(?i)fog"}, "result": ok(
+                "Created Fog \"Fog\" [30] at Fog (one undo step).", {"entity": {"id": 30, "name": "Fog", "path": "Fog"}})},
+            {"tool": "add_component", "args": {"component": "re:(?i)fog"}, "result": ok(
+                "Added fog to GameObject 30 \"Fog\".", {"entity": {"id": 30}})},
+            {"tool": "list_atmosphere_presets", "result": ok(
+                "fog presets: morning_haze, valley_mist, dense_fog, desert_heat, night_murk",
+                {"presets": [{"id": "morning_haze"}, {"id": "valley_mist"}]})},
+            {"tool": "apply_atmosphere_preset", "result": ok(
+                "Applied morning_haze to the Fog of GameObject 30 \"Fog\" (type height; one undo step).",
+                {"entity": {"id": 30}, "preset": "morning_haze"})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on GameObject 30 \"Fog\".", {"entity": {"id": 30}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "create_entity", "args": {"type": "re:(?i)fog"}}]},
+                              {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)fog"}}]}],
+                   "must_not_call": ["fork_shader", "apply_post_processing_preset"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_shadow_softness",
+        "kind": "guard",
+        "what_happened": "The guide's Shadows digest names a light's softShadows and the scene's shadows_quality; guards it when "
+                         "the guide is cut.",
+        "text_at_issue": "Guide 'Shadows': 'A light's shadows, softShadows, shadowBias/shadowNormalBias ...; the scene's "
+                         "shadows_quality and shadow_distance'",
+        "source": "guide digest (shadows); no failure on record",
+        "prompt": "The shadows from the Directional Light have hard, jagged edges. Make them softer.",
+        "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:Directional|^16$"}, "result": ok(
+                "Directional Light [16] components: light transform; light: type directional, shadows true, softShadows "
+                "false, shadowBias 1, shadowNormalBias 1, intensity 1", {"id": 16})},
+            {"tool": "set_properties", "result": ok("Set 1 property on GameObject 16 \"Directional Light\".", {"entity": {"id": 16}})},
+            {"tool": "set_scene_settings", "result": ok("Set 1 scene setting(s) (one undo step).", {"scene_id": 1})},
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings"}},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"light": {"softShadows": True}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:softShadows"}]}}]},
+                              {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
+                   "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
     },
 ]

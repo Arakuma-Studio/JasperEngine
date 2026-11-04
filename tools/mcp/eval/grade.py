@@ -11,6 +11,7 @@ case's `checks` (cases.py) are:
     must_not_call   [{tool, args?}]   none appears
     order           [[a, b], ...]     a's first call comes before b's first call (both appear)
     max_calls       {tool|"*": n}     at most n calls of that tool ("*": every editor call)
+    min_calls       {tool: n}         at least n calls of that tool
     last_call       {tool, args?}     the last editor call matches (the turn ends after it)
     shell_must      [regex]           some shell command matches
     shell_must_not  [regex]           no shell command matches
@@ -144,6 +145,10 @@ def check(checks: dict, trace: Trace) -> list[str]:
         n = len(calls) if tool == "*" else sum(1 for c in calls if c["tool"] == tool)
         if n > limit:
             fails.append(f"{n} calls of {tool} (max {limit})")
+    for tool, least in (checks.get("min_calls") or {}).items():
+        n = sum(1 for c in calls if c["tool"] == tool)
+        if n < least:
+            fails.append(f"{n} calls of {tool} (min {least})")
     if checks.get("last_call"):
         if not calls or not call_matches(checks["last_call"], calls[-1]):
             got = describe({"tool": calls[-1]["tool"]}) if calls else "none"

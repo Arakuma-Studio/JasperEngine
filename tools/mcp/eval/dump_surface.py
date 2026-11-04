@@ -64,9 +64,33 @@ RECORD = {
     "project_settings_all": ("get_project_settings", {}),
     "search_api_rotate": ("search_engine_api", {"query": "GameObject rotate rotation"}),
     "search_api_events": ("search_engine_api", {"query": "RegisterEngineEvent onUpdate deltatime"}),
+    "search_api_profiling": ("search_engine_api", {"query": "profiler frame time draw calls stats"}),
+    "search_source_drawcalls": ("search_engine_source", {"query": "drawCalls"}),
+    "search_api_game_view": ("search_engine_api", {"query": "game view resolution aspect device"}),
+    "search_api_tags_layers": ("search_engine_api", {"query": "tags layers collision matrix"}),
+    "settings_search_game_view": ("get_project_settings", {"search": "game view resolution"}),
 }
 # edit-mode results first (the play calls come last)
 RECORD = {"eval_lua_edit_mode": ("eval_lua", {"code": "return 1"}), **RECORD}
+
+
+async def build_world(ed) -> None:
+    """The scenes world.py describes, made and saved by the editor, so a sample's files match what
+    the mocks report (Main with its GameObjects as the start scene, Hud, Level2; ids differ)."""
+    await ed.call("create_scene", name="Main", path="scenes/Main.scene", close_previous=True, unsaved="discard")
+    for args in ({"type": "camera", "name": "Main Camera", "position": [0, 5, -10]},
+                 {"type": "plane", "name": "Ground", "scale": [20, 1, 20]},
+                 {"type": "sprite", "name": "Player"},
+                 {"type": "sprite", "name": "Enemy"},
+                 {"type": "box", "name": "Crate", "position": [0, 3, 0], "scale": [2, 2, 2]}):
+        await ed.call("create_entity", **args)
+    for child in ("Gun", "Shield"):
+        await ed.call("create_entity", type="sprite", name=child, parent="Player")
+    await ed.call("save_scene", scene="Main")
+    await ed.call("create_scene", name="Hud", path="scenes/Hud.scene", type="2D")
+    await ed.call("create_scene", name="Level2", path="scenes/Level2.scene")
+    await ed.call("edit_build_scenes", action="set_start", scene="scenes/Main.scene")
+    await ed.call("save_project")
 
 
 def dump_tool(tool) -> dict:
@@ -91,6 +115,7 @@ async def record(out: Path) -> dict:
                 continue
             recorded[key] = {"tool": tool, "args": args, "text": r.text,
                              "structured": r.structured, "is_error": r.is_error}
+        await build_world(ed)
         contents = {}
         for res in resources.resources:
             uri = str(res.uri)

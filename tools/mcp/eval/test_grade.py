@@ -60,6 +60,7 @@ class GradeTest(unittest.TestCase):
         self.assertTrue(grade.check({"order": [["save_scene", "play"]]}, self.trace), "a missing call fails order")
         self.assertTrue(grade.check({"max_calls": {"*": 2}}, self.trace))
         self.assertEqual(grade.check({"max_calls": {"play": 1}}, self.trace), [])
+        self.assertTrue(grade.check({"min_calls": {"play": 2}}, self.trace))
         self.assertEqual(grade.check({"last_call": {"tool": "read_console"}}, self.trace), [])
         self.assertTrue(grade.check({"last_call": {"tool": "play"}}, self.trace))
 
@@ -128,10 +129,12 @@ class StubTest(unittest.TestCase):
 
     def test_mock_partial_match_and_once(self):
         s = self.stub([{"tool": "play", "args": {"action": "start"}, "once": True, "result": {"text": "started"}},
-                       {"tool": "play", "result": {"text": "other", "structured": {"state": "playing"}}}])
+                       {"tool": "play", "result": {"text": "other", "structured": {"state": "playing"}, "real": True}}])
         self.assertEqual(s.call("play", {"action": "start"})["content"][0]["text"], "started")
         second = s.call("play", {"action": "start"})
-        self.assertEqual(second["structuredContent"], {"state": "playing"})
+        self.assertEqual(second["structuredContent"], {"state": "playing"}, "a recorded result keeps its structuredContent")
+        hand = self.stub([{"tool": "play", "result": {"text": "t", "structured": {"x": 1}}}]).call("play", {"action": "x"})
+        self.assertNotIn("structuredContent", hand, "a hand-written result sends its text")
 
     def test_mock_regex_and_after(self):
         s = self.stub([{"tool": "play", "args": {"action": "re:^sta"}, "after": "tool_groups", "result": {"text": "late"}},
@@ -200,7 +203,7 @@ class CasesTest(unittest.TestCase):
             for key in ("prompt", "what_happened", "text_at_issue", "source", "checks"):
                 self.assertIn(key, c, f"{c['id']} lacks {key}")
             known = {"calls", "must_not_call", "order", "max_calls", "last_call", "shell_must", "shell_must_not",
-                     "reply_must", "reply_must_not", "edits_must_not", "any_of", "max_errors", "file_must",
+                     "reply_must", "reply_must_not", "edits_must_not", "any_of", "max_errors", "file_must", "min_calls",
                      "file_must_not"}
             self.assertLessEqual(set(c["checks"]), known, c["id"])
         self.assertGreaterEqual(sum(1 for c in CASES if c["kind"] == "control"), 5)

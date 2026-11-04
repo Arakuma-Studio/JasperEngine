@@ -147,7 +147,7 @@ def resolve_mocks(case: dict, surface: dict) -> dict:
             rec = surface.get("recorded", {}).get(res.pop("recorded"))
             if rec is None:
                 sys.exit(f"{case['id']}: the surface recorded no {mock['result']['recorded']!r}")
-            res = {"text": rec["text"], "structured": rec["structured"], "is_error": rec["is_error"], **res}
+            res = {"text": rec["text"], "structured": rec["structured"], "is_error": rec["is_error"], "real": True, **res}
         mock["result"] = res
         out["mocks"].append(mock)
     return out

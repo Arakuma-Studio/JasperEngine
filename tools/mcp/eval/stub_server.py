@@ -135,8 +135,12 @@ class Stub:
 
 
 def result(spec: dict) -> dict:
+    """A recorded result (or a hand-written one marked real: shaped like the editor's) goes out as the
+    editor sent it, text and structuredContent; Claude Code then shows the model only the
+    structuredContent. Any other hand-written result sends its text alone, so the model reads what
+    the case states."""
     out = {"content": [{"type": "text", "text": spec.get("text", "")}], "isError": bool(spec.get("is_error"))}
-    if spec.get("structured") is not None:
+    if spec.get("real") and spec.get("structured") is not None:
         out["structuredContent"] = spec["structured"]
     return out
 
