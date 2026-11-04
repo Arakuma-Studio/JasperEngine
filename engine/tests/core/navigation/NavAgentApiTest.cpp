@@ -131,10 +131,11 @@ TEST_F(NavAgentApiTest, CalculateAndSetPath){
 // AC20: a path of more than 256 polygons (the corridor's capacity) is accepted, followed to its end
 // (the crowd plans the rest near the corridor's end) and arrives once
 TEST_F(NavAgentApiTest, SetPathLongerThan256Polys){
-    // 700 m x 3 m on tiles of 8 cells (0.8 m): more than 400 polygons end to end
+    // 700 m x 3 m on tiles of 16 cells (1.6 m): more than 400 polygons end to end, and few enough
+    // for one search (2048 nodes)
     plane(*scene, Vector3(), 700.0f, 3.0f);
     const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
-    addSurface(*scene, surface, 0.1f, 8);
+    addSurface(*scene, surface, 0.1f, 16);
     bake(surface);
     const Entity walker = agent(*scene, Vector3(-345.0f, 0.0f, 0.0f), 20.0f, 0.4f);
     scene->getComponent<NavMeshAgentComponent>(walker).acceleration = 40.0f;
@@ -235,9 +236,9 @@ TEST_F(NavAgentApiTest, RootMotion){
     EXPECT_NEAR(moved.x, 0.0f, 1e-3f);
     EXPECT_NEAR(moved.z, sideways.z * DT, 1e-3f);
     EXPECT_LT(handle.getVelocity().distance(sideways), 1e-4f);
-    // the path goes on: it heads for the destination again
-    step();
-    EXPECT_GT(handle.getVelocity().x, 0.5f);
+    // the path goes on: the crowd steers it from that velocity back to the destination
+    steps(30);
+    EXPECT_GT(handle.getVelocity().x, 1.0f);
     EXPECT_TRUE(handle.hasPath());
 
     // no path: the crowd steers it at the velocity for that tick (an acceleration that reaches it)

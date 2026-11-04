@@ -73,7 +73,17 @@ agent:setDestination(Vector3(10, 0, 5))
 ```
 
 `get_runtime_entity` on an agent shows destination, pathStatus, pathPending, remainingDistance,
-velocity, isOnNavMesh and isOnOffMeshLink. Events fire after the fixed step, in entity order.
+velocity, isOnNavMesh, isOnOffMeshLink, stuckTime, lastPathFailure, isPathStale and
+steeringTarget. Events fire after the fixed step, in entity order.
+
+Why a path failed (in play): `get_navigation_info` `agents[].last_failure` (`"none"`,
+`"disconnected"`, `"blocked_by_area"`, ...) and `stuck_seconds` with stuck detection on; in Lua the
+reason is `onPathFailed`'s second argument and `agent.lastPathFailure`.
+
+```lua
+agent.onPathFailed = function(a, reason) print("no path:", reason) end   -- one argument works too
+agent.stuckDetection = true ; agent.onStuck = function(a) print("stuck", a.stuckTime) end
+```
 
 Grids (2D, tilemaps, strategy):
 
@@ -111,7 +121,10 @@ Agent members: `setDestination`, `resetPath`, `warp`, `move`, `completeOffMeshLi
 `setAreaCost` / `getAreaCost` / `resetAreaCost` (runtime only); r/w `speed`,
 `stoppingDistance`, `isStopped`, `avoidancePriority`, `areaMask`; read `remainingDistance`,
 `pathPending`, `pathStatus`, `velocity`, `desiredVelocity`, `isOnNavMesh`, `isOnOffMeshLink`;
-events `onDestinationReached`, `onPathFailed`, `onOffMeshLinkStart`, `onOffMeshLinkEnd`.
+events `onDestinationReached`, `onPathFailed(agent, reason)`, `onOffMeshLinkStart`,
+`onOffMeshLinkEnd`, `onStuck`. Scripted paths and root motion: `calculatePath(target)`,
+`setPath(path)`, `path`, `steeringTarget`, `isPathStale`, rw `nextPosition` and `velocity` (one
+tick), `raycast`, `findClosestEdge`, `samplePathPosition`, `nextOffMeshLinkData`.
 
 ## Pitfalls
 
